@@ -420,15 +420,36 @@ const ASSIGN_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
  * Removing only the parse half left the hook dying at the emit half with "jq: command not found" —
  * caught 2026-07-27 by running it under a PATH with jq genuinely absent instead of assuming one fix
  * covered both. JSON.stringify does the escaping jq's --arg was there for.
+ *
+ * `decision` DEFAULTS TO OMITTED, NOT `'defer'` (fixed 2026-09-25, see the accompanying issue). It used to be
+ * `permissionDecision: String(decision || 'defer')` — so ANY caller that wanted pure advisory
+ * (additionalContext only, no opinion) and passed `''` for `decision` got `'defer'` anyway, because
+ * `''` is falsy in JS. That silently broke hijack-ruvnet.sh's own stated contract: its header
+ * comment says it "injects a forceful course-correction ... WITHOUT blocking the call
+ * (permissionDecision:'defer')" — treating defer as a stronger 'ask', not as blocking. Per Claude
+ * Code's own hooks reference (`PreToolUse decision control` / `Defer a tool call for later`),
+ * `'defer'` is NOT a blocking-free advisory: "'defer' is for integrations that run `claude -p` as a
+ * subprocess ... Claude Code honors this value only in non-interactive mode with the -p flag." In
+ * that mode the tool call never executes — the process exits immediately with
+ * `stop_reason: 'tool_deferred'` and an empty `result`, and nothing resumes it unless the calling
+ * process explicitly implements the resume protocol (`claude -p --resume <id>` with the answer in
+ * `updatedInput`). hijack-ruvnet.sh never did. Any -p/subprocess caller — including Claude Code's
+ * own headless/background agent invocations — that fires this hook on a matching Write/Edit/Bash
+ * gets that tool call silently abandoned: no tool_result, no error, no notice. `''`/`undefined`/
+ * `null` now all mean "no opinion" and the field is left out of the envelope entirely, matching
+ * PreToolUse's own documented default (omit `permissionDecision` to proceed as the tool call would
+ * without a hook). A caller that genuinely wants `'defer'`, `'deny'`, `'allow'` or `'ask'` still
+ * passes it explicitly; only the silent double-negative default is gone.
  */
 export function preToolUseEnvelope(decision, additionalContext) {
-  return JSON.stringify({
+  const out = {
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
-      permissionDecision: String(decision || 'defer'),
       additionalContext: String(additionalContext || ''),
     },
-  }, null, 2);
+  };
+  if (decision) out.hookSpecificOutput.permissionDecision = String(decision);
+  return JSON.stringify(out, null, 2);
 }
 
 export function payloadOf(ev) {

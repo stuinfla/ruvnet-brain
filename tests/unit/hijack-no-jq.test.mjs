@@ -94,7 +94,9 @@ describe.skipIf(!hasPosixShell)('hijack-ruvnet.sh — the interceptor survives a
       const r = fire(VECTOR_STORE, { PATH: dir });
       const parsed = JSON.parse(r.stdout);
       expect(parsed.hookSpecificOutput.hookEventName).toBe('PreToolUse');
-      expect(parsed.hookSpecificOutput.permissionDecision).toBe('defer');
+      // NOT 'defer' (fixed 2026-09-25): see hijack-no-defer.test.mjs for why. permissionDecision
+      // must be absent entirely — advisory-only, per this hook's own header contract.
+      expect(parsed.hookSpecificOutput.permissionDecision).toBeUndefined();
       expect(parsed.hookSpecificOutput.additionalContext).toContain('RuVector');
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   });
