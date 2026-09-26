@@ -91,7 +91,7 @@ it('refuses non-integrity dependency sources before installation',async()=>{
 });
 
 it('executes against a fresh runtime with the actual RVF and ONNX packages', async () => {
-  const probe = '/Users/stuartkerr/Documents/ruvnet-brain-consistency-20260916/verified-search-deps-probe';
+  const probe = '/Users/stuartkerr/Code/ruvnet-brain-consistency-20260916/verified-search-deps-probe';
   if (!fs.existsSync(path.join(probe, 'package-lock.json'))) return;
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'oracle-runtime-real-')); dirs.push(root);
   const checkout = path.join(root, 'kb'); const shipped = path.join(root, 'shipped');

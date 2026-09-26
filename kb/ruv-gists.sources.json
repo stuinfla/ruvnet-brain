@@ -2,16 +2,16 @@
   "schemaVersion": 3,
   "kind": "ruvnet-brain-gist-source-receipts",
   "owner": "ruvnet",
-  "generated": "2026-09-17T01:47:45.831Z",
-  "observedAt": "2026-09-17T01:47:45.831Z",
-  "sourceObservationSha256": "9ff6564395a5835647a2cf8ad2928c6b17891306198b85da6baa993bbccbdcaa",
+  "generated": "2026-09-25T01:47:37.916Z",
+  "observedAt": "2026-09-25T01:47:37.916Z",
+  "sourceObservationSha256": "0713c8ef19f9a1128f586c2620fdd1e16fd91fa2e93a09fa75342b21614350a5",
   "gistSet": {
-    "count": 495,
-    "idsSha256": "219b311a3c2877e82d04a58c8a9cb682dc3085c2c1dde05c03e8f4e0ed14466e",
-    "observationSha256": "9ff6564395a5835647a2cf8ad2928c6b17891306198b85da6baa993bbccbdcaa"
+    "count": 497,
+    "idsSha256": "a6ea4caedbc637039a8d22d35670a7965ba0b37e36a9b35606f2ff65ae6a1c51",
+    "observationSha256": "0713c8ef19f9a1128f586c2620fdd1e16fd91fa2e93a09fa75342b21614350a5"
   },
-  "sourceSetSha256": "7f0fbe03a52ec4fd00a95dd3fcec9dcf819c74193d3da5a27ee25b184ba28f01",
-  "passagesSha256": "e9173eab59638569a89bdac1a4f85df37e67576192464e0b26f5cdc10385842f",
+  "sourceSetSha256": "e7f08c957ce2514eece5c1a36c550504cf17ca67864875be2e5c872e41c16abc",
+  "passagesSha256": "95d8bbb398108ccb16f3a0204b5239330760d9a7ce37ceb426b70cb5a75d9ba2",
   "gists": {
     "0020d02e9ce85a773412f8bf518737a0": {
       "schemaVersion": 3,
@@ -3296,8 +3296,8 @@
       "kind": "ruvnet-brain-gist-source-receipt",
       "gistId": "373ad78fb06544d1de1de29be9000597",
       "versionSha": "8d690ffb7181596ba695ba4abb8a1fd6bfbe1b13",
-      "updatedAt": "2026-03-24T17:07:40Z",
-      "ingestedAt": "2026-09-17T01:47:45.831Z",
+      "updatedAt": "2026-09-19T07:17:52Z",
+      "ingestedAt": "2026-09-20T01:47:30.269Z",
       "fileCount": 1,
       "files": [
         {
@@ -3309,7 +3309,7 @@
       ],
       "contentDigest": "8450e726321d1f96ebdf4d9c935a9db24737b97d72092078132acb29532bdf95",
       "complete": true,
-      "receiptSha256": "4239b4b4bad3ee405ad89eee172e02ac5f0af3e2d690e88ec521d901d94b1cba"
+      "receiptSha256": "ea995d2e1d87e4575d3d836706b468d4271792dc80502c03cacb4088eef484aa"
     },
     "37856a1aab825db91e7e8daf69b6fd17": {
       "schemaVersion": 3,
@@ -4148,8 +4148,8 @@
       "kind": "ruvnet-brain-gist-source-receipt",
       "gistId": "4cc23f3d3a97a0d8acd80693407b9a67",
       "versionSha": "56bea5a604bca49168db0ee23b04f712bb2212df",
-      "updatedAt": "2026-06-03T12:48:02Z",
-      "ingestedAt": "2026-09-17T01:47:45.831Z",
+      "updatedAt": "2026-09-19T07:17:47Z",
+      "ingestedAt": "2026-09-20T01:47:30.269Z",
       "fileCount": 3,
       "files": [
         {
@@ -4173,7 +4173,7 @@
       ],
       "contentDigest": "45dcd78d62977c4b3b80f5824f063c38cc10fad4868eddded37fa65ee1bcaad6",
       "complete": true,
-      "receiptSha256": "176c3a219643781f7acfa77e069dc004141e51d26472248a7dcb9a9208e023b0"
+      "receiptSha256": "6f732c6e2630c26d3ace9ff9de5f4a1f7f61046cc15308a7bb8f33d74bba30fc"
     },
     "4dde5fcbaf13c88678e63ab75ff9bf78": {
       "schemaVersion": 3,
@@ -4980,8 +4980,8 @@
       "kind": "ruvnet-brain-gist-source-receipt",
       "gistId": "6217ea3bd75cc0c27522965965e7383b",
       "versionSha": "b65785a488e4b468ab7a714e40915879a7747780",
-      "updatedAt": "2026-09-11T01:04:57Z",
-      "ingestedAt": "2026-09-17T01:47:45.831Z",
+      "updatedAt": "2026-09-23T19:14:05Z",
+      "ingestedAt": "2026-09-25T01:47:37.916Z",
       "fileCount": 4,
       "files": [
         {
@@ -5011,7 +5011,7 @@
       ],
       "contentDigest": "a88b9614df1580e492cd4a67c6dc093c1146ffa42d5899fc69a475c78e601e6c",
       "complete": true,
-      "receiptSha256": "94ef85b6f7c1609904447bcb6cf881b14f583ad6419f325db88c5b7e4da43794"
+      "receiptSha256": "4261e6f78cec3c6e59875ed2cf9f999c834a0de83943f487ebd7c818a55c03ee"
     },
     "627c64b9986a8cf1b53385708c093481": {
       "schemaVersion": 3,
@@ -5343,6 +5343,26 @@
       "complete": true,
       "receiptSha256": "f075a3d46e0abba16158039de8ab13de909f1fe4ce2be20f9139f484d1038f6c"
     },
+    "6ad4931d63360b0945ab148ad609e5d5": {
+      "schemaVersion": 3,
+      "kind": "ruvnet-brain-gist-source-receipt",
+      "gistId": "6ad4931d63360b0945ab148ad609e5d5",
+      "versionSha": "a0738fb72f3143800f8f2612d4b2ccd4709ab3ec",
+      "updatedAt": "2026-09-23T18:56:07Z",
+      "ingestedAt": "2026-09-25T01:47:37.916Z",
+      "fileCount": 1,
+      "files": [
+        {
+          "filename": "ruflo-3.44.0.md",
+          "included": true,
+          "sha256": "2311febfda95efda2e437db26197e0edf338b494522bf68d5145b0363090cf2b",
+          "bytes": 5340
+        }
+      ],
+      "contentDigest": "39e5f1fa627032941d3181afc3bebff9e0440c844282464d6b5b907366f60f3f",
+      "complete": true,
+      "receiptSha256": "393ee59ef3488d159b76abf14604bbcb3737ac8e45d0400e98d0fdc0966f2050"
+    },
     "6bd83dcc7dd6e98e86d600ed13576baf": {
       "schemaVersion": 3,
       "kind": "ruvnet-brain-gist-source-receipt",
@@ -5586,8 +5606,8 @@
       "kind": "ruvnet-brain-gist-source-receipt",
       "gistId": "6ecd5aaac62ab3c8ae8e542a23b9d264",
       "versionSha": "5bce15cfba1a6f5197b9339a2ad0e498dcd3d8b1",
-      "updatedAt": "2026-09-09T07:10:41Z",
-      "ingestedAt": "2026-09-17T01:47:45.831Z",
+      "updatedAt": "2026-09-19T07:17:04Z",
+      "ingestedAt": "2026-09-20T01:47:30.269Z",
       "fileCount": 1,
       "files": [
         {
@@ -5599,7 +5619,7 @@
       ],
       "contentDigest": "e73e9a542819dd70568fe458acb4a48028cf2f4d35c00c4c205c1691dfba179a",
       "complete": true,
-      "receiptSha256": "d9990c1eb9c964f3981c6d941dc99aa4db5f9af199128b82e154a58ae561c233"
+      "receiptSha256": "91c9f87b66dc066ea04b5becc69a07cd3e3ca641d7671280451a5dd5d8bf841a"
     },
     "6edb8cedea0d4121575f31d9087c2727": {
       "schemaVersion": 3,
@@ -5844,8 +5864,8 @@
       "kind": "ruvnet-brain-gist-source-receipt",
       "gistId": "7736317d1311a83137a39e804d7868ea",
       "versionSha": "8967c979603920767d61241e9b684f8ef1e901ce",
-      "updatedAt": "2026-08-25T16:25:55Z",
-      "ingestedAt": "2026-09-17T01:47:45.831Z",
+      "updatedAt": "2026-09-19T07:17:34Z",
+      "ingestedAt": "2026-09-20T01:47:30.269Z",
       "fileCount": 2,
       "files": [
         {
@@ -5863,7 +5883,7 @@
       ],
       "contentDigest": "876d4b3832d17bbf595e997df12da03a1454b882d5fdd948df0ecf084fc4ae2a",
       "complete": true,
-      "receiptSha256": "f9ed5183b45f313cc529a26f2a247b7ec101c30f308e6ffb6c2694eeaa709965"
+      "receiptSha256": "d076b31b3659962f9abb8af18909a6c0a261074aad82152d6bb285892c472cdf"
     },
     "7779bccde2084b3788b58dfe1a66ae1f": {
       "schemaVersion": 3,
@@ -6264,6 +6284,26 @@
       "contentDigest": "cab5df6c5d3637b42186b0e44b878d36f8b081b2e945482e063c6853c911d253",
       "complete": true,
       "receiptSha256": "f894d560542bb2e73b044af18a627ca4a8a5141c84a9cd0cf0cda50e757092ca"
+    },
+    "7f136fe249060a0075c2ddc5c4dad978": {
+      "schemaVersion": 3,
+      "kind": "ruvnet-brain-gist-source-receipt",
+      "gistId": "7f136fe249060a0075c2ddc5c4dad978",
+      "versionSha": "3749defab0689773dc6d1a9f003c4ed2de82fab2",
+      "updatedAt": "2026-09-23T17:36:14Z",
+      "ingestedAt": "2026-09-25T01:47:37.916Z",
+      "fileCount": 1,
+      "files": [
+        {
+          "filename": "ruflo-3.43.0.md",
+          "included": true,
+          "sha256": "eda756a96fa936438b074e3a0ecfccaa0503c983a3924c8058b8d6e23e4a0406",
+          "bytes": 6274
+        }
+      ],
+      "contentDigest": "e4fbad6db0a0fb7583fa0d97a13dc487e240a1c98264b7fcde840f210688fde6",
+      "complete": true,
+      "receiptSha256": "343ce52b9672ee3bed7aafa162c943796d2de9c6e5df88b3156b684abb40a893"
     },
     "8001221d95d7c32686aad2289408c804": {
       "schemaVersion": 3,
@@ -9074,8 +9114,8 @@
       "kind": "ruvnet-brain-gist-source-receipt",
       "gistId": "c9a6b4d88e887de392d0b10fe088f1f4",
       "versionSha": "87be0fe43468ea7cb39397061f83c2953165f893",
-      "updatedAt": "2026-08-08T04:35:53Z",
-      "ingestedAt": "2026-09-17T01:47:45.831Z",
+      "updatedAt": "2026-09-20T15:30:18Z",
+      "ingestedAt": "2026-09-21T01:47:28.552Z",
       "fileCount": 2,
       "files": [
         {
@@ -9093,7 +9133,7 @@
       ],
       "contentDigest": "2e3147e988ac66ea2c1915f124ae57c536a9b00cdf9adff266182711920cf20d",
       "complete": true,
-      "receiptSha256": "3310e1e6cf34cfddb9f98ee1c9d2731b6ac07972a993ec1035eb2292d19d89f7"
+      "receiptSha256": "3708a82193060943858d4caf6253954906fe1bc806ebbb4208259e5f486cf5dc"
     },
     "ca6e5e63dce4fece0d7dafa60c77808b": {
       "schemaVersion": 3,
@@ -10216,8 +10256,8 @@
       "kind": "ruvnet-brain-gist-source-receipt",
       "gistId": "e27b77949b0b0d5564ea447edcaf95c3",
       "versionSha": "51d20d908c54d89c66effd8162e3ffdcf02d48fb",
-      "updatedAt": "2026-08-01T05:52:05Z",
-      "ingestedAt": "2026-09-17T01:47:45.831Z",
+      "updatedAt": "2026-09-19T10:48:26Z",
+      "ingestedAt": "2026-09-20T01:47:30.269Z",
       "fileCount": 1,
       "files": [
         {
@@ -10229,7 +10269,7 @@
       ],
       "contentDigest": "60e7b0c9afbabe1d1df84b22eae034ec9558a6246a848fc254fcbfaad762f65a",
       "complete": true,
-      "receiptSha256": "f2288c4ff6eaf5b21ce863bf0ff23cdaaaabe28a265129180bd9fc7d194b61c4"
+      "receiptSha256": "02e2b275700429f7944f3a4758068c77fccffed7d6555e4a6b9c83289a0ef49f"
     },
     "e2bf4cc56fa94eec1ccc7fff41683b47": {
       "schemaVersion": 3,
@@ -11588,5 +11628,5 @@
       "receiptSha256": "78b2d252de79c36a5e1c8d31db57b41234c5e9b37d3cb555028218bfd2738c6f"
     }
   },
-  "receiptSha256": "7ef68c07c48ca5eb0f663d5c1d1e458a1c0877d34aa5a11ab0875128fab49a0e"
+  "receiptSha256": "f3a5cf37c0b29ebd462d37f797116f48ccdf4e1b970cd661a62b60c061b74f40"
 }

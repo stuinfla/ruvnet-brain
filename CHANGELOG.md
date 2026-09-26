@@ -5,7 +5,27 @@ All notable changes to RuvNet Brain are recorded here. Format loosely follows
 what shipped in a given release; the "Unreleased" section tracks work in progress across the
 current campaign and is finalized by the lead session before the next release cut.
 
-## Unreleased
+## 4.3.27 — Unreleased
+
+- Correct the prepared-corpus archive destination so release qualification reads the coverage
+  files from the directory where the flat ZIP was extracted. Preserve all existing identity gates.
+- Incorporate dated, source-cited public x.ruv.io intelligence through the existing Ruflo card
+  and concepts RVF ingestion path. Isolated retrieval passed; public delivery remains pending.
+- Give both native Dual verifiers the same complete response schema, avoiding unsupported
+  verdicts and correction formats without relaxing admission.
+- Include the previously unpublished cleanup and runtime repairs following 4.3.26's source.
+  Full cleanup and North Star certification remain incomplete; this entry is not acceptance.
+
+## 4.3.26 — 2026-09-18
+
+Published to npm and GitHub at 07:45 EDT from source `3996f502`. Includes release-authority
+repairs, the canonical continuity self-check, and corpus coverage/update improvements.
+Post-publication verification failed with MCP search timeouts on Windows, macOS and Linux.
+The later cleanup, new x.ruv.io knowledge and full nightly-refresh restoration were not shipped.
+
+## Historical campaign snapshot — 2026-09-11
+
+The following notes describe the September 11 campaign state, not current execution or acceptance.
 
 Campaign context: a dual North-Star review (Fable 5.1 + GPT-6 Astra) measured this project at
 31/100 against commit `2eef2024` (see `PROGRESS.md`'s 2026-09-11 entry for the full per-pillar

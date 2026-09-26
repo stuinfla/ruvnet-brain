@@ -4,6 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import YAML from 'yaml';
+import { buildAssets, sha256 } from '../helpers/corpus-seed-fixture.mjs';
+import { augmentSourceCoverage } from '../helpers/oracle-source-census-fixture.mjs';
 
 const CHECKOUT = path.resolve(import.meta.dirname, '../..');
 const ROOT = path.resolve(process.env.RUVNET_RELEASE_CONTRACT_ROOT || CHECKOUT);
@@ -231,5 +233,66 @@ describe('prepared corpus artifact identity admission', () => {
       { digest: 'sha256:' + 'c'.repeat(64) },
       { expired: true },
     ]) expect(executeIdentity(run, { ...good, ...change })).toBe(false);
+  });
+});
+
+describe('prepared corpus extraction and coverage admission', () => {
+  it('consumes the real flat archive layout and rejects wrong-root, stale, and mismatched coverage', async () => {
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'prepared-coverage-')));
+    try {
+      const bundleRoot = await buildAssets(root);
+      augmentSourceCoverage(bundleRoot);
+      const prepared = path.join(root, 'prepared-corpus');
+      const seedDir = path.join(root, 'release-seed');
+      fs.mkdirSync(prepared);
+      fs.mkdirSync(seedDir);
+      fs.mkdirSync(path.join(root, 'data'));
+      // Execute the workflow's actual inline JavaScript, importing production validators.
+      for (const dir of ['kb', 'plugin']) fs.symlinkSync(path.join(CHECKOUT, dir), path.join(root, dir), 'junction');
+      fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ version: '9.9.9' }));
+      const baselineFile = path.join(seedDir, 'baseline.zip');
+      fs.writeFileSync(baselineFile, 'fixture baseline bytes');
+      fs.writeFileSync(path.join(root, 'data/corpus-seed.json'), JSON.stringify({
+        asset: 'baseline.zip', sha256: sha256(baselineFile), bytes: fs.statSync(baselineFile).size,
+      }));
+      const coverage = JSON.parse(fs.readFileSync(path.join(bundleRoot, 'COVERAGE.json')));
+      const baseline = { ...coverage.corpusSeed, sha256: coverage.corpusSeed.archiveSha256,
+        bytes: coverage.corpusSeed.archiveBytes };
+      fs.writeFileSync(path.join(prepared, 'seed-identity.json'), JSON.stringify(baseline));
+      const observation = fs.readFileSync(path.join(bundleRoot, 'CORPUS-COVERAGE.json'));
+      fs.writeFileSync(path.join(prepared, 'source-coverage.json'), observation);
+      const archive = path.join(prepared, 'ruvnet-brain.zip');
+      // build-bundle.mjs archives CONTENTS, without a wrapping ruvnet-brain directory.
+      if (process.platform === 'win32') {
+        execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+          `Compress-Archive -Path '${bundleRoot.replaceAll("'", "''")}/*' -DestinationPath '${archive.replaceAll("'", "''")}'`]);
+      } else execFileSync('zip', ['-qr', archive, '.'], { cwd: bundleRoot });
+      const run = namedStep('.github/workflows/ci.yml', 'release-qe', 'Verify and consume the immutable prepared corpus');
+      const blocks = [...run.matchAll(/node --input-type=module <<'NODE'\n([\s\S]*?)\nNODE/g)];
+      expect(blocks).toHaveLength(2);
+      const script = blocks[1][1];
+      const launch = source => execFileSync(process.execPath, ['--input-type=module'], {
+        cwd: root, input: source, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env, RUNNER_TEMP: root, EXPECTED_SHA: 'd'.repeat(40) },
+      });
+      const clear = () => fs.rmSync(path.join(root, 'dist'), { recursive: true, force: true });
+      expect(() => launch(script)).not.toThrow();
+      expect(fs.existsSync(path.join(root, 'dist/ruvnet-brain/COVERAGE.json'))).toBe(true);
+      expect(() => launch(script)).toThrow(/candidate extraction destination already exists/);
+      clear();
+      // Reproduce the production failure, without modifying the repository workflow.
+      const wrongRoot = script.replace("'ruvnet-brain.zip'),extracted)", "'ruvnet-brain.zip'),'dist')");
+      expect(wrongRoot).not.toBe(script);
+      expect(() => launch(wrongRoot)).toThrow(/COVERAGE/);
+      clear();
+      fs.writeFileSync(path.join(prepared, 'source-coverage.json'), '{}');
+      expect(() => launch(script)).toThrow(/prepared coverage differs/);
+      clear();
+      fs.writeFileSync(path.join(prepared, 'source-coverage.json'), observation);
+      fs.writeFileSync(path.join(prepared, 'seed-identity.json'), JSON.stringify({ ...baseline, sha256: '0'.repeat(64) }));
+      expect(() => launch(script)).toThrow(/baseline identity differs/);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 });

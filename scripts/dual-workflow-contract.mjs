@@ -129,7 +129,13 @@ export function validateDualPlan(plan, brief) {
       checkIds.add(check.id);
       requireThat(text(check.command) && Array.isArray(check.args) && check.args.every(arg => typeof arg === 'string')
         && text(check.proves) && text(check.expectedOutput) && ['behavior', 'failure', 'integration', 'documentation'].includes(check.kind), `check ${check.id} is not executable acceptance evidence`);
-      requireThat(Number.isSafeInteger(check.timeoutMs) && check.timeoutMs > 0 && check.timeoutMs <= 900000, `check ${check.id} lacks a bounded deadline`);
+      requireThat(check.fullSuite === undefined || typeof check.fullSuite === 'boolean', `check ${check.id} has an invalid full-suite declaration`);
+      requireThat(check.fullSuite !== true || check.kind === 'integration', `check ${check.id} full-suite budget requires an integration check`);
+      // A complete serial qualification suite can exceed the ordinary 15-minute
+      // check budget. Its longer deadline must be explicit in the approved plan;
+      // the same watchdog, output, source-stability and PASS requirements apply.
+      const deadlineLimit = check.fullSuite === true ? 3600000 : 900000;
+      requireThat(Number.isSafeInteger(check.timeoutMs) && check.timeoutMs > 0 && check.timeoutMs <= deadlineLimit, `check ${check.id} lacks a bounded deadline`);
       if (check.report !== undefined) {
         requireThat(check.report.format === 'vitest-json', `check ${check.id} has an unsupported report`);
         unique(check.report.files, `check ${check.id} required files`);

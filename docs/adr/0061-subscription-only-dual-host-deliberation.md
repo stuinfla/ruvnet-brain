@@ -3,8 +3,8 @@ id: ADR-061
 title: Subscription-only dual-host deliberation for hard problems
 status: Proposed
 date: 2026-07-28
-updated: 2026-09-17
-version: 1.1.0
+updated: 2026-09-18
+version: 1.2.0
 reviewed_digest: 0f78717de5a9
 authors: [Stuart Kerr, GPT-5.6-Sol]
 tags: [claude-code, codex, subscriptions, adr, ddd, agentic-qe, deliberation]
@@ -13,10 +13,12 @@ relates: [ADR-035, ADR-051, ADR-053, ADR-055, ADR-058]
 governs:
   - scripts/subscription-hosts.mjs
   - scripts/dual-host-deliberation.mjs
+  - scripts/dual-deliberation-contract.mjs
   - scripts/dual-host-suggest.mjs
   - plugin/skills/ruvnet-brain/SKILL.md
   - tests/unit/subscription-hosts.test.mjs
   - tests/unit/dual-host-deliberation.test.mjs
+  - tests/unit/dual-native-admission.test.mjs
   - tests/unit/subscription-routing-guidance.test.mjs
 ---
 
@@ -78,8 +80,24 @@ Both hosts receive the same task and repository root:
 4. the other host verifies the synthesis;
 5. at most one bounded revision and re-verification.
 
-Claude runs in plan mode with read-only tools. Codex runs with a read-only sandbox and an ephemeral
-session. The coordinator never enables a dangerous bypass.
+Claude uses manual permissions with headless permission prompts denied, safe/restricted mode,
+an empty strict MCP configuration, and only Read/Grep/Glob built-ins. Codex uses a read-only
+sandbox and an ephemeral session, ignores user configuration, treats the reviewed root as
+untrusted for project configuration, and disables apps, plugins, hooks, memories and automatic
+AGENTS.md loading for that invocation. Subscription authentication remains available. Managed
+administrator policy still applies; these flags do not claim to replace provider system prompts
+or create an operating-system sandbox for Claude. The coordinator never enables a dangerous bypass.
+
+`dual-deliberation-contract.mjs` owns the response contract for every stage. Both hosts receive
+the same generated schema in the prompt; Claude additionally receives native `--json-schema`.
+Codex's output is admitted by the same strict runtime boundary, not a decoder-schema claim.
+Raw model output cannot provide adapter-owned hashes or execution metadata. Empty critique
+findings, malformed corrections and undeclared fields fail before admission. Verification
+acceptance requires no remaining corrections; requesting changes requires concrete corrections.
+
+Stage identity hashes cover primary proposal, findings or artifact content. Full stage fields,
+including corrections and ADR/DDD metadata, are bound separately by native evidence and causal
+trace replay. A primary-content hash alone is not proof of the entire review conversation.
 
 The result is `accepted` only when both hosts ran and the verifier accepted the synthesis. One host
 still produces a useful `degraded` draft, but the product must not call it a duel or accepted ADR.
@@ -141,7 +159,7 @@ the user for a provider API key.
 | one subscription is quota-limited | preserve work and return `degraded` |
 | both subscriptions unavailable | fail with one actionable login message |
 | source changes during the run | invalidate convergence |
-| output fails schema | one repair attempt on the same host, then partial |
+| output fails schema | reject the stage; no fence stripping or silent reinterpretation |
 | models disagree after bounded revision | return unresolved decisions |
 | AgentDB unavailable | return result with `learningPersisted: false` |
 | secret canary appears in output | discard output and raise a security finding |
@@ -183,6 +201,8 @@ explicit. The outstanding two-host acceptance requirement is untouched by this r
 On 2026-08-10, **Re-read after #130/#131; subscription routing is unchanged.** Governed files moved for update-rail reasons only — rollback cardinality and symlink-guard scope. No provider path became implicit and opt-in remains explicit.
 
 ## Currency log
+
+| 2026-09-18 | Replaced conflicting Claude plan-mode output with one canonical native-stage schema and strict raw-content admission; contained ambient client configuration and tools. Added process-boundary negative tests. Native critiques identified these weaknesses; acceptance of the complete ADR and product remains pending. | scripts/dual-deliberation-contract.mjs; scripts/dual-host-deliberation.mjs; tests/unit/dual-native-admission.test.mjs |
 
 | 2026-09-17 | Re-read all 7 resolved governed entries against the current integration working tree: subscription eligibility, credential stripping, bounded stage protocol, schema validation, and the read-only test fixtures still match this Proposed decision. No two-host acceptance is claimed; machine grading by two vendors and runtime checks remain required. Source-bound review digest `0f78717de5a9`. | scripts/subscription-hosts.mjs; scripts/dual-host-deliberation.mjs; scripts/dual-host-suggest.mjs; tests/unit/subscription-hosts.test.mjs; tests/unit/dual-host-deliberation.test.mjs |
 

@@ -5,20 +5,27 @@
 > **These are announcements and notes, not shipped source.** A gist routinely describes work that is
 > proposed, unreleased, or still moving. Verify against repo source before asserting behavior.
 
-_495 gists · refreshed 2026-09-18_
+_497 gists · refreshed 2026-09-26_
 
 | Updated | Gist | Description |
 |---|---|---|
+| 2026-09-23 | [*specification.md](https://gist.github.com/ruvnet/6217ea3bd75cc0c27522965965e7383b) | TikTok-like recommender Algorithm |
+| 2026-09-23 | [ruflo-3.44.0.md](https://gist.github.com/ruvnet/6ad4931d63360b0945ab148ad609e5d5) | RuFlo 3.44.0 — the agent picker gets fixed on your machine, and gets measured (plain-language release notes) |
+| 2026-09-23 | [ruflo-3.43.0.md](https://gist.github.com/ruvnet/7f136fe249060a0075c2ddc5c4dad978) | RuFlo 3.43.0 — search that finds the right things, and fewer silent failures (plain-language release notes) |
+| 2026-09-20 | [tutorial.md](https://gist.github.com/ruvnet/c9a6b4d88e887de392d0b10fe088f1f4) | Train Your Own AI Models for Free Using Google AI Studio |
+| 2026-09-19 | [MED.md](https://gist.github.com/ruvnet/e27b77949b0b0d5564ea447edcaf95c3) | Various Medical Discoveries |
+| 2026-09-19 | [Contrastive-ai.md](https://gist.github.com/ruvnet/373ad78fb06544d1de1de29be9000597) | # The Contrastive AI Manifesto |
+| 2026-09-19 | [1-research.md](https://gist.github.com/ruvnet/4cc23f3d3a97a0d8acd80693407b9a67) | AI Manipulation Defense System |
+| 2026-09-19 | [ruvllm_sparse_attention_report.md](https://gist.github.com/ruvnet/7736317d1311a83137a39e804d7868ea) | ruvllm_sparse_attention: Subquadratic Sparse Attention for Edge LLM Inference on Hailo-10H Pi 5 Cluster |
+| 2026-09-19 | [Super-intelligence.md](https://gist.github.com/ruvnet/6ecd5aaac62ab3c8ae8e542a23b9d264) | Persistent Systems Intelligence: rUv’s manifesto for AI that perceives, coordinates, acts, remembers, verifies, and impr |
 | 2026-09-16 | [README.md](https://gist.github.com/ruvnet/ef9777f7da479f5cda6ff1c09ebe6c7f) | Today's release work — ruflo, agentic-flow, and RuVector (2026-09-16) |
 | 2026-09-16 | [release-notes-3.42.0.md](https://gist.github.com/ruvnet/0033f22f0702d35f38d74d2beece57c1) | Ruflo v3.42.0 release notes — Swarm, Memory & Security Reliability Batch |
 | 2026-09-15 | [rtl8721dx-vs-esp32-csi-comparison.md](https://gist.github.com/ruvnet/554751b1068c48f7ee210aa447cd4088) | RuView: RTL8721Dx vs ESP32 family (S3/C6/C5) WiFi CSI sensing comparison (2026-09-15) |
-| 2026-09-11 | [*specification.md](https://gist.github.com/ruvnet/6217ea3bd75cc0c27522965965e7383b) | TikTok-like recommender Algorithm |
 | 2026-09-10 | [gist-3.41.0.md](https://gist.github.com/ruvnet/6d3202cc7030e32169e8d5ac73b4e870) | RuFlo 3.41.0 — open swarm federation, step by step |
 | 2026-09-10 | [vibecast-challenge.md](https://gist.github.com/ruvnet/7274565b913dded4fb6a8232624e56e3) | Vibecast challenge, 11 Sep 2026 — Build an Agent That Learns (ruvnet tools, 90 minutes, local-first) |
 | 2026-09-10 | [release-2026-09-09-late.md](https://gist.github.com/ruvnet/cec28935b1ee33b0efdf9f648f02a841) | RuView: node diagnostics, memory & fusion fixes — 2026-09-09 |
 | 2026-09-09 | [federation-guide.md](https://gist.github.com/ruvnet/2fbad4d0e3bc02cc7d47b4f6fdd2c205) | Ruflo Cross-Host Federation + Claims — Complete Guide (v3.40.0) |
 | 2026-09-09 | [RuView-multistatic-timing-fixes-2026-09-09.md](https://gist.github.com/ruvnet/ac31fb4176ac68f30410c87efa809d8e) | RuView multistatic timing & positioning fixes — 2026-09-09 (9 merged PRs, contributor thanks) |
-| 2026-09-09 | [Super-intelligence.md](https://gist.github.com/ruvnet/6ecd5aaac62ab3c8ae8e542a23b9d264) | Persistent Systems Intelligence: rUv’s manifesto for AI that perceives, coordinates, acts, remembers, verifies, and impr |
 | 2026-09-04 | [cognitum-provenance-probe-2.html](https://gist.github.com/ruvnet/b72800a7999accdd564f6be95b5f7cd8) | cognitum provenance probe 2 — benign-looking companion link (synthetic, no real data) |
 | 2026-09-04 | [cognitum-provenance-probe.html](https://gist.github.com/ruvnet/d5c4134b8b8e2df83e6c3992e81b5da6) | Cognitum One provenance-boundary probe page (no real data; instructs the assistant to fetch attacker.invalid) |
 | 2026-09-04 | [RuView-C6-fleet-reliability-2026-09-04.md](https://gist.github.com/ruvnet/3975527e15bdb7f7e9eea5662d6cc3bf) | RuView C6 fleet reliability & honesty update — 2026-09-04 (8 merged fixes overview) |
@@ -30,7 +37,6 @@ _495 gists · refreshed 2026-09-18_
 | 2026-08-30 | [gist-what-we-learned.md](https://gist.github.com/ruvnet/37856a1aab825db91e7e8daf69b6fd17) | We tried to let AI agents skip talking. It didn't work — and one of our own negative results turned out to be our contro |
 | 2026-08-28 | [1-Readme.md](https://gist.github.com/ruvnet/15c6ef556be49e173ab0ecd6d252a7b9) | Gödel Agent for Recursive Self-Improvement: A Comprehensive Tutorial |
 | 2026-08-27 | [RuV-SOTA0-Scheduler.md](https://gist.github.com/ruvnet/7368405b5882a194df567d466818679b) | RuV Stack Daily SOTA Research and Implementation |
-| 2026-08-25 | [ruvllm_sparse_attention_report.md](https://gist.github.com/ruvnet/7736317d1311a83137a39e804d7868ea) | ruvllm_sparse_attention: Subquadratic Sparse Attention for Edge LLM Inference on Hailo-10H Pi 5 Cluster |
 | 2026-08-24 | [Sora-prompts.md](https://gist.github.com/ruvnet/e20537eb50866b2d837d4d13b066bd88) | Crafting Cinematic Sora Video Prompts: A complete guide |
 | 2026-08-19 | [ruview-project-integration-map.md](https://gist.github.com/ruvnet/5110d7f546aab61c478afc9b353ae833) | Plain-language map of how RuView and Cognitum Spaces use Autogenous and Midstream today, and why LatentMesh is not yet i |
 | 2026-08-19 | [COGNITUM-SPACES.md](https://gist.github.com/ruvnet/30b32dee30cde9d4e3d135a75e7c254c) | Cognitum Spaces for RuView: production status, OAuth activation, capabilities comparison, APIs, memory, governed actions |
@@ -49,11 +55,9 @@ _495 gists · refreshed 2026-09-18_
 | 2026-08-11 | [pr1579-release-notes-plain.md](https://gist.github.com/ruvnet/20cc9a198eef99be5685151433642039) | WiFi Sensing Trust Layer — plain-language preview release notes (RuView PR #1579) |
 | 2026-08-10 | [ruflo-3.35.0-explained.md](https://gist.github.com/ruvnet/0202e6a060b04b3a4f5d9bd18345169d) | ruflo v3.35.0 explained — MetaHarness dependency fix, ADR-381 sequential-evidence governance, and 3 concurrency bugs fou |
 | 2026-08-09 | [*claude.md](https://gist.github.com/ruvnet/e8bb444c6149e6e060a785d1a693a194) | The Claude-SPARC Automated Development System is a comprehensive, agentic workflow for automated software development us |
-| 2026-08-08 | [tutorial.md](https://gist.github.com/ruvnet/c9a6b4d88e887de392d0b10fe088f1f4) | Train Your Own AI Models for Free Using Google AI Studio |
 | 2026-08-06 | [.roomodes.json](https://gist.github.com/ruvnet/a206de8d484e710499398e4c39fa6299) | This guide introduces Roo Code and the innovative Boomerang task concept, now integrated into SPARC Orchestration. By fo |
 | 2026-08-05 | [rvforge-overview.md](https://gist.github.com/ruvnet/d08d9c00e140f570fb896256dc7cb1f7) | The Sandbox Is Not the Boundary — why RVF, RVM, and RVForge exist, what ships today, and a verified tutorial |
 | 2026-08-04 | [rvqr-overview.md](https://gist.github.com/ruvnet/6d99e837736eaf45b62a9a00cddbe4e5) | rvQR — moving files between devices with a screen and a camera: what it is, and what measuring it actually found |
-| 2026-08-01 | [MED.md](https://gist.github.com/ruvnet/e27b77949b0b0d5564ea447edcaf95c3) | Various Medical Discoveries |
 | 2026-07-31 | [agntcy-announcement.md](https://gist.github.com/ruvnet/36e0f0658a29e171eabadb86bc27d789) | AGNTCY integration is live in ruflo + metaharness — what you can do with it today |
 | 2026-07-31 | [ruflo-release-notes.md](https://gist.github.com/ruvnet/d6fc9bea2758049fd87424a2718dec1e) | ruflo ADR-378/379/380 — npm Trusted Publishing, statusline segments, AGNTCY/Outshift runtime integration (PR #2879) |
 | 2026-07-31 | [metaharness-adr240-gist.md](https://gist.github.com/ruvnet/c6d197dedc27acbec7c1f0ed98518f17) | metaharness ADR-240 — AGNTCY identity, OASF export, observability, CASA compiler (PR #155) |
@@ -164,7 +168,6 @@ _495 gists · refreshed 2026-09-18_
 | 2026-06-12 | [ruvector-announcement.md](https://gist.github.com/ruvnet/26e44b35f216aa2f664918b0784a360f) | RuVector June 2026 update: 14x faster vector search, 32x compression, hardened audit logs, and a learning loop that actu |
 | 2026-06-10 | [performance.md](https://gist.github.com/ruvnet/eb28152cb122c9e0336cb8b1b25c01b3) | AI Trading Platform with NeuralForecast Integration |
 | 2026-06-08 | [ruvector-graph-condense.md](https://gist.github.com/ruvnet/b64a0a3773101197d7803e0fe9ed2d91) | ruvector-graph-condense: structure-preserving + differentiable-min-cut graph condensation, with measured GNN accuracy re |
-| 2026-06-03 | [1-research.md](https://gist.github.com/ruvnet/4cc23f3d3a97a0d8acd80693407b9a67) | AI Manipulation Defense System |
 | 2026-06-01 | [notebook.ipynb](https://gist.github.com/ruvnet/2a79bb3339e79d3a6ac8587c6450d337) | DSPy_Advanced_NeuroSymbolic_Agentic_Demo.ipynb |
 | 2026-05-31 | [README.md](https://gist.github.com/ruvnet/6a42f511a9eca74729986e70aa695bc6) | — |
 | 2026-05-31 | [csi-embed-v2-metrics.json](https://gist.github.com/ruvnet/388df61772ee6c27c7a7a9628cb5c1d8) | ESP32 8KB CSI embedding v2 — honest held-out temporal-triplet acc 66.4%→82.3% \| model https://huggingface.co/ruvnet/wif |
@@ -269,7 +272,6 @@ _495 gists · refreshed 2026-09-18_
 | 2026-03-26 | [pi-brain-novel-discovery-stdp-causal.md](https://gist.github.com/ruvnet/166017c6ab2e299f7c27bc38fa72858b) | π Brain Discovery: Unveiling Causal Architectures in Medical Knowledge Graphs: A Neuromorphic Appro |
 | 2026-03-25 | [notebook.ipynb](https://gist.github.com/ruvnet/b4b29101a99b1e45bf7da5c8b3cc2fb3) | Mixture of rUv: Recursive Unified Validators For DSPy |
 | 2026-03-24 | [rvf.md](https://gist.github.com/ruvnet/d72c063d68b9058855b44e425d85563c) | Causal Atlas RVF Runtime — Planet Detection & Life Candidate Scoring |
-| 2026-03-24 | [Contrastive-ai.md](https://gist.github.com/ruvnet/373ad78fb06544d1de1de29be9000597) | # The Contrastive AI Manifesto |
 | 2026-03-18 | [Tiny-Dancer.md](https://gist.github.com/ruvnet/785bab9ee477e80cc8658fa098647fd2) | Tiny Dancer: Production-Grade Tiny Recursive Model Router for AI Agent Orchestration |
 | 2026-03-17 | [.roomodes](https://gist.github.com/ruvnet/88c61ee4e38191b0be65f498792d5017) | a specialized research assistant that leverages Perplexity AI to conduct deep, comprehensive research on any topic, crea |
 | 2026-03-14 | [1-readme.md](https://gist.github.com/ruvnet/3aeef89b6a221544b1caf6515ca73245) | Deep Research Hack Scripts |

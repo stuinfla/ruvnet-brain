@@ -1,5 +1,10 @@
 // One response-schema owner for native Dual reviews and their strict validation.
 import { canonicalJson, digest } from './coverage-integrity.mjs';
+const correctionIdPattern = '^[A-Za-z0-9][A-Za-z0-9._-]*$';
+const nonblank = value => typeof value === 'string' && value.trim().length > 0;
+const record = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+const correctionFields = ['id', 'text'];
+const resolutionFields = ['id', 'status', 'reason'];
 
 export const STAGE_SCHEMAS = Object.freeze({
   proposal: { required: ['schemaVersion', 'stage', 'artifactSha256', 'contentDigest', 'proposal'], optional: ['task', 'plan', 'adr', 'ddd', 'qe', 'artifact', 'host'] },
@@ -11,19 +16,54 @@ export const STAGE_SCHEMAS = Object.freeze({
   review: { required: ['schemaVersion', 'stage', 'artifactSha256', 'contentDigest', 'verdict', 'score', 'findings', 'deductions', 'untested', 'reviewedAt', 'retrievalOracleReview'], optional: ['host', 'execution'] },
 });
 
-export function verificationJsonSchema(stage) {
-  const strings = names => Object.fromEntries(names.map(name => [name, { type: 'string', minLength: 1 }]));
-  return { type: 'object', additionalProperties: false, required: STAGE_SCHEMAS[stage].required,
-    properties: { schemaVersion: { const: 1 }, stage: { const: stage },
+export function nativeStageJsonSchema(stage) {
+  const contract = STAGE_SCHEMAS[stage];
+  if (!contract) throw new Error(`${stage} response has an unknown stage`);
+  const verifies = ['verify', 'reverify'].includes(stage);
+  const adapterFields = new Set(verifies ? [] : stage === 'review'
+    ? ['contentDigest', 'execution'] : ['artifactSha256', 'contentDigest']);
+  const strings = names => Object.fromEntries(names.map(name => [name, { type: 'string', minLength: 1, pattern: '\\S' }]));
+  const properties = { schemaVersion: { const: 1 }, stage: { const: stage },
       artifactSha256: { type: 'string', pattern: '^[a-f0-9]{64}$' }, contentDigest: { type: 'string', pattern: '^[a-f0-9]{64}$' },
-      verdict: { enum: ['accept', 'changes', 'block'] }, findings: { type: 'array' },
-      corrections: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['id', 'text'], properties: strings(['id', 'text']) } },
-      resolutions: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['id', 'status', 'reason'],
-        properties: { ...strings(['id', 'reason']), status: { enum: ['resolved', 'rejected'] } } } } } };
+      proposal: { type: 'object', minProperties: 1 }, artifact: { type: 'object' },
+      verdict: verifies ? { enum: ['accept', 'changes', 'block'] } : stage === 'review' ? { enum: ['PASS', 'FAIL'] } : {},
+      findings: { type: 'array', ...(stage === 'critique' ? { minItems: 1,
+        items: { anyOf: [{ type: 'string', pattern: '\\S' }, { type: 'object', minProperties: 1 }] } } : {}) },
+      score: { type: 'integer' }, deductions: { type: 'array' }, untested: { type: 'array' },
+      reviewedAt: { type: 'string' }, retrievalOracleReview: { type: 'object' },
+      corrections: { type: 'array', items: { type: 'object', additionalProperties: false, required: correctionFields,
+        properties: { ...strings(correctionFields), id: { type: 'string', pattern: correctionIdPattern } } } },
+      resolutions: { type: 'array', items: { type: 'object', additionalProperties: false, required: resolutionFields,
+        properties: { ...strings(['id', 'reason']), status: { enum: ['resolved', 'rejected'] } } } } };
+  return { type: 'object', additionalProperties: false,
+    required: contract.required.filter(name => !adapterFields.has(name)),
+    properties: Object.fromEntries([...contract.required, ...contract.optional]
+      .filter(name => !adapterFields.has(name)).map(name => [name, properties[name] ?? {}])) };
+}
+
+// Both clients pass this admission boundary, regardless of decoder support.
+// Reject model-authored adapter fields before binding can replace their values.
+export function validateNativeStageValue(stage, value) {
+  const schema = nativeStageJsonSchema(stage);
+  if (!record(value)) throw new Error(`${stage} native response is not an object`);
+  const unknown = Object.keys(value).find(key => !Object.hasOwn(schema.properties, key));
+  if (unknown) throw new Error(`${stage} native response has forbidden field: ${unknown}`);
+  const missing = schema.required.find(key => !Object.hasOwn(value, key));
+  if (missing) throw new Error(`${stage} native response is missing ${missing}`);
+  for (const [key, field] of Object.entries(schema.properties)) {
+    if (!Object.hasOwn(value, key) || !field.type) continue;
+    const item = value[key];
+    const matches = field.type === 'object' ? record(item) : field.type === 'array' ? Array.isArray(item)
+      : field.type === 'integer' ? Number.isInteger(item) : typeof item === field.type;
+    if (!matches) throw new Error(`${stage} native response has invalid ${key} type`);
+  }
+  return validateStageValue(stage, bindStageContent(stage, value));
 }
 
 // Fresh content is hashed by the adapter after receipt. A verifier instead names
 // an existing subject; never replace its supplied identities to make it agree.
+// These identities bind primary content only. Full stage fields, corrections and
+// ADR/DDD metadata are separately bound by native evidence and causal trace replay.
 export function bindStageContent(stage, value) {
   if (stage === 'review' && value && Array.isArray(value.findings)) return { ...value, contentDigest:digest(value.findings) };
   if (!['proposal', 'critique', 'synthesis', 'revise'].includes(stage)) return value;
@@ -54,13 +94,12 @@ export function validateStageValue(stage, value) {
     throw new Error('proposal response is not substantive');
   }
   if (stage === 'critique' && (!Array.isArray(value.findings) || value.findings.length === 0
-    || value.findings.some((finding) => (typeof finding !== 'string' && (!finding || typeof finding !== 'object'))
-      || (typeof finding === 'object' && Object.keys(finding).length === 0)))) {
+    || value.findings.some(finding => !nonblank(finding)
+      && !(record(finding) && Object.keys(finding).length > 0)))) {
     throw new Error('critique findings are not substantive');
   }
   if (stage === 'critique' && value.corrections !== undefined) {
-    if (!Array.isArray(value.corrections) || value.corrections.some((correction) => !correction || typeof correction !== 'object'
-      || !/^[a-z0-9][a-z0-9._-]*$/i.test(String(correction.id || '')) || typeof correction.text !== 'string' || !correction.text.trim())) {
+    if (!validCorrections(value.corrections)) {
       throw new Error('critique corrections are invalid');
     }
   }
@@ -79,20 +118,24 @@ export function validateStageValue(stage, value) {
   }
   if (['verify', 'reverify'].includes(stage)) {
     if (!['accept', 'changes', 'block'].includes(value.verdict)) throw new Error(`${stage} verdict is invalid`);
-    if (!Array.isArray(value.corrections) || value.corrections.some((correction) => !correction
-      || typeof correction !== 'object' || !/^[a-z0-9][a-z0-9._-]*$/i.test(String(correction.id || ''))
-      || typeof correction.text !== 'string' || !correction.text.trim())) {
+    if (!validCorrections(value.corrections)) {
       throw new Error(`${stage} corrections are invalid`);
     }
     if (value.verdict === 'accept' && value.corrections.length) throw new Error(`${stage} acceptance has unresolved corrections`);
     if (value.verdict === 'changes' && value.corrections.length === 0) throw new Error(`${stage} changes require corrections`);
-    if (value.resolutions !== undefined && (!Array.isArray(value.resolutions) || value.resolutions.some((row) => !row
-      || typeof row !== 'object' || typeof row.id !== 'string' || !row.id.trim()
-      || !['resolved', 'rejected'].includes(row.status) || typeof row.reason !== 'string' || !row.reason.trim()))) {
-      throw new Error(`${stage} correction resolutions are invalid`);
-    }
+  }
+  if (value.resolutions !== undefined && (!Array.isArray(value.resolutions) || value.resolutions.some(row => !record(row)
+      || Object.keys(row).some(key => !resolutionFields.includes(key)) || !nonblank(row.id)
+      || !['resolved', 'rejected'].includes(row.status) || !nonblank(row.reason)))) {
+    throw new Error(`${stage} correction resolutions are invalid`);
   }
   return value;
+}
+
+function validCorrections(rows) {
+  return Array.isArray(rows) && rows.every(row => record(row)
+    && Object.keys(row).every(key => correctionFields.includes(key))
+    && typeof row.id === 'string' && new RegExp(correctionIdPattern).test(row.id) && nonblank(row.text));
 }
 
 // Top subscription models verified on the native hosts on 2026-09-10.

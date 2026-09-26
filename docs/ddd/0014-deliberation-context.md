@@ -1,3 +1,6 @@
+Updated: 2026-09-18 19:00:00 EDT | Version 1.1.0
+Created: 2026-07-28
+
 # DDD-0014 — Deliberation Context
 
 **Status**: Proposed (2026-07-28)
@@ -56,6 +59,14 @@ not a mutation that rewrites what the models originally decided.
 8. Raw source, credentials, account identity and full transcripts are not durable learning data.
 9. A degraded review always names the missing or capacity-limited seat.
 10. Neither Claude nor Codex is permanently the scribe; task hash chooses the role.
+11. Native stage output is validated before adapter-owned identities or execution evidence are
+    attached. The adapter rejects those fields for an authoring stage and preserves partial-read
+    findings without promoting them to completed coverage. Both clients use the same runtime admission contract.
+12. Client customizations and external tool integrations are excluded from the review invocation
+    as described in ADR-061. Managed administrator policy remains authoritative; the evidence
+    captures the supplied task and completion, not a claim to contain every provider instruction.
+13. Primary-content identity and full conversation evidence are distinct. The causal trace binds
+    corrections, resolutions and ADR/DDD metadata that are outside the primary-content digest.
 
 ## Domain events
 

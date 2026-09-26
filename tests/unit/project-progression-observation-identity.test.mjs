@@ -40,7 +40,7 @@ describe('observation identity', () => {
     ['occurredAt', { occurredAt: '2026-09-18T00:00:00.000Z' }],
     ['parents', { parentEventKeys: ['parent-b', 'parent-a'] }],
     ['source', { sourceIdentity: { head: 'b'.repeat(40) } }],
-    ['adapter', { hostIdentity: { adapterVersion: '4.3.27' } }],
+    ['adapter', { hostIdentity: { adapterVersion: `${legacy.hostIdentity.adapterVersion}-changed` } }],
     ['trigger', { trigger: 'session-start' }],
     ['state', { completeProjectState: { currentGoal: 'A different durable goal' } }],
     ['provenance', { completeProjectState: { provenance: { currentGoal: { source: 'owner-note', authoritative: false } } } }],

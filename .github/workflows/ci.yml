@@ -324,14 +324,15 @@ jobs:
           const seedFile=path.join(e.RUNNER_TEMP,'release-seed',pinned.asset);
           const hash=crypto.createHash('sha256').update(fs.readFileSync(seedFile)).digest('hex');
           if(hash!==pinned.sha256||fs.statSync(seedFile).size!==pinned.bytes)throw new Error('baseline archive bytes differ');
-          if(fs.existsSync('dist/ruvnet-brain'))throw new Error('candidate extraction destination already exists');
-          await extractZip(path.join(prepared,'ruvnet-brain.zip'),'dist');
-          const check=validateCoverageDirectory('dist/ruvnet-brain',{
+          const extracted=path.join('dist','ruvnet-brain');
+          if(fs.existsSync(extracted))throw new Error('candidate extraction destination already exists');
+          await extractZip(path.join(prepared,'ruvnet-brain.zip'),extracted);
+          const check=validateCoverageDirectory(extracted,{
             expectedVersion:JSON.parse(fs.readFileSync('package.json')).version,
             expectedSourceSnapshot:e.EXPECTED_SHA,requireCompleteProfile:true});
           if(!check.valid)throw new Error(check.failures.join('; '));
           // Prepared observation is authoritative; the checkout observation may predate reconciliation.
-          if(!fs.readFileSync(path.join(prepared,'source-coverage.json')).equals(fs.readFileSync('dist/ruvnet-brain/CORPUS-COVERAGE.json')))
+          if(!fs.readFileSync(path.join(prepared,'source-coverage.json')).equals(fs.readFileSync(path.join(extracted,'CORPUS-COVERAGE.json'))))
             throw new Error('prepared coverage differs from the sealed corpus observation');
           const baseline=JSON.parse(fs.readFileSync(path.join(prepared,'seed-identity.json')));
           if(check.coverage.corpusSeed.receiptSha256!==baseline.receiptSha256

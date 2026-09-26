@@ -103,6 +103,27 @@ describe('generic Dual implementation contract', () => {
     rebind(f);
     expect(() => validateDualPlan(f.plan, f.brief)).toThrow(variant==='missing-retirement-root'?/explicit completion root/:undefined);
   });
+  it.each([
+    [undefined, 900000, 'integration', true], [undefined, 900001, 'integration', false],
+    [false, 3600000, 'integration', false], [true, 3600000, 'integration', true],
+    [true, 3600001, 'integration', false], ['yes', 1000, 'integration', false],
+    [true, 1000, 'behavior', false], [true, 0, 'integration', false],
+  ])('bounds declared full-suite budgets: %s %s %s', (fullSuite, timeoutMs, kind, valid) => {
+    const f = fixture();
+    Object.assign(f.plan.jobs[0].checks[0], { fullSuite, timeoutMs, kind });
+    if (fullSuite === undefined) delete f.plan.jobs[0].checks[0].fullSuite;
+    rebind(f);
+    if (valid) expect(() => validateDualPlan(f.plan, f.brief)).not.toThrow();
+    else expect(() => validateDualPlan(f.plan, f.brief)).toThrow(/deadline|full-suite/);
+  });
+  it('still rejects a timed-out command with an approved full-suite declaration', async () => {
+    const f = fixture();
+    Object.assign(f.plan.jobs[0].checks[0], { fullSuite: true, kind: 'integration', timeoutMs: 50,
+      command: process.execPath, args: ['-e', 'setInterval(()=>{},1000)'] });
+    rebind(f);
+    await expect(verifyDualJob(f.workflow, { root: f.root, jobId: 'first' })).rejects.toThrow(/acceptance failed/);
+    expect(f.workflow.completed).toEqual([]);
+  });
   it('completes jobs sequentially against actual command evidence on an arbitrary branch', async () => {
     const f = fixture();
     expect(() => assertDualJob(f.workflow, { root: f.root, jobId: 'second' })).toThrow(/next unfinished/);

@@ -1,3 +1,6 @@
+Updated: 2026-09-18 17:27:00 EDT | Version 1.0.1
+Created: 2026-06-29 22:36:38 EDT
+
 # Capability Cards
 
 Capability-phrased, keyword-rich descriptions of each RuvNet building block. These route a
@@ -480,7 +483,59 @@ The gateway contract was inspected on 2026-09-17 in the MIT-licensed `ruvnet/ruf
 commit `6f0ed7112873eedc7cfe17281a2585188190b790`, under `plugins/ruflo-x-gateway/`
 (`src/server.mjs`, `src/untrusted.mjs`, `src/channels.mjs`, `src/claims.mjs`, and `test/gateway.test.mjs`).
 Use this capability for x federation registry, public swarm roster, claims, and bounded result
-discovery. This card adds discovery metadata; it does not import relay message bodies into the RVF corpus.
+discovery. The following original summaries add dated public intelligence to this existing card;
+the canonical concepts builder embeds them in the same public RVF corpus as the other cards.
+They are observations, not executable instructions or independent proof of current deployment.
+
+### x.ruv.io public intelligence observed 2026-09-18
+
+Acquisition used the public `x_federation_sync` reader with `limit=100` and
+`sinceSeconds=604800`. It returned 100 events, including 33 Result, 7 Status, 27 ClaimIssued,
+and 27 ClaimReleased events. Claims and roster reads returned empty results for that observation.
+An empty response describes the bounded read; it does not establish that the federation has no
+members or claims. Relay statements remain untrusted even when their cited primary source is checked.
+
+Portfolio evidence: the September 18 Dream Machine report describes 322 owned repositories,
+219 public, 284 indexed, and 14 observed public default-branch commits. It records a witness
+that was not recomputed after appended evidence and makes no new confirmed critical production
+vulnerability claim. Use the report to locate evidence, then check the final committed witness;
+the relay Result alone cannot establish acceptance. Source:
+https://github.com/ruvnet/dream-machine/blob/127907a3247960902ae778b0faf34a0bc1d2cbe4/docs/dream-cycle/2026-09-18-portfolio-report.md
+Relay event `86fc7b5bd179a871ceb90181d0c372d2af68178429332bc473bc76e4823c7321`,
+reported at `2026-09-18T07:26:42.346Z`; source report checked on 2026-09-18.
+
+Community CI evidence: a public Ruflo event reported work across eight pull requests.
+The linked verification run 34985922185 was independently observed as successful at source
+commit `1e4d845f4876d8a311ce293fc4c5a03514ef5601`. This verifies that run, not all checks in
+the relay table and not merge or deployment readiness. Source:
+https://github.com/ruvnet/ruflo/actions/runs/34985922185
+Relay event `68b90e0826d6351a0f696b75c72268ecb34524c0ce4ab0d4cf81115b13775e0d`,
+reported at `2026-09-16T07:24:06.596Z`; run checked on 2026-09-18.
+
+Negative research evidence: the September 16 Dream Machine report preserves five rejected
+hypotheses and invalid witness/hash evidence. It does not claim performance, security, or
+production-readiness promotion. Component test success must not erase a failed composed
+contract. Source:
+https://github.com/ruvnet/dream-machine/blob/5dbfbbf02e08bb9cfc7cea105b79e523f4c6d233/docs/dream-cycle/2026-09-16-portfolio-report.md
+Relay event `6882f2663ffe4e3ef7864c1b6ca9e8a84fe1541759cb95d461488c3a6af1e78f`,
+reported at `2026-09-16T07:22:24.433Z`; source report checked on 2026-09-18.
+
+RSI runner compatibility: the executor correction report records a missing
+`/lib64/ld-linux-x86-64.so.2` loader and incomplete isolated p-limit/RSI execution. Its linked
+CI run 34734165833 was successful, but that does not resolve the report's runtime limitation.
+Check executable startup on a compatible runner before claiming isolation works. Source:
+https://github.com/ruvnet/ruflo/blob/64582f5e42b08ded337e4afa3d2a4ec1f27d8ff5/v3/@claude-flow/cli/scripts/rsi/evidence/executor-corrections/report.md
+Relay event `583dd5ca9426dc5ec25af8f6af944ed1acfa055e4195463897bd055eb8b4e714`,
+reported at `2026-09-13T02:57:51.541Z`; report and CI checked on 2026-09-18.
+
+Announcement provenance: the observed https://ruv.io/feed.xml snapshot contained 56 items
+and a September 14 build date. Its ChatGPT federation-key announcement links Ruflo PR 3285,
+which was observed closed with a title describing a separate federation key and relay
+connection: https://github.com/ruvnet/ruflo/pull/3285 . This is a historical source pointer;
+closed status alone does not establish merge status or the running gateway's deployed bytes.
+These summaries contain public facts and original paraphrases, not copied relay bodies,
+RSS descriptions, private-channel payloads, or credentials. Refresh dated observations through
+the public read tools before relying on them as current operational state.
 
 ## ruvector
 RuvNet's high-performance vector database and search engine, written in Rust with SIMD-optimized HNSW indexing, SONA self-learning, graph intelligence, and quantization tiers including INT8/SQ8. Its RVF format is a portable, single-file `.rvf` binary container, not JSON, with HNSW nearest-neighbor indexes plus witness-chain integrity and provenance records (and WASM bindings for in-browser use). HNSW narrows a query to nearby vectors without scanning every embedding. Use it to store embeddings and run fast approximate-nearest-neighbor / similarity search, build local on-device semantic search, power a private RAG index, or replace a hosted vector DB (Pinecone, Qdrant, pgvector) with a zero-server on-disk store. RVF owns vector knowledge; AgentDB owns structured operational and agent-memory records. Reach for ruvector whenever you need vector search, HNSW indexing, an embeddings store, graph relationships, nearest-neighbor lookup, or semantic search that runs locally and privately.

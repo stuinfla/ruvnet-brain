@@ -4,7 +4,7 @@ title: One policy owner per responsibility and North Star acceptance
 status: Accepted
 date: 2026-09-16
 updated: 2026-09-18
-version: 1.3.3
+version: 1.3.4
 authors: [Stuart Kerr, Codex]
 tags: [consistency, continuity, recovery, grading, north-star, acceptance]
 relates: [ADR-072, ADR-073, ADR-075, ADR-084, ADR-085, ADR-086]
@@ -20,7 +20,7 @@ governs:
   - scripts/qa-runner.mjs
 ---
 
-Updated: 2026-09-18 02:08:00 EDT | Version 1.3.3
+Updated: 2026-09-18 17:40:00 EDT | Version 1.3.4
 Created: 2026-09-16 19:51:00 EDT
 
 # ADR-087 — One policy owner per responsibility
@@ -231,11 +231,42 @@ fixture keys and do not establish product grades or reviewer trust.
 
 Operator prerequisites remain the approved native-review signing keys and their trusted public
 keys in the Production environment, an actual review pair over the sealed artifact and canonical
-D1–D8 rubric, and the successful exact-SHA intake run/artifact IDs. The keys and IDs were absent
-from the checked repository/environment configuration on September 18. The transport repair is
+D1–D8 rubric, and the successful exact-SHA intake run/artifact IDs. The two reviewer public keys
+were enrolled in the Production environment under Stuart's explicit authorization on September 18;
+the native sealed-artifact review pair and successful intake IDs remain outstanding. The transport repair is
 not an end-to-end intake receipt, a 95 score, or publication authority. Intake executes the
 candidate's validator after approved promotion; it is not an independent boundary against a
 malicious candidate replacing that validator.
+
+### September 18 delivery and ingestion follow-up
+
+Release 4.3.26 was published from `3996f502b18157fdc84e325fbe87c2a05351d58c` at
+11:45 UTC. Its recovery run `35396145868` failed installed MCP searches on all three
+operating systems; publication is degraded and does not certify the later cleanup.
+The working 4.3.27 candidate contains the later changes and remains unpublished.
+
+The prepared-corpus handoff extracts the flat archive directly into `dist/ruvnet-brain`,
+the same directory consumed by coverage validation and downstream packaging. It rejects a
+pre-existing destination and retains byte, source, observation and baseline validation.
+The regression executes the actual workflow extraction block, including wrong-root,
+destination-collision, observation-mismatch and coverage-versus-baseline mismatch cases.
+It does not replace the earlier artifact-signature and configured-seed admission checks.
+
+The existing Ruflo capability card now carries original, dated summaries of public x.ruv.io
+observations with source URLs and relay event identities. The canonical public-input selection
+and concepts aggregate were exercised with the exact card bytes; searches over the resulting
+isolated RVF returned the new portfolio, CI, RSI and feed material. This is ingestion evidence,
+not proof of an updated installed cache or public release. No new knowledge store was created.
+
+Both native verification prompts use the existing canonical verification JSON schema, including
+verdict values and correction-record fields. This fixes a real rejected Codex response that
+received only required field names and returned an unsupported verdict and string corrections.
+The response validator remains strict; rejected responses are retained, never relabeled accepted.
+
+Full-corpus nightly dispatch remains disarmed while `data/approved-runtime.json` is absent.
+Enrollment must follow a successfully verified code release: emit the pin from that exact
+archive manifest and released code SHA, verify it, then commit the pin without a runtime
+version bump. A green disarmed scheduler run is not a completed corpus refresh.
 
 
 ### Native grading identity amendment

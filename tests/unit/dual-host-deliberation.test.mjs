@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { digest } from '../../scripts/coverage-integrity.mjs';
+import { STAGE_SCHEMAS, nativeStageJsonSchema, bindStageContent } from '../../scripts/dual-deliberation-contract.mjs';
 
 const eligible = {
   claude: { host: 'claude-code', eligible: true, auth: 'claude.ai-subscription' },
@@ -304,32 +305,91 @@ for(const row of [{type:'thread.started',thread_id:'fixture-thread'},{type:'item
       expect(result.transport.result.stdout).toContain('turn.completed');
     } finally { process.env.PATH = prior; fs.rmSync(root,{recursive:true,force:true}); }
   });
-  it('requests and reads Claude structured verification output with reasoned resolutions', async () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dual-structured-'));
-    const bin = path.join(root, 'claude');
-    fs.writeFileSync(bin, `#!/usr/bin/env node
-const args=process.argv.slice(2); if(args[0]==='--version'){console.log('fixture-client');process.exit(0)} const schema=JSON.parse(args[args.indexOf('--json-schema')+1]);
-process.stdin.resume(); process.stdin.on('end',()=>console.log(JSON.stringify({session_id:'fixture-session',is_error:false,modelUsage:{'claude-fable-5-1':{}},structured_output:{
- schemaVersion:1,stage:'verify',artifactSha256:'a'.repeat(64),contentDigest:'b'.repeat(64),
- verdict:'accept',corrections:[],resolutions:[{id:'c1',status:'resolved',reason:schema.properties.resolutions.items.required.join(',')}]
-}})));
-`);
-    fs.chmodSync(bin, 0o755);
+  it.each(['claude-code', 'codex'].flatMap(host => Object.keys(STAGE_SCHEMAS).map(stage => [host, stage])))
+  ('uses one canonical schema through the real %s process for %s', async (host, stage) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dual-schema-'));
+    const capture = path.join(root, 'capture.json');
+    const verifies = ['verify', 'reverify'].includes(stage);
+    const value = { schemaVersion: 1, stage,
+      ...(stage === 'proposal' ? { proposal: { decision: 'fixture' } } : {}),
+      ...(stage === 'critique' ? { findings: [{ path: 'unread.mjs', readComplete: false }] } : {}),
+      ...(['synthesis', 'revise'].includes(stage) ? { artifact: { decision: 'fixture' } } : {}),
+      ...(verifies ? { artifactSha256: 'a'.repeat(64), contentDigest: 'b'.repeat(64), verdict: 'accept', corrections: [],
+        resolutions: [{ id: 'c1', status: 'resolved', reason: 'fixture evidence' }] } : {}),
+      ...(stage === 'review' ? { artifactSha256: 'a'.repeat(64), verdict: 'FAIL', score: 0, findings: ['unread'],
+        deductions: ['coverage missing'], untested: ['runtime'], reviewedAt: '2026-09-18T00:00:00Z', retrievalOracleReview: {} } : {}),
+    };
+    fs.writeFileSync(path.join(root, host === 'codex' ? 'codex' : 'claude'), `#!/usr/bin/env node
+if(process.argv.includes('--version')){console.log('fixture-client');process.exit(0)}
+let prompt='';process.stdin.on('data',c=>prompt+=c);process.stdin.on('end',()=>{
+require('fs').writeFileSync(${JSON.stringify(capture)},JSON.stringify({prompt,args:process.argv.slice(2)}));
+const value=${JSON.stringify(value)};
+if(${JSON.stringify(host)}==='claude-code')console.log(JSON.stringify({session_id:'fixture-session',is_error:false,subtype:'success',terminal_reason:'completed',modelUsage:{'claude-fable-5-1':{}},result:${JSON.stringify('```json\n{}\n```')},structured_output:value}));
+else for(const row of [{type:'thread.started',thread_id:'fixture-thread'},{type:'item.completed',item:{type:'agent_message',text:JSON.stringify(value)}},{type:'turn.completed'}])console.log(JSON.stringify(row));
+});`, { mode: 0o755 });
     const previous = process.env.PATH; process.env.PATH = `${root}${path.delimiter}${previous}`;
     try {
-      const result = await runSubscriptionHost('claude-code', 'verify', { task: 'verify contract' });
-      expect(result.ok).toBe(true);
-      expect(result.value.resolutions[0].reason).toBe('id,status,reason');
-      expect(result.value.verdict).toBe('accept');
+      const result = await runSubscriptionHost(host, stage, { task: 'schema parity' });
+      expect(result.ok, result.error).toBe(true);
+      const { prompt, args } = JSON.parse(fs.readFileSync(capture, 'utf8'));
+      const schema = JSON.parse(prompt.split('\n').find(line => line.startsWith('Response contract: ')).slice(19));
+      expect(schema).toEqual(nativeStageJsonSchema(stage));
+      const omitted = verifies ? [] : stage === 'review' ? ['contentDigest', 'execution'] : ['artifactSha256', 'contentDigest'];
+      expect(schema.required).toEqual(STAGE_SCHEMAS[stage].required.filter(name => !omitted.includes(name)));
+      expect(Object.keys(schema.properties)).toEqual([...STAGE_SCHEMAS[stage].required, ...STAGE_SCHEMAS[stage].optional].filter(name => !omitted.includes(name)));
+      if (host === 'claude-code') {
+        expect(args.filter(arg => arg === '--json-schema')).toHaveLength(1);
+        expect(JSON.parse(args[args.indexOf('--json-schema') + 1])).toEqual(schema);
+        for (const [flag, expected] of Object.entries({ '--permission-mode': 'manual', '--permission-prompts': 'none',
+          '--tools': 'Read,Grep,Glob', '--model': 'claude-fable-5-1', '--effort': 'high', '--output-format': 'json' })) {
+          expect(args[args.indexOf(flag) + 1]).toBe(expected);
+        }
+        expect(args).toContain('--no-session-persistence');
+        for (const flag of ['--safe-mode', '--restricted', '--strict-mcp-config']) expect(args).toContain(flag);
+        expect(JSON.parse(args[args.indexOf('--mcp-config') + 1])).toEqual({ mcpServers: {} });
+        expect(args.some(arg => /bypass|skip-permissions/.test(arg))).toBe(false);
+      } else {
+        expect(args[args.indexOf('--sandbox') + 1]).toBe('read-only');
+        expect(args).toContain('--ephemeral'); expect(args).toContain('--json');
+        expect(args).toContain('--ignore-user-config');
+        expect(args).toContain('project_doc_max_bytes=0');
+        expect(args).toContain(`projects.${JSON.stringify(fs.realpathSync(process.cwd()))}.trust_level="untrusted"`);
+        for (const feature of ['apps', 'plugins', 'hooks', 'memories']) expect(args[args.indexOf(feature) - 1]).toBe('--disable');
+      }
+      expect(result.value).toMatchObject(bindStageContent(stage, value));
+      if (stage === 'review') expect(result.value.execution).toMatchObject({ nativeHost: host, invocationDigest: result.extra.canonicalDigest });
+      if (stage === 'critique') expect(result.value.findings[0].readComplete).toBe(false);
+      if (verifies) expect(schema.properties.resolutions.items.required).toEqual(['id', 'status', 'reason']);
+    } finally { process.env.PATH = previous; fs.rmSync(root, { recursive: true, force: true }); }
+  });
+  it('rejects unknown stages before probing and preserves fenced-only rejection', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dual-reject-'));
+    const sentinel = path.join(root, 'invoked');
+    fs.writeFileSync(path.join(root, 'claude'), `#!/usr/bin/env node
+require('fs').writeFileSync(${JSON.stringify(sentinel)},'called');
+if(process.argv.includes('--version')){console.log('fixture-client');process.exit(0)}
+process.stdin.resume();process.stdin.on('end',()=>console.log(JSON.stringify({session_id:'fixture',is_error:false,result:${JSON.stringify('```json\n{}\n```')}})));
+`, { mode: 0o755 });
+    const previous = process.env.PATH; process.env.PATH = `${root}${path.delimiter}${previous}`;
+    try {
+      await expect(runSubscriptionHost('claude-code', 'unknown', {})).rejects.toThrow('unknown stage');
+      expect(fs.existsSync(sentinel)).toBe(false);
+      const result = await runSubscriptionHost('claude-code', 'critique', {});
+      expect(result.reason).toBe('invalid-native-response');
+      expect(result.transport.result.outputComplete).toBe(true);
+      expect(result.transport.result.stdout).toContain('```json');
     } finally { process.env.PATH = previous; fs.rmSync(root, { recursive: true, force: true }); }
   });
   it('kills the native host process group at its deadline', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dual-host-timeout-'));
     const pidFile = path.join(root, 'child.pid');
     const bin = path.join(root, 'codex');
-    fs.writeFileSync(bin, `#!/usr/bin/env node
+    fs.writeFileSync(bin, `#!/bin/sh
+if [ "$1" = "--version" ]; then echo fixture-client; exit 0; fi
+exec "${process.execPath}" "${path.join(root, 'fixture.mjs')}"
+`);
+    fs.writeFileSync(path.join(root, 'fixture.mjs'), `
 import {spawn} from 'node:child_process'; import fs from 'node:fs';
-if(process.argv.includes('--version')){console.log('fixture-client');process.exit(0)}
 const c=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'inherit'});
 fs.writeFileSync(${JSON.stringify(pidFile)},String(c.pid));setInterval(()=>{},1000);
 `);

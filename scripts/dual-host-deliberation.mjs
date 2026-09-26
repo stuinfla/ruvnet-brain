@@ -10,7 +10,7 @@ import { digest } from './coverage-integrity.mjs';
 import { validateDualPlan } from './dual-workflow-contract.mjs';
 import { assertDualBriefCurrent } from './dual-workflow.mjs';
 import { DualWorkflowStore } from './dual-workflow-store.mjs';
-import { STAGE_SCHEMAS, verificationJsonSchema, validateStageValue, bindStageContent, TOP_SUBSCRIPTION_MODELS, correctionLedgerFromCritiques, mergeVerifierCorrections, validateDeliberationTrace } from './dual-deliberation-contract.mjs';
+import { nativeStageJsonSchema, validateNativeStageValue, validateStageValue, TOP_SUBSCRIPTION_MODELS, correctionLedgerFromCritiques, mergeVerifierCorrections, validateDeliberationTrace } from './dual-deliberation-contract.mjs';
 export { validateStageValue } from './dual-deliberation-contract.mjs';
 
 const HOSTS = Object.freeze(['claude-code', 'codex']);
@@ -34,12 +34,7 @@ function hostKey(host) {
   return host === 'claude-code' ? 'claude' : 'codex';
 }
 
-function promptFor(stage, payload) {
-  const schema = structuredClone(STAGE_SCHEMAS[stage] || {});
-  if (['proposal','critique','synthesis','revise','review'].includes(stage)) {
-    schema.required = schema.required.filter(key => key !== 'contentDigest'
-      && (stage === 'review' || key !== 'artifactSha256'));
-  }
+function promptFor(stage, payload, schema) {
   return [
     'You are one half of a subscription-only Claude Code and Codex deliberation.',
     'Do not request or use API keys. Work read-only. Return JSON only.',
@@ -47,6 +42,7 @@ function promptFor(stage, payload) {
     'For verify/reverify, copy artifactSha256 AND contentDigest from the exact supplied artifact. These identify the reviewed subject, not your findings.',
     'For proposal/critique/synthesis/revise, omit artifactSha256 and contentDigest: the native adapter computes them from your new content. Do not invent cryptographic hashes.',
     'For review, copy the supplied artifactSha256; omit contentDigest because the adapter hashes your fresh findings.',
+    'Verification accept requires corrections []; changes requires at least one concrete correction.',
     `Response contract: ${JSON.stringify(schema)}`,
     JSON.stringify(payload),
   ].join('\n');
@@ -55,15 +51,17 @@ function promptFor(stage, payload) {
 export async function runSubscriptionHost(host, stage, payload, { cwd = process.cwd(), timeoutMs = 900000, reasoningEffort = 'medium' } = {}) {
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) throw new Error('native host deadline must be a positive integer');
   if (!['medium', 'high'].includes(reasoningEffort)) throw new Error('Dual reasoning effort must be medium or high');
-  const prompt = promptFor(stage, payload);
+  const schema = nativeStageJsonSchema(stage);
+  const prompt = promptFor(stage, payload, schema);
   if (prompt.length > NATIVE_PROMPT_BUDGET) return { ok:false, reason:'prompt-exceeds-evidence-budget' };
   const env = subscriptionOnlyEnv();
   const command = host === 'claude-code'
     ? {
         binary: 'claude',
         args: [
-          '-p', '--output-format', 'json', '--permission-mode', 'plan',
-          ...(['verify', 'reverify'].includes(stage) ? ['--json-schema', JSON.stringify(verificationJsonSchema(stage))] : []),
+          '-p', '--output-format', 'json', '--permission-mode', 'manual', '--permission-prompts', 'none',
+          '--safe-mode', '--restricted', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
+          '--json-schema', JSON.stringify(schema),
           '--tools', 'Read,Grep,Glob', '--no-session-persistence', '--effort', 'high',
           '--model', TOP_SUBSCRIPTION_MODELS['claude-code'],
         ],
@@ -72,6 +70,9 @@ export async function runSubscriptionHost(host, stage, payload, { cwd = process.
         binary: 'codex',
         args: [
           'exec', '--ephemeral', '--sandbox', 'read-only', '--color', 'never', '--json',
+          '--ignore-user-config', '--disable', 'apps', '--disable', 'plugins', '--disable', 'hooks', '--disable', 'memories',
+          '-c', 'project_doc_max_bytes=0', '-c', `projects.${JSON.stringify(fs.realpathSync(cwd))}.trust_level="untrusted"`,
+          '-c', 'approval_policy="never"',
           '-m', TOP_SUBSCRIPTION_MODELS.codex, '-c', `model_reasoning_effort="${reasoningEffort}"`,
         ],
       };
@@ -100,7 +101,7 @@ export async function runSubscriptionHost(host, stage, payload, { cwd = process.
       threadId, sessionId, completionStatus:'completed', status:result.status, signal:result.signal,
       startedAt, completedAt, prompt, stdout:result.stdout, stderr:result.stderr };
     const canonicalDigest = nativeReviewEvidenceDigest(evidence);
-    const value = bindStageContent(stage, completion.value);
+    const value = validateNativeStageValue(stage, completion.value);
     if (stage === 'review') value.execution = { nativeHost:host, subscriptionAuthenticated:true,
       invocationDigest:canonicalDigest, requestedModel:TOP_SUBSCRIPTION_MODELS[host],
       modelIdentityClass:'requested-only', threadId, sessionId };

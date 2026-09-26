@@ -73,7 +73,7 @@
     {
       "label": "com.ruvnet.nightly-watchdog",
       "what": "Watches all of the above. Listed here so that IT is watched too \u2014 a watchdog nobody watches is the same blind spot one level up",
-      "schedule": "daily 09:00",
+      "schedule": "daily 09:30",
       "maxAgeHours": 26,
       "required": true
     },
@@ -102,6 +102,36 @@
       "schedule": "WatchPaths on ~/.npm/_npx (event-driven, no cadence)",
       "maxAgeHours": 2160,
       "what": "records every npx-cache mutation to the witness log (pure observer). Event-driven: weeks of silence are NORMAL when nothing touches _npx — maxAgeHours is a 90-day tripwire against the job being unloaded, not a freshness SLA. Registered per F2 2026-07-18: it was loaded+wrapped but absent here, i.e. unwatched by the registry's own definition."
+    },
+    {
+      "label": "com.stuartkerr.purge-local-snapshots",
+      "what": "Hourly: deletes Time Machine LOCAL snapshots on / so they never pin space on the internal SSD (real backups are on the external WD 2TB). Skips while a backup is running.",
+      "schedule": "hourly (StartInterval 3600, RunAtLoad)",
+      "maxAgeHours": 3,
+      "required": true,
+      "_added": "2026-09-24 at Stuart's request; script ~/Library/Scripts/purge-local-snapshots.sh, log ~/Library/Logs/purge-local-snapshots.log"
+    },
+    {
+      "label": "com.stuartkerr.codex-autoupdate",
+      "what": "Nightly Codex CLI update",
+      "schedule": "daily 02:45",
+      "maxAgeHours": 26,
+      "required": true,
+      "_added": "2026-09-24: already heartbeat-wrapped but was missing from the registry, so nothing watched it"
+    },
+    {
+      "label": "com.stuartkerr.npm-auth-watchdog",
+      "what": "Daily probe that the npm login is still valid (migrated from crontab 2026-09-24 so it catches up after sleep and gets receipts)",
+      "schedule": "daily 09:05",
+      "maxAgeHours": 26,
+      "required": true
+    },
+    {
+      "label": "com.stuartkerr.model-freshness-watchdog",
+      "what": "Daily probe of provider model lists vs Ruv-Explainer/.env (migrated from crontab 2026-09-24)",
+      "schedule": "daily 09:10",
+      "maxAgeHours": 26,
+      "required": true
     }
   ],
   "_retired": [
