@@ -3,7 +3,7 @@ id: ADR-068
 title: The Dream Machine runs this repo's nights — evaluation is not promotion
 status: Accepted
 date: 2026-08-19
-updated: 2026-09-04
+updated: 2026-09-26
 authors: [Stuart Kerr, Claude Code]
 tags: [automation, evaluation, nightly, self-improvement, promotion-gate]
 supersedes: []
@@ -135,6 +135,8 @@ bootstrap prompt (recommended over a frozen prompt, so the schedule can never dr
 committed config).
 
 ## Currency log
+
+| 2026-09-26 | Night ran, SLOT 1 — deep `brain-currency`, scans `dark-stores` + `corpus-freshness`. Ledger check found `docs/dream-cycle/LEDGER.md` on `main` stuck at 2026-08-31 while the routine has fired nightly through 2026-09-25 — zero `dream/*` PRs merged since #178 (2026-08-26), 15+ open drafts. Reconciled this slot's own 2026-09-06 backlog: issue #258 (`panelStrict` mtime freshness) was already fixed and integrated via an unrelated release-consolidation commit (`12f8bf1`, 2026-09-19) — closed as integrated, no code change. Issue #260 (`kb/forge-currency.mjs`'s `brainKnownSet()` reading `SOURCE.json` from the checkout instead of the caller's `root`) was confirmed still broken on tonight's `main`; its fully-evaluated 2026-09-06 candidate (PR #261) had been stale-closed unmerged with no rejection reasoning — revived the identical fix, re-validated fresh (TEETH, full `test:unit`/`test:integration` baseline-vs-candidate, both-hosts gate, `claims:verify`), independent critic verdict CLEAR. `autoMerge: false` held; draft PR filed against #260. | Ledger row and this row confirmed against the real `git log`/GitHub MCP state, not assumed. |
 
 | 2026-08-30 | Reviewed against release candidate 4.3.3: the nightly ledger status vocabulary was corrected to the engine's yes/no/blocked contract; auto-merge remains disabled. | 1beedaa |
 

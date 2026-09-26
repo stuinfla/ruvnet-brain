@@ -29,7 +29,6 @@ import { fileURLToPath } from 'node:url';
 import { storeRoot, storesAt } from './store-root.mjs';
 
 const KB_DIR = path.dirname(fileURLToPath(import.meta.url));
-const SOURCE_PATH = path.join(KB_DIR, 'SOURCE.json');
 const HOME = os.homedir();
 
 const argv = process.argv.slice(2);
@@ -54,12 +53,19 @@ function run(bin, args, { timeout = 25000, cwd } = {}) {
 const git = (dir, args, opts) => run('git', ['-C', dir, ...args], opts);
 
 // ---------- the brain's KNOWN set (authoritative: the .rvf files it actually loads) ----------
+// SOURCE.json is read from `root` itself (PR #222 fixed the .rvf-listing half of this function to
+// do the same; this closes the sibling gap it left: the name-alias half still read this script's
+// OWN checkout directory unconditionally, so a `root` other than this checkout — a fresh install's
+// canonical store root, or a test sandbox — had its SOURCE.json silently ignored in favor of
+// whatever this git clone happens to carry. Same "clone freshness is not artifact freshness" class
+// ADR-069 named for scripts/brain-stamp.mjs.
 export function brainKnownSet(root = storeRoot()) {
   const known = new Set();
   for (const s of storesAt(root)) known.add(s.toLowerCase());
-  if (fs.existsSync(SOURCE_PATH)) {
+  const sourcePath = path.join(root, 'SOURCE.json');
+  if (fs.existsSync(sourcePath)) {
     try {
-      const src = JSON.parse(fs.readFileSync(SOURCE_PATH, 'utf8'));
+      const src = JSON.parse(fs.readFileSync(sourcePath, 'utf8'));
       const stores = Array.isArray(src.stores) ? src.stores
         : (src.stores && typeof src.stores === 'object') ? Object.values(src.stores) : [];
       for (const s of stores) {
