@@ -173,4 +173,4 @@ export function runProductIntegrityCli(argv = process.argv.slice(2), io = { stdo
   if (verify && sourceSha) { const trace = JSON.parse(fs.readFileSync(path.resolve(verify), 'utf8')); validateProductIntegrityTrace(trace, { root, sourceSha }); io.stdout.write(`${canonicalJson({ verdict: 'PASS', traceSha256: trace.traceSha256 })}\n`); return 0; }
   throw new Error('invalid product integrity argument combination');
 }
-if (path.resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) { try { process.exitCode = runProductIntegrityCli(); } catch (error) { console.error(`[product-integrity-contract] ${error.message}`); process.exitCode = 1; } }
+if (((() => { try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })())) { try { process.exitCode = runProductIntegrityCli(); } catch (error) { console.error(`[product-integrity-contract] ${error.message}`); process.exitCode = 1; } }

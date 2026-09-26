@@ -31,21 +31,47 @@
 // hung shard silently hold the corpus rebuild open. `scripts/nightly-watchdog.mjs` can also read the
 // same progress files directly (see its `readJobProgress`) to report STALLED for a job whose
 // heartbeat still says "running" but whose declared `progressGlob` has gone stale.
+//
+// ── ID-LEVEL INGEST RECONCILIATION (2026-09-14, incident: ruv-gists shipped 3,055 passages and
+// 3,054 vectors for six weeks) ───────────────────────────────────────────────────────────────────
+// Passage id 2740 ("Jailbreak any LLM using MathPrompt") was present in ruv-gists.passages.jsonl
+// and in the store's meta, had NO vector, and was therefore permanently unretrievable: measured
+// against the installed brain, idToLabel held 3,054 entries while nextLabel stood at 3,055 — the
+// label was allocated and the embedding never landed. The build reported success.
+//
+// It reported success because BOTH of the guards below were blind to it, each for its own reason:
+//
+//   1. readPassages() DISCARDED any line that failed JSON.parse with no count, no warning, and no
+//      error (`catch { /* skip */ }`). A corpus can therefore lose a passage between the file on
+//      disk and the rows the builder believes it read, and nothing anywhere says so.
+//   2. The reconciliation at the end of ingestStore() compared `status.totalVectors` against
+//      `totalPassages` — but `totalPassages` was itself produced by that same lossy reader. A line
+//      dropped in (1) lowers BOTH sides of the comparison equally, so the check reports MATCH=true
+//      on a store that is missing exactly the passage that was dropped. It is a count check that
+//      cannot see the failure mode it was written to catch, because it measures the builder's
+//      belief about the corpus instead of the corpus.
+//
+// Both are now closed, and the order matters: (1) is what makes (2) sound. readPassages() FAILS
+// CLOSED on a malformed line, naming the file, the line number and the parse error, so the row set
+// is complete by construction or there is no build at all; a caller that genuinely needs tolerance
+// must pass `tolerateMalformed: true`, and even then every skipped line is counted and reported.
+// That makes the parsed id set authoritative, and ingest then reconciles by ID, not by count:
+// reconcileStoreIds() compares the expected passage ids against the ids actually present in the
+// idmap the RVF runtime persisted next to the store — the artifact a reader will really resolve —
+// and on any mismatch FAILS naming the exact missing ids. A store that cannot be proven complete is
+// also DELETED rather than left on disk, because the six-week defect survived precisely by looking
+// like a finished artifact; the expensive vec shards are retained so a re-ingest is cheap.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { loadRvf, loadTransformers, chooseModelCache } from './resolve-deps.mjs';
 import { materializeModelRevision, modelCacheReady } from './model-requirements.mjs';
 import { persistAndVerifyRvfIndex } from './rvf-index.mjs';
 import { lowerBuildPriority } from './process-priority.mjs';
 import { writeShardProgress, clearShardProgress, createStallWatcher } from './shard-progress.mjs';
-
-// BGE embedding can saturate a core for several minutes. Keep interactive lifecycle hooks
-// responsive while this maintenance job runs; unsupported/denied reprioritization is non-fatal.
-const BUILD_PRIORITY = lowerBuildPriority();
-console.log(`[big] process priority: ${BUILD_PRIORITY.applied ? 'below-normal' : `unchanged (${BUILD_PRIORITY.error})`}`);
 
 const MODEL = 'Xenova/bge-base-en-v1.5';
 // MODEL-WEIGHT PIN: address the embedder by an exact HuggingFace commit SHA, not the floating `main`
@@ -59,18 +85,24 @@ const POOLING = 'cls';
 const QUERY_PREFIX = 'Represent this sentence for searching relevant passages: ';
 
 function arg(flag, def) { const i = process.argv.indexOf(flag); return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : def; }
-const argv = process.argv.slice(2);
-const MODE = argv[0];
-const DIR = arg('--dir');
-const NAME = arg('--name');
-const SMOKE = argv.includes('--smoke');
-if (!DIR || !NAME) { console.error('Usage: forge-big.mjs <embed|ingest|both|--smoke> --dir <d> --name <n> [--shard i --of n]'); process.exit(2); }
 
-const passagesFile = path.join(DIR, `${NAME}.passages.jsonl`);
+// argv-derived state. Populated by main() and ONLY by main(), so that importing this module — which
+// is how the shard math and the reconciliation below are tested — parses no argv, resolves no paths,
+// loads no native dependency and starts no embedding or ingest work. Before this was hoisted into
+// main(), `tests/unit/forge-big-sharding.test.mjs` recorded the hazard in prose and stayed unwritten:
+// a bare `import` of this file fired the real MODE dispatch as an import side effect.
+let DIR = null;
+let NAME = null;
+let passagesFile = null;
 const vecShardPath = (i, n) => path.join(DIR, `${NAME}.big.vecs.${i}-${n}.jsonl`);
 
-const { mod: rvfMod } = loadRvf();
-const { RvfDatabase } = rvfMod;
+// Lazy for the same reason: loadRvf() resolves and loads the native @ruvector/rvf binding, which an
+// importing test neither needs nor should pay for.
+let _RvfDatabase = null;
+function getRvfDatabase() {
+  if (!_RvfDatabase) { const { mod } = loadRvf(); _RvfDatabase = mod.RvfDatabase; }
+  return _RvfDatabase;
+}
 
 // ---- embedder (bge needs remote download on first run; allow it explicitly) ----
 let _fe = null;
@@ -91,21 +123,167 @@ async function embedTexts(texts) {
   const fe = await getEmbedder();
   return fe(texts, { pooling: POOLING, normalize: true }); // { data, dims:[n,DIM] }
 }
-function readPassages(file, limit = 0) {
+
+/**
+ * Read a JSONL corpus (passages, or a vec shard) — FAIL CLOSED on any line that will not parse.
+ *
+ * The predecessor swallowed a malformed line with `catch { /* skip *\/ }`: no count, no warning, no
+ * error. That is the silent-discard path at the head of the ruv-gists incident described in this
+ * file's header, and it is worse than a crash, because everything downstream — including the
+ * reconciliation that is supposed to catch a missing passage — then measures the SHORTENED row set
+ * and agrees with itself.
+ *
+ * Default behaviour rejects, naming file, line number and the underlying parse error. `limit` still
+ * stops early for the smoke path. A caller that genuinely wants to survive a malformed corpus must
+ * say so with `tolerateMalformed: true`; even then, every skipped line is counted, reported on
+ * stderr, passed to `onMalformed`, and attached to the returned array as a non-enumerable
+ * `malformed` property — tolerance is allowed, silence is not.
+ */
+export function readPassages(file, limit = 0, { tolerateMalformed = false, onMalformed = null } = {}) {
   return new Promise((resolve, reject) => {
     const rows = [];
-    const rl = readline.createInterface({ input: fs.createReadStream(file), crlfDelay: Infinity });
-    rl.on('line', (line) => { const s = line.trim(); if (!s) return; try { rows.push(JSON.parse(s)); } catch { /* skip */ } if (limit && rows.length >= limit) rl.close(); });
-    rl.on('close', () => resolve(rows));
-    rl.on('error', reject);
+    const malformed = [];
+    let lineNo = 0;
+    let settled = false;
+    const stream = fs.createReadStream(file);
+    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+    const finish = (fn, value) => { if (settled) return; settled = true; rl.close(); stream.destroy(); fn(value); };
+    rl.on('line', (line) => {
+      if (settled) return;
+      lineNo += 1;
+      const s = line.trim();
+      if (!s) return; // a blank line carries no row and loses nothing
+      let parsed;
+      try {
+        parsed = JSON.parse(s);
+      } catch (error) {
+        const record = { lineNo, error: error.message, bytes: s.length };
+        malformed.push(record);
+        if (onMalformed) onMalformed(record);
+        if (!tolerateMalformed) {
+          finish(reject, new Error(
+            `${file}:${lineNo} — malformed JSON line (${s.length} bytes): ${error.message}. `
+            + 'Refusing to silently drop a row: a dropped passage becomes an unretrievable document '
+            + 'and every count downstream agrees with the shortened set. Repair the line, or pass '
+            + 'tolerateMalformed to accept the loss explicitly.',
+          ));
+          return;
+        }
+        console.error(`[passages] TOLERATED malformed line ${file}:${lineNo} (${s.length} bytes): ${error.message}`);
+        return;
+      }
+      rows.push(parsed);
+      if (limit && rows.length >= limit) finish(resolve, attachMalformed(rows, malformed));
+    });
+    rl.on('close', () => {
+      if (settled) return;
+      if (malformed.length) {
+        console.error(`[passages] ${malformed.length} malformed line(s) TOLERATED in ${file} — lines ${malformed.map((m) => m.lineNo).join(', ')}`);
+      }
+      finish(resolve, attachMalformed(rows, malformed));
+    });
+    rl.on('error', (error) => finish(reject, error));
+    stream.on('error', (error) => finish(reject, error));
   });
 }
-function cosine(a, b) { let d = 0; for (let i = 0; i < a.length; i++) d += a[i] * b[i]; return d; }
+function attachMalformed(rows, malformed) {
+  Object.defineProperty(rows, 'malformed', { value: malformed, enumerable: false });
+  return rows;
+}
+
+export function cosine(a, b) { let d = 0; for (let i = 0; i < a.length; i++) d += a[i] * b[i]; return d; }
+
+/**
+ * Which rows belong to shard `shardIdx` of `nShards`. Extracted from the inline modulo filter that
+ * embedShard() used to carry so the property that actually matters — every row lands in EXACTLY one
+ * shard, no drops and no duplicates — can be asserted directly instead of inferred from a corpus
+ * rebuild. Same math, given a name and a fixture-friendly signature.
+ */
+export function shardAssign(rows, shardIdx, nShards) {
+  if (!Array.isArray(rows)) throw new TypeError('shardAssign: rows must be an array');
+  if (!Number.isInteger(nShards) || nShards < 1) throw new RangeError(`shardAssign: nShards must be a positive integer, got ${nShards}`);
+  if (!Number.isInteger(shardIdx) || shardIdx < 0 || shardIdx >= nShards) {
+    throw new RangeError(`shardAssign: shardIdx must be an integer in [0, ${nShards - 1}], got ${shardIdx}`);
+  }
+  return rows.filter((_, i) => i % nShards === shardIdx);
+}
+
+/**
+ * The ids the store will actually resolve, read back from the idmap the RVF runtime persists beside
+ * it. This is deliberately the ON-DISK artifact rather than an in-process counter: the ruv-gists
+ * defect was visible there and nowhere else (idToLabel 3,054 vs nextLabel 3,055), and an in-memory
+ * `accepted` tally is a record of what the builder believed it sent, not of what a reader can find.
+ */
+export function readStoredIds(rvfPath) {
+  const mapFile = `${rvfPath}.idmap.json`;
+  if (!fs.existsSync(mapFile)) {
+    throw new Error(`${mapFile} is missing — cannot prove the store contains every passage, refusing to report success`);
+  }
+  let map;
+  try { map = JSON.parse(fs.readFileSync(mapFile, 'utf8')); } catch (error) {
+    throw new Error(`${mapFile} is unreadable (${error.message}) — cannot prove store completeness`);
+  }
+  const idToLabel = map?.idToLabel;
+  if (!idToLabel || typeof idToLabel !== 'object') {
+    throw new Error(`${mapFile} has no idToLabel object — cannot prove store completeness`);
+  }
+  return Object.keys(idToLabel).map(String);
+}
+
+/**
+ * Reconcile a built store against the corpus it was built from, BY ID.
+ *
+ * Pure, so the guard itself is testable without a corpus or a native store. `expectedIds` come from
+ * the (now fail-closed) passages read; `storedIds` from the persisted idmap. A count comparison is
+ * kept as a secondary assertion, but the id-set comparison is the one that would have caught
+ * ruv-gists: it names the missing document instead of reporting a number that matched.
+ */
+export function reconcileStoreIds({
+  expectedIds, storedIds, totalVectors = null, accepted = null, rejected = 0, dupes = 0, sample = 25,
+} = {}) {
+  if (!Array.isArray(expectedIds)) throw new TypeError('reconcileStoreIds: expectedIds must be an array');
+  if (!Array.isArray(storedIds)) throw new TypeError('reconcileStoreIds: storedIds must be an array');
+  const expected = expectedIds.map(String);
+  const stored = storedIds.map(String);
+  const expectedSet = new Set(expected);
+  const storedSet = new Set(stored);
+
+  const duplicateExpected = [...countDuplicates(expected)];
+  const duplicateStored = [...countDuplicates(stored)];
+  const missing = [...expectedSet].filter((id) => !storedSet.has(id));   // passage with no vector
+  const unexpected = [...storedSet].filter((id) => !expectedSet.has(id)); // vector with no passage
+
+  const countsAgree = (totalVectors === null || totalVectors === expectedSet.size)
+    && (accepted === null || accepted === expectedSet.size);
+  const ok = missing.length === 0 && unexpected.length === 0 && duplicateExpected.length === 0
+    && duplicateStored.length === 0 && rejected === 0 && countsAgree;
+
+  const lines = [
+    `[reconcile] passages=${expected.length} (distinct ${expectedSet.size}) storedIds=${stored.length} (distinct ${storedSet.size})`
+    + ` vectors=${totalVectors ?? 'n/a'} accepted=${accepted ?? 'n/a'} rejected=${rejected} dupes=${dupes} OK=${ok}`,
+  ];
+  if (missing.length) lines.push(`[reconcile] MISSING VECTOR for ${missing.length} passage id(s): ${preview(missing, sample)}`);
+  if (unexpected.length) lines.push(`[reconcile] VECTOR WITHOUT PASSAGE for ${unexpected.length} id(s): ${preview(unexpected, sample)}`);
+  if (duplicateExpected.length) lines.push(`[reconcile] DUPLICATE passage id(s) in the corpus — one id cannot hold two passages: ${preview(duplicateExpected, sample)}`);
+  if (duplicateStored.length) lines.push(`[reconcile] DUPLICATE stored id(s): ${preview(duplicateStored, sample)}`);
+  if (rejected !== 0) lines.push(`[reconcile] the store REJECTED ${rejected} vector(s)`);
+  if (!countsAgree) lines.push(`[reconcile] count mismatch — distinct passages ${expectedSet.size}, vectors ${totalVectors ?? 'n/a'}, accepted ${accepted ?? 'n/a'}`);
+
+  return { ok, missing, unexpected, duplicateExpected, duplicateStored, countsAgree, report: lines.join('\n') };
+}
+function countDuplicates(values) {
+  const seen = new Set(); const dupes = new Set();
+  for (const v of values) { if (seen.has(v)) dupes.add(v); else seen.add(v); }
+  return dupes;
+}
+function preview(ids, sample) {
+  return ids.length > sample ? `${ids.slice(0, sample).join(', ')} … (+${ids.length - sample} more)` : ids.join(', ');
+}
 
 // ---------- MODE: embed one shard ----------
 async function embedShard(shardIdx, nShards) {
   const rows = await readPassages(passagesFile);
-  const mine = rows.filter((_, i) => i % nShards === shardIdx);
+  const mine = shardAssign(rows, shardIdx, nShards);
   const outFile = vecShardPath(shardIdx, nShards);
   console.log(`[embed ${shardIdx}/${nShards}] ${mine.length} of ${rows.length} passages -> ${path.basename(outFile)}`);
   const fd = fs.openSync(outFile + '.tmp', 'w');
@@ -179,15 +357,17 @@ async function shardAll(nShards, { stallMinutes, pollSeconds } = {}) {
 
 // ---------- MODE: ingest all shards into one .big.rvf ----------
 async function ingestStore() {
-  const totalPassages = (await readPassages(passagesFile)).length;
+  const passages = await readPassages(passagesFile); // fail-closed: the id set below is complete or we never get here
+  const expectedIds = passages.map((r) => String(r.id));
   const shardFiles = fs.readdirSync(DIR)
     .filter((f) => f.startsWith(`${NAME}.big.vecs.`) && f.endsWith('.jsonl'))
     .map((f) => path.join(DIR, f));
   if (!shardFiles.length) throw new Error(`no vec shards for ${NAME} — run embed mode first`);
   console.log(`[ingest] ${shardFiles.length} shard file(s)`);
 
+  const RvfDatabase = getRvfDatabase();
   const OUT_RVF = path.join(DIR, `${NAME}.big.rvf`);
-  for (const f of [OUT_RVF, OUT_RVF + '.idmap.json']) if (fs.existsSync(f)) fs.unlinkSync(f);
+  for (const f of [OUT_RVF, OUT_RVF + '.idmap.json', OUT_RVF + '.embed.json']) if (fs.existsSync(f)) fs.unlinkSync(f);
   const db = await RvfDatabase.create(OUT_RVF, { dimensions: DIM, metric: 'cosine' });
 
   const seen = new Set(); let accepted = 0, rejected = 0, dupes = 0;
@@ -210,6 +390,31 @@ async function ingestStore() {
   });
   console.log('[ingest] index:', JSON.stringify(indexProof));
 
+  // THE GATE. Runs before the query-side config is written and before the shards are cleaned, so a
+  // store that cannot be proven complete leaves behind neither a usable-looking artifact nor a
+  // finished-looking build. Reconciliation is by ID against the persisted idmap — the six-week
+  // ruv-gists defect passed a count check that compared two numbers derived from the same lossy read.
+  let recon;
+  try {
+    recon = reconcileStoreIds({
+      expectedIds, storedIds: readStoredIds(OUT_RVF), totalVectors: status.totalVectors, accepted, rejected, dupes,
+    });
+  } catch (error) {
+    recon = { ok: false, missing: [], report: `[reconcile] UNVERIFIABLE — ${error.message}` };
+  }
+  console.log(recon.report);
+  if (!recon.ok) {
+    console.error('[ingest] RECONCILE FAILED — the store does not contain every passage. NOT cleaning shards.');
+    // Remove the unprovable artifact. The defect this guard exists to stop survived six weeks by
+    // looking exactly like a finished store; a nonzero exit alone did not stop a caller from
+    // shipping what was already on disk. Embedding work (the expensive part) is preserved in the
+    // retained shards, so a corrected re-ingest is cheap.
+    for (const f of [OUT_RVF, OUT_RVF + '.idmap.json', OUT_RVF + '.embed.json']) {
+      if (fs.existsSync(f)) { fs.unlinkSync(f); console.error(`[ingest] removed unverified artifact ${path.basename(f)}`); }
+    }
+    process.exit(1);
+  }
+
   // query-side embedder config (how forge-ask embeds a query for THIS .rvf — asymmetric bge)
   fs.writeFileSync(OUT_RVF + '.embed.json', JSON.stringify({
     model: MODEL, revision: MODEL_REVISION, dimensions: DIM, metric: 'cosine', pooling: POOLING, normalize: true,
@@ -218,11 +423,8 @@ async function ingestStore() {
     builtFrom: path.basename(passagesFile), generated: new Date().toISOString(),
   }, null, 2) + '\n');
 
-  const ok = status.totalVectors === totalPassages && accepted === totalPassages;
-  console.log(`[ingest] vectors=${status.totalVectors} passages=${totalPassages} accepted=${accepted} rejected=${rejected} dupes=${dupes} MATCH=${ok}`);
-  if (!ok) { console.error('[ingest] RECONCILE FAILED — vectors != passages. NOT cleaning shards.'); process.exit(1); }
   for (const sf of shardFiles) fs.unlinkSync(sf); // clean shards only on success
-  console.log(`[ingest] OK — wrote ${NAME}.big.rvf (+embed.json); canonical passages/meta retained; shards cleaned. Run forge-guard --variant big next.`);
+  console.log(`[ingest] OK — wrote ${NAME}.big.rvf (+embed.json); every one of ${expectedIds.length} passage ids has a vector; canonical passages/meta retained; shards cleaned. Run forge-guard --variant big next.`);
 }
 
 async function smoke() {
@@ -238,14 +440,61 @@ async function smoke() {
   process.exit(0);
 }
 
-if (SMOKE) { await smoke(); }
-else if (MODE === 'embed') { await embedShard(parseInt(arg('--shard', '0'), 10), parseInt(arg('--of', '1'), 10)); }
-else if (MODE === 'shard-all') {
-  await shardAll(parseInt(arg('--shards', '8'), 10), {
-    stallMinutes: parseFloat(arg('--stall-minutes', '15')),
-    pollSeconds: parseFloat(arg('--poll-seconds', '15')),
-  });
+// ---------- CLI ----------
+// Guarded so that the MODE dispatch, the argv parsing and the usage exits fire ONLY when this file
+// is executed directly. Importing it (tests/unit/forge-big-sharding.test.mjs) now yields the pure
+// exports above and nothing else — no argv, no paths, no native binding, no work.
+async function main() {
+  // BGE embedding can saturate a core for several minutes. Keep interactive lifecycle hooks
+  // responsive while this maintenance job runs; unsupported/denied reprioritization is non-fatal.
+  const priority = lowerBuildPriority();
+  console.log(`[big] process priority: ${priority.applied ? 'below-normal' : `unchanged (${priority.error})`}`);
+
+  const argv = process.argv.slice(2);
+  const MODE = argv[0];
+  const SMOKE = argv.includes('--smoke');
+  DIR = arg('--dir');
+  NAME = arg('--name');
+  if (!DIR || !NAME) { console.error('Usage: forge-big.mjs <embed|ingest|both|--smoke> --dir <d> --name <n> [--shard i --of n]'); process.exit(2); }
+  passagesFile = path.join(DIR, `${NAME}.passages.jsonl`);
+
+  if (SMOKE) { await smoke(); }
+  else if (MODE === 'embed') { await embedShard(parseInt(arg('--shard', '0'), 10), parseInt(arg('--of', '1'), 10)); }
+  else if (MODE === 'shard-all') {
+    await shardAll(parseInt(arg('--shards', '8'), 10), {
+      stallMinutes: parseFloat(arg('--stall-minutes', '15')),
+      pollSeconds: parseFloat(arg('--poll-seconds', '15')),
+    });
+  }
+  else if (MODE === 'ingest') { await ingestStore(); }
+  else if (MODE === 'both') { await embedShard(0, 1); await ingestStore(); }
+  else { console.error('usage: forge-big.mjs <embed|shard-all|ingest|both|--smoke> --dir <d> --name <n> [--shard i --of n] [--shards n --stall-minutes m]'); process.exit(2); }
 }
-else if (MODE === 'ingest') { await ingestStore(); }
-else if (MODE === 'both') { await embedShard(0, 1); await ingestStore(); }
-else { console.error('usage: forge-big.mjs <embed|shard-all|ingest|both|--smoke> --dir <d> --name <n> [--shard i --of n] [--shards n --stall-minutes m]'); process.exit(2); }
+
+// Entry-point guard. Compares REALPATHS on both sides: path.resolve() normalizes a path but does
+// NOT follow symlinks, while import.meta.url IS symlink-resolved by Node. Through a symlink (npm bin
+// shims, wrapper scripts, and every os.tmpdir() path on macOS) the two sides disagree, so main()
+// never runs -- and because nothing throws, the process exits 0. A silent exit 0 is indistinguishable
+// from "ran, found nothing". Reproduced live 2026-07-27; pinned by tests/unit/entrypoint-symlink.test.mjs.
+function isDirectInvocation() {
+  try {
+    if (!process.argv[1]) return false;
+    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+const INVOKED_DIRECTLY = isDirectInvocation();
+if (INVOKED_DIRECTLY) {
+  try {
+    await main();
+  } catch (error) {
+    // One greppable line first, then the full stack. `nightly-gists.sh` appends this to a log a
+    // human reads after the fact, and a corpus error that arrives only as an unhandled rejection
+    // reads like a crash rather than the actionable "line 3 will not parse" that it is.
+    console.error(`[big] FATAL: ${error?.message ?? error}`);
+    console.error(error?.stack ?? '');
+    process.exit(1);
+  }
+}

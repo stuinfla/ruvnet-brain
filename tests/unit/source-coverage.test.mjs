@@ -26,7 +26,11 @@ describe('artifact-bound source coverage', () => {
   });
 
   it('binds an explicit no-corpus exclusion into an ineligible repository row', () => {
-    const exclusion = { reason: 'heading-only repository has no functional corpus', pushedAt: repo.pushedAt };
+    // ADR-086 Step 12: an active exclusion must carry source-file evidence bound to the observed head
+    // (tests/unit/source-coverage-completeness.test.mjs pins the throw when it is missing).
+    const exclusion = { reason: 'heading-only repository has no functional corpus', pushedAt: repo.pushedAt,
+      evidence: { method: 'gh api repos/ruvnet/ruflo/git/trees/HEAD?recursive=1', headSha: 'a'.repeat(40),
+        inspectedAt: '2026-09-13T00:00:00Z', truncated: false, files: [{ path: 'README.md', size: 15 }] } };
     expect(classifyRepository(repo, { ...evidence, rvfPresent: false }, exclusion)).toMatchObject({
       status: 'INELIGIBLE',
       disposition: 'excluded-no-corpus',
@@ -121,6 +125,16 @@ describe('artifact-bound source coverage', () => {
     expect(sourceObservationDigest(first)).toBe(sourceObservationDigest(second));
   });
 
+  it('preserves top-level gist inventory truncation as a sealed source fact', () => {
+    const base = { id: 'abc', updated_at: '2026-08-21T00:00:00Z', files: {} };
+    expect(canonicalGistRows([{ ...base, truncated: true }])[0].truncated).toBe(true);
+    expect(canonicalGistRows([{ ...base, truncated: false }])[0].truncated).toBe(false);
+    const obs = (truncated) => ({ schemaVersion: 1, kind: 'ruvnet-brain-source-observation', owner: 'ruvnet',
+      repositories: { rows: [], expected: 0 }, gists: { rows: [{ ...base, truncated }], expected: 1 } });
+    expect(sourceObservationDigest(obs(true))).not.toBe(sourceObservationDigest(obs(false)));
+    expect(canonicalGistRows([{ ...base }])[0]).not.toHaveProperty('truncated');
+  });
+
   it.each([
     ['repository HEAD', (base) => ({ ...base, repositories: { ...base.repositories, rows: [
       { ...base.repositories.rows[0], defaultBranchRef: { ...base.repositories.rows[0].defaultBranchRef,
@@ -167,7 +181,7 @@ describe('artifact-bound source coverage', () => {
   });
 
   it('requires a complete version-bound per-gist receipt before calling a gist current, never a timestamp cache', () => {
-    const gist = { id: 'g', updated_at: '2026-08-21T00:00:00Z', html_url: 'https://gist.github.com/g',
+    const gist = { id: 'g', updated_at: '2026-08-21T00:00:00Z', html_url: 'https://gist.github.com/g', truncated: false,
       files: { a: { filename: 'a.md', raw_url: `https://gist.githubusercontent.com/ruvnet/g/raw/${'d'.repeat(40)}/a.md` } } };
     expect(gistVersion(gist)).toBe('d'.repeat(40));
     const base = { rvfPresent: true, bytesVerified: true, passagesBound: true, receipt: {} };
@@ -188,6 +202,11 @@ describe('artifact-bound source coverage', () => {
     expect(classifyGist(gist, { ...base, sources: { gists: { g: {
       versionSha: 'd'.repeat(40), updatedAt: gist.updated_at, ingestedAt: gist.updated_at, contentDigest: 'x', files: [{}], complete: true,
     } } } }).status).toBe('CURRENT');
+    expect(classifyGist({ ...gist, truncated: true }, { ...base, sources: { gists: { g: {
+      versionSha: 'd'.repeat(40), updatedAt: gist.updated_at, ingestedAt: gist.updated_at, contentDigest: 'x', files: [{}], complete: true,
+    } } } })).toMatchObject({ status: 'UNVERIFIED', upstream: { truncated: true } });
+    const { truncated: _flag, ...unknownInventory } = gist;
+    expect(classifyGist(unknownInventory, base).status).toBe('UNVERIFIED');
   });
 
   it('binds enumeration evidence and every ordered row into one stable generation', () => {
@@ -247,14 +266,21 @@ describe('observeGists — falls back to the unauthenticated API on the Actions 
       }
       return JSON.stringify({ public_gists: gists.length });
     };
+    // ADR-086 Step 12 (A1): a short page is no longer the end — only an EMPTY page terminates the
+    // fallback (a partial page followed by more must not stop early), so the real API's empty page 2
+    // is modelled here and curl is called exactly twice.
+    const requested = [];
     const curl = (url) => {
-      expect(url).toContain('page=1');
-      return JSON.stringify(gists); // fewer than 100 -> fallback stops after page 1, curl called once
+      const page = Number(new URL(url).searchParams.get('page'));
+      requested.push(page);
+      return JSON.stringify(page === 1 ? gists : []);
     };
     const result = observeGists('ruvnet', { gh, curl });
+    expect(requested).toEqual([1, 2]);
     expect(result.rows).toHaveLength(5);
     expect(result.rows.map((g) => g.id)).toEqual(['g0', 'g1', 'g2', 'g3', 'g4']);
     expect(result.expected).toBe(5);
+    expect(result.pages.map((page) => page.count)).toEqual([5, 0]);
   });
 
   it('control: a gh failure for any OTHER reason still throws, not silently falling back', () => {

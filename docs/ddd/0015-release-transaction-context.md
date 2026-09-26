@@ -1,4 +1,4 @@
-Updated: 2026-09-04 07:33:00 EDT | Version 2.1.1
+Updated: 2026-09-20 11:12:00 EDT | Version 2.1.2
 Created: 2026-08-02 20:10:00 EDT
 
 # DDD-0015 — The Release Transaction bounded context
@@ -13,10 +13,11 @@ The Release Transaction context converts one sealed candidate into one supported
 generation across GitHub, npm, Claude, Codex, Stable Spine, and Console. It owns provider staging,
 promotion, compensation, and receipts. It does not build the corpus, choose a version, modify source,
 or authorize publication. `.github/workflows/release-candidate-preflight.yml` qualifies the
-candidate once on `release/**` and emits `release-candidate-<exact SHA>`. After that SHA is
-fast-forwarded unchanged to main, `.github/workflows/protected-release.yml` is the sole publication
-controller: it imports and revalidates those bytes, publishes once, then owns public 3x3 verification
-and the terminal receipt.
+candidate once on `release/**` and emits `release-candidate-<exact SHA>`. The release PR then obtains
+its exact-SHA consumer checks. Do not merge the PR: GitHub merge, squash, and rebase create a new SHA.
+Promote the qualified SHA to main with a normal non-force fast-forward, then
+`.github/workflows/protected-release.yml` is the sole publication controller: it imports and
+revalidates those bytes, publishes once, then owns public 3x3 verification and the terminal receipt.
 
 ## Ubiquitous language
 
@@ -265,4 +266,5 @@ identify one safe supported generation; otherwise it enters `manual-intervention
 
 | Date | Change |
 |---|---|
+| 2026-09-20 | Clarified release-branch preflight, exact-SHA PR checks, and unchanged-SHA fast-forward promotion; GitHub PR merge methods invalidate candidate artifacts. |
 | 2026-09-04 | Reconciled the expedited two-phase context with ADR-062: `.github/workflows/release-candidate-preflight.yml` runs long qualification once and names `release-candidate-<exact SHA>`; after an unchanged fast-forward, `.github/workflows/protected-release.yml` revalidates that artifact, publishes once, and owns public proof through `install-verified`. Review is change-triggered and only labeled `release-blocker` issues stop dispatch. |

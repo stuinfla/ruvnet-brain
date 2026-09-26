@@ -1,130 +1,24 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 import {
   createCorpusReceipt,
   verifyCorpusReceipt,
   verifySeedBaseline,
 } from '../../scripts/corpus-candidate.mjs';
-import {
-  corpusSeedTag,
-  publishCorpusSeed,
-} from '../../scripts/corpus-seed-publish.mjs';
+import { RvfDatabase, SOURCE_COMMIT, buildAssets, seal, sha256, writeAccuracyReport, writeRecallReport } from '../helpers/corpus-seed-fixture.mjs';
 
-// deriveCorpusCandidate (scripts/corpus-candidate.mjs) now audits every shipped .big.rvf's HNSW
-// index via scripts/rvf-index-audit.mjs's auditRvfIndexes, which opens the file with the real
-// @ruvector/rvf runtime — a placeholder text file no longer stands in for an RVF store. This
-// writes a genuine, minimal RVF (well under the 1,024-vector HNSW threshold, so no persisted
-// index is required and the audit always reports PASS for it).
-const requireFromKb = createRequire(new URL('../../kb/package.json', import.meta.url));
-const { RvfDatabase } = requireFromKb('@ruvector/rvf');
-
-async function writeMinimalRvf(rvfPath) {
-  const db = await RvfDatabase.create(rvfPath, { dimensions: 3, metric: 'cosine' });
-  await db.ingestBatch([{ id: 'v-0', vector: [1, 0, 0] }, { id: 'v-1', vector: [0, 1, 0] }]);
-  await db.close();
-}
+// The genuine-RVF bundle fixture (writeMinimalRvf / buildAssets / seal) moved to
+// tests/helpers/corpus-seed-fixture.mjs on 2026-09-13 so tests/unit/corpus-seed-release-authority.test.mjs
+// can share it — see that file's header for why a placeholder text file cannot stand in for an RVF.
 
 const dirs = [];
 afterEach(() => {
   vi.restoreAllMocks();
   while (dirs.length) fs.rmSync(dirs.pop(), { recursive: true, force: true });
 });
-
-function sha256(file) {
-  return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-}
-
-function createArchive(bundle, bundleRoot) {
-  if (fs.existsSync(bundle)) fs.rmSync(bundle);
-  if (process.platform === 'win32') {
-    const escapedRoot = bundleRoot.replaceAll("'", "''");
-    const escapedBundle = bundle.replaceAll("'", "''");
-    return execFileSync('powershell.exe', [
-      '-NoProfile',
-      '-NonInteractive',
-      '-Command',
-      `Compress-Archive -Path '${escapedRoot}' -DestinationPath '${escapedBundle}' -Force`,
-    ], { encoding: 'utf8' });
-  }
-  return execFileSync('zip', ['-qr', bundle, 'ruvnet-brain'], { cwd: path.dirname(bundleRoot), encoding: 'utf8' });
-}
-
-// Rebuild ARCHIVE-MANIFEST.json from the exact bytes present in bundleDir right now (mirrors
-// scripts/build-bundle.mjs's own manifest assembly), then seal a fresh zip over it. Every mutation
-// test in this file mutates bundleDir *before* calling seal(), so the manifest and the zip it seals
-// are always mutually consistent — exactly like the real builder.
-function seal(root, bundleDir) {
-  const files = [];
-  const walk = (dir, prefix = '') => {
-    for (const name of fs.readdirSync(dir).sort()) {
-      if (name === 'ARCHIVE-MANIFEST.json') continue;
-      const full = path.join(dir, name);
-      const relative = prefix ? `${prefix}/${name}` : name;
-      const stat = fs.statSync(full);
-      if (stat.isDirectory()) walk(full, relative);
-      else files.push({ path: relative, sha256: sha256(full), bytes: stat.size });
-    }
-  };
-  walk(bundleDir);
-  const manifest = {
-    schemaVersion: 1,
-    kind: 'ruvnet-brain-archive-manifest',
-    version: '9.9.9',
-    releaseTag: 'v9.9.9',
-    fileCount: files.length,
-    totalBytes: files.reduce((total, file) => total + file.bytes, 0),
-    files,
-  };
-  fs.writeFileSync(path.join(bundleDir, 'ARCHIVE-MANIFEST.json'), JSON.stringify(manifest, null, 2));
-  const bundle = path.join(path.dirname(path.dirname(bundleDir)), 'ruvnet-brain.zip');
-  createArchive(bundle, bundleDir);
-  return bundle;
-}
-
-const SOURCE_COMMIT = 'a'.repeat(40);
-
-async function buildAssets(root) {
-  const bundleDir = path.join(root, 'bundle', 'ruvnet-brain');
-  fs.mkdirSync(bundleDir, { recursive: true });
-  // RvfDatabase.create() writes alpha.big.rvf AND its own alpha.big.rvf.idmap.json sidecar, so
-  // that one must not be pre-written here — only the sidecars the real RVF runtime does not
-  // generate itself.
-  await writeMinimalRvf(path.join(bundleDir, 'alpha.big.rvf'));
-  const publicFiles = {
-    'alpha.big.rvf.embed.json': '{"model":"local"}',
-    'alpha.passages.jsonl': '{"text":"alpha"}\n',
-    'alpha.meta.json': '{"dimensions":384}',
-  };
-  for (const [name, body] of Object.entries(publicFiles)) fs.writeFileSync(path.join(bundleDir, name), body);
-  fs.writeFileSync(path.join(bundleDir, 'PRIVATE-STORES.json'), JSON.stringify({ privateStores: ['secret'] }));
-  fs.writeFileSync(path.join(bundleDir, 'RVF-GENERATIONS.json'), JSON.stringify({
-    schemaVersion: 1,
-    brainVersion: '9.9.9',
-    releaseTag: 'v9.9.9',
-    stores: {
-      alpha: {
-        file: 'alpha.big.rvf',
-        sha256: sha256(path.join(bundleDir, 'alpha.big.rvf')),
-        bytes: fs.statSync(path.join(bundleDir, 'alpha.big.rvf')).size,
-        model: 'local',
-        dimensions: 384,
-        sourceCommit: SOURCE_COMMIT,
-        builtUtc: '2026-08-21T12:00:00.000Z',
-      },
-    },
-  }));
-  fs.writeFileSync(path.join(bundleDir, 'SOURCE.json'), JSON.stringify({
-    builder: 'rvf-kb-forge',
-    stores: { alpha: { sourceCommit: SOURCE_COMMIT } },
-  }));
-  fs.writeFileSync(path.join(bundleDir, 'public-store-classes.json'), JSON.stringify({ schemaVersion: 1, derived: [] }));
-  return bundleDir;
-}
 
 async function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'corpus-seed-'));
@@ -143,13 +37,13 @@ async function create(f) {
   });
 }
 
-describe('immutable corpus candidate receipt (schema 2)', () => {
+describe('immutable corpus candidate receipt (schema 3)', () => {
   it('creates and verifies a receipt binding every public store, sidecar, fence, and archive byte', async () => {
     const f = await fixture();
     const receipt = await create(f);
 
     expect(receipt).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       kind: 'ruvnet-brain-corpus-candidate',
       builderSourceSha: 'c'.repeat(40),
       storeCount: 1,
@@ -224,6 +118,25 @@ describe('immutable corpus candidate receipt (schema 2)', () => {
     probe[0] = 1;
     await indexer.query(probe, 1);
     await indexer.close();
+
+    // Step 13's deep C2 audit proves id-map <-> vector <-> passage <-> source-mapping
+    // correspondence, so replacing the store's vectors means replacing its sidecars too — the
+    // fixture's 2-passage set describes v-0/v-1, not the 1,024 vectors ingested above. Without
+    // this the positive control below fails `passage-missing` before corruption is ever tested.
+    const bigPassages = Array.from({ length: 1024 }, (_, index) => ({
+      id: `vector-${index}`,
+      text: `alpha passage ${index}`,
+      path: `docs/${index}.md`,
+      title: String(index),
+    }));
+    fs.writeFileSync(path.join(f.bundleDir, 'alpha.passages.jsonl'), `${bigPassages.map((row) => JSON.stringify(row)).join('\n')}\n`);
+    fs.writeFileSync(path.join(f.bundleDir, 'alpha.meta.json'), JSON.stringify({
+      dimensions: 3,
+      incremental: {
+        schemaVersion: 2,
+        files: Object.fromEntries(bigPassages.map((row) => [row.path, { chunkIds: [row.id] }])),
+      },
+    }));
 
     const rebindLedgerToCurrentBytes = () => {
       const ledger = JSON.parse(fs.readFileSync(ledgerFile, 'utf8'));
@@ -331,6 +244,14 @@ describe('immutable corpus candidate receipt (schema 2)', () => {
     }
     expect(hits, 'the fixture must actually contain a traversal name, or this test guards nothing').toBeGreaterThan(0);
     fs.writeFileSync(f.bundle, bytes);
+    // Step 15: the detached accuracy report binds the archive's OUTER digest, so it has to be
+    // rewritten for the traversal bytes — otherwise this would assert the accuracy binding rather
+    // than the extractor rejection it exists to prove.
+    writeAccuracyReport(f.bundle);
+    // Same reason for the recall report: it is bound to the archive's OUTER digest and the blocking
+    // gate reads it BEFORE extraction, so without rebinding this would assert the recall binding
+    // rather than the extractor rejection it exists to prove.
+    writeRecallReport(f.bundle);
     await expect(create(f)).rejects.toThrow(/cannot extract archive/i);
   });
 });
@@ -379,53 +300,5 @@ describe('verifySeedBaseline — external content-addressed tag never compared t
       bundleFile: f.bundle,
       receiptFile: f.receiptFile,
     })).resolves.toMatchObject({ tag: legacyPinnedTag });
-  });
-});
-
-describe('immutable corpus seed publishing', () => {
-  it('derives the tag from the archive digest and refuses to overwrite an existing release', async () => {
-    const f = await fixture();
-    const receipt = await create(f);
-    const tag = corpusSeedTag(receipt);
-    expect(tag).toBe(`corpus-sha256-${receipt.archive.sha256}`);
-
-    const run = vi.fn(() => ({ status: 0, stdout: '', stderr: '' }));
-    await expect(publishCorpusSeed({
-      receiptFile: f.receiptFile,
-      bundleFile: f.bundle,
-      run,
-    }))
-      .rejects.toThrow(/already exists.*refusing to overwrite/i);
-    expect(run).toHaveBeenCalledWith('gh', ['release', 'view', tag, '--json', 'tagName'], expect.any(Object));
-  });
-
-  it('hands a new digest-tagged prerelease to the repository\'s sole release authority', async () => {
-    const f = await fixture();
-    const receipt = await create(f);
-    const calls = [];
-    const run = (command, args, options) => {
-      calls.push({ command, args, options });
-      if (args[1] === 'view') return { status: 1, stdout: '', stderr: 'not found' };
-      return { status: 0, stdout: 'created', stderr: '' };
-    };
-
-    await expect(publishCorpusSeed({
-      receiptFile: f.receiptFile,
-      bundleFile: f.bundle,
-      run,
-    }))
-      .resolves.toMatchObject({ tag: corpusSeedTag(receipt), archiveSha256: receipt.archive.sha256 });
-    expect(calls[1]).toMatchObject({
-      command: process.execPath,
-      args: expect.arrayContaining([
-        expect.stringMatching(/[\\/]scripts[\\/]release\.mjs$/),
-        '--corpus-seed',
-        '--corpus-tag', corpusSeedTag(receipt),
-        '--corpus-bundle', f.bundle,
-        '--corpus-receipt', f.receiptFile,
-        '--target', receipt.builderSourceSha,
-      ]),
-    });
-    expect(calls[1].args.join(' ')).not.toMatch(/release create|--clobber/);
   });
 });

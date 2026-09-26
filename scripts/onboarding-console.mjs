@@ -33,6 +33,7 @@ import { planFor } from './remedy-registry.mjs';
 import { auditAll as capabilityAuditAll } from './capability-registry.mjs';
 import { getVersion } from './version.mjs';
 import { consoleRuntimeDigest } from './console-runtime-identity.mjs';
+import { isCorpusReleaseTag } from '../kb/corpus-release-identity.mjs';
 // L5 (ADR-028): the audit is the one place that observes live capability state, so it is where an
 // OFFERED-then-now-`on` transition becomes an APPLIED — the numerator of the precision metric that
 // tells the owner whether advocacy is landing or nagging. Both are pure reads/appends and never throw.
@@ -725,6 +726,50 @@ export function reconcileNightly({ choice, schedule }) {
       lastRunAt: run?.receipt?.finishedAt ?? run?.receipt?.startedAt ?? null,
       agree,
     },
+  };
+}
+
+// The one thing the console never showed: WHICH repositories are in the brain, by name. It has
+// always carried the count (206) and never the inventory — the owner asked for this list more than
+// a dozen times. RVF-GENERATIONS.json is the manifest that matches disk exactly (verified 206 = 206);
+// SOURCE.json is the provenance subset (104) that carries the upstream URL. Join on store name,
+// never restate either. Ranked by build recency — never alphabetical (relevance-ordering rule).
+function gatherInventory() {
+  const generations = readJSON(path.join(INSTALLED_KB, 'RVF-GENERATIONS.json'));
+  const source = readJSON(path.join(INSTALLED_KB, 'SOURCE.json'));
+  const stores = generations?.stores && typeof generations.stores === 'object' ? generations.stores : null;
+  if (!stores) return { available: false, reason: 'RVF-GENERATIONS.json not readable in the installed brain', count: 0, stores: [] };
+  // SOURCE.json has carried `stores` as an array in some generations and a name-keyed object in
+  // others; accept both rather than silently joining nothing (measured 2026-09-16: object form,
+  // and the array-only read reported withProvenance=0 for a brain with 104 provenance rows).
+  const provenance = new Map();
+  const sourceRows = Array.isArray(source?.stores) ? source.stores
+    : source?.stores && typeof source.stores === 'object'
+      ? Object.entries(source.stores).map(([name, row]) => ({ name, ...row })) : [];
+  for (const row of sourceRows) {
+    if (row?.name) provenance.set(String(row.name).toLowerCase(), row);
+  }
+  const rows = Object.entries(stores).map(([name, gen]) => {
+    const prov = provenance.get(name.toLowerCase());
+    return {
+      name,
+      sourceRepo: prov?.sourceRepo || null,
+      sourceCommit: gen?.sourceCommit ? String(gen.sourceCommit).slice(0, 7) : null,
+      builtUtc: gen?.builtUtc || null,
+      bytes: Number(gen?.bytes) || 0,
+      model: gen?.model || null,
+      private: prov?.updateManaged === false,
+    };
+  }).sort((a, b) => String(b.builtUtc || '').localeCompare(String(a.builtUtc || '')) || a.name.localeCompare(b.name));
+  return {
+    available: true,
+    count: rows.length,
+    withProvenance: rows.filter((r) => r.sourceRepo).length,
+    privateCount: rows.filter((r) => r.private).length,
+    brainVersion: generations.brainVersion || null,
+    releaseTag: generations.releaseTag || null,
+    totalBytes: rows.reduce((sum, r) => sum + r.bytes, 0),
+    stores: rows,
   };
 }
 
@@ -2082,10 +2127,19 @@ export function versionFacts({ release = null } = {}) {
   const runningBrain = brainVersionOnDisk();
   let installedPlugin = null;
   try { installedPlugin = readInstallChannel().version || null; } catch { installedPlugin = null; }
-  const latestRelease = typeof release?.tag === 'string' && release.tag ? release.tag.replace(/^v/, '') : null;
+  // A CORPUS RELEASE IS NOT A VERSION (ADR-086 step 16). `releases/latest` can now carry a
+  // `corpus-sha256-<64 hex>` content address, and stripping a leading "v" off one yields a 78-char
+  // string that this panel would have printed in the "latest release" slot beside `4.3.22`-shaped
+  // numbers — in the one panel whose whole job is to make version disagreement visible. That is not
+  // a version disagreement; it is a category error, and showing it as one would be the panel lying.
+  // So the two identities are reported in two fields, each labeled for what it actually is.
+  const rawTag = typeof release?.tag === 'string' && release.tag ? release.tag : null;
+  const corpusTag = isCorpusReleaseTag(rawTag) ? rawTag : null;
+  const latestRelease = rawTag && !corpusTag ? rawTag.replace(/^v/, '') : null;
   const known = [kbGeneration, runningBrain, installedPlugin].filter(Boolean);
   const agree = known.length < 2 ? null : known.every((x) => x === known[0]);
-  return { kbGeneration, runningBrain, installedPlugin, latestRelease, agree, known: known.length };
+  return { kbGeneration, runningBrain, installedPlugin, latestRelease, latestCorpusRelease: corpusTag,
+    agree, known: known.length };
 }
 
 async function gatherTrust() {
@@ -2258,7 +2312,7 @@ function gatherState(cwd, { fleet = true } = {}) {
     generatedAt: new Date().toISOString(),
     preStateHash,
     host: { user: os.userInfo().username, platform: process.platform, node: process.version, npmPrefix: NPM_PREFIX.replace(SYSTEM_HOME, '~'), brainVersion: brainVersionOnDisk() },
-    sections: { wiring, memory, savings, config, userSettings, brainPower, gates, recommendations },
+    sections: { wiring, memory, savings, config, userSettings, brainPower, gates, recommendations, inventory: gatherInventory() },
   };
   // Cache the last good state so repeat page-loads paint instantly, same as the stack audit does.
   // TOKEN is per-server-run and must never touch disk — ?fast=1 splices the live one back in.

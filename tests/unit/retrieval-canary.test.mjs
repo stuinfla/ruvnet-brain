@@ -2,10 +2,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { coverageGenerationFor, releaseCoverageGenerationFor, digest } from '../../scripts/coverage-integrity.mjs';
 import { getVersionTag } from '../../scripts/version.mjs';
 import {
+  auditOracleCoverage,
   buildRetrievalCanaryPlan,
   runRetrievalCanaries,
   sealRetrievalQueryEvidence,
@@ -375,5 +377,110 @@ describe('coverage-derived retrieval canaries', () => {
     shrunk.cases.pop();
     shrunk.receiptSha256 = digest(Object.fromEntries(Object.entries(shrunk).filter(([key]) => key !== 'receiptSha256')));
     expect(() => validateRetrievalCanaryReceipt(shrunk, { plan, requireAcceptance: false })).toThrow(/denominator/);
+  });
+});
+
+describe('independent oracle coverage inventory', () => {
+  const exempt = (rows) => ({ schemaVersion: 1, kind: 'ruvnet-brain-retrieval-oracle-exemptions', exemptions: rows });
+
+  it('fails loudly and names every eligible store with no source-grounded row', () => {
+    const { coverage, queryEvidence } = fixture();
+    expect(auditOracleCoverage({ coverage, queryEvidence }))
+      .toEqual({ eligible: 6, covered: 6, missing: [], exempt: [], extra: [], staleExemptions: [] });
+
+    const uncovered = structuredClone(queryEvidence);
+    delete uncovered.queries['new-e'];
+    delete uncovered.queries['old-c'];
+    const stores = Object.keys(uncovered.queries).sort();
+    const stripped = sealRetrievalQueryEvidence({ ...uncovered, queryStoreSetSha256: digest(stores) });
+    expect(() => auditOracleCoverage({ coverage, queryEvidence: stripped }))
+      .toThrow(/no source-grounded row for 2 of 6 eligible stores: new-e, old-c/);
+
+    // A row for a store that is NOT in the eligible denominator is equally a defect:
+    // buildRetrievalCanaryPlan demands exact set equality in both directions.
+    const widened = structuredClone(queryEvidence);
+    const value = { query: 'independently authored behavior question for a retired store boundary',
+      expected: queryEvidence.queries['old-a'].expected };
+    widened.queries.retired = { ...value, recordSha256: digest({ store: 'retired', ...value }) };
+    const resealed = sealRetrievalQueryEvidence({ ...widened,
+      queryStoreSetSha256: digest(Object.keys(widened.queries).sort()) });
+    expect(() => auditOracleCoverage({ coverage, queryEvidence: resealed }))
+      .toThrow(/covers 1 store\(s\) outside the eligible denominator: retired/);
+  });
+
+  it('accepts an evidenced exemption, and only an evidenced one', () => {
+    const { coverage, queryEvidence } = fixture();
+    const uncovered = structuredClone(queryEvidence);
+    delete uncovered.queries['new-f'];
+    const stores = Object.keys(uncovered.queries).sort();
+    const stripped = sealRetrievalQueryEvidence({ ...uncovered, queryStoreSetSha256: digest(stores) });
+    const evidenced = exempt([{ store: 'new-f', upstreamSha: 'c'.repeat(40), evidencePaths: ['LICENSE'],
+      reason: 'upstream carries only a license file, so no prose can ground a question' }]);
+
+    expect(auditOracleCoverage({ coverage, queryEvidence: stripped, exemptions: evidenced }))
+      .toEqual({ eligible: 6, covered: 5, missing: [], exempt: ['new-f'], extra: [], staleExemptions: [] });
+
+    // Every field of the admission is load-bearing; drop any one and the store is missing again.
+    for (const mutate of [
+      (row) => { delete row.evidencePaths; },
+      (row) => { row.evidencePaths = []; },
+      (row) => { row.reason = 'too short'; },
+      (row) => { row.upstreamSha = 'not-a-sha'; },
+      (row) => { row.note = 'undeclared field'; },
+    ]) {
+      const broken = exempt([structuredClone(evidenced.exemptions[0])]);
+      mutate(broken.exemptions[0]);
+      expect(() => auditOracleCoverage({ coverage, queryEvidence: stripped, exemptions: broken }))
+        .toThrow(/exemption for new-f is malformed|exemptions are malformed/);
+    }
+
+    // A recorded admission for a store that IS covered has to be withdrawn, not left to rot.
+    expect(() => auditOracleCoverage({ coverage, queryEvidence, exemptions: evidenced }))
+      .toThrow(/exemption is stale for new-f/);
+  });
+
+  it('holds the shipping oracle to the shipping coverage denominator', () => {
+    const root = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
+    const coverage = JSON.parse(fs.readFileSync(path.join(root, 'data/source-coverage.json'), 'utf8'));
+    const queryEvidence = JSON.parse(fs.readFileSync(path.join(root, 'data/retrieval-query-evidence.json'), 'utf8'));
+    const report = auditOracleCoverage({ coverage, queryEvidence });
+    expect(report.missing).toEqual([]);
+    expect(report.extra).toEqual([]);
+    expect(report.covered).toBe(report.eligible);
+    // Not a tautology: these are the exact numbers ADR-085's F9 reported as 182 of 194.
+    expect(report.eligible).toBe(194);
+    for (const store of ['apx', 'batvu', 'event-horizon', 'group-field-theory', 'minitoo-control',
+      'moe-foundry', 'openavo', 'rgi', 'ruclip', 'ruforecast', 'rultra', 'ruos']) {
+      expect(queryEvidence.queries[store].expected.path).toBe('README.md');
+    }
+  });
+
+  // THE FAILURE THIS EXISTS TO END. The oracle is sealed in two commits: one writes the payload,
+  // the next names that commit. Re-creating the payload commit — a rebase, a cherry-pick, a squash
+  // onto another branch — leaves the seal pointing at a commit that is no longer an ancestor, and
+  // often no longer exists anywhere but one machine. That happened on 2026-09-14: the shipping
+  // oracle named a commit that lived only in an agent worktree, so verifyQueryOracleSource would
+  // have failed every release-qe run, and ci.yml's `git fetch --no-tags origin
+  // $ORACLE_SOURCE_COMMIT` would have failed before that. Nothing detected it, because the two
+  // things that break are ANCESTRY and OBJECT EXISTENCE — neither of which any digest can see.
+  it('keeps the shipping oracle bound to a real ancestor of this checkout', () => {
+    const root = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
+    const evidence = JSON.parse(fs.readFileSync(path.join(root, 'data/retrieval-query-evidence.json'), 'utf8'));
+    const run = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
+    const present = (() => {
+      try { run('cat-file', '-e', `${evidence.sourceCommit}^{commit}`); return true; } catch { return false; }
+    })();
+    if (!present) {
+      // A shallow or partial checkout legitimately lacks the object; ci.yml fetches it explicitly
+      // before the plan build. Anything else means the seal names a commit that does not exist.
+      expect(run('rev-parse', '--is-shallow-repository')).toBe('true');
+      return;
+    }
+    expect(() => run('merge-base', '--is-ancestor', evidence.sourceCommit, 'HEAD')).not.toThrow();
+    expect(evidence.sourceCommit).not.toBe(run('rev-parse', 'HEAD'));
+    const sealedPayload = JSON.parse(run('show', `${evidence.sourceCommit}:${evidence.sourcePath}`));
+    expect(digest({ schemaVersion: sealedPayload.schemaVersion, kind: sealedPayload.kind,
+      queryStoreSetSha256: sealedPayload.queryStoreSetSha256, queries: sealedPayload.queries }))
+      .toBe(evidence.sourceBlobSha256);
   });
 });

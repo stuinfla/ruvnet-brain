@@ -10,10 +10,13 @@
 //   4. (tests/integration/public-inputs-packaging.test.mjs) every file concepts.sources.json names
 //      survives packaging with IDENTICAL bytes.
 import { afterEach, describe, expect, it } from 'vitest';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { materializePublicInputs, resolveTopicOwnership } from '../../scripts/public-inputs.mjs';
+import { SELECTION_FILE, materializePublicInputs, resolveTopicOwnership,
+  validateSelectionReceipt } from '../../scripts/public-inputs.mjs';
+import { digest } from '../../scripts/coverage-integrity.mjs';
 
 const temps = [];
 function temp() {
@@ -70,6 +73,15 @@ describe('materializePublicInputs — property 1: private fixtures are excluded'
       { slug: 'private-architecture', repo: 'sample-private-repo', sha256: expect.stringMatching(/^[a-f0-9]{64}$/), bytes: expect.any(Number) },
     ]);
     expect(JSON.stringify(result.selectionReceipt)).not.toContain('secret body');
+  });
+
+  it('excludes capability-only Cognitum ruOS implementation primers from public prose', () => {
+    const root = makeBuilderRoot({ repos: { 'cognitum-ruos': { primer: '# Internal paths and implementation' }, 'sample-public-repo': {} } });
+    const out = path.join(temp(), 'assets');
+    const result = materializePublicInputs({ builderRoot: root, outDir: out });
+    expect(fs.existsSync(path.join(out, 'cognitum-ruos-primer.md'))).toBe(false);
+    expect(result.selectionReceipt.included.primers).not.toContain('cognitum-ruos');
+    expect(result.selectionReceipt.excluded.primers.map(row => row.repo)).toContain('cognitum-ruos');
   });
 
   it('fences a private-owned L2 article even when its repo attribution is unattributed/public (QE-0011 shape)', () => {
@@ -206,5 +218,50 @@ describe('materializePublicInputs — builder identity + fail-closed fence', () 
     fs.mkdirSync(path.join(root, 'kb'), { recursive: true });
     expect(() => materializePublicInputs({ builderRoot: root, outDir: path.join(temp(), 'a') }))
       .toThrow(/private fence missing/i);
+  });
+});
+
+describe('validateSelectionReceipt — filesystem containment (P2, Dual 2026-09-14)', () => {
+  /** A REAL sealed tree, then a receipt row rewritten to the path under test. The receipt is
+   * re-sealed with the producer's own digest so the row check — not the digest check — is what
+   * decides, and a green result would mean the traversal genuinely got through. */
+  const sealedTree = () => {
+    const root = makeBuilderRoot({ repos: { 'repo-alpha': {} } });
+    const out = path.join(temp(), 'sealed');
+    materializePublicInputs({ builderRoot: root, outDir: out });
+    return out;
+  };
+  const reseal = (out, mutate) => {
+    const receipt = JSON.parse(fs.readFileSync(path.join(out, SELECTION_FILE), 'utf8'));
+    mutate(receipt);
+    const { receiptSha256: _old, ...payload } = receipt;
+    return { ...payload, receiptSha256: digest(payload) };
+  };
+
+  it('rejects a BACKSLASH-separated traversal that the slash-only split never saw', () => {
+    const out = sealedTree();
+    const receipt = reseal(out, (r) => { r.files[0] = { ...r.files[0], path: '..\\escape.md' }; });
+    expect(() => validateSelectionReceipt({ receipt, dir: out })).toThrow(/sealed file row is malformed/);
+  });
+
+  it('rejects a row whose ANCESTOR directory is a symlink pointing outside the sealed tree', () => {
+    const out = sealedTree();
+    const outside = temp();
+    fs.writeFileSync(path.join(outside, 'smuggled.md'), '# prose from outside the seal\n');
+    // The final entry is a genuine regular file; only the DIRECTORY component is a symlink, which is
+    // exactly the case the previous "final file only" check could not see.
+    fs.symlinkSync(outside, path.join(out, 'elsewhere'));
+    const receipt = reseal(out, (r) => {
+      r.files.push({ path: 'elsewhere/smuggled.md',
+        sha256: crypto.createHash('sha256').update(fs.readFileSync(path.join(outside, 'smuggled.md'))).digest('hex'),
+        bytes: fs.statSync(path.join(outside, 'smuggled.md')).size });
+    });
+    expect(() => validateSelectionReceipt({ receipt, dir: out })).toThrow(/resolves outside the sealed directory/);
+  });
+
+  it('still accepts the producer\'s own output unchanged (the guard is containment, not paranoia)', () => {
+    const out = sealedTree();
+    const receipt = JSON.parse(fs.readFileSync(path.join(out, SELECTION_FILE), 'utf8'));
+    expect(() => validateSelectionReceipt({ receipt, dir: out })).not.toThrow();
   });
 });

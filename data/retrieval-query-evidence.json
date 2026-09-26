@@ -2,6 +2,10 @@
   "schemaVersion": 2,
   "kind": "ruvnet-brain-retrieval-query-evidence",
   "queryStoreSetSha256": "15c9b34624d9689ce8f95bafae3d4769840af7c1047900ba05a0ff02df05313e",
+  "sourceCommit": "eed238632345b0a52e27d4ca18849c620467a4de",
+  "sourcePath": "data/retrieval-query-evidence.json",
+  "sourceBlobSha256": "9fe2259689eb5607e2174e100b1fc404ce0f4e35d268cdcd12c3960e27bdb56e",
+  "receiptSha256": "03a6da2e77a1de44a78fe3c86a7d468fa8a6eb8c5fe2b5f96691fde1b27da63c",
   "queries": {
     "2bottalk": {
       "query": "In the 2bottalk repository, what is 2 BoT Talk AI-powered Bot Duo, what problem does it solve, and how is it intended to be used?",
@@ -1465,9 +1469,5 @@
       },
       "recordSha256": "61ea87ff7a3b7276e8f443fdea91ce0dbf0cfe54c44b0dea2a69c17809ee107c"
     }
-  },
-  "sourceCommit": "554985d083479163c03043ee697084d11163f863",
-  "sourcePath": "data/retrieval-query-evidence.json",
-  "sourceBlobSha256": "9fe2259689eb5607e2174e100b1fc404ce0f4e35d268cdcd12c3960e27bdb56e",
-  "receiptSha256": "e8c71f37093c06957add8571b9d2602f789d5b5c21d92975d9c9a56c186f3277"
+  }
 }

@@ -1,0 +1,9 @@
+{
+  "repository": "ruvnet/ruflo",
+  "commit": "e332689b8c04fc63989d82124298e6cf3d71ee76",
+  "path": "plugins/ruflo-intelligence/.claude-plugin/plugin.json",
+  "gitBlob": "6050eec216a313a1d457647a3663dc469c7a3f2a",
+  "sha256": "d92f48337f0f9045ccad57144cf4d6ff1255b46570096a480d9c696c5a5fd37f",
+  "evidenceClass": "documentation",
+  "claimBoundary": "Plugin declaration of transfer capability; not implementation or end-to-end execution proof."
+}

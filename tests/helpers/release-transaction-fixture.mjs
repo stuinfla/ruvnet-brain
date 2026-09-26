@@ -27,6 +27,15 @@ export class FakeReleaseProvider {
     this.draft = null;
     this.npmLatest = prior;
     this.githubLatest = `v${prior}`;
+    // The REAL provider answers two different questions that this fixture used to collapse into one:
+    // `latest` = "is this the newest CODE release" (true the instant a code release is published —
+    // observeGithub derives it from latestCodeReleaseTag(), by design, because a corpus generation
+    // may hold GitHub's pointer), and `pointerTag` = what releases/latest actually points at (moves
+    // only in makeGithubLatest). Modelling `latest` as the pointer here is why 4.3.25's deterministic
+    // failure at publish-github-nonlatest passed every test: the fixture could not express the bug.
+    // Opt in with codeRecencyLatest=true to get the real provider's contract.
+    this.codeRecencyLatest = false;
+    this.pointerTag = `v${prior}`;
     this.prior = prior;
     this.assetsExact = false;
     this.candidatePublished = false;
@@ -106,8 +115,9 @@ export class FakeReleaseProvider {
         sha: this.draft?.sha || null,
         draft: this.draft?.draft === true,
         published: this.githubPublished,
-        latest: githubLatest,
+        latest: this.codeRecencyLatest ? this.githubPublished : githubLatest,
         latestTag: this.githubLatest,
+        pointerTag: this.visible('githubLatest') ? this.pointerTag : `v${this.prior}`,
         assetsExact: this.assetsExact,
       },
       publicReceiptExact: this.publicReceiptExact,
@@ -145,6 +155,7 @@ export class FakeReleaseProvider {
     this.hit('makeGithubLatest');
     if (this.githubLatest !== expectedPrior && this.githubLatest !== identity.tag) throw new Error('GitHub latest compare failed');
     this.githubLatest = identity.tag;
+    this.pointerTag = identity.tag;
   }
   async restoreNpmLatest(prior, expected) {
     this.hit('restoreNpmLatest');

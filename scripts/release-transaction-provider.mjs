@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { canonicalJson } from './coverage-integrity.mjs';
+import { isCorpusReleaseTag, latestCodeReleaseTag } from './release-channel-kind.mjs';
 import {
   pollObservation, RECEIPT_PREFIX, receiptDisposition, transactionIdFor,
 } from './release-transaction.mjs';
@@ -16,6 +17,15 @@ const command = (name, args, options = {}) => execFileSync(name, args, {
   encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000, ...options,
 }).trim();
 const json = (name, args, options) => JSON.parse(command(name, args, options));
+// ADR-086 S1: `releases/latest` is the customer download pointer and is a corpus generation on any
+// night a corpus round shipped. Every question this provider asks is about the CODE generation, so
+// it must resolve the latest CODE release rather than read a pointer that now answers differently.
+const latestCodeTag = () => latestCodeReleaseTag(json('gh', ['api', `repos/${REPO}/releases?per_page=30`]));
+// Two DIFFERENT questions, deliberately: latestCodeTag() is "which CODE generation is newest" (a
+// corpus generation may hold the pointer — designed steady state); githubPointerTag() is "what does
+// GitHub's releases/latest actually point at right now". The publish-github-nonlatest gate needs the
+// second and was reading the first, which made it unsatisfiable for every freshly published release.
+const githubPointerTag = () => maybe(() => json('gh', ['api', `repos/${REPO}/releases/latest`]).tag_name, null);
 const maybe = (callback, fallback = null) => {
   try { return callback(); } catch { return fallback; }
 };
@@ -74,14 +84,26 @@ const sha256File = (file) => {
   return hash.digest('hex');
 };
 const assetDigest = (asset) => withTempAsset(asset, sha256File);
+// 4.3.25 run 35056636514: `npm publish` succeeded at ~04:47:31Z and the registry first showed the
+// version at 04:53:40Z (time.modified) — roughly six minutes. The poll gave up at 156s, the job
+// reported FAILURE, and an already-published release was left half-promoted with npm and GitHub
+// naming different generations (the exact #77 split). The action was never the problem; the
+// deadline was shorter than npm's propagation for this package. Ten minutes covers the observed
+// ~6 with margin; the env overrides remain for a runner that knows better.
 const OBSERVATION_POLICY = {
-  maxElapsedMs: Number(process.env.RUVNET_NPM_VISIBILITY_TIMEOUT_MS || 180_000),
-  maxAttempts: Number(process.env.RUVNET_NPM_VISIBILITY_ATTEMPTS || 14),
+  maxElapsedMs: Number(process.env.RUVNET_NPM_VISIBILITY_TIMEOUT_MS || 600_000),
+  maxAttempts: Number(process.env.RUVNET_NPM_VISIBILITY_ATTEMPTS || 40),
   initialDelayMs: 1_000,
   maxDelayMs: 15_000,
   multiplier: 1.8,
   jitter: (delay) => Math.floor(Math.random() * Math.min(1_000, delay * 0.2)),
 };
+// The one command in this file that mutates a public channel gets its stderr in the job log and a
+// timeout sized for a real registry upload. command()'s defaults — stderr piped and dropped, 30s —
+// meant 4.3.25's first run left NO diagnostic between "stage-npm" and the deadline error, and a slow
+// registry would have killed a legitimate publish mid-upload. Named, so the publish call stays one
+// pinnable line for tests/unit/release-lineage + publication-receipt-wiring (one publisher, one tag).
+const PUBLISH_COMMAND_OPTIONS = Object.freeze({ stdio: ['ignore', 'pipe', 'inherit'], timeout: 600_000 });
 
 export function selectCurrentReleaseBytes({ remoteBytes, localBytes, generatedBytes, identity }) {
   const bytes = remoteBytes || localBytes || generatedBytes;
@@ -216,7 +238,7 @@ export function liveReleaseProvider({ root = process.cwd() } = {}) {
         }
       }
       const npmLatest = command('npm', ['view', `${PACKAGE}@latest`, 'version']);
-      const githubLatest = json('gh', ['api', `repos/${REPO}/releases/latest`]).tag_name;
+      const githubLatest = latestCodeTag();
       const legacySettled = [];
       const pending = [];
       for (const { receipt, release } of latestByTransaction.values()) {
@@ -257,7 +279,8 @@ export function liveReleaseProvider({ root = process.cwd() } = {}) {
     async observeSnapshot(identity, draft = activeDraft, { forceAssets = false } = {}) {
       try {
         const release = draft?.id ? hydratedRelease(releaseById(draft.id)) : null;
-        const latestTag = json('gh', ['api', `repos/${REPO}/releases/latest`]).tag_name;
+        const latestTag = latestCodeTag();
+        const pointerTag = githubPointerTag();
         const candidate = maybe(() => json('npm', ['view', `${PACKAGE}@candidate-v${identity.version}`, '--json']), null);
         const exactVersion = maybe(() => json('npm', ['view', `${PACKAGE}@${identity.version}`, '--json']), null);
         const latestVersion = command('npm', ['view', `${PACKAGE}@latest`, 'version']);
@@ -290,8 +313,10 @@ export function liveReleaseProvider({ root = process.cwd() } = {}) {
             published: release.draft === false,
             latest: latestTag === identity.tag,
             latestTag,
+            // What releases/latest actually points at — distinct from `latest` (code recency) above.
+            pointerTag,
             assetsExact: assetsExactFor(release, identity, forceAssets),
-          } : { tag: null, sha: null, draft: false, published: false, latest: false, assetsExact: false },
+          } : { tag: null, sha: null, draft: false, published: false, latest: false, pointerTag, assetsExact: false },
           publicReceiptExact,
           publicHostsExact,
         };
@@ -395,7 +420,7 @@ export function liveReleaseProvider({ root = process.cwd() } = {}) {
         command('npm', ['dist-tag', 'add', `${PACKAGE}@${identity.version}`, `candidate-v${identity.version}`]);
         return;
       }
-      command('npm', ['publish', packagePath, '--tag', `candidate-v${identity.version}`]);
+      command('npm', ['publish', packagePath, '--tag', `candidate-v${identity.version}`], PUBLISH_COMMAND_OPTIONS);
     },
 
     async observeNpmCandidate(identity) {
@@ -409,7 +434,10 @@ export function liveReleaseProvider({ root = process.cwd() } = {}) {
 
     async observeGithub(identity) {
       const release = json('gh', ['api', `repos/${REPO}/releases/tags/${identity.tag}`]);
-      const latest = maybe(() => json('gh', ['api', `repos/${REPO}/releases/latest`]).tag_name, null);
+      // "Is this release the current CODE generation", not "does it hold the latest pointer". Once a
+      // corpus generation takes the pointer — which is the designed steady state — a genuinely
+      // published code release would otherwise start observing itself as no longer latest.
+      const latest = maybe(() => latestCodeTag(), null);
       return { tag: release.tag_name, sha: tagSha(identity.tag, root), latest: latest === identity.tag };
     },
 
@@ -424,14 +452,23 @@ export function liveReleaseProvider({ root = process.cwd() } = {}) {
       return { version: command('npm', ['view', `${PACKAGE}@latest`, 'version']) };
     },
     async makeGithubLatest(draft, identity, expectedPrior) {
-      const current = json('gh', ['api', `repos/${REPO}/releases/latest`]).tag_name;
+      // The prior-generation check is about the CODE lineage: it exists to catch "someone promoted a
+      // different product generation while this transaction was in flight". A corpus generation
+      // legitimately holding `releases/latest` is NOT that — it is the designed steady state between
+      // code releases — so the comparison is made against the latest CODE release, and the pointer's
+      // own kind is recorded rather than treated as a conflict.
+      const pointer = githubPointerTag();
+      const current = latestCodeTag();
       if (current !== expectedPrior && current !== identity.tag) {
-        throw new Error(`refusing GitHub promotion: latest is ${current}, expected ${expectedPrior}`);
+        throw new Error(`refusing GitHub promotion: latest code release is ${current}, expected ${expectedPrior}`);
+      }
+      if (isCorpusReleaseTag(pointer)) {
+        process.stdout.write(`[release] promoting over corpus generation ${pointer} — the code bundle carries its own corpus\n`);
       }
       command('gh', ['api', '-X', 'PATCH', `repos/${REPO}/releases/${draft.id}`, '-f', 'make_latest=true']);
     },
     async observeGithubLatest() {
-      return { tag: json('gh', ['api', `repos/${REPO}/releases/latest`]).tag_name };
+      return { tag: latestCodeTag() };
     },
     async restoreNpmLatest(prior, expected) {
       const current = command('npm', ['view', `${PACKAGE}@latest`, 'version']);

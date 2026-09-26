@@ -24,6 +24,7 @@
  *   node scripts/github-health-watch.mjs --json     # machine-readable, for hooks/CI
  */
 import { execFileSync } from 'node:child_process';
+import { describeLatestPointer, latestCodeReleaseTag } from './release-channel-kind.mjs';
 
 const REPO = 'stuinfla/ruvnet-brain';
 const JSON_OUT = process.argv.includes('--json');
@@ -92,12 +93,21 @@ const npmLatest = (() => {
   try { return execFileSync('npm', ['view', 'ruvnet-brain', 'dist-tags.latest'], { encoding: 'utf8', timeout: 60_000 }).trim(); }
   catch { return null; }
 })();
-const release = ghJson(['api', `repos/${REPO}/releases/latest`, '--jq', '.tag_name']);
+// ADR-086 S1: `releases/latest` is the customer download pointer and is a corpus generation on any
+// night a corpus round shipped. A `corpus-sha256-<digest>` tag can NEVER equal an npm semver, so
+// comparing against it would fire "issue #77 recurring" every single night, for a healthy system —
+// a false alarm that trains the owner to ignore the one alert that matters.
+const releases = ghJson(['api', `repos/${REPO}/releases?per_page=30`]);
+const release = latestCodeReleaseTag(releases);
+const latestPointer = (Array.isArray(releases) ? releases.find((row) => row && !row.draft) : null)?.tag_name || null;
 if (npmLatest && typeof release === 'string' && release) {
   if (npmLatest !== release.replace(/^v/, '')) {
-    note('fail', 'surfaces', `npm ${npmLatest} != GitHub ${release}`,
+    note('fail', 'surfaces', `npm ${npmLatest} != GitHub code release ${release}`,
       'run scripts/published-surface-probe.mjs; this is issue #77 recurring');
   }
+} else if (npmLatest && latestPointer) {
+  note('warn', 'surfaces', `no semver-tagged GitHub release found (${describeLatestPointer(latestPointer)})`,
+    'npm-to-GitHub coherence could not be proven; check the release list by hand');
 }
 
 // ── 6. Issues past their response SLA. ──────────────────────────────────────────────────────────

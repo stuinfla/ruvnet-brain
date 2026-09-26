@@ -64,6 +64,22 @@ describe('gradeQuestion — one rule per stratum', () => {
     expect(gradeQuestion(q, { grounded: true, citations: cite('qudag', 3) }).pass).toBe(false);
     expect(gradeQuestion(q, { grounded: false, citations: cite('ruvector', 3) }).pass).toBe(false);
   });
+  it('does not pass an answerable question merely because an unrelated citation resolves under a negative CE score', () => {
+    const q = { stratum: 'described', expectRepo: ['ruvector'] };
+    const falsePass = gradeQuestion(q, {
+      grounded: true,
+      citations: cite('ruvector', -2.66),
+      receipt: { repo: 'ruvector', path: 'ruvector/real-but-unrelated.md' },
+    });
+    expect(falsePass).toMatchObject({ grounded: true, routed: true, abstained: true, pass: false });
+  });
+  it('does not conflate an unsupported negative control with an answerable miss', () => {
+    const unsupported = { stratum: 'adversarial' };
+    expect(gradeQuestion(unsupported, { grounded: false, citations: [] }).pass).toBe(true);
+    expect(gradeQuestion({ stratum: 'named', expectRepo: ['ruvector'] }, {
+      grounded: true, citations: cite('ruvector', -2.66), receipt: { repo: 'ruvector' },
+    }).pass).toBe(false);
+  });
   it('adversarial passes only when the brain ABSTAINS (top ce below the cut, or no hits at all)', () => {
     const q = { stratum: 'adversarial' };
     expect(gradeQuestion(q, { grounded: true, citations: cite('ruflo', -4.2) }).pass).toBe(true);

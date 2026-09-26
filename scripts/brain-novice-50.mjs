@@ -69,23 +69,21 @@ function percentile(values, fraction) {
   return sorted[Math.max(0, Math.ceil(sorted.length * fraction) - 1)];
 }
 
-function grade(spec, text, elapsedMs, transportOk) {
-  const repo = spec.repo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const expectedRepoCited = new RegExp(
-    `(?:repo\\s*=\\s*["']?${repo}\\b|path\\s*:\\s*${repo}/|capability-cards\\.md#${repo}\\b)`,
-    'i',
-  ).test(text);
-  const cited = /(?:#\d+\s+repo=[a-z0-9._-]+|path\s*:\s*[a-z0-9._-]+\/|capability-cards\.md#[a-z0-9._-]+)/i
-    .test(text);
-  const useful = spec.required.test(text);
+export function grade(spec, text, elapsedMs, transportOk) {
+  const top = /^#1\s+repo=(\S+)(?:\s+ce=(-?[\d.]+))?/m.exec(text);
+  const expectedRepoCited = [...String(text).matchAll(/^#\d+\s+repo=(\S+)/gm)]
+    .some((match) => match[1].toLowerCase() === spec.repo.toLowerCase());
+  const cited = /^#\d+\s+repo=[a-z0-9._-]+/im.test(text);
+  const abstained = !top || (top[2] !== undefined && Number(top[2]) < 0);
+  // This regex is retained as a visible keyword signal only. It is not semantic accuracy and it
+  // cannot make a row effective without a citation from the independently expected owner.
+  const keywordSignal = spec.required.test(text);
   const unsupportedAbsence = /\b(?:does not exist|must be built|you need to build it)\b/i.test(text);
   const evidenceQualified = /EVIDENCE:\s*THIN|NOT PROVEN|PROPOSED|curated-capability-card|THIS QUERY found nothing/i.test(text);
   const honest = !unsupportedAbsence || evidenceQualified;
   const latencyPoints = elapsedMs <= 4000 ? 10 : elapsedMs <= 8000 ? 5 : 0;
-  const score = (transportOk ? 20 : 0) + (text.length > 200 ? 20 : 0)
-    + (cited ? 20 : 0) + (useful ? 20 : 0) + (honest ? 10 : 0) + latencyPoints;
-  const effective = transportOk && cited && useful && honest && elapsedMs <= 4000;
-  return { score, cited, expectedRepoCited, useful, honest, effective, latencyPoints };
+  const effective = transportOk && cited && expectedRepoCited && honest && !abstained && elapsedMs <= 4000;
+  return { cited, expectedRepoCited, keywordSignal, honest, abstained, effective, latencyPoints };
 }
 
 async function main() {
@@ -153,7 +151,7 @@ async function main() {
         answer: text,
         ...grade(spec, text, elapsedMs, transportOk),
       };
-      process.stdout.write(`${String(spec.id).padStart(2, '0')} ${String(results[index].score).padStart(3)} ${String(elapsedMs).padStart(6)}ms ${spec.category.padEnd(14)} ${spec.query}\n`);
+      process.stdout.write(`${String(spec.id).padStart(2, '0')} ${results[index].effective ? 'ELIGIBLE' : 'MISS    '} ${String(elapsedMs).padStart(6)}ms ${spec.category.padEnd(14)} ${spec.query}\n`);
     }
   }));
 
@@ -170,20 +168,35 @@ async function main() {
     readinessMs,
     passed: results.filter((result) => result.effective).length,
     under4s: results.filter((result) => result.elapsedMs <= 4000).length,
-    averageScore: Math.round(results.reduce((sum, result) => sum + result.score, 0) / results.length),
     averageMs: Math.round(times.reduce((sum, value) => sum + value, 0) / times.length),
     medianMs: percentile(times, 0.5),
     p95Ms: percentile(times, 0.95),
     longestMs: Math.max(...times),
     stderr: stderr.trim(),
+    gradingScope: 'Operational eligibility only: transport, citation presence, expected-owner citation, honest uncertainty, and latency. keywordSignal is diagnostic only; this report does not measure semantic answer accuracy.',
     results,
   };
   const output = path.join(ROOT, 'data/novice-50-report.json');
   fs.writeFileSync(output, JSON.stringify(report, null, 2) + '\n');
-  console.log(`SUMMARY ${report.passed}/50 effective · ${report.under4s}/50 under 4s · score ${report.averageScore}/100 · avg ${report.averageMs}ms · p95 ${report.p95Ms}ms · max ${report.longestMs}ms`);
+  console.log(`SUMMARY ${report.passed}/50 eligible · ${report.under4s}/50 under 4s · avg ${report.averageMs}ms · p95 ${report.p95Ms}ms · max ${report.longestMs}ms`);
   console.log(`REPORT ${output}`);
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+// Entry-point guard. Compares REALPATHS on both sides: path.resolve() normalizes a path but does
+// NOT follow symlinks, while import.meta.url IS symlink-resolved by Node. Through a symlink (npm bin
+// shims, wrapper scripts, and every os.tmpdir() path on macOS) the two sides disagree, so main()
+// never runs -- and because nothing throws, the process exits 0. A silent exit 0 is indistinguishable
+// from "ran, found nothing", which is how prepareCorpusCandidate once reported SUCCESS with no
+// archive on disk. Reproduced live 2026-07-27; pinned by tests/unit/entrypoint-symlink.test.mjs.
+function isDirectInvocation() {
+  try {
+    if (!process.argv[1]) return false;
+    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectInvocation()) {
   main().catch((error) => { console.error(error.stack || error.message); process.exitCode = 1; });
 }

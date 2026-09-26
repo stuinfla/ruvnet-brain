@@ -291,11 +291,15 @@ export function findCallers(root, rel) {
 // ── impl derivation ─────────────────────────────────────────────────────────────────────────────
 // PER PATH, then the WEAKEST wins. Any-semantics ("one member is wired ⇒ wired") reports green on
 // exactly the built-but-unwired case the rung exists to catch.
-export function deriveImpl(root, governed, { checkWiring = true } = {}) {
+export function deriveImpl(root, governed, { checkWiring = true, callerCache = new Map(), callerLookup = findCallers } = {}) {
   if (!governed.length) return { impl: 'unknown', perPath: [], unwired: [], reason: 'no governs: set' };
   const perPath = governed.map((g) => {
     if (!g.onDisk && !g.resolved) return { path: g.path, impl: 'unbuilt', type: g.type };
-    const callers = checkWiring ? findCallers(root, g.path) : [];
+    let callers = [];
+    if (checkWiring) {
+      if (!callerCache.has(g.path)) callerCache.set(g.path, callerLookup(root, g.path));
+      callers = callerCache.get(g.path);
+    }
     return { path: g.path, impl: callers.length ? 'wired' : 'built', callers, type: g.type };
   });
   return {
@@ -630,7 +634,8 @@ export function evaluateDoc(root, rel, opts = {}) {
   }
 
   // ── impl (derived; the stored value is a claim to be checked, never an input) ──────────────────
-  const derived = deriveImpl(root, governed, { checkWiring });
+  const derived = deriveImpl(root, governed, { checkWiring,
+    callerCache: opts.callerCache, callerLookup: opts.callerLookup });
   const digest = computeDigest(root, rel, text, governed);
   const storedDigest = doc.verifiedDigestStored;
   const digestMatch = digest.digest && storedDigest ? digest.digest === storedDigest : null;
@@ -739,7 +744,10 @@ export function evaluateDoc(root, rel, opts = {}) {
 
 export function evaluate(root = REPO_ROOT, opts = {}) {
   const dirs = opts.dirs ?? DEFAULT_DIRS;
-  const docs = (opts.files ?? listDocs(root, dirs)).map((rel) => evaluateDoc(root, rel, opts));
+  // This cache belongs to exactly one evaluation. Each distinct governed path is searched once,
+  // even when several ADRs name it; a later call creates a fresh map and sees current source.
+  const invocation = { ...opts, callerCache: new Map(), callerLookup: opts.callerLookup ?? findCallers };
+  const docs = (opts.files ?? listDocs(root, dirs)).map((rel) => evaluateDoc(root, rel, invocation));
   return { root, docs };
 }
 
@@ -966,5 +974,20 @@ export function main(argv = process.argv.slice(2)) {
   return 1;
 }
 
-const invokedDirectly = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+// Entry-point guard. Compares REALPATHS on both sides: path.resolve() normalizes a path but does
+// NOT follow symlinks, while import.meta.url IS symlink-resolved by Node. Through a symlink (npm bin
+// shims, wrapper scripts, and every os.tmpdir() path on macOS) the two sides disagree, so main()
+// never runs -- and because nothing throws, the process exits 0. A silent exit 0 is indistinguishable
+// from "ran, found nothing", which is how prepareCorpusCandidate once reported SUCCESS with no
+// archive on disk. Reproduced live 2026-07-27; pinned by tests/unit/entrypoint-symlink.test.mjs.
+function isDirectInvocation() {
+  try {
+    if (!process.argv[1]) return false;
+    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+const invokedDirectly = isDirectInvocation();
 if (invokedDirectly) process.exit(main());

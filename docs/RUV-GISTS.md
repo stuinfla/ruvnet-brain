@@ -5,10 +5,12 @@
 > **These are announcements and notes, not shipped source.** A gist routinely describes work that is
 > proposed, unreleased, or still moving. Verify against repo source before asserting behavior.
 
-_492 gists · refreshed 2026-09-12_
+_494 gists · refreshed 2026-09-16_
 
 | Updated | Gist | Description |
 |---|---|---|
+| 2026-09-16 | [release-notes-3.42.0.md](https://gist.github.com/ruvnet/0033f22f0702d35f38d74d2beece57c1) | Ruflo v3.42.0 release notes — Swarm, Memory & Security Reliability Batch |
+| 2026-09-15 | [rtl8721dx-vs-esp32-csi-comparison.md](https://gist.github.com/ruvnet/554751b1068c48f7ee210aa447cd4088) | RuView: RTL8721Dx vs ESP32 family (S3/C6/C5) WiFi CSI sensing comparison (2026-09-15) |
 | 2026-09-11 | [*specification.md](https://gist.github.com/ruvnet/6217ea3bd75cc0c27522965965e7383b) | TikTok-like recommender Algorithm |
 | 2026-09-10 | [gist-3.41.0.md](https://gist.github.com/ruvnet/6d3202cc7030e32169e8d5ac73b4e870) | RuFlo 3.41.0 — open swarm federation, step by step |
 | 2026-09-10 | [vibecast-challenge.md](https://gist.github.com/ruvnet/7274565b913dded4fb6a8232624e56e3) | Vibecast challenge, 11 Sep 2026 — Build an Agent That Learns (ruvnet tools, 90 minutes, local-first) |

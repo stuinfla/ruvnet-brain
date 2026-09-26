@@ -44,7 +44,7 @@ export async function main() {
   }
 }
 
-if (path.resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) {
+if (((() => { try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })())) {
   main().catch((error) => {
     console.error(`[build-concepts] ${error.message}`);
     process.exitCode = 1;

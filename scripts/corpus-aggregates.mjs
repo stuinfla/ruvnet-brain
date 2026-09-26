@@ -8,7 +8,8 @@ import { promoteArtifactSet } from '../kb/incremental-refresh.mjs';
 import { buildGistAggregate } from './rebuild-gists-from-receipts.mjs';
 import { writeRvfGeneration } from './rvf-generation.mjs';
 import { digest, sha256File } from './coverage-integrity.mjs';
-import { materializePublicInputs } from './public-inputs.mjs';
+import { materializePublicInputs, SELECTION_RECEIPT_KIND, SELECTION_RECEIPT_SCHEMA,
+  validateSelectionReceipt } from './public-inputs.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const HEX64 = /^[a-f0-9]{64}$/;
@@ -48,9 +49,24 @@ export function buildConceptAggregate({ publicInputDir, selectionReceipt, observ
   const input = path.resolve(publicInputDir || '');
   const output = path.resolve(outDir || '');
   if (!HEX64.test(String(observationSha256 || ''))) fail('concepts require an exact source observation');
-  if (!selectionReceipt || selectionReceipt.schemaVersion !== 1
-    || selectionReceipt.kind !== 'ruvnet-brain-public-input-selection-receipt') {
+  // Step 5 remediation (2026-09-13): the receipt is schema 2 (byte-bound `files[]`); the exact
+  // kind/schema constants are the producer's own exports, never restated here.
+  if (!selectionReceipt || selectionReceipt.schemaVersion !== SELECTION_RECEIPT_SCHEMA
+    || selectionReceipt.kind !== SELECTION_RECEIPT_KIND) {
     fail('concepts require a valid public input selection receipt');
+  }
+  // P2 (Dual, 2026-09-14): "checks kind/schema only, then enumerates disk primers". Kind and schema
+  // are a label, not a proof — this function then reads whatever prose happens to be on disk under
+  // `publicInputDir` and embeds it permanently into concepts.passages.jsonl, where no later file
+  // deletion can remove it. So the receipt is VERIFIED against that exact directory first, by the
+  // producer's own fail-closed validator: every sealed file present with exact bytes, every included
+  // name backed, and NO unsealed managed prose riding along. Both callers
+  // (scripts/build-concepts.mjs and rebuildCorpusAggregates) hand in the producer's own receipt, so
+  // this is a cheap re-read, not a second policy.
+  try {
+    validateSelectionReceipt({ receipt: selectionReceipt, dir: input });
+  } catch (error) {
+    fail(`concepts refuse to read prose that its selection receipt does not prove (${error.message})`);
   }
   const ownership = new Map(Object.entries(selectionReceipt.ownership || {}));
 

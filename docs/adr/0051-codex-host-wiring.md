@@ -3,9 +3,9 @@ id: ADR-051
 title: Codex host wiring — register MCP and adapt the full lifecycle without version-pinned commands
 status: Accepted
 date: 2026-07-24
-updated: 2026-09-12
-reviewed_digest: eada6371cfb9
-version: 1.1.4
+updated: 2026-09-20
+reviewed_digest: 55563231cc8b
+version: 1.1.6
 authors: [Stuart Kerr, Claude Code]
 tags: [codex, mcp, install, doctor, honesty, portability]
 supersedes: []
@@ -30,6 +30,11 @@ governs:
 **Status**: Implemented
 **Date**: 2026-07-24
 **Related**: ADR-023
+
+> **Reviewed 2026-09-20 (candidate 4.3.27).** The Codex adapter now validates syntactically valid
+> PostToolUse JSON against the event wire shape and wraps incompatible output as `additionalContext`,
+> preventing malformed hook output from reaching the host. The implementation remains in place; public
+> availability still depends on protected release and exact-artifact host verification.
 
 > **Reviewed 2026-09-04 (4.3.9 candidate).** The Codex plugin manifest moved only as a derived
 > release-version projection. Host registration, lifecycle wiring, stable entrypoints, and doctor
@@ -289,6 +294,10 @@ result. `route-dispatch` remains advisory; the wrapper must not represent it as 
 These source observations do not establish native Windows or public installed-host proof.
 
 ## Currency log
+
+| 2026-09-19 | Reviewed current source and normative claims; the detailed September 19 findings below retain their stated runtime limitations. reviewed_digest 55563231cc8b. | `bin/install.mjs`, `.codex/config.toml`, `.codex/hooks.json`; source consistency review only, no new deployment or acceptance claim. |
+
+| 2026-09-19 | Source review: installer now validates corpus-only release identity/assets and installed runtime health. Codex hook registry includes capacity-aware-parallel-work advisory context. The advisory neither launches workers nor grants authority; host wiring and stable entrypoints are unchanged. Historical host proof is not renewed by this review. | Reviewed current governed-source diffs; this row records source consistency, not renewed runtime acceptance. |
 
 | 2026-09-12 | **Codex PreToolUse/PostToolUse delivery is no longer "never observed" — it was measured, and it fires.** The 2026-09-11 row below says routes "were deliberately not registered (delivery never observed)". That claim traced to a 2026-09-11 probe using `codex exec "reply OK"` — a prompt that invokes no tool, so PreToolUse/PostToolUse had nothing to fire on; the honest reading was always "untested", not "tested and absent". Re-probed today against codex-cli 0.154.0 with prompts that actually call a tool: a real `apply_patch` write fired both events with `tool_name:"apply_patch"`, `tool_response:"Exit code: 0…Success. Updated the following files: A <path>"`; a real MCP call to this repo's own `plugin/mcp/server.mjs` (registered as `search_ruvnet` in the probe's `CODEX_HOME` `config.toml`) fired both with `tool_name:"mcp__ruvnet_brain__search_ruvnet"`, `tool_response.content[0].text` carrying the search banner. `plugin/hooks/codex-hooks.json` now registers `decision-gate write` (PreToolUse, matcher extended to include `apply_patch`) and `grounding-stamp` (PostToolUse, unchanged matcher — `^(?:.*__)?search_ruvnet$` already absorbs the `mcp__ruvnet_brain__` prefix). Also added: `grounding-turn-mark` (UserPromptSubmit) and `grounding-turn-gate` (Stop), a new pair enforcing "answered without searching" on both hosts — Stop-block via the same `hookSpecificOutput.additionalContext` → `codex-hook-adapter.mjs`'s existing Stop-translation → Codex `decision:block` path `continuation-gate` already proved. The bash route (`exec_command`) remains unregistered: this measurement did not exercise it. | `plugin/hooks/codex-hooks.json`, `continuity-hook-policy.mjs`, `hook-contracts.json` v7, `plugin/scripts/grounding-turn-mark.mjs`, `plugin/scripts/grounding-turn-gate.mjs`, `plugin/scripts/ruvnet-gate1-pattern.mjs`. Live transcripts (real `codex exec`, real `codex-hook-wrapper.mjs → codex-hook-adapter.mjs → hook-shim.mjs` dispatch) in this change's commit message and PROGRESS.md; `npm run hooks:check` PASS. |
 | 2026-09-11 | Currency review at commit 7296c984: decision unchanged — install-time registration into `$CODEX_HOME` is untouched. `plugin/hooks/codex-hooks.json`: a session edit (`a90c674b`) was reverted to 85f584b2 (`9c45d408`), then `7b8e6e73` registered `ground-ruvnet` at UserPromptSubmit through the Codex wrapper (ADR-040 amendment); net vs 85f584b2 +6/−1. `bin/install.mjs`: `dc18fadc` (retention wording, ADR-0070/0072) and pre-session `6971f642` / `642e3e5c` / `41bbd5fb`. `plugin/.codex-plugin/plugin.json` `4ff1dd1f` (4.3.22; the single source re-confirmed by `sync-version --check` after the 4.4.0 bump was reverted at `ca2f26fe`). Skills `60f269ad` pre-session. Codex PreToolUse / PostToolUse routes were deliberately not registered (delivery never observed); `plugin/scripts/codex-hook-adapter.mjs` is being re-reviewed separately by the integration owner. | Reviewed `plugin/hooks/codex-hooks.json`, `bin/install.mjs`, `plugin/.codex-plugin/plugin.json`. reviewed_digest eada6371cfb9. |

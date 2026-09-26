@@ -30,6 +30,10 @@ import { applyBrainProfile, discoverStoreFamilies, readBrainProfile } from './br
 import { acquireRefreshLock, releaseRefreshLock } from './refresh-run.mjs';
 import { runStorageTransaction, treeIdentity, managedStorageInventory, storageDelta } from './update-storage-transaction.mjs';
 import { pruneLifecycleEvidence } from './lifecycle-evidence-retention.mjs';
+import {
+  isCorpusReleaseTag, assertCorpusReleaseCompatible, readInstalledRuntime,
+  recordCorpusTransportIdentity, readRejectedRelease, writeRejectedRelease, clearRejectedRelease,
+} from './corpus-release-identity.mjs';
 
 const KB_DIR = path.dirname(fileURLToPath(import.meta.url));
 const SOURCE_PATH = path.join(KB_DIR, 'SOURCE.json');
@@ -174,8 +178,18 @@ catch (e) { die(`SOURCE.json is unreadable/corrupt: ${e.message}`); }
 // successful update. `--check` exited 10 permanently and was useless as a monitoring signal, and
 // `--apply` re-downloaded half a gigabyte every night to change nothing. Inheriting the tag the
 // bundle already records is the whole fix; a store that carries its own still wins.
-const withBundleTag = (s) => (s && s.releaseTag == null && source.releaseTag != null
-  ? { ...s, releaseTag: source.releaseTag } : s);
+// The CORPUS transport tag is a bundle property in exactly the same way, and for the same reason:
+// every store in a corpus release arrived in the same archive. It lives in its own field because it
+// is a different identity domain from `releaseTag` — see kb/corpus-release-identity.mjs.
+const withBundleTag = (s) => {
+  if (!s) return s;
+  let out = s;
+  if (out.releaseTag == null && source.releaseTag != null) out = { ...out, releaseTag: source.releaseTag };
+  if (out.corpusReleaseTag == null && source.corpusReleaseTag != null) {
+    out = { ...out, corpusReleaseTag: source.corpusReleaseTag };
+  }
+  return out;
+};
 const stores = (Array.isArray(source.stores)
   ? source.stores
   : (source.stores && typeof source.stores === 'object')
@@ -245,10 +259,21 @@ async function loadTrustedCoverageValidator() {
   return validator.validateCoverageDirectory;
 }
 
-function validateReleaseCoverageTree(root, validateCoverageDirectory) {
-  let expectedVersion = null;
-  try { expectedVersion = JSON.parse(fs.readFileSync(path.join(root, 'SOURCE.json'), 'utf8')).brainVersion || null; }
-  catch (error) { return { valid: false, failures: [`SOURCE.json is unreadable: ${error.message}`] }; }
+/**
+ * `expectedVersionOverride` is how "never silently install incompatible code" is actually enforced.
+ *
+ * Read from the tree's OWN SOURCE.json, `expectedVersion` is self-referential: a bundle asserting
+ * its own version proves nothing, which is exactly Dual's "preserving a version string alone is
+ * insufficient". For a CORPUS release the caller passes the version of the approved runtime this
+ * machine is measurably running (kb/corpus-release-identity.mjs re-hashes its executables), so the
+ * staged tree is judged against the client, not against itself.
+ */
+function validateReleaseCoverageTree(root, validateCoverageDirectory, expectedVersionOverride = null) {
+  let expectedVersion = expectedVersionOverride;
+  if (expectedVersion == null) {
+    try { expectedVersion = JSON.parse(fs.readFileSync(path.join(root, 'SOURCE.json'), 'utf8')).brainVersion || null; }
+    catch (error) { return { valid: false, failures: [`SOURCE.json is unreadable: ${error.message}`] }; }
+  }
   return validateCoverageDirectory(root, { expectedVersion });
 }
 
@@ -510,12 +535,20 @@ function isGithubReleasePayload(canon) {
 function canonicalFor(canon, kbName) {
   if (isGithubReleasePayload(canon)) {
     // The whole Release advances together — every store shares the Release tag + publish time.
+    //
+    // WHICH IDENTITY DOMAIN the tag belongs to is decided here, once. A `corpus-sha256-<64 hex>`
+    // tag is a CONTENT address of a corpus archive; a `vX.Y.Z` tag is the version of a code
+    // release. Putting a corpus tag in `releaseTag` makes isBehind() compare a content address
+    // against a semver, which can never converge — that is the measured redownload loop
+    // (kb/corpus-release-identity.mjs's header records the four-download measurement).
+    const corpus = isCorpusReleaseTag(canon.tag_name);
     return {
       builtUtc: canon.published_at || canon.created_at || null,
       // No per-store git sha in a Release payload; use the tag as the version identity instead.
       sourceCommit: null,
       sourceDescribe: canon.tag_name,
-      releaseTag: canon.tag_name,
+      releaseTag: corpus ? null : canon.tag_name,
+      corpusReleaseTag: corpus ? canon.tag_name : null,
     };
   }
   const cs = (canon.stores && canon.stores[kbName]) || {};
@@ -524,9 +557,17 @@ function canonicalFor(canon, kbName) {
     sourceCommit: cs.sha || cs.sourceCommit || null,
     sourceDescribe: cs.describe || cs.sourceDescribe || null,
     releaseTag: null,
+    corpusReleaseTag: null,
   };
 }
-function isBehind(local, canon) {
+export function isBehind(local, canon) {
+  // CORPUS TRANSPORT IDENTITY FIRST, and compared only against itself. A corpus release's tag says
+  // nothing about the runtime version stamped in `releaseTag`, so the two must never meet in a
+  // string compare. Same corpus tag = this brain already holds those exact bytes. A local copy with
+  // no corpus tag at all has never taken a corpus release, so the first one genuinely IS new.
+  if (canon.corpusReleaseTag) {
+    return canon.corpusReleaseTag !== local.corpusReleaseTag;
+  }
   // Release-tag identity is AUTHORITATIVE when both sides carry a tag. The publish time of a
   // Release is later than when the store was forged, so timestamps would always (falsely) read
   // "behind" — the tag is the truth: same tag = up to date, different tag = behind.
@@ -679,6 +720,10 @@ function storeInventory(dir) {
       'update-storage-transaction.mjs', 'lifecycle-evidence-retention.mjs', 'manifest.json',
       'coverage-integrity.mjs', 'COVERAGE.json', 'CORPUS-COVERAGE.json', 'COVERAGE.md',
       '.refresh-snapshot.json',
+      // ADR-086 step 16: the updater's own module graph grew one file, and the installer now writes
+      // one record beside the validator it already wrote. Both are metadata, not user stores —
+      // omitting them here would make a legacy KB read as "unclassified non-RVF files" and refuse.
+      'corpus-release-identity.mjs', 'RUNTIME-IDENTITY.json',
     ]);
     if (!hasGenerationFile && files.some((name) => !name.endsWith('.rvf') && !legacyMetadata.has(path.basename(name)))) {
       complete = false; reason = 'legacy inventory contains unclassified non-RVF files';
@@ -1033,7 +1078,10 @@ export function resolveBundleUrl({ canon, local, source }) {
  */
 export function bundleIdentity(src) {
   if (!src || typeof src !== 'object') return null;
-  const parts = [src.releaseTag, src.brainVersion, src.builtUtc].map((v) => (v == null ? '' : String(v)));
+  // `corpusReleaseTag` is part of bundle identity for the same reason the other three are: it is the
+  // one field that advances when a corpus-only release lands. Without it, two corpus generations
+  // that happened to share a builtUtc would read as "nothing landed" on a genuinely new corpus.
+  const parts = [src.releaseTag, src.brainVersion, src.builtUtc, src.corpusReleaseTag].map((v) => (v == null ? '' : String(v)));
   return parts.some(Boolean) ? parts.join('|') : null;
 }
 
@@ -1188,6 +1236,39 @@ async function main() {
     }
   }
   const canon = await fetchJson(manifestUrl);
+
+  // ── CORPUS-RELEASE COMPATIBILITY GATE (ADR-086 step 16) ────────────────────────────────────────
+  // Runs BEFORE the behind/current report, so `--check` refuses on exactly the same terms `--apply`
+  // does, and before a single byte of bundle is fetched. Two tiers:
+  //   1. this brain cannot prove which approved runtime it is running -> refuse, zero bandwidth;
+  //   2. this exact tag was already refused and nothing has changed -> refuse, zero bandwidth.
+  // The third tier (the staged bundle was built by a different runtime) can only be decided from
+  // the downloaded bytes, and is enforced after extraction — where it also writes the ledger tier 2
+  // reads, so a refusal costs one download ONCE rather than one download a night.
+  const canonTag = isGithubReleasePayload(canon) ? canon.tag_name : null;
+  const corpusRelease = isCorpusReleaseTag(canonTag);
+  let installedRuntimeVersion = null;
+  if (corpusRelease) {
+    const runtime = readInstalledRuntime(KB_DIR);
+    if (!runtime.ok) {
+      die(`INCOMPATIBLE corpus release ${canonTag}\n`
+        + `  ${runtime.reason}\n`
+        + `  A corpus release carries knowledge for ONE approved runtime. This brain cannot prove which\n`
+        + `  runtime it is running, so nothing was downloaded and nothing on disk was changed.\n`
+        + `  Fix it with:  npx ruvnet-brain   (re-runs the installer, which re-stamps the approved runtime)`, 5);
+    }
+    installedRuntimeVersion = runtime.brainVersion;
+    const remembered = readRejectedRelease(KB_DIR);
+    if (remembered && remembered.tag === canonTag && remembered.installedRuntime === installedRuntimeVersion) {
+      die(`corpus release ${canonTag} was already rejected by this brain (${remembered.rejectedUtc})\n`
+        + `  ${remembered.reason}\n`
+        + `  Nothing was downloaded. This refusal is remembered on purpose: rediscovering it every night\n`
+        + `  would be a download loop with extra steps. It clears itself when a compatible release is\n`
+        + `  published, or when this brain moves to a different runtime.\n`
+        + `  Fix it with:  npx ruvnet-brain   (installs the code release that corpus was built for)`, 5);
+    }
+  }
+
   const activeProfile = RESTORE_COMPLETE ? 'complete' : readBrainProfile();
   const profileStores = selectUpdateManagedStores(stores, activeProfile);
   if (activeProfile === 'ruvector' && profileStores.length === 0) {
@@ -1286,7 +1367,30 @@ async function main() {
   console.log(`  ✓ signature verified — ${signature.reason}`);
   try { await extractZip(zipPath, extractDir); }
   catch (error) { fs.rmSync(tmp, { recursive: true, force: true }); die(`extraction failed: ${error.message} — local files untouched.`); }
-  const stagedCoverage = validateReleaseCoverageTree(extractDir, validateCoverageDirectory);
+  // ── TIER 3: the staged bundle names the runtime that built it; this client names the runtime it
+  // measurably runs. They must be equal, or this corpus is not for this brain. Refused BEFORE the
+  // storage transaction, so the live tree is never touched, and REMEMBERED so the next run refuses
+  // without downloading again.
+  if (corpusRelease) {
+    let stagedRuntimeVersion = null;
+    try { stagedRuntimeVersion = JSON.parse(fs.readFileSync(path.join(extractDir, 'SOURCE.json'), 'utf8')).brainVersion || null; }
+    catch (error) {
+      fs.rmSync(tmp, { recursive: true, force: true });
+      die(`corpus release ${canonTag} has no readable SOURCE.json: ${error.message} — local files untouched.`);
+    }
+    const compatible = assertCorpusReleaseCompatible({ kbDir: KB_DIR, offeredRuntimeVersion: stagedRuntimeVersion });
+    if (!compatible.ok) {
+      writeRejectedRelease(KB_DIR, { tag: canonTag, reason: compatible.reason, installedRuntime: installedRuntimeVersion });
+      fs.rmSync(tmp, { recursive: true, force: true });
+      die(`INCOMPATIBLE corpus release ${canonTag}\n`
+        + `  ${compatible.reason}\n`
+        + `  Nothing was installed and the live brain is untouched. Installing it would have put knowledge\n`
+        + `  built for a different runtime behind this one's reader.\n`
+        + `  This refusal is now remembered, so tonight's check will not download it again.\n`
+        + `  Fix it with:  npx ruvnet-brain   (installs the code release that corpus was built for)`, 5);
+    }
+  }
+  const stagedCoverage = validateReleaseCoverageTree(extractDir, validateCoverageDirectory, installedRuntimeVersion);
   if (!stagedCoverage.valid) {
     fs.rmSync(tmp, { recursive: true, force: true });
     die(`staged ReleaseCoverage failed integrity: ${stagedCoverage.failures.join('; ')} — local files untouched.`);
@@ -1297,7 +1401,7 @@ async function main() {
   const finalVerificationByStore = new Map();
   const validateFinalTree = ({ dir, phase }) => {
     const coverageResult = activeProfile === 'complete'
-      ? validateReleaseCoverageTree(dir, validateCoverageDirectory)
+      ? validateReleaseCoverageTree(dir, validateCoverageDirectory, installedRuntimeVersion)
       : validateProfiledReleaseTree(dir, activeProfile, privateOverlay);
     if (!coverageResult.valid) return coverageResult;
     const guard = path.join(dir, 'forge-guard.mjs');
@@ -1337,6 +1441,16 @@ async function main() {
           fs.copyFileSync(assertNoFollowPath(liveDir, liveValidator),
             assertNoFollowPath(candidateDir, path.join(candidateDir, 'coverage-integrity.mjs')));
         }
+        // RUNTIME-IDENTITY.json is installer-written and, like the validator above, never ships
+        // inside a bundle — so an exact-tree promotion would DELETE it and the very next corpus
+        // check would refuse with "no installed runtime identity". Same lesson, same fix: carry the
+        // LIVE copy into the candidate. (It pins coverage-integrity.mjs, which was just carried
+        // across unchanged, so the pin still verifies on the promoted tree.)
+        const liveRuntimeIdentity = path.join(liveDir, 'RUNTIME-IDENTITY.json');
+        if (fs.existsSync(liveRuntimeIdentity)) {
+          fs.copyFileSync(assertNoFollowPath(liveDir, liveRuntimeIdentity),
+            assertNoFollowPath(candidateDir, path.join(candidateDir, 'RUNTIME-IDENTITY.json')));
+        }
         for (const relative of Object.keys(privateOverlay?.files || {})) {
           const sourceFile = assertNoFollowPath(liveDir, path.join(liveDir, relative));
           const targetFile = assertNoFollowPath(candidateDir, path.join(candidateDir, relative));
@@ -1344,7 +1458,13 @@ async function main() {
           fs.copyFileSync(sourceFile, targetFile);
         }
         restorePrivateOverlayState({ kbDir: candidateDir, overlay: privateOverlay });
-        const fullCoverage = validateReleaseCoverageTree(candidateDir, validateCoverageDirectory);
+        // ATOMIC WITH INSTALLATION, not after it. The transport identity is written INTO the
+        // candidate, so the storage transaction's single rename either promotes the bytes AND the
+        // record of where they came from, or promotes neither. A crash here cannot leave a tree
+        // whose contents and whose declared provenance disagree — which is the whole reason this is
+        // not a second write against the live tree once the swap has happened.
+        if (canonTag) recordCorpusTransportIdentity(candidateDir, { releaseTag: canonTag });
+        const fullCoverage = validateReleaseCoverageTree(candidateDir, validateCoverageDirectory, installedRuntimeVersion);
         if (!fullCoverage.valid) throw new Error(`candidate public/private convergence failed: ${fullCoverage.failures.join('; ')}`);
         if (activeProfile !== 'complete') profileResult = applyBrainProfile(candidateDir, activeProfile, { preserveStores: privateNames });
       },
@@ -1399,6 +1519,11 @@ async function main() {
   // Routed through settleRollback() so this is the SAME release the failure paths use, rather than a
   // happy-path-only call that a die() can step over — that step-over is issue #108.
   settleRollback({ reclaimable: true, intentionallyRemovedStores });
+
+  // A release actually landed, so any remembered refusal is spent history — never a permanent
+  // blocklist. Clearing it here (and only here) means the ledger can only ever suppress a repeat of
+  // the exact refusal that produced it.
+  clearRejectedRelease(KB_DIR);
 
   // ── FINAL MESSAGE — DERIVED FROM WHAT LANDED, NOT FROM THE TAG LOOKUP (issue #35 item 2) ────────
   // The old line above printed `canon.tag_name` regardless of what the download actually contained

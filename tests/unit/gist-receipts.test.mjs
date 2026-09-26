@@ -258,6 +258,24 @@ describe('validateGistReceipt — the one shared validator (reuse / produce / ar
     expect(() => validateGistReceipt({ receipt: {}, passagesFile: null })).toThrow(/passages file/);
   });
 
+  it('rejects an internally inconsistent Git snapshot proof before treating it as complete', () => {
+    const root = temp();
+    const passagesFile = path.join(root, 'ruv-gists.passages.jsonl');
+    fs.writeFileSync(passagesFile, '');
+    const sourceObservationSha256 = 'f'.repeat(64);
+    const row = sealGistReceipt({ gistId: id('a'), versionSha: 'c'.repeat(40),
+      updatedAt: '2026-08-22T00:00:00Z', ingestedAt: '2026-08-22T00:30:00Z', complete: true,
+      files: [{ filename: 'readme.md', included: true, sha256: digest('body'), bytes: 4,
+        sourceGit: { headSha: 'c'.repeat(40), treeSha: 'd'.repeat(40), blobSha: 'e'.repeat(40),
+          treeFileCount: 2, observedFileCount: 1, observedTruncated: false, observed: true, observedRawBlobSha: 'e'.repeat(40) } }],
+    });
+    const receipt = sealGistReceiptSet({ owner: 'ruvnet', generated: '2026-08-22T02:00:00Z',
+      observedAt: '2026-08-22T01:30:00Z', sourceObservationSha256,
+      passagesSha256: digest(''), gists: { [id('a')]: row } });
+    expect(() => validateGistReceipt({ receipt, passagesFile, expectedOwner: 'ruvnet' }))
+      .toThrow(/incomplete Git snapshot proof/);
+  });
+
   it('rejects an owner mismatch, unsafe filename, or malformed timestamp before delegating to the shared aggregate validator', () => {
     const root = temp();
     const passagesFile = path.join(root, 'ruv-gists.passages.jsonl');
@@ -354,6 +372,20 @@ describe('buildGistAggregate — capture + render + write + embed + seal + valid
     expect(fs.readdirSync(outDir)).toEqual([]); // the fresh stage directory was cleaned up too
   });
 
+  it('PROOF: a failed source fetch leaves no receipt, passages, or vector candidate', async () => {
+    const root = temp();
+    const outDir = path.join(root, 'kb');
+    fs.mkdirSync(outDir, { recursive: true });
+    const buildVector = vi.fn(async () => { throw new Error('must not embed after source denial'); });
+    await expect(buildGistAggregate({ observation: observation(), outDir,
+      transport: { fetchDetail: async () => { throw new GistFetchError('HTTP 403 forbidden', {
+        code: 'GIST_FORBIDDEN', status: 403, retryable: false,
+      }); } }, buildVector, now: () => '2026-08-22T02:00:00Z' }))
+      .rejects.toMatchObject({ code: 'GIST_FORBIDDEN', status: 403 });
+    expect(buildVector).not.toHaveBeenCalled();
+    expect(fs.readdirSync(outDir)).toEqual([]);
+  });
+
   it('an empty observed gist set OMITS the aggregate entirely -- no receipt, no store, no error', async () => {
     const root = temp();
     const outDir = path.join(root, 'kb');
@@ -421,6 +453,28 @@ describe('defaultFetchGist — per-gist transport: retry, typed errors, cancella
     expect(spawn).toHaveBeenCalledTimes(1);
   });
 
+  it('records safe rate-limit headers and retries only when 403 actually reports exhausted quota', async () => {
+    const throttled = 'HTTP/2 403\r\nX-RateLimit-Remaining: 0\r\nX-RateLimit-Reset: 1780000123\r\nX-GitHub-Request-Id: abc123\r\n\r\n{"message":"API rate limit exceeded"}';
+    const spawn = vi.fn().mockReturnValueOnce({ status: 1, stdout: throttled, stderr: 'HTTP 403' })
+      .mockReturnValueOnce(ok(JSON.stringify({ id: gistId, files: {} })));
+    const result = await defaultFetchGist(gistId, { spawn, sleep: async () => {} });
+    expect(result.id).toBe(gistId);
+    expect(spawn).toHaveBeenCalledTimes(2);
+    const forbidden = vi.fn().mockReturnValue({ status: 1, stdout: 'HTTP/2 403\r\nX-GitHub-Request-Id: safe123\r\n\r\n{"message":"Forbidden"}', stderr: '' });
+    await expect(defaultFetchGist(gistId, { spawn: forbidden, sleep: async () => {} }))
+      .rejects.toMatchObject({ code: 'GIST_FORBIDDEN', status: 403, retryable: false,
+        headers: { 'x-github-request-id': 'safe123' } });
+    expect(forbidden).toHaveBeenCalledTimes(1);
+    const retryAfter = 'HTTP/2 429\r\nRetry-After: 2\r\nX-RateLimit-Resource: core\r\n\r\n{"message":"secondary rate limit"}';
+    const sleep = vi.fn(async () => {});
+    const bounded = vi.fn().mockReturnValue({ status: 1, stdout: retryAfter, stderr: '' });
+    await expect(defaultFetchGist(gistId, { spawn: bounded, sleep, retries: 2 }))
+      .rejects.toMatchObject({ code: 'GIST_RATE_LIMITED', status: 429, retryable: true,
+        headers: { 'retry-after': '2', 'x-ratelimit-resource': 'core' } });
+    expect(sleep).toHaveBeenCalledWith(2000);
+    expect(bounded).toHaveBeenCalledTimes(2);
+  });
+
   it('a moved/deleted gist (404) produces a clear typed error, never a silent null, and is not retried', async () => {
     const spawn = vi.fn().mockReturnValue(fail('gh: Not Found (HTTP 404)'));
     await expect(defaultFetchGist(gistId, { spawn, sleep: noSleep }))
@@ -461,11 +515,11 @@ describe('defaultFetchDetail — falls back to the PUBLIC detail endpoint ONLY o
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it('a dead public fallback surfaces its own failure, never swallowed', async () => {
+  it('a missing gist on the public fallback surfaces as a typed 404, never swallowed', async () => {
     const spawn = vi.fn().mockReturnValue({ status: 1, stdout: '', stderr: 'gh: Resource not accessible by integration (HTTP 403)' });
     const fetchImpl = vi.fn(async () => ({ ok: false, status: 404 }));
     await expect(defaultFetchDetail(gistId, { spawn, sleep: async () => {}, fetchImpl }))
-      .rejects.toMatchObject({ code: 'GIST_FETCH_FAILED', status: 404 });
+      .rejects.toMatchObject({ code: 'GIST_NOT_FOUND', status: 404, retryable: false });
   });
 });
 

@@ -35,6 +35,29 @@ import { materializePublicationHandoff, resolvePublicationHandoffPaths } from '.
 import { liveReleaseProvider } from './release-transaction-provider.mjs';
 import { stagedHostVerifier } from './staged-host-verifier.mjs';
 import { verifyPayload } from './release-payload.mjs';
+import { verifyCorpusReceipt } from './corpus-candidate.mjs';
+import { readDiagnosticAccuracyReport } from './oracle/retrieval-accuracy.mjs';
+import { loadFixture, readRecallReport } from './oracle/repo-recall.mjs';
+
+/**
+ * The measured retrieval numbers, stated in the release notes themselves rather than left behind a
+ * digest. Both halves go in together on purpose: the number that qualified the release, and the one
+ * it did NOT meet. A reader who sees only the first would reasonably assume the second was fine.
+ */
+const recallNotes = (receipt) => {
+  const r = receipt.recallSummary;
+  if (!r) return [];
+  return [
+    `Retrieval (blocking): ${r.repositoriesAnswering}/${r.questions} repositories answer a real question`
+      + ` about themselves from their own content; ${r.exactFileTop5}/${r.questions} return the exact`
+      + ` labeled file in the top 5 (floor ${r.floor}).`,
+    'NOT measured: generated-answer correctness, citation support, or unscoped whole-corpus discovery.',
+    `ADR-086 C3 was NOT met and is NOT claimed — its measurement ships as ${receipt.accuracyReport.file}`
+      + ' for inspection.',
+  ];
+};
+import { verifyBundle } from './verify-bundle.mjs';
+import { CORPUS_GENERATION_FIELD, evaluateCorpusPromotion } from './corpus-promotion.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PUBLISH = process.argv.includes('--publish');
@@ -83,7 +106,7 @@ function corpusFailure(message) {
   throw new Error(`[corpus-seed] ${message}`);
 }
 
-export function runProtectedCorpusSeed({
+export async function runProtectedCorpusSeed({
   argv = process.argv.slice(2),
   env = process.env,
   root = ROOT,
@@ -93,6 +116,13 @@ export function runProtectedCorpusSeed({
   if (environmentFailures.length) {
     corpusFailure(environmentFailures.join('; '));
   }
+
+  // The corpus route may never enter product publication. This is belt to the workflow's braces: the
+  // corpus job binds an environment that holds no NPM_TOKEN at all, so npm is unreachable from it by
+  // construction; this refuses the combined invocation outright so the two modes can never share one
+  // process even if a future workflow edit put them in the same job.
+  if (argv.includes('--publish')) corpusFailure('--corpus-seed cannot be combined with --publish; corpus routing must never enter product publication');
+  const promoteLatest = argv.includes('--promote-latest');
 
   const tag = cliArg(argv, '--corpus-tag');
   const bundleFile = cliArg(argv, '--corpus-bundle');
@@ -130,9 +160,12 @@ export function runProtectedCorpusSeed({
     corpusFailure('target must exactly equal HEAD, GITHUB_SHA, and the corpus receipt builderSourceSha');
   }
 
-  // Schema 2: the receipt binds the full provenance closure shipped INSIDE the sealed archive
-  // (ARCHIVE-MANIFEST.json, PRIVATE-STORES.json, RVF-GENERATIONS.json, SOURCE.json) rather than a
-  // separate, unshipped assets/eligibility-policy directory.
+  // Schema 3 (ADR-086 Step 15 / A6): the receipt binds the full provenance closure shipped INSIDE
+  // the sealed archive (ARCHIVE-MANIFEST.json, PRIVATE-STORES.json, RVF-GENERATIONS.json,
+  // SOURCE.json) AND the detached, digest-bound retrieval-accuracy report that measured this exact
+  // archive. Schema 2 is refused outright: a schema-2 seed carries no accuracy binding, so it is
+  // UNPUBLISHABLE from here forward and data/corpus-seed.json must be re-pointed at a schema-3 seed
+  // in the same change that publishes one.
   const boundaryIdentities = [receipt.privateFence, receipt.generationLedger, receipt.sourceManifest, receipt.archiveManifest];
   const storeBindingsValid = Number.isSafeInteger(receipt.storeCount) && receipt.storeCount > 0
     && Array.isArray(receipt.stores) && receipt.stores.length === receipt.storeCount
@@ -152,9 +185,10 @@ export function runProtectedCorpusSeed({
   const generatorFile = path.join(root, 'scripts/corpus-candidate.mjs');
   const generatorValid = fs.existsSync(generatorFile)
     && receipt.generator?.corpusCandidateSha256 === sha256File(generatorFile);
-  if (receipt.schemaVersion !== 2 || receipt.kind !== 'ruvnet-brain-corpus-candidate'
+  if (receipt.schemaVersion !== 3 || receipt.kind !== 'ruvnet-brain-corpus-candidate'
     || !receipt.createdAt || !storeBindingsValid || !emptyFailureArrays
     || !privateExclusionsValid || !boundaryIdentities.every(exactFileIdentity) || !exactFileIdentity(receipt.archive)
+    || !exactFileIdentity(receipt.accuracyReport)
     || !generatorValid
     || receipt.archive.file !== path.basename(bundleFile)) {
     corpusFailure('corpus receipt bindings are incomplete or invalid');
@@ -166,6 +200,98 @@ export function runProtectedCorpusSeed({
   }
   if (digestMatch[1] !== archiveSha256) corpusFailure('corpus tag digest does not match the receipt and archive');
 
+  // ADR-086 Step 15's second binding. The detached accuracy report travels beside the archive; this
+  // proves (a) the file the receipt names is the file present here, byte for byte, (b) the report
+  // was measured against THESE archive bytes, (c) every partition in both query modes passed
+  // 20x>=19x with no timeouts and no bounded sampling, and (d) it was produced by the committed
+  // benchmark against the committed oracle — so a swapped oracle or a patched benchmark is caught
+  // here even though the receipt itself carries only {file, sha256, bytes}.
+  const accuracyReportFile = `${bundleFile}.accuracy.json`;
+  if (receipt.accuracyReport.file !== path.basename(accuracyReportFile)) {
+    corpusFailure('corpus receipt names an accuracy report that is not the one beside this archive');
+  }
+  if (!fs.existsSync(accuracyReportFile) || !fs.statSync(accuracyReportFile).isFile()) {
+    corpusFailure(`detached retrieval-accuracy report missing beside the archive (${path.basename(accuracyReportFile)})`);
+  }
+  if (sha256File(accuracyReportFile) !== receipt.accuracyReport.sha256
+    || fs.statSync(accuracyReportFile).size !== receipt.accuracyReport.bytes) {
+    corpusFailure('detached retrieval-accuracy report bytes do not match the corpus receipt');
+  }
+  const committedOracleFile = path.join(root, 'data/retrieval-accuracy-oracle.json');
+  const accuracyGeneratorFile = path.join(root, 'scripts/oracle/retrieval-accuracy.mjs');
+  if (!fs.existsSync(committedOracleFile)) corpusFailure('committed retrieval-accuracy oracle is missing from the release checkout');
+  if (!fs.existsSync(accuracyGeneratorFile)) corpusFailure('committed retrieval-accuracy benchmark is missing from the release checkout');
+  // The BLOCKING retrieval predicate at publication is the frozen-fixture repo-recall gate, read
+  // through the same module candidate acceptance used so the two can never drift apart. ADR-086's
+  // C3 report still has to exist and still has to be bound to these exact archive bytes — an
+  // unbound diagnostic looks like evidence and is worse than none — but its score no longer refuses
+  // publication. That reduction is declared in docs/adr/0086 and in the published report itself.
+  const archiveIdentity = { file: receipt.archive.file, sha256: archiveSha256, bytes: fs.statSync(bundleFile).size };
+  try {
+    readDiagnosticAccuracyReport({
+      reportFile: accuracyReportFile,
+      archive: archiveIdentity,
+      expectedOracleSha256: sha256File(committedOracleFile),
+      expectedGeneratorSha256: sha256File(accuracyGeneratorFile),
+    });
+  } catch (error) {
+    corpusFailure(`the published C3 diagnostic is not bound to this archive (${error.message})`);
+  }
+  const recallReportFile = `${bundleFile}.recall.json`;
+  if (!fs.existsSync(recallReportFile)) {
+    corpusFailure(`detached repo-recall report missing beside the archive (${path.basename(recallReportFile)})`);
+  }
+  if (!receipt.recallReport
+    || sha256File(recallReportFile) !== receipt.recallReport.sha256
+    || fs.statSync(recallReportFile).size !== receipt.recallReport.bytes) {
+    corpusFailure('detached repo-recall report bytes do not match the corpus receipt');
+  }
+  try {
+    readRecallReport({
+      reportFile: recallReportFile,
+      archive: archiveIdentity,
+      expectedFixtureSha256: loadFixture().fixtureSha256,
+    });
+  } catch (error) {
+    corpusFailure(`retrieval does not qualify this corpus for publication (${error.message})`);
+  }
+
+  // Deep re-verification — moved here 2026-09-13 from the deleted scripts/corpus-seed-publish.mjs
+  // (ADR-085). Everything above proves the receipt is well-FORMED and that the archive's outer
+  // digest matches it; none of it proves the receipt is TRUE. verifyCorpusReceipt re-extracts the
+  // sealed archive and re-derives the entire candidate from its own bytes — per-store file digests,
+  // private-store fence, generation ledger, RVF index audit — and requires canonical equality with
+  // the receipt. A receipt with a single forged store digest passes every check above and fails
+  // here. It runs before any `gh` call so an untrue candidate never reaches the network.
+  try {
+    await verifyCorpusReceipt({
+      receiptFile, bundleFile, accuracyReportFile, recallReportFile, expectedBuilderSha: target, expectedArchiveSha256: archiveSha256,
+    });
+  } catch (error) {
+    corpusFailure(`corpus receipt does not verify against the sealed archive (${error.message})`);
+  }
+
+  // EVERY local proof happens before the first network call. `gh` must never be reached by a
+  // candidate that is already known to be unpublishable — that is the same discipline the deep
+  // verifyCorpusReceipt above follows, and a customer release with an unusable signature is exactly
+  // as unpublishable as an untrue receipt.
+  const signatureFile = `${bundleFile}.sig`;
+  const digestFile = `${bundleFile}.sha256`;
+  const generation = String(receipt.createdAt || '');
+  if (promoteLatest) {
+    for (const [label, file] of [['detached signature', signatureFile], ['sha256 sidecar', digestFile]]) {
+      if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
+        corpusFailure(`customer corpus promotion requires a ${label} beside the archive (${path.basename(file)} missing) — the updater fails closed without it`);
+      }
+    }
+    // The real verifier, against the trust root that ships inside the npm package. Signing happens in
+    // the workflow with the environment-scoped key; this proves the bytes about to be published
+    // verify with the key kb/forge-update.mjs actually carries.
+    const signature = verifyBundle(bundleFile, signatureFile);
+    if (!signature.ok) corpusFailure(`detached signature does not verify against the shipped trust root (${signature.reason})`);
+    if (!Number.isFinite(Date.parse(generation))) corpusFailure('corpus receipt createdAt is not a readable generation timestamp');
+  }
+
   const viewArgs = ['release', 'view', tag, '--json', 'tagName', '--repo', repo];
   const ghCommand = env.RUVNET_GH_COMMAND || 'gh';
   const ghPrefix = env.RUVNET_GH_SCRIPT ? [env.RUVNET_GH_SCRIPT] : [];
@@ -174,33 +300,136 @@ export function runProtectedCorpusSeed({
   const viewError = String(view.error?.message || view.stderr || view.stdout || '');
   if (!/(release not found|no release found)/i.test(viewError)) corpusFailure(`cannot prove ${tag} is absent (${viewError.trim() || `gh exited ${view.status}`})`);
 
+  const receiptSha256 = sha256File(receiptFile);
+  const gh = (args) => run(ghCommand, [...ghPrefix, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+
+  if (!promoteLatest) {
+    // BOOTSTRAP/RECOVERY seeds stay exactly as ADR-086's original contract left them: an immutable
+    // prerelease that never touches releases/latest. Dual's C4 resolution (S1) narrows the change to
+    // CUSTOMER releases — "Bootstrap-only releases may remain prereleases."
+    const notes = [
+      'Content-addressed RuvNet Brain corpus seed.',
+      `Archive SHA-256: ${archiveSha256}`,
+      `Receipt SHA-256: ${receiptSha256}`,
+      `Accuracy report SHA-256: ${receipt.accuracyReport.sha256}`,
+      `Recall report SHA-256: ${receipt.recallReport.sha256}`,
+      ...recallNotes(receipt),
+      `Stores: ${receipt.storeCount}`,
+      `Builder source SHA: ${receipt.builderSourceSha}`,
+      'This published prerelease is immutable and must never be replaced.',
+    ].join('\n');
+    // The detached accuracy report ships AS AN ASSET. Without it a downloader holds an archive it
+    // cannot re-verify — "reverify the downloaded final artifact against the measured identity"
+    // requires the measurement to travel with the artifact it measured.
+    const createArgs = [
+      'release', 'create', tag,
+      '--prerelease', '--latest=false',
+      '--target', target,
+      '--repo', repo,
+      '--title', `Immutable corpus seed ${archiveSha256.slice(0, 16)}`,
+      '--notes', notes,
+      bundleFile, receiptFile, accuracyReportFile, recallReportFile,
+    ];
+    const create = gh(createArgs);
+    if (create.error || create.status !== 0) {
+      corpusFailure(`protected corpus publication failed (${String(create.error?.message || create.stderr || create.stdout || '').trim()})`);
+    }
+    return { tag, target, repository: repo, archiveSha256, receiptSha256, promoted: false };
+  }
+
+  // ── CUSTOMER CORPUS RELEASE (ADR-086 step 17 / C4 resolution S1) ───────────────────────────────
+  // The old path was invisible AND unusable to a customer, for two independent reasons, and fixing
+  // only one leaves the channel dead. `--prerelease --latest=false` means kb/forge-update.mjs's
+  // releases/latest poll never sees it; and with no detached .sig the updater fails closed anyway
+  // (kb/forge-update.mjs:1275 fetches `${url}.sig`, :1284-1285 exits 4 when verification fails).
+  // scripts/verify-channels.mjs checks exactly these two things (checks 3 and 4) against the live
+  // endpoints, and is the owner's post-publish acceptance gate.
+  const latestView = gh(['release', 'view', '--json', 'tagName,body', '--repo', repo]);
+  let currentLatest = null;
+  if (!latestView.error && latestView.status === 0) {
+    try { currentLatest = JSON.parse(String(latestView.stdout || 'null')); }
+    catch (error) { corpusFailure(`cannot read the current latest release (${error.message})`); }
+    if (!currentLatest || typeof currentLatest.tagName !== 'string') corpusFailure('current latest release carries no tag name');
+  } else {
+    const latestError = String(latestView.error?.message || latestView.stderr || latestView.stdout || '');
+    if (!/(release not found|no release found)/i.test(latestError)) {
+      corpusFailure(`cannot determine the current latest release (${latestError.trim() || `gh exited ${latestView.status}`})`);
+    }
+  }
+  const promotion = evaluateCorpusPromotion({ tag, generation, currentLatest });
+  if (!promotion.allowed) corpusFailure(promotion.reason);
+
   const notes = [
-    'Content-addressed RuvNet Brain corpus seed.',
+    'RuvNet Brain corpus generation — signed, content-addressed, and promoted to latest.',
+    `${CORPUS_GENERATION_FIELD} ${generation}`,
     `Archive SHA-256: ${archiveSha256}`,
-    `Receipt SHA-256: ${sha256File(receiptFile)}`,
+    `Receipt SHA-256: ${receiptSha256}`,
     `Stores: ${receipt.storeCount}`,
     `Builder source SHA: ${receipt.builderSourceSha}`,
-    'This published prerelease is immutable and must never be replaced.',
+    `Shipped runtime: ${receipt.archiveManifestReleaseTag}`,
+    ...recallNotes(receipt),
+    'Immutable: this tag is the archive digest and must never be replaced.',
   ].join('\n');
-  const createArgs = [
+
+  // ASSETS COMPLETE BEFORE PROMOTION. `gh release create` uploads assets AFTER the release exists, so
+  // creating a non-draft release directly opens a window in which releases/latest resolves to a
+  // release with no archive — every polling client in that window fails or, worse, half-downloads.
+  // Create as a draft (invisible to releases/latest), prove all four assets landed, and only then
+  // flip draft off and claim latest in one edit.
+  // Both reports ride with every corpus release for the same reason they ride with a seed: a customer
+  // (or the next night's dispatcher) that downloads the archive must be able to reverify it against
+  // the identity it was actually measured under — the blocking recall gate AND the C3 diagnostic it
+  // scored 59.0% on, so nobody has to take either number on trust.
+  const assetFiles = [bundleFile, signatureFile, digestFile, receiptFile, accuracyReportFile, recallReportFile];
+  const create = gh([
     'release', 'create', tag,
-    '--prerelease', '--latest=false',
+    '--draft',
     '--target', target,
     '--repo', repo,
-    '--title', `Immutable corpus seed ${archiveSha256.slice(0, 16)}`,
+    '--title', `RuvNet Brain corpus ${archiveSha256.slice(0, 16)}`,
     '--notes', notes,
-    bundleFile, receiptFile,
-  ];
-  const create = run(ghCommand, [...ghPrefix, ...createArgs], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    ...assetFiles,
+  ]);
   if (create.error || create.status !== 0) {
     corpusFailure(`protected corpus publication failed (${String(create.error?.message || create.stderr || create.stdout || '').trim()})`);
   }
-  return { tag, target, repository: repo, archiveSha256, receiptSha256: sha256File(receiptFile) };
+
+  const expectedAssets = assetFiles.map((file) => path.basename(file)).sort();
+  const draftView = gh(['release', 'view', tag, '--json', 'isDraft,assets', '--repo', repo]);
+  if (draftView.error || draftView.status !== 0) corpusFailure('cannot confirm the draft corpus release before promotion');
+  let draft;
+  try { draft = JSON.parse(String(draftView.stdout || 'null')); }
+  catch (error) { corpusFailure(`cannot read the draft corpus release (${error.message})`); }
+  const uploaded = (draft?.assets || []).filter((asset) => asset?.state === 'uploaded' && Number.isSafeInteger(asset.size) && asset.size > 0);
+  if (draft?.isDraft !== true || JSON.stringify(uploaded.map((asset) => asset.name).sort()) !== JSON.stringify(expectedAssets)) {
+    corpusFailure(`refusing to promote an incomplete corpus release; expected ${expectedAssets.join(', ')} fully uploaded on a draft`);
+  }
+
+  const promote = gh(['release', 'edit', tag, '--repo', repo, '--draft=false', '--latest', '--prerelease=false']);
+  if (promote.error || promote.status !== 0) {
+    corpusFailure(`corpus promotion to latest failed (${String(promote.error?.message || promote.stderr || promote.stdout || '').trim()})`);
+  }
+
+  const finalView = gh(['release', 'view', tag, '--json', 'tagName,isDraft,isLatest,isPrerelease,assets', '--repo', repo]);
+  if (finalView.error || finalView.status !== 0) corpusFailure('cannot confirm the promoted corpus release');
+  let promoted;
+  try { promoted = JSON.parse(String(finalView.stdout || 'null')); }
+  catch (error) { corpusFailure(`cannot read the promoted corpus release (${error.message})`); }
+  const promotedAssets = (promoted?.assets || []).map((asset) => asset?.name).sort();
+  if (promoted?.tagName !== tag || promoted.isDraft !== false || promoted.isLatest !== true
+    || promoted.isPrerelease !== false || JSON.stringify(promotedAssets) !== JSON.stringify(expectedAssets)) {
+    corpusFailure('corpus release did not reach a complete, non-draft, non-prerelease latest state');
+  }
+
+  return {
+    tag, target, repository: repo, archiveSha256, receiptSha256, promoted: true,
+    generation, supersededLatest: currentLatest?.tagName || null,
+  };
 }
 
 if (CORPUS_SEED) {
   try {
-    const result = runProtectedCorpusSeed();
+    const result = await runProtectedCorpusSeed();
     console.log(JSON.stringify({ ok: true, mode: 'corpus-seed', ...result }, null, 2));
   } catch (error) {
     console.error(error.message);

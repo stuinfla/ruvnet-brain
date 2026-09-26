@@ -36,6 +36,7 @@ import path from 'node:path';
 import {
   RECEIPT_PREFIX, isClosedReceipt, ALLOWED_TRANSITIONS, canonicalJson, digestReceipt, signReceipt,
 } from './release-transaction.mjs';
+import { latestCodeReleaseTag } from './release-channel-kind.mjs';
 
 const REPO = 'stuinfla/ruvnet-brain';
 const arg = (n) => { const i = process.argv.indexOf(n); return i >= 0 ? process.argv[i + 1] : null; };
@@ -75,7 +76,10 @@ if (!(ALLOWED_TRANSITIONS[last.state] || []).includes('aborted')) {
 
 // Never abort something that actually shipped and simply failed to record it.
 const npmLatest = execFileSync('npm', ['view', 'ruvnet-brain@latest', 'version'], { encoding: 'utf8' }).trim();
-const ghLatest = JSON.parse(gh(['api', `repos/${REPO}/releases/latest`])).tag_name;
+// ADR-086 S1: latest may be a corpus generation, which never equals a code tag. Comparing against
+// it would say "this is not the live generation" about a release that genuinely shipped, and then
+// abort it — the exact mistake this check exists to prevent.
+const ghLatest = latestCodeReleaseTag(JSON.parse(gh(['api', `repos/${REPO}/releases?per_page=30`])));
 if (last.identity?.version === npmLatest && last.identity?.tag === ghLatest) {
   die(`${TAG} IS the currently published generation on both channels — that is a converged release, not an abandoned one`);
 }

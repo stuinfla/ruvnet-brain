@@ -10,6 +10,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import {
   installStatePath, readInstallState, writeInstallState, groundingUnproven,
 } from '../../scripts/selfcheck.mjs';
@@ -117,7 +118,17 @@ describe('mutation proof — groundingUnproven is load-bearing, not vestigial', 
     // selfcheck-battery.test.mjs's §8 mutant() helper uses).
     const REG_ANCHOR = "const here = path.dirname(fileURLToPath(import.meta.url));";
     expect(mutated.includes(REG_ANCHOR)).toBe(true);
-    fs.writeFileSync(file, mutated.replace(REG_ANCHOR, `const here = ${JSON.stringify(path.dirname(SRC))};`));
+    // Every RELATIVE dependency has to be re-pointed, not just `here`. selfcheck.mjs imports the
+    // canonical continuity policy as '../plugin/scripts/continuity-hook-policy.mjs' (965ee55c,
+    // which deleted a drifted second copy of that policy) — and from a tmpdir that path resolves
+    // to nothing, so the mutant failed to import and this mutation proof silently stopped proving
+    // anything. selfcheck-battery.test.mjs:622 already re-points it; this second copier did not.
+    const POLICY_ANCHOR = "from '../plugin/scripts/continuity-hook-policy.mjs'";
+    expect(mutated.includes(POLICY_ANCHOR), 'policy import anchor moved — re-point it for the mutant').toBe(true);
+    const policyUrl = pathToFileURL(path.join(path.dirname(SRC), '../plugin/scripts/continuity-hook-policy.mjs')).href;
+    fs.writeFileSync(file, mutated
+      .replace(REG_ANCHOR, `const here = ${JSON.stringify(path.dirname(SRC))};`)
+      .replace(POLICY_ANCHOR, `from ${JSON.stringify(policyUrl)}`));
     try {
       const mod = await import(`${file}?v=${Date.now()}`);
       expect(mod.groundingUnproven({ grounding: 'unproven' })).toBe(false); // ← the defect, reproduced

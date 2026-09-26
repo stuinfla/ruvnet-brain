@@ -51,6 +51,28 @@ describe('Fix 6 — versionFacts(): KB generation, running brain and installed p
     expect(v.agree).toBe(null);
   });
 
+  // ADR-086 step 16: `releases/latest` can now be a CORPUS release, tagged with a 78-character
+  // content address (`corpus-sha256-<64 hex>`) rather than a version. Printed in the "latest
+  // release" slot it would read as a catastrophic version disagreement in the one panel built to
+  // make real disagreement visible. It is a different identity domain, so it gets its own field.
+  it('reports a corpus release as a corpus identity, never as a version number', () => {
+    writeKb(RUNNING_VERSION);
+    const corpusTag = `corpus-sha256-${'a'.repeat(64)}`;
+    const v = runJSON(`${IMPORT} process.stdout.write(JSON.stringify(m.versionFacts({ release: { tag: ${JSON.stringify(corpusTag)} } })));`);
+    expect(v.latestCorpusRelease).toBe(corpusTag);
+    expect(v.latestRelease, 'a content address is not a version, and must not be shown as one').toBe(null);
+    // The version reconciliation this panel exists for is untouched by a corpus release.
+    expect(v.kbGeneration).toBe(RUNNING_VERSION);
+    expect(v.agree).toBe(true);
+  });
+
+  it('still reports an ordinary code release as the latest version', () => {
+    writeKb(RUNNING_VERSION);
+    const v = runJSON(`${IMPORT} process.stdout.write(JSON.stringify(m.versionFacts({ release: { tag: 'v9.9.9' } })));`); // sync-version-ignore: a SYNTHETIC release tag is the fixture — the subject under test is that a v-prefix is stripped and a corpus tag is not, which needs a tag that is deliberately never this product's version
+    expect(v.latestRelease).toBe('9.9.9'); // sync-version-ignore: the expected half of the same synthetic fixture on the line above
+    expect(v.latestCorpusRelease).toBe(null);
+  });
+
   it('the page renders all three with labels and a disagreement state', () => {
     const src = fs.readFileSync(APP_JS, 'utf8');
     expect(src).toContain('KB generation');

@@ -13,13 +13,35 @@ import { rootNeverMaterialized, storeRoot } from '../kb/store-root.mjs';
 export { canonicalJson, digest } from './coverage-integrity.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+// SOURCE POLICY VERSION — sealed into every coverage as `policy.policyVersion` so a recorded
+// measurement produced under an older eligibility policy is DETECTABLE (main --check names the gap)
+// rather than silently compared row-for-row against a generator that classifies differently.
+//   1 — forks and archives INELIGIBLE by flag; anonymous gist fallback capped at 10 pages;
+//       no-corpus exclusions active on a pushedAt match alone.
+//   2 — ADR-086 Step 12 (2026-09-13). Archives eligible unconditionally. Forks dispositioned every run
+//       by the compare API pinned to both observed heads: ahead_by>0 → `fork:original-content`
+//       (ingestible, delta-only), ahead_by=0 → `fork:no-original-content` (recorded with the upstream
+//       identity). Gist fallback paginates to an empty page under a throwing ceiling. An active
+//       exclusion must carry source-file evidence bound to the observed head.
+export const SOURCE_POLICY_VERSION = 2;
+
+// Dispositions whose rows the corpus is expected to contain. `fork:original-content` is deliberately
+// NOT spelled `eligible`: scripts/corpus-reconcile.mjs full-clones every `eligible` repository row,
+// and a full clone of a fork ingests upstream authors' commits under rUv's name — the misattribution
+// the #286 RC3 repo-attribution guard exists to stop. The delta-only build that consumes this
+// disposition is corpus-reconcile's work; this layer records what it needs (`forkDelta`).
+const INGESTIBLE_DISPOSITIONS = new Set(['eligible', 'fork:original-content']);
+export function isIngestibleDisposition(disposition) { return INGESTIBLE_DISPOSITIONS.has(disposition); }
+
 const REPO_QUERY = `query($login:String!,$cursor:String){
   user(login:$login){
     publicRepositories:repositories(privacy:PUBLIC){totalCount}
     repositories(first:100,after:$cursor,privacy:PUBLIC,ownerAffiliations:OWNER,orderBy:{field:NAME,direction:ASC}){
       pageInfo{hasNextPage endCursor}
       nodes{databaseId name url description homepageUrl isFork isArchived isDisabled diskUsage updatedAt pushedAt
-        defaultBranchRef{name target{... on Commit{oid committedDate}}}}
+        defaultBranchRef{name target{... on Commit{oid committedDate}}}
+        parent{nameWithOwner isPrivate defaultBranchRef{name target{... on Commit{oid}}}}}
     }
   }
 }`;
@@ -28,6 +50,34 @@ function runGh(args) {
   const result = spawnSync('gh', args, { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 });
   if (result.status !== 0) throw new Error(`gh ${args.join(' ')} failed: ${(result.stderr || '').trim()}`);
   return result.stdout;
+}
+
+// A fork's disposition depends on how many commits it carries that its upstream does not. The
+// compare is pinned to the two heads THIS observation recorded (never to branch names, which move),
+// and is run against the upstream repository in GitHub's documented cross-fork form
+// `BASE...FORK_OWNER:HEAD` (verified live 2026-09-13: ahead_by/behind_by/status/merge_base_commit).
+// Any failure here — 403, 404, an upstream GitHub cannot name — is required content that is
+// inaccessible, and it fails the observation rather than skipping the fork.
+function observeForkDelta(owner, node, gh) {
+  const forkHeadSha = node.defaultBranchRef?.target?.oid;
+  const upstream = node.parent?.nameWithOwner;
+  if (!upstream) throw new Error(`fork ${node.name} has no upstream parent GitHub can name — its original-content delta cannot be established`);
+  const upstreamHeadSha = node.parent.defaultBranchRef?.target?.oid;
+  if (!upstreamHeadSha) throw new Error(`fork ${node.name}: upstream ${upstream} has no default-branch head to compare against`);
+  let compare;
+  try {
+    compare = JSON.parse(gh(['api', `repos/${upstream}/compare/${upstreamHeadSha}...${owner}:${forkHeadSha}`]));
+  } catch (error) {
+    throw new Error(`fork ${node.name}: compare against upstream ${upstream} failed — ${error.message}`);
+  }
+  if (!Number.isInteger(compare?.ahead_by) || !Number.isInteger(compare?.behind_by)) {
+    throw new Error(`fork ${node.name}: compare against upstream ${upstream} returned no ahead_by/behind_by`);
+  }
+  return {
+    upstream, upstreamDefaultBranch: node.parent.defaultBranchRef.name, upstreamHeadSha, forkHeadSha,
+    mergeBaseSha: compare.merge_base_commit?.sha || null,
+    aheadBy: compare.ahead_by, behindBy: compare.behind_by, status: compare.status || null,
+  };
 }
 
 export function observeRepositories(owner, { gh = runGh } = {}) {
@@ -47,7 +97,10 @@ export function observeRepositories(owner, { gh = runGh } = {}) {
   } while (cursor);
   const expected = rows.length ? Number(JSON.parse(gh(['api', `users/${owner}`])).public_repos) : 0;
   if (rows.length !== expected) throw new Error(`repository enumeration incomplete: ${rows.length}/${expected}`);
-  return { rows, expected, pages };
+  // A fork with no head has nothing to compare; classifyRepository records it as `empty`.
+  const withDeltas = rows.map((node) => (node?.isFork && node.defaultBranchRef?.target?.oid
+    ? { ...node, forkDelta: observeForkDelta(owner, node, gh) } : node));
+  return { rows: withDeltas, expected, pages };
 }
 
 export function observeExternalRepositories(sources, { gh = runGh } = {}) {
@@ -130,6 +183,13 @@ export function canonicalRepositoryRows(rows = []) {
     homepageUrl: repo?.homepageUrl ?? null,
     isFork: repo?.isFork === true,
     ...(repo?.upstreamIsFork === undefined ? {} : { upstreamIsFork: repo.upstreamIsFork === true }),
+    // Sealed into the source identity: the delta baseline (both heads, ahead/behind) IS what was observed.
+    ...(repo?.forkDelta === undefined ? {} : { forkDelta: {
+      upstream: repo.forkDelta.upstream, upstreamDefaultBranch: repo.forkDelta.upstreamDefaultBranch ?? null,
+      upstreamHeadSha: repo.forkDelta.upstreamHeadSha, forkHeadSha: repo.forkDelta.forkHeadSha,
+      mergeBaseSha: repo.forkDelta.mergeBaseSha ?? null,
+      aheadBy: repo.forkDelta.aheadBy, behindBy: repo.forkDelta.behindBy, status: repo.forkDelta.status ?? null,
+    } }),
     isArchived: repo?.isArchived === true,
     isDisabled: repo?.isDisabled === true,
     diskUsage: repo?.diskUsage,
@@ -155,6 +215,9 @@ export function canonicalGistRows(rows = []) {
     id: gist?.id,
     updated_at: gist?.updated_at ?? null,
     html_url: gist?.html_url,
+    // Preserve GitHub's top-level completeness indicator. `files.truncated` is a different
+    // per-file content flag; neither omission nor a missing value means the inventory is complete.
+    ...(Object.hasOwn(gist || {}, 'truncated') ? { truncated: gist.truncated } : {}),
     files: Object.fromEntries(Object.entries(gist?.files || {}).sort(([a], [b]) => a.localeCompare(b))
       .map(([key, file]) => [key, {
         filename: file?.filename,
@@ -207,15 +270,27 @@ function runCurl(url) {
 // specific failure, mirroring ingest-gists.mjs's already-working listGists/listGistsPublic split
 // (kept synchronous here, matching this module's existing gh-injection style, rather than
 // threading async through observeSourceUniverse/buildCoverage's whole synchronous call chain).
+//
+// ADR-086 Step 12 (A1): the former `page <= 10` bound was NOT a silent-omission bug — observeGists
+// throws on rows.length !== public_gists, so beyond 1000 gists the run failed closed — but it was a
+// ceiling the account could grow into. Pagination now runs to the ACTUAL end: the only terminator is
+// an EMPTY page (a short page followed by more must not stop early), under a hard ceiling that
+// THROWS rather than truncating. The rows.length === public_gists check below remains the one and
+// only completeness proof; nothing here adds a second invariant.
+const GIST_PAGE_CEILING = 100; // 10,000 gists at per_page=100
+
 function listGistsUnauthenticated(owner, curl) {
   const apiBase = process.env.RUVNET_GISTS_API || 'https://api.github.com';
   const pages = [];
-  for (let page = 1; page <= 10; page++) {
+  for (let page = 1; ; page++) {
+    if (page > GIST_PAGE_CEILING) {
+      throw new Error(`unauthenticated gists list exceeded ${GIST_PAGE_CEILING} pages without reaching an empty page`);
+    }
     const parsed = JSON.parse(curl(`${apiBase}/users/${owner}/gists?per_page=100&page=${page}`));
     if (parsed?.message) throw new Error(`unauthenticated gists list failed: ${parsed.message}`);
     if (!Array.isArray(parsed)) throw new Error('unauthenticated gists list returned an unexpected shape');
-    pages.push(parsed);
-    if (parsed.length < 100) break;
+    pages.push(parsed); // the empty terminal page is kept: it is the receipt that the end was reached
+    if (parsed.length === 0) break;
   }
   return pages;
 }
@@ -231,6 +306,11 @@ export function observeGists(owner, { gh = runGh, curl = runCurl } = {}) {
     pages = listGistsUnauthenticated(owner, curl);
   }
   const rows = pages.flat().filter((gist) => gist?.id);
+  // Identity, not completeness (A1 forbids a second completeness invariant): a gist listed twice is
+  // collection-time source movement shifting pages under the cursor, and the same id could then mask
+  // a missed one inside an equal count. Mirrors the duplicate-repository check in observeSourceUniverse.
+  const ids = rows.map((gist) => String(gist.id));
+  if (new Set(ids).size !== ids.length) throw new Error('gist enumeration returned duplicate gist identities (collection-time source movement)');
   const expected = Number(JSON.parse(gh(['api', `users/${owner}`])).public_gists);
   if (rows.length !== expected) throw new Error(`gist enumeration incomplete: ${rows.length}/${expected}`);
   return {
@@ -243,17 +323,50 @@ export function observeGists(owner, { gh = runGh, curl = runCurl } = {}) {
 
 function storeName(name) { return String(name).toLowerCase(); }
 
+// A no-corpus exclusion is admissible only with INDEPENDENT source-file evidence bound to the exact
+// revision it excludes: the file inventory actually read from the repository tree at the observed
+// head. "0 chunks produced" is an extraction outcome, not proof of an empty source (Dual, Step 12).
+// A record that matches pushedAt but carries no such evidence is a malformed policy entry, and it
+// throws — it must never quietly remove a source from the collected set.
+function assertExclusionEvidence(repo, exclusion, upstreamSha) {
+  const evidence = exclusion?.evidence;
+  const sha = String(evidence?.headSha || '');
+  if (!evidence || typeof evidence !== 'object' || !Array.isArray(evidence.files) || typeof evidence.inspectedAt !== 'string'
+      || typeof evidence.method !== 'string') {
+    throw new Error(`no-corpus exclusion for ${repo.name} is active but carries no source-file evidence ` +
+      '(zero extracted chunks is not proof of an empty source)');
+  }
+  if (!/^[0-9a-f]{40}$/i.test(sha) || sha.toLowerCase() !== String(upstreamSha || '').toLowerCase()) {
+    throw new Error(`no-corpus exclusion for ${repo.name}: evidence headSha ${sha || '(none)'} is not the observed head ${upstreamSha}`);
+  }
+}
+
 export function classifyRepository(repo, evidence, exclusion = null) {
-  const activeExclusion = exclusion && String(exclusion.pushedAt || '') !== ''
-    && String(exclusion.pushedAt) === String(repo.pushedAt || '');
-  const disposition = activeExclusion ? 'excluded-no-corpus' : repo.isFork ? 'fork' : repo.isArchived ? 'archived' :
-    repo.isDisabled ? 'disabled' : !repo.defaultBranchRef ? 'empty' : 'eligible';
   const upstreamSha = repo.defaultBranchRef?.target?.oid || null;
+  const activeExclusion = Boolean(exclusion && String(exclusion.pushedAt || '') !== ''
+    && String(exclusion.pushedAt) === String(repo.pushedAt || ''));
+  if (activeExclusion) assertExclusionEvidence(repo, exclusion, upstreamSha);
+  if (repo.isFork && repo.defaultBranchRef && !repo.forkDelta) {
+    throw new Error(`fork ${repo.name} was observed without a fork delta — the observation predates policy ${SOURCE_POLICY_VERSION} or skipped the compare`);
+  }
+  // Policy 2: archives are eligible unconditionally (no `archived` branch); forks are dispositioned
+  // by their delta. Order: an explicit exclusion wins, then GitHub-side unavailability, then emptiness
+  // (a fork with no head has nothing to compare), then the fork delta, then eligible.
+  const disposition = activeExclusion ? 'excluded-no-corpus'
+    : repo.isDisabled ? 'disabled'
+      : !repo.defaultBranchRef ? 'empty'
+        : repo.isFork ? (repo.forkDelta.aheadBy > 0 ? 'fork:original-content' : 'fork:no-original-content')
+          : 'eligible';
   const reasons = [];
   let status = 'CURRENT';
-  if (disposition !== 'eligible') {
+  if (!isIngestibleDisposition(disposition)) {
     status = 'INELIGIBLE';
-    if (activeExclusion && exclusion?.reason) reasons.push(exclusion.reason);
+    if (disposition === 'excluded-no-corpus' && exclusion?.reason) reasons.push(exclusion.reason);
+    else if (disposition === 'disabled') reasons.push('repository is disabled by GitHub');
+    else if (disposition === 'empty') reasons.push('repository has no default branch — no commits to collect');
+    else if (disposition === 'fork:no-original-content') {
+      reasons.push(`fork of ${repo.forkDelta.upstream}: 0 commits ahead of upstream ${repo.forkDelta.upstreamHeadSha.slice(0, 12)} — contains no original content`);
+    }
   }
   else if (!evidence.rvfPresent) { status = 'MISSING'; reasons.push('canonical RVF is absent'); }
   else if (!evidence.receipt?.sourceCommit) { status = 'UNVERIFIED'; reasons.push('RVF receipt has no sourceCommit'); }
@@ -268,6 +381,8 @@ export function classifyRepository(repo, evidence, exclusion = null) {
     routing: { description: repo.description || null, homepageUrl: repo.homepageUrl || null,
       capabilityCardPresent: evidence.cardPresent === true },
     disposition,
+    archived: repo.isArchived === true,
+    ...(repo.forkDelta ? { forkDelta: { ...repo.forkDelta } } : {}),
     upstream: { sha: upstreamSha, committedAt: repo.defaultBranchRef?.target?.committedDate || null,
       pushedAt: repo.pushedAt, updatedAt: repo.updatedAt },
     artifact: { store: storeName(repo.storeName || repo.name), sourceCommit: evidence.receipt?.sourceCommit || null,
@@ -297,6 +412,7 @@ export function classifyGist(gist, evidence) {
   let status = 'CURRENT';
   const reasons = [];
   if (!evidence.rvfPresent) { status = 'MISSING'; reasons.push('ruv-gists RVF is absent'); }
+  else if (gist.truncated !== false) { status = 'UNVERIFIED'; reasons.push('GitHub gist file inventory is truncated or its completeness flag is unknown'); }
   else if (!evidence.receipt || !source || !version) { status = 'UNVERIFIED'; reasons.push('per-gist source receipt is absent'); }
   else if (!evidence.bytesVerified) { status = 'FAILED'; reasons.push('ruv-gists RVF bytes do not match the generation receipt'); }
   else if (!evidence.passagesBound) { status = 'FAILED'; reasons.push('gist passages do not match the source receipt'); }
@@ -309,7 +425,8 @@ export function classifyGist(gist, evidence) {
     name: Object.values(gist.files || {})[0]?.filename || gist.id,
     url: gist.html_url,
     disposition: 'eligible',
-    upstream: { sha: version, updatedAt: gist.updated_at, fileCount: filenames.length, files: filenames },
+    upstream: { sha: version, updatedAt: gist.updated_at, truncated: gist.truncated ?? null,
+      fileCount: filenames.length, files: filenames },
     artifact: { store: 'ruv-gists', sourceCommit: source?.versionSha || null, ingestedAt: source?.ingestedAt || ingestedAt,
       contentDigest: source?.contentDigest || null, fileCount: source?.files?.length || null,
       rvfSha256: evidence.receipt?.sha256 || null, bytesVerified: evidence.bytesVerified },
@@ -348,6 +465,7 @@ export function renderMarkdown(coverage) {
     '# RuvNet Brain source coverage', '',
     `Generated: ${coverage.observedAt}  `,
     `Coverage generation: \`${coverage.coverageGeneration}\`  `,
+    `Source policy version: ${coverage.policy?.policyVersion ?? 1}  `,
     `Repositories: ${coverage.totals.repositories} · Gists: ${coverage.totals.gists} · ` +
       Object.entries(counts).sort().map(([state, count]) => `${state} ${count}`).join(' · '), '',
     '> `CURRENT` is artifact-bound. Clone state and timestamps alone never establish freshness.', '',
@@ -356,7 +474,8 @@ export function renderMarkdown(coverage) {
     '|---|---:|---|---:|---|---|---|',
   ];
   for (const row of coverage.rows.filter((entry) => entry.kind === 'repository')) {
-    lines.push(`| [${row.name}](${row.url}) | ${row.upstream.committedAt || row.upstream.updatedAt || '—'} | ${row.upstream.sha || '—'} | ${row.artifact.ingestedAt || '—'} | ${row.artifact.sourceCommit || '—'} | ${row.status} | ${row.reasons.join('; ') || row.disposition} |`);
+    const marker = row.archived ? ' _(archived)_' : '';
+    lines.push(`| [${row.name}](${row.url})${marker} | ${row.upstream.committedAt || row.upstream.updatedAt || '—'} | ${row.upstream.sha || '—'} | ${row.artifact.ingestedAt || '—'} | ${row.artifact.sourceCommit || '—'} | ${row.status} | ${row.reasons.join('; ') || row.disposition} |`);
   }
   lines.push('', '## Public gists', '',
     '| Gist | Upstream updated | Version SHA | Ingested update | State | Reason |',
@@ -382,10 +501,63 @@ export function sealCoverage({ owner, repositories, gists, rows, generatorSource
     .map((status) => [status, orderedRows.filter((row) => row.status === status).length]));
   return { schemaVersion: 1, kind: 'ruvnet-brain-corpus-coverage', owner, observedAt, generatorSourceSha,
     sourceObservationSha256, snapshotRoot,
-    policy: { policyDispositionDigests, exemptionDigests },
+    policy: { policyVersion: SOURCE_POLICY_VERSION, policyDispositionDigests, exemptionDigests },
     coverageGeneration: coverageGenerationFor({ generatorSourceSha, snapshotRoot, sourceObservationSha256, rows: orderedRows,
       enumerationReceipt, policyDispositionDigests, exemptionDigests }), enumerationReceipt, rows: orderedRows,
     totals: { repositories: repositories.expected, gists: gists.expected, rows: orderedRows.length, byStatus } };
+}
+
+// IDENTITY ACCOUNTING between a recorded coverage and a fresh one. Row keys are the stable identity
+// (`repo:<databaseId>` for the owner's repositories — a rename keeps the key and changes the name;
+// `repo:<owner/name>` for configured external sources, where a rename reads as remove + add; `gist:<id>`).
+// This is how "zero unexplained omissions" is made checkable: every repository or gist that left the
+// set since the recorded measurement is NAMED, never silently absent from a diff.
+export function diffCoverageIdentities(recorded, current) {
+  const index = (coverage, kind) => new Map((coverage?.rows || []).filter((row) => row.kind === kind)
+    .map((row) => [row.key, row.name]));
+  const identity = ([key, name]) => ({ key, name });
+  const account = (kind, withRenames) => {
+    const before = index(recorded, kind);
+    const after = index(current, kind);
+    const result = {
+      added: [...after].filter(([key]) => !before.has(key)).map(identity),
+      removed: [...before].filter(([key]) => !after.has(key)).map(identity),
+    };
+    if (withRenames) {
+      result.renamed = [...after].filter(([key, name]) => before.has(key) && before.get(key) !== name)
+        .map(([key, to]) => ({ key, from: before.get(key), to }));
+    }
+    return result;
+  };
+  return { repositories: account('repository', true), gists: account('gist', false) };
+}
+
+// What `--check` prints when the recorded projection differs from the live observation: the named
+// identity differences and the policy-version gap. A recorded coverage produced under an older
+// SOURCE_POLICY_VERSION is stale BY CONSTRUCTION — its rows were classified by different rules — and
+// that must be said out loud, not left as an unexplained byte mismatch.
+export function explainCoverageDrift(recorded, current) {
+  const diff = diffCoverageIdentities(recorded, current);
+  const list = (rows) => (rows.length ? ` (${rows.map((row) => `${row.key} ${row.name}`).join(', ')})` : '');
+  const recordedPolicy = recorded?.policy?.policyVersion ?? 1;
+  const currentPolicy = current?.policy?.policyVersion ?? SOURCE_POLICY_VERSION;
+  const recordedRows = new Map((recorded?.rows || []).map((row) => [row.key, canonicalJson(row)]));
+  const changed = (current?.rows || []).filter((row) => recordedRows.has(row.key) && recordedRows.get(row.key) !== canonicalJson(row));
+  const lines = [
+    `recorded ${recorded?.observedAt || '(unknown)'} vs live ${current?.observedAt || '(unknown)'}`,
+    `rows changed in content: ${changed.length}${changed.length ? ` (first: ${changed.slice(0, 5).map((row) => row.key).join(', ')})` : ''}`,
+    `repositories: +${diff.repositories.added.length} added${list(diff.repositories.added)}, ` +
+      `-${diff.repositories.removed.length} removed${list(diff.repositories.removed)}, ` +
+      `${diff.repositories.renamed.length} renamed${diff.repositories.renamed.length
+        ? ` (${diff.repositories.renamed.map((row) => `${row.key} ${row.from} -> ${row.to}`).join(', ')})` : ''}`,
+    `gists: +${diff.gists.added.length} added, -${diff.gists.removed.length} removed${list(diff.gists.removed)}`,
+  ];
+  if (recordedPolicy !== currentPolicy) {
+    lines.push(`recorded policyVersion ${recordedPolicy} != current policyVersion ${currentPolicy}: the recorded ` +
+      'measurement was classified under an older eligibility policy and is stale by construction; the next pipeline ' +
+      'run will produce the new shape (archives eligible, forks dispositioned by compare, exclusions evidence-bound)');
+  }
+  return lines;
 }
 
 // The measured directory defaults to THE store root (kb/store-root.mjs) — the one every reader,
@@ -467,8 +639,11 @@ export async function main(argv = process.argv.slice(2)) {
   if (argv.includes('--check')) {
     const matches = fs.existsSync(jsonPath) && fs.readFileSync(jsonPath, 'utf8') === json &&
       fs.existsSync(markdownPath) && fs.readFileSync(markdownPath, 'utf8') === markdown;
-    const blockers = coverage.rows.filter((row) => row.disposition === 'eligible' && row.status !== 'CURRENT');
-    if (!matches) console.error('source coverage projections differ from live observation');
+    const blockers = coverage.rows.filter((row) => isIngestibleDisposition(row.disposition) && row.status !== 'CURRENT');
+    if (!matches) {
+      console.error('source coverage projections differ from live observation');
+      for (const line of explainCoverageDrift(recorded, coverage)) console.error(`  ${line}`);
+    }
     if (argv.includes('--strict') && blockers.length) console.error(`strict coverage: ${blockers.length} eligible row(s) are not CURRENT`);
     return matches && (!argv.includes('--strict') || blockers.length === 0) ? 0 : 1;
   }

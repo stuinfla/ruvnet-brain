@@ -30,6 +30,7 @@ import {
 } from '../kb/model-requirements.mjs';
 import { applyManagedCatalogUpdate } from '../scripts/model-router-catalog.mjs';
 import { cmpVersion } from '../scripts/stack-sync.mjs';
+import { inspectInstalledBrain, classifySmokeEvidence, DOCTOR_SMOKE_QUERY, doctorSmokeArgs } from '../scripts/installed-brain-health.mjs';
 import { validateCoverageDirectory } from '../plugin/scripts/coverage-integrity.mjs';
 import {
   continuityContractIds,
@@ -69,6 +70,9 @@ import {
   CONSOLE_RUNTIME_SURFACE, CONSOLE_RUNTIME_IDENTITY_FILE, consoleRuntimeDigest,
 } from '../scripts/console-runtime-identity.mjs';
 import { shellDiff as pluginShellDiff } from '../plugin/scripts/host-shell-boundary.mjs';
+import {
+  writeInstalledRuntimeIdentity, recordCorpusTransportIdentity, isCorpusReleaseTag, rejectedReleasePath,
+} from '../kb/corpus-release-identity.mjs';
 
 // SEC-0010 #6 — the Ed25519 PUBLIC key is EMBEDDED here (not a separate file) so the installer's
 // trust root travels with the installer code itself: an attacker who swaps the downloaded bundle
@@ -319,6 +323,32 @@ function fetchJson(url, redirects = 0) {
 // --version <tag> forces a tag; --pin skips the network check and uses the bundled known-good tag.
 // Any failure (offline / rate-limited / no releases) FALLS BACK to the pinned known-good Release,
 // narrated clearly so the user knows exactly what happened.
+/**
+ * Which asset of a Release actually holds the brain bundle.
+ *
+ * THE UNAMBIGUOUS SINGLE ZIP — the lesson kb/forge-update.mjs's resolveBundleUrl() already learned
+ * (issue #35) and this installer had not. Matching ONLY the conventional `ruvnet-brain.zip` means a
+ * release whose bundle asset is named anything else falls through to `fallbackUrl(tag)`, a URL
+ * assembled from that same conventional name — so the "fallback" is a guaranteed 404, not a
+ * download. The path that reaches it is a FRESH install: the one case with no brain already on disk
+ * to keep working. ADR-086 step 16 makes this reachable in practice, because `releases/latest` can
+ * now be a corpus release.
+ *
+ * A release carrying exactly one .zip is not ambiguous about which zip is the bundle. Two or more
+ * and guessing would be worse than the honest warning, so it falls through as before.
+ *
+ * Pure and exported so the choice is testable without a network round-trip.
+ * @returns {{url: string, origin: 'exact-name'|'single-zip'|'conventional-url', assetName: string|null}}
+ */
+export function resolveReleaseAsset({ tag, assets, assetName = ASSET_NAME }) {
+  const list = Array.isArray(assets) ? assets : [];
+  const exact = list.find((a) => a && a.name === assetName && a.browser_download_url);
+  if (exact) return { url: exact.browser_download_url, origin: 'exact-name', assetName: exact.name };
+  const zips = list.filter((a) => a && typeof a.name === 'string' && a.name.endsWith('.zip') && a.browser_download_url);
+  if (zips.length === 1) return { url: zips[0].browser_download_url, origin: 'single-zip', assetName: zips[0].name };
+  return { url: fallbackUrl(tag), origin: 'conventional-url', assetName: null };
+}
+
 async function resolveRelease() {
   step(
     'Finding the latest brain to install',
@@ -348,9 +378,10 @@ async function resolveRelease() {
     const rel = await fetchJson(RELEASE_API);
     const tag = rel && rel.tag_name;
     if (!tag) throw new Error('latest Release has no tag_name');
-    const asset = Array.isArray(rel.assets) ? rel.assets.find((a) => a.name === ASSET_NAME) : null;
-    const url = asset && asset.browser_download_url ? asset.browser_download_url : fallbackUrl(tag);
-    if (!asset) {
+    const { url, origin, assetName } = resolveReleaseAsset({ tag, assets: rel.assets });
+    if (origin === 'single-zip') {
+      warn(`latest Release ${tag} has no ${ASSET_NAME} — using its only .zip asset, ${c.bold(assetName)}`);
+    } else if (origin === 'conventional-url') {
       warn(`latest Release ${tag} has no ${ASSET_NAME} asset listed — using the conventional download URL`);
     }
     ok(`latest Release is ${c.bold(tag)}`);
@@ -497,21 +528,32 @@ export function copyLocalBundleInto(sourceDir, cacheDir) {
 // which a private-overlay brain refuses. Idempotent, byte-compared, atomic; a symlink is replaced by
 // a real file because a link is not a trusted regular file.
 const TRUSTED_VALIDATOR_SOURCE = path.join(REPO_ROOT, 'plugin', 'scripts', 'coverage-integrity.mjs');
-export function placeTrustedCoverageValidator(kbDir, { source = TRUSTED_VALIDATOR_SOURCE } = {}) {
+export function placeTrustedCoverageValidator(kbDir, { source = TRUSTED_VALIDATOR_SOURCE,
+  brainVersion = PACKAGE_VERSION } = {}) {
   let bytes;
   try { bytes = fs.readFileSync(source); }
   catch (error) { throw new Error(`trusted coverage validator is missing from this package (${source}): ${error.message}`); }
   const target = path.join(kbDir, 'coverage-integrity.mjs');
   let existing = null;
   try { existing = fs.lstatSync(target); } catch (error) { if (error.code !== 'ENOENT') throw error; }
-  if (existing && existing.isFile() && !existing.isSymbolicLink() && fs.readFileSync(target).equals(bytes)) {
-    return { action: 'unchanged', path: target };
+  const unchanged = existing && existing.isFile() && !existing.isSymbolicLink() && fs.readFileSync(target).equals(bytes);
+  if (!unchanged) {
+    const staged = `${target}.${process.pid}.${Date.now()}.tmp`;
+    fs.writeFileSync(staged, bytes, { mode: 0o644 });
+    if (existing && existing.isSymbolicLink()) fs.unlinkSync(target); // never write through a link
+    fs.renameSync(staged, target);
   }
-  const staged = `${target}.${process.pid}.${Date.now()}.tmp`;
-  fs.writeFileSync(staged, bytes, { mode: 0o644 });
-  if (existing && existing.isSymbolicLink()) fs.unlinkSync(target); // never write through a link
-  fs.renameSync(staged, target);
-  return { action: existing ? 'replaced' : 'placed', path: target };
+  // STAMP THE APPROVED RUNTIME IN THE SAME BREATH AS PLACING ITS EXECUTABLES (ADR-086 step 16).
+  //
+  // This is the one moment where "which runtime is this brain running" is a measured fact rather
+  // than an assertion: the bytes were just written from THIS package, so the version and the hashes
+  // are recorded together and cannot drift. kb/forge-update.mjs re-hashes them before it will accept
+  // a corpus release — Dual: "Pinning survives only through enforced equality to the approved
+  // shipped runtime and its executable hashes. Copying current-main package.json or preserving a
+  // version string alone is insufficient." Re-stamped on every placement (install AND `--update`
+  // preflight), so an upgraded runtime immediately supersedes the previous pin.
+  const runtime = writeInstalledRuntimeIdentity(kbDir, { brainVersion });
+  return { action: unchanged ? 'unchanged' : (existing ? 'replaced' : 'placed'), path: target, runtimeIdentity: runtime };
 }
 /** `--update` preflight: place the validator only where an updater exists to consume it. */
 export function ensureUpdaterPrerequisites(kbDir) {
@@ -519,7 +561,7 @@ export function ensureUpdaterPrerequisites(kbDir) {
   return { updater: true, validator: placeTrustedCoverageValidator(kbDir) };
 }
 
-export async function unzipInto(zipPath, cacheDir, sourceDir = null) {
+export async function unzipInto(zipPath, cacheDir, sourceDir = null, { releaseTag = null } = {}) {
   step(
     'Unpacking the brain into place',
     'so the plugin finds forge-mcp-all.mjs and the vector stores right where it looks',
@@ -603,6 +645,22 @@ export async function unzipInto(zipPath, cacheDir, sourceDir = null) {
   // A freshly installed brain must be able to self-update on its first night: the bundle never
   // carries the trusted validator its own updater demands, so the installer lays it into the stage.
   placeTrustedCoverageValidator(stageDir);
+  // THE TRANSPORT IDENTITY LANDS WITH THE BYTES. When `releases/latest` is a corpus release, the
+  // tag that authenticated these bytes (`corpus-sha256-<64 hex>`) is recorded in the STAGE, so the
+  // single rename below promotes the tree and its provenance together or promotes neither. Writing
+  // it after activation would leave a window where a crash yields an installed corpus this brain
+  // cannot name — and an unnamed corpus is a corpus the updater re-downloads every night.
+  // `brainVersion` / `releaseTag` are untouched: they are the runtime the bundle was built by, and
+  // a content address is not a version of that runtime (ADR-086 step 16, "keep runtime version
+  // distinct"). A non-corpus tag CLEARS any stale corpus tag — see recordCorpusTransportIdentity.
+  if (releaseTag) {
+    try { recordCorpusTransportIdentity(stageDir, { releaseTag }); }
+    catch (error) {
+      fs.rmSync(stageDir, { recursive: true, force: true });
+      die(`could not record the release identity into the staged brain (${error.message})`,
+        'The live brain was not touched. Re-run the installer.');
+    }
+  }
   const stagedCoverage = validateCoverageDirectory(stageDir, { expectedVersion: PACKAGE_VERSION });
   if (!stagedCoverage.valid) {
     fs.rmSync(stageDir, { recursive: true, force: true });
@@ -2345,9 +2403,9 @@ async function smokeQuery(cacheDir) {
   if (!fs.existsSync(ask)) return { ran: false };
   step(
     'Asking the brain a real question',
-    'this warms the local model so your first real answer is instant — and proves grounding works end to end',
+    'this warms the local model and checks that retrieval returns usable, cited evidence',
   );
-  const Q = 'How should I store embeddings in this project without running a server?';
+  const Q = DOCTOR_SMOKE_QUERY;
   info(`Q: ${c.cyan(`"${Q}"`)}`);
   info(c.dim('(first run downloads a small local model once — this can take a minute)'));
   const started = Date.now();
@@ -2358,7 +2416,7 @@ async function smokeQuery(cacheDir) {
     // absolute path via spawnSync (no shell involved) that identity check silently fails on this
     // machine, so main() never runs — exit 0, zero stdout, zero stderr, no exception. Looks like a
     // clean success; is actually a total no-op. Verified: switching to a relative name + cwd fixes it.
-    r = spawnSync('node', ['forge-ask-all.mjs', '--dir', cacheDir, '--q', Q, '--k', '3'], {
+    r = spawnSync('node', doctorSmokeArgs(cacheDir), {
       cwd: cacheDir,
       encoding: 'utf8',
       timeout: 240000,
@@ -2419,6 +2477,11 @@ async function smokeQuery(cacheDir) {
   }
 
   const v = await verifier.verifyGrounding(out, cacheDir);
+  const evidence = classifySmokeEvidence(v, out);
+  if (v.grounded && !evidence.usable) {
+    warn(`the citation resolves, but the question was not answered with sufficient evidence (${evidence.reason})`);
+    return { ran: true, grounded: false, citationResolved: true, reason: evidence.reason, secs };
+  }
   if (v.grounded) {
     ok(`grounded in rUv's real source — verified in ${secs}s, not guessed ✦`);
     console.log(`      ${c.dim('cited:')}    ${c.bold(v.receipt.path)}`);
@@ -2636,6 +2699,13 @@ async function doctor() {
   // Two independent version streams (KB bundle vs plugin wrapper) — see checkVersionDrift()'s
   // header comment for the full story. Silent unless they've genuinely diverged.
   reportVersionDrift(cacheDir);
+  const installedIdentity = inspectInstalledBrain(cacheDir, PACKAGE_VERSION);
+  info(`installed identities: package ${installedIdentity.packageVersion || 'unknown'}; search engine ${installedIdentity.searchVersion || 'unknown'}; validator ${installedIdentity.validatorVersion || 'unknown'}`);
+  if (installedIdentity.corpusTag) info(`corpus generation: ${installedIdentity.corpusTag}`);
+  if (!installedIdentity.healthy) {
+    for (const issue of installedIdentity.issues) warn(`installed identity: ${issue}`);
+    info(`Repair the installed generation: ${c.bold('npx ruvnet-brain@latest --update')}`);
+  }
   // Extraction no longer needs an external binary at all — kb/zip-extract.mjs does it with node:zlib
   // (see unzipInto()). So this reports the file's PRESENCE, not a PATH lookup: if it is missing from
   // the install, extraction on Windows silently loses its primary method, which is exactly the class
@@ -2826,6 +2896,8 @@ async function doctor() {
   const codexWiringFailed = Boolean(cx.host && !cx.wired);
   const codexReadinessFailed = Boolean(codexMcp?.blocking);
   const failed = (hookResult ? hookResult.exitCode !== 0 : !allGreen)
+    || !installedIdentity.healthy
+    || smoke.grounded !== true
     || groundingUnprovenPersisted
     || (codexLifecycleFailed && !codexTrustBypassed)
     || codexWiringFailed
@@ -2904,6 +2976,20 @@ function cmpTag(a, b) {
   if (!A.pre) return 1;   // 3.5.0 is newer than 3.5.0-dev
   if (!B.pre) return -1;
   return A.pre > B.pre ? 1 : -1;
+}
+
+/**
+ * The CORPUS transport tag this brain last received, or null.
+ *
+ * Deliberately separate from installedBrainVersion(): that one answers "which runtime built the KB
+ * on disk" (a semver), this one answers "which published corpus archive is on disk" (a content
+ * address). Conflating them is the defect ADR-086 step 16 exists to fix.
+ */
+function installedCorpusTag(cacheDir) {
+  try {
+    const tag = JSON.parse(fs.readFileSync(path.join(cacheDir, 'SOURCE.json'), 'utf8')).corpusReleaseTag;
+    return isCorpusReleaseTag(tag) ? tag : null;
+  } catch { return null; }
 }
 
 function installedBrainVersion(cacheDir) {
@@ -2985,7 +3071,7 @@ function reportVersionDrift(cacheDir) {
   const state = checkVersionDrift(cacheDir);
   if (!state.drift) return state;
   warn(`the brain (${c.bold(state.kb)}) and the Claude Code plugin (${c.bold(state.wrapper)}) have drifted apart —`);
-  info(`that's normal (they update on separate schedules) and neither one is broken. To bring the`);
+  info(`they update on separate schedules; this comparison does not prove either is healthy. To bring the`);
   info(`plugin up to date:  ${c.bold('claude plugin marketplace update ruvnet-brain')}  ${c.dim('(body updates go live without a restart; boot-surface changes are called out)')}`);
   return state;
 }
@@ -3783,6 +3869,12 @@ export function machineFootprint() {
     const artifact = nightlyArtifact({ platform: process.platform, env: process.env });
     if (artifact.kind === 'launchd') add('Nightly updater (LaunchAgent)', artifact.path, 'npx ruvnet-brain --disable-nightly');
     add('Nightly scheduler registration', path.join(process.env.RUVNET_BRAIN_HOME || path.dirname(resolvedKbDir()), 'scheduler', 'registration.json'), 'npx ruvnet-brain --disable-nightly');
+    // Only ever present after the updater refused an incompatible corpus release (ADR-086 step 16).
+    // It lives BESIDE the KB rather than inside it so an exact-tree update cannot erase the memory of
+    // the refusal — which is what keeps a refusal from being rediscovered, and re-downloaded, nightly.
+    // Declared here because a file we write is a file we own and must be able to take back.
+    add('Rejected-release memo (only after an incompatible corpus release)',
+      rejectedReleasePath(resolvedKbDir()), 'npx ruvnet-brain --uninstall');
   }
   if (process.platform === 'darwin') {
     add('Spend watchdog (LaunchAgent)', spendGuardPlistPath(), 'npx ruvnet-brain --disable-spend-guard');
@@ -3963,6 +4055,7 @@ function uninstallAll() {
   // owns (settings.json entries, the MCP registration) and the Claude Code plugin itself are not
   // ours to delete, so they are handed over as commands.
   const AUTO = new Set(['Brain bundle (knowledge base)', 'Nightly updater (LaunchAgent)', 'Nightly scheduler registration',
+    'Rejected-release memo (only after an incompatible corpus release)',
     'Spend watchdog (LaunchAgent)', 'Spend watchdog script', 'CLAUDE.md block (6 lines, between markers)',
     'Model-router files', 'Status-bar version script', 'Status-bar preference', 'Usage-counts preference',
     // Two gaps closed here: the statusLine KEY is now removable in place (we know exactly what we
@@ -5289,21 +5382,33 @@ the installer reports that boot-level declarations changed.
         ? (resolvedRelease.tag_name || resolvedRelease.tag || null)
         : null;
     } catch { latestTag = null; }
-    const norm = (v) => (v == null || v === 'unknown' ? null : String(v).replace(/^v/, ''));
-    const a = norm(installedTag), b = norm(latestTag);
-    // BEHIND => download. SAME => skip. AHEAD => skip, and say so honestly.
-    //
-    // This was a bare `a !== b`, which treats "newer than the latest release" as staleness. Anyone
-    // running a pre-release or dev build — or who simply updated in the window before a release was
-    // cut — was told "Brain is out of date" and pushed through a 2 GB download that would DOWNGRADE
-    // them. Found 2026-07-22 the moment this repo's own version moved to 3.5.0-dev ahead of the
-    // 3.4.22-dev release: the installer immediately declared its own newest brain stale.
-    //
-    // stack-sync.mjs has modelled AHEAD as legal from the start ("AHEAD is legal and produces NO
-    // recommendation — that modelling choice is what makes the alpha-vs-latest downgrade war
-    // structurally impossible"). The installer never learned the same lesson. It has now.
-    ahead = Boolean(a && b && cmpTag(a, b) > 0);
-    staleSkip = Boolean(b && (a === null || (a !== b && !ahead)));
+    // A CORPUS RELEASE IS NOT ORDERABLE AGAINST A SEMVER (ADR-086 step 16). `corpus-sha256-<64 hex>`
+    // is a content address; cmpTag() parses its leading segment with parseInt, gets NaN, floors it
+    // to 0, and concludes any installed version is NEWER — so a corpus release would be reported as
+    // "installed is NEWER than the latest release" and silently skipped, forever. Compare the
+    // installed corpus tag against the offered corpus tag instead: equal = current, different =
+    // behind, never "ahead", because content addresses have no order.
+    if (isCorpusReleaseTag(latestTag)) {
+      const installedCorpus = installedCorpusTag(cacheDir);
+      ahead = false;
+      staleSkip = installedCorpus !== latestTag;
+    } else {
+      const norm = (v) => (v == null || v === 'unknown' ? null : String(v).replace(/^v/, ''));
+      const a = norm(installedTag), b = norm(latestTag);
+      // BEHIND => download. SAME => skip. AHEAD => skip, and say so honestly.
+      //
+      // This was a bare `a !== b`, which treats "newer than the latest release" as staleness. Anyone
+      // running a pre-release or dev build — or who simply updated in the window before a release was
+      // cut — was told "Brain is out of date" and pushed through a 2 GB download that would DOWNGRADE
+      // them. Found 2026-07-22 the moment this repo's own version moved to 3.5.0-dev ahead of the
+      // 3.4.22-dev release: the installer immediately declared its own newest brain stale.
+      //
+      // stack-sync.mjs has modelled AHEAD as legal from the start ("AHEAD is legal and produces NO
+      // recommendation — that modelling choice is what makes the alpha-vs-latest downgrade war
+      // structurally impossible"). The installer never learned the same lesson. It has now.
+      ahead = Boolean(a && b && cmpTag(a, b) > 0);
+      staleSkip = Boolean(b && (a === null || (a !== b && !ahead)));
+    }
   }
 
   if (alreadyInstalled && !FLAG_FORCE && !staleSkip) {
@@ -5362,7 +5467,12 @@ the installer reports that boot-level declarations changed.
         ok(reason);
       }
     }
-    await unzipInto(zipPath, cacheDir, sourceDir);
+    // The tag is only carried when it came from a genuine `latest` resolution — a pinned/offline
+    // fallback is not evidence of which release these bytes are, and recording a guess would be
+    // worse than recording nothing.
+    await unzipInto(zipPath, cacheDir, sourceDir, {
+      releaseTag: release && release.source === 'latest' ? (release.tag_name || release.tag || null) : null,
+    });
     const brainProfile = readBrainProfile();
     if (brainProfile !== 'complete') {
       const scoped = applyBrainProfile(cacheDir, brainProfile);

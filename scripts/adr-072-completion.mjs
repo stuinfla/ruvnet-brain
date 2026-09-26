@@ -90,7 +90,7 @@ export function evaluateCompletion({ root = ROOT, run = command,
   return { ok: failures.length === 0, head, version, receiptFile, failures };
 }
 
-if (path.resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) {
+if (((() => { try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })())) {
   const receiptIndex = process.argv.indexOf('--receipt');
   const result = evaluateCompletion({ receiptFile: receiptIndex >= 0 ? path.resolve(process.argv[receiptIndex + 1]) : undefined });
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);

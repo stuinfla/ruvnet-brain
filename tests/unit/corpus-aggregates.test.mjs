@@ -30,6 +30,43 @@ function makeBuilderRoot() {
   return root;
 }
 
+describe('buildConceptAggregate — VERIFIES the receipt against the directory it is about to read (P2)', () => {
+  // Dual, 2026-09-14: this function "checks kind/schema only, then enumerates disk primers". Kind
+  // and schema are a label. What it reads gets embedded permanently into concepts.passages.jsonl,
+  // where deleting a file later cannot remove it — so an unsealed primer sitting in the directory
+  // used to become public prose inside the aggregate, silently and irreversibly.
+  const sealedInput = () => {
+    const root = makeBuilderRoot();
+    const input = path.join(temp(), 'public-inputs');
+    const { selectionReceipt } = materializePublicInputs({ builderRoot: root, outDir: input });
+    return { input, selectionReceipt };
+  };
+
+  it('refuses an UNSEALED primer that the receipt does not name, instead of embedding it', () => {
+    const { input, selectionReceipt } = sealedInput();
+    fs.writeFileSync(path.join(input, 'smuggled-primer.md'), '# smuggled\n\nprose no seal ever named.\n');
+    expect(() => buildConceptAggregate({
+      publicInputDir: input, selectionReceipt, observationSha256: HEX64_A, outDir: temp(),
+    })).toThrow(/refuse to read prose that its selection receipt does not prove[\s\S]*smuggled-primer\.md/);
+  });
+
+  it('refuses prose whose BYTES drifted from the receipt after it was sealed', () => {
+    const { input, selectionReceipt } = sealedInput();
+    fs.appendFileSync(path.join(input, 'sample-repo-primer.md'), '\nappended after sealing.\n');
+    expect(() => buildConceptAggregate({
+      publicInputDir: input, selectionReceipt, observationSha256: HEX64_A, outDir: temp(),
+    })).toThrow(/refuse to read prose[\s\S]*bytes differ from the receipt/);
+  });
+
+  it('accepts the producer\'s own untouched output (the guard is drift-sensitive, not read-hostile)', () => {
+    const { input, selectionReceipt } = sealedInput();
+    const result = buildConceptAggregate({
+      publicInputDir: input, selectionReceipt, observationSha256: HEX64_A, outDir: temp(),
+    });
+    expect(result.passages).toBeGreaterThan(0);
+  });
+});
+
 describe('buildConceptAggregate — trusts an already-fenced publicInputDir, does no fencing itself', () => {
   it('requires a valid public input selection receipt', () => {
     const root = makeBuilderRoot();

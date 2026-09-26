@@ -8,6 +8,7 @@ import { stagedHostVerifier } from '../../scripts/staged-host-verifier.mjs';
 import { runHostMatrixAsync } from '../../scripts/host-install-matrix.mjs';
 import { createPayloadManifest } from '../../scripts/release-payload.mjs';
 import { sha256File } from '../../scripts/coverage-integrity.mjs';
+import { runRetrievalCanaries } from '../../scripts/retrieval-canary.mjs';
 import { candidateRetrievalFixture } from '../fixtures/candidate-retrieval-fixture.mjs';
 import { writeStoredZip } from '../helpers/zip-fixture.mjs';
 const roots = [];
@@ -46,7 +47,9 @@ it.each(['valid', 'body-spoof', 'legacy-text'])('executes %s through staged extr
           return { status: 0, stdout: 'smoke', stderr: '' };
         },
         resolveMcpServer: () => path.resolve('tests/fixtures/candidate-canary-mcp.mjs'),
-        verifyGrounding: async () => ({ grounded: true, receipt: { repo: 'new', path: 'src/new.mjs', file: 'new.passages.jsonl', storedPath: 'src/new.mjs' } }),
+        verifyGrounding: async (output) => output.includes('repo=ruvnet-brain')
+          ? ({ grounded: true, receipt: { repo: 'ruvnet-brain', path: 'docs/RELEASE-EVIDENCE.md', file: 'ruvnet-brain.passages.jsonl', storedPath: 'docs/RELEASE-EVIDENCE.md' } })
+          : ({ grounded: true, receipt: { repo: 'new', path: 'src/new.mjs', file: 'new.passages.jsonl', storedPath: 'src/new.mjs' } }),
       });
       return observed;
     },
@@ -54,6 +57,8 @@ it.each(['valid', 'body-spoof', 'legacy-text'])('executes %s through staged extr
   if (mode === 'valid') {
     const result = await produced;
     expect(result.leaves).toHaveLength(3);
+    expect(result.hostPlatform).toBe(process.platform);
+    expect(result.leaves.every(({ searchMs }) => Number.isFinite(searchMs) && searchMs >= 0 && searchMs <= 30_000)).toBe(true);
     expect(fs.existsSync(f.args.failureFile)).toBe(false);
     expect(result.leaves.every(({ retrieval }) => retrieval.metrics.deltaCitationRate === 1 && retrieval.metrics.recallAt10 === 1)).toBe(true);
   } else {
@@ -84,4 +89,40 @@ it.each(['missing-retrieval', 'changed-bytes'])('does not seal %s behind a green
     return { verdict: 'PASS', fixtures: Object.fromEntries(['claude', 'codex', 'dual'].map((mode) => [mode,
       { status: 'PASS', process: { status: 0 }, grounding: { repo: 'new', path: 'src/new.mjs', file: 'new.passages.jsonl', storedPath: 'src/new.mjs' } }])) };
   } }) })).rejects.toThrow();
+});
+
+it('persists every host measurement when a search exceeds the deadline', async () => {
+  const f = fixture();
+  const retrieval = await runRetrievalCanaries({ ...f.candidate,
+    search: async ({ query }) => [f.candidate.plan.cases.find((row) => row.query === query).expected],
+    citationResolver: async (_matched, expected) => ({ resolved: true,
+      evidence: { passageSha256: expected.passageSha256, passageFileSha256: 'd'.repeat(64) } }),
+  });
+  const grounding = { repo: 'ruvnet-brain', path: 'README.md', file: 'concepts.passages.jsonl', storedPath: 'README.md' };
+  f.args.failureFile = path.join(f.root, 'host.failure.json');
+  const fixtures = Object.fromEntries(['claude', 'codex', 'dual'].map((mode) => [mode, {
+    status: 'PASS', process: { status: 0 }, warmupMs: 100, warmupGrounding: grounding,
+    searchMs: mode === 'claude' ? 30_001 : 25, grounding, retrieval,
+  }]));
+  await expect(buildCandidateHostEvidence(f.args, { createVerifier: () => ({ verify: async () => ({ verdict: 'PASS', fixtures }) }) }))
+    .rejects.toThrow(/claude-only first measured cited search exceeded/);
+  const failure = JSON.parse(fs.readFileSync(f.args.failureFile, 'utf8'));
+  expect(failure).toMatchObject({ verdict: 'FAIL', sha: f.candidate.sourceSha, failures: expect.arrayContaining([
+    expect.stringMatching(/claude-only first measured cited search exceeded/),
+  ]) });
+  expect(failure.result.fixtures).toEqual(fixtures);
+});
+it('does not seal a candidate when any host search exceeds the public deadline', async () => {
+  const f = fixture();
+  const retrieval = await runRetrievalCanaries({ ...f.candidate,
+    search: async ({ query }) => [f.candidate.plan.cases.find((row) => row.query === query).expected],
+    citationResolver: async (_matched, expected) => ({ resolved: true,
+      evidence: { passageSha256: expected.passageSha256, passageFileSha256: 'd'.repeat(64) } }),
+  });
+  await expect(buildCandidateHostEvidence(f.args, { createVerifier: () => ({ verify: async () => ({ verdict: 'PASS', fixtures:
+    Object.fromEntries(['claude', 'codex', 'dual'].map((mode) => [mode, { status: 'PASS', searchMs: mode === 'codex' ? 30_001 : 100,
+      process: { status: 0 }, warmupMs: 100,
+      warmupGrounding: { repo: 'new', path: 'src/new.mjs', file: 'new.passages.jsonl', storedPath: 'src/new.mjs' },
+      grounding: { repo: 'new', path: 'src/new.mjs', file: 'new.passages.jsonl', storedPath: 'src/new.mjs' }, retrieval }])) }) })
+  })).rejects.toThrow(/codex-only first measured cited search exceeded/);
 });

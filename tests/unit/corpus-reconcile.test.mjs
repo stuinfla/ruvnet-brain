@@ -11,8 +11,8 @@ import {
   planReconciliation,
   prepareCorpusCandidate,
   pruneIneligibleStores,
-  reconcileCorpusUntilStable,
-  reconcileUntilStable,
+  acquireCorpusGeneration,
+  acquireSealedGeneration,
   seedPrivateFenceEvidence,
 } from '../../scripts/corpus-reconcile.mjs';
 
@@ -257,12 +257,47 @@ describe('candidate preparation', () => {
       status, upstream: {}, artifact: {}, reasons: status === 'CURRENT' ? [] : ['x'] }],
   });
 
-  it('never re-observes live sources; renders coverage JSON+Markdown from one object, then builds and seals', () => {
+  // ADR-086 Step 15 wired the C3 retrieval-accuracy benchmark into this function, so a candidate root
+  // needs the benchmark script and the committed oracle as well as the two older builders. The
+  // 2026-09-15 amendment added the BLOCKING repo-recall gate beside it, which brings two more hard
+  // inputs — the frozen fixture and the ratchet floor — checked before assembly for the same reason:
+  // a missing one must fail in seconds, not after an hour of building.
+  const candidateRoot = ({ oracle = true, recallInputs = true } = {}) => {
     const root = temp();
-    fs.mkdirSync(path.join(root, 'scripts'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'scripts', 'oracle'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'data'), { recursive: true });
     for (const file of ['build-bundle.mjs', 'corpus-candidate.mjs']) {
       fs.writeFileSync(path.join(root, 'scripts', file), '// fixture');
     }
+    for (const file of ['retrieval-accuracy.mjs', 'repo-recall.mjs']) {
+      fs.writeFileSync(path.join(root, 'scripts', 'oracle', file), '// fixture');
+    }
+    if (oracle) fs.writeFileSync(path.join(root, 'data', 'retrieval-accuracy-oracle.json'), '{}');
+    if (recallInputs) {
+      fs.writeFileSync(path.join(root, 'data', 'retrieval-query-evidence.json'), '{}');
+      fs.writeFileSync(path.join(root, 'data', 'repo-recall-floor.json'), '{}');
+    }
+    return root;
+  };
+
+  it('MUST BLOCK: a checkout missing the frozen fixture or the ratchet assembles nothing at all', () => {
+    const coverage = coverageFixture('CURRENT');
+    const run = () => ({ status: 0, stdout: '', stderr: '' });
+    const attempt = () => prepareCorpusCandidate({
+      root: candidateRoot({ recallInputs: false }),
+      assets: path.join(temp(), 'assets'),
+      candidate: path.join(temp(), 'out', 'ruvnet-brain'),
+      receipt: path.join(temp(), 'out', 'corpus-receipt.json'),
+      policy: path.join(temp(), 'out', 'coverage.json'),
+      builderSha: 'a'.repeat(40),
+      coverage,
+      run,
+    });
+    expect(attempt).toThrow(/repo-recall gate input missing/i);
+  });
+
+  it('never re-observes live sources; renders coverage JSON+Markdown from one object, then builds and seals', () => {
+    const root = candidateRoot();
     const coverage = coverageFixture('CURRENT');
     const calls = [];
     const run = (command, args) => { calls.push([command, ...args]); return { status: 0, stdout: '', stderr: '' }; };
@@ -278,22 +313,32 @@ describe('candidate preparation', () => {
     });
     expect(result.bundleFile).toBe(path.join(root, 'candidate', 'ruvnet-brain.zip'));
     const joined = calls.map((call) => call.join(' '));
-    expect(joined).toHaveLength(3);
+    // Step 15 plus the 2026-09-15 amendment: assembly, THEN the C3 benchmark against the assembled
+    // archive, THEN the BLOCKING repo-recall gate against the same archive, THEN the seal that binds
+    // both reports, THEN independent re-verification. Order is the contract: a measurement run before
+    // assembly would measure nothing, and one after the seal could not be bound by it.
+    expect(joined).toHaveLength(5);
     expect(joined[0]).toMatch(/build-bundle\.mjs/);
-    expect(joined[1]).toMatch(/corpus-candidate\.mjs/);
-    expect(joined[1]).not.toMatch(/--verify/);
-    expect(joined[2]).toMatch(/corpus-candidate\.mjs .*--verify/);
+    expect(joined[1]).toMatch(/oracle\/retrieval-accuracy\.mjs .*--bundle .*ruvnet-brain\.zip/);
+    expect(joined[1]).toMatch(/--out .*ruvnet-brain\.zip\.accuracy\.json/);
+    expect(joined[1]).not.toMatch(/--stores|--sample/);
+    expect(joined[2]).toMatch(/oracle\/repo-recall\.mjs .*--bundle .*ruvnet-brain\.zip/);
+    expect(joined[2]).toMatch(/--out .*ruvnet-brain\.zip\.recall\.json/);
+    expect(joined[3]).toMatch(/corpus-candidate\.mjs/);
+    expect(joined[3]).not.toMatch(/--verify/);
+    expect(joined[3]).toMatch(/--accuracy-report .*ruvnet-brain\.zip\.accuracy\.json/);
+    expect(joined[3]).toMatch(/--recall-report .*ruvnet-brain\.zip\.recall\.json/);
+    expect(joined[4]).toMatch(/corpus-candidate\.mjs .*--verify/);
+    expect(joined[4]).toMatch(/--recall-report .*ruvnet-brain\.zip\.recall\.json/);
+    expect(result.accuracyReportFile).toBe(path.join(root, 'candidate', 'ruvnet-brain.zip.accuracy.json'));
+    expect(result.recallReportFile).toBe(path.join(root, 'candidate', 'ruvnet-brain.zip.recall.json'));
     expect(joined.join('\n')).not.toMatch(/corpus-seed-publish|release create|--publish|source-coverage\.mjs/);
     expect(JSON.parse(fs.readFileSync(path.join(root, 'data', 'source-coverage.json'), 'utf8'))).toEqual(coverage);
     expect(fs.readFileSync(path.join(root, 'docs', 'RUVNET-COVERAGE.md'), 'utf8')).toContain('alpha');
   });
 
   it('fails closed on any non-CURRENT eligible row, before ever shelling out to build or seal', () => {
-    const root = temp();
-    fs.mkdirSync(path.join(root, 'scripts'), { recursive: true });
-    for (const file of ['build-bundle.mjs', 'corpus-candidate.mjs']) {
-      fs.writeFileSync(path.join(root, 'scripts', file), '// fixture');
-    }
+    const root = candidateRoot();
     const calls = [];
     const run = (command, args) => { calls.push([command, ...args]); return { status: 0, stdout: '', stderr: '' }; };
     expect(() => prepareCorpusCandidate({
@@ -304,6 +349,37 @@ describe('candidate preparation', () => {
       coverage: coverageFixture('STALE'), run,
     })).toThrow(/strict coverage/i);
     expect(calls).toHaveLength(0);
+  });
+
+  it('MUST BLOCK: no committed retrieval-accuracy oracle means nothing is assembled at all', () => {
+    const root = candidateRoot({ oracle: false });
+    const calls = [];
+    const run = (command, args) => { calls.push([command, ...args]); return { status: 0, stdout: '', stderr: '' }; };
+    expect(() => prepareCorpusCandidate({
+      root, assetsDir: path.join(root, 'assets'), builderSha: sha('e'),
+      candidateDir: path.join(root, 'candidate', 'ruvnet-brain'),
+      receiptFile: path.join(root, 'evidence', 'corpus-receipt.json'),
+      coverageFile: path.join(root, 'data', 'source-coverage.json'),
+      coverage: coverageFixture('CURRENT'), run,
+    })).toThrow(/retrieval-accuracy oracle missing/i);
+    // Fails BEFORE the expensive single-pass assembly, not after it.
+    expect(calls).toHaveLength(0);
+  });
+
+  it('a bounded measurement is opt-in and passes its bounds straight through to the benchmark', () => {
+    const root = candidateRoot();
+    const calls = [];
+    const run = (command, args) => { calls.push([command, ...args]); return { status: 0, stdout: '', stderr: '' }; };
+    prepareCorpusCandidate({
+      root, assetsDir: path.join(root, 'assets'), builderSha: sha('e'),
+      candidateDir: path.join(root, 'candidate', 'ruvnet-brain'),
+      receiptFile: path.join(root, 'evidence', 'corpus-receipt.json'),
+      coverageFile: path.join(root, 'data', 'source-coverage.json'),
+      coverage: coverageFixture('CURRENT'), accuracyStores: 2, accuracySample: 5, run,
+    });
+    const benchmark = calls.map((call) => call.join(' ')).find((call) => /retrieval-accuracy\.mjs/.test(call));
+    expect(benchmark).toMatch(/--stores 2/);
+    expect(benchmark).toMatch(/--sample 5/);
   });
 
   it('rejects a coverage object that is missing or not the real coverage shape', () => {
@@ -322,11 +398,11 @@ describe('reconciliation output paths must never overlap the checkout, seed, or 
     const root = temp();
     const kb = path.join(root, 'kb');
     fs.mkdirSync(kb, { recursive: true });
-    await expect(reconcileCorpusUntilStable({ assetsDir: kb, workspaceDir: path.join(root, 'work'), root }))
+    await expect(acquireCorpusGeneration({ assetsDir: kb, workspaceDir: path.join(root, 'work'), root }))
       .rejects.toThrow(/checkout kb build workspace/i);
-    await expect(reconcileCorpusUntilStable({ assetsDir: path.join(root, 'assets'), workspaceDir: kb, root }))
+    await expect(acquireCorpusGeneration({ assetsDir: path.join(root, 'assets'), workspaceDir: kb, root }))
       .rejects.toThrow(/checkout kb build workspace/i);
-    await expect(reconcileCorpusUntilStable({ assetsDir: path.join(kb, 'nested'), workspaceDir: path.join(root, 'work'), root }))
+    await expect(acquireCorpusGeneration({ assetsDir: path.join(kb, 'nested'), workspaceDir: path.join(root, 'work'), root }))
       .rejects.toThrow(/checkout kb build workspace/i);
   });
 
@@ -334,7 +410,7 @@ describe('reconciliation output paths must never overlap the checkout, seed, or 
     const root = temp();
     const assetsDir = path.join(root, 'assets');
     fs.mkdirSync(assetsDir, { recursive: true });
-    await expect(reconcileCorpusUntilStable({ assetsDir, workspaceDir: path.join(assetsDir, 'sub'), root }))
+    await expect(acquireCorpusGeneration({ assetsDir, workspaceDir: path.join(assetsDir, 'sub'), root }))
       .rejects.toThrow(/assets directory/i);
   });
 
@@ -349,37 +425,104 @@ describe('reconciliation output paths must never overlap the checkout, seed, or 
   });
 });
 
-describe('round-stability loop (reconcileUntilStable)', () => {
+describe('sealed-generation acquisition (acquireSealedGeneration)', () => {
+  // The round-stability loop this replaced only returned when a fresh observation of the ENTIRE live
+  // source universe hashed identically to the one it started with. Measured 2026-09-14/15: a round takes
+  // about an hour, the hash covers each repository's updatedAt/pushedAt/diskUsage/head oid, and the org
+  // pushes continuously -- so progress was unreliable under sustained churn and a local run died there
+  // after refreshing 90 stores. Dual's ruling: freeze one discovery manifest, accept on completeness
+  // against its immutable pins, and demote the closing observation to telemetry that cannot veto.
   const observationA = { observationSha256: 'a'.repeat(64) };
   const coverageStub = { schemaVersion: 1, coverageGeneration: 'g1', rows: [] };
   const noopLedger = () => ({ stores: {} });
-
-  it('required proof 1: converges on round 1 when the observation never changes, without extra rounds', async () => {
-    const observe = vi.fn(async () => observationA);
-    const build = vi.fn(async () => coverageStub);
-    const execute = vi.fn(async () => ({ refreshed: [] }));
-    const prune = vi.fn(async () => ({ pruned: [] }));
-    const rebuild = vi.fn(async () => ({ rebuilt: [] }));
-    const result = await reconcileUntilStable({
-      maxRounds: 3, assetsDir: temp(), observe, build, readLedger: noopLedger, execute, prune, rebuild,
-    });
-    expect(result.rounds).toHaveLength(1);
-    expect(result.observation).toEqual(observationA);
-    expect(execute).toHaveBeenCalledTimes(1);
-    expect(rebuild).toHaveBeenCalledTimes(1);
+  const seams = () => ({
+    build: vi.fn(async () => coverageStub),
+    execute: vi.fn(async () => ({ refreshed: [] })),
+    prune: vi.fn(async () => ({ pruned: [] })),
+    rebuild: vi.fn(async () => ({ rebuilt: [] })),
   });
 
-  it('required proof 2: discards a round and retries with the fresh observation when the source moves mid-round', async () => {
-    const observationB = { observationSha256: 'b'.repeat(64) };
+  it('observes ONCE and accepts on completeness against the sealed manifest', async () => {
+    const observe = vi.fn(async () => observationA);
+    const f = seams();
+    const result = await acquireSealedGeneration({
+      maxAttempts: 3, assetsDir: temp(), observe, readLedger: noopLedger, ...f,
+    });
+    expect(observe).toHaveBeenCalledTimes(1);
+    expect(result.attempts).toHaveLength(1);
+    expect(result.observation).toEqual(observationA);
+    expect(result.consistencyModel).toBe('sealed-acquisition-manifest/1');
+    expect(f.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('preflights sources before expensive execution and forwards verified capture for reuse', async () => {
+    const order = [];
+    const captured = { gists: { ['a'.repeat(32)]: { gistId: 'a'.repeat(32) } } };
+    const f = seams();
+    f.build = vi.fn(async () => { order.push('coverage'); return coverageStub; });
+    f.execute = vi.fn(async () => { order.push('expensive'); return { refreshed: [] }; });
+    f.rebuild = vi.fn(async (_coverage, _observation, _attempt, cache) => {
+      order.push('rebuild');
+      expect(cache).toBe(captured);
+      return { rebuilt: [] };
+    });
+    await acquireSealedGeneration({ maxAttempts: 1, assetsDir: temp(), observe: async () => observationA,
+      preflight: async () => { order.push('preflight'); return captured; }, readLedger: noopLedger, ...f });
+    expect(order).toEqual(['preflight', 'coverage', 'expensive', 'rebuild', 'coverage']);
+  });
+
+  it('source preflight failure stops before coverage, cloning, or embedding work', async () => {
+    const f = seams();
+    await expect(acquireSealedGeneration({ maxAttempts: 1, assetsDir: temp(), observe: async () => observationA,
+      preflight: async () => { throw Object.assign(new Error('gist detail HTTP 403'), { code: 'GIST_FORBIDDEN' }); },
+      readLedger: noopLedger, ...f })).rejects.toMatchObject({ code: 'GIST_FORBIDDEN' });
+    expect(f.build).not.toHaveBeenCalled();
+    expect(f.execute).not.toHaveBeenCalled();
+    expect(f.rebuild).not.toHaveBeenCalled();
+  });
+
+  it('re-derives coverage AFTER rebuilding aggregates, against the same sealed observation', async () => {
+    // The refactor to sealed acquisition originally dropped this, and a real 56-minute build died at
+    // build-bundle with "coverage row gist:... was measured against different ruv-gists RVF bytes than
+    // this corpus carries" -- the rows still pinned the PRE-rebuild aggregate digest. Coverage must be
+    // recomputed after the rebuild, from the SAME observation (never a fresh one).
+    const observe = vi.fn(async () => observationA);
+    const f = seams();
+    const stale = { ...coverageStub, coverageGeneration: 'before-rebuild' };
+    const settled = { ...coverageStub, coverageGeneration: 'after-rebuild' };
+    let builds = 0;
+    f.build = vi.fn(async () => { builds += 1; return builds === 1 ? stale : settled; });
+    const result = await acquireSealedGeneration({
+      maxAttempts: 1, assetsDir: temp(), observe, readLedger: noopLedger, ...f,
+    });
+    expect(builds).toBe(2);
+    expect(f.build).toHaveBeenNthCalledWith(1, observationA);
+    expect(f.build).toHaveBeenNthCalledWith(2, observationA); // same sealed observation, not a new one
+    expect(observe).toHaveBeenCalledTimes(1);
+    expect(result.coverage).toEqual(settled); // the post-rebuild coverage is what ships
+  });
+
+  it('MUST NOT restart when the universe keeps moving: continuous churn cannot invalidate a sealed generation', async () => {
+    // Every call returns a DIFFERENT universe hash -- the exact condition that made the old loop fail
+    // after exhausting its rounds. A sealed generation never re-observes, so it simply completes.
+    let n = 0;
+    const observe = vi.fn(async () => ({ observationSha256: String(n++).padStart(64, '0') }));
+    const f = seams();
+    const result = await acquireSealedGeneration({
+      maxAttempts: 3, assetsDir: temp(), observe, readLedger: noopLedger, ...f,
+    });
+    expect(observe).toHaveBeenCalledTimes(1);
+    expect(result.attempts).toHaveLength(1);
+    expect(f.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries the SAME pinned inputs when a gist revision moves mid-fetch, without re-observing', async () => {
+    const observe = vi.fn(async () => observationA);
+    const f = seams();
     let calls = 0;
-    const observe = vi.fn(async () => (calls++ === 0 ? observationA : observationB));
-    const build = vi.fn(async () => coverageStub);
-    const execute = vi.fn(async () => ({ refreshed: [] }));
-    const prune = vi.fn(async () => ({ pruned: [] }));
-    let rebuildCalls = 0;
-    const rebuild = vi.fn(async () => {
-      rebuildCalls += 1;
-      if (rebuildCalls === 1) {
+    f.rebuild = vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) {
         const error = new Error('gist moved');
         error.code = 'GIST_OBSERVATION_MOVED';
         error.gistId = 'g1';
@@ -387,29 +530,55 @@ describe('round-stability loop (reconcileUntilStable)', () => {
       }
       return { rebuilt: ['concepts'] };
     });
-    const result = await reconcileUntilStable({
-      maxRounds: 3, assetsDir: temp(), observe, build, readLedger: noopLedger, execute, prune, rebuild,
+    const result = await acquireSealedGeneration({
+      maxAttempts: 3, assetsDir: temp(), observe, readLedger: noopLedger, ...f,
     });
-    expect(rebuildCalls).toBe(2);
-    expect(result.observation).toEqual(observationB);
-    expect(result.rounds[0]).toMatchObject({
-      before: observationA.observationSha256, after: observationB.observationSha256,
-      invalidated: { reason: expect.stringMatching(/gist observation moved/i), gistId: 'g1' },
-    });
-    expect(result.rounds).toHaveLength(2);
+    expect(observe).toHaveBeenCalledTimes(1); // the universe is never re-observed
+    expect(calls).toBe(2);
+    expect(result.attempts[0].retried).toMatchObject({ reason: expect.stringMatching(/gist revision moved/i), gistId: 'g1' });
+    expect(result.observation).toEqual(observationA);
   });
 
-  it('required proof 3: throws the exact stabilization-failure error when maxRounds is exhausted without ever stabilizing', async () => {
-    let n = 0;
-    const observe = vi.fn(async () => ({ observationSha256: String(n++).padStart(64, '0') }));
-    const build = vi.fn(async () => coverageStub);
-    const execute = vi.fn(async () => ({ refreshed: [] }));
-    const prune = vi.fn(async () => ({ pruned: [] }));
-    const rebuild = vi.fn(async () => ({ rebuilt: [] }));
-    await expect(reconcileUntilStable({
-      maxRounds: 2, assetsDir: temp(), observe, build, readLedger: noopLedger, execute, prune, rebuild,
-    })).rejects.toThrow(/did not stabilize within 2 reconciliation rounds/i);
-    expect(execute).toHaveBeenCalledTimes(2);
+  it('MUST BLOCK: an exhausted partial generation fails explicitly rather than being accepted', async () => {
+    const observe = vi.fn(async () => observationA);
+    const f = seams();
+    // One eligible source never reaches CURRENT: completeness against the manifest is unmet.
+    f.build = vi.fn(async () => ({
+      ...coverageStub,
+      rows: [{
+        kind: 'repository', disposition: 'eligible', status: 'STALE', name: 'x',
+        url: 'https://github.com/ruvnet/x', upstream: { sha: 'a'.repeat(40) },
+        artifact: { store: 'x', sourceCommit: 'b'.repeat(40) },
+      }],
+    }));
+    await expect(acquireSealedGeneration({
+      maxAttempts: 2, assetsDir: temp(), observe, readLedger: noopLedger, ...f,
+    })).rejects.toThrow(/sealed generation incomplete after 2 acquisition attempt\(s\).*unresolved against the sealed manifest/is);
+    expect(f.execute).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports freshness as telemetry only: a moved universe is recorded, never a veto', async () => {
+    const observe = vi.fn(async () => observationA);
+    const f = seams();
+    const result = await acquireSealedGeneration({
+      maxAttempts: 1, assetsDir: temp(), observe, readLedger: noopLedger, ...f,
+      closingObservation: async () => ({ observationSha256: 'f'.repeat(64) }),
+    });
+    expect(result.freshness).toMatchObject({ checkStatus: 'NEWER_REVISION_OBSERVED', closingObservationSha256: 'f'.repeat(64) });
+    expect(result.coverage).toEqual(coverageStub); // accepted regardless
+  });
+
+  it('a failed or absent closing observation yields UNKNOWN freshness and still accepts', async () => {
+    const observe = vi.fn(async () => observationA);
+    const failing = await acquireSealedGeneration({
+      maxAttempts: 1, assetsDir: temp(), observe, readLedger: noopLedger, ...seams(),
+      closingObservation: async () => { throw new Error('rate limited'); },
+    });
+    expect(failing.freshness).toMatchObject({ checkStatus: 'UNKNOWN', reason: expect.stringMatching(/rate limited/) });
+    const absent = await acquireSealedGeneration({
+      maxAttempts: 1, assetsDir: temp(), observe, readLedger: noopLedger, ...seams(),
+    });
+    expect(absent.freshness).toMatchObject({ checkStatus: 'UNKNOWN', reason: expect.stringMatching(/no closing observation/) });
   });
 });
 
