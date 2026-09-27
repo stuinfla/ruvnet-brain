@@ -69,7 +69,11 @@ export function corpusSnapshotDate(dir, corpusAge = null) {
   return null;
 }
 
-const SCOPED_PACKAGE = /@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*/gi;
+// Each segment must both START and END on an identifier character. Without the end-anchor, a
+// sentence-ending period right after the package name (a completely ordinary way to end a question)
+// was absorbed INTO the match — "@claude-flow/cli." — producing an npm-invalid package string that
+// `freshnessAdvisory`'s "npm view <package> version" line then quoted verbatim.
+const SCOPED_PACKAGE = /@[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?\/[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?/gi;
 
 // Bare rUv npm names a user actually asks "what version" about. Deliberately a closed list: a free
 // regex over "latest version of <word>" would name half the English language as a package.
@@ -105,7 +109,11 @@ export function versionIntent(query) {
   const packages = [...new Set([
     ...(q.match(SCOPED_PACKAGE) || []).map((s) => s.toLowerCase()),
     ...BARE_PACKAGES.filter((name) =>
-      new RegExp(`(?:^|[^a-z0-9@/_-])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:[^a-z0-9._/-]|$)`, 'i').test(q)),
+      // Trailing boundary: an ordinary non-identifier char, OR one-or-more "."s themselves followed
+      // by whitespace/end-of-string (a sentence-ending period OR an ellipsis is a real boundary),
+      // OR end-of-string. A "." followed by another identifier char ("ruflo.config.js") stays
+      // excluded on purpose — that is a filename mention, not a version question about the package.
+      new RegExp(`(?:^|[^a-z0-9@/_-])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:[^a-z0-9._/-]|\\.+(?=\\s|$)|$)`, 'i').test(q)),
   ])];
   return {
     intent: true,
