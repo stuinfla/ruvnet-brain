@@ -59,6 +59,7 @@ const PIPELINE_ENTRY_POINTS = [
   'host-registry.mjs',
   'adr-072-completion.mjs',
   'product-integrity-contract.mjs',
+  'no-silent-substitution.mjs',
 ];
 
 describe('KB entry points run when invoked through a symlink', () => {

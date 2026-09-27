@@ -27,7 +27,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -173,4 +173,22 @@ function main() {
   process.exit(1);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) main();
+// Compares REALPATHS on both sides: path.resolve()/pathToFileURL() normalizes a path but does NOT
+// follow symlinks, while import.meta.url IS symlink-resolved by Node. Through a symlink (this
+// repo's own working directory is symlinked whenever the checkout is reached through a symlinked
+// ancestor -- a symlinked home dir, mount, or worktree layout; every macOS os.tmpdir() path is one
+// example) the two sides disagree, so main() never runs -- and because nothing throws, the process
+// exits 0, silently skipping the substitution audit. A silent exit 0 here is indistinguishable from
+// "audited, found nothing" -- on the one gate whose entire job is to make silence impossible. Pinned
+// by tests/unit/entrypoint-symlink.test.mjs (see this repo's established isDirectInvocation()
+// sibling copies, e.g. scripts/doc-currency.mjs, scripts/development-push-check.mjs).
+function isDirectInvocation() {
+  try {
+    if (!process.argv[1]) return false;
+    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectInvocation()) main();

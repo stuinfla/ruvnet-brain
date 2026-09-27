@@ -3,7 +3,8 @@ id: ADR-057
 title: 95 on both graders — closing a 38/53 against a self-reported 83, dimension by dimension
 status: Proposed
 date: 2026-07-27
-updated: 2026-09-19
+updated: 2026-09-27
+updated_source: derived-from-git
 version: 1.0.1
 impl: verification-expired
 verified: 2026-07-30
@@ -252,6 +253,7 @@ to the five governed paths; it does not adjudicate the product or substitute for
 
 ## Currency log
 
+| 2026-09-27 | Dream Cycle enforcement-integrity: `scripts/no-silent-substitution.mjs`'s CLI entry-point guard was the pre-`isDirectInvocation()` idiom (`path.resolve(process.argv[1])` vs `import.meta.url`, no realpath) — a symlinked invocation silently exits 0 without running the audit (reproduced live). Swapped to this repo's established `fs.realpathSync`-both-sides guard, pinned by `tests/unit/entrypoint-symlink.test.mjs`. `audit()`/`CAPABILITIES` and this ADR's grading claims and open build-order items are unaffected — only the top-level CLI dispatch changed; `impl: verification-expired` is unchanged, no re-grade is claimed. | `scripts/no-silent-substitution.mjs` (CLI guard only), `tests/unit/entrypoint-symlink.test.mjs`; `tests/unit/no-silent-substitution.test.mjs` 8/8 unaffected. |
 | 2026-09-19 | Reviewed current source and normative claims; the detailed September 19 findings below retain their stated runtime limitations. reviewed_digest 2f8099012566. | `scripts/behavioral-l1-l4.mjs`, `scripts/no-silent-substitution.mjs`, `tests/mesh/coexistence.test.mjs`; source consistency review only, no new deployment or acceptance claim. |
 
 | 2026-09-19 | Source review: installer release/health checks and the hook registry changed. Capacity guidance is advisory and provides no behavioral-grade evidence. Scoring contract and named grader implementation are unchanged; no fresh 95 score or host verification is claimed. Proposed status and dated historical verification remain. | Reviewed current governed-source diffs; this row records source consistency, not renewed runtime acceptance. |
