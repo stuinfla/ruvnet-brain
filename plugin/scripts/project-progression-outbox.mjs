@@ -58,8 +58,14 @@ export class ProgressionOutbox {
     if (!fs.existsSync(this.path)) return [];
     const content = fs.readFileSync(this.path, 'utf8');
     const lines = content.split('\n');
-    if (lines.at(-1) !== '') lines.pop();
-    else lines.pop();
+    const last = lines.pop();
+    if (last !== '') {
+      // A non-empty trailing fragment means the file didn't end with the usual '\n'
+      // terminator: either the last write's final byte was torn off (the record itself
+      // is complete and parses fine — recover it), or the write genuinely crashed
+      // mid-record (invalid JSON — keep silently ignoring it, same as always).
+      try { JSON.parse(last); lines.push(last); } catch { /* torn mid-record write; drop as before */ }
+    }
     return lines.filter(Boolean).map((line, index) => {
       try { return JSON.parse(line); } catch { throw new Error(`malformed outbox record at line ${index + 1}`); }
     });

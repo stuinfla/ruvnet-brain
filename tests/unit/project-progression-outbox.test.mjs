@@ -83,4 +83,17 @@ describe('ProjectProgression crash outbox', () => {
 
     expect(outbox.pendingSnapshots()).toEqual([snapshot()]);
   });
+
+  it('recovers a complete last record whose trailing newline byte was torn off', () => {
+    const outbox = new ProgressionOutbox({ projectRoot: temporaryRoot() });
+    outbox.appendSnapshot(snapshot());
+
+    // Simulate a torn write: the record itself landed intact, but the final '\n'
+    // terminator did not (e.g. a crash between fsync and the newline byte reaching disk).
+    const raw = fs.readFileSync(outbox.path, 'utf8');
+    expect(raw.endsWith('\n')).toBe(true);
+    fs.writeFileSync(outbox.path, raw.slice(0, -1));
+
+    expect(outbox.pendingSnapshots()).toEqual([snapshot()]);
+  });
 });
