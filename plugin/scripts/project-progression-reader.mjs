@@ -168,6 +168,11 @@ function requireKey(value) {
   return value;
 }
 
+/** `memory-doctor.mjs`'s own signature for "no process has this open in WAL mode right now". */
+function walSidecarsPresent(dbPath) {
+  return fs.existsSync(`${dbPath}-wal`) || fs.existsSync(`${dbPath}-shm`);
+}
+
 /**
  * Open a read-only view of one canonical memory.db.
  *
@@ -186,11 +191,31 @@ export function openProgressionReader(dbPath) {
   // node:sqlite gets a chance to report the generic "file is not a database".
   if (!looksLikeSqliteFile(dbPath)) throw new ProgressionReaderUnavailable('canonical store is not a plain SQLite image');
 
+  // A RESTING WAL database (the normal state of a memory.db nobody is currently writing) opened
+  // with plain `readOnly: true` still VIVIFIES an empty `-wal`/`-shm` pair as a side effect of
+  // establishing WAL-index shared memory for the reader — measured on this Node build (node:sqlite
+  // wraps sqlite3_open_v2 the same way the `sqlite3` CLI's plain `mode=ro` does). That silently
+  // breaks this module's own "never writes, mutates nothing" guarantee documented above. `immutable=1`
+  // avoids it, but ONLY while resting: forcing it on a database with genuinely pending WAL frames
+  // returns torn or stale rows instead of an error (reproduced live: a resting-mode open missed a
+  // just-created table entirely). `memory-doctor.mjs` already carries this exact trade-off for the
+  // `sqlite3` CLI path; this mirrors it for `node:sqlite`.
+  const restingWal = !walSidecarsPresent(dbPath);
+  // encodeURI, not raw interpolation: a project path with spaces breaks the URI outright otherwise
+  // (the same fix already applied in memory-doctor.mjs's `q()`).
+  const location = restingWal ? `file:${encodeURI(dbPath)}?immutable=1` : dbPath;
+
   let database;
   try {
-    database = new DatabaseSync(dbPath, { readOnly: true });
+    database = new DatabaseSync(location, { readOnly: true });
   } catch (error) {
     throw new ProgressionReaderUnavailable(`read-only open failed: ${error.message}`);
+  }
+  // A writer that arrived between the presence check and the open invalidates the immutable
+  // assumption. Never remove sidecars it may have just committed — stand down to the CLI instead.
+  if (restingWal && walSidecarsPresent(dbPath)) {
+    try { database.close(); } catch { /* the race verdict is the news */ }
+    throw new ProgressionReaderUnavailable('a writer opened the store mid-read');
   }
 
   try {
@@ -218,9 +243,17 @@ export function openProgressionReader(dbPath) {
   }
 
   const query = (statement, params) => {
-    try { return statement.all(...params); } catch (error) {
+    let rows;
+    try { rows = statement.all(...params); } catch (error) {
       throw new ProgressionReaderUnavailable(`read failed: ${error.message}`);
     }
+    // Re-checked after every read, not only at open: a writer can arrive at any point across this
+    // reader's lifetime, and an immutable handle that keeps answering past that point would be
+    // trusting a promise it can no longer keep.
+    if (restingWal && walSidecarsPresent(dbPath)) {
+      throw new ProgressionReaderUnavailable('a writer opened the store mid-read');
+    }
+    return rows;
   };
 
   return {
