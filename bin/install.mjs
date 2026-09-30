@@ -528,21 +528,42 @@ export function copyLocalBundleInto(sourceDir, cacheDir) {
 // which a private-overlay brain refuses. Idempotent, byte-compared, atomic; a symlink is replaced by
 // a real file because a link is not a trusted regular file.
 const TRUSTED_VALIDATOR_SOURCE = path.join(REPO_ROOT, 'plugin', 'scripts', 'coverage-integrity.mjs');
-export function placeTrustedCoverageValidator(kbDir, { source = TRUSTED_VALIDATOR_SOURCE,
-  brainVersion = PACKAGE_VERSION } = {}) {
-  let bytes;
-  try { bytes = fs.readFileSync(source); }
-  catch (error) { throw new Error(`trusted coverage validator is missing from this package (${source}): ${error.message}`); }
-  const target = path.join(kbDir, 'coverage-integrity.mjs');
+// Byte-compared, atomic, symlink-safe placement of one file the installer owns inside the KB.
+function placeFileAtomic(target, bytes) {
   let existing = null;
   try { existing = fs.lstatSync(target); } catch (error) { if (error.code !== 'ENOENT') throw error; }
-  const unchanged = existing && existing.isFile() && !existing.isSymbolicLink() && fs.readFileSync(target).equals(bytes);
+  const unchanged = !!(existing && existing.isFile() && !existing.isSymbolicLink() && fs.readFileSync(target).equals(bytes));
   if (!unchanged) {
     const staged = `${target}.${process.pid}.${Date.now()}.tmp`;
     fs.writeFileSync(staged, bytes, { mode: 0o644 });
     if (existing && existing.isSymbolicLink()) fs.unlinkSync(target); // never write through a link
     fs.renameSync(staged, target);
   }
+  return { existing, unchanged };
+}
+// The updater that runs on a customer is the forge-update.mjs inside their OWN installed KB, which only
+// changes when a bundle replaces it — so a fix to the updater never reached installs that already had
+// one. The signed npm package carries the updater and the sibling modules it imports; the `--update`
+// preflight places them (same trust as the validator) so a stale updater upgrades itself before it runs.
+const UPDATER_FILES = ['forge-update.mjs', 'zip-extract.mjs', 'brain-profile.mjs', 'refresh-run.mjs',
+  'update-storage-transaction.mjs', 'lifecycle-evidence-retention.mjs', 'corpus-release-identity.mjs'];
+export function placeUpdater(kbDir, { sourceDir = path.join(REPO_ROOT, 'kb') } = {}) {
+  const placed = {};
+  for (const name of UPDATER_FILES) {
+    let bytes;
+    try { bytes = fs.readFileSync(path.join(sourceDir, name)); }
+    catch (error) { throw new Error(`updater file ${name} is missing from this package (${sourceDir}): ${error.message}`); }
+    placed[name] = placeFileAtomic(path.join(kbDir, name), bytes).unchanged ? 'unchanged' : 'placed';
+  }
+  return placed;
+}
+export function placeTrustedCoverageValidator(kbDir, { source = TRUSTED_VALIDATOR_SOURCE,
+  brainVersion = PACKAGE_VERSION } = {}) {
+  let bytes;
+  try { bytes = fs.readFileSync(source); }
+  catch (error) { throw new Error(`trusted coverage validator is missing from this package (${source}): ${error.message}`); }
+  const target = path.join(kbDir, 'coverage-integrity.mjs');
+  const { existing, unchanged } = placeFileAtomic(target, bytes);
   // STAMP THE APPROVED RUNTIME IN THE SAME BREATH AS PLACING ITS EXECUTABLES (ADR-086 step 16).
   //
   // This is the one moment where "which runtime is this brain running" is a measured fact rather
@@ -558,7 +579,7 @@ export function placeTrustedCoverageValidator(kbDir, { source = TRUSTED_VALIDATO
 /** `--update` preflight: place the validator only where an updater exists to consume it. */
 export function ensureUpdaterPrerequisites(kbDir) {
   if (!fs.existsSync(path.join(kbDir, 'forge-update.mjs'))) return { updater: false, validator: null };
-  return { updater: true, validator: placeTrustedCoverageValidator(kbDir) };
+  return { updater: true, files: placeUpdater(kbDir), validator: placeTrustedCoverageValidator(kbDir) };
 }
 
 export async function unzipInto(zipPath, cacheDir, sourceDir = null, { releaseTag = null, activate = true } = {}) {
@@ -2729,10 +2750,12 @@ async function doctor() {
     ok(`nightly scheduler: ${nightlyHealth.evidence}`);
     if (nightlyHealth.runHealth?.state === 'ok' || nightlyHealth.runHealth?.state === 'running') {
       ok(`nightly execution: ${nightlyHealth.runHealth.evidence}`);
+    } else if (nightlyHealth.runHealth?.state === 'failed') {
+      warn(`nightly refresh FAILED — the brain is not updating: ${nightlyHealth.runHealth.evidence}`);
     } else warn(`nightly execution unproven: ${nightlyHealth.runHealth?.evidence || 'no run receipt'}`);
   }
   else if (nightlyHealth.state === 'degraded') warn(`nightly scheduler degraded: ${nightlyHealth.evidence}`);
-  else if (nightlyHealth.state === 'off') info('nightly scheduler is off (optional; enable with --enable-nightly)');
+  else if (nightlyHealth.state === 'off') warn('nightly scheduler is OFF — knowledge updates only when a session starts (SessionStart retries at most every 6h); for nightly updates run  npx ruvnet-brain --enable-nightly  (skip if agentic-kit manages this machine)');
   else info(`nightly scheduler status unavailable: ${nightlyHealth.evidence}`);
   have('node') ? ok('node present') : warn('node missing');
   have('npm') ? ok('npm present') : warn('npm missing');

@@ -16,14 +16,14 @@
 //
 // minPipelineVersion: the dispatched workflow text is always main's, but the scripts it runs come from
 // the approved release's checkout. A runtime older than MIN_PIPELINE_VERSION does not know the flags
-// the new workflow passes (--approved-tag, --no-change-out), so the nightly stands down rather than
+// the new workflow passes (--approved-tag, --no-change-out, --stage-candidate, --promote-staged), so the nightly stands down rather than
 // let new workflow text drive old scripts.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-export const MIN_PIPELINE_VERSION = '4.3.36'; // sync-version-ignore: a fixed pipeline floor, not the current version
+export const MIN_PIPELINE_VERSION = '4.3.38'; // sync-version-ignore: a fixed pipeline floor, not the current version
 const SEMVER = /^(\d+)\.(\d+)\.(\d+)$/;
 const HEX40 = /^[0-9a-f]{40}$/;
 const CODE_TAG = /^v\d+\.\d+\.\d+$/;

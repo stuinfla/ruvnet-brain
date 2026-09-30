@@ -10,7 +10,8 @@ const workflow = () => read('.github/workflows/protected-release.yml');
 const seedWorkflow = () => read('.github/workflows/corpus-seed.yml');
 
 const CODE_JOBS = ['identity', 'verified-candidate', 'seal-payload', 'publish', 'public-verification', 'finalize-public-verification'];
-const CORPUS_JOBS = ['corpus-identity', 'corpus-prepare', 'corpus-no-change', 'corpus-authorize', 'corpus-publish', 'corpus-terminal-outcome'];
+const CORPUS_JOBS = ['corpus-identity', 'corpus-prepare', 'corpus-no-change', 'corpus-authorize', 'corpus-publish',
+  'corpus-canary', 'corpus-promote', 'corpus-terminal-outcome'];
 
 /**
  * Comments stripped, exactly as scripts/release-authority.mjs:16-23 does before it looks for
@@ -73,7 +74,37 @@ describe('protected-release corpus chain (ADR-086 steps 9 + 17)', () => {
     expect(workflow().match(/environment: Production – ruvnet-brain/g)).toHaveLength(1);
     expect(workflow().match(/environment: Production – corpus/g)).toHaveLength(3);
     expect(blocks['corpus-publish']).toContain('environment: Production – corpus');
-    expect(blocks['corpus-publish']).toContain('node scripts/release.mjs --corpus-seed --promote-latest');
+    expect(blocks['corpus-publish']).toContain('node scripts/release.mjs --corpus-seed --stage-candidate');
+  });
+
+  it('CUSTOMER CANARY: the producer cannot promote unless a clean customer install accepted the candidate', () => {
+    const source = workflow();
+    const blocks = jobBlocks(source);
+    // No invocation anywhere can publish-and-promote in one step any more.
+    expect(executable(source)).not.toContain('--promote-latest');
+    // The staging publisher never moves latest; the canary sits between staging and promotion.
+    expect(blocks['corpus-publish']).toContain("echo 'outcome=staged' >> \"$GITHUB_OUTPUT\"");
+    const canary = blocks['corpus-canary'];
+    expect(canary).toContain("needs.corpus-publish.outputs.outcome == 'staged'");
+    expect(canary).toContain('needs: [corpus-identity, corpus-prepare, corpus-publish]');
+    expect(canary).toContain('node scripts/corpus-canary.mjs --repo "$GITHUB_REPOSITORY" --tag "$CANDIDATE_TAG"');
+    // A customer holds no secret and no environment: the canary runs with the read-only token only.
+    expect(executable(canary)).not.toMatch(/secrets\.|environment:|contents: write|GH_TOKEN|GITHUB_TOKEN/);
+    expect(canary).toMatch(/\n {4}permissions:\n {6}contents: read\n {4}steps:/);
+    expect(canary).toContain('name: corpus-canary-verdict-${{ github.run_id }}-${{ github.run_attempt }}');
+    const promote = blocks['corpus-promote'];
+    expect(promote).toContain('needs: [corpus-identity, corpus-prepare, corpus-publish, corpus-canary]');
+    expect(promote).toContain("needs.corpus-canary.result == 'success'");
+    expect(promote).toContain('node scripts/release.mjs --corpus-seed --promote-staged');
+    expect(promote).toContain('--canary-verdict "$RUNNER_TEMP/canary-verdict/corpus-canary-verdict.json"');
+    expect(promote).toContain('name: corpus-canary-verdict-${{ github.run_id }}-${{ github.run_attempt }}');
+    // Promotion signs nothing: no environment, so the signing key stays confined to `Production – corpus`.
+    expect(executable(promote)).not.toMatch(/environment:|RUVNET_SIGNING_KEY|secrets\./);
+    expect(promote).toContain('ref: ${{ needs.corpus-identity.outputs.candidate_sha }}');
+    expect(promote).toContain('merge-base --is-ancestor "$CANDIDATE_SHA" "$GITHUB_SHA"');
+    const exit4 = promote.split('if [[ "$status" -eq 4 ]]; then')[1].split(/\n\s*fi\n/)[0];
+    expect(exit4).toContain("echo 'outcome=superseded' >> \"$GITHUB_OUTPUT\"");
+    expect(promote.indexOf('test "$status" -eq 0')).toBeLessThan(promote.indexOf("echo 'outcome=published'"));
   });
 
   it('TRACKED PATHS: every corpus payload lands in runner storage and the checkout stays clean', () => {
@@ -129,7 +160,7 @@ describe('protected-release corpus chain (ADR-086 steps 9 + 17)', () => {
     expect(publish).toContain('RUVNET_SIGNING_KEY: ${{ secrets.RUVNET_SIGNING_KEY }}');
   });
 
-  it('CONCURRENCY: only corpus-publish joins the release group; the ~3 h preparation does not (2026-09-29)', () => {
+  it('CONCURRENCY: only corpus-publish (stage) and corpus-promote join the release group; preparation and the canary do not', () => {
     const source = workflow();
     const blocks = jobBlocks(source);
     // Workflow level: code runs hold `ruvnet-brain-release` for the whole run; corpus runs get their
@@ -138,7 +169,8 @@ describe('protected-release corpus chain (ADR-086 steps 9 + 17)', () => {
     expect(header).toMatch(/^concurrency:\n {2}group: \$\{\{ inputs\.mode == 'corpus' && 'ruvnet-brain-corpus-preparation' \|\| 'ruvnet-brain-release' \}\}\n {2}cancel-in-progress: false$/m);
     // Job level: the one corpus job that moves releases/latest serializes with code publication.
     expect(blocks['corpus-publish']).toMatch(/\n {4}concurrency:\n {6}group: ruvnet-brain-release\n {6}cancel-in-progress: false\n/);
-    for (const job of [...CODE_JOBS, ...CORPUS_JOBS].filter((name) => name !== 'corpus-publish')) {
+    expect(blocks['corpus-promote']).toMatch(/\n {4}concurrency:\n {6}group: ruvnet-brain-release\n {6}cancel-in-progress: false\n/);
+    for (const job of [...CODE_JOBS, ...CORPUS_JOBS].filter((name) => !['corpus-publish', 'corpus-promote'].includes(name))) {
       expect(blocks[job], `${job} must not declare its own concurrency`).not.toMatch(/\n {4}concurrency:/);
     }
     expect(source).not.toMatch(/cancel-in-progress: true/);
@@ -290,7 +322,7 @@ describe('missing owner prerequisites fail loudly rather than silently', () => {
     expect(exit4).toContain('::warning');
     expect(exit4).toContain('exit 0');
     expect(step.indexOf('if [[ "$status" -eq 4 ]]')).toBeLessThan(step.indexOf('test "$status" -eq 0'));
-    expect(step.indexOf('test "$status" -eq 0')).toBeLessThan(step.indexOf("echo 'outcome=published'"));
+    expect(step.indexOf('test "$status" -eq 0')).toBeLessThan(step.indexOf("echo 'outcome=staged'"));
     expect(publish).toContain('outcome: ${{ steps.publish.outputs.outcome }}');
   });
 });
@@ -308,26 +340,31 @@ describe('corpus terminal outcome, executed', () => {
       const result = spawnSync(process.execPath, ['-'], { input: nodeBlock(), encoding: 'utf8', cwd: dir,
         env: { ...process.env, RUN_ID: '1', RUN_ATTEMPT: '1', RUN_URL: 'u', RUN_EVENT: 'workflow_dispatch', RUN_SHA: 'a'.repeat(40), RUN_BRANCH: 'main',
           IDENTITY_RESULT: 'success', PREPARE_RESULT: 'success', NO_CHANGE_RESULT: 'skipped', AUTHORIZE_RESULT: 'success', PUBLISH_RESULT: 'success',
-          IDENTITY_SUPERSEDED: 'false', PUBLISH_OUTCOME: 'published', ...env } });
+          CANARY_RESULT: 'success', PROMOTE_RESULT: 'success', PROMOTE_OUTCOME: 'published',
+          IDENTITY_SUPERSEDED: 'false', PUBLISH_OUTCOME: 'staged', ...env } });
       expect(result.status, result.stderr).toBe(0);
       return JSON.parse(result.stdout);
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   };
 
   it.each([
-    ['published', {}, 'success', 'published'],
-    ['no-change', { NO_CHANGE_RESULT: 'success', AUTHORIZE_RESULT: 'skipped', PUBLISH_RESULT: 'skipped', PUBLISH_OUTCOME: '' }, 'success', 'no-change'],
-    ['superseded at publish', { PUBLISH_OUTCOME: 'superseded' }, 'success', 'superseded'],
-    ['superseded at identity', { IDENTITY_SUPERSEDED: 'true', PREPARE_RESULT: 'skipped', AUTHORIZE_RESULT: 'skipped', PUBLISH_RESULT: 'skipped', PUBLISH_OUTCOME: '' }, 'success', 'superseded'],
-    ['a failed preparation', { PREPARE_RESULT: 'failure', AUTHORIZE_RESULT: 'skipped', PUBLISH_RESULT: 'skipped', PUBLISH_OUTCOME: '' }, 'failure', 'failed'],
-    ['a cancelled publish (the watchdog vocabulary has no cancelled: it published nothing)', { PUBLISH_RESULT: 'cancelled', PUBLISH_OUTCOME: '' }, 'cancelled', 'failed'],
-    ['everything skipped (no outcome reached)', { PREPARE_RESULT: 'skipped', AUTHORIZE_RESULT: 'skipped', PUBLISH_RESULT: 'skipped', PUBLISH_OUTCOME: '' }, 'success', 'failed'],
+    ['published (staged, canaried, promoted)', {}, 'success', 'published'],
+    ['no-change', { NO_CHANGE_RESULT: 'success', AUTHORIZE_RESULT: 'skipped', PUBLISH_RESULT: 'skipped', PUBLISH_OUTCOME: '', CANARY_RESULT: 'skipped', PROMOTE_RESULT: 'skipped', PROMOTE_OUTCOME: '' }, 'success', 'no-change'],
+    ['superseded at staging', { PUBLISH_OUTCOME: 'superseded', CANARY_RESULT: 'skipped', PROMOTE_RESULT: 'skipped', PROMOTE_OUTCOME: '' }, 'success', 'superseded'],
+    ['superseded at promotion (a code release landed during the canary)', { PROMOTE_OUTCOME: 'superseded' }, 'success', 'superseded'],
+    ['superseded at identity', { IDENTITY_SUPERSEDED: 'true', PREPARE_RESULT: 'skipped', AUTHORIZE_RESULT: 'skipped', PUBLISH_RESULT: 'skipped', PUBLISH_OUTCOME: '', CANARY_RESULT: 'skipped', PROMOTE_RESULT: 'skipped', PROMOTE_OUTCOME: '' }, 'success', 'superseded'],
+    ['CANARY REFUSED: staged but a clean customer install could not apply it', { CANARY_RESULT: 'failure', PROMOTE_RESULT: 'skipped', PROMOTE_OUTCOME: '' }, 'failure', 'canary-rejected'],
+    ['staged and canaried but never promoted is NOT published', { PROMOTE_RESULT: 'skipped', PROMOTE_OUTCOME: '' }, 'success', 'failed'],
+    ['a failed promotion', { PROMOTE_RESULT: 'failure', PROMOTE_OUTCOME: '' }, 'failure', 'failed'],
+    ['a failed preparation', { PREPARE_RESULT: 'failure', AUTHORIZE_RESULT: 'skipped', PUBLISH_RESULT: 'skipped', PUBLISH_OUTCOME: '', CANARY_RESULT: 'skipped', PROMOTE_RESULT: 'skipped', PROMOTE_OUTCOME: '' }, 'failure', 'failed'],
+    ['a cancelled publish (the watchdog vocabulary has no cancelled: it published nothing)', { PUBLISH_RESULT: 'cancelled', PUBLISH_OUTCOME: '', CANARY_RESULT: 'skipped', PROMOTE_RESULT: 'skipped', PROMOTE_OUTCOME: '' }, 'cancelled', 'failed'],
+    ['everything skipped (no outcome reached)', { PREPARE_RESULT: 'skipped', AUTHORIZE_RESULT: 'skipped', PUBLISH_RESULT: 'skipped', PUBLISH_OUTCOME: '', CANARY_RESULT: 'skipped', PROMOTE_RESULT: 'skipped', PROMOTE_OUTCOME: '' }, 'success', 'failed'],
   ])('%s', (_name, env, conclusion, expected) => {
     const record = outcome(env);
     expect(record.conclusion).toBe(conclusion);
     expect(record.outcome).toBe(expected);
-    expect(['published', 'no-change', 'superseded', 'failed']).toContain(record.outcome);
-    expect(Object.keys(record.jobs)).toEqual(['identity', 'prepare', 'no_change', 'authorize', 'publish']);
+    expect(['published', 'no-change', 'superseded', 'canary-rejected', 'failed']).toContain(record.outcome);
+    expect(Object.keys(record.jobs)).toEqual(['identity', 'prepare', 'no_change', 'authorize', 'publish', 'canary', 'promote']);
   });
 
   it('a success conclusion that reached no outcome fails the job loudly', () => {
