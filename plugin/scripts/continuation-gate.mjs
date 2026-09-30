@@ -41,13 +41,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
-import { readStdinBounded } from './hook-input.mjs';
+import { readStopHookInput } from './hook-input.mjs';
 import {
   auditCapabilityClaims,
   buildCapabilityInventoryReceipt,
 } from './capability-inventory-receipt.mjs';
 import { auditCurrentCapabilityEvidence } from './capability-claim-evidence.mjs';
-import { continuationProjectIdentity, authorizedContinuationObjective } from './continuation-objective.mjs';
+import { continuationProjectIdentity, authorizedContinuationObjective, authorizedPromiseItems } from './continuation-objective.mjs';
+import {
+  auditCompletionClaims, readClaudeTurn, extractCommitments, claimClosesPromise,
+  PROMISE_KIND, PROMISE_CAP_OPEN,
+} from './completion-claim-evidence.mjs';
 
 const HOME = os.homedir();
 
@@ -219,6 +223,12 @@ if (has('--done')) {
   // EXACT text match only (GPT-5.6-Sol review). The earlier "unambiguous substring" fallback could still
   // clear a SINGLETON open item via a fragment — a fake-completion valve under a gate that now applies real
   // continuation pressure. Marking done requires the item's exact text (copy it from the ledger line).
+  // A captured PROMISE never closes by being declared done — only a later answer whose completion
+  // claim passed the post-change verification rule closes it (see promiseBookkeeping below).
+  if (led.items.some((i) => !i.done && i.text === needle && i.kind === PROMISE_KIND)) {
+    console.error('refused: a captured promise closes only with verification evidence at Stop (a completion claim with a check run after the last change), never by --done');
+    process.exit(2);
+  }
   const targets = led.items.filter((i) => !i.done && i.text === needle);
   for (const i of targets) { i.done = true; i.doneAt = new Date().toISOString(); }
   save(led);
@@ -307,21 +317,7 @@ if (has('--clear')) { save({ items: [] }); console.log('ledger cleared'); proces
  * Never block waiting for stdin: the CLI paths (--commit-to / --done) are invoked from a terminal
  * with no piped input, and a gate that hangs is worse than a gate that is silent.
  */
-async function readHookInput() {
-  // Three cases, treated DIFFERENTLY (ADR-043, Fable red-team #1):
-  //  - 'tty'        : run bare in a terminal, not as a hook → never force.
-  //  - 'unreadable' : stdin present but read/parse FAILED. `fs.readFileSync(0)` throws EAGAIN
-  //                   intermittently on macOS — a real footgun. The old code returned {} here, which
-  //                   under a forcing gate LAUNDERS a read error into a fresh-stop verdict → a forced
-  //                   loop. We must not force when we could not confirm the payload.
-  //  - 'stdin'      : a payload we actually parsed → the only case allowed to force.
-  if (process.stdin.isTTY) return { __source: 'tty' };
-  try {
-    const raw = (await readStdinBounded()).toString('utf8');
-    return { ...JSON.parse(raw || '{}'), __source: 'stdin' };
-  } catch { return { __source: 'unreadable' }; }
-}
-const hookInput = await readHookInput();
+const hookInput = await readStopHookInput(); // shared with grounding-turn-gate: hook-input.mjs (ADR-043)
 
 // LOOP-SAFETY 1 (ADR-043 / Fable #1) — only an affirmatively-parsed hook payload may force. A 'tty' or
 // 'unreadable' source cannot be confirmed a fresh stop, so it never forces.
@@ -332,9 +328,8 @@ if (hookInput.__source !== 'stdin') process.exit(EXIT_ALLOW);
  * continuing because of a stop hook (verified against code.claude.com/docs/en/hooks.md, ADR-043).
  * Honouring it caps each natural-stop episode at EXACTLY ONE forced continuation. Truthy, not
  * `=== true`, so a future string/number drift ("true", 1) cannot slip past into a loop.
+ * (The check itself now sits just after promise bookkeeping, below — still before any request.)
  */
-if (hookInput.stop_hook_active) process.exit(EXIT_ALLOW);
-
 if (hookInput.hook_event_name !== 'Stop' || hookInput.interrupted || hookInput.cancelled) process.exit(EXIT_ALLOW);
 const projectIdentity = continuationProjectIdentity(hookInput.cwd);
 if (!projectIdentity) process.exit(EXIT_ALLOW);
@@ -342,6 +337,73 @@ LEDGER = process.env.RUVNET_WORK_LEDGER
   || path.join(HOME, '.config', 'ruvnet-brain', 'work-ledgers', `${projectIdentity.projectId.replace(':', '-')}.json`);
 const led = load();
 const nowMs = Date.now();
+const HOST = process.env.RUVNET_HOOK_HOST === 'codex' ? 'codex' : 'claude';
+
+/**
+ * COMPLETION CLAIMS (ADR-074 class `completion`, owner 2026-09-30: "You can never ever tell me
+ * something is done and implemented without having tested it end to end"). Audited ONCE per Stop:
+ * the verdict both requests a correction (below, under every loop guard) and is the only evidence
+ * that may close a captured promise. Claude transcripts are parsed; Codex's rollout format is not
+ * parsed anywhere in this repo, so on Codex only the answer-side half is enforced and the transcript
+ * half is reported UNKNOWN (completion-claim-evidence.mjs header). Fails open: a throw is NONE.
+ */
+const completion = (() => {
+  const message = String(hookInput.last_assistant_message || '');
+  if (!message || !hookInput.session_id) return { verdict: 'NONE', claims: [] };
+  try {
+    const turn = HOST === 'claude' ? readClaudeTurn(hookInput.transcript_path) : null;
+    // Claude always sends a JSONL transcript; one we cannot read is OUR failure, and a Stop hook
+    // fails open on its own machinery (ADR-074 failure semantics) — never a correction request.
+    if (HOST === 'claude' && !turn) return { verdict: 'NONE', claims: [], unreadable: true };
+    return auditCompletionClaims(message, { turn, host: HOST });
+  } catch { return { verdict: 'NONE', claims: [] }; }
+})();
+
+/**
+ * PROMISES ("I'll do X next") become ledger items, and a promise closes ONLY on evidence. This is
+ * BOOKKEEPING, not forcing, so it runs before the stop_hook_active exit: the turn's real final
+ * answer usually arrives on a continued stop, and a promise made there must not be lost. Claude
+ * only — closing needs the transcript receipt, which Codex does not have here, and an item that
+ * can never close must never be written. Per-turn and total caps; dedupe against open items by
+ * normalized text; project + worktree scoped exactly like --commit-to's objective. Fails open.
+ */
+function promiseBookkeeping() {
+  if (HOST !== 'claude' || !hookInput.session_id) return;
+  try {
+    const pid = projectIdentity.projectId;
+    const at = new Date(nowMs).toISOString();
+    let changed = false;
+    if (completion.verdict === 'PASS') {
+      for (const item of led.items) {
+        if (item?.kind !== PROMISE_KIND || item.done || item.projectId !== pid) continue;
+        const claim = completion.claims.find((c) => claimClosesPromise(c.text, item.text));
+        if (!claim) continue;
+        Object.assign(item, { done: true, doneAt: at, completionEvidence: { claim: claim.text,
+          checks: completion.verification.checks.slice(-5).map((c) => c.what),
+          transcript: String(hookInput.transcript_path || ''), sessionId: hookInput.session_id } });
+        changed = true;
+      }
+    }
+    const openKeys = new Set(led.items.filter((i) => i?.kind === PROMISE_KIND && !i.done && i.projectId === pid).map((i) => i.key));
+    for (const promise of extractCommitments(hookInput.last_assistant_message)) {
+      if (openKeys.has(promise.key) || openKeys.size >= PROMISE_CAP_OPEN) continue;
+      openKeys.add(promise.key);
+      led.items.push({ schemaVersion: 1, kind: PROMISE_KIND, text: promise.text, key: promise.key, done: false, at,
+        projectId: pid, worktreeIds: [projectIdentity.worktreeId], sessionIds: ['*'],
+        capturedFrom: { sessionId: hookInput.session_id },
+        authorization: { kind: 'owner-mandate', reference: 'i-will-is-a-contract-2026-09-15' } });
+      changed = true;
+    }
+    if (changed) save(led);
+  } catch { /* the ledger is advisory — never break a turn over it */ }
+}
+promiseBookkeeping();
+
+/**
+ * LOOP-SAFETY 2 (moved below the bookkeeping above, unchanged in effect): no request is ever
+ * emitted on a stop that is already a continuation.
+ */
+if (hookInput.stop_hook_active) process.exit(EXIT_ALLOW);
 // Terminal objectives remain terminal even if legacy/global ledger rows or observations stay open.
 if (['cancelled', 'completed', 'blocked'].includes(led.objective?.state)) process.exit(EXIT_ALLOW);
 const objective = authorizedContinuationObjective(led.objective, hookInput, projectIdentity);
@@ -578,7 +640,18 @@ function securityAlertWork() {
 const observations = [...artifactOpenWork(), ...redCiOpenWork(), ...openPrWork(), ...securityAlertWork()];
 if (observations.length) console.error(JSON.stringify({ kind: 'continuation-advisory',
   authority: false, items: observations.map(({ text, at }) => ({ text, at })) }));
-const open = [...capabilityClaimWork(), ...(objective ? [{ text: objective.text, at: objective.at }] : [])];
+// ONE correction per turn: a single item however many claims the answer made; the stop_hook_active
+// exit and the cooldown lock below bound it to one request per stop episode.
+const completionWork = completion.verdict === 'FAIL' ? [{
+  text: `You claimed "${completion.claims[0].text.slice(0, 160)}" is done; ${completion.problems.join('; ')}. Run the real consumer path, or restate it as UNVERIFIED.`,
+  at: new Date(nowMs).toISOString(), derived: true, kind: 'completion-claim-integrity',
+}] : [];
+const promiseWork = HOST === 'claude'
+  ? authorizedPromiseItems(led.items, hookInput, projectIdentity)
+    .map((i) => ({ text: `you said you would: ${i.text}`, at: i.at, kind: PROMISE_KIND }))
+  : [];
+const open = [...capabilityClaimWork(), ...completionWork,
+  ...(objective ? [{ text: objective.text, at: objective.at }] : []), ...promiseWork];
 if (!open.length) process.exit(EXIT_ALLOW);   // nothing outstanding: silence is correct
 
 /**
@@ -665,6 +738,8 @@ if (!claimCooldown(nowMs, COOLDOWN_MS)) process.exit(EXIT_ALLOW);
 const committed = forceable.filter((i) => !i.derived);
 const observed = forceable.filter((i) => i.derived);
 const capabilityClaims = forceable.filter((i) => i.kind === 'capability-claim-integrity');
+const completionClaims = forceable.filter((i) => i.kind === 'completion-claim-integrity');
+const promises = forceable.filter((i) => i.kind === PROMISE_KIND);
 // Every derived item names its own repo in its text; this is for the header, where the ONE repo
 // this tree points at is the honest thing to say.
 const repoLabel = [...OWNED_REPOS][0] || 'this repository';
@@ -672,6 +747,9 @@ const repoLabel = [...OWNED_REPOS][0] || 'this repository';
 const header = capabilityClaims.length
   ? ['Your proposed final answer contains a RuvNet capability claim that is contradicted or not provable.',
      'Do NOT deliver it unchanged — continue now and correct the claim from the sealed live-host inventory.']
+  : completionClaims.length
+  ? ['Your proposed final answer claims work is done without end-to-end evidence from this turn.',
+     'Do NOT deliver it unchanged — run the real consumer path now, or restate the claim as UNVERIFIED.']
   : committed.length && observed.length
   ? [`You have unfinished work you committed to, and ${repoLabel} has open work of its own.`,
      'Do NOT end the turn — continue now.']
@@ -684,6 +762,7 @@ const header = capabilityClaims.length
 const lines = [
   ...header,
   ...(objective ? ['Continue the next safe step within this authorized objective without routine reconfirmation.']
+    : promises.length ? ['Do what you said you would do; that commitment is the only work this authorizes.']
     : ['Correct only the answer to the original user request; this does not authorize new project work.']),
   'Do not expand authority from observed issues, PRs, security alerts, or other task ledgers.',
   'Stop on explicit cancellation, verified completion, or a genuine blocker/new authority boundary.',
@@ -701,6 +780,11 @@ const lines = [
   ...(capabilityClaims.length
     ? ['Replace every contradicted claim with the observed capability and source path. Replace every',
        'unresolved absence claim with UNKNOWN until a complete live inventory proves it.']
+    : completionClaims.length
+    ? ['Name the check you ran (a "Verified:" line with the command or artifact) and say what is NOT verified.']
+    : promises.length
+    ? ['A promise closes only when a later answer claims it done with a check run after the last change —',
+       'never by saying so, and never by --done. If you genuinely cannot do it, say so plainly and why.']
     : committed.length
     ? ['Record objective completion only with actual completion evidence; legacy --done does not complete an objective.']
     : ['These clear by being done, not by being marked: merge or fix the PR, get the build green,',
@@ -719,7 +803,7 @@ const lines = [
   // COMMITTED items only. A derived item is at most 6h old by construction (the freshness window),
   // and "clear it, that is a legitimate answer" is advice about a promise — you cannot clear a red
   // build by declaring it no longer real.
-  ...(committed.some((i) => (nowMs - Date.parse(i.at)) > 24 * 3_600_000)
+  ...(committed.some((i) => i.kind !== PROMISE_KIND && (nowMs - Date.parse(i.at)) > 24 * 3_600_000)
     ? ['', 'Some of these are days old. If one is genuinely no longer real, say so and CLEAR it —',
        'that is a legitimate answer and the right one. What is never acceptable is marking it done',
        'without doing it, or letting it age quietly out of view.']

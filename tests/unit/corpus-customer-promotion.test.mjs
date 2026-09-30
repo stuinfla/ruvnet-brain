@@ -5,7 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createCorpusReceipt } from '../../scripts/corpus-candidate.mjs';
-import { evaluateCorpusPromotion, parseCorpusGeneration, CORPUS_GENERATION_FIELD } from '../../scripts/corpus-promotion.mjs';
+import {
+  evaluateCorpusPromotion, evaluateCanaryVerdict, parseCorpusGeneration, CORPUS_GENERATION_FIELD, CANARY_VERDICT_KIND, REQUIRED_CANARY_CHECKS,
+} from '../../scripts/corpus-promotion.mjs';
 import { fixtureReleaseRoot, sealedCorpusBundle, writeAccuracyReport, writeCoverageFor } from '../helpers/corpus-seed-fixture.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
@@ -57,6 +59,7 @@ if (args[0] === 'release' && args[1] === 'view') {
     console.error('release not found'); process.exit(1);
   }
   if (fields === 'isDraft,assets') { process.stdout.write(JSON.stringify(cfg.draftView)); process.exit(0); }
+  if (fields === 'tagName,isDraft,isPrerelease,assets,body') { process.stdout.write(JSON.stringify(cfg.stagedView)); process.exit(0); }
   process.stdout.write(JSON.stringify(cfg.finalView)); process.exit(0);
 }
 if (args[0] === 'api' && /^repos\\/[^/]+\\/[^/]+\\/commits\\/v[0-9.]+$/.test(args[1] || '')) {
@@ -125,8 +128,9 @@ async function fixture({ sign = true, signWithAttackerKey = false, config = {} }
     codeReleases: [codeRelease(APPROVED_TAG), codeRelease('v9.9.8'), { tagName: 'v9.10.0-rc', isDraft: false, isPrerelease: true }], // sync-version-ignore: fixture code releases
     approvedSha: HEAD,
     draftView: { isDraft: true, assets: uploaded() },
-    finalView: { tagName: tag, isDraft: false, isPrerelease: false, assets: uploaded() },
-    latestAfter: { tag_name: tag },
+    // STAGED, never latest: the customer canary decides whether it is ever promoted.
+    finalView: { tagName: tag, isDraft: false, isPrerelease: true, assets: uploaded() },
+    latestAfter: { tag_name: `corpus-sha256-${'e'.repeat(64)}` },
     ...config,
   };
   fs.writeFileSync(configFile, JSON.stringify(resolved));
@@ -135,7 +139,7 @@ async function fixture({ sign = true, signWithAttackerKey = false, config = {} }
     dir, bundle, receiptFile, receipt, digest, tag, configFile, coverageFile, log, resolved, releaseRoot,
     write: (patch) => fs.writeFileSync(configFile, JSON.stringify({ ...resolved, ...patch })),
     args: [
-      '--corpus-seed', '--promote-latest', '--corpus-tag', tag,
+      '--corpus-seed', '--stage-candidate', '--corpus-tag', tag,
       '--corpus-bundle', bundle, '--corpus-receipt', receiptFile, '--corpus-coverage', coverageFile,
       '--target', HEAD, '--repo', REPO, '--approved-tag', APPROVED_TAG,
     ],
@@ -187,7 +191,7 @@ describe('customer corpus promotion (ADR-086 C4 resolution S1)', () => {
     expect(observed[0]).toEqual(['release', 'list', '--repo', REPO, '--limit', '200', '--json', 'tagName,isDraft,isPrerelease']);
   });
 
-  it('GREEN: publishes a complete draft, proves every asset landed, then promotes it to latest', async () => {
+  it('GREEN: publishes a complete draft, proves every asset landed, then STAGES it as a public non-latest prerelease', async () => {
     const f = await fixture();
     const result = run(f);
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
@@ -198,10 +202,10 @@ describe('customer corpus promotion (ADR-086 C4 resolution S1)', () => {
       'release view',   // this tag must not already exist
       'release view',   // what is releases/latest right now
       'release create', // draft, with every asset
-      'release view',   // are all four assets actually uploaded
-      'release edit',   // promote
-      'release view',   // and prove the promoted state
-      `api repos/${REPO}/releases/latest`, // releases/latest IS this tag (isLatest is not a view field)
+      'release view',   // are all assets actually uploaded
+      'release edit',   // stage: public prerelease, never latest
+      'release view',   // and prove the staged state
+      `api repos/${REPO}/releases/latest`, // releases/latest is NOT this tag (isLatest is not a view field)
     ]);
     expect(sequence[7]).toEqual(['release', 'view', f.tag, '--json', 'tagName,isDraft,isPrerelease,assets', '--repo', REPO]);
 
@@ -216,8 +220,18 @@ describe('customer corpus promotion (ADR-086 C4 resolution S1)', () => {
       expect.stringMatching(/[\\/]CORPUS-COVERAGE\.json$/), expect.stringMatching(/[\\/]coverage-receipt\.json$/)]);
     expect(create[create.indexOf('--notes') + 1]).toContain(`${CORPUS_GENERATION_FIELD} 2026-09-13T12:00:00.000Z`);
 
-    expect(sequence[6]).toEqual(['release', 'edit', f.tag, '--repo', REPO, '--draft=false', '--latest', '--prerelease=false']);
-    expect(JSON.parse(result.stdout).promoted).toBe(true);
+    expect(sequence[6]).toEqual(['release', 'edit', f.tag, '--repo', REPO, '--draft=false', '--prerelease', '--latest=false']);
+    // THE PRODUCER CANNOT DECLARE SUCCESS: nothing in the staging run ever claims latest.
+    expect(sequence.flat()).not.toContain('--latest');
+    expect(JSON.parse(result.stdout)).toMatchObject({ staged: true, promoted: false });
+  });
+
+  it('RED: the removed one-shot --promote-latest is refused before anything is read or written', async () => {
+    const f = await fixture();
+    const result = run(f, f.args.map((arg) => (arg === '--stage-candidate' ? '--promote-latest' : arg)));
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/--promote-latest was removed: stage with --stage-candidate, then promote with --promote-staged/);
+    expect(calls(f)).toEqual([]);
   });
 
   it.each([
@@ -301,24 +315,23 @@ describe('customer corpus promotion (ADR-086 C4 resolution S1)', () => {
     f.write(patch);
     const result = run(f);
     expect(result.status).toBe(1);
-    expect(result.stderr).toMatch(/refusing to promote an incomplete corpus release/);
-    // Never promoted: releases/latest must not resolve to a release missing its archive.
+    expect(result.stderr).toMatch(/refusing to stage an incomplete corpus release/);
+    // Never made public: a customer install must not see a release missing its archive.
     expect(calls(f).some((call) => call[1] === 'edit')).toBe(false);
   });
 
   it.each([
-    ['still a draft', { finalView: { isDraft: true, isPrerelease: false, assets: uploaded() } }],
-    ['not latest', { latestAfter: { tag_name: `corpus-sha256-${'d'.repeat(64)}` } }],
-    ['not latest (releases/latest unreadable)', { latestAfter: null }],
-    ['still a prerelease', { finalView: { isDraft: false, isPrerelease: true, assets: uploaded() } }],
-    ['missing an asset after promotion', { finalView: { isDraft: false, isPrerelease: false, assets: uploaded(ASSET_NAMES.slice(0, 2)) } }],
-  ])('RED: refuses to report success when the promoted release is %s', async (_name, patch) => {
+    ['still a draft', { finalView: { isDraft: true, isPrerelease: true, assets: uploaded() } }],
+    ['already latest (a customer would receive an un-canaried corpus)', { latestAfter: 'SELF' }],
+    ['not a prerelease', { finalView: { isDraft: false, isPrerelease: false, assets: uploaded() } }],
+    ['missing an asset after staging', { finalView: { isDraft: false, isPrerelease: true, assets: uploaded(ASSET_NAMES.slice(0, 2)) } }],
+  ])('RED: refuses to report success when the staged release is %s', async (_name, patch) => {
     const f = await fixture();
-    const finalView = { tagName: f.tag, isDraft: false, isPrerelease: false, assets: uploaded(), ...patch.finalView };
-    f.write({ ...patch, finalView });
+    const finalView = { tagName: f.tag, isDraft: false, isPrerelease: true, assets: uploaded(), ...patch.finalView };
+    f.write({ ...patch, ...(patch.latestAfter === 'SELF' ? { latestAfter: { tag_name: f.tag } } : {}), finalView });
     const result = run(f);
     expect(result.status).toBe(1);
-    expect(result.stderr).toMatch(/did not reach a complete, non-draft, non-prerelease latest state/);
+    expect(result.stderr).toMatch(/did not reach a complete, public, non-latest prerelease state/);
   });
 
   it('SUPERSEDED: a newer code release published after the build -> exit 4, typed outcome, nothing created', async () => {
@@ -371,7 +384,7 @@ describe('customer corpus promotion (ADR-086 C4 resolution S1)', () => {
 
   it('RED: bootstrap mode is unchanged — no signature required, no latest promotion', async () => {
     const f = await fixture({ sign: false });
-    const bootstrapArgs = f.args.filter((arg) => arg !== '--promote-latest');
+    const bootstrapArgs = f.args.filter((arg) => arg !== '--stage-candidate');
     const result = run(f, bootstrapArgs);
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
     const sequence = calls(f);
@@ -387,6 +400,140 @@ describe('customer corpus promotion (ADR-086 C4 resolution S1)', () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(/--corpus-seed cannot be combined with --publish/);
     expect(calls(f)).toEqual([]);
+  });
+});
+
+
+// ── PROMOTION: the only path to releases/latest, and it needs the consumer's consent ──────────────
+const RUN_ID = '4242';
+const RUN_ATTEMPT = '1';
+const digestAssets = (digest) => ASSET_NAMES.map((name) => ({ name, size: 10, state: 'uploaded',
+  digest: `sha256:${name === 'ruvnet-brain.zip' ? digest : crypto.createHash('sha256').update(name).digest('hex')}` }));
+const passVerdict = (f, over = {}) => ({
+  schemaVersion: 1, kind: CANARY_VERDICT_KIND, verdict: 'PASS', repo: REPO, tag: f.tag, archiveSha256: f.digest,
+  approvedVersion: APPROVED_TAG.slice(1), runId: RUN_ID, runAttempt: RUN_ATTEMPT, checkedAt: '2026-09-13T13:00:00.000Z',
+  assets: digestAssets(f.digest).map(({ name, size, digest }) => ({ name, size, digest })),
+  checks: REQUIRED_CANARY_CHECKS.map((name) => ({ name, ok: true, detail: 'fixture' })),
+  ...over,
+});
+
+async function promotionFixture({ verdict = (f) => passVerdict(f), config = {} } = {}) {
+  const f = await fixture();
+  const verdictFile = path.join(f.dir, 'corpus-canary-verdict.json');
+  const body = `RuvNet Brain corpus generation.\n${CORPUS_GENERATION_FIELD} 2026-09-13T12:00:00.000Z\n`;
+  f.write({
+    stagedView: { tagName: f.tag, isDraft: false, isPrerelease: true, assets: digestAssets(f.digest), body },
+    finalView: { tagName: f.tag, isDraft: false, isPrerelease: false, assets: digestAssets(f.digest) },
+    latestAfter: { tag_name: f.tag },
+    ...config,
+  });
+  if (verdict) fs.writeFileSync(verdictFile, JSON.stringify(verdict(f)));
+  return {
+    ...f,
+    verdictFile,
+    promoteArgs: ['--corpus-seed', '--promote-staged', '--corpus-tag', f.tag, '--canary-verdict', verdictFile,
+      '--target', HEAD, '--repo', REPO, '--approved-tag', APPROVED_TAG],
+    env: { ...f.env, GITHUB_RUN_ID: RUN_ID, GITHUB_RUN_ATTEMPT: RUN_ATTEMPT },
+  };
+}
+const promote = (f) => run(f, f.promoteArgs);
+
+describe('customer corpus promotion requires the customer canary (the consumer must accept first)', () => {
+  it('GREEN: a PASS verdict for this run over the exact staged assets promotes the prerelease to latest', async () => {
+    const f = await promotionFixture();
+    const result = promote(f);
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    const sequence = calls(f);
+    expect(sequence.map((call) => `${call[0]} ${call[1]}`)).toEqual([
+      'release list', `api repos/${REPO}/commits/${APPROVED_TAG}`, // still the newest code release, still its source
+      'release view', // the staged prerelease, with the asset digests the verdict must match
+      'release view', // what is latest now (ordering)
+      'release edit', // promote
+      'release view', `api repos/${REPO}/releases/latest`, // prove latest IS this tag
+    ]);
+    expect(sequence[4]).toEqual(['release', 'edit', f.tag, '--repo', REPO, '--prerelease=false', '--latest']);
+    expect(JSON.parse(result.stdout)).toMatchObject({ promoted: true, tag: f.tag });
+  });
+
+  it.each([
+    ['the canary FAILED (e.g. unsigned: the updater exited 4)', (f) => passVerdict(f, { verdict: 'FAIL',
+      checks: REQUIRED_CANARY_CHECKS.map((name) => ({ name, ok: name !== 'signature-verified', detail: 'SIGNATURE VERIFICATION FAILED' })) })],
+    ['there is no verdict at all', null],
+  ])('RED before the network: %s', async (_name, verdict) => {
+    const f = await promotionFixture({ verdict });
+    const result = promote(f);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/no customer consent/);
+    expect(calls(f)).toEqual([]);
+  });
+
+  it.each([
+    ['a verdict from another run', (f) => passVerdict(f, { runId: '999' }), /belongs to run 999\/1, not this run 4242\/1/],
+    ['a verdict for another candidate', (f) => passVerdict(f, { tag: `corpus-sha256-${'f'.repeat(64)}` }), /the verdict is for corpus-sha256-f+/],
+    ['a PASS that omits a required check (coverage never judged)', (f) => passVerdict(f, {
+      checks: REQUIRED_CANARY_CHECKS.filter((name) => name !== 'staged-coverage').map((name) => ({ name, ok: true, detail: 'x' })) }), /required check staged-coverage is absent/],
+    ['a PASS whose node_modules check failed', (f) => passVerdict(f, {
+      checks: REQUIRED_CANARY_CHECKS.map((name) => ({ name, ok: name !== 'node-modules', detail: 'dropped by the update: @xenova/transformers' })) }), /required check node-modules failed/],
+    ['a canary that installed another runtime', (f) => passVerdict(f, { approvedVersion: '9.9.8' }), /the canary installed 9\.9\.8, not v9\.9\.9/],
+    ['assets swapped after the canary downloaded them', (f) => passVerdict(f, {
+      assets: digestAssets(f.digest).map(({ name, size, digest }) => ({ name, size, digest: name === 'ruvnet-brain.zip.sig' ? `sha256:${'0'.repeat(64)}` : digest })) }),
+    /not byte-for-byte the ones the canary downloaded/],
+  ])('RED (never promoted): %s', async (_name, verdict, message) => {
+    const f = await promotionFixture({ verdict });
+    const result = promote(f);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(message);
+    expect(calls(f).some((call) => call[1] === 'edit')).toBe(false);
+  });
+
+  it.each([
+    ['no longer a prerelease', (f) => ({ stagedView: { tagName: f.tag, isDraft: false, isPrerelease: false, assets: digestAssets(f.digest), body: `${CORPUS_GENERATION_FIELD} 2026-09-13T12:00:00.000Z` } }),
+      /is not a staged \(public, non-draft\) prerelease/],
+    ['a newer generation reached latest meanwhile', () => ({ latest: { tagName: `corpus-sha256-${'a'.repeat(64)}`, body: `${CORPUS_GENERATION_FIELD} 2026-09-14T00:00:00.000Z` } }),
+      /refusing to move customers backward/],
+  ])('RED (re-proved at promotion time): the staged release is %s', async (_name, patch, message) => {
+    const f = await promotionFixture();
+    f.write({ ...JSON.parse(fs.readFileSync(f.configFile, 'utf8')), ...patch(f) });
+    const result = promote(f);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(message);
+    expect(calls(f).some((call) => call[1] === 'edit')).toBe(false);
+  });
+
+  it('SUPERSEDED at promotion: a code release that landed during the canary -> exit 4, nothing promoted', async () => {
+    const f = await promotionFixture();
+    f.write({ ...JSON.parse(fs.readFileSync(f.configFile, 'utf8')), codeReleases: [codeRelease('v9.9.10'), codeRelease(APPROVED_TAG)] }); // sync-version-ignore: fixture code release
+    const result = promote(f);
+    expect(result.status).toBe(4);
+    expect(calls(f).map((call) => `${call[0]} ${call[1]}`)).toEqual(['release list']);
+  });
+
+  it('RED: the promoted release must end as latest, non-prerelease, with the same assets', async () => {
+    const f = await promotionFixture({ config: { latestAfter: { tag_name: `corpus-sha256-${'d'.repeat(64)}` } } });
+    const result = promote(f);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/did not reach a complete, non-draft, non-prerelease latest state/);
+  });
+});
+
+describe('evaluateCanaryVerdict (pure)', () => {
+  const tag = `corpus-sha256-${'c'.repeat(64)}`;
+  const assets = [{ name: 'ruvnet-brain.zip', digest: `sha256:${'c'.repeat(64)}` }, { name: 'ruvnet-brain.zip.sig', digest: `sha256:${'1'.repeat(64)}` }];
+  const base = { schemaVersion: 1, kind: CANARY_VERDICT_KIND, verdict: 'PASS', tag, archiveSha256: 'c'.repeat(64), approvedVersion: '9.9.9',
+    runId: '7', runAttempt: '2', assets, checks: REQUIRED_CANARY_CHECKS.map((name) => ({ name, ok: true })) };
+  const judge = (verdict, over = {}) => evaluateCanaryVerdict({ verdict, tag, runId: '7', runAttempt: '2', approvedTag: 'v9.9.9', releaseAssets: assets, ...over });
+  it('allows exactly a complete PASS for this run over these assets', () => {
+    expect(judge(base).allowed).toBe(true);
+  });
+  it.each([
+    ['a re-run attempt reusing an older attempt\'s verdict', {}, { runAttempt: '3' }],
+    ['a missing run identity on the promoting side', {}, { runId: undefined }],
+    ['an asset without a digest', { assets: [{ name: 'ruvnet-brain.zip', digest: null }] }, { releaseAssets: [{ name: 'ruvnet-brain.zip', digest: null }] }],
+    ['an extra asset on the release', {}, { releaseAssets: [...assets, { name: 'extra.bin', digest: `sha256:${'2'.repeat(64)}` }] }],
+    ['a different kind', { kind: 'something-else' }, {}],
+    ['a verdict whose archive digest is not the tag digest', { archiveSha256: 'd'.repeat(64) }, {}],
+  ])('refuses %s', (_name, verdictPatch, over) => {
+    expect(judge({ ...base, ...verdictPatch }, over).allowed).toBe(false);
   });
 });
 

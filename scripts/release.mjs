@@ -65,7 +65,9 @@ const recallNotes = (receipt) => {
   ];
 };
 import { verifyBundle } from './verify-bundle.mjs';
-import { CORPUS_GENERATION_FIELD, evaluateCorpusPromotion } from './corpus-promotion.mjs';
+import {
+  CORPUS_GENERATION_FIELD, CORPUS_TAG_PATTERN, evaluateCanaryVerdict, evaluateCorpusPromotion, parseCorpusGeneration,
+} from './corpus-promotion.mjs';
 import { bindCoverageToReceipt, writeCoverageAssets } from './corpus-coverage-sidecar.mjs';
 import { degradedPublication } from './corpus-store-failure.mjs';
 import { assertNoNewerCorpusGeneration } from './code-release-corpus.mjs';
@@ -139,6 +141,68 @@ const compareCodeTags = (left, right) => {
   return Math.sign(a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
 };
 
+/** The one gh seam both corpus entry points use (RUVNET_GH_COMMAND / RUVNET_GH_SCRIPT for tests). */
+function corpusGh(env, run) {
+  const ghCommand = env.RUVNET_GH_COMMAND || 'gh';
+  const ghPrefix = env.RUVNET_GH_SCRIPT ? [env.RUVNET_GH_SCRIPT] : [];
+  const gh = (args) => run(ghCommand, [...ghPrefix, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const ghJson = (args, label) => {
+    const result = gh(args);
+    if (result.error || result.status !== 0) {
+      corpusFailure(`cannot read ${label} (${String(result.error?.message || result.stderr || result.stdout || '').trim() || `gh exited ${result.status}`})`);
+    }
+    try { return JSON.parse(String(result.stdout || 'null')); }
+    catch (error) { corpusFailure(`cannot parse ${label} (${error.message})`); }
+  };
+  return { gh, ghJson };
+}
+
+/**
+ * PUBLISH-TIME RE-RESOLVE, before anything is written. Preparation takes hours and the customer canary
+ * adds more; a code release may have been published meanwhile. The newest code release is selected
+ * exactly as scripts/approved-runtime.mjs selects it (non-draft, non-prerelease vX.Y.Z, highest).
+ */
+function assertApprovedRuntimeIsNewest({ ghJson, repo, approvedTag, target }) {
+  const listed = ghJson(['release', 'list', '--repo', repo, '--limit', '200', '--json', 'tagName,isDraft,isPrerelease'], 'the code release list');
+  const [newest] = (Array.isArray(listed) ? listed : [])
+    .filter((row) => !row?.isDraft && !row?.isPrerelease && CODE_TAG.test(String(row?.tagName || '')))
+    .map((row) => row.tagName).sort((a, b) => compareCodeTags(b, a));
+  if (!newest) corpusFailure(`no published code release is listed on ${repo}; the approved runtime ${approvedTag} cannot be confirmed`);
+  const order = compareCodeTags(newest, approvedTag);
+  if (order > 0) {
+    throw new CorpusSuperseded(`code release ${newest} was published after this corpus was built at ${approvedTag}; `
+      + 'promoting it would put an older runtime over the live code release. The next night builds at the newer runtime.');
+  }
+  if (order < 0) corpusFailure(`approved runtime ${approvedTag} is newer than every published code release (newest ${newest})`);
+  const commit = ghJson(['api', `repos/${repo}/commits/${approvedTag}`], `the commit of ${approvedTag}`);
+  if (String(commit?.sha || '').toLowerCase() !== target) {
+    corpusFailure(`target ${target} is not the source of the approved runtime ${approvedTag} (${commit?.sha || 'unknown'})`);
+  }
+}
+
+/** What releases/latest is right now, or null when the repository has none. */
+function readCurrentLatest(gh, repo) {
+  const latestView = gh(['release', 'view', '--json', 'tagName,body', '--repo', repo]);
+  if (!latestView.error && latestView.status === 0) {
+    let currentLatest;
+    try { currentLatest = JSON.parse(String(latestView.stdout || 'null')); }
+    catch (error) { corpusFailure(`cannot read the current latest release (${error.message})`); }
+    if (!currentLatest || typeof currentLatest.tagName !== 'string') corpusFailure('current latest release carries no tag name');
+    return currentLatest;
+  }
+  const latestError = String(latestView.error?.message || latestView.stderr || latestView.stdout || '');
+  if (!/(release not found|no release found)/i.test(latestError)) {
+    corpusFailure(`cannot determine the current latest release (${latestError.trim() || `gh exited ${latestView.status}`})`);
+  }
+  return null;
+}
+
+function latestTagNow(gh, repo) {
+  const latestNow = gh(['api', `repos/${repo}/releases/latest`]);
+  if (latestNow.error || latestNow.status !== 0) return null;
+  try { return JSON.parse(String(latestNow.stdout || 'null'))?.tag_name ?? null; } catch { return null; }
+}
+
 export async function runProtectedCorpusSeed({
   argv = process.argv.slice(2),
   env = process.env,
@@ -155,7 +219,15 @@ export async function runProtectedCorpusSeed({
   // construction; this refuses the combined invocation outright so the two modes can never share one
   // process even if a future workflow edit put them in the same job.
   if (argv.includes('--publish')) corpusFailure('--corpus-seed cannot be combined with --publish; corpus routing must never enter product publication');
-  const promoteLatest = argv.includes('--promote-latest');
+  // THE PRODUCER CANNOT DECLARE SUCCESS UNLESS THE CONSUMER ACCEPTED (customer canary). There is no
+  // longer any single invocation that both publishes a corpus and moves releases/latest: a customer
+  // candidate is STAGED (--stage-candidate: a signed, public, non-latest prerelease), a clean customer
+  // install applies it (scripts/corpus-canary.mjs), and only --promote-staged with that verdict moves
+  // latest. The old one-shot flag is refused outright so no stale workflow text can bypass the canary.
+  if (argv.includes('--promote-latest')) {
+    corpusFailure('--promote-latest was removed: stage with --stage-candidate, then promote with --promote-staged and the customer canary verdict');
+  }
+  const customerCandidate = argv.includes('--stage-candidate');
 
   const tag = cliArg(argv, '--corpus-tag');
   const bundleFile = cliArg(argv, '--corpus-bundle');
@@ -208,7 +280,7 @@ export async function runProtectedCorpusSeed({
   });
   if (ancestry.error || ancestry.status !== 0) corpusFailure(`target ${target} is not an ancestor of this run's GITHUB_SHA ${env.GITHUB_SHA}`);
   const approvedTag = cliArg(argv, '--approved-tag');
-  if (promoteLatest) {
+  if (customerCandidate) {
     if (!CODE_TAG.test(String(approvedTag || ''))) corpusFailure('customer promotion requires --approved-tag vX.Y.Z (the approved runtime this corpus was built at)');
     if (receipt.archiveManifestReleaseTag !== approvedTag) {
       corpusFailure(`the archive ships runtime ${receipt.archiveManifestReleaseTag}, not the approved runtime ${approvedTag}`);
@@ -366,7 +438,7 @@ export async function runProtectedCorpusSeed({
   const signatureFile = `${bundleFile}.sig`;
   const digestFile = `${bundleFile}.sha256`;
   const generation = String(receipt.createdAt || '');
-  if (promoteLatest) {
+  if (customerCandidate) {
     for (const [label, file] of [['detached signature', signatureFile], ['sha256 sidecar', digestFile]]) {
       if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
         corpusFailure(`customer corpus promotion requires a ${label} beside the archive (${path.basename(file)} missing) — the updater fails closed without it`);
@@ -380,40 +452,11 @@ export async function runProtectedCorpusSeed({
     if (!Number.isFinite(Date.parse(generation))) corpusFailure('corpus receipt createdAt is not a readable generation timestamp');
   }
 
-  const ghCommand = env.RUVNET_GH_COMMAND || 'gh';
-  const ghPrefix = env.RUVNET_GH_SCRIPT ? [env.RUVNET_GH_SCRIPT] : [];
-  const gh = (args) => run(ghCommand, [...ghPrefix, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-  const ghJson = (args, label) => {
-    const result = gh(args);
-    if (result.error || result.status !== 0) {
-      corpusFailure(`cannot read ${label} (${String(result.error?.message || result.stderr || result.stdout || '').trim() || `gh exited ${result.status}`})`);
-    }
-    try { return JSON.parse(String(result.stdout || 'null')); }
-    catch (error) { corpusFailure(`cannot parse ${label} (${error.message})`); }
-  };
+  const { gh, ghJson } = corpusGh(env, run);
 
-  if (promoteLatest) {
-    // PUBLISH-TIME RE-RESOLVE, before anything is written. Preparation takes hours; a code release
-    // may have been published meanwhile. The newest code release is selected exactly as
-    // scripts/approved-runtime.mjs selects it (non-draft, non-prerelease vX.Y.Z, highest version).
-    // Its signed install aggregate was re-verified for --approved-tag by the workflow step that built
-    // the runtime pin moments ago; what can change after that is only WHICH release is newest.
-    const listed = ghJson(['release', 'list', '--repo', repo, '--limit', '200', '--json', 'tagName,isDraft,isPrerelease'], 'the code release list');
-    const [newest] = (Array.isArray(listed) ? listed : [])
-      .filter((row) => !row?.isDraft && !row?.isPrerelease && CODE_TAG.test(String(row?.tagName || '')))
-      .map((row) => row.tagName).sort((a, b) => compareCodeTags(b, a));
-    if (!newest) corpusFailure(`no published code release is listed on ${repo}; the approved runtime ${approvedTag} cannot be confirmed`);
-    const order = compareCodeTags(newest, approvedTag);
-    if (order > 0) {
-      throw new CorpusSuperseded(`code release ${newest} was published after this corpus was built at ${approvedTag}; `
-        + 'promoting it would put an older runtime over the live code release. The next night builds at the newer runtime.');
-    }
-    if (order < 0) corpusFailure(`approved runtime ${approvedTag} is newer than every published code release (newest ${newest})`);
-    const commit = ghJson(['api', `repos/${repo}/commits/${approvedTag}`], `the commit of ${approvedTag}`);
-    if (String(commit?.sha || '').toLowerCase() !== target) {
-      corpusFailure(`target ${target} is not the source of the approved runtime ${approvedTag} (${commit?.sha || 'unknown'})`);
-    }
-  }
+  // Its signed install aggregate was re-verified for --approved-tag by the workflow step that built the
+  // runtime pin moments ago; what can change after that is only WHICH release is newest.
+  if (customerCandidate) assertApprovedRuntimeIsNewest({ ghJson, repo, approvedTag, target });
 
   const viewArgs = ['release', 'view', tag, '--json', 'tagName', '--repo', repo];
   const view = gh(viewArgs);
@@ -423,7 +466,7 @@ export async function runProtectedCorpusSeed({
 
   const receiptSha256 = sha256File(receiptFile);
 
-  if (!promoteLatest) {
+  if (!customerCandidate) {
     // BOOTSTRAP/RECOVERY seeds stay exactly as ADR-086's original contract left them: an immutable
     // prerelease that never touches releases/latest. Dual's C4 resolution (S1) narrows the change to
     // CUSTOMER releases — "Bootstrap-only releases may remain prereleases."
@@ -465,23 +508,16 @@ export async function runProtectedCorpusSeed({
   // (kb/forge-update.mjs:1275 fetches `${url}.sig`, :1284-1285 exits 4 when verification fails).
   // scripts/verify-channels.mjs checks exactly these two things (checks 3 and 4) against the live
   // endpoints, and is the owner's post-publish acceptance gate.
-  const latestView = gh(['release', 'view', '--json', 'tagName,body', '--repo', repo]);
-  let currentLatest = null;
-  if (!latestView.error && latestView.status === 0) {
-    try { currentLatest = JSON.parse(String(latestView.stdout || 'null')); }
-    catch (error) { corpusFailure(`cannot read the current latest release (${error.message})`); }
-    if (!currentLatest || typeof currentLatest.tagName !== 'string') corpusFailure('current latest release carries no tag name');
-  } else {
-    const latestError = String(latestView.error?.message || latestView.stderr || latestView.stdout || '');
-    if (!/(release not found|no release found)/i.test(latestError)) {
-      corpusFailure(`cannot determine the current latest release (${latestError.trim() || `gh exited ${latestView.status}`})`);
-    }
-  }
+  //
+  // STAGED, NOT PROMOTED (customer canary). This path ends with a signed, public PRERELEASE that
+  // releases/latest cannot resolve to. The ordering check still runs here so a candidate that could
+  // never be promoted is not staged at all; it runs again at promotion time.
+  const currentLatest = readCurrentLatest(gh, repo);
   const promotion = evaluateCorpusPromotion({ tag, generation, currentLatest });
   if (!promotion.allowed) corpusFailure(promotion.reason);
 
   const notes = [
-    'RuvNet Brain corpus generation — signed, content-addressed, and promoted to latest.',
+    'RuvNet Brain corpus generation — signed and content-addressed. Staged as a prerelease; promoted to latest only after a clean customer install applied it.',
     `${CORPUS_GENERATION_FIELD} ${generation}`,
     `Archive SHA-256: ${archiveSha256}`,
     `Receipt SHA-256: ${receiptSha256}`,
@@ -495,8 +531,9 @@ export async function runProtectedCorpusSeed({
   // ASSETS COMPLETE BEFORE PROMOTION. `gh release create` uploads assets AFTER the release exists, so
   // creating a non-draft release directly opens a window in which releases/latest resolves to a
   // release with no archive — every polling client in that window fails or, worse, half-downloads.
-  // Create as a draft (invisible to releases/latest), prove all four assets landed, and only then
-  // flip draft off and claim latest in one edit.
+  // Create as a draft (invisible to releases/latest), prove every asset landed, and only then flip
+  // draft off AS A PRERELEASE — public, so an anonymous customer install can download it exactly as it
+  // downloads latest, and never latest, so no customer receives it until the canary has applied it.
   // Both reports ride with every corpus release for the same reason they ride with a seed: a customer
   // (or the next night's dispatcher) that downloads the archive must be able to reverify it against
   // the identity it was actually measured under — the blocking recall gate AND the C3 diagnostic it
@@ -524,43 +561,109 @@ export async function runProtectedCorpusSeed({
   catch (error) { corpusFailure(`cannot read the draft corpus release (${error.message})`); }
   const uploaded = (draft?.assets || []).filter((asset) => asset?.state === 'uploaded' && Number.isSafeInteger(asset.size) && asset.size > 0);
   if (draft?.isDraft !== true || JSON.stringify(uploaded.map((asset) => asset.name).sort()) !== JSON.stringify(expectedAssets)) {
-    corpusFailure(`refusing to promote an incomplete corpus release; expected ${expectedAssets.join(', ')} fully uploaded on a draft`);
+    corpusFailure(`refusing to stage an incomplete corpus release; expected ${expectedAssets.join(', ')} fully uploaded on a draft`);
   }
 
-  const promote = gh(['release', 'edit', tag, '--repo', repo, '--draft=false', '--latest', '--prerelease=false']);
-  if (promote.error || promote.status !== 0) {
-    corpusFailure(`corpus promotion to latest failed (${String(promote.error?.message || promote.stderr || promote.stdout || '').trim()})`);
+  const stage = gh(['release', 'edit', tag, '--repo', repo, '--draft=false', '--prerelease', '--latest=false']);
+  if (stage.error || stage.status !== 0) {
+    corpusFailure(`corpus staging failed (${String(stage.error?.message || stage.stderr || stage.stdout || '').trim()})`);
   }
 
   // `isLatest` is NOT a `gh release view` field (gh 2.101.0: "Unknown JSON field"; it exists only on
-  // `gh release list`), so asking for it made this confirmation fail against the real CLI every time.
-  // Latest-ness is read from the one authoritative endpoint instead: releases/latest must BE this tag.
-  // tests/unit/gh-json-fields.test.mjs checks every --json field list against the captured real CLI.
+  // `gh release list`), so latest-ness is read from the one authoritative endpoint: releases/latest
+  // must NOT be this tag. tests/unit/gh-json-fields.test.mjs checks every --json field list.
+  const finalView = gh(['release', 'view', tag, '--json', 'tagName,isDraft,isPrerelease,assets', '--repo', repo]);
+  if (finalView.error || finalView.status !== 0) corpusFailure('cannot confirm the staged corpus release');
+  let staged;
+  try { staged = JSON.parse(String(finalView.stdout || 'null')); }
+  catch (error) { corpusFailure(`cannot read the staged corpus release (${error.message})`); }
+  const stagedAssets = (staged?.assets || []).map((asset) => asset?.name).sort();
+  if (staged?.tagName !== tag || staged.isDraft !== false || staged.isPrerelease !== true
+    || latestTagNow(gh, repo) === tag || JSON.stringify(stagedAssets) !== JSON.stringify(expectedAssets)) {
+    corpusFailure('corpus release did not reach a complete, public, non-latest prerelease state');
+  }
+
+  return {
+    tag, target, repository: repo, archiveSha256, receiptSha256, staged: true, promoted: false,
+    generation, currentLatest: currentLatest?.tagName || null,
+  };
+}
+
+/**
+ * PROMOTION — the only code path that moves releases/latest to a corpus generation, and it requires
+ * the consumer's consent: a PASS verdict from scripts/corpus-canary.mjs for THIS run, over exactly the
+ * asset digests still on the staged prerelease. Everything that could have changed since staging is
+ * re-proved: the protected environment, the checkout, the approved runtime still being the newest code
+ * release (else CorpusSuperseded), the release still being the staged prerelease, and the ordering
+ * against whatever is latest now.
+ */
+export async function runProtectedCorpusPromotion({
+  argv = process.argv.slice(2),
+  env = process.env,
+  root = ROOT,
+  run = (command, args, options) => spawnSync(command, args, { encoding: 'utf8', ...options }),
+} = {}) {
+  const environmentFailures = validateProtectedPublishEnvironment(env);
+  if (environmentFailures.length) corpusFailure(environmentFailures.join('; '));
+  if (argv.includes('--publish')) corpusFailure('--corpus-seed cannot be combined with --publish; corpus routing must never enter product publication');
+  const tag = cliArg(argv, '--corpus-tag');
+  const verdictFile = cliArg(argv, '--canary-verdict');
+  const target = cliArg(argv, '--target');
+  const approvedTag = cliArg(argv, '--approved-tag');
+  const repo = cliArg(argv, '--repo') || env.GITHUB_REPOSITORY;
+  if (!CORPUS_TAG_PATTERN.test(String(tag || ''))) corpusFailure('corpus tag must be corpus-sha256- followed by 64 lowercase hex characters');
+  if (repo !== env.GITHUB_REPOSITORY || repo !== 'stuinfla/ruvnet-brain') corpusFailure('repository does not match the protected workflow');
+  if (!CODE_TAG.test(String(approvedTag || ''))) corpusFailure('promotion requires --approved-tag vX.Y.Z (the approved runtime this corpus was built at)');
+  const head = String(run('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).stdout || '').trim();
+  if (!isHex(target, 40) || target !== head || !isHex(env.GITHUB_SHA, 40)) corpusFailure('target must exactly equal HEAD (and GITHUB_SHA must be a commit)');
+  const ancestry = run('git', ['merge-base', '--is-ancestor', target, env.GITHUB_SHA], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  if (ancestry.error || ancestry.status !== 0) corpusFailure(`target ${target} is not an ancestor of this run's GITHUB_SHA ${env.GITHUB_SHA}`);
+  let verdict;
+  try {
+    if (!verdictFile || !path.isAbsolute(verdictFile)) throw new Error('--canary-verdict must be an absolute file');
+    verdict = JSON.parse(fs.readFileSync(verdictFile, 'utf8'));
+  } catch (error) {
+    corpusFailure(`no customer consent: the canary verdict is unreadable (${error.message})`);
+  }
+  // Local refusal first: a FAIL verdict never reaches the network at all.
+  if (verdict?.verdict !== 'PASS') corpusFailure(`no customer consent: the customer canary reported ${verdict?.verdict || '(no verdict)'}`);
+
+  const { gh, ghJson } = corpusGh(env, run);
+  assertApprovedRuntimeIsNewest({ ghJson, repo, approvedTag, target });
+  const release = ghJson(['release', 'view', tag, '--json', 'tagName,isDraft,isPrerelease,assets,body', '--repo', repo], `the staged release ${tag}`);
+  if (release?.tagName !== tag || release.isDraft !== false || release.isPrerelease !== true) {
+    corpusFailure(`${tag} is not a staged (public, non-draft) prerelease; refusing to promote it`);
+  }
+  const consent = evaluateCanaryVerdict({ verdict, tag, runId: env.GITHUB_RUN_ID, runAttempt: env.GITHUB_RUN_ATTEMPT,
+    approvedTag, releaseAssets: (release.assets || []).map((asset) => ({ name: asset?.name, digest: asset?.digest ?? null })) });
+  if (!consent.allowed) corpusFailure(consent.reason);
+  const generation = parseCorpusGeneration(release.body)?.value;
+  if (!generation) corpusFailure(`${tag} carries no readable "${CORPUS_GENERATION_FIELD}" ordering key`);
+  const currentLatest = readCurrentLatest(gh, repo);
+  const promotion = evaluateCorpusPromotion({ tag, generation, currentLatest });
+  if (!promotion.allowed) corpusFailure(promotion.reason);
+
+  const promote = gh(['release', 'edit', tag, '--repo', repo, '--prerelease=false', '--latest']);
+  if (promote.error || promote.status !== 0) {
+    corpusFailure(`corpus promotion to latest failed (${String(promote.error?.message || promote.stderr || promote.stdout || '').trim()})`);
+  }
   const finalView = gh(['release', 'view', tag, '--json', 'tagName,isDraft,isPrerelease,assets', '--repo', repo]);
   if (finalView.error || finalView.status !== 0) corpusFailure('cannot confirm the promoted corpus release');
   let promoted;
   try { promoted = JSON.parse(String(finalView.stdout || 'null')); }
   catch (error) { corpusFailure(`cannot read the promoted corpus release (${error.message})`); }
-  const latestNow = gh(['api', `repos/${repo}/releases/latest`]);
-  let latestTag = null;
-  if (!latestNow.error && latestNow.status === 0) {
-    try { latestTag = JSON.parse(String(latestNow.stdout || 'null'))?.tag_name ?? null; } catch { latestTag = null; }
-  }
-  const promotedAssets = (promoted?.assets || []).map((asset) => asset?.name).sort();
-  if (promoted?.tagName !== tag || promoted.isDraft !== false || latestTag !== tag
-    || promoted.isPrerelease !== false || JSON.stringify(promotedAssets) !== JSON.stringify(expectedAssets)) {
+  const names = (assets) => (assets || []).map((asset) => asset?.name).sort();
+  if (promoted?.tagName !== tag || promoted.isDraft !== false || promoted.isPrerelease !== false
+    || latestTagNow(gh, repo) !== tag || JSON.stringify(names(promoted.assets)) !== JSON.stringify(names(release.assets))) {
     corpusFailure('corpus release did not reach a complete, non-draft, non-prerelease latest state');
   }
-
-  return {
-    tag, target, repository: repo, archiveSha256, receiptSha256, promoted: true,
-    generation, supersededLatest: currentLatest?.tagName || null,
-  };
+  return { tag, target, repository: repo, promoted: true, generation, consent: consent.reason,
+    supersededLatest: currentLatest?.tagName || null };
 }
 
 if (CORPUS_SEED) {
   try {
-    const result = await runProtectedCorpusSeed();
+    const result = process.argv.includes('--promote-staged') ? await runProtectedCorpusPromotion() : await runProtectedCorpusSeed();
     console.log(JSON.stringify({ ok: true, mode: 'corpus-seed', ...result }, null, 2));
   } catch (error) {
     console.error(error.message);

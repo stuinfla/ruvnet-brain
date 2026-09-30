@@ -3,7 +3,7 @@ id: ADR-074
 title: RuvNet capability claims require live evidence
 status: Accepted
 date: 2026-08-22
-updated: 2026-09-27
+updated: 2026-09-30
 updated_source: derived-from-git
 reviewed_digest: 0e03e3459a3b
 version: 1.1.1
@@ -16,6 +16,9 @@ governs:
   - plugin/scripts/capability-inventory-receipt.mjs
   - plugin/scripts/capability-claim-evidence.mjs
   - plugin/scripts/continuation-gate.mjs
+  - plugin/scripts/completion-claim-evidence.mjs
+  - scripts/completion-claim-replay.mjs
+  - tests/unit/continuation-gate-completion-claims.test.mjs
   - plugin/mcp/managed-cli-interface.mjs
   - kb/forge-evidence.mjs
   - plugin/scripts/codex-hook-adapter.mjs
@@ -66,6 +69,7 @@ One evidence source cannot prove every kind of claim:
 | Installed, registered, or present | Complete `CapabilityInventoryReceipt` over the active host's discoverable RuvNet skill/plugin surfaces | Present bytes contradict absence; complete absence contradicts presence; incomplete enumeration is `UNKNOWN` |
 | Behavior, API, support, or limitation | Fresh source-grounding receipt whose exact source path and content identity bind the claim | No binding or design-only evidence is `UNKNOWN`; absence of retrieval never proves absence of capability |
 | Current version, latest, healthy, or reachable | Fresh live command/registry/round-trip receipt for the exact installed/public surface | A stale document, version string alone, or adjacent path is `UNKNOWN` |
+| Completion ("fixed", "done", "shipped", "live", "it will now…") | This turn's host transcript shows a verification command executed after the last state-changing action with a present, non-error result; the answer names that check and discloses what is NOT verified | No post-change check, no named check, or no disclosure is `FAIL` (one correction); an unparsed host transcript (Codex) is `UNKNOWN` for that half |
 
 The current implementation covers the first row, exact-source behavior claims, installed-current
 version, managed-CLI health observations, and a dedicated public-registry latest-version probe.
@@ -140,6 +144,8 @@ tests establish request-envelope behavior, not native-host continuation or a sig
 result. Cross-platform, public-byte, false-positive, and aggregate obligations remain unproven.
 
 ## Currency log
+| 2026-09-30 | `extractClaims` exported with an optional `tools` vocabulary (default scope unchanged, so this Stop body's audit is identical) and `currentTurnRecords` factored out of `claudeTurnEvents`, both reused by `grounding-turn-evidence.mjs` for ADR-0030 decision point #1; that gate skips sentences this ADR's RUVNET_TOOL class already audits. | `plugin/scripts/capability-claim-evidence.mjs`, `plugin/scripts/completion-claim-evidence.mjs`; `tests/unit/grounding-turn-assertion.test.mjs`, `tests/unit/continuation-gate-completion-claims.test.mjs`, `tests/unit/capability-claim-evidence.test.mjs` green. |
+| 2026-09-30 | Added claim class `completion` inside the existing Stop body (no new registration): one correction when a final answer claims work is done without post-change verification this turn, a named check and a NOT-verified disclosure; first-person promises are recorded in the same per-project ledger and close only on an evidence-passing completion claim. Claude transcripts are parsed; Codex enforces the answer-side half only (rollout format unparsed). Acceptance #5 partially measured for this class: replay over 15 real Claude transcripts / 1,016 turns (the labelled run) — arm 9.2%, block 8.6%, hand-labelled block precision 81/88 (92%), promise precision 39/44 (89%); packed-host latency and native continuation remain unproven. | `plugin/scripts/completion-claim-evidence.mjs`, `plugin/scripts/continuation-gate.mjs`, `plugin/scripts/continuation-objective.mjs`, `scripts/completion-claim-replay.mjs`, `tests/unit/continuation-gate-completion-claims.test.mjs`. |
 | 2026-09-27 | Currency review: decision unchanged. Motion: continuation-gate anti-faking correction, managed-CLI interruption/continuity fixes, and Codex post-tool validation. The capability-claim integrity model is unchanged; these close real bugs in its enforcement. | Reviewed `docs/ddd/0020-capability-claim-integrity-context.md`, `plugin/scripts/capability-inventory-receipt.mjs`, `plugin/scripts/capability-claim-evidence.mjs`, `plugin/scripts/continuation-gate.mjs`, `plugin/mcp/managed-cli-interface.mjs`, `kb/forge-evidence.mjs` against the commits listed above; reviewed_digest 0e03e3459a3b. |
 
 | 2026-09-12 | `continuation-gate.mjs` moved: `--commit-to` never actually armed the Stop-forcing gate — it wrote to `led.items`, which the forcing logic doesn't read; only `led.objective` does, and nothing ever wrote that. Fixed so `--commit-to` writes a real `led.objective` (session-wildcarded, per `continuation-objective.mjs`'s documented `'*'` exception); reverted an earlier wrong fix that derived an objective from any open ledger item, which broke the deliberate "legacy items never auto-force" safety test. No other governed path moved. | Reviewed `plugin/scripts/continuation-gate.mjs`, `plugin/scripts/continuation-objective.mjs`, `tests/unit/continuation-gate.test.mjs` (new fail-first CLI-level test, RED→GREEN). reviewed_digest bf4be44519d7. |

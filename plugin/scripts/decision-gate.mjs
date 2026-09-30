@@ -32,6 +32,8 @@ const EVENT = process.argv[2] || '';
 /** Exit codes that mean something to the host. Anything else from a policy is an ERROR, not a refusal. */
 const ALLOW = 0;
 const REFUSE = 2;
+/** A policy that could not decide and says why on stderr (e.g. duplicate-gate's index under overload). */
+const SKIPPED_SELF = 3;
 
 /**
  * ── THE BUDGET AND THE HOST TIMEOUT ARE ONE NUMBER, NOT TWO ──────────────────────────────────────
@@ -124,12 +126,17 @@ const REFUSAL_POLICIES = [
   // DEBT, not change: you may edit governed code freely, but not while a document governing it is
   // still unreconciled from the last round.
   POLICY('adr-currency', 'adr-currency-gate.mjs', 'node'),
+  // duplicate-code (2026-09-30, owner: "is it the simplest version of the code that works, that doesn't
+  // create duplicates or replication across the project?"). Last: it is a question about craft, not a
+  // boundary, and it refuses at most once per path per session. Tuned on replayed history — the
+  // numbers and the method are in duplicate-gate.mjs and scripts/duplicate-gate-replay.mjs.
+  POLICY('duplicate-code', 'duplicate-gate.mjs', 'node'),
 ];
 const SPEECH = { id: 'unprompted-speech', file: 'unprompted-runtime.mjs', interpreter: 'node' };
 
 /** Which policies apply to which PreToolUse sub-event, mirroring the matchers they replaced. */
 const REGISTRY = {
-  'write': ['protect-state', 'hijack-ruvnet', 'ground-before-write', 'adr-currency'],
+  'write': ['protect-state', 'hijack-ruvnet', 'ground-before-write', 'adr-currency', 'duplicate-code'],
 };
 
 export function policiesFor(event, registry = REGISTRY, all = REFUSAL_POLICIES) {
@@ -245,6 +252,9 @@ if (isMain()) {
   const results = await Promise.all(consulted.map((p) => runPolicy(p, payload, deadline, undefined, trace)));
   const verdicts = results.filter((r) => typeof r.code === 'number');
   for (const r of results) if (r.skipped === 'budget') unconsulted.push(r.id);
+  // A policy that exits SKIPPED (3) did not vote and said why (duplicate-gate under overload). Same
+  // two channels as a blown budget, below — never silence standing in for a verdict.
+  const selfSkipped = results.filter((r) => r.skipped === 'self');
 
   const decision = decide(verdicts);
 
@@ -264,6 +274,7 @@ if (isMain()) {
     }
   } catch { /* a ledger must never break a tool call */ }
 
+  reportSelfSkipped({ session, selfSkipped });
   if (!decision.allow) {
     reportBudget({ session, unconsulted, trace, started, budgetMs });
     process.stderr.write(`${decision.reason}\n`);
@@ -329,6 +340,14 @@ function reportBudget({ session, unconsulted, trace, started, budgetMs }) {
   );
 }
 
+/** Record and print each policy that skipped itself (exit 3), with its own one-line reason. */
+function reportSelfSkipped({ session, selfSkipped }) {
+  for (const r of selfSkipped) {
+    try { appendOutcome({ kind: 'policy-skipped', event: EVENT, session, policy: r.id, reason: r.reason, ts: Date.now() }); } catch { /* a ledger must never break a tool call */ }
+    process.stderr.write(`[decision-gate] ${r.reason || `${r.id} skipped`} — ${r.id} did not vote; this allow is not its verdict.\n`);
+  }
+}
+
 /**
  * Run one policy as a CAPTURED child. Never lets its bytes touch the real streams.
  *
@@ -362,7 +381,7 @@ function runPolicy(p, payload, deadline, extraArg, trace) {
     const finish = (r) => { if (settled) return; settled = true; clearTimeout(timer); resolve(done(r)); };
     let child;
     try {
-      child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, RUVNET_DECISION_GATE: '1' } });
+      child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, RUVNET_DECISION_GATE: '1', RUVNET_DECISION_DEADLINE: String(deadline) } });
     } catch { return finish({ id: p.id, skipped: 'spawn' }); }
     // SIGKILL, not SIGTERM: a bash policy that has spawned its own child (jq, node, ruflo) can sit in
     // a TERM handler, and the host's own kill is what we are racing. The whole batch shares ONE
@@ -379,6 +398,7 @@ function runPolicy(p, payload, deadline, extraArg, trace) {
     child.on('close', (code) => {
       // A spawn failure, a timeout, or any code other than 0/2 is an ERROR — and an error here must
       // never be mistaken for a refusal. That distinction is the one lesson-gate.mjs had to learn twice.
+      if (code === SKIPPED_SELF) return finish({ id: p.id, skipped: 'self', reason: firstLine(stderr) });
       if (code !== ALLOW && code !== REFUSE) return finish({ id: p.id, skipped: `exit:${code}` });
       finish({ id: p.id, code, stderr, stdout });
     });

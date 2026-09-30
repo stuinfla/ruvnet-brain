@@ -32,8 +32,8 @@ import {
 } from './session-start-fsutil.mjs';
 import { maintainerIssueEntitlement, surfaceIssuePointer } from './session-start-issue-alert.mjs';
 import { surfaceSignals } from './session-start-signals.mjs';
-import { brainState, health, mcpReadiness } from './session-start-health.mjs';
-import { stableSpine, heartbeat } from './session-start-update-plane.mjs';
+import { brainState, health, knowledgeCurrency, mcpReadiness, KNOWLEDGE_LINE_PREFIX } from './session-start-health.mjs';
+import { stableSpine, heartbeat, knowledgeAutoUpdate } from './session-start-update-plane.mjs';
 import { describeLifecycleHooks, readHookContracts } from './session-start-hook-description.mjs';
 import { createStageTracer } from './session-start-trace.mjs';
 
@@ -79,6 +79,7 @@ export async function runSessionStart({
       || s.startsWith('[RuvNet Brain — HEALTH ALARM')
       || s.startsWith('[RuvNet Brain — INSTALL ALARM')
       || s.startsWith('[RuvNet Brain — NIGHTLY FAILED')
+      || s.startsWith(KNOWLEDGE_LINE_PREFIX)
       || s.startsWith('[RuvNet Brain — OPEN ISSUES')
       || /\bopen issue\(s\)/i.test(s)
       || /^\[RuvNet Brain — external signal/i.test(s)
@@ -205,6 +206,18 @@ export async function runSessionStart({
       }
       return result;
     }) || { problem: '', absentByChoice: false };
+
+    // ONE line when the installed knowledge cannot be PROVEN current (old, failing, or UNKNOWN);
+    // silent when a refresh or --check proved it inside 48h. Skipped when the brain is off (a choice)
+    // or already down (the HEALTH ALARM above owns that).
+    // Knowledge self-heal first (a detached, throttled --update when nothing proves currency inside
+    // 24h), so the line below already says an update is running.
+    tracer.stage('knowledge-currency', () => {
+      if (brain.off || state.problem) return;
+      knowledgeAutoUpdate({ env, home, now, hookDir, emit });
+      const line = knowledgeCurrency({ env, home, now });
+      if (line) emit(line);
+    });
 
     tracer.stage('misc', () => {
       const consoleOffered = path.join(stateDir, '.console-offered');
