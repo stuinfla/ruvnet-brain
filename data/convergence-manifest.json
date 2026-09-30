@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
   "kind": "ruvnet-brain-convergence-manifest",
-  "version": "4.3.36",
-  "sourceIdentity": "cbf42e15396e8f6aee3d7512ce85f09226efa2b960d19e4c45d46ae3802d075b",
+  "version": "4.3.38",
+  "sourceIdentity": "b85b83488c6b2b5c465d43e7ea7dd8f897a772bf28567dc2ae7919e9266af0bf",
   "versionSurfaces": {
-    "package.json": "4.3.36",
-    "plugin/.claude-plugin/plugin.json": "4.3.36",
-    "plugin/.codex-plugin/plugin.json": "4.3.36",
-    "data/manifest.json": "4.3.36",
-    "kb/RVF-GENERATIONS.json": "4.3.36",
-    "explainer/index.html": "4.3.36",
-    "primer/ruvnet-primer.md": "4.3.36"
+    "package.json": "4.3.38",
+    "plugin/.claude-plugin/plugin.json": "4.3.38",
+    "plugin/.codex-plugin/plugin.json": "4.3.38",
+    "data/manifest.json": "4.3.38",
+    "kb/RVF-GENERATIONS.json": "4.3.38",
+    "explainer/index.html": "4.3.38",
+    "primer/ruvnet-primer.md": "4.3.38"
   },
   "adrInventory": [
     "0001-verified-bundle-not-single-file.md",
@@ -102,10 +102,11 @@
     "0088-operational-evaluation-integrity.md",
     "0089-installed-search-identity-health.md",
     "0090-source-backed-capability-discovery.md",
+    "0092-knowledge-is-data-only.md",
     "README.md"
   ],
-  "trackedFileCount": 1610,
-  "trackedFilesSha256": "b5bcb291b202bf14c5d0ea3aaa35311137f5e9005d3a83eca78f0959bbb2fa53",
+  "trackedFileCount": 1636,
+  "trackedFilesSha256": "ef6c92178b371e9031149d92606b25df8ed8387298922a470ee263637e56b3ef",
   "ownershipChecks": [
     "version:check",
     "doc:currency",

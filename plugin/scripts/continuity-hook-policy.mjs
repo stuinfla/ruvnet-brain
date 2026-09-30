@@ -20,7 +20,7 @@
  *   session-start       continuity recovery   at SessionStart       claude, codex
  *   unprompted-speech   advisory delivery     at UserPromptSubmit   claude, codex
  *   continuation-gate   continuation nudge    at turn end           claude, codex
- *   session-snapshot    continuity capture    at turn end           claude
+ *   session-snapshot    continuity capture    at turn end           claude, codex
  *   session-snapshot    continuity capture    at PreCompact         claude
  *   session-snapshot    continuity capture    at SessionEnd         claude, codex
  *   ground-ruvnet       grounding injection   at UserPromptSubmit   claude, codex
@@ -95,7 +95,8 @@ const registration = (id, matcher, hosts) => Object.freeze({ id, matcher, hosts:
  *                     struct, so this is "not proven", not "not supported".
  *   PreCompact        NOT OBSERVED — a one-line turn never approaches a compaction threshold.
  *
- * Therefore Codex capture is registered at SessionEnd ONLY. Stop keeps the pre-existing
+ * Therefore Codex capture was registered at SessionEnd ONLY (Stop added 2026-09-29 for turn
+ * outcomes — see the Stop registration below; its delivery is still unobserved). Stop keeps the pre-existing
  * continuation-gate registration (unchanged by this lane); no NEW handler is added to an event whose
  * delivery has not been seen. hook-contracts.json carries the same measurement and its date.
  *
@@ -154,7 +155,13 @@ export const CONTINUITY_EVENTS = Object.freeze({
   ]),
   Stop: Object.freeze([
     registration('continuation-gate', '*', ['claude', 'codex']),
-    registration('session-snapshot', '*', ['claude']),
+    // Codex added 2026-09-29 (owner requirement: every turn's outcome recorded on BOTH hosts —
+    // turn-outcome-capture.mjs). Codex SessionEnd carries no last_assistant_message, so Stop is the
+    // only boundary that can record a Codex turn. Evidence: codex-cli 0.158.0's own
+    // stop.command.input schema (last_assistant_message, turn_id) and the two Codex Stop handlers
+    // already registered above/below. NOT yet live-observed firing — see the probe box: the capture
+    // fails open, so an unfired registration costs nothing but must not be read as proof.
+    registration('session-snapshot', '*', ['claude', 'codex']),
     // The "answered without searching" gate, half 2 of 2 (2026-09-12). Forces continuation
     // (hookSpecificOutput.additionalContext — the same contract continuation-gate.mjs already uses
     // and codex-hook-adapter.mjs already translates to Codex's decision:block on both hosts) when

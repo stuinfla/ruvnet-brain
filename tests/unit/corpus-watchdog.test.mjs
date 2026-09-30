@@ -31,7 +31,10 @@ const PUBLISHED = { outcomeRecord: { conclusion: 'success', jobs: { identity: 's
 const NO_CHANGE = { outcomeRecord: { conclusion: 'success', jobs: { identity: 'success', prepare: 'success', no_change: 'success', authorize: 'skipped', publish: 'skipped' } } };
 const VERIFIED_CODE = { tag: 'v9.8.7', publishedAt: ago(50), aggregate: { state: 'verified' } };
 const OBSERVED_CLEAN = { observable: true, newestTag: TAG(1), degraded: { carried: [], missing: [] }, stores: [] };
+const LATEST = { tag: TAG(1), publishedAt: ago(7), generation: ago(8) };
+const PROMOTED = { outcomeRecord: { conclusion: 'success', jobs: { identity: 'success', prepare: 'success', no_change: 'skipped', authorize: 'success', publish: 'success', canary: 'success', promote: 'success' } } };
 const healthy = (over = {}) => ({
+  latestRelease: LATEST,
   corpusReleases: [{ tag: TAG(1), publishedAt: ago(7) }],
   corpusRuns: [corpusRun(101, 10, PUBLISHED)],
   dispatcherRuns: [dispatcher(100, 10)],
@@ -61,13 +64,47 @@ describe('judgeCorpusHealth — the required verdicts', () => {
     expect(result.lastGoodNight.kind).toBe('published');
   });
 
-  it('a recent no-change night is GREEN even with no new release', () => {
+  it('a recent no-change night keeps freshness GREEN while the promoted generation is inside 36h', () => {
     const result = judgeCorpusHealth(healthy({
-      corpusReleases: [{ tag: TAG(1), publishedAt: ago(200) }],
+      corpusReleases: [{ tag: TAG(1), publishedAt: ago(30) }],
+      latestRelease: { tag: TAG(1), publishedAt: ago(30), generation: ago(31) },
       corpusRuns: [corpusRun(101, 10, NO_CHANGE)],
     }), NOW);
     expect(result.verdict).toBe(GREEN);
     expect(result.lastGoodNight).toMatchObject({ kind: 'no-change', ref: 'run 101' });
+  });
+
+  it('48h INVARIANT: the generation customers receive paging at >36h overrides a no-change night', () => {
+    const result = judgeCorpusHealth(healthy({
+      corpusReleases: [{ tag: TAG(1), publishedAt: ago(200) }],
+      latestRelease: { tag: TAG(1), publishedAt: ago(200), generation: ago(201) },
+      corpusRuns: [corpusRun(101, 10, NO_CHANGE)],
+    }), NOW);
+    expect(finding(result, 'freshness').level).toBe(GREEN);
+    expect(finding(result, 'promoted-age')).toMatchObject({ level: RED });
+    expect(finding(result, 'promoted-age').detail).toMatch(/201\.0h old \(limit 36h/);
+    expect(result.verdict).toBe(RED);
+  });
+
+  it('promoted-age boundary: 36h exactly is GREEN, one millisecond more is RED; undatable latest is RED', () => {
+    const at = (iso) => finding(judgeCorpusHealth(healthy({ latestRelease: { tag: TAG(1), publishedAt: ago(1), generation: iso } }), NOW), 'promoted-age').level;
+    expect(at(new Date(NOW.getTime() - 36 * HOUR).toISOString())).toBe(GREEN);
+    expect(at(new Date(NOW.getTime() - 36 * HOUR - 1).toISOString())).toBe(RED);
+    // No generation stamp (a code release on latest): its publish time dates it.
+    expect(finding(judgeCorpusHealth(healthy({ latestRelease: { tag: 'v9.8.7', publishedAt: ago(40), generation: null } }), NOW), 'promoted-age').level).toBe(RED);
+    expect(finding(judgeCorpusHealth(healthy({ latestRelease: null }), NOW), 'promoted-age').level).toBe(RED);
+  });
+
+  it('CUSTOMER CANARY: a night whose canary refused the candidate is RED tonight AND on the canary check', () => {
+    const rejected = corpusRun(201, 5, { conclusion: 'failure', outcomeRecord: { outcome: 'canary-rejected', conclusion: 'failure', jobs: {} } });
+    const result = judgeCorpusHealth(healthy({ corpusRuns: [corpusRun(101, 30, PROMOTED), rejected] }), NOW);
+    expect(finding(result, 'tonight')).toMatchObject({ level: RED });
+    expect(finding(result, 'tonight').detail).toMatch(/customer canary refused/);
+    expect(finding(result, 'canary')).toMatchObject({ level: RED });
+    expect(result.verdict).toBe(RED);
+    // A later promoted night clears it: the LAST canary is what is judged.
+    const cleared = judgeCorpusHealth(healthy({ corpusRuns: [corpusRun(301, 30, { conclusion: 'failure', outcomeRecord: { outcome: 'canary-rejected', jobs: {} } }), corpusRun(401, 6, PROMOTED)] }), NOW);
+    expect(finding(cleared, 'canary').level).toBe(GREEN);
   });
 
   it('a failed run tonight is RED even when yesterday published', () => {
@@ -147,6 +184,20 @@ describe('classifyCorpusRun — reads the pipeline\'s own outcome record', () =>
     expect(classifyCorpusRun({ status: 'completed', conclusion: 'success', ...PUBLISHED })).toBe('published');
     expect(classifyCorpusRun({ status: 'completed', conclusion: 'success', jobs: [{ name: 'protected-corpus-publisher', conclusion: 'skipped' }] })).toBe('unknown');
   });
+  it('since the canary, published means PROMOTED: a staged-only night is not a published night', () => {
+    expect(classifyCorpusRun({ status: 'completed', conclusion: 'success', ...PROMOTED })).toBe('published');
+    const stagedOnly = { outcomeRecord: { conclusion: 'success', jobs: { ...PROMOTED.outcomeRecord.jobs, promote: 'skipped' } } };
+    expect(classifyCorpusRun({ status: 'completed', conclusion: 'success', ...stagedOnly })).toBe('unknown');
+    const canaryFailed = { outcomeRecord: { conclusion: 'failure', jobs: { ...PROMOTED.outcomeRecord.jobs, canary: 'failure', promote: 'skipped' } } };
+    expect(classifyCorpusRun({ status: 'completed', conclusion: 'failure', ...canaryFailed })).toBe('canary-rejected');
+    // Job-list fallback: the publisher (stage) succeeding while the canary failed is canary-rejected, never published.
+    expect(classifyCorpusRun({ status: 'completed', conclusion: 'failure', jobs: [
+      { name: 'protected-corpus-publisher', conclusion: 'success' }, { name: 'customer-canary', conclusion: 'failure' },
+      { name: 'promote-canaried-corpus', conclusion: 'skipped' }] })).toBe('canary-rejected');
+    expect(classifyCorpusRun({ status: 'completed', conclusion: 'success', jobs: [
+      { name: 'protected-corpus-publisher', conclusion: 'success' }, { name: 'customer-canary', conclusion: 'success' },
+      { name: 'promote-canaried-corpus', conclusion: 'skipped' }] })).toBe('unknown');
+  });
   it('falls back to the run\'s job list when no outcome record exists', () => {
     expect(classifyCorpusRun({ status: 'completed', conclusion: 'success', jobs: [{ name: 'corpus-no-change-round', conclusion: 'success' }] })).toBe('no-change');
   });
@@ -199,6 +250,7 @@ if (cmd === 'run list') out(fixture.runs[opt('--workflow')] || []);
 if (cmd === 'release list') out(fixture.releases);
 if (cmd === 'release view') out({ assets: (fixture.assets[args[2]] || []).map((name) => ({ name })) });
 if (cmd === 'run view') out({ jobs: fixture.jobs[args[2]] || [] });
+if (args[0] === 'api' && args[1] === 'repos/stuinfla/ruvnet-brain/releases/latest' && fixture.latest) out(fixture.latest);
 process.stderr.write('not in fixture: ' + args.join(' ')); process.exit(1);
 `);
     fs.chmodSync(fake, 0o755);
@@ -210,6 +262,8 @@ process.stderr.write('not in fixture: ' + args.join(' ')); process.exit(1);
   const standDown = (id, h) => ({ databaseId: id, attempt: 1, event: 'schedule', status: 'completed', conclusion: 'success', createdAt: ago(h), updatedAt: ago(h) });
   const releases = [
     { tagName: TAG(1), publishedAt: ago(58), isDraft: false, isPrerelease: false },
+    // A staged candidate the canary refused: a prerelease is never evidence of a published night.
+    { tagName: TAG(2), publishedAt: ago(9), isDraft: false, isPrerelease: true },
     { tagName: 'v9.8.7', publishedAt: ago(2), isDraft: false, isPrerelease: false },
     { tagName: 'v9.8.6', publishedAt: ago(90), isDraft: false, isPrerelease: false },
   ];
@@ -217,10 +271,11 @@ process.stderr.write('not in fixture: ' + args.join(' ')); process.exit(1);
   it('two nights of green stand-downs exit 1 with RED — the page ntfy-alerts sends', () => {
     const result = runCli({
       runs: { 'corpus-nightly-dispatch.yml': [standDown(300, 10), standDown(200, 34)], 'protected-release.yml': [] },
-      releases, assets: {}, jobs: {},
+      releases, assets: {}, jobs: {}, latest: { tag_name: TAG(1), published_at: ago(58), body: `Corpus generation: ${ago(59)}` },
     });
     expect(result.stderr).toBe('');
     expect(result.status).toBe(1);
+    expect(result.stdout).toMatch(/\[RED\] promoted-age: customers receive corpus-sha256-1+, 59\.0h old/);
     expect(result.stdout).toMatch(/^corpus-watchdog RED/);
     expect(result.stdout).toMatch(/\[RED\] freshness: no night ended published or no-change in the last 48h/);
     expect(result.stdout).toMatch(/\[INFO\] code-aggregate: v9\.8\.7 is 2\.0h old; aggregate pending/);
@@ -235,6 +290,7 @@ process.stderr.write('not in fixture: ' + args.join(' ')); process.exit(1);
           { databaseId: 299, attempt: 1, displayTitle: 'protected-release code 9.8.7', status: 'completed', conclusion: 'failure', createdAt: ago(3), updatedAt: ago(2) }],
       },
       releases, assets: {}, jobs: { 301: [{ name: 'corpus-no-change-round', conclusion: 'success' }] },
+      latest: { tag_name: TAG(1), published_at: ago(30), body: `Corpus generation: ${ago(31)}` },
     });
     expect(result.stderr).toBe('');
     expect(result.stdout).toMatch(/^corpus-watchdog GREEN/);
@@ -250,8 +306,9 @@ process.stderr.write('not in fixture: ' + args.join(' ')); process.exit(1);
 describe('the workflow and its pager', () => {
   const workflow = fs.readFileSync(path.join(ROOT, '.github/workflows/corpus-watchdog.yml'), 'utf8');
   const code = workflow.split('\n').filter((line) => !/^\s*#/.test(line)).join('\n');
-  it('runs 17:17 UTC and on demand, read-only, with no secrets, never on forks', () => {
+  it('runs 17:17 UTC, again at 12:17 UTC for the same-morning page, and on demand, read-only, with no secrets, never on forks', () => {
     expect(code).toMatch(/schedule:\s*\n\s*- cron: '17 17 \* \* \*'/);
+    expect(code).toMatch(/- cron: '17 12 \* \* \*'/);
     expect(code).toMatch(/workflow_dispatch:/);
     expect(code).toMatch(/^permissions:\n {2}contents: read\n {2}actions: read\n/m);
     expect(code).not.toMatch(/secrets\.|write|id-token|environment:/);

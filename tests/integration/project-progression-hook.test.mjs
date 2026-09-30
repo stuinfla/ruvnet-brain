@@ -376,7 +376,9 @@ describe('the existing dual-host session snapshot hook is the production caller'
       captureProgression(input) { calls.push(input); return { receipt: { eventKey: 'captured' } }; },
     });
 
-    expect(result).toEqual({ metadataWritten: true, progressionCaptured: true, receipt: { eventKey: 'captured' } });
+    // `turn` is turn-outcome-capture's report (disabled under vitest; see vitest.config.mjs).
+    expect(result).toEqual({ metadataWritten: true, progressionCaptured: true, receipt: { eventKey: 'captured' },
+      turn: expect.objectContaining({ recorded: false }) });
     expect(calls).toEqual([expect.objectContaining({ host: 'claude', projectDir: project })]);
     expect(fs.readFileSync(path.join(project, '.swarm', 'agentdb-sessions.jsonl'), 'utf8'))
       .toContain('"event":"PreCompact"');

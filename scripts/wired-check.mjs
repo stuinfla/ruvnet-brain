@@ -77,6 +77,8 @@ const STANDALONE = [
   ['gate', 'retired automatic-hook helper and manual benchmark retained for explicit human use; no workflow or scheduler invokes this expensive command'],
   ['dream-issue-gate', 'pure Dream Cycle disposition policy; invoked by the external issue adapter, never a GitHub writer'],
   ['sync-census', 'explicit maintainer census writer; a destructive source-to-surface refresh is never scheduled'],
+  ['grounding-turn-replay', 'human-run measurement harness for grounding-turn-gate.mjs (ADR-0030 #1 and shadow #2/#3): replays real transcripts read-only through the same pure functions the hooks call, sharing completion-claim-replay.mjs\'s turn walkers; nothing to schedule'],
+  ['duplicate-gate-replay','human-run tuning harness for plugin/scripts/duplicate-gate.mjs: replays the gate over git history, read-only, when its thresholds are re-tuned; it imports the gate\'s own scoring functions, so there is no second copy to drift and nothing to schedule'],
   ['sync-commands', 'explicit maintainer alias synchronizer; run deliberately before release, never from a lifecycle hook'],
   ['project-progression-checkpoint', 'the body of the shipped `/ruvnet-brain:checkpoint` command '
     + '(plugin/commands/checkpoint.md:39; added a7167b6b 2026-09-11). The command host executes that '
@@ -120,6 +122,10 @@ const STANDALONE = [
   ['self-update', 'author-run candidate rebuild; --apply is guarded by worktree-integrity.mjs and is not scheduled'],
   ['ingest-new-repos', 'author-run corpus expansion; --apply is guarded by worktree-integrity.mjs and is not scheduled'],
   ['count-chunks', 'human-run CLI — recount + restamp chunk surfaces (--check for drift); no scheduler'],
+  ['derive-passage-content-map', 'human-run maintainer tool — regenerates data/retrieval-passage-content-digests.json '
+    + 'from a corpus built with ordinal passage ids, only when the frozen fixture changes; '
+    + 'tests/unit/retrieval-passage-identity.test.mjs fails if the committed map stops matching the fixture, '
+    + 'so a stale map cannot go unnoticed and there is nothing to schedule'],
   ['brain-stamp', 'invoked by the author-run self-update.mjs candidate builder'],
   ['lesson-promote', 'human-run CLI — promotion is manual (--apply); no scheduler yet (automation is ADR-029 #4, open)'],
   ['behavioral-l1-l4', 'behavioural harness invoked by its own test file — not a product path'],

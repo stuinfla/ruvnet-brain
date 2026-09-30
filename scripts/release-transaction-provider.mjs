@@ -60,13 +60,36 @@ const tagSha = (tag, root) => {
 // Assets now stream to a temp file and are hashed incrementally, so peak memory is one 1MB chunk
 // instead of the whole bundle and there is no ceiling to outgrow. Small assets (receipts) still
 // come back as bytes, because callers parse them as JSON.
-const assetToFile = (asset, destination) => {
-  const result = spawnSync('gh', ['api', asset.url, '-H', 'Accept: application/octet-stream'], {
-    stdio: ['ignore', fs.openSync(destination, 'w'), 'pipe'], timeout: ASSET_DOWNLOAD_TIMEOUT_MS,
-  });
-  if (result.error || result.signal || result.status !== 0) {
-    throw new Error(`cannot download transaction asset ${asset.name}: ${result.error?.message || result.signal || `exit ${result.status}`}`);
+//
+// 2026-09-29: ONE FLAKY DOWNLOAD MUST NOT ABORT A RELEASE. discover() reads the receipts of every
+// published release (411 assets, serially, ~3 minutes); a single transient `gh api` failure among
+// them killed the 4.3.36 publish with only "exit 1" -- the stderr that said why was discarded, and
+// re-fetching the same asset a minute later worked. A download is now retried with backoff, and the
+// final error carries the real cause. A genuinely missing/corrupt asset still fails, just not on
+// the first hiccup; the digest checks downstream are unchanged.
+export const ASSET_DOWNLOAD_ATTEMPTS = 4;
+const sleepSync = (ms) => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); };
+export const downloadAsset = (asset, destination, {
+  spawn = spawnSync, wait = sleepSync, attempts = ASSET_DOWNLOAD_ATTEMPTS, baseDelayMs = 2000,
+} = {}) => {
+  let cause = '';
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const fd = fs.openSync(destination, 'w'); // 'w' truncates any partial bytes from the previous attempt
+    let result;
+    try {
+      result = spawn('gh', ['api', asset.url, '-H', 'Accept: application/octet-stream'], {
+        stdio: ['ignore', fd, 'pipe'], timeout: ASSET_DOWNLOAD_TIMEOUT_MS,
+      });
+    } finally { fs.closeSync(fd); }
+    if (!result.error && !result.signal && result.status === 0) return destination;
+    const stderr = String(result.stderr || '').trim().slice(0, 300);
+    cause = `${result.error?.message || result.signal || `exit ${result.status}`}${stderr ? ` (${stderr})` : ''}`;
+    if (attempt < attempts) wait(baseDelayMs * 2 ** (attempt - 1));
   }
+  throw new Error(`cannot download transaction asset ${asset.name} after ${attempts} attempts: ${cause}`);
+};
+const assetToFile = (asset, destination) => {
+  downloadAsset(asset, destination);
   return destination;
 };
 const withTempAsset = (asset, fn) => {

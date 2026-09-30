@@ -56,3 +56,52 @@ export function evaluateCorpusPromotion({ tag, generation, currentLatest } = {})
   }
   return { allowed: true, reason: `newer than ${currentLatest.tagName} (${published.value})` };
 }
+
+// ── THE CONSUMER'S CONSENT (customer canary) ─────────────────────────────────────────────────────
+// The producer cannot declare success unless the consumer accepted. A corpus generation is staged as
+// a prerelease (never latest); scripts/corpus-canary.mjs installs the approved runtime on a clean,
+// secret-free runner and applies the staged candidate through that install's own updater; and
+// promotion to releases/latest requires the canary's PASS verdict for THIS run, over EXACTLY the
+// asset bytes still on the release. Every check below is required: a verdict that omits one, or a
+// release whose assets changed after the canary downloaded them, is not consent.
+export const CANARY_VERDICT_KIND = 'ruvnet-brain-corpus-canary-verdict';
+export const REQUIRED_CANARY_CHECKS = Object.freeze([
+  'candidate-release', 'updater-exit', 'signature-verified', 'staged-coverage', 'source-advanced',
+  'runtime-identity', 'node-modules', 'single-kb-tree', 'store-freshness',
+]);
+
+const assetKey = (asset) => `${asset?.name}|${asset?.digest}`;
+
+/**
+ * @param verdict        the canary verdict JSON (scripts/corpus-canary.mjs)
+ * @param tag            the staged corpus tag about to be promoted
+ * @param runId          GITHUB_RUN_ID of the promoting run — the verdict must come from this run
+ * @param runAttempt     GITHUB_RUN_ATTEMPT of the promoting run
+ * @param approvedTag    vX.Y.Z the corpus was built at
+ * @param releaseAssets  the release's assets as they are NOW ([{ name, digest }])
+ */
+export function evaluateCanaryVerdict({ verdict, tag, runId, runAttempt, approvedTag, releaseAssets } = {}) {
+  const refuse = (reason) => ({ allowed: false, reason: `no customer consent: ${reason}` });
+  if (!verdict || verdict.kind !== CANARY_VERDICT_KIND || verdict.schemaVersion !== 1) return refuse('not a canary verdict');
+  if (verdict.verdict !== 'PASS') return refuse(`the customer canary reported ${verdict.verdict || '(no verdict)'}`);
+  if (!CORPUS_TAG_PATTERN.test(String(tag || '')) || verdict.tag !== tag) return refuse(`the verdict is for ${verdict.tag}, not ${tag}`);
+  if (verdict.archiveSha256 !== tag.slice('corpus-sha256-'.length)) return refuse('the verdict archive digest is not the tag digest');
+  if (String(verdict.runId ?? '') !== String(runId ?? '') || String(verdict.runAttempt ?? '') !== String(runAttempt ?? '')
+    || !runId || !runAttempt) {
+    return refuse(`the verdict belongs to run ${verdict.runId}/${verdict.runAttempt}, not this run ${runId}/${runAttempt}`);
+  }
+  if (approvedTag !== `v${verdict.approvedVersion}`) return refuse(`the canary installed ${verdict.approvedVersion}, not ${approvedTag}`);
+  const checks = Array.isArray(verdict.checks) ? verdict.checks : [];
+  for (const name of REQUIRED_CANARY_CHECKS) {
+    const entry = checks.find((row) => row?.name === name);
+    if (!entry) return refuse(`required check ${name} is absent`);
+    if (entry.ok !== true) return refuse(`required check ${name} failed (${entry.detail || 'no detail'})`);
+  }
+  const tested = (verdict.assets || []).map(assetKey).sort();
+  const current = (releaseAssets || []).map(assetKey).sort();
+  if (!tested.length || tested.some((key) => key.endsWith('|null') || key.endsWith('|undefined'))
+    || JSON.stringify(tested) !== JSON.stringify(current)) {
+    return refuse('the release assets are not byte-for-byte the ones the canary downloaded');
+  }
+  return { allowed: true, reason: `customer canary PASS in run ${runId}/${runAttempt} over ${tested.length} asset digest(s)` };
+}

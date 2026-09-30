@@ -15,6 +15,10 @@
 //            (c) the newest vX.Y.Z code release has no VERIFIED public-verification aggregate 24h after
 //                publish, or carries one that does not verify (the nightly cannot arm without it)
 //            (d) any store has been deferred (carried STALE or MISSING) for more than 7 days
+//            (e) the generation customers actually receive (releases/latest) is older than 36h —
+//                the server-side half of "nobody's Brain is ever more than 48h old"
+//            (f) the most recent customer canary refused its candidate (canary-rejected): a night
+//                that built and staged a corpus no clean customer install could apply
 //   WARNING  a superseded or degraded night, a stand-down tonight, an unknown outcome, a long run
 //   GREEN    none of the above
 //
@@ -38,6 +42,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { CODE_TAG_PATTERN, isCorpusReleaseTag } from './release-channel-kind.mjs';
 import { AGGREGATE_ASSET, SIGNING_PUBLIC_KEY_FILE } from './approved-runtime.mjs';
 import { COVERAGE_ASSET, COVERAGE_RECEIPT_ASSET, verifyCoverageSidecar } from './corpus-coverage-sidecar.mjs';
+import { parseCorpusGeneration } from './corpus-promotion.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const RED = 'RED';
@@ -50,12 +55,14 @@ export const TONIGHT_WINDOW_MS = 24 * HOUR;
 export const AGGREGATE_GRACE_MS = 24 * HOUR;
 export const DEFERRAL_LIMIT_MS = 7 * 24 * HOUR;
 export const LONG_RUN_MS = 8 * HOUR;
+/** A customer Brain must never be >48h old; the promoted generation pages at 36h so a same-day fix lands first. */
+export const PROMOTED_AGE_LIMIT_MS = 36 * HOUR;
 /** protected-release.yml's run-name for a corpus run: `protected-release corpus <dispatch id>`. */
 export const CORPUS_RUN_TITLE = /^protected-release corpus (\S+)$/;
 /** The dispatch id corpus-nightly-dispatch.yml passes: `corpus-<its run id>-<its attempt>`. */
 const DISPATCH_ID = /^corpus-(\d+)-(\d+)$/;
 /** Terminal outcomes a corpus-release-outcome.json may declare in an `outcome` field (design D2). */
-const DECLARED_OUTCOMES = new Set(['published', 'no-change', 'superseded', 'degraded', 'failed']);
+const DECLARED_OUTCOMES = new Set(['published', 'no-change', 'superseded', 'degraded', 'canary-rejected', 'failed']);
 const GOOD_NIGHT = new Set(['published', 'no-change']);
 
 const ms = (iso) => {
@@ -75,11 +82,17 @@ export function classifyCorpusRun(run) {
   if (run?.status !== 'completed') return 'in-progress';
   const declared = String(run.outcomeRecord?.outcome ?? '').replace('no_change', 'no-change');
   if (DECLARED_OUTCOMES.has(declared)) return declared;
-  if (run.conclusion !== 'success') return 'failed';
   const recorded = run.outcomeRecord?.jobs;
   const byName = new Map((run.jobs || []).map((job) => [job.name, job.conclusion]));
+  // The customer canary refusing its candidate is its own outcome: red, and nothing reached customers.
+  if ((recorded?.canary ?? byName.get('customer-canary')) === 'failure') return 'canary-rejected';
+  if (run.conclusion !== 'success') return 'failed';
   const noChange = recorded?.no_change ?? byName.get('corpus-no-change-round');
-  const publish = recorded?.publish ?? byName.get('protected-corpus-publisher');
+  // Since the customer canary, `published` means PROMOTED: the promote job, not the (staging) publisher.
+  // Runs recorded before the canary existed carry no promote job; their publisher moved latest itself.
+  const publish = recorded
+    ? (Object.hasOwn(recorded, 'promote') ? recorded.promote : recorded.publish)
+    : (byName.has('promote-canaried-corpus') ? byName.get('promote-canaried-corpus') : byName.get('protected-corpus-publisher'));
   if (noChange === 'success') return 'no-change';
   if (publish === 'success') return 'published';
   return 'unknown';
@@ -110,7 +123,8 @@ export function deferralSince(generations) {
 
 /**
  * The pure verdict. `input`:
- *   corpusReleases  [{ tag, publishedAt }]                           non-draft corpus-sha256-* releases
+ *   corpusReleases  [{ tag, publishedAt }]                           PROMOTED (non-draft, non-prerelease) corpus-sha256-* releases
+ *   latestRelease   { tag, publishedAt, generation } | null           what releases/latest serves customers right now
  *   corpusRuns      [{ id, title, status, conclusion, createdAt, updatedAt, outcome }]  protected-release corpus runs
  *   dispatcherRuns  [{ id, attempt, status, conclusion, createdAt }]  corpus-nightly-dispatch runs
  *   codeRelease     { tag, publishedAt, aggregate: { state: verified|missing|invalid, reason } } | null
@@ -153,6 +167,7 @@ export function judgeCorpusHealth(input, now) {
   if (tonight) {
     const ref = `corpus run ${tonight.id} (${tonight.title})`;
     if (tonight.outcome === 'failed') add(RED, 'tonight', `${ref} failed (conclusion ${tonight.conclusion})`);
+    else if (tonight.outcome === 'canary-rejected') add(RED, 'tonight', `${ref}: the customer canary refused the candidate; it stays an unpromoted prerelease`);
     else if (tonight.outcome === 'superseded') add(WARNING, 'tonight', `${ref} was superseded by a newer code release before publish`);
     else if (tonight.outcome === 'degraded') add(WARNING, 'tonight', `${ref} published a degraded generation`);
     else if (tonight.outcome === 'unknown') add(WARNING, 'tonight', `${ref} succeeded but shows neither a publish nor a no-change round`);
@@ -197,6 +212,24 @@ export function judgeCorpusHealth(input, now) {
     const degraded = [...(deferral.degraded?.carried || []), ...(deferral.degraded?.missing || [])];
     if (degraded.length) add(WARNING, 'degraded', `${deferral.newestTag} is degraded: ${deferral.degraded.carried.length} carried, ${deferral.degraded.missing.length} missing`);
   }
+
+  // (e) the generation customers receive. Its own generation stamp when it carries one (the corpus
+  // build time), else its publish time. Missing or unreadable is RED: absence of evidence is failure.
+  const latest = input?.latestRelease;
+  const latestAge = latest ? age(latest.generation || latest.publishedAt) : null;
+  if (latestAge === null) {
+    add(RED, 'promoted-age', `releases/latest could not be dated (${latest ? latest.tag : 'no latest release observed'})`);
+  } else if (latestAge > PROMOTED_AGE_LIMIT_MS) {
+    add(RED, 'promoted-age', `customers receive ${latest.tag}, ${hours(latestAge)} old (limit 36h; a customer Brain must never pass 48h)`);
+  } else add(GREEN, 'promoted-age', `customers receive ${latest.tag}, ${hours(latestAge)} old`);
+
+  // (f) the most recent customer canary verdict among the observed runs.
+  const lastCanary = runs.filter((run) => run.outcome === 'published' || run.outcome === 'canary-rejected')
+    .sort((a, b) => ms(b.createdAt) - ms(a.createdAt))[0];
+  if (!lastCanary) add(INFO, 'canary', 'no customer canary verdict among the observed corpus runs');
+  else if (lastCanary.outcome === 'canary-rejected') {
+    add(RED, 'canary', `the last customer canary (run ${lastCanary.id}) refused its candidate: a clean install could not apply it`);
+  } else add(GREEN, 'canary', `the last customer canary (run ${lastCanary.id}) applied its candidate and it was promoted`);
 
   const verdict = findings.some((f) => f.level === RED) ? RED : findings.some((f) => f.level === WARNING) ? WARNING : GREEN;
   return { verdict, findings, lastGoodNight };
@@ -277,7 +310,8 @@ export async function gatherCorpusHealthInput({ repo, now, gh = defaultGh, root 
     .map((run) => ({ id: run.databaseId, title: run.displayTitle, status: run.status, conclusion: run.conclusion,
       createdAt: run.createdAt, updatedAt: run.updatedAt, ...corpusRunEvidence({ gh, repo, run, scratch }) }));
   const releases = JSON.parse(gh(['release', 'list', '--repo', repo, '--limit', '100', '--json', 'tagName,publishedAt,isDraft,isPrerelease']));
-  const corpusReleases = releases.filter((row) => !row.isDraft && isCorpusReleaseTag(row.tagName))
+  // PROMOTED only: a staged candidate (and a bootstrap seed) is a prerelease no customer receives.
+  const corpusReleases = releases.filter((row) => !row.isDraft && !row.isPrerelease && isCorpusReleaseTag(row.tagName))
     .map((row) => ({ tag: row.tagName, publishedAt: row.publishedAt }))
     .sort((a, b) => (ms(b.publishedAt) ?? 0) - (ms(a.publishedAt) ?? 0));
   const newestCode = newestCodeRelease(releases);
@@ -300,7 +334,12 @@ export async function gatherCorpusHealthInput({ repo, now, gh = defaultGh, root 
       // so which stores were carried, and since when, is simply not recorded anywhere a reader can verify.
       : { observable: false, reason: `${generations[0].tag} predates the D6.2 coverage sidecar (${COVERAGE_ASSET} + ${COVERAGE_RECEIPT_ASSET})` };
   }
-  return { corpusReleases, corpusRuns, dispatcherRuns, codeRelease, deferral };
+  let latestRelease = null;
+  try {
+    const latest = JSON.parse(gh(['api', `repos/${repo}/releases/latest`]));
+    latestRelease = { tag: latest.tag_name, publishedAt: latest.published_at, generation: parseCorpusGeneration(latest.body)?.value || null };
+  } catch { latestRelease = null; } // judged RED as "could not be dated"
+  return { corpusReleases, corpusRuns, dispatcherRuns, codeRelease, deferral, latestRelease };
 }
 
 export function renderReport(result, now) {

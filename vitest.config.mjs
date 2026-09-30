@@ -11,6 +11,10 @@ export default defineConfig({
     // fourth-wall p95 exceed 2x its ceiling. Serialize files so the suite measures product work,
     // not competition from another subprocess-heavy test file.
     maxWorkers: 1,
+    // Turn-outcome capture (plugin/scripts/turn-outcome-capture.mjs) launches a detached `ruflo`
+    // writer from every Stop/SessionEnd the suite fires through the real hook path. Off here so no
+    // test writes into the developer's real machine-wide AgentDB; its own tests inject fakes.
+    env: { RUVNET_TURN_CAPTURE: 'off' },
     include: [
       'tests/unit/**/*.test.mjs', 'tests/integration/*.test.mjs', 'tests/mutation/*.test.mjs',
       // ADR-058 §D7: the interface-gate incident corpus. Listed here AND given its own npm script

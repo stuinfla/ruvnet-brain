@@ -120,7 +120,9 @@ const TABLE = {
   // way — it stopped trusting hook-shim.mjs as a blind generic spawner, not their presence here.
   'learn-capture':    { file: 'learn-capture.sh',    interpreter: 'bash', mode: 'advisory', offBehavior: 'silence' },
   'learn-flush':      { file: 'learn-flush.mjs',     interpreter: 'node', mode: 'advisory', offBehavior: 'silence' },
-  'session-snapshot': { file: 'session-snapshot-hook.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'run', stdinBytes: 65536 },
+  // 1 MiB, not 64 KiB: the Stop payload now carries `last_assistant_message`, and a long closing
+  // message truncated mid-JSON would parse as `{}` and silently drop the whole capture.
+  'session-snapshot': { file: 'session-snapshot-hook.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'run', stdinBytes: 1048576 },
   'md-stamp':         { file: 'md-stamp.mjs',        interpreter: 'node', mode: 'advisory', offBehavior: 'silence' },
   // THE EXTERNAL-SIGNAL WATCH PLANE, W1 OBSERVED (ADR-058 §D3; DDD-0013 Context 2). PostToolUse,
   // matcher ^Bash$ (anchored — an unanchored matcher is F3/F4). Classifies gh/vercel/netlify/npm

@@ -11,6 +11,7 @@ import { extractZip } from '../kb/zip-extract.mjs';
 import { canonicalJson, digest, validateCoverageLedger, validateCoverageLink } from './coverage-integrity.mjs';
 import { validatePublicInventory } from './public-inventory.mjs';
 import { verifySeedBaseline } from './corpus-candidate.mjs';
+import { loadFixture, readRecallReport } from './oracle/repo-recall.mjs';
 import {
   buildRetrievalCanaryPlan,
   validateRetrievalQueryEvidence,
@@ -430,9 +431,27 @@ function writeExactOutputs(outDir, outputs) {
   return root;
 }
 
+/**
+ * The stores a corpus generation's OWN repo-recall measurement retrieved (exact file within top-k). The
+ * report is bound to the exact baseline archive (sha256 + bytes) and to the frozen fixture the canary
+ * samples from, and is re-derived through the same reader the corpus pipeline uses — a report for another
+ * archive or another fixture is refused, never silently accepted.
+ */
+export function measuredHitStores({ recallFile, baselineArchive, oracleFile }) {
+  const stat = fs.statSync(baselineArchive);
+  // A report that claims retired questions must be verified against the coverage it names; the
+  // generation's sealed coverage sits beside its report in the seed directory when it exists.
+  const siblingCoverage = path.join(path.dirname(path.resolve(recallFile)), 'CORPUS-COVERAGE.json');
+  const { report } = readRecallReport({ reportFile: recallFile,
+    archive: { sha256: sha256File(baselineArchive), bytes: stat.size },
+    expectedFixtureSha256: loadFixture(oracleFile).fixtureSha256,
+    coverageBytes: fs.existsSync(siblingCoverage) ? fs.readFileSync(siblingCoverage) : null });
+  return new Set(report.rows.filter((row) => Number.isInteger(row.exactFileRank)).map((row) => String(row.store).toLowerCase()));
+}
+
 export async function createPublicVerificationInputs({ baselineBundle, candidateBundle,
   candidatePackage, oracleFile, repo = process.cwd(), outDir = 'release-evidence', baselineMode = 'verified',
-  baselineReceipt = null } = {}) {
+  baselineReceipt = null, baselineRecall = null } = {}) {
   const baselineArchive = trustedFile(baselineBundle, 'baseline archive');
   const candidateArchive = trustedFile(candidateBundle, 'candidate archive');
   const packageFile = trustedFile(candidatePackage, 'candidate package');
@@ -513,9 +532,11 @@ export async function createPublicVerificationInputs({ baselineBundle, candidate
   verifyQueryOracleSource(queryEvidence, candidateResult.candidate.sourceSha, {
     cwd: path.resolve(repo), allowSquashedSource: true,
   });
+    const knownHitStores = baselineRecall
+      ? measuredHitStores({ recallFile: baselineRecall, baselineArchive, oracleFile: oraclePath }) : null;
     const plan = buildRetrievalCanaryPlan({ coverage: candidateResult.coverage, baseline,
       candidate: candidateResult.candidate, coverageIdentity: candidateResult.coverageIdentity,
-      queryEvidence, assetsDir: candidateTree.root, allowNoDelta: true });
+      queryEvidence, assetsDir: candidateTree.root, allowNoDelta: true, knownHitStores });
     writeExactOutputs(outDir, {
       [baselineMode === 'observed' ? 'baseline-observation-receipt.json' : 'baseline-verification-receipt.json']: baselineProof.bytes,
       'COVERAGE.json': candidateResult.coverageBytes,
@@ -574,6 +595,7 @@ export async function main(argv = process.argv.slice(2)) {
     outDir: arg(argv, '--out-dir') || 'release-evidence',
     baselineMode: argv.includes('--receipted-baseline') ? 'receipted' : argv.includes('--observed-baseline') ? 'observed' : 'verified',
     baselineReceipt: arg(argv, '--baseline-receipt'),
+    baselineRecall: arg(argv, '--baseline-recall'),
   });
   console.log(JSON.stringify({ ok: true, sourceSha: result.candidate.sourceSha,
     coverageGeneration: result.coverage.releaseCoverageGeneration, cases: result.plan.cases.length }));

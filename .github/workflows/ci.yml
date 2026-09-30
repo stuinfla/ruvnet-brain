@@ -258,7 +258,13 @@ jobs:
           coverage_args=()
           if [ "$SEED_ORIGIN" = published-generation ]; then
             gh release download "$SEED_TAG" --repo "$GITHUB_REPOSITORY" \
-              --pattern CORPUS-COVERAGE.json --pattern coverage-receipt.json --dir "$RUNNER_TEMP/release-seed"
+              --pattern CORPUS-COVERAGE.json --pattern coverage-receipt.json --pattern "$SEED_ASSET.recall.json" \
+              --dir "$RUNNER_TEMP/release-seed"
+            # The generation's own repo-recall measurement: the release canary samples from the stores it
+            # retrieved, so the canary proves the shipped bundle reproduces that measurement (integrity).
+            # Whole-corpus retrieval quality stays the recall report's job. See retrieval-canary.mjs.
+            test -s "$RUNNER_TEMP/release-seed/$SEED_ASSET.recall.json"
+            echo "RUVNET_SEED_RECALL=$RUNNER_TEMP/release-seed/$SEED_ASSET.recall.json" >> "$GITHUB_ENV"
             coverage_args=(--coverage "$RUNNER_TEMP/release-seed/CORPUS-COVERAGE.json"
               --coverage-receipt "$RUNNER_TEMP/release-seed/coverage-receipt.json")
           fi
@@ -304,6 +310,8 @@ jobs:
           test -s data/retrieval-query-evidence.json
           ORACLE_SOURCE_COMMIT="$(node -p "require('./data/retrieval-query-evidence.json').sourceCommit")"
           git fetch --no-tags origin "$ORACLE_SOURCE_COMMIT"
+          recall_args=()
+          if [ -n "${RUVNET_SEED_RECALL:-}" ]; then recall_args=(--baseline-recall "$RUVNET_SEED_RECALL"); fi
           node scripts/public-verification-inputs.mjs \
             --baseline-bundle "$RUVNET_SEED_BUNDLE" \
             --candidate-bundle "$RUNNER_TEMP/release-evidence/ruvnet-brain.zip" \
@@ -311,7 +319,7 @@ jobs:
             --oracle data/retrieval-query-evidence.json \
             --repo "$GITHUB_WORKSPACE" \
             --out-dir "$RUNNER_TEMP/release-evidence" \
-            --observed-baseline
+            --observed-baseline "${recall_args[@]}"
       - name: Persist the canonical candidate payload manifest
         shell: bash
         run: |

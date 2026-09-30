@@ -7,9 +7,10 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { canonicalJson, digest, eligibleRepositoryStanding, validateCoverageLedger } from './coverage-integrity.mjs';
 import { fixtureDenominator } from './fixture-denominator.mjs';
+import { passageMatches } from './retrieval-passage-identity.mjs';
 
 // Both release phases resolve against an explicit installed context, never the checkout.
-export async function resolveInstalledCanaryCitation({ kbDir, matched, expected, passageFileDigests = new Map() }) {
+export async function resolveInstalledCanaryCitation({ kbDir, matched, expected, passageFileDigests = new Map(), contentMap }) {
   if (!path.isAbsolute(kbDir || '')) throw new Error('installed canary KB path must be absolute');
   if (String(matched?.repo || '').toLowerCase() !== expected.repo || matched?.path !== expected.path) return { resolved: false };
   if (!/^[a-z0-9][a-z0-9._-]*$/i.test(expected.repo)) throw new Error('installed citation repository violates containment');
@@ -35,7 +36,7 @@ export async function resolveInstalledCanaryCitation({ kbDir, matched, expected,
         let record;
         try { record = JSON.parse(line); } catch { continue; }
         if (record?.path !== expected.path) continue;
-        if (digest(record) !== expected.passageSha256) continue;
+        if (!passageMatches(record, expected.passageSha256, contentMap)) continue;
         const text = record.fullText || record.text;
         if (typeof text !== 'string' || !text || typeof matched.text !== 'string' || !matched.text.includes(text)) continue;
         passageSha256 = expected.passageSha256;
@@ -386,7 +387,8 @@ export function validatePlanAgainstCoverage(plan, coverage, { allowObservedBasel
   return plan;
 }
 export function buildRetrievalCanaryPlan({ coverage, baseline, candidate, coverageIdentity = null, queryEvidence, assetsDir = '.',
-  readPassages = defaultReadPassages, legacySampleSize, allowNoDelta = false } = {}) {
+  readPassages = defaultReadPassages, legacySampleSize, allowNoDelta = false, contentMap, knownHitStores = null,
+  notice = (message) => process.stderr.write(`${message}\n`) } = {}) {
   const checked = validateCoverageLedger(coverage);
   if (!checked.valid) throw new Error(`coverage ledger is invalid: ${checked.failures.join('; ')}`);
   const coverageGeneration = coverage.kind === 'ruvnet-brain-release-coverage'
@@ -455,12 +457,47 @@ export function buildRetrievalCanaryPlan({ coverage, baseline, candidate, covera
   const passages = new Map(eligible.map((row) => [storeOf(row), readPassages(assetsDir, storeOf(row))]));
   const rankedLegacy = legacyPool.map((row) => ({ row, count: passages.get(storeOf(row)).length }))
     .sort((a, b) => a.count - b.count || storeOf(a.row).localeCompare(storeOf(b.row)));
+  // The legacy sample is drawn only from stores whose sealed passage still exists, unchanged, exactly
+  // once in the shipped store. When upstream edits the very file a fixture question was written against,
+  // that question can no longer identify its passage — the fixture is stale for that store, which says
+  // nothing about retrieval. Such stores stay in the sealed POPULATION (recomputed from coverage by
+  // validatePlanAgainstCoverage) but cannot be sampled; they are named below so it is never silent, and
+  // the nightly per-repository recall gate still exercises every one of them by file path.
+  const sealedPassageResolves = (store) => {
+    const evidence = queryEvidence.queries[store];
+    return Boolean(evidence) && expectedSources(evidence.expected).every((source) =>
+      passages.get(store).filter((row) => row.path === source.path && passageMatches(row, source.passageSha256, contentMap)).length === 1);
+  };
+  // INTEGRITY, NOT QUALITY. When the generation being shipped carries its own repo-recall measurement,
+  // `knownHitStores` names the stores that measurement retrieved. The release sample is then drawn from
+  // them, so the canary proves the SHIPPED, INSTALLED bundle reproduces what the generation measured on
+  // the same stores (a packaging, index, model or runtime break shows up as a miss on a store that hit).
+  // It deliberately does NOT re-judge stores the generation already missed: whole-corpus retrieval quality
+  // is the recall report's job and stays visible there (and in the corpus watchdog), because sampling ~19
+  // stores at an absolute 98% bar is a coin flip for any corpus below ~98% true recall (measured
+  // 2026-09-30: previous corpus 18/19, fresh corpus 17/19 on the same questions). Without a measurement
+  // (the committed bootstrap seed) nothing is filtered and the historical behaviour is unchanged.
+  const measuredHit = (store) => !knownHitStores || knownHitStores.has(store);
   const strata = new Map();
+  const staleFixtureStores = [];
+  const generationMissStores = [];
   rankedLegacy.forEach((entry, index) => {
     const stratum = Math.min(3, Math.floor(index * 4 / rankedLegacy.length));
+    const store = storeOf(entry.row);
+    if (!sealedPassageResolves(store)) { staleFixtureStores.push(store); return; }
+    if (!measuredHit(store)) { generationMissStores.push(store); return; }
     if (!strata.has(stratum)) strata.set(stratum, []);
     strata.get(stratum).push(entry);
   });
+  if (generationMissStores.length) {
+    notice(`[retrieval-canary] ${generationMissStores.length} of ${rankedLegacy.length} fixture store(s) not sampled: the generation's own `
+      + `recall measurement did not retrieve their sealed file (retrieval-quality debt, tracked by the recall report, not re-judged here): `
+      + `${ordered(generationMissStores).join(', ')}`);
+  }
+  if (staleFixtureStores.length) {
+    notice(`[retrieval-canary] ${staleFixtureStores.length} of ${rankedLegacy.length} fixture store(s) excluded from the legacy sample: `
+      + `their sealed passage no longer exists unchanged in the shipped store: ${ordered(staleFixtureStores).join(', ')}`);
+  }
   // Source-only releases retain the same corpus sample; the plan still seals exact release bytes.
   const samplingGeneration = coverage.kind === 'ruvnet-brain-release-coverage'
     ? coverage.corpusCoverage.coverageGeneration : coverageGeneration;
@@ -487,7 +524,7 @@ export function buildRetrievalCanaryPlan({ coverage, baseline, candidate, covera
       const observedPassageCount = passageCount ?? passages.get(store).length;
       const evidence = queryEvidence.queries[store];
       if (!evidence || expectedSources(evidence.expected).some((source) =>
-        passages.get(store).filter((row) => row.path === source.path && digest(row) === source.passageSha256).length !== 1)) {
+        passages.get(store).filter((row) => row.path === source.path && passageMatches(row, source.passageSha256, contentMap)).length !== 1)) {
         throw new Error(`${store} has no sealed independent query evidence`);
       }
       return {

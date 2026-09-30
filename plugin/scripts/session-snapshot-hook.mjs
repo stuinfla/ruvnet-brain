@@ -10,6 +10,7 @@ import { projectDirectory } from './project-identity.mjs';
 import { buildProjectProgression } from './project-progression-producer.mjs';
 import { ProjectProgressionStore } from './project-progression-store.mjs';
 import { resolveProjectStore } from './project-store-resolver.mjs';
+import { captureTurnOutcome } from './turn-outcome-capture.mjs';
 
 /**
  * The capture boundary's whole budget. hooks.json declares 10s; this keeps the internal work well
@@ -97,11 +98,19 @@ export function runSessionSnapshotHook(projectDir, event, {
   produce = buildProjectProgression,
   budgetMs = CAPTURE_BUDGET_MS,
   now = Date.now,
+  captureTurn = captureTurnOutcome,
 } = {}) {
   const metadataWritten = writeSessionSnapshot(projectDir, event);
   let payload;
   try { payload = rawInput ? JSON.parse(rawInput) : {}; } catch { payload = {}; }
-  const idle = { metadataWritten, progressionCaptured: false, receipt: null };
+  // TURN OUTCOMES FIRST, and independent of `.swarm`: every turn in every repository is recorded
+  // (a project without `.swarm` records to the machine-wide db outside it — turn-outcome-capture.mjs).
+  // It only reads and spawns a detached writer, so it costs the progression budget below nothing.
+  let turn;
+  try { turn = captureTurn({ projectDir, event, payload, host }); } catch (error) {
+    turn = { recorded: false, skipped: `turn capture failed: ${error.message}` };
+  }
+  const idle = { metadataWritten, progressionCaptured: false, receipt: null, turn };
 
   if (hasProjectProgression(payload)) {
     if (payload.hook_event_name !== event) {
@@ -162,6 +171,7 @@ export function runSessionSnapshotHook(projectDir, event, {
   return {
     metadataWritten,
     progressionCaptured: true,
+    turn,
     replayed,
     receipt: result.receipt,
     provenance: produced.provenance,

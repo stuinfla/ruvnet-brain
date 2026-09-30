@@ -1,6 +1,6 @@
 # Contributing to RuvNet Brain — the one rulebook
 
-Updated: 2026-09-28
+Updated: 2026-09-30
 Created: 2026-07-07
 
 This file is the **only** place that says how to version, release, update the knowledge corpus,
@@ -82,6 +82,27 @@ does not verify = a loud failure. The corpus is built at that release's source c
 executables are the install-verified ones byte for byte, and if a newer code release appears before the
 corpus publishes, the night ends `superseded` (a warning, not a failure). Never commit `data/approved-runtime.json`; `single-source:check`
 C1 fails if one appears.
+**Releasing code that carries the newest corpus (ADR-0091 D6) — three rules learned the hard way (4.3.37).**
+1. *Stamp the census before you push.* `release-qe` requires the committed claim surfaces (README, `explainer/*`)
+   to state the candidate KB's exact chunk and public-store counts. Assemble the candidate the way `release-qe`
+   does (`scripts/corpus-next-seed.mjs --require-coverage`, then `scripts/code-release-corpus.mjs assemble`, ~1
+   minute locally), run `RUVNET_BRAIN_KB=<dist/ruvnet-brain> node scripts/sync-census.mjs`, commit the four files.
+   Set the repository variable `CORPUS_NIGHTLY=off` for the release window: a nightly that publishes generation
+   G+1 mid-release invalidates the stamp (and `release.mjs` refuses to ship after G+1); turn it back on once the
+   release is install-verified.
+2. *The fixture is frozen; identity is by content.* `data/retrieval-query-evidence.json` pins each expected
+   passage by `digest(row)` including the row's build-dependent `id`; its digest is what `corpus-next-seed`
+   judges a generation's recall report against, so editing it orphans every published generation. Content
+   identity comes from `data/retrieval-passage-content-digests.json` (`scripts/retrieval-passage-identity.mjs`),
+   derived mechanically by `scripts/derive-passage-content-map.mjs` from a corpus built with ordinal ids and bound
+   to the fixture bytes by a test. Re-derive it if the fixture ever changes.
+3. *The release canary proves integrity, not corpus quality.* It samples ~10% of the fixture stores and asks the
+   real installed search for them (recall@10 ≥ 0.98 of the sample). With the generation's own repo-recall report
+   (`--baseline-recall`, bound to the exact archive and fixture) it samples only stores that report retrieved, so
+   it detects a packaging, index, model or runtime break; stores the generation missed, and stores whose sealed
+   passage upstream has since rewritten, are named in the log and never hidden. Whole-corpus quality is the recall
+   report's number (Hit@5 was 162/182 = 89.0% on 2026-09-29 against the owner's ≥98% target) and belongs to
+   retrieval work, not to a gate edit.
 
 **Local ingestion is for development.** `node scripts/ingest-repo.mjs --name <repo> [--org <org>]`
 makes a repo searchable on *this* machine immediately. It never reaches users; a repo reaches users
@@ -140,8 +161,26 @@ Project-level hooks are empty. The installed plugin registers exactly the hooks 
 `plugin/hooks/hooks.json` (Codex: `plugin/hooks/codex-hooks.json`), all dispatched through
 `plugin/scripts/hook-shim.mjs`: SessionStart restore; UserPromptSubmit grounding + advisories;
 PreToolUse `decision-gate` on file writes (the only hook that may refuse, for rUv-product code
-without a fresh `search_ruvnet`); PostToolUse grounding stamp; Stop continuation and grounding
-check; snapshot capture on Stop/PreCompact/SessionEnd. `npm run hooks:check` and
+without a fresh `search_ruvnet`, or — in this checkout — a new code file or large new export that
+duplicates existing code: refused once per path per session, allowed by a header line
+`// DISTINCT-FROM: <path> — <reason>`, `RUVNET_DUPLICATE_GATE=off` disables it); PostToolUse grounding stamp; Stop continuation and grounding
+check; snapshot capture on Stop/PreCompact/SessionEnd. The Stop grounding check (`grounding-turn-gate`)
+also asks for ONE correction when the prompt asked what a tool or platform can do (or for an
+architecture) and the final answer asserts a capability without a relevant source read this turn —
+a file, command, `search_ruvnet` hit or raw page, read after any small-model WebFetch summary about the
+same subject (`node scripts/grounding-turn-replay.mjs` measures it on real transcripts; ADR-0030 gates #2/#3
+are shadow-logged only). The Stop continuation body also asks for ONE
+correction when a final answer claims work is done without a check run after the last change this
+turn, a named check, and a NOT-verified disclosure, and it records first-person promises ("I'll do X
+next") in the project's work ledger until a later evidenced completion claim closes them (Claude
+only; `npm run completion-claim:replay` measures both on real transcripts). SessionStart prints one
+`[RuvNet Brain — KNOWLEDGE …]` line when the installed knowledge cannot be proven current (older than
+48h, or the latest refresh receipt FAILED) and names the fix. The same snapshot capture records each
+turn's outcome at Stop (final assistant text, files changed, command descriptions — never user
+text) to AgentDB namespace `turns` — the project's `.swarm/memory.db` if it exists, otherwise
+`~/.claude/global-memory/.swarm/memory.db`; `.swarm` is never created in a repository — and at
+SessionEnd/PreCompact runs `ruflo memory distill run` on that db so the records become patterns.
+Writes run in a detached worker; `RUVNET_TURN_CAPTURE=off` disables it. `npm run hooks:check` and
 `npm run wired:check` fail on any hook or module that is registered-but-missing or present-but-unwired.
 
 ## Tests
