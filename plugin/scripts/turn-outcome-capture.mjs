@@ -43,6 +43,7 @@ import crypto from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { resolveRuflo, rufloInvocation } from './ruflo-bin.mjs';
+import { resolveProjectStore } from './project-store-resolver.mjs';
 
 export const TURN_NAMESPACE = 'turns';
 export const MIN_OUTCOME_CHARS = 200;
@@ -144,10 +145,21 @@ export function buildTurnRecord({ turn, project, host, session, at = new Date() 
   return parts.join('  ||  ').slice(0, 4000);
 }
 
-/** Project db if the project already has one; otherwise the machine-wide db outside every repo. */
+/**
+ * Project db if the project already has one; otherwise the machine-wide db outside every repo.
+ *
+ * The project store is resolved by project-store-resolver.mjs, the one owner of "which
+ * `.swarm/memory.db` is this project's" (Dream Cycle 2026-09-30). A raw `statSync` here followed a
+ * `.swarm` or `memory.db` symlink out of the project — a cloned repository can carry one — and sent
+ * both the ruflo `--path` write and the `agentdb-turns.jsonl` breadcrumb into whatever it named,
+ * while every other store consumer (Console, managed CLI, progression capture) refuses that shape
+ * as "store symlink escape rejected". A refused project store is treated like an absent one.
+ */
 export function resolveTurnDb({ projectDir, home = os.homedir(), env = process.env } = {}) {
-  const projectDb = path.join(projectDir, '.swarm', 'memory.db');
-  try { if (fs.statSync(projectDb).isFile()) return { db: projectDb, scope: 'project' }; } catch { /* absent */ }
+  try {
+    const projectDb = resolveProjectStore({ projectDir }).canonicalAgentDbPath;
+    if (fs.statSync(projectDb).isFile()) return { db: projectDb, scope: 'project' };
+  } catch { /* absent, or refused by the resolver (symlink escape, foreign root) */ }
   const globalDb = env.RUVNET_TURN_GLOBAL_DB || path.join(home, '.claude', 'global-memory', '.swarm', 'memory.db');
   return { db: globalDb, scope: 'global' };
 }

@@ -139,6 +139,36 @@ describe('turn-outcome capture at the shared snapshot boundary', () => {
     expect(stores(h.launches)).toHaveLength(0);
   });
 
+  // Dream Cycle 2026-09-30 (stranger-project-behaviour). Every other consumer of a project's
+  // `.swarm/memory.db` goes through project-store-resolver.mjs, which refuses a store that symlinks
+  // outside the project ("store symlink escape rejected" — pinned for the Console by
+  // console-memory-canonical-store.test.mjs and for the managed CLI by managed-cli-interface.test.mjs).
+  // A cloned repository can carry that symlink. Turn capture must not be the one writer that
+  // follows it: neither the ruflo `--path` target nor the breadcrumb may land in the foreign dir.
+  it.each([
+    ['the db file', (project, foreign) => {
+      fs.mkdirSync(path.join(project, '.swarm'));
+      fs.symlinkSync(path.join(foreign, 'memory.db'), path.join(project, '.swarm', 'memory.db'));
+    }],
+    ['the .swarm directory', (project, foreign) => {
+      fs.symlinkSync(foreign, path.join(project, '.swarm'), 'dir');
+    }],
+  ])('(7) a project whose %s symlinks outside it never receives a turn write through that link', (_label, plant) => {
+    const h = harness();
+    const foreign = tmp('turn-foreign-store-');
+    fs.writeFileSync(path.join(foreign, 'memory.db'), 'foreign');
+    plant(h.project, foreign);
+
+    const result = h.fire('Stop', { session_id: 's-7', last_assistant_message: OUTCOME });
+
+    expect(result.turn.recorded).toBe(true); // still recorded — just never through the foreign link
+    const target = flag(stores(h.launches)[0], '--path');
+    expect(fs.realpathSync.native(path.dirname(target)).startsWith(foreign)).toBe(false);
+    expect(target).toBe(path.join(h.home, '.claude', 'global-memory', '.swarm', 'memory.db'));
+    expect(fs.readdirSync(foreign)).toEqual(['memory.db']); // no agentdb-turns.jsonl breadcrumb
+    expect(fs.readFileSync(path.join(foreign, 'memory.db'), 'utf8')).toBe('foreign');
+  });
+
   it('skips trivial turns and honours the RUVNET_TURN_CAPTURE=off switch', () => {
     const h = harness();
     expect(h.fire('Stop', { session_id: 's-t', last_assistant_message: 'Done.' }).turn.skipped).toBe('trivial turn');
