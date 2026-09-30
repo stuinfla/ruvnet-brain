@@ -20,7 +20,7 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" unprompted-speech UserPromptSubmit",
-            "timeout": 3
+            "timeout": 9
           },
           {
             "type": "command",
@@ -30,7 +30,7 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs\" capacity-aware-parallel-work || true",
-            "timeout": 2
+            "timeout": 6
           },
           {
             "type": "command",

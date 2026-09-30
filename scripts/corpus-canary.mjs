@@ -117,10 +117,13 @@ function coverageRows(file) {
 
 /**
  * Per-store freshness, judged from the generation's own sealed coverage (CORPUS-COVERAGE.json inside
- * the installed tree): the upstream observation must be under 48h old, no store whose upstream moved
- * may still carry the old commit, and every store whose upstream moved since the install's previous
- * generation must have been ingested inside the window. MISSING/INELIGIBLE rows are the coverage
- * validator's business (it already ran), not a freshness question.
+ * the installed tree): the upstream observation must be under 48h old, and no store may carry a commit
+ * other than the upstream commit observed then. Together those ARE the 48h guarantee. There is
+ * deliberately NO rule on a store's own ingestedAt: a store keeps the ingestion time of the last night
+ * its upstream moved (measured 2026-09-30: one generation holds ingestedAt from 2026-07-30 to
+ * 2026-09-30), so a "moved store must be ingested within 48h of now" rule would wrongly refuse a
+ * perfectly fresh generation about three nights after every code release.
+ * MISSING/INELIGIBLE rows are the coverage validator's business (it already ran), not a freshness question.
  */
 export function storeFreshness({ after, before = null, now }) {
   if (!after) return { ok: false, detail: 'CORPUS-COVERAGE.json is missing from the installed tree' };
@@ -131,7 +134,6 @@ export function storeFreshness({ after, before = null, now }) {
   if (age > FRESHNESS_LIMIT_MS || age < 0) problems.push(`upstream observed ${(age / 3_600_000).toFixed(1)}h ago (limit 48h)`);
   const priorCommit = new Map((before?.rows || []).map((row) => [row.key, row.artifact?.sourceCommit || null]));
   const stale = [];
-  const late = [];
   let moved = 0;
   for (const row of after.rows) {
     if (row.status === 'INELIGIBLE') continue;
@@ -139,17 +141,12 @@ export function storeFreshness({ after, before = null, now }) {
     const built = row.artifact?.sourceCommit || null;
     if (!upstream || !built) continue;
     if (upstream !== built) { stale.push(row.artifact?.store || row.key); continue; }
-    if (before && priorCommit.get(row.key) !== upstream) {
-      moved += 1;
-      const ingested = Date.parse(row.artifact?.ingestedAt);
-      if (!Number.isFinite(ingested) || now - ingested > FRESHNESS_LIMIT_MS) late.push(row.artifact?.store || row.key);
-    }
+    if (before && priorCommit.get(row.key) !== upstream) moved += 1;
   }
   if (stale.length) problems.push(`${stale.length} store(s) built from a commit older than their observed upstream: ${stale.slice(0, 10).join(', ')}`);
-  if (late.length) problems.push(`${late.length} moved store(s) ingested more than 48h ago: ${late.slice(0, 10).join(', ')}`);
   return problems.length
     ? { ok: false, detail: problems.join('; ') }
-    : { ok: true, detail: `observed ${(age / 3_600_000).toFixed(1)}h ago; ${after.rows.length} row(s), 0 stale; ${before ? `${moved} moved since the installed generation, all ingested <48h` : 'no prior coverage to diff against'}` };
+    : { ok: true, detail: `observed ${(age / 3_600_000).toFixed(1)}h ago; ${after.rows.length} row(s), 0 stale; ${before ? `${moved} moved since the installed generation, all at their observed upstream commit` : 'no prior coverage to diff against'}` };
 }
 
 /**

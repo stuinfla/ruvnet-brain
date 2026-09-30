@@ -11,7 +11,7 @@
 // header called check-only "the DEFINITION OF DONE" and claimed it alone decided "shipped"; that was
 // never true and duplicated a second, drifting gate list alongside CI's real one). Publishing a
 // release — creating the GitHub Release, moving the npm dist-tag — happens ONLY inside the
-// reviewer-protected `protected-release.yml` workflow, against an exact-SHA CI-sealed candidate;
+// branch-protected `protected-release.yml` workflow, against an exact-SHA CI-sealed candidate;
 // `--publish` mode is that workflow's publisher (it validates the protected-invocation receipt before
 // doing anything and refuses outside it), never rebuilds or retests source, and treats the immutable
 // artifact as the evidence boundary. `--check` mode is a read-only LOCAL PREVIEW for a human on a dev
@@ -680,7 +680,7 @@ if (CORPUS_SEED) {
 console.log(`\n${c.b('RuvNet Brain — release / definition-of-done')} ${c.dim('· ' + (PUBLISH ? 'PUBLISH' : 'check-only') + ' · shipping ' + V())}\n`);
 
 // The local CLI remains useful as a read-only preflight, but publication authority lives only in
-// the reviewer-protected workflow. Validate the exact candidate receipt and artifact bytes before
+// the branch-protected workflow. Validate the exact candidate receipt and artifact bytes before
 // any command capable of pushing, tagging, releasing, or publishing can run.
 if (PUBLISH) {
   const protectedInvocation = validateProtectedPublishInvocation({ root: ROOT });
@@ -782,7 +782,7 @@ if (PUBLISH) {
     }
   }
   // ADR-0091 D6.6 — THE BACKWARD-MOVE RACE. Release QE sealed the corpus generation this bundle was
-  // built from; publication happens later, after owner approval. Clients always accept a code release
+  // built from; publication happens later, in the protected workflow. Clients always accept a code release
   // and drop their corpusGeneration marker when they install one (kb/forge-update.mjs), so publishing
   // a bundle built from generation G after G+1 already shipped rolls every user back one night.
   // Re-resolve with the SAME resolver, before any asset upload, and refuse on any difference -- or on
