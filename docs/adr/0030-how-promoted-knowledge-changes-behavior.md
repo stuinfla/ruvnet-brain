@@ -265,3 +265,32 @@ identical correction prose across repeated matching edits; `RUVNET_LESSON_MAX_SH
 explicit cadence override. Opted-in user-stated blocking lessons remain uncapped and continue to
 refuse at each matching decision point. The session key comes from the host hook payload's
 `session_id`; missing IDs use the existing bounded project/day fallback.
+
+### Implementation note (2026-09-30) — decision point #1 enforced; #2 and #3 in shadow
+
+Decision point #1 now blocks, deterministically and without a model (rUv ADR-G004), through the two
+existing grounding registrations — no new hook. `grounding-turn-mark` (UserPromptSubmit) arms a turn
+only when the prompt asks a capability, feasibility or architecture question about a named subject
+(any platform; vocabulary = Gate-1 terms, platform nouns, repo aliases, installed store names, and
+code-like identifiers in the prompt). `grounding-turn-gate` (Stop) reads the turn's sources from the
+Claude transcript and requires each capability claim in the final answer — extracted by
+`capability-claim-evidence.mjs`'s own extractor, widened with that vocabulary — to be bound to a
+STRONG source (file read, command, `search_ruvnet` hit, MCP read) whose path, command, query or
+output names the subject and that was read after the last WEAK source about it (a WebFetch body is a
+small model's summary; a WebSearch snippet list and a subagent's report are relayed). Otherwise ONE
+correction: the claim, the subject, what was read, "check the source or restate as UNVERIFIED".
+Claims in continuation-gate's RUVNET_TOOL class are left to it. On Codex (rollout not parsed) only
+rUv-term claims are judged, from stamps; the rest are UNKNOWN and never blocked.
+
+The same change fixed the gate's false "no successful search_ruvnet call was recorded": of 7 real
+occurrences, 3 were a queued mid-turn prompt re-dating the marker (now merged without moving its
+mtime), 3 were pre-H1 vocabulary misses, 1 was a search whose stamp never minted — Gate 1 now reads
+the transcript on Claude.
+
+Measured by `node scripts/grounding-turn-replay.mjs` on the 15 retained top-level transcripts
+(1,036 Stop points): arm rate 6.7%, block rate 0.39% (4), p99 audit 76 ms at load ~580 on 16 CPUs; the 2026-09-30 incident
+("No hook can change the model of the current turn", from a WebFetch summary) blocks. Hand-labelled:
+11 distinct blocked claims across armed, unarmed and subagent replays, 9 correct — fewer than the 25
+wanted, because the retained history does not contain more. Gates #2 (architecture recommendation
+with < 3 options) and #3 (a number relayed from a subagent without a re-check) are computed at the
+same Stop and only appended to `assertion-gate-shadow.jsonl`; replay: 2 and 0 would-blocks.

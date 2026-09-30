@@ -1730,6 +1730,16 @@ async function main() {
           fs.copyFileSync(assertNoFollowPath(liveDir, liveRuntimeIdentity),
             assertNoFollowPath(candidateDir, path.join(candidateDir, 'RUNTIME-IDENTITY.json')));
         }
+        // node_modules (the ONNX embedder and RVF readers) is installer-placed and never ships inside a
+        // bundle, the same class as the two files above. The candidate is validated by forge-guard in a
+        // SIBLING directory with no parent node_modules, so without it the guard cannot load the
+        // embedder and every apply fails; and the exact-tree swap would delete it from the live KB.
+        // Reflink clone where the filesystem supports it (APFS/btrfs), plain copy otherwise.
+        const liveModules = path.join(liveDir, 'node_modules');
+        if (fs.existsSync(liveModules) && !fs.existsSync(path.join(candidateDir, 'node_modules'))) {
+          fs.cpSync(assertNoFollowPath(liveDir, liveModules), path.join(candidateDir, 'node_modules'),
+            { recursive: true, verbatimSymlinks: true, mode: fs.constants.COPYFILE_FICLONE });
+        }
         restorePrivateFilesIntoCandidate({ candidateDir, sourceDir: liveDir, overlay: privateOverlay });
         // ATOMIC WITH INSTALLATION, not after it. The transport identity is written INTO the
         // candidate, so the storage transaction's single rename either promotes the bytes AND the
