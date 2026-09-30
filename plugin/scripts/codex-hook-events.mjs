@@ -37,3 +37,21 @@ export const ALL_HOST_EVENTS = [
   'PreToolUse', 'PermissionRequest', 'PostToolUse', 'PreCompact', 'PostCompact',
   'SessionStart', 'SessionEnd', 'UserPromptSubmit', 'SubagentStart', 'SubagentStop', 'Stop',
 ];
+
+/**
+ * codex-cli 0.158.0's own `stop.command.input` wire schema (read from the installed binary,
+ * 2026-09-29) — the evidence cited for turn-outcome-capture.mjs's new Codex Stop registration
+ * (continuity-hook-policy.mjs, plugin/hooks/codex-hooks.json). Dream Cycle 2026-09-30 found this
+ * exact citation hand-copied into three places the same day it was added, each naming a DIFFERENT
+ * subset of fields — one dropping `session_id` entirely, even though turn-outcome-capture.mjs's own
+ * `captureTurnOutcome` keys a Codex turn's identity on `payload.session_id` FIRST, before falling
+ * back to `transcript_path` (`sessionKey = payload.session_id || payload.transcript_path || ''`). A
+ * schema citation that omits the field the code actually depends on for identity misrepresents its
+ * own evidence — the same "hand-copied fixture drifts from source" class this file already exists to
+ * close for CONTEXT_EVENTS/ALL_HOST_EVENTS above. Recorded once here so every citation can be
+ * checked against it instead of trusted to stay in sync by hand.
+ */
+export const CODEX_STOP_SCHEMA_FIELDS = Object.freeze([
+  'cwd', 'hook_event_name', 'last_assistant_message', 'model', 'permission_mode',
+  'session_id', 'stop_hook_active', 'transcript_path', 'turn_id',
+]);

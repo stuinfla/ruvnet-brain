@@ -158,9 +158,11 @@ export const CONTINUITY_EVENTS = Object.freeze({
     // Codex added 2026-09-29 (owner requirement: every turn's outcome recorded on BOTH hosts —
     // turn-outcome-capture.mjs). Codex SessionEnd carries no last_assistant_message, so Stop is the
     // only boundary that can record a Codex turn. Evidence: codex-cli 0.158.0's own
-    // stop.command.input schema (last_assistant_message, turn_id) and the two Codex Stop handlers
-    // already registered above/below. NOT yet live-observed firing — see the probe box: the capture
-    // fails open, so an unfired registration costs nothing but must not be read as proof.
+    // stop.command.input schema — CODEX_STOP_SCHEMA_FIELDS in codex-hook-events.mjs, which includes
+    // `session_id`, the field turn-outcome-capture.mjs actually keys a turn's identity on — and the
+    // two Codex Stop handlers already registered above/below. NOT yet live-observed firing — see the
+    // probe box: the capture fails open, so an unfired registration costs nothing but must not be
+    // read as proof.
     registration('session-snapshot', '*', ['claude', 'codex']),
     // The "answered without searching" gate, half 2 of 2 (2026-09-12). Forces continuation
     // (hookSpecificOutput.additionalContext — the same contract continuation-gate.mjs already uses

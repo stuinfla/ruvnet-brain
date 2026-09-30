@@ -24,8 +24,11 @@
  *   • Content = assistant outcome text, files changed, Bash descriptions. NEVER raw user text (a
  *     2026-07-13 measurement: prompt echoes made 87% of a store noise). Trivial turns are skipped.
  *
- * CODEX: codex-cli 0.158.0's own `stop.command.input` schema (read from the installed binary
- * 2026-09-29) carries `last_assistant_message` (nullable) and `transcript_path` (nullable).
+ * CODEX: codex-cli 0.158.0's own `stop.command.input` schema — see `CODEX_STOP_SCHEMA_FIELDS` in
+ * ./codex-hook-events.mjs for the full field list as read from the installed binary (2026-09-29;
+ * that constant's own header explains why it, not another hand-copied citation, is the source of
+ * record). The two fields this function actually reads are `session_id` (the PRIMARY turn-identity
+ * key, ahead of `transcript_path`) and `last_assistant_message` (nullable).
  * The Codex rollout format is NOT parsed: project-progression-sources.mjs already declares it
  * unknown, and the rollout records observed locally (custom_tool_call / function_call with free-form
  * inputs) give no stable file-change shape. Codex records therefore carry the outcome text only.
