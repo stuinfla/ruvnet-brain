@@ -69,6 +69,9 @@ function timeoutFor(hookId) {
   // tinguishable from a crash; 6000ms covers the gate's cap plus this chain's spawn overhead
   // (measured 773–1145ms end-to-end warm, so ~150–400ms of that is the wrapper/adapter/shim).
   if (hookId === 'decision-gate') return 6_000;
+  // Advisory capacity hook: 4 of 8 runs were killed at the old 2s host timeout on a loaded machine (measured
+  // 2026-09-30). Keep the wrapper's budget below the registration's own 5.5s so the wrapper, not the host, ends it.
+  if (hookId === 'capacity-aware-parallel-work') return 5_000;
   if (hookId === 'ground-ruvnet' || hookId === 'unprompted-speech' || hookId === 'continuation-gate') {
     return 8_500;
   }

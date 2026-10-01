@@ -80,8 +80,8 @@ jobs:
         run: |
           set -euo pipefail
           # ADR-0091 D3 + the 2026-09-29 redesign. Armed unless the owner's kill switch, repository
-          # variable CORPUS_NIGHTLY, reads `off` (the owner's approval of the code release is the
-          # consent). The approved runtime is resolved from evidence, never a committed file: the
+          # variable CORPUS_NIGHTLY, reads `off` (the install-verified code release is the
+          # consent: the newest verified runtime is what gets resolved). The approved runtime is resolved from evidence, never a committed file: the
           # NEWEST vX.Y.Z whose signed public-verification aggregate verifies. Exit 3 = not yet
           # verified (stand down); any other failure = evidence that does not hold (loud).
           # scripts/corpus-dispatch-decision.mjs owns every verdict; this step only gathers inputs.

@@ -102,8 +102,9 @@ const PACKAGE_VERSION = (() => {
 const REPO = 'stuinfla/ruvnet-brain';
 const RELEASE_API = `https://api.github.com/repos/${REPO}/releases/latest`;
 const ASSET_NAME = 'ruvnet-brain.zip';
-// Known-good BUNDLE tag, used when we can't reach GitHub (offline / rate-limited / no releases),
-// and by --pin. Default behavior is "get the latest Release"; this is only the safety net.
+// Known-good BUNDLE tag, used ONLY by --pin. It is no longer a silent fallback for a failed
+// latest-release lookup: that bundle predates ReleaseCoverage and cannot pass validation, so a lookup
+// failure now stops with its real cause (resolveRelease / releaseLookupFailure).
 //
 // This MUST NOT be derived from this package's own version. The installer and the brain bundle are
 // two independent version streams (README: "Three independent things version separately here — by
@@ -299,7 +300,9 @@ function fetchJson(url, redirects = 0) {
         }
         if (statusCode !== 200) {
           res.resume();
-          return reject(new Error(`GitHub API returned HTTP ${statusCode}`));
+          const reset = headers['x-ratelimit-remaining'] === '0' && Number(headers['x-ratelimit-reset']);
+          return reject(new Error(`GitHub API returned HTTP ${statusCode}${reset
+            ? ` (anonymous rate limit used up; it resets at ${new Date(reset * 1000).toISOString()})` : ''}`));
         }
         let body = '';
         res.setEncoding('utf8');
@@ -321,8 +324,8 @@ function fetchJson(url, redirects = 0) {
 // ── step: resolve which Release to download (latest by default; safe fallback) ───────────────────
 // Default behavior: ask GitHub for the LATEST Release and use its ruvnet-brain.zip asset.
 // --version <tag> forces a tag; --pin skips the network check and uses the bundled known-good tag.
-// Any failure (offline / rate-limited / no releases) FALLS BACK to the pinned known-good Release,
-// narrated clearly so the user knows exactly what happened.
+// Any failure (offline / rate-limited / no releases) THROWS with the HTTP status or network error and
+// a retry hint; callers that must download stop on it, the staleness check reports "could not check".
 /**
  * Which asset of a Release actually holds the brain bundle.
  *
@@ -387,10 +390,29 @@ async function resolveRelease() {
     ok(`latest Release is ${c.bold(tag)}`);
     return { tag, url, source: 'latest' };
   } catch (e) {
-    warn(`couldn't check for the latest version (${e.message})`);
-    info(`using the known-good ${c.bold(RELEASE_VERSION)} instead — the install is still safe and complete`);
-    return { tag: RELEASE_VERSION, url: fallbackUrl(RELEASE_VERSION), source: 'fallback' };
+    // FAIL LOUD. This used to return the hardcoded RELEASE_VERSION and promise "the install is still
+    // safe and complete" — but that bundle predates ReleaseCoverage, so two steps later it failed
+    // validation with "COVERAGE.json is missing", and the reason (a rate limit, a network blip) was
+    // gone from the screen. Measured 2026-09-30 on the owner's recovery rail. Only --pin and
+    // --version choose a tag the lookup did not return.
+    const failure = releaseLookupFailure(e);
+    throw Object.assign(new Error(failure.message), { hint: failure.hint });
   }
+}
+
+/** Why the latest-release lookup failed, and what to do about it. Pure, for testing. */
+export function releaseLookupFailure(error) {
+  const detail = (error && error.message) || String(error);
+  const limited = /HTTP (?:403|429)\b/.test(detail);
+  return {
+    message: `couldn't look up the latest RuvNet Brain release (${detail}).`,
+    hint: [
+      limited
+        ? 'GitHub allows a limited number of anonymous release checks per hour from one network address. Wait until the reset time above, then re-run the same command.'
+        : 'Check your connection, then re-run the same command in a minute.',
+      `Nothing was downloaded or installed. To install one specific release instead: add  --version <tag>  (tags: https://github.com/${REPO}/releases).`,
+    ].join('\n'),
+  };
 }
 
 // ── step: resolve the cache dir ──────────────────────────────────────────────────────────────────
@@ -528,21 +550,42 @@ export function copyLocalBundleInto(sourceDir, cacheDir) {
 // which a private-overlay brain refuses. Idempotent, byte-compared, atomic; a symlink is replaced by
 // a real file because a link is not a trusted regular file.
 const TRUSTED_VALIDATOR_SOURCE = path.join(REPO_ROOT, 'plugin', 'scripts', 'coverage-integrity.mjs');
-export function placeTrustedCoverageValidator(kbDir, { source = TRUSTED_VALIDATOR_SOURCE,
-  brainVersion = PACKAGE_VERSION } = {}) {
-  let bytes;
-  try { bytes = fs.readFileSync(source); }
-  catch (error) { throw new Error(`trusted coverage validator is missing from this package (${source}): ${error.message}`); }
-  const target = path.join(kbDir, 'coverage-integrity.mjs');
+// Byte-compared, atomic, symlink-safe placement of one file the installer owns inside the KB.
+function placeFileAtomic(target, bytes) {
   let existing = null;
   try { existing = fs.lstatSync(target); } catch (error) { if (error.code !== 'ENOENT') throw error; }
-  const unchanged = existing && existing.isFile() && !existing.isSymbolicLink() && fs.readFileSync(target).equals(bytes);
+  const unchanged = !!(existing && existing.isFile() && !existing.isSymbolicLink() && fs.readFileSync(target).equals(bytes));
   if (!unchanged) {
     const staged = `${target}.${process.pid}.${Date.now()}.tmp`;
     fs.writeFileSync(staged, bytes, { mode: 0o644 });
     if (existing && existing.isSymbolicLink()) fs.unlinkSync(target); // never write through a link
     fs.renameSync(staged, target);
   }
+  return { existing, unchanged };
+}
+// The updater that runs on a customer is the forge-update.mjs inside their OWN installed KB, which only
+// changes when a bundle replaces it — so a fix to the updater never reached installs that already had
+// one. The signed npm package carries the updater and the sibling modules it imports; the `--update`
+// preflight places them (same trust as the validator) so a stale updater upgrades itself before it runs.
+const UPDATER_FILES = ['forge-update.mjs', 'zip-extract.mjs', 'brain-profile.mjs', 'refresh-run.mjs',
+  'update-storage-transaction.mjs', 'lifecycle-evidence-retention.mjs', 'corpus-release-identity.mjs'];
+export function placeUpdater(kbDir, { sourceDir = path.join(REPO_ROOT, 'kb') } = {}) {
+  const placed = {};
+  for (const name of UPDATER_FILES) {
+    let bytes;
+    try { bytes = fs.readFileSync(path.join(sourceDir, name)); }
+    catch (error) { throw new Error(`updater file ${name} is missing from this package (${sourceDir}): ${error.message}`); }
+    placed[name] = placeFileAtomic(path.join(kbDir, name), bytes).unchanged ? 'unchanged' : 'placed';
+  }
+  return placed;
+}
+export function placeTrustedCoverageValidator(kbDir, { source = TRUSTED_VALIDATOR_SOURCE,
+  brainVersion = PACKAGE_VERSION } = {}) {
+  let bytes;
+  try { bytes = fs.readFileSync(source); }
+  catch (error) { throw new Error(`trusted coverage validator is missing from this package (${source}): ${error.message}`); }
+  const target = path.join(kbDir, 'coverage-integrity.mjs');
+  const { existing, unchanged } = placeFileAtomic(target, bytes);
   // STAMP THE APPROVED RUNTIME IN THE SAME BREATH AS PLACING ITS EXECUTABLES (ADR-086 step 16).
   //
   // This is the one moment where "which runtime is this brain running" is a measured fact rather
@@ -558,7 +601,7 @@ export function placeTrustedCoverageValidator(kbDir, { source = TRUSTED_VALIDATO
 /** `--update` preflight: place the validator only where an updater exists to consume it. */
 export function ensureUpdaterPrerequisites(kbDir) {
   if (!fs.existsSync(path.join(kbDir, 'forge-update.mjs'))) return { updater: false, validator: null };
-  return { updater: true, validator: placeTrustedCoverageValidator(kbDir) };
+  return { updater: true, files: placeUpdater(kbDir), validator: placeTrustedCoverageValidator(kbDir) };
 }
 
 export async function unzipInto(zipPath, cacheDir, sourceDir = null, { releaseTag = null, activate = true } = {}) {
@@ -2729,10 +2772,12 @@ async function doctor() {
     ok(`nightly scheduler: ${nightlyHealth.evidence}`);
     if (nightlyHealth.runHealth?.state === 'ok' || nightlyHealth.runHealth?.state === 'running') {
       ok(`nightly execution: ${nightlyHealth.runHealth.evidence}`);
+    } else if (nightlyHealth.runHealth?.state === 'failed') {
+      warn(`nightly refresh FAILED — the brain is not updating: ${nightlyHealth.runHealth.evidence}`);
     } else warn(`nightly execution unproven: ${nightlyHealth.runHealth?.evidence || 'no run receipt'}`);
   }
   else if (nightlyHealth.state === 'degraded') warn(`nightly scheduler degraded: ${nightlyHealth.evidence}`);
-  else if (nightlyHealth.state === 'off') info('nightly scheduler is off (optional; enable with --enable-nightly)');
+  else if (nightlyHealth.state === 'off') warn('nightly scheduler is OFF — knowledge updates only when a session starts (SessionStart retries at most every 6h); for nightly updates run  npx ruvnet-brain --enable-nightly  (skip if agentic-kit manages this machine)');
   else info(`nightly scheduler status unavailable: ${nightlyHealth.evidence}`);
   have('node') ? ok('node present') : warn('node missing');
   have('npm') ? ok('npm present') : warn('npm missing');
@@ -3627,7 +3672,7 @@ async function runUpdate() {
     let fr;
     if (hasPrivateOverlay) {
       warn("\nthe installed updater failed; using authenticated staged recovery to preserve private stores…\n");
-      const release = await resolveRelease();
+      const release = await resolveRelease().catch((error) => die(error.message, error.hint));
       const bundle = await obtainBundle(release);
       if (!bundle.zipPath) throw new Error('private-overlay recovery requires a downloadable signed bundle');
       const sigPath = `${bundle.zipPath}.sig`;
@@ -5310,8 +5355,9 @@ function showHelp() {
   console.log(`
 RuvNet Brain installer
 
-By default this installs the LATEST published Release (it asks GitHub which one that is),
-and falls back to a known-good version if GitHub can't be reached.
+By default this installs the LATEST published Release (it asks GitHub which one that is).
+If GitHub can't be reached or rate-limits the check, it STOPS with the reason and downloads
+nothing; re-run later, or pick a release yourself with  --version <tag>.
 
 Usage:
   npx ruvnet-brain                         Install the brain + Claude Code plugin (recommended, npm)
@@ -5453,9 +5499,9 @@ the installer reports that boot-level declarations changed.
     installedTag = installedBrainVersion(cacheDir); // 'unknown' when SOURCE.json has no releaseTag
     try {
       resolvedRelease = await resolveRelease();
-      // ONLY a genuine `latest` lookup counts as "what current means". resolveRelease() does NOT
-      // throw when the GitHub API fails — it returns the hardcoded known-good pin with
-      // source:'fallback'. Treating that as latest inverts this whole fix: a rate-limited lookup
+      // ONLY a genuine `latest` lookup counts as "what current means". A failed lookup now THROWS
+      // (caught below: "could not check"); it used to return the hardcoded known-good pin with
+      // source:'fallback'. Treating that as latest inverted this whole fix: a rate-limited lookup
       // would report installed v3.4.21-dev "→ latest v2.9.0" and DOWNGRADE a perfectly current
       // machine. (Caught by exercising the failure path against a 404 repo — the first version of
       // this fix did exactly that.) A pinned/forced resolution is likewise the operator's explicit
@@ -5518,7 +5564,8 @@ the installer reports that boot-level declarations changed.
     const localZipPresent =
       FLAG_LOCAL || fs.existsSync(path.join(REPO_ROOT, 'dist', 'ruvnet-brain.zip'));
     // Reuse the staleness check's resolution when it already ran — one network round-trip, not two.
-    const release = localZipPresent ? null : (resolvedRelease || await resolveRelease());
+    const release = localZipPresent ? null
+      : (resolvedRelease || await resolveRelease().catch((error) => die(error.message, error.hint)));
     const { zipPath, sourceDir, tmpDir, downloaded, sigError } = await obtainBundle(release);
     // Verify the Ed25519 signature BEFORE extracting a downloaded bundle into the user's config
     // (SEC-0010 #6 — trust root = the pubkey EMBEDDED in this file, so an attacker who swaps the
