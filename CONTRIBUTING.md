@@ -14,7 +14,7 @@ instructions. `npm run single-source:check` fails CI if a second, conflicting in
 |---|---|---|
 | Change code or docs | Work on a branch; land it on a `release/X.Y.Z` branch. Nothing is pushed to `main` directly. | `release-candidate-preflight` green on that SHA |
 | Set the version | `npm run version:set -- X.Y.Z` (first commit of the release branch) | `npm run version:check` exits 0 |
-| Release code | Preflight → fast-forward `main` → dispatch `protected-release.yml mode=code` → owner approves the `Production – ruvnet-brain` deployment | Terminal receipt `install-verified` on Linux, macOS, Windows; npm `latest` = GitHub `releases/latest` = `main` |
+| Release code | Preflight → fast-forward `main` → dispatch `protected-release.yml mode=code` → the workflow's machine gates carry it across `Production – ruvnet-brain` (no human approval step) | Terminal receipt `install-verified` on Linux, macOS, Windows; npm `latest` = GitHub `releases/latest` = `main` |
 | Build the customer corpus | CI only: `corpus-seed.yml` → `scripts/corpus-reconcile.mjs` | Sealed candidate + receipt artifact |
 | Publish the corpus | `protected-release.yml mode=corpus` (nightly dispatcher), armed unless repository variable `CORPUS_NIGHTLY` is `off` (the owner's kill switch) **and** the newest code release is `install-verified` (resolved at run time, `scripts/approved-runtime.mjs --resolve`; never a committed file, never a fallback to an older release); the corpus is built at that release's source commit, and `main` being ahead of it does not matter; a night with no upstream change publishes nothing | `corpus-sha256-*` release promoted to `releases/latest` |
 | Update a user's machine | One owner per machine: the Brain's scheduler (`npx ruvnet-brain --enable-nightly`) **or** agentic-kit (`ak sync`) — never both | `SOURCE.json` `releaseTag` equals the plugin version; latest `~/.cache/ruvnet-brain/refresh-runs/*.json` is PASS |
@@ -49,13 +49,40 @@ git push origin release/X.Y.Z                                # triggers release-
 3. Promote with a normal fast-forward: confirm `origin/main` is an ancestor, then
    `git push origin "$SHA:refs/heads/main"` and confirm the remote ref equals `$SHA`. Never force.
 4. Dispatch: `gh workflow run protected-release.yml -f mode=code -f candidate_sha=$SHA -f version=X.Y.Z`.
-5. The owner approves the `Production – ruvnet-brain` deployment in GitHub (required reviewer).
+5. There is no approval step. The `Production – ruvnet-brain` environment has no reviewer; it is a scoping
+   boundary (it alone holds `NPM_TOKEN`, deployable from protected branches only, admins cannot bypass). The
+   `publish` job starts by itself once the machine gates below pass, and the dispatching agent watches the run
+   to its terminal conclusion (every job, not just the first green one). Nobody is asked to open GitHub.
 6. Done means the terminal `install-verified` receipt: all public OS × host combinations verified.
    Anything short of that is "published, not verified". Recovery/abandon rails:
    `recover-public-verification.yml`, `abandon-public-verification.yml` (manual `repository_dispatch`),
    `npm run release-abort-stale`.
 
 `npm run release:qualify` is the one definition of "qualified"; CI and local checks both use it.
+
+### What replaces a human approval (the machine gates)
+
+Publishing is allowed only when every one of these holds, each enforced in code, none waived by a person:
+
+- **Exact candidate.** `protected-release.yml` `identity`: `GITHUB_SHA` = `origin/main` = the dispatched
+  `candidate_sha`, `package.json` version = the dispatched version, clean tree. `publish` re-asserts
+  `HEAD` = `origin/main` = the verified SHA before it touches anything.
+- **Preflight green on that exact SHA.** `verified-candidate` accepts only a successful
+  `release-candidate-preflight` push run for that SHA on a `release/*` branch of this repository, with exactly
+  one authentic artifact, then verifies the receipt, payload members and aggregate verdict `PASS`.
+- **Zero open `release-blocker` issues.**
+- **One sealed payload.** Signed once, never rebuilt; the sole publisher (`scripts/release.mjs --publish`)
+  stages npm under a candidate tag and GitHub as non-latest, then promotes both, and
+  restores the prior npm `latest` if promotion fails (`scripts/release-transaction-provider.mjs`).
+- **Install verification.** Linux, macOS and Windows install the public bytes; only then is
+  `install-verified` signed. Anything short of it is "published, not verified" and goes to the recovery rails.
+  The corpus nightly refuses to run on a release that is not `install-verified`.
+
+What this gives up, stated once: anyone with write access who can dispatch on protected `main` (today the
+release agent and the owner's account) can publish to npm without a second person confirming it. The control is
+that only an already-preflighted head of `main` can be published, and `main` moves only by fast-forward through
+required checks that admins cannot bypass. Strengthening a gate is a code change to the workflow, never a person
+in the loop.
 
 ## The knowledge corpus
 
