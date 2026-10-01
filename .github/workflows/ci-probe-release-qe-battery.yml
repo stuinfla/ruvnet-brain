@@ -10,6 +10,7 @@ on:
     branches: ['ci-probe/release-qe-battery-*']
 
 permissions:
+  actions: read   # ci.yml's candidate-ci-evidence job reads the run's own job results
   contents: read
 
 jobs:
