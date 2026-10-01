@@ -1,0 +1,38 @@
+name: ci-probe-doctor-cold
+
+# MEASUREMENT ONLY (ci-probe/* branches). Where does the doctor's first question spend its time on
+# a fresh public install on the macOS runner protected-release uses (macos-latest)? Customer cold
+# (phases split and end to end), warm alone, and three-at-once (the public-verification condition),
+# for the two most recent releases. Publishes nothing: no environment, no secrets, read-only token.
+on:
+  push:
+    branches: ['ci-probe/doctor-cold-*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  doctor-cold:
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ['4.4.1', '4.4.0']
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Measure the doctor probe
+        shell: bash
+        run: node scripts/probes/doctor-cold-probe.mjs "${{ matrix.version }}" probe-out
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: doctor-cold-${{ matrix.version }}
+          path: probe-out
+          retention-days: 14
