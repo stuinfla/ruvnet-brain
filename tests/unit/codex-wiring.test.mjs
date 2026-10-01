@@ -626,7 +626,7 @@ describe('wireCodexPlugin — install is idempotent, state-driven, and disable-p
 
     expect(wireCodexPlugin({ codexDir, codexHome: codexDir, expectedVersion: '1.2.3', runJson, announce: false })).toMatchObject({
       action: 'updated', version: '1.2.3', restartRequired: true, sessionSafety: 'restart-required',
-      shellChanged: true, shellChangedPaths: ['hooks/hooks.json'],
+      restartScope: 'unproven', shellChanged: true, shellChangedPaths: ['hooks/hooks.json'],
     });
   });
 

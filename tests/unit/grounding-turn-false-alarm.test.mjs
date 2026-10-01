@@ -75,7 +75,7 @@ describe('Gate 1 on real Stop points: demand a search only for a rUv capability 
 
   it('known misses stay pinned (red the day one is caught: promote it to expectFire)', () => {
     const miss = fixtures.filter((f) => f.knownMiss);
-    expect(miss.length).toBe(6);
+    expect(miss.length).toBe(2);
     for (const f of miss) expect(fires(f), `${f.id}: ${f.knownMiss}`).toBe(false);
   });
 
@@ -95,7 +95,8 @@ describe('ruvCapabilityClaims: each rule, with the claim it must still catch', (
     expect(claims('`ruflo memory store --path X` still writes `.swarm/hnsw.index` into the cwd.')).toEqual(['ruflo']);
     expect(claims('rUv\'s own v3.32.34 release notes say no manual SQL is needed.')).toEqual(['ruv']);
     expect(claims('rUv\'s tools turn a week of reading into minutes.')).toEqual(['ruv']);
-    expect(claims('| RuVector | supports HNSW |')).toEqual([]);   // a verb-only cell names no subject
+    // 4.4.1: a product row asserts what the product does (this was pinned [] as a known limitation).
+    expect(claims('| RuVector | supports HNSW |')).toEqual(['ruvector']);
   });
   it('a CLI noun phrase is not subject + verb', () => {
     expect(claims('ruflo memory store stays the only writer.')).toEqual([]);
@@ -121,6 +122,37 @@ describe('ruvCapabilityClaims: each rule, with the claim it must still catch', (
     expect(claims('Ruflo is the orchestration layer and it has no hooks API.')).toEqual(['ruflo']);
     expect(claims('AgentDB will not open a store written by a newer release.')).toEqual(['agentdb']);
     expect(claims('The builds (ruvector, rvf) are native, so they don\'t depend on Node.')).toEqual([]);
+  });
+  it('4.4.1 LIVE MISS: definitions, "<Product>\'s <noun>", parentheticals after the subject and chained "it defaults to" ARE claims', () => {
+    // Verbatim from a live `claude -p` turn on the installed 4.4.0 (ungrounded, and partly wrong).
+    expect(claims('The RuVector router package (`ruvector-router`) is a vector database with a neural routing and inference layer that uses HNSW indexing to send queries or requests to the best-matching target, and it defaults to cosine distance.')).toEqual(['ruvector']);
+    expect(claims('RuVector\'s router defaults to cosine distance.')).toEqual(['ruvector']);
+    expect(claims('The RuVector router package (ruvector-router) uses HNSW indexing, and it defaults to cosine distance.')).toEqual(['ruvector']);
+    expect(claims('The RuVector router package is a semantic intent router.')).toEqual(['ruvector']);
+    // …and the guards: a status that merely uses "is a", a definition not opening the sentence.
+    expect(claims('One small thing: your ruflo is a version behind.')).toEqual([]);
+    expect(claims('The fix for ruflo is a one-line change in this repo.')).toEqual([]);
+  });
+  it('4.4.1 review: status phrasing in rows, our CHANGES to a product, "own CI", and a fix heading are not claims', () => {
+    for (const s of ['| ruflo | Upgraded and restarted |', '| ruflo | Installed globally |', '| agentdb | Healthy and reachable |',
+      'The ruflo upgrade is a no-op.', 'The AgentDB write is a success.', 'This is ruflo\'s own CI failing.',
+      '## What the ruflo fix does\n\nIt\'s a one-line change in the hook.',
+      // Each of these is rejected by ONE rule only, so each rule is proven on its own:
+      'The ruflo upgrade is a three-step process.',                  // a change-noun is not the product
+      'Ruflo is a no-op for this repo.',                             // an outcome noun is not a definition
+      '## What the ruflo fix does\n\nIt\'s a small wrapper around the CLI.',   // the heading must name the product itself
+    ]) expect(claims(s), s).toEqual([]);
+  });
+  it('4.4.1 KNOWN-MISS LIFTS: heading-bound pronoun, product rows, "this is X\'s own …", passive agent', () => {
+    expect(claims('## What AgentDB actually is\n\nIt\'s a SQLite database file that stores notes across sessions.')).toEqual(['agentdb']);
+    expect(claims('## Release status\n\nIt\'s a clean tree and it is green.')).toEqual([]);
+    expect(claims('| **AgentDB** | Append-only audit trail | Concurrent-write safe KB |')).toEqual(['agentdb']);
+    expect(claims('| ruflo | 3.41.2 | PASS |\n| ruflo | No version at all | stale |')).toEqual([]);
+    // Letters-only, multi-word cells that are STATUS, not description: only the status vocabulary rejects these.
+    expect(claims('| Ruflo | Not verified yet | Still pending review |')).toEqual([]);
+    expect(claims('Note this is agentic-qe\'s own static/heuristic estimate, not instrumented coverage.')).toEqual(['agentic-qe']);
+    expect(claims('The daemon-autostart setting is confirmed honored by the installed ruflo.')).toEqual(['ruflo']);
+    expect(claims('The checkpoint is saved by ruflo memory store.')).toEqual([]);
   });
   it('4.4.0 re-review nit: OUR changes phrased with "will not" / "now" / a pronoun are not product claims', () => {
     expect(claims('Ruflo will not be touched by this patch.')).toEqual([]);
