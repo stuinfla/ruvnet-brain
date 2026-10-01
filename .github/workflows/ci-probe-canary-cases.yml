@@ -1,0 +1,67 @@
+name: ci-probe-canary-cases
+
+# MEASUREMENT ONLY (ci-probe/* branches). Runs the customer canary with all three cases —
+# clean, private-overlay, older-runtime — on a real GitHub runner against a real published corpus
+# generation and its matching approved runtime, to measure whether the three fit the customer-canary
+# job's 60-minute budget before protected-release.yml turns them on. Publishes nothing: no environment,
+# no secrets, read-only token, public assets only.
+on:
+  push:
+    branches: ['ci-probe/canary-cases-*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: corpus-sha256-<hex> generation to apply
+        required: false
+      approved_version:
+        description: the code release that generation was built for
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  canary-cases:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CANDIDATE_TAG: ${{ inputs.tag || 'corpus-sha256-473a83aa6c443b6f7d18d030e1223dc89ce1074d53e8db1d9247e0e7736c777d' }}
+      APPROVED_VERSION: ${{ inputs.approved_version || '4.3.40' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run the three canary cases and time them
+        shell: bash
+        run: |
+          set -uo pipefail
+          df -h "$RUNNER_TEMP" | tail -1
+          start=$(date +%s)
+          status=0
+          node scripts/corpus-canary.mjs --repo "$GITHUB_REPOSITORY" --tag "$CANDIDATE_TAG" \
+            --approved-version "$APPROVED_VERSION" --work "$RUNNER_TEMP/canary" \
+            --cases clean,private-overlay,older-runtime \
+            --verdict-out "$RUNNER_TEMP/out/verdict.json" | tee "$RUNNER_TEMP/out-canary.txt" || status=$?
+          end=$(date +%s)
+          mkdir -p "$RUNNER_TEMP/out"
+          cp "$RUNNER_TEMP/canary/canary.log" "$RUNNER_TEMP/out/canary.log" 2>/dev/null || true
+          df -h "$RUNNER_TEMP" | tail -1
+          {
+            echo "### canary cases probe"
+            echo "exit=$status wall_seconds=$((end - start)) tag=$CANDIDATE_TAG approved=$APPROVED_VERSION"
+            echo '```'
+            node -e "const v=require(process.argv[1]); console.log(v.verdict, JSON.stringify(v.checks.filter(c=>!c.ok).map(c=>c.name+': '+c.detail)))" "$RUNNER_TEMP/out/verdict.json" 2>&1 || true
+            grep -E '^--- \[' "$RUNNER_TEMP/out/canary.log" 2>/dev/null || true
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "WALL_SECONDS=$((end - start))" >> "$RUNNER_TEMP/out/timing.env"
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: canary-cases-probe-${{ github.run_id }}
+          path: ${{ runner.temp }}/out
+          retention-days: 14
