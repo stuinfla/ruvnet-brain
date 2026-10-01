@@ -1,0 +1,3814 @@
+{
+  "kind": "ruvnet-brain-route-gold-rank",
+  "impl": "<scratch>/base-cb656e47/kb/forge-ask-all.mjs",
+  "kbDir": "<kb>",
+  "measuredAt": "2026-10-01T04:23:21.934Z",
+  "sets": {
+    "heldout": {
+      "all": {
+        "goldAt1": {
+          "k": 80,
+          "n": 80,
+          "p": 1,
+          "lo": 0.9542,
+          "hi": 1
+        },
+        "goldAt3": {
+          "k": 80,
+          "n": 80,
+          "p": 1,
+          "lo": 0.9542,
+          "hi": 1
+        },
+        "goldAt5": {
+          "k": 80,
+          "n": 80,
+          "p": 1,
+          "lo": 0.9542,
+          "hi": 1
+        },
+        "declined": {
+          "k": 0,
+          "n": 80,
+          "p": 0,
+          "lo": 0,
+          "hi": 0.0458
+        },
+        "reposOpened": 1.4
+      },
+      "byGroup": {
+        "described": {
+          "goldAt1": {
+            "k": 32,
+            "n": 32,
+            "p": 1,
+            "lo": 0.8928,
+            "hi": 1
+          },
+          "goldAt3": {
+            "k": 32,
+            "n": 32,
+            "p": 1,
+            "lo": 0.8928,
+            "hi": 1
+          },
+          "goldAt5": {
+            "k": 32,
+            "n": 32,
+            "p": 1,
+            "lo": 0.8928,
+            "hi": 1
+          },
+          "declined": {
+            "k": 0,
+            "n": 32,
+            "p": 0,
+            "lo": 0,
+            "hi": 0.1072
+          },
+          "reposOpened": 1.406
+        },
+        "named": {
+          "goldAt1": {
+            "k": 28,
+            "n": 28,
+            "p": 1,
+            "lo": 0.8794,
+            "hi": 1
+          },
+          "goldAt3": {
+            "k": 28,
+            "n": 28,
+            "p": 1,
+            "lo": 0.8794,
+            "hi": 1
+          },
+          "goldAt5": {
+            "k": 28,
+            "n": 28,
+            "p": 1,
+            "lo": 0.8794,
+            "hi": 1
+          },
+          "declined": {
+            "k": 0,
+            "n": 28,
+            "p": 0,
+            "lo": 0,
+            "hi": 0.1206
+          },
+          "reposOpened": 1.25
+        },
+        "scenario": {
+          "goldAt1": {
+            "k": 20,
+            "n": 20,
+            "p": 1,
+            "lo": 0.8389,
+            "hi": 1
+          },
+          "goldAt3": {
+            "k": 20,
+            "n": 20,
+            "p": 1,
+            "lo": 0.8389,
+            "hi": 1
+          },
+          "goldAt5": {
+            "k": 20,
+            "n": 20,
+            "p": 1,
+            "lo": 0.8389,
+            "hi": 1
+          },
+          "declined": {
+            "k": 0,
+            "n": 20,
+            "p": 0,
+            "lo": 0,
+            "hi": 0.1611
+          },
+          "reposOpened": 1.6
+        }
+      },
+      "msPerQuestion": 799.6,
+      "rows": [
+        {
+          "id": "ho-01",
+          "group": "described",
+          "expected": [
+            "ruvector",
+            "concepts"
+          ],
+          "repos": [
+            "ruvector"
+          ],
+          "reason": "card evidence favors ruvector (4 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "ho-02",
+          "group": "described",
+          "expected": [
+            "agenticow",
+            "concepts"
+          ],
+          "repos": [
+            "agenticow"
+          ],
+          "reason": "card evidence favors agenticow (6 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "ho-03",
+          "group": "described",
+          "expected": [
+            "agentic-qe",
+            "ruflo",
+            "concepts"
+          ],
+          "repos": [
+            "agentic-qe"
+          ],
+          "reason": "card evidence favors agentic-qe (4 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "ho-04",
+          "group": "described",
+          "expected": [
+            "agentic-flow",
+            "agent-harness-generator",
+            "agentic-qe",
+            "concepts"
+          ],
+          "repos": [
+            "agentic-flow",
+            "metaharness",
+            "agentic-qe",
+            "concepts"
+          ],
+          "reason": "cost/quality intent selects reviewed routing and evaluation owners",
+          "rank": 1
+        },
+        {
+          "id": "ho-05",
+          "group": "described",
+          "expected": [
+            "sparc",
+            "concepts"
+          ],
+          "repos": [
+            "sparc"
+          ],
+          "reason": "card evidence favors sparc (3 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "ho-06",
+          "group": "described",
+          "expected": [
+            "agentdb",
+            "concepts"
+          ],
+          "repos": [
+            "agentdb"
+          ],
+          "reason": "card evidence favors agentdb (3 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "ho-07",
+          "group": "described",
+          "expected": [
+            "rulake",
+            "concepts"
+          ],
+          "repos": [
+            "rulake"
+          ],
+          "reason": "card evidence favors rulake (3 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "ho-08",
+          "group": "described",
+          "expected": [
+            "ruv-fann",
+            "concepts"
+          ],
+          "repos": [
+            "ruv-fann"
+          ],
+          "reason": "card evidence favors ruv-fann (5 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "ho-09",
+          "group": "described",
+          "expected": [
+            "qudag",
+            "concepts"
+          ],
+          "repos": [
+            "qudag"
+          ],
+          "reason": "card evidence favors qudag (5 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "ho-10",
+          "group": "described",
+          "expected": [
+            "agent-harness-generator",
+            "concepts"
+          ],
+          "repos": [
+            "metaharness",
+            "concepts"
+          ],
+          "reason": "fixed-model harness-evolution intent selects metaharness and its canonical card",
+          "rank": 1
+        },
+        {
+          "id": "ho-11",
+          "group": "described",
+          "expected": [
+            "ruflo",
+            "agentic-flow",
+            "concepts"
+          ],
+          "repos": [
+            "ruflo"
+          ],
+          "reason": "card evidence favors ruflo (4 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "ho-12",
+          "group": "described",
+          "expected": [
+            "cve-bench",
+            "concepts"
+          ],
+          "repos": [
+            "cve-bench"
+          ],
+          "reason": "card evidence favors cve-bench (5 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "n-01",
+          "group": "named",
+          "expected": [
+            "ruvector",
+            "concepts"
+          ],
+          "repos": [
+            "ruvector"
+          ],
+          "reason": "query explicitly names ruvector",
+          "rank": 1
+        },
+        {
+          "id": "n-02",
+          "group": "named",
+          "expected": [
+            "agentdb",
+            "concepts"
+          ],
+          "repos": [
+            "agentdb"
+          ],
+          "reason": "query explicitly names agentdb",
+          "rank": 1
+        },
+        {
+          "id": "n-03",
+          "group": "named",
+          "expected": [
+            "agentic-flow",
+            "concepts"
+          ],
+          "repos": [
+            "agentic-flow"
+          ],
+          "reason": "query explicitly names agentic-flow",
+          "rank": 1
+        },
+        {
+          "id": "n-04",
+          "group": "named",
+          "expected": [
+            "agentic-qe",
+            "ruflo",
+            "concepts"
+          ],
+          "repos": [
+            "agentic-qe"
+          ],
+          "reason": "query explicitly names agentic-qe",
+          "rank": 1
+        },
+        {
+          "id": "n-05",
+          "group": "named",
+          "expected": [
+            "agenticow",
+            "concepts"
+          ],
+          "repos": [
+            "agenticow"
+          ],
+          "reason": "query explicitly names agenticow",
+          "rank": 1
+        },
+        {
+          "id": "n-06",
+          "group": "named",
+          "expected": [
+            "rulake",
+            "concepts"
+          ],
+          "repos": [
+            "rulake",
+            "ruvector"
+          ],
+          "reason": "query explicitly names rulake; widened to ruvector — rulake appear there",
+          "rank": 1
+        },
+        {
+          "id": "n-07",
+          "group": "named",
+          "expected": [
+            "safla",
+            "concepts"
+          ],
+          "repos": [
+            "safla"
+          ],
+          "reason": "query explicitly names safla",
+          "rank": 1
+        },
+        {
+          "id": "n-08",
+          "group": "named",
+          "expected": [
+            "qudag",
+            "concepts"
+          ],
+          "repos": [
+            "qudag"
+          ],
+          "reason": "query explicitly names qudag",
+          "rank": 1
+        },
+        {
+          "id": "n-09",
+          "group": "named",
+          "expected": [
+            "daa",
+            "concepts"
+          ],
+          "repos": [
+            "daa"
+          ],
+          "reason": "query explicitly names daa",
+          "rank": 1
+        },
+        {
+          "id": "n-10",
+          "group": "named",
+          "expected": [
+            "dspy.ts",
+            "concepts"
+          ],
+          "repos": [
+            "dspy.ts",
+            "agentic-flow"
+          ],
+          "reason": "query explicitly names dspy.ts; widened to agentic-flow — dspy.ts, typescript appear there",
+          "rank": 1
+        },
+        {
+          "id": "n-11",
+          "group": "named",
+          "expected": [
+            "fact",
+            "concepts"
+          ],
+          "repos": [
+            "fact"
+          ],
+          "reason": "query explicitly names fact",
+          "rank": 1
+        },
+        {
+          "id": "n-12",
+          "group": "named",
+          "expected": [
+            "synthlang",
+            "concepts"
+          ],
+          "repos": [
+            "synthlang",
+            "ruv-gists",
+            "ruvnet-brain"
+          ],
+          "reason": "query explicitly names synthlang; widened to ruv-gists, ruvnet-brain — synthlang appear there",
+          "rank": 1
+        },
+        {
+          "id": "n-13",
+          "group": "named",
+          "expected": [
+            "sparc",
+            "concepts"
+          ],
+          "repos": [
+            "sparc"
+          ],
+          "reason": "query explicitly names sparc",
+          "rank": 1
+        },
+        {
+          "id": "n-14",
+          "group": "named",
+          "expected": [
+            "ruv-fann",
+            "concepts"
+          ],
+          "repos": [
+            "ruv-fann",
+            "agentic-flow",
+            "daa"
+          ],
+          "reason": "query explicitly names ruv-fann; widened to agentic-flow, daa — webassembly appear there",
+          "rank": 1
+        },
+        {
+          "id": "n-15",
+          "group": "named",
+          "expected": [
+            "cve-bench",
+            "concepts"
+          ],
+          "repos": [
+            "cve-bench"
+          ],
+          "reason": "query explicitly names cve-bench",
+          "rank": 1
+        },
+        {
+          "id": "n-16",
+          "group": "named",
+          "expected": [
+            "open-claude-code",
+            "concepts"
+          ],
+          "repos": [
+            "open-claude-code"
+          ],
+          "reason": "query explicitly names open-claude-code",
+          "rank": 1
+        },
+        {
+          "id": "n-17",
+          "group": "named",
+          "expected": [
+            "rupixel",
+            "concepts"
+          ],
+          "repos": [
+            "rupixel"
+          ],
+          "reason": "query explicitly names rupixel",
+          "rank": 1
+        },
+        {
+          "id": "n-18",
+          "group": "named",
+          "expected": [
+            "ruv-dev",
+            "concepts"
+          ],
+          "repos": [
+            "ruv-dev"
+          ],
+          "reason": "query explicitly names ruv-dev",
+          "rank": 1
+        },
+        {
+          "id": "n-19",
+          "group": "named",
+          "expected": [
+            "rvm",
+            "concepts"
+          ],
+          "repos": [
+            "rvm"
+          ],
+          "reason": "query explicitly names rvm",
+          "rank": 1
+        },
+        {
+          "id": "n-20",
+          "group": "named",
+          "expected": [
+            "ruview",
+            "concepts"
+          ],
+          "repos": [
+            "ruview"
+          ],
+          "reason": "query explicitly names ruview",
+          "rank": 1
+        },
+        {
+          "id": "n-21",
+          "group": "named",
+          "expected": [
+            "agent-harness-generator",
+            "concepts"
+          ],
+          "repos": [
+            "metaharness"
+          ],
+          "reason": "query explicitly names metaharness",
+          "rank": 1
+        },
+        {
+          "id": "n-22",
+          "group": "named",
+          "expected": [
+            "agent-harness-generator",
+            "concepts"
+          ],
+          "repos": [
+            "metaharness"
+          ],
+          "reason": "query explicitly names metaharness",
+          "rank": 1
+        },
+        {
+          "id": "n-23",
+          "group": "named",
+          "expected": [
+            "ruflo",
+            "concepts"
+          ],
+          "repos": [
+            "ruflo"
+          ],
+          "reason": "query explicitly names ruflo",
+          "rank": 1
+        },
+        {
+          "id": "n-24",
+          "group": "named",
+          "expected": [
+            "ruvector",
+            "concepts"
+          ],
+          "repos": [
+            "ruvector"
+          ],
+          "reason": "query explicitly names ruvector",
+          "rank": 1
+        },
+        {
+          "id": "n-25",
+          "group": "named",
+          "expected": [
+            "agentic-flow",
+            "concepts"
+          ],
+          "repos": [
+            "agentic-flow",
+            "agentic-qe"
+          ],
+          "reason": "query explicitly names agentic-flow; widened to agentic-qe — openrouter appear there",
+          "rank": 1
+        },
+        {
+          "id": "n-26",
+          "group": "named",
+          "expected": [
+            "agentdb",
+            "concepts"
+          ],
+          "repos": [
+            "agentdb"
+          ],
+          "reason": "query explicitly names agentdb",
+          "rank": 1
+        },
+        {
+          "id": "n-27",
+          "group": "named",
+          "expected": [
+            "cognitum-cogs",
+            "concepts"
+          ],
+          "repos": [
+            "cognitum-cogs"
+          ],
+          "reason": "query explicitly names cognitum-cogs",
+          "rank": 1
+        },
+        {
+          "id": "n-28",
+          "group": "named",
+          "expected": [
+            "cognitum-support",
+            "concepts"
+          ],
+          "repos": [
+            "cognitum-support"
+          ],
+          "reason": "query explicitly names cognitum-support",
+          "rank": 1
+        },
+        {
+          "id": "d-01",
+          "group": "described",
+          "expected": [
+            "ruvector",
+            "concepts"
+          ],
+          "repos": [
+            "ruvector"
+          ],
+          "reason": "card evidence favors ruvector (4 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-02",
+          "group": "described",
+          "expected": [
+            "agentdb",
+            "concepts"
+          ],
+          "repos": [
+            "agentdb"
+          ],
+          "reason": "card evidence favors agentdb (5 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-03",
+          "group": "described",
+          "expected": [
+            "ruflo",
+            "agentic-flow",
+            "concepts"
+          ],
+          "repos": [
+            "ruflo",
+            "agentic-flow",
+            "concepts"
+          ],
+          "reason": "card evidence preserves 2 tied source candidates (5 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-04",
+          "group": "described",
+          "expected": [
+            "agentic-qe",
+            "ruflo",
+            "concepts"
+          ],
+          "repos": [
+            "agentic-qe"
+          ],
+          "reason": "card evidence favors agentic-qe (7 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-05",
+          "group": "described",
+          "expected": [
+            "agenticow",
+            "concepts"
+          ],
+          "repos": [
+            "agenticow"
+          ],
+          "reason": "card evidence favors agenticow (9 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-06",
+          "group": "described",
+          "expected": [
+            "rulake",
+            "concepts"
+          ],
+          "repos": [
+            "rulake"
+          ],
+          "reason": "card evidence favors rulake (8 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-07",
+          "group": "described",
+          "expected": [
+            "safla",
+            "agent-harness-generator",
+            "concepts"
+          ],
+          "repos": [
+            "safla"
+          ],
+          "reason": "card evidence favors safla (7 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-08",
+          "group": "described",
+          "expected": [
+            "qudag",
+            "concepts"
+          ],
+          "repos": [
+            "qudag"
+          ],
+          "reason": "card evidence favors qudag (6 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-09",
+          "group": "described",
+          "expected": [
+            "dspy.ts",
+            "concepts"
+          ],
+          "repos": [
+            "dspy.ts",
+            "agent-name-service",
+            "agentdb"
+          ],
+          "reason": "card evidence favors dspy.ts (5 matching concepts); widened to agent-name-service, agentdb — typescript appear there",
+          "rank": 1
+        },
+        {
+          "id": "d-10",
+          "group": "described",
+          "expected": [
+            "synthlang",
+            "concepts"
+          ],
+          "repos": [
+            "synthlang"
+          ],
+          "reason": "card evidence favors synthlang (4 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-11",
+          "group": "described",
+          "expected": [
+            "sparc",
+            "concepts"
+          ],
+          "repos": [
+            "sparc"
+          ],
+          "reason": "card evidence favors sparc (4 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-12",
+          "group": "described",
+          "expected": [
+            "ruv-fann",
+            "concepts"
+          ],
+          "repos": [
+            "ruv-fann"
+          ],
+          "reason": "card evidence favors ruv-fann (5 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-13",
+          "group": "described",
+          "expected": [
+            "cve-bench",
+            "concepts"
+          ],
+          "repos": [
+            "cve-bench"
+          ],
+          "reason": "card evidence favors cve-bench (6 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-14",
+          "group": "described",
+          "expected": [
+            "agent-harness-generator",
+            "agentic-flow",
+            "concepts"
+          ],
+          "repos": [
+            "metaharness",
+            "agentic-flow",
+            "concepts"
+          ],
+          "reason": "source intent selects the cheap-verify-frontier escalation harness",
+          "rank": 1
+        },
+        {
+          "id": "d-15",
+          "group": "described",
+          "expected": [
+            "agentic-qe",
+            "ruflo",
+            "concepts"
+          ],
+          "repos": [
+            "agentic-qe"
+          ],
+          "reason": "card evidence favors agentic-qe (7 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-16",
+          "group": "described",
+          "expected": [
+            "rvm",
+            "concepts"
+          ],
+          "repos": [
+            "rvm"
+          ],
+          "reason": "card evidence favors rvm (3 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-17",
+          "group": "described",
+          "expected": [
+            "agentic-flow",
+            "ruflo",
+            "concepts"
+          ],
+          "repos": [
+            "agentic-flow"
+          ],
+          "reason": "card evidence favors agentic-flow (5 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-18",
+          "group": "described",
+          "expected": [
+            "metaharness",
+            "agent-harness-generator",
+            "ruflo",
+            "ruv-gists",
+            "concepts"
+          ],
+          "repos": [
+            "metaharness",
+            "dream-machine"
+          ],
+          "reason": "source intent selects the receipt-backed promotion and rollback harness",
+          "rank": 1
+        },
+        {
+          "id": "d-19",
+          "group": "described",
+          "expected": [
+            "agentdb",
+            "ruflo",
+            "concepts"
+          ],
+          "repos": [
+            "ruflo"
+          ],
+          "reason": "card evidence favors ruflo (9 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-20",
+          "group": "described",
+          "expected": [
+            "ruflo",
+            "ruv-gists",
+            "concepts"
+          ],
+          "repos": [
+            "ruflo",
+            "agentdb",
+            "ai-code-generator-"
+          ],
+          "reason": "source intent selects the adaptive retrieval flywheel and its promotion gate",
+          "rank": 1
+        },
+        {
+          "id": "s-01",
+          "group": "scenario",
+          "expected": [
+            "ruvector",
+            "concepts"
+          ],
+          "repos": [
+            "ruvector",
+            "agentic-qe",
+            "rupixel"
+          ],
+          "reason": "source intent selects the on-device HNSW index and zero-server deployment",
+          "rank": 1
+        },
+        {
+          "id": "s-02",
+          "group": "scenario",
+          "expected": [
+            "agentdb",
+            "concepts"
+          ],
+          "repos": [
+            "agentdb"
+          ],
+          "reason": "card evidence favors agentdb (8 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "s-03",
+          "group": "scenario",
+          "expected": [
+            "agentic-qe",
+            "ruflo",
+            "concepts"
+          ],
+          "repos": [
+            "agentic-qe"
+          ],
+          "reason": "card evidence favors agentic-qe (12 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "s-04",
+          "group": "scenario",
+          "expected": [
+            "ruflo",
+            "agentic-flow",
+            "concepts"
+          ],
+          "repos": [
+            "ruflo"
+          ],
+          "reason": "card evidence favors ruflo (10 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "s-05",
+          "group": "scenario",
+          "expected": [
+            "agenticow",
+            "concepts"
+          ],
+          "repos": [
+            "agenticow"
+          ],
+          "reason": "card evidence favors agenticow (11 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "s-06",
+          "group": "scenario",
+          "expected": [
+            "rulake",
+            "concepts"
+          ],
+          "repos": [
+            "rulake"
+          ],
+          "reason": "card evidence favors rulake (10 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "s-07",
+          "group": "scenario",
+          "expected": [
+            "qudag",
+            "concepts"
+          ],
+          "repos": [
+            "qudag"
+          ],
+          "reason": "card evidence favors qudag (11 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "s-08",
+          "group": "scenario",
+          "expected": [
+            "synthlang",
+            "concepts"
+          ],
+          "repos": [
+            "synthlang"
+          ],
+          "reason": "card evidence favors synthlang (4 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "s-09",
+          "group": "scenario",
+          "expected": [
+            "sparc",
+            "concepts"
+          ],
+          "repos": [
+            "sparc"
+          ],
+          "reason": "card evidence favors sparc (9 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "s-10",
+          "group": "scenario",
+          "expected": [
+            "cve-bench",
+            "concepts"
+          ],
+          "repos": [
+            "cve-bench"
+          ],
+          "reason": "card evidence favors cve-bench (5 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "s-11",
+          "group": "scenario",
+          "expected": [
+            "ruv-fann",
+            "concepts"
+          ],
+          "repos": [
+            "ruv-fann"
+          ],
+          "reason": "card evidence favors ruv-fann (4 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "s-12",
+          "group": "scenario",
+          "expected": [
+            "agent-harness-generator",
+            "ruflo",
+            "concepts"
+          ],
+          "repos": [
+            "ruflo"
+          ],
+          "reason": "source intent selects evolvable harness policy and replayable receipts",
+          "rank": 1
+        },
+        {
+          "id": "s-13",
+          "group": "scenario",
+          "expected": [
+            "agent-harness-generator",
+            "agentic-flow",
+            "concepts"
+          ],
+          "repos": [
+            "metaharness",
+            "agentic-flow",
+            "concepts"
+          ],
+          "reason": "source intent selects the cheap-verify-frontier escalation harness",
+          "rank": 1
+        },
+        {
+          "id": "s-14",
+          "group": "scenario",
+          "expected": [
+            "dspy.ts",
+            "concepts"
+          ],
+          "repos": [
+            "dspy.ts",
+            "agent-name-service",
+            "agentdb"
+          ],
+          "reason": "card evidence favors dspy.ts (6 matching concepts); widened to agent-name-service, agentdb — typescript appear there",
+          "rank": 1
+        },
+        {
+          "id": "s-15",
+          "group": "scenario",
+          "expected": [
+            "agentic-flow",
+            "concepts"
+          ],
+          "repos": [
+            "agentic-flow"
+          ],
+          "reason": "card evidence favors agentic-flow (7 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "s-16",
+          "group": "scenario",
+          "expected": [
+            "rvm",
+            "concepts"
+          ],
+          "repos": [
+            "rvm"
+          ],
+          "reason": "card evidence favors rvm (12 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "s-17",
+          "group": "scenario",
+          "expected": [
+            "ruflo",
+            "concepts"
+          ],
+          "repos": [
+            "ruflo",
+            "ruvnet-brain",
+            "dream-machine"
+          ],
+          "reason": "source intent selects living ADR lifecycle and implementation-drift review",
+          "rank": 1
+        },
+        {
+          "id": "s-18",
+          "group": "scenario",
+          "expected": [
+            "agenticow",
+            "concepts"
+          ],
+          "repos": [
+            "agenticow"
+          ],
+          "reason": "card evidence favors agenticow (9 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "s-19",
+          "group": "scenario",
+          "expected": [
+            "ruflo",
+            "agent-harness-generator",
+            "ruv-gists",
+            "concepts"
+          ],
+          "repos": [
+            "metaharness",
+            "agentic-flow",
+            "dream-machine",
+            "safla"
+          ],
+          "reason": "source intent selects the receipt-backed promotion and rollback harness",
+          "rank": 1
+        },
+        {
+          "id": "s-20",
+          "group": "scenario",
+          "expected": [
+            "agentic-flow",
+            "concepts"
+          ],
+          "repos": [
+            "agentic-flow",
+            "ruv-gists"
+          ],
+          "reason": "query explicitly names agentic-flow; widened to ruv-gists — openrouter, maxcostpertask appear there",
+          "rank": 1
+        }
+      ]
+    },
+    "offTopic": {
+      "all": {
+        "goldAt1": {
+          "k": 0,
+          "n": 20,
+          "p": 0,
+          "lo": 0,
+          "hi": 0.1611
+        },
+        "goldAt3": {
+          "k": 0,
+          "n": 20,
+          "p": 0,
+          "lo": 0,
+          "hi": 0.1611
+        },
+        "goldAt5": {
+          "k": 0,
+          "n": 20,
+          "p": 0,
+          "lo": 0,
+          "hi": 0.1611
+        },
+        "declined": {
+          "k": 15,
+          "n": 20,
+          "p": 0.75,
+          "lo": 0.5313,
+          "hi": 0.8881
+        },
+        "reposOpened": 0.25
+      },
+      "byGroup": {
+        "adversarial": {
+          "goldAt1": {
+            "k": 0,
+            "n": 20,
+            "p": 0,
+            "lo": 0,
+            "hi": 0.1611
+          },
+          "goldAt3": {
+            "k": 0,
+            "n": 20,
+            "p": 0,
+            "lo": 0,
+            "hi": 0.1611
+          },
+          "goldAt5": {
+            "k": 0,
+            "n": 20,
+            "p": 0,
+            "lo": 0,
+            "hi": 0.1611
+          },
+          "declined": {
+            "k": 15,
+            "n": 20,
+            "p": 0.75,
+            "lo": 0.5313,
+            "hi": 0.8881
+          },
+          "reposOpened": 0.25
+        }
+      },
+      "msPerQuestion": 3191.3,
+      "rows": [
+        {
+          "id": "a-01",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [
+            "midstream"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "a-02",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "card router was ambiguous (closest=chatgpt_plugin_python overlap=1)",
+          "rank": null
+        },
+        {
+          "id": "a-03",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "query contains stripe, django outside the card catalogue",
+          "rank": null
+        },
+        {
+          "id": "a-04",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "card router was ambiguous (closest=agentic-artifacts overlap=1)",
+          "rank": null
+        },
+        {
+          "id": "a-05",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "card router was ambiguous (closest=powerprompt overlap=2)",
+          "rank": null
+        },
+        {
+          "id": "a-06",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [
+            "rulake"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "a-07",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "query contains excel, vlookup outside the card catalogue",
+          "rank": null
+        },
+        {
+          "id": "a-08",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "card router was ambiguous (closest=musicai overlap=2)",
+          "rank": null
+        },
+        {
+          "id": "a-09",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "query contains salesforce, apex outside the card catalogue",
+          "rank": null
+        },
+        {
+          "id": "a-10",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [
+            "dream-machine"
+          ],
+          "reason": "card evidence favors dream-machine (3 matching concepts)",
+          "rank": null
+        },
+        {
+          "id": "a-11",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "card router was ambiguous (closest=aitoml overlap=1)",
+          "rank": null
+        },
+        {
+          "id": "a-12",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [
+            "swarm-world"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "a-13",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "query contains cobol, varying outside the card catalogue",
+          "rank": null
+        },
+        {
+          "id": "a-14",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "card router was ambiguous (closest=llm-stream-reformat overlap=1)",
+          "rank": null
+        },
+        {
+          "id": "a-15",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "card router was ambiguous (closest=ruflo overlap=2)",
+          "rank": null
+        },
+        {
+          "id": "a-16",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [
+            "midstream"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "a-17",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "query contains wireshark, tls outside the card catalogue",
+          "rank": null
+        },
+        {
+          "id": "a-18",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "card router was ambiguous (closest=aihl overlap=1)",
+          "rank": null
+        },
+        {
+          "id": "a-19",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "query contains riverpod, flutter outside the card catalogue",
+          "rank": null
+        },
+        {
+          "id": "a-20",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "query contains encrypt, dns outside the card catalogue",
+          "rank": null
+        }
+      ]
+    },
+    "recallUnnamed": {
+      "all": {
+        "goldAt1": {
+          "k": 69,
+          "n": 182,
+          "p": 0.3791,
+          "lo": 0.3118,
+          "hi": 0.4514
+        },
+        "goldAt3": {
+          "k": 74,
+          "n": 182,
+          "p": 0.4066,
+          "lo": 0.3379,
+          "hi": 0.4792
+        },
+        "goldAt5": {
+          "k": 75,
+          "n": 182,
+          "p": 0.4121,
+          "lo": 0.3431,
+          "hi": 0.4847
+        },
+        "declined": {
+          "k": 10,
+          "n": 182,
+          "p": 0.0549,
+          "lo": 0.0301,
+          "hi": 0.0982
+        },
+        "reposOpened": 1.544
+      },
+      "byGroup": {
+        "recall": {
+          "goldAt1": {
+            "k": 69,
+            "n": 182,
+            "p": 0.3791,
+            "lo": 0.3118,
+            "hi": 0.4514
+          },
+          "goldAt3": {
+            "k": 74,
+            "n": 182,
+            "p": 0.4066,
+            "lo": 0.3379,
+            "hi": 0.4792
+          },
+          "goldAt5": {
+            "k": 75,
+            "n": 182,
+            "p": 0.4121,
+            "lo": 0.3431,
+            "hi": 0.4847
+          },
+          "declined": {
+            "k": 10,
+            "n": 182,
+            "p": 0.0549,
+            "lo": 0.0301,
+            "hi": 0.0982
+          },
+          "reposOpened": 1.544
+        }
+      },
+      "msPerQuestion": 2351.6,
+      "rows": [
+        {
+          "id": "2bottalk",
+          "group": "recall",
+          "expected": [
+            "2bottalk"
+          ],
+          "repos": [],
+          "reason": "query contains talk, ai outside the card catalogue",
+          "rank": null
+        },
+        {
+          "id": "agent-name-service",
+          "group": "recall",
+          "expected": [
+            "agent-name-service"
+          ],
+          "repos": [
+            "agent-name-service"
+          ],
+          "reason": "card evidence favors agent-name-service (2 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "agentdb",
+          "group": "recall",
+          "expected": [
+            "agentdb"
+          ],
+          "repos": [
+            "agentdb",
+            "ruflo"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "agentic-artifacts",
+          "group": "recall",
+          "expected": [
+            "agentic-artifacts"
+          ],
+          "repos": [],
+          "reason": "query contains ai, url outside the card catalogue",
+          "rank": null
+        },
+        {
+          "id": "agentic-capacity-exchange",
+          "group": "recall",
+          "expected": [
+            "agentic-capacity-exchange"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "agentic-dashboard",
+          "group": "recall",
+          "expected": [
+            "agentic-dashboard"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "agentic-devops",
+          "group": "recall",
+          "expected": [
+            "agentic-devops"
+          ],
+          "repos": [
+            "agentic-devops",
+            "agentic-scraper",
+            "codex-one"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "agentic-difusion",
+          "group": "recall",
+          "expected": [
+            "agentic-difusion"
+          ],
+          "repos": [
+            "agentic-difusion"
+          ],
+          "reason": "card evidence favors agentic-difusion (2 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "agentic-employment",
+          "group": "recall",
+          "expected": [
+            "agentic-employment"
+          ],
+          "repos": [
+            "claude-test",
+            "ruv-fann",
+            "concepts"
+          ],
+          "reason": "card evidence preserves 2 tied source candidates (4 matching concepts)",
+          "rank": null
+        },
+        {
+          "id": "agentic-flow",
+          "group": "recall",
+          "expected": [
+            "agentic-flow"
+          ],
+          "repos": [
+            "sparc"
+          ],
+          "reason": "query explicitly names sparc",
+          "rank": null
+        },
+        {
+          "id": "agentic-gradio",
+          "group": "recall",
+          "expected": [
+            "agentic-gradio"
+          ],
+          "repos": [],
+          "reason": "card router was ambiguous (closest=agent-name-service overlap=2)",
+          "rank": null
+        },
+        {
+          "id": "agentic-preview",
+          "group": "recall",
+          "expected": [
+            "agentic-preview"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "agentic-qe",
+          "group": "recall",
+          "expected": [
+            "agentic-qe"
+          ],
+          "repos": [
+            "agentic-qe",
+            "agentic-robotics"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "agentic-reports",
+          "group": "recall",
+          "expected": [
+            "agentic-reports"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "agentic-robotics",
+          "group": "recall",
+          "expected": [
+            "agentic-robotics"
+          ],
+          "repos": [
+            "agentic-robotics"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "agentic-scraper",
+          "group": "recall",
+          "expected": [
+            "agentic-scraper"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "agentic-search",
+          "group": "recall",
+          "expected": [
+            "agentic-search"
+          ],
+          "repos": [
+            "agentic-search"
+          ],
+          "reason": "card evidence favors agentic-search (4 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "agentic-security",
+          "group": "recall",
+          "expected": [
+            "agentic-security"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "agentic-voice",
+          "group": "recall",
+          "expected": [
+            "agentic-voice"
+          ],
+          "repos": [
+            "agentic-voice"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "agenticow",
+          "group": "recall",
+          "expected": [
+            "agenticow"
+          ],
+          "repos": [
+            "metaharness",
+            "agenticow",
+            "ruos"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 2
+        },
+        {
+          "id": "agentics-meetup",
+          "group": "recall",
+          "expected": [
+            "agentics-meetup"
+          ],
+          "repos": [
+            "agentic-qe",
+            "hft"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "agenticsjs",
+          "group": "recall",
+          "expected": [
+            "agenticsjs"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "agentx",
+          "group": "recall",
+          "expected": [
+            "agentx"
+          ],
+          "repos": [
+            "alienator",
+            "ruv-neural"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "agentxng",
+          "group": "recall",
+          "expected": [
+            "agentxng"
+          ],
+          "repos": [
+            "agentx"
+          ],
+          "reason": "query names deployed source store(s): agentx",
+          "rank": null
+        },
+        {
+          "id": "agileagents",
+          "group": "recall",
+          "expected": [
+            "agileagents"
+          ],
+          "repos": [
+            "agileagents",
+            "ruv-fann",
+            "concepts"
+          ],
+          "reason": "card evidence preserves 2 tied source candidates (2 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "ai-browse",
+          "group": "recall",
+          "expected": [
+            "ai-browse"
+          ],
+          "repos": [
+            "hft",
+            "quantum_cryptocurrency",
+            "strawberry-phi",
+            "concepts"
+          ],
+          "reason": "card evidence preserves 3 tied source candidates (2 matching concepts)",
+          "rank": null
+        },
+        {
+          "id": "ai-code-generator-",
+          "group": "recall",
+          "expected": [
+            "ai-code-generator-"
+          ],
+          "repos": [
+            "ai-code-generator-",
+            "agentdb",
+            "agentic-flow"
+          ],
+          "reason": "card evidence favors ai-code-generator- (8 matching concepts); widened to agentdb, agentic-flow — github appear there",
+          "rank": 1
+        },
+        {
+          "id": "ai-gist",
+          "group": "recall",
+          "expected": [
+            "ai-gist"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ai-stream",
+          "group": "recall",
+          "expected": [
+            "ai-stream"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ai-text-watermark",
+          "group": "recall",
+          "expected": [
+            "ai-text-watermark"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ai-video",
+          "group": "recall",
+          "expected": [
+            "ai-video"
+          ],
+          "repos": [
+            "ai-stream"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "aicodecalc",
+          "group": "recall",
+          "expected": [
+            "aicodecalc"
+          ],
+          "repos": [
+            "aicodecalc"
+          ],
+          "reason": "card evidence favors aicodecalc (4 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "aido",
+          "group": "recall",
+          "expected": [
+            "aido"
+          ],
+          "repos": [
+            "aido"
+          ],
+          "reason": "card evidence favors aido (4 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "aihcc",
+          "group": "recall",
+          "expected": [
+            "aihcc"
+          ],
+          "repos": [
+            "aihcc"
+          ],
+          "reason": "card evidence favors aihcc (3 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "aihl",
+          "group": "recall",
+          "expected": [
+            "aihl"
+          ],
+          "repos": [
+            "hacker-league"
+          ],
+          "reason": "query explicitly names hacker-league",
+          "rank": null
+        },
+        {
+          "id": "aiscreenplay",
+          "group": "recall",
+          "expected": [
+            "aiscreenplay"
+          ],
+          "repos": [
+            "aiscreenplay"
+          ],
+          "reason": "card evidence favors aiscreenplay (2 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "aitoml",
+          "group": "recall",
+          "expected": [
+            "aitoml"
+          ],
+          "repos": [
+            "aitoml"
+          ],
+          "reason": "card evidence favors aitoml (5 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "alienator",
+          "group": "recall",
+          "expected": [
+            "alienator"
+          ],
+          "repos": [
+            "alienator"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "ap-casper",
+          "group": "recall",
+          "expected": [
+            "ap-casper"
+          ],
+          "repos": [
+            "ap-casper"
+          ],
+          "reason": "card evidence favors ap-casper (3 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "arcadia",
+          "group": "recall",
+          "expected": [
+            "arcadia"
+          ],
+          "repos": [
+            "arcadia",
+            "claude-test",
+            "cve-bench",
+            "agentic-flow",
+            "daa"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance; widened to agentic-flow, daa — crates.io appear there",
+          "rank": 1
+        },
+        {
+          "id": "auto-browser",
+          "group": "recall",
+          "expected": [
+            "auto-browser"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "autogenous",
+          "group": "recall",
+          "expected": [
+            "autogenous"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "aws-dev",
+          "group": "recall",
+          "expected": [
+            "aws-dev"
+          ],
+          "repos": [
+            "aws-dev"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "bot-generator-bot",
+          "group": "recall",
+          "expected": [
+            "bot-generator-bot"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "chatgpt_plugin_python",
+          "group": "recall",
+          "expected": [
+            "chatgpt_plugin_python"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "chatgpt_tatum_plugin",
+          "group": "recall",
+          "expected": [
+            "chatgpt_tatum_plugin"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "chatgpt-aws-price-list-plugin",
+          "group": "recall",
+          "expected": [
+            "chatgpt-aws-price-list-plugin"
+          ],
+          "repos": [
+            "chatgpt-aws-price-list-plugin"
+          ],
+          "reason": "card evidence favors chatgpt-aws-price-list-plugin (6 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "chatgpt-dev-mode",
+          "group": "recall",
+          "expected": [
+            "chatgpt-dev-mode"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "chatgpt-openai-api-plugin",
+          "group": "recall",
+          "expected": [
+            "chatgpt-openai-api-plugin"
+          ],
+          "repos": [
+            "chatgpt-openai-api-plugin"
+          ],
+          "reason": "card evidence favors chatgpt-openai-api-plugin (4 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "chatgpt-trading-bot-for-kucoin",
+          "group": "recall",
+          "expected": [
+            "chatgpt-trading-bot-for-kucoin"
+          ],
+          "repos": [
+            "chatgpt-trading-bot-for-kucoin",
+            "ruvnet-brain",
+            "ruvnet"
+          ],
+          "reason": "card evidence favors chatgpt-trading-bot-for-kucoin (8 matching concepts); widened to ruvnet-brain, ruvnet — kucoin appear there",
+          "rank": 1
+        },
+        {
+          "id": "claude-test",
+          "group": "recall",
+          "expected": [
+            "claude-test"
+          ],
+          "repos": [
+            "claude-test"
+          ],
+          "reason": "card evidence favors claude-test (6 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "code-mesh",
+          "group": "recall",
+          "expected": [
+            "code-mesh"
+          ],
+          "repos": [
+            "code-mesh"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "codecraft",
+          "group": "recall",
+          "expected": [
+            "codecraft"
+          ],
+          "repos": [],
+          "reason": "query contains ai, companion outside the card catalogue",
+          "rank": null
+        },
+        {
+          "id": "codex-one",
+          "group": "recall",
+          "expected": [
+            "codex-one"
+          ],
+          "repos": [
+            "codex-one"
+          ],
+          "reason": "card evidence favors codex-one (5 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "coding-wingman",
+          "group": "recall",
+          "expected": [
+            "coding-wingman"
+          ],
+          "repos": [
+            "coding-wingman",
+            "agentdb",
+            "agentic-flow"
+          ],
+          "reason": "card evidence favors coding-wingman (4 matching concepts); widened to agentdb, agentic-flow — github appear there",
+          "rank": 1
+        },
+        {
+          "id": "cognitum-claude-plugin",
+          "group": "recall",
+          "expected": [
+            "cognitum-claude-plugin"
+          ],
+          "repos": [
+            "rulake"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "cognitum-cogs",
+          "group": "recall",
+          "expected": [
+            "cognitum-cogs"
+          ],
+          "repos": [
+            "cognitum-cogs"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "cognitum-learn",
+          "group": "recall",
+          "expected": [
+            "cognitum-learn"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "cognitum-learn-site",
+          "group": "recall",
+          "expected": [
+            "cognitum-learn-site"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "cognitum-meta-llm-docs",
+          "group": "recall",
+          "expected": [
+            "cognitum-meta-llm-docs"
+          ],
+          "repos": [
+            "cognitum-meta-llm-docs",
+            "agentic-flow",
+            "qudag"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "cognitum-meta-proxy-dist",
+          "group": "recall",
+          "expected": [
+            "cognitum-meta-proxy-dist"
+          ],
+          "repos": [
+            "cognitum-meta-proxy-dist"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "cognitum-one-sensor-primer",
+          "group": "recall",
+          "expected": [
+            "cognitum-one-sensor-primer"
+          ],
+          "repos": [
+            "ruvector",
+            "cognitum-cogs",
+            "cognitum-support"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "cognitum-ruos",
+          "group": "recall",
+          "expected": [
+            "cognitum-ruos"
+          ],
+          "repos": [
+            "ruos"
+          ],
+          "reason": "query explicitly names ruos",
+          "rank": null
+        },
+        {
+          "id": "cognitum-support",
+          "group": "recall",
+          "expected": [
+            "cognitum-support"
+          ],
+          "repos": [
+            "cognitum-claude-plugin",
+            "cognitum-support",
+            "helix"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 2
+        },
+        {
+          "id": "connectome-os",
+          "group": "recall",
+          "expected": [
+            "connectome-os"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "console-streamer",
+          "group": "recall",
+          "expected": [
+            "console-streamer"
+          ],
+          "repos": [
+            "console-streamer",
+            "ruv-gists",
+            "synaptic-mesh"
+          ],
+          "reason": "card evidence favors console-streamer (4 matching concepts); widened to ruv-gists, synaptic-mesh — youtube appear there",
+          "rank": 1
+        },
+        {
+          "id": "contextual-retrevial",
+          "group": "recall",
+          "expected": [
+            "contextual-retrevial"
+          ],
+          "repos": [
+            "contextual-retrevial"
+          ],
+          "reason": "card evidence favors contextual-retrevial (5 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "cve-bench",
+          "group": "recall",
+          "expected": [
+            "cve-bench"
+          ],
+          "repos": [
+            "cve-bench"
+          ],
+          "reason": "card evidence favors cve-bench (7 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "daa",
+          "group": "recall",
+          "expected": [
+            "daa"
+          ],
+          "repos": [
+            "agentic-qe"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "demo-proxy-app",
+          "group": "recall",
+          "expected": [
+            "demo-proxy-app"
+          ],
+          "repos": [
+            "demo-proxy-app"
+          ],
+          "reason": "card evidence favors demo-proxy-app (3 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "dream-machine",
+          "group": "recall",
+          "expected": [
+            "dream-machine"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "drupaljs",
+          "group": "recall",
+          "expected": [
+            "drupaljs"
+          ],
+          "repos": [
+            "ruvnet-brain",
+            "agentic-flow",
+            "ruflo"
+          ],
+          "reason": "query explicitly names ruvnet-brain; widened to agentic-flow, ruflo — tanstack appear there",
+          "rank": null
+        },
+        {
+          "id": "dspy.ts",
+          "group": "recall",
+          "expected": [
+            "dspy.ts"
+          ],
+          "repos": [
+            "agentic-flow",
+            "p2pgpt",
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "dynamo-mcp",
+          "group": "recall",
+          "expected": [
+            "dynamo-mcp"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "electo1",
+          "group": "recall",
+          "expected": [
+            "electo1"
+          ],
+          "repos": [
+            "sublinear-time-solver"
+          ],
+          "reason": "card evidence favors sublinear-time-solver (3 matching concepts)",
+          "rank": null
+        },
+        {
+          "id": "electo1-js",
+          "group": "recall",
+          "expected": [
+            "electo1-js"
+          ],
+          "repos": [
+            "electo1-js",
+            "agentic-scraper",
+            "ultrasonic"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "fact",
+          "group": "recall",
+          "expected": [
+            "fact"
+          ],
+          "repos": [
+            "agentic-flow",
+            "ruflo",
+            "supabase-authentication"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "federated-mcp",
+          "group": "recall",
+          "expected": [
+            "federated-mcp"
+          ],
+          "repos": [
+            "ruv-fann"
+          ],
+          "reason": "card evidence favors ruv-fann (2 matching concepts)",
+          "rank": null
+        },
+        {
+          "id": "fireflies-webook",
+          "group": "recall",
+          "expected": [
+            "fireflies-webook"
+          ],
+          "repos": [
+            "ruv-gists"
+          ],
+          "reason": "provenance intent selects the public rUv gist store",
+          "rank": null
+        },
+        {
+          "id": "flow-nexus",
+          "group": "recall",
+          "expected": [
+            "flow-nexus"
+          ],
+          "repos": [
+            "marketing"
+          ],
+          "reason": "query explicitly names marketing",
+          "rank": null
+        },
+        {
+          "id": "genai-superstream",
+          "group": "recall",
+          "expected": [
+            "genai-superstream"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "genesis",
+          "group": "recall",
+          "expected": [
+            "genesis"
+          ],
+          "repos": [
+            "agentdb"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "gpts",
+          "group": "recall",
+          "expected": [
+            "gpts"
+          ],
+          "repos": [],
+          "reason": "query contains advisor, http outside the card catalogue",
+          "rank": null
+        },
+        {
+          "id": "guardrail",
+          "group": "recall",
+          "expected": [
+            "guardrail"
+          ],
+          "repos": [
+            "guardrail",
+            "swagger-chatgpt-plugin-creator",
+            "concepts"
+          ],
+          "reason": "card evidence preserves 2 tied source candidates (4 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "hacker-league",
+          "group": "recall",
+          "expected": [
+            "hacker-league"
+          ],
+          "repos": [
+            "hacker-league"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "hackerone",
+          "group": "recall",
+          "expected": [
+            "hackerone"
+          ],
+          "repos": [
+            "metaharness"
+          ],
+          "reason": "query explicitly names metaharness",
+          "rank": null
+        },
+        {
+          "id": "helix",
+          "group": "recall",
+          "expected": [
+            "helix"
+          ],
+          "repos": [
+            "helix",
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "hello_world_agent",
+          "group": "recall",
+          "expected": [
+            "hello_world_agent"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "hft",
+          "group": "recall",
+          "expected": [
+            "hft"
+          ],
+          "repos": [
+            "hft",
+            "synaptic-mesh",
+            "ruvector"
+          ],
+          "reason": "card evidence favors hft (4 matching concepts); widened to synaptic-mesh, ruvector — init.sh appear there",
+          "rank": 1
+        },
+        {
+          "id": "image-agent",
+          "group": "recall",
+          "expected": [
+            "image-agent"
+          ],
+          "repos": [
+            "hft",
+            "quantum_cryptocurrency",
+            "strawberry-phi",
+            "concepts"
+          ],
+          "reason": "card evidence preserves 3 tied source candidates (2 matching concepts)",
+          "rank": null
+        },
+        {
+          "id": "infinity-ui",
+          "group": "recall",
+          "expected": [
+            "infinity-ui"
+          ],
+          "repos": [
+            "agentdb",
+            "agentxng",
+            "claude-test"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "inflight",
+          "group": "recall",
+          "expected": [
+            "inflight"
+          ],
+          "repos": [
+            "inflight"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "latentmesh",
+          "group": "recall",
+          "expected": [
+            "latentmesh"
+          ],
+          "repos": [
+            "ruvnet-brain",
+            "latentmesh"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 2
+        },
+        {
+          "id": "llamastack",
+          "group": "recall",
+          "expected": [
+            "llamastack"
+          ],
+          "repos": [
+            "agentic-preview"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "llm-stream-reformat",
+          "group": "recall",
+          "expected": [
+            "llm-stream-reformat"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "local-logic",
+          "group": "recall",
+          "expected": [
+            "local-logic"
+          ],
+          "repos": [
+            "local-logic"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "marketing",
+          "group": "recall",
+          "expected": [
+            "marketing"
+          ],
+          "repos": [
+            "ruflo"
+          ],
+          "reason": "card evidence favors ruflo (5 matching concepts)",
+          "rank": null
+        },
+        {
+          "id": "markov-chains",
+          "group": "recall",
+          "expected": [
+            "markov-chains"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "metaharness",
+          "group": "recall",
+          "expected": [
+            "metaharness"
+          ],
+          "repos": [
+            "metaharness",
+            "cve-bench",
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "midstream",
+          "group": "recall",
+          "expected": [
+            "midstream"
+          ],
+          "repos": [],
+          "reason": "query contains rtmp, hls outside the card catalogue",
+          "rank": null
+        },
+        {
+          "id": "musica",
+          "group": "recall",
+          "expected": [
+            "musica"
+          ],
+          "repos": [],
+          "reason": "query contains vj, tauri outside the card catalogue",
+          "rank": null
+        },
+        {
+          "id": "musicai",
+          "group": "recall",
+          "expected": [
+            "musicai"
+          ],
+          "repos": [],
+          "reason": "query contains magic, ai outside the card catalogue",
+          "rank": null
+        },
+        {
+          "id": "nova",
+          "group": "recall",
+          "expected": [
+            "nova"
+          ],
+          "repos": [
+            "ruv-fann"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "obsidian-brain",
+          "group": "recall",
+          "expected": [
+            "obsidian-brain"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "omnipotent",
+          "group": "recall",
+          "expected": [
+            "omnipotent"
+          ],
+          "repos": [
+            "omnipotent"
+          ],
+          "reason": "card evidence favors omnipotent (4 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "onnx-agent",
+          "group": "recall",
+          "expected": [
+            "onnx-agent"
+          ],
+          "repos": [
+            "onnx-agent",
+            "dspy.ts"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "open-claude-code",
+          "group": "recall",
+          "expected": [
+            "open-claude-code"
+          ],
+          "repos": [
+            "agentic-flow"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "open-space",
+          "group": "recall",
+          "expected": [
+            "open-space"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "openai_devops",
+          "group": "recall",
+          "expected": [
+            "openai_devops"
+          ],
+          "repos": [
+            "ruvbot",
+            "agentdb",
+            "agentic-flow"
+          ],
+          "reason": "query explicitly names ruvbot; widened to agentdb, agentic-flow — openai appear there",
+          "rank": null
+        },
+        {
+          "id": "openai-cost-estimator",
+          "group": "recall",
+          "expected": [
+            "openai-cost-estimator"
+          ],
+          "repos": [
+            "openai-cost-estimator"
+          ],
+          "reason": "card evidence favors openai-cost-estimator (5 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "p2pgpt",
+          "group": "recall",
+          "expected": [
+            "p2pgpt"
+          ],
+          "repos": [],
+          "reason": "query contains slack, sockets outside the card catalogue",
+          "rank": null
+        },
+        {
+          "id": "paris",
+          "group": "recall",
+          "expected": [
+            "paris"
+          ],
+          "repos": [
+            "agentic-difusion"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "phone-agent",
+          "group": "recall",
+          "expected": [
+            "phone-agent"
+          ],
+          "repos": [
+            "phone-agent",
+            "agentic-flow"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "photonlayer",
+          "group": "recall",
+          "expected": [
+            "photonlayer"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "pipackager",
+          "group": "recall",
+          "expected": [
+            "pipackager"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "powerprompt",
+          "group": "recall",
+          "expected": [
+            "powerprompt"
+          ],
+          "repos": [
+            "powerprompt"
+          ],
+          "reason": "card evidence favors powerprompt (2 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "prompt-engine",
+          "group": "recall",
+          "expected": [
+            "prompt-engine"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "promptlang",
+          "group": "recall",
+          "expected": [
+            "promptlang"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "pygentic",
+          "group": "recall",
+          "expected": [
+            "pygentic"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "q-space",
+          "group": "recall",
+          "expected": [
+            "q-space"
+          ],
+          "repos": [
+            "q-space"
+          ],
+          "reason": "card evidence favors q-space (3 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "q-star",
+          "group": "recall",
+          "expected": [
+            "q-star"
+          ],
+          "repos": [
+            "synthlang",
+            "console-streamer",
+            "hft"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "quantum_cryptocurrency",
+          "group": "recall",
+          "expected": [
+            "quantum_cryptocurrency"
+          ],
+          "repos": [
+            "sparc"
+          ],
+          "reason": "query explicitly names sparc",
+          "rank": null
+        },
+        {
+          "id": "quantum-magnetic-navigation",
+          "group": "recall",
+          "expected": [
+            "quantum-magnetic-navigation"
+          ],
+          "repos": [
+            "agentic-qe"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "quantum-virtual-machine",
+          "group": "recall",
+          "expected": [
+            "quantum-virtual-machine"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "qudag",
+          "group": "recall",
+          "expected": [
+            "qudag"
+          ],
+          "repos": [
+            "daa",
+            "ruflo"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "r-flow",
+          "group": "recall",
+          "expected": [
+            "r-flow"
+          ],
+          "repos": [
+            "r-flow",
+            "agentdb",
+            "agentic-flow"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance; widened to agentdb, agentic-flow — javascript appear there",
+          "rank": 1
+        },
+        {
+          "id": "reflective-engineer",
+          "group": "recall",
+          "expected": [
+            "reflective-engineer"
+          ],
+          "repos": [
+            "fact",
+            "agentic-flow",
+            "fireflies-webook",
+            "reflective-engineer",
+            "ruv-gists"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance; widened to reflective-engineer, ruv-gists — langchain.js, langchain appear there",
+          "rank": 4
+        },
+        {
+          "id": "retro-ai-ui",
+          "group": "recall",
+          "expected": [
+            "retro-ai-ui"
+          ],
+          "repos": [
+            "retro-ai-ui"
+          ],
+          "reason": "card evidence favors retro-ai-ui (5 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "roomodes",
+          "group": "recall",
+          "expected": [
+            "roomodes"
+          ],
+          "repos": [
+            "agentic-preview",
+            "agent-name-service",
+            "agentic-employment"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "rucelium",
+          "group": "recall",
+          "expected": [
+            "rucelium"
+          ],
+          "repos": [
+            "agentic-qe"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "rudevolution",
+          "group": "recall",
+          "expected": [
+            "rudevolution"
+          ],
+          "repos": [
+            "rudevolution",
+            "vsc-remote-mcp",
+            "agentic-qe"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "rufield",
+          "group": "recall",
+          "expected": [
+            "rufield"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo",
+          "group": "recall",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "ruflo",
+            "agentic-qe",
+            "hackerone",
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance; widened to ruvnet-brain — v3.32.38 appear there",
+          "rank": 1
+        },
+        {
+          "id": "rulake",
+          "group": "recall",
+          "expected": [
+            "rulake"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruos-macair",
+          "group": "recall",
+          "expected": [
+            "ruos-macair"
+          ],
+          "repos": [
+            "ruos",
+            "ruvector",
+            "synaptic-mesh"
+          ],
+          "reason": "query explicitly names ruos; widened to ruvector, synaptic-mesh — macbook appear there",
+          "rank": null
+        },
+        {
+          "id": "rupixel",
+          "group": "recall",
+          "expected": [
+            "rupixel"
+          ],
+          "repos": [
+            "rupixel"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "ruqu",
+          "group": "recall",
+          "expected": [
+            "ruqu"
+          ],
+          "repos": [
+            "ruqu",
+            "agentic-flow",
+            "daa"
+          ],
+          "reason": "card evidence favors ruqu (5 matching concepts); widened to agentic-flow, daa — webassembly appear there",
+          "rank": 1
+        },
+        {
+          "id": "ruv-dev",
+          "group": "recall",
+          "expected": [
+            "ruv-dev"
+          ],
+          "repos": [
+            "ruv-dev"
+          ],
+          "reason": "card evidence favors ruv-dev (6 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "ruv-drone",
+          "group": "recall",
+          "expected": [
+            "ruv-drone"
+          ],
+          "repos": [
+            "ruview",
+            "cognitum-ruos"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruv-enterprise-ai-guide",
+          "group": "recall",
+          "expected": [
+            "ruv-enterprise-ai-guide"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruv-fann",
+          "group": "recall",
+          "expected": [
+            "ruv-fann"
+          ],
+          "repos": [
+            "ai-code-generator-"
+          ],
+          "reason": "card evidence favors ai-code-generator- (5 matching concepts)",
+          "rank": null
+        },
+        {
+          "id": "ruv-neural",
+          "group": "recall",
+          "expected": [
+            "ruv-neural"
+          ],
+          "repos": [
+            "ruv-neural"
+          ],
+          "reason": "card evidence favors ruv-neural (6 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "ruv.io",
+          "group": "recall",
+          "expected": [
+            "ruv.io"
+          ],
+          "repos": [
+            "ruv-fann"
+          ],
+          "reason": "card evidence favors ruv-fann (5 matching concepts)",
+          "rank": null
+        },
+        {
+          "id": "ruvbot",
+          "group": "recall",
+          "expected": [
+            "ruvbot"
+          ],
+          "repos": [
+            "ruvnet-brain",
+            "ruvbot"
+          ],
+          "reason": "query explicitly names ruvnet-brain; widened to ruvbot — llama2_app, llamaindex appear there",
+          "rank": 2
+        },
+        {
+          "id": "ruvector",
+          "group": "recall",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "ruvector",
+            "fireflies-webook"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "ruview",
+          "group": "recall",
+          "expected": [
+            "ruview"
+          ],
+          "repos": [
+            "ruview",
+            "helix",
+            "rvcsi"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "ruvn",
+          "group": "recall",
+          "expected": [
+            "ruvn"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvnet",
+          "group": "recall",
+          "expected": [
+            "ruvnet"
+          ],
+          "repos": [
+            "ruv-gists"
+          ],
+          "reason": "provenance intent selects the public rUv gist store",
+          "rank": null
+        },
+        {
+          "id": "ruvnet-brain",
+          "group": "recall",
+          "expected": [
+            "ruvnet-brain"
+          ],
+          "repos": [],
+          "reason": "card router was ambiguous (closest=ultrasonic overlap=2)",
+          "rank": null
+        },
+        {
+          "id": "rvcsi",
+          "group": "recall",
+          "expected": [
+            "rvcsi"
+          ],
+          "repos": [
+            "helix",
+            "agent-name-service",
+            "agentdb"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance; widened to agent-name-service, agentdb — typescript appear there",
+          "rank": null
+        },
+        {
+          "id": "rvdna",
+          "group": "recall",
+          "expected": [
+            "rvdna"
+          ],
+          "repos": [
+            "rulake"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "rvface",
+          "group": "recall",
+          "expected": [
+            "rvface"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "rvm",
+          "group": "recall",
+          "expected": [
+            "rvm"
+          ],
+          "repos": [
+            "ruflo",
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "rvqr",
+          "group": "recall",
+          "expected": [
+            "rvqr"
+          ],
+          "repos": [
+            "rvqr",
+            "ruvnet-brain",
+            "cve-bench"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "safla",
+          "group": "recall",
+          "expected": [
+            "safla"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "skygraph",
+          "group": "recall",
+          "expected": [
+            "skygraph"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "sonicchamber",
+          "group": "recall",
+          "expected": [
+            "sonicchamber"
+          ],
+          "repos": [
+            "agentdb",
+            "ruvector",
+            "sonicchamber"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 3
+        },
+        {
+          "id": "sparc",
+          "group": "recall",
+          "expected": [
+            "sparc"
+          ],
+          "repos": [
+            "sparc"
+          ],
+          "reason": "card evidence favors sparc (5 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "sparc-ide",
+          "group": "recall",
+          "expected": [
+            "sparc-ide"
+          ],
+          "repos": [
+            "ruv-dev"
+          ],
+          "reason": "card evidence favors ruv-dev (4 matching concepts)",
+          "rank": null
+        },
+        {
+          "id": "strawberry-phi",
+          "group": "recall",
+          "expected": [
+            "strawberry-phi"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "sublinear-time-solver",
+          "group": "recall",
+          "expected": [
+            "sublinear-time-solver"
+          ],
+          "repos": [
+            "agentic-difusion"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "supa-ruv",
+          "group": "recall",
+          "expected": [
+            "supa-ruv"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "supabase-authentication",
+          "group": "recall",
+          "expected": [
+            "supabase-authentication"
+          ],
+          "repos": [
+            "supabase-authentication"
+          ],
+          "reason": "card evidence favors supabase-authentication (4 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "surfer",
+          "group": "recall",
+          "expected": [
+            "surfer"
+          ],
+          "repos": [
+            "synaptic-mesh",
+            "fact",
+            "metaharness"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance; widened to fact, metaharness — main.py appear there",
+          "rank": null
+        },
+        {
+          "id": "svgart",
+          "group": "recall",
+          "expected": [
+            "svgart"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "swagger-chatgpt-plugin-creator",
+          "group": "recall",
+          "expected": [
+            "swagger-chatgpt-plugin-creator"
+          ],
+          "repos": [
+            "swagger-chatgpt-plugin-creator"
+          ],
+          "reason": "card evidence favors swagger-chatgpt-plugin-creator (4 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "swarm-world",
+          "group": "recall",
+          "expected": [
+            "swarm-world"
+          ],
+          "repos": [
+            "swarm-world",
+            "p2pgpt",
+            "agileagents"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "symbolic-scribe",
+          "group": "recall",
+          "expected": [
+            "symbolic-scribe"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "synaptic-mesh",
+          "group": "recall",
+          "expected": [
+            "synaptic-mesh"
+          ],
+          "repos": [
+            "ruv-fann",
+            "qudag"
+          ],
+          "reason": "query explicitly names ruv-fann, qudag",
+          "rank": null
+        },
+        {
+          "id": "synthlang",
+          "group": "recall",
+          "expected": [
+            "synthlang"
+          ],
+          "repos": [
+            "synthlang",
+            "dream-machine",
+            "markov-chains"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "tariffic",
+          "group": "recall",
+          "expected": [
+            "tariffic"
+          ],
+          "repos": [
+            "infinity-ui"
+          ],
+          "reason": "card evidence favors infinity-ui (2 matching concepts)",
+          "rank": null
+        },
+        {
+          "id": "textclassifier",
+          "group": "recall",
+          "expected": [
+            "textclassifier"
+          ],
+          "repos": [
+            "textclassifier",
+            "chatgpt-openai-api-plugin",
+            "chatgpt-trading-bot-for-kucoin",
+            "agentdb",
+            "agentic-flow"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance; widened to agentdb, agentic-flow — openai appear there",
+          "rank": 1
+        },
+        {
+          "id": "ultrasonic",
+          "group": "recall",
+          "expected": [
+            "ultrasonic"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "vcbot",
+          "group": "recall",
+          "expected": [
+            "vcbot"
+          ],
+          "repos": [
+            "vcbot",
+            "rulake",
+            "ruview"
+          ],
+          "reason": "card evidence favors vcbot (4 matching concepts); widened to rulake, ruview — v0.0.1 appear there",
+          "rank": 1
+        },
+        {
+          "id": "vibecast",
+          "group": "recall",
+          "expected": [
+            "vibecast"
+          ],
+          "repos": [
+            "vibecast"
+          ],
+          "reason": "card evidence favors vibecast (4 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "vibing",
+          "group": "recall",
+          "expected": [
+            "vibing"
+          ],
+          "repos": [
+            "vibing",
+            "ruv-gists",
+            "ruvector"
+          ],
+          "reason": "card evidence favors vibing (4 matching concepts); widened to ruv-gists, ruvector — ruvix appear there",
+          "rank": 1
+        },
+        {
+          "id": "vivian",
+          "group": "recall",
+          "expected": [
+            "vivian"
+          ],
+          "repos": [
+            "agentic-flow"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "voicebot",
+          "group": "recall",
+          "expected": [
+            "voicebot"
+          ],
+          "repos": [
+            "agentic-qe"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "vsc-remote-mcp",
+          "group": "recall",
+          "expected": [
+            "vsc-remote-mcp"
+          ],
+          "repos": [
+            "vsc-remote-mcp"
+          ],
+          "reason": "card evidence favors vsc-remote-mcp (4 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "wifi-veil",
+          "group": "recall",
+          "expected": [
+            "wifi-veil"
+          ],
+          "repos": [
+            "latentmesh"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "worldgraph",
+          "group": "recall",
+          "expected": [
+            "worldgraph"
+          ],
+          "repos": [
+            "ruview",
+            "cognitum-cogs",
+            "cognitum-one-sensor-primer"
+          ],
+          "reason": "query explicitly names ruview; widened to cognitum-cogs, cognitum-one-sensor-primer — ruview appear there",
+          "rank": null
+        },
+        {
+          "id": "yyz-agentics-june",
+          "group": "recall",
+          "expected": [
+            "yyz-agentics-june"
+          ],
+          "repos": [
+            "yyz-agentics-june",
+            "agentic-flow",
+            "metaharness"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance; widened to agentic-flow, metaharness — numpy appear there",
+          "rank": 1
+        }
+      ]
+    }
+  }
+}

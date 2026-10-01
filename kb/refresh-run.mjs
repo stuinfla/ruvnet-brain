@@ -78,6 +78,19 @@ export function inspectRefreshOwner(owner, { hostname = os.hostname(), inspectPr
   return ownerState(owner, { hostname, inspectProcess, isAlive });
 }
 
+/**
+ * The ONE physical-path rule for brain directories. A user may reach the brain through a symlink
+ * (`~/.cache -> /Volumes/<disk>`) while the updater knows it by its real path (Node resolves
+ * import.meta.url), so identity checks compare this, never spellings. A directory that does not
+ * exist right now (kb/ mid-rename) resolves through its parent, so the answer does not flip.
+ */
+export function physicalPath(dir) {
+  const resolved = path.resolve(String(dir || ''));
+  try { return fs.realpathSync.native(resolved); } catch { /* absent: resolve through the parent */ }
+  try { return path.join(fs.realpathSync.native(path.dirname(resolved)), path.basename(resolved)); }
+  catch { return resolved; }
+}
+
 export const refreshLockPath = (kbDir) =>
   path.join(path.dirname(path.resolve(kbDir)), `.${path.basename(path.resolve(kbDir))}.refresh-run.lock`);
 
@@ -156,7 +169,10 @@ export function acquireRefreshLock({
   const inherited = String(env.RUVNET_REFRESH_RUN_TOKEN || '');
   if (inherited) {
     const owner = JSON.parse(fs.readFileSync(path.join(lockPath, 'owner.json'), 'utf8'));
-    if (owner.schemaVersion !== 3 || owner.token !== inherited || path.resolve(owner.kbDir) !== root
+    // Same DIRECTORY, not same spelling: the installer locks RUVNET_BRAIN_KB as given (possibly through
+    // a symlinked ~/.cache), the child updater knows its KB by import.meta.url, which Node resolves to
+    // the real path. Compare physical identity; a genuinely different directory still refuses.
+    if (owner.schemaVersion !== 3 || owner.token !== inherited || physicalPath(owner.kbDir) !== physicalPath(root)
       || path.resolve(owner.receiptPath || '') !== refreshReceiptPath(owner.brainHome, owner.runId)) {
       throw new Error(`refresh lock inheritance does not match ${lockPath}`);
     }

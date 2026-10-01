@@ -1,0 +1,23 @@
+{
+ "_provenance": "captured: claude 2.1.286 real search_ruvnet MCP call, 2026-09-30",
+ "payload": {
+  "session_id": "{{SESSION_ID}}",
+  "transcript_path": "{{TRANSCRIPT}}",
+  "cwd": "{{CWD}}",
+  "prompt_id": "{{PROMPT_ID}}",
+  "permission_mode": "default",
+  "effort": {
+   "level": "medium"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "mcp__plugin_ruvnet-brain_ruvnet-brain__search_ruvnet",
+  "tool_input": {
+   "query": "what is ruflo"
+  },
+  "tool_use_id": "{{TOOL_USE_ID}}",
+  "mcp_server": {
+   "name": "plugin:ruvnet-brain:ruvnet-brain",
+   "source": "plugin"
+  }
+ }
+}

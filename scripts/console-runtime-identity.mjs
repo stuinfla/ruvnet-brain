@@ -42,6 +42,8 @@ export const CONSOLE_RUNTIME_SURFACE = Object.freeze([
   // Keep their bytes in the same copy/digest authority as the installer itself.
   'kb/refresh-run.mjs',
   'kb/lifecycle-evidence-retention.mjs',
+  // install.mjs --update recovers an interrupted storage transaction before it looks for the updater.
+  'kb/update-storage-transaction.mjs',
   'kb/model-requirements.mjs',
   'kb/zip-extract.mjs',
   // install.mjs imports this STATICALLY (corpus transport identity + approved-runtime stamping,

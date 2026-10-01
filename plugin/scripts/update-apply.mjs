@@ -53,10 +53,19 @@ const RECEIPTS = path.join(BRAIN_HOME, 'update-receipts.jsonl');
 const LEASES = path.join(BRAIN_HOME, 'leases');
 const DEV = path.join(BRAIN_HOME, 'dev.json');
 const SEEDED = path.join(BRAIN_HOME, '.spine-seeded');
+// Claude Code honours CLAUDE_CONFIG_DIR for its whole config tree, plugins included; Codex honours CODEX_HOME.
+const CLAUDE_CONFIG = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+const CODEX_CONFIG = process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
 const PLUGIN_CACHES = [
-  path.join(os.homedir(), '.claude', 'plugins', 'cache', 'ruvnet-brain', 'ruvnet-brain'),
-  path.join(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'), 'plugins', 'cache', 'ruvnet-brain', 'ruvnet-brain'),
+  path.join(CLAUDE_CONFIG, 'plugins', 'cache', 'ruvnet-brain', 'ruvnet-brain'),
+  path.join(CODEX_CONFIG, 'plugins', 'cache', 'ruvnet-brain', 'ruvnet-brain'),
 ];
+// Evidence that a host has been pointed at the Brain's plugin at all (marketplace registered or plugin
+// cache created) — even when `plugin install` then failed and staged nothing.
+const HOST_PLUGIN_EVIDENCE = [CLAUDE_CONFIG, CODEX_CONFIG].flatMap((root) => [
+  path.join(root, 'plugins', 'marketplaces', 'ruvnet-brain'),
+  path.join(root, 'plugins', 'cache', 'ruvnet-brain'),
+]);
 const LEASE_FRESH_MS = 6 * 3600_000; // a lease older than 6h is stale (its process is long gone)
 
 const argv = process.argv.slice(2);
@@ -423,6 +432,17 @@ function main() {
         const activeNow = readJSON(ACTIVE);
         if (activeNow?.version && cmp(activeNow.version, expectedVersion) >= 0) {
           console.log(`already on ${activeNow.version}, at or above requested ${expectedVersion} — nothing to apply.`);
+          return 0;
+        }
+        // NO HOST AT ALL is not a stale spine. With no active spine and no payload of ANY version in
+        // any host cache, nothing was ever seeded, so nothing can be behind (a desktop-app/IDE-extension
+        // customer whose shell has no host CLI). A host cache holding some OTHER version still fails
+        // closed below — issue #64's exact-selection guard is untouched.
+        // Existence, not a parse: a corrupt active.json is a damaged spine and still fails closed below.
+        // A host that registered the Brain's plugin but staged nothing (its `plugin install` failed) is
+        // NOT "no host": that is a failed install and must keep failing.
+        if (!fs.existsSync(ACTIVE) && !newestStagedCC() && !HOST_PLUGIN_EVIDENCE.some((dir) => fs.existsSync(dir))) {
+          console.log(`no host has staged a payload and no spine is active — nothing to converge for ${expectedVersion}.`);
           return 0;
         }
         console.error(`✗ no staged host payload exactly matches expected version ${expectedVersion} — spine unchanged`);

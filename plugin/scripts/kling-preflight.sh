@@ -32,6 +32,7 @@
 set -uo pipefail
 
 INPUT=""
+_l=""   # set -u: a read that times out before any byte leaves _l unset ("unbound variable" on stderr)
 # BOUNDED READ (2026-07-27, ADR-055 F20): an unqualified `read` never returns on a stdin that is
 # opened and never closed — measured across the mesh, 18 of 37 registered commands sat until the
 # harness killed them. Real Claude Code writes and closes, so this costs no normal turn; that is

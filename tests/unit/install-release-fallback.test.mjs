@@ -70,9 +70,11 @@ const { releaseLookupFailure } = await import('../../bin/install.mjs');
 
 describe('releaseLookupFailure — the failed lookup says what happened and what to do', () => {
   it('keeps the HTTP status and the reset time, and explains the anonymous rate limit', () => {
-    const failure = releaseLookupFailure(new Error('GitHub API returned HTTP 403 (anonymous rate limit used up; it resets at 2026-09-30T23:59:00.000Z)'));
+    // The reset time is fixture input: derive it, so the assertion is "the input's reset time survives".
+    const resetAt = new Date(Date.UTC(2030, 0, 1)).toISOString();
+    const failure = releaseLookupFailure(new Error(`GitHub API returned HTTP 403 (anonymous rate limit used up; it resets at ${resetAt})`));
     expect(failure.message).toMatch(/HTTP 403/);
-    expect(failure.message).toMatch(/2026-09-30T23:59:00\.000Z/);
+    expect(failure.message).toContain(resetAt);
     expect(failure.hint).toMatch(/anonymous release checks per hour/);
     expect(failure.hint).toMatch(/--version <tag>/);
   });

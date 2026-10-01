@@ -75,8 +75,16 @@ const STANDALONE = [
     + 'producer exists, and Step 15 owns any prepareCorpusCandidate wiring. The three modules it drives (source-units, '
     + 'produce-questions, validate-labels) are each wired to a real caller; this driver is the human entry point.'],
   ['gate', 'retired automatic-hook helper and manual benchmark retained for explicit human use; no workflow or scheduler invokes this expensive command'],
-  ['dream-issue-gate', 'pure Dream Cycle disposition policy; invoked by the external issue adapter, never a GitHub writer'],
+  ['route-gold-rank', 'human-run measurement harness: routes question sets through kb/forge-ask-all.mjs planSourceRoute (no model) and reports where the gold store lands, with Wilson intervals; nothing to schedule'],
+  ['route-latency-warm', 'human-run measurement harness: paired warm latency of two or more search runtimes in one process, load-gated, with paired bootstrap intervals; minutes to hours of model time, never scheduled'],
+  ['route-index-memory', 'human-run measurement harness: retained memory and cold/warm time of the router metadata index (needs node --expose-gc); nothing to schedule'],
+  ['dream-issue-gate','pure Dream Cycle disposition policy; invoked by the external issue adapter, never a GitHub writer'],
   ['sync-census', 'explicit maintainer census writer; a destructive source-to-surface refresh is never scheduled'],
+  ['customer-state-matrix', 'human-run release-qualification harness (2026-09-30): applies ONE published release through the real '
+    + 'customer door to a COPY of a real install in one customer state at a time; it downloads releases and writes multi-GB '
+    + 'scratch trees, so it is never scheduled. Its install seam is corpus-canary.mjs\'s own (imported), and the states it '
+    + 'found are pinned as unit tests (tests/unit/customer-state-matrix.test.mjs and the per-defect tests).'],
+  ['hook-qualify', 'human-run hook qualification matrix (claude/codex/grok host contracts, repeat + concurrency, optional real-host Layer 2 that spends a real turn per host) run on an idle machine before a hook release; its core and host scanners are imported by it and by tests/unit/hook-qualify.test.mjs, and it is deliberately not scheduled or in CI because Layer 2 needs signed-in hosts'],
   ['grounding-turn-replay', 'human-run measurement harness for grounding-turn-gate.mjs (ADR-0030 #1 and shadow #2/#3): replays real transcripts read-only through the same pure functions the hooks call, sharing completion-claim-replay.mjs\'s turn walkers; nothing to schedule'],
   ['duplicate-gate-replay','human-run tuning harness for plugin/scripts/duplicate-gate.mjs: replays the gate over git history, read-only, when its thresholds are re-tuned; it imports the gate\'s own scoring functions, so there is no second copy to drift and nothing to schedule'],
   ['sync-commands', 'explicit maintainer alias synchronizer; run deliberately before release, never from a lifecycle hook'],
@@ -92,8 +100,9 @@ const STANDALONE = [
   ['lesson-ratify', 'the human control surface — a CLI is its entire purpose'],
   ['lesson-migrate-agentdb', 'one-time reconciliation between the two AgentDB lesson stores and the '
     + 'one plugin lesson store, run deliberately by a human/model, never scheduled. Completion is '
-    + 'proven and kept honest by tests/unit/lesson-migrate-agentdb.test.mjs (0 pending rows), a drift '
-    + 'canary rather than automated invocation — the same shape as lesson-seed/lesson-ratify above.'],
+    + 'checked by tests/diagnostics/lesson-migrate-agentdb.test.mjs (0 pending rows), a machine drift '
+    + 'canary over the developer\'s own AgentDB stores (outside the hermetic suite; run it by hand) rather '
+    + 'than automated invocation — the same shape as lesson-seed/lesson-ratify above.'],
   ['stamp-sweep', 'ADR-056 §2 — the ONE-TIME backfill half of the stamp rule. A human runs it once '
     + '(--apply) to reach the files nobody is editing; the ongoing half is the md-stamp PostToolUse '
     + 'hook, which IS wired. Deliberately not in a gate: it WRITES to documents, and a writer that '
@@ -352,6 +361,11 @@ const CALLER_ROOTS = [
 ];
 const CALLER_EXTS = new Set(['.mjs', '.js', '.sh', '.json', '.html', '.yml', '.yaml']);
 export const REQUIRED_OPERATIONAL_EXPORTS = [
+  // 4.4 update robustness (2026-09-30): bin/install.mjs syncHostsAfterUpdate replaces an owned stale
+  // Console and prunes dead Console receipts through these; host claude/codex calls go through runHostCli.
+  { rel: 'scripts/console-instances.mjs', symbol: 'replaceStaleConsoles' },
+  { rel: 'scripts/console-instances.mjs', symbol: 'readConsoleReceipts' },
+  { rel: 'scripts/host-cli.mjs', symbol: 'runHostCli' },
   { rel: 'scripts/corpus-reconcile.mjs', symbol: 'syncCorpusInputs' },
   { rel: 'scripts/corpus-aggregates.mjs', symbol: 'rebuildCorpusAggregates' },
   { rel: 'scripts/corpus-reconcile.mjs', symbol: 'acquireCorpusGeneration' },

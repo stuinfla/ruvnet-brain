@@ -145,7 +145,7 @@ export const heartbeat = ({ env, hookDir, stateDir, home, running, seedDispatche
   if (pref === 'yes' && exists(path.join(kbDir, 'forge-update.mjs'))) {
     const kbLog = path.join(stateDir, '.last-kb-check.log');
     if (/\bBEHIND\b/.test(read(kbLog))) {
-      emit('[RuvNet Brain — a newer knowledge bundle is available. It is signed (Ed25519) and the updater verifies that signature before extracting anything. We do NOT auto-apply it: applying replaces executable tool files, which is your call. To update: cd ~/.cache/ruvnet-brain/kb && node forge-update.mjs --apply]');
+      emit('[RuvNet Brain — a newer knowledge bundle is available. It is signed (Ed25519) and the updater verifies that signature before extracting anything. We do NOT auto-apply it: applying replaces executable tool files, which is your call. To update: npx ruvnet-brain@latest --update]');
     }
     // S2 (ONE CURRENCY VERDICT): --result-file records the SAME structured verdict --check/--apply
     // and bin/install.mjs already read (forge-update.mjs's currencyVerdict()), at the well-known path

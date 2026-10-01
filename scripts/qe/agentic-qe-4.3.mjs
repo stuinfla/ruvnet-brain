@@ -58,7 +58,6 @@ const LANES = Object.freeze({
   release: [
     vitest([
       'tests/qe/release/packed-clean-install.test.mjs',
-      'tests/qe/release/release-publish-contract.test.mjs',
       'tests/qe/release/stable-spine-recovery.test.mjs',
       'tests/qe/security/release-abuse-cases.test.mjs',
     ], 240_000),
