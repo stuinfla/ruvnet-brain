@@ -50,10 +50,17 @@ export function redFiles(report, quarantine, root = ROOT) {
  * assertion and stays RED. Matched on the failure text only, never the test title. */
 const VITEST_TIMEOUT = /\b(?:Test|Hook) timed out in \d+ ?ms\b/;
 const NUMERIC_BOUND = /\bexpected -?\d+(?:\.\d+)? to be (?:less|greater) than (?:or equal to )?-?\d+(?:\.\d+)?/;
-const DURATION_CUE = /\d ?ms\b|\bp9[59]\b|\btook\b|\belapsed\b|\bduration\b|\blatency\b|\bbudget\b|\bceiling\b|\btimeout\b/i;
+// A DURATION, stated: a number with a time unit, or a percentile. This alone binds a bound to time.
+const UNIT_CUE = /\d ?(?:ms|s|sec|seconds?)\b|\bp9[59]\b/i;
+// A duration WORD is weaker: "retries before timeout: expected 5 to be less than 3" is a count. A word
+// cue binds only a MEASURED value — a fractional left-hand number, which is what performance.now()-based
+// timings produce ("…the ceiling: expected 337.294918 to be less than 300"); integer counts stay RED.
+const WORD_CUE = /\b(?:took|elapsed|duration|latency|budget|ceiling|timeout)\b/i;
+const MEASURED = /\bexpected -?\d+\.\d+ to be (?:less|greater) than/;
 export const isTimingFailure = (message) => {
   const text = String(message || '').slice(0, 2000);
-  return VITEST_TIMEOUT.test(text) || (NUMERIC_BOUND.test(text) && DURATION_CUE.test(text));
+  return VITEST_TIMEOUT.test(text)
+    || (NUMERIC_BOUND.test(text) && (UNIT_CUE.test(text) || (WORD_CUE.test(text) && MEASURED.test(text))));
 };
 /** More flaky tests than this in one run fails the gate: load-sensitivity that wide is itself a defect. */
 export const MAX_FLAKY = 3;

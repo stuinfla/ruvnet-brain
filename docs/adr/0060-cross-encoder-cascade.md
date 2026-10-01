@@ -5,7 +5,7 @@ status: Accepted
 date: 2026-07-27
 updated: 2026-10-01
 updated_source: derived-from-git
-reviewed_digest: 478494ccfb4c
+reviewed_digest: d94fcb13523b
 authors: [Stuart Kerr, Claude Code]
 tags: [retrieval, latency, cross-encoder, cascade, measurement]
 supersedes: [ADR-059]
@@ -233,6 +233,7 @@ opt in with `KB_CE_CASCADE_K=64`; this ADR does not accept that value as the def
   number in this ADR is therefore a **real** measurement, never a replay.
 
 ## Currency log
+| 2026-10-01 | Currency review (4.4.1 apostrophes): decision unchanged. Before the router reads a possessive or contraction, a curly apostrophe (U+2019, U+2018, U+02BC) is folded to a straight one by `normalizeApostrophes` in `kb/card-lane.mjs`. This is used by the rUv provenance rule, card phrase normalisation, the source-card negation guard and version intent. Route-only on 488 questions: 0 route changes. Cascade stages, pool, thresholds and worker protocol are unchanged. reviewed_digest d94fcb13523b. | Reviewed `kb/forge-ask-all.mjs` against `evals/runs/2026-10-01-routing-4.4.1/README.md`. |
 | 2026-10-01 | Currency review (routing 4.4 review fixes): decision unchanged. Status Accepted. In `kb/forge-ask-all.mjs`, "rUv" means gist provenance only in an authorship shape (`ruvAuthorshipIntent`). The router metadata index is now compact (one token dictionary per KB directory build plus typed-array CSR per store) and bounded to 2 directories. Measured retained memory on 199 stores went from 162.5 MB to 43.9 MB (`scripts/route-index-memory.mjs`). Cold build is 2.2–2.5 s and a warm call 2–3 ms, both unchanged. `kb/identifier-lane.mjs` scan keys add a fingerprint of every passage sidecar and are LRU-bounded at 64 entries. There are 0 route changes on 488 measured questions. Cascade stages, `CE_CASCADE_K_DEFAULT`, pool, thresholds and worker protocol are unchanged. reviewed_digest 478494ccfb4c. | Reviewed `kb/forge-ask-all.mjs` against `evals/runs/2026-10-01-routing-4.4/README.md`; `kb/forge-rerank.mjs`, `kb/forge-mcp-all.mjs` and `plugin/mcp/server.mjs` did not change. |
 | 2026-10-01 | Currency review (routing 4.4): decision unchanged. Status Accepted. `kb/forge-ask-all.mjs` exports the route planner as `planSourceRoute`. In the metadata route, up to 3 stores tied at the best overlap are kept, ordered by entries-at-top. The router metadata index and `kb/identifier-lane.mjs` scans are cached per KB build (`kb/kb-build-identity.mjs`). A bare "rUv" no longer forces the gist store. Cascade stages, `CE_CASCADE_K_DEFAULT`, pool, thresholds and worker protocol are unchanged. Measured on corpus 4.3.37 (Wilson 95%): 206-need gold in top 3 went 42→83/206 [33.8–47.1]; the stores searched per need went 2.21→3.19; recall gate 162/182, held-out routed 48/80 and off-topic abstain 19/20 are unchanged. Paired warm latency (n=69, load<60): the extra stores cost p50 +3651 ms [+2023,+4679]; the index cache saves p50 -2413 ms [-3307,-1578]; net p50 +1238 ms [-364,+2053]. reviewed_digest 80cedf15b7f4. | Reviewed `kb/forge-ask-all.mjs` and `kb/identifier-lane.mjs` against `evals/runs/2026-10-01-routing-4.4/README.md`; `kb/forge-rerank.mjs`, `kb/forge-mcp-all.mjs` and `plugin/mcp/server.mjs` did not change. |
 

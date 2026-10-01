@@ -72,6 +72,8 @@ import {
 } from '../scripts/console-runtime-identity.mjs';
 import { shellDiff as pluginShellDiff } from '../plugin/scripts/host-shell-boundary.mjs';
 import { readConsoleReceipts, replaceStaleConsoles } from '../scripts/console-instances.mjs';
+import { cleanLegacyRufloDebris } from '../plugin/scripts/project-progression-store.mjs';
+import { resolveProjectStore } from '../plugin/scripts/project-store-resolver.mjs';
 import { runHostCli, waitForHostCli } from '../scripts/host-cli.mjs';
 import {
   writeInstalledRuntimeIdentity, recordCorpusTransportIdentity, isCorpusReleaseTag, rejectedReleasePath,
@@ -1297,6 +1299,30 @@ export function withLiveConsoleState(recorded, { receiptDir, alive, probe } = {}
   return { ...recorded, consoleRuntime: live };
 }
 
+/**
+ * 4.3.40's ruflo leftovers inside this project's `.swarm` (cleanLegacyRufloDebris). --update removes
+ * them; --doctor only reports (dryRun). Either way a REFUSED artifact (unexpected contents, a symlink) is
+ * printed, never dropped silently. Not a project (or no .swarm): nothing to say.
+ */
+export function reportLegacyRufloDebris({ projectDir = process.cwd(), dryRun = false } = {}) {
+  let storeDir;
+  try { storeDir = path.dirname(resolveProjectStore({ projectDir }).canonicalAgentDbPath); } catch { return null; }
+  if (!fs.existsSync(storeDir)) return null;
+  const result = cleanLegacyRufloDebris(storeDir, { dryRun });
+  for (const entry of result.removed) {
+    // Dry run applies the same checks (allowlist, mirror proof, in-use window); only the final
+    // unchanged-since-proof comparison can still keep it at --update time.
+    if (dryRun) info(`legacy ruflo debris from 4.3.40 in ${entry}: passes every check; --update removes it unless it is written to before then`);
+    else ok(`removed legacy ruflo debris from 4.3.40: ${entry}`);
+  }
+  for (const { path: entry, reason, kept } of result.refused) {
+    // A KEPT nested AgentDB holds rows (or may still be written): never suggest deleting it by hand.
+    if (kept) warn(`left 4.3.40's nested ruflo store in place — ${entry}: ${reason}. It is checked again on every update.`);
+    else warn(`left legacy ruflo debris in place — ${entry}: ${reason}. Inspect it; remove it yourself if it is ruflo's.`);
+  }
+  return result;
+}
+
 export function consoleRestartState(identity, {
   receiptDir = path.join(process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain'), 'console-instances'),
   alive, probe,
@@ -1463,17 +1489,22 @@ function wirePlugin({ expectedVersion = PACKAGE_VERSION, requireManaged = false 
   const installedHookRetirement = claudeInstalledHookRetirementStatus({ plugin: installed });
   if (installed.installed && versionSatisfies(installed.version, expectedVersion) && installedHookRetirement.ok) {
     ok(`plugin installed at user scope (global, alongside Ruflo / RuVector) — exact version ${installed.version}`);
-    if (shellBoundary.restartRequired) {
-      warn(`boot-level plugin declarations changed; restart Claude Code once to load them (${shellBoundary.paths.join(', ') || shellBoundary.reason}).`);
+    if (shellBoundary.restartRequired && shellBoundary.known) {
+      info(`  boot-level plugin declarations changed (${shellBoundary.paths.join(', ')}): new Claude Code sessions load them; already-open windows keep the old hook definitions until they are reopened.`);
+    } else if (shellBoundary.restartRequired) {
+      warn(`could not verify the plugin's boot-level declarations (${shellBoundary.reason}); restart Claude Code once to be sure they are loaded.`);
     } else if (before.installed && before.version !== installed.version) {
       info('  body-only update: the Stable Spine is live on the next hook/MCP call; no restart is required.');
     }
-    info(`  commands available${shellBoundary.restartRequired ? ' after a restart' : ' immediately'}: ${c.bold('/rvbc')}, ${c.bold('/ruvnet-brain:configure')}`);
+    info(`  commands available${shellBoundary.restartRequired ? ' in new sessions' : ' immediately'}: ${c.bold('/rvbc')}, ${c.bold('/ruvnet-brain:configure')}`);
     return {
       host: true, wired: true, version: installed.version, manualMarketplace, manualInstall,
       shellChanged: shellBoundary.changed, shellChangedPaths: shellBoundary.paths,
       restartRequired: shellBoundary.restartRequired,
-      ...(shellBoundary.restartRequired ? { sessionSafety: 'restart-required', sessionSafetyReason: shellBoundary.reason } : {}),
+      // 'open-sessions': the new declarations are installed and PROVEN changed — only sessions already
+      // open booted the old ones. 'unproven': the boot surface could not be compared at all.
+      ...(shellBoundary.restartRequired ? { sessionSafety: 'restart-required', sessionSafetyReason: shellBoundary.reason,
+        restartScope: shellBoundary.known ? 'open-sessions' : 'unproven' } : {}),
     };
   }
 
@@ -2002,7 +2033,7 @@ export function wireCodexPlugin({
   if (announce) {
     ok(`Codex Brain plugin installed and enabled (${after.version || 'version unknown'}).`);
     if (shellBoundary.restartRequired) {
-      warn(`boot-level plugin declarations changed; restart Codex once to load them (${shellBoundary.paths.join(', ') || shellBoundary.reason}).`);
+      warn(`boot-level plugin declarations changed; restart Codex, then review them in /hooks (${shellBoundary.paths.join(', ') || shellBoundary.reason}).`);
     } else if (before.installed && before.version !== after.version) {
       info('  body-only update: the Stable Spine is live on the next hook/MCP call; no restart is required.');
     }
@@ -2017,6 +2048,10 @@ export function wireCodexPlugin({
     ...(shellBoundary.restartRequired ? {
       sessionSafety: 'restart-required',
       sessionSafetyReason: shellBoundary.reason,
+      // Never 'open-sessions' for Codex: changed hook definitions show as PENDING until reviewed in
+      // /hooks (doctor fails closed on pending trust; the SessionStart notice says to trust them), and no
+      // measurement shows a fresh Codex session running them without that step. Unproven = restart.
+      restartScope: 'unproven',
     } : {}),
   };
 }
@@ -2781,7 +2816,10 @@ async function doctor() {
       const recorded = withLiveConsoleState(JSON.parse(fs.readFileSync(convergencePath, 'utf8')),
         { receiptDir: path.join(path.dirname(convergencePath), 'console-instances') });
       hostConvergence = classifyHostConvergence(recorded);
-      if (hostConvergence.healthy) ok(`host convergence receipt: ${hostConvergence.state}`);
+      if (hostConvergence.healthy) {
+        ok(`host convergence receipt: ${hostConvergence.state}`);
+        if (hostConvergence.notice) info(hostConvergence.notice);
+      }
       else {
         warn(`host convergence incomplete: ${hostConvergence.state}`);
         info(`Retry the same generation: ${c.bold('npx ruvnet-brain --update')}${hostConvergence.action ? `; ${hostConvergence.action}` : ''}`);
@@ -2791,6 +2829,7 @@ async function doctor() {
       warn(`host convergence receipt is invalid: ${error.message}`);
     }
   }
+  try { reportLegacyRufloDebris({ dryRun: true }); } catch (error) { warn(`legacy ruflo debris check failed: ${error.message}`); }
   const brainHome = process.env.RUVNET_BRAIN_HOME || path.dirname(cacheDir);
   const nightlyHealth = schedulerStatus({ platform: process.platform, env: process.env,
     brainHome, kbDir: cacheDir });
@@ -3464,6 +3503,7 @@ export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
     codexReceipt.restartRequired = true;
     codexReceipt.sessionSafety = results.codex.sessionSafety || null;
     codexReceipt.sessionSafetyReason = results.codex.sessionSafetyReason || null;
+    codexReceipt.restartScope = results.codex.restartScope || 'unproven';
   }
   const claudeReceipt = {
     state: results.claude.host ? 'ready' : 'absent',
@@ -3473,6 +3513,7 @@ export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
     claudeReceipt.restartRequired = true;
     claudeReceipt.sessionSafety = results.claude.sessionSafety || null;
     claudeReceipt.sessionSafetyReason = results.claude.sessionSafetyReason || null;
+    claudeReceipt.restartScope = results.claude.restartScope || 'unproven';
   }
   if (okApplied) {
     // ISSUE #153 — a running host may freeze an old plugin root. Reclaim only generations whose
@@ -3563,9 +3604,16 @@ export function classifyHostConvergence(receipt, expectedVersion = PACKAGE_VERSI
     return { healthy: false, state: 'version-mismatch', action: `required version ${expectedVersion}` };
   }
   const hostStates = Object.values(receipt.hosts || {});
-  const badHost = hostStates.find((host) => !['ready', 'disabled', 'absent'].includes(host?.state)
+  // A host that is ready at the expected version and whose ONLY gap is PROVEN changed boot-level
+  // declarations is converged: new sessions load the new hooks; only windows already open booted the
+  // old ones (owner's Mac, 4.3.40 -> 4.4.0: a fresh `claude -p` loaded 4.4.0 and ran its hooks). That is
+  // reported, not failed. An UNPROVEN boot surface (it could not be compared) still requires a restart.
+  const openSessionsOnly = (host) => host?.state === 'ready' && versionSatisfies(host.version, expectedVersion)
+    && host.restartRequired === true && host.restartScope === 'open-sessions';
+  const openSessions = Object.entries(receipt.hosts || {}).filter(([, host]) => openSessionsOnly(host)).map(([name]) => name);
+  const badHost = hostStates.find((host) => !openSessionsOnly(host) && (!['ready', 'disabled', 'absent'].includes(host?.state)
     || (host.state === 'ready' && !versionSatisfies(host.version, expectedVersion))
-    || (host.state === 'ready' && host.restartRequired === true));
+    || (host.state === 'ready' && host.restartRequired === true)));
   if (badHost?.restartRequired === true) {
     return { healthy: false, state: 'host-restart-required', action: badHost.sessionSafetyReason || 'restart the host, then re-run --doctor' };
   }
@@ -3575,7 +3623,15 @@ export function classifyHostConvergence(receipt, expectedVersion = PACKAGE_VERSI
       ? `the installer could not replace the running Console (${receipt.consoleRuntime.replacementFailures.join('; ')}); ` : '';
     return { healthy: false, state: receipt.consoleRuntime?.state || 'console-unproven', action: `${why}restart Console, then re-run --doctor` };
   }
+  if (openSessions.length) return { healthy: true, state: 'channels-converged', openSessions, notice: openSessionsNotice(openSessions, receipt.desiredVersion) };
   return { healthy: true, state: 'channels-converged' };
+}
+
+const HOST_LABELS = { claude: 'Claude Code', codex: 'Codex' };
+/** The one accurate line for converged hosts whose already-open windows booted the old declarations. */
+export function openSessionsNotice(hosts, version) {
+  const names = hosts.map((host) => HOST_LABELS[host] || host).join('/');
+  return `new ${names} sessions use ${version}; already-open windows keep the old hook definitions until they are reopened`;
 }
 
 async function runUpdate() {
@@ -3590,6 +3646,7 @@ async function runUpdate() {
       process.exitCode = 1;
       return;
     }
+    if (convergence.convergence?.notice) info(convergence.convergence.notice);
     try {
       const managed = applyManagedCatalogUpdate({
         routerDir: path.join(os.homedir(), '.claude', 'model-router'),
@@ -3826,9 +3883,11 @@ async function runUpdate() {
     if (!convergence.ok) {
       warn(`host synchronization is incomplete — runtime stays on the prior verified generation${convergence.error ? ` (${convergence.error})` : ''}`);
       updateStatus = 1;
-    }
+    } else if (convergence.convergence?.notice) info(convergence.convergence.notice);
+    try { reportLegacyRufloDebris(); } catch (error) { warn(`legacy ruflo debris cleanup failed: ${error.message}`); }
     recordRefreshPhase(refreshReceipt, 'host-convergence', convergence.ok && convergence.convergence?.healthy === true ? 'PASS' : 'FAIL', {
       state: convergence.convergence?.state || null, error: convergence.error || null,
+      ...(convergence.convergence?.openSessions ? { openSessions: convergence.convergence.openSessions } : {}),
       execution: { kind: 'executed', runId: refreshReceipt.runId },
     });
   }

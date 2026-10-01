@@ -22,6 +22,9 @@ function mkdirWith(names) {
   for (const n of names) fs.writeFileSync(path.join(d, n), 'x');
   return d;
 }
+// Phones and word processors type U+2019 (or U+2018 / U+02BC) for the apostrophe in "rUv's".
+// Every rUv routing case runs in each form; questions without an apostrophe run once.
+const withCurlyApostrophes = (qs) => [...new Set(qs.flatMap((q) => [q, ...['\u2019', '\u2018', '\u02BC'].map((c) => q.replaceAll("'", c))]))];
 const hit = (over = {}) => ({ path: 'p/doc.md', title: 'T', fullText: 'body', bestDistance: 0.1, ...over });
 
 describe('discoverRepos — which repos live in a bundle dir', () => {
@@ -268,7 +271,7 @@ describe('searchAll — cross-repo pool + rerank + name-boost', () => {
     expect(out.routing?.reason || '').toMatch(/provenance intent selects the public rUv gist store/);
   });
 
-  it.each([
+  it.each(withCurlyApostrophes([
     "How do I give my coding agents long-term memory with rUv's tools?",
     'Which rUv library runs vector search inside the browser?',
     "What is rUv's agent orchestration framework and how do I install it?",
@@ -280,7 +283,7 @@ describe('searchAll — cross-repo pool + rerank + name-boost', () => {
     'Which rUv package writes vectors to disk?',
     'What does rUv ship for writing tests?',
     "How do I post a task to rUv's agent queue?",
-  ])('does NOT send a product question that merely names rUv to the gist store: %s', async (query) => {
+  ]))('does NOT send a product question that merely names rUv to the gist store: %s', async (query) => {
     // THE BUG THIS CATCHES (2026-10-01). A bare "rUv" was read as provenance intent, so a newcomer's
     // product question was routed to ruv-gists ALONE (5 of 6 probes on the 4.3.37 corpus).
     const d = mkdirWith(['ruv-fann.rvf', 'ruv-gists.rvf']);
@@ -289,7 +292,7 @@ describe('searchAll — cross-repo pool + rerank + name-boost', () => {
     expect(out.routing?.reason || '').not.toMatch(/provenance intent selects the public rUv gist store/);
   });
 
-  it.each([
+  it.each(withCurlyApostrophes([
     // Each of these reaches the gist store ONLY through the authorship rule: none contains another
     // gist trigger (gist, write-up, announcement, fable.md, first to market, published ...).
     'What did rUv write about agent swarms?',
@@ -300,7 +303,7 @@ describe('searchAll — cross-repo pool + rerank + name-boost', () => {
     "How can I train AI models for free using Google AI Studio, per rUv's tutorial?",
     "What is rUv's TikTok-like recommender algorithm specification?",
     "Where are rUv's posts about the self-learning flywheel?",
-  ])('control: rUv in an authorship shape still routes to the gist store: %s', async (query) => {
+  ]))('control: rUv in an authorship shape still routes to the gist store: %s', async (query) => {
     const d = mkdirWith(['ruv-fann.rvf', 'ruv-gists.rvf']);
     vi.mocked(searchKb).mockImplementation(async ({ name }) => [hit({ repo: name })]);
     const out = await searchAll({ dir: d, query });

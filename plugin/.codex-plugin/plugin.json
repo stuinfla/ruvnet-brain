@@ -1,6 +1,6 @@
 {
   "name": "ruvnet-brain",
-  "version": "4.4.0",
+  "version": "4.4.1",
   "description": "Source-grounded RuvNet knowledge, lifecycle enforcement, and learning for Codex.",
   "author": {
     "name": "Stuart Kerr"

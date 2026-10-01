@@ -180,6 +180,145 @@ export function rufloCwdFor(storePath, { root = rufloScratchRoot() } = {}) {
   return ensurePrivateDir(path.join(root, projectKey));
 }
 
+/**
+ * 4.3.40 ran ruflo with cwd `<project>/.swarm`, so upgraded projects still hold ruflo's cwd artifacts
+ * INSIDE the store directory — including `.swarm/.swarm/hnsw.metadata.json`, a copy of snapshot content.
+ * Removes exactly those, and only when every path in them is one ruflo is known to write there; anything
+ * unexpected (or any symlink) leaves that artifact untouched and is REPORTED. The store itself
+ * (memory.db, -wal/-shm, schema.sql), the outbox and queue files are never candidates.
+ *
+ * The allowlist is measured, not guessed: real ruflo 3.49.0 run with cwd=<dir> and --path elsewhere
+ * writes .claude/{memory.db,.proven-config-version,proven-config.json} (init/store),
+ * .claude-flow/harness-active-policy.json and .swarm/{hnsw.index,hnsw.metadata.json} and ruvector.db
+ * (store), .claude-flow/policy/state.json (retrieve). The owner's real 4.3.40 projects also hold
+ * .swarm/.swarm/agentdb-memory.db(-wal,-shm): ruflo's AgentDB bridge opens <cwd>/.swarm/agentdb-memory.db
+ * (ruflo/v3/@claude-flow/cli/src/memory/memory-bridge.ts getAgentDbPath), and the native bindings drop
+ * ruvector.db into whatever cwd they run in (ruflo/scripts/smoke-memory-no-stray-db.mjs, ADR-125 Phase 7).
+ */
+const SQLITE = (name) => [name, `${name}-wal`, `${name}-shm`, `${name}-journal`];
+const LEGACY_CWD_ARTIFACTS = Object.freeze({
+  '.swarm': new Set(['hnsw.index', 'hnsw.metadata.json', ...SQLITE('agentdb-memory.db')]),
+  '.claude': new Set(['.proven-config-version', 'proven-config.json', ...SQLITE('memory.db')]),
+  '.claude-flow': new Set(['harness-active-policy.json', 'policy/', 'policy/state.json']),
+  'ruvector.db': null, // a regular file
+});
+
+/** Every path under `dir`, relative, directories with a trailing slash; symlinks reported, never followed. */
+function relativeEntries(dir) {
+  const out = [];
+  const walk = (current, prefix) => {
+    for (const name of fs.readdirSync(current)) {
+      const full = path.join(current, name);
+      const stat = fs.lstatSync(full);
+      const rel = prefix + name;
+      if (stat.isSymbolicLink()) out.push({ rel, link: true });
+      else if (stat.isDirectory()) { out.push({ rel: `${rel}/` }); walk(full, `${rel}/`); }
+      else out.push({ rel, file: stat.isFile() });
+    }
+  };
+  walk(dir, '');
+  return out;
+}
+
+/**
+ * With `dryRun`, reports what WOULD be removed and touches nothing (--doctor). Returns
+ * { removed: [paths], refused: [{ path, reason }] }; a refusal must be shown to the user, never dropped.
+ */
+const IN_USE_MS = 10 * 60_000;
+// The files that carry DATA: the database, its WAL and its rollback journal. Never -shm: it is the WAL
+// index, and every reader — including this proof's own read-only open — rewrites it. Counting it made
+// every real 4.3.40 store look "changed while it was being checked" (and "in use" on the next run).
+const dataFiles = (dbPath) => {
+  const base = path.basename(dbPath);
+  return [base, `${base}-wal`, `${base}-journal`];
+};
+const sqliteFingerprint = (dbPath) => dataFiles(dbPath).map((name) => {
+  try { const st = fs.statSync(path.join(path.dirname(dbPath), name)); return `${name}:${st.size}:${st.mtimeMs}`; }
+  catch { return `${name}:absent`; }
+});
+const sameFiles = (a, b) => a.join('|') === b.join('|');
+
+/**
+ * Is every active (namespace, key, content) row of a stray nested AgentDB present, byte-identical, in
+ * the canonical store? Read-only through the progression reader (node:sqlite, readOnly — no write, no
+ * checkpoint). Anything it cannot prove — recently written (in use), unreadable, a row missing or
+ * different — keeps the file and says why.
+ */
+export function proveMirrored(nestedDb, canonicalDb, { now = Date.now(), maxRows = 100_000 } = {}) {
+  const fingerprint = sqliteFingerprint(nestedDb);
+  const newest = Math.max(...dataFiles(nestedDb).map((name) => {
+    try { return fs.statSync(path.join(path.dirname(nestedDb), name)).mtimeMs; } catch { return 0; }
+  }));
+  if (now - newest < IN_USE_MS) return { ok: false, reason: `kept: agentdb-memory.db was written ${Math.round((now - newest) / 1000)}s ago (in use)` };
+  const nested = withProgressionReader(nestedDb, (reader) => reader.allRows({ maxRows }));
+  if (!nested.ok) return { ok: false, reason: `kept: agentdb-memory.db could not be read to prove it is mirrored (${nested.reason})` };
+  const canonical = withProgressionReader(canonicalDb, (reader) => reader.allRows({ maxRows }));
+  if (!canonical.ok) return { ok: false, reason: `kept: memory.db could not be read to prove agentdb-memory.db is mirrored (${canonical.reason})` };
+  const have = new Map(canonical.value.map((row) => [`${row.namespace}\u0000${row.key}`, row.content]));
+  const missing = nested.value.filter((row) => row.content === null || have.get(`${row.namespace}\u0000${row.key}`) !== row.content);
+  if (missing.length) return { ok: false, reason: `kept: ${missing.length} of ${nested.value.length} rows not in memory.db`, missing: missing.length };
+  return { ok: true, rows: nested.value.length, fingerprint };
+}
+
+export function cleanLegacyRufloDebris(storeDir, { dryRun = false, now = Date.now() } = {}) {
+  const removed = [];
+  const refused = [];
+  for (const [name, allowed] of Object.entries(LEGACY_CWD_ARTIFACTS)) {
+    const entry = path.join(storeDir, name);
+    let stat;
+    try { stat = fs.lstatSync(entry); } catch { continue; } // absent: nothing to do
+    if (stat.isSymbolicLink()) { refused.push({ path: entry, reason: 'symbolic link' }); continue; }
+    if (allowed === null) {
+      if (!stat.isFile()) { refused.push({ path: entry, reason: 'not a regular file' }); continue; }
+    } else {
+      if (!stat.isDirectory()) { refused.push({ path: entry, reason: 'not a directory' }); continue; }
+      const unknown = relativeEntries(entry).filter((item) => item.link || item.file === false || !allowed.has(item.rel))
+        .map((item) => (item.link ? `${item.rel} (symbolic link)` : item.rel));
+      if (unknown.length) { refused.push({ path: entry, reason: `unexpected entries: ${unknown.join(', ')}` }); continue; }
+    }
+    // A nested AgentDB is a real store (owner's projects: 1-41 rows, still written by open 4.3.40
+    // sessions). It goes only when every row is PROVEN present, identically, in the canonical memory.db.
+    const nestedDb = path.join(entry, 'agentdb-memory.db');
+    const mirror = name === '.swarm' && fs.existsSync(nestedDb) ? proveMirrored(nestedDb, path.join(storeDir, 'memory.db'), { now }) : null;
+    if (mirror && !mirror.ok) { refused.push({ path: entry, reason: mirror.reason, kept: true }); continue; }
+    if (!dryRun) {
+      // The proof is only valid for the bytes it read: anything written since means the file is in use.
+      if (mirror && !sameFiles(mirror.fingerprint, sqliteFingerprint(nestedDb))) {
+        refused.push({ path: entry, reason: 'kept: agentdb-memory.db changed while it was being checked (in use)', kept: true });
+        continue;
+      }
+      fs.rmSync(entry, { recursive: true, force: true });
+    }
+    removed.push(entry);
+  }
+  return { removed, refused };
+}
+
+// What ruflo leaves in a cwd (measured, ruflo 3.49.0): `.swarm/` (hnsw.index, hnsw.metadata.json — a
+// copy of every stored value), `.claude/`, `.claude-flow/`, `ruvector.db`. None of it is read back by the
+// product: every call carries --path, and the store of record is that file.
+const RUFLO_CWD_ARTIFACTS = Object.freeze(['.swarm', '.claude', '.claude-flow', 'ruvector.db']);
+const STALE_RUN_MS = 3_600_000;
+
+/**
+ * One ruflo invocation's working directory: a fresh private `run-*` directory inside the project's
+ * scratch dir, removed again by the caller after the call. ruflo copies every snapshot it touches into
+ * `<cwd>/.swarm/hnsw.metadata.json`; with one cwd per call that copy never accumulates (4.4.0 kept one
+ * per project that grew without bound and outlived the project). Also clears what 4.4.0 left directly
+ * in the project scratch dir and any `run-*` older than an hour (a call killed before its cleanup).
+ */
+export function rufloRunDir(storePath, { root = rufloScratchRoot(), now = Date.now() } = {}) {
+  const projectScratch = rufloCwdFor(storePath, { root });
+  for (const name of fs.readdirSync(projectScratch)) {
+    const entry = path.join(projectScratch, name);
+    let stat;
+    try { stat = fs.lstatSync(entry); } catch { continue; }
+    const stale = name.startsWith('run-') && stat.isDirectory() && now - stat.mtimeMs > STALE_RUN_MS;
+    if (RUFLO_CWD_ARTIFACTS.includes(name) || stale) fs.rmSync(entry, { recursive: true, force: true });
+  }
+  return fs.mkdtempSync(path.join(projectScratch, 'run-'));
+}
+
 export class ProjectProgressionStore {
   constructor({
     projectDir,
@@ -194,6 +333,9 @@ export class ProjectProgressionStore {
   } = {}) {
     if (!rufloBinary) throw new Error(RUFLO_MISSING);
     this.resolution = resolveProjectStore({ projectDir, requestedStorePath });
+    // Best effort: a cleanup that cannot run must never stop a capture or a restore.
+    try { this.legacyDebris = cleanLegacyRufloDebris(path.dirname(this.resolution.canonicalAgentDbPath)); }
+    catch (error) { this.legacyDebris = { removed: [], refused: [{ path: null, reason: error.message }] }; }
     this.rufloBinary = rufloBinary;
     this.runner = runner;
     this.clock = clock;
@@ -212,12 +354,17 @@ export class ProjectProgressionStore {
   }
 
   run(args) {
-    return this.runner(this.rufloBinary, args, {
-      cwd: rufloCwdFor(this.resolution.canonicalAgentDbPath),
-      encoding: 'utf8',
-      timeout: 120_000,
-      env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' },
-    });
+    const cwd = rufloRunDir(this.resolution.canonicalAgentDbPath);
+    try {
+      return this.runner(this.rufloBinary, args, {
+        cwd,
+        encoding: 'utf8',
+        timeout: 120_000,
+        env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' },
+      });
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true });
+    }
   }
 
   validateSnapshot(snapshot) {

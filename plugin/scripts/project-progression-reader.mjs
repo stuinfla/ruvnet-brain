@@ -207,11 +207,13 @@ export function openProgressionReader(dbPath) {
   };
   let listStatement;
   let readStatement;
+  let allStatement;
   try {
     // Prepared eagerly so an unexpected schema (or a WAL image this process cannot read) is
     // reported as UNAVAILABLE now, before the caller has committed to the fast path.
     listStatement = prepare(`SELECT key FROM memory_entries WHERE ${ACTIVE_ROW_SQL} AND namespace = ? ORDER BY key`);
     readStatement = prepare(`SELECT content FROM memory_entries WHERE ${ACTIVE_ROW_SQL} AND namespace = ? AND key = ?`);
+    allStatement = prepare(`SELECT namespace, key, content FROM memory_entries WHERE ${ACTIVE_ROW_SQL} ORDER BY namespace, key`);
   } catch (error) {
     try { database.close(); } catch { /* the open failure is the news */ }
     throw error;
@@ -250,6 +252,14 @@ export function openProgressionReader(dbPath) {
       // A non-text column is not this schema; fall back rather than guess at an encoding.
       if (typeof content !== 'string') throw new ProgressionReaderUnavailable('progression row content is not text');
       return content;
+    },
+
+    /** Every active (namespace, key, content) row — bounded, never truncated (past the bound is an error). */
+    allRows({ maxRows = 100_000 } = {}) {
+      const rows = query(allStatement, []);
+      if (rows.length > maxRows) throw new ProgressionReaderUnavailable(`store holds more than ${maxRows} active rows`);
+      return rows.map((row) => ({ namespace: String(row.namespace ?? ''), key: String(row.key ?? ''),
+        content: typeof row.content === 'string' ? row.content : null }));
     },
 
     close() {
