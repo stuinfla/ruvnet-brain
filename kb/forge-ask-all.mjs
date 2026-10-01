@@ -1531,14 +1531,35 @@ function codeExampleWitnesses({
   return null;
 }
 
-function corpusAgeFor(dir, repos) {
+// A `git clone`/`npm install`/Docker COPY resets every tracked file's mtime to "now" — the same
+// checkout-freshness-vs-artifact-freshness gap ADR-069 named for brain-stamp.mjs's builtFromSha
+// (fixed by resolveBuiltFromSha, scripts/brain-stamp-resolve.mjs) and corpus-freshness.mjs's own
+// corpusSnapshotDate already works around. Prefer each store's recorded build time from
+// RVF-GENERATIONS.json; fall back to mtime only for a store with no generation record.
+function readGenerations(dir) {
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(dir, 'RVF-GENERATIONS.json'), 'utf8'));
+    return raw?.stores || {};
+  } catch {
+    return {};
+  }
+}
+
+function builtUtcMs(generations, name) {
+  const key = Object.keys(generations).find((k) => k.toLowerCase() === String(name).toLowerCase());
+  const builtUtc = key ? generations[key]?.builtUtc : null;
+  return builtUtc && !Number.isNaN(Date.parse(builtUtc)) ? Date.parse(builtUtc) : null;
+}
+
+export function corpusAgeFor(dir, repos) {
+  const generations = readGenerations(dir);
   let oldest = null;
   let newest = null;
   for (const name of repos) {
     for (const candidate of [`${name}.big.rvf`, `${name}.rvf`]) {
       const storePath = path.join(dir, candidate);
       if (!fs.existsSync(storePath)) continue;
-      const mtimeMs = fs.statSync(storePath).mtimeMs;
+      const mtimeMs = builtUtcMs(generations, name) ?? fs.statSync(storePath).mtimeMs;
       if (oldest === null || mtimeMs < oldest.mtimeMs) oldest = { mtimeMs, name };
       if (newest === null || mtimeMs > newest.mtimeMs) newest = { mtimeMs, name };
       break;

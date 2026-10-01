@@ -13,7 +13,7 @@ import path from 'node:path';
 vi.mock('../../kb/forge-ask.mjs', () => ({ searchKb: vi.fn() }));
 vi.mock('../../kb/forge-rerank.mjs', () => ({ rerankPairs: vi.fn() }));
 
-import { deployedFamilyReposFromQuery, discoverRepos, searchAll } from '../../kb/forge-ask-all.mjs';
+import { corpusAgeFor, deployedFamilyReposFromQuery, discoverRepos, searchAll } from '../../kb/forge-ask-all.mjs';
 import { searchKb } from '../../kb/forge-ask.mjs';
 import { rerankPairs } from '../../kb/forge-rerank.mjs';
 
@@ -23,6 +23,48 @@ function mkdirWith(names) {
   return d;
 }
 const hit = (over = {}) => ({ path: 'p/doc.md', title: 'T', fullText: 'body', bestDistance: 0.1, ...over });
+
+describe('corpusAgeFor — the store\'s recorded build time, not the checkout\'s mtime', () => {
+  function bundleWithStore({ name = 'agentdb', mtimeDaysAgo = 0, builtUtc = null } = {}) {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'age-'));
+    fs.writeFileSync(path.join(d, `${name}.rvf`), 'x');
+    const mtime = new Date(Date.now() - mtimeDaysAgo * 86_400_000);
+    fs.utimesSync(path.join(d, `${name}.rvf`), mtime, mtime);
+    if (builtUtc) {
+      fs.writeFileSync(path.join(d, 'RVF-GENERATIONS.json'), JSON.stringify({ stores: { [name]: { builtUtc } } }));
+    }
+    return d;
+  }
+
+  it('prefers RVF-GENERATIONS.json builtUtc over a reset checkout mtime', () => {
+    // Simulates the exact failure this fixes: a fresh clone/npm-install resets the file's mtime to
+    // "now" (0 days old) even though the store was actually built weeks ago.
+    const builtUtc = new Date(Date.now() - 42 * 86_400_000).toISOString();
+    const d = bundleWithStore({ name: 'agentdb', mtimeDaysAgo: 0, builtUtc });
+    const age = corpusAgeFor(d, ['agentdb']);
+    expect(age.oldestDays).toBeCloseTo(42, 0);
+    expect(age.newestDays).toBeCloseTo(42, 0);
+  });
+
+  it('falls back to mtime when the store has no generation record', () => {
+    const d = bundleWithStore({ name: 'agentdb', mtimeDaysAgo: 9, builtUtc: null });
+    const age = corpusAgeFor(d, ['agentdb']);
+    expect(age.oldestDays).toBeCloseTo(9, 0);
+  });
+
+  it('matches the generation entry case-insensitively, same convention as resolveBuiltFromSha', () => {
+    const builtUtc = new Date(Date.now() - 15 * 86_400_000).toISOString();
+    const d = bundleWithStore({ name: 'AgentDB', mtimeDaysAgo: 0, builtUtc: null });
+    fs.writeFileSync(path.join(d, 'RVF-GENERATIONS.json'), JSON.stringify({ stores: { agentdb: { builtUtc } } }));
+    const age = corpusAgeFor(d, ['AgentDB']);
+    expect(age.oldestDays).toBeCloseTo(15, 0);
+  });
+
+  it('returns null when no named repo has a store on disk', () => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'age-empty-'));
+    expect(corpusAgeFor(d, ['missing'])).toBeNull();
+  });
+});
 
 describe('discoverRepos — which repos live in a bundle dir', () => {
   it('lists sorted, unique repo base names from *.rvf stores', () => {
