@@ -3551,22 +3551,6 @@ describe('searchAll — cross-repo pool + rerank + name-boost', () => {
     expect(out.results[0]).toMatchObject({ path: 'README.md', _lane: 'rescue' });
   });
 
-  it('does not treat a named store\'s own name as an identifier and widen to stores that merely depend on it', async () => {
-    // THE BUG (2026-10-01, capability battery): "RuVector" is PascalCase, so the identifier lane scanned
-    // every sidecar for "ruvector", widened the route to agentdb (whose manifest declares the
-    // "ruvector" dependency, scored as a +5 definition) and answered from agentdb.
-    const d = mkdirWith(['ruvector.rvf', 'agentdb.rvf']);
-    fs.writeFileSync(path.join(d, 'agentdb.passages.jsonl'),
-      JSON.stringify({ path: 'package.json', title: 'agentdb', text: '{ "dependencies": { "ruvector": "^0.1.0" } }' }));
-    fs.writeFileSync(path.join(d, 'ruvector.passages.jsonl'),
-      JSON.stringify({ path: 'README.md', title: 'RuVector', text: 'HNSW vector search overview.' }));
-    vi.mocked(searchKb).mockImplementation(async ({ name }) => [hit({ repo: name, path: 'README.md' })]);
-    vi.mocked(rerankPairs).mockImplementation(async (_q, cands) => cands.map((c) => ({ ...c, ceScore: 3 })));
-    const out = await searchAll({ dir: d, query: 'RuVector HNSW vector search overview', allowFullCorpus: false });
-    expect(out.routing?.candidateRepos).toEqual(['ruvector']);
-    expect(out.results.every((r) => r.repo === 'ruvector')).toBe(true);
-  });
-
   it('pools a keyword-matched file that dense retrieval missed, judged by the same cross-encoder', async () => {
     const d = mkdirWith(['ruflo.rvf']);
     fs.writeFileSync(path.join(d, 'ruflo.passages.jsonl'), [

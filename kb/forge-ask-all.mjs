@@ -3179,25 +3179,7 @@ export function ruvAuthorshipIntent(query) {
 // The source-route plan for an unscoped question: which stores the bounded search opens, and why.
 // Pure routing (cards, deployed inventory, source metadata, intent owners, identifier widening); it
 // loads no model and retrieves nothing, so a route-only measurement calls exactly what search runs.
-// A REPOSITORY NAME IS NOT AN IDENTIFIER. "RuVector" is PascalCase, so the identifier lane read it as
-// a rare symbol, scanned every sidecar for "ruvector" and WIDENED the route to the stores that merely
-// depend on it (agentdb, agentic-flow). Their manifests declare `"ruvector": "^x"`, which the lane
-// counts as a definition (+5), so "RuVector HNSW vector search overview" was answered from agentdb
-// at 9.336 (plugin/test/capability-selection-questions.json; found 2026-10-01 on the 4.4.0 corpus).
-// The name routers already handle a named store; the identifier lane is for rare tokens. Tokens
-// that are the key or a registered alias of a deployed store are therefore dropped from both the
-// widening scan and the identifier boost.
-export function queryIdentifiers(dir, query) {
-  const names = new Set(discoverRepos(dir).map((r) => r.toLowerCase()));
-  for (const [canonical, aliases] of Object.entries(loadRepoAliases(dir) || {})) {
-    names.add(String(canonical).toLowerCase());
-    for (const a of aliases || []) names.add(String(a).toLowerCase());
-  }
-  const keep = (t) => !names.has(String(t).toLowerCase());
-  return { identifierTokens: exactIdentifiers(query).filter(keep), identifierScanTokens: scannableIdentifiers(query).filter(keep) };
-}
-
-export function planSourceRoute({ dir, query, discovered, identifierScanTokens = queryIdentifiers(dir, query).identifierScanTokens, deadline = null }) {
+export function planSourceRoute({ dir, query, discovered, identifierScanTokens = scannableIdentifiers(query), deadline = null }) {
   const inventoryDirective = inventoryReposFromQuery(query, dir, discovered);
   let planned = inventoryDirective && (
     inventoryDirective.familyScope
@@ -3429,7 +3411,8 @@ async function searchAllPrimary({
   const fullCorpusLane = (!repos || !repos.length) && !_routeStage;
   // Rare, exact tokens the question names (a dotted filename, a camelCase symbol, an issue ref).
   // Ordinary prose yields none, scans nothing, and pays nothing.
-  const { identifierTokens, identifierScanTokens } = queryIdentifiers(dir, query);
+  const identifierTokens = exactIdentifiers(query);
+  const identifierScanTokens = scannableIdentifiers(query);
   deadline?.check('route');
   const discovered = (repos && repos.length) ? repos : discoverRepos(dir);
   let routing = null;
