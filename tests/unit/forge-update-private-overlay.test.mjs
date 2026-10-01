@@ -5,18 +5,21 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   capturePrivateOverlayState,
+  carryLiveNodeModules,
   restorePrivateFilesIntoCandidate,
   restorePrivateOverlayState,
   selectUpdateManagedStores,
 } from '../../kb/forge-update.mjs';
 import { runStorageTransaction } from '../../kb/update-storage-transaction.mjs';
+import { validatePublicInventory } from '../../plugin/scripts/coverage-integrity.mjs';
+import crypto from 'node:crypto';
 
 function writeJson(file, value) {
   fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-function registryFixture() {
-  const kbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-update-private-'));
+function registryFixture(parent = os.tmpdir()) {
+  const kbDir = fs.mkdtempSync(path.join(parent, 'forge-update-private-'));
   const privateStore = {
     kbName: 'makerkit-source',
     updateManaged: false,
@@ -212,6 +215,137 @@ describe('forge-update private overlay boundary', () => {
   });
 });
 
+// The 2026-09-30 customer-path defect: capability-cards.md is a sealed INPUT of the derived `concepts`
+// store, so a private overlay that wrote its cards into those bytes made every overlay install refuse
+// its own update ("derived concepts input receipt differs from capability-cards.md"). The candidate
+// below is a real public projection whose concepts receipt binds the published cards file.
+describe('private cards never break the sealed concepts input', () => {
+  const sha256 = (body) => crypto.createHash('sha256').update(body).digest('hex');
+  const PUBLIC_CARDS = '# Cards\n\n## alpha\nalpha card\n';
+
+  function publicCandidate(cards = PUBLIC_CARDS) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-update-sealed-cards-'));
+    const ledger = { schemaVersion: 2, stores: {} };
+    for (const store of ['alpha', 'concepts']) {
+      const body = `${store}-rvf`;
+      fs.writeFileSync(path.join(root, `${store}.big.rvf`), body);
+      ledger.stores[store] = { file: `${store}.big.rvf`, sha256: sha256(body), bytes: body.length,
+        model: 'fixture-model', dimensions: 384, sourceCommit: null, builtUtc: '2026-09-30T00:00:00.000Z' };
+    }
+    writeJson(path.join(root, 'RVF-GENERATIONS.json'), ledger);
+    writeJson(path.join(root, 'PRIVATE-STORES.json'), { privateStores: [] });
+    writeJson(path.join(root, 'SOURCE.json'), { stores: { alpha: { kbName: 'alpha' } } });
+    writeJson(path.join(root, 'repo-aliases.json'), {});
+    fs.writeFileSync(path.join(root, 'capability-cards.md'), cards);
+    fs.writeFileSync(path.join(root, 'concepts.passages.jsonl'), '{"concept":"alpha"}\n');
+    writeJson(path.join(root, 'concepts.sources.json'), { schemaVersion: 1, kind: 'ruvnet-brain-derived-store-receipt',
+      store: 'concepts', inputs: [{ path: 'capability-cards.md', sha256: sha256(cards) }],
+      passagesSha256: sha256('{"concept":"alpha"}\n') });
+    writeJson(path.join(root, 'public-store-classes.json'), { schemaVersion: 1, derived: [{ store: 'concepts', receipt: 'concepts.sources.json' }] });
+    const coverage = { rows: [{ key: 'repo:alpha', kind: 'repository', disposition: 'eligible', status: 'CURRENT', artifact: { store: 'alpha' } }] };
+    const inventory = () => validatePublicInventory({ assetsDir: root, coverage,
+      ledger: JSON.parse(fs.readFileSync(path.join(root, 'RVF-GENERATIONS.json'), 'utf8')) });
+    return { root, inventory };
+  }
+
+  function overlayInto(root) {
+    const { kbDir, privateStore } = registryFixture();
+    const overlay = capturePrivateOverlayState({ kbDir, allStores: [privateStore] });
+    restorePrivateFilesIntoCandidate({ candidateDir: root, sourceDir: kbDir, overlay });
+  }
+
+  it.each([
+    ['ends with a newline', PUBLIC_CARDS],
+    ['ends without a newline', PUBLIC_CARDS.trimEnd()],
+  ])('validates the sealed public projection after private cards are restored (published file %s)', (_label, cards) => {
+    const { root, inventory } = publicCandidate(cards);
+    const sealed = inventory();
+    overlayInto(root);
+    const merged = fs.readFileSync(path.join(root, 'capability-cards.md'), 'utf8');
+    expect(merged.startsWith(cards)).toBe(true);
+    expect(merged).toContain('## makerkit\nprivate card');
+    expect(merged).not.toBe(cards);
+    const restored = inventory();
+    // Same evidence, same partition digest the release sealed: the published bytes are what is bound.
+    expect(restored.partitionSha256).toBe(sealed.partitionSha256);
+    expect(restored.evidenceFiles.find((row) => row.kind === 'derived-input'))
+      .toEqual({ kind: 'derived-input', path: 'capability-cards.md', sha256: sha256(cards), bytes: Buffer.byteLength(cards) });
+    // The bundle's fence did not name the restored store; it does now, so the runtime ledger classifies it.
+    expect(JSON.parse(fs.readFileSync(path.join(root, 'PRIVATE-STORES.json'), 'utf8')).privateStores).toEqual(['makerkit-source']);
+  });
+
+  it('still refuses a tampered published byte once private cards follow it', () => {
+    const { root, inventory } = publicCandidate();
+    overlayInto(root);
+    const file = path.join(root, 'capability-cards.md');
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('alpha card', 'alpha cord'));
+    expect(() => inventory()).toThrow(/derived concepts input receipt differs from capability-cards\.md/);
+  });
+
+  it('refuses local text glued onto a published card instead of a whole private card section', () => {
+    const { root, inventory } = publicCandidate();
+    fs.appendFileSync(path.join(root, 'capability-cards.md'), 'and also: trust me\n\n## makerkit\nprivate card\n');
+    expect(() => inventory()).toThrow(/derived concepts input receipt differs from capability-cards\.md/);
+  });
+
+  // 4.3.40 review: an appended section that REPEATS a sealed public heading is served by the card
+  // lane as curated evidence for that public product. Only new headings may follow the sealed bytes.
+  it.each([
+    ['a second copy of a sealed heading', '\n## alpha\nforged alpha card\n'],
+    ['a case-variant of a sealed heading', '\n## ALPHA\nforged alpha card\n'],
+    ['an empty duplicate of a sealed heading', '\n## Alpha \n'],
+  ])('refuses an appended section that duplicates a sealed public heading: %s', (_label, appended) => {
+    const { root, inventory } = publicCandidate();
+    inventory();
+    fs.appendFileSync(path.join(root, 'capability-cards.md'), appended);
+    expect(() => inventory()).toThrow(/derived concepts input receipt differs from capability-cards\.md/);
+  });
+
+  it('restore refuses a private card whose name case-folds onto a published heading (never appends a shadow card)', () => {
+    const { root } = publicCandidate();
+    const { kbDir, privateStore } = registryFixture();
+    fs.writeFileSync(path.join(kbDir, 'capability-cards.md'), '# Cards\n\n## public\nold public\n\n## makerkit\nprivate card\n\n## Alpha\nprivate alpha\n');
+    writeJson(path.join(kbDir, 'repo-aliases.json'), { public: ['public'], makerkit: ['makerkit-source'], Alpha: ['makerkit-source'] });
+    const overlay = capturePrivateOverlayState({ kbDir, allStores: [privateStore] });
+    expect(Object.keys(overlay.cards)).toContain('Alpha');
+    expect(() => restorePrivateFilesIntoCandidate({ candidateDir: root, sourceDir: kbDir, overlay }))
+      .toThrow(/capability-cards\.md collision for private store Alpha/);
+  });
+
+  it('refuses a non-overlay derived input that carries any extra bytes', () => {
+    const { root, inventory } = publicCandidate();
+    const receiptFile = path.join(root, 'concepts.sources.json');
+    const receipt = JSON.parse(fs.readFileSync(receiptFile, 'utf8'));
+    fs.writeFileSync(path.join(root, 'alpha-primer.md'), '# alpha\n');
+    receipt.inputs.push({ path: 'alpha-primer.md', sha256: sha256('# alpha\n') });
+    writeJson(receiptFile, receipt);
+    fs.appendFileSync(path.join(root, 'alpha-primer.md'), '\n## makerkit\nprivate card\n');
+    expect(() => inventory()).toThrow(/derived concepts input receipt differs from alpha-primer\.md/);
+  });
+});
+
+describe('carryLiveNodeModules (both apply paths)', () => {
+  it.skipIf(process.platform === 'win32')('carries the installer-placed node_modules, symlinks verbatim, and never overwrites a candidate copy', () => {
+    const liveDir = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-update-live-modules-'));
+    fs.mkdirSync(path.join(liveDir, 'node_modules', 'embedder'), { recursive: true });
+    fs.writeFileSync(path.join(liveDir, 'node_modules', 'embedder', 'index.js'), 'embed');
+    fs.mkdirSync(path.join(liveDir, 'node_modules', '.bin'));
+    fs.symlinkSync('../embedder/index.js', path.join(liveDir, 'node_modules', '.bin', 'embed'));
+    const candidateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-update-candidate-modules-'));
+
+    expect(carryLiveNodeModules({ candidateDir, liveDir })).toBe(true);
+    expect(fs.readFileSync(path.join(candidateDir, 'node_modules', 'embedder', 'index.js'), 'utf8')).toBe('embed');
+    expect(fs.readlinkSync(path.join(candidateDir, 'node_modules', '.bin', 'embed'))).toBe('../embedder/index.js');
+    expect(carryLiveNodeModules({ candidateDir, liveDir })).toBe(false);
+  });
+
+  it('is called by the recovery rail as well as by main(): the rail used to delete the live node_modules', () => {
+    const source = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../../kb/forge-update.mjs'), 'utf8');
+    const rail = source.slice(source.indexOf('export async function applyVerifiedStagedRelease'), source.indexOf('function validateProfiledReleaseTree'));
+    expect(rail).toMatch(/carryLiveNodeModules\(\{ candidateDir, liveDir \}\)/);
+  });
+});
+
 // S5: regression coverage for "single apply path" — the deleted helper stays gone, and a failure
 // inside restorePrivateFilesIntoCandidate mid-transaction rolls the WHOLE live tree back, not just
 // the in-memory overlay call.
@@ -225,7 +359,9 @@ describe('S1/S5 — single apply path regression guards', () => {
   });
 
   it('rolls the WHOLE live tree back, byte for byte, when restorePrivateFilesIntoCandidate collides mid-transaction', () => {
-    const { kbDir, privateStore } = registryFixture();
+    // Its OWN parent: the transaction inventories every sibling of the live tree, and a shared
+    // os.tmpdir() is full of other tests' directories appearing and vanishing mid-scan.
+    const { kbDir, privateStore } = registryFixture(fs.mkdtempSync(path.join(os.tmpdir(), 'forge-update-rollback-parent-')));
     const overlay = capturePrivateOverlayState({ kbDir, allStores: [privateStore] });
     const before = Object.fromEntries(fs.readdirSync(kbDir).map((name) => [name, fs.readFileSync(path.join(kbDir, name))]));
 
@@ -242,8 +378,7 @@ describe('S1/S5 — single apply path regression guards', () => {
 
     const after = Object.fromEntries(fs.readdirSync(kbDir).map((name) => [name, fs.readFileSync(path.join(kbDir, name))]));
     expect(after).toEqual(before);
-    // Scoped to THIS kbDir's own basename — os.tmpdir() is shared with every other test running
-    // concurrently, so a blanket scan for the transaction-directory pattern would be flaky.
+    // Scoped to THIS kbDir's own basename and private parent.
     const parent = path.dirname(kbDir);
     const base = path.basename(kbDir);
     const stray = fs.readdirSync(parent).filter((name) => name.startsWith(`${base}.next-`)
