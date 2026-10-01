@@ -395,9 +395,43 @@ describe('forge-update --apply (issues #106 + #108)', () => {
     const { code, out } = await run('--apply');
 
     expect(code, 'a suspect copy is an error, not a no-op').toBe(1);
-    expect(out).toMatch(/no entry for store "alpha"/);
+    expect(out).toMatch(/ships none of the selected stores \(alpha\)/);
     expect(rollbackCopies()).toEqual([]);
     expect(JSON.parse(fs.readFileSync(path.join(kbDir, 'SOURCE.json'), 'utf8')).releaseTag).toBe('v4.0.7');
+  });
+
+  it('lands a release that retires a store this brain lists, names it, and keeps node_modules', async () => {
+    // Measured 2026-09-30: 4.3.39 no longer ships agentic-flows/agentic-music/cogs/support, and the
+    // owner's brain still listed them, so forge-guard ran against stores the candidate cannot contain
+    // ("[FAIL] MISSING file: agentic-flows.rvf") and no such brain could ever update.
+    const GAMMA = { kbName: 'gamma', sourceCommit: 'ddd444ddd444', sourceDescribe: 'v0.1.0', builtUtc: '2026-07-28T14:00:00.000Z' };
+    layDown(kbDir, sourceJson({
+      releaseTag: 'v4.0.7', brainVersion: '4.0.7', builtUtc: '2026-07-31T04:39:28.414Z', stores: [STORE_A, GAMMA],
+    }));
+    fs.mkdirSync(path.join(kbDir, 'node_modules', 'embedder', 'bin'), { recursive: true });
+    fs.writeFileSync(path.join(kbDir, 'node_modules', 'embedder', 'bin', 'run.js'), 'embed');
+    fs.mkdirSync(path.join(kbDir, 'node_modules', '.bin'));
+    fs.symlinkSync('../embedder/bin/run.js', path.join(kbDir, 'node_modules', '.bin', 'embed'));
+    publish(sourceJson({
+      releaseTag: 'v4.0.8', brainVersion: '4.0.8', builtUtc: '2026-08-02T12:00:00.000Z', stores: [STORE_A],
+    }), 'v4.0.8');
+
+    const resultFile = path.join(root, 'retired-result.json');
+    const { code, out } = await run('--apply', '--result-file', resultFile);
+
+    expect(code, out).toBe(0);
+    expect(out).toMatch(/retired by this release \(no longer shipped\): gamma/);
+    expect(JSON.parse(fs.readFileSync(resultFile, 'utf8'))).toMatchObject({ terminalVerdict: 'applied', retiredStores: ['gamma'] });
+    expect(JSON.parse(fs.readFileSync(path.join(kbDir, 'SOURCE.json'), 'utf8')).releaseTag).toBe('v4.0.8');
+    expect(fs.readFileSync(path.join(kbDir, 'node_modules', 'embedder', 'bin', 'run.js'), 'utf8')).toBe('embed');
+    // Still the SAME relative link (verbatim, not rewritten absolute, not dropped). Separator-
+    // insensitive because Node on Windows stores a relative symlink target with backslashes at
+    // creation (lib/internal/fs/utils.js preprocessSymlinkDestination: "Windows symlinks don't
+    // tolerate forward slashes"), so even the link this test made reads back as ..\embedder\bin\run.js.
+    const target = fs.readlinkSync(path.join(kbDir, 'node_modules', '.bin', 'embed'));
+    expect(path.isAbsolute(target), target).toBe(false);
+    expect(target.split(/[\\/]/)).toEqual(['..', 'embedder', 'bin', 'run.js']);
+    expect(rollbackCopies()).toEqual([]);
   });
 
   it('does not require a duplicate snapshot budget because rollback is the renamed live tree', async () => {
@@ -515,5 +549,8 @@ describe('forge-update --check (issue #108 bug 2)', () => {
 
     expect(code, out).toBe(10);
     expect(out).toMatch(/BEHIND/);
+    // The hint names the self-upgrading door, never this (possibly old) updater run directly (matrix D8).
+    expect(out).toContain('Run:  npx ruvnet-brain@latest --update');
+    expect(out).not.toMatch(/node forge-update\.mjs --apply/);
   });
 });

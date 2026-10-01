@@ -243,7 +243,10 @@ describe.skipIf(bashOnly)('ADR-054 gate 3 — a refusal mints NO grounding stamp
   });
 
   it('a DEGRADED-but-real result stamps: partial coverage is still evidence the model actually read', () => {
-    stampWith(`DEGRADED SEARCH: 2/37 repos failed\nSearched 37 RuvNet repos (${TERM}).\n#1 repo=${TERM}\n----- full document (400 chars) -----\ntext`);
+    // The producer's REAL degraded paragraph (kb/forge-mcp-all.mjs), pinned below: since 4.4.0 the answer
+    // must BEGIN with the brain's header, after at most this exact paragraph.
+    expect(fs.readFileSync(FORGE_MCP, 'utf8')).toContain('Results below cover only the healthy repos. Mention this degradation to the user.');
+    stampWith(`⚠ DEGRADED SEARCH: 2/37 repos failed (a, b) — first error: ERR: boom\nResults below cover only the healthy repos. Mention this degradation to the user.\n\nSearched 37 RuvNet repos (${TERM}).\n#1  repo=${TERM}\n----- full document (400 chars) -----\ntext`);
     expect(fs.existsSync(stampFor(TERM))).toBe(true);
   });
 
@@ -261,7 +264,15 @@ describe.skipIf(bashOnly)('ADR-054 gate 3 — a refusal mints NO grounding stamp
     // script would silently start honouring it again and this suite would still be green — so the
     // exact phrase is asserted at the source, not assumed.
     expect(fs.readFileSync(FORGE_MCP, 'utf8')).toContain(DISABLED_MARKER);
-    expect(fs.readFileSync(STAMP, 'utf8')).toContain(DISABLED_MARKER);
+    // 4.4.0: the stamp no longer lists refusals — it mints only on an answer that BEGINS with the brain's
+    // own success header (plugin/scripts/grounding-answer.mjs), so the soft answer cannot qualify. The
+    // pin moves to the success side: the headers the consumer anchors on must be the producers' own.
+    const answer = fs.readFileSync(path.join(REPO, 'plugin/scripts/grounding-answer.mjs'), 'utf8');
+    expect(fs.readFileSync(path.join(REPO, 'kb/search-outcome.mjs'), 'utf8')).toContain('header: `Searched ${repos.length} RuvNet repos (');
+    expect(answer).toContain('/^Searched \\d+ RuvNet repos \\(/');
+    expect(fs.readFileSync(path.join(REPO, 'kb/card-lane.mjs'), 'utf8')).toContain('`#1  repo=${hit.repo}  evidence=curated-capability-card\\n`');
+    expect(answer).toContain('#1  repo=\\S+  evidence=curated-capability-card\\n');
+    expect(DISABLED_MARKER.startsWith('Searched')).toBe(false);
   });
 
   it('still bash-builtins only — a hook that can shut a wall must depend on nothing fragile', () => {

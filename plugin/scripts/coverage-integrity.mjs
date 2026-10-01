@@ -182,6 +182,54 @@ function evidenceIdentity(root, file, kind) {
   };
 }
 
+/**
+ * The ONE derived input a private overlay legitimately extends on an installed brain.
+ * kb/forge-update.mjs's restorePrivateOverlayState keeps the published capability-cards.md bytes
+ * verbatim and APPENDS the user's private `## <store>` cards after them, so card-lane and every other
+ * reader keep a single file. Hashing the whole file made every overlay install fail this check
+ * ("derived concepts input receipt differs from capability-cards.md", measured 2026-09-30 on the
+ * owner's 4.3.39 update) — the published digest can never cover bytes the user added locally.
+ */
+export const OVERLAY_EXTENSIBLE_DERIVED_INPUTS = Object.freeze(['capability-cards.md']);
+
+/**
+ * Identity of a derived input as the release sealed it. Exact file match first. For an
+ * overlay-extensible input, accept ONLY a file whose leading bytes, cut at a line boundary, hash to
+ * the sealed digest AND whose remainder is nothing but whole `## ` card sections — so every published
+ * card still parses to exactly its published body, and nothing local can be glued onto one. The
+ * evidence row records the sealed prefix (digest + byte count), which is what the release's partition
+ * digest was computed over. Returns null when the sealed bytes are not present.
+ */
+function derivedInputIdentity(root, file, input) {
+  const relative = path.relative(root, file).split(path.sep).join('/');
+  const bytes = fs.readFileSync(file);
+  const whole = crypto.createHash('sha256').update(bytes).digest('hex');
+  if (whole === input.sha256) return { kind: 'derived-input', path: relative, sha256: whole, bytes: bytes.length };
+  if (!OVERLAY_EXTENSIBLE_DERIVED_INPUTS.includes(relative)) return null;
+  const hash = crypto.createHash('sha256');
+  let consumed = 0;
+  // An appended section may only ADD a card. One that repeats a sealed `## ` heading (another copy,
+  // a case variant, or an empty one) would be served by the card lane as curated evidence for that
+  // PUBLIC product, so it is refused, compared trimmed and case-insensitively.
+  const headings = (text) => [...text.matchAll(/^## ([^\n]*)$/gm)].map((m) => m[1].trim().toLowerCase());
+  const matchesAt = (end) => {
+    hash.update(bytes.subarray(consumed, end));
+    consumed = end;
+    if (hash.copy().digest('hex') !== input.sha256) return false;
+    const rest = bytes.subarray(end).toString('utf8');
+    if (!/^\n*## \S/.test(rest)) return false;
+    const sealed = new Set(headings(bytes.subarray(0, end).toString('utf8')));
+    return !headings(rest).some((heading) => sealed.has(heading));
+  };
+  for (let index = bytes.indexOf(0x0a); index >= 0; index = bytes.indexOf(0x0a, index + 1)) {
+    // Both sides of every newline: a published file that ends without one is still a clean prefix.
+    for (const end of [index, index + 1]) {
+      if (matchesAt(end)) return { kind: 'derived-input', path: relative, sha256: input.sha256, bytes: end };
+    }
+  }
+  return null;
+}
+
 const canonicalStores = (root) => {
   const stores = [];
   for (const name of fs.readdirSync(root).filter((entry) => !entry.startsWith('._'))) {
@@ -341,10 +389,9 @@ export function validatePublicInventory({ assetsDir, coverage, ledger, installed
     for (const input of receipt.inputs) {
       let inputFile = null;
       try { inputFile = containedRegular(root, input?.path, `derived ${store} input`); } catch { /* handled below */ }
-      if (!inputFile || !HEX64.test(String(input.sha256 || '')) || input.sha256 !== sha256File(inputFile)) {
-        throw new Error(`derived ${store} input receipt differs from ${input?.path || '(missing)'}`);
-      }
-      evidenceFiles.push(evidenceIdentity(root, inputFile, 'derived-input'));
+      const identity = inputFile && HEX64.test(String(input.sha256 || '')) ? derivedInputIdentity(root, inputFile, input) : null;
+      if (!identity) throw new Error(`derived ${store} input receipt differs from ${input?.path || '(missing)'}`);
+      evidenceFiles.push(identity);
     }
     evidenceFiles.push(evidenceIdentity(root, passages, 'derived-passages'));
     evidenceFiles.push(evidenceIdentity(root, receiptFile, 'derived-receipt'));

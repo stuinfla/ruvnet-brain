@@ -1,0 +1,2318 @@
+{
+  "schemaVersion": 1,
+  "kind": "ruvnet-brain-repo-recall",
+  "state": "PASS",
+  "failures": [],
+  "gate": {
+    "blocking": false,
+    "verdict": "PASS",
+    "failures": []
+  },
+  "measuredUtc": "2026-10-01T05:03:47.332Z",
+  "archive": null,
+  "fixture": {
+    "file": "data/retrieval-query-evidence.json",
+    "sha256": "420c3aa270f2b0cf1e8a683c7cfeb28206bbdff2b7e9d6854a42611aa8ab4fa3",
+    "sourceCommit": "eed238632345b0a52e27d4ca18849c620467a4de",
+    "questionCount": 182,
+    "shape": "exactly one human-written question per repository"
+  },
+  "protocol": {
+    "entryPoint": "injected",
+    "k": 5,
+    "repositoryScope": "explicit",
+    "scoring": "exact labeled file path within top-k of results from the requested repository"
+  },
+  "floor": {
+    "value": 0,
+    "committed": null,
+    "absolute": 0,
+    "acceptedForRelease": null
+  },
+  "totals": {
+    "questions": 182,
+    "completed": 182,
+    "errors": 0,
+    "repoCoverage": 182,
+    "hitTop1": 128,
+    "hitTop5": 162
+  },
+  "meaning": {
+    "repoCoverage": "the requested repository returned at least one of its own passages. This is an AVAILABILITY check, NOT answer accuracy.",
+    "hitTop5": "the exact pre-labeled file appeared in the top 5. Equivalent content under a different filename scores as a MISS and is not given retrospective credit.",
+    "notMeasured": "generated-answer correctness and citation support were NOT evaluated. Unscoped (whole-corpus) discovery was NOT measured.",
+    "c3": "ADR-086 C3 (>=95% Hit@5 per repository on the machine-generated oracle) is NOT demonstrated by this report and was NOT met; its diagnostic result is published alongside."
+  },
+  "rows": [
+    {
+      "store": "2bottalk",
+      "expectedPath": "readme.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "2bottalk/readme.md",
+        "2bottalk/main.py",
+        "2bottalk/pyproject.toml"
+      ]
+    },
+    {
+      "store": "agent-name-service",
+      "expectedPath": "docs/architecture/ans_architecture_overview.md",
+      "repoCovered": true,
+      "exactFileRank": 3,
+      "returnedPaths": [
+        "agent-name-service/docs/historical-readme.md",
+        "agent-name-service/docs/requirements/ans_specification.md",
+        "agent-name-service/docs/architecture/ans_architecture_overview.md",
+        "agent-name-service/docs/workflows/index.md",
+        "agent-name-service/mod.ts"
+      ]
+    },
+    {
+      "store": "agentdb",
+      "expectedPath": "src/cli/agentdb-cli.ts",
+      "repoCovered": true,
+      "exactFileRank": null,
+      "returnedPaths": [
+        "agentdb/docs/ALPHA_RELEASE_ISSUE.md",
+        "agentdb/docs/validation/CLI-VALIDATION-RESULTS.md",
+        "agentdb/docs/implementation/AGENTIC_FLOW_INTEGRATION_REPORT.md",
+        "agentdb/src/controllers/CausalMemoryGraph.ts",
+        "agentdb/docs/validation/ALPHA_RELEASE_ISSUE.md"
+      ]
+    },
+    {
+      "store": "agentic-artifacts",
+      "expectedPath": "agentic_artifacts/services/code_generator.py",
+      "repoCovered": true,
+      "exactFileRank": 3,
+      "returnedPaths": [
+        "agentic-artifacts/README.md",
+        "agentic-artifacts/agentic_artifacts/ui/templates/index.html",
+        "agentic-artifacts/agentic_artifacts/services/code_generator.py",
+        "agentic-artifacts/agentic_artifacts/api/routes.py",
+        "agentic-artifacts/setup.cfg"
+      ]
+    },
+    {
+      "store": "agentic-capacity-exchange",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "agentic-capacity-exchange/README.md",
+        "agentic-capacity-exchange/docs/architecture.md",
+        "agentic-capacity-exchange/docs/getting-started.md",
+        "agentic-capacity-exchange/docs/api-spec.yaml",
+        "agentic-capacity-exchange/deployment/aws/requirements.txt"
+      ]
+    },
+    {
+      "store": "agentic-dashboard",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "agentic-dashboard/README.md"
+      ]
+    },
+    {
+      "store": "agentic-devops",
+      "expectedPath": "devops-cli/coder.py",
+      "repoCovered": true,
+      "exactFileRank": 2,
+      "returnedPaths": [
+        "agentic-devops/docs/legacy-setup.py.txt",
+        "agentic-devops/devops-cli/coder.py",
+        "agentic-devops/.harness/generated/README.md",
+        "agentic-devops/README.md",
+        "agentic-devops/.harness/generated/bin/cli.js"
+      ]
+    },
+    {
+      "store": "agentic-difusion",
+      "expectedPath": "docs/system_overview.md",
+      "repoCovered": true,
+      "exactFileRank": 3,
+      "returnedPaths": [
+        "agentic-difusion/docs/architecture.md",
+        "agentic-difusion/docs/agentic_diffusion_overview.md",
+        "agentic-difusion/docs/system_overview.md",
+        "agentic-difusion/docs/quickstart.md",
+        "agentic-difusion/docs/acceptance_criteria.md"
+      ]
+    },
+    {
+      "store": "agentic-employment",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "agentic-employment/README.md",
+        "agentic-employment/agentic_employment_wrapper.py",
+        "agentic-employment/frontend/templates/base.html",
+        "agentic-employment/backend/app/services/agent_service.py",
+        "agentic-employment/backend/app/models/agent_model.py"
+      ]
+    },
+    {
+      "store": "agentic-flow",
+      "expectedPath": "docs/plans/agentic-flow-v2/sparc/03-architecture.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "agentic-flow/docs/plans/agentic-flow-v2/sparc/03-architecture.md",
+        "agentic-flow/docs/architecture/module-structure-diagram.md",
+        "agentic-flow/docs/architecture/exotic-integrations-architecture.md",
+        "agentic-flow/docs/archived/agentic-flow-comprehensive-analysis.json",
+        "agentic-flow/agentic-flow/docs/guides/DEPLOYMENT.md"
+      ]
+    },
+    {
+      "store": "agentic-gradio",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "agentic-gradio/README.md"
+      ]
+    },
+    {
+      "store": "agentic-preview",
+      "expectedPath": "doc/agentic_preview.md",
+      "repoCovered": true,
+      "exactFileRank": 2,
+      "returnedPaths": [
+        "agentic-preview/doc/README.md",
+        "agentic-preview/doc/agentic_preview.md",
+        "agentic-preview/doc/agentic_platform.md",
+        "agentic-preview/doc/repository_overview.md",
+        "agentic-preview/doc/test_projects.md"
+      ]
+    },
+    {
+      "store": "agentic-qe",
+      "expectedPath": ".agentic-qe/docs/skills.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "agentic-qe/.agentic-qe/docs/skills.md",
+        "agentic-qe/.kiro/skills/qe-agentic-jujutsu/SKILL.md",
+        "agentic-qe/.kiro/skills/qe-performance-analysis/SKILL.md",
+        "agentic-qe/plugins/agentic-qe-fleet/skills/risk-based-testing/scripts/validate-config.json",
+        "agentic-qe/plugins/agentic-qe-fleet/skills/qe-test-generation/scripts/validate-config.json"
+      ]
+    },
+    {
+      "store": "agentic-reports",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 4,
+      "returnedPaths": [
+        "agentic-reports/.harness/generated/.github/copilot-instructions.md",
+        "agentic-reports/.harness/generated/AGENTS.md",
+        "agentic-reports/docs/historical-python.md",
+        "agentic-reports/README.md",
+        "agentic-reports/.harness/generated/CLAUDE.md"
+      ]
+    },
+    {
+      "store": "agentic-robotics",
+      "expectedPath": "crates/agentic-robotics-rt/README.md",
+      "repoCovered": true,
+      "exactFileRank": null,
+      "returnedPaths": [
+        "agentic-robotics/crates/agentic-robotics-rt/src/lib.rs",
+        "agentic-robotics/crates/agentic-robotics-rt/src",
+        "agentic-robotics/crates/agentic-robotics-rt/src/latency.rs",
+        "agentic-robotics/crates/agentic-robotics-node/README.md",
+        "agentic-robotics/crates/agentic-robotics-embedded/README.md"
+      ]
+    },
+    {
+      "store": "agentic-scraper",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "agentic-scraper/README.md",
+        "agentic-scraper/tests/pyproject.toml",
+        "agentic-scraper/fastapi/README.md",
+        "agentic-scraper/web_scraper/parser.py",
+        "agentic-scraper/web_scraper/utils.py"
+      ]
+    },
+    {
+      "store": "agentic-search",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": null,
+      "returnedPaths": [
+        "agentic-search/docs/historical-readme.md",
+        "agentic-search/docs/intents.md",
+        "agentic-search/public/index.html",
+        "agentic-search/docs/search.md",
+        "agentic-search/docs/readme.md"
+      ]
+    },
+    {
+      "store": "agentic-security",
+      "expectedPath": "docs/architecture/README.md",
+      "repoCovered": true,
+      "exactFileRank": 2,
+      "returnedPaths": [
+        "agentic-security/README.md",
+        "agentic-security/docs/architecture/README.md",
+        "agentic-security/docs/README.md",
+        "agentic-security/src/agentic_security/__init__.py",
+        "agentic-security/docs/user-guide/README.md"
+      ]
+    },
+    {
+      "store": "agentic-voice",
+      "expectedPath": "agentic-voice/app/lib/constants.ts",
+      "repoCovered": true,
+      "exactFileRank": null,
+      "returnedPaths": [
+        "agentic-voice/README.md",
+        "agentic-voice/.harness/generated/README.md",
+        "agentic-voice/.harness/generated/.github/copilot-instructions.md",
+        "agentic-voice/.harness/generated/AGENTS.md",
+        "agentic-voice/.harness/generated/bin/cli.js"
+      ]
+    },
+    {
+      "store": "agenticow",
+      "expectedPath": "docs/index.html",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "agenticow/docs/index.html",
+        "agenticow/package.json",
+        "agenticow/src/index.js",
+        "agenticow/bench/acceptance.js",
+        "agenticow/examples/parallel-agents.mjs"
+      ]
+    },
+    {
+      "store": "agentics-meetup",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "agentics-meetup/README.md"
+      ]
+    },
+    {
+      "store": "agenticsjs",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 2,
+      "returnedPaths": [
+        "agenticsjs/package.json",
+        "agenticsjs/README.md",
+        "agenticsjs/src/docs/api_documentation.md",
+        "agenticsjs/src/docs/plugin_system.md",
+        "agenticsjs/index.html"
+      ]
+    },
+    {
+      "store": "agentx",
+      "expectedPath": "shared_dependencies.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "agentx/shared_dependencies.md",
+        "agentx/popup.html",
+        "agentx/manifest.json"
+      ]
+    },
+    {
+      "store": "agentxng",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "agentxng/README.md",
+        "agentxng/agentx/__init__.py",
+        "agentxng/agentx/conversation.py",
+        "agentxng/agentx/config.py",
+        "agentxng/agentx/tools.py"
+      ]
+    },
+    {
+      "store": "agileagents",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "agileagents/README.md",
+        "agileagents/app.py",
+        "agileagents/packages.txt",
+        "agileagents/dev/hello_world.json",
+        "agileagents/deployment/aws/requirements.txt"
+      ]
+    },
+    {
+      "store": "ai-browse",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "ai-browse/README.md"
+      ]
+    },
+    {
+      "store": "ai-code-generator-",
+      "expectedPath": "readme.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "ai-code-generator-/readme.md",
+        "ai-code-generator-/./src",
+        "ai-code-generator-/src/main.rs",
+        "ai-code-generator-/Cargo.toml"
+      ]
+    },
+    {
+      "store": "ai-gist",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "ai-gist/README.md",
+        "ai-gist/aigist.egg-info/top_level.txt",
+        "ai-gist/aigist/persistence.json",
+        "ai-gist/aigist.egg-info/entry_points.txt",
+        "ai-gist/aigist/main.py"
+      ]
+    },
+    {
+      "store": "ai-stream",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "ai-stream/README.md",
+        "ai-stream/flask/templates/index.html",
+        "ai-stream/scripts/client_test.py",
+        "ai-stream/src/webcam.py",
+        "ai-stream/src/rtsp_server.py"
+      ]
+    },
+    {
+      "store": "ai-text-watermark",
+      "expectedPath": "packages/ai-text-watermark/README.md",
+      "repoCovered": true,
+      "exactFileRank": 3,
+      "returnedPaths": [
+        "ai-text-watermark/docs/index.html",
+        "ai-text-watermark/packages/ai-text-watermark/package.json",
+        "ai-text-watermark/packages/ai-text-watermark/README.md",
+        "ai-text-watermark/packages/ai-text-watermark/index.js",
+        "ai-text-watermark/packages/ai-text-watermark/index.mjs"
+      ]
+    },
+    {
+      "store": "ai-video",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "ai-video/README.md",
+        "ai-video/templates/index.html",
+        "ai-video/static/script.js",
+        "ai-video/requirements.txt",
+        "ai-video/app.py"
+      ]
+    },
+    {
+      "store": "aicodecalc",
+      "expectedPath": "docs/README.md",
+      "repoCovered": true,
+      "exactFileRank": 3,
+      "returnedPaths": [
+        "aicodecalc/README.md",
+        "aicodecalc/docs/QUICKSTART.md",
+        "aicodecalc/docs/README.md",
+        "aicodecalc/docs/CALCULATOR_SPECIFICATION.md",
+        "aicodecalc/docs/REQUIREMENTS.md"
+      ]
+    },
+    {
+      "store": "aido",
+      "expectedPath": "docs/specification.md",
+      "repoCovered": true,
+      "exactFileRank": 2,
+      "returnedPaths": [
+        "aido/README.md",
+        "aido/docs/specification.md",
+        "aido/docs/architecture.md",
+        "aido/docs/README.md",
+        "aido/docs/development-guide.md"
+      ]
+    },
+    {
+      "store": "aihcc",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 2,
+      "returnedPaths": [
+        "aihcc/contributing.md",
+        "aihcc/README.md",
+        "aihcc/implementation/README.md",
+        "aihcc/working_groups/technical/README.md",
+        "aihcc/tools_communication/README.md"
+      ]
+    },
+    {
+      "store": "aihl",
+      "expectedPath": "docs/governance/charter.md",
+      "repoCovered": true,
+      "exactFileRank": 3,
+      "returnedPaths": [
+        "aihl/docs/readme.md",
+        "aihl/docs/ai-powered-features.md",
+        "aihl/docs/governance/charter.md",
+        "aihl/backend/README.md",
+        "aihl/backend copy/README.md"
+      ]
+    },
+    {
+      "store": "aiscreenplay",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "aiscreenplay/README.md",
+        "aiscreenplay/src/app.py"
+      ]
+    },
+    {
+      "store": "aitoml",
+      "expectedPath": "readme.md",
+      "repoCovered": true,
+      "exactFileRank": 2,
+      "returnedPaths": [
+        "aitoml/ai.toml",
+        "aitoml/readme.md",
+        "aitoml/prompts/aitws.txt",
+        "aitoml/src/main.rs"
+      ]
+    },
+    {
+      "store": "alienator",
+      "expectedPath": "alienator_pkg/internal/analyzers/statistical/detector.go",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "alienator/alienator_pkg/internal/analyzers/statistical/detector.go",
+        "alienator/alienator_pkg/internal/core/detector.go",
+        "alienator/alienator_pkg/internal/grpc/anomaly_service.go",
+        "alienator/alienator_pkg/pkg/detector/detector.go",
+        "alienator/alienator_pkg/pkg/models/models.go"
+      ]
+    },
+    {
+      "store": "ap-casper",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "ap-casper/README.md",
+        "ap-casper/package.json",
+        "ap-casper/package-lock.json",
+        "ap-casper/server.js",
+        "ap-casper/templates/index.html"
+      ]
+    },
+    {
+      "store": "arcadia",
+      "expectedPath": "docs/publication/PUBLICATION_CHECKLIST.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "arcadia/docs/publication/PUBLICATION_CHECKLIST.md",
+        "arcadia/docs/README.md",
+        "arcadia/docs/DEPLOYMENT.md",
+        "arcadia/CONTRIBUTING.md",
+        "arcadia/package.json"
+      ]
+    },
+    {
+      "store": "auto-browser",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": null,
+      "returnedPaths": [
+        "auto-browser/docs/historical-readme.md",
+        "auto-browser/.harness/generated/.github/copilot-instructions.md",
+        "auto-browser/.harness/generated/AGENTS.md",
+        "auto-browser/.harness/generated/bin/cli.js",
+        "auto-browser/.harness/generated/README.md"
+      ]
+    },
+    {
+      "store": "autogenous",
+      "expectedPath": "crates/README.md",
+      "repoCovered": true,
+      "exactFileRank": 3,
+      "returnedPaths": [
+        "autogenous/docs/index.html",
+        "autogenous/README.md",
+        "autogenous/crates/README.md",
+        "autogenous/docs/adr/ADR-398-applications-and-development-loop-integration.md",
+        "autogenous/crates/generator/Cargo.toml"
+      ]
+    },
+    {
+      "store": "aws-dev",
+      "expectedPath": "deployment/readme.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "aws-dev/deployment/readme.md",
+        "aws-dev/template.yaml",
+        "aws-dev/.devcontainer/devcontainer copy.json",
+        "aws-dev/.devcontainer/devcontainer.json",
+        "aws-dev/hello_world/requirements.txt"
+      ]
+    },
+    {
+      "store": "bot-generator-bot",
+      "expectedPath": "prompts/primary_bgb.txt",
+      "repoCovered": true,
+      "exactFileRank": null,
+      "returnedPaths": [
+        "bot-generator-bot/.harness/generated/.github/copilot-instructions.md",
+        "bot-generator-bot/.harness/generated/AGENTS.md",
+        "bot-generator-bot/skills/bgb-brainstorming-idea-bot/SKILL.md",
+        "bot-generator-bot/skills/bot-generator/SKILL.md",
+        "bot-generator-bot/skills/bgb-chatgpt-bot-generator/SKILL.md"
+      ]
+    },
+    {
+      "store": "chatgpt-aws-price-list-plugin",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "chatgpt-aws-price-list-plugin/README.md",
+        "chatgpt-aws-price-list-plugin/yaml/openai.yaml",
+        "chatgpt-aws-price-list-plugin/yaml/manifest.yaml"
+      ]
+    },
+    {
+      "store": "chatgpt-dev-mode",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "chatgpt-dev-mode/README.md"
+      ]
+    },
+    {
+      "store": "chatgpt-openai-api-plugin",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 4,
+      "returnedPaths": [
+        "chatgpt-openai-api-plugin/plugins/ai-plugin.json",
+        "chatgpt-openai-api-plugin/bot/prompt.txt",
+        "chatgpt-openai-api-plugin/main.py",
+        "chatgpt-openai-api-plugin/README.md",
+        "chatgpt-openai-api-plugin/requirements.txt"
+      ]
+    },
+    {
+      "store": "chatgpt-trading-bot-for-kucoin",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "chatgpt-trading-bot-for-kucoin/README.md",
+        "chatgpt-trading-bot-for-kucoin/pyproject.toml",
+        "chatgpt-trading-bot-for-kucoin/gpttrader.py",
+        "chatgpt-trading-bot-for-kucoin/requirements.txt"
+      ]
+    },
+    {
+      "store": "chatgpt_plugin_python",
+      "expectedPath": "readme.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "chatgpt_plugin_python/readme.md",
+        "chatgpt_plugin_python/pyproject.toml",
+        "chatgpt_plugin_python/manifest.json",
+        "chatgpt_plugin_python/main.py"
+      ]
+    },
+    {
+      "store": "chatgpt_tatum_plugin",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "chatgpt_tatum_plugin/README.md",
+        "chatgpt_tatum_plugin/yaml/openai_tatum.yaml",
+        "chatgpt_tatum_plugin/yaml/manifest.yaml",
+        "chatgpt_tatum_plugin/prompts/prompt.txt",
+        "chatgpt_tatum_plugin/prompts/readme.md"
+      ]
+    },
+    {
+      "store": "claude-test",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "claude-test/README.md",
+        "claude-test/CLAUDE.md",
+        "claude-test/coordination.md",
+        "claude-test/memory/sessions/README.md",
+        "claude-test/memory-bank.md"
+      ]
+    },
+    {
+      "store": "code-mesh",
+      "expectedPath": "crates/code-mesh-core/src/permission.rs",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "code-mesh/crates/code-mesh-core/src/permission.rs",
+        "code-mesh/crates/code-mesh-core/src/tool/permission.rs",
+        "code-mesh/crates/code-mesh-core/src/tool/mod.rs",
+        "code-mesh/crates/code-mesh-core/src/tool/write.rs",
+        "code-mesh/crates/code-mesh-core/src/config.rs"
+      ]
+    },
+    {
+      "store": "codecraft",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "codecraft/README.md",
+        "codecraft/requirements.txt"
+      ]
+    },
+    {
+      "store": "codex-one",
+      "expectedPath": "plans/codex-readme.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "codex-one/plans/codex-readme.md",
+        "codex-one/README.md",
+        "codex-one/.roo/mcp.md",
+        "codex-one/.roo/rules-tutorial/rules.md",
+        "codex-one/mcp/RL_AGENT_README.md"
+      ]
+    },
+    {
+      "store": "coding-wingman",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "coding-wingman/README.md",
+        "coding-wingman/instructions.txt",
+        "coding-wingman/main.py",
+        "coding-wingman/openapi.json",
+        "coding-wingman/requirements.txt"
+      ]
+    },
+    {
+      "store": "cognitum-claude-plugin",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "cognitum-claude-plugin/README.md",
+        "cognitum-claude-plugin/cognitum-seed/README.md",
+        "cognitum-claude-plugin/cognitum-seed/.claude-plugin/plugin.json",
+        "cognitum-claude-plugin/.claude-plugin/plugin.json",
+        "cognitum-claude-plugin/cognitum-seed/commands/seed-pair.md"
+      ]
+    },
+    {
+      "store": "cognitum-cogs",
+      "expectedPath": "src/cogs/cognitive-pipeline/README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "cognitum-cogs/src/cogs/cognitive-pipeline/README.md",
+        "cognitum-cogs/src/cogs/coherence-gate/src/main.rs",
+        "cognitum-cogs/ui-templates/cogs-coherence-gate-ui.html",
+        "cognitum-cogs/ui-templates/cogs-emotion-detection-ui.html",
+        "cognitum-cogs/examples/fixel/docs/ddd/ubiquitous-language.md"
+      ]
+    },
+    {
+      "store": "cognitum-learn",
+      "expectedPath": ".claude/skills/cognitum-learn/SKILL.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "cognitum-learn/.claude/skills/cognitum-learn/SKILL.md",
+        "cognitum-learn/crates/learn-core/Cargo.toml",
+        "cognitum-learn/crates/learn-reasoning/Cargo.toml",
+        "cognitum-learn/README.md",
+        "cognitum-learn/CHANGELOG.md"
+      ]
+    },
+    {
+      "store": "cognitum-learn-site",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "cognitum-learn-site/README.md",
+        "cognitum-learn-site/package-lock.json",
+        "cognitum-learn-site/package.json",
+        "cognitum-learn-site/app/api/version/route.ts",
+        "cognitum-learn-site/app/live-version.tsx"
+      ]
+    },
+    {
+      "store": "cognitum-meta-llm-docs",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "cognitum-meta-llm-docs/README.md",
+        "cognitum-meta-llm-docs/index.html",
+        "cognitum-meta-llm-docs/status.html",
+        "cognitum-meta-llm-docs/.well-known/security.txt",
+        "cognitum-meta-llm-docs/architecture.html"
+      ]
+    },
+    {
+      "store": "cognitum-meta-proxy-dist",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "cognitum-meta-proxy-dist/README.md"
+      ]
+    },
+    {
+      "store": "cognitum-one-sensor-primer",
+      "expectedPath": "kb/.last-built.json",
+      "repoCovered": true,
+      "exactFileRank": null,
+      "returnedPaths": [
+        "cognitum-one-sensor-primer/README.md",
+        "cognitum-one-sensor-primer/kb/SOURCE.json",
+        "cognitum-one-sensor-primer/setup.html",
+        "cognitum-one-sensor-primer/assets/js/main.js",
+        "cognitum-one-sensor-primer/robots.txt"
+      ]
+    },
+    {
+      "store": "cognitum-ruos",
+      "expectedPath": "crates/ruos-agent/Cargo.toml",
+      "repoCovered": true,
+      "exactFileRank": null,
+      "returnedPaths": [
+        "cognitum-ruos/CAPABILITIES.md"
+      ]
+    },
+    {
+      "store": "cognitum-support",
+      "expectedPath": "docs/getting-started.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "cognitum-support/docs/getting-started.md",
+        "cognitum-support/README.md",
+        "cognitum-support/docs/troubleshooting.md",
+        "cognitum-support/docs/esp32-onboarding.md",
+        "cognitum-support/.github/ISSUE_TEMPLATE/feature_request.yml"
+      ]
+    },
+    {
+      "store": "connectome-os",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "connectome-os/README.md"
+      ]
+    },
+    {
+      "store": "console-streamer",
+      "expectedPath": "readme.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "console-streamer/readme.md",
+        "console-streamer/requirements.txt",
+        "console-streamer/pyproject.toml"
+      ]
+    },
+    {
+      "store": "contextual-retrevial",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "contextual-retrevial/README.md"
+      ]
+    },
+    {
+      "store": "cve-bench",
+      "expectedPath": "package.json",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "cve-bench/package.json",
+        "cve-bench/docs/adr/0001-design-and-conformance.md",
+        "cve-bench/scripts/evaluate.mjs",
+        "cve-bench/scripts/build-manifest.mjs",
+        "cve-bench/scripts/lib/env-recipe.mjs"
+      ]
+    },
+    {
+      "store": "daa",
+      "expectedPath": "packages/daa-sdk/src/index.ts",
+      "repoCovered": true,
+      "exactFileRank": 2,
+      "returnedPaths": [
+        "daa/packages/daa-sdk/docs/NAPI_INTEGRATION.md",
+        "daa/packages/daa-sdk/src/index.ts",
+        "daa/packages/daa-sdk/src/platform.ts",
+        "daa/docs/FUNCTIONALITY-REVIEW.md",
+        "daa/daa-orchestrator/daa-napi/src/orchestrator.rs"
+      ]
+    },
+    {
+      "store": "demo-proxy-app",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "demo-proxy-app/README.md",
+        "demo-proxy-app/react-demo/vercel.template.json",
+        "demo-proxy-app/vue-demo/README.md",
+        "demo-proxy-app/react-demo/README.md",
+        "demo-proxy-app/demo/package.json"
+      ]
+    },
+    {
+      "store": "dream-machine",
+      "expectedPath": "packages/cli/README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "dream-machine/packages/cli/README.md",
+        "dream-machine/packages/cli/package.json",
+        "dream-machine/docs/plans/2026-09-04-dream-machine-home-core-implementation.md",
+        "dream-machine/docs/security/dream-machine-home-core-threat-model.md",
+        "dream-machine/docs/site/index.html"
+      ]
+    },
+    {
+      "store": "drupaljs",
+      "expectedPath": "Drupal.js/package.json",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "drupaljs/Drupal.js/package.json",
+        "drupaljs/package.json",
+        "drupaljs/Drupal.js/vite.config.js",
+        "drupaljs/vite.config.js",
+        "drupaljs/Drupal.js/src/tinymce/js/tinymce/plugins/emoticons/js/emojiimages.min.js"
+      ]
+    },
+    {
+      "store": "dspy.ts",
+      "expectedPath": "plans/Phase7_Documentation_and_Examples.md",
+      "repoCovered": true,
+      "exactFileRank": 2,
+      "returnedPaths": [
+        "dspy.ts/docs/api/README.md",
+        "dspy.ts/plans/Phase7_Documentation_and_Examples.md",
+        "dspy.ts/docs/guides/lm-backends.md",
+        "dspy.ts/docs/guides/getting-started.md",
+        "dspy.ts/docs/examples/README.md"
+      ]
+    },
+    {
+      "store": "dynamo-mcp",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": null,
+      "returnedPaths": [
+        "dynamo-mcp/.harness/generated/.github/copilot-instructions.md",
+        "dynamo-mcp/.harness/generated/AGENTS.md",
+        "dynamo-mcp/plans/api_specification.md",
+        "dynamo-mcp/plans/architecture.md",
+        "dynamo-mcp/docs/legacy-README.md"
+      ]
+    },
+    {
+      "store": "electo1",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 3,
+      "returnedPaths": [
+        "electo1/documentation/user_guide.md",
+        "electo1/documentation/dev_guide.md",
+        "electo1/README.md",
+        "electo1/documentation/advanced_uses.md",
+        "electo1/documentation/api_reference.md"
+      ]
+    },
+    {
+      "store": "electo1-js",
+      "expectedPath": "documentation/frontend_overview.md",
+      "repoCovered": true,
+      "exactFileRank": 2,
+      "returnedPaths": [
+        "electo1-js/README.md",
+        "electo1-js/documentation/frontend_overview.md",
+        "electo1-js/documentation/user_guide.md",
+        "electo1-js/documentation/dev_guide.md",
+        "electo1-js/documentation/api_reference.md"
+      ]
+    },
+    {
+      "store": "fact",
+      "expectedPath": "fact-memory/examples/README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "fact/fact-memory/examples/README.md",
+        "fact/fact-memory/README.md",
+        "fact/fact-memory/api-specs/mcp-compatibility.md",
+        "fact/fact-memory/docs/research-findings.md",
+        "fact/fact-memory/src/VALIDATION_REPORT.md"
+      ]
+    },
+    {
+      "store": "federated-mcp",
+      "expectedPath": "docs/intro.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "federated-mcp/docs/intro.md",
+        "federated-mcp/docs/historical-2024.md",
+        "federated-mcp/docs/architecture.md",
+        "federated-mcp/docs/README.md",
+        "federated-mcp/docs/revival/ADR-001-bounded-revival.md"
+      ]
+    },
+    {
+      "store": "fireflies-webook",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "fireflies-webook/README.md",
+        "fireflies-webook/docs/tutorial.md",
+        "fireflies-webook/docs/user_guide.md",
+        "fireflies-webook/docs/api_documentation.md",
+        "fireflies-webook/package-lock.json"
+      ]
+    },
+    {
+      "store": "flow-nexus",
+      "expectedPath": "tutorials/agentic-marketing/TUTORIAL.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "flow-nexus/tutorials/agentic-marketing/TUTORIAL.md",
+        "flow-nexus/tutorials/agentic-marketing/src/FlowNexusSDK.js",
+        "flow-nexus/tutorials/agentic-marketing/main.js",
+        "flow-nexus/tutorials/agentic-marketing/ADVANCED_FEATURES.md",
+        "flow-nexus/.claude/agents/flow-nexus/app-store.md"
+      ]
+    },
+    {
+      "store": "genai-superstream",
+      "expectedPath": "docs/overview.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "genai-superstream/docs/overview.md",
+        "genai-superstream/docs/architecture.md",
+        "genai-superstream/USAGE.md",
+        "genai-superstream/docs/implementation_plan.md",
+        "genai-superstream/docs/project_specification.md"
+      ]
+    },
+    {
+      "store": "genesis",
+      "expectedPath": "docs/performance_optimization_report.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "genesis/docs/performance_optimization_report.md",
+        "genesis/docs/index.md",
+        "genesis/README.md",
+        "genesis/docs/utils/options.md",
+        "genesis/rust_env_awareness/BUILD.md"
+      ]
+    },
+    {
+      "store": "gpts",
+      "expectedPath": "instructions/GPT API Advisor.txt",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "gpts/instructions/GPT API Advisor.txt",
+        "gpts/instructions/O-Ai Plugin Creator.txt",
+        "gpts/openapi-json/readme.md",
+        "gpts/instructions/LegalGPT.txt",
+        "gpts/instructions/Stripe Assistant.txt"
+      ]
+    },
+    {
+      "store": "guardrail",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 2,
+      "returnedPaths": [
+        "guardrail/docs/historical-readme.md",
+        "guardrail/README.md",
+        "guardrail/.harness/generated/README.md",
+        "guardrail/pyproject.toml",
+        "guardrail/.harness/runtime/policy.json"
+      ]
+    },
+    {
+      "store": "hacker-league",
+      "expectedPath": "stock-mirror-spec/readme.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "hacker-league/stock-mirror-spec/readme.md",
+        "hacker-league/README.md",
+        "hacker-league/src/insider_mirror/cli/handlers/trading_handler.py",
+        "hacker-league/src/insider_mirror/cli/handlers/reporting_handler.py",
+        "hacker-league/prometheus.yml"
+      ]
+    },
+    {
+      "store": "hackerone",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "hackerone/README.md",
+        "hackerone/package.json",
+        "hackerone/docs/HACKERONE_POLICY.md",
+        "hackerone/src/cli/index.ts",
+        "hackerone/src/safety.ts"
+      ]
+    },
+    {
+      "store": "helix",
+      "expectedPath": "index.html",
+      "repoCovered": true,
+      "exactFileRank": null,
+      "returnedPaths": [
+        "helix/README.md",
+        "helix/docs/adr/README.md",
+        "helix/docs/adr/ADR-017-mint-branded-harness-metaharness.md",
+        "helix/crates/helix-wasm/src/lib.rs",
+        "helix/docs/adr/ADR-023-semantic-retrieval.md"
+      ]
+    },
+    {
+      "store": "hello_world_agent",
+      "expectedPath": "agent/docs/readme.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "hello_world_agent/agent/docs/readme.md",
+        "hello_world_agent/README.md",
+        "hello_world_agent/agent/docs/templates.md",
+        "hello_world_agent/agent/README.md",
+        "hello_world_agent/agent/docs/configuration.md"
+      ]
+    },
+    {
+      "store": "hft",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "hft/README.md"
+      ]
+    },
+    {
+      "store": "image-agent",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "image-agent/README.md",
+        "image-agent/ad-generator/src/App.jsx",
+        "image-agent/plans/openai-image-gen.md",
+        "image-agent/ad-generator/src/components/ImageDisplay.jsx",
+        "image-agent/ad-generator/README.md"
+      ]
+    },
+    {
+      "store": "infinity-ui",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "infinity-ui/README.md",
+        "infinity-ui/index.html",
+        "infinity-ui/package.json",
+        "infinity-ui/gpt-engineer.toml",
+        "infinity-ui/vite.config.js"
+      ]
+    },
+    {
+      "store": "inflight",
+      "expectedPath": "pyproject.toml",
+      "repoCovered": true,
+      "exactFileRank": 3,
+      "returnedPaths": [
+        "inflight/inflight_agentics/pyproject.toml",
+        "inflight/specifications/README.md",
+        "inflight/pyproject.toml",
+        "inflight/inflight_agentics/README.md",
+        "inflight/inflight_agentics/tests/test_openai_integration.py"
+      ]
+    },
+    {
+      "store": "latentmesh",
+      "expectedPath": "docs/adr/001-latentmesh-architecture-and-prior-art.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "latentmesh/docs/adr/001-latentmesh-architecture-and-prior-art.md",
+        "latentmesh/docs/adr/004-streaming-latent-state.md",
+        "latentmesh/docs/adr/006-self-evolving-topology.md",
+        "latentmesh/docs/adr/002-latent-packet-protocol.md",
+        "latentmesh/docs/adr/003-causal-edge-verification.md"
+      ]
+    },
+    {
+      "store": "llamastack",
+      "expectedPath": "llamastack/src/nav-items.jsx",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "llamastack/llamastack/src/nav-items.jsx",
+        "llamastack/llamastack/tailwind.config.js",
+        "llamastack/llamastack/vite.config.js",
+        "llamastack/llamastack/src/components/analytics/ExportReports.jsx",
+        "llamastack/llamastack/src/components/security/SecurityPolicyConfig.jsx"
+      ]
+    },
+    {
+      "store": "llm-stream-reformat",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 2,
+      "returnedPaths": [
+        "llm-stream-reformat/docs/index.html",
+        "llm-stream-reformat/README.md",
+        "llm-stream-reformat/packages/stream-reformat/package.json",
+        "llm-stream-reformat/packages/stream-reformat/index.js",
+        "llm-stream-reformat/packages/stream-reformat/README.md"
+      ]
+    },
+    {
+      "store": "local-logic",
+      "expectedPath": "docs/applications/reasoning.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "local-logic/docs/applications/reasoning.md",
+        "local-logic/reasoning/reasoning/README.md",
+        "local-logic/docs/applications/analytics.md",
+        "local-logic/docs/applications/project_management.md",
+        "local-logic/docs/applications/behavioral.md"
+      ]
+    },
+    {
+      "store": "marketing",
+      "expectedPath": "docs/architecture/README.md",
+      "repoCovered": true,
+      "exactFileRank": 2,
+      "returnedPaths": [
+        "marketing/plans/adr/swarm-config/001-claude-flow-v3.md",
+        "marketing/docs/architecture/README.md",
+        "marketing/src/agents/tier1/orchestrator-agent.ts",
+        "marketing/plans/adr/ruvector-integration/002-attention-mechanisms.md",
+        "marketing/plans/BENCHMARK.md"
+      ]
+    },
+    {
+      "store": "markov-chains",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "markov-chains/README.md",
+        "markov-chains/src/markov_chain.py",
+        "markov-chains/requirements.txt",
+        "markov-chains/src/cli_menu.py",
+        "markov-chains/src/text_refiner.py"
+      ]
+    },
+    {
+      "store": "metaharness",
+      "expectedPath": "docs/adrs/ADR-145-metaharness-router-swebench-integration.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "metaharness/docs/adrs/ADR-145-metaharness-router-swebench-integration.md",
+        "metaharness/packages/evals-servedmodel/src/index.ts",
+        "metaharness/packages/flywheel/src/types.ts",
+        "metaharness/packages/darwin-mode/bench/experiments/swe-fitness-variance.mjs",
+        "metaharness/crates/poker-darwin/src/darwin.rs"
+      ]
+    },
+    {
+      "store": "midstream",
+      "expectedPath": "npm/src/restream-integration.ts",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "midstream/npm/src/restream-integration.ts",
+        "midstream/plans/DASHBOARD_README.md",
+        "midstream/docs/archive/2026-pre-cleanup/SECURITY_ANALYSIS_REPORT.md",
+        "midstream/docs/archive/2026-pre-cleanup/QUALITY_REVIEW_REPORT.md",
+        "midstream/npm/examples/agentic-flow-integration.ts"
+      ]
+    },
+    {
+      "store": "musica",
+      "expectedPath": "docs/adr/ADR-160-musica-vj-tauri-subproject-boundary.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "musica/docs/adr/ADR-160-musica-vj-tauri-subproject-boundary.md",
+        "musica/apps/musica-vj/logitech/README.md",
+        "musica/docs/adr/ADR-161-web-audio-sample-clock-and-offline-musica-dsp.md",
+        "musica/apps/musica-vj/src-tauri/Cargo.toml",
+        "musica/apps/musica-vj/scripts/setup-ffmpeg-sidecar.mjs"
+      ]
+    },
+    {
+      "store": "musicai",
+      "expectedPath": "src/index.ts",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "musicai/src/index.ts",
+        "musicai/AGENT_SWARM.md",
+        "musicai/docs/CLI_GUIDE.md",
+        "musicai/scripts/README.md",
+        "musicai/demo/real-audio-test.ts"
+      ]
+    },
+    {
+      "store": "nova",
+      "expectedPath": "conjecture/docs/integration.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "nova/conjecture/docs/integration.md",
+        "nova/conjecture/docs/architecture.md",
+        "nova/conjecture/docs/roadmap.md",
+        "nova/README.md",
+        "nova/conjecture/docs/implementation.md"
+      ]
+    },
+    {
+      "store": "obsidian-brain",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "obsidian-brain/README.md",
+        "obsidian-brain/tests/e2e/harness/main.ts",
+        "obsidian-brain/package-lock.json",
+        "obsidian-brain/tests/protocol/brain-server.test.ts",
+        "obsidian-brain/manifest.json"
+      ]
+    },
+    {
+      "store": "omnipotent",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "omnipotent/README.md",
+        "omnipotent/index.html",
+        "omnipotent/src/lib/voice-prompt.ts",
+        "omnipotent/src/lib/consciousness-prompts.ts",
+        "omnipotent/src/hooks/use-openai-voice.ts"
+      ]
+    },
+    {
+      "store": "onnx-agent",
+      "expectedPath": "research/readme.md",
+      "repoCovered": true,
+      "exactFileRank": null,
+      "returnedPaths": [
+        "onnx-agent/README.md",
+        "onnx-agent/docs/historical-proposal.md",
+        "onnx-agent/.harness/generated/README.md",
+        "onnx-agent/docs/adr/0001-qualification.md",
+        "onnx-agent/.harness/generated/CLAUDE.md"
+      ]
+    },
+    {
+      "store": "open-claude-code",
+      "expectedPath": "docs/adr/ADR-001-v2-architecture.md",
+      "repoCovered": true,
+      "exactFileRank": 3,
+      "returnedPaths": [
+        "open-claude-code/v2/src/index.mjs",
+        "open-claude-code/docs/adr/ADR-002-path-to-100-percent.md",
+        "open-claude-code/docs/adr/ADR-001-v2-architecture.md",
+        "open-claude-code/v2/src/ui/repl.mjs",
+        "open-claude-code/v2/README.md"
+      ]
+    },
+    {
+      "store": "open-space",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "open-space/README.md",
+        "open-space/implementation.md",
+        "open-space/server.js",
+        "open-space/components/TaskList.tsx",
+        "open-space/pages/settings.tsx"
+      ]
+    },
+    {
+      "store": "openai-cost-estimator",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "openai-cost-estimator/README.md",
+        "openai-cost-estimator/index.html"
+      ]
+    },
+    {
+      "store": "openai_devops",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "openai_devops/README.md"
+      ]
+    },
+    {
+      "store": "p2pgpt",
+      "expectedPath": "readme.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "p2pgpt/readme.md",
+        "p2pgpt/main.py",
+        "p2pgpt/requirements.txt",
+        "p2pgpt/pyproject.toml"
+      ]
+    },
+    {
+      "store": "paris",
+      "expectedPath": "paris.py",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "paris/paris.py",
+        "paris/README.md"
+      ]
+    },
+    {
+      "store": "phone-agent",
+      "expectedPath": "docs/architecture.md",
+      "repoCovered": true,
+      "exactFileRank": null,
+      "returnedPaths": [
+        "phone-agent/plans/DEVELOPER.md",
+        "phone-agent/README.md",
+        "phone-agent/plans/README.md",
+        "phone-agent/plans/CLOUDFLARE_PAGES_DEPLOYMENT.md",
+        "phone-agent/docs/deployment-guide.md"
+      ]
+    },
+    {
+      "store": "photonlayer",
+      "expectedPath": "crates/photonlayer-core/README.md",
+      "repoCovered": true,
+      "exactFileRank": null,
+      "returnedPaths": [
+        "photonlayer/docs/README.md",
+        "photonlayer/crates/photonlayer-wasm/Cargo.toml",
+        "photonlayer/crates/photonlayer-core/examples/receipt.rs",
+        "photonlayer/crates/photonlayer-core/src/complex.rs",
+        "photonlayer/crates/photonlayer-cli/Cargo.toml"
+      ]
+    },
+    {
+      "store": "pipackager",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "pipackager/README.md",
+        "pipackager/pipackager/__init__.py",
+        "pipackager/setup.py",
+        "pipackager/tests/test_pipackager.py",
+        "pipackager/tests/__init__.py"
+      ]
+    },
+    {
+      "store": "powerprompt",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "powerprompt/README.md",
+        "powerprompt/src/content.js",
+        "powerprompt/src/content-new.js",
+        "powerprompt/src/manifest.json",
+        "powerprompt/downloads/readme.md"
+      ]
+    },
+    {
+      "store": "prompt-engine",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 2,
+      "returnedPaths": [
+        "prompt-engine/prompts/engine.toml",
+        "prompt-engine/README.md",
+        "prompt-engine/templates/prompt.toml",
+        "prompt-engine/templates/prompt.yaml",
+        "prompt-engine/templates/prompt.json"
+      ]
+    },
+    {
+      "store": "promptlang",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 2,
+      "returnedPaths": [
+        "promptlang/docs/legacy-readme.md",
+        "promptlang/README.md",
+        "promptlang/.harness/generated/.github/copilot-instructions.md",
+        "promptlang/.harness/generated/AGENTS.md",
+        "promptlang/.harness/generated/README.md"
+      ]
+    },
+    {
+      "store": "pygentic",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "pygentic/README.md",
+        "pygentic/requirements.txt",
+        "pygentic/app/__init__.py",
+        "pygentic/setup.py",
+        "pygentic/app/services/open_interpreter_service.py"
+      ]
+    },
+    {
+      "store": "q-space",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "q-space/README.md",
+        "q-space/./src",
+        "q-space/src/main.rs",
+        "q-space/requirements.txt",
+        "q-space/Cargo.toml"
+      ]
+    },
+    {
+      "store": "q-star",
+      "expectedPath": "q.py",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "q-star/q.py",
+        "q-star/README.md",
+        "q-star/requirements.txt",
+        "q-star/OAI_CONFIG_LIST.json"
+      ]
+    },
+    {
+      "store": "quantum-magnetic-navigation",
+      "expectedPath": "plans/00_overview.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "quantum-magnetic-navigation/plans/00_overview.md",
+        "quantum-magnetic-navigation/research/README.md",
+        "quantum-magnetic-navigation/research/implementation.md",
+        "quantum-magnetic-navigation/src/qmag_nav/mcp/README.md",
+        "quantum-magnetic-navigation/tests/conftest.py"
+      ]
+    },
+    {
+      "store": "quantum-virtual-machine",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "quantum-virtual-machine/README.md",
+        "quantum-virtual-machine/docs/plans/qvm-implementation-plan.md",
+        "quantum-virtual-machine/docs/parser-implementation-summary.md",
+        "quantum-virtual-machine/docs/topology-implementation-summary.md",
+        "quantum-virtual-machine/src/lib.rs"
+      ]
+    },
+    {
+      "store": "quantum_cryptocurrency",
+      "expectedPath": "quantum_crypto/README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "quantum_cryptocurrency/quantum_crypto/README.md",
+        "quantum_cryptocurrency/README.md",
+        "quantum_cryptocurrency/trading-platform/symbolic_trading/README.md",
+        "quantum_cryptocurrency/quantum_crypto/package.json",
+        "quantum_cryptocurrency/quantum_crypto/completion/documentation/technical_docs.md"
+      ]
+    },
+    {
+      "store": "qudag",
+      "expectedPath": "qudag-admin/plans/admin.md",
+      "repoCovered": true,
+      "exactFileRank": null,
+      "returnedPaths": [
+        "qudag/qudag-exchange/core/tests/business_plan_integration.rs",
+        "qudag/qudag-exchange/docs/business-plan.md",
+        "qudag/qudag-exchange/README.md",
+        "qudag/qudag-exchange/qudag-exchange-sim/Cargo.toml",
+        "qudag/memory/swarm-auto-centralized-1750626899544/optimization/optimization-plan.md"
+      ]
+    },
+    {
+      "store": "r-flow",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "r-flow/README.md",
+        "r-flow/src/nodes/PositionLoggerNode.jsx",
+        "r-flow/package.json",
+        "r-flow/public/index.html",
+        "r-flow/.codesandbox/tasks.json"
+      ]
+    },
+    {
+      "store": "reflective-engineer",
+      "expectedPath": "public/templates/conversational-agents.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "reflective-engineer/public/templates/conversational-agents.md",
+        "reflective-engineer/docs/historical-proposal.md",
+        "reflective-engineer/.harness/generated/.github/copilot-instructions.md",
+        "reflective-engineer/.harness/generated/AGENTS.md",
+        "reflective-engineer/.harness/generated/bin/cli.js"
+      ]
+    },
+    {
+      "store": "retro-ai-ui",
+      "expectedPath": "readme.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "retro-ai-ui/readme.md",
+        "retro-ai-ui/pyproject.toml",
+        "retro-ai-ui/templates/index.html",
+        "retro-ai-ui/requirements.txt",
+        "retro-ai-ui/.github/workflows/deploy.yml"
+      ]
+    },
+    {
+      "store": "roomodes",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "roomodes/README.md"
+      ]
+    },
+    {
+      "store": "rucelium",
+      "expectedPath": "crates/rucelium-abi/src/wire.rs",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "rucelium/crates/rucelium-abi/src/wire.rs",
+        "rucelium/crates/rucelium-worldgraph/src/lib.rs",
+        "rucelium/crates/rucelium-abi/Cargo.toml",
+        "rucelium/crates/rucelium-abi/include/rucelium_env.h",
+        "rucelium/crates/rucelium-abi/src/lib.rs"
+      ]
+    },
+    {
+      "store": "rudevolution",
+      "expectedPath": "docs/adr/ADR-137-npm-decompiler-cli-and-mcp.md",
+      "repoCovered": true,
+      "exactFileRank": 3,
+      "returnedPaths": [
+        "rudevolution/dashboard/README.md",
+        "rudevolution/package.json",
+        "rudevolution/docs/adr/ADR-137-npm-decompiler-cli-and-mcp.md",
+        "rudevolution/npm/src/decompiler/witness.js",
+        "rudevolution/npm/src/decompiler/index.js"
+      ]
+    },
+    {
+      "store": "rufield",
+      "expectedPath": "docs/ADR-260-rufield-mfs.md",
+      "repoCovered": true,
+      "exactFileRank": null,
+      "returnedPaths": [
+        "rufield/crates/rufield-viewer/static/index.html",
+        "rufield/docs/ADR-267-composite-event-privacy.md",
+        "rufield/docs/ADR-261-fail-closed-provenance-trust.md",
+        "rufield/crates/rufield-bench/Cargo.toml",
+        "rufield/crates/rufield-viewer/Cargo.toml"
+      ]
+    },
+    {
+      "store": "ruflo",
+      "expectedPath": "v3/docs/releases/v3.32.38.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "ruflo/v3/docs/releases/v3.32.38.md",
+        "ruflo/v3/docs/releases/v3.32.30.md",
+        "ruflo/v3/docs/releases/v3.32.33.md",
+        "ruflo/CLAUDE.md",
+        "ruflo/plugins/ruflo-x-gateway/claude-directory-test-cases.md"
+      ]
+    },
+    {
+      "store": "rulake",
+      "expectedPath": "crates/core/src/backend.rs",
+      "repoCovered": true,
+      "exactFileRank": null,
+      "returnedPaths": [
+        "rulake/docs/adrs/ADR-007-rvdna-as-rulake-substrate.md",
+        "rulake/crates/mcp-server/README.md",
+        "rulake/crates/gcs-backend/README.md",
+        "rulake/docs/userguide/05-backends-and-collections.md",
+        "rulake/docs/adrs/ADR-008-ruqu-as-rulake-substrate.md"
+      ]
+    },
+    {
+      "store": "ruos-macair",
+      "expectedPath": "docs/adr/ADR-001-ruos-macbook-air-2012.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "ruos-macair/docs/adr/ADR-001-ruos-macbook-air-2012.md",
+        "ruos-macair/README.md"
+      ]
+    },
+    {
+      "store": "rupixel",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "rupixel/README.md",
+        "rupixel/package.json",
+        "rupixel/docs/visual.html",
+        "rupixel/docs/index.html",
+        "rupixel/docs/live.js"
+      ]
+    },
+    {
+      "store": "ruqu",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": null,
+      "returnedPaths": [
+        "ruqu/crates/ruqu-wasm/Cargo.toml",
+        "ruqu/crates/ruqu-exotic/Cargo.toml",
+        "ruqu/crates/ruqu-wasm/src/lib.rs",
+        "ruqu/crates/ruQu/Cargo.toml",
+        "ruqu/cli/bin/cli.js"
+      ]
+    },
+    {
+      "store": "ruv-dev",
+      "expectedPath": "plans/README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "ruv-dev/plans/README.md",
+        "ruv-dev/plans/phases/1-specification.md",
+        "ruv-dev/README.md",
+        "ruv-dev/plans/phases/3-architecture.md",
+        "ruv-dev/plans/system-component-diagram.md"
+      ]
+    },
+    {
+      "store": "ruv-drone",
+      "expectedPath": "src/lib.rs",
+      "repoCovered": true,
+      "exactFileRank": null,
+      "returnedPaths": [
+        "ruv-drone/docs/adr/ADR-172-jellyfish-swarm.md",
+        "ruv-drone/crates/ruv-jellyfish/src/vec3.rs",
+        "ruv-drone/README.md",
+        "ruv-drone/crates/ruv-jellyfish/src/lib.rs",
+        "ruv-drone/crates/ruv-jellyfish/src/bloom.rs"
+      ]
+    },
+    {
+      "store": "ruv-enterprise-ai-guide",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "ruv-enterprise-ai-guide/README.md",
+        "ruv-enterprise-ai-guide/docs/The_rUv_Method.md",
+        "ruv-enterprise-ai-guide/docs/introduction.md",
+        "ruv-enterprise-ai-guide/docs/readme.md",
+        "ruv-enterprise-ai-guide/docs/The rUv Enterprise Ai Guide - v01.txt"
+      ]
+    },
+    {
+      "store": "ruv-fann",
+      "expectedPath": "ruv-swarm/docs/NEURAL_INTEGRATION.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "ruv-fann/ruv-swarm/docs/NEURAL_INTEGRATION.md",
+        "ruv-fann/ruv-swarm/docs/implementation/WASM_IMPLEMENTATION_COMPLETE.md",
+        "ruv-fann/ruv-swarm/docs/implementation/NEURAL_AGENTS.md",
+        "ruv-fann/README.md",
+        "ruv-fann/neuro-divergent/neuro-divergent-core/src/integration.rs"
+      ]
+    },
+    {
+      "store": "ruv-neural",
+      "expectedPath": "docs/adr/0003-closed-loop-architecture.md",
+      "repoCovered": true,
+      "exactFileRank": 3,
+      "returnedPaths": [
+        "ruv-neural/ruv-neural-loop/Cargo.toml",
+        "ruv-neural/ruv-neural-loop/src/lib.rs",
+        "ruv-neural/docs/adr/0003-closed-loop-architecture.md",
+        "ruv-neural/ruv-neural-loop/src/controller.rs",
+        "ruv-neural/ruv-neural-cli/src/commands/neuromod.rs"
+      ]
+    },
+    {
+      "store": "ruv.io",
+      "expectedPath": "plans/011-code-mesh-cli.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "ruv.io/plans/011-code-mesh-cli.md",
+        "ruv.io/plans/102-synaptic-mesh-cli.md",
+        "ruv.io/plans/013-code-mesh-tui.md",
+        "ruv.io/plans/012-code-mesh-core.md",
+        "ruv.io/plans/014-code-mesh-wasm.md"
+      ]
+    },
+    {
+      "store": "ruvbot",
+      "expectedPath": "llama2_app/package.json",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "ruvbot/llama2_app/package.json",
+        "ruvbot/llama2_app/README.md",
+        "ruvbot/llama2_app/package-lock.json",
+        "ruvbot/README.md",
+        "ruvbot/llama2_app/cache/doc_store.json"
+      ]
+    },
+    {
+      "store": "ruvector",
+      "expectedPath": "crates/ruvector-solver/src",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "ruvector/crates/ruvector-solver/src",
+        "ruvector/crates/ruvector-solver-wasm/src",
+        "ruvector/crates/ruvector-solver-node/src",
+        "ruvector/crates/ruvector-turboquant/src",
+        "ruvector/crates/ruvector-hybrid/src"
+      ]
+    },
+    {
+      "store": "ruview",
+      "expectedPath": "docs/adr/ADR-031-ruview-sensing-first-rf-mode.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "ruview/docs/adr/ADR-031-ruview-sensing-first-rf-mode.md",
+        "ruview/plugins/ruview/skills/ruview-advanced-sensing/SKILL.md",
+        "ruview/docs/adr/ADR-029-ruvsense-multistatic-sensing-mode.md",
+        "ruview/docs/adr/ADR-113-multistatic-placement-strategy.md",
+        "ruview/docs/adr/ADR-097-adopt-rvcsi-as-ruview-csi-runtime.md"
+      ]
+    },
+    {
+      "store": "ruvn",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "ruvn/README.md",
+        "ruvn/.github/actions/ruvn/action.yml",
+        "ruvn/.github/copilot-instructions.md",
+        "ruvn/AGENTS.md",
+        "ruvn/.github/workflows/ruvn.yml"
+      ]
+    },
+    {
+      "store": "ruvnet",
+      "expectedPath": "llms.txt",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "ruvnet/llms.txt",
+        "ruvnet/docs/ENTITY-GLOSSARY.md",
+        "ruvnet/plugins/ruvnet/skills/ruvnet-start/SKILL.md",
+        "ruvnet/docs/ruvnet-prior-art.md",
+        "ruvnet/SECURITY.md"
+      ]
+    },
+    {
+      "store": "ruvnet-brain",
+      "expectedPath": "explainer/llms-full.txt",
+      "repoCovered": true,
+      "exactFileRank": null,
+      "returnedPaths": [
+        "ruvnet-brain/bin/install.mjs",
+        "ruvnet-brain/console/install-mockup.html",
+        "ruvnet-brain/docs/RELEASE-NOTES-4.0.md",
+        "ruvnet-brain/plugin/docs/RELEASE-NOTES-4.0.md",
+        "ruvnet-brain/docs/research/metaharness/ruvnet-brain-deltas.md"
+      ]
+    },
+    {
+      "store": "rvcsi",
+      "expectedPath": "docs/prd/rvcsi-platform-prd.md",
+      "repoCovered": true,
+      "exactFileRank": null,
+      "returnedPaths": [
+        "rvcsi/docs/adr/ADR-096-rvcsi-ffi-crate-layout.md",
+        "rvcsi/README.md",
+        "rvcsi/plugins/rvcsi/agents/rvcsi-engineer.md",
+        "rvcsi/crates/rvcsi-node/index.d.ts",
+        "rvcsi/crates/rvcsi-dsp/src/lib.rs"
+      ]
+    },
+    {
+      "store": "rvdna",
+      "expectedPath": "npm/packages/rvdna/index.d.ts",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "rvdna/npm/packages/rvdna/index.d.ts",
+        "rvdna/npm/packages/rvdna/README.md",
+        "rvdna/examples/dna/adr/ADR-013-rvdna-ai-native-format.md",
+        "rvdna/examples/dna/src/rvdna.rs",
+        "rvdna/examples/dna/src/lib.rs"
+      ]
+    },
+    {
+      "store": "rvface",
+      "expectedPath": "docs/adrs/0001-project-scope-and-layout.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "rvface/docs/adrs/0001-project-scope-and-layout.md",
+        "rvface/crates/rvface-cli/Cargo.toml",
+        "rvface/crates/rvface-wasm/Cargo.toml",
+        "rvface/web/index.html",
+        "rvface/crates/rvface-core/Cargo.toml"
+      ]
+    },
+    {
+      "store": "rvm",
+      "expectedPath": "userguide/03-architecture.md",
+      "repoCovered": true,
+      "exactFileRank": 2,
+      "returnedPaths": [
+        "rvm/crates/rvm-types/src/partition.rs",
+        "rvm/userguide/03-architecture.md",
+        "rvm/crates/rvm-types/src/capability.rs",
+        "rvm/crates/rvm-types/src/ids.rs",
+        "rvm/crates/rvm-wasm/README.md"
+      ]
+    },
+    {
+      "store": "rvqr",
+      "expectedPath": "bench/lib/transports.mjs",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "rvqr/bench/lib/transports.mjs",
+        "rvqr/bench/suites/loss.mjs",
+        "rvqr/docs/adr/ADR-001-rvqr-optical-transport.md",
+        "rvqr/docs/ecosystem.md",
+        "rvqr/docs/adr/ADR-011-rvqr-deployment-plane.md"
+      ]
+    },
+    {
+      "store": "safla",
+      "expectedPath": "research/01_initial_queries/01_scope_definition.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "safla/research/01_initial_queries/01_scope_definition.md",
+        "safla/memory_bank/safla_research/01_theoretical_foundations/scope_definition.md",
+        "safla/research/05_final_report/01_executive_summary.md",
+        "safla/research/05_final_report/05_recommendations.md",
+        "safla/plans/huggingface/01_project_overview.md"
+      ]
+    },
+    {
+      "store": "skygraph",
+      "expectedPath": "core/src/lib.rs",
+      "repoCovered": true,
+      "exactFileRank": 5,
+      "returnedPaths": [
+        "skygraph/core/Cargo.toml",
+        "skygraph/core/README.md",
+        "skygraph/wasm/Cargo.toml",
+        "skygraph/core/src/track.rs",
+        "skygraph/core/src/lib.rs"
+      ]
+    },
+    {
+      "store": "sonicchamber",
+      "expectedPath": "crates/sonic-ct/src/memory.rs",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "sonicchamber/crates/sonic-ct/src/memory.rs",
+        "sonicchamber/crates/sonic-ct/src/bin/train.rs",
+        "sonicchamber/crates/sonic-ct-wasm/src/lib.rs",
+        "sonicchamber/crates/sonic-ct/src/lib.rs",
+        "sonicchamber/examples/sonic-ct/src/optimizer/reconstructionEvolution.ts"
+      ]
+    },
+    {
+      "store": "sparc",
+      "expectedPath": "configuration/CONVENTIONS.md",
+      "repoCovered": true,
+      "exactFileRank": 2,
+      "returnedPaths": [
+        "sparc/sparc_cli/README.md",
+        "sparc/configuration/CONVENTIONS.md",
+        "sparc/sparc_cli/docs/README.md",
+        "sparc/sparc_cli/docs/usage.md",
+        "sparc/sparc_cli/scripts/fly/README.md"
+      ]
+    },
+    {
+      "store": "sparc-ide",
+      "expectedPath": "docs/developer-guide.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "sparc-ide/docs/developer-guide.md",
+        "sparc-ide/plans/02_pseudocode.md",
+        "sparc-ide/package/final-release-manifest.md",
+        "sparc-ide/plans/01_specification.md",
+        "sparc-ide/docs/windows-installer-guide.md"
+      ]
+    },
+    {
+      "store": "strawberry-phi",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "strawberry-phi/README.md",
+        "strawberry-phi/index.html",
+        "strawberry-phi/src/pages/Settings.jsx",
+        "strawberry-phi/vite.config.js",
+        "strawberry-phi/src/stores/apiKey.js"
+      ]
+    },
+    {
+      "store": "sublinear-time-solver",
+      "expectedPath": "plans/01-system-architecture.md",
+      "repoCovered": true,
+      "exactFileRank": 2,
+      "returnedPaths": [
+        "sublinear-time-solver/plans/00-master-implementation-plan.md",
+        "sublinear-time-solver/plans/01-system-architecture.md",
+        "sublinear-time-solver/src/index.ts",
+        "sublinear-time-solver/crates/neural-network-implementation/src/solvers/mod.rs",
+        "sublinear-time-solver/src/solver/mod.rs"
+      ]
+    },
+    {
+      "store": "supa-ruv",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "supa-ruv/README.md"
+      ]
+    },
+    {
+      "store": "supabase-authentication",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "supabase-authentication/README.md",
+        "supabase-authentication/fastapi/readme.md",
+        "supabase-authentication/pyproject.toml",
+        "supabase-authentication/requirements.txt",
+        "supabase-authentication/fastapi/requirements.txt"
+      ]
+    },
+    {
+      "store": "surfer",
+      "expectedPath": "main.py",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "surfer/main.py",
+        "surfer/plugins/ai-plugin.json",
+        "surfer/templates/summary.html",
+        "surfer/readme.md",
+        "surfer/templates/index.html"
+      ]
+    },
+    {
+      "store": "svgart",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "svgart/README.md",
+        "svgart/svg/readme.md"
+      ]
+    },
+    {
+      "store": "swagger-chatgpt-plugin-creator",
+      "expectedPath": "readme.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "swagger-chatgpt-plugin-creator/readme.md",
+        "swagger-chatgpt-plugin-creator/nulll.well-known/ai-plugin.json",
+        "swagger-chatgpt-plugin-creator/templates/swagger.html",
+        "swagger-chatgpt-plugin-creator/templates/context.html",
+        "swagger-chatgpt-plugin-creator/main.py"
+      ]
+    },
+    {
+      "store": "swarm-world",
+      "expectedPath": "plans/unity-swarm-ai-research.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "swarm-world/plans/unity-swarm-ai-research.md",
+        "swarm-world/plans/README.md",
+        "swarm-world/plans/Unity_Swarm_AI_Plugins_Overview.md",
+        "swarm-world/releases/unity-swarm-ai-v1.0.1-minimal/CHANGELOG.md",
+        "swarm-world/UnitySwarmAI/CHANGELOG.md"
+      ]
+    },
+    {
+      "store": "symbolic-scribe",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "symbolic-scribe/README.md",
+        "symbolic-scribe/index.html",
+        "symbolic-scribe/harness/bin/cli.js",
+        "symbolic-scribe/fly.toml",
+        "symbolic-scribe/harness/package.json"
+      ]
+    },
+    {
+      "store": "synaptic-mesh",
+      "expectedPath": "plans/reports/RUST_IMPLEMENTATION_SUMMARY.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "synaptic-mesh/plans/reports/RUST_IMPLEMENTATION_SUMMARY.md",
+        "synaptic-mesh/plans/reports/QUDAG_P2P_INTEGRATION_REPORT.md",
+        "synaptic-mesh/publish-ready/synaptic-qudag-core/README.md",
+        "synaptic-mesh/standalone-crates/synaptic-qudag-core/README.md",
+        "synaptic-mesh/standalone-crates/synaptic-qudag-core/Cargo.toml"
+      ]
+    },
+    {
+      "store": "synthlang",
+      "expectedPath": "cli/docs/evolution.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "synthlang/cli/docs/evolution.md",
+        "synthlang/proxy/src/cli/docs/evolution.md",
+        "synthlang/cli/docs/mathematical_patterns.md",
+        "synthlang/proxy/src/cli/docs/mathematical_patterns.md",
+        "synthlang/proxy/src/cli/docs/tutorials/mathematical_patterns_tutorial.md"
+      ]
+    },
+    {
+      "store": "tariffic",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "tariffic/README.md",
+        "tariffic/index.html",
+        "tariffic/package-lock.json",
+        "tariffic/scripts/tariff-calculator/cli.ts",
+        "tariffic/package.json"
+      ]
+    },
+    {
+      "store": "textclassifier",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "textclassifier/README.md"
+      ]
+    },
+    {
+      "store": "ultrasonic",
+      "expectedPath": "src/docs/index.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "ultrasonic/src/docs/index.md",
+        "ultrasonic/docs/review/comprehensive-system-review.md",
+        "ultrasonic/docs/legacy-readme.md",
+        "ultrasonic/src/docs/README.md",
+        "ultrasonic/ui/coordination/implementation-roadmap.md"
+      ]
+    },
+    {
+      "store": "vcbot",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "vcbot/README.md",
+        "vcbot/requirements.txt",
+        "vcbot/streamlit_app.py"
+      ]
+    },
+    {
+      "store": "vibecast",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "vibecast/README.md"
+      ]
+    },
+    {
+      "store": "vibing",
+      "expectedPath": "README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "vibing/README.md",
+        "vibing/fly.toml",
+        "vibing/src/components/NotificationCard.tsx",
+        "vibing/vite.config.ts",
+        "vibing/index.html"
+      ]
+    },
+    {
+      "store": "vivian",
+      "expectedPath": "src/vivian.rs",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "vivian/src/vivian.rs",
+        "vivian/README.md"
+      ]
+    },
+    {
+      "store": "voicebot",
+      "expectedPath": "voic-tsx/src/data/prompts/default.txt",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "voicebot/voic-tsx/src/data/prompts/default.txt",
+        "voicebot/templates/home.html",
+        "voicebot/README.md",
+        "voicebot/templates/home-min.html",
+        "voicebot/voic-tsx/README.md"
+      ]
+    },
+    {
+      "store": "vsc-remote-mcp",
+      "expectedPath": "vscode-remote-mcp/src/mcp-sdk-server.js",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "vsc-remote-mcp/vscode-remote-mcp/src/mcp-sdk-server.js",
+        "vsc-remote-mcp/vscode-remote-mcp/plans/npx-implementation-plan.md",
+        "vsc-remote-mcp/vscode-remote-mcp/run-mcp-server.js",
+        "vsc-remote-mcp/vscode-remote-mcp/src/utils/session-manager.js",
+        "vsc-remote-mcp/vscode-remote-mcp/mcp-server.js"
+      ]
+    },
+    {
+      "store": "wifi-veil",
+      "expectedPath": "firmware/README.md",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "wifi-veil/firmware/README.md",
+        "wifi-veil/docs/adr/ADR-290-veil-e2e-hardware-implementation-program.md",
+        "wifi-veil/CHANGELOG.md",
+        "wifi-veil/firmware/openwrt/README.md",
+        "wifi-veil/firmware/nexmon/README.md"
+      ]
+    },
+    {
+      "store": "worldgraph",
+      "expectedPath": "wifi-densepose-worldgraph/Cargo.toml",
+      "repoCovered": true,
+      "exactFileRank": 1,
+      "returnedPaths": [
+        "worldgraph/wifi-densepose-worldgraph/Cargo.toml",
+        "worldgraph/docs/adr/ADR-200-wasm-bridge.md",
+        "worldgraph/worldgraph-wasm/Cargo.toml",
+        "worldgraph/package.json",
+        "worldgraph/.github/copilot-instructions.md"
+      ]
+    },
+    {
+      "store": "yyz-agentics-june",
+      "expectedPath": "neural_network/COMPONENTS_SUMMARY.md",
+      "repoCovered": true,
+      "exactFileRank": 4,
+      "returnedPaths": [
+        "yyz-agentics-june/neural_network/README.md",
+        "yyz-agentics-june/neural_network/core/__init__.py",
+        "yyz-agentics-june/tests/README.md",
+        "yyz-agentics-june/neural_network/COMPONENTS_SUMMARY.md",
+        "yyz-agentics-june/performance_optimization/src/vectorized_optimized.py"
+      ]
+    }
+  ],
+  "wallSeconds": 780
+}

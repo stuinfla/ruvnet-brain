@@ -35,7 +35,19 @@ function git(cwd, args) {
 }
 
 /**
- * The source identity, with each digest defined EXACTLY:
+ * The Brain's OWN state that may sit inside the customer's project: the AgentDB store and its sidecars
+ * (`.swarm/` — memory.db, -wal/-shm, the outbox and queue files) and what ruflo leaves in a cwd
+ * (`.claude-flow/`, `ruvector.db`). It is not the customer's source. Every capture writes `.swarm/`, so
+ * counting it made every later boundary look like a changed tree: the no-op path was never taken and
+ * memory.db grew at every boundary. Excluded by pathspec, so it does not depend on the user's gitignore
+ * (it only looked fine on machines whose global gitignore lists `.swarm/`).
+ */
+export const BRAIN_STATE_PATHSPEC_EXCLUDES = Object.freeze([':(exclude).swarm', ':(exclude).claude-flow', ':(exclude)ruvector.db']);
+const SOURCE_PATHSPEC = ['--', '.', ...BRAIN_STATE_PATHSPEC_EXCLUDES];
+
+/**
+ * The source identity, with each digest defined EXACTLY (each one EXCLUDING the Brain's own state,
+ * BRAIN_STATE_PATHSPEC_EXCLUDES above):
  *   trackedDigest   sha256 of `git ls-files -s` (mode + blob oid + stage + path for every tracked file)
  *   untrackedDigest sha256 of one `<content-sha256> <path>` line per untracked, non-ignored file —
  *                   the NAMES alone would call two different working trees identical
@@ -63,9 +75,9 @@ export function readSourceIdentity({ checkoutRoot, kind = 'git' } = {}) {
 
   const headBefore = git(checkoutRoot, ['rev-parse', 'HEAD'])?.trim() || 'unborn';
   const branch = git(checkoutRoot, ['rev-parse', '--abbrev-ref', 'HEAD'])?.trim() || 'detached';
-  const tracked = git(checkoutRoot, ['ls-files', '-s']);
-  const untrackedList = git(checkoutRoot, ['ls-files', '--others', '--exclude-standard']);
-  const diff = git(checkoutRoot, ['diff', 'HEAD']);
+  const tracked = git(checkoutRoot, ['ls-files', '-s', ...SOURCE_PATHSPEC]);
+  const untrackedList = git(checkoutRoot, ['ls-files', '--others', '--exclude-standard', ...SOURCE_PATHSPEC]);
+  const diff = git(checkoutRoot, ['diff', 'HEAD', ...SOURCE_PATHSPEC]);
   const headAfter = git(checkoutRoot, ['rev-parse', 'HEAD'])?.trim() || 'unborn';
 
   const untrackedLines = String(untrackedList ?? '').split('\n').filter(Boolean).map((relative) => {

@@ -221,7 +221,7 @@ function brainCheck() {
   if (res.out) console.log(res.out);
   if (res.err && res.code !== 0 && res.code !== 10) console.log(res.err);
   // forge-update exits 0 = current, 10 = behind, other = error/not-configured.
-  if (res.code === 10) console.log(`\nThe brain bundle is BEHIND. To update:  node forge-update.mjs --apply`);
+  if (res.code === 10) console.log(`\nThe brain bundle is BEHIND. To update:  npx ruvnet-brain@latest --update`);
   else if (res.code === 0) console.log(`\nThe brain bundle is current.`);
   else console.log(`\n(forge-update reported: exit ${res.code} — likely "self-update not configured" for this build; see message above.)`);
 }

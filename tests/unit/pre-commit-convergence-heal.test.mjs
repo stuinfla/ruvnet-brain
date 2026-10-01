@@ -25,8 +25,11 @@ it('the pre-commit hook self-heals a manifest left stale by a same-commit source
   roots.push(dir);
   execFileSync('git', ['worktree', 'add', '--detach', dir, 'HEAD'], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
   const git = (...args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-  git('config', 'user.email', 'fixture@example.invalid');
-  git('config', 'user.name', 'Fixture');
+  // NEVER `git config` here: a linked worktree shares the REAL repository's .git/config, so the
+  // former `git config user.name Fixture` rewrote the owner's identity on every run (143 commits
+  // authored as "Fixture" from 2026-09-27). Identity is passed per command instead, and
+  // tests/unit/pre-commit-heal-identity-guard.test.mjs proves the shared config is untouched.
+  const identity = ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid'];
 
   // Regenerate the manifest first (as if it had been written before a later change), THEN make an
   // additional source-tree change WITHOUT ever re-running convergence:write — reproducing the exact
@@ -40,7 +43,11 @@ it('the pre-commit hook self-heals a manifest left stale by a same-commit source
   expect(() => execFileSync('node', ['scripts/convergence-manifest.mjs'], { cwd: dir, stdio: 'pipe' }))
     .toThrow(); // sanity: the manifest really is stale at this point, or the fixture proves nothing
 
-  git('commit', '-qm', 'fixture: stale-manifest commit the hook must heal');
+  // Bind THIS checkout's hook explicitly. Relying on ambient `core.hooksPath` made the test pass only on
+  // a developer machine whose global config points at some checkout's hooks (here: the main checkout,
+  // not the code under test) and fail on a clean CI runner, where no hook ran at all (2026-10-01,
+  // canonical-qa full-suite on ubuntu: "manifest is stale").
+  git(...identity, '-c', `core.hooksPath=${path.join(dir, 'scripts', 'git-hooks')}`, 'commit', '-qm', 'fixture: stale-manifest commit the hook must heal');
 
   // The hook must have re-generated and re-staged the manifest as part of that commit, not left it
   // for CI to catch.

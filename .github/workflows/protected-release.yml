@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: code = owner-approved product release; corpus = unattended corpus generation
+        description: code = machine-gated product release (no human approval step; CONTRIBUTING.md); corpus = unattended corpus generation
         required: false
         default: code
         type: choice
@@ -73,7 +73,9 @@ env:
   # The mode SELECTS a chain; it does not grant authority. Every code job below is gated on it, and
   # the corpus chain re-proves corpus-only routing inside its own jobs. Dual, verbatim:
   # "workflow_dispatch proves event identity, not human approval. Enforce corpus-only and
-  # owner-approved code authority separately in the target workflow."
+  # code authority separately in the target workflow." Code authority is the machine gates in this
+  # file (exact-SHA identity, trusted preflight, sealed payload, install verification); no person
+  # approves a code release (CONTRIBUTING.md, "What replaces a human approval").
   RELEASE_MODE: ${{ inputs.mode || 'code' }}
 
 jobs:
@@ -233,9 +235,9 @@ jobs:
     if: inputs.mode != 'corpus'
     needs: verified-candidate
     runs-on: ubuntu-latest
-    # ONE owner click per release (2026-09-29): this job needs only the signing key, which the
-    # protected-branch-only `Production – corpus` environment already holds. Only `publish`, which
-    # carries NPM_TOKEN and contents:write, binds the reviewed `Production – ruvnet-brain` environment.
+    # Scoping, not approval: this job needs only the signing key, which the protected-branch-only
+    # `Production – corpus` environment already holds. Only `publish`, which carries NPM_TOKEN and
+    # contents:write, binds the `Production – ruvnet-brain` environment (no reviewer; no human pause).
     environment: Production – corpus
     permissions:
       actions: read
@@ -520,9 +522,9 @@ jobs:
     needs: [verified-candidate, public-verification]
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # ONE owner click per release (2026-09-29): this job needs only the signing key, which the
-    # protected-branch-only `Production – corpus` environment already holds. Only `publish`, which
-    # carries NPM_TOKEN and contents:write, binds the reviewed `Production – ruvnet-brain` environment.
+    # Scoping, not approval: this job needs only the signing key, which the protected-branch-only
+    # `Production – corpus` environment already holds. Only `publish`, which carries NPM_TOKEN and
+    # contents:write, binds the `Production – ruvnet-brain` environment (no reviewer; no human pause).
     environment: Production – corpus
     permissions:
       actions: read
@@ -641,7 +643,7 @@ jobs:
           set -euo pipefail
           # ADR-0091 D3. Unattended corpus promotion ships the archive's executable surface (the forge-*
           # module graph, package manifests, verify-bundle.mjs, the signing trust root) straight into
-          # every installed client, so it runs only on a runtime an owner-gated code release shipped AND
+          # every installed client, so it runs only on a runtime a machine-gated code release shipped AND
           # install-verified on all three OSes. That approval is no longer a committed file (a committed
           # pin could never match the release that committed it). It is RESOLVED here: the newest
           # vX.Y.Z — only the newest; it never falls back to an older one — whose signed

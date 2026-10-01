@@ -27,7 +27,7 @@ import { extractZip } from '../../kb/zip-extract.mjs';
 import { getVersion } from '../../scripts/version.mjs';
 import { evaluateCanaryVerdict, REQUIRED_CANARY_CHECKS } from '../../scripts/corpus-promotion.mjs';
 import {
-  customerEnv, pointUpdaterAtCandidate, runCanary, storeFreshness, FRESHNESS_LIMIT_MS,
+  customerEnv, pointUpdaterAtCandidate, runCanary, storeFreshness, suppliedKbInstaller, FRESHNESS_LIMIT_MS,
 } from '../../scripts/corpus-canary.mjs';
 import { SEED_IDENTITY, buildCorpus, buildRuntimeRoot, readJson, sha256File, tempDir, writeCoverage } from '../helpers/assemble-bundle-fixture.mjs';
 
@@ -268,10 +268,11 @@ describe('the customer canary applies the staged candidate through a real custom
 
   it('BREAK IT (node_modules dropped): an updater that no longer carries the reader deps applies "successfully" -> FAIL', async () => {
     stage(nightly.zip);
-    const carry = "if (fs.existsSync(liveModules) && !fs.existsSync(path.join(candidateDir, 'node_modules'))) {";
+    // kb/forge-update.mjs carryLiveNodeModules() is the one carrier; the guard line is its early return.
+    const carry = "if (!fs.existsSync(liveModules) || fs.existsSync(path.join(candidateDir, 'node_modules'))) return false;";
     const customer = customerInstall({ updaterPatch: (source) => {
       expect(source).toContain(carry); // the regression is re-created exactly, or the test is void
-      return source.replace(carry, 'if (false) {');
+      return source.replace(carry, 'return false;');
     } });
     const { verdict } = await canary(customer);
     // The updater itself exits 0 — only the consumer-side check catches this.
@@ -311,6 +312,80 @@ describe('the customer canary applies the staged candidate through a real custom
   }, 180_000);
 });
 
+describe('the canary asks more than one customer state (--cases)', () => {
+  beforeAll(async () => { await buildNightly(); }, 180_000);
+  const casesCanary = (makeCustomer, cases) => runCanary({ repo: REPO, tag: served.tag, approvedVersion: VERSION,
+    work: tempDir(dirs, 'canary-cases'), apiBase: origin, env: { GITHUB_RUN_ID: '4242', GITHUB_RUN_ATTEMPT: '1' },
+    now: () => NOW, retryDelayMs: 0, cases, install: () => makeCustomer() });
+
+  it('runs the private-overlay case as its own fresh install, prefixes its checks, and measures the private bytes', async () => {
+    stage(nightly.zip);
+    const verdict = await casesCanary(() => customerInstall(), ['clean', 'private-overlay']);
+    const names = verdict.checks.map((entry) => entry.name);
+    for (const name of REQUIRED_CANARY_CHECKS) {
+      expect(names).toContain(name);
+      expect(names).toContain(`private-overlay:${name}`);
+    }
+    expect(names).toContain('private-overlay:private-store-preserved');
+    // Every check of BOTH cases is green on a correct updater — named, not inferred from the verdict.
+    const failing = verdict.checks.filter((entry) => !entry.ok).map((entry) => `${entry.name}: ${entry.detail}`);
+    expect(failing).toEqual([]);
+    const preserved = verdict.checks.find((entry) => entry.name === 'private-overlay:private-store-preserved');
+    expect(preserved).toMatchObject({ ok: true });
+    expect(preserved.detail).toMatch(/^[1-9]\d* private file\(s\) byte-identical$/);
+    expect(verdict.verdict).toBe('PASS');
+  }, 300_000);
+
+  it('an extra case is never run on the clean case\'s KB (the --installed-kb brain is not mutated)', async () => {
+    stage(nightly.zip);
+    const shared = customerInstall(); // the SAME KB handed to every case, as --installed-kb used to
+    const fenceFile = path.join(shared.kbDir, 'PRIVATE-STORES.json');
+    const fenceBefore = fs.existsSync(fenceFile) ? fs.readFileSync(fenceFile, 'utf8') : null;
+    const verdict = await casesCanary(() => shared, ['clean', 'private-overlay']);
+    expect(verdict.checks.find((entry) => entry.name === 'private-overlay:case-ran'))
+      .toMatchObject({ ok: false, detail: expect.stringMatching(/handed the clean case's KB/) });
+    expect(verdict.verdict).toBe('FAIL');
+    expect(fs.existsSync(fenceFile) ? fs.readFileSync(fenceFile, 'utf8') : null).toBe(fenceBefore);
+    expect(fs.readdirSync(shared.kbDir).filter((name) => name.startsWith('acme-private-notes'))).toEqual([]);
+  }, 300_000);
+
+  it('--installed-kb gives each extra case its own copy of the KB as it was before the clean case ran', () => {
+    const work = tempDir(dirs, 'supplied-work');
+    const supplied = tempDir(dirs, 'supplied-kb');
+    fs.writeFileSync(path.join(supplied, 'PRIVATE-STORES.json'), '{"privateStores":[]}\n');
+    fs.writeFileSync(path.join(supplied, 'store.big.rvf'), 'original');
+    const install = suppliedKbInstaller({ installedKb: supplied, work, cases: ['clean', 'private-overlay'] });
+    expect(install({ work, home: path.join(work, 'home') })).toEqual({ kbDir: path.resolve(supplied) });
+    fs.writeFileSync(path.join(supplied, 'store.big.rvf'), 'updated by the clean case');
+    const caseWork = path.join(work, 'case-private-overlay');
+    const own = install({ work: caseWork, home: path.join(caseWork, 'home') });
+    expect(path.relative(caseWork, own.kbDir).startsWith('..')).toBe(false);
+    expect(fs.readFileSync(path.join(own.kbDir, 'store.big.rvf'), 'utf8')).toBe('original');
+    fs.writeFileSync(path.join(own.kbDir, 'PRIVATE-STORES.json'), '{"privateStores":["acme-private-notes"]}\n');
+    expect(fs.readFileSync(path.join(supplied, 'PRIVATE-STORES.json'), 'utf8')).toBe('{"privateStores":[]}\n');
+  });
+
+  it('BREAK IT (overlay dropped): an updater that stops restoring private files passes clean but FAILS the overlay case', async () => {
+    stage(nightly.zip);
+    const restore = 'restorePrivateFilesIntoCandidate({ candidateDir, sourceDir: liveDir, overlay: privateOverlay });';
+    const verdict = await casesCanary(() => customerInstall({ updaterPatch: (source) => {
+      expect(source).toContain(restore);
+      return source.replace(restore, '');
+    } }), ['clean', 'private-overlay']);
+    expect(verdict.checks.filter((entry) => !entry.name.includes(':')).every((entry) => entry.ok)).toBe(true);
+    expect(verdict.checks.filter((entry) => entry.name.startsWith('private-overlay:') && !entry.ok).length).toBeGreaterThan(0);
+    expect(verdict.checks.find((entry) => entry.name === 'private-overlay:private-store-preserved'))
+      .toMatchObject({ ok: false, detail: expect.stringMatching(/^private files changed or lost: /) });
+    expect(verdict.verdict).toBe('FAIL');
+    expect(promotable(verdict).allowed).toBe(false);
+  }, 300_000);
+
+  it('refuses a case list that does not start with the clean case or names an unknown case', async () => {
+    await expect(casesCanary(() => customerInstall(), ['private-overlay'])).rejects.toThrow(/must start with clean/);
+    await expect(casesCanary(() => customerInstall(), ['clean', 'nope'])).rejects.toThrow(/must start with clean/);
+  });
+});
+
 describe('the one change the canary makes to a customer install', () => {
   it('rewrites only releases/latest -> releases/tags/<tag>, and refuses any other channel', () => {
     const kbDir = tempDir(dirs, 'point');
@@ -347,11 +422,14 @@ describe('storeFreshness (pure)', () => {
   it('passes a fresh observation with every eligible store at its upstream commit', () => {
     expect(storeFreshness({ after: cov([row('a', '1', '1'), row('b', '2', null, null, 'MISSING')]), now }).ok).toBe(true);
   });
-  it('fails an observation older than 48h, a stale store, and a moved store ingested >48h ago', () => {
+  it('fails an observation older than 48h and a stale store; a moved store ingested long ago is FRESH if it is at its upstream commit', () => {
     expect(storeFreshness({ after: cov([row('a', '1', '1')], new Date(now - FRESHNESS_LIMIT_MS - 1).toISOString()), now }).detail).toMatch(/limit 48h/);
     expect(storeFreshness({ after: cov([row('a', '2', '1')]), now }).detail).toMatch(/1 store\(s\) built from a commit older than their observed upstream: a/);
-    expect(storeFreshness({ after: cov([row('a', '2', '2', '2026-09-20T00:00:00Z')]), before: cov([row('a', '1', '1')]), now }).detail)
-      .toMatch(/1 moved store\(s\) ingested more than 48h ago: a/);
+    // MEASURED 2026-09-30: a store keeps the ingestion time of the last night its upstream moved. A store that
+    // moved since the install's generation but was ingested 10 days ago is still exactly at its upstream
+    // commit, so it is fresh. The old "moved store ingested >48h ago" rule refused exactly this (about three
+    // nights after any code release) and would have blocked every nightly.
+    expect(storeFreshness({ after: cov([row('a', '2', '2', '2026-09-20T00:00:00Z')]), before: cov([row('a', '1', '1')]), now }).ok).toBe(true);
     // An unmoved store may legitimately carry an old ingestion time.
     expect(storeFreshness({ after: cov([row('a', '1', '1', '2026-09-01T00:00:00Z')]), before: cov([row('a', '1', '1')]), now }).ok).toBe(true);
     expect(storeFreshness({ after: null, now }).ok).toBe(false);

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "purpose": "TRANSITIONAL quarantine for scripts/full-suite-gate.mjs; a release ships with an empty `tests` list. Every entry is a test KNOWN to be red with its owning branch. Any red test NOT listed fails the gate; any listed test that PASSES fails the gate until its entry is removed. Never add an entry to make a gate green without a class, a reason with evidence, and an owner.",
+  "tests": [],
+  "excludedFiles": [
+    {
+      "file": "tests/diagnostics/release-source-shape.test.mjs",
+      "reason": "Historical source-shape diagnostics (tests/diagnostics/vitest.config.mjs). Measured 2026-10-01: 1 of its checks is red against current architecture. Delete or rewrite as behaviour tests; never release authority."
+    },
+    {
+      "file": "tests/diagnostics/retired-hook-release.test.mjs",
+      "reason": "Historical source-shape diagnostics (tests/diagnostics/vitest.config.mjs). Measured 2026-10-01: 3 of its checks are red against current architecture. Delete or rewrite as behaviour tests; never release authority."
+    },
+    {
+      "file": "tests/diagnostics/lesson-migrate-agentdb.test.mjs",
+      "reason": "Machine diagnostic: asserts the reconciliation state of the developer's own AgentDB stores through the real ruflo CLI. Red in every environment but the owner's (no ruflo / clean HOME), and timed out at 60s on the owner's machine under load. Moved out of tests/unit 2026-10-01."
+    },
+    {
+      "file": "tests/experience/report.test.mjs",
+      "reason": "node:test format, not vitest; the canonical-qa full-suite job runs it with `node --test` (8/8 green 2026-10-01)."
+    }
+  ]
+}

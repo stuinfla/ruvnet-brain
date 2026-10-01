@@ -65,6 +65,48 @@ describe('lifecycle evidence retention', () => {
     expect(fs.existsSync(oldTx)).toBe(true);
   });
 
+  it('accepts a brain home that IS a symlink (the brain moved to another disk) and its real-path references', () => {
+    // MEASURED 2026-09-30 (scripts/customer-state-matrix.mjs, location=symlinked-brain-home): with
+    // ~/.cache/ruvnet-brain -> /Volumes/<disk>/ruvnet-brain, the installer passes the link spelling while the
+    // updater records real-path transaction references; the parent-is-a-symlink check and the reference
+    // containment check then both fail a perfectly ordinary layout and every update ends recovery-required.
+    const f = fixture();
+    const link = `${f.brainHome}-link`;
+    fs.symlinkSync(f.brainHome, link);
+    roots.push(link);
+    const tx = transaction(f, 'applied', { at: '2026-02-01T00:00:00Z' });
+    refresh(f, 'update', { at: '2026-02-02T00:00:00Z', action: 'update', extra: { detail: { transactionReceipts: fs.realpathSync(tx) } } });
+    const result = pruneLifecycleEvidence({ brainHome: link, kbDir: path.join(link, 'kb'), policy: policy() });
+    expect(result.unsafe).toEqual([]);
+    expect(result.withinBudget).toBe(true);
+    // A symlinked evidence ROOT is still refused.
+    fs.rmSync(path.join(f.brainHome, 'refresh-runs'), { recursive: true });
+    fs.symlinkSync(os.tmpdir(), path.join(f.brainHome, 'refresh-runs'));
+    expect(assessLifecycleEvidence({ brainHome: link, kbDir: path.join(link, 'kb') }).withinBudget).toBe(false);
+  });
+
+  // Only the brain home (the evidence roots' PARENT) may be a link. An evidence ROOT that is itself a link
+  // could aim pruning at any directory, so it stays refused — through a real or a linked brain home.
+  it.each([['a real brain home', false], ['a symlinked brain home', true]])('TEETH: a symlinked evidence ROOT is refused via %s, and nothing behind it is pruned', (_label, linked) => {
+    for (const rootName of ['refresh-runs', '.kb.update-transactions']) {
+      const f = fixture();
+      const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), 'lifecycle-elsewhere-'));
+      roots.push(elsewhere);
+      fs.writeFileSync(path.join(elsewhere, 'old.json'), JSON.stringify({ schemaVersion: 3, kind: 'ruvnet-brain-refresh-run',
+        runId: 'old', action: 'manual', startedAt: '2020-01-01T00:00:00Z', finishedAt: '2020-01-01T00:00:00Z', status: 'SUCCEEDED' }));
+      fs.rmSync(path.join(f.brainHome, rootName), { recursive: true });
+      fs.symlinkSync(elsewhere, path.join(f.brainHome, rootName));
+      let home = f.brainHome;
+      if (linked) { home = `${f.brainHome}-link`; fs.symlinkSync(f.brainHome, home); roots.push(home); }
+      const result = pruneLifecycleEvidence({ brainHome: home, kbDir: path.join(home, 'kb'),
+        policy: policy({ maxRefreshReceipts: 0, maxTransactionDirectories: 0, maxEvidenceBytes: 0 }) });
+      expect(result.withinBudget, rootName).toBe(false);
+      expect(result.unsafe, rootName).toEqual([{ path: path.join(home, rootName),
+        reason: 'evidence root is not a trusted directory (symbolic or special entry)' }]);
+      expect(fs.readdirSync(elsewhere), rootName).toEqual(['old.json']);
+    }
+  });
+
   it('fails closed on malformed entries, symlinks, and forged external transaction references', () => {
     const f = fixture();
     fs.writeFileSync(path.join(f.brainHome, 'refresh-runs', 'bad.json'), '{');

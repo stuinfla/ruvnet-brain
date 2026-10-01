@@ -96,21 +96,27 @@ export function managedStorageInventory(liveDir, { measuredAt = new Date().toISO
   const basename = path.basename(live);
   const fullCorpusCopies = [];
   const evidence = [];
+  const evidenceNames = [`.${basename}.update-transactions`, 'refresh-runs'];
   for (const name of fs.readdirSync(parent).sort()) {
     const file = path.join(parent, name);
-    const stat = fs.lstatSync(file);
     const installerKind = name.startsWith(`${basename}.install-preserved-`) ? 'installer-preserved'
       : name.startsWith(`${basename}.install-prior-`) ? 'installer-prior'
         : name.startsWith(`.${basename}.install-stage-`) ? 'installer-stage' : null;
-    if (installerKind) {
-      fullCorpusCopies.push(observedInstallerSummary(file, installerKind));
-      continue;
-    }
     const kind = name === basename ? 'active'
       : name.startsWith(`${basename}.next-`) ? 'candidate'
         : name.startsWith(`${basename}.rollback-`) ? 'rollback'
           : name.startsWith(`${basename}.failed-`) ? 'failed'
             : name.startsWith(`${basename}.bak-`) ? 'backup' : null;
+    // Classify by NAME first and lstat only managed entries. The parent (e.g. ~/.cache/ruvnet-brain)
+    // also holds hook stamps and logs created and deleted constantly; one vanishing between readdir
+    // and lstat threw ENOENT and aborted the whole update. A managed entry that vanished is absent.
+    if (!installerKind && !kind && !evidenceNames.includes(name)) continue;
+    let stat;
+    try { stat = fs.lstatSync(file); } catch (error) { if (error?.code === 'ENOENT') continue; throw error; }
+    if (installerKind) {
+      fullCorpusCopies.push(observedInstallerSummary(file, installerKind));
+      continue;
+    }
     if (kind) {
       if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error(`managed ${kind} entry is not a trusted directory: ${file}`);
       fullCorpusCopies.push(trustedTreeSummary(file, kind));
@@ -252,7 +258,23 @@ export function recoverIncompleteStorageTransactions(liveDir, { removeTree = rem
     const phaseFiles = fs.readdirSync(receipts).filter((name) => /^\d{3}-[A-Z_]+\.json$/.test(name)).sort();
     if (!phaseFiles.length) throw new Error(`storage transaction receipt is empty: ${receipts}`);
     const latest = JSON.parse(fs.readFileSync(path.join(receipts, phaseFiles.at(-1)), 'utf8'));
-    if (['NOOP', 'COMMITTED', 'ROLLED_BACK'].includes(latest.state)) continue;
+    if (['NOOP', 'COMMITTED', 'ROLLED_BACK'].includes(latest.state)) {
+      // A quarantined unsealed candidate is kept for ONE full update cycle, then released on the next
+      // run — but only if its bytes are exactly what was sealed when it was quarantined.
+      const quarantine = latest.quarantinedUnsealedCandidate;
+      if (latest.state === 'ROLLED_BACK' && quarantine && latest.quarantineReclaimed !== true
+        && path.resolve(quarantine) === transactionPaths(live, transactionId).failed) {
+        const unchanged = !fs.existsSync(quarantine) || (() => {
+          try { requireDigest(quarantine, latest.quarantineIdentity, 'quarantined candidate'); return true; } catch { return false; }
+        })();
+        if (unchanged) {
+          removeIfPresent(quarantine);
+          appendRecoveryReceipt(receipts, 'ROLLED_BACK', { quarantineReclaimed: true,
+            reason: 'released the quarantined unsealed candidate one update cycle later (bytes unchanged)' });
+        }
+      }
+      continue;
+    }
     if (latest.state === 'RECOVERY_REQUIRED') throw new Error(`storage transaction requires manual recovery: ${transactionId}`);
     const paths = latest.paths;
     const expectedPaths = transactionPaths(live, transactionId);
@@ -267,12 +289,22 @@ export function recoverIncompleteStorageTransactions(liveDir, { removeTree = rem
     try {
       // Validate every retained tree before any rename or deletion. A receipt owns
       // paths, but cannot authorize discarding bytes added after the process died.
-      if (fs.existsSync(paths.candidate)) requireDigest(paths.candidate, latest.candidate, 'interrupted candidate');
+      // A kill DURING candidate building (the long phase: copy, private restore, guard) leaves a candidate
+      // that was never sealed, so no receipt can vouch for its bytes. Refusing made every later update
+      // fail forever; deleting would discard bytes nothing proved disposable. It is QUARANTINED instead:
+      // renamed intact to this transaction's `failed` path, named in the receipt, and live (proved equal
+      // to the prior identity) stays in service.
+      const unsealedCandidate = fs.existsSync(paths.candidate) && !latest.candidate?.sha256
+        && ['LOCKED', 'CANDIDATE_BUILDING'].includes(latest.state);
+      if (fs.existsSync(paths.candidate) && !unsealedCandidate) requireDigest(paths.candidate, latest.candidate, 'interrupted candidate');
       if (fs.existsSync(paths.rollback)) requireDigest(paths.rollback, prior, 'interrupted rollback');
       if (fs.existsSync(paths.failed)) throw new Error('interrupted failed tree has no safe recovery disposition');
       if (['LOCKED', 'CANDIDATE_BUILDING', 'CANDIDATE_VERIFIED'].includes(latest.state)) {
         requireDigest(live, prior, 'interrupted live');
-        removeIfPresent(paths.candidate);
+        if (unsealedCandidate) {
+          assertDirectory(paths.candidate, 'unsealed candidate');
+          fs.renameSync(paths.candidate, paths.failed);
+        } else removeIfPresent(paths.candidate);
       } else if (latest.state === 'OLD_RENAME_STARTED') {
         const hasLive = fs.existsSync(live);
         const hasRollback = fs.existsSync(paths.rollback);
@@ -318,10 +350,12 @@ export function recoverIncompleteStorageTransactions(liveDir, { removeTree = rem
         continue;
       } else throw new Error(`unsupported interrupted state ${latest.state}`);
       const delta = storageDelta(paths, { prior, candidate: latest.candidate || null });
+      const quarantined = unsealedCandidate
+        ? { quarantinedUnsealedCandidate: paths.failed, quarantineIdentity: identitySummary(treeIdentity(paths.failed)) } : {};
       appendRecoveryReceipt(receipts, 'ROLLED_BACK', { terminalVerdict: 'interrupted-run-restored', prior,
-        storageDelta: delta, reason: `recovered interrupted ${latest.state} transaction before new work` });
+        storageDelta: delta, reason: `recovered interrupted ${latest.state} transaction before new work`, ...quarantined });
       recovered.push({ transactionId, from: latest.state, terminalVerdict: 'interrupted-run-restored',
-        storageDelta: delta });
+        storageDelta: delta, ...quarantined });
     } catch (error) {
       appendRecoveryReceipt(receipts, 'RECOVERY_REQUIRED', { terminalVerdict: 'recovery-required', prior,
         reason: error.message });

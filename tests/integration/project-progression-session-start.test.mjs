@@ -4,7 +4,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createProgressionSnapshot } from '../../plugin/scripts/project-progression-contract.mjs';
-import { ProjectProgressionStore } from '../../plugin/scripts/project-progression-store.mjs';
+import { ProjectProgressionStore, rufloCwdFor } from '../../plugin/scripts/project-progression-store.mjs';
 import {
   SESSION_CONTINUITY_LIMIT_BYTES,
   restoreProgressionForSession,
@@ -295,7 +295,12 @@ describe('ADR-073 Slice F SessionStart restore bridge', () => {
     expect(flag(list, '--path')).toBe(resolveProjectStore({ projectDir: project }).canonicalAgentDbPath);
     expect(cli.calls.filter((args) => args[1] === 'retrieve')).toHaveLength(2);
     expect(cli.calls.some((args) => args[1] === 'search')).toBe(false);
-    expect(cli.invocations.every(({ options }) => options.cwd === path.join(project, '.swarm'))).toBe(true);
+    // ruflo writes .claude/, .claude-flow/, ruvector.db and .swarm/ into its cwd: it runs from one per-user
+    // scratch dir (rufloCwdFor), never the project root (customer working tree) and never inside `.swarm`.
+    const { projectRoot, canonicalAgentDbPath } = resolveProjectStore({ projectDir: project });
+    expect(cli.invocations.every(({ options }) => path.dirname(options.cwd) === rufloCwdFor(canonicalAgentDbPath)
+      && path.basename(options.cwd).startsWith('run-'))).toBe(true);
+    expect(cli.invocations.every(({ options }) => path.relative(projectRoot, options.cwd).startsWith('..'))).toBe(true);
   });
 
   it.each([

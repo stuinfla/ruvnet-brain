@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { createProgressionSnapshot } from '../../plugin/scripts/project-progression-contract.mjs';
 import { ProjectProgressionStore } from '../../plugin/scripts/project-progression-store.mjs';
 import { resolveProjectStore } from '../../plugin/scripts/project-store-resolver.mjs';
@@ -23,6 +23,18 @@ import { resolveRuflo } from '../../plugin/scripts/ruflo-bin.mjs';
 
 const ruflo = resolveRuflo();
 const roots = [];
+
+// Every git call in this file (the test's and the product's) sees an EMPTY global config and no system
+// config, so a developer's global gitignore (which may list .swarm/) cannot mask a product that counts
+// its own state as a source change — the Linux probe failure of 2026-10-01.
+const gitIsolation = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'restore-semantics-gitcfg-')));
+fs.writeFileSync(path.join(gitIsolation, 'empty.gitconfig'), '');
+const savedGitEnv = { GIT_CONFIG_GLOBAL: process.env.GIT_CONFIG_GLOBAL, GIT_CONFIG_NOSYSTEM: process.env.GIT_CONFIG_NOSYSTEM };
+beforeAll(() => { Object.assign(process.env, { GIT_CONFIG_GLOBAL: path.join(gitIsolation, 'empty.gitconfig'), GIT_CONFIG_NOSYSTEM: '1' }); });
+afterAll(() => {
+  for (const [key, value] of Object.entries(savedGitEnv)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+  fs.rmSync(gitIsolation, { recursive: true, force: true });
+});
 
 function temporaryProject() {
   const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'restore-semantics-')));

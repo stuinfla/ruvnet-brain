@@ -179,7 +179,7 @@
       "mode": "blocking",
       "offBehavior": "silence",
       "matcher": "*",
-      "timeout": 3
+      "timeout": 9
     },
     {
       "id": "continuation-gate",
@@ -250,7 +250,7 @@
       "mode": "advisory",
       "offBehavior": "run",
       "matcher": "*",
-      "timeout": 2
+      "timeout": 6
     },
     {
       "id": "decision-gate",

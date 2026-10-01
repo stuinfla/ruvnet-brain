@@ -48,6 +48,21 @@ const run = (env = {}, spawnFn = fakeSpawn().fn, now = NOW) => {
   return { ...result, emitted };
 };
 const line = (env = {}, now = NOW) => knowledgeCurrency({ env, home, now });
+const claimAgenticKit = () => {
+  fs.mkdirSync(path.join(home, '.config', 'agentic-kit'), { recursive: true });
+  fs.writeFileSync(path.join(home, '.config', 'agentic-kit', 'kit.json'), JSON.stringify({ ruvnetBrain: true }));
+};
+let receiptN = 0;
+const successReceipt = (msAgo) => {
+  const dir = path.join(brain, 'refresh-runs');
+  fs.mkdirSync(dir, { recursive: true });
+  receiptN += 1;
+  const at = iso(msAgo);
+  fs.writeFileSync(path.join(dir, `r${receiptN}.json`), JSON.stringify({ schemaVersion: 3, kind: 'ruvnet-brain-refresh-run',
+    action: 'update', runId: `r${receiptN}`, status: 'SUCCEEDED', terminalVerdict: 'noop', startedAt: at, finishedAt: at,
+    requiredPhaseOrder: ['source-enumeration', 'apply'],
+    phases: [{ phase: 'source-enumeration', status: 'PASS' }, { phase: 'apply', status: 'PASS' }] }));
+};
 
 describe('SessionStart knowledge auto-update — launch decision', () => {
   it('fresh knowledge base (2h) does not launch; 30h-old launches exactly once, detached, via host-update --knowledge', () => {
@@ -109,12 +124,39 @@ describe('SessionStart knowledge auto-update — launch decision', () => {
     fs.writeFileSync(path.join(brain, '.auto-update-pref'), 'no\n');
     expect(run({}, spy.fn).why).toMatch(/answered no/);
     fs.writeFileSync(path.join(brain, '.auto-update-pref'), 'yes\n');
-    fs.mkdirSync(path.join(home, '.config', 'agentic-kit'), { recursive: true });
-    fs.writeFileSync(path.join(home, '.config', 'agentic-kit', 'kit.json'), JSON.stringify({ ruvnetBrain: true }));
-    expect(run({}, spy.fn).why).toMatch(/agentic-kit/);
+    claimAgenticKit();
+    successReceipt(30 * H); // agentic-kit really delivered an update 30h ago → it owns this machine
+    expect(run({}, spy.fn).why).toMatch(/agentic-kit owns updates and one is proven within 36h/);
     expect(spy.calls).toHaveLength(0);
     fs.rmSync(path.join(home, '.config'), { recursive: true });
     expect(run({}, spy.fn).launched).toBe(true); // the same fixture launches once every opt-out is gone
+  });
+
+  // 2026-09-30, owner's Mac: kit.json said ruvnetBrain:true, agentic-kit scheduled nothing, and the
+  // self-heal stood down forever. A claim without a proven update must NOT suppress the self-heal.
+  it('agentic-kit ownership with NO proven update does not suppress the self-heal (owner Mac regression)', () => {
+    built(40 * 24 * H);
+    claimAgenticKit();
+    const spy = fakeSpawn();
+    expect(run({}, spy.fn)).toMatchObject({ launched: true, why: 'stale' });
+    expect(spy.calls).toHaveLength(1);
+    const text = line();
+    expect(text).toContain('agentic-kit claims updates (kit.json ruvnetBrain:true) but no update is proven in 36h');
+    expect(text).toContain('Fix: npx ruvnet-brain@latest --update (');
+    expect(text).not.toContain('Fix: ak sync');
+    expect(text).not.toContain('--enable-nightly'); // one update owner per machine: never suggest both
+    expect(text).toContain('an automatic update is running now'); // the self-heal it just launched
+    expect(text).not.toContain('automatic update is off');
+  });
+
+  it('agentic-kit proof expires: a success 37h ago no longer suppresses; 35h ago still does', () => {
+    built(40 * 24 * H);
+    claimAgenticKit();
+    successReceipt(37 * H);
+    expect(run()).toMatchObject({ launched: true });
+    fs.rmSync(attemptFile(), { force: true }); fs.rmSync(lockFile(), { force: true });
+    successReceipt(35 * H);
+    expect(run().why).toMatch(/agentic-kit owns updates/);
   });
 
   it('offline is silent and retries after 30 minutes, not 6 hours', () => {

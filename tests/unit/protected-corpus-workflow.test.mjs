@@ -69,7 +69,7 @@ describe('protected-release corpus chain (ADR-086 steps 9 + 17)', () => {
       expect(block, `${job} must never bind the npm-scoped environment`).not.toContain('Production – ruvnet-brain');
       expect(block, `${job} must never invoke the product publisher`).not.toMatch(/release\.mjs --publish/);
     }
-    // The code chain binds the reviewed environment exactly once (its npm publish job); its
+    // The code chain binds the npm-scoped environment exactly once (its npm publish job); its
     // signing-only seal and finalize jobs share the corpus signing environment.
     expect(workflow().match(/environment: Production – ruvnet-brain/g)).toHaveLength(1);
     expect(workflow().match(/environment: Production – corpus/g)).toHaveLength(3);

@@ -955,14 +955,35 @@ describe('structure: the contracts that keep this honest', () => {
 
   it('grounding-stamp.sh still mints on a RESULT (the ADR-054 fix survives) and now records the mode', () => {
     if (bashOnly) return;
-    const src = fs.readFileSync(STAMP, 'utf8');
-    expect(src).toContain('RuvNet Brain is disabled');
-    expect(src).toContain('Searched ');
+    // BEHAVIOUR, not a source string (4.4.0: the predicate moved into grounding-answer.mjs and pinning
+    // the stamp script's text went stale). The disabled soft answer is built EXACTLY as the producer
+    // builds it — the literal is pinned to kb/forge-mcp-all.mjs — and run through the REAL hook in both
+    // host shapes: it must mint nothing and record no mode.
+    const producer = fs.readFileSync(FORGE_MCP, 'utf8');
+    const lead = 'The RuvNet Brain is disabled — this user switched it off in their own settings';
+    expect(producer).toContain(`'${lead}'`);
+    const softAnswer = `${lead} on 2026-09-30. No search was run and no source was retrieved.\n\n➡ INSTRUCTION TO THE MODEL: TELL THE USER …`;
+    const grounded = path.join(tmp, '.cache/ruvnet-brain/grounded');
+    const mode = path.join(tmp, '.cache/ruvnet-brain/grounding-mode');
+    record([INCIDENT_DOC]);   // a fresh ledger: if the stamp ran on, it would write "substance-bound"
+    for (const toolResponse of [
+      { content: [{ type: 'text', text: softAnswer }], isError: false, disabled: true },   // Codex: the MCP result object
+      JSON.stringify({ answer: softAnswer }),                                              // Claude: the result as text
+    ]) {
+      const r = spawnSync('bash', [STAMP], {
+        input: JSON.stringify({ tool_name: 'mcp__plugin_ruvnet-brain_ruvnet-brain__search_ruvnet',
+          tool_input: { query: 'rvf ruvector agentdb ruflo: how do I do this?' }, tool_response: toolResponse }),
+        env: env(), encoding: 'utf8', timeout: 30_000,
+      });
+      expect(r.status).toBe(0);
+      expect(fs.existsSync(grounded) ? fs.readdirSync(grounded) : [], 'the disabled soft answer minted a stamp').toEqual([]);
+      expect(fs.existsSync(mode), 'the disabled soft answer recorded a grounding mode').toBe(false);
+    }
     // The derived SUBSTANCE-BOUND / SEARCH-ONLY state (ADR-055 §3.7.10) — never asserted, read off
-    // the evidence ledger's own mtime.
-    record([INCIDENT_DOC]);
+    // the evidence ledger's own mtime — on a REAL result, which still mints.
     groundRecency();
-    expect(fs.readFileSync(path.join(tmp, '.cache/ruvnet-brain/grounding-mode'), 'utf8').trim()).toBe('substance-bound');
+    expect(fs.readdirSync(grounded)).toEqual(expect.arrayContaining(['.any-search', 'ruvector', 'rvf', 'agentdb', 'ruflo']));
+    expect(fs.readFileSync(mode, 'utf8').trim()).toBe('substance-bound');
   });
 
   it('with no ledger at all, the mode is SEARCH-ONLY — the honest state, not a silent claim', () => {
