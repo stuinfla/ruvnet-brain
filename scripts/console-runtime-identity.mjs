@@ -50,6 +50,13 @@ export const CONSOLE_RUNTIME_SURFACE = Object.freeze([
   // ADR-086 step 16). A copied installer whose sibling is missing does not degrade — it throws
   // ERR_MODULE_NOT_FOUND on import, before a single line runs.
   'kb/corpus-release-identity.mjs',
+  // scripts/onboarding-console.mjs imports repositoryNames() statically (coverage-gap-review,
+  // 2026-09-25) to resolve installed repos through kb/repo-aliases.json. Same ERR_MODULE_NOT_FOUND
+  // risk as the sibling above if this travels separately from the entrypoint that reads it.
+  'kb/card-lane.mjs',
+  'kb/implementation-evidence.mjs',
+  'kb/exact-member-proof.mjs',
+  'kb/repo-aliases.json',
   'bin/install.mjs',
   'package.json',
 ]);
