@@ -126,11 +126,20 @@ const STOPWORDS = new Set(`
   each other
 `.trim().split(/\s+/));
 
+/**
+ * Phones and word processors type U+2019 (and sometimes U+2018 or U+02BC) for an apostrophe. Every
+ * possessive the router reads ("rUv's", "agent's scaffolding", "each other's context", "what's")
+ * is written with a straight one, so the curly forms are folded to it first.
+ */
+export function normalizeApostrophes(text) {
+  return String(text ?? '').replace(/[\u2018\u2019\u02BC]/g, "'");
+}
+
 function normalizePhrases(text) {
   // Normalize only unambiguous multi-word paraphrases. Keeping this before tokenization lets
   // ordinary language ("throw it away") match the product vocabulary ("discard") without
   // weakening the overlap, coverage, or winner-margin confidence gates.
-  return String(text || '')
+  return normalizeApostrophes(text || '')
     .toLowerCase()
     .replace(/\bthrow\s+(?:it\s+)?away\b/g, 'discard')
     .replace(/\bspend\s+less\s+money\s+on\s+model\s+calls?\b/g, 'reduce model cost')
@@ -600,7 +609,7 @@ export function routeReposFromCards(query, dir, availableRepos, { limit = 3 } = 
  * the query, or { hit: false, reason } when they do not — never a guess dressed as an answer.
  */
 function isGuideQuestion(query) {
-  const q = String(query || '');
+  const q = normalizeApostrophes(query || '');
   const claimText = q.replace(/\bgreen\s+test\s+run\s+prove\b/gi, 'green test run establish');
   const sourceOrReleaseClaim =
     /\b(?:built|shipped|implemented|released|deployed|current(?:ly)?|latest|default|prove|proof|source\s+code|code\s+path|adr[-\s_]?\d+)\b/i;

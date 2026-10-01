@@ -3,9 +3,9 @@ id: ADR-054
 title: Brain on/off and per-part scope — a user-controlled brain that can never silently lie about being off
 status: Accepted
 date: 2026-07-26
-updated: 2026-09-27
+updated: 2026-10-01
 updated_source: derived-from-git
-reviewed_digest: 1e0dac253cc3
+reviewed_digest: 63273ddf3e8a
 version: 1.1.6
 impl: verification-expired
 verified: 2026-07-31
@@ -226,6 +226,7 @@ overlays and preserves the prior generation as unclassified data instead of dele
 source review does not renew the expired verification or prove the native-host acceptance criteria.
 
 ## Currency log
+| 2026-10-01 | Currency review (4.4 routing and 4.4.1 apostrophes): decision unchanged. `kb/forge-ask-all.mjs` changed only in source routing: the tie-break, the metadata index, the rUv provenance shape and apostrophe folding. Brain on/off and per-part scope handling are untouched. reviewed_digest 63273ddf3e8a. | Reviewed `kb/forge-ask-all.mjs` against `evals/runs/2026-10-01-routing-4.4.1/README.md`. |
 | 2026-09-27 | Currency review: decision unchanged. Motion: retrieval scoping fixes in forge-ask-all.mjs, hook-shim TABLE corrections, corpus-currency consolidation, and the same onboarding-console/install.mjs fixes seen elsewhere. None change the on/off or scope semantics this ADR governs. | Reviewed `scripts/user-settings.mjs`, `kb/forge-ask-all.mjs`, `plugin/mcp/server.mjs`, `plugin/scripts/hook-shim.mjs`, `plugin/scripts/session-start-core.mjs`, `scripts/onboarding-console.mjs` against the commits listed above; reviewed_digest 1e0dac253cc3. |
 
 | 2026-09-19 | Reviewed current source and normative claims; the detailed September 19 findings below retain their stated runtime limitations. reviewed_digest 910e8bb8c064. | `scripts/user-settings.mjs`, `kb/forge-ask-all.mjs`, `plugin/mcp/server.mjs`; source consistency review only, no new deployment or acceptance claim. |

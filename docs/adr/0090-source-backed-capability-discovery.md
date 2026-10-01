@@ -3,9 +3,9 @@ id: ADR-090
 title: Additive source-verified capability discovery
 status: Accepted
 date: 2026-09-19
-updated: 2026-09-27
+updated: 2026-10-01
 updated_source: derived-from-git
-reviewed_digest: 0be7e2e73218
+reviewed_digest: a5bac6a4e60f
 authors: [Stuart Kerr, Codex]
 tags: [retrieval, routing, source-grounding, capability-discovery]
 relates: [ADR-060, ADR-074]
@@ -106,6 +106,7 @@ Fresh held-out semantic and actual MCP latency evaluation remain required before
 quality improvement. No universal 98% quality or deployed-runtime claim is made here.
 
 ## Currency log
+| 2026-10-01 | Currency review (4.4 routing and 4.4.1 apostrophes): decision unchanged. In `kb/forge-ask-all.mjs`, the source route planner is exported, up to 3 tied metadata stores are kept, rUv provenance needs an authorship shape and curly apostrophes are folded. In `kb/card-lane.mjs`, phrase normalisation folds curly apostrophes. `kb/identifier-lane.mjs` scans are cached per KB build and sidecar fingerprint. Discovery supplements, reviewed passages and capability-family routing are untouched. reviewed_digest a5bac6a4e60f. | Reviewed `kb/forge-ask-all.mjs`, `kb/card-lane.mjs` and `kb/identifier-lane.mjs` against `evals/runs/2026-10-01-routing-4.4/README.md` and `evals/runs/2026-10-01-routing-4.4.1/README.md`. |
 
 | 2026-09-19 | Reviewed current source and normative claims; the detailed September 19 findings below retain their stated runtime limitations. reviewed_digest 9e737a426e6a. | `kb/capability-families.mjs`, `kb/card-lane.mjs`, `kb/forge-ask-all.mjs`; source consistency review only, no new deployment or acceptance claim. |
 

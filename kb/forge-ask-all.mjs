@@ -27,6 +27,7 @@ import {
   contentTokens,
   loadCards,
   loadRepoAliases,
+  normalizeApostrophes,
   repositoryNames,
   routeReposFromCards,
 } from './card-lane.mjs';
@@ -329,7 +330,7 @@ function pythonFreeRustNeuralQuestion(query) {
 }
 
 function fixedModelHarnessEvolutionQuestion(query) {
-  const text = String(query || '');
+  const text = normalizeApostrophes(query || '');
   const harness =
     /\b(?:agent(?:'s)?\s+scaffolding|harness)\b/i.test(text);
   const improvement =
@@ -520,7 +521,8 @@ function sourceCardQueryMode(query) {
   return null;
 }
 
-function sourceCardHasUnsafePolarity(query) {
+export function sourceCardHasUnsafePolarity(query) {
+  query = normalizeApostrophes(query || ''); // "can’t" from a phone is still a negation
   return /\b(?:not|never|cannot|can't|doesn't|isn't|aren't|without)\b/i.test(query)
     || /\b(?:delete|destroy|discard|drop|erase|forget|lose|remove|wipe)(?:d|s|ing)?\b/i.test(query);
 }
@@ -3163,7 +3165,7 @@ async function reviewedCapabilityWitness({ dir, repo, family }) {
 //     newsletter|tweet|specification" (up to four words between), or "rUv's posts|talks|threads|
 //     notes|videos ABOUT/ON ...".
 export function ruvAuthorshipIntent(query) {
-  const q = String(query || '');
+  const q = normalizeApostrophes(query || '');
   if (!/\brUv(?:'s)?(?!-)\b/i.test(q)) return false;
   const actVerb = String.raw`(?:publish(?:ed)?|wr(?:ite|ote|itten)|post(?:ed)?|sa(?:y|id)|announc(?:e|ed)|shar(?:e|ed)|tweet(?:ed)?|blog(?:ged)?|talk(?:ed)?\s+about)`;
   return new RegExp(String.raw`\b(?:did|has|have)\s+rUv\s+(?:\w+\s+){0,2}?(?:${actVerb}|been\s+(?:working|building|posting|writing))\b`, 'i').test(q)

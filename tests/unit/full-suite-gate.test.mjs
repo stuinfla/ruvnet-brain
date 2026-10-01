@@ -75,6 +75,10 @@ describe('full-suite gate', () => {
       "AssertionError: expected 'latency ceiling breached' to equal 'ok'",
       // A numeric bound with no duration cue is not provably timing.
       'AssertionError: expected 6340 to be less than 5000',
+      // 4.4.1: a duration WORD next to an integer COUNT is a value assertion, not a timing.
+      'AssertionError: retries before timeout: expected 5 to be less than 3',
+      'AssertionError: pending timeout handlers: expected 4 to be greater than 6',
+      'AssertionError: over budget by tokens: expected 1201 to be less than 1000',
       'AssertionError: expected +0 to be 4', "AssertionError: expected [] to deeply equal [ 'hang' ]",
       'Error: ENOENT: no such file or directory', "expected 'request timed out' to be 'ok'",
     ]) expect(isTimingFailure(m), m).toBe(false);

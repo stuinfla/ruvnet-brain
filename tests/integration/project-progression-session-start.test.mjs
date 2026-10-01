@@ -298,7 +298,8 @@ describe('ADR-073 Slice F SessionStart restore bridge', () => {
     // ruflo writes .claude/, .claude-flow/, ruvector.db and .swarm/ into its cwd: it runs from one per-user
     // scratch dir (rufloCwdFor), never the project root (customer working tree) and never inside `.swarm`.
     const { projectRoot, canonicalAgentDbPath } = resolveProjectStore({ projectDir: project });
-    expect(cli.invocations.map(({ options }) => options.cwd)).toEqual(cli.invocations.map(() => rufloCwdFor(canonicalAgentDbPath)));
+    expect(cli.invocations.every(({ options }) => path.dirname(options.cwd) === rufloCwdFor(canonicalAgentDbPath)
+      && path.basename(options.cwd).startsWith('run-'))).toBe(true);
     expect(cli.invocations.every(({ options }) => path.relative(projectRoot, options.cwd).startsWith('..'))).toBe(true);
   });
 
