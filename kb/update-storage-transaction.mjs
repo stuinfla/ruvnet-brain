@@ -96,21 +96,27 @@ export function managedStorageInventory(liveDir, { measuredAt = new Date().toISO
   const basename = path.basename(live);
   const fullCorpusCopies = [];
   const evidence = [];
+  const evidenceNames = [`.${basename}.update-transactions`, 'refresh-runs'];
   for (const name of fs.readdirSync(parent).sort()) {
     const file = path.join(parent, name);
-    const stat = fs.lstatSync(file);
     const installerKind = name.startsWith(`${basename}.install-preserved-`) ? 'installer-preserved'
       : name.startsWith(`${basename}.install-prior-`) ? 'installer-prior'
         : name.startsWith(`.${basename}.install-stage-`) ? 'installer-stage' : null;
-    if (installerKind) {
-      fullCorpusCopies.push(observedInstallerSummary(file, installerKind));
-      continue;
-    }
     const kind = name === basename ? 'active'
       : name.startsWith(`${basename}.next-`) ? 'candidate'
         : name.startsWith(`${basename}.rollback-`) ? 'rollback'
           : name.startsWith(`${basename}.failed-`) ? 'failed'
             : name.startsWith(`${basename}.bak-`) ? 'backup' : null;
+    // Classify by NAME first and lstat only managed entries. The parent (e.g. ~/.cache/ruvnet-brain)
+    // also holds hook stamps and logs created and deleted constantly; one vanishing between readdir
+    // and lstat threw ENOENT and aborted the whole update. A managed entry that vanished is absent.
+    if (!installerKind && !kind && !evidenceNames.includes(name)) continue;
+    let stat;
+    try { stat = fs.lstatSync(file); } catch (error) { if (error?.code === 'ENOENT') continue; throw error; }
+    if (installerKind) {
+      fullCorpusCopies.push(observedInstallerSummary(file, installerKind));
+      continue;
+    }
     if (kind) {
       if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error(`managed ${kind} entry is not a trusted directory: ${file}`);
       fullCorpusCopies.push(trustedTreeSummary(file, kind));
