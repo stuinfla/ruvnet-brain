@@ -347,11 +347,14 @@ describe('storeFreshness (pure)', () => {
   it('passes a fresh observation with every eligible store at its upstream commit', () => {
     expect(storeFreshness({ after: cov([row('a', '1', '1'), row('b', '2', null, null, 'MISSING')]), now }).ok).toBe(true);
   });
-  it('fails an observation older than 48h, a stale store, and a moved store ingested >48h ago', () => {
+  it('fails an observation older than 48h and a stale store; a moved store ingested long ago is FRESH if it is at its upstream commit', () => {
     expect(storeFreshness({ after: cov([row('a', '1', '1')], new Date(now - FRESHNESS_LIMIT_MS - 1).toISOString()), now }).detail).toMatch(/limit 48h/);
     expect(storeFreshness({ after: cov([row('a', '2', '1')]), now }).detail).toMatch(/1 store\(s\) built from a commit older than their observed upstream: a/);
-    expect(storeFreshness({ after: cov([row('a', '2', '2', '2026-09-20T00:00:00Z')]), before: cov([row('a', '1', '1')]), now }).detail)
-      .toMatch(/1 moved store\(s\) ingested more than 48h ago: a/);
+    // MEASURED 2026-09-30: a store keeps the ingestion time of the last night its upstream moved. A store that
+    // moved since the install's generation but was ingested 10 days ago is still exactly at its upstream
+    // commit, so it is fresh. The old "moved store ingested >48h ago" rule refused exactly this (about three
+    // nights after any code release) and would have blocked every nightly.
+    expect(storeFreshness({ after: cov([row('a', '2', '2', '2026-09-20T00:00:00Z')]), before: cov([row('a', '1', '1')]), now }).ok).toBe(true);
     // An unmoved store may legitimately carry an old ingestion time.
     expect(storeFreshness({ after: cov([row('a', '1', '1', '2026-09-01T00:00:00Z')]), before: cov([row('a', '1', '1')]), now }).ok).toBe(true);
     expect(storeFreshness({ after: null, now }).ok).toBe(false);
