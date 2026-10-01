@@ -1,0 +1,38 @@
+name: ci-probe-canary-latency
+
+# MEASUREMENT ONLY (ci-probe/* branches). Per-query latency of the 19 release retrieval canaries
+# against a fresh public install, through the installed MCP server, on the three runners the
+# release uses: a fresh server per query vs ONE warm server for the lane. Limits are 120s so the
+# real latency is recorded, not a timeout. Publishes nothing: no environment, no secrets.
+on:
+  push:
+    branches: ['ci-probe/canary-latency-*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  latency:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Measure canary latency
+        shell: bash
+        run: node scripts/probes/canary-latency-probe.mjs 4.4.1 probe-out
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: canary-latency-${{ matrix.runner }}
+          path: probe-out
+          retention-days: 14

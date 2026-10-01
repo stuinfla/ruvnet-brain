@@ -1,0 +1,82 @@
+{
+  "source": "v4.4.0 public-verification-aggregate.json, macos/claude retrievalPlan",
+  "k": 10,
+  "cases": [
+    {
+      "id": "legacy:agent-name-service",
+      "query": "In the agent-name-service repository, what is Agent Name Service (ANS), what problem does it solve, and how is it intended to be used?"
+    },
+    {
+      "id": "legacy:agentic-gradio",
+      "query": "In the agentic-gradio repository, What kind of dashboards does the Agentic Gradio README describe?"
+    },
+    {
+      "id": "legacy:ai-video",
+      "query": "In the ai-video repository, what is GPT-4o Media Stream Capture and Analysis, what problem does it solve, and how is it intended to be used?"
+    },
+    {
+      "id": "legacy:arcadia",
+      "query": "In the arcadia repository, What package metadata, build, test, documentation, security, and release checks must ARCADIA satisfy before publication to crates.io?"
+    },
+    {
+      "id": "legacy:codex-one",
+      "query": "In the codex-one repository, what is OpenAI Codex Machine Learning Setup, what problem does it solve, and how is it intended to be used?"
+    },
+    {
+      "id": "legacy:cognitum-support",
+      "query": "In the cognitum-support repository, How does a new Cognitum Seed owner plug in the device, open its local guide, and complete initial setup?"
+    },
+    {
+      "id": "legacy:dspy.ts",
+      "query": "In the dspy.ts repository, Which language-model pipeline backends and documentation sections are proposed in DSPy.ts's Phase 7 documentation plan?"
+    },
+    {
+      "id": "legacy:electo1",
+      "query": "In the electo1 repository, what is Agentic Election Prediction System, what problem does it solve, and how is it intended to be used?"
+    },
+    {
+      "id": "legacy:hackerone",
+      "query": "In the hackerone repository, what is @metaharness/hackerone, what problem does it solve, and how is it intended to be used?"
+    },
+    {
+      "id": "legacy:metaharness",
+      "query": "In the metaharness repository, What does MetaHarness ADR-145 propose changing about the fixed SWE-bench model and Darwin genome, and what real baseline must precede implementation?"
+    },
+    {
+      "id": "legacy:musicai",
+      "query": "In the musicai repository, Which source entry point identifies itself as Magic AI Music Box - Agent Swarm System?"
+    },
+    {
+      "id": "legacy:open-claude-code",
+      "query": "In the open-claude-code repository, How does the open-claude-code v2 architecture describe recursive tool execution and dynamic MCP tool registration?"
+    },
+    {
+      "id": "legacy:open-space",
+      "query": "In the open-space repository, what is open-space, what problem does it solve, and how is it intended to be used?"
+    },
+    {
+      "id": "legacy:powerprompt",
+      "query": "In the powerprompt repository, what is Power Prompt, what problem does it solve, and how is it intended to be used?"
+    },
+    {
+      "id": "legacy:quantum_cryptocurrency",
+      "query": "In the quantum_cryptocurrency repository, How does the hypothetical quantum-secured cryptocurrency project organize its SPARC phases and describe local startup?"
+    },
+    {
+      "id": "legacy:rvdna",
+      "query": "In the rvdna repository, How do the rvDNA bindings document two-bit DNA encoding and translation of DNA to protein?"
+    },
+    {
+      "id": "legacy:skygraph",
+      "query": "In the skygraph repository, what is SkyGraph, what problem does it solve, and how is it intended to be used?"
+    },
+    {
+      "id": "legacy:swagger-chatgpt-plugin-creator",
+      "query": "In the swagger-chatgpt-plugin-creator repository, what is ChatGPT Plugin Creator - From Swagger, what problem does it solve, and how is it intended to be used?"
+    },
+    {
+      "id": "legacy:yyz-agentics-june",
+      "query": "In the yyz-agentics-june repository, Which layer families and weight initializers does the NumPy neural-network component report describe, and how do the dropout variants differ?"
+    }
+  ]
+}
