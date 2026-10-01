@@ -99,6 +99,63 @@ describe('brain storage profiles', () => {
     expect(fs.existsSync(path.join(installed, 'ruflo.big.rvf'))).toBe(true);
   });
 
+  it('applies RuVector Only to a brain whose published store names contain a dot (dspy.ts, ruv.io)', () => {
+    // MEASURED 2026-09-30 (scripts/customer-state-matrix.mjs, profile=ruvector): every installed release from
+    // 4.3.28 through 4.3.39 ships stores `dspy.ts` and `ruv.io`. The ownership name rule rejected the dot, so
+    // applyBrainProfile threw "invalid SOURCE store ownership" on every real brain: the Console's RuVector
+    // Only switch, the installer's profile re-apply, and forge-update's prepareCandidate for a ruvector customer.
+    const source = JSON.parse(fs.readFileSync(path.join(installed, 'SOURCE.json'), 'utf8'));
+    source.stores['dspy.ts'] = { kbName: 'dspy.ts' };
+    fs.writeFileSync(path.join(installed, 'SOURCE.json'), JSON.stringify(source));
+    fs.writeFileSync(path.join(installed, 'dspy.ts.big.rvf'), Buffer.alloc(30, 1));
+    const ledger = JSON.parse(fs.readFileSync(path.join(installed, 'RVF-GENERATIONS.json'), 'utf8'));
+    ledger.stores['dspy.ts'] = { release: 'x' };
+    fs.writeFileSync(path.join(installed, 'RVF-GENERATIONS.json'), JSON.stringify(ledger));
+    const result = applyBrainProfile(installed, PROFILE_RUVECTOR);
+    expect(result.removedStores.sort()).toEqual(['dspy.ts', 'ruflo']);
+    expect(discoverStoreFamilies(installed)).toEqual(['ruvector']);
+    // The rule still refuses names that could walk out of the brain.
+    for (const bad of ['..', '../ruflo', '.hidden', 'a/b']) {
+      const copy = JSON.parse(fs.readFileSync(path.join(installed, 'SOURCE.json'), 'utf8'));
+      copy.stores[bad] = { kbName: bad };
+      fs.writeFileSync(path.join(installed, 'SOURCE.json'), JSON.stringify(copy));
+      expect(() => applyBrainProfile(installed, PROFILE_RUVECTOR), bad).toThrow(/invalid SOURCE store ownership/);
+      delete copy.stores[bad];
+      fs.writeFileSync(path.join(installed, 'SOURCE.json'), JSON.stringify(copy));
+    }
+  });
+
+  it('treats public-ledger stores that SOURCE.json does not list (concepts, ruv-gists) as managed', () => {
+    // MEASURED 2026-09-30: every release ships `concepts` and `ruv-gists` in PUBLIC-RVF-GENERATIONS.json but
+    // not in SOURCE.json stores. RuVector Only kept them as "unlisted", and kb/forge-update.mjs's profiled
+    // validation (expected families = ruvector + private) then refused every ruvector customer's update with
+    // "profiled tree has an unselected store family: concepts".
+    fs.writeFileSync(path.join(installed, 'concepts.big.rvf'), Buffer.alloc(30, 1));
+    fs.writeFileSync(path.join(installed, 'PUBLIC-RVF-GENERATIONS.json'), JSON.stringify({ stores: {
+      ruvector: { release: 'x' }, ruflo: { release: 'x' }, concepts: { release: 'x' } } }));
+    const ledger = JSON.parse(fs.readFileSync(path.join(installed, 'RVF-GENERATIONS.json'), 'utf8'));
+    ledger.stores.concepts = { release: 'x' };
+    fs.writeFileSync(path.join(installed, 'RVF-GENERATIONS.json'), JSON.stringify(ledger));
+    fs.writeFileSync(path.join(installed, 'local-notes.big.rvf'), Buffer.alloc(30, 1)); // unlisted anywhere: kept
+    const result = applyBrainProfile(installed, PROFILE_RUVECTOR);
+    expect(result.removedStores.sort()).toEqual(['concepts', 'ruflo']);
+    expect(discoverStoreFamilies(installed)).toEqual(['local-notes', 'ruvector']);
+    expect(Object.keys(JSON.parse(fs.readFileSync(path.join(installed, 'RVF-GENERATIONS.json'), 'utf8')).stores)).toEqual(['ruvector']);
+  });
+
+  it('TEETH: a public-ledger store that is fenced private or opted out of updates is never removed', () => {
+    const source = JSON.parse(fs.readFileSync(path.join(installed, 'SOURCE.json'), 'utf8'));
+    source.stores.mine = { kbName: 'mine', updateManaged: false };
+    fs.writeFileSync(path.join(installed, 'SOURCE.json'), JSON.stringify(source));
+    fs.writeFileSync(path.join(installed, 'PRIVATE-STORES.json'), JSON.stringify({ privateStores: ['Fenced'] }));
+    for (const name of ['mine', 'fenced']) fs.writeFileSync(path.join(installed, `${name}.big.rvf`), Buffer.alloc(30, 1));
+    fs.writeFileSync(path.join(installed, 'PUBLIC-RVF-GENERATIONS.json'), JSON.stringify({ stores: {
+      ruvector: {}, ruflo: {}, mine: {}, fenced: {} } }));
+    const result = applyBrainProfile(installed, PROFILE_RUVECTOR);
+    expect(result.removedStores).toEqual(['ruflo']);
+    expect(discoverStoreFamilies(installed)).toEqual(['fenced', 'mine', 'ruvector']);
+  });
+
   it('rejects missing ownership before deletion', () => {
     fs.unlinkSync(path.join(installed, 'SOURCE.json'));
     expect(() => applyBrainProfile(installed, PROFILE_RUVECTOR)).toThrow(/ownership|SOURCE/);

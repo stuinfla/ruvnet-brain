@@ -1,0 +1,29 @@
+{
+ "_provenance": "captured: claude 2.1.286 real Write call, 2026-09-30",
+ "payload": {
+  "session_id": "{{SESSION_ID}}",
+  "transcript_path": "{{TRANSCRIPT}}",
+  "cwd": "{{CWD}}",
+  "prompt_id": "{{PROMPT_ID}}",
+  "permission_mode": "acceptEdits",
+  "effort": {
+   "level": "medium"
+  },
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Write",
+  "tool_input": {
+   "file_path": "{{CWD}}/note.txt",
+   "content": "hello"
+  },
+  "tool_response": {
+   "type": "create",
+   "filePath": "{{CWD}}/note.txt",
+   "content": "hello",
+   "structuredPatch": [],
+   "originalFile": null,
+   "userModified": false
+  },
+  "tool_use_id": "{{TOOL_USE_ID}}",
+  "duration_ms": 291
+ }
+}

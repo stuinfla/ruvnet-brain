@@ -1,3 +1,5 @@
+import os from 'node:os';
+import path from 'node:path';
 import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
@@ -14,7 +16,11 @@ export default defineConfig({
     // Turn-outcome capture (plugin/scripts/turn-outcome-capture.mjs) launches a detached `ruflo`
     // writer from every Stop/SessionEnd the suite fires through the real hook path. Off here so no
     // test writes into the developer's real machine-wide AgentDB; its own tests inject fakes.
-    env: { RUVNET_TURN_CAPTURE: 'off' },
+    // ruflo's per-project scratch cwd (plugin/scripts/project-progression-store.mjs rufloCwdFor) lives
+    // under the Brain home in production; tests that build a store must never create it in the
+    // developer's real ~/.cache/ruvnet-brain, so the suite points it at a private test root.
+    env: { RUVNET_TURN_CAPTURE: 'off',
+      RUVNET_RUFLO_CWD_ROOT: path.join(os.tmpdir(), `ruvnet-brain-test-ruflo-cwd-${typeof process.getuid === 'function' ? process.getuid() : 'user'}`) },
     include: [
       'tests/unit/**/*.test.mjs', 'tests/integration/*.test.mjs', 'tests/mutation/*.test.mjs',
       // ADR-058 §D7: the interface-gate incident corpus. Listed here AND given its own npm script

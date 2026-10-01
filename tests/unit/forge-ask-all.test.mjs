@@ -246,7 +246,8 @@ describe('searchAll — cross-repo pool + rerank + name-boost', () => {
     // redirected to the public gist store instead of the repo it named. Found live 2026-09-12: a
     // question about ruv-swarm's own SWE-Bench score returned unrelated gist content under the
     // reason "provenance intent selects the public rUv gist store". `(?!-)` after `rUv` excludes
-    // only the compound-name case; a bare "rUv" mention (no trailing hyphen) still routes to gists.
+    // only the compound-name case. (Since 2026-10-01 an unhyphenated "rUv" routes to gists only next
+    // to something rUv authored or said -- see the product-question cases below.)
     //
     // CORRECTED 2026-09-12 after Dual (Fable 5.1 + GPT-6-Astra) independently proved the original
     // fixture vacuous: declaring 'ruv-swarm.rvf' as a deployed store makes inventoryReposFromQuery
@@ -260,10 +261,49 @@ describe('searchAll — cross-repo pool + rerank + name-boost', () => {
     expect(out.routing?.reason || '').not.toMatch(/provenance intent selects the public rUv gist store/);
   });
 
-  it('control: a bare rUv mention (no product suffix) still routes to the gist store', async () => {
+  it('control: an unhyphenated rUv asking what rUv published still routes to the gist store', async () => {
     const d = mkdirWith(['ruv-fann.rvf', 'ruv-gists.rvf']);
     vi.mocked(searchKb).mockImplementation(async ({ name }) => [hit({ repo: name })]);
     const out = await searchAll({ dir: d, query: "What did rUv publish about onnx runtimes?" });
+    expect(out.routing?.reason || '').toMatch(/provenance intent selects the public rUv gist store/);
+  });
+
+  it.each([
+    "How do I give my coding agents long-term memory with rUv's tools?",
+    'Which rUv library runs vector search inside the browser?',
+    "What is rUv's agent orchestration framework and how do I install it?",
+    "I want to cut my LLM bill; what does rUv ship for routing cheap models first?",
+    // Review 2026-10-01: authorship WORDS inside product questions must not count.
+    'Which rUv tool lets my agents share memory?',
+    "How many threads does rUv's HNSW index use?",
+    "What are the hardware specs for rUv's Cognitum seed?",
+    'Which rUv package writes vectors to disk?',
+    'What does rUv ship for writing tests?',
+    "How do I post a task to rUv's agent queue?",
+  ])('does NOT send a product question that merely names rUv to the gist store: %s', async (query) => {
+    // THE BUG THIS CATCHES (2026-10-01). A bare "rUv" was read as provenance intent, so a newcomer's
+    // product question was routed to ruv-gists ALONE (5 of 6 probes on the 4.3.37 corpus).
+    const d = mkdirWith(['ruv-fann.rvf', 'ruv-gists.rvf']);
+    vi.mocked(searchKb).mockImplementation(async ({ name }) => [hit({ repo: name })]);
+    const out = await searchAll({ dir: d, query });
+    expect(out.routing?.reason || '').not.toMatch(/provenance intent selects the public rUv gist store/);
+  });
+
+  it.each([
+    // Each of these reaches the gist store ONLY through the authorship rule: none contains another
+    // gist trigger (gist, write-up, announcement, fable.md, first to market, published ...).
+    'What did rUv write about agent swarms?',
+    'What did rUv announce this week?',
+    'What has rUv been working on lately?',
+    'What did rUv say about ONNX runtimes?',
+    'rUv wrote something about coherence gates, where is it?',
+    "How can I train AI models for free using Google AI Studio, per rUv's tutorial?",
+    "What is rUv's TikTok-like recommender algorithm specification?",
+    "Where are rUv's posts about the self-learning flywheel?",
+  ])('control: rUv in an authorship shape still routes to the gist store: %s', async (query) => {
+    const d = mkdirWith(['ruv-fann.rvf', 'ruv-gists.rvf']);
+    vi.mocked(searchKb).mockImplementation(async ({ name }) => [hit({ repo: name })]);
+    const out = await searchAll({ dir: d, query });
     expect(out.routing?.reason || '').toMatch(/provenance intent selects the public rUv gist store/);
   });
 

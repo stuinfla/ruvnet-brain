@@ -650,7 +650,9 @@ export function restorePrivateOverlayState({ kbDir, overlay }) {
   const cardsFile = path.join(kbDir, 'capability-cards.md');
   const source = JSON.parse(fs.readFileSync(sourceFile, 'utf8'));
   const generations = JSON.parse(fs.readFileSync(generationsFile, 'utf8'));
-  const aliases = JSON.parse(fs.readFileSync(aliasesFile, 'utf8'));
+  // A public bundle may ship no repo-aliases.json at all (build-bundle: "aliases will not resolve"); the
+  // private aliases then start from an empty map instead of failing the whole update on ENOENT.
+  const aliases = fs.existsSync(aliasesFile) ? JSON.parse(fs.readFileSync(aliasesFile, 'utf8')) : {};
   const mergedSource = mergePrivateEntries(source.stores, overlay.sourceStores, 'SOURCE.json');
   const mergedGenerations = mergePrivateEntries(generations.stores, overlay.generationStores, 'RVF-GENERATIONS.json');
   const mergedAliases = mergePrivateEntries(aliases, overlay.aliases, 'repo-aliases.json');
@@ -1640,7 +1642,9 @@ async function main() {
   if (!APPLY) {
     writeCheckOutcome({ currencyVerdict: verdict.verdict, currencyReason: verdict.reason,
       candidateKind: candidateIdentity.kind, storeCount: targets.length });
-    if (anyBehind) { console.log(`\nA newer build exists. Run:  node forge-update.mjs --apply`); process.exit(10); }
+    // The npx door upgrades this updater before applying; an old installed updater run directly can fail
+    // the guard on a newer bundle (customer-state-matrix D8, 2026-09-30).
+    if (anyBehind) { console.log(`\nA newer build exists. Run:  npx ruvnet-brain@latest --update`); process.exit(10); }
     console.log(`\nAll stores current. Nothing to do.`); process.exit(0);
   }
 

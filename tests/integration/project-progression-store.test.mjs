@@ -8,6 +8,9 @@ import { resolveProjectStore } from '../../plugin/scripts/project-store-resolver
 import {
   ProjectProgressionStore,
   projectResumePayloadToBound,
+  ensurePrivateDir,
+  rufloCwdFor,
+  rufloScratchRoot,
 } from '../../plugin/scripts/project-progression-store.mjs';
 import { resolveRuflo } from '../../plugin/scripts/ruflo-bin.mjs';
 import { getVersion } from '../../scripts/version.mjs';
@@ -225,6 +228,9 @@ describe('managed ProjectProgression append and readback', () => {
       },
     ]);
     expect(fake.calls.every((call) => call.options.env.RUFLO_DAEMON_AUTOSTART === '0')).toBe(true);
+    // ruflo never runs inside the customer's project: one per-user scratch cwd outside it (rufloCwdFor).
+    expect(fake.calls.every((call) => call.options.cwd === rufloCwdFor(bridge.resolution.canonicalAgentDbPath))).toBe(true);
+    expect(fake.calls.every((call) => path.relative(projectRoot, call.options.cwd).startsWith('..'))).toBe(true);
     expect(bridge.outbox.pendingSnapshots()).toEqual([]);
   });
 
@@ -327,7 +333,7 @@ describe('managed ProjectProgression append and readback', () => {
     const env = { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' };
     const initialized = spawnSync(ruflo, [
       'memory', 'init', '--backend', 'agentdb', '--path', resolution.canonicalAgentDbPath,
-    ], { cwd: projectRoot, env, encoding: 'utf8', timeout: 120_000 });
+    ], { cwd: rufloCwdFor(resolution.canonicalAgentDbPath), env, encoding: 'utf8', timeout: 120_000 });
     expect(initialized.status, initialized.stderr || initialized.stdout).toBe(0);
     const observed = [];
     const bridge = new ProjectProgressionStore({
@@ -372,25 +378,110 @@ describe('managed ProjectProgression append and readback', () => {
     expect(restored.payload.evidence).toMatchObject({ structurallyEnumerated: 2, exactRetrieved: 2 });
     expect(observed.every((row) => row.stdoutShape !== 'not-json')).toBe(true);
     console.info(JSON.stringify({ proof: 'global-ruflo-disposable-store', binary: ruflo, observations: observed }));
-    // Capability probe only: runtime restoration still uses exact-key readback. Export has no
-    // --path option, so bind both native resolver environment inputs to this disposable store.
-    // The default bridge selects sibling agentdb-memory.db when export omits dbPath; explicitly
-    // selecting Ruflo's supported fallback is required to read the canonical memory.db here.
-    const output = path.join(projectRoot, 'progression-export.json');
+    // Independent proof that the GLOBAL ruflo CLI sees what the product wrote. The product's own reads
+    // above may take the node:sqlite fast path, so this reads back through the CLI, bound to the exact
+    // canonical store with --path (the flag Ruflo wires on init/store/retrieve/list/search/delete/stats:
+    // ruflo/scripts/smoke-memory-db-path.mjs, #2105), and compares every value by canonical digest.
+    //
+    // Why not `ruflo memory export` (this probe until 2026-10-01): export has no --path, and on ruflo
+    // 3.49.0 it ignores CLAUDE_FLOW_DB_PATH/CLAUDE_FLOW_MEMORY_PATH. Measured on a disposable store
+    // holding these two product rows: export from the project root -> count 0 (with or without those
+    // env overrides), from <root>/.swarm -> count 1, while `memory list --path` and exact
+    // `memory retrieve --path` return both rows byte-identical. Export reads a cwd-derived store,
+    // not the canonical one, so it cannot prove anything about this store.
     const started = Date.now();
-    const exported = spawnSync(ruflo, ['memory', 'export', '--output', output,
-      '--namespace', NAMESPACE, '--format', 'json'], {
-      cwd: projectRoot, encoding: 'utf8', timeout: 120_000,
-      env: { ...env, CLAUDE_FLOW_DISABLE_BRIDGE: '1', CLAUDE_FLOW_DB_PATH: resolution.canonicalAgentDbPath,
-        CLAUDE_FLOW_MEMORY_PATH: path.dirname(resolution.canonicalAgentDbPath) },
-    });
-    expect(exported.status, exported.stderr || exported.stdout).toBe(0);
-    const data = JSON.parse(fs.readFileSync(output, 'utf8'));
-    expect(data).toMatchObject({ schema: 'ruflo-memory-export/v1', count: 2, namespace: NAMESPACE });
-    const values = new Map(data.entries.map((entry) => [entry.key, JSON.parse(entry.value)]));
-    expect(digestCanonical(values.get(snapshot.eventKey))).toBe(digestCanonical(snapshot));
-    expect(digestCanonical(values.get(successor.eventKey))).toBe(digestCanonical(successor));
-    console.info(JSON.stringify({ proof: 'global-ruflo-export-capability-only', bridge: 'disabled', elapsedMs: Date.now() - started,
-      exactValues: values.size, schema: data.schema, hasTotal: Object.hasOwn(data, 'total') }));
+    const cli = (args) => spawnSync(ruflo, args, { cwd: rufloCwdFor(resolution.canonicalAgentDbPath), encoding: 'utf8', timeout: 120_000, env });
+    const listed = cli(['memory', 'list', '--namespace', NAMESPACE, '--path', resolution.canonicalAgentDbPath, '--format', 'json']);
+    expect(listed.status, listed.stderr || listed.stdout).toBe(0);
+    for (const expected of [snapshot, successor]) {
+      expect(listed.stdout).toContain(expected.eventKey);
+      const read = cli(['memory', 'retrieve', '--key', expected.eventKey, '--namespace', NAMESPACE, '--value-only',
+        '--path', resolution.canonicalAgentDbPath]);
+      expect(read.status, read.stderr || read.stdout).toBe(0);
+      expect(digestCanonical(JSON.parse(read.stdout))).toBe(digestCanonical(expected));
+    }
+    console.info(JSON.stringify({ proof: 'global-ruflo-cli-exact-readback', path: 'canonical --path', elapsedMs: Date.now() - started,
+      exactValues: 2 }));
+    // ruflo creates `<cwd>/.swarm/` on every call; run from inside `.swarm` it left an unused nested
+    // store in every customer project (measured 2026-10-01, ruflo 3.49.0).
+    expect(fs.existsSync(path.join(projectRoot, '.swarm', '.swarm'))).toBe(false);
+    // ruflo writes .claude/, .claude-flow/, ruvector.db and .swarm/ into its cwd. None of it may land in
+    // the customer's project (it changed the working tree and broke no-op capture detection): the project
+    // holds only the store directory, and the store directory only the store and the product's outbox.
+    expect(fs.readdirSync(projectRoot).sort()).toEqual(['.swarm']);
+    const storeFiles = fs.readdirSync(path.join(projectRoot, '.swarm')).sort();
+    expect(storeFiles.filter((name) => !/^memory\.db(?:-wal|-shm|-journal)?$/.test(name)
+      && name !== 'schema.sql' // written beside the store by `ruflo memory init --path` (measured, 3.49.0)
+      && name !== 'project-progression-outbox.jsonl'), storeFiles.join(', ')).toEqual([]);
+  }, 180_000);
+
+  // ruflo writes snapshot content (hnsw.metadata.json) into <cwd>/.swarm and LOADS any it finds there,
+  // so the cwd is per project, private, ours, and never in the project tree or a shared /tmp name.
+  it('gives each project its own private scratch cwd under the Brain home, outside the project', () => {
+    const projectRoot = temporaryProject();
+    const otherRoot = temporaryProject();
+    const brainHome = temporaryProject();
+    const root = path.join(brainHome, 'ruflo-cwd');
+    const mine = rufloCwdFor(path.join(projectRoot, '.swarm', 'memory.db'), { root });
+    const theirs = rufloCwdFor(path.join(otherRoot, '.swarm', 'memory.db'), { root });
+    expect(mine).not.toBe(theirs); // never pooled across projects
+    expect(rufloCwdFor(path.join(projectRoot, '.swarm', 'memory.db'), { root })).toBe(mine); // stable per project
+    for (const dir of [root, mine, theirs]) {
+      const stat = fs.lstatSync(dir);
+      expect(stat.isDirectory() && !stat.isSymbolicLink()).toBe(true);
+      if (process.platform !== 'win32') {
+        expect(stat.mode & 0o777).toBe(0o700);
+        expect(stat.uid).toBe(process.getuid());
+      }
+    }
+    expect(path.dirname(mine)).toBe(root);
+    expect(path.relative(projectRoot, mine).startsWith('..')).toBe(true);
+    expect(rufloScratchRoot({ RUVNET_BRAIN_HOME: brainHome })).toBe(root);
+    expect(rufloScratchRoot({ HOME: '/h' }).startsWith(path.join(os.homedir(), '.cache', 'ruvnet-brain'))).toBe(true);
+    expect(() => resolveProjectStore({ projectDir: projectRoot, requestedStorePath: path.join(projectRoot, 'stores', 'memory.db') }))
+      .toThrow(/foreign store root rejected/);
+  });
+
+  it.skipIf(process.platform === 'win32')('refuses a symlinked scratch dir, repairs a 0755 one, refuses one owned by someone else', () => {
+    const brainHome = temporaryProject();
+    const root = path.join(brainHome, 'ruflo-cwd');
+    const store = path.join(temporaryProject(), '.swarm', 'memory.db');
+    // A planted symlink for the ROOT, and separately for a project's LEAF: both refused, the target untouched.
+    const elsewhere = temporaryProject();
+    fs.symlinkSync(elsewhere, root);
+    expect(() => rufloCwdFor(store, { root })).toThrow(/not a real directory/);
+    expect(fs.readdirSync(elsewhere)).toEqual([]);
+    fs.unlinkSync(root);
+    const leaf = rufloCwdFor(store, { root });
+    fs.rmdirSync(leaf);
+    fs.symlinkSync(elsewhere, leaf);
+    expect(() => rufloCwdFor(store, { root })).toThrow(/not a real directory/);
+    fs.unlinkSync(leaf);
+    // A pre-existing world-readable dir is made private.
+    fs.mkdirSync(leaf, { mode: 0o755 });
+    fs.chmodSync(leaf, 0o755);
+    expect(rufloCwdFor(store, { root })).toBe(leaf);
+    expect(fs.lstatSync(leaf).mode & 0o777).toBe(0o700);
+    // A directory owned by another uid (root-owned /usr stands in; a test cannot chown) is refused.
+    expect(() => ensurePrivateDir('/usr')).toThrow(/owned by uid 0/);
+  });
+
+  realRufloIt('real ruflo with a non-default --path leaves no .swarm next to the store or in the project', () => {
+    const projectRoot = temporaryProject();
+    const storeDir = path.join(projectRoot, 'stores');
+    fs.mkdirSync(storeDir);
+    const store = path.join(storeDir, 'memory.db');
+    const cwd = rufloCwdFor(store, { root: path.join(temporaryProject(), 'ruflo-cwd') });
+    const env = { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' };
+    const call = (args) => spawnSync(ruflo, args, { cwd, env, encoding: 'utf8', timeout: 120_000 });
+    const init = call(['memory', 'init', '--backend', 'agentdb', '--path', store]);
+    expect(init.status, init.stderr || init.stdout).toBe(0);
+    const stored = call(['memory', 'store', '--key', 'n3-probe', '--value', '{"ok":true}', '--namespace', 'n3', '--path', store]);
+    expect(stored.status, stored.stderr || stored.stdout).toBe(0);
+    const read = call(['memory', 'retrieve', '--key', 'n3-probe', '--namespace', 'n3', '--value-only', '--path', store]);
+    expect(read.status, read.stderr || read.stdout).toBe(0);
+    expect(JSON.parse(read.stdout)).toEqual({ ok: true });
+    expect(fs.existsSync(path.join(storeDir, '.swarm'))).toBe(false);
+    expect(fs.existsSync(path.join(projectRoot, '.swarm'))).toBe(false);
   }, 180_000);
 });

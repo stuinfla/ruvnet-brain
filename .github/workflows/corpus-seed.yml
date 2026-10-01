@@ -271,7 +271,7 @@ jobs:
           # here would reject every seed this pipeline is now capable of producing — but leaving it
           # unbound would let a diagnostic from some other archive ride along looking like evidence.
           if [ "$SEED_IS_DIGEST_DERIVED" = 1 ]; then
-          # BEGIN seed-recall-verify (ADR-0091 D7.3; executed by tests/unit/recall-retirement-readers.test.mjs)
+          # BEGIN seed-recall-verify (ADR-0091 D7.3; executed by tests/unit/recall-retirement.test.mjs)
           # A seed report that claims retired questions is verified against the seed's OWN sealed coverage
           # (its D6.2 sidecar), recomputed here -- never taken from the report's claim. A generation that
           # published no sidecar gives no coverage, so any retirement it claims is rejected.
