@@ -347,7 +347,7 @@ LASTV=$(cat "$VSTAMP" 2>/dev/null || echo 0)
 VJITTER=$(( ( $(hostname 2>/dev/null | cksum 2>/dev/null | cut -d' ' -f1 || echo 0) % 8641 ) - 4320 ))
 VINTERVAL=$(( 21600 + VJITTER ))
 if [ "$NOWV" -gt 0 ] && [ $((NOWV - LASTV)) -gt "$VINTERVAL" ]; then
-  echo "$NOWV" > "$VSTAMP" 2>/dev/null
+  echo "$NOWV" 2>/dev/null > "$VSTAMP"   # 2>/dev/null FIRST: a failed redirect prints the shell's own error otherwise
   # BACKGROUNDED (QE-0011 code#1): these are 3 sequential `curl --max-time 3` = up to ~9s. Running
   # them synchronously HERE — before the grounding gates below — risks the whole hook being killed by
   # Claude Code's ~5s hook timeout on the once/20h refresh tick, which would DROP the actual grounding
@@ -357,7 +357,7 @@ if [ "$NOWV" -gt 0 ] && [ $((NOWV - LASTV)) -gt "$VINTERVAL" ]; then
   ( for PKG in ruflo @claude-flow/cli @ruvector/rvf; do
       L=$(curl -fsS --max-time 3 "https://registry.npmjs.org/$PKG/latest" 2>/dev/null | sed -E 's/.*"version":"([^"]+)".*/\1/' | head -c 40)
       [ -n "$L" ] && echo "$PKG $L"
-    done > "$VCACHE".tmp 2>/dev/null && mv -f "$VCACHE".tmp "$VCACHE" 2>/dev/null ) &
+    done 2>/dev/null > "$VCACHE".tmp && mv -f "$VCACHE".tmp "$VCACHE" 2>/dev/null ) 2>/dev/null &
 fi
 if [ -s "$VCACHE" ]; then
   OUTDATED=""
@@ -625,7 +625,7 @@ if [ -n "$METER_TMP" ]; then
   mkdir -p "$METER_LEDGER_DIR" 2>/dev/null && \
     printf '{"ts":"%s","source":"hook","class":"%s","bytes":%d,"cwd":"%s"}\n' \
       "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$METER_CLASS" "$METER_BYTES" "$( { pwd -W 2>/dev/null || pwd 2>/dev/null; } | sed 's/"/\\"/g')" \
-      >> "$METER_LEDGER_DIR/token-ledger.jsonl" 2>/dev/null
+      2>/dev/null >> "$METER_LEDGER_DIR/token-ledger.jsonl"
 fi
 
 exit 0

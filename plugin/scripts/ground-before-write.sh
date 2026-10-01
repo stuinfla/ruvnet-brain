@@ -43,6 +43,7 @@ INPUT=""
 # exactly why a hook that CAN hang forever survives unnoticed. -t bounds the wait, and the string
 # is truncated AFTER the loop because a hook payload is one line with no newline, so `read` hands
 # the whole thing back at once and a per-iteration cap never fires.
+_l=""   # set -u: a read that times out before any byte leaves _l unset ("unbound variable" on stderr)
 while IFS= read -r -t 2 _l; do
   INPUT+="$_l"
   [ ${#INPUT} -ge 65536 ] && break

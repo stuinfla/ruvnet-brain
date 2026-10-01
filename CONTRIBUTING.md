@@ -161,7 +161,9 @@ than the one installed; no download, live untouched, clean exit). `--check`, `--
 recorded verdict rather than each re-deriving their own comparison. Schedule it with
 `npx ruvnet-brain --enable-nightly` (launchd, cron or Task Scheduler — the same command on every OS).
 Machines managed by agentic-kit are updated by `ak sync` instead, which disables the Brain's own
-scheduler on purpose; do not run both. `--host-sync-only` repairs host wiring and **never** updates
+scheduler on purpose; do not run both. That ownership (`kit.json` `ruvnetBrain:true`) is honoured only
+while an update is proven within 36h (a successful refresh receipt or a CURRENT `--check` verdict); past
+that, the SessionStart self-heal runs the Brain's own update anyway, so no machine exceeds 48h. `--host-sync-only` repairs host wiring and **never** updates
 knowledge — do not use it as an update command.
 
 **Provenance (one ledger, one projection).** `kb/RVF-GENERATIONS.json` is the one per-store
@@ -192,6 +194,10 @@ without a fresh `search_ruvnet`, or — in this checkout — a new code file or 
 duplicates existing code: refused once per path per session, allowed by a header line
 `// DISTINCT-FROM: <path> — <reason>`, `RUVNET_DUPLICATE_GATE=off` disables it); PostToolUse grounding stamp; Stop continuation and grounding
 check; snapshot capture on Stop/PreCompact/SessionEnd. The Stop grounding check (`grounding-turn-gate`)
+asks for a `search_ruvnet` call only when the final answer asserts what a rUv product does, can, cannot,
+requires or says (`ruvCapabilityClaims` in `grounding-turn-evidence.mjs`) — a status report, git/CI check
+or memory write on a rUv-named prompt is never corrected; when the transcript tail cannot see the turn's
+start it falls back to the grounding stamps, never to a silent pass. It
 also asks for ONE correction when the prompt asked what a tool or platform can do (or for an
 architecture) and the final answer asserts a capability without a relevant source read this turn —
 a file, command, `search_ruvnet` hit or raw page, read after any small-model WebFetch summary about the
@@ -215,6 +221,7 @@ Writes run in a detached worker; `RUVNET_TURN_CAPTURE=off` disables it. `npm run
 ```bash
 npm test                        # plugin battery over real JSON-RPC
 npx vitest run                  # unit + integration
+node scripts/full-suite-gate.mjs  # the same run, judged against tests/known-red.json (canonical-qa blocks on it)
 npm run qa:release              # release-scope checks
 npm run single-source:check     # one version of every rule and fact
 npm run wired:check             # every module has a caller or a stated reason

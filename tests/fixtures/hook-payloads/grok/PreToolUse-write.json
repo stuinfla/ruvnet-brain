@@ -1,0 +1,29 @@
+{
+ "_provenance": "captured: grok 1.0.13 grok -p --output-format streaming-json, project hooks file, 2026-09-30",
+ "payload": {
+  "hookEventName": "pre_tool_use",
+  "sessionId": "{{SESSION_ID}}",
+  "cwd": "{{ROOT}}/.scratch-grok2/cwd",
+  "workspaceRoot": "{{ROOT}}/",
+  "timestamp": "2026-01-01T00:00:00.000000+00:00",
+  "transcriptPath": "{{TRANSCRIPT}}",
+  "permissionMode": "bypassPermissions",
+  "toolName": "write",
+  "toolUseId": "{{TOOL_USE_ID}}",
+  "toolInput": {
+   "file_path": "{{ROOT}}/.scratch-grok2/cwd/note.txt",
+   "content": "hello"
+  },
+  "toolInputTruncated": false,
+  "hook_event_name": "pre_tool_use",
+  "session_id": "{{SESSION_ID}}",
+  "transcript_path": "{{TRANSCRIPT}}",
+  "permission_mode": "bypassPermissions",
+  "tool_name": "write",
+  "tool_input": {
+   "file_path": "{{ROOT}}/.scratch-grok2/cwd/note.txt",
+   "content": "hello"
+  },
+  "tool_use_id": "{{TOOL_USE_ID}}"
+ }
+}

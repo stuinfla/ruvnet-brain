@@ -44,6 +44,7 @@ esac
 # payload's delivery time; the size cap is ~30x the largest real payload. The trailing `[ -n "$_l" ]`
 # keeps the final unterminated line, which is what the original `||` clause was for.
 INPUT=""
+_l=""   # set -u: a read that times out before any byte leaves _l unset ("unbound variable" on stderr)
 while IFS= read -r -t 2 _l; do
   INPUT+="$_l"
   [ ${#INPUT} -ge 65536 ] && break

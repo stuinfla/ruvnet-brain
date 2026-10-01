@@ -1,0 +1,18 @@
+{
+ "_provenance": "captured: claude 2.1.286 claude -p, 2026-09-30",
+ "payload": {
+  "session_id": "{{SESSION_ID}}",
+  "transcript_path": "{{TRANSCRIPT}}",
+  "cwd": "{{CWD}}",
+  "prompt_id": "{{PROMPT_ID}}",
+  "permission_mode": "acceptEdits",
+  "effort": {
+   "level": "medium"
+  },
+  "hook_event_name": "Stop",
+  "stop_hook_active": false,
+  "last_assistant_message": "ok",
+  "background_tasks": [],
+  "session_crons": []
+ }
+}

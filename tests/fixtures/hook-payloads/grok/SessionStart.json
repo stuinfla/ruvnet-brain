@@ -1,0 +1,15 @@
+{
+ "_provenance": "captured: grok 1.0.13 grok -p --output-format streaming-json, project hooks file, 2026-09-30",
+ "payload": {
+  "hookEventName": "session_start",
+  "sessionId": "{{SESSION_ID}}",
+  "cwd": "{{ROOT}}/.scratch-grok2/cwd",
+  "workspaceRoot": "{{ROOT}}/",
+  "timestamp": "2026-01-01T00:00:00.000000+00:00",
+  "permissionMode": "bypassPermissions",
+  "source": "new",
+  "hook_event_name": "session_start",
+  "session_id": "{{SESSION_ID}}",
+  "permission_mode": "bypassPermissions"
+ }
+}

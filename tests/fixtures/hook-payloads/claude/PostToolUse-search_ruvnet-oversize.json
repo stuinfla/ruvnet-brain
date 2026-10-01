@@ -1,0 +1,25 @@
+{
+ "_provenance": "captured: claude 2.1.286 real search_ruvnet call whose 58,267-char result the HOST replaced with an \"exceeds maximum allowed tokens\" error, 2026-09-30",
+ "payload": {
+  "session_id": "{{SESSION_ID}}",
+  "transcript_path": "{{TRANSCRIPT}}",
+  "cwd": "{{CWD}}",
+  "prompt_id": "{{PROMPT_ID}}",
+  "permission_mode": "default",
+  "effort": {
+   "level": "medium"
+  },
+  "hook_event_name": "PostToolUse",
+  "tool_name": "mcp__plugin_ruvnet-brain_ruvnet-brain__search_ruvnet",
+  "tool_input": {
+   "query": "what is ruflo"
+  },
+  "tool_response": "Error: result (58,267 characters) exceeds maximum allowed tokens. Output has been saved to {{TRANSCRIPT_DIR}}/tool-results/mcp-plugin_ruvnet-brain_ruvnet-brain-search_ruvnet-1790806569296.txt.\nFormat: JSON with schema: {answer: string, grounding: {receiptId: string, sources: [{...}]}, implementation: {required: boolean, verdict: string, implementationSources: [string], proofMethod: string}, routing: {attempted: boolean, accepted: boolean, lane: string, confidence: string, reason: string, candidateRepos: [string], implementationRequired: boolean, implementationVerdict: string}, retrieval: {schemaVersion: number, kind: string, query: string, k: number, results: [{...}]}}\n- For targeted queries (find a value, filter by field): use jq on the file directly.\n- For analysis or summarization that requires reading the full content: first probe the structure (e.g., jq 'type, length, keys?' {{TRANSCRIPT_DIR}}/tool-results/mcp-plugin_ruvnet-brain_ruvnet-brain-search_ruvnet-1790806569296.txt), then extract slices with jq or python — Read's line-based offset/limit will not chunk this file.\n- If the Agent tool is available, do this inside a subagent so the full output stays out of your main context. Give it the instruction above verbatim, and be explicit about what it must return — e.g. \"{{TRANSCRIPT_DIR}}/tool-results/mcp-plugin_ruvnet-brain_ruvnet-brain-search_ruvnet-1790806569296.txt is JSON with schema: {answer: string, grounding: {receiptId: string, sources: [{...}]}, implementation: {required: boolean, verdict: string, implementationSources: [string], proofMethod: string}, routing: {attempted: boolean, accepted: boolean, lane: string, confidence: string, reason: string, candidateRepos: [string], implementationRequired: boolean, implementationVerdict: string}, retrieval: {schemaVersion: number, kind: string, query: string, k: number, results: [{...}]}}; probe the structure with jq (type/length/keys), then extract and read the content in full with jq or python, then summarize and quote any key findings verbatim.\" A vague \"summarize this\" may lose detail.\n",
+  "tool_use_id": "{{TOOL_USE_ID}}",
+  "duration_ms": 7073,
+  "mcp_server": {
+   "name": "plugin:ruvnet-brain:ruvnet-brain",
+   "source": "plugin"
+  }
+ }
+}

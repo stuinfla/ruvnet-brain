@@ -61,16 +61,31 @@ function profileOwnership(dir) {
       ? Object.entries(source.stores) : null;
   if (!entries) throw new Error('invalid SOURCE ownership policy');
   const privateNames = new Set(fence.privateStores.map((s) => s.toLowerCase()));
+  // Published store names include dots (`dspy.ts`, `ruv.io`). A name may not start with a dot, hold `..`
+  // or a separator, or end in an artifact suffix (`x.big` would collide with store x's `x.big.rvf`).
+  const safeName = (name) => typeof name === 'string' && /^[a-z0-9][a-z0-9._-]*$/i.test(name) && !name.includes('..')
+    && !/\.(?:big|rvf)$/i.test(name);
   const managed = new Set();
+  const optedOut = new Set();
   const seen = new Set();
   for (const [name, value] of entries) {
-    if (typeof name !== 'string' || !/^[a-z0-9][a-z0-9_-]*$/i.test(name)
+    if (!safeName(name)
       || !value || typeof value !== 'object' || Array.isArray(value)
       || (value.kbName != null && value.kbName !== name)
       || (value.updateManaged != null && typeof value.updateManaged !== 'boolean')
       || seen.has(name.toLowerCase())) throw new Error('invalid SOURCE store ownership');
     seen.add(name.toLowerCase());
-    if (value.updateManaged !== false && !privateNames.has(name.toLowerCase())) managed.add(name);
+    if (value.updateManaged === false) optedOut.add(name.toLowerCase());
+    else if (!privateNames.has(name.toLowerCase())) managed.add(name);
+  }
+  // The release's PUBLIC ledger is the other ownership record: stores it publishes but SOURCE does not list
+  // (concepts, ruv-gists) are still release-owned, and forge-update's profiled check expects them gone.
+  const publicFile = path.join(dir, 'PUBLIC-RVF-GENERATIONS.json');
+  if (fs.existsSync(publicFile)) {
+    for (const name of Object.keys(read('PUBLIC-RVF-GENERATIONS.json').stores || {})) {
+      const key = String(name).toLowerCase();
+      if (safeName(name) && !privateNames.has(key) && !optedOut.has(key)) managed.add(name);
+    }
   }
   return { managed, read };
 }
