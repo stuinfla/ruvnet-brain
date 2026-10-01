@@ -72,6 +72,15 @@
  *   At most ONE correction per stop episode: both checks compose into one message, and
  *   stop_hook_active silences the continued stop.
  *
+ * 4.4.0 — GATE 1 FIRES ON A CLAIM, NOT ON A TOPIC. Gate 1 arms on any prompt that names the rUv
+ * stack, and in this repository that is nearly every prompt. Replayed through this decide() on 183
+ * real deliveries of the correction (the owner's sessions, 2026-09-12..10-01): 172 were on answers
+ * that asserted nothing about a rUv tool (release status, git/CI, disk/backup, memory writes). Now a
+ * search is demanded only when the final answer asserts a rUv capability (ruvCapabilityClaims);
+ * measured on a held-out set of 70 real Stop points: false positives 68/68 -> 0/68, and 2 borderline
+ * claims (copula, parenthetical) are missed — tests/unit/grounding-turn-false-alarm.test.mjs.
+ * A LONG turn (the transcript tail cannot see its start) falls back to the stamps, never to a pass.
+ *
  * FAILS OPEN ALWAYS. Exit 0 unconditionally — a gate that breaks a turn's completion because a
  * cache directory was unreadable would be disabled within a day.
  */
@@ -84,7 +93,7 @@ import { markerPathFor, readMarker } from './grounding-turn-mark.mjs';
 import { readSettledTranscript } from './turn-outcome-capture.mjs';
 import {
   architectureShadow, auditAssertions, correctionText, describeSources, loadVocabulary, logShadow,
-  relayShadow, searchedThisTurn, turnSources,
+  relayShadow, ruvCapabilityClaims, searchedThisTurn, turnSources,
 } from './grounding-turn-evidence.mjs';
 
 const HOME = os.homedir();
@@ -145,6 +154,11 @@ export function decide({ hookInput, marker, markerMs, env = process.env, read = 
     if (host === 'claude' && typeof tp === 'string' && /\.jsonl$/i.test(tp)) {
       try { turn = turnSources(read(tp, { maxMs: 0 })); } catch { turn = null; }
     }
+    // The transcript is read as a bounded TAIL. When the turn's opening prompt is not inside it
+    // (a long turn), the tail is a suffix of the turn and cannot prove a search did NOT happen
+    // earlier — so it is not evidence either way. Fall back to the stamp evidence (the same path
+    // Codex uses), never to a silent pass: `return null` here let every long turn skip the gate.
+    if (turn && !turn.boundaryFound) turn = null;
     const sources = turn ? turn.sources : null;
     const message = String(hookInput.last_assistant_message || '');
 
@@ -158,15 +172,20 @@ export function decide({ hookInput, marker, markerMs, env = process.env, read = 
       for (const row of shadow) logShadow({ ...row, at: new Date().toISOString(), session: hookInput.session_id, host });
     }
 
-    const grounded = marker.gate1 === false ? true
-      : sources ? searchedThisTurn(sources) : wasGroundedSince(markerMs, newestGroundingStampMs());
+    // Gate 1 demands a search only when the answer ASSERTS what a rUv product does (the directive's
+    // own words). A status report, git/CI check or memory write on a rUv-named repo asserts nothing.
+    const ruvClaims = marker.gate1 === false ? [] : ruvCapabilityClaims(message);
+    const grounded = !ruvClaims.length
+      || (sources ? searchedThisTurn(sources) : wasGroundedSince(markerMs, newestGroundingStampMs()));
     if (assertion) {
-      return correctionText(assertion) + (grounded ? '' : '\nThis turn also touched the rUv stack and no successful search_ruvnet call was recorded: call it with the product term(s).');
+      return correctionText(assertion) + (grounded ? '' : '\nThis turn also asserted what a rUv tool does and no successful search_ruvnet call was recorded: call it with the product term(s).');
     }
     if (grounded) return null;
     return [
-      'This turn touched the RuvNet / rUv stack and ground-ruvnet\'s directive required calling the',
-      'search_ruvnet MCP tool before asserting what any RuvNet tool can/cannot do — but no successful',
+      `You asserted "${ruvClaims[0].text.slice(0, 200)}" about ${ruvClaims[0].subject}`
+        + (ruvClaims.length > 1 ? ` (and ${ruvClaims.length - 1} more rUv capability claim(s))` : '') + ', and',
+      'ground-ruvnet\'s directive requires calling the search_ruvnet MCP tool before asserting what any',
+      'RuvNet tool can/cannot do — but no successful',
       sources ? `search_ruvnet call is in this turn's transcript (read this turn: ${describeSources(sources).join('; ')}).`
         : 'search_ruvnet call was recorded this turn (checked against the grounding-stamp evidence).',
       '',

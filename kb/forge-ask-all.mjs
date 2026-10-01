@@ -19,6 +19,7 @@ import { createHash } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 import { searchKb } from './forge-ask.mjs';
+import { kbBuildIdentity } from './kb-build-identity.mjs';
 import { describeSearchFailure } from './search-outcome.mjs';
 import { prepareRelatedSources, renderRelatedSources } from './grounded-response.mjs';
 import { rerankPairs, cePrefilterScores } from './forge-rerank.mjs';
@@ -26,6 +27,7 @@ import {
   contentTokens,
   loadCards,
   loadRepoAliases,
+  normalizeApostrophes,
   repositoryNames,
   routeReposFromCards,
 } from './card-lane.mjs';
@@ -328,7 +330,7 @@ function pythonFreeRustNeuralQuestion(query) {
 }
 
 function fixedModelHarnessEvolutionQuestion(query) {
-  const text = String(query || '');
+  const text = normalizeApostrophes(query || '');
   const harness =
     /\b(?:agent(?:'s)?\s+scaffolding|harness)\b/i.test(text);
   const improvement =
@@ -519,7 +521,8 @@ function sourceCardQueryMode(query) {
   return null;
 }
 
-function sourceCardHasUnsafePolarity(query) {
+export function sourceCardHasUnsafePolarity(query) {
+  query = normalizeApostrophes(query || ''); // "can’t" from a phone is still a negation
   return /\b(?:not|never|cannot|can't|doesn't|isn't|aren't|without)\b/i.test(query)
     || /\b(?:delete|destroy|discard|drop|erase|forget|lose|remove|wipe)(?:d|s|ing)?\b/i.test(query);
 }
@@ -2457,30 +2460,123 @@ export function deployedFamilyReposFromQuery(query, dir, availableRepos) {
   return [];
 }
 
-// Metadata proposes at most three source stores; only normal retrieval can answer.
-function metadataSourceRoute(query, dir, availableRepos) {
+// ── THE ROUTER METADATA INDEX ─────────────────────────────────────────────────────────────────
+// metadataSourceRoute used to re-read and re-tokenize every <repo>.meta.json on EVERY query: 82 MB
+// across the 4.3.37 corpus, ~11-13 s cold. This keeps one inverted index per store file (token ->
+// entry ids), so the long-lived MCP worker parses each store once per KB build. The counts it yields
+// are the per-entry scan's counts exactly (tests/unit/router-metadata-index.test.mjs compares them).
+//
+// NEVER A STALE INDEX AFTER AN UPDATE. An update swaps the whole kb/ directory under the same path,
+// extracted files can carry archive mtimes, and a changed store can keep its byte size, so
+// (mtime, size) alone is not an identity. Every store index belongs to one KB BUILD IDENTITY
+// (kb-build-identity.mjs) and is keyed by the store file's own (dev, inode, mtime, size). A new
+// build of a directory replaces that directory's whole index before anything is served.
+//
+// COMPACT, AND BOUNDED. The first version kept a Map<token, Uint32Array> per store: 162.5 MB
+// retained for 199 stores (scripts/route-index-memory.mjs, 4.3.37 corpus), almost all of it object
+// and string overhead. Now each directory build has ONE token dictionary (token -> id, shared by
+// every store), and each store keeps three typed arrays in CSR form: its sorted token ids, offsets,
+// and the concatenated entry ids. Indexes for at most META_INDEX_DIRS_MAX directories are kept
+// (least recently used first out), so alternating between two KB directories does not rebuild.
+const META_INDEX_DIRS_MAX = 2;
+const _metaIndexes = new Map(); // resolved dir -> { build, dict: Map<token, id>, files: Map<file, store> }
+export { kbBuildIdentity };
+
+function metadataDirIndex(dir, build) {
+  const k = path.resolve(dir);
+  let d = _metaIndexes.get(k);
+  if (!d || d.build !== build) d = { build, dict: new Map(), files: new Map() };
+  _metaIndexes.delete(k);
+  _metaIndexes.set(k, d);
+  while (_metaIndexes.size > META_INDEX_DIRS_MAX) _metaIndexes.delete(_metaIndexes.keys().next().value);
+  return d;
+}
+
+function metadataIndex(dir, repo, d) {
+  const file = path.join(dir, `${repo}.meta.json`);
+  let stat;
+  try { stat = fs.statSync(file); } catch { return null; }
+  const key = `${stat.dev}:${stat.ino}|${stat.mtimeMs}|${stat.size}`;
+  const cached = d.files.get(file);
+  if (cached?.key === key) return cached;
+  let metadata;
+  try { metadata = parseMetadataFile(file); } catch { d.files.delete(file); return null; }
+  const lists = new Map(); // token id -> entry ids (temporary)
+  let id = 0;
+  for (const row of Object.values(metadata.entries || {})) {
+    for (const token of new Set(contentTokens(`${row.title || ''} ${row.preview || ''}`))) {
+      let tid = d.dict.get(token);
+      if (tid === undefined) d.dict.set(token, (tid = d.dict.size));
+      let list = lists.get(tid);
+      if (!list) lists.set(tid, (list = []));
+      list.push(id);
+    }
+    id++;
+  }
+  const tids = Uint32Array.from(lists.keys()).sort();
+  const offsets = new Uint32Array(tids.length + 1);
+  let total = 0;
+  for (let i = 0; i < tids.length; i++) { offsets[i] = total; total += lists.get(tids[i]).length; }
+  offsets[tids.length] = total;
+  const ids = new Uint32Array(total);
+  for (let i = 0; i < tids.length; i++) ids.set(lists.get(tids[i]), offsets[i]);
+  const store = { key, tids, offsets, ids };
+  d.files.set(file, store);
+  return store;
+}
+
+function metadataPostings(store, tid) {
+  let lo = 0;
+  let hi = store.tids.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >>> 1;
+    const v = store.tids[mid];
+    if (v === tid) return store.ids.subarray(store.offsets[mid], store.offsets[mid + 1]);
+    if (v < tid) lo = mid + 1; else hi = mid - 1;
+  }
+  return null;
+}
+
+// At most this many metadata stores join a route, all of them tied at the best overlap.
+export const METADATA_ROUTE_TIES = 3;
+
+// Metadata proposes a small bounded set of source stores; only normal retrieval can answer.
+export function metadataSourceRoute(query, dir, availableRepos) {
   const terms = new Set(contentTokens(query));
   if (terms.size < 3) return null;
+  const d = metadataDirIndex(dir, kbBuildIdentity(dir));
   const candidates = [];
   for (const repo of availableRepos) {
-    let metadata;
-    try { metadata = parseMetadataFile(path.join(dir, `${repo}.meta.json`)); } catch { continue; }
-    let overlap = 0;
-    for (const row of Object.values(metadata.entries || {})) {
-      const tokens = new Set(contentTokens(`${row.title || ''} ${row.preview || ''}`));
-      const matches = [...terms].filter((term) => tokens.has(term)).length;
-      overlap = Math.max(overlap, matches);
+    const index = metadataIndex(dir, repo, d);
+    if (!index) continue;
+    const perEntry = new Map();
+    for (const term of terms) {
+      const tid = d.dict.get(term);
+      const postings = tid === undefined ? null : metadataPostings(index, tid);
+      if (postings) for (const entryId of postings) perEntry.set(entryId, (perEntry.get(entryId) || 0) + 1);
     }
-    if (overlap >= 3) candidates.push({ repo, overlap });
+    // overlap: the best single entry's count of query terms. atTop: how many entries reach it.
+    let overlap = 0;
+    let atTop = 0;
+    for (const matches of perEntry.values()) {
+      if (matches > overlap) { overlap = matches; atTop = 1; } else if (matches === overlap) atTop++;
+    }
+    if (overlap >= 3) candidates.push({ repo, overlap, atTop });
   }
-  candidates.sort((a, b) => b.overlap - a.overlap || a.repo.localeCompare(b.repo));
+  // THE TIE-BREAK. On the 206-question novice need set most questions tie at the top overlap, and
+  // the tie used to be broken by repository NAME, so the alphabetically first store won and only it
+  // was searched. Keep up to METADATA_ROUTE_TIES of the stores tied at the best overlap, ordered by
+  // how many of their entries reach that overlap (a store that covers the need in many documents
+  // before one that covers it in a single preview); the name stays the last, deterministic key.
+  candidates.sort((a, b) => b.overlap - a.overlap || b.atTop - a.atTop || a.repo.localeCompare(b.repo));
+  const tied = candidates.filter(({ overlap }) => overlap === candidates[0]?.overlap).slice(0, METADATA_ROUTE_TIES);
   const available = new Set(availableRepos);
   const cardCandidates = (loadCards(dir) || []).filter((card) => available.has(card.repo))
     .map((card) => ({ repo: card.repo, overlap: [...terms].filter((term) => card.tokenSet.has(term)).length }))
     .filter(({ overlap }) => overlap >= 3)
     .sort((a, b) => b.overlap - a.overlap || a.repo.localeCompare(b.repo));
   // Keep both independent routing hints: compact cards and source metadata have different gaps.
-  const repos = [...new Set([...candidates.slice(0, 1), ...cardCandidates.slice(0, 2)]
+  const repos = [...new Set([...tied, ...cardCandidates.slice(0, 2)]
     .map(({ repo }) => repo))];
   return repos.length ? { repos, namedRepos: [], cardRepos: {}, confidence: 'candidate',
     reason: 'bounded source metadata and card shortlist; retrieval must independently establish relevance' } : null;
@@ -3056,6 +3152,249 @@ async function reviewedCapabilityWitness({ dir, repo, family }) {
   };
 }
 
+// A bare "rUv" names the AUTHOR, not a provenance request. Newcomers write "which rUv tool gives my
+// agents memory?" or "rUv's agent orchestration framework": product questions that the old rule
+// sent to the gist store ALONE (measured 2026-10-01: 5 of 6 such probes on the 4.3.37 corpus).
+// A first fix matched any authorship WORD anywhere in the question, and review found that product
+// questions still contain those words ("lets my agents SHARE memory", "how many THREADS",
+// "hardware SPECS", "WRITES vectors to disk", "WRITING tests", "POST a task"). So "rUv" signals
+// provenance only in an authorship SHAPE:
+//   - rUv as the subject of an act of saying or publishing: "did/has rUv write|say|post|announce|
+//     share|publish ...", "has rUv been working on", or "rUv wrote|published|announced ...";
+//   - rUv's written artifact: "rUv's tutorial|blog post|article|essay|gist|write-up|announcement|
+//     newsletter|tweet|specification" (up to four words between), or "rUv's posts|talks|threads|
+//     notes|videos ABOUT/ON ...".
+export function ruvAuthorshipIntent(query) {
+  const q = normalizeApostrophes(query || '');
+  if (!/\brUv(?:'s)?(?!-)\b/i.test(q)) return false;
+  const actVerb = String.raw`(?:publish(?:ed)?|wr(?:ite|ote|itten)|post(?:ed)?|sa(?:y|id)|announc(?:e|ed)|shar(?:e|ed)|tweet(?:ed)?|blog(?:ged)?|talk(?:ed)?\s+about)`;
+  return new RegExp(String.raw`\b(?:did|has|have)\s+rUv\s+(?:\w+\s+){0,2}?(?:${actVerb}|been\s+(?:working|building|posting|writing))\b`, 'i').test(q)
+    || /\brUv\s+(?:has\s+|had\s+)?(?:published|wrote|written|posted|said|announced|tweeted|blogged)\b/i.test(q)
+    || /\brUv's\s+(?:[\w-]+\s+){0,4}?(?:tutorials?|blog(?:\s+posts?)?|articles?|essays?|gists?|write[- ]?ups?|announcements?|newsletters?|tweets?|specification)\b/i.test(q)
+    || /\brUv's\s+(?:posts?|talks?|threads?|notes|videos?)\s+(?:about|on)\b/i.test(q);
+}
+
+// The source-route plan for an unscoped question: which stores the bounded search opens, and why.
+// Pure routing (cards, deployed inventory, source metadata, intent owners, identifier widening); it
+// loads no model and retrieves nothing, so a route-only measurement calls exactly what search runs.
+export function planSourceRoute({ dir, query, discovered, identifierScanTokens = scannableIdentifiers(query), deadline = null }) {
+  const inventoryDirective = inventoryReposFromQuery(query, dir, discovered);
+  let planned = inventoryDirective && (
+    inventoryDirective.familyScope
+    || inventoryDirective.naturalProjectScope
+    || /\brepo:[a-z0-9._-]+\b/i.test(String(query || ''))
+  )
+    ? inventoryDirective
+    : routeReposFromCards(query, dir, discovered);
+  if (!planned.repos.length && inventoryDirective?.exactInventoryScope) planned = inventoryDirective;
+  const cardRejectedExternalQuery = planned.confidence === 'none'
+    && /outside the card catalogue/i.test(String(planned.reason || ''));
+  if (!planned.repos.length && !cardRejectedExternalQuery) {
+    planned = metadataSourceRoute(query, dir, discovered) || planned;
+  }
+  // Cost/quality questions have a known multi-repo answer surface.  Metadata overlap alone
+  // routinely routes these to an unrelated memory store (for example AgentDB), then forces the
+  // uncapped 6k+ passage fallback.  Keep the source search bounded to the reviewed owners; the
+  // cross-encoder still proves which one answers, and concepts remains the honest card fallback.
+  // AN OWNER LIST THAT MATCHES NOTHING MUST NOT OVERWRITE A ROUTE THAT DID. These intent
+  // overrides name the reviewed owners on the REAL corpus; on any other bundle the filter can
+  // collapse to `concepts` alone (or to nothing), and overwriting the card router's correct
+  // answer with that turned a card-answerable question into a cold embedder + cold reranker
+  // load. `concepts` is an aggregate primer store, never an implementation owner — it cannot
+  // carry the source proof these intents exist to find, so it does not count as a reason to
+  // override. Measured by tests/unit/forge-ask-all.test.mjs's colloquial cost-quality case.
+  const ownsSource = (repos) => repos.some((repo) => repo !== 'concepts');
+  if (costQualityTradeoffQuestion(query)) {
+    const costRepos = ['agentic-flow', 'metaharness', 'agentic-qe', 'concepts']
+      .filter((repo) => discovered.includes(repo));
+    if (ownsSource(costRepos)) {
+      planned = {
+        repos: costRepos,
+        namedRepos: [],
+        cardRepos: {},
+        confidence: 'described',
+        reason: 'cost/quality intent selects reviewed routing and evaluation owners',
+      };
+    }
+  }
+  // The harness-evolution question names a logical product whose deployed store is the
+  // `metaharness` alias.  Keep that route bounded; eval grading resolves the alias from the
+  // shipped repo-aliases registry instead of treating it as a different product.
+  if (fixedModelHarnessEvolutionQuestion(query)) {
+    const harnessRepos = ['metaharness', 'concepts'].filter((repo) => discovered.includes(repo));
+    if (ownsSource(harnessRepos)) {
+      planned = {
+        repos: harnessRepos,
+        namedRepos: [],
+        cardRepos: {},
+        confidence: 'described',
+        reason: 'fixed-model harness-evolution intent selects metaharness and its canonical card',
+      };
+    }
+  }
+  // Failure-triggered escalation is the companion cost-routing surface: agentic-flow owns the
+  // runtime provider choice while metaharness owns the harness/cascade policy.  The generic card
+  // router often ranks Ruflo's orchestration prose first, which is a real source but not the
+  // capability this question asks about.  Keep the reviewed owners together and bounded.
+  if (cheapFirstFailureEscalationQuestion(query)) {
+    const escalationRepos = ['agentic-flow', 'metaharness', 'concepts']
+      .filter((repo) => discovered.includes(repo));
+    if (ownsSource(escalationRepos)) {
+      planned = {
+        repos: escalationRepos,
+        namedRepos: [],
+        cardRepos: {},
+        confidence: 'described',
+        reason: 'cheap-first escalation intent selects runtime routing and harness owners',
+      };
+    }
+  }
+  // Gist-shaped questions are provenance lookups.  Route them to the public gist store instead
+  // of letting generic card words select an arbitrary product (which made valid gist questions
+  // return no evidence under the bounded path).
+  // (?!-) after rUv/rUv's: a bare word-boundary regex treats the hyphen in every "ruv-<product>"
+  // name (ruv-swarm, ruv-fann, ruv-neural, ...) as a word break, so \brUv\b matched "ruv" inside
+  // EVERY product name in the ecosystem -- any question naming a real repo got redirected to the
+  // public gist store instead of the repo it named. Found live 2026-09-12: 100% of natural-language
+  // questions about ruv-FANN's own sub-projects (ruv-swarm, Neuro-Divergent) returned unrelated
+  // gist content under this exact reason string. rUv (the person) is never itself hyphenated into
+  // a compound name, so excluding that one case removes the false positive without narrowing the
+  // genuine "what did rUv publish" gist-provenance intent this line exists to catch.
+  //
+  // "published" alone is a common English word (issue #285, same root shape as the rUv-hyphen
+  // fix above -- a common word/fragment overriding a legitimate product question). A bare
+  // `\bpublished\b` fires on any question that happens to ask about a documented number rather
+  // than an actual gist/announcement: "What is the published SWE-Bench score of ruv-swarm?" has
+  // empty namedRepos (ruv-swarm's content lives inside a different store, and the query never
+  // literally names it), so this alternative alone silently redirected the question away from
+  // the real answer. Fix: exclude the "published <metric> ... of/for/by <something>" measurement-
+  // attribution shape, which is never itself a request for a gist -- narrower than dropping
+  // "published" outright, so "What did rUv publish about X" and "What was published this week?"
+  // still route correctly. Reviewed every other alternative in this regex for the same shape:
+  // gist/write-up/announcement/fable.md/first-to-market/agentbbs/jacobian-lens/workspace-lens/
+  // interpretability-package are all specific tokens or multi-word phrases, not bare common
+  // English words, so "published" was the only one exhibiting this failure mode.
+  const publishedAsMeasurementAttribution = new RegExp(
+    '\\bpublished\\b'
+      + '(?:\\s+\\S+){0,4}?\\s+(?:score|scores|result|results|benchmark|benchmarks|number|numbers'
+      + '|metric|metrics|figure|figures|version|versions|release|releases|rating|ratings|ranking|rankings)\\b'
+      + '(?:\\s+\\S+){0,3}?\\s+(?:of|for|by)\\b',
+    'i',
+  ).test(String(query || ''));
+  const ruvAuthorship = ruvAuthorshipIntent(query);
+  const gistIntent = (
+    /\b(?:gist|write[- ]up|announcement|fable\.md|first\s+to\s+market|agentbbs|jacobian[- ]lens|workspace[- ]lens|interpretability\s+package)\b/i.test(String(query || ''))
+    || ruvAuthorship
+    || (/\bpublished\b/i.test(String(query || '')) && !publishedAsMeasurementAttribution)
+  );
+  if (gistIntent && discovered.includes('ruv-gists') && !planned.namedRepos?.length) {
+    planned = {
+      repos: ['ruv-gists'],
+      namedRepos: [],
+      cardRepos: {},
+      confidence: 'described',
+      reason: 'provenance intent selects the public rUv gist store',
+    };
+  }
+  const escalationRepo = ['meta', 'harness'].join('');
+  if (cheapFirstFailureEscalationQuestion(query) && discovered.includes(escalationRepo)) {
+    planned.repos = [
+      escalationRepo,
+      ...planned.repos.filter((repo) => repo !== escalationRepo),
+    ];
+    planned.cardRepos = {
+      ...planned.cardRepos,
+      [escalationRepo]: 'agent-harness-generator',
+    };
+    planned.reason = 'source intent selects the cheap-verify-frontier escalation harness';
+  }
+  if (replayablePromotionRollbackQuestion(query) && discovered.includes(escalationRepo)) {
+    planned.repos = [
+      escalationRepo,
+      ...planned.repos.filter((repo) => repo !== escalationRepo),
+    ];
+    planned.cardRepos = {
+      ...planned.cardRepos,
+      [escalationRepo]: 'agent-harness-generator',
+    };
+    planned.reason = 'source intent selects the receipt-backed promotion and rollback harness';
+  }
+  const learningRepo = ['ru', 'flo'].join('');
+  if (adaptiveRetrievalPromotionQuestion(query) && discovered.includes(learningRepo)) {
+    planned.repos = [
+      learningRepo,
+      ...planned.repos.filter((repo) => repo !== learningRepo),
+    ];
+    planned.cardRepos = {
+      ...planned.cardRepos,
+      [learningRepo]: learningRepo,
+    };
+    planned.reason = 'source intent selects the adaptive retrieval flywheel and its promotion gate';
+  }
+  if (replayableHarnessPolicyEvolutionQuestion(query) && discovered.includes(learningRepo)) {
+    planned.repos = [
+      learningRepo,
+      ...planned.repos.filter((repo) => repo !== learningRepo),
+    ];
+    planned.cardRepos = {
+      ...planned.cardRepos,
+      [learningRepo]: learningRepo,
+    };
+    planned.confidence = 'described';
+    planned.reason = 'source intent selects evolvable harness policy and replayable receipts';
+  }
+  if (livingAdrDriftQuestion(query) && discovered.includes(learningRepo)) {
+    planned.repos = [
+      learningRepo,
+      ...planned.repos.filter((repo) => repo !== learningRepo),
+    ];
+    planned.cardRepos = {
+      ...planned.cardRepos,
+      [learningRepo]: learningRepo,
+    };
+    planned.confidence = 'described';
+    planned.reason = 'source intent selects living ADR lifecycle and implementation-drift review';
+  }
+  const vectorRepo = ['ru', 'vector'].join('');
+  if (offlineOnDeviceSemanticIndexQuestion(query) && discovered.includes(vectorRepo)) {
+    planned.repos = [
+      vectorRepo,
+      ...planned.repos.filter((repo) => repo !== vectorRepo),
+    ];
+    planned.cardRepos = {
+      ...planned.cardRepos,
+      [vectorRepo]: vectorRepo,
+    };
+    planned.reason = 'source intent selects the on-device HNSW index and zero-server deployment';
+  }
+  // ── IDENTIFIER ROUTING (kb/identifier-lane.mjs) ───────────────────────────────────────────
+  // A cross-encoder cannot promote a document from a store that was never opened. The card
+  // router read "agentdb" out of the middle of the identifier `agentdb-memory.db` and searched
+  // agentdb; the defining source is ruflo's changelog #2786 and its memory-bridge.ts, and ruflo
+  // was never opened. A literal scan says exactly which stores carry the identifiers (measured
+  // 4.17 s over 466 MB, cached per process), so the route is WIDENED by that evidence. Widened,
+  // never narrowed: whatever the cards chose is still searched.
+  // An explicit `repo:<name>` selector and a natural-language project scope are both hard source
+  // boundaries. The identifier lane normally widens a natural-language route when an exact token
+  // appears in another store, but doing that violates the user's named scope and can multiply
+  // cross-encoder work without improving repository identity.
+  const hardRepoBoundary = /\brepo:[a-z0-9._-]+\b/i.test(String(query || ''))
+    || planned.naturalProjectScope === true;
+  if (identifierScanTokens.length && planned.repos.length && !hardRepoBoundary) {
+    deadline?.enter('identifier-scan');
+    const scan = identifierScan(dir, identifierScanTokens, { maxRepos: 2 });
+    const added = scan.repos.filter((repo) => discovered.includes(repo) && !planned.repos.includes(repo));
+    if (added.length) {
+      planned = {
+        ...planned,
+        repos: [...planned.repos, ...added],
+        reason: `${planned.reason}; widened to ${added.join(', ')} — ${identifierScanTokens.join(', ')} appear there`,
+      };
+    }
+  }
+  return planned;
+}
+
 async function searchAllPrimary({
   dir, query, k = 6, pool = 64, repos, _routeStage = false,
   allowFullCorpus = true, deadline = null,
@@ -3076,218 +3415,7 @@ async function searchAllPrimary({
   const discovered = (repos && repos.length) ? repos : discoverRepos(dir);
   let routing = null;
   if ((!repos || !repos.length) && !_routeStage) {
-    const inventoryDirective = inventoryReposFromQuery(query, dir, discovered);
-    let planned = inventoryDirective && (
-      inventoryDirective.familyScope
-      || inventoryDirective.naturalProjectScope
-      || /\brepo:[a-z0-9._-]+\b/i.test(String(query || ''))
-    )
-      ? inventoryDirective
-      : routeReposFromCards(query, dir, discovered);
-    if (!planned.repos.length && inventoryDirective?.exactInventoryScope) planned = inventoryDirective;
-    const cardRejectedExternalQuery = planned.confidence === 'none'
-      && /outside the card catalogue/i.test(String(planned.reason || ''));
-    if (!planned.repos.length && !cardRejectedExternalQuery) {
-      planned = metadataSourceRoute(query, dir, discovered) || planned;
-    }
-    // Cost/quality questions have a known multi-repo answer surface.  Metadata overlap alone
-    // routinely routes these to an unrelated memory store (for example AgentDB), then forces the
-    // uncapped 6k+ passage fallback.  Keep the source search bounded to the reviewed owners; the
-    // cross-encoder still proves which one answers, and concepts remains the honest card fallback.
-    // AN OWNER LIST THAT MATCHES NOTHING MUST NOT OVERWRITE A ROUTE THAT DID. These intent
-    // overrides name the reviewed owners on the REAL corpus; on any other bundle the filter can
-    // collapse to `concepts` alone (or to nothing), and overwriting the card router's correct
-    // answer with that turned a card-answerable question into a cold embedder + cold reranker
-    // load. `concepts` is an aggregate primer store, never an implementation owner — it cannot
-    // carry the source proof these intents exist to find, so it does not count as a reason to
-    // override. Measured by tests/unit/forge-ask-all.test.mjs's colloquial cost-quality case.
-    const ownsSource = (repos) => repos.some((repo) => repo !== 'concepts');
-    if (costQualityTradeoffQuestion(query)) {
-      const costRepos = ['agentic-flow', 'metaharness', 'agentic-qe', 'concepts']
-        .filter((repo) => discovered.includes(repo));
-      if (ownsSource(costRepos)) {
-        planned = {
-          repos: costRepos,
-          namedRepos: [],
-          cardRepos: {},
-          confidence: 'described',
-          reason: 'cost/quality intent selects reviewed routing and evaluation owners',
-        };
-      }
-    }
-    // The harness-evolution question names a logical product whose deployed store is the
-    // `metaharness` alias.  Keep that route bounded; eval grading resolves the alias from the
-    // shipped repo-aliases registry instead of treating it as a different product.
-    if (fixedModelHarnessEvolutionQuestion(query)) {
-      const harnessRepos = ['metaharness', 'concepts'].filter((repo) => discovered.includes(repo));
-      if (ownsSource(harnessRepos)) {
-        planned = {
-          repos: harnessRepos,
-          namedRepos: [],
-          cardRepos: {},
-          confidence: 'described',
-          reason: 'fixed-model harness-evolution intent selects metaharness and its canonical card',
-        };
-      }
-    }
-    // Failure-triggered escalation is the companion cost-routing surface: agentic-flow owns the
-    // runtime provider choice while metaharness owns the harness/cascade policy.  The generic card
-    // router often ranks Ruflo's orchestration prose first, which is a real source but not the
-    // capability this question asks about.  Keep the reviewed owners together and bounded.
-    if (cheapFirstFailureEscalationQuestion(query)) {
-      const escalationRepos = ['agentic-flow', 'metaharness', 'concepts']
-        .filter((repo) => discovered.includes(repo));
-      if (ownsSource(escalationRepos)) {
-        planned = {
-          repos: escalationRepos,
-          namedRepos: [],
-          cardRepos: {},
-          confidence: 'described',
-          reason: 'cheap-first escalation intent selects runtime routing and harness owners',
-        };
-      }
-    }
-    // Gist-shaped questions are provenance lookups.  Route them to the public gist store instead
-    // of letting generic card words select an arbitrary product (which made valid gist questions
-    // return no evidence under the bounded path).
-    // (?!-) after rUv/rUv's: a bare word-boundary regex treats the hyphen in every "ruv-<product>"
-    // name (ruv-swarm, ruv-fann, ruv-neural, ...) as a word break, so \brUv\b matched "ruv" inside
-    // EVERY product name in the ecosystem -- any question naming a real repo got redirected to the
-    // public gist store instead of the repo it named. Found live 2026-09-12: 100% of natural-language
-    // questions about ruv-FANN's own sub-projects (ruv-swarm, Neuro-Divergent) returned unrelated
-    // gist content under this exact reason string. rUv (the person) is never itself hyphenated into
-    // a compound name, so excluding that one case removes the false positive without narrowing the
-    // genuine "what did rUv publish" gist-provenance intent this line exists to catch.
-    //
-    // "published" alone is a common English word (issue #285, same root shape as the rUv-hyphen
-    // fix above -- a common word/fragment overriding a legitimate product question). A bare
-    // `\bpublished\b` fires on any question that happens to ask about a documented number rather
-    // than an actual gist/announcement: "What is the published SWE-Bench score of ruv-swarm?" has
-    // empty namedRepos (ruv-swarm's content lives inside a different store, and the query never
-    // literally names it), so this alternative alone silently redirected the question away from
-    // the real answer. Fix: exclude the "published <metric> ... of/for/by <something>" measurement-
-    // attribution shape, which is never itself a request for a gist -- narrower than dropping
-    // "published" outright, so "What did rUv publish about X" and "What was published this week?"
-    // still route correctly. Reviewed every other alternative in this regex for the same shape:
-    // gist/write-up/announcement/fable.md/first-to-market/agentbbs/jacobian-lens/workspace-lens/
-    // interpretability-package are all specific tokens or multi-word phrases, not bare common
-    // English words, so "published" was the only one exhibiting this failure mode.
-    const publishedAsMeasurementAttribution = new RegExp(
-      '\\bpublished\\b'
-        + '(?:\\s+\\S+){0,4}?\\s+(?:score|scores|result|results|benchmark|benchmarks|number|numbers'
-        + '|metric|metrics|figure|figures|version|versions|release|releases|rating|ratings|ranking|rankings)\\b'
-        + '(?:\\s+\\S+){0,3}?\\s+(?:of|for|by)\\b',
-      'i',
-    ).test(String(query || ''));
-    const gistIntent = (
-      /\b(?:gist|rUv(?:'s)?(?!-)|write[- ]up|announcement|fable\.md|first\s+to\s+market|agentbbs|jacobian[- ]lens|workspace[- ]lens|interpretability\s+package)\b/i.test(String(query || ''))
-      || (/\bpublished\b/i.test(String(query || '')) && !publishedAsMeasurementAttribution)
-    );
-    if (gistIntent && discovered.includes('ruv-gists') && !planned.namedRepos?.length) {
-      planned = {
-        repos: ['ruv-gists'],
-        namedRepos: [],
-        cardRepos: {},
-        confidence: 'described',
-        reason: 'provenance intent selects the public rUv gist store',
-      };
-    }
-    const escalationRepo = ['meta', 'harness'].join('');
-    if (cheapFirstFailureEscalationQuestion(query) && discovered.includes(escalationRepo)) {
-      planned.repos = [
-        escalationRepo,
-        ...planned.repos.filter((repo) => repo !== escalationRepo),
-      ];
-      planned.cardRepos = {
-        ...planned.cardRepos,
-        [escalationRepo]: 'agent-harness-generator',
-      };
-      planned.reason = 'source intent selects the cheap-verify-frontier escalation harness';
-    }
-    if (replayablePromotionRollbackQuestion(query) && discovered.includes(escalationRepo)) {
-      planned.repos = [
-        escalationRepo,
-        ...planned.repos.filter((repo) => repo !== escalationRepo),
-      ];
-      planned.cardRepos = {
-        ...planned.cardRepos,
-        [escalationRepo]: 'agent-harness-generator',
-      };
-      planned.reason = 'source intent selects the receipt-backed promotion and rollback harness';
-    }
-    const learningRepo = ['ru', 'flo'].join('');
-    if (adaptiveRetrievalPromotionQuestion(query) && discovered.includes(learningRepo)) {
-      planned.repos = [
-        learningRepo,
-        ...planned.repos.filter((repo) => repo !== learningRepo),
-      ];
-      planned.cardRepos = {
-        ...planned.cardRepos,
-        [learningRepo]: learningRepo,
-      };
-      planned.reason = 'source intent selects the adaptive retrieval flywheel and its promotion gate';
-    }
-    if (replayableHarnessPolicyEvolutionQuestion(query) && discovered.includes(learningRepo)) {
-      planned.repos = [
-        learningRepo,
-        ...planned.repos.filter((repo) => repo !== learningRepo),
-      ];
-      planned.cardRepos = {
-        ...planned.cardRepos,
-        [learningRepo]: learningRepo,
-      };
-      planned.confidence = 'described';
-      planned.reason = 'source intent selects evolvable harness policy and replayable receipts';
-    }
-    if (livingAdrDriftQuestion(query) && discovered.includes(learningRepo)) {
-      planned.repos = [
-        learningRepo,
-        ...planned.repos.filter((repo) => repo !== learningRepo),
-      ];
-      planned.cardRepos = {
-        ...planned.cardRepos,
-        [learningRepo]: learningRepo,
-      };
-      planned.confidence = 'described';
-      planned.reason = 'source intent selects living ADR lifecycle and implementation-drift review';
-    }
-    const vectorRepo = ['ru', 'vector'].join('');
-    if (offlineOnDeviceSemanticIndexQuestion(query) && discovered.includes(vectorRepo)) {
-      planned.repos = [
-        vectorRepo,
-        ...planned.repos.filter((repo) => repo !== vectorRepo),
-      ];
-      planned.cardRepos = {
-        ...planned.cardRepos,
-        [vectorRepo]: vectorRepo,
-      };
-      planned.reason = 'source intent selects the on-device HNSW index and zero-server deployment';
-    }
-    // ── IDENTIFIER ROUTING (kb/identifier-lane.mjs) ───────────────────────────────────────────
-    // A cross-encoder cannot promote a document from a store that was never opened. The card
-    // router read "agentdb" out of the middle of the identifier `agentdb-memory.db` and searched
-    // agentdb; the defining source is ruflo's changelog #2786 and its memory-bridge.ts, and ruflo
-    // was never opened. A literal scan says exactly which stores carry the identifiers (measured
-    // 4.17 s over 466 MB, cached per process), so the route is WIDENED by that evidence. Widened,
-    // never narrowed: whatever the cards chose is still searched.
-    // An explicit `repo:<name>` selector and a natural-language project scope are both hard source
-    // boundaries. The identifier lane normally widens a natural-language route when an exact token
-    // appears in another store, but doing that violates the user's named scope and can multiply
-    // cross-encoder work without improving repository identity.
-    const hardRepoBoundary = /\brepo:[a-z0-9._-]+\b/i.test(String(query || ''))
-      || planned.naturalProjectScope === true;
-    if (identifierScanTokens.length && planned.repos.length && !hardRepoBoundary) {
-      deadline?.enter('identifier-scan');
-      const scan = identifierScan(dir, identifierScanTokens, { maxRepos: 2 });
-      const added = scan.repos.filter((repo) => discovered.includes(repo) && !planned.repos.includes(repo));
-      if (added.length) {
-        planned = {
-          ...planned,
-          repos: [...planned.repos, ...added],
-          reason: `${planned.reason}; widened to ${added.join(', ')} — ${identifierScanTokens.join(', ')} appear there`,
-        };
-      }
-    }
+    let planned = planSourceRoute({ dir, query, discovered, identifierScanTokens, deadline });
     if (planned.repos.length && planned.repos.length < discovered.length) {
       const routeMs = performance.now() - startedAt;
       const requestedMember = String(query || '').match(/\b([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)\s*\(/);

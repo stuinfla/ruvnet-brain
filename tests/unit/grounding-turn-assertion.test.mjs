@@ -82,11 +82,12 @@ describe('the false alarm, reproduced (grounding-turn-gate said "no search" afte
     expect(gate.stdout).toBe('');
   });
 
-  it('with no search in the transcript it still fires, and says what WAS read', () => {
+  // 4.4.0: Gate 1 fires only when the answer ASSERTS a rUv capability (tests/unit/grounding-turn-false-alarm.test.mjs).
+  it('with no search in the transcript it still fires on a rUv capability claim, and says what WAS read', () => {
     const { home, env } = sandbox();
-    const tp = transcript(home, 'use ruflo memory', [['Read', { file_path: '/repo/README.md' }, 'text']], 'Here is how.');
+    const tp = transcript(home, 'use ruflo memory', [['Read', { file_path: '/repo/README.md' }, 'text']], 'Ruflo stores memory in AgentDB.');
     run(MARK, { hook_event_name: 'UserPromptSubmit', session_id: 's3', prompt: 'use ruflo memory' }, env);
-    const gate = run(GATE, { hook_event_name: 'Stop', session_id: 's3', transcript_path: tp, last_assistant_message: 'Here is how.' }, env);
+    const gate = run(GATE, { hook_event_name: 'Stop', session_id: 's3', transcript_path: tp, last_assistant_message: 'Ruflo stores memory in AgentDB.' }, env);
     const ctx = JSON.parse(gate.stdout).hookSpecificOutput.additionalContext;
     expect(ctx).toMatch(/search_ruvnet/);
     expect(ctx).toMatch(/Read "\/repo\/README\.md"/);

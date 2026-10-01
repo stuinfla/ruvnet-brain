@@ -549,5 +549,8 @@ describe('forge-update --check (issue #108 bug 2)', () => {
 
     expect(code, out).toBe(10);
     expect(out).toMatch(/BEHIND/);
+    // The hint names the self-upgrading door, never this (possibly old) updater run directly (matrix D8).
+    expect(out).toContain('Run:  npx ruvnet-brain@latest --update');
+    expect(out).not.toMatch(/node forge-update\.mjs --apply/);
   });
 });

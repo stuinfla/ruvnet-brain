@@ -455,7 +455,8 @@ started in an isolated worktree.
 **What you lose without it.** Corpus freshness, degrading continuously. The in-band staleness line on
 every `search_ruvnet` response tells you how bad it has become (`newest store Nd old, oldest Nd`), so
 this degrades *visibly* — which is the design. You can also refresh by hand:
-`node ~/.cache/ruvnet-brain/kb/forge-update.mjs`.
+`npx ruvnet-brain@latest --update` (it upgrades the updater before applying; never run the installed
+`forge-update.mjs --apply` directly — an old updater can fail the guard on a newer bundle).
 
 The full separation and author-worktree contract are in
 [CONTRIBUTING.md § The knowledge corpus](../CONTRIBUTING.md#the-knowledge-corpus).

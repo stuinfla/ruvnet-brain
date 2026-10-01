@@ -65,7 +65,9 @@ describe('SessionStart knowledge currency', () => {
     expect(text).toContain('no nightly refresh is scheduled');
     expect(text).toContain('npx ruvnet-brain@latest --update && npx ruvnet-brain --enable-nightly');
     const out = await sessionStartOutput();
-    expect(out.split('\n').filter((l) => l.startsWith(KNOWLEDGE_LINE_PREFIX))).toEqual([text]);
+    // runSessionStart uses the real clock (NOW is fixed), so the "(Nd ago)" age differs by date.
+    const ageless = (l) => l.replace(/\(\d+[dh] ago\)/, '(AGE)');
+    expect(out.split('\n').filter((l) => l.startsWith(KNOWLEDGE_LINE_PREFIX)).map(ageless)).toEqual([ageless(text)]);
   });
 
   it('speaks when refresh receipts are FAILING, even if the bundle itself is recent', async () => {
@@ -91,12 +93,20 @@ describe('SessionStart knowledge currency', () => {
     expect(text).not.toMatch(/\bcurrent\b(?! verdict)/i);
   });
 
-  it('names ak sync when agentic-kit owns updates, and stays quiet when the brain is off', async () => {
+  it('names ak sync only when agentic-kit is proven delivering, and stays quiet when the brain is off', async () => {
     built(40 * 24 * H);
     fs.mkdirSync(path.join(home, '.config', 'agentic-kit'), { recursive: true });
     fs.writeFileSync(path.join(home, '.config', 'agentic-kit', 'kit.json'), JSON.stringify({ ruvnetBrain: true }));
-    expect(line()).toContain('Fix: ak sync');
+    // A claim with no proven update (the owner's Mac): the Brain's own update is the fix, never ak sync.
+    expect(line()).toContain('Fix: npx ruvnet-brain@latest --update (');
+    expect(line()).toContain('no update is proven in 36h');
     expect(line()).not.toContain('no nightly refresh is scheduled');
+    // agentic-kit delivered 30h ago but the latest run failed: it is the owner, so ak sync is the fix.
+    receipt({ status: 'SUCCEEDED', hoursAgo: 30 });
+    receipt({ status: 'FAILED', hoursAgo: 1 });
+    expect(line()).toContain('KNOWLEDGE UPDATE FAILING');
+    expect(line()).toContain('Fix: ak sync');
+    expect(line()).not.toContain('no update is proven');
     let out = '';
     await runSessionStart({ env: { HOME: home, RUVNET_BRAIN_OFF: '1', RUVNET_BRAIN_METER: '0' }, cwd: home,
       stdout: { write: (s) => { out += s; } }, stderr: { write: () => {} }, restoreContinuity: async () => null, runHeartbeat: false });

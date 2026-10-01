@@ -344,6 +344,9 @@ function runHook(file, activeVersion = '') {
   // invocation if the user flips the switch while the hook is mid-run.
   const env = {
     ...process.env,
+    // The node running THIS shim, for bash bodies that need node (grounding-stamp.sh's verdict) on a
+    // machine where `node` is not on the PATH the host hands its hooks. Additive: older bodies ignore it.
+    RUVNET_NODE_BIN: process.execPath,
     ...(activeVersion ? { RUVNET_BRAIN_ACTIVE_VERSION: activeVersion } : {}),
     ...(BRAIN_OFF && entry.offBehavior === 'partial' ? { RUVNET_BRAIN_OFF: '1' } : {}),
   };
