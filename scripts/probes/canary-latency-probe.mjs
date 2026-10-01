@@ -34,7 +34,12 @@ const inst = spawnSync(process.execPath, [path.join(pkg, 'bin', 'install.mjs'), 
 { cwd: pkg, env, encoding: 'utf8', timeout: 1_800_000 });
 fs.writeFileSync(path.join(outDir, `install-${process.platform}-${version}.log`), `${inst.stdout}\n----\n${inst.stderr}`);
 record({ stage: 'install', exit: inst.status, secs: (Date.now() - t) / 1000 });
-const serverPath = path.join(home, '.claude', 'ruvnet-brain', 'mcp', 'server.mjs');
+// With no host CLI on the runner the installer wires no host, so no persistent copy exists under
+// ~/.claude; the package's own plugin server is the same file it would have copied, and it finds
+// the installed KB through RUVNET_BRAIN_KB / RUVNET_BRAIN_HOME exactly as the copy does.
+const installed = path.join(home, '.claude', 'ruvnet-brain', 'mcp', 'server.mjs');
+const serverPath = fs.existsSync(installed) ? installed : path.join(pkg, 'plugin', 'mcp', 'server.mjs');
+record({ stage: 'server', serverPath, installedCopy: fs.existsSync(installed) });
 if (inst.status !== 0 || !fs.existsSync(serverPath)) { record({ stage: 'abort', serverPresent: fs.existsSync(serverPath) }); process.exit(1); }
 
 const LIMIT = 120_000;
