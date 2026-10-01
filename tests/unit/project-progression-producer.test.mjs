@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   DERIVED_TEXT_LIMIT,
@@ -101,6 +102,41 @@ describe('progression sources', () => {
     expect(identity).toMatchObject({ checkoutPath: root, branch: 'non-git', head: 'non-git' });
     for (const field of ['worktreeId', 'trackedDigest', 'untrackedDigest', 'dirtyTreeDigest']) {
       expect(identity[field], field).toMatch(/^[0-9a-f]{64}$/);
+    }
+  });
+
+  // Linux probe (2026-10-01): with no global gitignore listing .swarm/, the Brain's own memory.db made
+  // every boundary a "changed tree". Run git with an EMPTY global config so no user ignore file can mask it.
+  it('the Brain\'s own state (.swarm, .claude-flow, ruvector.db) never changes the source identity', () => {
+    const emptyConfig = path.join(temporaryRoot('gitcfg-'), 'empty.gitconfig');
+    fs.writeFileSync(emptyConfig, '');
+    const saved = { GIT_CONFIG_GLOBAL: process.env.GIT_CONFIG_GLOBAL, GIT_CONFIG_NOSYSTEM: process.env.GIT_CONFIG_NOSYSTEM };
+    Object.assign(process.env, { GIT_CONFIG_GLOBAL: emptyConfig, GIT_CONFIG_NOSYSTEM: '1' });
+    try {
+      const root = temporaryRoot('brainstate-');
+      const run = (...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: root, stdio: 'ignore' });
+      run('init', '-q');
+      fs.writeFileSync(path.join(root, 'app.js'), 'console.log(1);\n');
+      // A project that once committed its .swarm by accident: tracked Brain state must not count either.
+      fs.mkdirSync(path.join(root, '.swarm'));
+      fs.writeFileSync(path.join(root, '.swarm', 'memory.db'), 'v1');
+      run('add', '-A'); run('commit', '-qm', 'init');
+      const digests = () => { const { identity } = readSourceIdentity({ checkoutRoot: root });
+        return { tracked: identity.trackedDigest, untracked: identity.untrackedDigest, dirty: identity.dirtyTreeDigest }; };
+      const before = digests();
+      fs.writeFileSync(path.join(root, '.swarm', 'memory.db'), 'v2 after a capture');
+      for (const name of ['memory.db-wal', 'memory.db-shm', 'project-progression-outbox.jsonl']) fs.writeFileSync(path.join(root, '.swarm', name), name);
+      fs.mkdirSync(path.join(root, '.claude-flow'));
+      fs.writeFileSync(path.join(root, '.claude-flow', 'metrics.json'), '{}');
+      fs.writeFileSync(path.join(root, 'ruvector.db'), 'x');
+      expect(digests()).toEqual(before);
+      // The customer's own changes still move every digest they should.
+      fs.writeFileSync(path.join(root, 'notes.md'), 'new\n');
+      expect(digests().untracked).not.toBe(before.untracked);
+      fs.writeFileSync(path.join(root, 'app.js'), 'console.log(2);\n');
+      expect(digests().dirty).not.toBe(before.dirty);
+    } finally {
+      for (const [key, value] of Object.entries(saved)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
     }
   });
 

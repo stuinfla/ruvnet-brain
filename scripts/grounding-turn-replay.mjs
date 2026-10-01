@@ -23,7 +23,7 @@ import path from 'node:path';
 import { transcripts, turnsOf, finalText } from './completion-claim-replay.mjs';
 import { armFor } from '../plugin/scripts/grounding-turn-mark.mjs';
 import {
-  architectureShadow, auditAssertions, loadVocabulary, relayShadow, searchedThisTurn, turnSources,
+  architectureShadow, auditAssertions, loadVocabulary, relayShadow, ruvCapabilityClaims, searchedThisTurn, turnSources,
 } from '../plugin/scripts/grounding-turn-evidence.mjs';
 
 const argv = process.argv.slice(2);
@@ -83,7 +83,7 @@ if (at) {
     sources: turn.sources.map((x) => `${x.order} ${x.kind} ${x.strength} ${String(x.ref).slice(0, 60)}`) }, null, 2));
   process.exit(0);
 }
-const r = { root, transcripts: 0, turns: 0, armed: 0, armedGate1: 0, blocked: 0, gate1WouldFire: 0,
+const r = { root, transcripts: 0, turns: 0, armed: 0, armedGate1: 0, blocked: 0, gate1WouldFire: 0, gate1ArmedUnsearched: 0,
   shadowArchitecture: 0, shadowRelay: 0, claims: 0, ms: [] };
 const samples = [];
 for (const file of [...transcripts(root, limit), ...(withSubagents ? subagentFiles() : [])]) {
@@ -98,7 +98,15 @@ for (const file of [...transcripts(root, limit), ...(withSubagents ? subagentFil
     const arm = unarmed ? { gate1: false, assert: true, architecture: false, subjects: [] }
       : armFor({ hook_event_name: 'UserPromptSubmit', session_id: 'replay', prompt: turn.prompt }, vocab);
     if (!arm) { r.ms.push(performance.now() - t0); continue; }
-    if (arm.gate1) { r.armedGate1 += 1; if (!searchedThisTurn(turn.sources)) r.gate1WouldFire += 1; }
+    // gate1WouldFire = the 4.4.0 rule (an unsearched turn whose answer asserts a rUv capability);
+    // gate1ArmedUnsearched = what fired before 4.4.0 (every armed turn without a search).
+    if (arm.gate1) {
+      r.armedGate1 += 1;
+      if (!searchedThisTurn(turn.sources)) {
+        r.gate1ArmedUnsearched += 1;
+        if (ruvCapabilityClaims(message).length) r.gate1WouldFire += 1;
+      }
+    }
     let audit = { claims: [], findings: [] };
     if (arm.assert) {
       r.armed += 1;

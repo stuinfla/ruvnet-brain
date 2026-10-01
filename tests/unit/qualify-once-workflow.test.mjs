@@ -42,6 +42,13 @@ describe('one qualification producer and receipt-only promotion DAG', () => {
     expect(read('developer-qa')).toContain('run tests/unit');
     expect(read('developer-qa')).not.toMatch(/^  (push|pull_request|workflow_call):/m);
   });
+  it('blocks every PR to main on the whole vitest suite (WORK-REGISTER #26)', () => {
+    const job = canonical.match(/\n  full-suite:\n([\s\S]*?)\n  canonical-qa:/)?.[1] || '';
+    expect(job).toContain('run: node scripts/full-suite-gate.mjs');
+    expect(job).not.toMatch(/^    if:/m); // runs on every canonical-qa event, release PRs included
+    expect(canonical).toMatch(/needs: \[qualify-development, full-suite\]/);
+    expect(canonical).toContain('test "$FULL_SUITE_RESULT" = success');
+  });
   it('preserves required contexts without rerunning qualification or bypassing failure', () => {
     for (const [source, check] of [[canonical, 'canonical-qa'], [integration, 'integration']]) {
       expect(source).toContain(`--required-check ${check} --timeout-ms 7200000`);

@@ -74,6 +74,18 @@ describe('forge-update private overlay boundary', () => {
     expect(fs.readFileSync(path.join(kbDir, 'capability-cards.md'), 'utf8')).toContain('## makerkit\nprivate card');
   });
 
+  // Found by the canary's private-overlay case (2026-10-01): a public bundle with no repo-aliases.json
+  // made every private-overlay update fail with ENOENT inside the candidate.
+  it('restores private aliases when the incoming public bundle ships no repo-aliases.json', () => {
+    const { kbDir, privateStore } = registryFixture();
+    const overlay = capturePrivateOverlayState({ kbDir, allStores: [privateStore] });
+    writeJson(path.join(kbDir, 'SOURCE.json'), { stores: { public: { kbName: 'public' } } });
+    writeJson(path.join(kbDir, 'RVF-GENERATIONS.json'), { stores: { public: { file: 'public-v2.rvf' } } });
+    fs.rmSync(path.join(kbDir, 'repo-aliases.json'));
+    expect(restorePrivateOverlayState({ kbDir, overlay })).toEqual({ restored: 1 });
+    expect(JSON.parse(fs.readFileSync(path.join(kbDir, 'repo-aliases.json'), 'utf8'))).toEqual({ makerkit: ['makerkit-source'] });
+  });
+
   it('fails a conflicting public/private name before writing any registry', () => {
     const { kbDir, privateStore } = registryFixture();
     const overlay = capturePrivateOverlayState({ kbDir, allStores: [privateStore] });

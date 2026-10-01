@@ -98,7 +98,9 @@ function runNode(file, payload, env = {}) {
 }
 
 describe('end-to-end: mark then gate, real subprocesses, real filesystem', () => {
-  it('CASE 1 — RuvNet-matching prompt, no search: the gate FIRES (blocks the stop)', () => {
+  // 4.4.0: the answer must ASSERT a rUv capability for Gate 1 to demand a search — a status answer on a
+  // rUv-named prompt is silent (tests/unit/grounding-turn-false-alarm.test.mjs pins both on real Stop points).
+  it('CASE 1 — RuvNet-matching prompt, no search, answer asserts a rUv capability: the gate FIRES (blocks the stop)', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'grounding-e2e-'));
     const env = { HOME: home, RUVNET_GROUNDING_TURN_DIR: path.join(home, 'grounding-turn') };
 
@@ -110,6 +112,7 @@ describe('end-to-end: mark then gate, real subprocesses, real filesystem', () =>
 
     const gateResult = runNode(GATE, {
       hook_event_name: 'Stop', session_id: 'sess-1', stop_hook_active: false,
+      last_assistant_message: 'Ruflo spawns each agent in its own worktree automatically.',
     }, env);
     expect(gateResult.status).toBe(0); // advisory — never a hard failure exit
     const out = JSON.parse(gateResult.stdout);
@@ -118,6 +121,19 @@ describe('end-to-end: mark then gate, real subprocesses, real filesystem', () =>
     expect(out.hookSpecificOutput.additionalContext).toMatch(/Do NOT end the turn/);
     // The marker is consumed either way.
     expect(fs.existsSync(markerPathFor('sess-1', env.RUVNET_GROUNDING_TURN_DIR))).toBe(false);
+  });
+
+  it('CASE 1b — same prompt, no search, but the answer is a status report: SILENT (the 4.4.0 false alarm)', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'grounding-e2e-'));
+    const env = { HOME: home, RUVNET_GROUNDING_TURN_DIR: path.join(home, 'grounding-turn') };
+    runNode(MARK, { hook_event_name: 'UserPromptSubmit', session_id: 'sess-1b', prompt: 'build a ruflo agent for me' }, env);
+    const gateResult = runNode(GATE, {
+      hook_event_name: 'Stop', session_id: 'sess-1b', stop_hook_active: false,
+      last_assistant_message: 'Committed 3f2a1b0 on hooks-4.4; the focused tests pass (48/48).',
+    }, env);
+    expect(gateResult.status).toBe(0);
+    expect(gateResult.stdout).toBe('');
+    expect(fs.existsSync(markerPathFor('sess-1b', env.RUVNET_GROUNDING_TURN_DIR))).toBe(false);
   });
 
   it('CASE 2 — same prompt, but a real search_ruvnet call happened after it: the gate stays SILENT', () => {

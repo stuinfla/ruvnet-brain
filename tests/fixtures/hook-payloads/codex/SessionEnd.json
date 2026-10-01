@@ -1,0 +1,10 @@
+{
+ "_provenance": "captured: codex-cli 0.159.2 codex exec --json, hooks via -c, 2026-09-30",
+ "payload": {
+  "session_id": "{{SESSION_ID}}",
+  "transcript_path": null,
+  "cwd": "{{CWD}}",
+  "hook_event_name": "SessionEnd",
+  "reason": "other"
+ }
+}

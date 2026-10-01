@@ -1,0 +1,4314 @@
+{
+  "kind": "ruvnet-brain-route-gold-rank",
+  "impl": "<scratch>/base-cb656e47/kb/forge-ask-all.mjs",
+  "kbDir": "<kb>",
+  "measuredAt": "2026-10-01T04:07:48.782Z",
+  "sets": {
+    "needs": {
+      "all": {
+        "goldAt1": {
+          "k": 22,
+          "n": 206,
+          "p": 0.1068,
+          "lo": 0.0716,
+          "hi": 0.1564
+        },
+        "goldAt3": {
+          "k": 42,
+          "n": 206,
+          "p": 0.2039,
+          "lo": 0.1545,
+          "hi": 0.2641
+        },
+        "goldAt5": {
+          "k": 42,
+          "n": 206,
+          "p": 0.2039,
+          "lo": 0.1545,
+          "hi": 0.2641
+        },
+        "declined": {
+          "k": 10,
+          "n": 206,
+          "p": 0.0485,
+          "lo": 0.0266,
+          "hi": 0.087
+        },
+        "reposOpened": 2.209
+      },
+      "byGroup": {
+        "RuView": {
+          "goldAt1": {
+            "k": 7,
+            "n": 64,
+            "p": 0.1094,
+            "lo": 0.054,
+            "hi": 0.209
+          },
+          "goldAt3": {
+            "k": 14,
+            "n": 64,
+            "p": 0.2188,
+            "lo": 0.135,
+            "hi": 0.3343
+          },
+          "goldAt5": {
+            "k": 14,
+            "n": 64,
+            "p": 0.2188,
+            "lo": 0.135,
+            "hi": 0.3343
+          },
+          "declined": {
+            "k": 3,
+            "n": 64,
+            "p": 0.0469,
+            "lo": 0.0161,
+            "hi": 0.129
+          },
+          "reposOpened": 2.063
+        },
+        "ruflo": {
+          "goldAt1": {
+            "k": 3,
+            "n": 74,
+            "p": 0.0405,
+            "lo": 0.0139,
+            "hi": 0.1125
+          },
+          "goldAt3": {
+            "k": 6,
+            "n": 74,
+            "p": 0.0811,
+            "lo": 0.0377,
+            "hi": 0.1658
+          },
+          "goldAt5": {
+            "k": 6,
+            "n": 74,
+            "p": 0.0811,
+            "lo": 0.0377,
+            "hi": 0.1658
+          },
+          "declined": {
+            "k": 2,
+            "n": 74,
+            "p": 0.027,
+            "lo": 0.0074,
+            "hi": 0.0933
+          },
+          "reposOpened": 2.27
+        },
+        "ruvector": {
+          "goldAt1": {
+            "k": 12,
+            "n": 68,
+            "p": 0.1765,
+            "lo": 0.1039,
+            "hi": 0.2836
+          },
+          "goldAt3": {
+            "k": 22,
+            "n": 68,
+            "p": 0.3235,
+            "lo": 0.2244,
+            "hi": 0.4416
+          },
+          "goldAt5": {
+            "k": 22,
+            "n": 68,
+            "p": 0.3235,
+            "lo": 0.2244,
+            "hi": 0.4416
+          },
+          "declined": {
+            "k": 5,
+            "n": 68,
+            "p": 0.0735,
+            "lo": 0.0318,
+            "hi": 0.1609
+          },
+          "reposOpened": 2.279
+        }
+      },
+      "msPerQuestion": 3693.9,
+      "rows": [
+        {
+          "id": "ruflo:.agents/skills/agent-coordinator-swarm-init/SKILL.md:58-66",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "latentmesh",
+            "agentic-qe",
+            "rvm"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:.agents/skills/agent-pagerank-analyzer/SKILL.md:283-288",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "marketing"
+          ],
+          "reason": "query explicitly names marketing",
+          "rank": null
+        },
+        {
+          "id": "ruflo:.agents/skills/agent-specification/SKILL.md:272-281",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "ruvector"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:.agents/skills/agentdb-memory-patterns/SKILL.md:294-301",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [],
+          "reason": "query contains ai, ram outside the card catalogue",
+          "rank": null
+        },
+        {
+          "id": "ruflo:.agents/skills/claims/SKILL.md:88-100",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "autogenous",
+            "dream-machine",
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:.agents/skills/flow-nexus-swarm/SKILL.md:26-35",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentic-flow"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:.agents/skills/github-project-management/SKILL.md:73-355",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentdb"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:.agents/skills/github-workflow-automation/SKILL.md:62-170",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentic-qe",
+            "agentic-security",
+            "cognitum-ruos"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:.claude/skills/agentdb-memory-patterns/SKILL.md:294-301",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [],
+          "reason": "query contains ai, ram outside the card catalogue",
+          "rank": null
+        },
+        {
+          "id": "ruflo:.claude/skills/agentdb-vector-search/SKILL.md:265-272",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "ruvector"
+          ],
+          "reason": "card evidence favors ruvector (5 matching concepts)",
+          "rank": null
+        },
+        {
+          "id": "ruflo:.claude/skills/flow-nexus-platform/SKILL.md:429-438",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentic-flow",
+            "promptlang",
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:.claude/skills/flow-nexus-swarm/SKILL.md:20-29",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentic-qe",
+            "agentic-flow",
+            "yyz-agentics-june"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:.claude/skills/github-project-management/SKILL.md:14-25",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentdb",
+            "ruos",
+            "cognitum-support"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:.claude/skills/github-release-management/SKILL.md:202-285",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "ruvnet-brain",
+            "agentic-security"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:.claude/skills/verification-quality/SKILL.md:9-20",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "ruvnet-brain",
+            "agentic-qe",
+            "code-mesh"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:.harness/README.md:13-31",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "gpts",
+            "quantum_cryptocurrency"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:docs/validation/README.md:9-21",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentic-robotics",
+            "agentic-qe"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/README.md:138-151",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentdb",
+            "agentic-security",
+            "p2pgpt"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-agent/skills/managed-agent/SKILL.md:24-39",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "reflective-engineer"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-agent/skills/wasm-agent/SKILL.md:16-24",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentic-qe",
+            "agenticow",
+            "agentic-flow"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-agentdb/README.md:14-18",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentdb",
+            "agentic-devops",
+            "auto-browser"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-agentdb/skills/agentdb-query/SKILL.md:16-24",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentdb",
+            "ruflo"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 2
+        },
+        {
+          "id": "ruflo:plugins/ruflo-autopilot/README.md:14-20",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentic-flow",
+            "ruflo"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 2
+        },
+        {
+          "id": "ruflo:plugins/ruflo-bbs-federation/skills/cross-host-federation/SKILL.md:19-27",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentic-qe",
+            "latentmesh"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-browser/README.md:73-77",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "ruflo",
+            "aiscreenplay",
+            "chatgpt-openai-api-plugin"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "ruflo:plugins/ruflo-browser/skills/browser-form-fill/SKILL.md:18-33",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "auto-browser"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-browser/skills/browser-intent/SKILL.md:12-16",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentic-qe"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-browser/skills/browser-record/SKILL.md:18-42",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "ruvector"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-browser/skills/browser-screenshot-diff/SKILL.md:18-30",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "ruvnet-brain",
+            "agentic-qe",
+            "fireflies-webook"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-browser/skills/browser-test/SKILL.md:18-29",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentic-qe",
+            "agentic-security",
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-cost-tracker/skills/cost-benchmark/SKILL.md:12-17",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "latentmesh",
+            "ruvnet-brain",
+            "agentic-flow"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-cost-tracker/skills/cost-burn/SKILL.md:17-25",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "rudevolution"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-cost-tracker/skills/cost-counterfactual/SKILL.md:14-22",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentic-qe",
+            "agentic-flow",
+            "chatgpt-openai-api-plugin"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-cost-tracker/skills/cost-diff/SKILL.md:19-32",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentic-flow",
+            "agentic-qe"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-cost-tracker/skills/cost-health/SKILL.md:19-27",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "metaharness",
+            "ruvnet-brain",
+            "dream-machine"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-cost-tracker/skills/cost-session/SKILL.md:17-27",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "latentmesh",
+            "agentic-flow",
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-daa/skills/cognitive-pattern/SKILL.md:16-22",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "ruflo",
+            "agentic-flow",
+            "agentic-qe"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "ruflo:plugins/ruflo-ddd/README.md:69-73",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentic-flow",
+            "dynamo-mcp",
+            "powerprompt"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-ddd/skills/ddd-validate/SKILL.md:9-50",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "cognitum-one-sensor-primer",
+            "ruvnet-brain",
+            "agentic-qe",
+            "agent-name-service",
+            "agentdb"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance; widened to agent-name-service, agentdb — typescript appear there",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-federation/README.md:12-20",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "synaptic-mesh",
+            "latentmesh"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-goals/skills/dossier-collect/SKILL.md:18-36",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "ruvnet-brain",
+            "cognitum-support",
+            "rvcsi"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-goals/skills/research-synthesize/SKILL.md:16-40",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "ruvnet-brain",
+            "agenticow",
+            "cognitum-support"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-intelligence/README.md:54-69",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "ruvnet-brain",
+            "codex-one",
+            "dream-machine"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-intelligence/skills/neural-train/SKILL.md:18-27",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentic-flow",
+            "aido",
+            "codex-one"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-jujutsu/README.md:46-55",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentic-qe"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-knowledge-graph/skills/kg-traverse/SKILL.md:16-24",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "bot-generator-bot",
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-metaharness/README.md:5-12",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentic-qe",
+            "claude-test"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-metaharness/skills/harness-drift-from-history/SKILL.md:24-30",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "sublinear-time-solver",
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-metaharness/skills/harness-genome/SKILL.md:13-24",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "metaharness",
+            "agentic-qe",
+            "agentic-security"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-metaharness/skills/harness-learn/SKILL.md:14-21",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentic-qe",
+            "dspy.ts",
+            "latentmesh"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-music/README.md:5-7",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentic-flow",
+            "agentic-qe"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-music/skills/music-generate/SKILL.md:16-58",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentic-flow"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-music/skills/music-get/SKILL.md:16-23",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "ruflo",
+            "agentic-flow",
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "ruflo:plugins/ruflo-observability/skills/observe-trace/SKILL.md:16-23",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "cognitum-support",
+            "latentmesh",
+            "marketing"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-plugin-creator/README.md:12-17",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "fireflies-webook",
+            "2bottalk",
+            "agentic-flow"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-rag-memory/skills/memory-bridge/SKILL.md:12-19",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "code-mesh",
+            "2bottalk",
+            "dynamo-mcp"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-ruvector/skills/vector-embed/SKILL.md:16-34",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "ruv-fann",
+            "ruvector"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-ruvector/skills/vector-hyperbolic/SKILL.md:16-34",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentdb",
+            "latentmesh",
+            "rupixel"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-rvf/skills/session-persist/SKILL.md:16-22",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentdb"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:plugins/ruflo-security-audit/README.md:12-19",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "ruv-gists"
+          ],
+          "reason": "provenance intent selects the public rUv gist store",
+          "rank": null
+        },
+        {
+          "id": "ruflo:v3/@claude-flow/cli-core/README.md:11-15",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentic-flow",
+            "ultrasonic"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:v3/@claude-flow/cli/.claude/commands/pair/README.md:28-38",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "card evidence favors ruvnet-brain (5 matching concepts)",
+          "rank": null
+        },
+        {
+          "id": "ruflo:v3/@claude-flow/cli/.claude/skills/flow-nexus-platform/SKILL.md:429-438",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentic-flow",
+            "ruflo"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 2
+        },
+        {
+          "id": "ruflo:v3/@claude-flow/cli/.claude/skills/stream-chain/SKILL.md:10-19",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "metaharness",
+            "agentic-flow",
+            "agenticow"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:v3/@claude-flow/cli/.claude/skills/verification-quality/SKILL.md:9-20",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "synaptic-mesh",
+            "agentic-qe",
+            "bot-generator-bot"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:v3/@claude-flow/cli/benchmarks/router/README.md:12-24",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "ruvector",
+            "agentic-flow"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:v3/@claude-flow/cli/README.md:65-163",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentdb",
+            "codecraft",
+            "auto-browser"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:v3/@claude-flow/mcp/.claude/helpers/README.md:83-89",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "cognitum-learn",
+            "ruv-dev"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:v3/@claude-flow/plugin-iot-cognitum/README.md:9-17",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "ruclip",
+            "rvcsi",
+            "rvm"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:v3/@claude-flow/watermark/README.md:54-64",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentic-difusion",
+            "agentic-qe",
+            "agentic-security"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:v3/plugins/legal-contracts/README.md:9-15",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agent-name-service",
+            "agentic-qe",
+            "agenticow"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:v3/plugins/perf-optimizer/README.md:9-15",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "metaharness"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:v3/plugins/quantum-optimizer/README.md:221-228",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "agentic-flow",
+            "marketing"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruflo:v3/plugins/test-intelligence/README.md:9-15",
+          "group": "ruflo",
+          "expected": [
+            "ruflo"
+          ],
+          "repos": [
+            "daa",
+            "agentic-qe",
+            "agentic-security"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:.claude/agents/consensus/README.md:16-43",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "agentdb",
+            "aido"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:.claude/agents/swarm/README.md:180-190",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "agentic-flow",
+            "ruflo"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:.claude/skills/agentdb-memory-patterns/SKILL.md:294-301",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [],
+          "reason": "query contains ai, ram outside the card catalogue",
+          "rank": null
+        },
+        {
+          "id": "ruvector:.claude/skills/agentdb-vector-search/SKILL.md:265-272",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "agentic-flow",
+            "agenticow",
+            "ruos"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:.claude/skills/flow-nexus-platform/SKILL.md:450-459",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "agentic-difusion"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:benchmarks/docs/README.md:20-28",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "agentic-qe"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:benchmarks/graph/docs/QUICKSTART.md:305-317",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "agentdb",
+            "ruvnet-brain",
+            "ruvector"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 3
+        },
+        {
+          "id": "ruvector:crates/cognitum-gate-kernel/README.md:86-99",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "ruvector",
+            "agentdb",
+            "rulake"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "ruvector:crates/emergent-time/README.md:12-23",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "agentic-flow",
+            "dream-machine",
+            "rvm"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:crates/mcp-brain-server/README.md:429-439",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [],
+          "reason": "query contains ai, ip outside the card catalogue",
+          "rank": null
+        },
+        {
+          "id": "ruvector:crates/micro-hnsw-wasm/README.md:7-15",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "cognitum-cogs",
+            "ruvector",
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 2
+        },
+        {
+          "id": "ruvector:crates/neural-trader-core/README.md:60-99",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "agentic-qe",
+            "agentic-difusion"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:crates/ruvector-attention-cli/README.md:5-12",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "agentdb",
+            "sublinear-time-solver",
+            "retro-ai-ui"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:crates/ruvector-attention-wasm/pkg/README.md:5-23",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "concepts",
+            "dspy.ts",
+            "retro-ai-ui",
+            "agent-name-service",
+            "agentdb"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance; widened to agent-name-service, agentdb — typescript, javascript appear there",
+          "rank": null
+        },
+        {
+          "id": "ruvector:crates/ruvector-bench/README.md:14-22",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "ruvector",
+            "cve-bench",
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "ruvector:crates/ruvector-capgated/README.md:31-38",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "ruflo",
+            "ruvnet-brain",
+            "agentic-flow"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:crates/ruvector-core/tests/README.md:9-37",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "metaharness"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:crates/ruvector-dag/README.md:5-14",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "agentic-flow",
+            "agenticsjs",
+            "ruqu"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:crates/ruvector-graph-wasm/README.md:5-13",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "vsc-remote-mcp",
+            "ruv-neural",
+            "ruvector"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 3
+        },
+        {
+          "id": "ruvector:crates/ruvector-hailo/models/README.md:5-29",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "agentdb",
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:crates/ruvector-hailo/README.md:15-26",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "metaharness",
+            "p2pgpt"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:crates/ruvector-mincut/README.md:15-21",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "agentic-flow",
+            "sublinear-time-solver"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:crates/ruvector-node/README.md:21-30",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "ruflo",
+            "ruvector",
+            "rupixel",
+            "agentdb",
+            "agentic-flow"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance; widened to agentdb, agentic-flow — javascript appear there",
+          "rank": 2
+        },
+        {
+          "id": "ruvector:crates/ruvector-postgres/src/attention/README.md:5-12",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "agent-name-service",
+            "agentdb",
+            "agentic-flow"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:crates/ruvector-postgres/src/graph/README.md:5-15",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "ruvector",
+            "agentdb"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "ruvector:crates/ruvector-robotics/README.md:28-32",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "ruview",
+            "agentic-qe",
+            "ruv-fann"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:crates/ruvector-solver/README.md:110-116",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "ruvector",
+            "sublinear-time-solver",
+            "rvm"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "ruvector:crates/ruvix/aarch64-boot/README.md:32-38",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "ruvector",
+            "daa",
+            "dspy.ts"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "ruvector:crates/ruvix/README.md:15-29",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [],
+          "reason": "query contains os, ai outside the card catalogue",
+          "rank": null
+        },
+        {
+          "id": "ruvector:crates/rvf/README.md:32-118",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "ruv-fann"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:crates/rvf/rvf-node/README.md:11-20",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "agentic-flow",
+            "ruvector"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 2
+        },
+        {
+          "id": "ruvector:crates/rvf/rvf-types/README.md:264-274",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "midstream",
+            "2bottalk",
+            "auto-browser"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:crates/rvforge-reader/README.md:32-67",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [],
+          "reason": "query contains ci, gui outside the card catalogue",
+          "rank": null
+        },
+        {
+          "id": "ruvector:crates/sonic-ct/README.md:21-32",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "ruvector",
+            "sonicchamber"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "ruvector:docs/adr/delta-behavior/README.md:5-13",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "metaharness",
+            "helix",
+            "rupixel"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:docs/hooks/README.md:43-51",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "synaptic-mesh",
+            "agentic-qe",
+            "ruflo"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:docs/research/DrAgnes/README.md:7-11",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "drupaljs"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:docs/research/nightly/2026-06-19-lsm-ann/README.md:9-15",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "agentic-qe",
+            "ruvector",
+            "midstream"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 2
+        },
+        {
+          "id": "ruvector:docs/research/nightly/2026-06-24-spann-partition-spill/README.md:9-19",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "agentic-flow",
+            "ruvector",
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 2
+        },
+        {
+          "id": "ruvector:docs/research/nightly/2026-07-23-adaptive-recall-ann/README.md:7-31",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "agentdb",
+            "ruvector"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 2
+        },
+        {
+          "id": "ruvector:docs/research/nightly/2026-08-07-hierarchical-cluster-rag/README.md:11-26",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "query explicitly names ruvnet-brain",
+          "rank": null
+        },
+        {
+          "id": "ruvector:docs/research/nightly/2026-08-31-signed-retrieval-receipts/README.md:3-14",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "ruvector",
+            "dream-machine"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "ruvector:docs/research/nightly/2026-09-02-mincut-streaming-memory-admission/README.md:13-59",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "ruvector",
+            "ruv.io",
+            "ai-stream"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "ruvector:docs/research/nightly/2026-09-03-state-root-anchoring/README.md:3-17",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "ruvector"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "ruvector:docs/research/nightly/2026-09-16-witness-signer-agent-memory/README.md:3-25",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [],
+          "reason": "query contains ai, someone outside the card catalogue",
+          "rank": null
+        },
+        {
+          "id": "ruvector:docs/research/rvagent-gemini-grounding/README.md:3-5",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "code-mesh",
+            "obsidian-brain",
+            "ruvector"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 3
+        },
+        {
+          "id": "ruvector:docs/research/rvagent-hermes-harness/README.md:12-28",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "coding-wingman",
+            "agentic-flow",
+            "ruv-neural"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:docs/training/QUICKSTART.md:213-218",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "agentdb",
+            "powerprompt",
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:examples/decompiler-dashboard/README.md:42-87",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "ruv-gists",
+            "agentdb",
+            "agentic-flow"
+          ],
+          "reason": "provenance intent selects the public rUv gist store; widened to agentdb, agentic-flow — javascript appear there",
+          "rank": null
+        },
+        {
+          "id": "ruvector:examples/exo-ai-2025/crates/exo-backend-classical/README.md:7-24",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "agentic-difusion",
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:examples/exo-ai-2025/crates/exo-core/README.md:7-20",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "agentic-flow",
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:examples/exo-ai-2025/crates/exo-hypergraph/README.md:7-18",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "agentic-employment",
+            "vivian"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:examples/exo-ai-2025/crates/exo-wasm/README.md:9-15",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "agentic-qe",
+            "ruv-neural",
+            "helix"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:examples/exo-ai-2025/research/03-time-crystal-cognition/README.md:9-16",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "query explicitly names ruvnet-brain",
+          "rank": null
+        },
+        {
+          "id": "ruvector:examples/exo-ai-2025/research/08-meta-simulation-consciousness/README.md:37-55",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "ruvector"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "ruvector:examples/exo-ai-2025/tests/README.md:7-35",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "ruvector",
+            "ruvnet-brain",
+            "aido"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "ruvector:examples/meta-cognition-spiking-neural-network/demos/snn/README.md:314-335",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "cognitum-cogs",
+            "agentdb",
+            "agentic-flow"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance; widened to agentdb, agentic-flow — javascript appear there",
+          "rank": null
+        },
+        {
+          "id": "ruvector:examples/scipix/README.md:29-31",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "agentdb",
+            "fact",
+            "latentmesh"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:npm/core/platforms/win32-x64-msvc/README.md:89-103",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "agentdb",
+            "dream-machine",
+            "p2pgpt",
+            "agentic-flow"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance; widened to agentic-flow — javascript appear there",
+          "rank": null
+        },
+        {
+          "id": "ruvector:npm/packages/acorn-wasm/README.md:8-15",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "agentdb",
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:npm/packages/agentic-synth-examples/README.md:45-61",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "query explicitly names ruvnet-brain",
+          "rank": null
+        },
+        {
+          "id": "ruvector:npm/packages/agentic-synth/examples/swarms/README.md:5-12",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "agentic-flow",
+            "agentic-qe",
+            "marketing"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:npm/packages/agentic-synth/training/README.md:9-18",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "ruflo"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:npm/packages/burst-scaling/README.md:9-16",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "agentic-qe"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:npm/packages/kge/README.md:8-25",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "ruview",
+            "ruvector",
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 2
+        },
+        {
+          "id": "ruvector:npm/packages/spiking-neural/README.md:8-15",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "ruvector",
+            "auto-browser",
+            "chatgpt-trading-bot-for-kucoin"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "ruvector:packages/metabiohacker/README.md:9-24",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "daa",
+            "aido",
+            "agentic-qe"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "ruvector:README.md:11-15",
+          "group": "ruvector",
+          "expected": [
+            "ruvector"
+          ],
+          "repos": [
+            "ruv-neural",
+            "agentic-flow",
+            "bot-generator-bot"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:.claude/helpers/README.md:83-89",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "agentdb",
+            "ruv-dev"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:.claude/skills/github-release-management/SKILL.md:219-302",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "agentdb",
+            "agentic-security",
+            "chatgpt_plugin_python"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:.claude/skills/github-workflow-automation/SKILL.md:62-170",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "card evidence favors ruvnet-brain (6 matching concepts)",
+          "rank": null
+        },
+        {
+          "id": "RuView:.claude/skills/hooks-automation/SKILL.md:10-21",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "marketing",
+            "agentic-flow"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:.claude/skills/v3-core-implementation/SKILL.md:765-772",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "agentdb",
+            "ruflo",
+            "rulake"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:.claude/skills/verification-quality/SKILL.md:11-20",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "agentdb",
+            "agentic-qe"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:aether-arena/calibration/README.md:13-27",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "metaharness",
+            "bot-generator-bot",
+            "guardrail"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:docs/ddd/README.md:20-30",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "agentdb"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:docs/research/privacy-shield/README.md:39-89",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:docs/research/ruview-beyond-sota/README.md:21-39",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "code-mesh",
+            "ruvnet-brain",
+            "ruos"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:docs/research/rvagent-rvf-integration/README.md:9-22",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "ruclip",
+            "dspy.ts"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:examples/frontend/README.md:49-60",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "agentic-flow",
+            "cognitum-support"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:examples/lovelace/README.md:15-28",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "cognitum-cogs"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:examples/medical/README.md:9-24",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "cognitum-cogs"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:examples/research-sota/03-spatial-intelligence/README.md:12-17",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "cognitum-cogs",
+            "ruview",
+            "ultrasonic"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 2
+        },
+        {
+          "id": "RuView:examples/research-sota/04-rssi/README.md:20-30",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "rulake",
+            "ruview"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 2
+        },
+        {
+          "id": "RuView:examples/research-sota/05-cross-room-reid/README.md:33-42",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "cognitum-cogs",
+            "agenticow",
+            "helix"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:examples/three.js/README.md:64-70",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "ruview",
+            "rupixel",
+            "ruv-neural"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "RuView:examples/through-wall/README.md:29-36",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "daa",
+            "ruview",
+            "dream-machine"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 2
+        },
+        {
+          "id": "RuView:firmware/privshield/esp32/README.md:15-39",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "ruview"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "RuView:firmware/privshield/openwrt/README.md:17-37",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "concepts",
+            "cognitum-support",
+            "open-claude-code"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:harness/ruview/.claude/skills/calibrate-room/SKILL.md:12-22",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "agentdb"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:harness/ruview/.claude/skills/train-pose/SKILL.md:11-17",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "ruview"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "RuView:harness/ruview/.claude/skills/verify/SKILL.md:10-15",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "safla",
+            "agentic-qe",
+            "dream-machine"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:harness/ruview/README.md:49-79",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "qudag"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:harness/wifi-densepose-sar/.claude/skills/evolve/SKILL.md:27-36",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "agentic-flow",
+            "agentic-qe",
+            "aitoml"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:harness/wifi-densepose-sar/README.md:28-34",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "latentmesh",
+            "chatgpt-openai-api-plugin",
+            "claude-test"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:integrations/iphone-lidar/README.md:19-32",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "agentic-qe",
+            "rvcsi"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:plugins/ruview/README.md:56-60",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "agentic-flow"
+          ],
+          "reason": "card evidence favors agentic-flow (5 matching concepts)",
+          "rank": null
+        },
+        {
+          "id": "RuView:plugins/ruview/skills/ruview-advanced-sensing/SKILL.md:43-45",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [],
+          "reason": "card router was ambiguous (closest=ai-text-watermark overlap=1)",
+          "rank": null
+        },
+        {
+          "id": "RuView:plugins/ruview/skills/ruview-applications/SKILL.md:51-58",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "agentic-qe",
+            "dream-machine",
+            "ruview"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 3
+        },
+        {
+          "id": "RuView:plugins/ruview/skills/ruview-cli-api/SKILL.md:41-53",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "code-mesh",
+            "dream-machine",
+            "cognitum-ruos"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:plugins/ruview/skills/ruview-configure/SKILL.md:21-47",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "cognitum-one-sensor-primer"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:plugins/ruview/skills/ruview-mmwave/SKILL.md:20-28",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "cognitum-one-sensor-primer",
+            "ruview"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 2
+        },
+        {
+          "id": "RuView:plugins/ruview/skills/ruview-verify/SKILL.md:20-35",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "dream-machine",
+            "rvm"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:python/README.md:18-34",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "ruview"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "RuView:tools/bfi_learning/README.md:6-51",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "agentic-qe"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:tools/bfi/README.md:7-21",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "latentmesh",
+            "dream-machine"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:ui/mobile/README.md:91-107",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "cognitum-one-sensor-primer",
+            "console-streamer",
+            "dream-machine"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:ui/pose-fusion/pkg/ruvector-attention/README.md:5-23",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "ruforecast",
+            "agenticsjs",
+            "ruv-fann",
+            "agentdb",
+            "agentic-flow"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance; widened to agentdb, agentic-flow — javascript appear there",
+          "rank": null
+        },
+        {
+          "id": "RuView:v2/crates/cog-ha-matter/blueprints/bfld/README.md:19-22",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "concepts"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:v2/crates/cog-ha-matter/cog/README.md:10-18",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "ruview",
+            "ultrasonic"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "RuView:v2/crates/cog-person-count/cog/README.md:5-7",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "ruview"
+          ],
+          "reason": "card evidence favors ruview (5 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "RuView:v2/crates/cog-pose-estimation/cog/README.md:5-7",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "ruview"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 1
+        },
+        {
+          "id": "RuView:v2/crates/homecore-api/README.md:13-25",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "agentdb",
+            "ai-text-watermark",
+            "ruv-fann"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:v2/crates/homecore-assist/README.md:13-25",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "musica"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:v2/crates/homecore-automation/README.md:13-24",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "agentdb",
+            "aido",
+            "chatgpt_plugin_python"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:v2/crates/homecore-hap/README.md:7-36",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [],
+          "reason": "query contains diy, pin outside the card catalogue",
+          "rank": null
+        },
+        {
+          "id": "RuView:v2/crates/homecore-migrate/README.md:7-20",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "cognitum-learn",
+            "rvqr"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:v2/crates/homecore/README.md:13-22",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "dream-machine",
+            "rulake",
+            "ruvnet-brain"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:v2/crates/wifi-densepose-cli/README.md:10-18",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "agentic-flow",
+            "dream-machine"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:v2/crates/wifi-densepose-desktop/README.md:86-94",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "agentdb",
+            "worldgraph"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:v2/crates/wifi-densepose-mat/README.md:9-18",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "dream-machine",
+            "ruview",
+            "worldgraph"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 2
+        },
+        {
+          "id": "RuView:v2/crates/wifi-densepose-nn/README.md:9-21",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "agentic-difusion",
+            "chatgpt-trading-bot-for-kucoin",
+            "guardrail"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:v2/crates/wifi-densepose-privshield/README.md:24-61",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [],
+          "reason": "card router was ambiguous (closest=agentic-flow overlap=2)",
+          "rank": null
+        },
+        {
+          "id": "RuView:v2/crates/wifi-densepose-sar/README.md:48-74",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "daa"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:v2/crates/wifi-densepose-sensing-server/README.md:9-20",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "cognitum-cogs",
+            "rupixel",
+            "wifi-veil"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:v2/crates/wifi-densepose-train/README.md:9-17",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "agentdb",
+            "dream-machine",
+            "midstream"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:v2/crates/wifi-densepose-vitals/README.md:10-15",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "rulake",
+            "ruview"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": 2
+        },
+        {
+          "id": "RuView:v2/crates/wifi-densepose-wasm/README.md:9-17",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "rucelium",
+            "dream-machine",
+            "rupixel"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:v2/patches/ruvector-crv/README.md:40-52",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "ruvector"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:wifi-veil/docs/research/privacy-shield/README.md:39-89",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "agentdb",
+            "ultrasonic",
+            "agentic-flow"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:wifi-veil/firmware/openwifi/README.md:11-40",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "agentic-flow",
+            "cognitum-cogs",
+            "cve-bench"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "RuView:wifi-veil/firmware/openwrt/README.md:17-37",
+          "group": "RuView",
+          "expected": [
+            "RuView"
+          ],
+          "repos": [
+            "concepts",
+            "open-claude-code",
+            "sonicchamber"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        }
+      ]
+    },
+    "heldout": {
+      "all": {
+        "goldAt1": {
+          "k": 80,
+          "n": 80,
+          "p": 1,
+          "lo": 0.9542,
+          "hi": 1
+        },
+        "goldAt3": {
+          "k": 80,
+          "n": 80,
+          "p": 1,
+          "lo": 0.9542,
+          "hi": 1
+        },
+        "goldAt5": {
+          "k": 80,
+          "n": 80,
+          "p": 1,
+          "lo": 0.9542,
+          "hi": 1
+        },
+        "declined": {
+          "k": 0,
+          "n": 80,
+          "p": 0,
+          "lo": 0,
+          "hi": 0.0458
+        },
+        "reposOpened": 1.4
+      },
+      "byGroup": {
+        "described": {
+          "goldAt1": {
+            "k": 32,
+            "n": 32,
+            "p": 1,
+            "lo": 0.8928,
+            "hi": 1
+          },
+          "goldAt3": {
+            "k": 32,
+            "n": 32,
+            "p": 1,
+            "lo": 0.8928,
+            "hi": 1
+          },
+          "goldAt5": {
+            "k": 32,
+            "n": 32,
+            "p": 1,
+            "lo": 0.8928,
+            "hi": 1
+          },
+          "declined": {
+            "k": 0,
+            "n": 32,
+            "p": 0,
+            "lo": 0,
+            "hi": 0.1072
+          },
+          "reposOpened": 1.406
+        },
+        "named": {
+          "goldAt1": {
+            "k": 28,
+            "n": 28,
+            "p": 1,
+            "lo": 0.8794,
+            "hi": 1
+          },
+          "goldAt3": {
+            "k": 28,
+            "n": 28,
+            "p": 1,
+            "lo": 0.8794,
+            "hi": 1
+          },
+          "goldAt5": {
+            "k": 28,
+            "n": 28,
+            "p": 1,
+            "lo": 0.8794,
+            "hi": 1
+          },
+          "declined": {
+            "k": 0,
+            "n": 28,
+            "p": 0,
+            "lo": 0,
+            "hi": 0.1206
+          },
+          "reposOpened": 1.25
+        },
+        "scenario": {
+          "goldAt1": {
+            "k": 20,
+            "n": 20,
+            "p": 1,
+            "lo": 0.8389,
+            "hi": 1
+          },
+          "goldAt3": {
+            "k": 20,
+            "n": 20,
+            "p": 1,
+            "lo": 0.8389,
+            "hi": 1
+          },
+          "goldAt5": {
+            "k": 20,
+            "n": 20,
+            "p": 1,
+            "lo": 0.8389,
+            "hi": 1
+          },
+          "declined": {
+            "k": 0,
+            "n": 20,
+            "p": 0,
+            "lo": 0,
+            "hi": 0.1611
+          },
+          "reposOpened": 1.6
+        }
+      },
+      "msPerQuestion": 354.9,
+      "rows": [
+        {
+          "id": "ho-01",
+          "group": "described",
+          "expected": [
+            "ruvector",
+            "concepts"
+          ],
+          "repos": [
+            "ruvector"
+          ],
+          "reason": "card evidence favors ruvector (4 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "ho-02",
+          "group": "described",
+          "expected": [
+            "agenticow",
+            "concepts"
+          ],
+          "repos": [
+            "agenticow"
+          ],
+          "reason": "card evidence favors agenticow (6 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "ho-03",
+          "group": "described",
+          "expected": [
+            "agentic-qe",
+            "ruflo",
+            "concepts"
+          ],
+          "repos": [
+            "agentic-qe"
+          ],
+          "reason": "card evidence favors agentic-qe (4 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "ho-04",
+          "group": "described",
+          "expected": [
+            "agentic-flow",
+            "agent-harness-generator",
+            "agentic-qe",
+            "concepts"
+          ],
+          "repos": [
+            "agentic-flow",
+            "metaharness",
+            "agentic-qe",
+            "concepts"
+          ],
+          "reason": "cost/quality intent selects reviewed routing and evaluation owners",
+          "rank": 1
+        },
+        {
+          "id": "ho-05",
+          "group": "described",
+          "expected": [
+            "sparc",
+            "concepts"
+          ],
+          "repos": [
+            "sparc"
+          ],
+          "reason": "card evidence favors sparc (3 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "ho-06",
+          "group": "described",
+          "expected": [
+            "agentdb",
+            "concepts"
+          ],
+          "repos": [
+            "agentdb"
+          ],
+          "reason": "card evidence favors agentdb (3 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "ho-07",
+          "group": "described",
+          "expected": [
+            "rulake",
+            "concepts"
+          ],
+          "repos": [
+            "rulake"
+          ],
+          "reason": "card evidence favors rulake (3 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "ho-08",
+          "group": "described",
+          "expected": [
+            "ruv-fann",
+            "concepts"
+          ],
+          "repos": [
+            "ruv-fann"
+          ],
+          "reason": "card evidence favors ruv-fann (5 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "ho-09",
+          "group": "described",
+          "expected": [
+            "qudag",
+            "concepts"
+          ],
+          "repos": [
+            "qudag"
+          ],
+          "reason": "card evidence favors qudag (5 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "ho-10",
+          "group": "described",
+          "expected": [
+            "agent-harness-generator",
+            "concepts"
+          ],
+          "repos": [
+            "metaharness",
+            "concepts"
+          ],
+          "reason": "fixed-model harness-evolution intent selects metaharness and its canonical card",
+          "rank": 1
+        },
+        {
+          "id": "ho-11",
+          "group": "described",
+          "expected": [
+            "ruflo",
+            "agentic-flow",
+            "concepts"
+          ],
+          "repos": [
+            "ruflo"
+          ],
+          "reason": "card evidence favors ruflo (4 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "ho-12",
+          "group": "described",
+          "expected": [
+            "cve-bench",
+            "concepts"
+          ],
+          "repos": [
+            "cve-bench"
+          ],
+          "reason": "card evidence favors cve-bench (5 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "n-01",
+          "group": "named",
+          "expected": [
+            "ruvector",
+            "concepts"
+          ],
+          "repos": [
+            "ruvector"
+          ],
+          "reason": "query explicitly names ruvector",
+          "rank": 1
+        },
+        {
+          "id": "n-02",
+          "group": "named",
+          "expected": [
+            "agentdb",
+            "concepts"
+          ],
+          "repos": [
+            "agentdb"
+          ],
+          "reason": "query explicitly names agentdb",
+          "rank": 1
+        },
+        {
+          "id": "n-03",
+          "group": "named",
+          "expected": [
+            "agentic-flow",
+            "concepts"
+          ],
+          "repos": [
+            "agentic-flow"
+          ],
+          "reason": "query explicitly names agentic-flow",
+          "rank": 1
+        },
+        {
+          "id": "n-04",
+          "group": "named",
+          "expected": [
+            "agentic-qe",
+            "ruflo",
+            "concepts"
+          ],
+          "repos": [
+            "agentic-qe"
+          ],
+          "reason": "query explicitly names agentic-qe",
+          "rank": 1
+        },
+        {
+          "id": "n-05",
+          "group": "named",
+          "expected": [
+            "agenticow",
+            "concepts"
+          ],
+          "repos": [
+            "agenticow"
+          ],
+          "reason": "query explicitly names agenticow",
+          "rank": 1
+        },
+        {
+          "id": "n-06",
+          "group": "named",
+          "expected": [
+            "rulake",
+            "concepts"
+          ],
+          "repos": [
+            "rulake",
+            "ruvector"
+          ],
+          "reason": "query explicitly names rulake; widened to ruvector — rulake appear there",
+          "rank": 1
+        },
+        {
+          "id": "n-07",
+          "group": "named",
+          "expected": [
+            "safla",
+            "concepts"
+          ],
+          "repos": [
+            "safla"
+          ],
+          "reason": "query explicitly names safla",
+          "rank": 1
+        },
+        {
+          "id": "n-08",
+          "group": "named",
+          "expected": [
+            "qudag",
+            "concepts"
+          ],
+          "repos": [
+            "qudag"
+          ],
+          "reason": "query explicitly names qudag",
+          "rank": 1
+        },
+        {
+          "id": "n-09",
+          "group": "named",
+          "expected": [
+            "daa",
+            "concepts"
+          ],
+          "repos": [
+            "daa"
+          ],
+          "reason": "query explicitly names daa",
+          "rank": 1
+        },
+        {
+          "id": "n-10",
+          "group": "named",
+          "expected": [
+            "dspy.ts",
+            "concepts"
+          ],
+          "repos": [
+            "dspy.ts",
+            "agentic-flow"
+          ],
+          "reason": "query explicitly names dspy.ts; widened to agentic-flow — dspy.ts, typescript appear there",
+          "rank": 1
+        },
+        {
+          "id": "n-11",
+          "group": "named",
+          "expected": [
+            "fact",
+            "concepts"
+          ],
+          "repos": [
+            "fact"
+          ],
+          "reason": "query explicitly names fact",
+          "rank": 1
+        },
+        {
+          "id": "n-12",
+          "group": "named",
+          "expected": [
+            "synthlang",
+            "concepts"
+          ],
+          "repos": [
+            "synthlang",
+            "ruv-gists",
+            "ruvnet-brain"
+          ],
+          "reason": "query explicitly names synthlang; widened to ruv-gists, ruvnet-brain — synthlang appear there",
+          "rank": 1
+        },
+        {
+          "id": "n-13",
+          "group": "named",
+          "expected": [
+            "sparc",
+            "concepts"
+          ],
+          "repos": [
+            "sparc"
+          ],
+          "reason": "query explicitly names sparc",
+          "rank": 1
+        },
+        {
+          "id": "n-14",
+          "group": "named",
+          "expected": [
+            "ruv-fann",
+            "concepts"
+          ],
+          "repos": [
+            "ruv-fann",
+            "agentic-flow",
+            "daa"
+          ],
+          "reason": "query explicitly names ruv-fann; widened to agentic-flow, daa — webassembly appear there",
+          "rank": 1
+        },
+        {
+          "id": "n-15",
+          "group": "named",
+          "expected": [
+            "cve-bench",
+            "concepts"
+          ],
+          "repos": [
+            "cve-bench"
+          ],
+          "reason": "query explicitly names cve-bench",
+          "rank": 1
+        },
+        {
+          "id": "n-16",
+          "group": "named",
+          "expected": [
+            "open-claude-code",
+            "concepts"
+          ],
+          "repos": [
+            "open-claude-code"
+          ],
+          "reason": "query explicitly names open-claude-code",
+          "rank": 1
+        },
+        {
+          "id": "n-17",
+          "group": "named",
+          "expected": [
+            "rupixel",
+            "concepts"
+          ],
+          "repos": [
+            "rupixel"
+          ],
+          "reason": "query explicitly names rupixel",
+          "rank": 1
+        },
+        {
+          "id": "n-18",
+          "group": "named",
+          "expected": [
+            "ruv-dev",
+            "concepts"
+          ],
+          "repos": [
+            "ruv-dev"
+          ],
+          "reason": "query explicitly names ruv-dev",
+          "rank": 1
+        },
+        {
+          "id": "n-19",
+          "group": "named",
+          "expected": [
+            "rvm",
+            "concepts"
+          ],
+          "repos": [
+            "rvm"
+          ],
+          "reason": "query explicitly names rvm",
+          "rank": 1
+        },
+        {
+          "id": "n-20",
+          "group": "named",
+          "expected": [
+            "ruview",
+            "concepts"
+          ],
+          "repos": [
+            "ruview"
+          ],
+          "reason": "query explicitly names ruview",
+          "rank": 1
+        },
+        {
+          "id": "n-21",
+          "group": "named",
+          "expected": [
+            "agent-harness-generator",
+            "concepts"
+          ],
+          "repos": [
+            "metaharness"
+          ],
+          "reason": "query explicitly names metaharness",
+          "rank": 1
+        },
+        {
+          "id": "n-22",
+          "group": "named",
+          "expected": [
+            "agent-harness-generator",
+            "concepts"
+          ],
+          "repos": [
+            "metaharness"
+          ],
+          "reason": "query explicitly names metaharness",
+          "rank": 1
+        },
+        {
+          "id": "n-23",
+          "group": "named",
+          "expected": [
+            "ruflo",
+            "concepts"
+          ],
+          "repos": [
+            "ruflo"
+          ],
+          "reason": "query explicitly names ruflo",
+          "rank": 1
+        },
+        {
+          "id": "n-24",
+          "group": "named",
+          "expected": [
+            "ruvector",
+            "concepts"
+          ],
+          "repos": [
+            "ruvector"
+          ],
+          "reason": "query explicitly names ruvector",
+          "rank": 1
+        },
+        {
+          "id": "n-25",
+          "group": "named",
+          "expected": [
+            "agentic-flow",
+            "concepts"
+          ],
+          "repos": [
+            "agentic-flow",
+            "agentic-qe"
+          ],
+          "reason": "query explicitly names agentic-flow; widened to agentic-qe — openrouter appear there",
+          "rank": 1
+        },
+        {
+          "id": "n-26",
+          "group": "named",
+          "expected": [
+            "agentdb",
+            "concepts"
+          ],
+          "repos": [
+            "agentdb"
+          ],
+          "reason": "query explicitly names agentdb",
+          "rank": 1
+        },
+        {
+          "id": "n-27",
+          "group": "named",
+          "expected": [
+            "cognitum-cogs",
+            "concepts"
+          ],
+          "repos": [
+            "cognitum-cogs"
+          ],
+          "reason": "query explicitly names cognitum-cogs",
+          "rank": 1
+        },
+        {
+          "id": "n-28",
+          "group": "named",
+          "expected": [
+            "cognitum-support",
+            "concepts"
+          ],
+          "repos": [
+            "cognitum-support"
+          ],
+          "reason": "query explicitly names cognitum-support",
+          "rank": 1
+        },
+        {
+          "id": "d-01",
+          "group": "described",
+          "expected": [
+            "ruvector",
+            "concepts"
+          ],
+          "repos": [
+            "ruvector"
+          ],
+          "reason": "card evidence favors ruvector (4 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-02",
+          "group": "described",
+          "expected": [
+            "agentdb",
+            "concepts"
+          ],
+          "repos": [
+            "agentdb"
+          ],
+          "reason": "card evidence favors agentdb (5 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-03",
+          "group": "described",
+          "expected": [
+            "ruflo",
+            "agentic-flow",
+            "concepts"
+          ],
+          "repos": [
+            "ruflo",
+            "agentic-flow",
+            "concepts"
+          ],
+          "reason": "card evidence preserves 2 tied source candidates (5 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-04",
+          "group": "described",
+          "expected": [
+            "agentic-qe",
+            "ruflo",
+            "concepts"
+          ],
+          "repos": [
+            "agentic-qe"
+          ],
+          "reason": "card evidence favors agentic-qe (7 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-05",
+          "group": "described",
+          "expected": [
+            "agenticow",
+            "concepts"
+          ],
+          "repos": [
+            "agenticow"
+          ],
+          "reason": "card evidence favors agenticow (9 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-06",
+          "group": "described",
+          "expected": [
+            "rulake",
+            "concepts"
+          ],
+          "repos": [
+            "rulake"
+          ],
+          "reason": "card evidence favors rulake (8 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-07",
+          "group": "described",
+          "expected": [
+            "safla",
+            "agent-harness-generator",
+            "concepts"
+          ],
+          "repos": [
+            "safla"
+          ],
+          "reason": "card evidence favors safla (7 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-08",
+          "group": "described",
+          "expected": [
+            "qudag",
+            "concepts"
+          ],
+          "repos": [
+            "qudag"
+          ],
+          "reason": "card evidence favors qudag (6 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-09",
+          "group": "described",
+          "expected": [
+            "dspy.ts",
+            "concepts"
+          ],
+          "repos": [
+            "dspy.ts",
+            "agent-name-service",
+            "agentdb"
+          ],
+          "reason": "card evidence favors dspy.ts (5 matching concepts); widened to agent-name-service, agentdb — typescript appear there",
+          "rank": 1
+        },
+        {
+          "id": "d-10",
+          "group": "described",
+          "expected": [
+            "synthlang",
+            "concepts"
+          ],
+          "repos": [
+            "synthlang"
+          ],
+          "reason": "card evidence favors synthlang (4 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-11",
+          "group": "described",
+          "expected": [
+            "sparc",
+            "concepts"
+          ],
+          "repos": [
+            "sparc"
+          ],
+          "reason": "card evidence favors sparc (4 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-12",
+          "group": "described",
+          "expected": [
+            "ruv-fann",
+            "concepts"
+          ],
+          "repos": [
+            "ruv-fann"
+          ],
+          "reason": "card evidence favors ruv-fann (5 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-13",
+          "group": "described",
+          "expected": [
+            "cve-bench",
+            "concepts"
+          ],
+          "repos": [
+            "cve-bench"
+          ],
+          "reason": "card evidence favors cve-bench (6 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-14",
+          "group": "described",
+          "expected": [
+            "agent-harness-generator",
+            "agentic-flow",
+            "concepts"
+          ],
+          "repos": [
+            "metaharness",
+            "agentic-flow",
+            "concepts"
+          ],
+          "reason": "source intent selects the cheap-verify-frontier escalation harness",
+          "rank": 1
+        },
+        {
+          "id": "d-15",
+          "group": "described",
+          "expected": [
+            "agentic-qe",
+            "ruflo",
+            "concepts"
+          ],
+          "repos": [
+            "agentic-qe"
+          ],
+          "reason": "card evidence favors agentic-qe (7 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-16",
+          "group": "described",
+          "expected": [
+            "rvm",
+            "concepts"
+          ],
+          "repos": [
+            "rvm"
+          ],
+          "reason": "card evidence favors rvm (3 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-17",
+          "group": "described",
+          "expected": [
+            "agentic-flow",
+            "ruflo",
+            "concepts"
+          ],
+          "repos": [
+            "agentic-flow"
+          ],
+          "reason": "card evidence favors agentic-flow (5 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-18",
+          "group": "described",
+          "expected": [
+            "metaharness",
+            "agent-harness-generator",
+            "ruflo",
+            "ruv-gists",
+            "concepts"
+          ],
+          "repos": [
+            "metaharness",
+            "dream-machine"
+          ],
+          "reason": "source intent selects the receipt-backed promotion and rollback harness",
+          "rank": 1
+        },
+        {
+          "id": "d-19",
+          "group": "described",
+          "expected": [
+            "agentdb",
+            "ruflo",
+            "concepts"
+          ],
+          "repos": [
+            "ruflo"
+          ],
+          "reason": "card evidence favors ruflo (9 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "d-20",
+          "group": "described",
+          "expected": [
+            "ruflo",
+            "ruv-gists",
+            "concepts"
+          ],
+          "repos": [
+            "ruflo",
+            "agentdb",
+            "ai-code-generator-"
+          ],
+          "reason": "source intent selects the adaptive retrieval flywheel and its promotion gate",
+          "rank": 1
+        },
+        {
+          "id": "s-01",
+          "group": "scenario",
+          "expected": [
+            "ruvector",
+            "concepts"
+          ],
+          "repos": [
+            "ruvector",
+            "agentic-qe",
+            "rupixel"
+          ],
+          "reason": "source intent selects the on-device HNSW index and zero-server deployment",
+          "rank": 1
+        },
+        {
+          "id": "s-02",
+          "group": "scenario",
+          "expected": [
+            "agentdb",
+            "concepts"
+          ],
+          "repos": [
+            "agentdb"
+          ],
+          "reason": "card evidence favors agentdb (8 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "s-03",
+          "group": "scenario",
+          "expected": [
+            "agentic-qe",
+            "ruflo",
+            "concepts"
+          ],
+          "repos": [
+            "agentic-qe"
+          ],
+          "reason": "card evidence favors agentic-qe (12 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "s-04",
+          "group": "scenario",
+          "expected": [
+            "ruflo",
+            "agentic-flow",
+            "concepts"
+          ],
+          "repos": [
+            "ruflo"
+          ],
+          "reason": "card evidence favors ruflo (10 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "s-05",
+          "group": "scenario",
+          "expected": [
+            "agenticow",
+            "concepts"
+          ],
+          "repos": [
+            "agenticow"
+          ],
+          "reason": "card evidence favors agenticow (11 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "s-06",
+          "group": "scenario",
+          "expected": [
+            "rulake",
+            "concepts"
+          ],
+          "repos": [
+            "rulake"
+          ],
+          "reason": "card evidence favors rulake (10 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "s-07",
+          "group": "scenario",
+          "expected": [
+            "qudag",
+            "concepts"
+          ],
+          "repos": [
+            "qudag"
+          ],
+          "reason": "card evidence favors qudag (11 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "s-08",
+          "group": "scenario",
+          "expected": [
+            "synthlang",
+            "concepts"
+          ],
+          "repos": [
+            "synthlang"
+          ],
+          "reason": "card evidence favors synthlang (4 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "s-09",
+          "group": "scenario",
+          "expected": [
+            "sparc",
+            "concepts"
+          ],
+          "repos": [
+            "sparc"
+          ],
+          "reason": "card evidence favors sparc (9 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "s-10",
+          "group": "scenario",
+          "expected": [
+            "cve-bench",
+            "concepts"
+          ],
+          "repos": [
+            "cve-bench"
+          ],
+          "reason": "card evidence favors cve-bench (5 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "s-11",
+          "group": "scenario",
+          "expected": [
+            "ruv-fann",
+            "concepts"
+          ],
+          "repos": [
+            "ruv-fann"
+          ],
+          "reason": "card evidence favors ruv-fann (4 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "s-12",
+          "group": "scenario",
+          "expected": [
+            "agent-harness-generator",
+            "ruflo",
+            "concepts"
+          ],
+          "repos": [
+            "ruflo"
+          ],
+          "reason": "source intent selects evolvable harness policy and replayable receipts",
+          "rank": 1
+        },
+        {
+          "id": "s-13",
+          "group": "scenario",
+          "expected": [
+            "agent-harness-generator",
+            "agentic-flow",
+            "concepts"
+          ],
+          "repos": [
+            "metaharness",
+            "agentic-flow",
+            "concepts"
+          ],
+          "reason": "source intent selects the cheap-verify-frontier escalation harness",
+          "rank": 1
+        },
+        {
+          "id": "s-14",
+          "group": "scenario",
+          "expected": [
+            "dspy.ts",
+            "concepts"
+          ],
+          "repos": [
+            "dspy.ts",
+            "agent-name-service",
+            "agentdb"
+          ],
+          "reason": "card evidence favors dspy.ts (6 matching concepts); widened to agent-name-service, agentdb — typescript appear there",
+          "rank": 1
+        },
+        {
+          "id": "s-15",
+          "group": "scenario",
+          "expected": [
+            "agentic-flow",
+            "concepts"
+          ],
+          "repos": [
+            "agentic-flow"
+          ],
+          "reason": "card evidence favors agentic-flow (7 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "s-16",
+          "group": "scenario",
+          "expected": [
+            "rvm",
+            "concepts"
+          ],
+          "repos": [
+            "rvm"
+          ],
+          "reason": "card evidence favors rvm (12 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "s-17",
+          "group": "scenario",
+          "expected": [
+            "ruflo",
+            "concepts"
+          ],
+          "repos": [
+            "ruflo",
+            "ruvnet-brain",
+            "dream-machine"
+          ],
+          "reason": "source intent selects living ADR lifecycle and implementation-drift review",
+          "rank": 1
+        },
+        {
+          "id": "s-18",
+          "group": "scenario",
+          "expected": [
+            "agenticow",
+            "concepts"
+          ],
+          "repos": [
+            "agenticow"
+          ],
+          "reason": "card evidence favors agenticow (9 matching concepts)",
+          "rank": 1
+        },
+        {
+          "id": "s-19",
+          "group": "scenario",
+          "expected": [
+            "ruflo",
+            "agent-harness-generator",
+            "ruv-gists",
+            "concepts"
+          ],
+          "repos": [
+            "metaharness",
+            "agentic-flow",
+            "dream-machine",
+            "safla"
+          ],
+          "reason": "source intent selects the receipt-backed promotion and rollback harness",
+          "rank": 1
+        },
+        {
+          "id": "s-20",
+          "group": "scenario",
+          "expected": [
+            "agentic-flow",
+            "concepts"
+          ],
+          "repos": [
+            "agentic-flow",
+            "ruv-gists"
+          ],
+          "reason": "query explicitly names agentic-flow; widened to ruv-gists — openrouter, maxcostpertask appear there",
+          "rank": 1
+        }
+      ]
+    },
+    "offTopic": {
+      "all": {
+        "goldAt1": {
+          "k": 0,
+          "n": 20,
+          "p": 0,
+          "lo": 0,
+          "hi": 0.1611
+        },
+        "goldAt3": {
+          "k": 0,
+          "n": 20,
+          "p": 0,
+          "lo": 0,
+          "hi": 0.1611
+        },
+        "goldAt5": {
+          "k": 0,
+          "n": 20,
+          "p": 0,
+          "lo": 0,
+          "hi": 0.1611
+        },
+        "declined": {
+          "k": 15,
+          "n": 20,
+          "p": 0.75,
+          "lo": 0.5313,
+          "hi": 0.8881
+        },
+        "reposOpened": 0.25
+      },
+      "byGroup": {
+        "adversarial": {
+          "goldAt1": {
+            "k": 0,
+            "n": 20,
+            "p": 0,
+            "lo": 0,
+            "hi": 0.1611
+          },
+          "goldAt3": {
+            "k": 0,
+            "n": 20,
+            "p": 0,
+            "lo": 0,
+            "hi": 0.1611
+          },
+          "goldAt5": {
+            "k": 0,
+            "n": 20,
+            "p": 0,
+            "lo": 0,
+            "hi": 0.1611
+          },
+          "declined": {
+            "k": 15,
+            "n": 20,
+            "p": 0.75,
+            "lo": 0.5313,
+            "hi": 0.8881
+          },
+          "reposOpened": 0.25
+        }
+      },
+      "msPerQuestion": 1871.1,
+      "rows": [
+        {
+          "id": "a-01",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [
+            "midstream"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "a-02",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "card router was ambiguous (closest=chatgpt_plugin_python overlap=1)",
+          "rank": null
+        },
+        {
+          "id": "a-03",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "query contains stripe, django outside the card catalogue",
+          "rank": null
+        },
+        {
+          "id": "a-04",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "card router was ambiguous (closest=agentic-artifacts overlap=1)",
+          "rank": null
+        },
+        {
+          "id": "a-05",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "card router was ambiguous (closest=powerprompt overlap=2)",
+          "rank": null
+        },
+        {
+          "id": "a-06",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [
+            "rulake"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "a-07",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "query contains excel, vlookup outside the card catalogue",
+          "rank": null
+        },
+        {
+          "id": "a-08",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "card router was ambiguous (closest=musicai overlap=2)",
+          "rank": null
+        },
+        {
+          "id": "a-09",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "query contains salesforce, apex outside the card catalogue",
+          "rank": null
+        },
+        {
+          "id": "a-10",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [
+            "dream-machine"
+          ],
+          "reason": "card evidence favors dream-machine (3 matching concepts)",
+          "rank": null
+        },
+        {
+          "id": "a-11",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "card router was ambiguous (closest=aitoml overlap=1)",
+          "rank": null
+        },
+        {
+          "id": "a-12",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [
+            "swarm-world"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "a-13",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "query contains cobol, varying outside the card catalogue",
+          "rank": null
+        },
+        {
+          "id": "a-14",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "card router was ambiguous (closest=llm-stream-reformat overlap=1)",
+          "rank": null
+        },
+        {
+          "id": "a-15",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "card router was ambiguous (closest=ruflo overlap=2)",
+          "rank": null
+        },
+        {
+          "id": "a-16",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [
+            "midstream"
+          ],
+          "reason": "bounded source metadata and card shortlist; retrieval must independently establish relevance",
+          "rank": null
+        },
+        {
+          "id": "a-17",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "query contains wireshark, tls outside the card catalogue",
+          "rank": null
+        },
+        {
+          "id": "a-18",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "card router was ambiguous (closest=aihl overlap=1)",
+          "rank": null
+        },
+        {
+          "id": "a-19",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "query contains riverpod, flutter outside the card catalogue",
+          "rank": null
+        },
+        {
+          "id": "a-20",
+          "group": "adversarial",
+          "expected": [],
+          "repos": [],
+          "reason": "query contains encrypt, dns outside the card catalogue",
+          "rank": null
+        }
+      ]
+    }
+  }
+}

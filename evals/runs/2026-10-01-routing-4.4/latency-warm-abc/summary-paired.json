@@ -1,0 +1,84 @@
+{
+ "n": 69,
+ "nOk": 69,
+ "loadAt": {
+  "min": 30.1,
+  "max": 59.9
+ },
+ "arms": {
+  "A_base": {
+   "p50": 9587,
+   "p90": 16228,
+   "meanRepos": 2.319,
+   "errors": 0
+  },
+  "C_final_oldroute": {
+   "p50": 7174,
+   "p90": 11758,
+   "meanRepos": 2.319,
+   "errors": 0
+  },
+  "B_final": {
+   "p50": 10825,
+   "p90": 18034,
+   "meanRepos": 3.29,
+   "errors": 0
+  }
+ },
+ "deltas": {
+  "C_final_oldroute - A_base": {
+   "p50": -2413,
+   "p50CI": [
+    -3307,
+    -1578
+   ],
+   "p90": -4470,
+   "p90CI": [
+    -6387,
+    -402
+   ],
+   "medianPairedDiff": -2238,
+   "medianPairedCI": [
+    -2524,
+    -1951
+   ],
+   "bFaster": "61/69"
+  },
+  "B_final - A_base": {
+   "p50": 1238,
+   "p50CI": [
+    -364,
+    2053
+   ],
+   "p90": 1806,
+   "p90CI": [
+    -1055,
+    4309
+   ],
+   "medianPairedDiff": 453,
+   "medianPairedCI": [
+    -271,
+    2447
+   ],
+   "bFaster": "31/69"
+  },
+  "B_final - C_final_oldroute": {
+   "p50": 3651,
+   "p50CI": [
+    2023,
+    4679
+   ],
+   "p90": 6275,
+   "p90CI": [
+    1839,
+    7465
+   ],
+   "medianPairedDiff": 3006,
+   "medianPairedCI": [
+    323,
+    5191
+   ],
+   "bFaster": "17/69"
+  }
+ }
+}
