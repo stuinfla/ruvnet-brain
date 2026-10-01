@@ -2,7 +2,7 @@
 id: ADR-012
 status: Accepted
 date: 2026-07-13
-updated: 2026-07-27
+updated: 2026-09-30
 updated_source: derived-from-git
 ---
 # ADR-0012: Grounding gate on the write path — brain consultation is enforced, not advisory
@@ -10,6 +10,7 @@ updated_source: derived-from-git
 **Status**: Accepted (2026-07-13)
 **Date**: 2026-07-13
 **Updated**: 2026-07-13 — implemented + installed into `~/.claude/settings.json` the same day; live-fired on its own author within minutes (blocked an ungrounded `ruflo` write mid-rework)
+**Updated**: 2026-09-30 — the same write chokepoint now also refuses DUPLICATION (owner: "is it the simplest version of the code that works, that doesn't create duplicates or replication across the project?"): policy `duplicate-code` (`plugin/scripts/duplicate-gate.mjs`, composed by decision-gate, no new hook) refuses a new code file or a ≥15-line new export under scripts/ kb/ plugin/scripts/ tests/ bin/ that matches existing repo code, once per path per session, unless its header says `// DISTINCT-FROM: <path> — <reason>`. Replay over 300 commits (`scripts/duplicate-gate-replay.mjs`): 40 of 478 new files would have been refused, 19 genuine persisted duplicates, 21 moves/extractions, 0 unrelated.
 **Authors**: Claude Code, directed by Stuart Kerr
 **Supersedes**: None
 **Related**: ADR-0004 (effectiveness first), ADR-0005 (behavioral grounding, not a lock), rUv's `@claude-flow/guidance` ADR-G007 (upstream principle), the `feedback_never_impersonate_ruv_tools` standing order

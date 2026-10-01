@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Local publication is deliberately impossible. The one publisher may mutate public channels only
-// when the reviewer-protected GitHub workflow carries a fully valid candidate seal into it.
+// when the branch-protected GitHub workflow carries a fully valid candidate seal into it.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';

@@ -10,7 +10,7 @@ const HOSTS = Object.freeze(['claude', 'codex']);
 const OS_LANES = Object.freeze(['linux', 'macos', 'windows']);
 const CLAIM_CLASSES = Object.freeze(['installation', 'behavior', 'currentVersion', 'latestVersion', 'health']);
 const VERSION = /\bv?(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)\b/;
-const RUVNET_TOOL = '(?:Ruflo|Claude Flow|Agentic Flow|Agentic QE|RuVector|Agent Browser|Ruv Swarm|AgentDB|RuLake|RuvNet Brain)';
+const RUVNET_TOOL_DEFAULT = '(?:Ruflo|Claude Flow|Agentic Flow|Agentic QE|RuVector|Agent Browser|Ruv Swarm|AgentDB|RuLake|RuvNet Brain)';
 const MAX_AGE_MS = 10 * 60_000;
 const MAX_LEDGER_BYTES = 1024 * 1024;
 const STOPWORDS = new Set(['a', 'an', 'and', 'are', 'can', 'could', 'does', 'for', 'has', 'have',
@@ -227,7 +227,16 @@ export function readLiveSurfaceReceipts({ file = null, env = process.env, limit 
   } catch { return []; }
 }
 
-function extractClaims(message) {
+/**
+ * Claim extraction. `tools` widens the subject vocabulary beyond RUVNET_TOOL (grounding-turn-gate.mjs
+ * passes repo aliases, installed stores and the armed prompt's subjects); the default is unchanged,
+ * so this file's own Stop audit keeps exactly its original scope.
+ */
+const escapeRe = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+export function extractClaims(message, { tools = null } = {}) {
+  const RUVNET_TOOL = tools?.length
+    ? `(?:${[...new Set(tools.map(String).filter(Boolean))].sort((a, b) => b.length - a.length).map(escapeRe).join('|')})`
+    : RUVNET_TOOL_DEFAULT;
   const claims = [];
   for (const sentence of safeMessage(message).split(/(?<=[.!?])\s+|\n+/).map((value) => value.trim()).filter(Boolean)) {
     let match = new RegExp(`\\b(${RUVNET_TOOL})\\b[^.!?]{0,48}\\b(?:current|installed)\\s+version\\s+(?:is\\s+)?v?(\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?)`, 'i').exec(sentence);

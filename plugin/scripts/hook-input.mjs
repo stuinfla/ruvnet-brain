@@ -96,6 +96,21 @@ export function readStdinBounded({ maxBytes = 65536, idleMs = 50, emptyMs = 250 
   });
 }
 
+/**
+ * The Stop-hook payload with its provenance, shared by every Stop gate (was a verbatim copy in
+ * continuation-gate and grounding-turn-gate). Three sources, treated differently by callers:
+ * 'tty' (run bare, never force), 'unreadable' (read/parse failed — fs.readFileSync(0) throws EAGAIN
+ * intermittently on macOS; laundering that into {} would read as a fresh stop), 'stdin' (parsed — the
+ * only source allowed to force). ADR-043.
+ */
+export async function readStopHookInput() {
+  if (process.stdin.isTTY) return { __source: 'tty' };
+  try {
+    const raw = (await readStdinBounded()).toString('utf8');
+    return { ...JSON.parse(raw || '{}'), __source: 'stdin' };
+  } catch { return { __source: 'unreadable' }; }
+}
+
 /** The tool being invoked ("Bash", "Write", …), or "" if absent. */
 export function toolName(ev) {
   return ev && typeof ev.tool_name === 'string' ? ev.tool_name : '';

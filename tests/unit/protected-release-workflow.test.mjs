@@ -55,7 +55,7 @@ describe('protected release rail', () => {
       .filter((file) => /\n\s{2}workflow_dispatch:/.test(read(`.github/workflows/${file}`)));
     expect(dispatchers).toEqual(['protected-release.yml']);
     // `mode` is a SELECTOR, not an authority grant (ADR-086 step 17): it chooses between the
-    // owner-gated code chain and the corpus-only chain, and the corpus chain re-proves corpus-only
+    // machine-gated code chain and the corpus-only chain, and the corpus chain re-proves corpus-only
     // routing in its own jobs. The input list stays closed — a fourth input here would be a new,
     // unreviewed way to steer the only workflow permitted to sign and publish.
     expect(dispatchInputNames(workflow())).toEqual(['mode', 'candidate_sha', 'version', 'corpus_dispatch_id']);
@@ -99,7 +99,7 @@ describe('protected release rail', () => {
     const source = workflow();
     expect(source).toContain('group: ruvnet-brain-release');
     expect(source).toContain('cancel-in-progress: false');
-    // ONE owner click per release: only the npm-carrying publish job binds the reviewed environment.
+    // Only the npm-carrying publish job binds the npm-scoped environment (no human pause there).
     expect(source.match(/environment: Production – ruvnet-brain/g)).toHaveLength(1);
     expect(source.match(/node scripts\/release\.mjs --publish/g)).toHaveLength(1);
     expect(source).toContain('RUVNET_RELEASE_MODE: stabilization');
@@ -170,14 +170,38 @@ describe('protected release rail', () => {
     expect(read('scripts/code-release-corpus.mjs')).toContain("script('rvf-index-audit.mjs'), '--dir', assets, '--repair'");
   });
 
-  it('asks the owner once per release, and a failed publish can be re-run in place', () => {
+  it('MACHINE GATES replace the human approval: the publish path is reachable only through every one of them', () => {
+    const source = workflow();
+    const blocks = Object.fromEntries(source.split(/\n(?=  [a-z][a-z-]*:\n)/)
+      .filter((block) => /^  [a-z][a-z-]*:\n/.test(block))
+      .map((block) => [block.slice(2, block.indexOf(':')), block]));
+    // Exact candidate: dispatched SHA == main == the run's SHA, version matches, clean tree.
+    for (const check of ['test "$GITHUB_SHA" = "$EXPECTED_SHA"', 'test "$(git rev-parse origin/main)" = "$EXPECTED_SHA"',
+      'test "$(node -p "require(\'./package.json\').version")" = "$EXPECTED_VERSION"', 'test -z "$(git status --porcelain)"']) {
+      expect(blocks.identity, check).toContain(check);
+    }
+    // Preflight green on that exact SHA, from a release/* push in this repository, exactly one artifact.
+    for (const check of ["run.conclusion === 'success'", "run.event === 'push'", 'run.head_sha === sha', '/^release\\/.+/',
+      'artifacts.length !== 1', "aggregate.verdict !== 'PASS'", '--label release-blocker']) {
+      expect(blocks['verified-candidate'], check).toContain(check);
+    }
+    // The publisher re-proves main == verified SHA itself, and cannot start without both upstream jobs.
+    expect(blocks.publish).toContain('test "$(git rev-parse origin/main)" = "$RUVNET_EXPECTED_SHA"');
+    expect(blocks.publish).toContain('needs: [verified-candidate, seal-payload]');
+    // Nothing is terminal until three OS lanes verify the public bytes; no job pauses for a person.
+    expect(blocks['public-verification']).toContain('needs: [verified-candidate, publish]');
+    expect(blocks['finalize-public-verification']).toContain('needs: [verified-candidate, public-verification]');
+    expect(source).not.toMatch(/wait-timer|required[_ -]reviewers?|pending_deployments/i);
+  });
+
+  it('binds the npm environment in exactly one job, and a failed publish can be re-run in place', () => {
     const source = workflow();
     // Job blocks: split ONLY at two-space job headers ("\n  name:\n"), never at deeper indentation.
     const blocks = Object.fromEntries(source.split(/\n(?=  [a-z][a-z-]*:\n)/)
       .filter((block) => /^  [a-z][a-z-]*:\n/.test(block))
       .map((block) => [block.slice(2, block.indexOf(':')), block]));
-    const reviewed = Object.keys(blocks).filter((job) => blocks[job].includes('environment: Production – ruvnet-brain'));
-    expect(reviewed).toEqual(['publish']);
+    const npmScoped = Object.keys(blocks).filter((job) => blocks[job].includes('environment: Production – ruvnet-brain'));
+    expect(npmScoped).toEqual(['publish']);
     for (const job of ['seal-payload', 'finalize-public-verification']) {
       expect(blocks[job], job).toContain('environment: Production – corpus');
       const executable = blocks[job].split('\n').filter((line) => !/^\s*#/.test(line)).join('\n');

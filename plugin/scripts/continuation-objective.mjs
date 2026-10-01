@@ -38,3 +38,18 @@ export function authorizedContinuationObjective(objective, input, identity) {
     || !Array.isArray(objective.worktreeIds) || !objective.worktreeIds.includes(identity.worktreeId)) return null;
   return objective;
 }
+
+// Promises the assistant made in a final answer ("I'll do X next"), captured by continuation-gate
+// into the SAME ledger (owner mandate 2026-09-15: "I will" is a contract). Same scoping discipline
+// as the objective above — project AND worktree must match, a session wildcard only as the literal
+// '*' — and the same loop guards. An item that is done, malformed, or foreign is never returned.
+export function authorizedPromiseItems(items, input, identity) {
+  if (!identity || input?.hook_event_name !== 'Stop' || !text(input.session_id)
+    || input.interrupted || input.cancelled || input.stop_hook_active) return [];
+  return (Array.isArray(items) ? items : []).filter((item) => item?.kind === 'assistant-commitment'
+    && item.schemaVersion === 1 && item.done !== true && text(item.text) && Number.isFinite(Date.parse(item.at))
+    && item.authorization?.kind === 'owner-mandate' && text(item.authorization.reference)
+    && item.projectId === identity.projectId
+    && Array.isArray(item.worktreeIds) && item.worktreeIds.includes(identity.worktreeId)
+    && Array.isArray(item.sessionIds) && (item.sessionIds.includes('*') || item.sessionIds.includes(input.session_id)));
+}

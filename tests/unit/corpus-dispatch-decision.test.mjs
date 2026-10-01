@@ -22,8 +22,8 @@ const dirs = [];
 afterEach(() => { while (dirs.length) fs.rmSync(dirs.pop(), { recursive: true, force: true }); });
 
 describe('corpus dispatch decision (pure)', () => {
-  it('the pipeline floor is 4.3.36 and versions compare numerically, not lexically', () => {
-    expect(MIN_PIPELINE_VERSION).toBe('4.3.36'); // sync-version-ignore: the design's fixed floor
+  it('the pipeline floor is 4.3.38 and versions compare numerically, not lexically', () => {
+    expect(MIN_PIPELINE_VERSION).toBe('4.3.38'); // sync-version-ignore: the design's fixed floor
     expect(WIDE_MINOR < FLOOR).toBe(true); // the lexical trap this comparison must not fall into
     expect(compareVersions(WIDE_MINOR, FLOOR)).toBe(1);
     expect(compareVersions(FLOOR, FLOOR)).toBe(0);

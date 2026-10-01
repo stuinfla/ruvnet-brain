@@ -1073,6 +1073,23 @@ function writeSnapshotReceipt(backupPath, { state, reason = null, recoveryComman
  *
  * @returns {{removed: string[], kept: [string, string][], freed: number}}
  */
+/**
+ * WHY a guard run failed. forge-guard prints its `[FAIL] ...` lines to STDOUT, and execFileSync puts only
+ * STDERR in error.message, so a refused store used to read "Command failed: node .../forge-guard.mjs --name X"
+ * with the cause dropped (measured 2026-09-30: the customer canary refused a generation and its log did not
+ * say why). Keep the command line, then append the guard's own FAIL lines.
+ */
+export function describeGuardFailure(error) {
+  const text = (value) => (value == null ? '' : Buffer.isBuffer(value) ? value.toString('utf8') : String(value));
+  const fails = `${text(error?.stdout)}\n${text(error?.stderr)}`.split('\n')
+    .map((line) => line.trim()).filter((line) => /\[FAIL\]|Error:/.test(line));
+  // Keep the WHOLE message: execFileSync appends the child's stderr on the lines after the command line.
+  const message = String(error?.message || error);
+  const extra = fails.filter((line) => !message.includes(line));
+  const cause = extra.length ? ` -- ${extra.join(' | ').slice(0, 800)}` : '';
+  return `${message.slice(0, 1600)}${cause}`;
+}
+
 export function reclaimBackups({
   kbDir,
   backupsMade = [],
@@ -1694,7 +1711,7 @@ async function main() {
         if (phase === 'live') finalVerificationByStore.set(local.kbName, verified);
       }
       return { valid: true, failures: [] };
-    } catch (error) { return { valid: false, failures: [`forge-guard failed: ${error.message}`] }; }
+    } catch (error) { return { valid: false, failures: [`forge-guard failed: ${describeGuardFailure(error)}`] }; }
   };
   let transaction;
   try {
@@ -1729,6 +1746,16 @@ async function main() {
         if (fs.existsSync(liveRuntimeIdentity)) {
           fs.copyFileSync(assertNoFollowPath(liveDir, liveRuntimeIdentity),
             assertNoFollowPath(candidateDir, path.join(candidateDir, 'RUNTIME-IDENTITY.json')));
+        }
+        // node_modules (the ONNX embedder and RVF readers) is installer-placed and never ships inside a
+        // bundle, the same class as the two files above. The candidate is validated by forge-guard in a
+        // SIBLING directory with no parent node_modules, so without it the guard cannot load the
+        // embedder and every apply fails; and the exact-tree swap would delete it from the live KB.
+        // Reflink clone where the filesystem supports it (APFS/btrfs), plain copy otherwise.
+        const liveModules = path.join(liveDir, 'node_modules');
+        if (fs.existsSync(liveModules) && !fs.existsSync(path.join(candidateDir, 'node_modules'))) {
+          fs.cpSync(assertNoFollowPath(liveDir, liveModules), path.join(candidateDir, 'node_modules'),
+            { recursive: true, verbatimSymlinks: true, mode: fs.constants.COPYFILE_FICLONE });
         }
         restorePrivateFilesIntoCandidate({ candidateDir, sourceDir: liveDir, overlay: privateOverlay });
         // ATOMIC WITH INSTALLATION, not after it. The transport identity is written INTO the
