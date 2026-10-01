@@ -57,7 +57,7 @@ describe('ci.yml corpus seed consumers (ADR-0091 D6.7)', () => {
 
   it('the corpus publisher is handed the generation\'s sealed coverage (D6.2)', () => {
     const release = read('.github/workflows/protected-release.yml');
-    expect(release).toMatch(/node scripts\/release\.mjs --corpus-seed --promote-latest[\s\S]{0,400}--corpus-coverage "\$staged\/source-coverage\.json"/);
+    expect(release).toMatch(/node scripts\/release\.mjs --corpus-seed --stage-candidate[\s\S]{0,400}--corpus-coverage "\$staged\/source-coverage\.json"/);
     expect(read('.github/workflows/corpus-seed.yml')).toContain('cp data/source-coverage.json "$staged/source-coverage.json"');
   });
 

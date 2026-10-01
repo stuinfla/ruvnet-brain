@@ -11,12 +11,21 @@ name: corpus-watchdog
 # time to finish. It runs on a genuine `schedule:`, so its red conclusion fires ntfy-alerts.yml's
 # workflow_run listener (it is on that watch list) — exit 1 on RED is the entire paging mechanism.
 #
+# 12:17 UTC (08:17 EDT / 07:17 EST) is the SAME-MORNING page (customer canary, 2026-09-30). A night
+# whose customer canary refused the candidate, or whose run failed, is already finished by then
+# (dispatch 07:17 + ~3 h preparation + ~30 min canary), and a protected-release failure cannot page
+# by itself (a GITHUB_TOKEN-dispatched run fires no workflow_run). A run still in progress at 12:17 is
+# INFO, not red, so the 17:17 run remains the judge of a slow night. The watchdog also goes red when
+# the generation customers receive (releases/latest) is older than 36h, the server-side half of
+# "nobody's Brain is ever more than 48h old", and when the last customer canary refused its candidate.
+#
 # Read-only by construction: `contents: read` + `actions: read`, the automatic token only, NO
 # secrets, no environment, no id-token. It lists runs and releases and downloads small public
 # assets; it cannot dispatch, sign, or publish anything.
 on:
   schedule:
     - cron: '17 17 * * *'
+    - cron: '17 12 * * *'
   workflow_dispatch: {}
 
 permissions:

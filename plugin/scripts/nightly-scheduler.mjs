@@ -272,6 +272,40 @@ export function refreshRunHealth({ brainHome, identity = NIGHTLY_LABEL, now = Da
     evidence: `Last nightly refresh ${receipt.terminalVerdict} ${ageHours.toFixed(1)}h ago; envelope verified.`, receipt };
 }
 
+/**
+ * Every refresh receipt (nightly AND manual --update), newest first, reduced to what a user needs
+ * to know: the newest run, the newest SUCCESS (envelope-verified, the same validator the proof
+ * uses), and how many runs failed since that success. Read-only, no spawn. An unreadable receipt
+ * is counted, never skipped silently.
+ */
+export function refreshHistory({ brainHome }) {
+  let names = [];
+  try { names = fs.readdirSync(path.join(brainHome, 'refresh-runs')).filter((n) => n.endsWith('.json')); }
+  catch { return { receipts: 0, unreadable: 0, latest: null, lastSuccess: null, failuresSinceSuccess: 0 }; }
+  const rows = [];
+  let unreadable = 0;
+  for (const name of names) {
+    try {
+      const r = JSON.parse(fs.readFileSync(path.join(brainHome, 'refresh-runs', name), 'utf8'));
+      const at = Date.parse(r?.finishedAt || r?.startedAt || '');
+      if (r?.kind === 'ruvnet-brain-refresh-run' && Number.isFinite(at)) rows.push({ at, receipt: r });
+      else unreadable += 1;
+    } catch { unreadable += 1; }
+  }
+  rows.sort((a, b) => b.at - a.at);
+  const successIndex = rows.findIndex(({ receipt }) => validateRefreshReceiptEnvelope(receipt).ok);
+  const sinceSuccess = successIndex < 0 ? rows : rows.slice(0, successIndex);
+  return { receipts: rows.length, unreadable, latest: rows[0] || null,
+    lastSuccess: successIndex < 0 ? null : rows[successIndex],
+    failuresSinceSuccess: sinceSuccess.filter(({ receipt }) => receipt.status === 'FAILED').length };
+}
+
+/** agentic-kit owns this machine's Brain updates (`ak sync`), so the Brain's own scheduler is off on purpose. */
+export function updateOwnedByAgenticKit(home = os.homedir()) {
+  try { return JSON.parse(fs.readFileSync(path.join(home, '.config', 'agentic-kit', 'kit.json'), 'utf8')).ruvnetBrain === true; }
+  catch { return false; }
+}
+
 export function nightlyCommand(record) {
   return `${shellQuote(record.nodePath)} ${shellQuote(record.runnerPath)} --registration ${shellQuote(record.recordPath)}`;
 }

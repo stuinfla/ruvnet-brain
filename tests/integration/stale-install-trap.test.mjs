@@ -87,15 +87,20 @@ function copyLocalImportClosure(entry, fromRoot, toRoot, seen = new Set()) {
  * Run the installer. `breakLookup` copies it with the repo slug pointed at a nonexistent repo so
  * the real GitHub call genuinely 404s — exercising the fallback path rather than simulating it.
  */
-function runInstaller({ breakLookup = false, latestTag } = {}) {
+function runInstaller({ breakLookup = false, refuseLookup = false, latestTag } = {}) {
   let script = INSTALLER;
-  if (breakLookup) {
+  if (breakLookup || refuseLookup) {
     script = path.join(work, 'bin', 'install.mjs');
     fs.mkdirSync(path.dirname(script), { recursive: true });
     fs.mkdirSync(path.join(work, 'kb'), { recursive: true });
     fs.mkdirSync(path.join(work, 'scripts'), { recursive: true });
-    const src = fs.readFileSync(INSTALLER, 'utf8')
-      .replace("const REPO = 'stuinfla/ruvnet-brain';", "const REPO = 'stuinfla/definitely-not-a-real-repo-xyz';");
+    let src = fs.readFileSync(INSTALLER, 'utf8');
+    src = refuseLookup
+      // Offline, without the network: a port nothing listens on refuses the connection at once.
+      ? src.replace('const RELEASE_API = `https://api.github.com/repos/${REPO}/releases/latest`;',
+        'const RELEASE_API = \'https://127.0.0.1:9/releases/latest\';')
+      : src.replace("const REPO = 'stuinfla/ruvnet-brain';", "const REPO = 'stuinfla/definitely-not-a-real-repo-xyz';");
+    if (src === fs.readFileSync(INSTALLER, 'utf8')) throw new Error('lookup seam not found in the installer');
     fs.writeFileSync(script, src);
     copyLocalImportClosure(INSTALLER, ROOT, work);
   }
@@ -173,6 +178,18 @@ describe('stale-install trap', () => {
 
     expect(out, 'must not treat the known-good pin as "latest"').not.toMatch(/out of date/i);
     expect(out, 'must be honest that it could not verify').toMatch(/could not check|WITHOUT verifying/i);
+  });
+
+  it('a FRESH install whose release lookup fails stops loudly with the cause, never on the pinned old bundle', () => {
+    // Measured 2026-09-30: the lookup hit a network blip, the installer quietly chose the pinned
+    // known-good bundle and said "the install is still safe and complete" — and that bundle, which
+    // predates COVERAGE.json, failed validation two steps later with the real cause off screen.
+    const out = runInstaller({ refuseLookup: true });
+
+    expect(out).toMatch(/couldn't look up the latest RuvNet Brain release \(.*ECONNREFUSED/);
+    expect(out).toMatch(/re-run the same command/);
+    expect(out).not.toMatch(/safe and complete|Downloading the brain/);
+    expect(fs.existsSync(path.join(home, '.cache', 'ruvnet-brain', 'kb', 'forge-mcp-all.mjs'))).toBe(false);
   });
 });
 

@@ -7,7 +7,7 @@
 // scripts/verify-bundle.mjs (:645) and keys/ruvnet-brain-signing.pub.pem (:648) — and the customer
 // updater extracts that archive straight into the user's Claude Code config. So an unattended corpus
 // promotion built at HEAD would ship whatever unreleased executable bytes happen to be on main that
-// night, to every installed client, with no owner approval anywhere in the path. That is a code
+// night, to every installed client, with no install-verified code release behind it. That is a code
 // release wearing a corpus release's clothes.
 //
 // The pin closes it by ENFORCED EQUALITY, not by a version string. Dual's correction is explicit:
