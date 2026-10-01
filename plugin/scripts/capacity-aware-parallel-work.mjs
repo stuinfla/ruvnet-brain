@@ -74,12 +74,35 @@ export function parseMacPressureOutput(text, { totalMemoryBytes, normalizedLoad 
   return { freePct, swapUsedBytes, compressorBytes, totalMemoryBytes, normalizedLoad };
 }
 
-/** Classify measured pressure. Unknown or incomplete measurements recommend serial work. */
+/**
+ * The total-agent ceiling when no host cap is reported, scaled to the machine. Owner rule (2026-09-30):
+ * a big machine must be used — 16 cores / 128 GB is ~10 agents when idle; small or unmeasured machines
+ * keep the conservative 4.
+ */
+export function hardwareAgentCeiling(cores) {
+  if (!Number.isInteger(cores) || cores < 1) return UNKNOWN_RUNTIME_TOTAL_AGENT_CEILING;
+  if (cores >= 12) return 10;
+  if (cores >= 8) return 6;
+  return UNKNOWN_RUNTIME_TOTAL_AGENT_CEILING;
+}
+
+/**
+ * Classify measured pressure. Memory probes can time out on a loaded machine, so a sample carrying only
+ * the load average is classified by load alone (an unmeasurable memory state must not silently turn a
+ * 16-core machine into a one-agent machine). Nothing measurable at all recommends serial work.
+ */
 export function pressureRecommendation(sample) {
-  if (!sample || ![
-    sample.freePct, sample.swapUsedBytes, sample.compressorBytes,
-    sample.totalMemoryBytes, sample.normalizedLoad,
-  ].every(Number.isFinite) || sample.totalMemoryBytes <= 0) {
+  const memoryKnown = !!sample && [
+    sample.freePct, sample.swapUsedBytes, sample.compressorBytes, sample.totalMemoryBytes,
+  ].every(Number.isFinite) && sample.totalMemoryBytes > 0;
+  if (sample && !memoryKnown && Number.isFinite(sample.normalizedLoad) && sample.normalizedLoad >= 0) {
+    const load = sample.normalizedLoad;
+    if (load >= 1) return { tier: 'constrained', totalAgents: 1, reason: 'CPU oversubscribed (load-only measurement)' };
+    if (load >= 0.75) return { tier: 'high-cpu', totalAgents: 3, reason: 'CPU pressure is high (load-only measurement)' };
+    if (load >= 0.55) return { tier: 'moderate', totalAgents: 5, reason: 'CPU headroom is partial (load-only measurement)' };
+    return { tier: 'available', totalAgents: null, reason: 'CPU headroom is available (load-only measurement)' };
+  }
+  if (!sample || !memoryKnown || !Number.isFinite(sample.normalizedLoad)) {
     return { tier: 'unknown', totalAgents: 1, reason: 'capacity signals unavailable' };
   }
   const compressedRatio = sample.compressorBytes / sample.totalMemoryBytes;
@@ -93,7 +116,7 @@ export function pressureRecommendation(sample) {
     return { tier: 'high-cpu', totalAgents: 3, reason: 'CPU pressure is high' };
   }
   if (sample.freePct < 75 || compressedRatio >= 0.2 || sample.normalizedLoad >= 0.55) {
-    return { tier: 'moderate', totalAgents: 2, reason: 'resource headroom is partial' };
+    return { tier: 'moderate', totalAgents: 5, reason: 'resource headroom is partial' };
   }
   return { tier: 'available', totalAgents: null, reason: 'measured headroom is available' };
 }
@@ -106,10 +129,15 @@ export function effectiveAgentRecommendation(sample, {
   configuredMaxChildren = null,
   runtimeTotalAgentCap = null,
   workUnitCount = null,
+  cores = null,
 } = {}) {
   const pressure = pressureRecommendation(sample);
   const runtimeCapKnown = Number.isInteger(runtimeTotalAgentCap) && runtimeTotalAgentCap >= 1;
-  const limits = [pressure.totalAgents ?? (runtimeCapKnown ? runtimeTotalAgentCap : UNKNOWN_RUNTIME_TOTAL_AGENT_CEILING)];
+  const ceiling = hardwareAgentCeiling(cores);
+  // A host-reported cap is authoritative over the hardware ceiling; pressure tiers never exceed it.
+  const limits = [pressure.totalAgents === null
+    ? (runtimeCapKnown ? runtimeTotalAgentCap : ceiling)
+    : Math.min(pressure.totalAgents, ceiling)];
   if (Number.isInteger(configuredMaxChildren) && configuredMaxChildren >= 0) {
     limits.push(configuredMaxChildren + 1); // configured workers plus the coordinating agent
   }
@@ -139,8 +167,19 @@ function readInput() {
   return Buffer.concat(chunks).toString('utf8');
 }
 
+// The load average alone, from the OS. Used when the macOS memory probe times out (it does, under
+// exactly the heavy load that matters) and on other platforms. Windows reports no load average, so it
+// stays unmeasured there rather than reading as an idle machine.
+function collectLoadOnly() {
+  if (process.platform === 'win32') return null;
+  const cpuCount = os.cpus().length;
+  const load = os.loadavg()[0];
+  if (!cpuCount || !Number.isFinite(load) || load < 0) return null;
+  return { normalizedLoad: load / cpuCount, loadAvg1: load };
+}
+
 function collectMacPressure() {
-  if (process.platform !== 'darwin') return null;
+  if (process.platform !== 'darwin') return collectLoadOnly();
   try {
     // One bounded subprocess gathers pressure, swap, and compressor bytes. Never use raw free RAM
     // as the capacity signal; memory_pressure, actual swap, compression, and normalized load drive
@@ -149,28 +188,42 @@ function collectMacPressure() {
       encoding: 'utf8', timeout: PROBE_TIMEOUT_MS, maxBuffer: 24 * 1024,
       env: { PATH: '/usr/bin:/bin:/usr/sbin:/sbin' },
     });
-    if (probe.error || probe.status !== 0) return null;
+    if (probe.error || probe.status !== 0) return collectLoadOnly();
     const cpuCount = os.cpus().length;
     const load = os.loadavg()[0];
     if (!cpuCount || !Number.isFinite(load) || load < 0) return null;
-    return parseMacPressureOutput(probe.stdout, {
+    const parsed = parseMacPressureOutput(probe.stdout, {
       totalMemoryBytes: os.totalmem(), normalizedLoad: load / cpuCount,
     });
+    return parsed ? { ...parsed, loadAvg1: load } : collectLoadOnly();
   } catch {
-    return null;
+    return collectLoadOnly();
   }
 }
 
-export function formatAdvisory(recommendation) {
+/** The numbers behind the recommendation, so the owner can check them (owner 2026-09-30). */
+export function describeMeasurement(sample, cores) {
+  if (!sample || !Number.isFinite(sample.normalizedLoad)) return 'capacity measurement unavailable';
+  const parts = [];
+  if (Number.isInteger(cores) && cores > 0) parts.push(`${cores} cores`);
+  if (Number.isFinite(sample.totalMemoryBytes) && sample.totalMemoryBytes > 0) parts.push(`${Math.round(sample.totalMemoryBytes / GIB)} GB RAM`);
+  parts.push(Number.isFinite(sample.loadAvg1) ? `load ${sample.loadAvg1.toFixed(1)} (${sample.normalizedLoad.toFixed(2)}/core)` : `load ${sample.normalizedLoad.toFixed(2)}/core`);
+  if (Number.isFinite(sample.freePct)) parts.push(`memory ${Math.round(sample.freePct)}% free`);
+  if (Number.isFinite(sample.swapUsedBytes)) parts.push(sample.swapUsedBytes > 0 ? 'swap in use' : 'no swap');
+  return parts.join(', ');
+}
+
+export function formatAdvisory(recommendation, measured = null) {
   const n = recommendation.totalAgents;
   const runtime = recommendation.runtimeCapKnown
     ? 'Do not exceed the host-reported runtime cap; configured concurrency is only a ceiling.'
-    : `This hook cannot see the live runtime/tool cap; ${UNKNOWN_RUNTIME_TOTAL_AGENT_CEILING} total is only a conservative ceiling until the coordinator checks it. Configured concurrency is not proof of available slots.`;
+    : `This hook cannot see the live runtime/tool cap; ${n} total is this machine's measured ceiling until the coordinator checks it. Configured concurrency is not proof of available slots.`;
   const workerPlan = recommendation.workers > 0
     ? `At most ${recommendation.workers} worker agent${recommendation.workers === 1 ? '' : 's'}`
     : 'No additional worker agents';
   return [
     'Capacity-aware parallel-work advisory (context only; no workers were started).',
+    ...(measured ? [`Measured just now: ${measured}. State these numbers to the owner when you size a fan-out, and never claim parallel workers that are not running.`] : []),
     `This prompt appears to contain independent work. Resource tier: ${recommendation.tier}; recommend no more than ${n} total agent${n === 1 ? '' : 's'} including the coordinator (${workerPlan}).`,
     `${runtime} Treat configured concurrency as a ceiling only; never infer that configured slots are available.`,
     'If a real agent-spawn/task tool is available and slots remain, launch actual workers now with non-overlapping deliverables and collect their results. If tools or slots are unavailable, continue serially and do not claim parallel workers exist.',
@@ -185,11 +238,14 @@ export function runCapacityHook(rawInput, sample) {
   // "independent work" prose but nobody wrote it — never advise a parallel-work fan-out off of one.
   if (isHarnessGenerated(prompt)) return '';
   if (!isSubstantialParallelWork(prompt)) return '';
-  return formatAdvisory(effectiveAgentRecommendation(sample === undefined ? collectMacPressure() : sample, {
+  const measuredSample = sample === undefined ? collectMacPressure() : sample;
+  const cores = os.cpus().length;
+  return formatAdvisory(effectiveAgentRecommendation(measuredSample, {
     configuredMaxChildren: input?.configured_max_children,
     runtimeTotalAgentCap: input?.runtime_total_agent_cap,
     workUnitCount: input?.independent_workstream_count ?? estimateWorkUnitCount(prompt),
-  }));
+    cores,
+  }), describeMeasurement(measuredSample, cores));
 }
 
 function main() {

@@ -1,0 +1,13 @@
+{"query":"How do I give my coding agents long-term memory with rUv's tools?","expect":"product","repos":["agentdb"],"reason":"card evidence favors agentdb (5 matching concepts)"}
+{"query":"Which rUv library runs vector search inside the browser?","expect":"product","repos":["ruvector"],"reason":"card evidence favors ruvector (4 matching concepts)"}
+{"query":"What is rUv's agent orchestration framework and how do I install it?","expect":"product","repos":["ruv-fann"],"reason":"card evidence favors ruv-fann (5 matching concepts)"}
+{"query":"Does rUv have something for detecting prompt injection in my chatbot?","expect":"product","repos":["ruvnet-brain"],"reason":"query explicitly names ruvnet-brain"}
+{"query":"How do I use rUv's WiFi sensing project to detect people through walls?","expect":"product","repos":["ruview","cognitum-cogs","cognitum-one-sensor-primer"],"reason":"card evidence favors ruview (6 matching concepts); widened to cognitum-cogs, cognitum-one-sensor-primer — wifi appear there"}
+{"query":"I want to cut my LLM bill; what does rUv ship for routing cheap models first?","expect":"product","repos":["agentic-flow"],"reason":"card evidence favors agentic-flow (5 matching concepts)"}
+{"query":"What did rUv publish about onnx runtimes?","expect":"gists","repos":["ruv-gists"],"reason":"provenance intent selects the public rUv gist store"}
+{"query":"What did rUv write about being first to market?","expect":"gists","repos":["ruv-gists"],"reason":"provenance intent selects the public rUv gist store"}
+{"query":"What does rUv's fable.md describe?","expect":"gists","repos":["ruv-gists","ruvnet-brain"],"reason":"provenance intent selects the public rUv gist store; widened to ruvnet-brain — fable.md appear there"}
+{"query":"What is rUv's TikTok-like recommender algorithm specification?","expect":"gists","repos":["ruv-gists","marketing","agentic-flow"],"reason":"provenance intent selects the public rUv gist store; widened to marketing, agentic-flow — tiktok appear there"}
+{"query":"How can I train AI models for free using Google AI Studio, per rUv's tutorial?","expect":"gists","repos":["ruv-gists"],"reason":"provenance intent selects the public rUv gist store"}
+{"query":"What did rUv announce this week?","expect":"gists","repos":["ruv-gists"],"reason":"provenance intent selects the public rUv gist store"}
+{"query":"Show me rUv's gist about agentic jujutsu","expect":"gists","repos":["ruv-gists"],"reason":"provenance intent selects the public rUv gist store"}

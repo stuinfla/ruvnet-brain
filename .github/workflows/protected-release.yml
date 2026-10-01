@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: code = owner-approved product release; corpus = unattended corpus generation
+        description: code = machine-gated product release (no human approval step; CONTRIBUTING.md); corpus = unattended corpus generation
         required: false
         default: code
         type: choice
@@ -36,10 +36,10 @@ permissions:
 # Code publication and corpus promotion both move releases/latest, so they serialize against each
 # other in ONE group, `ruvnet-brain-release` — ADR-086 step 17's "serialized code/corpus promotion".
 # A code run holds it for the whole run. A corpus run does NOT (2026-09-29 nightly redesign): its ~3 h
-# preparation moves nothing public, so it runs in its own group, and only the corpus-publish job
-# enters `ruvnet-brain-release` (job-level concurrency below). Correctness never depends on how the
+# preparation moves nothing public, so it runs in its own group, and only the corpus-publish (stage)
+# and corpus-promote jobs enter `ruvnet-brain-release` (job-level concurrency below). Correctness never depends on how the
 # two levels interact: corpus-publish re-resolves the newest code release at publish time and stands
-# down as `superseded` if one landed meanwhile. cancel-in-progress stays false everywhere: a
+# down as `superseded` if one landed meanwhile; corpus-promote re-resolves it again after the canary. cancel-in-progress stays false everywhere: a
 # half-cancelled promotion is exactly the "stale or concurrent promotion moves customers backward" failure.
 concurrency:
   group: ${{ inputs.mode == 'corpus' && 'ruvnet-brain-corpus-preparation' || 'ruvnet-brain-release' }}
@@ -73,7 +73,9 @@ env:
   # The mode SELECTS a chain; it does not grant authority. Every code job below is gated on it, and
   # the corpus chain re-proves corpus-only routing inside its own jobs. Dual, verbatim:
   # "workflow_dispatch proves event identity, not human approval. Enforce corpus-only and
-  # owner-approved code authority separately in the target workflow."
+  # code authority separately in the target workflow." Code authority is the machine gates in this
+  # file (exact-SHA identity, trusted preflight, sealed payload, install verification); no person
+  # approves a code release (CONTRIBUTING.md, "What replaces a human approval").
   RELEASE_MODE: ${{ inputs.mode || 'code' }}
 
 jobs:
@@ -233,9 +235,9 @@ jobs:
     if: inputs.mode != 'corpus'
     needs: verified-candidate
     runs-on: ubuntu-latest
-    # ONE owner click per release (2026-09-29): this job needs only the signing key, which the
-    # protected-branch-only `Production – corpus` environment already holds. Only `publish`, which
-    # carries NPM_TOKEN and contents:write, binds the reviewed `Production – ruvnet-brain` environment.
+    # Scoping, not approval: this job needs only the signing key, which the protected-branch-only
+    # `Production – corpus` environment already holds. Only `publish`, which carries NPM_TOKEN and
+    # contents:write, binds the `Production – ruvnet-brain` environment (no reviewer; no human pause).
     environment: Production – corpus
     permissions:
       actions: read
@@ -520,9 +522,9 @@ jobs:
     needs: [verified-candidate, public-verification]
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # ONE owner click per release (2026-09-29): this job needs only the signing key, which the
-    # protected-branch-only `Production – corpus` environment already holds. Only `publish`, which
-    # carries NPM_TOKEN and contents:write, binds the reviewed `Production – ruvnet-brain` environment.
+    # Scoping, not approval: this job needs only the signing key, which the protected-branch-only
+    # `Production – corpus` environment already holds. Only `publish`, which carries NPM_TOKEN and
+    # contents:write, binds the `Production – ruvnet-brain` environment (no reviewer; no human pause).
     environment: Production – corpus
     permissions:
       actions: read
@@ -641,7 +643,7 @@ jobs:
           set -euo pipefail
           # ADR-0091 D3. Unattended corpus promotion ships the archive's executable surface (the forge-*
           # module graph, package manifests, verify-bundle.mjs, the signing trust root) straight into
-          # every installed client, so it runs only on a runtime an owner-gated code release shipped AND
+          # every installed client, so it runs only on a runtime a machine-gated code release shipped AND
           # install-verified on all three OSes. That approval is no longer a committed file (a committed
           # pin could never match the release that committed it). It is RESOLVED here: the newest
           # vX.Y.Z — only the newest; it never falls back to an older one — whose signed
@@ -827,7 +829,8 @@ jobs:
     needs: [corpus-identity, corpus-prepare, corpus-authorize]
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    # The ONLY corpus job that moves releases/latest, so the only one in the release group.
+    # Stages the candidate (it no longer moves releases/latest; corpus-promote does, after the customer
+    # canary). It stays in the release group because staging re-resolves the newest code release.
     concurrency:
       group: ruvnet-brain-release
       cancel-in-progress: false
@@ -948,7 +951,7 @@ jobs:
           # carries, so this proves the customer path can verify what is about to be published.
           node scripts/verify-bundle.mjs "$staged/ruvnet-brain.zip" "$staged/ruvnet-brain.zip.sig"
           test -z "$(git status --porcelain)"
-      - name: Publish and promote the corpus generation through the one canonical publisher
+      - name: Stage the corpus generation (public prerelease, never latest) through the one canonical publisher
         id: publish
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -962,8 +965,11 @@ jobs:
           staged="$RUNNER_TEMP/corpus-import"
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
           test -z "$(git status --porcelain)"
+          # THE PRODUCER CANNOT DECLARE SUCCESS UNLESS THE CONSUMER ACCEPTED. This step never moves
+          # releases/latest: it stages a signed, public prerelease. corpus-canary applies it through a
+          # clean customer install, and only corpus-promote -- with that PASS verdict -- moves latest.
           set +e
-          node scripts/release.mjs --corpus-seed --promote-latest \
+          node scripts/release.mjs --corpus-seed --stage-candidate \
             --corpus-tag "corpus-sha256-$EXPECTED_ARCHIVE_SHA256" \
             --corpus-bundle "$staged/ruvnet-brain.zip" \
             --corpus-receipt "$staged/corpus-receipt.json" \
@@ -982,7 +988,7 @@ jobs:
             exit 0
           fi
           test "$status" -eq 0
-          echo 'outcome=published' >> "$GITHUB_OUTPUT"
+          echo 'outcome=staged' >> "$GITHUB_OUTPUT"
       - name: Preserve the corpus publication evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -998,10 +1004,148 @@ jobs:
           if-no-files-found: warn
           retention-days: 90
 
+  corpus-canary:
+    name: customer-canary
+    # THE CONSUMER'S QUESTION, asked the consumer's way (scripts/corpus-canary.mjs): install the approved
+    # runtime from npm exactly as a stranger does, into an isolated HOME, then apply the staged candidate
+    # with the updater INSIDE that install. A fresh runner: nothing from the publisher's workspace.
+    if: inputs.mode == 'corpus' && needs.corpus-publish.outputs.outcome == 'staged'
+    needs: [corpus-identity, corpus-prepare, corpus-publish]
+    runs-on: ubuntu-latest
+    # npm install (~1 min) + the approved release archive (~555 MB) + the candidate (~665 MB) + apply.
+    timeout-minutes: 60
+    # NO environment and NO secrets: a customer holds neither. The automatic token is read-only here and
+    # is never handed to the customer install (corpus-canary.mjs builds the child environment from
+    # scratch). The canary downloads only public release assets, anonymously, as customers do.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # This run's own commit, like corpus-identity: the workflow text and the judge agree. The
+          # judge's verdict names the run, so a verdict from any other run cannot promote this one.
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install the approved runtime as a customer and apply the staged candidate through its own updater
+        env:
+          CANDIDATE_TAG: corpus-sha256-${{ needs.corpus-prepare.outputs.archive_sha256 }}
+          APPROVED_VERSION: ${{ needs.corpus-identity.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_TAG" =~ ^corpus-sha256-[0-9a-f]{64}$ ]]
+          [[ "$APPROVED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          df -h "$RUNNER_TEMP" | tail -1
+          status=0
+          node scripts/corpus-canary.mjs --repo "$GITHUB_REPOSITORY" --tag "$CANDIDATE_TAG" \
+            --approved-version "$APPROVED_VERSION" --work "$RUNNER_TEMP/canary" \
+            --verdict-out "$RUNNER_TEMP/canary-verdict/corpus-canary-verdict.json" | tee "$RUNNER_TEMP/canary.out" || status=$?
+          {
+            echo '### customer canary'
+            echo ''
+            echo '```'
+            cat "$RUNNER_TEMP/canary.out"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$status" -ne 0 ]]; then
+            echo "::error title=Customer canary refused::a clean customer install could not apply $CANDIDATE_TAG; it stays an unpromoted prerelease and customers keep the current latest"
+          fi
+          exit "$status"
+      - name: Preserve the canary verdict (the promotion's required consent)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus-canary-verdict-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/canary-verdict/corpus-canary-verdict.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Preserve the canary log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus-canary-log-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/canary/canary.log
+          if-no-files-found: warn
+          retention-days: 30
+
+  corpus-promote:
+    name: promote-canaried-corpus
+    # Runs only after the canary job SUCCEEDED; release.mjs --promote-staged re-proves the verdict itself.
+    if: inputs.mode == 'corpus' && needs.corpus-publish.outputs.outcome == 'staged' && needs.corpus-canary.result == 'success'
+    needs: [corpus-identity, corpus-prepare, corpus-publish, corpus-canary]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Moves releases/latest, so it serializes with code publication exactly as corpus-publish does.
+    concurrency:
+      group: ruvnet-brain-release
+      cancel-in-progress: false
+    outputs:
+      outcome: ${{ steps.promote.outputs.outcome }}
+    # No environment: promotion signs nothing and needs no secret. `contents: write` is the one
+    # capability required to flip a prerelease to latest; the signing key stays in `Production – corpus`.
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The approved runtime's own source, the same code that staged the candidate.
+          ref: ${{ needs.corpus-identity.outputs.candidate_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install the exact lockfile dependency graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          cd kb && npm ci --no-audit --no-fund
+      - name: Fetch this run's canary verdict (runner storage only)
+        uses: actions/download-artifact@v4
+        with:
+          name: corpus-canary-verdict-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/canary-verdict
+      - name: Promote the canaried generation through the one canonical publisher
+        id: promote
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ needs.corpus-identity.outputs.candidate_sha }}
+          APPROVED_TAG: ${{ needs.corpus-identity.outputs.approved_tag }}
+          EXPECTED_ARCHIVE_SHA256: ${{ needs.corpus-prepare.outputs.archive_sha256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          git merge-base --is-ancestor "$CANDIDATE_SHA" "$GITHUB_SHA"
+          test -z "$(git status --porcelain)"
+          set +e
+          node scripts/release.mjs --corpus-seed --promote-staged \
+            --corpus-tag "corpus-sha256-$EXPECTED_ARCHIVE_SHA256" \
+            --canary-verdict "$RUNNER_TEMP/canary-verdict/corpus-canary-verdict.json" \
+            --target "$CANDIDATE_SHA" \
+            --approved-tag "$APPROVED_TAG" \
+            --repo "$GITHUB_REPOSITORY"
+          status=$?
+          set -e
+          test -z "$(git status --porcelain)"
+          if [[ "$status" -eq 4 ]]; then
+            echo 'outcome=superseded' >> "$GITHUB_OUTPUT"
+            echo "::warning title=Corpus superseded::a code release newer than $APPROVED_TAG was published before promotion; the canaried prerelease stays unpromoted"
+            exit 0
+          fi
+          test "$status" -eq 0
+          echo 'outcome=published' >> "$GITHUB_OUTPUT"
+
   corpus-terminal-outcome:
     name: corpus-terminal-outcome
     if: always() && inputs.mode == 'corpus'
-    needs: [corpus-identity, corpus-prepare, corpus-no-change, corpus-authorize, corpus-publish]
+    needs: [corpus-identity, corpus-prepare, corpus-no-change, corpus-authorize, corpus-publish, corpus-canary, corpus-promote]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -1020,6 +1164,9 @@ jobs:
       NO_CHANGE_RESULT: ${{ needs.corpus-no-change.result }}
       AUTHORIZE_RESULT: ${{ needs.corpus-authorize.result }}
       PUBLISH_RESULT: ${{ needs.corpus-publish.result }}
+      CANARY_RESULT: ${{ needs.corpus-canary.result }}
+      PROMOTE_RESULT: ${{ needs.corpus-promote.result }}
+      PROMOTE_OUTCOME: ${{ needs.corpus-promote.outputs.outcome }}
     steps:
       - name: Preserve this corpus run's terminal dependency state
         shell: bash
@@ -1038,6 +1185,8 @@ jobs:
             no_change: process.env.NO_CHANGE_RESULT,
             authorize: process.env.AUTHORIZE_RESULT,
             publish: process.env.PUBLISH_RESULT,
+            canary: process.env.CANARY_RESULT,
+            promote: process.env.PROMOTE_RESULT,
           };
           const allowed = new Set(['success', 'failure', 'cancelled', 'skipped']);
           for (const [job, result] of Object.entries(results)) {
@@ -1047,14 +1196,20 @@ jobs:
           if (Object.values(results).includes('failure')) conclusion = 'failure';
           else if (Object.values(results).includes('cancelled')) conclusion = 'cancelled';
           // THE NIGHT'S OUTCOME, one word, read by the corpus watchdog workflow (it takes precedence over
-          // the job results there): published | no-change | superseded | failed. A cancelled run
-          // published nothing, so it is failed (`conclusion` still says cancelled). A run whose jobs all
-          // "succeeded" without reaching one of the first three is NOT a success -- it is failed.
+          // the job results there): published | no-change | superseded | canary-rejected | failed.
+          // `published` now means PROMOTED: staged, applied by a clean customer install, and moved to
+          // latest. A canary that refused the candidate is `canary-rejected` (red, pages): customers keep
+          // the previous latest. A cancelled run published nothing, so it is failed. A run whose jobs all
+          // "succeeded" without reaching an outcome is NOT a success -- it is failed.
           let outcome = 'failed';
-          if (conclusion === 'success') {
-            if (process.env.IDENTITY_SUPERSEDED === 'true' || process.env.PUBLISH_OUTCOME === 'superseded') outcome = 'superseded';
+          if (results.canary === 'failure') outcome = 'canary-rejected';
+          else if (conclusion === 'success') {
+            if (process.env.IDENTITY_SUPERSEDED === 'true' || process.env.PUBLISH_OUTCOME === 'superseded'
+              || process.env.PROMOTE_OUTCOME === 'superseded') outcome = 'superseded';
             else if (results.no_change === 'success') outcome = 'no-change';
-            else if (results.publish === 'success' && process.env.PUBLISH_OUTCOME === 'published') outcome = 'published';
+            else if (results.publish === 'success' && process.env.PUBLISH_OUTCOME === 'staged'
+              && results.canary === 'success' && results.promote === 'success'
+              && process.env.PROMOTE_OUTCOME === 'published') outcome = 'published';
           }
           const record = {
             run_id: Number(process.env.RUN_ID),

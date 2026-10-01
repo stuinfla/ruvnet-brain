@@ -223,6 +223,26 @@ describe('unknown outranks off when a probe cannot run', () => {
     expect([STATE.UNKNOWN, STATE.ABSENT]).toContain(r.state);
   });
 
+  it('a store with no memory_entries table is unknown, and its reason names the obstacle', async () => {
+    // FORCED REAL STATE, not a mock: a real SQLite file with no memory_entries table — exactly what a
+    // fresh CI runner with the global ruflo installed produced (2026-10-01, ubuntu full-suite), where
+    // the machine sweep below failed on wording this machine never reaches.
+    const { DatabaseSync } = await import('node:sqlite');
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), 'cap-registry-schemaless-'));
+    try {
+      fs.mkdirSync(path.join(project, '.swarm'));
+      const db = new DatabaseSync(path.join(project, '.swarm', 'memory.db'));
+      db.exec('CREATE TABLE unrelated (id INTEGER PRIMARY KEY)');
+      db.close();
+      const r = CAPABILITIES.find((c) => c.key === 'memory-distillation').detect({ project });
+      expect(r.state).toBe(STATE.UNKNOWN);
+      expect(r.evidence).toMatch(/no memory_entries table/);
+      expect(r.evidence).toMatch(/could not|cannot|not checked|does not exist|failed|unknown|has probably changed/i);
+    } finally {
+      fs.rmSync(project, { recursive: true, force: true });
+    }
+  });
+
   it('every unknown reason names the obstacle, so it can never read as a measurement', () => {
     // Sweep whatever is genuinely unknown on THIS machine and require it to explain itself. On a
     // fully-configured box this may match nothing, which is fine — the two forced tests above carry

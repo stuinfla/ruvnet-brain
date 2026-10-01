@@ -1,0 +1,12 @@
+{
+ "_provenance": "captured: claude 2.1.286 claude -p, 2026-09-30",
+ "payload": {
+  "session_id": "{{SESSION_ID}}",
+  "transcript_path": "{{TRANSCRIPT}}",
+  "cwd": "{{CWD}}",
+  "prompt_id": "{{PROMPT_ID}}",
+  "permission_mode": "acceptEdits",
+  "hook_event_name": "UserPromptSubmit",
+  "prompt": "Use the Write tool to create a file note.txt in the current directory containing the single word hello, then reply with exactly: ok"
+ }
+}

@@ -58,6 +58,29 @@
  * interrupted/cancelled turn is never forced. The marker is consumed (deleted) whether or not it
  * fires, so a genuinely abandoned marker cannot pressure some unrelated later turn.
  *
+ * 2026-09-30 — ADR-0030 DECISION POINT #1, AND THE FALSE ALARM. Two changes, one registration:
+ *   - On Claude the "was search_ruvnet called" question is answered from the TRANSCRIPT (the ordered
+ *     record of every tool call and result, grounding-turn-evidence.mjs turnSources), not from stamp
+ *     mtimes. The stamp was a lossy proxy: 7 real false alarms were measured, 3 from a queued
+ *     mid-turn prompt re-dating the marker (fixed in grounding-turn-mark.mjs), 3 pre-H1 vocabulary
+ *     misses, 1 successful search whose stamp never minted. Codex's rollout is not parsed anywhere in
+ *     this repo, so Codex keeps the stamp evidence.
+ *   - When the marker says the prompt asked a capability/feasibility/architecture question, every
+ *     capability claim in the final answer needs a RELEVANT, STRONG source read this turn after the
+ *     last weak one (auditAssertions). A WebFetch body is a small model's summary: weak.
+ *   Gates #2/#3 of ADR-0030 run in shadow (logShadow) — measured, never delivered.
+ *   At most ONE correction per stop episode: both checks compose into one message, and
+ *   stop_hook_active silences the continued stop.
+ *
+ * 4.4.0 — GATE 1 FIRES ON A CLAIM, NOT ON A TOPIC. Gate 1 arms on any prompt that names the rUv
+ * stack, and in this repository that is nearly every prompt. Replayed through this decide() on 183
+ * real deliveries of the correction (the owner's sessions, 2026-09-12..10-01): 172 were on answers
+ * that asserted nothing about a rUv tool (release status, git/CI, disk/backup, memory writes). Now a
+ * search is demanded only when the final answer asserts a rUv capability (ruvCapabilityClaims);
+ * measured on a held-out set of 70 real Stop points: false positives 68/68 -> 0/68, and 2 borderline
+ * claims (copula, parenthetical) are missed — tests/unit/grounding-turn-false-alarm.test.mjs.
+ * A LONG turn (the transcript tail cannot see its start) falls back to the stamps, never to a pass.
+ *
  * FAILS OPEN ALWAYS. Exit 0 unconditionally — a gate that breaks a turn's completion because a
  * cache directory was unreadable would be disabled within a day.
  */
@@ -65,8 +88,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readStdinBounded } from './hook-input.mjs';
-import { markerPathFor } from './grounding-turn-mark.mjs';
+import { readStopHookInput } from './hook-input.mjs';
+import { markerPathFor, readMarker } from './grounding-turn-mark.mjs';
+import { readSettledTranscript } from './turn-outcome-capture.mjs';
+import {
+  architectureShadow, auditAssertions, correctionText, describeSources, loadVocabulary, logShadow,
+  relayShadow, ruvCapabilityClaims, searchedThisTurn, turnSources,
+} from './grounding-turn-evidence.mjs';
 
 const HOME = os.homedir();
 const EXIT_ALLOW = 0;
@@ -94,6 +122,14 @@ export function newestGroundingStampMs(dir = GROUNDED_DIR) {
   return newest;
 }
 
+/** Product terms whose stamp was minted at or after `sinceMs` (Codex's only view of this turn's searches). */
+export function stampTermsSince(sinceMs, dir = GROUNDED_DIR) {
+  try {
+    return fs.readdirSync(dir).filter((name) => !name.startsWith('.')
+      && fs.statSync(path.join(dir, name)).mtimeMs >= sinceMs - SKEW_MS);
+  } catch { return []; }
+}
+
 /** A little slack for filesystem mtime granularity (some filesystems round to whole seconds), so a
  *  stamp written the same wall-clock second as the marker is never wrongly judged "before" it. */
 const SKEW_MS = 1500;
@@ -106,18 +142,64 @@ export function wasGroundedSince(markerMs, newestStampMs) {
   return newestStampMs >= markerMs - SKEW_MS;
 }
 
-async function readHookInput() {
-  // Mirrors continuation-gate.mjs's own three-way source classification exactly (ADR-043 /
-  // Fable #1): only a payload we actually parsed off stdin may ever force a continuation.
-  if (process.stdin.isTTY) return { __source: 'tty' };
+/**
+ * The whole Stop decision for one armed turn: the correction text, or null. Exported so tests can
+ * drive it with a synthetic transcript. Every failure inside returns null (fail open).
+ */
+export function decide({ hookInput, marker, markerMs, env = process.env, read = readSettledTranscript }) {
   try {
-    const raw = (await readStdinBounded()).toString('utf8');
-    return { ...JSON.parse(raw || '{}'), __source: 'stdin' };
-  } catch { return { __source: 'unreadable' }; }
+    const host = env.RUVNET_HOOK_HOST === 'codex' ? 'codex' : 'claude';
+    const tp = hookInput.transcript_path;
+    let turn = null;
+    if (host === 'claude' && typeof tp === 'string' && /\.jsonl$/i.test(tp)) {
+      try { turn = turnSources(read(tp, { maxMs: 0 })); } catch { turn = null; }
+    }
+    // The transcript is read as a bounded TAIL. When the turn's opening prompt is not inside it
+    // (a long turn), the tail is a suffix of the turn and cannot prove a search did NOT happen
+    // earlier — so it is not evidence either way. Fall back to the stamp evidence (the same path
+    // Codex uses), never to a silent pass: `return null` here let every long turn skip the gate.
+    if (turn && !turn.boundaryFound) turn = null;
+    const sources = turn ? turn.sources : null;
+    const message = String(hookInput.last_assistant_message || '');
+
+    let assertion = null;
+    if (marker.assert && message) {
+      const vocab = loadVocabulary({ env });
+      const audit = auditAssertions({ message, subjects: marker.subjects, vocab, sources,
+        stampTerms: sources ? [] : stampTermsSince(markerMs) });
+      if (audit.findings.length) assertion = audit.findings;
+      const shadow = [architectureShadow({ architecture: marker.architecture, message }), relayShadow({ message, sources })].filter(Boolean);
+      for (const row of shadow) logShadow({ ...row, at: new Date().toISOString(), session: hookInput.session_id, host });
+    }
+
+    // Gate 1 demands a search only when the answer ASSERTS what a rUv product does (the directive's
+    // own words). A status report, git/CI check or memory write on a rUv-named repo asserts nothing.
+    const ruvClaims = marker.gate1 === false ? [] : ruvCapabilityClaims(message);
+    const grounded = !ruvClaims.length
+      || (sources ? searchedThisTurn(sources) : wasGroundedSince(markerMs, newestGroundingStampMs()));
+    if (assertion) {
+      return correctionText(assertion) + (grounded ? '' : '\nThis turn also asserted what a rUv tool does and no successful search_ruvnet call was recorded: call it with the product term(s).');
+    }
+    if (grounded) return null;
+    return [
+      `You asserted "${ruvClaims[0].text.slice(0, 200)}" about ${ruvClaims[0].subject}`
+        + (ruvClaims.length > 1 ? ` (and ${ruvClaims.length - 1} more rUv capability claim(s))` : '') + ', and',
+      'ground-ruvnet\'s directive requires calling the search_ruvnet MCP tool before asserting what any',
+      'RuvNet tool can/cannot do — but no successful',
+      sources ? `search_ruvnet call is in this turn's transcript (read this turn: ${describeSources(sources).join('; ')}).`
+        : 'search_ruvnet call was recorded this turn (checked against the grounding-stamp evidence).',
+      '',
+      'Do NOT end the turn on an ungrounded rUv-domain answer. Call `search_ruvnet` now with the',
+      'relevant product term(s) in the query, ground your answer in the cited source paths it returns,',
+      'and correct anything you already asserted from memory. Training priors on the rUv stack are',
+      'stale by construction (ADR-0012) — this is not a formality.',
+    ].join('\n');
+  } catch { return null; }
 }
 
+
 async function main() {
-  const hookInput = await readHookInput();
+  const hookInput = await readStopHookInput();
   if (hookInput.__source !== 'stdin') process.exit(EXIT_ALLOW);
   if (hookInput.stop_hook_active) process.exit(EXIT_ALLOW);
   if (hookInput.hook_event_name !== 'Stop' || hookInput.interrupted || hookInput.cancelled) {
@@ -135,27 +217,16 @@ async function main() {
   // unrelated turn (same reasoning as continuation-gate.mjs's cooldown lock, applied here as a
   // single-use marker instead of a timed window, because "did this turn ground itself" has no
   // meaningful reading beyond the one turn it was written for).
+  const armed = readMarker(marker) || { gate1: true, subjects: [] };
   try { fs.unlinkSync(marker); } catch { /* a marker that vanished between stat and unlink already told us what we needed */ }
 
-  const grounded = wasGroundedSince(markerStat.mtimeMs, newestGroundingStampMs());
-  if (grounded) process.exit(EXIT_ALLOW);
-
-  const lines = [
-    'This turn touched the RuvNet / rUv stack and ground-ruvnet\'s directive required calling the',
-    'search_ruvnet MCP tool before asserting what any RuvNet tool can/cannot do — but no successful',
-    'search_ruvnet call was recorded this turn (checked against the same grounding-stamp evidence',
-    'ground-before-write.sh already trusts).',
-    '',
-    'Do NOT end the turn on an ungrounded rUv-domain answer. Call `search_ruvnet` now with the',
-    'relevant product term(s) in the query, ground your answer in the cited source paths it returns,',
-    'and correct anything you already asserted from memory. Training priors on the rUv stack are',
-    'stale by construction (ADR-0012) — this is not a formality.',
-  ];
+  const text = decide({ hookInput, marker: armed, markerMs: markerStat.mtimeMs });
+  if (!text) process.exit(EXIT_ALLOW);
 
   process.stdout.write(JSON.stringify({
     hookSpecificOutput: {
       hookEventName: 'Stop',
-      additionalContext: lines.join('\n'),
+      additionalContext: text,
     },
   }));
   process.exit(EXIT_ALLOW);

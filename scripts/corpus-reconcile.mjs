@@ -951,7 +951,7 @@ export async function reconcileAndPrepareCorpusCandidate({ assetsDir, workspaceD
   reconcile = (options) => acquireCorpusGeneration(options),
   normalizeUpdaters = normalizeUpdaterManifest,
   accuracyOracleFile = null, accuracyStores = null, accuracySample = null, accuracySamplePerPartition = null,
-  accuracyTimeoutMs = null,
+  accuracyTimeoutMs = null, seedArchive = null,
   prepare = prepareCorpusCandidate } = {}) {
   const finalized = await reconcile({ owner, assetsDir, workspaceDir, root, maxAttempts });
   // Nothing the corpus is built from changed since the seed: nothing to normalize, seal or measure.
@@ -976,7 +976,7 @@ export async function reconcileAndPrepareCorpusCandidate({ assetsDir, workspaceD
   const candidate = await prepare({
     root, assetsDir, builderSha, candidateDir, receiptFile, coverageFile, bootstrapIdentity,
     coverage: finalized.coverage,
-    accuracyOracleFile, accuracyStores, accuracySample, accuracySamplePerPartition, accuracyTimeoutMs,
+    accuracyOracleFile, accuracyStores, accuracySample, accuracySamplePerPartition, accuracyTimeoutMs, seedArchive,
   });
   return { reconciliation: finalized, updaters, candidate };
 }
@@ -998,6 +998,12 @@ export function prepareCorpusCandidate({
   accuracySample = null,
   accuracySamplePerPartition = null,
   accuracyTimeoutMs = null,
+  // { file, tag, sha256 } of the seed archive this generation was reconciled from. When present, the
+  // archive is assembled WITH its release coverage projection (COVERAGE.json + CORPUS-COVERAGE.json +
+  // PUBLIC-RVF-GENERATIONS.json), exactly as scripts/code-release-corpus.mjs's single-pass path does:
+  // kb/forge-update.mjs refuses any staged tree without it, so a nightly archive lacking it can never
+  // reach an installed customer (measured 2026-09-30: "COVERAGE.json is missing").
+  seedArchive = null,
   run = defaultRun,
 }) {
   const sourceRoot = path.resolve(root);
@@ -1053,8 +1059,25 @@ export function prepareCorpusCandidate({
   const markdownPath = path.join(sourceRoot, 'docs', 'RUVNET-COVERAGE.md');
   fs.mkdirSync(path.dirname(markdownPath), { recursive: true });
   fs.writeFileSync(markdownPath, renderMarkdown(coverage));
+  // The seed's baseline observation, then the SAME build-bundle seed flags the code release passes.
+  // The release identity is the runtime this corpus is built at: package.json's version (build-bundle's
+  // default) and the builder checkout's exact commit.
+  let seedArgs = [];
+  if (seedArchive) {
+    const seedFile = path.resolve(seedArchive.file || '');
+    if (!fs.existsSync(seedFile) || !HEX64.test(String(seedArchive.sha256 || '')) || !seedArchive.tag) {
+      fail('seed archive identity is incomplete (file, tag and sha256 are required together)');
+    }
+    const seedBytes = fs.statSync(seedFile).size;
+    const baselineReceipt = path.join(path.dirname(receipt), `baseline-observation-receipt-${seedArchive.sha256}.json`);
+    checked(run, process.execPath, [path.join(sourceRoot, 'scripts', 'public-verification-inputs.mjs'), 'observe-baseline',
+      '--baseline-bundle', seedFile, '--expected-tag', seedArchive.tag, '--expected-sha256', seedArchive.sha256,
+      '--expected-bytes', String(seedBytes), '--out', baselineReceipt], { stdio: 'inherit' });
+    seedArgs = ['--seed-tag', seedArchive.tag, '--seed-sha256', seedArchive.sha256, '--seed-bytes', String(seedBytes),
+      '--baseline-receipt-sha256', sha256File(baselineReceipt), '--source-snapshot', String(builderSha).toLowerCase()];
+  }
   checked(run, process.execPath, [buildScript, '--assets', assets, '--out', candidate,
-    '--coverage', policy], { stdio: 'inherit' });
+    '--coverage', policy, ...seedArgs], { stdio: 'inherit' });
   const bundleFile = path.join(path.dirname(candidate), `${path.basename(candidate)}.zip`);
   // ADR-086 Step 15: the benchmark runs HERE — after single-pass assembly and before the seal —
   // against the EXTRACTED final archive through the customer query path, never against `assets`.
@@ -1217,6 +1240,7 @@ export async function main(argv = process.argv.slice(2), {
   const { reconciliation, candidate, noChange = false } = await reconcileAndPrepare({
     assetsDir, workspaceDir, root, owner, builderSha, candidateDir, receiptFile, coverageFile, bootstrapIdentity,
     accuracyOracleFile, accuracyStores, accuracySample, accuracySamplePerPartition, accuracyTimeoutMs,
+    seedArchive: { file: archiveFile, tag: bootstrap.tag, sha256: bootstrap.sha256 },
   });
   if (noChangeOut) {
     fs.mkdirSync(path.dirname(path.resolve(noChangeOut)), { recursive: true });

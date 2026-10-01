@@ -432,8 +432,8 @@ describe('degraded publication waits for the ADR-0091 D10 validator transition',
     const latestSince = '2026-10-01T00:00:00.000Z';
     const during = new Date(Date.parse(latestSince) + (TRANSITION_SOAK_DAYS - 1) * 86400000);
     const after = new Date(Date.parse(latestSince) + TRANSITION_SOAK_DAYS * 86400000);
-    expect(degradedPublication({ transition: { version: '4.3.40', latestSince }, now: during }).allowed).toBe(false);
-    expect(degradedPublication({ transition: { version: '4.3.40', latestSince }, now: after }).allowed).toBe(true);
+    expect(degradedPublication({ transition: { version: '4.9.1', latestSince }, now: during }).allowed).toBe(false);
+    expect(degradedPublication({ transition: { version: '4.9.1', latestSince }, now: after }).allowed).toBe(true);
     expect(degradedPublication({ transition: { version: '', latestSince }, now: after }).allowed).toBe(false);
   });
 

@@ -4,8 +4,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import {
+  describeMeasurement,
   effectiveAgentRecommendation,
   formatAdvisory,
+  hardwareAgentCeiling,
   isSubstantialParallelWork,
   parseMacPressureOutput,
   pressureRecommendation,
@@ -54,7 +56,7 @@ describe('capacity-aware parallel-work hook', () => {
   it('uses memory pressure, swap, compression, and normalized load rather than raw free RAM', () => {
     expect(pressureRecommendation(healthy)).toMatchObject({ tier: 'available', totalAgents: null });
     expect(pressureRecommendation({ ...healthy, freePct: 64, compressorBytes: 30.7 * GIB, normalizedLoad: 0.52 }))
-      .toMatchObject({ tier: 'moderate', totalAgents: 2 });
+      .toMatchObject({ tier: 'moderate', totalAgents: 5 });
     expect(pressureRecommendation({ ...healthy, freePct: 64, swapUsedBytes: 1 }))
       .toMatchObject({ tier: 'constrained', totalAgents: 1 });
     expect(pressureRecommendation({ ...healthy, normalizedLoad: 0.85 }))
@@ -101,6 +103,46 @@ describe('capacity-aware parallel-work hook', () => {
     }), healthy);
     expect(forwarded).toContain('no more than 2 total agents');
     expect(forwarded).toContain('host-reported runtime cap');
+  });
+
+  // Owner rule 2026-09-30: the M3 Max (16 cores / 128 GB) must actually be used. Before this the hook
+  // capped every machine at 4 total agents, and when the memory probe timed out under load it fell to
+  // 'unknown' = ONE agent — the opposite of the situation that needs measuring.
+  it('scales the agent ceiling to the machine and never reads a measurable CPU as unknown', () => {
+    expect(hardwareAgentCeiling(16)).toBe(10);
+    expect(hardwareAgentCeiling(8)).toBe(6);
+    expect(hardwareAgentCeiling(4)).toBe(UNKNOWN_RUNTIME_TOTAL_AGENT_CEILING);
+    expect(hardwareAgentCeiling(null)).toBe(UNKNOWN_RUNTIME_TOTAL_AGENT_CEILING);
+    // idle big machine: go wide; busy: owner thresholds (<50% wide, >75% three, oversubscribed one)
+    expect(effectiveAgentRecommendation(healthy, { cores: 16 })).toMatchObject({ tier: 'available', totalAgents: 10 });
+    expect(effectiveAgentRecommendation({ ...healthy, normalizedLoad: 0.6 }, { cores: 16 })).toMatchObject({ tier: 'moderate', totalAgents: 5 });
+    expect(effectiveAgentRecommendation({ ...healthy, normalizedLoad: 0.8 }, { cores: 16 })).toMatchObject({ tier: 'high-cpu', totalAgents: 3 });
+    // a host-reported cap still wins over the hardware ceiling
+    expect(effectiveAgentRecommendation(healthy, { cores: 16, runtimeTotalAgentCap: 6 }).totalAgents).toBe(6);
+    // memory probe timed out: only the load average is known — classify by load, do not collapse to serial
+    expect(pressureRecommendation({ normalizedLoad: 0.2 })).toMatchObject({ tier: 'available', totalAgents: null });
+    expect(pressureRecommendation({ normalizedLoad: 0.6 })).toMatchObject({ tier: 'moderate', totalAgents: 5 });
+    expect(pressureRecommendation({ normalizedLoad: 0.8 })).toMatchObject({ tier: 'high-cpu', totalAgents: 3 });
+    expect(pressureRecommendation({ normalizedLoad: 1.79 })).toMatchObject({ tier: 'constrained', totalAgents: 1 });
+    // truly nothing measurable stays serial
+    expect(pressureRecommendation({})).toMatchObject({ tier: 'unknown', totalAgents: 1 });
+    expect(pressureRecommendation({ normalizedLoad: Number.NaN })).toMatchObject({ tier: 'unknown', totalAgents: 1 });
+  });
+
+  it('prints the measured numbers so the owner can check the recommendation', () => {
+    const line = describeMeasurement({ ...healthy, loadAvg1: 3.2, normalizedLoad: 0.2 }, 16);
+    expect(line).toContain('16 cores');
+    expect(line).toContain('128 GB RAM');
+    expect(line).toContain('load 3.2 (0.20/core)');
+    expect(line).toContain('memory 86% free');
+    expect(line).toContain('no swap');
+    expect(describeMeasurement({ normalizedLoad: 0.4 }, 16)).toContain('load 0.40/core');
+    expect(describeMeasurement(null, 16)).toBe('capacity measurement unavailable');
+    const advisory = runCapacityHook(JSON.stringify({
+      prompt: 'Implement the cross-cutting auth change across API, CLI, docs, and tests; split independent workstreams.',
+    }), { ...healthy, loadAvg1: 3.2 });
+    expect(advisory).toContain('Measured just now:');
+    expect(advisory).toContain('State these numbers to the owner');
   });
 
   it('tells the coordinator to use real tools and fail open to serial work when tools or slots are absent', () => {

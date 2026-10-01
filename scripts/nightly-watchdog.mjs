@@ -38,7 +38,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { NIGHTLY_LABEL, schedulerStatus } from '../plugin/scripts/nightly-scheduler.mjs';
+import { NIGHTLY_LABEL, schedulerStatus, updateOwnedByAgenticKit } from '../plugin/scripts/nightly-scheduler.mjs';
 import { oldestIncompleteProgress } from '../kb/shard-progress.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -230,9 +230,9 @@ export function productSchedulerVerdict(status) {
 /** ONE update owner per machine (CONTRIBUTING.md § The knowledge corpus). agentic-kit removes the
  *  Brain's own scheduler by design and updates through `ak sync`, which the registry watches as
  *  com.stuartkerr.ak-sync — so on such a machine the Brain scheduler is not expected to exist. */
+// One reader of agentic-kit ownership, shared with SessionStart's knowledge-currency line.
 export function brainUpdateOwnedByAgenticKit(home = os.homedir()) {
-  try { return JSON.parse(fs.readFileSync(path.join(home, '.config', 'agentic-kit', 'kit.json'), 'utf8')).ruvnetBrain === true; }
-  catch { return false; }
+  return updateOwnedByAgenticKit(home);
 }
 
 const loadState = () => { try { return JSON.parse(fs.readFileSync(STATE, 'utf8')); } catch { return {}; } };

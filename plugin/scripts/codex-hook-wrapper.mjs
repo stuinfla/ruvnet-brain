@@ -60,7 +60,7 @@ const blockingHooks = new Set([
 const DETACHED_HOOKS = new Set(['learn-flush']);
 
 /** THE BUDGET IS DERIVED FROM WHAT THE HOOK MEASURABLY COSTS, never from what looks tidy. */
-function timeoutFor(hookId) {
+function timeoutFor(hookId, event = '') {
   const override = Number(process.env.RUVNET_CODEX_HOOK_TIMEOUT_MS);
   if (Number.isFinite(override) && override > 0) return override;
   // decision-gate's own internal budget is 4000ms (RUVNET_DECISION_BUDGET_MS) and it is allowed to
@@ -69,9 +69,17 @@ function timeoutFor(hookId) {
   // tinguishable from a crash; 6000ms covers the gate's cap plus this chain's spawn overhead
   // (measured 773–1145ms end-to-end warm, so ~150–400ms of that is the wrapper/adapter/shim).
   if (hookId === 'decision-gate') return 6_000;
+  // Advisory capacity hook: 4 of 8 runs were killed at the old 2s host timeout on a loaded machine (measured
+  // 2026-09-30). Keep the wrapper's budget below the registration's own 5.5s so the wrapper, not the host, ends it.
+  if (hookId === 'capacity-aware-parallel-work') return 5_000;
   if (hookId === 'ground-ruvnet' || hookId === 'unprompted-speech' || hookId === 'continuation-gate') {
     return 8_500;
   }
+  // SessionEnd is hard-capped at 3s by the host (see DETACHED_HOOKS above) and the codex-hooks.json
+  // launcher kills this wrapper at 2500ms. A 4000ms budget here was a number nobody would ever reach:
+  // the body planned for 8s and was SIGKILLed mid-write. 2200ms leaves the launcher its margin, and the
+  // body receives it as RUVNET_CODEX_BUDGET_MS (below) so it can save the new snapshot first.
+  if (event === 'SessionEnd') return 2_200;
   return 4_000;
 }
 
@@ -190,7 +198,7 @@ if (DETACHED_HOOKS.has(hookId)) {
   process.exit(0);
 }
 
-const budgetMs = timeoutFor(hookId);
+const budgetMs = timeoutFor(hookId, process.argv[3] || '');
 const result = spawnSync(process.execPath, [adapter, ...process.argv.slice(2)], {
   input,
   encoding: 'utf8',

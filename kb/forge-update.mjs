@@ -420,9 +420,13 @@ export async function applyVerifiedStagedRelease({
     if (runtime.brainVersion !== expectedRuntimeVersion) throw new Error('installed runtime identity differs from the approved recovery runtime');
     fs.copyFileSync(assertNoFollowPath(liveDir, runtimeIdentity),
       assertNoFollowPath(candidateDir, path.join(candidateDir, 'RUNTIME-IDENTITY.json')));
-    const privateFence = path.join(liveDir, 'PRIVATE-STORES.json');
-    if (fs.existsSync(privateFence)) fs.copyFileSync(privateFence,
-      assertNoFollowPath(candidateDir, path.join(candidateDir, 'PRIVATE-STORES.json')));
+    // The candidate keeps the BUNDLE's fence; restorePrivateOverlayState adds the restored private
+    // names to it. Copying the LIVE fence over it imported every stale entry: measured 2026-09-30, the
+    // owner's live fence listed 108 stores, 100 of them public in 4.3.39, so the rail could only fail
+    // with "private/public store collision".
+    // Same carry main() does: without it the exact-tree swap deleted the live node_modules, and the
+    // recovered brain could no longer load its embedder (measured 2026-09-30 on the owner's copy).
+    carryLiveNodeModules({ candidateDir, liveDir });
     // S1: ONE APPLY PATH — the same helper main()'s normal apply uses, not a second, duplicated
     // copy-loop. It also adds the collision refusal main() previously lacked.
     restorePrivateFilesIntoCandidate({ candidateDir, sourceDir: liveDir, overlay });
@@ -646,7 +650,9 @@ export function restorePrivateOverlayState({ kbDir, overlay }) {
   const cardsFile = path.join(kbDir, 'capability-cards.md');
   const source = JSON.parse(fs.readFileSync(sourceFile, 'utf8'));
   const generations = JSON.parse(fs.readFileSync(generationsFile, 'utf8'));
-  const aliases = JSON.parse(fs.readFileSync(aliasesFile, 'utf8'));
+  // A public bundle may ship no repo-aliases.json at all (build-bundle: "aliases will not resolve"); the
+  // private aliases then start from an empty map instead of failing the whole update on ENOENT.
+  const aliases = fs.existsSync(aliasesFile) ? JSON.parse(fs.readFileSync(aliasesFile, 'utf8')) : {};
   const mergedSource = mergePrivateEntries(source.stores, overlay.sourceStores, 'SOURCE.json');
   const mergedGenerations = mergePrivateEntries(generations.stores, overlay.generationStores, 'RVF-GENERATIONS.json');
   const mergedAliases = mergePrivateEntries(aliases, overlay.aliases, 'repo-aliases.json');
@@ -658,23 +664,48 @@ export function restorePrivateOverlayState({ kbDir, overlay }) {
     }
   }
 
+  // The published capability-cards.md is a sealed input of the derived `concepts` store: its digest
+  // is in the release's concepts receipt, and the trusted validator re-hashes it on every candidate and
+  // live tree. So the public bytes are kept EXACTLY as extracted and private cards are APPENDED as
+  // whole sections after them — never re-serialized in between. Rejoining every section used to put
+  // private cards inside the hashed bytes, and every overlay install refused its own update with
+  // "derived concepts input receipt differs from capability-cards.md" (measured 2026-09-30).
   const publicCardsText = fs.existsSync(cardsFile) ? fs.readFileSync(cardsFile, 'utf8') : '';
   const publicCards = cardSections(publicCardsText);
+  const appendedCards = [];
+  // Case-folded, like the trusted validator (coverage-integrity derivedInputIdentity): an appended
+  // card whose heading folds onto a published one would fail the sealed-input check, so refuse it here
+  // with the collision named instead of writing a tree that cannot validate.
+  const publicFolded = new Set([...publicCards.keys()].map((name) => name.toLowerCase()));
   for (const [name, section] of Object.entries(overlay.cards || {})) {
-    if (publicCards.has(name) && publicCards.get(name) !== section) {
-      throw new Error(`capability-cards.md collision for private store ${name}`);
+    if (publicCards.has(name)) {
+      if (publicCards.get(name) !== section) throw new Error(`capability-cards.md collision for private store ${name}`);
+      continue; // already published verbatim
     }
-    publicCards.set(name, section);
+    if (publicFolded.has(name.toLowerCase())) throw new Error(`capability-cards.md collision for private store ${name}`);
+    appendedCards.push(section);
   }
-  const preambleEnd = publicCardsText.search(/^## /m);
-  const preamble = preambleEnd >= 0 ? publicCardsText.slice(0, preambleEnd).trimEnd() : publicCardsText.trimEnd();
-  const mergedCards = `${preamble}${preamble ? '\n\n' : ''}${[...publicCards.values()].join('\n\n')}\n`;
+  const separator = !publicCardsText ? '' : publicCardsText.endsWith('\n') ? '\n' : '\n\n';
+  const mergedCards = appendedCards.length
+    ? `${publicCardsText}${separator}${appendedCards.join('\n\n')}\n` : publicCardsText;
+
+  // The candidate's PRIVATE-STORES.json is the PUBLIC bundle's fence. A restored private store the
+  // bundle does not fence (a local ingest, or a store the bundle never knew) would leave the runtime
+  // ledger with "unclassified stores", so the restored names are added — never removed, and the file
+  // is untouched when the bundle already fences them all (a byte-identical re-apply stays a no-op).
+  const fenceFile = path.join(kbDir, 'PRIVATE-STORES.json');
+  const fence = fs.existsSync(fenceFile) ? JSON.parse(fs.readFileSync(fenceFile, 'utf8')) : { privateStores: [] };
+  const fenced = new Set((Array.isArray(fence.privateStores) ? fence.privateStores : []).map((name) => String(name).toLowerCase()));
+  const unfenced = Object.keys(overlay.sourceStores || {}).filter((name) => !fenced.has(name.toLowerCase()));
 
   atomicJson(sourceFile, { ...source, stores: mergedSource });
   atomicJson(generationsFile, { ...generations, stores: mergedGenerations });
   atomicJson(aliasesFile, mergedAliases);
-  fs.writeFileSync(`${cardsFile}.tmp-${process.pid}`, mergedCards);
-  fs.renameSync(`${cardsFile}.tmp-${process.pid}`, cardsFile);
+  if (unfenced.length) atomicJson(fenceFile, { ...fence, privateStores: [...(fence.privateStores || []), ...unfenced] });
+  if (mergedCards !== publicCardsText) {
+    fs.writeFileSync(`${cardsFile}.tmp-${process.pid}`, mergedCards);
+    fs.renameSync(`${cardsFile}.tmp-${process.pid}`, cardsFile);
+  }
   return { restored: Object.keys(overlay.sourceStores).length };
 }
 
@@ -702,6 +733,20 @@ export function restorePrivateOverlayState({ kbDir, overlay }) {
  * copying anything is the assertion `applyPublicBundlePreservingPrivate` had and the real path did
  * not; it is preserved here rather than dropped.
  */
+/**
+ * node_modules (the ONNX embedder and RVF readers) is installer-placed and never ships inside a
+ * bundle. The candidate is validated in a SIBLING directory with no parent node_modules, and the
+ * exact-tree swap would delete it from the live KB, so both apply paths carry the LIVE copy across.
+ * Reflink clone where the filesystem supports it (APFS/btrfs), plain copy otherwise.
+ */
+export function carryLiveNodeModules({ candidateDir, liveDir }) {
+  const liveModules = path.join(liveDir, 'node_modules');
+  if (!fs.existsSync(liveModules) || fs.existsSync(path.join(candidateDir, 'node_modules'))) return false;
+  fs.cpSync(assertNoFollowPath(liveDir, liveModules), path.join(candidateDir, 'node_modules'),
+    { recursive: true, verbatimSymlinks: true, mode: fs.constants.COPYFILE_FICLONE });
+  return true;
+}
+
 export function restorePrivateFilesIntoCandidate({ candidateDir, sourceDir, overlay }) {
   if (!overlay) return { restored: 0 };
   for (const relative of Object.keys(overlay.files || {})) {
@@ -720,7 +765,9 @@ export function restorePrivateFilesIntoCandidate({ candidateDir, sourceDir, over
 }
 
 const manifestUrl = source.canonicalManifestUrl || stores.find((s) => s.canonicalManifestUrl)?.canonicalManifestUrl;
-if (!manifestUrl) {
+// The recovery rail runs from the npm package's kb/forge-update.mjs, and the package ships no
+// kb/SOURCE.json (verified in ruvnet-brain-4.3.39.tgz), so this die() stopped the rail before it began.
+if (!manifestUrl && !STAGED_RELEASE_FILE) {
   die(`self-update not configured for this build — SOURCE.json has no canonicalManifestUrl ` +
       `(forge-build.mjs was run without --canonical-url). Provenance is still in SOURCE.json.`);
 }
@@ -1073,6 +1120,23 @@ function writeSnapshotReceipt(backupPath, { state, reason = null, recoveryComman
  *
  * @returns {{removed: string[], kept: [string, string][], freed: number}}
  */
+/**
+ * WHY a guard run failed. forge-guard prints its `[FAIL] ...` lines to STDOUT, and execFileSync puts only
+ * STDERR in error.message, so a refused store used to read "Command failed: node .../forge-guard.mjs --name X"
+ * with the cause dropped (measured 2026-09-30: the customer canary refused a generation and its log did not
+ * say why). Keep the command line, then append the guard's own FAIL lines.
+ */
+export function describeGuardFailure(error) {
+  const text = (value) => (value == null ? '' : Buffer.isBuffer(value) ? value.toString('utf8') : String(value));
+  const fails = `${text(error?.stdout)}\n${text(error?.stderr)}`.split('\n')
+    .map((line) => line.trim()).filter((line) => /\[FAIL\]|Error:/.test(line));
+  // Keep the WHOLE message: execFileSync appends the child's stderr on the lines after the command line.
+  const message = String(error?.message || error);
+  const extra = fails.filter((line) => !message.includes(line));
+  const cause = extra.length ? ` -- ${extra.join(' | ').slice(0, 800)}` : '';
+  return `${message.slice(0, 1600)}${cause}`;
+}
+
 export function reclaimBackups({
   kbDir,
   backupsMade = [],
@@ -1578,7 +1642,9 @@ async function main() {
   if (!APPLY) {
     writeCheckOutcome({ currencyVerdict: verdict.verdict, currencyReason: verdict.reason,
       candidateKind: candidateIdentity.kind, storeCount: targets.length });
-    if (anyBehind) { console.log(`\nA newer build exists. Run:  node forge-update.mjs --apply`); process.exit(10); }
+    // The npx door upgrades this updater before applying; an old installed updater run directly can fail
+    // the guard on a newer bundle (customer-state-matrix D8, 2026-09-30).
+    if (anyBehind) { console.log(`\nA newer build exists. Run:  npx ruvnet-brain@latest --update`); process.exit(10); }
     console.log(`\nAll stores current. Nothing to do.`); process.exit(0);
   }
 
@@ -1675,6 +1741,28 @@ async function main() {
     die(`staged ReleaseCoverage failed integrity: ${stagedCoverage.failures.join('; ')} — local files untouched.`);
   }
 
+  // A release may RETIRE a store this brain still lists. Measured 2026-09-30: 4.3.39 no longer ships
+  // agentic-flows/agentic-music (excluded-no-corpus) or cogs/support under those names, and guarding
+  // them could only fail ("[FAIL] MISSING file: agentic-flows.rvf"), so no brain listing them could
+  // ever update. The release coverage validated above is the authority on what ships; only the stores
+  // the staged bundle declares are guarded and read back, and the retired ones are named, not dropped
+  // silently. (A legacy flat SOURCE.json has no store name to compare and is always guarded.)
+  let stagedStoreNames;
+  try {
+    const staged = JSON.parse(fs.readFileSync(path.join(extractDir, 'SOURCE.json'), 'utf8')).stores || {};
+    stagedStoreNames = new Set(Array.isArray(staged) ? staged.map((s) => s?.kbName) : Object.keys(staged));
+  } catch (error) {
+    fs.rmSync(tmp, { recursive: true, force: true });
+    die(`staged SOURCE.json is unreadable: ${error.message} — local files untouched.`);
+  }
+  const landingTargets = resolvedTargets.filter(({ local }) => local.kbName == null || stagedStoreNames.has(local.kbName));
+  const retiredStores = resolvedTargets.filter((target) => !landingTargets.includes(target)).map(({ local }) => local.kbName);
+  if (!landingTargets.length) {
+    fs.rmSync(tmp, { recursive: true, force: true });
+    die(`release ${canonTag || canonLabel} ships none of the selected stores (${retiredStores.join(', ')}) — local files untouched.`);
+  }
+  if (retiredStores.length) console.log(`\n  retired by this release (no longer shipped): ${retiredStores.join(', ')}`);
+
   const privateNames = Object.keys(privateOverlay?.sourceStores || {});
   let profileResult = null;
   const finalVerificationByStore = new Map();
@@ -1686,7 +1774,7 @@ async function main() {
     const guard = path.join(dir, 'forge-guard.mjs');
     if (!fs.existsSync(guard)) return { valid: false, failures: ['forge-guard.mjs is missing'] };
     try {
-      for (const { local, resolved: storeResolution } of resolvedTargets) {
+      for (const { local, resolved: storeResolution } of landingTargets) {
         execFileSync(process.execPath, [guard, '--dir', dir, '--name', local.kbName], { cwd: dir, stdio: 'pipe' });
         const verified = verifyLanded({ kbDir: dir, kbName: local.kbName, before: local, beforeBundle: source,
           expectedDigest: storeResolution.digest, downloadedBuffer: buf });
@@ -1694,7 +1782,7 @@ async function main() {
         if (phase === 'live') finalVerificationByStore.set(local.kbName, verified);
       }
       return { valid: true, failures: [] };
-    } catch (error) { return { valid: false, failures: [`forge-guard failed: ${error.message}`] }; }
+    } catch (error) { return { valid: false, failures: [`forge-guard failed: ${describeGuardFailure(error)}`] }; }
   };
   let transaction;
   try {
@@ -1730,6 +1818,8 @@ async function main() {
           fs.copyFileSync(assertNoFollowPath(liveDir, liveRuntimeIdentity),
             assertNoFollowPath(candidateDir, path.join(candidateDir, 'RUNTIME-IDENTITY.json')));
         }
+        // node_modules: the same installer-owned class as the two files above (see carryLiveNodeModules).
+        carryLiveNodeModules({ candidateDir, liveDir });
         restorePrivateFilesIntoCandidate({ candidateDir, sourceDir: liveDir, overlay: privateOverlay });
         // ATOMIC WITH INSTALLATION, not after it. The transport identity is written INTO the
         // candidate, so the storage transaction's single rename either promotes the bytes AND the
@@ -1769,7 +1859,7 @@ async function main() {
     process.exitCode = 12;
     return;
   }
-  for (const { local, resolved: storeResolution } of resolvedTargets) {
+  for (const { local, resolved: storeResolution } of landingTargets) {
     const verified = finalVerificationByStore.get(local.kbName)
       || verifyLanded({ kbDir: KB_DIR, kbName: local.kbName, before: local, beforeBundle: source,
         expectedDigest: storeResolution.digest, downloadedBuffer: buf });
@@ -1815,7 +1905,8 @@ async function main() {
     ? `\n=== DONE — exact no-op; installed bytes already equal the validated candidate ===`
     : `\n=== DONE — ${behindStores.length} store(s) updated ===`);
   console.log(`resolved target (live manifest, checked BEFORE downloading): ${canonLabel}`);
-  for (const { local } of behindStores) {
+  if (retiredStores.length) console.log(`retired by this release (no longer shipped): ${retiredStores.join(', ')}`);
+  for (const { local } of landingTargets) {
     const r = landedByStore.get(local.kbName);
     const l = r.landed;
     console.log(`[${local.kbName}] SOURCE.json on disk now reads: built ${l.builtUtc || '?'} from ${short(l.sourceCommit)}${l.sourceDescribe ? ` (${l.sourceDescribe})` : ''}`);
@@ -1828,7 +1919,7 @@ async function main() {
     console.log(`\n${unchangedStores.length} of ${behindStores.length} store(s) were already at the canonical build and did not change: ${unchangedStores.join(', ')}`);
     console.log(`  (stores are forged independently — an unchanged store means its upstream repo did not move, not a failed update.)`);
   }
-  const finalOutcome = writeUpdateOutcome({ terminalVerdict: transaction.terminalVerdict, storeCount: behindStores.length,
+  const finalOutcome = writeUpdateOutcome({ terminalVerdict: transaction.terminalVerdict, storeCount: behindStores.length, retiredStores,
     currencyVerdict: verdict.verdict, currencyReason: verdict.reason, candidateKind: candidateIdentity.kind,
     storageDelta: transaction.storageDelta,
     transactionReceipts: transaction.paths.receipts,
