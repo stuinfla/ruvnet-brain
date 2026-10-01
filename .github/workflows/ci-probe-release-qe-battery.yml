@@ -1,0 +1,19 @@
+name: ci-probe-release-qe-battery
+
+# MEASUREMENT ONLY (ci-probe/* branches). Runs the real ci.yml (and with it release-qe: seed
+# resolution, code-release-corpus assemble, the sealed ruvnet-brain.zip) on this branch's content, to
+# prove the new "Capability selection battery against the exact candidate bundle" step before it can
+# block a release: green on a bundle carrying the fixed reader, red on one carrying the old reader,
+# and its wall time against release-qe's 50-minute budget. Publishes nothing.
+on:
+  push:
+    branches: ['ci-probe/release-qe-battery-*']
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+    with:
+      candidate_sha: ${{ github.sha }}
