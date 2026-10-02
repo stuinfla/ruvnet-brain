@@ -5,7 +5,7 @@ status: Accepted
 date: 2026-07-26
 updated: 2026-10-01
 updated_source: derived-from-git
-reviewed_digest: 63273ddf3e8a
+reviewed_digest: 75556bed3285
 version: 1.1.6
 impl: verification-expired
 verified: 2026-07-31
@@ -226,6 +226,9 @@ overlays and preserves the prior generation as unclassified data instead of dele
 source review does not renew the expired verification or prove the native-host acceptance criteria.
 
 ## Currency log
+| 2026-10-01 | Currency review (4.5, keyword lane off by default): decision unchanged. `kb/keyword-lane.mjs` gains `keywordLaneEnabled()`, and `kb/forge-ask-all.mjs` adds keyword candidates only when RUVNET_BRAIN_KEYWORD_LANE=1. Brain on/off and per-part scope handling are untouched. reviewed_digest 75556bed3285. | Reviewed `kb/forge-ask-all.mjs` and `kb/keyword-lane.mjs` against `evals/runs/2026-10-01-retrieval-4.5/e2-mitigation/cost-sim.jsonl`. |
+| 2026-10-01 | Currency review (4.5 merge of 4.4.1): decision unchanged. The governed files changed only by merging the 4.4.1 release and by retrieval-only edits to `kb/forge-ask-all.mjs`: the keyword lane, the quoted-claim merge, the flag-gated learned judge, and dropping store names from identifier widening. Brain on/off and per-part scope handling are untouched. reviewed_digest 7af69131d535. | Reviewed `kb/forge-ask-all.mjs` and `bin/install.mjs` against `evals/runs/2026-10-01-retrieval-4.5/e2e3-f725e0e7/recall.json`. |
+| 2026-10-01 | Currency review (4.5): decision unchanged. `kb/forge-ask-all.mjs` changed only inside retrieval: the keyword lane, the quoted-claim merge and a flag-gated learned judge. Brain on/off and per-part scope handling are untouched. reviewed_digest 9303ba1e555f. | Reviewed `kb/forge-ask-all.mjs` against `evals/runs/2026-10-01-retrieval-4.5/e2e3-f725e0e7/recall.json`. |
 | 2026-10-01 | Currency review (4.4 routing and 4.4.1 apostrophes): decision unchanged. `kb/forge-ask-all.mjs` changed only in source routing: the tie-break, the metadata index, the rUv provenance shape and apostrophe folding. Brain on/off and per-part scope handling are untouched. reviewed_digest 63273ddf3e8a. | Reviewed `kb/forge-ask-all.mjs` against `evals/runs/2026-10-01-routing-4.4.1/README.md`. |
 | 2026-09-27 | Currency review: decision unchanged. Motion: retrieval scoping fixes in forge-ask-all.mjs, hook-shim TABLE corrections, corpus-currency consolidation, and the same onboarding-console/install.mjs fixes seen elsewhere. None change the on/off or scope semantics this ADR governs. | Reviewed `scripts/user-settings.mjs`, `kb/forge-ask-all.mjs`, `plugin/mcp/server.mjs`, `plugin/scripts/hook-shim.mjs`, `plugin/scripts/session-start-core.mjs`, `scripts/onboarding-console.mjs` against the commits listed above; reviewed_digest 1e0dac253cc3. |
 

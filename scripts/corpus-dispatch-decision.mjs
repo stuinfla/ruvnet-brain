@@ -48,8 +48,8 @@ export function killSwitchOff(nightlyVar) {
 }
 
 /**
- * @param nightlyVar   repository variable CORPUS_NIGHTLY (armed unless it reads `off`, any case; the owner's
- *                     approval of the code release is the consent)
+ * @param nightlyVar   repository variable CORPUS_NIGHTLY (armed unless it reads `off`, any case; the newest
+ *                     install-verified code release is the consent — no person approves it)
  * @param resolution   { status: 'resolved', release: {tag, version, sourceSha} }
  *                   | { status: 'not-yet-verified' } | { status: 'invalid', reason }
  */

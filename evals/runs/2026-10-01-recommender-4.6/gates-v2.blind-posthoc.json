@@ -1,0 +1,784 @@
+{
+ "missingAcceptIds": [],
+ "overall": {
+  "n": 40,
+  "positives": 24,
+  "negatives": 16,
+  "recall": {
+   "k": 5,
+   "n": 24,
+   "pct": 20.8,
+   "ci95": [
+    9.2,
+    40.5
+   ]
+  },
+  "precision": {
+   "k": 5,
+   "n": 5,
+   "pct": 100,
+   "ci95": [
+    56.6,
+    100
+   ]
+  },
+  "falseFiring": {
+   "k": 0,
+   "n": 16,
+   "pct": 0,
+   "ci95": [
+    0,
+    19.4
+   ]
+  },
+  "wrongPackage": 0
+ },
+ "bySplit": {
+  "blind": {
+   "n": 40,
+   "positives": 24,
+   "negatives": 16,
+   "recall": {
+    "k": 5,
+    "n": 24,
+    "pct": 20.8,
+    "ci95": [
+     9.2,
+     40.5
+    ]
+   },
+   "precision": {
+    "k": 5,
+    "n": 5,
+    "pct": 100,
+    "ci95": [
+     56.6,
+     100
+    ]
+   },
+   "falseFiring": {
+    "k": 0,
+    "n": 16,
+    "pct": 0,
+    "ci95": [
+     0,
+     19.4
+    ]
+   },
+   "wrongPackage": 0
+  }
+ },
+ "rows": [
+  {
+   "id": "B01",
+   "category": "design",
+   "split": "blind",
+   "prompt": "ok so I want each of our AI helpers to be able to go try something risky in its own throwaway copy of what it knows, and if it goes sideways we just toss that copy and nothing in the main one changed, kinda like git branches but for its memory",
+   "accept": [
+    "agenticow"
+   ],
+   "fired": true,
+   "pkg": "agenticow",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "agenticow:44.52[copy,git,branch,memory,copy-on-write,write]",
+    "ruvector-lsm-ann:8.49[memory,write]",
+    "ruvector-memory-admission:8.49[memory,write]"
+   ]
+  },
+  {
+   "id": "B02",
+   "category": "design",
+   "split": "blind",
+   "prompt": "we're about to put a chatbot on the website for customers and honestly I'm nervous people will talk it into ignoring its rules or get it to spit out other customers' info, can we put something in front of it that catches that",
+   "accept": [
+    "@claude-flow/aidefence",
+    "aimds-detection",
+    "aidefence-core"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "not-design-or-diagnosis",
+   "top": []
+  },
+  {
+   "id": "B03",
+   "category": "design",
+   "split": "blind",
+   "prompt": "I want the support assistant to actually remember past conversations with each user and get better from what worked, and it has to keep that even after a restart, ideally runs offline too",
+   "accept": [
+    "agentdb",
+    "@claude-flow/memory"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "overlap",
+   "top": [
+    "@ruvector/ruvllm:7.94[offline]",
+    "agentdb:7.94[offline]",
+    "@claude-flow/cli:6.57[assistant]"
+   ]
+  },
+  {
+   "id": "B04",
+   "category": "design",
+   "split": "blind",
+   "prompt": "is there a way to tell if somebody is in a room just from the wifi signal, no cameras at all, we want to turn lights off in empty conference rooms",
+   "accept": [
+    "cog-person-count",
+    "rvcsi-events"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "margin",
+   "top": [
+    "rufield-adapters:19.46[room,camera,sens,csi]",
+    "wifi-densepose-sensing-server:17.52[wifi,signal,sens,csi]",
+    "cog-presence-field:16.68[room,wifi,empty,csi]"
+   ]
+  },
+  {
+   "id": "B05",
+   "category": "design",
+   "split": "blind",
+   "prompt": "my dad lives alone and I'd love to keep an eye on his breathing and heart rate while he sleeps without him wearing anything, just using the wifi gear in the house",
+   "accept": [
+    "wifi-densepose-vitals"
+   ],
+   "fired": true,
+   "pkg": "wifi-densepose-vitals",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "wifi-densepose-vitals:31.34[breath,heart,rate,wifi,csi]",
+    "cog-vital-trend:14.80[breath,heart,rate]",
+    "wifi-veil:14.49[while,wifi,sens]"
+   ]
+  },
+  {
+   "id": "B06",
+   "category": "design",
+   "split": "blind",
+   "prompt": "we write a lot of our marketing copy with AI now and legal wants some invisible mark in the text so later we can prove a paragraph came out of our system and not someone else's",
+   "accept": [
+    "ai-text-watermark",
+    "ruflo-watermark",
+    "@claude-flow/watermark"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "coverage",
+   "top": [
+    "agenticow:14.43[write,copy]",
+    "ai-text-watermark:12.71[invisible,text]",
+    "@claude-flow/plugin-legal-contracts:8.98[legal]"
+   ]
+  },
+  {
+   "id": "B07",
+   "category": "design",
+   "split": "blind",
+   "prompt": "we can't use real customer records to test our question-answering bot, can you set up something that cranks out a big pile of realistic fake examples we can train and test on",
+   "accept": [
+    "@ruvector/agentic-synth"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "coverage",
+   "top": [
+    "@ruvector/agentic-synth:12.03[test,train]",
+    "ruvdrone:11.87[real,example]",
+    "latentmesh-align:9.49[set,train]"
+   ]
+  },
+  {
+   "id": "B08",
+   "category": "design",
+   "split": "blind",
+   "prompt": "add a feature that looks at our daily order history and predicts demand for the next couple of months so purchasing knows what to stock, something more modern than a moving average",
+   "accept": [
+    "neuro-divergent",
+    "neuro-divergent-models",
+    "timesfm"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "overlap",
+   "top": [
+    "@agentic-flow/ephemeral-memory:8.98[demand]",
+    "com.claudeflow.unity-swarm-ai:5.99[more]",
+    "ruvector-delta-consensus:5.99[order]"
+   ]
+  },
+  {
+   "id": "B09",
+   "category": "design",
+   "split": "blind",
+   "prompt": "teachers want to snap a photo of a page from a textbook or a research paper and get the equations back as something editable we can show on the site instead of a blurry image",
+   "accept": [
+    "@ruvector/scipix"
+   ],
+   "fired": true,
+   "pkg": "@ruvector/scipix",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "@ruvector/scipix:44.11[research,paper,equation,image,latex,ocr]",
+    "wifi-densepose-sar:9.02[research,back]",
+    "phone-agent:8.98[page]"
+   ]
+  },
+  {
+   "id": "B10",
+   "category": "design",
+   "split": "blind",
+   "prompt": "our help center search is weird, if you type an exact part number it finds nothing useful but if you type it in plain words it misses the exact match, I want it to be good at both at once",
+   "accept": [
+    "ruvector-hybrid"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "margin",
+   "top": [
+    "@ruvector/postgres-cli:17.95[search,bm25,sparse]",
+    "ruvector-hybrid:15.81[search,bm25,sparse]",
+    "cog-sparse-recovery:12.41[miss,sparse]"
+   ]
+  },
+  {
+   "id": "B11",
+   "category": "design",
+   "split": "blind",
+   "prompt": "we're building a password manager and our security advisor keeps saying the encryption needs to hold up even once quantum computers are a thing, what should the vault use",
+   "accept": [
+    "qudag-vault-core",
+    "qudag-crypto"
+   ],
+   "fired": true,
+   "pkg": "qudag-vault-core",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "qudag-vault-core:35.18[password,manager,security,quantum,vault]",
+    "qudag-network:8.89[encryption,quantum]",
+    "daa-security:8.56[security,quantum]"
+   ]
+  },
+  {
+   "id": "B12",
+   "category": "design",
+   "split": "blind",
+   "prompt": "three hospitals want to train one model together but none of them is allowed to send patient data out of their building, how do we build that",
+   "accept": [
+    "rvf-federation",
+    "daa-compute",
+    "daa-prime-trainer"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "overlap",
+   "top": [
+    "@claude-flow/plugin-healthcare-clinical:8.98[patient]",
+    "neuro-divergent-training:8.73[train,model]",
+    "ruv-swarm-ml-training:8.73[train,model]"
+   ]
+  },
+  {
+   "id": "B13",
+   "category": "design",
+   "split": "blind",
+   "prompt": "we lost the original source for an old web app, all we have is the minified javascript bundle from the server, I need it turned back into something a human can read and work on",
+   "accept": [
+    "ruvector-decompiler",
+    "ruvector-decompiler-wasm"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "coverage",
+   "top": [
+    "ruvector-decompiler:11.13[source,bundle]",
+    "rufield-viewer:9.37[web,read]",
+    "@ruvnet/ruview:9.09[server,read]"
+   ]
+  },
+  {
+   "id": "B14",
+   "category": "design",
+   "split": "blind",
+   "prompt": "we've got a referral network of a couple million users and I want to rank who's most influential in it, fast, without grinding through the entire thing every single night",
+   "accept": [
+    "sublinear-time-solver",
+    "sublinear"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "coverage",
+   "top": [
+    "@claude-flow/neural:11.64[network,rank]",
+    "@ruvector/sona:11.64[network,rank]",
+    "ruvector-learning-wasm:9.11[network,rank]"
+   ]
+  },
+  {
+   "id": "B15",
+   "category": "diagnosis",
+   "split": "blind",
+   "prompt": "our AI bill basically doubled this month and it looks like every tiny request, even 'say hi', goes to the most expensive model. can we stop that",
+   "accept": [
+    "@ruvector/tiny-dancer",
+    "agentic-flow"
+   ],
+   "fired": true,
+   "pkg": "@ruvector/tiny-dancer",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "@ruvector/tiny-dancer:18.42[tiny,model,rout]",
+    "@claude-flow/neural:10.48[model,rout]",
+    "cognitum-license:8.98[bill]"
+   ]
+  },
+  {
+   "id": "B16",
+   "category": "diagnosis",
+   "split": "blind",
+   "prompt": "people keep asking the assistant basically the same question just worded differently and we pay to look it up and answer from scratch every single time, it's slow and costs a fortune",
+   "accept": [
+    "ruvector-query-cache",
+    "rulake"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "overlap",
+   "top": [
+    "@agentic-flow/ephemeral-memory:7.61[cost]",
+    "@claude-flow/cli:6.57[assistant]",
+    "claude-flow:6.57[assistant]"
+   ]
+  },
+  {
+   "id": "B17",
+   "category": "diagnosis",
+   "split": "blind",
+   "prompt": "every morning my coding assistant has completely forgotten what we decided the day before and I have to re-explain the whole project again",
+   "accept": [
+    "agentdb",
+    "@claude-flow/memory"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "margin",
+   "top": [
+    "@claude-flow/cli:17.66[coding,assistant,memory]",
+    "@agentic-flow/ephemeral-memory:16.41[memory,agent-memory,persistent]",
+    "claude-flow:16.40[coding,assistant,memory]"
+   ]
+  },
+  {
+   "id": "B18",
+   "category": "diagnosis",
+   "split": "blind",
+   "prompt": "our test suite is a disaster, random stuff fails then passes on rerun, it takes 40 minutes and nobody trusts the green checkmark anymore. help",
+   "accept": [
+    "agentic-qe",
+    "@claude-flow/plugin-test-intelligence"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "coverage",
+   "top": [
+    "kimi-k2-wasm-testing-suite:13.50[test,suite]",
+    "photonlayer-ruvector:10.65[fail,pass]",
+    "latentmesh-gate:9.70[test,random]"
+   ]
+  },
+  {
+   "id": "B19",
+   "category": "diagnosis",
+   "split": "blind",
+   "prompt": "the 'find similar items' thing used to be instant but now we're at a couple hundred million items and the server keeps running out of RAM trying to hold it all",
+   "accept": [
+    "@ruvector/diskann",
+    "ruvector-rabitq",
+    "ruvector-pq-search"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "no-strong-token",
+   "top": [
+    "ruvector-edge-auth-worker:9.06[server,hold]",
+    "deployment:5.99[find]",
+    "ledger:5.99[item]"
+   ]
+  },
+  {
+   "id": "B20",
+   "category": "diagnosis",
+   "split": "blind",
+   "prompt": "ever since we bulk deleted a ton of old records the similar-items results got noticeably worse and keep missing stuff that's obviously related",
+   "accept": [
+    "ruvector-hnsw-repair",
+    "ruvector-delta-index"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "overlap",
+   "top": [
+    "cog-sparse-recovery:5.99[miss]",
+    "cog-temporal-compress:5.99[old]",
+    "ledger:5.99[item]"
+   ]
+  },
+  {
+   "id": "B21",
+   "category": "diagnosis",
+   "split": "blind",
+   "prompt": "big problem: in our app that serves multiple client companies, the AI document search occasionally shows one company's files to a different company",
+   "accept": [
+    "ruvector-capgated",
+    "ruvector-context",
+    "ruvector-edge-tenancy"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "margin",
+   "top": [
+    "@ruvector/scipix:11.70[client,document]",
+    "rupixel:10.68[document,search]",
+    "@dream-machine/memory:8.47[search,file]"
+   ]
+  },
+  {
+   "id": "B22",
+   "category": "diagnosis",
+   "split": "blind",
+   "prompt": "the assistant writes these long answers that sound confident but contradict themselves halfway through, I want something that flags when an answer doesn't actually hang together before it goes out",
+   "accept": [
+    "prime-radiant",
+    "@claude-flow/plugin-prime-radiant"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "coverage",
+   "top": [
+    "agenticow:11.83[write,through]",
+    "ruvector-edge-analytics:10.03[answer,through]",
+    "cog-sound-classifier:8.98[sound]"
+   ]
+  },
+  {
+   "id": "B23",
+   "category": "diagnosis",
+   "split": "blind",
+   "prompt": "every time the agent makes a tiny code change it round-trips to the big model, takes forever and costs money for what's basically a find-and-replace",
+   "accept": [
+    "agent-booster"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "coverage",
+   "top": [
+    "@ruvector/emergent-time:12.90[tiny,change]",
+    "@ruvector/tiny-dancer:12.25[tiny,model]",
+    "agent-booster:10.04[code,cost]"
+   ]
+  },
+  {
+   "id": "B24",
+   "category": "diagnosis",
+   "split": "blind",
+   "prompt": "two of my AI agents keep grabbing the same ticket and redoing each other's work, sometimes overwriting it, how do I get them to stop stepping on each other",
+   "accept": [
+    "@claude-flow/claims"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "overlap",
+   "top": [
+    "@dream-machine/edge-contracts:5.99[ticket]",
+    "@ruflo/chatgpt-federation:5.99[them]",
+    "ruv-neural-loop:5.99[stop]"
+   ]
+  },
+  {
+   "id": "B25",
+   "category": "off-topic",
+   "split": "blind",
+   "prompt": "morning! how was your weekend lol",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "not-design-or-diagnosis",
+   "top": []
+  },
+  {
+   "id": "B26",
+   "category": "off-topic",
+   "split": "blind",
+   "prompt": "can you squash my last three commits into one and push the branch",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "not-design-or-diagnosis",
+   "top": []
+  },
+  {
+   "id": "B27",
+   "category": "off-topic",
+   "split": "blind",
+   "prompt": "where are we at on the release, anything still blocking?",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "not-design-or-diagnosis",
+   "top": []
+  },
+  {
+   "id": "B28",
+   "category": "off-topic",
+   "split": "blind",
+   "prompt": "help me write a polite email to the landlord saying the rent will be a few days late",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "not-design-or-diagnosis",
+   "top": []
+  },
+  {
+   "id": "B29",
+   "category": "off-topic",
+   "split": "blind",
+   "prompt": "explain like I'm five what an API actually is",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "not-design-or-diagnosis",
+   "top": []
+  },
+  {
+   "id": "B30",
+   "category": "off-topic",
+   "split": "blind",
+   "prompt": "what time is it in Tokyo right now",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "not-design-or-diagnosis",
+   "top": []
+  },
+  {
+   "id": "B31",
+   "category": "off-topic",
+   "split": "blind",
+   "prompt": "rename the variable userData to profile everywhere in this one file please",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "not-design-or-diagnosis",
+   "top": []
+  },
+  {
+   "id": "B32",
+   "category": "off-topic",
+   "split": "blind",
+   "prompt": "summarize what we did today in a couple bullet points for my notes",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "not-design-or-diagnosis",
+   "top": []
+  },
+  {
+   "id": "B33",
+   "category": "no-fit",
+   "split": "blind",
+   "prompt": "the redis cache on the checkout page keeps showing old prices for like ten minutes after we change them in the admin, how do we fix that",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "coverage",
+   "top": [
+    "ruvector-query-cache:12.17[cache,cach]",
+    "phone-agent:8.98[page]",
+    "@ruvector/agentic-synth:7.61[cach]"
+   ]
+  },
+  {
+   "id": "B34",
+   "category": "no-fit",
+   "split": "blind",
+   "prompt": "add a little search box above the product list that filters by name as you type, there's only about 50 products",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "margin",
+   "top": [
+    "ruvector-edge-tenancy:12.38[name,type,only]",
+    "@ruvector/diskann:11.19[search,product]",
+    "ruvector-pq-search:11.19[search,product]"
+   ]
+  },
+  {
+   "id": "B35",
+   "category": "no-fit",
+   "split": "blind",
+   "prompt": "our node server's memory climbs all day until it crashes, I think we're leaking event listeners somewhere",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "overlap",
+   "top": [
+    "cog-water-leak:8.98[leak]",
+    "llm-stream-reformat:8.37[think]",
+    "@claude-flow/cli:6.83[server,memory]"
+   ]
+  },
+  {
+   "id": "B36",
+   "category": "no-fit",
+   "split": "blind",
+   "prompt": "add stripe subscriptions with a 14 day free trial and let our sales agents give out coupon codes",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "overlap",
+   "top": [
+    "@agentic-flow/crdt-gossip:6.06[free]",
+    "ai-text-watermark:6.06[free]",
+    "rupixel:6.06[free]"
+   ]
+  },
+  {
+   "id": "B37",
+   "category": "no-fit",
+   "split": "blind",
+   "prompt": "set up sign in with google and a forgot-password email flow for the app",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "margin",
+   "top": [
+    "@agentic-flow/ephemeral-memory:16.41[memory,agent-memory,persistent]",
+    "agentdb:13.23[flow,memory,agent-memory]",
+    "@claude-flow/providers:11.76[google,flow]"
+   ]
+  },
+  {
+   "id": "B38",
+   "category": "no-fit",
+   "split": "blind",
+   "prompt": "routing is broken after the deploy, going to /settings directly gives a 404 but clicking the link works, it's a next.js app",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "overlap",
+   "top": [
+    "cog-swarm-deploy:7.94[deploy]",
+    "@ruvector/kge:7.61[link]",
+    "@claude-flow/neural:6.17[rout]"
+   ]
+  },
+  {
+   "id": "B39",
+   "category": "no-fit",
+   "split": "blind",
+   "prompt": "make the bar graph on the dashboard look nicer, the colors clash badly in dark mode",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "overlap",
+   "top": [
+    "@ruvnet/nvsim-dashboard:7.33[dashboard]",
+    "rufield-viewer:7.33[dashboard]",
+    "qudag:5.58[dark]"
+   ]
+  },
+  {
+   "id": "B40",
+   "category": "no-fit",
+   "split": "blind",
+   "prompt": "our github actions runs take 20 minutes, can we cache node_modules between runs and run the jobs in parallel",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "not-design-or-diagnosis",
+   "top": []
+  }
+ ]
+}

@@ -20,6 +20,8 @@ import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 import { searchKb } from './forge-ask.mjs';
 import { kbBuildIdentity } from './kb-build-identity.mjs';
+import { keywordCandidates, keywordLaneEnabled } from './keyword-lane.mjs';
+import { applyJudge, loadJudge } from './judge-rank.mjs';
 import { describeSearchFailure } from './search-outcome.mjs';
 import { prepareRelatedSources, renderRelatedSources } from './grounded-response.mjs';
 import { rerankPairs, cePrefilterScores } from './forge-rerank.mjs';
@@ -2412,9 +2414,12 @@ async function sourceBackedCardLane({ dir, query, k, planned }) {
 // Discover the repos present in a bundle dir: every <repo>.rvf (the `.big.rvf` is the same repo's
 // sharp variant, not a separate repo; idmap/embed/passages sidecars are not stores). Returns the
 // unique base names, so searchKb can then pick big-vs-small per repo on its own.
+// A Brain that lived on exFAT/FAT/NTFS carries macOS AppleDouble `._<name>` twins (`._ruvector.rvf`) and
+// .DS_Store; they are the volume's, never a store (tests/unit/volume-metadata-not-stores.test.mjs).
 export function discoverRepos(dir) {
   const names = new Set();
   for (const f of fs.readdirSync(dir)) {
+    if (f.startsWith('._')) continue;                  // volume metadata, not a store
     const m = f.match(/^(.+?)(\.big)?\.rvf$/);
     if (!m) continue;                                  // not an rvf store
     if (/\.(idmap|embed)\b/.test(f)) continue;         // sidecar, not a store
@@ -3177,7 +3182,55 @@ export function ruvAuthorshipIntent(query) {
 // The source-route plan for an unscoped question: which stores the bounded search opens, and why.
 // Pure routing (cards, deployed inventory, source metadata, intent owners, identifier widening); it
 // loads no model and retrieves nothing, so a route-only measurement calls exactly what search runs.
-export function planSourceRoute({ dir, query, discovered, identifierScanTokens = scannableIdentifiers(query), deadline = null }) {
+// A REPOSITORY NAME IS NOT AN IDENTIFIER. "RuVector" is PascalCase, so the identifier lane read it as
+// a rare symbol, scanned every sidecar for "ruvector" and WIDENED the route to the stores that merely
+// depend on it (agentdb, agentic-flow). Their manifests declare `"ruvector": "^x"`, which the lane
+// counts as a definition (+5), so "RuVector HNSW vector search overview" was answered from agentdb
+// at 9.336 (plugin/test/capability-selection-questions.json; found 2026-10-01 on the 4.4.0 corpus).
+// The name routers already handle a named store; the identifier lane is for rare tokens. A token
+// that is the key or a registered alias of a deployed store therefore never widens the route and
+// never adds candidates in ANOTHER store. Inside the store it names it is still an identifier:
+// "In LatentMesh ADR-001, ..." finds latentmesh's own ADR-001 through it (the recall gate lost
+// that question when store names were dropped everywhere; measured 2026-10-01, final-a2adf94a).
+// `forStore(name)` gives the tokens the identifier lane may use while searching `name`.
+// ONLY NAMES ARE NAMES (review S5, 2026-10-01). The alias registry also lists CODE SYMBOLS a store owns
+// (kb/repo-aliases.json: ruvector -> RvfStore, RvfDatabase), so "Where does agentdb call
+// RvfDatabase.openReadonly?" lost RvfDatabase in every store but ruvector — exactly where it was asked about.
+// So a registered alias suppresses widening only when it is NAME-shaped (one word, or words joined by
+// spaces/hyphens; not camelCase/PascalCase/snake_case/dotted — kb/identifier-lane.mjs's own symbol shapes),
+// and ANY token the query itself uses as code (`Name.member`, `Name(`, `Name::`) is an identifier whatever
+// it is called. Ownership is a MULTI-map: one name may belong to several stores ("metaharness" is both a
+// deployed store and an alias of agent-harness-generator), and forStore(name) keeps it when ANY owner is name.
+const CODE_SHAPED_ALIAS = /^(?:[a-z]+(?:[A-Z][a-z0-9]+)+|(?:[A-Z][a-z0-9]+){2,}|[A-Za-z0-9]+(?:_[A-Za-z0-9]+)+|.*[.()]|.*::.*)$/;
+export function queryIdentifiers(dir, query) {
+  const owners = new Map(); // lower-cased store key or name-shaped alias -> Set of lower-cased store keys
+  const own = (name, store) => {
+    const key = String(name).toLowerCase();
+    if (!owners.has(key)) owners.set(key, new Set());
+    owners.get(key).add(String(store).toLowerCase());
+  };
+  for (const r of discoverRepos(dir)) own(r, r);
+  for (const [canonical, aliases] of Object.entries(loadRepoAliases(dir) || {})) {
+    own(canonical, canonical);
+    for (const a of aliases || []) if (!CODE_SHAPED_ALIAS.test(String(a).trim())) own(a, canonical);
+  }
+  const usedAsCode = new Set();
+  // Immediately followed by member access, a path separator or a call: "Name.method", "Name::new", "Name(".
+  // "RuVector. Then", "RuVector (the store)" are prose, not code.
+  for (const m of String(query || '').matchAll(/([A-Za-z_$][\w$-]*)(?:\.[A-Za-z_$]|::|\()/g)) usedAsCode.add(m[1].toLowerCase());
+  const exact = exactIdentifiers(query);
+  const scan = scannableIdentifiers(query);
+  const ownersOf = (t) => (usedAsCode.has(String(t).toLowerCase()) ? null : owners.get(String(t).toLowerCase()));
+  const keep = (t) => !ownersOf(t);
+  const forStore = (store) => {
+    const name = String(store).toLowerCase();
+    const ok = (t) => keep(t) || ownersOf(t).has(name);
+    return { identifierTokens: exact.filter(ok), identifierScanTokens: scan.filter(ok) };
+  };
+  return { identifierTokens: exact.filter(keep), identifierScanTokens: scan.filter(keep), forStore };
+}
+
+export function planSourceRoute({ dir, query, discovered, identifierScanTokens = queryIdentifiers(dir, query).identifierScanTokens, deadline = null }) {
   const inventoryDirective = inventoryReposFromQuery(query, dir, discovered);
   let planned = inventoryDirective && (
     inventoryDirective.familyScope
@@ -3409,8 +3462,7 @@ async function searchAllPrimary({
   const fullCorpusLane = (!repos || !repos.length) && !_routeStage;
   // Rare, exact tokens the question names (a dotted filename, a camelCase symbol, an issue ref).
   // Ordinary prose yields none, scans nothing, and pays nothing.
-  const identifierTokens = exactIdentifiers(query);
-  const identifierScanTokens = scannableIdentifiers(query);
+  const { identifierScanTokens, forStore } = queryIdentifiers(dir, query);
   deadline?.check('route');
   const discovered = (repos && repos.length) ? repos : discoverRepos(dir);
   let routing = null;
@@ -3656,10 +3708,20 @@ async function searchAllPrimary({
         cands = cands.concat(inventory);
       }
       {
-        const seen = new Set(cands.map((candidate) => candidate.path));
-        const claims = quotedClaimCandidates(dir, name, query)
-          .filter((candidate) => !seen.has(candidate.path));
-        cands = cands.concat(claims);
+        // A file that carries every quoted claim earns the quoted-claim boost whether or not dense
+        // retrieval already pooled it. This used to ADD only the files dense missed and DROP the
+        // flag on files dense found, so the claim-bearing file dense ranked HIGHER lost the +10
+        // that a lower-ranked copy would have earned -- an inversion. Merge the flag onto the
+        // existing candidate, exactly as the ADR lane below does (E3, need-baseline 2026-10-01).
+        const byPath = new Map(cands.map((candidate) => [candidate.path, candidate]));
+        for (const claim of quotedClaimCandidates(dir, name, query)) {
+          const existing = byPath.get(claim.path);
+          if (existing) existing._quotedClaims = true;
+          else {
+            cands.push(claim);
+            byPath.set(claim.path, claim);
+          }
+        }
       }
       {
         const byPath = new Map(cands.map((candidate) => [candidate.path, candidate]));
@@ -3684,12 +3746,21 @@ async function searchAllPrimary({
       // The identifier lane rides the exempt `rescue` lane for the same reason #33 Part A does: a
       // boost cannot rescue a candidate that never reached the pool, and an identifier's own
       // document is routinely buried past rank 40 by dense retrieval.
-      if (identifierScanTokens.length) {
+      // A store's own name counts as an identifier only while searching that store (queryIdentifiers).
+      const own = forStore(name);
+      if (own.identifierScanTokens.length) {
         const seen = new Set(cands.map((candidate) => candidate.path));
-        const scan = identifierScan(dir, identifierScanTokens, { maxRepos: 2 });
-        const byIdentifier = identifierCandidates(scan, name, identifierTokens, 8, knownRepos)
+        const scan = identifierScan(dir, own.identifierScanTokens, { maxRepos: 2 });
+        const byIdentifier = identifierCandidates(scan, name, own.identifierTokens, 8, knownRepos)
           .filter((candidate) => !seen.has(candidate.path));
         cands = cands.concat(byIdentifier);
+      }
+      // THE KEYWORD LANE (kb/keyword-lane.mjs; ADR-090 §9 amended 2026-10-01). Off unless
+      // RUVNET_BRAIN_KEYWORD_LANE=1, because its query-time index build cost +2.1 s median (see
+      // keyword-lane.mjs). When on, repository stores add up to REPO_KEYWORD_TOPN keyword-matched
+      // files that dense did not pool; transcript stores keep their own deeper BM25 lane below.
+      if (!isTranscriptStore(name) && keywordLaneEnabled()) {
+        cands = cands.concat(keywordCandidates(dir, name, query, { exclude: new Set(cands.map((c) => c.path)) }));
       }
       if (isTranscriptStore(name)) {
         const seen = new Set(hits.map((h) => h.path));
@@ -3783,7 +3854,10 @@ async function searchAllPrimary({
       })),
     }) + '\n');
   }
-  const { results, adrCollision, evidence, implementation } = selectResults({ query, ranked, k });
+  // THE LEARNED JUDGE (kb/judge-rank.mjs, ADR-099 arm C): off unless RUVNET_BRAIN_JUDGE=1 and a
+  // trained kb/judge-weights.json is present; then it re-scores the pool with its threshold at 0.
+  const judged = applyJudge(loadJudge(dir), query, ranked);
+  const { results, adrCollision, evidence, implementation } = selectResults({ query, ranked: judged, k });
 
   // `pooled` stays the number of pairs the cross-encoder read IN FULL — that is what the count
   // has always meant to a reader. `pooledAll`/`cappedOut` report what the cap withheld, because a

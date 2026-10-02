@@ -115,7 +115,8 @@ async function main() {
   try {
     const payload = JSON.parse(Buffer.concat(chunks).toString('utf8'));
     const now = Date.now();
-    if (brainAnsweredResponse(payload?.tool_response, { notAfterMs: now + 2000, notBeforeMs: now - 300_000 })) {
+    // Grok duplicates the result as camelCase `toolResult`; read either (its capture also carries tool_response).
+    if (brainAnsweredResponse(payload?.tool_response ?? payload?.toolResult, { notAfterMs: now + 2000, notBeforeMs: now - 300_000 })) {
       process.stdout.write('answered\n');
     }
   } catch { /* unparseable payload: nothing minted */ }

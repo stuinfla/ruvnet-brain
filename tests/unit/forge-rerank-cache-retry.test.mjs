@@ -4,7 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 vi.mock('../../kb/forge-ask.mjs', () => ({ searchKb: vi.fn() }));
 vi.mock('../../kb/resolve-deps.mjs', () => ({ loadTransformers: vi.fn() }));
-vi.mock('../../kb/model-requirements.mjs', () => ({
+vi.mock('../../kb/model-requirements.mjs', async (importOriginal) => ({
+  ...(await importOriginal()),
   modelCacheReady: vi.fn(() => true), materializeModelRevision: vi.fn(),
 }));
 let cache;

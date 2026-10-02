@@ -149,6 +149,25 @@ describe('the advocacy dial — reads the REAL settings envelope (nested .settin
   });
 });
 
+describe('the advocacy dial — the 1–5 integers the console actually saves (RNBC QA 2026-10-01)', () => {
+  // The console's "How much it jumps in" dial persists an INTEGER 1–5 (user-settings ADR-052). This
+  // hook only understood the pre-dial strings, so every integer fell through to the speaking default:
+  // level 1 "Only when I ask" was ignored here.
+  const envelope = (advocacy) => ({ version: 1, settings: { advocacy } });
+  it('advocacy=1 ("Only when I ask") → silent', () => {
+    const { status, stdout } = run({ prompt: MATCHING_PROMPT, settingsFile: writeSettings(envelope(1)), sessionId: 'int-1' });
+    expect(status).toBe(0);
+    expect(stdout).toBe('');
+  });
+  for (const level of [2, 3, 4, 5]) {
+    it(`advocacy=${level} → speaks a genuine match`, () => {
+      const { status, stdout } = run({ prompt: MATCHING_PROMPT, settingsFile: writeSettings(envelope(level)), sessionId: `int-${level}` });
+      expect(status).toBe(0);
+      expect(stdout).toContain('Fixture Vector Cache');
+    });
+  }
+});
+
 describe('the advocacy dial — on-levels do not mean "match anything"', () => {
   it('an unrelated prompt stays silent at important-only AND all — the dial is not a bypass of the matcher', () => {
     for (const advocacy of ['important-only', 'all']) {

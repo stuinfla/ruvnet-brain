@@ -112,8 +112,8 @@ const SCRIPTS_DIR = path.dirname(SELF);                     // the payload's scr
 // The CC event name the shim forwarded. No event → nothing to run; stay silent.
 const EVENT = process.argv[2] || '';
 
-// Bound the whole runtime well under this hook's DECLARED timeout (hooks.json / codex-hooks.json:
-// 'unprompted-speech' is 3s, not the 5s this comment used to assume) — producers run sequentially and
+// Bound the whole runtime well under this hook's DECLARED timeout (hooks.json: 'unprompted-speech' is
+// 9s; codex-hooks.json: 10s host, 9000ms outer — it was 3s when this budget was first set) — producers run sequentially and
 // each has its own internal watchdog, but a backstop timeout here means a wedged producer can never
 // hang the turn. Found live 2026-09-27: the old 4000ms default left NO real margin under a 3000ms
 // declared timeout once Node startup + per-producer spawnSync overhead is counted, and slower

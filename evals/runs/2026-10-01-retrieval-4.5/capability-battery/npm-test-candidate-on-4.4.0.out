@@ -1,0 +1,75 @@
+
+=== 1. manifests & structure ===
+  ✓ plugin.json is valid JSON
+  ✓ plugin.json name = ruvnet-brain
+  ✓ plugin.json has a version
+  ✓ marketplace.json lists the ruvnet-brain plugin
+  ✓ .mcp.json registers the ruvnet-brain MCP server
+  ✓ hooks.json declares only the continuity plane and bounded capacity guidance
+  ✓ exists: skills/ruvnet-brain/SKILL.md
+  ✓ exists: skills/brain-score/SKILL.md
+  ✓ exists: skills/brain-build/SKILL.md
+  ✓ exists: skills/brain-prompt/SKILL.md
+  ✓ exists: mcp/server.mjs
+  ✓ exists: scripts/ground-ruvnet.sh
+  ✓ exists: README.md
+  ✓ exists: test/capability-questions.json
+
+=== 2. explicit grounding evaluator (not host-registered) ===
+  ✓ fires on a RuvNet prompt
+  ✓ exits 0 on a RuvNet prompt
+  ✓ grounding gates stay silent on a non-RuvNet prompt (status footer is intended)
+  ✓ handles malformed input without erroring (exit 0)
+
+=== 2b. brain-score skill + quiet session-start contract ===
+  ✓ brain-score frontmatter parses (name: brain-score + description)
+  ✓ brain-score carries the ≤70 architectural-flaw cap rule
+  ✓ brain-score mandates the "what I did NOT test" section
+  ✓ brain-score scores /100, never /10
+  ✓ brain-score demands cited evidence for every deduction
+  ✓ brain-score carries the qe_qx_analyze remote-URL hallucination warning
+  ✓ brain-score is honest about the key gate (evolve needs OPENROUTER_API_KEY; score/oia free)
+
+=== 2c. brain-build + brain-prompt skills ===
+  ✓ brain-build frontmatter parses (name: brain-build + description)
+  ✓ brain-build credits the community standing-prompt pattern (PR #8)
+  ✓ brain-prompt frontmatter parses (name: brain-prompt + description)
+  ✓ brain-prompt credits the community standing-prompt pattern (PR #8)
+  ✓ brain-build carries the ≥95 loop rule (below 95 → fix and regrade)
+  ✓ brain-build caps the loop at a maximum of 5 iterations
+  ✓ brain-build carries the cost ladder (route-cheap receipt + frontier-only gate + >$1/20-call stop)
+  ✓ brain-build batches questions into ONE list with recommended defaults
+  ✓ brain-build cites rUv SPARC sources for its phase structure
+  ✓ brain-build wires the crash-resumable checkpoint (done = exit code, not opinion)
+  ✓ brain-build applies brain-score gate rules (evidence-cited deductions, ≤70 cap, "not tested" section)
+  ✓ brain-prompt teaches verifiable gates (done = exit code, not opinion)
+  ✓ brain-prompt ends by offering execution with /brain-build semantics
+  ✓ brain-prompt infers defaults and batches only genuine questions into ONE list
+  ✓ brain-prompt grounds tool choices via search_ruvnet with citations
+  ✓ brain-prompt cites rUv metaprompt prior art
+  ✓ brain-score cross-references /brain-build as its gate consumer
+  ✓ session-start does not inject promotional or response-format instructions
+  ✓ the old "OpenRouter key, already set" overclaim is gone
+  ✓ session-start remains quiet about promotions
+  ✓ degrades silently when ruflo is absent (no announcement, exit 0, banner intact)
+  ✓ "score this repo" fires Gate 4 and names the brain-score skill
+
+=== 3. MCP launcher + 4. capability battery ===
+  ✓ launcher: initialize returns serverInfo ruvnet-brain
+  ✓ launcher: tools/list exposes search_ruvnet
+
+  -- capability-confidence battery (never wrongly doubt) --
+forge-mcp-all: serving RuvNet brain (2bottalk, agent-name-service, agentdb, agentic-artifacts, agentic-capacity-exchange, agentic-dashboard, agentic-devops, agentic-difusion, agentic-employment, agentic-flow, agentic-gradio, agentic-preview, agentic-qe, agentic-reports, agentic-robotics, agentic-scraper, agentic-search, agentic-security, agentic-voice, agenticow, agentics-meetup, agenticsjs, agents-of-the-dawm, agentx, agentxng, agileagents, ai-browse, ai-code-generator-, ai-gist, ai-stream, ai-text-watermark, ai-video, aicodecalc, aido, aihcc, aihl, aiscreenplay, aitoml, alienator, ap-casper, apx, arcadia, auto-browser, autogenous, aws-dev, batvu, bot-generator-bot, chatgpt-aws-price-list-plugin, chatgpt-dev-mode, chatgpt-openai-api-plugin, chatgpt-trading-bot-for-kucoin, chatgpt_plugin_python, chatgpt_tatum_plugin, claude-test, code-mesh, codecraft, codex-one, coding-wingman, cognitum-api, cognitum-claude-plugin, cognitum-cogs, cognitum-learn, cognitum-learn-site, cognitum-meta-llm-docs, cognitum-meta-proxy-dist, cognitum-one-sensor-primer, cognitum-platform-docs, cognitum-ruos, cognitum-seed, cognitum-spoton, cognitum-support, cognitum-trader, cognitum-trader-jackishim, cognitum-v0-appliance, concepts, connectome-os, console-streamer, contextual-retrevial, cve-bench, daa, demo-proxy-app, dream-machine, drupaljs, dspy.ts, dynamo-mcp, electo1, electo1-js, event-horizon, fact, federated-mcp, fireflies-webook, flow-nexus, genai-superstream, genesis, gpts, group-field-theory, guardrail, hacker-league, hackerone, helix, hello_world_agent, hft, image-agent, infinity-ui, inflight, latentmesh, llamastack, llm-stream-reformat, local-logic, marketing, markov-chains, mcp-studio, metaharness, midstream, minitoo-control, moe-foundry, musica, musicai, nova, obsidian-brain, omnipotent, onnx-agent, open-claude-code, open-space, openai-cost-estimator, openai_devops, openavo, p2pgpt, paris, phone-agent, photonlayer, pipackager, powerprompt, prompt-engine, promptlang, pygentic, q-space, q-star, quantum-magnetic-navigation, quantum-virtual-machine, quantum_cryptocurrency, qudag, r-flow, reflective-engineer, retro-ai-ui, rgi, roomodes, rucelium, ruclip, rudevolution, rufield, ruflo, ruforecast, rulake, rultra, ruos, ruos-macair, rupet, rupixel, ruqu, ruv-dev, ruv-drone, ruv-enterprise-ai-guide, ruv-fann, ruv-gists, ruv-meetings, ruv-neural, ruv.io, ruvbot, ruvector, ruview, ruvn, ruvnet, ruvnet-brain, rvcsi, rvdna, rvface, rvm, rvqr, safla, skygraph, sonicchamber, sparc, sparc-ide, strawberry-phi, sublinear-time-solver, supa-ruv, supabase-authentication, surfer, svgart, swagger-chatgpt-plugin-creator, swarm-world, symbolic-scribe, synaptic-mesh, synthlang, tariffic, textclassifier, ultrasonic, vcbot, vibecast, vibing, vivian, voicebot, vsc-remote-mcp, wifi-veil, worldgraph, yyz-agentics-june) from <scratch>/shadow-fix-440
+  ✓ "Ruflo agent swarm orchestration overview…" → ruflo @ 7.871
+  ✓ "RuVector HNSW vector search overview…" → ruvector @ 7.343
+  ✓ "AgentDB Cypher graph queries over agent memory…" → agentdb @ 7.635
+  ✓ "Agentic-flow low-cost model routing for Claude C…" → agentic-flow @ 6.616
+  ✓ "SPARC methodology phases overview…" → sparc @ 6.098
+  ✓ "QuDAG quantum-resistant DAG anonymous communicat…" → qudag @ 10.852
+  ✓ "RuLake vector-query cache overview…" → rulake @ 5.082
+  ✓ "SAFLA self-aware feedback loop overview…" → safla @ 9.265
+  ✓ "Agent harness generator MetaHarness scaffolding …" → metaharness @ 7.312
+
+=== summary ===
+
+58/58 checks passed.

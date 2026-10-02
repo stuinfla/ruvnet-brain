@@ -1,0 +1,13 @@
+{
+ "ruvnet-brain@ruvnet-brain:hooks/codex-hooks.json:pre_tool_use:0:0": "sha256:b1cdd9eb18238cc07a3ff23593d06bbe1a00116d349d14f350b5f1b788d57e57",
+ "ruvnet-brain@ruvnet-brain:hooks/codex-hooks.json:post_tool_use:0:0": "sha256:a322f2746d538b18007fe8a8fa71241775e2af0967223663b33de544c3c1ff94",
+ "ruvnet-brain@ruvnet-brain:hooks/codex-hooks.json:session_start:0:0": "sha256:3203caf6974e8b66c9848c6e31d5bdc539234833214ffa6df81f47cb88847cd8",
+ "ruvnet-brain@ruvnet-brain:hooks/codex-hooks.json:session_end:0:0": "sha256:db4afa8275a72b5812f71c08e91defa2cb39f2a45be3d81585cf9a69c48ef637",
+ "ruvnet-brain@ruvnet-brain:hooks/codex-hooks.json:user_prompt_submit:0:0": "sha256:0f7d71fbab2684b86244e7c38e9b29c7ea9eb661b4d86c6df8e2facdc34711ed",
+ "ruvnet-brain@ruvnet-brain:hooks/codex-hooks.json:user_prompt_submit:0:1": "sha256:dc3188691ba695c9c843b91e500e048aaccc43b42d117074ef3513e0e35af625",
+ "ruvnet-brain@ruvnet-brain:hooks/codex-hooks.json:user_prompt_submit:0:2": "sha256:3d12305912e31c93e4e7deab0cee5cf565436ea64d44fbfa679ab718b0f19e7b",
+ "ruvnet-brain@ruvnet-brain:hooks/codex-hooks.json:user_prompt_submit:0:3": "sha256:5935cb87a158bbc7a154e6cadd603b973fa5ddd4753f99b8c02a54b112968a4a",
+ "ruvnet-brain@ruvnet-brain:hooks/codex-hooks.json:stop:0:0": "sha256:3df420cd8b16e047d7ff3907c297257275f648d415afdf73aca2629025d09ec4",
+ "ruvnet-brain@ruvnet-brain:hooks/codex-hooks.json:stop:0:1": "sha256:91ef863b1bf5aac2548cee75c2b3a3f5a6a58b0df02b029818acae516ca8d08c",
+ "ruvnet-brain@ruvnet-brain:hooks/codex-hooks.json:stop:0:2": "sha256:1bf18329565cd88d90f3125d4aadc9e968fc8ec631d7726c9a363a71db5133ff"
+}
