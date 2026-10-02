@@ -4,7 +4,10 @@
 // parser returns the whole string; the old regex returned everything up to the first `"` and the gate
 // failed open on it.
 import { describe, it, expect } from 'vitest';
-import { parseHookEvent, toolName, commandOf, field, commandNodes, findInvocations } from '../../plugin/scripts/hook-input.mjs';
+import fs from 'node:fs';
+import path from 'node:path';
+import { parseHookEvent, toolName, commandOf, field, commandNodes, findInvocations,
+  normalizeHostEvent, normalizePayloadText, isGrokEvent, isWriteTool, canonicalToolName } from '../../plugin/scripts/hook-input.mjs';
 
 describe('hook-input — the shared PreToolUse payload parser (ADR-0021)', () => {
   it('KNOWN-BAD (the #13 fail-open): a command with embedded quotes is returned WHOLE, not truncated', () => {
@@ -255,5 +258,51 @@ describe('findInvocations — the name must be the EXECUTABLE, and the right bin
     expect(findInvocations('ruflo init', [])).toEqual([]);
     expect(findInvocations('ruflo init', 'agentic-qe')).toEqual([]);
     expect(() => findInvocations(null, 'ruflo')).not.toThrow();
+  });
+});
+
+// 4.5 — Grok CLI payloads. Fixtures are REAL grok 1.0.13 captures (tests/fixtures/hook-payloads/grok/).
+const FIX = (host, f) => JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '../fixtures/hook-payloads', host, `${f}.json`), 'utf8')).payload;
+
+describe('hook-input — Grok payloads read as Claude\'s shape (4.5)', () => {
+  it('a Grok PreToolUse write becomes Claude\'s Write, with the native spelling kept', () => {
+    const ev = parseHookEvent(JSON.stringify(FIX('grok', 'PreToolUse-write')));
+    expect(ev.hook_event_name).toBe('PreToolUse');
+    expect(ev.tool_name).toBe('Write');
+    expect(ev.host_tool_name).toBe('write');
+    expect(toolName(ev)).toBe('Write');
+    expect(ev.tool_input.content).toBe('hello');
+  });
+  it('a Grok Stop gains the snake_case fields the Stop gates read (absent from Grok\'s own duplicates)', () => {
+    const raw = FIX('grok', 'Stop');
+    expect(raw.last_assistant_message).toBeUndefined();
+    expect(raw.stop_hook_active).toBeUndefined();
+    const ev = normalizeHostEvent({ ...raw, stopHookActive: true });
+    expect(ev.hook_event_name).toBe('Stop');
+    expect(ev.last_assistant_message).toBe('ok');
+    expect(ev.stop_hook_active).toBe(true);
+  });
+  it('every Grok capture is recognised and maps to a Claude event name', () => {
+    const want = { 'PreToolUse-write': 'PreToolUse', 'PostToolUse-write': 'PostToolUse', Stop: 'Stop', UserPromptSubmit: 'UserPromptSubmit', SessionStart: 'SessionStart', SessionEnd: 'SessionEnd' };
+    for (const [f, e] of Object.entries(want)) {
+      expect(isGrokEvent(FIX('grok', f))).toBe(true);
+      expect(normalizeHostEvent(FIX('grok', f)).hook_event_name).toBe(e);
+    }
+  });
+  it('Claude and Codex payloads are returned UNTOUCHED (same object, same bytes)', () => {
+    for (const p of [FIX('claude', 'PreToolUse-Write'), FIX('claude', 'Stop'), FIX('codex', 'PreToolUse-apply_patch'), FIX('codex', 'Stop')]) {
+      expect(isGrokEvent(p)).toBe(false);
+      expect(normalizeHostEvent(p)).toBe(p);
+      const raw = JSON.stringify(p);
+      expect(normalizePayloadText(raw)).toBe(raw);
+    }
+    expect(normalizePayloadText('{not json')).toBe('{not json');
+  });
+  it('write-tool recognition is case-insensitive and covers every host\'s spelling; other tools are not writes', () => {
+    for (const t of ['Write', 'write', 'WRITE', 'Edit', 'MultiEdit', 'NotebookEdit', 'search_replace', 'apply_patch']) expect(isWriteTool(t)).toBe(true);
+    for (const t of ['Read', 'read_file', 'Bash', 'run_terminal_command', '', null, 'mcp__x__write']) expect(isWriteTool(t)).toBe(false);
+    expect(canonicalToolName('search_replace')).toBe('Edit');
+    expect(canonicalToolName('run_terminal_command')).toBe('Bash');
+    expect(canonicalToolName('mcp__x__search_ruvnet')).toBe('mcp__x__search_ruvnet');
   });
 });

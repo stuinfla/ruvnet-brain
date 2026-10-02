@@ -599,6 +599,7 @@ describe('wireCodexPlugin — install is idempotent, state-driven, and disable-p
 
     expect(wireCodexPlugin({ codexDir, codexHome: codexDir, expectedVersion: '1.2.3', runJson, announce: false })).toMatchObject({
       action: 'updated', version: '1.2.3', restartRequired: false, shellChanged: false, shellChangedPaths: [],
+      hooksNeedingReview: [],   // identical Codex hook definitions: nothing for the user to re-review
     });
   });
 
@@ -627,6 +628,38 @@ describe('wireCodexPlugin — install is idempotent, state-driven, and disable-p
     expect(wireCodexPlugin({ codexDir, codexHome: codexDir, expectedVersion: '1.2.3', runJson, announce: false })).toMatchObject({
       action: 'updated', version: '1.2.3', restartRequired: true, sessionSafety: 'restart-required',
       restartScope: 'unproven', shellChanged: true, shellChangedPaths: ['hooks/hooks.json'],
+    });
+  });
+
+  // 4.5 (review-4.3.39 #7): codex-hooks.json is not a boot-surface path, so the shell boundary cannot see a
+  // changed Codex hook — but Codex will skip it until re-reviewed. The update must name exactly those hooks.
+  it('an update that changes one Codex hook command names exactly that hook as needing review', () => {
+    const home = tmpdir();
+    const codexDir = path.join(home, '.codex');
+    fs.mkdirSync(codexDir, { recursive: true });
+    const installedRoot = path.join(codexDir, 'plugins', 'cache', 'ruvnet-brain', 'ruvnet-brain', '1.2.2');
+    fs.mkdirSync(path.dirname(installedRoot), { recursive: true });
+    fs.cpSync(path.join(ROOT, 'plugin'), installedRoot, { recursive: true });
+    const manifest = path.join(installedRoot, '.codex-plugin', 'plugin.json');
+    fs.writeFileSync(manifest, fs.readFileSync(manifest, 'utf8').replace(/("version"\s*:\s*)"[^"]+"/, '$1"1.2.2"'));
+    const hooksFile = path.join(installedRoot, 'hooks', 'codex-hooks.json');
+    const old = JSON.parse(fs.readFileSync(hooksFile, 'utf8'));
+    old.hooks.SessionEnd[0].hooks[0].command += ' ';    // the installed (older) definition differs from this checkout's
+    fs.writeFileSync(hooksFile, JSON.stringify(old));
+    let listedVersion = '1.2.2';
+    const runJson = (args) => {
+      const command = args.join(' ');
+      if (command === 'plugin list --json') return { ok: true, value: { installed: [{
+        pluginId: 'ruvnet-brain@ruvnet-brain', version: listedVersion, installed: true, enabled: true,
+      }] } };
+      if (command === 'plugin marketplace list --json') return { ok: true, value: { marketplaces: [{ name: 'ruvnet-brain' }] } };
+      if (command === 'plugin marketplace upgrade ruvnet-brain --json') return { ok: true, value: {} };
+      if (command === 'plugin add ruvnet-brain@ruvnet-brain --json') { listedVersion = '1.2.3'; return { ok: true, value: {} }; }
+      return { ok: false, error: `unexpected ${command}` };
+    };
+    expect(wireCodexPlugin({ codexDir, codexHome: codexDir, expectedVersion: '1.2.3', runJson, announce: false })).toMatchObject({
+      action: 'updated', shellChanged: false,
+      hooksNeedingReview: [{ key: 'ruvnet-brain@ruvnet-brain:hooks/codex-hooks.json:session_end:0:0', status: 'modified' }],
     });
   });
 
@@ -756,7 +789,7 @@ describe('wireCodexPlugin — install is idempotent, state-driven, and disable-p
 
 // ── native plugin skills: the actual current Codex surface ───────────────────────────────────────
 describe('plugin/skills/*/SKILL.md — native, self-contained Codex skills', () => {
-  const native = ['brain-console', 'rvbc', 'whats-new'];
+  const native = ['brain-console', 'rnbc', 'rvbc', 'whats-new'];
 
   for (const name of native) {
     it(`${name} has matching frontmatter and no absent sibling dependency`, () => {

@@ -13,7 +13,7 @@ import path from 'node:path';
 vi.mock('../../kb/forge-ask.mjs', () => ({ searchKb: vi.fn() }));
 vi.mock('../../kb/forge-rerank.mjs', () => ({ rerankPairs: vi.fn() }));
 
-import { deployedFamilyReposFromQuery, discoverRepos, searchAll } from '../../kb/forge-ask-all.mjs';
+import { deployedFamilyReposFromQuery, discoverRepos, queryIdentifiers, searchAll } from '../../kb/forge-ask-all.mjs';
 import { searchKb } from '../../kb/forge-ask.mjs';
 import { rerankPairs } from '../../kb/forge-rerank.mjs';
 
@@ -236,10 +236,13 @@ describe('searchAll — cross-repo pool + rerank + name-boost', () => {
       repos: ['ruvector', 'ruvector-core'],
     });
 
-    expect(out.perRepo['ruvector-core']).toBeGreaterThan(0);
-    expect(out.perRepo.ruvector).toBe(0);
-    expect(out.results.some((r) => r.repo === 'ruvector-core')).toBe(true);
-    expect(out.results.some((r) => r.repo === 'ruvector')).toBe(false);
+    // Both stores may contribute an ordinary keyword-lane candidate (same text in each); only the
+    // compound store, which the query names, may contribute an INVENTORY rescue.
+    const pooled = vi.mocked(rerankPairs).mock.calls[0][1];
+    expect(pooled.some((c) => c.repo === 'ruvector-core' && c._inventory)).toBe(true);
+    expect(pooled.some((c) => c.repo === 'ruvector' && c._inventory)).toBe(false);
+    expect(out.results.some((r) => r.repo === 'ruvector-core' && r._inventory)).toBe(true);
+    expect(out.results.some((r) => r.repo === 'ruvector' && r._inventory)).toBe(false);
   });
 
   it('does NOT route a named ruv-<product> query to ruv-gists via the "rUv" provenance regex', async () => {
@@ -3603,6 +3606,157 @@ describe('searchAll — cross-repo pool + rerank + name-boost', () => {
       query: "How does AgentDB validate '150x faster than SQLite' and '+36% search quality from feedback'?",
     });
     expect(out.results[0]).toMatchObject({ path: 'README.md', _lane: 'rescue' });
+  });
+
+  it('does not treat a named store\'s own name as an identifier and widen to stores that merely depend on it', async () => {
+    // THE BUG (2026-10-01, capability battery): "RuVector" is PascalCase, so the identifier lane scanned
+    // every sidecar for "ruvector", widened the route to agentdb (whose manifest declares the
+    // "ruvector" dependency, scored as a +5 definition) and answered from agentdb.
+    const d = mkdirWith(['ruvector.rvf', 'agentdb.rvf']);
+    fs.writeFileSync(path.join(d, 'agentdb.passages.jsonl'),
+      JSON.stringify({ path: 'package.json', title: 'agentdb', text: '{ "dependencies": { "ruvector": "^0.1.0" } }' }));
+    fs.writeFileSync(path.join(d, 'ruvector.passages.jsonl'),
+      JSON.stringify({ path: 'README.md', title: 'RuVector', text: 'HNSW vector search overview.' }));
+    vi.mocked(searchKb).mockImplementation(async ({ name }) => [hit({ repo: name, path: 'README.md' })]);
+    vi.mocked(rerankPairs).mockImplementation(async (_q, cands) => cands.map((c) => ({ ...c, ceScore: 3 })));
+    const out = await searchAll({ dir: d, query: 'RuVector HNSW vector search overview', allowFullCorpus: false });
+    expect(out.routing?.candidateRepos).toEqual(['ruvector']);
+    expect(out.results.every((r) => r.repo === 'ruvector')).toBe(true);
+  });
+
+  it("keeps a store's own name as an identifier inside that store (recall gate: LatentMesh ADR-001)", async () => {
+    // Dropping store names EVERYWHERE lost the recall-gate question "In LatentMesh ADR-001, ..."
+    // (161 vs 162/182): dense never pooled ADR-001, and the identifier lane was what reached it.
+    const d = mkdirWith(['latentmesh.rvf', 'agentdb.rvf']);
+    fs.writeFileSync(path.join(d, 'latentmesh.passages.jsonl'), [
+      JSON.stringify({ path: 'docs/adr/002-packets.md', title: 'Packets', text: 'Packet framing.' }),
+      JSON.stringify({ path: 'docs/adr/001-architecture.md', title: 'LatentMesh architecture',
+        text: '# LatentMesh\nLatentMesh replaces tokenized agent messages with latent packets.' }),
+    ].join('\n'));
+    fs.writeFileSync(path.join(d, 'agentdb.passages.jsonl'),
+      JSON.stringify({ path: 'package.json', title: 'agentdb', text: '{ "dependencies": { "latentmesh": "^0.1.0" } }' }));
+    vi.mocked(searchKb).mockImplementation(async ({ name }) => [hit({ repo: name, path: 'docs/adr/002-packets.md' })]);
+    vi.mocked(rerankPairs).mockImplementation(async (_q, cands) => cands.map((c) => ({ ...c, ceScore: 3 })));
+    await searchAll({ dir: d, repos: ['latentmesh', 'agentdb'],
+      query: 'What does LatentMesh propose instead of tokenized agent messages?' });
+    const pooled = vi.mocked(rerankPairs).mock.calls[0][1];
+    expect(pooled.some((c) => c.repo === 'latentmesh' && c.path === 'docs/adr/001-architecture.md' && c._lane === 'rescue')).toBe(true);
+    // ...but the name still adds nothing in another store that merely depends on it.
+    expect(pooled.some((c) => c.repo === 'agentdb' && c._lane === 'rescue')).toBe(false);
+  });
+
+  // Review S5: kb/repo-aliases.json lists CODE SYMBOLS (ruvector: RvfStore, RvfDatabase) beside names, and the
+  // owner map was single-valued ("metaharness" ended up owned only by agent-harness-generator).
+  describe('queryIdentifiers: only names are names (review S5)', () => {
+    const stores = (...names) => mkdirWith(names.map((n) => `${n}.rvf`)); // the shipped kb/repo-aliases.json applies
+    it('a code symbol registered as an alias stays an identifier in every store — member access or bare', () => {
+      const d = stores('agentdb', 'ruvector');
+      const member = queryIdentifiers(d, 'Where does agentdb call RvfDatabase.openReadonly?');
+      expect(member.identifierScanTokens).toEqual(expect.arrayContaining(['rvfdatabase', 'openreadonly']));
+      expect(member.forStore('agentdb').identifierScanTokens).toContain('rvfdatabase');
+      expect(member.forStore('ruvector').identifierScanTokens).toContain('rvfdatabase');
+      const bare = queryIdentifiers(d, 'How does agentdb open an RvfStore?');
+      expect(bare.forStore('agentdb').identifierScanTokens).toEqual(['rvfstore']);
+    });
+    it('a store name used as code ("Name.method", "Name::", "Name(") is an identifier; in prose it is a name', () => {
+      const d = stores('agentdb', 'ruvector');
+      expect(queryIdentifiers(d, 'What does RuVector.search return?').forStore('agentdb').identifierScanTokens).toContain('ruvector');
+      expect(queryIdentifiers(d, 'Is RuVector::open safe?').forStore('agentdb').identifierScanTokens).toContain('ruvector');
+      expect(queryIdentifiers(d, 'RuVector (the vector store). Then how does HNSW work?').forStore('agentdb').identifierScanTokens).not.toContain('ruvector');
+    });
+    it('the original case still holds: "RuVector HNSW vector search overview" never widens to agentdb', () => {
+      const q = queryIdentifiers(stores('agentdb', 'ruvector'), 'RuVector HNSW vector search overview');
+      expect(q.identifierScanTokens).not.toContain('ruvector');
+      expect(q.forStore('agentdb').identifierScanTokens).not.toContain('ruvector');
+      expect(q.forStore('ruvector').identifierScanTokens).toContain('ruvector');
+    });
+    it('ownership is a multi-map: "metaharness" is its own store AND an alias of agent-harness-generator', () => {
+      const q = queryIdentifiers(stores('metaharness', 'agent-harness-generator', 'agentdb'), 'How does MetaHarness score a harness?');
+      expect(q.identifierScanTokens).not.toContain('metaharness'); // a name: never widens the route
+      expect(q.forStore('metaharness').identifierScanTokens).toContain('metaharness');
+      expect(q.forStore('agent-harness-generator').identifierScanTokens).toContain('metaharness');
+      expect(q.forStore('agentdb').identifierScanTokens).not.toContain('metaharness');
+    });
+    it('end to end: inside agentdb, a code-symbol alias rescues the file that uses it', async () => {
+      const d = stores('agentdb', 'ruvector');
+      fs.writeFileSync(path.join(d, 'agentdb.passages.jsonl'), [
+        JSON.stringify({ path: 'docs/overview.md', title: 'Overview', text: 'General notes.' }),
+        JSON.stringify({ path: 'src/backends/rvf.ts', title: 'rvf backend',
+          text: 'export class RvfBackend { open() { this.db = RvfDatabase.openReadonly(this.path); } }' }),
+      ].join('\n'));
+      vi.mocked(searchKb).mockImplementation(async ({ name }) => [hit({ repo: name, path: 'docs/overview.md' })]);
+      vi.mocked(rerankPairs).mockImplementation(async (_q, cands) => cands.map((c) => ({ ...c, ceScore: 3 })));
+      await searchAll({ dir: d, repos: ['agentdb'], query: 'Where does agentdb construct an RvfDatabase?' });
+      const pooled = vi.mocked(rerankPairs).mock.calls[0][1];
+      expect(pooled.some((c) => c.repo === 'agentdb' && c.path === 'src/backends/rvf.ts' && c._lane === 'rescue')).toBe(true);
+    });
+  });
+
+  it.each([['off', undefined], ['on', '1']])('pools a keyword-matched file dense missed only when RUVNET_BRAIN_KEYWORD_LANE=1 (%s)', async (mode, flag) => {
+    // 4.5 ships the lane OFF: its query-time index build cost +2.1 s median paired (keyword-lane.mjs).
+    const d = mkdirWith(['ruflo.rvf']);
+    fs.writeFileSync(path.join(d, 'ruflo.passages.jsonl'), [
+      JSON.stringify({ path: 'docs/dense.md', title: 'Dense', text: 'Unrelated overview.' }),
+      JSON.stringify({ path: '.agents/skills/swarm/SKILL.md', title: 'Swarm', text: 'Every helper reports status, shares artifacts and signals completion.' }),
+    ].join('\n'));
+    vi.mocked(searchKb).mockResolvedValue([hit({ path: 'docs/dense.md', fullText: 'Unrelated overview.' })]);
+    vi.mocked(rerankPairs).mockImplementation(async (_q, cands) =>
+      cands.map((c) => ({ ...c, ceScore: c._lane === 'bm25' ? 3 : -2 })).sort((a, b) => b.ceScore - a.ceScore));
+    if (flag) process.env.RUVNET_BRAIN_KEYWORD_LANE = flag;
+    try {
+      await searchAll({ dir: d, repos: ['ruflo'],
+        query: 'How should each helper report status and share artifacts so nothing gets lost?' });
+    } finally { delete process.env.RUVNET_BRAIN_KEYWORD_LANE; }
+    const pooled = vi.mocked(rerankPairs).mock.calls[0][1];
+    expect(pooled.filter((c) => c._lane === 'bm25').map((c) => c.path))
+      .toEqual(mode === 'on' ? ['.agents/skills/swarm/SKILL.md'] : []);
+    expect(pooled.map((c) => c.path)).toContain('docs/dense.md');
+  });
+
+  it.each([['off', undefined], ['on', '1']])('applies the learned judge only when RUVNET_BRAIN_JUDGE=1 and weights exist (%s)', async (mode, flag) => {
+    const d = mkdirWith(['ruflo.rvf']);
+    fs.writeFileSync(path.join(d, 'ruflo.passages.jsonl'), JSON.stringify({ path: 'skill.md', title: 'Skill', text: 'helpers report status share artifacts' }));
+    const n = 8;
+    const weights = new Array(n).fill(0);
+    weights[4] = 5; // laneBm25: a judge that prefers the keyword lane
+    fs.writeFileSync(path.join(d, 'judge-weights.json'), JSON.stringify({
+      features: ['ce', 'ceGap', 'ceRankLog', 'dist', 'laneBm25', 'laneRescue', 'titlePathOverlap', 'lenLog'],
+      weights, bias: -1, mean: new Array(n).fill(0), std: new Array(n).fill(1) }));
+    vi.mocked(searchKb).mockResolvedValue([hit({ path: 'dense.md', fullText: 'unrelated' })]);
+    vi.mocked(rerankPairs).mockImplementation(async (_q, cands) =>
+      cands.map((c) => ({ ...c, ceScore: c._lane === 'bm25' ? -3 : 2 })).sort((a, b) => b.ceScore - a.ceScore));
+    if (flag) process.env.RUVNET_BRAIN_JUDGE = flag;
+    process.env.RUVNET_BRAIN_KEYWORD_LANE = '1'; // the judge re-scores the keyword lane's candidate
+    try {
+      const out = await searchAll({ dir: d, repos: ['ruflo'], query: 'how should helpers report status and share artifacts' });
+      if (mode === 'off') expect(out.results[0]).toMatchObject({ path: 'dense.md', ceScore: 2 });
+      else expect(out.results[0]).toMatchObject({ path: 'skill.md', ceRaw: -3, ceScore: 4, judged: true });
+    } finally { delete process.env.RUVNET_BRAIN_JUDGE; delete process.env.RUVNET_BRAIN_KEYWORD_LANE; }
+  });
+
+  it('gives the quoted-claim boost to a claim-bearing file that dense retrieval ALREADY pooled (E3)', async () => {
+    // THE DEFECT. The lane added only files dense missed, so when dense already held the claim file
+    // the flag (and its +10) was dropped -- the file dense ranked higher lost to any other.
+    const d = mkdirWith(['agentdb.rvf']);
+    fs.writeFileSync(path.join(d, 'agentdb.passages.jsonl'), [
+      JSON.stringify({ id: 'decoy', path: 'docs/perf.md', title: 'Performance', text: 'General benchmark discussion.' }),
+      JSON.stringify({ id: 'readme', path: 'README.md', title: 'AgentDB',
+        text: '150× faster than SQLite. Up to +36% search quality from feedback. Run the benchmark harness.' }),
+    ].join('\n'));
+    vi.mocked(searchKb).mockResolvedValue([
+      hit({ path: 'docs/perf.md', fullText: 'General benchmark discussion.' }),
+      hit({ path: 'README.md', fullText: '150× faster than SQLite. Up to +36% search quality from feedback.' }),
+    ]);
+    vi.mocked(rerankPairs).mockImplementation(async (_q, cands) =>
+      cands.map((candidate) => ({ ...candidate, ceScore: candidate.path === 'README.md' ? 1 : 5 }))
+        .sort((a, b) => b.ceScore - a.ceScore));
+    const out = await searchAll({
+      dir: d,
+      repos: ['agentdb'],
+      query: "How does AgentDB validate '150x faster than SQLite' and '+36% search quality from feedback'?",
+    });
+    expect(out.results[0]).toMatchObject({ path: 'README.md', quotedClaimsBoosted: true });
+    expect(out.results.filter((r) => r.path === 'README.md')).toHaveLength(1);
   });
 
   it('rescues the exact ADR instead of a different ADR that merely cites it', async () => {

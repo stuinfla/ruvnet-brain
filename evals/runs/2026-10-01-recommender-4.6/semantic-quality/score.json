@@ -1,0 +1,159 @@
+{
+ "overall": {
+  "n": 161,
+  "recall": {
+   "k": 61,
+   "n": 99,
+   "pct": 61.6,
+   "ci95": [
+    51.8,
+    70.6
+   ]
+  },
+  "precision": {
+   "k": 61,
+   "n": 65,
+   "pct": 93.8,
+   "ci95": [
+    85.2,
+    97.6
+   ]
+  },
+  "falseFiring": {
+   "k": 0,
+   "n": 62,
+   "pct": 0,
+   "ci95": [
+    0,
+    5.8
+   ]
+  },
+  "wrongPackage": 4
+ },
+ "blinds": {
+  "n": 88,
+  "recall": {
+   "k": 27,
+   "n": 52,
+   "pct": 51.9,
+   "ci95": [
+    38.7,
+    64.9
+   ]
+  },
+  "precision": {
+   "k": 27,
+   "n": 31,
+   "pct": 87.1,
+   "ci95": [
+    71.1,
+    94.9
+   ]
+  },
+  "falseFiring": {
+   "k": 0,
+   "n": 36,
+   "pct": 0,
+   "ci95": [
+    0,
+    9.6
+   ]
+  },
+  "wrongPackage": 4
+ },
+ "bySet": {
+  "recommendation-eval.v1.json": {
+   "n": 73,
+   "recall": {
+    "k": 34,
+    "n": 47,
+    "pct": 72.3,
+    "ci95": [
+     58.2,
+     83.1
+    ]
+   },
+   "precision": {
+    "k": 34,
+    "n": 34,
+    "pct": 100,
+    "ci95": [
+     89.8,
+     100
+    ]
+   },
+   "falseFiring": {
+    "k": 0,
+    "n": 26,
+    "pct": 0,
+    "ci95": [
+     0,
+     12.9
+    ]
+   },
+   "wrongPackage": 0
+  },
+  "recommendation-eval.blind.v1.json": {
+   "n": 40,
+   "recall": {
+    "k": 14,
+    "n": 24,
+    "pct": 58.3,
+    "ci95": [
+     38.8,
+     75.5
+    ]
+   },
+   "precision": {
+    "k": 14,
+    "n": 16,
+    "pct": 87.5,
+    "ci95": [
+     64,
+     96.5
+    ]
+   },
+   "falseFiring": {
+    "k": 0,
+    "n": 16,
+    "pct": 0,
+    "ci95": [
+     0,
+     19.4
+    ]
+   },
+   "wrongPackage": 2
+  },
+  "recommendation-eval.blind.v2.json": {
+   "n": 48,
+   "recall": {
+    "k": 13,
+    "n": 28,
+    "pct": 46.4,
+    "ci95": [
+     29.5,
+     64.2
+    ]
+   },
+   "precision": {
+    "k": 13,
+    "n": 15,
+    "pct": 86.7,
+    "ci95": [
+     62.1,
+     96.3
+    ]
+   },
+   "falseFiring": {
+    "k": 0,
+    "n": 20,
+    "pct": 0,
+    "ci95": [
+     0,
+     16.1
+    ]
+   },
+   "wrongPackage": 2
+  }
+ }
+}

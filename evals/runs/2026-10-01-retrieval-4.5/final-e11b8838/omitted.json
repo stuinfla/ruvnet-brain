@@ -1,0 +1,1 @@
+{"omitted":["adversarial.json","heldout.json"],"why":"byte-identical to e2e3-f725e0e7/ (same scores, rows and order); single-source A2 refuses duplicate files","needs":"not measured: the need-set step was stopped once E2 shipped off (a2adf94a); the shipped reader is measured in final-a2adf94a/"}

@@ -52,7 +52,10 @@ INPUT="${INPUT:0:65536}"
 
 field() { local re="\"$1\"[[:space:]]*:[[:space:]]*\"([^\"]*)\""; [[ $INPUT =~ $re ]] && printf '%s' "${BASH_REMATCH[1]}"; }
 
-case "$(field tool_name)" in Write|Edit|MultiEdit|NotebookEdit) ;; *) exit 0 ;; esac
+# Case-insensitive (4.5): Grok sends its own spelling (`write`, `search_replace`) — a case-sensitive
+# match let a Grok write past this guard silently. nocasematch is scoped to this one test.
+shopt -s nocasematch
+case "$(field tool_name)" in Write|Edit|MultiEdit|NotebookEdit|search_replace|multi_edit) shopt -u nocasematch ;; *) exit 0 ;; esac
 
 FILE_PATH=$(field file_path)
 [ -n "$FILE_PATH" ] || exit 0

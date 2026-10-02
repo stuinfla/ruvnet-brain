@@ -26,14 +26,15 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { restoreProgressionForSession } from './project-progression-session-start.mjs';
+import { restoreWithBrief } from './continuity-brief.mjs';
 import {
   read, json, exists, mkdir, write, runNode,
 } from './session-start-fsutil.mjs';
 import { maintainerIssueEntitlement, surfaceIssuePointer } from './session-start-issue-alert.mjs';
 import { surfaceSignals } from './session-start-signals.mjs';
 import { brainState, health, knowledgeCurrency, mcpReadiness, KNOWLEDGE_LINE_PREFIX } from './session-start-health.mjs';
-import { stableSpine, heartbeat, knowledgeAutoUpdate } from './session-start-update-plane.mjs';
+import { stableSpine, heartbeat, knowledgeAutoUpdate, footprintCheck } from './session-start-update-plane.mjs';
+import { FOOTPRINT_LINE_PREFIX } from './brain-confirmation.mjs';
 import { describeLifecycleHooks, readHookContracts } from './session-start-hook-description.mjs';
 import { createStageTracer } from './session-start-trace.mjs';
 
@@ -59,13 +60,33 @@ const meter = ({ env, cwd, stateDir, output }) => {
   } catch { /* metering never blocks */ }
 };
 
+/**
+ * ground-ruvnet.sh sends each long block once per session and a one-line form after that (4.5). A
+ * SessionStart — startup, resume, clear, or compact — is exactly when the earlier full text may have
+ * left the model's context, so touching injected/.reset makes every block go out in full once more.
+ * No session id reaches this hook, so the reset is global: another window re-receives its blocks once,
+ * which errs toward delivering. Per-session marker dirs older than 3 days are pruned. Never throws.
+ */
+export function resetInjectionDedupe(stateDir, now = Date.now()) {
+  const base = path.join(stateDir, 'injected');
+  try {
+    fs.mkdirSync(base, { recursive: true });
+    fs.writeFileSync(path.join(base, '.reset'), `${new Date(now).toISOString()}\n`);
+    for (const name of fs.readdirSync(base)) {
+      if (name.startsWith('.')) continue;
+      const dir = path.join(base, name);
+      try { if (now - fs.statSync(dir).mtimeMs > 3 * 86_400_000) fs.rmSync(dir, { recursive: true, force: true }); } catch { /* raced */ }
+    }
+  } catch { /* an unwritable cache only costs dedupe, never the session */ }
+}
+
 export async function runSessionStart({
   env = process.env,
   cwd = process.cwd(),
   stdout = process.stdout,
   stderr = process.stderr,
   platform = process.platform,
-  restoreContinuity = restoreProgressionForSession,
+  restoreContinuity = restoreWithBrief,
   runHeartbeat = true,
 } = {}) {
   const lines = [];
@@ -80,6 +101,7 @@ export async function runSessionStart({
       || s.startsWith('[RuvNet Brain — INSTALL ALARM')
       || s.startsWith('[RuvNet Brain — NIGHTLY FAILED')
       || s.startsWith(KNOWLEDGE_LINE_PREFIX)
+      || s.startsWith(FOOTPRINT_LINE_PREFIX)
       || s.startsWith('[RuvNet Brain — OPEN ISSUES')
       || /\bopen issue\(s\)/i.test(s)
       || /^\[RuvNet Brain — external signal/i.test(s)
@@ -100,6 +122,7 @@ export async function runSessionStart({
       || s.startsWith('[ASCII→SVG]')
       || s.startsWith('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN]')
       || s.startsWith('[RuvNet Brain — PROJECT CONTINUITY RESTORED]')
+      || s.startsWith('[RuvNet Brain — COME UP TO SPEED')
       || s.startsWith('[RuvNet Brain — MAINTAINER ONLY:');
   };
   // An alarm's HEADER line always matches isSafeStatus on its own dedicated prefix (above); its
@@ -132,9 +155,10 @@ export async function runSessionStart({
   };
   const home = env.HOME || env.USERPROFILE || os.homedir();
   const stateDir = env.RUVNET_BRAIN_HOME || path.join(home, '.cache', 'ruvnet-brain');
+  resetInjectionDedupe(stateDir, Date.now());
   const hookDir = path.dirname(fileURLToPath(import.meta.url));
   const now = Date.now();
-  const consoleInvoke = env.RUVNET_HOOK_HOST === 'codex' ? '$ruvnet-brain:rvbc' : '/rvbc';
+  const consoleInvoke = env.RUVNET_HOOK_HOST === 'codex' ? '$ruvnet-brain:rnbc' : '/rnbc';
   const brain = brainState(env, home);
   const pluginRoot = env.CLAUDE_PLUGIN_ROOT || path.resolve(hookDir, '..');
   const manifest = json(path.join(pluginRoot, '.claude-plugin', 'plugin.json'), {});
@@ -217,6 +241,12 @@ export async function runSessionStart({
       knowledgeAutoUpdate({ env, home, now, hookDir, emit });
       const line = knowledgeCurrency({ env, home, now });
       if (line) emit(line);
+    });
+    // ONE line only when the footprint is wrong (a second KB copy, cruft, a worker on another copy);
+    // a bounded detached sweep follows at most every 6h (ADR-0098). Silent on a clean machine.
+    tracer.stage('footprint', () => {
+      if (brain.off || state.problem) return;
+      footprintCheck({ env, home, now, hookDir, emit });
     });
 
     tracer.stage('misc', () => {

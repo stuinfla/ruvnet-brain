@@ -1,0 +1,42 @@
+{
+ "n": 69,
+ "nOk": 69,
+ "arms": {
+  "A_base": {
+   "p50": 9240,
+   "p90": 14436,
+   "meanRepos": 3.29,
+   "errors": 0
+  },
+  "B_shipped": {
+   "p50": 9258,
+   "p90": 14334,
+   "meanRepos": 3.29,
+   "errors": 0
+  }
+ },
+ "deltas": {
+  "B_shipped - A_base": {
+   "p50": 18,
+   "p50CI": [
+    -562,
+    417
+   ],
+   "p90": -102,
+   "p90CI": [
+    -3746,
+    1072
+   ],
+   "medianPairedDiff": 32,
+   "medianPairedCI": [
+    -102,
+    85
+   ],
+   "bFaster": "34/69"
+  }
+ },
+ "loadAt": {
+  "min": 17,
+  "max": 53.8
+ }
+}

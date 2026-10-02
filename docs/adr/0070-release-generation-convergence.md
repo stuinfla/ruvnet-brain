@@ -3,9 +3,9 @@ id: ADR-070
 title: One release generation across corpus, package, hosts, and retained state
 status: Accepted
 date: 2026-08-21
-updated: 2026-09-27
+updated: 2026-10-01
 updated_source: derived-from-git
-reviewed_digest: dca3b4ba9d47
+reviewed_digest: e7ef4a215243
 version: 1.1.5
 authors: [Stuart Kerr, Codex]
 tags: [release, generation, corpus, update, synchronization, retention, proof]
@@ -229,6 +229,7 @@ still supplies seed bytes to the projection producer. Focused producer and mutat
 new hosted and public verification remain required.
 
 ## Currency log
+| 2026-10-01 | Currency review (4.5 retrieval): decision unchanged. `.github/workflows/ci.yml` adds a read-only capability-battery step on the sealed bundle in release-qe. Generation convergence and the update path are untouched. reviewed_digest e7ef4a215243. | Reviewed `.github/workflows/ci.yml`. |
 | 2026-09-27 | Currency review: decision unchanged. Motion: this session's own install.mjs and release-transaction-provider.mjs fixes (macOS deadline, ENOBUFS), plus corpus-currency consolidation and CI hardening. These fixes strengthen generation convergence; they do not change its design. | Reviewed `.github/workflows/ci.yml`, `bin/install.mjs`, `kb/forge-update.mjs`, `scripts/brain-stamp.mjs`, `scripts/build-bundle.mjs`, `scripts/release.mjs` against the commits listed above; reviewed_digest dca3b4ba9d47. |
 | 2026-09-19 | Reviewed the candidate installer identity diagnostic: package, validator and search SOURCE versions are separate observations. Doctor fails inconsistent identities or weak retrieval evidence; observed search hashes do not authenticate a release. | `bin/install.mjs`, `scripts/installed-brain-health.mjs`, ADR-089. Focused candidate tests passed; public install and update proof remain pending. |
 | 2026-09-13 | Corpus-seed pipeline consolidation, step 5 (remediated on top of `86cbe798`): the one-generation rule's producer side no longer needs two assemblies. The build → `scripts/release-projection.mjs` → rebuild sequence (two archives per release, the first discarded after seeding a ledger the projection could read) is replaced by ONE `assembleBundle` pass (`scripts/build-bundle.mjs`) that derives `SOURCE.json`, the runtime and public generation ledgers, `manifest.json`, and the release projection from one selected-record set and creates exactly one archive (`tests/unit/assemble-bundle.test.mjs`, required proof 5). `release-projection.mjs`'s standalone CLI is retired (exits 1 with a pointer); `createReleaseProjection` is called in-process. `.github/workflows/ci.yml` deliberately still runs the old sequence against the pinned seed until a Step-4-produced seed is published and re-pinned (plan step 11); until then the new path is library + CLI only, and this ADR's 2026-08-21 `ci.yml` wiring rows below still describe what runs in production. | Reviewed `scripts/build-bundle.mjs`, `scripts/release-projection.mjs`, `.github/workflows/ci.yml` (byte-identical to `main`), `scripts/corpus-reconcile.mjs` (`prepareCorpusCandidate` still invokes the same CLI flags). |

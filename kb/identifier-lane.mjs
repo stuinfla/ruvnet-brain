@@ -143,7 +143,8 @@ export function identifierScan(dir, identifiers, { perRepo = 8, maxRepos = 6 } =
   const needles = identifiers.filter((t) => typeof t === 'string' && t.length >= 3);
   if (!needles.length) return empty;
   let files;
-  try { files = fs.readdirSync(dir).filter((f) => f.endsWith('.passages.jsonl')).sort(); }
+  // `._x.passages.jsonl` is macOS AppleDouble from an exFAT/FAT volume, not a store's passages.
+  try { files = fs.readdirSync(dir).filter((f) => f.endsWith('.passages.jsonl') && !f.startsWith('._')).sort(); }
   catch { return empty; }
   const key = `${kbBuildIdentity(dir)}|${storeFingerprint(dir, files)}|${[...identifiers].sort().join(' ')}|${perRepo}|${maxRepos}`;
   const cached = _scans.get(key);

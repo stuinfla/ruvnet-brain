@@ -13,6 +13,7 @@ import { buildProjectProgression } from './project-progression-producer.mjs';
 import { ProjectProgressionStore } from './project-progression-store.mjs';
 import { resolveProjectStore } from './project-store-resolver.mjs';
 import { captureTurnOutcome } from './turn-outcome-capture.mjs';
+import { captureContinuityEvents, stopNotice } from './continuity-journal.mjs';
 
 /**
  * The capture boundary's whole budget. hooks.json declares 10s; this keeps the internal work well
@@ -122,6 +123,7 @@ export function runSessionSnapshotHook(projectDir, event, {
   makeStoreFactory = boundedStoreFactory,
   spawnReplay = replayOutboxDetached,
   ordered = null,
+  captureEvents = captureContinuityEvents,
 } = {}) {
   // The detached worker re-runs a QUEUED boundary; its session receipt was already written then.
   const metadataWritten = writeMetadata ? writeSessionSnapshot(projectDir, event) : false;
@@ -134,7 +136,14 @@ export function runSessionSnapshotHook(projectDir, event, {
   try { turn = captureTurn({ projectDir, event, payload, host }); } catch (error) {
     turn = { recorded: false, skipped: `turn capture failed: ${error.message}` };
   }
-  const idle = { metadataWritten, progressionCaptured: false, receipt: null, turn };
+  // MATERIAL EVENTS (continuity-journal.mjs): commits, releases, gates, findings, decisions, lessons —
+  // journalled to the durable outbox with one fsync and committed by a detached drainer. Like turn
+  // capture it is independent of the progression lock below and costs this boundary only a read.
+  let continuity;
+  try { continuity = captureEvents({ projectDir, event, payload, host }); } catch (error) {
+    continuity = { recorded: 0, skipped: `continuity capture failed: ${error.message}` };
+  }
+  const idle = { metadataWritten, progressionCaptured: false, receipt: null, turn, continuity };
 
   if (hasProjectProgression(payload)) {
     if (payload.hook_event_name !== event) {
@@ -243,6 +252,7 @@ export function runSessionSnapshotHook(projectDir, event, {
       metadataWritten,
       progressionCaptured: true,
       turn,
+      continuity,
       replayed,
       receipt: result.receipt,
       provenance: produced.provenance,
@@ -510,7 +520,8 @@ export function runOutboxReplay({ projectDir, token = process.env.RUVNET_REPLAY_
         try {
           if (job) runCapture(projectDir, job.event, { rawInput: JSON.stringify(job.payload), host: job.host,
             budgetMs, makeStoreFactory, now, ordered: held, writeMetadata: false,
-            captureTurn: () => ({ recorded: false, skipped: 'detached replay' }) });
+            captureTurn: () => ({ recorded: false, skipped: 'detached replay' }),
+            captureEvents: () => ({ recorded: 0, skipped: 'detached replay' }) });
         } catch { /* a failed capture leaves its own snapshot durable in the outbox */ }
         try { fs.rmSync(claimed, { force: true }); } catch { /* best effort */ }
       }
@@ -529,7 +540,20 @@ if (process.argv[1] && path.resolve(process.argv[1]).endsWith('session-snapshot-
   // independently is what let this hook write a receipt the Console then reported as missing (#85).
   const rawInput = fs.readFileSync(0, 'utf8');
   try {
-    runSessionSnapshotHook(projectDirectory(), process.argv[2] || 'SessionEnd', { rawInput });
+    const result = runSessionSnapshotHook(projectDirectory(), process.argv[2] || 'SessionEnd', { rawInput });
+    // FAIL LOUDLY, NEVER SILENTLY — AND ONCE. When recording is stuck (events pending past STUCK_AFTER_MS,
+    // a quarantined conflict, a corrupt outbox line, a cap drop) Claude Code shows this systemMessage, at
+    // most once per session per condition (stopNotice; it used to repeat at every turn). "Not applicable"
+    // (no store, no ruflo) is never stuck. Codex is excluded on purpose: its Stop schema turns any `reason`
+    // into a BLOCK (codex-hook-adapter.mjs), and a recording problem must never hold a turn open.
+    const host = process.env.RUVNET_HOOK_HOST || 'claude';
+    const { status, journal } = result?.continuity || {};
+    if (host === 'claude' && status?.stuck && journal) {
+      let session = null;
+      try { session = JSON.parse(rawInput || '{}').session_id || null; } catch { /* no session: still once per 'unknown' */ }
+      const message = stopNotice({ journal, status, session });
+      if (message) process.stdout.write(JSON.stringify({ systemMessage: message }));
+    }
   } catch (error) {
     // ADVISORY, ALWAYS. A capture boundary fires at Stop, PreCompact and SessionEnd; one that can
     // return a non-zero status can interrupt a turn, a compaction, or a clean exit. Report and exit 0.

@@ -73,7 +73,7 @@ export function rootNeverMaterialized(root = storeRoot()) {
 export function storesAt(root = storeRoot()) {
   try {
     return [...new Set(fs.readdirSync(root)
-      .filter((f) => f.endsWith('.rvf'))
+      .filter((f) => f.endsWith('.rvf') && !f.startsWith('._')) // ._x.rvf: AppleDouble from exFAT/FAT, not a store
       .map((f) => f.replace(/\.big\.rvf$|\.rvf$/, '')))].sort();
   } catch { return []; }
 }

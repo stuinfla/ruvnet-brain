@@ -51,6 +51,11 @@ export const CONSOLE_RUNTIME_SURFACE = Object.freeze([
   // ERR_MODULE_NOT_FOUND on import, before a single line runs.
   'kb/corpus-release-identity.mjs',
   'bin/install.mjs',
+  // The Console's Settings → Nightly switch runs the copied installer's --enable-nightly, which installs
+  // THIS file (beside it, REPO_ROOT/bin) as the scheduler's immutable runner. Without it every installed
+  // customer got "nightly runner source is missing" (RNBC review 2026-10-01). It imports only node:
+  // built-ins, so nothing further travels with it.
+  'bin/nightly-refresh.mjs',
   'package.json',
 ]);
 

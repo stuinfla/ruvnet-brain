@@ -29,11 +29,85 @@
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-/** Parse the raw stdin payload into the hook event object, or null if it isn't valid JSON. */
+// ── GROK CLI PAYLOADS (4.5) ──────────────────────────────────────────────────────────────────────
+//
+// Grok CLI runs Claude-format hooks (its docs: ~/.grok/docs/user-guide/10-hooks.md, "Hook Locations"
+// and "Tool Name Aliases"), but its payload is not Claude's. Captured from grok 1.0.13
+// (tests/fixtures/hook-payloads/grok/):
+//   · event names are snake_case: hook_event_name "pre_tool_use", "stop", "user_prompt_submit";
+//   · tool names are Grok's own: the measured file tool is `write` (docs also name `search_replace`,
+//     and `run_terminal_command` / `run_terminal_cmd` for the shell);
+//   · camelCase fields (hookEventName, toolName, toolInput, toolResult, stopHookActive,
+//     lastAssistantMessage) with snake_case duplicates for SOME of them only — the Stop payload has no
+//     `stop_hook_active` and no `last_assistant_message` at all.
+// A Grok matcher written with Claude names still fires (Grok aliases Write→its tool in the MATCHER), but
+// the payload keeps the native name — so every policy that compared tool_name to "Write" saw "write" and
+// silently allowed. Normalising HERE, in the one parser, means every consumer reads Claude's shape.
+// Only a payload that is recognisably Grok's is rewritten; a Claude or Codex payload comes back untouched.
+export const GROK_TOOL_ALIASES = Object.freeze({
+  write: 'Write', search_replace: 'Edit', edit: 'Edit', multi_edit: 'MultiEdit',
+  run_terminal_command: 'Bash', run_terminal_cmd: 'Bash', read_file: 'Read', grep: 'Grep',
+  list_dir: 'Glob', web_search: 'WebSearch', web_fetch: 'WebFetch', spawn_subagent: 'Task', task: 'Task',
+});
+
+/** True for a payload in Grok's shape (camelCase envelope, or a snake_case lowercase event name). */
+export function isGrokEvent(ev) {
+  if (!ev || typeof ev !== 'object') return false;
+  if (typeof ev.hookEventName === 'string') return true;
+  return typeof ev.hook_event_name === 'string' && /^[a-z]+(?:_[a-z]+)+$|^stop$/.test(ev.hook_event_name);
+}
+
+const pascalEvent = (e) => String(e).split('_').filter(Boolean).map((x) => x[0].toUpperCase() + x.slice(1)).join('');
+
+/** Claude's tool name for a host tool name (Grok's `write` → `Write`); unknown names pass through. */
+export function canonicalToolName(name) {
+  const s = typeof name === 'string' ? name : '';
+  return Object.prototype.hasOwnProperty.call(GROK_TOOL_ALIASES, s) ? GROK_TOOL_ALIASES[s] : s;
+}
+
+/**
+ * Is this a FILE-WRITE tool, on any host? Case-insensitive, so a host that spells Write in another case
+ * (Grok's `write`) can never walk past a write guard again. apply_patch is Codex's raw name.
+ */
+const WRITE_TOOLS = new Set(['write', 'edit', 'multiedit', 'multi_edit', 'notebookedit', 'search_replace', 'apply_patch']);
+export function isWriteTool(name) {
+  return typeof name === 'string' && WRITE_TOOLS.has(name.toLowerCase());
+}
+
+/** A Claude-shaped copy of a Grok payload; any other payload is returned as-is (same object). */
+export function normalizeHostEvent(ev) {
+  if (!isGrokEvent(ev)) return ev;
+  const out = { ...ev };
+  const set = (snake, camel) => { if (out[snake] === undefined && ev[camel] !== undefined) out[snake] = ev[camel]; };
+  out.hook_event_name = pascalEvent(ev.hook_event_name || ev.hookEventName || '');
+  set('session_id', 'sessionId');
+  set('transcript_path', 'transcriptPath');
+  set('permission_mode', 'permissionMode');
+  set('tool_input', 'toolInput');
+  set('tool_response', 'toolResult');
+  set('tool_use_id', 'toolUseId');
+  set('stop_hook_active', 'stopHookActive');
+  set('last_assistant_message', 'lastAssistantMessage');
+  const native = typeof ev.tool_name === 'string' ? ev.tool_name : (typeof ev.toolName === 'string' ? ev.toolName : undefined);
+  if (native !== undefined) {
+    out.tool_name = canonicalToolName(native);
+    if (out.tool_name !== native) out.host_tool_name = native;
+  }
+  out.host = 'grok';
+  return out;
+}
+
+/** The raw payload TEXT, rewritten to Claude's shape only when it is a Grok payload (else unchanged bytes). */
+export function normalizePayloadText(raw) {
+  const ev = (() => { try { const j = JSON.parse(raw); return j && typeof j === 'object' ? j : null; } catch { return null; } })();
+  return ev && isGrokEvent(ev) ? JSON.stringify(normalizeHostEvent(ev)) : raw;
+}
+
+/** Parse the raw stdin payload into the hook event object (Claude-shaped), or null if it isn't valid JSON. */
 export function parseHookEvent(raw) {
   try {
     const j = JSON.parse(raw);
-    return j && typeof j === 'object' ? j : null;
+    return j && typeof j === 'object' ? normalizeHostEvent(j) : null;
   } catch {
     return null;
   }
@@ -107,13 +181,13 @@ export async function readStopHookInput() {
   if (process.stdin.isTTY) return { __source: 'tty' };
   try {
     const raw = (await readStdinBounded()).toString('utf8');
-    return { ...JSON.parse(raw || '{}'), __source: 'stdin' };
+    return { ...normalizeHostEvent(JSON.parse(raw || '{}')), __source: 'stdin' };
   } catch { return { __source: 'unreadable' }; }
 }
 
 /** The tool being invoked ("Bash", "Write", …), or "" if absent. */
 export function toolName(ev) {
-  return ev && typeof ev.tool_name === 'string' ? ev.tool_name : '';
+  return ev && typeof ev.tool_name === 'string' ? canonicalToolName(ev.tool_name) : '';
 }
 
 /**

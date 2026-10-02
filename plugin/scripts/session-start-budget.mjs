@@ -43,6 +43,7 @@ export const STAGE_BUDGETS_MS = {
   'signal-surface': 400,  // bounded CI-signal transition poll (see session-start-signals.mjs)
   'router-nudge': 50,     // one fs.existsSync + at-most-one-time write
   'knowledge-currency': 100, // refresh receipts + registration + SOURCE.json reads; no spawn, no network
+  footprint: 150,         // name-only classification (measured ~20ms on a 1.4 GB brain) + at-most-one detach launch
   'stable-spine': 300,    // seed-dispatch decision + a single detach launch
   heartbeat: 300,         // update-check dispatch launch
   'ascii-drift': 300,     // optional ascii->svg drift advisory, already spawnSync-timeout bounded

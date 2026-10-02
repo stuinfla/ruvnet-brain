@@ -250,6 +250,16 @@ describe.skipIf(bashOnly)('ADR-054 gate 3 — a refusal mints NO grounding stamp
     expect(fs.existsSync(stampFor(TERM))).toBe(true);
   });
 
+  it('a Grok payload carrying the result only as camelCase toolResult stamps too (4.5)', () => {
+    const r = fireBash(STAMP, {
+      hookEventName: 'post_tool_use', toolName: 'ruvnet-brain__search_ruvnet',
+      tool_input: { query: `${TERM}: how does rUv implement session capture?` },
+      toolResult: `Searched 37 RuvNet repos (${TERM}).\n#1 repo=${TERM}\npath: x/src/y.ts\n----- full document (900 chars) -----\nreal source here`,
+    });
+    expect(r.status).toBe(0);
+    expect(fs.existsSync(stampFor(TERM))).toBe(true);
+  });
+
   it('no tool_response at all mints no stamp — the old query-only behaviour is genuinely gone', () => {
     const r = fireBash(STAMP, {
       tool_name: 'mcp__plugin_ruvnet-brain_ruvnet-brain__search_ruvnet',
@@ -615,6 +625,14 @@ describe.skipIf(bashOnly)('ADR-054 — the PreToolUse guard on the consent recor
     const r = fireBash(PROTECT, write(sentinel));
     expect(r.status).toBe(2);
     expect(r.stderr).toMatch(/BLOCKED/);
+  });
+
+  it('BLOCKS the same Write under every host spelling of the tool (Grok sends `write` / `search_replace`)', () => {
+    for (const t of ['write', 'WRITE', 'search_replace', 'notebookedit']) {
+      const r = fireBash(PROTECT, { tool_name: t, tool_input: { file_path: sentinel, content: 'x' } });
+      expect(r.status, `${t} walked past the consent guard`).toBe(2);
+    }
+    expect(fireBash(PROTECT, { tool_name: 'read_file', tool_input: { file_path: sentinel } }).status).toBe(0);
   });
 
   it('BLOCKS an agent Edit to the settings mirror, and to its backups and lock', () => {

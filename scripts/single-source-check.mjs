@@ -15,6 +15,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readCheckpoint, checkpointStaleness } from './loop-checkpoint.mjs';
+import { PRODUCTION_ENVIRONMENT, productionEnvironmentVerdict } from './release-environment-policy.mjs';
+import { approvalHits, LOCAL_INSTRUCTION_DRIFT } from './human-approval-phrases.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const HOME = os.homedir();
@@ -33,8 +35,6 @@ const HISTORY = /^(docs\/(adr|ddd|research|audits|reviews|qe)\/|CHANGELOG\.md$|P
 // kb/ is corpus content (primers/cards describing OTHER projects' own commands) and docs/issues/
 // are upstream bug reports quoting other configs — both are data, not instructions to this project.
 const instructions = tracked.filter((f) => /\.md$/.test(f) && !HISTORY.test(f) && !/^(kb|docs\/issues)\//.test(f));
-// Phrases that re-introduce a person as a release gate. Negated statements ("no human approval step") are filtered by the caller.
-const HUMAN_APPROVAL_STEP = /(owner|stuart'?s?|maintainer) (approves?|approval|click|must approve)\b[^.]*(deployment|release|publish|gate)|approves? the `?Production|hand (it|the work) over[^.]*click|required[- ]reviewers?\b|standing authori[sz]ation permits/i;
 const grepIn = (files, re) => files.flatMap((f) => read(f).split('\n')
   .map((l, i) => (re.test(l) ? `${f}:${i + 1}: ${l.trim().slice(0, 140)}` : null)).filter(Boolean));
 const none = (hits) => ({ ok: hits.length === 0, detail: hits.slice(0, 8).join('\n') || 'none' });
@@ -85,7 +85,10 @@ const checks = [
   // The owner is not in the release loop (2026-09-30): the gates are machine gates, and no instruction may
   // route a release through a person clicking in GitHub. B12 applies the same idea to the local CLAUDE.md/AGENTS.md.
   { id: 'B6', area: 'rules', scope: 'repo', title: 'No instruction puts a human approval click (or a required reviewer) in the release path',
-    run: () => none(grepIn(instructions, HUMAN_APPROVAL_STEP).filter((l) => !/\bno (human|reviewer)\b|\bnever\b|\bnot asked\b/i.test(l))) },
+    // Matched without markdown emphasis; a negation counts only in the matched phrase's own clause
+    // (scripts/human-approval-phrases.mjs) — "…; never skip it" does not excuse "the owner approves …".
+    run: () => none(instructions.flatMap((f) => read(f).split('\n')
+      .map((l, i) => (approvalHits(l).length ? `${f}:${i + 1}: ${l.trim().slice(0, 140)}` : null)).filter(Boolean))) },
   { id: 'B7', area: 'rules', scope: 'repo', title: 'Model IDs are selected only in their owner modules',
     run: () => {
       const re = /['"`](claude-(fable|opus|sonnet|haiku)-[0-9][a-z0-9.-]*|gpt-[0-9][a-z0-9.-]*)['"`]/;
@@ -131,9 +134,9 @@ const checks = [
   { id: 'B12', area: 'rules', scope: 'machine', title: 'The local (untracked) CLAUDE.md / AGENTS.md carry no contradicting instruction',
     run: () => {
       const main = path.join(HOME, 'Code/ruvnet-brain');
-      const bad = /npx (-y )?(@claude-flow|claude-flow|ruflo)\b|standing authori[sz]ation permits|owner (approves?|click)|Stuart's approval (of|in GitHub)|approves? the `?Production|hand (it|the work) over[^.]*click|npm run (build|dev|test:integration|test:coverage|test:security)\b|not direct Agent tool/i;
       return none(['CLAUDE.md', 'AGENTS.md'].flatMap((f) => readAbs(path.join(main, f)).split('\n')
-        .map((l, i) => (bad.test(l) ? `${f}:${i + 1}: ${l.trim().slice(0, 120)}` : null)).filter(Boolean)));
+        .map((l, i) => (approvalHits(l, LOCAL_INSTRUCTION_DRIFT, { allowNegation: false }).length
+          ? `${f}:${i + 1}: ${l.trim().slice(0, 120)}` : null)).filter(Boolean)));
     } },
 
   // C — one release path
@@ -162,12 +165,14 @@ const checks = [
   { id: 'C4', area: 'release', scope: 'machine', title: 'The corpus gist job has its authenticated token (RUVNET_GISTS_TOKEN)',
     run: () => { const r = spawnSync('gh', ['secret', 'list', '-R', 'stuinfla/ruvnet-brain'], { encoding: 'utf8' }); return { ok: /^RUVNET_GISTS_TOKEN\b/m.test(r.stdout), detail: r.stdout.split('\n').map((l) => l.split(/\s/)[0]).filter(Boolean).join(', ') }; } },
   { id: 'C3', area: 'release', scope: 'machine', title: 'The npm-scoped Production environment is a boundary: branch policy present, admins cannot bypass (no human reviewer is part of the design)',
+    // One verdict (scripts/release-environment-policy.mjs): branch policy present, admins cannot bypass,
+    // and NO required reviewer — a reviewer re-added in the GitHub UI re-inserts a human click into every release.
     run: () => {
-      const r = spawnSync('gh', ['api', 'repos/stuinfla/ruvnet-brain/environments', '-q',
-        '.environments[]|select(.name=="Production – ruvnet-brain")|[(.can_admins_bypass==false),([.protection_rules[]?|select(.type=="branch_policy")]|length)]|@json'], { encoding: 'utf8' });
-      let noBypass = false; let policies = 0;
-      try { [noBypass, policies] = JSON.parse(r.stdout.trim()); } catch { /* unreadable: falls through to fail */ }
-      return { ok: r.status === 0 && noBypass === true && policies > 0, detail: `can_admins_bypass=false: ${noBypass}; branch_policy rules: ${policies}${r.status === 0 ? '' : ` (${r.stderr.trim()})`}` };
+      const r = spawnSync('gh', ['api', 'repos/stuinfla/ruvnet-brain/environments'], { encoding: 'utf8' });
+      let environment = null;
+      try { environment = (JSON.parse(r.stdout).environments || []).find((e) => e?.name === PRODUCTION_ENVIRONMENT) || null; } catch { /* unreadable */ }
+      const verdict = productionEnvironmentVerdict(environment);
+      return { ok: r.status === 0 && verdict.ok, detail: `${verdict.detail}${r.status === 0 ? '' : ` (${r.stderr.trim()})`}` };
     } },
 
   // D — one corpus / update path

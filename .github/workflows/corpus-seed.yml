@@ -493,7 +493,7 @@ jobs:
           echo 'Candidate prepared and sealed; NOT published.'
           echo 'protected-release.yml (mode=corpus) authenticates this run and this exact artifact through'
           echo 'the GitHub API, downloads it into RUNNER_TEMP only, re-verifies both digests, re-derives the'
-          echo 'candidate from the archive bytes, proves every executable file equals the owner-approved'
+          echo 'candidate from the archive bytes, proves every executable file equals the install-verified'
           echo 'shipped runtime, crosses the corpus-only signing environment, and only then calls'
           echo 'node scripts/release.mjs --corpus-seed (the canonical publisher; see ADR-085/ADR-086).'
           echo 'This workflow holds no signing or publication authority of its own.'
