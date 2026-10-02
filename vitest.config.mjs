@@ -19,7 +19,7 @@ export default defineConfig({
     // ruflo's per-project scratch cwd (plugin/scripts/project-progression-store.mjs rufloCwdFor) lives
     // under the Brain home in production; tests that build a store must never create it in the
     // developer's real ~/.cache/ruvnet-brain, so the suite points it at a private test root.
-    env: { RUVNET_TURN_CAPTURE: 'off',
+    env: { RUVNET_TURN_CAPTURE: 'off', RUVNET_CONTINUITY_CAPTURE: 'off',
       RUVNET_RUFLO_CWD_ROOT: path.join(os.tmpdir(), `ruvnet-brain-test-ruflo-cwd-${typeof process.getuid === 'function' ? process.getuid() : 'user'}`) },
     include: [
       'tests/unit/**/*.test.mjs', 'tests/integration/*.test.mjs', 'tests/mutation/*.test.mjs',

@@ -532,7 +532,7 @@ function main() {
   const ev = parseHookEvent(raw);
   if (!ev) return 0;                                        // malfunction is not a decision
   const tool = toolName(ev);
-  if (!/^(Write|Edit|MultiEdit)$/.test(tool)) return 0;
+  if (!/^(Write|Edit|MultiEdit)$/.test(tool)) return 0;   // toolName() is canonical: Grok's write arrives as Write
 
   const filePath = typeof ev.tool_input?.file_path === 'string' ? ev.tool_input.file_path : '';
   const added = addedText(ev);

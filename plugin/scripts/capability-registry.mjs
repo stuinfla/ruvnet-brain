@@ -458,6 +458,9 @@ export const CAPABILITIES = [
       if (typeof d.total !== 'number') return row(STATE.UNKNOWN, 'the store opened but returned no countable rows — distillation state could not be established');
 
       if (d.total === 0) return row(STATE.ABSENT, 'the memory store is empty, so there is nothing to distill yet');
+      // No countable pattern table is an UNMEASURED distillation, not "null patterns" (RNBC QA
+      // 2026-10-01: the card printed "only null patterns from 12 memories" and called it ON).
+      if (typeof d.patterns !== 'number') return row(STATE.UNKNOWN, `${d.total} memories stored, but this store has no pattern table that could be counted — whether distillation has run is not established`);
       if (d.learns) return row(STATE.ON, `${d.patterns} reusable patterns distilled from ${d.real} memories (${(d.cover * 100).toFixed(1)}% embedded)`);
       if (d.patterns === 0) return row(STATE.OFF, `${d.total} memories stored and ${(d.cover * 100).toFixed(1)}% embedded, but 0 have been distilled into patterns — the store records and forgets`);
       // "BARELY RUN" IS NOT "NOT RUNNING". This returned STATE.OFF while its own sentence says the
@@ -700,7 +703,9 @@ export const CAPABILITIES = [
       if (!Array.isArray(lessons) || lessons.length === 0) return row(STATE.ABSENT, 'the lesson store exists but holds no lessons yet');
 
       const S = helpers.lessonStore.STATUS || {};
-      const inForce = lessons.filter((l) => l?.status === S.RATIFIED || l?.status === S.ACTIVE).length;
+      // In force = what the gate (lessonsFor) can deliver: ratified AND not switched off. A demoted
+      // ratified lesson was counted here as able to "affect what your AI does" (RNBC QA 2026-10-01).
+      const inForce = lessons.filter((l) => (l?.status === S.RATIFIED || l?.status === S.ACTIVE) && !l?.demoted).length;
       // AWAITING YOU means RATIFIABLE BY YOU (issue #125). This counted every CANDIDATE, including
       // the seeded imported-owner lessons — which `ratify()` refuses by design and `pending()`
       // excludes, so `lesson-ratify --list` correctly reported "0 awaiting your decision" while this
@@ -874,6 +879,10 @@ export const CAPABILITIES = [
     scope: SCOPE.MACHINE,
     // Loading a launchd job is machine mutation with no single verified command; global Rule 10.
     turnOn: null,
+    // …but there IS a verified control: the console's Settings switch, which saveConfig() hands to
+    // nightly-controller.applyNightlyChoice() with a recorded undo. RNBC QA 2026-10-01: the row said
+    // "No verified one-line command exists" two cards above that very switch.
+    setting: 'nightly',
     detect() {
       const status = nightlyStatus();
       if (status.state === 'on') return row(STATE.ON, status.evidence);
@@ -911,6 +920,7 @@ export function auditAll({ project = process.cwd() } = {}) {
       whatItBuysYou: c.whatItBuysYou,
       scope: c.scope,
       turnOn: c.turnOn,
+      ...(c.setting ? { setting: c.setting } : {}),
       state,
       evidence,
       // A digest binds proactive routing to this audit invocation's observed bytes. Synthetic test

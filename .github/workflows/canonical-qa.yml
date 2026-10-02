@@ -61,6 +61,10 @@ jobs:
           npm install -g ruflo@latest --no-audit --no-fund
           command -v ruflo
           ruflo --version
+      # tests/acceptance/rnbc-every-element drives a real headless Chromium through every element of the
+      # console (docs/qa/rnbc-ledger.md); a runner without the browser fails that file, so install it.
+      - name: Install the browser the console QA drives
+        run: npx playwright install --with-deps chromium
       - run: node scripts/full-suite-gate.mjs
       - run: node --test tests/experience/report.test.mjs
 

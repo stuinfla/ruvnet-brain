@@ -14,7 +14,7 @@ name: corpus-nightly-dispatch
 # write is broader than one workflow; a hardcoded dispatcher command is not the security boundary."
 # Anyone who can run this could dispatch protected-release.yml directly. The boundary lives in the
 # TARGET: mode=corpus selects a chain that never binds the npm-scoped environment, and code
-# publication still needs the owner-approved preflight artifact this workflow cannot produce.
+# publication still needs the release-candidate preflight artifact this workflow cannot produce.
 #
 # So the permissions here are the floor, not a formality: `contents: read` to read main and the
 # public release assets the approved-runtime resolver verifies, `actions: write` to dispatch. No

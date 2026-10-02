@@ -41,7 +41,7 @@
  *   • DIGEST VERIFICATION — untouched: the caller still validates payloadDigest on every snapshot.
  */
 import fs from 'node:fs';
-import { createRequire } from 'node:module';
+import { loadNodeSqlite } from './node-sqlite.mjs';
 
 /** Rows that `ruflo memory` itself considers live (memory-initializer.js ACTIVE_MEMORY_ROW_SQL). */
 const ACTIVE_ROW_SQL = "(status = 'active' OR status IS NULL)";
@@ -134,7 +134,9 @@ let sqliteBinding;
 function databaseSync() {
   if (sqliteBinding === undefined) {
     try {
-      sqliteBinding = createRequire(import.meta.url)('node:sqlite').DatabaseSync ?? null;
+      // node-sqlite.mjs: loaded on first real use and without Node 22's SQLite ExperimentalWarning,
+      // which otherwise lands in every SessionStart hook's output.
+      sqliteBinding = loadNodeSqlite()?.DatabaseSync ?? null;
     } catch { sqliteBinding = null; }
   }
   return sqliteBinding;

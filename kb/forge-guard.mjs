@@ -134,7 +134,10 @@ async function checkStore({ dir, name, query, variant }) {
 
   // 2. TRUNCATION
   if (emptyText > 0) fails.push(`TRUNCATION: ${emptyText} passage(s) have empty/invalid text`);
-  if (clippedAtCap >= CLIP_FAIL_COUNT) fails.push(`TRUNCATION: ${clippedAtCap} passages equal their preview AND sit at a 200/240 cap mid-content (the old bug)`);
+  // A tiny store (13 of 199 real stores hold 1-2 passages) can never reach CLIP_FAIL_COUNT or the cap
+  // fraction's minimum count; if EVERY passage is clipped exactly like the old bug, that is the old bug.
+  const allClipped = lineCount > 0 && clippedAtCap === lineCount;
+  if (clippedAtCap >= CLIP_FAIL_COUNT || allClipped) fails.push(`TRUNCATION: ${clippedAtCap} passages equal their preview AND sit at a 200/240 cap mid-content (the old bug)${allClipped ? ' — every passage in the store' : ''}`);
   else if (clippedAtCap > 0) notes.push(`clip scan: ${clippedAtCap} at-cap+equal-preview (< ${CLIP_FAIL_COUNT}, informational)`);
   else notes.push('clip scan: 0 at-cap clipped-preview passages');
   if (shorterThanPreview > 0) fails.push(`TRUNCATION: ${shorterThanPreview} passage(s) shorter than their own preview`);

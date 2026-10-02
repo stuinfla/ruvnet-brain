@@ -1,0 +1,15 @@
+needs traced 196 hit5 10
+needs bm25 wins [{"id":"ruflo:.claude/skills/github-project-management/SKI","train":false,"dTop":-6.07},{"id":"ruflo:plugins/ruflo-cost-tracker/skills/cost-burn/","train":true,"dTop":-6.23},{"id":"ruvector:crates/micro-hnsw-wasm/README.md:7-15","train":false,"dTop":-5.76},{"id":"ruvector:crates/ruvector-mincut/README.md:15-21","train":true,"dTop":-7.38},{"id":"ruvector:docs/research/nightly/2026-09-03-state-ro","train":false,"dTop":2.21},{"id":"RuView:examples/through-wall/README.md:29-36","train":false,"dTop":-4.96},{"id":"RuView:firmware/privshield/esp32/README.md:15-39","train":false,"dTop":-5.89}]
+needs hit5 unknown-lane 0
+recall traced 182 hit5 165
+recall bm25 wins [{"store":"helix","dTop":5.16},{"store":"ruqu","dTop":2.61},{"store":"ruvnet-brain","dTop":1.92}]
+recall hit5 unknown-lane 
+t=-2 needs fire 167/196 (train 86/97, latency set 57/65) keep needs 6/7 (train 2/2); recall fire 7/182 keep 0/3
+t=-1 needs fire 184/196 (train 93/97, latency set 62/65) keep needs 6/7 (train 2/2); recall fire 12/182 keep 0/3
+t=0 needs fire 191/196 (train 94/97, latency set 63/65) keep needs 6/7 (train 2/2); recall fire 21/182 keep 0/3
+t=1 needs fire 194/196 (train 97/97, latency set 64/65) keep needs 6/7 (train 2/2); recall fire 35/182 keep 0/3
+t=2 needs fire 195/196 (train 97/97, latency set 64/65) keep needs 6/7 (train 2/2); recall fire 56/182 keep 1/3
+t=3 needs fire 196/196 (train 97/97, latency set 65/65) keep needs 7/7 (train 2/2); recall fire 83/182 keep 2/3
+t=4 needs fire 196/196 (train 97/97, latency set 65/65) keep needs 7/7 (train 2/2); recall fire 119/182 keep 2/3
+t=5 needs fire 196/196 (train 97/97, latency set 65/65) keep needs 7/7 (train 2/2); recall fire 139/182 keep 2/3
+t=6 needs fire 196/196 (train 97/97, latency set 65/65) keep needs 7/7 (train 2/2); recall fire 168/182 keep 3/3

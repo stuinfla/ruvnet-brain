@@ -25,6 +25,10 @@ import { fileURLToPath } from 'node:url';
 // signature, do not infer it from the name.
 import { resolveBash } from './hook-shim-bash.mjs';
 import { append as appendOutcome, actionKey, recordRefusal, resolve as resolveOutcome, sweepStale } from './decision-outcomes.mjs';
+// Grok sends its own tool names (`write`) and a snake_case event; every policy below reads Claude's
+// shape. Normalised ONCE here, so the policies (four of them bash, matching tool_name textually) never
+// see a host-native spelling — the 4.4 measurement was a Grok write silently allowed. hook-input.mjs.
+import { normalizePayloadText } from './hook-input.mjs';
 
 const SCRIPTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const EVENT = process.argv[2] || '';
@@ -80,6 +84,46 @@ const SKIPPED_SELF = 3;
  */
 export const DEFAULT_BUDGET_MS = 2000;
 export const MIN_HEADROOM_MS = 3000;
+
+/**
+ * ── THE TWO FAIL-OPEN CASES, STATED AS POLICY (4.5) ──────────────────────────────────────────────
+ *
+ * 1. ALLOW ON TIMEOUT. A policy still running at the budget is killed and the write is ALLOWED — a gate
+ *    that blocks because it is slow is one users switch off. Never silent: the outcome ledger records
+ *    `budget-exceeded` with the policies that did not vote, and ONE stderr line says the allow was a
+ *    timeout, not a verdict (reportBudget below).
+ *
+ * 2. OVERSIZE: ONLY THE FIRST 64 KiB IS CHECKED. The host hands this gate the payload through
+ *    hook-shim.mjs, which reads at most TRANSPORT_CAP_BYTES (its TABLE entry), and the bash policies cap
+ *    their own read at the same number. A bigger Write arrives cut mid-JSON. The policies still run on
+ *    that prefix and a refusal found there STANDS (measured 2026-10-01: an ungrounded rUv import at the
+ *    top of a 100 KB file, and a 100 KB write to the protected settings file, are both refused). What
+ *    the prefix cannot show — a rUv import after the first 64 KiB — is ALLOWED. Measured before 4.5 that
+ *    allow left no trace at all; it is now recorded as `payload-oversize` (with the session, tool and path
+ *    recovered from the prefix, so refusals of oversize writes are counted too). No stderr on that allow:
+ *    a large file is ordinary work, and stderr is what a host renders as a hook error.
+ * tests/unit/write-gate-policy.test.mjs holds both, through the real registered command.
+ */
+export const TRANSPORT_CAP_BYTES = 65536;
+
+/** Pure: is this the complete JSON event, or the transport cap's cut-off prefix of a bigger one? */
+export function classifyPayload(raw) {
+  const text = String(raw ?? '');
+  const bytes = Buffer.byteLength(text, 'utf8');
+  try {
+    const o = JSON.parse(text);
+    if (o && typeof o === 'object') return { complete: true, truncated: false, bytes };
+  } catch { /* fall through */ }
+  const str = (k) => new RegExp(`"${k}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`).exec(text)?.[1] ?? '';
+  return {
+    complete: false,
+    truncated: bytes >= TRANSPORT_CAP_BYTES,
+    bytes,
+    session: str('session_id') || str('sessionId'),
+    tool: str('tool_name') || str('toolName'),
+    filePath: str('file_path'),
+  };
+}
 
 /**
  * THE POLICY REGISTRY — the whole point of this file, and the thing that was previously scattered
@@ -218,7 +262,7 @@ function speechEventFor(event) { return event === 'bash' ? 'PreToolUse-bash' : '
 
 if (isMain()) {
   const started = Date.now();
-  const payload = readPayload();
+  const payload = normalizePayloadText(readPayload());
   const selected = policiesFor(EVENT);
   // An unknown event is not an occasion to refuse anything. Same rule as unprompted-runtime's
   // "never speak on a guess", pointed at the other decision. 'write' is the only registered route
@@ -263,9 +307,14 @@ if (isMain()) {
   // hook: resolve first (did this call retry something we refused?), then open a new debt if we are
   // about to refuse. Order matters — resolving after recording would close the debt we just opened.
   // Entirely best-effort: measurement may never affect the verdict, so it runs after `decide`.
-  const session = sessionOf(payload);
+  // An oversize payload is cut mid-JSON (see TRANSPORT_CAP_BYTES): recover session/tool/path from its
+  // prefix so its refusals and allows are counted like any other.
+  const shape = classifyPayload(payload);
+  const session = sessionOf(payload) || (shape.truncated ? shape.session : '');
   try {
-    const key = actionKey(payloadTool(payload), toolInput);
+    const key = shape.truncated
+      ? actionKey(shape.tool, { file_path: shape.filePath })
+      : actionKey(payloadTool(payload), toolInput);
     const ts = Date.now();
     if (session && key) {
       sweepStale({ session, ts });   // debts from dead sessions become `abandoned`, never vanish
@@ -275,6 +324,10 @@ if (isMain()) {
   } catch { /* a ledger must never break a tool call */ }
 
   reportSelfSkipped({ session, selfSkipped });
+  if (decision.allow && shape.truncated) {
+    // OVERSIZE POLICY (header): allowed on a check of the first TRANSPORT_CAP_BYTES only. Recorded, never silent.
+    try { appendOutcome({ kind: 'payload-oversize', event: EVENT, session, bytesSeen: shape.bytes, capBytes: TRANSPORT_CAP_BYTES, tool: shape.tool, filePath: shape.filePath, ts: Date.now() }); } catch { /* a ledger must never break a tool call */ }
+  }
   if (!decision.allow) {
     reportBudget({ session, unconsulted, trace, started, budgetMs });
     process.stderr.write(`${decision.reason}\n`);

@@ -389,6 +389,10 @@ function advocacyLevel() {
     // version did) meant every real save through the console/CLI was invisible here and the dial
     // silently fell back to the default. Keep a top-level fallback for a hand-written/legacy file.
     const v = (parsed && parsed.settings && parsed.settings.advocacy) ?? (parsed && parsed.advocacy);
+    // The console's dial saves an INTEGER 1–5 (ADR-052). Level 1 is "Only when I ask" — silent here;
+    // 2–5 all let this hook's single high-bar nudge through (it has no severity axis to split on).
+    // Before this mapping every integer fell through to the speaking default (RNBC QA 2026-10-01).
+    if (Number.isInteger(v) && v >= 1 && v <= 5) return v === 1 ? 'off' : v >= 4 ? 'all' : 'important-only';
     return (v === 'off' || v === 'important-only' || v === 'all') ? v : 'important-only';
   } catch { return 'important-only'; }
 }
