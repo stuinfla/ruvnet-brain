@@ -54,9 +54,15 @@ export function buildLessonPresentation({
   }
   const order = [...seeded, ...ranked.filter((lesson) => !seeded.includes(lesson))];
 
-  const inForce = [];
-  let spent = 0;
-  for (const lesson of order) {
+  // An opted-in BLOCK must never lose its slot to budget pressure from an unrelated advisory on a
+  // different trigger — lesson-gate.mjs's exit code is `blocking.length` alone, so a block excluded
+  // here is a silent, permanent ALLOW (issue #264). Every blocking candidate is admitted first and
+  // unconditionally; the budget then governs only the non-blocking remainder, exactly as before.
+  const blockingFirst = order.filter(isBlocking);
+  const rest = order.filter((lesson) => !isBlocking(lesson));
+  const inForce = [...blockingFirst];
+  let spent = blockingFirst.reduce((sum, lesson) => sum + renderLesson(lesson, '·').length, 0);
+  for (const lesson of rest) {
     const cost = renderLesson(lesson, '·').length;
     if (inForce.length && spent + cost > nudgeBudget) continue;
     inForce.push(lesson);

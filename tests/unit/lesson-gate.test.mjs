@@ -303,6 +303,25 @@ describe('an opted-in BLOCK actually refuses', () => {
     expect(stderr).toContain('channel capable of observing');
     expect(stdout).toBe('');
   });
+
+  test('a big advisory on a DIFFERENT trigger cannot crowd the block out of the budget (#264)', () => {
+    // lesson-presentation.mjs's nudge-budget loop used to admit the highest-repeatCount candidate
+    // unconditionally, then `continue` any later candidate — including an opted-in block on a
+    // different trigger — once the budget was spent. lesson-gate.mjs's exit code is `blocking.length`
+    // alone, so an excluded block became a silent, permanent ALLOW even though the user opted in.
+    const bigAdvisory = blockLesson({
+      id: 'A-crowds-the-budget', trigger: 'report-status', enforcement: 'checklist', check: null,
+      statement: 'X'.repeat(2000), repeatCount: 25,
+    });
+    writeStore([blockLesson({ repeatCount: 1 }), bigAdvisory]);
+    writeOptIn(['T01-verify-with-a-capable-channel']);
+    const r = runGate(
+      ['--event', 'Stop', '--trigger', 'claim-done', '--trigger', 'report-status'],
+      { RUVNET_NUDGE_BUDGET: '50' },
+    );
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain('channel capable of observing');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────
