@@ -78,36 +78,36 @@ const item = (fp, p) => fp.items.find((i) => i.path === p);
 describe('kbCopyProof: a KB copy is disposable only when nothing in it is unique', () => {
   it('an older public generation whose private files are byte-identical in live is disposable', () => {
     const m = machine(); live(m);
-    const copy = kbTree(path.join(m.brainHome, 'kb.bak-1'), { publicStores: { alpha: 'alpha-v1', retired: 'gone' }, privateStores: { secret: 'secret-bytes' },
+    const copy = kbTree(path.join(m.brainHome, 'kb.bak-2026-09-01T00-00-00-000Z'), { publicStores: { alpha: 'alpha-v1', retired: 'gone' }, privateStores: { secret: 'secret-bytes' },
       coverage: { rows: [{ name: 'alpha' }, { name: 'retired' }] } });
     expect(kbCopyProof({ copyDir: copy, liveDir: m.kbDir })).toMatchObject({ disposable: true, unique: [] });
   });
   it('a private file that differs from (or is absent in) live KEEPS the copy and is named', () => {
     const m = machine(); live(m);
-    const differs = kbTree(path.join(m.brainHome, 'kb.bak-2'), { publicStores: { alpha: 'alpha-v1' }, privateStores: { secret: 'OLDER-secret' } });
+    const differs = kbTree(path.join(m.brainHome, 'kb.bak-2026-09-02T00-00-00-000Z'), { publicStores: { alpha: 'alpha-v1' }, privateStores: { secret: 'OLDER-secret' } });
     const proof = kbCopyProof({ copyDir: differs, liveDir: m.kbDir });
     expect(proof.disposable).toBe(false);
     expect(proof.unique.map((u) => u.file)).toEqual(expect.arrayContaining(['secret.big.rvf', 'secret.passages.jsonl']));
-    const only = kbTree(path.join(m.brainHome, 'kb.bak-3'), { publicStores: { alpha: 'alpha-v1' }, privateStores: { journal: 'only-here' } });
+    const only = kbTree(path.join(m.brainHome, 'kb.bak-2026-09-03T00-00-00-000Z'), { publicStores: { alpha: 'alpha-v1' }, privateStores: { journal: 'only-here' } });
     expect(kbCopyProof({ copyDir: only, liveDir: m.kbDir }).unique.map((u) => u.file)).toContain('journal.big.rvf');
   });
   it('the fence of the COPY counts even when live no longer fences the name', () => {
     const m = machine(); kbTree(m.kbDir, { publicStores: { alpha: 'a' }, privateStores: {} });
-    const copy = kbTree(path.join(m.brainHome, 'kb.bak-4'), { publicStores: { alpha: 'a0' }, privateStores: { diary: 'd' }, fenceOnly: ['diary'] });
+    const copy = kbTree(path.join(m.brainHome, 'kb.bak-2026-09-04T00-00-00-000Z'), { publicStores: { alpha: 'a0' }, privateStores: { diary: 'd' }, fenceOnly: ['diary'] });
     expect(kbCopyProof({ copyDir: copy, liveDir: m.kbDir }).disposable).toBe(false);
   });
   it('an updateManaged:false store that is not fenced is still private', () => {
     const m = machine(); kbTree(m.kbDir, { publicStores: { alpha: 'a' } });
-    const copy = kbTree(path.join(m.brainHome, 'kb.bak-5'), { publicStores: { alpha: 'a0' }, privateStores: { ingest: 'x' }, unmanagedOnly: ['ingest'] });
+    const copy = kbTree(path.join(m.brainHome, 'kb.bak-2026-09-05T00-00-00-000Z'), { publicStores: { alpha: 'a0' }, privateStores: { ingest: 'x' }, unmanagedOnly: ['ingest'] });
     const proof = kbCopyProof({ copyDir: copy, liveDir: m.kbDir });
     expect(proof.disposable).toBe(false);
     expect(proof.unique.map((u) => u.file)).toContain('ingest.big.rvf');
   });
   it('a user file the release never shipped keeps the copy; an unfenced store with no public provenance too', () => {
     const m = machine(); live(m);
-    const a = kbTree(path.join(m.brainHome, 'kb.bak-6'), { publicStores: { alpha: 'a1' }, privateStores: { secret: 'secret-bytes' }, extra: { 'notes/personal.txt': 'mine' } });
+    const a = kbTree(path.join(m.brainHome, 'kb.bak-2026-09-06T00-00-00-000Z'), { publicStores: { alpha: 'a1' }, privateStores: { secret: 'secret-bytes' }, extra: { 'notes/personal.txt': 'mine' } });
     expect(kbCopyProof({ copyDir: a, liveDir: m.kbDir }).unique.map((u) => u.file)).toEqual([path.join('notes', 'personal.txt')]);
-    const b = kbTree(path.join(m.brainHome, 'kb.bak-7'), { publicStores: { alpha: 'a1' }, privateStores: { secret: 'secret-bytes' }, extra: { 'homegrown.big.rvf': 'v' } });
+    const b = kbTree(path.join(m.brainHome, 'kb.bak-2026-09-07T00-00-00-000Z'), { publicStores: { alpha: 'a1' }, privateStores: { secret: 'secret-bytes' }, extra: { 'homegrown.big.rvf': 'v' } });
     expect(kbCopyProof({ copyDir: b, liveDir: m.kbDir }).unique.map((u) => u.file)).toEqual(['homegrown.big.rvf']);
   });
   it('never removes a copy while the live brain is missing (the copy may be the only good one)', () => {
@@ -118,7 +118,7 @@ describe('kbCopyProof: a KB copy is disposable only when nothing in it is unique
   it('a link inside a copy is compared, never followed; a link the live brain lacks keeps the copy', () => {
     const m = machine(); live(m);
     const outside = path.join(m.home, 'outside.txt'); write(outside, 'external');
-    const copy = kbTree(path.join(m.brainHome, 'kb.bak-8'), { publicStores: { alpha: 'a1' }, privateStores: { secret: 'secret-bytes' } });
+    const copy = kbTree(path.join(m.brainHome, 'kb.bak-2026-09-08T00-00-00-000Z'), { publicStores: { alpha: 'a1' }, privateStores: { secret: 'secret-bytes' } });
     fs.symlinkSync(outside, path.join(copy, 'link-out'));
     expect(kbCopyProof({ copyDir: copy, liveDir: m.kbDir }).unique.map((u) => u.file)).toEqual(['link-out']);
   });
@@ -127,7 +127,7 @@ describe('kbCopyProof: a KB copy is disposable only when nothing in it is unique
 describe('inventory: everything the Brain owns is classified', () => {
   function messy() {
     const m = machine(); live(m);
-    kbTree(path.join(m.brainHome, 'kb.bak-2026-09-04'), { publicStores: { alpha: 'alpha-v1' }, privateStores: { secret: 'secret-bytes' } });
+    kbTree(path.join(m.brainHome, 'kb.bak-2026-09-04T03-47-00-000Z'), { publicStores: { alpha: 'alpha-v1' }, privateStores: { secret: 'secret-bytes' } });
     kbTree(path.join(m.brainHome, 'kb.install-preserved-4vYVmt'), { publicStores: { alpha: 'alpha-v2' }, privateStores: { secret: 'secret-OLD' } });
     kbTree(path.join(m.brainHome, 'kb.pre-update-20260930'), { publicStores: { alpha: 'alpha-v2' }, privateStores: { secret: 'secret-bytes' } });
     const q = path.join(m.home, '.cache', 'ruvnet-brain-quarantine-20260916');
@@ -168,7 +168,7 @@ describe('inventory: everything the Brain owns is classified', () => {
     const fp = inventoryFootprint(opts(m));
     const cls = (p) => item(fp, p)?.class;
     expect(cls(m.kbDir)).toBe('must-exist');
-    for (const n of ['kb.bak-2026-09-04', 'kb.install-preserved-4vYVmt', 'kb.pre-update-20260930']) expect(cls(path.join(m.brainHome, n))).toBe('must-not-exist');
+    for (const n of ['kb.bak-2026-09-04T03-47-00-000Z', 'kb.install-preserved-4vYVmt', 'kb.pre-update-20260930']) expect(cls(path.join(m.brainHome, n))).toBe('must-not-exist');
     expect(item(fp, q)).toMatchObject({ class: 'must-not-exist', kind: 'quarantine', copies: 2 });
     expect(item(fp, path.join(m.brainHome, 'kb.next-77'))).toMatchObject({ class: 'may-exist', kind: 'transaction-candidate', action: 'keep' });
     expect(fp.kbCopies).toBe(1 + 3 + 1 + 2);
@@ -197,7 +197,7 @@ describe('inventory: everything the Brain owns is classified', () => {
     const { m, q } = messy();
     const result = sweepFootprint(opts(m, { apply: true }));
     const gone = (p) => !fs.existsSync(p);
-    for (const n of ['kb.bak-2026-09-04', 'kb.pre-update-20260930', '.kb.install-stage-abc', '.forge-x-candidate-q1']) expect(gone(path.join(m.brainHome, n))).toBe(true);
+    for (const n of ['kb.bak-2026-09-04T03-47-00-000Z', 'kb.pre-update-20260930', '.kb.install-stage-abc', '.forge-x-candidate-q1']) expect(gone(path.join(m.brainHome, n))).toBe(true);
     expect(gone(path.join(m.brainHome, 'kb.install-preserved-4vYVmt'))).toBe(false); // private differs
     expect(result.kept.find((k) => k.path.endsWith('kb.install-preserved-4vYVmt')).unique.map((u) => u.file)).toContain('secret.big.rvf');
     expect(gone(path.join(q, 'kb.bak-2026-09-01'))).toBe(true);
@@ -216,6 +216,26 @@ describe('inventory: everything the Brain owns is classified', () => {
     expect(result.after.kbCopies).toBe(1 + 1 + 1 + 1); // live + kept preserved + in-progress next + quarantined unique
     const again = sweepFootprint(opts(m, { apply: true }));
     expect(again.removed).toEqual([]);
+  });
+
+  // 4.5.2 (Fable review): `kb.bak-` is a Brain prefix, but only the updater's OWN stamp shape is the Brain's. A
+  // customer's restore point under any other `kb.bak-*` name is reported, never deleted — even when every byte of
+  // it is provably in the live KB (that is exactly what a fresh hand-made restore point looks like).
+  it('a hand-made kb.bak-20260901 / kb.bak-mine full copy survives sweep apply; a Brain-stamped kb.bak- does not', () => {
+    const m = machine(); live(m);
+    const same = { publicStores: { alpha: 'alpha-v1' }, privateStores: { secret: 'secret-bytes' } };
+    const mine = ['kb.bak-20260901', 'kb.bak-mine'];
+    for (const n of mine) kbTree(path.join(m.brainHome, n), same);
+    const brainMade = path.join(m.brainHome, 'kb.bak-2026-09-01T03-47-00-000Z');
+    kbTree(brainMade, same);
+    const result = sweepFootprint(opts(m, { apply: true }));
+    for (const n of mine) {
+      expect(fs.existsSync(path.join(m.brainHome, n)), `${n} was deleted`).toBe(true);
+      expect(item(result.before, path.join(m.brainHome, n))).toMatchObject({ class: 'unowned', action: 'report' });
+    }
+    expect(fs.existsSync(brainMade)).toBe(false);
+    expect(result.after.kbCopies).toBe(1);
+    expect(result.after.cruft.filter((i) => mine.includes(path.basename(i.path)))).toEqual([]);
   });
 
   it('a hand-made backup (.bak-/.retired-/.dead-/bootstrap-backup-) is reported and NEVER deleted, however old or small', () => {
@@ -243,25 +263,25 @@ describe('inventory: everything the Brain owns is classified', () => {
   it('never enters or removes a symlinked KB-copy name, and removing a copy never follows a link inside it', () => {
     const m = machine(); live(m);
     const target = path.join(m.home, 'elsewhere'); write(path.join(target, 'precious.txt'), 'keep me');
-    fs.symlinkSync(target, path.join(m.brainHome, 'kb.bak-link'));
-    const copy = kbTree(path.join(m.brainHome, 'kb.bak-9'), { publicStores: { alpha: 'a1' }, privateStores: { secret: 'secret-bytes' } });
+    fs.symlinkSync(target, path.join(m.brainHome, 'kb.pre-update-link'));
+    const copy = kbTree(path.join(m.brainHome, 'kb.bak-2026-09-09T00-00-00-000Z'), { publicStores: { alpha: 'a1' }, privateStores: { secret: 'secret-bytes' } });
     fs.symlinkSync(target, path.join(m.kbDir, 'node_modules'));            // same link in live …
     fs.symlinkSync(target, path.join(copy, 'node_modules'));               // … so the copy is disposable
     const result = sweepFootprint(opts(m, { apply: true }));
-    expect(fs.lstatSync(path.join(m.brainHome, 'kb.bak-link')).isSymbolicLink()).toBe(true);
-    expect(item(result.before, path.join(m.brainHome, 'kb.bak-link'))).toMatchObject({ class: 'unowned', action: 'report' });
+    expect(fs.lstatSync(path.join(m.brainHome, 'kb.pre-update-link')).isSymbolicLink()).toBe(true);
+    expect(item(result.before, path.join(m.brainHome, 'kb.pre-update-link'))).toMatchObject({ class: 'unowned', action: 'report' });
     expect(fs.existsSync(copy)).toBe(false);
     expect(fs.readFileSync(path.join(target, 'precious.txt'), 'utf8')).toBe('keep me');
   });
 
   it('a refresh lock held by someone else freezes every KB sibling; the holder may proceed', () => {
     const m = machine(); live(m);
-    kbTree(path.join(m.brainHome, 'kb.bak-1'), { publicStores: { alpha: 'a0' }, privateStores: { secret: 'secret-bytes' } });
+    kbTree(path.join(m.brainHome, 'kb.bak-2026-09-01T00-00-00-000Z'), { publicStores: { alpha: 'a0' }, privateStores: { secret: 'secret-bytes' } });
     write(path.join(m.brainHome, '.kb.refresh-run.lock'), '{}');
     sweepFootprint(opts(m, { apply: true }));
-    expect(fs.existsSync(path.join(m.brainHome, 'kb.bak-1'))).toBe(true);
+    expect(fs.existsSync(path.join(m.brainHome, 'kb.bak-2026-09-01T00-00-00-000Z'))).toBe(true);
     sweepFootprint(opts(m, { apply: true, holdingRefreshLock: true }));
-    expect(fs.existsSync(path.join(m.brainHome, 'kb.bak-1'))).toBe(false);
+    expect(fs.existsSync(path.join(m.brainHome, 'kb.bak-2026-09-01T00-00-00-000Z'))).toBe(false);
   });
 
   // Review S6: a plain `npx ruvnet-brain` install holds no refresh lock, so the detached SessionStart sweep
@@ -283,7 +303,7 @@ describe('inventory: everything the Brain owns is classified', () => {
       // The window between the renames: the NEW live KB is in place and the prior generation is beside it,
       // named by the installer's pid. Its contents are disposable, so only the in-progress guard keeps it.
       const prior = kbTree(path.join(m.brainHome, `kb.install-prior-${Date.now()}-${process.pid}`), { publicStores: { alpha: 'a0' }, privateStores: { secret: 'secret-bytes' } });
-      const bak = kbTree(path.join(m.brainHome, 'kb.bak-1'), { publicStores: { alpha: 'a0' }, privateStores: { secret: 'secret-bytes' } });
+      const bak = kbTree(path.join(m.brainHome, 'kb.bak-2026-09-01T00-00-00-000Z'), { publicStores: { alpha: 'a0' }, privateStores: { secret: 'secret-bytes' } });
       npxCopy(m, 'old', '4.3.1'); npxCopy(m, 'new', '7.7.0');
       plant(m);
       const result = sweepFootprint(opts(m, { apply: true, now: Date.now() }));
@@ -311,7 +331,7 @@ describe('inventory: everything the Brain owns is classified', () => {
     for (const [label, plant, blocks] of cases) {
       const m = machine(); live(m);
       const now = Date.now();
-      const bak = kbTree(path.join(m.brainHome, 'kb.bak-1'), { publicStores: { alpha: 'a0' }, privateStores: { secret: 'secret-bytes' } });
+      const bak = kbTree(path.join(m.brainHome, 'kb.bak-2026-09-01T00-00-00-000Z'), { publicStores: { alpha: 'a0' }, privateStores: { secret: 'secret-bytes' } });
       plant(m, now);
       sweepFootprint(opts(m, { apply: true, now }));
       expect(fs.existsSync(bak), `${label}: ${blocks ? 'must still block' : 'must not block any more'}`).toBe(blocks);
@@ -367,7 +387,7 @@ describe('inventory: everything the Brain owns is classified', () => {
 
   it('every KB-copy name the storage transaction or the updater knows is classified here (parity)', () => {
     const m = machine(); live(m);
-    for (const n of ['kb.next-1', 'kb.rollback-2', 'kb.failed-3', 'kb.bak-4', 'kb.install-preserved-5', 'kb.install-prior-6']) {
+    for (const n of ['kb.next-1', 'kb.rollback-2', 'kb.failed-3', 'kb.bak-2026-09-04T00-00-00-000Z', 'kb.install-preserved-5', 'kb.install-prior-6']) {
       kbTree(path.join(m.brainHome, n), { publicStores: { alpha: 'z' } });
     }
     const managed = managedStorageInventory(m.kbDir).fullCorpusCopies.filter((c) => c.kind !== 'active').map((c) => c.path);
@@ -393,7 +413,7 @@ const treeState = (dir) => {
 describe('a dry run writes nothing (re-review S4)', () => {
   it('sweepFootprint({ apply:false }) leaves the brain home byte-identical, even with a copy it must keep', () => {
     const m = machine(); live(m);
-    kbTree(path.join(m.brainHome, 'kb.bak-2'), { publicStores: { alpha: 'a0' }, privateStores: { secret: 'OLDER-secret' } });
+    kbTree(path.join(m.brainHome, 'kb.bak-2026-09-02T00-00-00-000Z'), { publicStores: { alpha: 'a0' }, privateStores: { secret: 'OLDER-secret' } });
     const before = treeState(m.brainHome);
     sweepFootprint(opts(m, { apply: false, now: Date.now() }));
     expect(treeState(m.brainHome)).toEqual(before);
@@ -403,7 +423,7 @@ describe('a dry run writes nothing (re-review S4)', () => {
     const b = completeBrain({ modelsReady: true });
     try {
       // A copy the sweep would have to KEEP (its private store differs from live) beside the live KB.
-      kbTree(path.join(b.parent, 'kb.bak-7'), { publicStores: { alpha: 'a0' }, privateStores: { journal: 'only-here' } });
+      kbTree(path.join(b.parent, 'kb.bak-2026-09-07T00-00-00-000Z'), { publicStores: { alpha: 'a0' }, privateStores: { journal: 'only-here' } });
       const before = treeState(b.brainHome);
       const r = b.doctor();
       expect(r.status, r.text.slice(-1500)).toBe(1); // the second KB copy is a structural ✗
@@ -435,10 +455,10 @@ describe('positive confirmation', () => {
   });
   it('each failure names its one fix: behind, second copy, stale, unsigned, other-copy worker, cruft', () => {
     const m = clean();
-    kbTree(path.join(m.brainHome, 'kb.bak-1'), { publicStores: { alpha: 'a0' }, privateStores: { secret: 'secret-bytes' } });
+    kbTree(path.join(m.brainHome, 'kb.bak-2026-09-01T00-00-00-000Z'), { publicStores: { alpha: 'a0' }, privateStores: { secret: 'secret-bytes' } });
     write(path.join(m.kbDir, 'COVERAGE.json'), '{"rows":[]}'); // bytes changed since the verified install
     const r = run(m, { npmLatest: { version: '7.8.0', checkedAt: NOW }, now: NOW + 3 * 86_400_000,
-      readiness: [{ pid: 42, state: 'ready', kbDir: path.join(m.brainHome, 'kb.bak-1') }] });
+      readiness: [{ pid: 42, state: 'ready', kbDir: path.join(m.brainHome, 'kb.bak-2026-09-01T00-00-00-000Z') }] });
     const by = Object.fromEntries(r.lines.map((l) => [l.id, l]));
     expect(by.software).toMatchObject({ state: 'warn', fix: 'npx ruvnet-brain@latest --update' }); // currency advises
     expect(by.knowledge.state).toBe('fail');
@@ -475,6 +495,37 @@ describe('positive confirmation', () => {
   // 4.5.1 ruling: a MISSING signature record is provenance UNKNOWN, not a provable defect — the release's own
   // install verification (a local sealed artifact) and the automatic updater never write one. It advises (!).
   // A record that is PRESENT but does not match the live bytes (or cannot be read) is provable: it gates (✗).
+  // 4.5.2 (Fable review): when every extra copy is owned by an in-progress update transaction, --clean keeps it by
+  // design; the fix that works is --update (its recovery decides the transaction). Knowledge line and SessionStart.
+  it('extra copies all transaction-owned → the fix is --update, not --clean (Knowledge line and SessionStart alarm)', () => {
+    const m = clean();
+    kbTree(path.join(m.brainHome, 'kb.next-77'), { publicStores: { alpha: 'cand' } });
+    json(path.join(m.brainHome, '.kb.update-transactions', '77', '001-LOCKED.json'), { state: 'LOCKED' });
+    const r = run(m);
+    expect(r.footprint.kbCopies).toBe(2);
+    expect(r.lines.find((l) => l.id === 'knowledge')).toMatchObject({ state: 'fail', fix: 'npx ruvnet-brain@latest --update' });
+    expect(footprintAlarm(r)).toMatch(/Fix: npx ruvnet-brain@latest --update /);
+    // a removable copy beside it: --clean is still the first step
+    kbTree(path.join(m.brainHome, 'kb.bak-2026-09-04T03-47-00-000Z'), { publicStores: { alpha: 'x' } });
+    expect(run(m).lines.find((l) => l.id === 'knowledge').fix).toBe('npx ruvnet-brain --clean');
+  });
+
+  // 4.5.2 (Fable review): the record binds only COVERAGE.json's bytes. The doctor also runs the release-coverage
+  // check over the directory: a projection that fails it is ✗; one that cannot be checked is worded as what it is.
+  it('doctor integrity: projection fails → ✗; projection valid → "signature verified"; not checkable → "install record matches COVERAGE.json"', () => {
+    const m = clean();
+    const k = (r) => r.lines.find((l) => l.id === 'knowledge');
+    write(path.join(m.kbDir, 'CORPUS-COVERAGE.json'), '{}');
+    const bad = run(m, { coverageIntegrity: () => ({ valid: false, failures: ['installed public inventory partition digest differs'] }) });
+    expect(k(bad)).toMatchObject({ state: 'fail', fix: 'npx ruvnet-brain@latest --update',
+      detail: expect.stringMatching(/fail the release-coverage check \(installed public inventory partition digest differs\)/) });
+    expect(k(run(m, { coverageIntegrity: () => ({ valid: true, failures: [] }) }))).toMatchObject({ state: 'ok', detail: expect.stringMatching(/signature verified/) });
+    fs.rmSync(path.join(m.kbDir, 'CORPUS-COVERAGE.json'));
+    const legacy = k(run(m, { coverageIntegrity: () => ({ valid: false, failures: ['CORPUS-COVERAGE.json is missing'] }) }));
+    expect(legacy).toMatchObject({ state: 'ok', detail: expect.stringMatching(/install record matches COVERAGE\.json/) });
+    expect(legacy.detail).not.toMatch(/signature verified/);
+  });
+
   it('signature record: missing → ! (exit 0); present but not matching the live bytes, or unreadable → ✗ (exit 1); valid → ✓', () => {
     const valid = run(clean());
     expect(valid.lines.find((l) => l.id === 'knowledge')).toMatchObject({ state: 'ok', detail: expect.stringMatching(/signature verified/) });
@@ -701,14 +752,14 @@ describe('a brain moved to another volume (--move-brain: ~/.cache/ruvnet-brain i
     write(path.join(brain, 'ruflo-cwd', '._p1'), 'AppleDouble');
     write(path.join(brain, 'kb', '._SOURCE.json'), 'AppleDouble');
     // A disposable copy whose only extra files are AppleDouble shadows of its own files.
-    const copy = kbTree(path.join(brain, 'kb.bak-1'), { publicStores: { alpha: 'old' }, privateStores: { secret: 's' } });
+    const copy = kbTree(path.join(brain, 'kb.bak-2026-09-01T00-00-00-000Z'), { publicStores: { alpha: 'old' }, privateStores: { secret: 's' } });
     write(path.join(copy, '._SOURCE.json'), 'AppleDouble'); write(path.join(copy, '._secret.big.rvf'), 'AppleDouble');
     write(path.join(copy, '.DS_Store'), 'Finder');
     const metaPaths = [...meta.map((n) => path.join(brain, n)), path.join(brain, 'versions', '._7.7.0'), path.join(brain, 'leases', '._mcp-me.json'),
       path.join(brain, 'ruflo-cwd', '._p1'), ...['.fseventsd', '.Spotlight-V100', '.Trashes', '.TemporaryItems'].map((d) => path.join(brain, d))];
     const fp = inventoryFootprint({ env: m.env, home: m.home, now: NOW });
     for (const p of metaPaths) expect(item(fp, p), p).toBeUndefined();
-    expect(fp.cruft.map((i) => path.basename(i.path))).toEqual(['kb.bak-1']);
+    expect(fp.cruft.map((i) => path.basename(i.path))).toEqual(['kb.bak-2026-09-01T00-00-00-000Z']);
     expect(kbCopyProof({ copyDir: copy, liveDir: path.join(brain, 'kb') })).toMatchObject({ disposable: true });
     const result = sweepFootprint({ env: m.env, home: m.home, now: NOW, apply: true });
     for (const p of metaPaths) expect(fs.existsSync(p), `${p} was removed`).toBe(true);
@@ -744,7 +795,7 @@ describe('SessionStart footprint line', () => {
       emit: (l) => lines.push(l), dispatch: (...args) => { dispatched.push(args); return true; } });
     expect(check(m.env)).toMatchObject({ clean: true });
     expect(lines).toEqual([]);
-    kbTree(path.join(m.brainHome, 'kb.bak-1'), { publicStores: { alpha: 'a0' }, privateStores: { secret: 'secret-bytes' } });
+    kbTree(path.join(m.brainHome, 'kb.bak-2026-09-01T00-00-00-000Z'), { publicStores: { alpha: 'a0' }, privateStores: { secret: 'secret-bytes' } });
     check({ ...m.env, RUVNET_BRAIN_TEST: '1' });
     expect(dispatched).toEqual([]);
     expect(lines.at(-1)).toMatch(/^\[RuvNet Brain — FOOTPRINT NOT CLEAN\] 2 knowledge-base copies.*Fix: npx ruvnet-brain --clean/);
@@ -759,7 +810,7 @@ describe('SessionStart footprint line', () => {
   // Say the honest reason, never re-hash it every 6h, and never dispatch a sweep that can only keep it again.
   it('a private-unique copy: proven once, cached, honest fix (not --clean), no background sweep, shown once', () => {
     const m = machine(); live(m);
-    const kept = kbTree(path.join(m.brainHome, 'kb.bak-2'), { publicStores: { alpha: 'a0' }, privateStores: { secret: 'OLDER-secret' } });
+    const kept = kbTree(path.join(m.brainHome, 'kb.bak-2026-09-02T00-00-00-000Z'), { publicStores: { alpha: 'a0' }, privateStores: { secret: 'OLDER-secret' } });
     const calls = [];
     const proveCopy = (args) => { calls.push(args.copyDir); return kbCopyProof(args); };
     sweepFootprint(opts(m, { apply: true, now: Date.now(), proveCopy }));
@@ -794,15 +845,15 @@ describe('SessionStart footprint line', () => {
 
   it('the detached CLI sweep really removes a disposable copy and keeps a private-unique one', async () => {
     const m = machine(); live(m);
-    kbTree(path.join(m.brainHome, 'kb.bak-1'), { publicStores: { alpha: 'a0' }, privateStores: { secret: 'secret-bytes' } });
-    kbTree(path.join(m.brainHome, 'kb.bak-2'), { publicStores: { alpha: 'a0' }, privateStores: { secret: 'different' } });
+    kbTree(path.join(m.brainHome, 'kb.bak-2026-09-01T00-00-00-000Z'), { publicStores: { alpha: 'a0' }, privateStores: { secret: 'secret-bytes' } });
+    kbTree(path.join(m.brainHome, 'kb.bak-2026-09-02T00-00-00-000Z'), { publicStores: { alpha: 'a0' }, privateStores: { secret: 'different' } });
     const { spawnSync } = await import('node:child_process');
     const r = spawnSync(process.execPath, [path.join(ROOT, 'plugin', 'scripts', 'brain-footprint.mjs'), '--sweep', '--apply', '--json'],
       { env: { PATH: process.env.PATH, ...m.env }, encoding: 'utf8' });
     expect(r.status, r.stderr).toBe(0);
     const out = JSON.parse(r.stdout);
-    expect(out.removed.map((x) => path.basename(x.path))).toContain('kb.bak-1');
-    expect(fs.existsSync(path.join(m.brainHome, 'kb.bak-2'))).toBe(true);
+    expect(out.removed.map((x) => path.basename(x.path))).toContain('kb.bak-2026-09-01T00-00-00-000Z');
+    expect(fs.existsSync(path.join(m.brainHome, 'kb.bak-2026-09-02T00-00-00-000Z'))).toBe(true);
   });
 });
 
@@ -828,14 +879,14 @@ describe('BREAK IT: every guard is proven by a mutant that goes red', () => {
   it('private byte-identity guard removed -> a private-unique copy is deleted', async () => {
     const mod = await mutant([['kb-copy-proof.mjs', 'if (!sameBytes(path.join(copyDir, relative), inLive)) {', 'if (false) {']]);
     const m = machine(); live(m);
-    const copy = kbTree(path.join(m.brainHome, 'kb.bak-1'), { publicStores: { alpha: 'a0' }, privateStores: { secret: 'OLD' } });
+    const copy = kbTree(path.join(m.brainHome, 'kb.bak-2026-09-01T00-00-00-000Z'), { publicStores: { alpha: 'a0' }, privateStores: { secret: 'OLD' } });
     mod.sweepFootprint(opts(m, { apply: true }));
     expect(fs.existsSync(copy)).toBe(false); // the unsafe outcome the real guard prevents
   });
   it('unknown-file guard removed -> a user file is deleted with its copy', async () => {
     const mod = await mutant([['kb-copy-proof.mjs', "unique.push({ file: relative, why: 'not in the live brain", "void ({ file: relative, why: 'not in the live brain"]]);
     const m = machine(); live(m);
-    const copy = kbTree(path.join(m.brainHome, 'kb.bak-1'), { publicStores: { alpha: 'a0' }, privateStores: { secret: 'secret-bytes' }, extra: { 'mine.txt': 'x' } });
+    const copy = kbTree(path.join(m.brainHome, 'kb.bak-2026-09-01T00-00-00-000Z'), { publicStores: { alpha: 'a0' }, privateStores: { secret: 'secret-bytes' }, extra: { 'mine.txt': 'x' } });
     mod.sweepFootprint(opts(m, { apply: true }));
     expect(fs.existsSync(copy)).toBe(false);
   });
@@ -844,9 +895,9 @@ describe('BREAK IT: every guard is proven by a mutant that goes red', () => {
       ['kb-copy-proof.mjs', 'if (!copy || copy.isSymbolicLink() || !copy.isDirectory())', 'if (!copy)']]);
     const m = machine(); live(m);
     const target = path.join(m.home, 'elsewhere'); write(path.join(target, 'SOURCE.json'), '{}');
-    fs.symlinkSync(target, path.join(m.brainHome, 'kb.bak-link'));
+    fs.symlinkSync(target, path.join(m.brainHome, 'kb.pre-update-link'));
     mod.sweepFootprint(opts(m, { apply: true }));
-    expect(fs.existsSync(path.join(m.brainHome, 'kb.bak-link'))).toBe(false); // the link itself was removed
+    expect(fs.existsSync(path.join(m.brainHome, 'kb.pre-update-link'))).toBe(false); // the link itself was removed
   });
   it('in-progress transaction guard removed -> a LOCKED transaction candidate is deleted', async () => {
     const mod = await mutant([['brain-footprint.mjs', 'if (state && !TERMINAL.has(state)) {', 'if (false) {']]);
@@ -931,10 +982,10 @@ describe('BREAK IT: every guard is proven by a mutant that goes red', () => {
   it('refresh-lock guard removed -> a copy is deleted while another process updates', async () => {
     const mod = await mutant([['brain-footprint.mjs', "const lockHeld = !holdingRefreshLock && Boolean(lstat(refreshLock));", 'const lockHeld = false;']]);
     const m = machine(); live(m);
-    kbTree(path.join(m.brainHome, 'kb.bak-1'), { publicStores: { alpha: 'a0' }, privateStores: { secret: 'secret-bytes' } });
+    kbTree(path.join(m.brainHome, 'kb.bak-2026-09-01T00-00-00-000Z'), { publicStores: { alpha: 'a0' }, privateStores: { secret: 'secret-bytes' } });
     write(path.join(m.brainHome, '.kb.refresh-run.lock'), '{}');
     mod.sweepFootprint(opts(m, { apply: true }));
-    expect(fs.existsSync(path.join(m.brainHome, 'kb.bak-1'))).toBe(false);
+    expect(fs.existsSync(path.join(m.brainHome, 'kb.bak-2026-09-01T00-00-00-000Z'))).toBe(false);
   });
   it('npm-cache containment removed -> an npm cache outside HOME is swept', async () => {
     const mod = await mutant([['brain-footprint.mjs', "configured && physical(configured).startsWith(`${physical(home)}${path.sep}`) ? configured : defaultCache", 'configured || defaultCache']]);

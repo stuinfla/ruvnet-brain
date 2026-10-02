@@ -12,6 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { json, exists, mtimeMs, read } from './session-start-fsutil.mjs';
 import { unmountedNotice } from './brain-location.mjs';
+import { assessMoveLeftovers } from './footprint-io.mjs';
 import {
   describeFailedRefreshRun, readNightlyRegistration, refreshHistory, updateOwnedByAgenticKit,
 } from './nightly-scheduler.mjs';
@@ -33,6 +34,15 @@ export const brainState = (env, home) => {
   return { off, since, stateDir, file };
 };
 
+// An interrupted --move-brain may hold the ONLY Brain at <home>.old-<pid>: "reinstall" there would build a
+// second, public-only Brain beside it (4.5.2). Names only; consulted only when the KB is missing or empty.
+const restoreNotice = (home) => {
+  try {
+    const lo = assessMoveLeftovers({ brainHome: path.join(home, '.cache', 'ruvnet-brain') }).find((l) => l.onlyCopy);
+    return lo ? `the Brain is not at its path — an interrupted move left the ONLY copy at ${lo.path}; restore it, do NOT reinstall: ${lo.fix}` : '';
+  } catch { return ''; }
+};
+
 export const health = (home, off) => {
   // Moved to another disk that is not plugged in: say exactly that — not "MISSING, reinstall", which
   // would re-create a fresh brain in ~/.cache over the link. A problem also stands the self-heal down.
@@ -45,8 +55,8 @@ export const health = (home, off) => {
   catch { /* absent */ }
   const absentByChoice = off && (!exists(kb) || !rvf);
   if (absentByChoice) return { problem: '', absentByChoice };
-  if (!exists(kb)) return { problem: `the brain cache directory is MISSING (${kb}) — reinstall: npx github:stuinfla/ruvnet-brain`, absentByChoice };
-  if (!rvf) return { problem: `NO vector stores (.rvf) found in ${kb} — the brain is empty; reinstall: npx github:stuinfla/ruvnet-brain --force`, absentByChoice };
+  if (!exists(kb)) return { problem: restoreNotice(home) || `the brain cache directory is MISSING (${kb}) — reinstall: npx github:stuinfla/ruvnet-brain`, absentByChoice };
+  if (!rvf) return { problem: restoreNotice(home) || `NO vector stores (.rvf) found in ${kb} — the brain is empty; reinstall: npx github:stuinfla/ruvnet-brain --force`, absentByChoice };
   if (!exists(path.join(kb, 'node_modules', '@xenova', 'transformers', 'package.json'))) {
     return { problem: `reader dependencies are MISSING (node_modules gone) — every search WILL fail. Fix: cd ${kb} && npm i`, absentByChoice };
   }
@@ -78,6 +88,10 @@ export const autoUpdatePaths = (brainHome) => ({
   attemptFile: path.join(brainHome, 'auto-update.json'),
   lockFile: path.join(brainHome, 'auto-update.lock'),
   logFile: path.join(brainHome, '.last-auto-update-knowledge.log'),
+  // The newer-published identity check (2026-10-02): its own throttle + outcome record, never the update
+  // attempt file (a check is not an update; it must not reset the 6h retry or read as an abandoned launch).
+  checkFile: path.join(brainHome, 'corpus-check.json'),
+  checkResultFile: path.join(brainHome, '.last-kb-check-result.json'),
 });
 export const AUTO_UPDATE_LOCK_STALE_MS = 35 * 60_000; // detach TTL (30 min) + slack
 
@@ -95,7 +109,7 @@ export const knowledgeFacts = ({ env = process.env, home, now = Date.now() } = {
   const provenWithin = (h) => Boolean((history.lastSuccess && hours(history.lastSuccess.at) <= h)
     || (check?.currencyVerdict === 'CURRENT' && Number.isFinite(checkMs) && hours(checkMs) <= h));
   return { brainHome, kbDir, source, builtMs, history, hours, provenWithin, auto,
-    attempt: json(auto.attemptFile),
+    attempt: json(auto.attemptFile), corpusCheck: json(auto.checkFile),
     lockMs: Date.parse(json(auto.lockFile)?.at || '') || mtimeMs(auto.lockFile) };
 };
 
@@ -126,6 +140,21 @@ export const autoUpdateOptOut = ({ env = process.env, home, facts }) => {
   return '';
 };
 
+/**
+ * A newer corpus is PUBLISHED and not yet installed — decided by identity, never by age: the last
+ * recorded --if-newer check found a release whose tag is newer (UPDATE_AVAILABLE, or UNKNOWN when the
+ * installed tree carries no generation stamp) and that tag is not what SOURCE.json now names. A check
+ * recorded before the update landed therefore stops reading as pending the moment B is installed.
+ */
+export const newerCorpusPending = (facts) => {
+  const c = facts.corpusCheck;
+  if (!c?.candidateTag || !['UPDATE_AVAILABLE', 'UNKNOWN'].includes(c.verdict)) return null;
+  const installed = [facts.source?.corpusReleaseTag, facts.source?.releaseTag].filter(Boolean);
+  if (installed.includes(c.candidateTag)) return null;
+  return { tag: c.candidateTag, installed: installed[0] || null, checkedAt: c.checkedAt || c.launchedAt || null, outcome: c.outcome };
+};
+const shortTag = (tag) => (tag && tag.length > 28 ? `${tag.slice(0, 26)}…` : tag || 'unknown');
+
 export const knowledgeCurrency = ({ env = process.env, home, now = Date.now(), windowHours = 48 } = {}) => {
   const facts = knowledgeFacts({ env, home, now });
   const { brainHome, builtMs, history, hours, attempt } = facts;
@@ -142,6 +171,16 @@ export const knowledgeCurrency = ({ env = process.env, home, now = Date.now(), w
     && !(history.latest && history.latest.at >= launchedMs);
   const failing = latest?.status === 'FAILED' || autoFailed;
   const ageKnown = Number.isFinite(builtMs);
+  const pending = newerCorpusPending(facts);
+  if (!failing && pending && (proven || (ageKnown && hours(builtMs) <= windowHours))) {
+    const optOut = autoUpdateOptOut({ env, home, facts });
+    const what = autoRunning ? 'the automatic update is installing it now'
+      : optOut ? `automatic update is off (${optOut}). Fix: npx ruvnet-brain@latest --update`
+        : pending.outcome === 'not-converged' ? 'an automatic update to it finished without installing it; it retries within 6h'
+          : 'the automatic update installs it in the background';
+    return `${KNOWLEDGE_LINE_PREFIX}UPDATE PENDING] a newer corpus ${shortTag(pending.tag)} is published `
+      + `(this machine has ${shortTag(pending.installed)}, built ${ageKnown ? age(builtMs) : 'at an UNKNOWN time'}); ${what}.`;
+  }
   if (!failing && proven) return '';
   if (!failing && ageKnown && hours(builtMs) <= windowHours) return '';
   const kit = agenticKitUpdates({ home, facts });

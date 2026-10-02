@@ -77,7 +77,36 @@ shouldn't be there isn't, nothing building up cruft" — confirmed positively, n
    `npx ruvnet-brain@latest --update` to verify") and does not fail the verdict. 4.5.0 gated on it and failed
    its own public verification on all three OSes.
 
+5. **Currency by identity, not age** — *amended 2026-10-02 (owner: "all accounts auto update anytime a new
+   corpus of knowledge happens").* Measured: the owner's Mac kept v4.4.1 knowledge (built 2026-10-01T13:47Z)
+   for ~13 h after v4.5.0 was published (2026-10-02T00:40Z) — the plugin auto-updated at 00:51Z, the
+   knowledge did not, because the SessionStart self-heal (`session-start-update-plane.mjs`
+   `knowledgeAutoUpdate`) launched only when the LOCAL copy was older than 24 h and never asked whether
+   something newer had been published. Now a knowledge base that is fresh by age still gets a throttled
+   identity check: at most once per 60 min per machine (`RUVNET_CORPUS_CHECK_MINUTES`), the existing detached,
+   TTL-bounded, lock-guarded worker (`host-update.mjs --knowledge … --if-newer`) runs the installed
+   `kb/forge-update.mjs --check` — one GET of `releases/latest`, no download — and runs the SAME updater only
+   when the recorded `currencyVerdict()` is UPDATE_AVAILABLE or UNKNOWN. The identity compared is the release
+   `tag_name` (`corpus-sha256-<archive digest>` for a corpus publish, `vX.Y.Z` for a code release) against
+   SOURCE.json's `corpusReleaseTag`/`releaseTag`, ordered by the release body's `Corpus generation:` stamp;
+   CURRENT stops, REFUSED (the published corpus is older) never downgrades. A succeeded update never delays
+   the next check; the same target is not re-run within 6 h (`not-converged`); a failed one blocks checks for
+   6 h (30 min offline). The long-lived MCP server (`plugin/mcp/server.mjs`, both hosts) runs the same check on
+   an unref'd 15-min timer, and its `currentGeneration()` includes the KB's SOURCE.json mtime, so the next call
+   after a swap respawns the worker on the new knowledge between requests. A pending newer corpus is one
+   `KNOWLEDGE UPDATE PENDING` line and a `!` on the doctor's Knowledge line, never a gate. The 24 h age rule
+   stays as the backstop. Limits: a machine that runs no session (no SessionStart, no MCP server) checks
+   nothing until it does — there is still no scheduler without `--enable-nightly`; worst case after a publish
+   is the next session start, or ≤ 75 min inside an open session (15-min tick + 60-min throttle), plus the
+   update itself; `server.mjs` is boot-frozen, so the timer reaches a running session only after its next
+   restart.
+
 ## Invariants (each enforced by a test that is proven red by breaking its guard)
+
+- A newer published corpus reaches an install whose knowledge is fresh by every age rule, through the real
+  SessionStart hook, and through the long-lived MCP server's timer without a restart; offline, a held lock,
+  a remote OLDER than local, and a tampered signature all keep the live KB and its private bytes
+  (`tests/integration/corpus-auto-update-e2e.test.mjs`; `tests/unit/knowledge-newer-corpus-check.test.mjs`).
 
 - Exactly one KB tree under HOME after install, forced reinstall, and each of three updates
   (`tests/integration/footprint-three-updates.test.mjs`).

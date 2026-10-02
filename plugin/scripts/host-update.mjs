@@ -37,7 +37,8 @@ if (process.argv.includes('--check')) {
 
 const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 
-// --knowledge <attemptFile> <lockFile>: the SessionStart knowledge self-heal worker (launched by
+// --knowledge <attemptFile> <lockFile> [--if-newer <kbDir> <checkFile> <resultFile>]: the SessionStart
+// (and MCP server timer) knowledge self-heal worker (launched by
 // session-start-update-plane.mjs under detach.mjs's TTL). Unlike the default mode below it DOES
 // update knowledge: the same argv bin/nightly-refresh.mjs runs, through the same env boundary.
 // Offline (registry unreachable) is recorded as 'offline' so the next session retries in 30 min
@@ -56,6 +57,61 @@ if (knowledgeAt >= 0) {
     } catch { /* the next session reports a launch with no outcome as a failure */ }
   };
   try {
+    // --if-newer <kbDir> <checkFile> <resultFile>: the newer-published identity check (2026-10-02). Run the
+    // INSTALLED updater's --check (one GET of the canonical releases/latest pointer, no download) and only a
+    // newer identity proceeds to the update below. Exit codes are forge-update.mjs's own: 0 current (or
+    // REFUSED: the published corpus is older — never downgrade), 10 newer, 2 network, 5 incompatible.
+    const ifNewerAt = process.argv.indexOf('--if-newer');
+    if (ifNewerAt >= 0) {
+      const path = await import('node:path');
+      const [kbDir, checkFile, resultFile] = process.argv.slice(ifNewerAt + 1);
+      const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } };
+      const note = (fields) => {
+        try {
+          const tmp = `${checkFile}.tmp-${process.pid}`;
+          fs.writeFileSync(tmp, `${JSON.stringify({ ...(readJson(checkFile) || {}), schemaVersion: 1, ...fields, checkedAt: new Date().toISOString() })}\n`);
+          fs.renameSync(tmp, checkFile);
+        } catch { /* the next tick re-checks */ }
+      };
+      // process.exit() skips finally{}, so every early stop releases the shared lock itself.
+      const stop = () => { try { fs.rmSync(lockFile, { force: true }); } catch { /* stale-lock rule reclaims it */ } process.exit(0); };
+      const started = Date.now();
+      const check = spawnSync(process.execPath, [path.join(kbDir, 'forge-update.mjs'), '--check', '--result-file', resultFile], {
+        env: childEnvironment(), encoding: 'utf8', timeout: Number(process.env.RUVNET_CORPUS_CHECK_TIMEOUT_MS || 90_000),
+      });
+      const out = `${check.stdout || ''}\n${check.stderr || ''}`;
+      const result = readJson(resultFile);
+      const fresh = result && Date.parse(result.recordedAt || '') >= started - 1000 ? result : null;
+      const candidateTag = fresh?.candidateTag || /canonical built:\s+(\S+)/.exec(out)?.[1] || null;
+      const verdict = fresh?.currencyVerdict || /currency verdict:\s+([A-Z_]+)/.exec(out)?.[1] || null;
+      const reason = (out.split('\n').map((l) => l.trim()).filter(Boolean).find((l) => /error|refus|incompatible|fail/i.test(l)) || '').slice(0, 200);
+      // Decide by the recorded IDENTITY verdict whenever this run wrote one; the exit code only when it did
+      // not (a network failure or an incompatible release dies before recording). Measured against the real
+      // API: an install whose profile selects no stores exits 0 on UPDATE_AVAILABLE ("All stores current").
+      const newer = verdict ? ['UPDATE_AVAILABLE', 'UNKNOWN'].includes(verdict) : check.status === 10;
+      if (!newer && (verdict || check.status === 0)) {
+        note({ outcome: verdict === 'REFUSED' ? 'refused' : 'current', verdict: verdict || 'CURRENT', candidateTag, reason: '' });
+        stop();
+      }
+      if (!newer) {
+        note({ outcome: check.status === 2 ? 'offline' : check.status === 5 ? 'incompatible' : 'failed',
+          verdict: null, candidateTag, reason: reason || `check exited ${check.error ? check.error.message : check.status}` });
+        stop();
+      }
+      // Newer. Loop guard: the same target already "succeeded" within 6h yet is still not installed — do
+      // not download it again every hour; a DIFFERENT newer corpus proceeds at once.
+      const prior = readJson(attemptFile);
+      if (prior?.outcome === 'succeeded' && candidateTag && prior.targetTag === candidateTag
+        && Date.now() - Date.parse(prior.launchedAt || '') < 6 * 3_600_000) {
+        note({ outcome: 'not-converged', verdict, candidateTag, reason: 'the last automatic update to this corpus finished without installing it' });
+        stop();
+      }
+      note({ outcome: 'updating', verdict, candidateTag, reason: '' });
+      const tmp = `${attemptFile}.tmp-${process.pid}`;
+      fs.writeFileSync(tmp, `${JSON.stringify({ schemaVersion: 1, launchedAt: new Date().toISOString(), outcome: 'launched',
+        trigger: 'newer-corpus-published', targetTag: candidateTag })}\n`);
+      fs.renameSync(tmp, attemptFile);
+    }
     const probe = process.env.RUVNET_AUTO_UPDATE_PROBE_URL || 'https://registry.npmjs.org/ruvnet-brain/latest';
     let online = false;
     try { online = (await fetch(probe, { signal: AbortSignal.timeout(5_000) })).ok; } catch { /* offline */ }
