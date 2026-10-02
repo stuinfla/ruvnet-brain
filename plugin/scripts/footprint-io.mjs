@@ -77,8 +77,8 @@ export function findMoveLeftovers({ brainHome, location = null, isAlive = pidAli
 // has no control character (or, on Windows, no double quote); otherwise the advice is to inspect it by hand.
 const shQuote = (p) => `'${String(p).replace(/'/g, `'\\''`)}'`;
 const COMMANDS = {
-  posix: { rmTree: (p) => `rm -rf -- ${shQuote(p)}`, rmLink: (p) => `rm -- ${shQuote(p)}`, mv: (a, b) => `mv -- ${shQuote(a)} ${shQuote(b)}` },
-  win32: { rmTree: (p) => `rmdir /s /q "${p}"`, rmLink: (p) => `rmdir "${p}"`, mv: (a, b) => `move "${a}" "${b}"` },
+  posix: { rmTree: (p) => `rm -rf -- ${shQuote(p)}`, rmLink: (p) => `rm -- ${shQuote(p)}`, mv: (a, b) => `mv -- ${shQuote(a)} ${shQuote(b)}`, rmdir: (p) => `rmdir -- ${shQuote(p)}` },
+  win32: { rmTree: (p) => `rmdir /s /q "${p}"`, rmLink: (p) => `rmdir "${p}"`, mv: (a, b) => `move "${a}" "${b}"`, rmdir: (p) => `rmdir "${p}"` },
 };
 const holdsBrain = (dir) => ['SOURCE.json', path.join('kb', 'SOURCE.json')].some((f) => Boolean(lstat(path.join(dir, f))));
 
@@ -93,7 +93,11 @@ export function assessMoveLeftovers({ brainHome, location = null, isAlive = pidA
   const safe = (p, dir) => physical(path.dirname(p)) === physical(dir) && !/[\u0000-\u001f\u007f]/.test(p)
     && !(platform === 'win32' && p.includes('"')) && !/[\u0000-\u001f\u007f]/.test(brainHome);
   const inspect = (p) => `inspect it by hand: ${JSON.stringify(p)} (no command is suggested for this path)`;
-  const homeMissing = !lstat(brainHome);
+  // A real directory with no Brain in it counts as missing: a hook or the search server recreates the home on a
+  // failure path (health.json, a notice file) after an interrupted move (4.5.2). A link is judged by `location`.
+  const homeSt = lstat(brainHome);
+  const homeMissing = !homeSt || (!homeSt.isSymbolicLink() && !holdsBrain(brainHome));
+  const homeEmpty = Boolean(homeSt) && homeMissing && !names(brainHome).length;
   const found = findMoveLeftovers({ brainHome, location, isAlive }).map((lo) => {
     const link = Boolean(lstat(lo.path)?.isSymbolicLink());
     let target = null;
@@ -104,7 +108,10 @@ export function assessMoveLeftovers({ brainHome, location = null, isAlive = pidA
   const restore = homeMissing ? found.filter((f) => f.brain).sort((a, b) => order.indexOf(a.what) - order.indexOf(b.what))[0] : null;
   return found.map((f) => {
     const ok = safe(f.path, f.dir);
-    if (f === restore) return { ...f, onlyCopy: true, fix: ok ? cmd.mv(f.path, brainHome) : inspect(f.path) };
+    // The recreated home is cleared out of the way first: removed if empty (rmdir refuses anything else), set aside
+    // under a name of its own otherwise — never deleted with its contents, and the leftover is never deleted.
+    const clear = !homeSt ? null : homeEmpty ? cmd.rmdir(brainHome) : cmd.mv(brainHome, `${brainHome}.recreated-${f.pid}`);
+    if (f === restore) return { ...f, onlyCopy: true, fix: ok ? [clear, cmd.mv(f.path, brainHome)].filter(Boolean).join(' && ') : inspect(f.path) };
     if (restore) return { ...f, onlyCopy: false, fix: `keep it until the Brain is restored at ${JSON.stringify(brainHome)} and --doctor is green` };
     return { ...f, onlyCopy: false, fix: ok ? (f.link ? cmd.rmLink(f.path) : cmd.rmTree(f.path)) : inspect(f.path) };
   });
