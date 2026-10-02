@@ -12,6 +12,7 @@
 // (safe to re-run), and never a silent half-state (every failure explains the next step).
 
 import https from 'node:https';
+import { pipeline } from 'node:stream/promises';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -266,22 +267,38 @@ function tryHostCli(cmd, args, opts = {}) {
 }
 
 // ── download with redirect-following + progress ──────────────────────────────────────────────────
-function download(url, dest, redirects = 0) {
+function downloadAttempt(url, dest, redirects = 0, get = https.get) {
   return new Promise((resolve, reject) => {
     if (redirects > 10) return reject(new Error('too many redirects'));
-    const req = https.get(
+    let response = null;
+    let transfer = null;
+    const req = get(
       url,
-      { headers: { 'User-Agent': 'ruvnet-brain-installer', Accept: 'application/octet-stream' } },
+      { headers: { 'User-Agent': 'ruvnet-brain-installer', Accept: 'application/octet-stream' }, timeout: 60_000 },
       (res) => {
+        response = res;
+        res.on('error', (error) => { if (!transfer) reject(error); });
         const { statusCode = 0, headers } = res;
+        const closeResponse = () => {
+          // An error or redirect body may stream forever. Stop it and await close instead of
+          // draining it, so retries and redirect hops cannot accumulate live sockets.
+          transfer = new Promise((closed) => {
+            if (res.closed) closed();
+            else res.once('close', closed);
+          });
+          res.destroy();
+          return transfer;
+        };
         if ([301, 302, 303, 307, 308].includes(statusCode) && headers.location) {
-          res.resume(); // drain so the socket frees up
-          const next = new URL(headers.location, url).toString();
-          return resolve(download(next, dest, redirects + 1));
+          return closeResponse().then(() => {
+            const next = new URL(headers.location, url).toString();
+            return downloadAttempt(next, dest, redirects + 1, get);
+          }).then(resolve, reject);
         }
         if (statusCode !== 200) {
-          res.resume();
-          return reject(new Error(`server returned HTTP ${statusCode}`));
+          const error = new Error(`server returned HTTP ${statusCode}`);
+          error.statusCode = statusCode;
+          return closeResponse().then(() => reject(error));
         }
         const total = Number(headers['content-length'] || 0);
         let received = 0;
@@ -301,16 +318,50 @@ function download(url, dest, redirects = 0) {
             lastShown = Number(mb);
           }
         });
-        res.pipe(out);
-        out.on('finish', () => out.close(() => {
+        // pipeline observes response aborts as well as file errors and closes both streams
+        // before retrying, so a late writer can never append partial bytes to the next attempt.
+        transfer = pipeline(res, out);
+        transfer.then(() => {
           process.stdout.write('\n');
           resolve();
-        }));
-        out.on('error', (e) => reject(e));
+        }, reject);
       },
     );
-    req.on('error', (e) => reject(e));
+    req.on('timeout', () => {
+      const error = new Error('download timed out'); error.code = 'ETIMEDOUT';
+      req.destroy(error);
+    });
+    req.on('error', (error) => {
+      if (transfer) response.destroy(error); // pipeline settles only after the file is closed
+      else reject(error);
+    });
   });
+}
+
+const TRANSIENT_DOWNLOAD_CODES = new Set(['ECONNRESET', 'ECONNREFUSED', 'EPIPE', 'ETIMEDOUT',
+  'EAI_AGAIN', 'ENETUNREACH', 'EHOSTUNREACH', 'ERR_STREAM_PREMATURE_CLOSE']);
+const TRANSIENT_DOWNLOAD_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+export async function download(url, dest, { attempts = 3, baseDelayMs = 1000,
+  wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), get = https.get } = {}) {
+  if (!Number.isInteger(attempts) || attempts < 1 || attempts > 3) {
+    throw new RangeError('download attempts must be an integer from 1 to 3');
+  }
+  if (!Number.isFinite(baseDelayMs) || baseDelayMs < 0) throw new RangeError('download backoff must be non-negative');
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      await downloadAttempt(url, dest, 0, get);
+      return;
+    } catch (error) {
+      // Restart instead of resuming: a retry may resolve to a different release asset. Only the
+      // complete final download proceeds to the existing detached-signature verification.
+      fs.rmSync(dest, { force: true });
+      const transient = TRANSIENT_DOWNLOAD_CODES.has(error.code) || TRANSIENT_DOWNLOAD_STATUSES.has(error.statusCode);
+      if (!transient || attempt === attempts) throw error;
+      const delay = baseDelayMs * (2 ** (attempt - 1));
+      warn(`download interrupted (${error.message}); retrying ${attempt + 1}/${attempts} in ${delay / 1000}s`);
+      await wait(delay);
+    }
+  }
 }
 
 // ── fetch a small JSON payload (redirect-following, dependency-free) ──────────────────────────────
