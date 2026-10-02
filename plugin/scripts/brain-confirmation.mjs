@@ -121,15 +121,20 @@ export function confirm({ footprint, env = process.env, home = os.homedir(), now
   }
   const source = readJson(path.join(roots.kbDir, 'SOURCE.json'));
   const builtMs = Date.parse(source?.builtUtc || '');
-  const signature = readJson(path.join(roots.brainHome, SIGNATURE_RECORD));
+  const signatureFile = path.join(roots.brainHome, SIGNATURE_RECORD);
+  const recorded = fs.existsSync(signatureFile);
+  const signature = recorded ? readJson(signatureFile) : null;
   const coverage = sha256File(path.join(roots.kbDir, 'COVERAGE.json'));
   const signed = Boolean(signature?.coverageSha256 && coverage && signature.coverageSha256 === coverage);
   const tag = source?.corpusReleaseTag || source?.releaseTag || null;
-  // Structural problems (a second copy, unverified bytes) gate; age is currency and only advises.
+  // Structural problems (a second copy, a record the live bytes contradict) gate; age is currency and only advises.
+  // NO record is provenance unknown, not provably broken (an install from a local sealed artifact and the automatic
+  // updater never write one): it advises. A record that is present but unreadable or does not match gates.
   const knowledgeProblems = [];
   const knowledgeAdvice = [];
   if (footprint.kbCopies !== 1) knowledgeProblems.push([`${footprint.kbCopies} copies on disk (must be exactly 1)`, footprint.kbCopyFix || (footprint.kbCopies ? CLEAN : 'npx ruvnet-brain@latest')]);
-  if (!signed) knowledgeProblems.push([signature ? 'signature record does not match the live COVERAGE.json' : 'no signature verification recorded for these bytes', UPDATE]);
+  if (!recorded) knowledgeAdvice.push([`installed or updated without a recorded signature verification — run ${UPDATE} to verify`, UPDATE]);
+  else if (!signed) knowledgeProblems.push([signature ? 'signature record does not match the live COVERAGE.json' : 'signature record is unreadable', UPDATE]);
   if (!Number.isFinite(builtMs) || (now - builtMs) / 3_600_000 >= KNOWLEDGE_MAX_AGE_HOURS) knowledgeAdvice.push([`built ${Number.isFinite(builtMs) ? ago(builtMs, now) : 'at an unknown time'} (limit ${KNOWLEDGE_MAX_AGE_HOURS}h)`, UPDATE]);
   const where = roots.location?.state === 'linked'
     ? `at ${roots.kbDir} (moved to ${volumeOf(roots.location.real)}, mounted)` : `at ${roots.kbDir}`;

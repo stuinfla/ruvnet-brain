@@ -332,8 +332,8 @@ describe('footprint guarantee: real install, forced reinstall, three updates', (
     // must still restore it — from this machine's own receipt of the verified apply, never by assumption.
     fs.rmSync(record);
     const lost = await run([installer, '--doctor', '--json'], stepEnv, home);
-    expect(JSON.parse(lost.stdout).lines.find((l) => l.id === 'knowledge')).toMatchObject({ state: 'fail', fix: 'npx ruvnet-brain@latest --update' });
-    expect(lost.code).toBe(1);
+    // 4.5.1: a lost record is provenance unknown — advisory, naming --update, which restores it below.
+    expect(JSON.parse(lost.stdout).lines.find((l) => l.id === 'knowledge')).toMatchObject({ state: 'warn', fix: 'npx ruvnet-brain@latest --update' });
     pointAtLocal();
     const repaired = await run([installer, '--update', '--no-nightly-prompt'], stepEnv, home);
     expect(repaired.code, repaired.output.slice(-6000)).toBe(0);

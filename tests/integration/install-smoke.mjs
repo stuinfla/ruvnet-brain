@@ -261,12 +261,21 @@ test('`--doctor` on a COMPLETE brain dir returns the healthy verdict (exit 0) �
     assert.match(out, /local reader installed/, 'doctor must confirm the reader deps it verified');
     assert.doesNotMatch(out, /✗ FAILING/, 'a complete install must not print the FAILING verdict line');
 
-    // NOT WEAKENED: the same install without its signature record is a structural ✗, exit 1.
-    fs.rmSync(path.join(cacheDir, 'brain-home', 'knowledge-signature.json'));
-    const unsigned = runInstaller(['--doctor'], { RUVNET_BRAIN_KB: brainDir, RUVNET_BRAIN_HOME: path.join(cacheDir, 'brain-home'),
-      XDG_CACHE_HOME: cacheDir, HOME: home, USERPROFILE: home, CODEX_HOME: path.join(home, '.codex') });
-    assertVerdict(unsigned, 1, '--doctor (complete brain dir, signature record removed)');
-    assert.match(unsigned.stdout || '', /no signature verification recorded/);
+    // 4.5.1 ruling. A TAMPERED record (bytes changed since they were verified) is a provable structural ✗, exit 1 …
+    const env = { RUVNET_BRAIN_KB: brainDir, RUVNET_BRAIN_HOME: path.join(cacheDir, 'brain-home'),
+      XDG_CACHE_HOME: cacheDir, HOME: home, USERPROFILE: home, CODEX_HOME: path.join(home, '.codex') };
+    const recordFile = path.join(cacheDir, 'brain-home', 'knowledge-signature.json');
+    const record = JSON.parse(fs.readFileSync(recordFile, 'utf8'));
+    fs.writeFileSync(recordFile, JSON.stringify({ ...record, coverageSha256: 'c'.repeat(64) }));
+    const tampered = runInstaller(['--doctor'], env);
+    assertVerdict(tampered, 1, '--doctor (complete brain dir, signature record does not match the live bytes)');
+    assert.match(tampered.stdout || '', /signature record does not match the live COVERAGE\.json/);
+    // … while NO record is provenance unknown — an advisory, not a failure (the release lane and the automatic
+    // updater never write one).
+    fs.rmSync(recordFile);
+    const unsigned = runInstaller(['--doctor'], env);
+    assertVerdict(unsigned, 0, '--doctor (complete brain dir, no signature record)');
+    assert.match(String(unsigned.stdout || '').replace(/\u001b\[[0-9;]*m/g, ''), /! Knowledge .*installed or updated without a recorded signature verification/);
   } finally {
     fs.rmSync(brainParent, { recursive: true, force: true });
     fs.rmSync(cacheDir, { recursive: true, force: true });
