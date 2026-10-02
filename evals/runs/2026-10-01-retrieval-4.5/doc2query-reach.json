@@ -1,0 +1,1732 @@
+{
+ "kind": "ruvnet-brain-doc2query-reach",
+ "k": 24,
+ "files": 8,
+ "indexes": {
+  "ruview": {
+   "questions": 2860,
+   "model": "Xenova/bge-base-en-v1.5"
+  },
+  "ruflo": {
+   "questions": 5777,
+   "model": "Xenova/bge-base-en-v1.5"
+  },
+  "ruvector": {
+   "questions": 6720,
+   "model": "Xenova/bge-base-en-v1.5"
+  }
+ },
+ "generatedFiles": 5259,
+ "keptQuestions": 15357,
+ "rejectedQuestions": 398,
+ "results": {
+  "train": {
+   "routedNeeds": {
+    "baselineReach": {
+     "k": 18,
+     "n": 44,
+     "lo": 0.2769,
+     "hi": 0.5559
+    },
+    "entryReach": {
+     "k": 24,
+     "n": 44,
+     "lo": 0.4007,
+     "hi": 0.6829
+    },
+    "unionReach": {
+     "k": 31,
+     "n": 44,
+     "lo": 0.5578,
+     "hi": 0.8184
+    },
+    "gained": 13
+   },
+   "allNeedsEntryReach": {
+    "k": 50,
+    "n": 103,
+    "lo": 0.3912,
+    "hi": 0.5807
+   }
+  },
+  "heldout": {
+   "routedNeeds": {
+    "baselineReach": {
+     "k": 17,
+     "n": 43,
+     "lo": 0.2637,
+     "hi": 0.5442
+    },
+    "entryReach": {
+     "k": 19,
+     "n": 43,
+     "lo": 0.3043,
+     "hi": 0.5889
+    },
+    "unionReach": {
+     "k": 28,
+     "n": 43,
+     "lo": 0.5017,
+     "hi": 0.7758
+    },
+    "gained": 11
+   },
+   "allNeedsEntryReach": {
+    "k": 46,
+    "n": 103,
+    "lo": 0.3542,
+    "hi": 0.5428
+   }
+  }
+ },
+ "rows": [
+  {
+   "id": "ruflo:.agents/skills/agent-coordinator-swarm-init/SKILL.md:58-66",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:.agents/skills/agent-pagerank-analyzer/SKILL.md:283-288",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 2
+  },
+  {
+   "id": "ruflo:.agents/skills/agent-specification/SKILL.md:272-281",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 2
+  },
+  {
+   "id": "ruflo:.agents/skills/agentdb-memory-patterns/SKILL.md:294-301",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:.agents/skills/claims/SKILL.md:88-100",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:.agents/skills/flow-nexus-swarm/SKILL.md:26-35",
+   "split": "heldout",
+   "routed": true,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "ruflo:.agents/skills/github-project-management/SKILL.md:73-355",
+   "split": "heldout",
+   "routed": true,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:.agents/skills/github-workflow-automation/SKILL.md:62-170",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:.claude/skills/agentdb-memory-patterns/SKILL.md:294-301",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:.claude/skills/agentdb-vector-search/SKILL.md:265-272",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:.claude/skills/flow-nexus-platform/SKILL.md:429-438",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:.claude/skills/flow-nexus-swarm/SKILL.md:20-29",
+   "split": "train",
+   "routed": true,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:.claude/skills/github-project-management/SKILL.md:14-25",
+   "split": "heldout",
+   "routed": true,
+   "baseline": true,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:.claude/skills/github-release-management/SKILL.md:202-285",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:.claude/skills/verification-quality/SKILL.md:9-20",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:.harness/README.md:13-31",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:docs/validation/README.md:9-21",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:plugins/README.md:138-151",
+   "split": "train",
+   "routed": true,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:plugins/ruflo-agent/skills/managed-agent/SKILL.md:24-39",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:plugins/ruflo-agent/skills/wasm-agent/SKILL.md:16-24",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 7
+  },
+  {
+   "id": "ruflo:plugins/ruflo-agentdb/README.md:14-18",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 7
+  },
+  {
+   "id": "ruflo:plugins/ruflo-agentdb/skills/agentdb-query/SKILL.md:16-24",
+   "split": "heldout",
+   "routed": true,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:plugins/ruflo-autopilot/README.md:14-20",
+   "split": "train",
+   "routed": true,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 5
+  },
+  {
+   "id": "ruflo:plugins/ruflo-bbs-federation/skills/cross-host-federation/SKILL.md:19-27",
+   "split": "train",
+   "routed": true,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:plugins/ruflo-browser/README.md:73-77",
+   "split": "heldout",
+   "routed": true,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:plugins/ruflo-browser/skills/browser-form-fill/SKILL.md:18-33",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 6
+  },
+  {
+   "id": "ruflo:plugins/ruflo-browser/skills/browser-intent/SKILL.md:12-16",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 7
+  },
+  {
+   "id": "ruflo:plugins/ruflo-browser/skills/browser-record/SKILL.md:18-42",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 2
+  },
+  {
+   "id": "ruflo:plugins/ruflo-browser/skills/browser-screenshot-diff/SKILL.md:18-30",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "ruflo:plugins/ruflo-browser/skills/browser-test/SKILL.md:18-29",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:plugins/ruflo-cost-tracker/skills/cost-benchmark/SKILL.md:12-17",
+   "split": "train",
+   "routed": true,
+   "baseline": true,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "ruflo:plugins/ruflo-cost-tracker/skills/cost-burn/SKILL.md:17-25",
+   "split": "train",
+   "routed": true,
+   "baseline": true,
+   "entry": true,
+   "entryRank": 3
+  },
+  {
+   "id": "ruflo:plugins/ruflo-cost-tracker/skills/cost-counterfactual/SKILL.md:14-22",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "ruflo:plugins/ruflo-cost-tracker/skills/cost-diff/SKILL.md:19-32",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 2
+  },
+  {
+   "id": "ruflo:plugins/ruflo-cost-tracker/skills/cost-health/SKILL.md:19-27",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "ruflo:plugins/ruflo-cost-tracker/skills/cost-session/SKILL.md:17-27",
+   "split": "heldout",
+   "routed": true,
+   "baseline": true,
+   "entry": true,
+   "entryRank": 2
+  },
+  {
+   "id": "ruflo:plugins/ruflo-daa/skills/cognitive-pattern/SKILL.md:16-22",
+   "split": "heldout",
+   "routed": true,
+   "baseline": true,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:plugins/ruflo-ddd/README.md:69-73",
+   "split": "train",
+   "routed": true,
+   "baseline": true,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:plugins/ruflo-ddd/skills/ddd-validate/SKILL.md:9-50",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 3
+  },
+  {
+   "id": "ruflo:plugins/ruflo-federation/README.md:12-20",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:plugins/ruflo-goals/skills/dossier-collect/SKILL.md:18-36",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "ruflo:plugins/ruflo-goals/skills/research-synthesize/SKILL.md:16-40",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "ruflo:plugins/ruflo-intelligence/README.md:54-69",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:plugins/ruflo-intelligence/skills/neural-train/SKILL.md:18-27",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:plugins/ruflo-jujutsu/README.md:46-55",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:plugins/ruflo-knowledge-graph/skills/kg-traverse/SKILL.md:16-24",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:plugins/ruflo-metaharness/README.md:5-12",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:plugins/ruflo-metaharness/skills/harness-drift-from-history/SKILL.md:24-30",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 2
+  },
+  {
+   "id": "ruflo:plugins/ruflo-metaharness/skills/harness-genome/SKILL.md:13-24",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:plugins/ruflo-metaharness/skills/harness-learn/SKILL.md:14-21",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 3
+  },
+  {
+   "id": "ruflo:plugins/ruflo-music/README.md:5-7",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "ruflo:plugins/ruflo-music/skills/music-generate/SKILL.md:16-58",
+   "split": "train",
+   "routed": true,
+   "baseline": true,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:plugins/ruflo-music/skills/music-get/SKILL.md:16-23",
+   "split": "train",
+   "routed": true,
+   "baseline": true,
+   "entry": true,
+   "entryRank": 5
+  },
+  {
+   "id": "ruflo:plugins/ruflo-observability/skills/observe-trace/SKILL.md:16-23",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:plugins/ruflo-plugin-creator/README.md:12-17",
+   "split": "train",
+   "routed": true,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 8
+  },
+  {
+   "id": "ruflo:plugins/ruflo-rag-memory/skills/memory-bridge/SKILL.md:12-19",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:plugins/ruflo-ruvector/skills/vector-embed/SKILL.md:16-34",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 4
+  },
+  {
+   "id": "ruflo:plugins/ruflo-ruvector/skills/vector-hyperbolic/SKILL.md:16-34",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 2
+  },
+  {
+   "id": "ruflo:plugins/ruflo-rvf/skills/session-persist/SKILL.md:16-22",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:plugins/ruflo-security-audit/README.md:12-19",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:v3/@claude-flow/cli-core/README.md:11-15",
+   "split": "heldout",
+   "routed": true,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:v3/@claude-flow/cli/.claude/commands/pair/README.md:28-38",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:v3/@claude-flow/cli/.claude/skills/flow-nexus-platform/SKILL.md:429-438",
+   "split": "train",
+   "routed": true,
+   "baseline": true,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:v3/@claude-flow/cli/.claude/skills/stream-chain/SKILL.md:10-19",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:v3/@claude-flow/cli/.claude/skills/verification-quality/SKILL.md:9-20",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "ruflo:v3/@claude-flow/cli/benchmarks/router/README.md:12-24",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:v3/@claude-flow/cli/README.md:65-163",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:v3/@claude-flow/mcp/.claude/helpers/README.md:83-89",
+   "split": "heldout",
+   "routed": true,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:v3/@claude-flow/plugin-iot-cognitum/README.md:9-17",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 8
+  },
+  {
+   "id": "ruflo:v3/@claude-flow/watermark/README.md:54-64",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 2
+  },
+  {
+   "id": "ruflo:v3/plugins/legal-contracts/README.md:9-15",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 2
+  },
+  {
+   "id": "ruflo:v3/plugins/perf-optimizer/README.md:9-15",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:v3/plugins/quantum-optimizer/README.md:221-228",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruflo:v3/plugins/test-intelligence/README.md:9-15",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 3
+  },
+  {
+   "id": "ruvector:.claude/agents/consensus/README.md:16-43",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:.claude/agents/swarm/README.md:180-190",
+   "split": "heldout",
+   "routed": true,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:.claude/skills/agentdb-memory-patterns/SKILL.md:294-301",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:.claude/skills/agentdb-vector-search/SKILL.md:265-272",
+   "split": "train",
+   "routed": true,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:.claude/skills/flow-nexus-platform/SKILL.md:450-459",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:benchmarks/docs/README.md:20-28",
+   "split": "train",
+   "routed": true,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:benchmarks/graph/docs/QUICKSTART.md:305-317",
+   "split": "train",
+   "routed": true,
+   "baseline": true,
+   "entry": true,
+   "entryRank": 7
+  },
+  {
+   "id": "ruvector:crates/cognitum-gate-kernel/README.md:86-99",
+   "split": "train",
+   "routed": true,
+   "baseline": true,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:crates/emergent-time/README.md:12-23",
+   "split": "train",
+   "routed": true,
+   "baseline": true,
+   "entry": true,
+   "entryRank": 4
+  },
+  {
+   "id": "ruvector:crates/mcp-brain-server/README.md:429-439",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:crates/micro-hnsw-wasm/README.md:7-15",
+   "split": "heldout",
+   "routed": true,
+   "baseline": true,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "ruvector:crates/neural-trader-core/README.md:60-99",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:crates/ruvector-attention-cli/README.md:5-12",
+   "split": "heldout",
+   "routed": true,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "ruvector:crates/ruvector-attention-wasm/pkg/README.md:5-23",
+   "split": "heldout",
+   "routed": true,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:crates/ruvector-bench/README.md:14-22",
+   "split": "train",
+   "routed": true,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:crates/ruvector-capgated/README.md:31-38",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:crates/ruvector-core/tests/README.md:9-37",
+   "split": "heldout",
+   "routed": true,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:crates/ruvector-dag/README.md:5-14",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 6
+  },
+  {
+   "id": "ruvector:crates/ruvector-graph-wasm/README.md:5-13",
+   "split": "train",
+   "routed": true,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 4
+  },
+  {
+   "id": "ruvector:crates/ruvector-hailo/models/README.md:5-29",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 6
+  },
+  {
+   "id": "ruvector:crates/ruvector-hailo/README.md:15-26",
+   "split": "train",
+   "routed": true,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 2
+  },
+  {
+   "id": "ruvector:crates/ruvector-mincut/README.md:15-21",
+   "split": "train",
+   "routed": true,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:crates/ruvector-node/README.md:21-30",
+   "split": "train",
+   "routed": true,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "ruvector:crates/ruvector-postgres/src/attention/README.md:5-12",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:crates/ruvector-postgres/src/graph/README.md:5-15",
+   "split": "train",
+   "routed": true,
+   "baseline": true,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:crates/ruvector-robotics/README.md:28-32",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 2
+  },
+  {
+   "id": "ruvector:crates/ruvector-solver/README.md:110-116",
+   "split": "heldout",
+   "routed": true,
+   "baseline": true,
+   "entry": true,
+   "entryRank": 7
+  },
+  {
+   "id": "ruvector:crates/ruvix/aarch64-boot/README.md:32-38",
+   "split": "heldout",
+   "routed": true,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "ruvector:crates/ruvix/README.md:15-29",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "ruvector:crates/rvf/README.md:32-118",
+   "split": "heldout",
+   "routed": true,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:crates/rvf/rvf-node/README.md:11-20",
+   "split": "train",
+   "routed": true,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 2
+  },
+  {
+   "id": "ruvector:crates/rvf/rvf-types/README.md:264-274",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:crates/rvforge-reader/README.md:32-67",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:crates/sonic-ct/README.md:21-32",
+   "split": "heldout",
+   "routed": true,
+   "baseline": true,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "ruvector:docs/adr/delta-behavior/README.md:5-13",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:docs/hooks/README.md:43-51",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:docs/research/DrAgnes/README.md:7-11",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 6
+  },
+  {
+   "id": "ruvector:docs/research/nightly/2026-06-19-lsm-ann/README.md:9-15",
+   "split": "train",
+   "routed": true,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 5
+  },
+  {
+   "id": "ruvector:docs/research/nightly/2026-06-24-spann-partition-spill/README.md:9-19",
+   "split": "train",
+   "routed": true,
+   "baseline": true,
+   "entry": true,
+   "entryRank": 8
+  },
+  {
+   "id": "ruvector:docs/research/nightly/2026-07-23-adaptive-recall-ann/README.md:7-31",
+   "split": "heldout",
+   "routed": true,
+   "baseline": true,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:docs/research/nightly/2026-08-07-hierarchical-cluster-rag/README.md:11-26",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 2
+  },
+  {
+   "id": "ruvector:docs/research/nightly/2026-08-31-signed-retrieval-receipts/README.md:3-14",
+   "split": "train",
+   "routed": true,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 7
+  },
+  {
+   "id": "ruvector:docs/research/nightly/2026-09-02-mincut-streaming-memory-admission/README.md:13-59",
+   "split": "heldout",
+   "routed": true,
+   "baseline": true,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:docs/research/nightly/2026-09-03-state-root-anchoring/README.md:3-17",
+   "split": "heldout",
+   "routed": true,
+   "baseline": true,
+   "entry": true,
+   "entryRank": 3
+  },
+  {
+   "id": "ruvector:docs/research/nightly/2026-09-16-witness-signer-agent-memory/README.md:3-25",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 4
+  },
+  {
+   "id": "ruvector:docs/research/rvagent-gemini-grounding/README.md:3-5",
+   "split": "heldout",
+   "routed": true,
+   "baseline": true,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:docs/research/rvagent-hermes-harness/README.md:12-28",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:docs/training/QUICKSTART.md:213-218",
+   "split": "heldout",
+   "routed": true,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "ruvector:examples/decompiler-dashboard/README.md:42-87",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:examples/exo-ai-2025/crates/exo-backend-classical/README.md:7-24",
+   "split": "heldout",
+   "routed": true,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:examples/exo-ai-2025/crates/exo-core/README.md:7-20",
+   "split": "heldout",
+   "routed": true,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 5
+  },
+  {
+   "id": "ruvector:examples/exo-ai-2025/crates/exo-hypergraph/README.md:7-18",
+   "split": "train",
+   "routed": true,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:examples/exo-ai-2025/crates/exo-wasm/README.md:9-15",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 7
+  },
+  {
+   "id": "ruvector:examples/exo-ai-2025/research/03-time-crystal-cognition/README.md:9-16",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 8
+  },
+  {
+   "id": "ruvector:examples/exo-ai-2025/research/08-meta-simulation-consciousness/README.md:37-55",
+   "split": "train",
+   "routed": true,
+   "baseline": true,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:examples/exo-ai-2025/tests/README.md:7-35",
+   "split": "heldout",
+   "routed": true,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:examples/meta-cognition-spiking-neural-network/demos/snn/README.md:314-335",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "ruvector:examples/scipix/README.md:29-31",
+   "split": "train",
+   "routed": true,
+   "baseline": true,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "ruvector:npm/core/platforms/win32-x64-msvc/README.md:89-103",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:npm/packages/acorn-wasm/README.md:8-15",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 2
+  },
+  {
+   "id": "ruvector:npm/packages/agentic-synth-examples/README.md:45-61",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:npm/packages/agentic-synth/examples/swarms/README.md:5-12",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:npm/packages/agentic-synth/training/README.md:9-18",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:npm/packages/burst-scaling/README.md:9-16",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 2
+  },
+  {
+   "id": "ruvector:npm/packages/kge/README.md:8-25",
+   "split": "heldout",
+   "routed": true,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:npm/packages/spiking-neural/README.md:8-15",
+   "split": "heldout",
+   "routed": true,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 2
+  },
+  {
+   "id": "ruvector:packages/metabiohacker/README.md:9-24",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "ruvector:README.md:11-15",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:.claude/helpers/README.md:83-89",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:.claude/skills/github-release-management/SKILL.md:219-302",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 7
+  },
+  {
+   "id": "RuView:.claude/skills/github-workflow-automation/SKILL.md:62-170",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "RuView:.claude/skills/hooks-automation/SKILL.md:10-21",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:.claude/skills/v3-core-implementation/SKILL.md:765-772",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:.claude/skills/verification-quality/SKILL.md:11-20",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 3
+  },
+  {
+   "id": "RuView:aether-arena/calibration/README.md:13-27",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 6
+  },
+  {
+   "id": "RuView:docs/ddd/README.md:20-30",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:docs/research/privacy-shield/README.md:39-89",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:docs/research/ruview-beyond-sota/README.md:21-39",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:docs/research/rvagent-rvf-integration/README.md:9-22",
+   "split": "heldout",
+   "routed": true,
+   "baseline": true,
+   "entry": true,
+   "entryRank": 2
+  },
+  {
+   "id": "RuView:examples/frontend/README.md:49-60",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 2
+  },
+  {
+   "id": "RuView:examples/lovelace/README.md:15-28",
+   "split": "heldout",
+   "routed": true,
+   "baseline": true,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:examples/medical/README.md:9-24",
+   "split": "heldout",
+   "routed": true,
+   "baseline": true,
+   "entry": true,
+   "entryRank": 2
+  },
+  {
+   "id": "RuView:examples/research-sota/03-spatial-intelligence/README.md:12-17",
+   "split": "train",
+   "routed": true,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "RuView:examples/research-sota/04-rssi/README.md:20-30",
+   "split": "train",
+   "routed": true,
+   "baseline": true,
+   "entry": true,
+   "entryRank": 2
+  },
+  {
+   "id": "RuView:examples/research-sota/05-cross-room-reid/README.md:33-42",
+   "split": "heldout",
+   "routed": true,
+   "baseline": true,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "RuView:examples/three.js/README.md:64-70",
+   "split": "train",
+   "routed": true,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:examples/through-wall/README.md:29-36",
+   "split": "heldout",
+   "routed": true,
+   "baseline": true,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:firmware/privshield/esp32/README.md:15-39",
+   "split": "heldout",
+   "routed": true,
+   "baseline": true,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:firmware/privshield/openwrt/README.md:17-37",
+   "split": "heldout",
+   "routed": true,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "RuView:harness/ruview/.claude/skills/calibrate-room/SKILL.md:12-22",
+   "split": "train",
+   "routed": true,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 6
+  },
+  {
+   "id": "RuView:harness/ruview/.claude/skills/train-pose/SKILL.md:11-17",
+   "split": "heldout",
+   "routed": true,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:harness/ruview/.claude/skills/verify/SKILL.md:10-15",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:harness/ruview/README.md:49-79",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:harness/wifi-densepose-sar/.claude/skills/evolve/SKILL.md:27-36",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:harness/wifi-densepose-sar/README.md:28-34",
+   "split": "heldout",
+   "routed": true,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:integrations/iphone-lidar/README.md:19-32",
+   "split": "train",
+   "routed": true,
+   "baseline": true,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "RuView:plugins/ruview/README.md:56-60",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:plugins/ruview/skills/ruview-advanced-sensing/SKILL.md:43-45",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:plugins/ruview/skills/ruview-applications/SKILL.md:51-58",
+   "split": "train",
+   "routed": true,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:plugins/ruview/skills/ruview-cli-api/SKILL.md:41-53",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 3
+  },
+  {
+   "id": "RuView:plugins/ruview/skills/ruview-configure/SKILL.md:21-47",
+   "split": "heldout",
+   "routed": true,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "RuView:plugins/ruview/skills/ruview-mmwave/SKILL.md:20-28",
+   "split": "train",
+   "routed": true,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 2
+  },
+  {
+   "id": "RuView:plugins/ruview/skills/ruview-verify/SKILL.md:20-35",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 4
+  },
+  {
+   "id": "RuView:python/README.md:18-34",
+   "split": "train",
+   "routed": true,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:tools/bfi_learning/README.md:6-51",
+   "split": "train",
+   "routed": true,
+   "baseline": true,
+   "entry": true,
+   "entryRank": 3
+  },
+  {
+   "id": "RuView:tools/bfi/README.md:7-21",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "RuView:ui/mobile/README.md:91-107",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:ui/pose-fusion/pkg/ruvector-attention/README.md:5-23",
+   "split": "heldout",
+   "routed": true,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 8
+  },
+  {
+   "id": "RuView:v2/crates/cog-ha-matter/blueprints/bfld/README.md:19-22",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 5
+  },
+  {
+   "id": "RuView:v2/crates/cog-ha-matter/cog/README.md:10-18",
+   "split": "heldout",
+   "routed": true,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:v2/crates/cog-person-count/cog/README.md:5-7",
+   "split": "heldout",
+   "routed": true,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 2
+  },
+  {
+   "id": "RuView:v2/crates/cog-pose-estimation/cog/README.md:5-7",
+   "split": "train",
+   "routed": true,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:v2/crates/homecore-api/README.md:13-25",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:v2/crates/homecore-assist/README.md:13-25",
+   "split": "train",
+   "routed": true,
+   "baseline": true,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "RuView:v2/crates/homecore-automation/README.md:13-24",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "RuView:v2/crates/homecore-hap/README.md:7-36",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "RuView:v2/crates/homecore-migrate/README.md:7-20",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 2
+  },
+  {
+   "id": "RuView:v2/crates/homecore/README.md:13-22",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:v2/crates/wifi-densepose-cli/README.md:10-18",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 1
+  },
+  {
+   "id": "RuView:v2/crates/wifi-densepose-desktop/README.md:86-94",
+   "split": "train",
+   "routed": true,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 4
+  },
+  {
+   "id": "RuView:v2/crates/wifi-densepose-mat/README.md:9-18",
+   "split": "heldout",
+   "routed": true,
+   "baseline": true,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:v2/crates/wifi-densepose-nn/README.md:9-21",
+   "split": "train",
+   "routed": true,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 3
+  },
+  {
+   "id": "RuView:v2/crates/wifi-densepose-privshield/README.md:24-61",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 3
+  },
+  {
+   "id": "RuView:v2/crates/wifi-densepose-sar/README.md:48-74",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 4
+  },
+  {
+   "id": "RuView:v2/crates/wifi-densepose-sensing-server/README.md:9-20",
+   "split": "train",
+   "routed": true,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:v2/crates/wifi-densepose-train/README.md:9-17",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:v2/crates/wifi-densepose-vitals/README.md:10-15",
+   "split": "heldout",
+   "routed": true,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 2
+  },
+  {
+   "id": "RuView:v2/crates/wifi-densepose-wasm/README.md:9-17",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 2
+  },
+  {
+   "id": "RuView:v2/patches/ruvector-crv/README.md:40-52",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:wifi-veil/docs/research/privacy-shield/README.md:39-89",
+   "split": "train",
+   "routed": false,
+   "baseline": false,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:wifi-veil/firmware/openwifi/README.md:11-40",
+   "split": "train",
+   "routed": true,
+   "baseline": true,
+   "entry": false,
+   "entryRank": null
+  },
+  {
+   "id": "RuView:wifi-veil/firmware/openwrt/README.md:17-37",
+   "split": "heldout",
+   "routed": false,
+   "baseline": false,
+   "entry": true,
+   "entryRank": 7
+  }
+ ]
+}

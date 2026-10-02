@@ -104,20 +104,28 @@ describe('installer exact-swap failure recovery', () => {
       const retained = fs.readdirSync(root).filter((name) => name.startsWith('live.install-preserved-'));
       const receipts = result.stdout.split('\n').filter((line) => line.startsWith('{')).map((line) => JSON.parse(line));
       const old = contents === 'declared-private' ? live : receipts[0]?.priorGeneration?.path || path.join(root, 'missing');
-      expect(fs.existsSync(path.join(old, 'forge-mcp-all.mjs'))).toBe(true);
-      expect(fs.readFileSync(path.join(old, 'forge-mcp-all.mjs'), 'utf8')).toContain('prior bytes');
+      if (contents !== 'managed-only') {
+        expect(fs.existsSync(path.join(old, 'forge-mcp-all.mjs'))).toBe(true);
+        expect(fs.readFileSync(path.join(old, 'forge-mcp-all.mjs'), 'utf8')).toContain('prior bytes');
+      }
       if (contents === 'unlisted-file') expect(fs.readFileSync(path.join(old, 'personal.txt'), 'utf8')).toBe('private bytes');
       if (contents === 'declared-private') expect(fs.readFileSync(path.join(old, 'personal.rvf'), 'utf8')).toBe('private vector bytes');
       if (contents === 'symlink') {
         expect(fs.lstatSync(path.join(old, 'personal-link')).isSymbolicLink()).toBe(true);
         expect(fs.readFileSync(path.join(root, 'external.txt'), 'utf8')).toBe('external private bytes');
       }
-      if (contents !== 'declared-private') {
-        expect(retained).toHaveLength(contents === 'managed-only' ? 2 : 1);
-        for (const receipt of receipts) expect(receipt.priorGeneration).toMatchObject({
-          status: 'PRESERVED_UNCLASSIFIED', automaticCleanupEligible: false,
-        });
-        expect(result.stdout + result.stderr).toContain('repeated installs can grow disk usage');
+      // ADR-0098: the installer no longer leaves a second KB behind. A prior generation holding nothing
+      // unique (managed-only: every name it has, the new generation ships) is RELEASED at once; one
+      // holding a user file or a link the new tree lacks is KEPT, and the reason names that file.
+      if (contents === 'managed-only') {
+        expect(retained).toHaveLength(0);
+        for (const receipt of receipts) expect(receipt.priorGeneration).toMatchObject({ status: 'RELEASED' });
+        expect(validateCoverageDirectory(live, { expectedVersion: version }).valid).toBe(true);
+      } else if (contents !== 'declared-private') {
+        expect(retained).toHaveLength(1);
+        expect(receipts[0].priorGeneration).toMatchObject({ status: 'PRESERVED_UNIQUE', automaticCleanupEligible: false });
+        expect(receipts[0].priorGeneration.unique.map((u) => u.file)).toEqual([contents === 'symlink' ? 'personal-link' : 'personal.txt']);
+        expect(result.stdout + result.stderr).toContain('KEPT the prior generation');
         expect(validateCoverageDirectory(live, { expectedVersion: version }).valid).toBe(true);
         expect(fs.readFileSync(path.join(live, 'forge-mcp-all.mjs'), 'utf8')).toBe('// new public fixture');
       }

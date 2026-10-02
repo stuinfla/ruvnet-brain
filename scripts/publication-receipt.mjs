@@ -16,7 +16,7 @@ import { spawn, spawnSync } from 'node:child_process';
 // post-publication proofs below (payload assertions, MCP wiring, SOURCE.json, rpcSearch)
 // stay here — they are this side's job, not duplication.
 import { HOST_MODES, RECEIPT_MODE_NAMES, MODE_FROM_RECEIPT_NAME, classifyDoctor, VARIANTS,
-  createInstalledMcpSession, HOST_WARMUP_TIMEOUT_MS, RELEASE_SEARCH_DEADLINE_MS, SELF_STORE_PROOF_QUERY,
+  canarySearchDeadlineMs, createInstalledMcpSession, createRestartingMcpSession, HOST_WARMUP_TIMEOUT_MS, RELEASE_SEARCH_DEADLINE_MS, SELF_STORE_PROOF_QUERY,
   SELF_STORE_PROOF_K } from './host-install-matrix.mjs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { evaluateCandidateReceipt, evaluatePublicationReceipt } from './release-proof.mjs';
@@ -46,6 +46,34 @@ export async function runMeasuredHostSearches(hosts, search, { warmup, after } =
     }
   }
   return results;
+}
+
+// One doctor at a time, for the same reason as the searches above. Each doctor is a fresh reader
+// that loads both models and cross-encodes its own pool; three at once on the 3-vCPU / 7 GB macOS
+// runner, beside the resident dual worker, is what timed out 4.4.1's probes in phase "rerank" at
+// 45s (run 36877770786: all three started within 0.25s) while the same probe alone is far inside
+// its deadline. A customer runs one doctor, so the concurrency was the harness's, not the product's.
+// Every host still runs, so one slow lane cannot hide another's result; the failure names them all.
+// And this settles only after the LAST doctor exits: under Promise.all the first exit 1 rejected the
+// lane, whose finally deleted the install temp while the third doctor was still reading it — the
+// "bundle predates the citation verifier" and six plugin-manifest ENOENT lines in that same run.
+export async function runHostDoctors(hosts, doctor) {
+  const failures = [];
+  for (const host of hosts) {
+    try { await doctor(host); } catch (error) { failures.push({ mode: host.mode, error }); }
+  }
+  if (failures.length) {
+    throw new Error(`installed doctor failed for ${failures.map(({ mode }) => mode).join(', ')}: ${failures[0].error.message}`);
+  }
+}
+
+// One warm installed worker per host, reopened (and re-warmed on the warm-up bound) only after a
+// failed search, so one slow canary case cannot turn every later case into a false timeout.
+function openHostSession(serverPath, env) {
+  return createRestartingMcpSession({
+    open: () => createInstalledMcpSession({ serverPath, env, timeout: WARMUP_TIMEOUT_MS }),
+    warm: (fresh) => fresh.search({ query: SELF_STORE_PROOF_QUERY, k: SELF_STORE_PROOF_K, timeoutMs: WARMUP_TIMEOUT_MS }),
+  });
 }
 
 const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -570,9 +598,7 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
           }
           const publicMode = MODE_FROM_RECEIPT_NAME[mode];
           if (!mcpSessions.has(publicMode)) {
-            mcpSessions.set(publicMode, createInstalledMcpSession({
-              serverPath: findMcpServer(context.home), env: context.env, timeout: WARMUP_TIMEOUT_MS,
-            }));
+            mcpSessions.set(publicMode, openHostSession(findMcpServer(context.home), context.env));
           }
           // The generous bound is for one-time readiness/model warmup only; the following
           // measured query still has the unchanged strict 30-second deadline.
@@ -588,11 +614,11 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
         },
       });
       for (const [mode, result] of measuredSearches) searched.set(mode, result);
-      await Promise.all(hostResults.map(async ({ context, installer }) => {
+      await runHostDoctors(hostResults, async ({ context, installer }) => {
         await commandAsync(process.execPath, [installer, '--doctor', '--hooks'], {
           env: context.env, cwd: packageRoot, timeout: 300_000, stdio: 'inherit',
         });
-      }));
+      });
 
       for (const { mode, verified, context } of hostResults) {
         const search = searched.get(mode);
@@ -644,7 +670,7 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
       }
       let session = mcpSessions.get(mode);
       if (!session) {
-        session = createInstalledMcpSession({ serverPath: findMcpServer(context.home), env: context.env, timeout: WARMUP_TIMEOUT_MS });
+        session = openHostSession(findMcpServer(context.home), context.env);
         mcpSessions.set(mode, session);
         const warmed = await session.search({
           query: SELF_STORE_PROOF_QUERY, k: SELF_STORE_PROOF_K, timeoutMs: WARMUP_TIMEOUT_MS,
@@ -653,7 +679,9 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
           throw new Error(`installed Brain warmup failed for ${mode}: ${warmed.error?.message || 'no MCP result'}`);
         }
       }
-      const result = await session.search({ query, k, timeoutMs: DEADLINE_MS });
+      // Canary cases take the per-OS first-pass bound (host-install-matrix.mjs, measured + derived).
+      const canaryDeadlineMs = canarySearchDeadlineMs();
+      const result = await session.search({ query, k, timeoutMs: canaryDeadlineMs });
       if (result.error || !result.mcpResult || (Object.hasOwn(result, 'status') && result.status !== 0)) {
         // Same guard as warmupInstalled() above and host-install-matrix.mjs's equivalent canary
         // search: without it, a real timeout on this full-corpus search reaches
@@ -661,7 +689,7 @@ export function livePublicationAdapter({ root = process.cwd(), candidateRoot = r
         // incompatible MCP response lacks structured retrieval results" — masking a timeout as a
         // data-shape error. This is the release blocker traced from v4.3.28's public verification
         // failure ("retrieval canary acceptance failed for claude", run 35559726522).
-        throw new Error(`installed Brain search failed for ${mode} (query="${query}"): ${result.error?.message || `no MCP result within ${DEADLINE_MS}ms`}`);
+        throw new Error(`installed Brain search failed for ${mode} (query="${query}"): ${result.error?.message || `no MCP result within ${canaryDeadlineMs}ms`}`);
       }
       return parseRetrievalResult(result.mcpResult, { query, k });
     },

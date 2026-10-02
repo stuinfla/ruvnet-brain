@@ -1,12 +1,12 @@
 ---
 name: brain-console
-description: Open the RuvNet Brain Console for "/rvbc", "/rvcb", "/brain-console", or "/ruvnet-brain:configure". Use when the user asks to open, configure, inspect, or view the Brain Console. It opens the live local page in the background; the page is read-only until the user clicks a clearly explained, reversible action.
-updated: 2026-07-28
+description: Open the RuvNet Brain Console (RNBC) for "/rnbc", "/rnb", "/rvbc", "/rvcb", "/brain-console", or "/ruvnet-brain:configure". Use when the user asks to open, configure, inspect, or view the Brain Console. It opens the live local page in the background; the page is read-only until the user clicks a clearly explained, reversible action.
+updated: 2026-10-01
 ---
 
 # Brain Console
 
-Treat `/rvbc`, `/rvcb`, `/brain-console`, and `/ruvnet-brain:configure` as equally valid names.
+Treat `/rnbc` (the name), `/rnb`, `/rvbc`, `/rvcb`, `/brain-console`, and `/ruvnet-brain:configure` as equally valid names.
 Never correct the user's spelling.
 
 1. Say one short sentence: "Opening it now; it scans live while you watch."

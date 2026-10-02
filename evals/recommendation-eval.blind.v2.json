@@ -1,0 +1,426 @@
+{
+  "schema": "ruvnet-brain.recommendation-eval/1",
+  "author": "blind agent #2, no access to matcher or prior sets",
+  "items": [
+    {
+      "id": "D01",
+      "category": "design",
+      "split": "blind2",
+      "prompt": "ok so we have like 3000 help articles and people type stuff like 'my thing wont turn on' and get nothing back. i want the search to get what they MEAN not just match words. can you set that up",
+      "accept": [
+        "@ruvector/core",
+        "ruvector",
+        "@ruvector/node"
+      ]
+    },
+    {
+      "id": "D02",
+      "category": "design",
+      "split": "blind2",
+      "prompt": "hey I want our assistant bot to actually remember each customer, like their preferences and what we talked about last month, even after the server restarts. what do we build",
+      "accept": [
+        "agentdb",
+        "@claude-flow/memory",
+        "@agentic-flow/ephemeral-memory"
+      ]
+    },
+    {
+      "id": "D03",
+      "category": "design",
+      "split": "blind2",
+      "prompt": "quick one before we launch the chat widget publicly, I need something in front of it so people cant trick it into ignoring its rules or saying stuff it shouldnt. both what goes in and what comes out",
+      "accept": [
+        "@claude-flow/aidefence",
+        "aimds-detection",
+        "aidefence-core"
+      ]
+    },
+    {
+      "id": "D04",
+      "category": "design",
+      "split": "blind2",
+      "prompt": "we get ~400 inbound emails a day and someone manually tags them billing / bug / sales / spam. can we auto sort them on our own box, i dont want to pay per message to some api",
+      "accept": [
+        "@ruvector/typesafe"
+      ]
+    },
+    {
+      "id": "D05",
+      "category": "design",
+      "split": "blind2",
+      "prompt": "my mom lives alone and I'd love to know her breathing and heart rate are normal at night but she refuses to wear anything and no cameras. we already have a decent wifi router there. is there a way",
+      "accept": [
+        "wifi-densepose-vitals",
+        "cog-vital-trend",
+        "cog-health-monitor"
+      ]
+    },
+    {
+      "id": "D06",
+      "category": "design",
+      "split": "blind2",
+      "prompt": "so i want like a team of AI workers, one researches, one writes code, one reviews, and they hand stuff to each other and run at the same time instead of me babysitting one chat",
+      "accept": [
+        "@claude-flow/swarm",
+        "ruflo",
+        "claude-flow"
+      ]
+    },
+    {
+      "id": "D07",
+      "category": "design",
+      "split": "blind2",
+      "prompt": "we want to map out who introduced who across all our investors and founders and then ask questions like 'who's 2 hops from this person'. spreadsheet isnt cutting it anymore",
+      "accept": [
+        "@ruvector/graph-node",
+        "rvlite"
+      ]
+    },
+    {
+      "id": "D08",
+      "category": "design",
+      "split": "blind2",
+      "prompt": "building a little password locker feature for our enterprise clients, one of them keeps asking if it'll hold up once quantum computers are a thing. make it future proof pls",
+      "accept": [
+        "qudag-vault-core",
+        "qudag-crypto"
+      ]
+    },
+    {
+      "id": "D09",
+      "category": "design",
+      "split": "blind2",
+      "prompt": "we cant use real patient records to test the new pipeline obviously. need a big pile of realistic looking fake records + fake docs to feed the AI side. how do we generate that",
+      "accept": [
+        "@ruvector/agentic-synth"
+      ]
+    },
+    {
+      "id": "D10",
+      "category": "design",
+      "split": "blind2",
+      "prompt": "ok so i have 3 years of weekly order numbers per store, want a thing that predicts the next 8 weeks so we stop over-ordering stock. nothing fancy ui wise",
+      "accept": [
+        "neuro-divergent",
+        "neuro-divergent-models",
+        "timesfm"
+      ]
+    },
+    {
+      "id": "D11",
+      "category": "design",
+      "split": "blind2",
+      "prompt": "legal wants every blog post our AI writes to carry some kind of invisible stamp so if someone copies it we can prove it came from our generator. is that even a thing",
+      "accept": [
+        "ai-text-watermark",
+        "@claude-flow/watermark",
+        "ruflo-watermark"
+      ]
+    },
+    {
+      "id": "D12",
+      "category": "design",
+      "split": "blind2",
+      "prompt": "hey we have a stack of scanned physics papers, i need the formulas pulled out as actual editable math not as pictures. can you wire something up",
+      "accept": [
+        "@ruvector/scipix"
+      ]
+    },
+    {
+      "id": "D13",
+      "category": "design",
+      "split": "blind2",
+      "prompt": "the field techs are offline half the day in basements. I want the parts lookup search to run fully inside the browser on their tablets, no server round trip",
+      "accept": [
+        "@ruvector/wasm",
+        "rvlite"
+      ]
+    },
+    {
+      "id": "D14",
+      "category": "design",
+      "split": "blind2",
+      "prompt": "grandma's bathroom is the scary room. want an alert if she goes down and doesn't get back up, we have one of those little sensor hubs already in the house",
+      "accept": [
+        "cog-fall-detect",
+        "cog-health-monitor"
+      ]
+    },
+    {
+      "id": "D15",
+      "category": "design",
+      "split": "blind2",
+      "prompt": "i want to let the agents try out risky changes to their shared knowledge in a sandbox copy and then either keep it or throw it away, like git branches but for what they remember. cheap to make lots of copies",
+      "accept": [
+        "agenticow"
+      ]
+    },
+    {
+      "id": "D16",
+      "category": "design",
+      "split": "blind2",
+      "prompt": "we sign like 40 vendor agreements a month. want something that pulls out the auto-renewal and liability bits and flags anything worse than our standard terms",
+      "accept": [
+        "@claude-flow/plugin-legal-contracts"
+      ]
+    },
+    {
+      "id": "X01",
+      "category": "diagnosis",
+      "split": "blind2",
+      "prompt": "why is our AI bill $9k this month. literally every tiny 'what time is it in tokyo' question goes to the biggest smartest model. there has to be a way to send easy stuff somewhere cheap",
+      "accept": [
+        "@ruvector/tiny-dancer",
+        "@claude-flow/providers",
+        "agentic-flow"
+      ]
+    },
+    {
+      "id": "X02",
+      "category": "diagnosis",
+      "split": "blind2",
+      "prompt": "CI went red again on something that passed yesterday with zero code changes. its like a third of the runs. which tests are the flaky ones and can we stop running all 4000 every push",
+      "accept": [
+        "@claude-flow/plugin-test-intelligence",
+        "agentic-qe"
+      ]
+    },
+    {
+      "id": "X03",
+      "category": "diagnosis",
+      "split": "blind2",
+      "prompt": "people ask basically the same 50 questions all day with slightly different wording and we pay full price + wait 6 seconds every single time. feels dumb",
+      "accept": [
+        "ruvector-query-cache",
+        "fact-memory-mcp"
+      ]
+    },
+    {
+      "id": "X04",
+      "category": "diagnosis",
+      "split": "blind2",
+      "prompt": "search is weird, if you type the exact part number like AX-4410 it shows random 'similar' stuff and not the actual part. but plain english questions work ok",
+      "accept": [
+        "ruvector-hybrid"
+      ]
+    },
+    {
+      "id": "X05",
+      "category": "diagnosis",
+      "split": "blind2",
+      "prompt": "the assistant keeps forgetting things I told it like yesterday, I have to re explain the whole project every morning. its driving me nuts",
+      "accept": [
+        "agentdb",
+        "@claude-flow/memory"
+      ]
+    },
+    {
+      "id": "X06",
+      "category": "diagnosis",
+      "split": "blind2",
+      "prompt": "uh oh someone on reddit posted screenshots of our support bot spitting out its hidden instructions and another customers email address. how do we stop that from happening again",
+      "accept": [
+        "@claude-flow/aidefence",
+        "aimds-detection",
+        "aimds-response"
+      ]
+    },
+    {
+      "id": "X07",
+      "category": "diagnosis",
+      "split": "blind2",
+      "prompt": "the coding AI takes forever and burns tokens just to change one line, it seems to rewrite the whole file every time. is there a faster way to apply small edits",
+      "accept": [
+        "agent-booster"
+      ]
+    },
+    {
+      "id": "X08",
+      "category": "diagnosis",
+      "split": "blind2",
+      "prompt": "every time our newsletter goes out the lookup service falls over for like 20 min, traffic jumps 30x for a bit then goes back to normal",
+      "accept": [
+        "@ruvector/burst-scaling"
+      ]
+    },
+    {
+      "id": "X09",
+      "category": "diagnosis",
+      "split": "blind2",
+      "prompt": "the agent's knowledge store has gotten huge and the answers keep pulling up stale junk from months ago instead of the stuff that matters. it needs to keep the important things and let the rest fade",
+      "accept": [
+        "ruvector-agent-memory",
+        "ruvector-temporal-coherence"
+      ]
+    },
+    {
+      "id": "X10",
+      "category": "diagnosis",
+      "split": "blind2",
+      "prompt": "bad one - a guy on the sales team searched and got results from the HR folder he should never see. results need to respect who's allowed to read what",
+      "accept": [
+        "ruvector-capgated"
+      ]
+    },
+    {
+      "id": "X11",
+      "category": "diagnosis",
+      "split": "blind2",
+      "prompt": "after we deleted like 40% of the old catalog last week the recommendations got noticeably worse and some products never show up anymore even though they're still there",
+      "accept": [
+        "ruvector-hnsw-repair"
+      ]
+    },
+    {
+      "id": "X12",
+      "category": "diagnosis",
+      "split": "blind2",
+      "prompt": "our coverage number says 87% but bugs keep getting to customers anyway, i honestly dont trust the test suite. how do we find out what it's actually not checking",
+      "accept": [
+        "agentic-qe",
+        "@claude-flow/plugin-agentic-qe",
+        "@claude-flow/plugin-test-intelligence"
+      ]
+    },
+    {
+      "id": "O01",
+      "category": "off-topic",
+      "split": "blind2",
+      "prompt": "morning! how was your weekend lol, anyway what are we working on today",
+      "accept": []
+    },
+    {
+      "id": "O02",
+      "category": "off-topic",
+      "split": "blind2",
+      "prompt": "can you squash my last 4 commits into one and push to my branch",
+      "accept": []
+    },
+    {
+      "id": "O03",
+      "category": "off-topic",
+      "split": "blind2",
+      "prompt": "whats the status of the deploy from this morning, did it go green",
+      "accept": []
+    },
+    {
+      "id": "O04",
+      "category": "off-topic",
+      "split": "blind2",
+      "prompt": "write a short friendly email to dana saying we're pushing the demo to thursday because of the holiday",
+      "accept": []
+    },
+    {
+      "id": "O05",
+      "category": "off-topic",
+      "split": "blind2",
+      "prompt": "explain to me like im 10 what an API actually is, the investor asked and i blanked",
+      "accept": []
+    },
+    {
+      "id": "O06",
+      "category": "off-topic",
+      "split": "blind2",
+      "prompt": "set up a recurring reminder every friday 4pm to review open PRs",
+      "accept": []
+    },
+    {
+      "id": "O07",
+      "category": "off-topic",
+      "split": "blind2",
+      "prompt": "quick one, rename the branch from feature/old-thing to feature/onboarding",
+      "accept": []
+    },
+    {
+      "id": "O08",
+      "category": "off-topic",
+      "split": "blind2",
+      "prompt": "how many lines of code is this repo roughly",
+      "accept": []
+    },
+    {
+      "id": "O09",
+      "category": "off-topic",
+      "split": "blind2",
+      "prompt": "thanks thats perfect, good work today",
+      "accept": []
+    },
+    {
+      "id": "O10",
+      "category": "off-topic",
+      "split": "blind2",
+      "prompt": "can you summarize what changed in the last release for the newsletter, 3 bullets max",
+      "accept": []
+    },
+    {
+      "id": "N01",
+      "category": "no-fit",
+      "split": "blind2",
+      "prompt": "the dashboard tab eats like 4gb of memory after an hour open, chrome gets super laggy. probably a leak in the react charts somewhere",
+      "accept": []
+    },
+    {
+      "id": "N02",
+      "category": "no-fit",
+      "split": "blind2",
+      "prompt": "after deploy people still see the old logo, i think the cache headers on the CDN are wrong. fix pls",
+      "accept": []
+    },
+    {
+      "id": "N03",
+      "category": "no-fit",
+      "split": "blind2",
+      "prompt": "add a little search box above the FAQ accordion that just hides the questions that dont contain what you type, there's only 15 of them",
+      "accept": []
+    },
+    {
+      "id": "N04",
+      "category": "no-fit",
+      "split": "blind2",
+      "prompt": "the routing is broken on the new site, if you refresh on /pricing you get a 404 but clicking there works fine",
+      "accept": []
+    },
+    {
+      "id": "N05",
+      "category": "no-fit",
+      "split": "blind2",
+      "prompt": "our travel agent partners need a dropdown on the booking form to pick which agent gets the commission",
+      "accept": []
+    },
+    {
+      "id": "N06",
+      "category": "no-fit",
+      "split": "blind2",
+      "prompt": "add a phone number field to the Customer model and write the migration, make it optional",
+      "accept": []
+    },
+    {
+      "id": "N07",
+      "category": "no-fit",
+      "split": "blind2",
+      "prompt": "the vector logo the designer sent looks blurry on the homepage on retina screens, can you sort it out",
+      "accept": []
+    },
+    {
+      "id": "N08",
+      "category": "no-fit",
+      "split": "blind2",
+      "prompt": "security audit flagged that our password reset links never expire. make them die after 30 min and single use",
+      "accept": []
+    },
+    {
+      "id": "N09",
+      "category": "no-fit",
+      "split": "blind2",
+      "prompt": "hook up stripe so people can pay monthly or yearly, with a 14 day free trial",
+      "accept": []
+    },
+    {
+      "id": "N10",
+      "category": "no-fit",
+      "split": "blind2",
+      "prompt": "add a dark mode toggle in settings that remembers the choice",
+      "accept": []
+    }
+  ]
+}

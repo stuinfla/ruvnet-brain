@@ -37,6 +37,24 @@ export const SELF_STORE_PROOF_K = 1;
 export const RELEASE_SEARCH_QUERY = 'repo:ruvnet-brain How does RuvNet Brain prove a public release artifact?';
 export const HOST_WARMUP_TIMEOUT_MS = 300_000;
 export const RELEASE_SEARCH_DEADLINE_MS = 30_000;
+
+// RETRIEVAL-CANARY FIRST-PASS BOUND, PER OS (4.5, approved by the release coordinator 2026-10-01).
+// This bounds a CI runner's COLD canary search — the first time one warm MCP worker meets each of the
+// 19 canary repos. It is NOT a product latency target (CONTRIBUTING.md, "Hosts and verification").
+// RULE: the bound is the worst measured first-pass query x 1.5, rounded up to whole seconds, and never
+// below RELEASE_SEARCH_DEADLINE_MS. The measurement is the input, so the bound cannot drift silently:
+// changing it means changing the evidence below. Worst first-pass query, one warm worker, public 4.4.1:
+//   macOS  33,351 ms  legacy:metaharness, macos-latest (ci-probe run 36886413597); 7 samples over runs
+//                     36885062160 / 36886413597 / 36887732228 on macos-latest, -15, -14: maxima
+//                     22.4, 21.7, 22.6, 33.4, 21.5, 22.9, 30.9 s; second-pass maxima 13.5-17.5 s
+//   Linux  11,741 ms  ubuntu-latest (run 36885062160)  -> 17.6 s, so the 30 s floor holds
+//   Windows 10,679 ms windows-latest (run 36885062160) -> 16.0 s, so the 30 s floor holds
+export const CANARY_WORST_FIRST_PASS_MS = Object.freeze({ darwin: 33_351, linux: 11_741, win32: 10_679 });
+export function canarySearchDeadlineMs(platform = process.platform) {
+  const worst = CANARY_WORST_FIRST_PASS_MS[platform];
+  if (!Number.isFinite(worst)) return RELEASE_SEARCH_DEADLINE_MS;
+  return Math.max(RELEASE_SEARCH_DEADLINE_MS, Math.ceil((worst * 1.5) / 1000) * 1000);
+}
 // The shared model-cache prewarm's own candidate pool size, named so the test asserting on it
 // derives from this constant instead of restating the digit as a second, driftable literal.
 export const PREWARM_POOL_SIZE = 8;
@@ -282,7 +300,10 @@ export async function runHostMatrixAsync({
     try {
       const serverPath = resolveMcpServer(context);
       // One installed worker per host: model/store state survives smoke and every sealed case.
-      session = runMcpSearch === runInstalledMcpSearch ? createInstalledMcpSession({ serverPath, env: context.env }) : null;
+      session = runMcpSearch === runInstalledMcpSearch ? createRestartingMcpSession({
+        open: () => createInstalledMcpSession({ serverPath, env: context.env }),
+        warm: (fresh) => fresh.search({ query: SELF_STORE_PROOF_QUERY, k: SELF_STORE_PROOF_K, timeoutMs: HOST_WARMUP_TIMEOUT_MS }),
+      }) : null;
       const searchMcp = session ? (args) => session.search(args) : runMcpSearch;
       // The installed shell warms its in-process models and stores asynchronously from MCP
       // initialize. Candidate qualification must give that same worker the same cited readiness
@@ -313,7 +334,7 @@ export async function runHostMatrixAsync({
         warmupGrounding, error: `MCP search grounding unproven for ${context.mode}` };
       let receipt;
       if (retrieval) {
-        receipt = await runRetrievalCanaries({ ...retrieval, searchTimeoutMs: RELEASE_SEARCH_DEADLINE_MS,
+        receipt = await runRetrievalCanaries({ ...retrieval, searchTimeoutMs: canarySearchDeadlineMs(),
           search: async ({ query, k, timeoutMs }) => {
             const result = await searchMcp({ mode: context.mode, serverPath, env: context.env, query, k, timeoutMs });
             if (result.error || result.status !== 0) throw new Error(`canary MCP search failed: ${processDiagnostic(result)}`);
@@ -475,6 +496,46 @@ export function createInstalledMcpSession({ serverPath, env, timeout = 300_000, 
       return result;
     },
     close,
+  };
+}
+
+// ONE SLOW QUERY MUST FAIL ONLY ITSELF. A search that times out or fails closes its session — the
+// worker may be wedged mid-rerank — and a closed session answers every later call with that same
+// stored error, instantly. So one slow canary case became every remaining case "timed out" (4.4.1
+// preflight attempt 1: cases 9-18 ETIMEDOUT; recovery 36881395598: cases 14-18). This keeps one warm
+// worker for the whole lane, as a customer has, and only after a failure opens a fresh one, warmed
+// on the warm-up bound (never on the next case's deadline) before that case is timed.
+export function createRestartingMcpSession({ open, warm = null }) {
+  let session = open();
+  let closed = false;
+  let restarts = 0;
+  let queue = Promise.resolve();
+  const failed = (result) => Boolean(result?.error) || result?.status !== 0;
+  const run = async (args) => {
+    if (closed) return { status: null, signal: null, error: new Error('MCP session closed'), stdout: '', stderr: '' };
+    if (!session) {
+      session = open();
+      restarts += 1;
+      if (warm) {
+        const warmed = await warm(session);
+        if (failed(warmed)) { const dead = session; session = null; await dead.close(); return warmed; }
+      }
+    }
+    const result = await session.search(args);
+    if (failed(result)) { const dead = session; session = null; await dead.close(); }
+    return result;
+  };
+  return {
+    search(args) {
+      const result = queue.then(() => run(args));
+      queue = result.then(() => undefined, () => undefined);
+      return result;
+    },
+    async close() {
+      closed = true;
+      if (session) { const live = session; session = null; await live.close(); }
+    },
+    get restarts() { return restarts; },
   };
 }
 

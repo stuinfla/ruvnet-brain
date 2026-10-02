@@ -1,10 +1,11 @@
 ---
-description: Open the RuvNet Brain Onboarding Console — a local web page that mirrors YOUR machine's RuvNet setup, explains it in plain English, and lets you safely configure and fix it. Read-only until you click; every machine change is explained first and is reversible.
-updated: 2026-07-20
+description: Open the RuvNet Brain Console (/rnbc) — a local web page that mirrors YOUR machine's RuvNet setup, explains it in plain English, and lets you safely configure and fix it. Read-only until you click; every machine change is explained first and is reversible.
+updated: 2026-10-01
 ---
 
-Launch the **RuvNet Brain Console** for the user. Same console as `/ruvnet-brain:configure`,
-`/rvcb`, and `/brain-console` — every spelling lands here, so never tell the user they typed it wrong.
+Launch the **RuvNet Brain Console** (RNBC) for the user. `/rnbc` is its name; `/rnb`, `/rvbc`,
+`/rvcb`, `/brain-console` and `/ruvnet-brain:configure` open the very same console — every spelling
+lands here, so never tell the user they typed it wrong.
 
 ## The contract you are keeping
 

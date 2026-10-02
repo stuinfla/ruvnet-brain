@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { fork } from 'node:child_process';
 import { loadTransformers } from './resolve-deps.mjs';
 import { QueryDeadlineExceeded } from './query-deadline.mjs';
-import { materializeModelRevision, modelCacheReady } from './model-requirements.mjs';
+import { materializeModelRevision, modelCacheReady, RERANKER_MODEL } from './model-requirements.mjs';
 
 // Same packaged entry, separate process: a native ONNX/V8 fault cannot kill the parent host.
 // Both the literal fork argument and a live IPC channel are required; ambient env cannot opt in.
@@ -66,7 +66,7 @@ function configureCeIntraOpThreadBudget(fallback = DEFAULT_INLINE_CE_THREADS) {
 let searchKb = null;
 if (!IS_CE_WORKER) ({ searchKb } = await import('./forge-ask.mjs'));
 
-const DEFAULT_CE_MODEL = 'Xenova/ms-marco-MiniLM-L-6-v2';
+const DEFAULT_CE_MODEL = RERANKER_MODEL;
 const CE_MODEL = process.env.CE_MODEL || DEFAULT_CE_MODEL;
 // MODEL-WEIGHT PIN: when using the DEFAULT cross-encoder, pin it to an exact HuggingFace commit SHA
 // instead of the floating `main` branch so reranking is reproducible and cannot silently shift under

@@ -1,0 +1,1315 @@
+{
+ "claude": "2.1.286 (Claude Code)",
+ "sample": 88,
+ "projectEntriesForThisRun": [],
+ "cwdRecordedInDotClaudeJson": false,
+ "modifiedUnderDotClaudeByAnyProcess": 56,
+ "rows": [
+  {
+   "qid": "Q074",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B01",
+   "category": "design",
+   "load1m": 56.2,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "agenticow",
+    "size",
+    "agentic-jujutsu",
+    "@claude-flow/guidance",
+    "ruvector"
+   ],
+   "said": "agenticow",
+   "answer": "rUv ships agenticow — it does copy-on-write branching of agent vector memory, so each helper can fork the main memory almost instantly and cheaply, then discard or merge the fork (source: agenticow/package.json). My approach: first check how your helpers currently store memory, then give each risky task its own copy-on-write branch off the shared base. Writes during the experiment go only to that branch, so the main memory is never touched. If the attempt works, you promote or merge the branch's changes back; if it goes sideways, you delete the branch. I'd also add a small wrapper so \"branch → try → keep or toss\" is a single call per helper, with a test confirming that a tossed branch leaves the main memory byte-for-byte unchanged."
+  },
+  {
+   "qid": "Q075",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B02",
+   "category": "design",
+   "load1m": 60.3,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "Yes, but a pre-filter alone won't stop a determined user, so I'd make the architecture the main defense and put screening around it. First, the bot should only be able to reach the logged-in customer's data: its tools or API calls get scoped to that session's user ID on the server, so no prompt can make it fetch someone else's records. Second, I'd add an input guard (a fast classifier like Haiku 4.5 or a prompt-injection detection library) that flags jailbreak attempts before they reach the main model. Third, an output guard would check responses for PII, account numbers, or system-prompt text that doesn't belong to the current user, and block or redact them. If you point me at the chatbot code and how it gets customer data, I'll wire in these layers and add a small set of red-team test prompts to verify them."
+  },
+  {
+   "qid": "Q076",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B03",
+   "category": "design",
+   "load1m": 58.8,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "@agentic-flow/ephemeral-memory",
+    "homecore-assist",
+    "ruvector-hnsw-repair",
+    "deletions",
+    "homecore-recorder",
+    "HOMECORE"
+   ],
+   "said": "@agentic-flow/ephemeral-memory",
+   "answer": "I'd add a local persistence layer, such as SQLite with a vector index, keyed by user ID. It would store conversation summaries plus outcome signals like resolved, escalated, or thumbs-up. At the start of each session, the assistant would pull that user's history and the most relevant past resolutions into its context. \"Getting better\" would come from promoting fixes that repeatedly worked into a shared, searchable playbook, rather than retraining a model. To run offline, everything would use a local embedding model and on-disk storage, so memory survives restarts with no network calls. rUv ships @agentic-flow/ephemeral-memory, which provides agent memory that persists across restarts via AgentDB (source: agentic-flow/packages/integrations/ephemeral-memory/package.json); I'd evaluate it first once you tell me what stack your assistant is built on."
+  },
+  {
+   "qid": "Q077",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B04",
+   "category": "design",
+   "load1m": 58.9,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "wifi-densepose-signal",
+    "wifi-densepose-py",
+    "core",
+    "wifi-densepose-calibration",
+    "@ruvnet/ruview",
+    "harness"
+   ],
+   "said": "wifi-densepose-calibration",
+   "answer": "Yes: WiFi sensing can detect occupancy without cameras by watching how human bodies, even breathing, disturb the radio signal between an access point and a receiver in the room. The most reliable approach uses Channel State Information (CSI) from cheap ESP32 boards or supported APs, records an empty-room baseline for each room, and flags occupancy when variance stays above a threshold for a short window. A cruder fallback counts connected phones or laptops per AP, but that misses people without devices and picks up neighbors through walls. rUv ships wifi-densepose-calibration, whose per-room baseline → enroll → train workflow matches calibrating each conference room's empty state (source: ruview/v2/crates/wifi-densepose-calibration/Cargo.toml). I'd prototype one room with an ESP32 pair, then add a 5–10 minute \"no motion\" delay before cutting the lights so someone sitting still doesn't end up in the dark."
+  },
+  {
+   "qid": "Q078",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B05",
+   "category": "design",
+   "load1m": 54.9,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "wifi-densepose-vitals",
+    "wifi-densepose-py",
+    "core",
+    "wifi-densepose-privshield-harness",
+    "Veil",
+    "wifi-densepose-privshield"
+   ],
+   "said": "wifi-densepose-vitals",
+   "answer": "I'd build this on WiFi Channel State Information (CSI) sensing: a pair of ESP32 boards (consumer routers rarely expose CSI) placed on either side of the bed pick up the tiny chest movements from breathing and heartbeat. rUv ships wifi-densepose-vitals, which extracts heart rate and respiratory rate from ESP32 CSI, so it covers the hardest signal-processing part (source: ruview/v2/crates/wifi-densepose-vitals/Cargo.toml). I'd wrap it in a small service that logs nightly trends and sends you an alert only for sustained anomalies, like breathing stopping for a long stretch or an unusually high resting heart rate. Breathing rate from CSI is fairly reliable, but heart rate is noisier, so treat this as a wellness check rather than a medical device. Please talk it over with your dad first and get his okay, since passive sensing in his bedroom is invisible to him unless he knows about it."
+  },
+  {
+   "qid": "Q079",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B06",
+   "category": "design",
+   "load1m": 53.9,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "@claude-flow/watermark",
+    "module",
+    "@claude-flow/plugin-legal-contracts",
+    "@claude-flow/claims",
+    "ruvector-proof-gate"
+   ],
+   "said": "@claude-flow/watermark",
+   "answer": "I'd avoid hidden zero-width Unicode characters: they're trivially stripped by copy-paste, CMS sanitizers, or retyping, and they won't hold up as proof. A more robust approach combines two layers. First, if you control token sampling, apply a statistical watermark at generation time, which biases word choice in a keyed, detectable way and survives light edits. Second, keep a tamper-evident provenance log that stores a hash, timestamp, and prompt/model metadata for every paragraph you generate, which is usually what legal can actually rely on. rUv ships @claude-flow/watermark, a SynthID-Text-style watermarking module with generation and edit-robust detection for Node and browser, which covers the first layer (source: ruflo/v3/@claude-flow/watermark/package.json)."
+  },
+  {
+   "qid": "Q080",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B07",
+   "category": "design",
+   "load1m": 52.1,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "@ruvector/agentic-synth",
+    "ruvector-speculative-ann",
+    "@ruflo/ai-team-service",
+    "ruvector-retrieval-receipt"
+   ],
+   "said": "@ruvector/agentic-synth",
+   "answer": "I'd start by looking at the bot's real schema (record fields, question types, answer formats) without copying any actual values, then build a generator that uses a seeded Faker-style library for structured fields (names, accounts, dates, amounts) and an LLM (e.g. `claude-sonnet-5-5`) to write varied, realistic questions and grounded answers over those fake records. Each example would be emitted as JSONL with a fixed seed, so runs are reproducible and train/test splits stay separate. I'd vary difficulty, phrasing, typos, multi-hop questions, and unanswerable cases so the test set exercises failure modes, not just easy lookups. I'd add a validation pass that checks each answer is actually supported by its record and scans for anything resembling real PII. rUv ships @ruvector/agentic-synth — it's a synthetic data generator built specifically for AI/ML training and RAG test data, so it could replace much of the custom generator (source: ruvector/npm/packages/agentic-synth/package.json)."
+  },
+  {
+   "qid": "Q081",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B08",
+   "category": "design",
+   "load1m": 51.2,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I'd first explore the repo to find where daily order data lives (schema, SKU/location granularity, history length) and how features like this are usually exposed, such as a scheduled job, API endpoint, or report. For the model, I recommend a global LightGBM forecaster (via Nixtla's `mlforecast`) trained across all SKUs on lag/rolling features, day-of-week/month seasonality, holidays, and promotions, with `statsforecast` AutoETS as a fallback for sparse or new items. It would forecast daily demand for the next ~60–90 days and output quantiles (P50/P90) rather than a single number, so purchasing can set safety stock from the upper band. Before shipping, I'd run a rolling-origin backtest against your current moving average (MAE/WAPE per SKU) to prove the improvement. Finally, I'd wire it into a nightly job that writes forecasts to a table or CSV that purchasing can consume, and ask whether they want weekly-aggregated reorder suggestions on top of the raw daily numbers."
+  },
+  {
+   "qid": "Q082",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B09",
+   "category": "design",
+   "load1m": 62.5,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "@ruvector/scipix",
+    "@ruvector/cnn",
+    "ruvector-math",
+    "@ruvector/kge"
+   ],
+   "said": "@ruvector/scipix",
+   "answer": "I'd build a small pipeline: the teacher uploads or snaps a photo, an OCR service built for math converts the equations to LaTeX (with MathML as a fallback), and the site renders that LaTeX with KaTeX or MathJax so it's crisp, selectable, and editable. rUv ships @ruvector/scipix, an OCR client for scientific documents that extracts LaTeX and MathML from equations and research papers (source: ruvector/npm/packages/scipix/package.json). Before saving, I'd show a side-by-side review step with the cropped source image next to a live-rendered, editable LaTeX field, since math OCR will sometimes misread subscripts or symbols. I'd also lightly preprocess images (deskew, contrast, crop to the selected region) to improve accuracy on phone photos. First I'd look at your site's stack and upload flow to see where this fits."
+  },
+  {
+   "qid": "Q083",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B10",
+   "category": "design",
+   "load1m": 62.9,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "bit-parallel-search",
+    "ruvector-recall-bounded",
+    "ruvector-namespace-merge",
+    "ruvector-filter"
+   ],
+   "said": null,
+   "answer": "This calls for **hybrid search**: run keyword search (BM25, with exact or normalized matching on part-number fields) and semantic vector search in parallel, then merge the results with Reciprocal Rank Fusion. I'd first look at your current search stack to see which half you already have. I'd also check how part numbers are tokenized, since analyzers often split strings like `AB-1234-X` into useless fragments. Adding a dedicated keyword field and a regex fast-path that boosts exact part-number hits usually fixes that side. Finally, I'd build a small test set of real queries, both exact part numbers and plain-language questions, to tune fusion weights and confirm both kinds improve without regressions."
+  },
+  {
+   "qid": "Q084",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B11",
+   "category": "design",
+   "load1m": 57.1,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "qudag-vault-core",
+    "qudag-crypto",
+    "@daa/qudag-native",
+    "qudag-mcp"
+   ],
+   "said": "qudag-vault-core",
+   "answer": "For the vault data itself you're largely already quantum-safe: symmetric encryption like AES-256-GCM or XChaCha20-Poly1305 keeps about 128-bit security against Grover's algorithm, so use 256-bit keys derived from the master password with Argon2id. The real quantum risk is anywhere you use public-key crypto, such as sharing vaults between users, syncing devices, or recovery flows. Those should use a hybrid key exchange (X25519 + ML-KEM-768, per FIPS 203) and signatures from ML-DSA (FIPS 204), so security holds even if one scheme is broken. rUv ships qudag-vault-core — a post-quantum password vault library built on ML-KEM-768/ML-DSA, matching this design (source: qudag/core/vault/Cargo.toml). For a password manager, I'd first check whether it has an independent audit and otherwise lean toward well-vetted implementations like libsodium plus liboqs or AWS-LC."
+  },
+  {
+   "qid": "Q085",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B12",
+   "category": "design",
+   "load1m": 55.3,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I'd build this as **federated learning**: each hospital runs a training node inside its own network that trains on local data and sends only model updates (gradients or weights) to a central aggregator, which combines them (e.g., FedAvg) and pushes the improved global model back. For the stack, I'd start with an established framework like **Flower** or **NVIDIA FLARE** rather than hand-rolling the orchestration, since both handle client/server communication, TLS, and aggregation out of the box. Because raw updates can still leak patient information, I'd add **secure aggregation** so the server only sees the combined update, and **differential privacy** (clipped, noised updates) to bound what any single record can reveal. Early on I'd plan for non-IID data, since the three hospitals will differ in demographics, equipment, and labeling, using techniques like FedProx or per-site fine-tuning, plus a shared schema and preprocessing pipeline agreed upon up front. Before writing code, I'd confirm the model type, data modality, and each hospital's compliance constraints (HIPAA/GDPR, whether outbound model updates are even permitted), then prototype with a simulated three-client setup on sy"
+  },
+  {
+   "qid": "Q086",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B13",
+   "category": "design",
+   "load1m": 60.7,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "ruvector-decompiler-wasm",
+    "@aqe/qe-browser-scripts",
+    "rvf-forge-core",
+    "rvlite"
+   ],
+   "said": "ruvector-decompiler-wasm",
+   "answer": "First I'd check the server and the bundle for a source map (a `//# sourceMappingURL` comment or a `.map` file), since that could recover the original files almost exactly. If there isn't one, I'd run the bundle through Prettier, then use webcrack or wakaru to split the webpack/rollup modules back into separate files and undo common minifier transforms. Next I'd rename the mangled variables and functions to meaningful names based on how they're used, working module by module, and add brief comments where the logic isn't obvious. Finally I'd set up a fresh build from the recovered sources and check it against the original bundle so the rewrite behaves the same. rUv ships ruvector-decompiler-wasm, a JavaScript bundle decompiler built for this kind of module recovery (source: ruvector/npm/packages/ruvector/wasm/package.json)."
+  },
+  {
+   "qid": "Q087",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B14",
+   "category": "design",
+   "load1m": 67,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I'd treat influence as PageRank over the referral graph, where an edge points from the referred user to the referrer so credit flows back to whoever brought people in. For a couple million nodes, a sparse-matrix power iteration (scipy or a graph library) runs in seconds to a minute on one machine. To avoid recomputing from scratch nightly, warm-start each run from yesterday's scores; since only a small fraction of edges change per day, it usually converges in a few iterations instead of dozens. If you need near-real-time updates later, I'd move to Monte Carlo PageRank, which stores random walks and re-simulates only the walks touched by new referrals. I'd also check whether you want raw reach (downstream referral tree size) rather than PageRank, so I'd confirm which definition of \"influential\" matters before building."
+  },
+  {
+   "qid": "Q088",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B15",
+   "category": "diagnosis",
+   "load1m": 69,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I'd first look at where your code sets the model ID (likely a single hardcoded `claude-opus-5-5` default or config value) and check your usage logs to confirm which call sites drive the spend. Then I'd add a small router that sends trivial requests (short prompts, greetings, simple lookups) to `claude-haiku-4-5-20251001`, sends typical work to `claude-sonnet-5-5`, and reserves Opus for long, complex, or explicitly flagged tasks. A simple escalation rule, such as retrying on a bigger model when a cheap one fails validation, keeps quality from dropping. Consider agentic-flow, which routes each request to the cheapest capable model per task; I can't tell from here whether it's installed, so say \"use agentic-flow\" if you want to try it, or ignore this. Either way, point me at the repo (this directory isn't one) and I'll find the model selection and wire in the routing."
+  },
+  {
+   "qid": "Q089",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B16",
+   "category": "diagnosis",
+   "load1m": 78.8,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I'd add a semantic cache in front of the expensive lookup-and-answer path: embed each incoming question, search a vector store of previously answered questions, and return the stored answer when similarity exceeds a tuned threshold (e.g., cosine ≥ 0.92). On a miss, run the normal pipeline and write the question embedding plus answer back to the cache. Each entry should carry a TTL and a version tag tied to the underlying source data so stale answers expire when that data changes. Before picking the threshold, I'd sample real traffic logs to measure how many queries are near-duplicates and check for false-positive matches, since two similar questions can need different answers. If you're calling Claude directly, I'd also enable prompt caching on the large shared context (system prompt, retrieved docs) to cut cost and latency on the misses."
+  },
+  {
+   "qid": "Q090",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B17",
+   "category": "diagnosis",
+   "load1m": 82.2,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I'd fix this with a `CLAUDE.md` file in your project root, which Claude Code loads automatically at the start of every session. It's the place for project context, architecture decisions, conventions, and \"we decided X because Y\" notes. I'd start by running `/init` to generate a baseline from your codebase, then add yesterday's key decisions and keep it updated with `/memory`, or by asking me to record decisions as we make them. For continuing a specific conversation instead of starting fresh, `claude --continue` resumes the last session and `claude --resume` lets you pick an earlier one. Want me to draft a `CLAUDE.md` now from what you can tell me about the project and recent decisions?"
+  },
+  {
+   "qid": "Q091",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B18",
+   "category": "diagnosis",
+   "load1m": 92.8,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "@claude-flow/plugin-test-intelligence",
+    "ruvector-gpu-runner",
+    "kimi-k2-wasm-testing-suite",
+    "ruvector-staged-workspace"
+   ],
+   "said": "@claude-flow/plugin-test-intelligence",
+   "answer": "I'd start by measuring before fixing: pull recent CI history (or rerun the suite several times) to rank tests by failure rate and duration. That separates the truly flaky tests from the merely slow ones. Then I'd quarantine the worst flaky tests into a non-blocking job so a green check means something again. After that, I'd fix the root causes one at a time, typically shared state or ordering dependencies, real time/sleeps, network calls, and unseeded randomness. For speed, I'd profile the slowest files and add parallelization or sharding, and rUv ships @claude-flow/plugin-test-intelligence, which offers flaky detection and predictive test selection for exactly this problem (source: ruflo/v3/plugins/test-intelligence/package.json)."
+  },
+  {
+   "qid": "Q092",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B19",
+   "category": "diagnosis",
+   "load1m": 89.2,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "bit-parallel-search",
+    "ruvector-query-cache",
+    "ruvector-pq-search",
+    "search",
+    "rulake-py",
+    "ruLake"
+   ],
+   "said": "ruvector-pq-search",
+   "answer": "I'd first check how similarity is computed today (likely brute-force or an in-memory index over full-precision vectors) and measure memory per item, since a couple hundred million float32 embeddings alone can run into hundreds of GB. The fix I'd recommend is an approximate nearest-neighbor index with compression: IVF+PQ (e.g. FAISS `IndexIVFPQ`) shrinks each vector to tens of bytes and only scans a few clusters per query, or DiskANN-style indexes keep the graph on SSD with only a small cache in RAM. I'd build the new index offline, benchmark recall@k and latency against the current results on a sample, then swap it in behind the same \"find similar\" API. If one box still can't hold it, I'd shard the index by ID range across machines and merge the top-k results. rUv ships ruvector-pq-search — it provides IVF+PQ compressed approximate nearest-neighbor search in safe Rust, which directly targets this memory problem (source: ruvector/crates/ruvector-pq-search/Cargo.toml)."
+  },
+  {
+   "qid": "Q093",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B20",
+   "category": "diagnosis",
+   "load1m": 79.4,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "My first suspect is the similarity index itself: many vector indexes (HNSW in pgvector/FAISS/Elasticsearch, Lucene segments) only tombstone deleted entries, so a bulk delete leaves the graph full of dead nodes and broken links that searches waste candidates on, quietly dropping recall. I'd first identify the index type and config, then check deleted-vs-live counts or bloat stats to confirm. Next, I'd measure recall by comparing approximate results against an exact brute-force search on a sample of queries. If the gap is real, the fix is usually a rebuild (`REINDEX`, a fresh FAISS build, or a force-merge/expunge-deletes); for IVF indexes, also retrain centroids, since the data distribution shifted. I'd also check whether results get filtered after the top-k is retrieved, and if so raise `ef_search`/`k`, so a smaller live set doesn't leave too few results."
+  },
+  {
+   "qid": "Q094",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B21",
+   "category": "diagnosis",
+   "load1m": 72.1,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "@ruflo/ai-team-service",
+    "ruvector-namespace-merge",
+    "@claude-flow/integration",
+    "@claude-flow/embeddings"
+   ],
+   "said": null,
+   "answer": "I'd treat this as a **security incident first**: consider disabling or restricting the AI search until it's fixed, and use logs to determine which tenants' documents were exposed to whom so you can meet any notification obligations. Next I'd trace the full retrieval path (the query handler, vector store query, any caches, and how results feed into the LLM prompt) to find where the tenant boundary breaks. The usual culprits are:\n- A vector query without a mandatory `tenant_id` filter, or with filtering applied *after* top-k\n- A cache (results, embeddings, or LLM responses) keyed without the tenant\n- A tenant ID taken from the request instead of the authenticated session\n- Shared conversation or context state reused across users\n\nThe fix is to enforce isolation server-side at query time, using either a required metadata pre-filter or per-tenant namespaces/indexes, with the tenant derived only from auth. I'd also add a final authorization check on every returned document. Finally, I'd add regression tests that seed two tenants and assert zero cross-tenant hits, including under concurrency and cache-warm conditions, since the \"occasional\" nature hints at a caching or race issue."
+  },
+  {
+   "qid": "Q095",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B22",
+   "category": "diagnosis",
+   "load1m": 68.2,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I'd add a post-generation consistency check that runs on each draft before it's sent. A second model call extracts the answer's key claims (recommendations, numbers, yes/no conclusions) and checks each pair for contradictions, returning a structured verdict with the conflicting sentences quoted. If it finds a conflict, the system either regenerates with the conflict fed back as a correction or holds the answer with a visible flag, depending on how much latency you can accept. To start, I'd collect 20–30 real self-contradicting answers from your logs as a test set, tune the checker's prompt against them, and measure false positives on known-good answers so it doesn't flag everything. Can you tell me where the assistant runs (your own API pipeline, a chat product, Claude Code hooks) so I can say exactly where the check goes?"
+  },
+  {
+   "qid": "Q096",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B23",
+   "category": "diagnosis",
+   "load1m": 57.5,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "@claude-flow/guidance",
+    "agent-booster",
+    "@agentic-flow/self-improving-codegen",
+    "agenticow",
+    "size"
+   ],
+   "said": "agent-booster",
+   "answer": "I'd add a routing layer that sends mechanical edits (renames, literal find-and-replace, small diffs) through a deterministic path like plain string replacement or an AST codemod, so they never touch an LLM. For edits that need a little judgment but aren't hard, I'd route to a small fast model like `claude-haiku-4-5-20251001` and reserve Opus for planning or multi-file reasoning. A cheap classifier, either a heuristic on edit size and type or a Haiku call, would pick the tier, and anything that fails validation (build, tests, or the edit not applying) would escalate to the next tier. rUv ships agent-booster, a local code-editing engine that applies edits fast at $0 model cost, which is exactly this cheap path (source: agentic-flow/packages/agent-booster/package.json). Point me at the agent's edit-dispatch code and I'll start by adding the router there and measuring how many edits it keeps off the big model."
+  },
+  {
+   "qid": "Q097",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B24",
+   "category": "diagnosis",
+   "load1m": 78.1,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "@claude-flow/claims",
+    "@claude-flow/guidance",
+    "@claude-flow/v3-monorepo",
+    "ruflo"
+   ],
+   "said": "@claude-flow/claims",
+   "answer": "The core fix is an atomic claim step: before an agent starts a ticket, it must acquire a lock, for example via a conditional DB update (`UPDATE tickets SET owner=? WHERE id=? AND owner IS NULL`), a Redis `SET NX` with a TTL, or a status transition your tracker enforces. Any agent whose claim fails moves on to the next ticket. Give claims a lease/heartbeat so a crashed agent's ticket gets released instead of stuck. To stop overwrites, have each agent work on its own branch or worktree and merge through a PR or compare-and-swap check rather than writing straight to shared files. rUv ships @claude-flow/claims, an issue-claiming and work-coordination module built for exactly this agent-collision problem (source: ruflo/v3/@claude-flow/claims/package.json)."
+  },
+  {
+   "qid": "Q098",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B25",
+   "category": "off-topic",
+   "load1m": 88.7,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "Morning! No weekend for me, unfortunately; I don't carry anything over between sessions, so every conversation is a fresh Monday. Hope yours was good, though! What are we working on today?"
+  },
+  {
+   "qid": "Q099",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B26",
+   "category": "off-topic",
+   "load1m": 84.8,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "The current working directory isn't a git repository, so first I'd need you to point me to the repo, or `cd` there. Once there, I'd check `git log -3` and `git status` to confirm which three commits we're squashing and that the tree is clean. Then I'd run `git reset --soft HEAD~3` and recommit with a combined message, which you can review or edit. If those commits were already pushed, this rewrites history and needs `git push --force-with-lease`, so I'd confirm with you before pushing, especially if others share the branch."
+  },
+  {
+   "qid": "Q100",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B27",
+   "category": "off-topic",
+   "load1m": 81.2,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I don't have any release context yet, and this directory isn't a git repository, so there's no branch, tag, or changelog to inspect. I'd start by finding where the release is tracked: the actual repo path, a release branch or milestone, or a checklist/issue tracker you use. From there I'd check open issues or PRs tagged for the release, CI status on the release branch, and any unmerged or failing items. Then I'd give you a short summary of what's done, what's in flight, and what's actually blocking. Can you point me to the repo or tracker for this release?"
+  },
+  {
+   "qid": "Q101",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B28",
+   "category": "off-topic",
+   "load1m": 76.3,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I'd write a short, friendly email that tells your landlord up front that this month's rent will be a few days late and gives a specific date when they can expect it. I'd briefly mention the reason (for example, a delayed paycheck) without over-explaining, and apologize for the inconvenience. I'd also offer to cover any late fee in your lease, or ask whether one applies, so it's clear you're taking responsibility. If you share your landlord's name, the new payment date, and whether you want to give a reason, I'll write the full email for you."
+  },
+  {
+   "qid": "Q102",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B29",
+   "category": "off-topic",
+   "load1m": 71.8,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "Imagine you're at a restaurant: you can't walk into the kitchen and cook, so you tell the waiter what you want from the menu, and the waiter brings back your food. An API is that waiter for computer programs: one program asks for something in a specific, agreed-upon way, and the other program sends back an answer. The \"menu\" is the list of things you're allowed to ask for, like \"tell me today's weather\" or \"save this photo.\" You never see how the kitchen works inside; you just need to know how to order. That's why apps can use maps, payments, or weather from other companies without building those things themselves."
+  },
+  {
+   "qid": "Q103",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B30",
+   "category": "off-topic",
+   "load1m": 67.5,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I don't have a live clock, so I'd check by running `TZ=Asia/Tokyo date` in your shell, which prints the current Tokyo time from your system clock. Tokyo uses JST (UTC+9) with no daylight saving time, so you can also add 9 hours to the current UTC time. If you'd like, I can run that command for you in a follow-up."
+  },
+  {
+   "qid": "Q104",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B31",
+   "category": "off-topic",
+   "load1m": 63.5,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "Which file did you mean? You didn't name it, so I'd first confirm the path, or grep the working directory for `userData` and ask if more than one file matches. I'd then read the file and rename every `userData` identifier to `profile`, including declarations, references, destructuring, and parameters. I'd skip string literals, comments, and longer names like `userDataCache` unless you want those changed too. Before editing, I'd also check that `profile` isn't already used in that file, since that would cause a name collision."
+  },
+  {
+   "qid": "Q105",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B32",
+   "category": "off-topic",
+   "load1m": 60.1,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "There's no earlier work in this session for me to summarize; this is the first message I've received, and the working directory isn't a git repo, so there's no commit history to draw from either. If you paste in your notes, terminal output, or a list of changed files, I'll condense them into a couple of bullet points. If the work happened in a git repo elsewhere, point me to it and I can summarize today's commits with `git log --since=midnight`."
+  },
+  {
+   "qid": "Q106",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B33",
+   "category": "no-fit",
+   "load1m": 57.1,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "The ten-minute delay almost certainly comes from a TTL-based cache with no invalidation, so I'd start by finding where checkout reads prices from Redis and noting the key pattern and TTL (likely `EX 600`). Then I'd add explicit invalidation in the admin price-update path: after the database write commits, delete (or overwrite) the affected product's price keys so the next checkout read repopulates from the source of truth. If there are multiple app instances or derived caches, such as cart totals or category listings, I'd publish a Redis pub/sub or event-bus message on price change so every layer drops its stale entries. As a safety net I'd keep a shorter TTL and have checkout re-validate the price against the DB at order placement, so a missed invalidation can never charge a stale price. Want me to dig into the codebase and locate the cache read and admin update code to implement this?"
+  },
+  {
+   "qid": "Q107",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B34",
+   "category": "no-fit",
+   "load1m": 54,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I'd first find the product list component and check how the products are loaded and rendered (framework, state handling, existing styling). With only ~50 products, I'd filter entirely client-side: add a `query` state bound to a text input above the list, and derive the visible items with a case-insensitive `name.toLowerCase().includes(query.trim().toLowerCase())` check. No debouncing or memoization is needed at that size. I'd match the existing input styling, add a placeholder and `aria-label`, and show a short \"No products match\" message when the filter returns nothing. Finally, I'd check that clearing the box restores the full list and that any existing tests still pass."
+  },
+  {
+   "qid": "Q108",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B35",
+   "category": "no-fit",
+   "load1m": 51.3,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "rulake",
+    "AI",
+    "@claude-flow/memory",
+    "@ruvector/spiking-neural",
+    "@agentic-flow/ephemeral-memory"
+   ],
+   "said": null,
+   "answer": "I'd first confirm it's actually listeners. I'd grep for `.on(`/`addListener` calls inside request handlers, intervals, or reconnect logic that lack a matching `.off`/`removeListener`. I'd also check logs for Node's `MaxListenersExceededWarning`, and run with `--trace-warnings` to get the stack of where listeners pile up. Next, I'd take two or three heap snapshots a few minutes apart under load (`node --inspect` + Chrome DevTools, or `--heapsnapshot-signal=SIGUSR2`). Comparing them shows which objects grow, which separates listener closures from caches, unbounded Maps, or timers. Once the culprit shows up, I'd fix it with `once()`, explicit cleanup on close/finish, or moving registration out of the per-request path, then confirm the heap stays flat."
+  },
+  {
+   "qid": "Q109",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B36",
+   "category": "no-fit",
+   "load1m": 49.5,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I'd first inspect the codebase to find your stack, existing user/billing models, and whether Stripe is already wired in. Then I'd create Stripe Checkout sessions in subscription mode with `subscription_data.trial_period_days: 14` and `allow_promotion_codes: true`, plus a webhook handler for `customer.subscription.*` and `invoice.*` events that syncs subscription status to your database. For sales agents, I'd add a role-gated admin endpoint/UI that creates Stripe Coupons and Promotion Codes (with optional limits like max redemptions, expiry, or per-agent metadata for attribution). I'd keep keys in environment variables, test everything in Stripe test mode with the Stripe CLI forwarding webhooks, and confirm with you before touching any live-mode configuration. One question first: should agents choose discount amounts freely, or only pick from preset coupons you define?"
+  },
+  {
+   "qid": "Q110",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B37",
+   "category": "no-fit",
+   "load1m": 50.5,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "First I'd inspect the codebase to identify the framework, existing auth setup (e.g., NextAuth/Auth.js, Passport, Devise, Firebase), user model, and any email provider already configured, so both features extend what's there. For Google sign-in, I'd add an OAuth provider using the existing auth library, link Google accounts to existing users by verified email, and read the client ID and secret from env vars (you'll need to create these in Google Cloud Console with the correct redirect URI). For forgot-password, I'd add a request endpoint that stores a hashed, single-use, time-limited token (about 1 hour) and emails a reset link, plus a reset page and endpoint that validates the token, updates the password hash, and invalidates existing sessions. The request endpoint would always return the same response whether or not the email exists, be rate-limited, and send through your existing mailer (or a provider like Resend/SendGrid you choose, with a console logger for local dev). I'd finish with tests for the token lifecycle and OAuth callback, and confirm with you before adding new dependencies or provider credentials."
+  },
+  {
+   "qid": "Q111",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B38",
+   "category": "no-fit",
+   "load1m": 48.4,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "This pattern (client-side navigation works, direct load 404s) almost always means the host isn't serving that route, not that Next's router is broken. I'd first check `next.config.js` for `output: 'export'` and how the deploy is hosted. If it's a static export on S3/Nginx/Netlify-style hosting, the fix is usually `trailingSlash: true` or a host rewrite mapping `/settings` to `settings.html`. If it should be running as a Node server, I'd confirm the deploy is actually running `next start` and not just serving `.next`/`out` as static files. I'd also check whether a recent change moved or renamed the route (e.g., `pages/settings` → `app/settings` without a `page.tsx`), and compare the build output's route list against what's deployed."
+  },
+  {
+   "qid": "Q112",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B39",
+   "category": "no-fit",
+   "load1m": 48.6,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I'd first find the dashboard's bar chart component and identify the charting library and how colors are currently set (hardcoded hex values, a theme file, or CSS variables). Then I'd replace the clashing hardcoded colors with a theme-aware palette using CSS variables or the library's theme hooks, so light and dark mode each get their own colors. For dark mode, I'd use slightly desaturated, mid-to-light tones that keep good contrast against the dark background without glowing. I'd also make sure axis labels, gridlines, tooltips, and legend text follow the theme, since those often stay dark-on-dark. Finally, I'd check both modes visually and confirm the series colors stay distinguishable, including for common color-vision deficiencies."
+  },
+  {
+   "qid": "Q113",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B40",
+   "category": "no-fit",
+   "load1m": 61.8,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "Yes. I'd start by reading your workflow files in `.github/workflows/` to see which steps take the 20 minutes. For caching, I'd use `actions/setup-node` with `cache: 'npm'` (or pnpm/yarn), which caches the package manager store keyed on the lockfile, or `actions/cache` on `node_modules` directly if installs are still slow. For parallelism, I'd move install into a setup job (or a composite action), then split lint, typecheck, test, and build into separate jobs, and add a `matrix` with test sharding if the test suite dominates. I'd also check whether this directory is the actual repo, since it isn't a git repository and I don't see the workflows yet, then propose the YAML changes for you to review before committing."
+  },
+  {
+   "qid": "Q114",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "D01",
+   "category": "design",
+   "load1m": 75.3,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "homecore-assist",
+    "goalie",
+    "ruflo",
+    "@claude-flow/aidefence"
+   ],
+   "said": null,
+   "answer": "I'd set up **hybrid semantic search** so a query like \"my thing wont turn on\" can match articles about power or startup problems even when the words differ. First I'd check your current stack: where the 3,000 articles live, what search you use today, and whether you already have a database like Postgres (pgvector) or a hosted search service. Then I'd embed each article in chunks with a current embedding model, store the vectors, and combine vector similarity with your existing keyword search so exact terms like model numbers or error codes still rank well. Optionally, a reranking step would reorder the top ~20 results by how well they answer the question. Before switching over, I'd pull some real zero-result queries from your logs and use them as a test set to show the improvement and tune the blend."
+  },
+  {
+   "qid": "Q115",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "D02",
+   "category": "design",
+   "load1m": 84.5,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "Build a persistent per-customer memory layer: a database (e.g. Postgres) keyed by customer ID that stores structured preferences, a rolling summary of past conversations, and raw transcripts, so nothing lives only in server memory. After each conversation, have the model extract durable facts (\"prefers email over phone\", \"asked about refund in September\") and update that customer's profile and summary rather than appending everything forever. For \"what did we talk about last month\" recall, add embeddings of past conversation chunks (pgvector works well alongside the same Postgres) and retrieve the most relevant ones at the start of each new session. At session start, load the profile, summary, and top retrieved snippets into the bot's context, and give it a tool to search deeper history on demand. Build in privacy controls from day one (retention limits, a way for customers to view or delete their memory), and I'd start by looking at how the bot currently identifies customers and stores sessions so the memory hooks fit your existing code."
+  },
+  {
+   "qid": "Q116",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "D03",
+   "category": "design",
+   "load1m": 80,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "@ruflo/chatgpt-federation",
+    "publisher",
+    "wifi-densepose-privshield",
+    "wifi-densepose-privshield-harness",
+    "Veil",
+    "@ruvector/ospipe"
+   ],
+   "said": null,
+   "answer": "I'd put a guardrail layer on both sides of the model call. On input, a fast classifier (a small model like Haiku 4.5 with a tight screening prompt) flags jailbreak and prompt-injection attempts, plus basic limits on length, rate, and encoding tricks. On output, a second check validates responses against your content policy and blocks leaks of the system prompt or internal data before anything reaches the user. Underneath both, I'd harden the core setup: keep the system prompt minimal and non-secret, give the model least-privilege tools, and log flagged exchanges so you can tune thresholds against real traffic. If you show me where the widget calls the model, I'll wire this in as middleware with a small red-team test suite you can run before launch."
+  },
+  {
+   "qid": "Q117",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "D04",
+   "category": "design",
+   "load1m": 75.5,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "@claude-flow/codex",
+    "@claude-flow/hooks",
+    "bit-parallel-search",
+    "agentic-flow"
+   ],
+   "said": null,
+   "answer": "Yes. The manually tagged emails you already have are training data, so I'd start with a small local classifier: sentence embeddings (e.g. `all-MiniLM-L6-v2`) plus logistic regression, or even plain TF-IDF. Either runs in milliseconds per email on CPU, so 400 a day costs nothing. If you don't have much labeled history, a small local LLM via Ollama can do zero-shot tagging until enough labels accumulate. Emails below a confidence threshold would stay in the manual queue, and the human's corrections get fed back into retraining. To wire it up, I need to know how the mail arrives (IMAP, Gmail, a helpdesk tool) and whether past tags can be exported along with the email text."
+  },
+  {
+   "qid": "Q118",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "D05",
+   "category": "design",
+   "load1m": 56.9,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "wifi-densepose-py",
+    "core",
+    "wifi-densepose-vitals",
+    "wifi-densepose-privshield-harness",
+    "Veil",
+    "@ruvnet/ruview",
+    "harness"
+   ],
+   "said": "wifi-densepose-vitals",
+   "answer": "Yes, there are contactless options, but **your existing router alone usually can't do it**: consumer routers don't expose the Channel State Information (CSI) needed to sense breathing and heartbeat. The most reliable route is an under-mattress sleep pad like the Withings Sleep Analyzer, which isn't worn, has no camera, and reports breathing, heart rate, and sleep apnea events to a phone app. If you prefer a DIY WiFi-sensing setup, rUv ships wifi-densepose-vitals, which extracts heart and respiratory rate from WiFi CSI (source: ruview/v2/crates/wifi-densepose-vitals/Cargo.toml), but it needs a couple of cheap ESP32 boards in her bedroom plus some calibration. Either way, I'd tell your mom what you're setting up and get her okay, since she has clearly drawn privacy lines. Treat it as an early-warning aid rather than a medical monitor. If you go the ESP32 route, I can help you plan the hardware and build the alerting."
+  },
+  {
+   "qid": "Q119",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "D06",
+   "category": "design",
+   "load1m": 54.5,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "@ruflo/ai-team-service",
+    "ruflo",
+    "@claude-flow/claims",
+    "goalie"
+   ],
+   "said": "ruflo",
+   "answer": "I'd build this on the Claude Agent SDK: define three subagents (researcher, coder, reviewer), each with its own system prompt and tool permissions (e.g., reviewer read-only). An orchestrator script runs them concurrently and passes work through a shared task queue or files like `research.md` → code changes → `review.md`. The reviewer's feedback loops back to the coder until it approves or hits a retry cap, so you only check in at the end. For a lighter start, you can drop the three agents into `.claude/agents/` and have one Claude Code session dispatch them in parallel, then graduate to the SDK script once the handoffs feel right. rUv ships ruflo — it already provides coordinated agent swarms with shared memory and MCP integration, so it could replace the hand-rolled orchestrator (source: ruflo/ruflo/package.json)."
+  },
+  {
+   "qid": "Q120",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "D07",
+   "category": "design",
+   "load1m": 61.9,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain"
+   ],
+   "said": null,
+   "answer": "I'd model this as a graph: people (investors, founders) as nodes and \"introduced\" as directed edges carrying date and context, which makes \"who's 2 hops from X\" a simple traversal instead of spreadsheet gymnastics. For your size, I'd start lightweight with a SQLite database (a `people` table and an `introductions` table) plus a small Python script using NetworkX for hop queries, and import your existing spreadsheet as the first step. If you later want a visual explorer or more complex path queries, the same data moves cleanly into Neo4j, where \"2 hops from Alice\" is a one-line Cypher query. To start, I'd need a look at the spreadsheet's columns to design the import and confirm whether introductions should be treated as one-way or mutual."
+  },
+  {
+   "qid": "Q121",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "D08",
+   "category": "design",
+   "load1m": 76.8,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "qudag-vault-core",
+    "qudag-crypto",
+    "qudag-mcp",
+    "@daa/qudag-native"
+   ],
+   "said": "qudag-vault-core",
+   "answer": "Most of a password locker is already quantum-safe if built right: I'd encrypt vault contents with 256-bit symmetric keys (AES-256-GCM or XChaCha20-Poly1305) and derive keys from master passwords with Argon2id, since Grover's algorithm only halves effective symmetric strength. The real quantum risk is any public-key piece, like sharing vaults between users, key escrow, or device enrollment, so I'd use hybrid X25519 + ML-KEM-768 (FIPS 203) there, plus ML-DSA (FIPS 204) if anything gets signed. I'd also make it crypto-agile by tagging every ciphertext and key with an algorithm/version header, so we can rotate algorithms later without a painful migration. rUv ships qudag-vault-core, a post-quantum password vault library with ML-KEM-768/ML-DSA (source: qudag/core/vault/Cargo.toml), though for enterprise clients I'd lean toward audited, widely used libraries like libsodium plus liboqs or your platform's FIPS-validated ML-KEM. First I'd look at your stack and how the locker shares or syncs secrets, because that determines where the post-quantum pieces actually go."
+  },
+  {
+   "qid": "Q122",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "D09",
+   "category": "design",
+   "load1m": 105,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "@ruvector/agentic-synth",
+    "@claude-flow/plugin-healthcare-clinical",
+    "@medai/backend",
+    "agentic-qe"
+   ],
+   "said": "@ruvector/agentic-synth",
+   "answer": "Use **Synthea** (open-source, Apache-2.0) to generate structured patient records. It simulates realistic lifetimes (demographics, encounters, conditions, meds, labs) and exports FHIR, C-CDA, or CSV, so you can scale to tens of thousands of patients with a seed for reproducibility. For the unstructured docs (discharge summaries, referral letters, scanned-looking PDFs), feed each Synthea patient's record into an LLM prompt so the notes stay consistent with that patient's data, then render a portion to PDF/images with noise if the AI side does OCR. rUv ships @ruvector/agentic-synth, an LLM-driven synthetic data generator for AI/RAG pipelines that could handle that document-generation step (source: ruvector/npm/packages/agentic-synth/package.json). Finally, add a quick check that no real PHI leaked in (e.g., no real names or MRNs from prompt examples), and seed some deliberate edge cases like missing fields, conflicting meds, and odd date formats so the pipeline gets properly stressed."
+  },
+  {
+   "qid": "Q123",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "D10",
+   "category": "design",
+   "load1m": 124.5,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "temporal-compare",
+    "neuro-divergent-data",
+    "neuro-divergent",
+    "neuro-divergent-models"
+   ],
+   "said": null,
+   "answer": "I'd build a small Python script that reads your CSV (store, week, orders) and fits a seasonal model per store, starting with ETS or seasonal-naive from `statsforecast`, since 3 years of weekly data captures yearly patterns well. I'd backtest by hiding the last 8–16 weeks, comparing models on error, and keeping whichever beats the naive baseline for each store. Because the goal is to stop over-ordering, I'd output a point forecast plus prediction intervals per week, so you can order to a chosen level (e.g., the 60th percentile) instead of the optimistic mean. The output would be a CSV of the next 8 weeks per store, with an optional quick chart, run with one command and no UI. To start, I'd need a sample of the data's columns and to know whether holidays or promotions drive big spikes."
+  },
+  {
+   "qid": "Q124",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "D11",
+   "category": "design",
+   "load1m": 148.2,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "ruvector-retrieval-receipt",
+    "ruvector-proof-gate",
+    "@claude-flow/watermark",
+    "module",
+    "goalie"
+   ],
+   "said": "@claude-flow/watermark",
+   "answer": "Yes, it's a real technique called statistical text watermarking: during generation you subtly bias token choices with a secret key, and a detector holding that key can later show with measurable confidence that a passage came from your generator. The main caveats for legal are that it requires control over the sampling step (so it works if you self-host or your provider exposes it), it weakens under heavy paraphrasing or translation, and short snippets give weak evidence. I'd pair it with a cheap complement: log a hash and timestamp of every published post, giving you a provenance record even when the watermark has been degraded. rUv ships @claude-flow/watermark, a SynthID-Text-style generation and detection module with indel-robust and short-text detectors, which matches this use case (source: ruflo/v3/@claude-flow/watermark/package.json). Next I'd confirm how your generator is hosted, since that decides whether watermarking at sampling time is even possible."
+  },
+  {
+   "qid": "Q125",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "D12",
+   "category": "design",
+   "load1m": 168.7,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "@ruvector/scipix",
+    "@ruvector/kge",
+    "ruvector-math",
+    "rvf-wire"
+   ],
+   "said": "@ruvector/scipix",
+   "answer": "rUv ships @ruvector/scipix, an OCR client for scientific documents that extracts LaTeX/MathML from equations in research papers (source: ruvector/npm/packages/scipix/package.json). I'd first check whether it handles your scans well enough, and otherwise fall back to an open model like Nougat, Marker, or pix2tex. The pipeline would rasterize each PDF page, detect equation regions, convert each one to LaTeX (optionally MathML), and write per-paper `.tex`/Markdown files that link back to the source page. I'd spot-check output by re-rendering the LaTeX next to the original crop so misreads stand out. Can you point me at a few sample scans, and tell me whether you want only the formulas or the surrounding text too?"
+  },
+  {
+   "qid": "Q126",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "D13",
+   "category": "design",
+   "load1m": 178.2,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "@ruvector/wasm",
+    "ruvector-edge-auth-worker",
+    "@claude-flow/plugin-iot-cognitum",
+    "bridge",
+    "ruvix-dtb"
+   ],
+   "said": null,
+   "answer": "I'd make the app an installable PWA. A service worker caches the app shell, and the parts catalog syncs into IndexedDB as a versioned snapshot whenever the tablet is online, with deltas after the first full download. Search would run on a client-side full-text index like MiniSearch or FlexSearch, built from that data and stored alongside it, with prefix and fuzzy matching for part numbers, names, and aliases. A small sync-status indicator would show the catalog version and when it last synced, so techs know how fresh their data is in the basement. First I'd check the existing codebase and catalog size, since a large catalog may need a slimmed search payload, which affects storage limits and index build time on the tablets."
+  },
+  {
+   "qid": "Q127",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "D14",
+   "category": "design",
+   "load1m": 177.3,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "First I'd confirm which hub you have (Home Assistant, SmartThings, Hubitat, etc.) and what sensors are already in or near the bathroom, since that determines the build. The most reliable camera-free option is a mmWave presence sensor with built-in fall detection, such as the Aqara FP2; a cheaper fallback is a door sensor plus motion sensor that alerts when the bathroom is occupied but still for too long. I'd write an automation that fires on a detected fall or an unusual stillness window (say, 20–30 minutes, tuned to her routine) and sends push notifications to family phones. If nobody acknowledges within a few minutes, it would escalate to another person or a call. Because this isn't a medical-grade system, I'd also suggest pairing it with a wearable fall-detection pendant or watch as a backup."
+  },
+  {
+   "qid": "Q128",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "D15",
+   "category": "design",
+   "load1m": 166,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "agenticow",
+    "size",
+    "agentic-jujutsu",
+    "@agentic-flow/integrations-shared",
+    "ruvector-staged-workspace"
+   ],
+   "said": "agenticow",
+   "answer": "I'd model the shared memory as a copy-on-write store: a branch is just a pointer to a base snapshot plus a small overlay of its own writes, so creating one costs almost nothing regardless of how big the memory is. Each agent experiments in its own branch, reads fall through to the base, and \"keep\" merges the overlay back (with a conflict check if the base moved), while \"throw away\" just drops the overlay. rUv ships agenticow — it provides exactly this copy-on-write branching for multi-agent vector memory, with branches costing about 0.5ms and 162 bytes regardless of base size (source: agenticow/package.json). I'd start by checking whether it fits your memory backend, and only build a custom overlay layer on your existing store if it doesn't. Then I'd add merge and discard APIs plus tests for nested branches and concurrent commits to the same base."
+  },
+  {
+   "qid": "Q129",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "D16",
+   "category": "design",
+   "load1m": 55.2,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I'd build a small pipeline that ingests each agreement (PDF/DOCX → text), then uses Claude (Sonnet 5.5 for cost at ~40/month) with a structured-output schema to extract the auto-renewal terms (renewal period, notice window, cancellation mechanics) and liability terms (caps, carve-outs, indemnities, consequential-damages exclusions) along with the exact quoted clause text. Your standard terms would live in a config file as explicit thresholds, like \"notice window ≥ 30 days\" or \"liability cap ≥ 12 months' fees, mutual.\" Comparisons against those thresholds would run in plain code rather than by the model, so flags are deterministic and auditable. The output would be a per-contract report (Markdown or CSV, optionally posted to Slack/email) showing each extracted term, the source quote, and a red/yellow/green flag, with low-confidence extractions marked for human review. To start, I'd need a copy of your standard terms (or the playbook legal uses), a handful of sample agreements including a couple you know are bad, and to know where contracts arrive today (shared drive, email, DocuSign) so we can decide how it gets triggered."
+  },
+  {
+   "qid": "Q130",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "X01",
+   "category": "diagnosis",
+   "load1m": 74.1,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain"
+   ],
+   "said": null,
+   "answer": "I'd first pull a breakdown of your API usage by model, token count, and request type to see how much of the $9k comes from trivial queries. Then I'd add a **router** in front of your model calls so simple lookups and short chit-chat go to Haiku 4.5, everyday work goes to Sonnet 5.5, and only complex reasoning escalates to Opus 5.5. The router can start as simple heuristics (prompt length, keywords, whether tools are needed), or Haiku can classify each request, with a fallback that escalates when the cheap model's answer looks weak. Questions like \"what time is it in Tokyo\" shouldn't hit an LLM at all, so a deterministic tool or cache can answer them for near-zero cost, and prompt caching on long shared system prompts cuts costs further. rUv ships @ruvector/tiny-dancer — Neural router for AI agent orchestration - FastGRNN-based intelligent routing with circuit breaker, uncertainty estimation, and hot-reload (source: ruvector/npm/packages/tiny-dancer/package.json); say 'use tiny-dancer' to proceed, or ignore this."
+  },
+  {
+   "qid": "Q131",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "X02",
+   "category": "diagnosis",
+   "load1m": 69.5,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "ruvector-gpu-runner",
+    "agentic-qe",
+    "@claude-flow/plugin-test-intelligence",
+    "rvcsi-runtime",
+    "composition"
+   ],
+   "said": "@claude-flow/plugin-test-intelligence",
+   "answer": "I'd start by pulling test results from the last few weeks of CI runs (JUnit XML or your CI provider's API) and ranking tests that both passed and failed on the same commit, since that's the clearest flaky signal; with a third of runs failing, it's likely a handful of tests with timing, ordering, or shared-state problems. Those go into a quarantine list that runs non-blocking and gets tracked for fixes, so pushes stop going red while they're fixed. To stop running all 4000 tests on every push, I'd add change-based selection that maps changed files to affected tests (via your test runner's dependency or `--changed` support, or a coverage map), and keep the full suite on main merges and a nightly run as a safety net. One snag: this working directory isn't a git repo, so I'd need you to point me at the real repo and CI config before diffing or wiring anything up. rUv ships @claude-flow/plugin-test-intelligence — it does flaky detection and predictive test selection, which are exactly these two problems (source: ruflo/v3/plugins/test-intelligence/package.json)."
+  },
+  {
+   "qid": "Q132",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "X03",
+   "category": "diagnosis",
+   "load1m": 69.6,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I'd add a **semantic cache** in front of the model: embed each incoming question with a cheap embedding model, look it up in a vector store (pgvector, Redis, or even an in-memory FAISS index for ~50 clusters), and return the stored answer when similarity clears a tuned threshold (start around 0.90–0.93 cosine and adjust against real logs). On a miss, call the model as usual and write the question embedding and answer back to the cache, with a TTL or version key so answers refresh when your underlying content changes. Since your traffic is concentrated on ~50 intents, you could also pre-seed the cache with vetted canonical answers for each, which gives near-instant, consistent responses and lets you review them for quality. For the misses, enable **prompt caching** on the static parts of your prompt (system prompt, docs, few-shot examples) to cut cost and latency there too. Before building, I'd want to look at a sample of real queries to check how tight the clusters are and whether answers depend on user-specific context, since that context would need to go into the cache key or be excluded."
+  },
+  {
+   "qid": "Q133",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "X04",
+   "category": "diagnosis",
+   "load1m": 72.7,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "bit-parallel-search",
+    "ruvector-recall-bounded",
+    "@ruvector/cnn",
+    "ruvector-speculative-ann"
+   ],
+   "said": null,
+   "answer": "This is the classic weakness of embedding-only search: vectors capture meaning, so an opaque token like `AX-4410` lands near anything vaguely similar, and the exact match isn't favored. I'd first find the search code to confirm it's purely vector-based, and check whether the tokenizer splits on the hyphen (`AX` + `4410`). The fix is hybrid search: add an exact/keyword path (a normalized part-number lookup plus BM25 or full-text) next to the vector search, and merge results with reciprocal rank fusion. I'd also add a fast path: if the query matches the part-number pattern (e.g. `^[A-Z]{1,4}-?\\d{3,6}$`, case- and hyphen-insensitive), pin exact matches to the top. Then I'd add tests for both exact part-number queries and plain-English queries so neither regresses."
+  },
+  {
+   "qid": "Q134",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "X05",
+   "category": "diagnosis",
+   "load1m": 68.9,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain"
+   ],
+   "said": null,
+   "answer": "I'd fix this with a `CLAUDE.md` file, which Claude Code automatically loads at the start of every session, so nothing needs re-explaining each morning. First, I'd run `/init` in your project root to generate a starter `CLAUDE.md` from the codebase. Then I'd add the things you keep repeating: the project's purpose, architecture, conventions, commands, and current priorities. During a session you can type `#` followed by a note, or use `/memory`, to save new facts as they come up. For preferences that apply to all your projects, I'd put them in `~/.claude/CLAUDE.md`, and you can resume yesterday's actual conversation with `claude --continue` or `claude --resume`."
+  },
+  {
+   "qid": "Q135",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "X06",
+   "category": "diagnosis",
+   "load1m": 62.8,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "@claude-flow/aidefence",
+    "@claude-flow/watermark",
+    "module",
+    "ruvector-retrieval-receipt",
+    "@ruflo/ai-team-service"
+   ],
+   "said": null,
+   "answer": "The cross-customer email leak is the urgent part: the bot could only reveal it because its tools or context could reach other customers' data, so I'd first scope every lookup server-side to the authenticated user's ID instead of trusting anything the model passes. I'd also check whether chat history or retrieval indexes are shared across sessions. Then I'd treat the system prompt as public: move secrets, internal URLs, and policy details out of it, and rewrite it assuming anyone can read it. As defense in depth, I'd add an output filter that blocks PII not belonging to the current user, plus logging and alerts on extraction-style prompts. Finally, I'd pull the logs for that Reddit conversation, confirm exactly what leaked, and loop in whoever handles breach notification, since an exposed customer email may trigger disclosure obligations."
+  },
+  {
+   "qid": "Q136",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "X07",
+   "category": "diagnosis",
+   "load1m": 66.2,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "agent-booster",
+    "@agentic-flow/self-improving-codegen",
+    "@claude-flow/guidance",
+    "@claude-flow/plugin-code-intelligence"
+   ],
+   "said": "agent-booster",
+   "answer": "The fix is to use targeted search-and-replace or diff edits instead of full-file rewrites, so the model only sends the changed lines. In Claude Code, the built-in Edit tool already does this (it replaces an exact `old_string` with `new_string`), so if you're seeing whole-file rewrites, tell it explicitly to \"use Edit, not Write,\" or add that rule to your `CLAUDE.md`. For other tools, look for a \"diff,\" \"patch,\" or \"apply edit\" mode, and give the exact file and line so the model doesn't have to reread everything. rUv ships agent-booster, a local code-editing engine that applies small edits fast at no token cost (source: agentic-flow/packages/agent-booster/package.json). I'd start with the `CLAUDE.md` rule, since it's free and usually solves it."
+  },
+  {
+   "qid": "Q137",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "X08",
+   "category": "diagnosis",
+   "load1m": 59.1,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain"
+   ],
+   "said": null,
+   "answer": "I'd start by pulling metrics from the last newsletter window to find what actually saturates first: CPU, DB connections, thread pool, or a downstream dependency, and whether the 20 minutes is the spike itself or slow recovery from a retry storm. Newsletter traffic is usually many users hitting the same few links, so a short-TTL cache (CDN or in-process) in front of the lookup, with request coalescing so one cache miss doesn't fan out into thousands of identical backend calls, would likely absorb most of the 30x. Then I'd add protection so overload degrades instead of collapsing: rate limiting or load shedding at the edge, bounded queues and timeouts, and jittered client retries. Since the trigger is predictable, a cheap backstop is to pre-warm the cache and pre-scale capacity right before each send, or stagger the send over 15–30 minutes. If you can point me at the service code and a dashboard or logs from the last incident, I'll confirm the bottleneck and make the caching and coalescing change first."
+  },
+  {
+   "qid": "Q138",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "X09",
+   "category": "diagnosis",
+   "load1m": 65.8,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "@claude-flow/memory",
+    "ruvector-agent-memory",
+    "@agentic-flow/ephemeral-memory",
+    "@claude-flow/guidance"
+   ],
+   "said": "@claude-flow/memory",
+   "answer": "rUv ships ruvector-agent-memory — it does coherence-weighted memory compaction that keeps important memories based on recency, frequency, and semantic coherence, which is exactly the \"keep what matters, let the rest fade\" behavior you want (source: ruvector/crates/ruvector-agent-memory/Cargo.toml). I'd first inspect how the knowledge store is written and queried today, and pull a sample of the stale results so we have a baseline to measure against. Then I'd add a retention score per memory, combining time-decayed recency, access frequency, and an importance signal, and blend it into retrieval ranking so old, unused entries naturally sink. A periodic compaction pass would then archive or merge low-scoring entries instead of deleting them outright, so nothing important is lost by mistake. Should I start by looking at the store's schema and retrieval code?"
+  },
+  {
+   "qid": "Q139",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "X10",
+   "category": "diagnosis",
+   "load1m": 85.7,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "First I'd contain the leak by checking the search query logs to see exactly which HR documents were exposed and to whom, and temporarily excluding the HR folder from the index until the fix ships. The core fix is to capture each document's read permissions (allowed users and groups from the source ACLs) at index time and store them alongside the document. At query time, the search service then filters on the requesting user's identity and group memberships inside the engine, before ranking, rather than filtering results afterward in the UI. That filter must also apply to snippets, facet counts, autocomplete, and \"total results\" numbers, since those can leak content or existence too, and permission changes in the source need to propagate to the index quickly. Finally I'd add tests that search as users in different roles and assert that HR documents never appear for unauthorized users, then reindex everything with ACLs before re-enabling the HR folder."
+  },
+  {
+   "qid": "Q140",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "X11",
+   "category": "diagnosis",
+   "load1m": 62,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I'd first check whether the recommender's artifacts (embedding index, item ID mappings, co-occurrence/similarity matrices) were rebuilt after the deletion, since a stale index often still points at deleted IDs or has shifted index-to-product mappings, which would both degrade quality and silently drop surviving items. Next I'd query the model and candidate-generation stage directly for a few of the \"never show up\" products to see whether they're missing from the candidate pool, filtered out (e.g., by a stock/availability join or a min-interaction threshold), or just scored low. I'd also look at whether the deleted 40% held most of the interaction history, because collaborative signals for the remaining items may now be too sparse, which would call for retraining and possibly a content-based or popularity fallback for cold items. Can you point me to the recommendation code or pipeline (training job, index build, serving filters) so I can start with the ID mapping and rebuild schedule?"
+  },
+  {
+   "qid": "Q141",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "X12",
+   "category": "diagnosis",
+   "load1m": 80.1,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "Coverage only shows which lines ran, not whether any test would fail if they were wrong, so I'd start with **mutation testing** (e.g., Stryker for JS/TS, PIT for Java, mutmut for Python): it injects small bugs and reports which ones your suite still passes. Next, I'd take the last 10–20 bugs that reached customers and check whether the faulty code was \"covered,\" and if so, why no test caught it (missing assertions, mocked-away dependencies, untested edge inputs, or integration seams). I'd also scan for weak tests, such as tests with no assertions, snapshot-only tests, or overly broad mocks, and compare branch coverage to line coverage, since 87% line coverage often hides much lower branch coverage. You could also try agentic-qe, which reports risk-weighted coverage gaps and tracks flaky tests, and its quality gate returns a real pass/fail verdict instead of a coverage percentage; I can't tell from here whether it's installed (say \"use agentic-qe\" to proceed, or ignore this). If you tell me your language and test framework, I'll start with a mutation run on the module where most escaped bugs came from."
+  },
+  {
+   "qid": "Q142",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "O01",
+   "category": "off-topic",
+   "load1m": 75.3,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "Morning! No weekend for me, since I don't carry anything over between sessions, but I'm ready to go. I don't have a record of what we were working on, and this directory isn't a git repo, so there's no history for me to pick up from. What's on the agenda: a bug, a new feature, or something to explore in this codebase?"
+  },
+  {
+   "qid": "Q143",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "O02",
+   "category": "off-topic",
+   "load1m": 85,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "The current working directory isn't a git repository, so first I'd need you to point me at the right repo. Once there, I'd check `git status` and `git log --oneline -5` to confirm the last 4 commits are yours and there's no uncommitted work. Then I'd run `git reset --soft HEAD~4` and commit with a combined message (I can draft one from the four originals). Because the branch is already pushed, this rewrites history and needs `git push --force-with-lease`, which could disrupt anyone else working on that branch. I'll confirm with you before force-pushing."
+  },
+  {
+   "qid": "Q144",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "O03",
+   "category": "off-topic",
+   "load1m": 102.2,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I can't see any deploy status from here, and this directory isn't a git repo, so I'd need to know where your deploys run (GitHub Actions, Argo, Vercel, etc.) and which service you mean. I'd query that system for this morning's runs, for example `gh run list --workflow deploy --created 2026-10-01` against the right repo. Then I'd check whether the latest run and any post-deploy health checks passed. If anything failed, I'd pull the failing job's logs and tell you which step broke and why. Can you point me to the repo or deploy tool?"
+  },
+  {
+   "qid": "Q145",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "O04",
+   "category": "off-topic",
+   "load1m": 101.7,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I'd draft a brief, warm note to Dana explaining that the demo is moving to Thursday because of the holiday, then share it here for you to review rather than sending it anywhere. It might read: \"Hi Dana, quick heads-up that we're pushing the demo to Thursday because of the holiday. Hope that still works for you, and let me know if another time is better. Enjoy the long weekend!\" Before finalizing, I'd confirm the exact date, the time, and how you'd like to sign off."
+  },
+  {
+   "qid": "Q146",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "O05",
+   "category": "off-topic",
+   "load1m": 99.1,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "Think of an API like a waiter at a restaurant: you (one app) don't go into the kitchen (another company's system) yourself; you tell the waiter what you want from the menu, and the waiter brings it back. The \"menu\" is the list of things you're allowed to ask for, like \"give me today's weather\" or \"charge this credit card,\" and the waiter makes sure you only get what's on it. That's why apps can work together without sharing their secret inner workings: a travel app asks the airline's API for flight times instead of building its own airline. For your investor, a crisp version is: \"An API is a defined way for one piece of software to request data or actions from another, so we can plug into existing services (or let others plug into ours) instead of building everything from scratch.\" If it's relevant, add one concrete line about which APIs your product uses or offers, because that's usually what they were really asking about."
+  },
+  {
+   "qid": "Q147",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "O06",
+   "category": "off-topic",
+   "load1m": 92.7,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "On macOS, I'd create a launchd agent at `~/Library/LaunchAgents/com.user.pr-review-reminder.plist` with `StartCalendarInterval` set to Weekday 5, Hour 16, Minute 0. Unlike cron, launchd also fires missed runs after the Mac wakes from sleep. The agent would run a small script that shows a macOS notification via `osascript`. If you have the GitHub CLI installed, the script could also include a count of open PRs from `gh pr list` or `gh search prs --review-requested=@me --state=open`. Before I install and load it with `launchctl`, tell me which repos to include (or just a plain reminder) and whether 4pm in your local timezone is right."
+  },
+  {
+   "qid": "Q148",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "O07",
+   "category": "off-topic",
+   "load1m": 86.4,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "The current directory isn't a git repository, so I'd first confirm which repo you mean (or `cd` into it). There I'd run `git branch -m feature/old-thing feature/onboarding` to rename it locally. If the branch was pushed, I'd check with you before touching the remote, then run `git push origin -u feature/onboarding` followed by `git push origin --delete feature/old-thing`. Deleting the old remote branch could affect collaborators or open PRs that point to it, so that step needs your go-ahead."
+  },
+  {
+   "qid": "Q149",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "O08",
+   "category": "off-topic",
+   "load1m": 80.4,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I'd run `cloc .` in the working directory, since it counts lines per language and separates code from comments and blanks. If `cloc` isn't installed, I'd fall back to `find . -type f \\( -name '*.py' -o -name '*.ts' -o -name '*.js' \\) -not -path '*/node_modules/*' | xargs wc -l | tail -1`, adjusting the extensions to whatever languages the repo uses. Since this directory isn't a git repository, I can't use `git ls-files`, so I'd explicitly exclude vendored and build folders like `node_modules`, `dist`, and `.venv` so they don't inflate the count. I'd then report a rough total with a short per-language breakdown."
+  },
+  {
+   "qid": "Q150",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "O09",
+   "category": "off-topic",
+   "load1m": 75.3,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "You're welcome, glad it worked out! Thanks for the good session today, and feel free to come back anytime you want to pick things up again."
+  },
+  {
+   "qid": "Q151",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "O10",
+   "category": "off-topic",
+   "load1m": 46.2,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I'd first look in the working directory for a CHANGELOG, RELEASES, or similar notes file, since it isn't a git repository and there are no tags or commit history to diff. If I find one, I'd pull the entry for the most recent version and condense it into three newsletter-friendly bullets focused on user-facing changes. If nothing turns up locally, I'd ask you to point me to the release notes, a GitHub releases page, or the project in question."
+  },
+  {
+   "qid": "Q152",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "N01",
+   "category": "no-fit",
+   "load1m": 49.3,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "@ruvnet/rulake-console",
+    "Console",
+    "@ruv/sparc-ui",
+    "kimi-k2-wasm-testing-suite",
+    "homecore-ui",
+    "HOMECORE-UI"
+   ],
+   "said": null,
+   "answer": "I'd start by reading the dashboard and chart components for the usual leak culprits: chart instances that are never `.destroy()`ed on unmount or re-render, `setInterval`/WebSocket/resize listeners without cleanup in `useEffect`, and data arrays that grow forever with every poll instead of being windowed. To confirm rather than guess, I'd have you take Chrome DevTools heap snapshots a few minutes apart and compare them, looking for growing counts of detached DOM nodes, canvas/SVG elements, or chart objects. If it's polling-driven, I'd also check whether each refresh remounts charts because of unstable `key` props or new option objects, which can leave the old instances alive. Once the retained objects point to a specific component, I'd fix its cleanup or cap its data buffer. Then I'd re-verify with the same snapshot comparison over a long-running session."
+  },
+  {
+   "qid": "Q153",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "N02",
+   "category": "no-fit",
+   "load1m": 51.2,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "@claude-flow/deployment",
+    "@claude-flow/memory",
+    "@aqe/qe-browser-scripts",
+    "ruvector-staged-workspace"
+   ],
+   "said": null,
+   "answer": "I'd start by finding where the logo is served and where cache headers are set (CDN config such as CloudFront/Cloudflare/Vercel/Netlify, or the origin server or framework config), then run `curl -I` on the logo URL to see the actual `Cache-Control`, `ETag`, and `Age` headers. If the logo has a stable filename like `/logo.png` with a long `max-age` or `immutable`, the durable fix is to fingerprint it (e.g. `logo.3f2a1c.png` through the build pipeline) so long caching stays safe, or, if that isn't possible, to give it a short `max-age` with revalidation. HTML should get `Cache-Control: no-cache` so new deploys always pick up the new asset references. Purging the CDN cache for the logo path would clear the stale copy right away, but that's an outward-facing action, so I'd confirm with you before running it. Since this directory isn't a git repo, can you point me to the project or the CDN config so I can look at the actual setup?"
+  },
+  {
+   "qid": "Q154",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "N03",
+   "category": "no-fit",
+   "load1m": 51.9,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I'd first find the FAQ accordion component to see how the 15 questions are rendered (static HTML, or mapped from an array in a framework like React or Vue). Then I'd add a plain text input right above it, matching the existing form styling and with a label or `aria-label` for accessibility. On each keystroke, a case-insensitive match against each item's question and answer text would toggle a `hidden` attribute or class, or filter the array before rendering if it's data-driven. With only 15 items there's no need for debouncing or a search library. I'd also add a small \"No matching questions\" message for when nothing matches, and keep the accordion's open/close behavior unchanged."
+  },
+  {
+   "qid": "Q155",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "N04",
+   "category": "no-fit",
+   "load1m": 50.8,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain"
+   ],
+   "said": null,
+   "answer": "This is the classic SPA history-fallback problem: client-side navigation works because the router handles `/pricing` in the browser, but on refresh the server looks for a real `/pricing` file, finds none, and returns 404. I'd first identify how the site is built and hosted (Vite/CRA/Next export, and Netlify/Vercel/nginx/S3/etc.) by checking the build config and any existing deploy files. The fix is to make the server rewrite unknown paths to `index.html`: a `_redirects` line (`/* /index.html 200`) on Netlify, a `rewrites` entry in `vercel.json`, `try_files $uri /index.html;` in nginx, or the error-document setting on S3/CloudFront. If it's a static-export framework, I'd instead check whether `/pricing` is being prerendered (e.g., `trailingSlash` or missing route in the export). Then I'd verify by building, serving locally with the same config, and hard-refreshing `/pricing` and another deep route."
+  },
+  {
+   "qid": "Q156",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "N05",
+   "category": "no-fit",
+   "load1m": 49.1,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I'd start by locating the booking form component and the data model for travel agents (likely a `TravelAgent`/`Partner` table) to see whether bookings already have a field for the commissioned agent, adding a nullable `commission_agent_id` foreign key via migration if not. Next, I'd expose an endpoint (or reuse an existing one) that returns active agents the current user is allowed to assign, so the dropdown isn't populated with every partner in the system. On the form, I'd add a select bound to that field, defaulting to the logged-in agent when the user is an agent, and match the existing form's validation and styling patterns. Server-side, I'd validate that the submitted agent ID exists, is active, and is permitted for that booking, so the commission can't be redirected by tampering with the request. Finally, I'd add tests covering a valid assignment, an invalid or unauthorized agent ID, and the default selection, then confirm with you whether existing bookings need backfilling."
+  },
+  {
+   "qid": "Q157",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "N06",
+   "category": "no-fit",
+   "load1m": 48.7,
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "homecore-migrate",
+    "@claude-flow/migration",
+    "rvm-wasm",
+    "rvm-witness"
+   ],
+   "said": null,
+   "answer": "I'd first locate the `Customer` model and identify the framework (Django, Rails, SQLAlchemy/Alembic, Prisma, etc.) so the change matches the existing ORM and migration conventions. I'd add a nullable `phone_number` string field (around 32 chars, which fits E.164 with extensions) and mirror how neighboring optional fields are declared, such as `null=True, blank=True` in Django or `nullable=True` in SQLAlchemy. Then I'd generate the migration with the project's own tool (`makemigrations`, `rails g migration`, `alembic revision --autogenerate`, `prisma migrate dev`) rather than writing it by hand, and check that it only adds the column and has a working reverse/down step. Because the column is nullable with no default, existing rows don't need a backfill. Finally, I'd run the migration against the dev/test database and the existing test suite, and update any serializers, forms, or factories that list `Customer` fields explicitly."
+  },
+  {
+   "qid": "Q158",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "N07",
+   "category": "no-fit",
+   "load1m": 46.5,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I'd start by finding where the homepage references the logo and checking what's actually being served: often a \"vector\" logo ends up as a PNG export, or an SVG that just wraps an embedded raster image, which blurs on 2x/3x displays. If the source file is a true vector SVG, I'd reference it directly (via `<img src=\"logo.svg\">` or inline SVG) with explicit width/height and no CSS scaling that forces a raster path. If only a raster is available, I'd add `srcset` with 2x/3x versions as a fallback and ask you for the designer's original SVG/AI file. I'd also check for culprits like `transform: scale`, fractional pixel sizing, or a build step (image optimizer, CDN) converting the SVG to PNG. Then I'd verify at 2x device pixel ratio in the browser and report what I changed."
+  },
+  {
+   "qid": "Q159",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "N08",
+   "category": "no-fit",
+   "load1m": 58.3,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I'd start by finding where reset tokens are generated, stored, and validated, then add an `expires_at` timestamp (now + 30 minutes) and a `used_at` column to the token record via a migration. On validation, I'd reject any token that is expired or already used. On a successful reset, I'd mark the token used in the same transaction as the password update, using an atomic conditional update (`WHERE used_at IS NULL AND expires_at > now()`) so two concurrent requests can't both consume it. I'd also invalidate any other outstanding reset tokens for that user, and store only a hash of the token if they're currently kept in plaintext. Finally, I'd add tests for the expired, reused, and valid cases, and note that existing tokens with no expiry should be invalidated during the migration."
+  },
+  {
+   "qid": "Q160",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "N09",
+   "category": "no-fit",
+   "load1m": 68.8,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I'd start by inspecting the codebase to identify the framework, auth/user model, and any existing billing code, then create two Prices (monthly and yearly) on a single Stripe Product, using test-mode keys loaded from environment variables. For signup, I'd use Stripe Checkout in `subscription` mode with `subscription_data.trial_period_days: 14`, letting the user choose the monthly or yearly price, and link the resulting Stripe customer ID to your user record. A webhook endpoint (signature-verified) would handle `checkout.session.completed`, `customer.subscription.updated/deleted`, `customer.subscription.trial_will_end`, and `invoice.payment_failed` to keep a local subscription status field in sync, which your app then uses to gate paid features. I'd add the Stripe Customer Portal so users can switch plans, update cards, or cancel without custom UI. One thing to confirm first: should the trial require a card upfront (higher conversion to paid) or not (more signups, with `payment_method_collection: 'if_required'`)?"
+  },
+  {
+   "qid": "Q161",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "N10",
+   "category": "no-fit",
+   "load1m": 65.7,
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I'd first locate the existing settings screen and how styling is done (CSS variables, Tailwind, a theme provider, etc.) so the toggle matches the current patterns. Then I'd add a theme state (light/dark, defaulting to the OS `prefers-color-scheme`) exposed through a small hook or context, and wire a toggle control into the settings page. The choice would persist to `localStorage` (or the app's existing preferences store if there is one) and be applied as a `data-theme`/`class` on the root element. To avoid a flash of the wrong theme on load, I'd read the saved value in an inline script before first paint. Finally, I'd define dark-mode color tokens and verify the toggle survives a reload."
+  }
+ ]
+}

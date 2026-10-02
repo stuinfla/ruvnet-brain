@@ -68,12 +68,26 @@ describe('ProjectProgression crash outbox', () => {
     expect(outbox.pendingSnapshots()).toEqual([snapshot()]);
   });
 
-  it('fails closed when one event key carries divergent snapshot digests', () => {
+  it('fails closed on a key carrying divergent digests: that key is quarantined and never replayed', () => {
     const outbox = new ProgressionOutbox({ projectRoot: temporaryRoot() });
     outbox.appendSnapshot(snapshot());
     outbox.appendSnapshot(snapshot({ payloadDigest: 'b'.repeat(64) }));
 
-    expect(() => outbox.pendingSnapshots()).toThrow(/event key collision/i);
+    expect(outbox.pendingSnapshots()).toEqual([]);
+    expect(outbox.quarantinedKeys()).toEqual([{ eventKey: snapshot().eventKey, reason: 'outbox event key collision' }]);
+  });
+
+  // RED on the pre-4.5 outbox (it threw for the whole file): the real repo's outbox carried one
+  // 2026-09-18 collision and four unrelated snapshots that were never replayed because of it.
+  it('one quarantined collision does not block an unrelated pending snapshot', () => {
+    const outbox = new ProgressionOutbox({ projectRoot: temporaryRoot() });
+    outbox.appendSnapshot(snapshot());
+    outbox.appendSnapshot(snapshot({ payloadDigest: 'b'.repeat(64) }));
+    const unrelated = snapshot({ eventKey: 'project-progress-v1-unrelated', payloadDigest: 'c'.repeat(64) });
+    outbox.appendSnapshot(unrelated);
+
+    expect(outbox.pendingSnapshots()).toEqual([unrelated]);
+    expect(outbox.quarantinedKeys().map((row) => row.eventKey)).toEqual([snapshot().eventKey]);
   });
 
   it('ignores only a crash-truncated final line while retaining complete snapshots', () => {

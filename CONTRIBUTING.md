@@ -1,6 +1,6 @@
 # Contributing to RuvNet Brain — the one rulebook
 
-Updated: 2026-09-30
+Updated: 2026-10-01
 Created: 2026-07-07
 
 This file is the **only** place that says how to version, release, update the knowledge corpus,
@@ -84,6 +84,24 @@ that only an already-preflighted head of `main` can be published, and `main` mov
 required checks that admins cannot bypass. Strengthening a gate is a code change to the workflow, never a person
 in the loop.
 
+The same holds for the two recovery rails. `recover-public-verification.yml` and `abandon-public-verification.yml`
+are started by `repository_dispatch`, which any token with write access can send, and both bind
+`Production – ruvnet-brain` (the environment holding `RUVNET_SIGNING_KEY` and `NPM_TOKEN`) with no human pause.
+Recover re-runs public verification on an already-published release and, if all three OS lanes pass, signs its
+`install-verified` aggregate — the receipt that arms the corpus nightly. Abandon records a published release as
+not verified. Neither can publish new bytes: both act only on a release `protected-release.yml` already sealed
+and published from a preflighted head of `main`.
+
+**Search deadlines in host verification.** The retrieval canaries each lane runs take a per-OS first-pass
+bound, `canarySearchDeadlineMs()` in `scripts/host-install-matrix.mjs`: the worst measured first-pass query on
+that OS's GitHub runner (`CANARY_WORST_FIRST_PASS_MS`, with its run IDs beside it) times 1.5, never below
+`RELEASE_SEARCH_DEADLINE_MS`. Today only macOS rises above the floor. Changing a bound means changing that
+evidence. This bounds a small CI runner's cold search so the gate fails on a broken search, not on a slow VM; it
+is **not** a product latency target. How long a customer's first answer takes on a small Mac is a separate,
+open 4.5 improvement, measured on its own and never loosened through this constant. Lanes keep one warm search
+worker; a case that times out fails alone and the next case gets a fresh, re-warmed worker
+(`createRestartingMcpSession`), and the three installed doctors run one at a time (`runHostDoctors`).
+
 ## The knowledge corpus
 
 **Built in CI only.** `corpus-seed.yml` observes every public rUv repository (exclusions are
@@ -166,6 +184,27 @@ while an update is proven within 36h (a successful refresh receipt or a CURRENT 
 that, the SessionStart self-heal runs the Brain's own update anyway, so no machine exceeds 48h. `--host-sync-only` repairs host wiring and **never** updates
 knowledge — do not use it as an update command.
 
+**What makes a newly published corpus reach every install (ADR-098 §5).** Not age: identity. With no
+scheduler, at most once per 60 min per machine, SessionStart — and, inside a session left open for days,
+the MCP server's 15-min timer — launches the one detached updater worker in check mode
+(`host-update.mjs --knowledge … --if-newer`): the installed `kb/forge-update.mjs --check` reads
+`releases/latest` and only `UPDATE_AVAILABLE`/`UNKNOWN` runs `npx ruvnet-brain@latest --update`; `CURRENT`
+stops and `REFUSED` (published corpus older) never downgrades. The worker respawns on the new knowledge at
+the next search. Exact limits: nothing runs on a machine with no open session; a running session gains the
+timer only after its next restart (`server.mjs` is boot-frozen); `RUVNET_AUTO_UPDATE=off`, a recorded "no", or
+agentic-kit ownership proven within 36h turn it off. Proof: `tests/integration/corpus-auto-update-e2e.test.mjs`.
+
+**Putting the Brain on another disk.** `npx ruvnet-brain --move-brain <dir>` (for example
+`/Volumes/SanDisk/ruvnet-brain`) checks the target has room, copies the whole Brain there, proves the copy
+byte-identical, and leaves `~/.cache/ruvnet-brain` as a symlink to it; `--move-brain --back` brings it home, and
+moving again to a new directory works the same way. That symlink is the one supported layout: every reader, hook,
+the MCP server and the nightly keep using the default path, so nothing else is configured (an environment
+variable would not reach GUI-launched hosts or launchd). If that disk is unplugged, install, `--update`,
+`--doctor`, SessionStart and `search_ruvnet` each say in one line that the Brain's disk is not mounted, and
+nothing re-creates a brain in `~/.cache` over the link. The knowledge root is always
+`realpath(~/.cache/ruvnet-brain/kb)`. Every install and update also measures free space first and refuses,
+naming the exact shortfall, rather than running out half-way.
+
 **Provenance (one ledger, one projection).** `kb/RVF-GENERATIONS.json` is the one per-store
 provenance record; `kb/SOURCE.json` is generated as a projection of it, never written
 independently. Before this, two incompatible "schemaVersion 2" ledger shapes existed side by
@@ -183,6 +222,48 @@ SOURCE.json writers (`kb/forge-build.mjs`, `kb/forge-refresh.mjs`, `scripts/corp
 literals. `tests/unit/one-source-projection.test.mjs` enforces this by census (grep) and by an
 exact ledger-to-SOURCE.json equality proof. The old one-shot migration
 `scripts/stamp-existing-rvf-generations.mjs` went dead as a result and was deleted.
+
+## Footprint guarantees (what a user's machine holds — ADR-098)
+
+**One knowledge base, current, in use, nothing building up.** `plugin/scripts/brain-footprint.mjs` is the
+one classifier of everything the Brain owns: the brain home (`RUVNET_BRAIN_HOME`, symlinks resolved), KB
+siblings (`kb.bak-*`, `kb.install-preserved-*`, `kb.install-prior-*`, `kb.pre-update-*`, `kb.next-/rollback-/
+failed-*`, `*-quarantine-*`), the Claude (`CLAUDE_CONFIG_DIR`) and Codex (`CODEX_HOME`) plugin caches, npm
+`_npx` copies of `ruvnet-brain`, ruflo scratch, logs and lifecycle receipts. Each is **must-exist**,
+**may-exist (bounded)**, **must-not-exist**, or **unowned** (reported, never removed). Add a new on-disk
+artifact only together with its classification there, or `--doctor` will report it as cruft.
+
+- **Removal is proof-gated.** A KB copy is deleted only when `plugin/scripts/kb-copy-proof.mjs` shows nothing
+  in it is unique: every private-store file (fence of live AND copy, plus `updateManaged:false`) byte-identical
+  in live; every other file a public release file or installer-written. Anything else keeps the copy and is
+  named. Links are never followed; trees of an in-progress storage transaction, a foreign refresh lock, an
+  install that is activating (`.kb.install-activation.lock` with a live pid), and live leases are kept; plugin generations go only through `prunePluginGenerations` (lease-aware).
+- **Enforced automatically**: after install/forced reinstall (the installer releases its own preserved
+  generation once the new one validates), before and after every `--update` (incl. the SessionStart
+  knowledge self-heal), and by a detached SessionStart sweep at most every 6h when the name-only scan
+  finds cruft. By hand: `npx ruvnet-brain --clean`.
+- **Bounds**: ledgers in `LOG_FILES` rotate to `<name>.1` past 2 MiB; `.last-*.log` files are truncated to
+  their tail past 512 KiB; one npx installer copy, never older than the current version; lifecycle receipts
+  by lifecycle-evidence-v1 (16 MiB). Budget = live KB + models + 512 MiB.
+- **Positive confirmation** after every install/update and in `npx ruvnet-brain --doctor`: Software = npm
+  latest, Hosts = runtime, Knowledge = exactly one copy, built < 48h, signature verified (bound to the live
+  COVERAGE.json), corpus tag; In use = the search worker opened that copy, last answer; Footprint vs budget;
+  No cruft. `--doctor` text, `--doctor --json` (the same doctor; JSON on stdout) and the exit code are ONE
+  verdict (`doctorVerdict` in `plugin/scripts/brain-confirmation.mjs`): exit 0 iff no ✗ line, counting the
+  doctor's own checks too. Structural problems are ✗ (a second KB copy, a signature record that is unreadable
+  or does not match the live COVERAGE.json, a worker on another copy, footprint, cruft, install, identity,
+  grounding, Codex, nightly, host sync, ruflo); currency is `!` and advisory (Software behind npm latest, a
+  host plugin ≠ runtime, Knowledge built ≥ 48h), so a correctly installed older build still passes install
+  verification. A MISSING signature record is provenance unknown, not provably broken (an install from a
+  local sealed artifact, as the release's install verification does, and older installs never wrote one): it
+  is `!` and advisory too (4.5.1). Every ✗ and ! names one command; a missing signature record is written by a
+  verified install or update, and `--update` restores it from this machine's receipt of a verified apply of
+  the same bytes. SessionStart prints one `[RuvNet Brain — FOOTPRINT …]` line only
+  when the footprint is wrong.
+- **Proof it holds**: `tests/integration/footprint-three-updates.test.mjs` (real install, forced reinstall,
+  three updates, planted cruft, all lines green, and the same run with the sweep cut out goes red);
+  `tests/unit/brain-footprint.test.mjs` (classification, safety, BREAK-IT mutants). The corpus canary's
+  three-update footprint check is opt-in: `scripts/corpus-canary.mjs --footprint-updates`.
 
 ## Hooks (what runs automatically)
 
@@ -213,7 +294,23 @@ turn's outcome at Stop (final assistant text, files changed, command description
 text) to AgentDB namespace `turns` — the project's `.swarm/memory.db` if it exists, otherwise
 `~/.claude/global-memory/.swarm/memory.db`; `.swarm` is never created in a repository — and at
 SessionEnd/PreCompact runs `ruflo memory distill run` on that db so the records become patterns.
-Writes run in a detached worker; `RUVNET_TURN_CAPTURE=off` disables it. `npm run hooks:check` and
+Writes run in a detached worker; `RUVNET_TURN_CAPTURE=off` disables it. Where the owner's user-level
+`~/.claude/hooks/agentdb-turn-capture.mjs` is registered in `~/.claude/settings.json`, the product defers
+Claude turn records to it (one writer per turn; `RUVNET_TURN_CAPTURE=force` keeps both). The same
+boundaries also record MATERIAL EVENTS (ADR-100, `continuity-events.mjs` / `continuity-journal.mjs`):
+commits and tags from git, test/check/release gate outcomes, agent findings, decisions and lessons
+(explicit, or detected and marked non-authoritative), each fsynced to `.swarm/continuity-events-outbox.jsonl`
+before a detached drainer stores it (`ruflo memory store --no-upsert --path`, namespace `continuity-events`)
+and reads it back by exact key; a refused write (WAL contention) stays pending and is retried at every
+boundary, and a stuck one is shown (`AgentDB: recording stuck …`, an advisory `!`) at Stop (Claude, once per
+session per condition), at SessionStart and in `--doctor`. No initialized store or no ruflo reads `recording n/a`,
+and launches no drainer; a quarantined key or corrupt line is reported for 7 days or until
+`continuity-brief.mjs --clear`; failures are one record per event and the outbox is compacted (committed
+events leave after 7 days, hard cap 2000 events). SessionStart prints a bounded `[RuvNet Brain — COME UP TO SPEED …]` brief before the progression
+restore; everything it quotes from the repository (commit subjects, `.swarm` rows) sits inside a fenced
+`PROJECT RECORD` marked as untrusted data, and only lessons recorded with `--record` on this machine (an
+ownership ledger outside the repo) are shown as standing rules; `/ruvnet-brain:rnb-brief` (`continuity-brief.mjs --full | --record`) pulls history or records
+explicitly. `RUVNET_CONTINUITY_CAPTURE=off` disables event capture. `npm run hooks:check` and
 `npm run wired:check` fail on any hook or module that is registered-but-missing or present-but-unwired.
 
 ## Tests

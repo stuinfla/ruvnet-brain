@@ -33,8 +33,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import readline from 'node:readline';
+import { fileURLToPath } from 'node:url';
 import { writeOwn as writeOwnReadiness } from '../scripts/mcp-readiness.mjs';
 import { callManagedCli, MANAGED_CLI_TOOLS } from './managed-cli-interface.mjs';
+import { unmountedNotice } from '../scripts/brain-location.mjs';
 
 const BRAIN_HOME = process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain');
 const KB = process.env.RUVNET_BRAIN_KB || path.join(BRAIN_HOME, 'kb');
@@ -132,7 +134,11 @@ function currentGeneration() {
   const a = readJSON(ACTIVE);
   let brainMtime = 0;
   try { brainMtime = fs.statSync(CHILD_MCP).mtimeMs; } catch { /* brain absent */ }
-  return `${a?.generation ?? 0}:${brainMtime}`;
+  // The KB's own identity record: every knowledge update (corpus-only included) rewrites SOURCE.json, so a
+  // swapped knowledge base respawns the worker even when its code file is byte- and mtime-identical.
+  let knowledgeMtime = 0;
+  try { knowledgeMtime = fs.statSync(path.join(KB, 'SOURCE.json')).mtimeMs; } catch { /* brain absent */ }
+  return `${a?.generation ?? 0}:${brainMtime}:${knowledgeMtime}`;
 }
 function refreshLease() {
   try {
@@ -272,10 +278,14 @@ async function ensureChild() {
         recordStartupFailure({ phase, startedAt, generation: c.generation, error: e });
         throw new Error(`brain worker failed to initialize: ${e.message}`);
       }
+      // kbDir: WHICH knowledge base this worker opened (ADR-0098 positive confirmation "In use") — the
+      // physical path, so a worker still serving a replaced or second copy is visible, not assumed.
+      let openedKb = KB;
+      try { openedKb = fs.realpathSync(KB); } catch { /* reported as spelled */ }
       writeReadiness({
         state: 'ready', phase, generation: c.generation,
         workerPid: c.proc.pid, elapsedMs: Date.now() - startedAt,
-        retryable: false, retryState: 'none',
+        retryable: false, retryState: 'none', kbDir: openedKb,
       });
       armChildIdleTimer(c);
       return c;
@@ -366,7 +376,10 @@ async function handleClient(msg) {
         });
       }
       if (!c) {
-        return clientOk(id, { content: [{ type: 'text', text: `search_ruvnet error: the brain bundle is unavailable at ${KB}. Diagnose the active installation and KB path before choosing a repair.` }], isError: true });
+        // Moved to a disk that is not plugged in: one plain line, never 'diagnose the installation'.
+        const unmounted = unmountedNotice({ brainHome: BRAIN_HOME });
+        return clientOk(id, { content: [{ type: 'text', text: unmounted ? `search_ruvnet error: ${unmounted}`
+          : `search_ruvnet error: the brain bundle is unavailable at ${KB}. Diagnose the active installation and KB path before choosing a repair.` }], isError: true });
       }
       pendingCount++;
       try {
@@ -384,6 +397,27 @@ async function handleClient(msg) {
       return clientErr(id, -32601, `unknown method: ${method}`);
   }
 }
+
+// KNOWLEDGE CURRENCY TIMER (2026-10-02). A session can stay open for days and SessionStart never fires
+// again, so this process — alive for the whole session on Claude Code and Codex alike — runs the SAME
+// throttled newer-published check SessionStart runs (session-start-update-plane.mjs knowledgeAutoUpdate:
+// per-machine throttle, shared O_EXCL lock, one detached updater). Unref'd (never keeps this process
+// alive), skipped while a query is in flight or the worker is starting, skipped when the brain is off.
+// The new knowledge reaches the worker through currentGeneration() above: the next call after the swap
+// respawns it between requests. announce:false — the once-per-session UPDATED line is SessionStart's.
+const CORPUS_CHECK_INTERVAL_MS = Number(process.env.RUVNET_CORPUS_CHECK_INTERVAL_MS) || 15 * 60_000;
+const SCRIPTS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'scripts');
+const corpusTimer = setInterval(() => {
+  if (pendingCount > 0 || childStartup) return;
+  Promise.all([import('../scripts/session-start-update-plane.mjs'), import('../scripts/session-start-health.mjs')])
+    .then(([plane, health]) => {
+      const home = os.homedir();
+      if (health.brainState(process.env, home).off) return;
+      plane.knowledgeAutoUpdate({ env: process.env, home, now: Date.now(), hookDir: SCRIPTS_DIR, announce: false });
+    })
+    .catch((e) => console.error(`[ruvnet-brain] knowledge currency check skipped: ${e.message}`));
+}, CORPUS_CHECK_INTERVAL_MS);
+corpusTimer.unref();
 
 const clientRl = readline.createInterface({ input: process.stdin });
 clientRl.on('line', (line) => {

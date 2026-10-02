@@ -1,0 +1,2787 @@
+[
+ {
+  "qid": "Q001",
+  "set": "recommendation-eval.v1.json",
+  "id": "D01",
+  "category": "design",
+  "accept": [
+   "@ruvector/typesafe"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "homecore-assist",
+   "@claude-flow/providers",
+   "@ruvector/typesafe",
+   "homecore-migrate"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5373
+ },
+ {
+  "qid": "Q002",
+  "set": "recommendation-eval.v1.json",
+  "id": "D02",
+  "category": "design",
+  "accept": [
+   "@ruvector/typesafe"
+  ],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q003",
+  "set": "recommendation-eval.v1.json",
+  "id": "D03",
+  "category": "design",
+  "accept": [
+   "@ruvector/typesafe"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@ruvector/typesafe",
+   "ruvix-sched",
+   "@cognitum/gate",
+   "homecore-automation"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5151
+ },
+ {
+  "qid": "Q004",
+  "set": "recommendation-eval.v1.json",
+  "id": "D04",
+  "category": "design",
+  "accept": [
+   "@ruvector/router"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "homecore-assist",
+   "ruvbot",
+   "@ruflo/research",
+   "mcp-bridge"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5815
+ },
+ {
+  "qid": "Q005",
+  "set": "recommendation-eval.v1.json",
+  "id": "D05",
+  "category": "design",
+  "accept": [
+   "@ruvector/router"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@ruvector/router",
+   "@ruvnet/rvagent",
+   "ruvector-namespace-merge",
+   "homecore-assist"
+  ],
+  "status": 0,
+  "topSimilarity": 0.7031
+ },
+ {
+  "qid": "Q006",
+  "set": "recommendation-eval.v1.json",
+  "id": "D06",
+  "category": "design",
+  "accept": [
+   "@ruvector/tiny-dancer",
+   "agentic-flow"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@ruvector/tiny-dancer",
+   "@ruvector/router",
+   "reasoningbank-network",
+   "@ruvnet/rvagent"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6069
+ },
+ {
+  "qid": "Q007",
+  "set": "recommendation-eval.v1.json",
+  "id": "D07",
+  "category": "design",
+  "accept": [
+   "ruvector-hybrid"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "ruvector-namespace-merge",
+   "ruvector-recall-bounded",
+   "ruvector-bounded-rag",
+   "ruvector-pq-search"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6303
+ },
+ {
+  "qid": "Q008",
+  "set": "recommendation-eval.v1.json",
+  "id": "D08",
+  "category": "design",
+  "accept": [
+   "ruvector-hybrid"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "ruvector-hybrid",
+   "ruvector-namespace-merge",
+   "ruvector-lsm-ann",
+   "ruvector-diverse-beam"
+  ],
+  "status": 0,
+  "topSimilarity": 0.7062
+ },
+ {
+  "qid": "Q009",
+  "set": "recommendation-eval.v1.json",
+  "id": "D09",
+  "category": "design",
+  "accept": [
+   "ruvector-maxsim"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "ruvector-maxsim",
+   "ruvector-recall-bounded",
+   "ruvector-cluster-rag",
+   "ruvector-matryoshka"
+  ],
+  "status": 0,
+  "topSimilarity": 0.7998
+ },
+ {
+  "qid": "Q010",
+  "set": "recommendation-eval.v1.json",
+  "id": "D10",
+  "category": "design",
+  "accept": [
+   "ruvector-gnn-rerank",
+   "@ruvector/gnn"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "ruvector-gnn-rerank",
+   "ruvector-adaptive-ann",
+   "@ruvector/gnn",
+   "@ruvector/kge"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6744
+ },
+ {
+  "qid": "Q011",
+  "set": "recommendation-eval.v1.json",
+  "id": "D11",
+  "category": "design",
+  "accept": [
+   "ruvector-query-cache",
+   "rulake"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "ruvector-query-cache",
+   "@ruvector/router",
+   "rulake",
+   "ruvector-agent-memory"
+  ],
+  "status": 0,
+  "topSimilarity": 0.7477
+ },
+ {
+  "qid": "Q012",
+  "set": "recommendation-eval.v1.json",
+  "id": "D12",
+  "category": "design",
+  "accept": [
+   "@claude-flow/aidefence",
+   "aidefence-core"
+  ],
+  "acceptStores": [],
+  "lane": "catalogue",
+  "offered": [
+   "aidefence"
+  ],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q013",
+  "set": "recommendation-eval.v1.json",
+  "id": "D13",
+  "category": "design",
+  "accept": [
+   "agentdb",
+   "@agentic-flow/ephemeral-memory",
+   "@claude-flow/memory"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@agentic-flow/ephemeral-memory",
+   "ruvector-agent-memory",
+   "ruvector-temporal-coherence",
+   "agentdb"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6785
+ },
+ {
+  "qid": "Q014",
+  "set": "recommendation-eval.v1.json",
+  "id": "D14",
+  "category": "design",
+  "accept": [
+   "ruvector",
+   "@ruvector/rvf",
+   "@ruvector/core",
+   "@ruvector/node",
+   "agentdb"
+  ],
+  "acceptStores": [],
+  "lane": "catalogue",
+  "offered": [
+   "ruvector"
+  ],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q015",
+  "set": "recommendation-eval.v1.json",
+  "id": "D15",
+  "category": "design",
+  "accept": [
+   "@ruvector/wasm",
+   "@ruvector/wasm-unified",
+   "@ruvector/rvf"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@ruvector/wasm",
+   "@ruvector/node",
+   "ruvector-capgated",
+   "ruvector-query-cache"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6336
+ },
+ {
+  "qid": "Q016",
+  "set": "recommendation-eval.v1.json",
+  "id": "D16",
+  "category": "design",
+  "accept": [
+   "@ruvector/postgres-cli"
+  ],
+  "acceptStores": [],
+  "lane": "catalogue",
+  "offered": [
+   "ruvector"
+  ],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q017",
+  "set": "recommendation-eval.v1.json",
+  "id": "D17",
+  "category": "design",
+  "accept": [
+   "@ruvector/diskann"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@ruvector/diskann",
+   "rvf-index",
+   "ruvector-pq-search",
+   "ruvector-hyperbolic-hnsw"
+  ],
+  "status": 0,
+  "topSimilarity": 0.7127
+ },
+ {
+  "qid": "Q018",
+  "set": "recommendation-eval.v1.json",
+  "id": "D18",
+  "category": "design",
+  "accept": [
+   "@ruvector/graph-node"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@ruvector/graph-data-generator",
+   "@ruvector/graph-node",
+   "@ruvector/kge",
+   "@ruvector/graph-transformer"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6715
+ },
+ {
+  "qid": "Q019",
+  "set": "recommendation-eval.v1.json",
+  "id": "D19",
+  "category": "design",
+  "accept": [
+   "@ruvector/kge"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@ruvector/kge",
+   "@ruvector/graph-data-generator",
+   "ruv-neural-embed",
+   "ruvector-graph-condense"
+  ],
+  "status": 0,
+  "topSimilarity": 0.7958
+ },
+ {
+  "qid": "Q020",
+  "set": "recommendation-eval.v1.json",
+  "id": "D20",
+  "category": "design",
+  "accept": [
+   "agenticow"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "agenticow",
+   "ruvector-agent-memory",
+   "@claude-flow/guidance",
+   "@agentic-flow/ephemeral-memory"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6216
+ },
+ {
+  "qid": "Q021",
+  "set": "recommendation-eval.v1.json",
+  "id": "D21",
+  "category": "design",
+  "accept": [
+   "@ruvector/agentic-synth"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@ruvector/agentic-synth",
+   "@ruvector/graph-data-generator",
+   "ruv-swarm-ml-training",
+   "midstreamer"
+  ],
+  "status": 0,
+  "topSimilarity": 0.725
+ },
+ {
+  "qid": "Q022",
+  "set": "recommendation-eval.v1.json",
+  "id": "D22",
+  "category": "design",
+  "accept": [
+   "@ruvector/rudag"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@ruvector/rudag",
+   "ruvix-sched",
+   "rvm-sched",
+   "@claude-flow/claims"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6035
+ },
+ {
+  "qid": "Q023",
+  "set": "recommendation-eval.v1.json",
+  "id": "D23",
+  "category": "design",
+  "accept": [
+   "@ruvector/scipix"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@ruvector/scipix",
+   "ruvector-hyperbolic-hnsw",
+   "@ruvector/cnn",
+   "@qudag/ruvector-index"
+  ],
+  "status": 0,
+  "topSimilarity": 0.7747
+ },
+ {
+  "qid": "Q024",
+  "set": "recommendation-eval.v1.json",
+  "id": "D24",
+  "category": "design",
+  "accept": [
+   "@ruvector/solver",
+   "sublinear-time-solver"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@ruvector/solver",
+   "sublinear-time-solver",
+   "ruvllm_sparse_attention",
+   "ruvector-sparsifier"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6752
+ },
+ {
+  "qid": "Q025",
+  "set": "recommendation-eval.v1.json",
+  "id": "D25",
+  "category": "design",
+  "accept": [
+   "@ruvector/mincut-wasm"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@ruvector/mincut-wasm",
+   "ruv-neural-mincut",
+   "ruvector-math",
+   "ruvector-attn-mincut"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6827
+ },
+ {
+  "qid": "Q026",
+  "set": "recommendation-eval.v1.json",
+  "id": "D26",
+  "category": "design",
+  "accept": [],
+  "acceptStores": [
+   "ruview"
+  ],
+  "lane": "semantic",
+  "offered": [
+   "wifi-densepose-py",
+   "wifi-densepose-signal",
+   "wifi-densepose-calibration",
+   "wifi-densepose-vitals"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6457
+ },
+ {
+  "qid": "Q027",
+  "set": "recommendation-eval.v1.json",
+  "id": "D27",
+  "category": "design",
+  "accept": [
+   "@ruvector/replication",
+   "@agentic-flow/crdt-gossip"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@ruvector/replication",
+   "@agentic-flow/crdt-gossip",
+   "@ruvector/raft",
+   "@agentic-flow/byzantine-quic"
+  ],
+  "status": 0,
+  "topSimilarity": 0.7062
+ },
+ {
+  "qid": "Q028",
+  "set": "recommendation-eval.v1.json",
+  "id": "D28",
+  "category": "design",
+  "accept": [
+   "@ruvector/raft"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@ruvector/raft",
+   "@agentic-flow/crdt-gossip",
+   "agenticow",
+   "@ruvector/replication"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6741
+ },
+ {
+  "qid": "Q029",
+  "set": "recommendation-eval.v1.json",
+  "id": "D29",
+  "category": "design",
+  "accept": [
+   "@ruvector/cnn"
+  ],
+  "acceptStores": [],
+  "lane": "catalogue",
+  "offered": [
+   "ruvector"
+  ],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q030",
+  "set": "recommendation-eval.v1.json",
+  "id": "D30",
+  "category": "design",
+  "accept": [
+   "agent-booster"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "agent-booster",
+   "@agentic-flow/self-improving-codegen",
+   "@agentic-qe/opencode-plugin",
+   "@claude-flow/codex"
+  ],
+  "status": 0,
+  "topSimilarity": 0.65
+ },
+ {
+  "qid": "Q031",
+  "set": "recommendation-eval.v1.json",
+  "id": "D31",
+  "category": "design",
+  "accept": [
+   "@cognitum/gate"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@cognitum/gate",
+   "@claude-flow/guidance",
+   "rvagent-a2a",
+   "daa-rules"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6101
+ },
+ {
+  "qid": "Q032",
+  "set": "recommendation-eval.v1.json",
+  "id": "X01",
+  "category": "diagnosis",
+  "accept": [
+   "@ruvector/typesafe"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@ruvector/typesafe",
+   "@ruvector/ruvllm",
+   "sublinear-time-solver",
+   "@claude-flow/providers"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5428
+ },
+ {
+  "qid": "Q033",
+  "set": "recommendation-eval.v1.json",
+  "id": "X02",
+  "category": "diagnosis",
+  "accept": [
+   "@ruvector/router",
+   "@ruvector/typesafe"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "homecore-assist",
+   "goalie",
+   "@claude-flow/aidefence",
+   "@claude-flow/integration"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6139
+ },
+ {
+  "qid": "Q034",
+  "set": "recommendation-eval.v1.json",
+  "id": "X03",
+  "category": "diagnosis",
+  "accept": [
+   "ruvector-hybrid"
+  ],
+  "acceptStores": [],
+  "lane": "catalogue",
+  "offered": [
+   "ruvector"
+  ],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q035",
+  "set": "recommendation-eval.v1.json",
+  "id": "X04",
+  "category": "diagnosis",
+  "accept": [
+   "ruvector-maxsim"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "ruvector-maxsim",
+   "ruvector-cluster-rag",
+   "ruv-neural-memory",
+   "@claude-flow/embeddings"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6056
+ },
+ {
+  "qid": "Q036",
+  "set": "recommendation-eval.v1.json",
+  "id": "X05",
+  "category": "diagnosis",
+  "accept": [
+   "ruvector-query-cache",
+   "rulake",
+   "@ruvector/burst-scaling"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "ruvector-query-cache",
+   "rulake",
+   "ruvector-capgated",
+   "ruvector-collections"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5658
+ },
+ {
+  "qid": "Q037",
+  "set": "recommendation-eval.v1.json",
+  "id": "X06",
+  "category": "diagnosis",
+  "accept": [
+   "@claude-flow/aidefence",
+   "aidefence-core"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@claude-flow/claims",
+   "dspy.ts",
+   "ruvector-retrieval-receipt",
+   "@claude-flow/watermark"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5628
+ },
+ {
+  "qid": "Q038",
+  "set": "recommendation-eval.v1.json",
+  "id": "X07",
+  "category": "diagnosis",
+  "accept": [
+   "agentdb",
+   "@claude-flow/memory",
+   "@agentic-flow/ephemeral-memory"
+  ],
+  "acceptStores": [],
+  "lane": "catalogue",
+  "offered": [
+   "agentdb"
+  ],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q039",
+  "set": "recommendation-eval.v1.json",
+  "id": "X08",
+  "category": "diagnosis",
+  "accept": [
+   "ruvector",
+   "@ruvector/rvf",
+   "@ruvector/core",
+   "@ruvector/node",
+   "@ruvector/diskann"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "agenticow",
+   "ruvector-capgated",
+   "ruvector-hyperbolic-hnsw",
+   "ruvector-matryoshka"
+  ],
+  "status": 0,
+  "topSimilarity": 0.4343
+ },
+ {
+  "qid": "Q040",
+  "set": "recommendation-eval.v1.json",
+  "id": "X09",
+  "category": "diagnosis",
+  "accept": [
+   "ruvector-gnn-rerank",
+   "@ruvector/gnn"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "ruvector-gnn-rerank",
+   "@ruvector/diskann",
+   "ruvector-rairs",
+   "@ruvector/kge"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5588
+ },
+ {
+  "qid": "Q041",
+  "set": "recommendation-eval.v1.json",
+  "id": "X10",
+  "category": "diagnosis",
+  "accept": [
+   "@ruvector/tiny-dancer",
+   "agentic-flow"
+  ],
+  "acceptStores": [],
+  "lane": "catalogue",
+  "offered": [
+   "agentic-flow"
+  ],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q042",
+  "set": "recommendation-eval.v1.json",
+  "id": "X11",
+  "category": "diagnosis",
+  "accept": [
+   "agenticow"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "agenticow",
+   "@agentic-flow/ephemeral-memory",
+   "ruvector-gpu-runner",
+   "@claude-flow/memory"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6055
+ },
+ {
+  "qid": "Q043",
+  "set": "recommendation-eval.v1.json",
+  "id": "X12",
+  "category": "diagnosis",
+  "accept": [
+   "@ruvector/postgres-cli"
+  ],
+  "acceptStores": [],
+  "lane": "catalogue",
+  "offered": [
+   "ruvector"
+  ],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q044",
+  "set": "recommendation-eval.v1.json",
+  "id": "X13",
+  "category": "diagnosis",
+  "accept": [
+   "@ruvector/diskann"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "ruvector-lsm-ann",
+   "@qudag/ruvector-index",
+   "ruvector-rulake-kernel-avx512",
+   "ruvector-memory-admission"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6054
+ },
+ {
+  "qid": "Q045",
+  "set": "recommendation-eval.v1.json",
+  "id": "X14",
+  "category": "diagnosis",
+  "accept": [
+   "agentic-qe"
+  ],
+  "acceptStores": [],
+  "lane": "catalogue",
+  "offered": [
+   "agentic-qe"
+  ],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q046",
+  "set": "recommendation-eval.v1.json",
+  "id": "X15",
+  "category": "diagnosis",
+  "accept": [
+   "@ruvector/burst-scaling"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@ruvector/burst-scaling",
+   "ruvector-namespace-merge",
+   "wifi-densepose-ruvector",
+   "ruvector-math"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5319
+ },
+ {
+  "qid": "Q047",
+  "set": "recommendation-eval.v1.json",
+  "id": "X16",
+  "category": "diagnosis",
+  "accept": [
+   "@ruvector/replication",
+   "@agentic-flow/crdt-gossip"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "rvm-partition",
+   "@ruvector/replication",
+   "@agentic-flow/crdt-gossip",
+   "@ruvector/raft"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5979
+ },
+ {
+  "qid": "Q048",
+  "set": "recommendation-eval.v1.json",
+  "id": "O01",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q049",
+  "set": "recommendation-eval.v1.json",
+  "id": "O02",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q050",
+  "set": "recommendation-eval.v1.json",
+  "id": "O03",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q051",
+  "set": "recommendation-eval.v1.json",
+  "id": "O04",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q052",
+  "set": "recommendation-eval.v1.json",
+  "id": "O05",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q053",
+  "set": "recommendation-eval.v1.json",
+  "id": "O06",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q054",
+  "set": "recommendation-eval.v1.json",
+  "id": "O07",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q055",
+  "set": "recommendation-eval.v1.json",
+  "id": "O08",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q056",
+  "set": "recommendation-eval.v1.json",
+  "id": "O09",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@ruv/sparc-ui",
+   "ruv-neural-viz",
+   "goalie",
+   "wifi-densepose-mat"
+  ],
+  "status": 0,
+  "topSimilarity": 0.4622
+ },
+ {
+  "qid": "Q057",
+  "set": "recommendation-eval.v1.json",
+  "id": "O10",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q058",
+  "set": "recommendation-eval.v1.json",
+  "id": "O11",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q059",
+  "set": "recommendation-eval.v1.json",
+  "id": "O12",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q060",
+  "set": "recommendation-eval.v1.json",
+  "id": "O13",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q061",
+  "set": "recommendation-eval.v1.json",
+  "id": "O14",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q062",
+  "set": "recommendation-eval.v1.json",
+  "id": "O15",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q063",
+  "set": "recommendation-eval.v1.json",
+  "id": "O16",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q064",
+  "set": "recommendation-eval.v1.json",
+  "id": "H01",
+  "category": "no-fit",
+  "accept": [],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@claude-flow/plugin-cognitive-kernel",
+   "@ruvector/typesafe",
+   "photonlayer-ruvector",
+   "ruv-neural-ui"
+  ],
+  "status": 0,
+  "topSimilarity": 0.4701
+ },
+ {
+  "qid": "Q065",
+  "set": "recommendation-eval.v1.json",
+  "id": "H02",
+  "category": "no-fit",
+  "accept": [],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@claude-flow/hooks",
+   "@agentic-qe/opencode-plugin",
+   "homecore-api",
+   "ruvector-edge-auth"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5645
+ },
+ {
+  "qid": "Q066",
+  "set": "recommendation-eval.v1.json",
+  "id": "H03",
+  "category": "no-fit",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q067",
+  "set": "recommendation-eval.v1.json",
+  "id": "H04",
+  "category": "no-fit",
+  "accept": [],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@aqe/qe-browser-scripts",
+   "@claude-flow/deployment",
+   "@claude-flow/hooks",
+   "@agentic-qe/opencode-plugin"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5913
+ },
+ {
+  "qid": "Q068",
+  "set": "recommendation-eval.v1.json",
+  "id": "H05",
+  "category": "no-fit",
+  "accept": [],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@ruvector/server",
+   "@claude-flow/mcp",
+   "ruvix-queue",
+   "homecore-api"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5277
+ },
+ {
+  "qid": "Q069",
+  "set": "recommendation-eval.v1.json",
+  "id": "H06",
+  "category": "no-fit",
+  "accept": [],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "ruvix-fs",
+   "rvf-kernel",
+   "agenticow",
+   "rvf-launch"
+  ],
+  "status": 0,
+  "topSimilarity": 0.533
+ },
+ {
+  "qid": "Q070",
+  "set": "recommendation-eval.v1.json",
+  "id": "H07",
+  "category": "no-fit",
+  "accept": [],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "ruv-swarm-persistence",
+   "homecore-recorder",
+   "@claude-flow/memory",
+   "ruvector-dag"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5538
+ },
+ {
+  "qid": "Q071",
+  "set": "recommendation-eval.v1.json",
+  "id": "H08",
+  "category": "no-fit",
+  "accept": [],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "ruvector-edge-auth-worker",
+   "wifi-densepose-core",
+   "ruvix-boot",
+   "@cognitum/gate"
+  ],
+  "status": 0,
+  "topSimilarity": 0.4938
+ },
+ {
+  "qid": "Q072",
+  "set": "recommendation-eval.v1.json",
+  "id": "H09",
+  "category": "no-fit",
+  "accept": [],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "homecore-assist",
+   "@claude-flow/integration",
+   "@claude-flow/embeddings",
+   "@claude-flow/plugins"
+  ],
+  "status": 0,
+  "topSimilarity": 0.4718
+ },
+ {
+  "qid": "Q073",
+  "set": "recommendation-eval.v1.json",
+  "id": "H10",
+  "category": "no-fit",
+  "accept": [],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "xtask",
+   "rvagent-cli",
+   "homecore-automation",
+   "@claude-flow/migration"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5714
+ },
+ {
+  "qid": "Q074",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B01",
+  "category": "design",
+  "accept": [
+   "agenticow"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "agenticow",
+   "agentic-jujutsu",
+   "@claude-flow/guidance",
+   "ruvector"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6052
+ },
+ {
+  "qid": "Q075",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B02",
+  "category": "design",
+  "accept": [
+   "@claude-flow/aidefence",
+   "aimds-detection",
+   "aidefence-core"
+  ],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q076",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B03",
+  "category": "design",
+  "accept": [
+   "agentdb",
+   "@claude-flow/memory"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@agentic-flow/ephemeral-memory",
+   "homecore-assist",
+   "ruvector-hnsw-repair",
+   "homecore-recorder"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5799
+ },
+ {
+  "qid": "Q077",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B04",
+  "category": "design",
+  "accept": [
+   "cog-person-count",
+   "rvcsi-events"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "wifi-densepose-signal",
+   "wifi-densepose-py",
+   "wifi-densepose-calibration",
+   "@ruvnet/ruview"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5578
+ },
+ {
+  "qid": "Q078",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B05",
+  "category": "design",
+  "accept": [
+   "wifi-densepose-vitals"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "wifi-densepose-vitals",
+   "wifi-densepose-py",
+   "wifi-densepose-privshield-harness",
+   "wifi-densepose-privshield"
+  ],
+  "status": 0,
+  "topSimilarity": 0.545
+ },
+ {
+  "qid": "Q079",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B06",
+  "category": "design",
+  "accept": [
+   "ai-text-watermark",
+   "ruflo-watermark",
+   "@claude-flow/watermark"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@claude-flow/watermark",
+   "@claude-flow/plugin-legal-contracts",
+   "@claude-flow/claims",
+   "ruvector-proof-gate"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6017
+ },
+ {
+  "qid": "Q080",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B07",
+  "category": "design",
+  "accept": [
+   "@ruvector/agentic-synth"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@ruvector/agentic-synth",
+   "ruvector-speculative-ann",
+   "@ruflo/ai-team-service",
+   "ruvector-retrieval-receipt"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5712
+ },
+ {
+  "qid": "Q081",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B08",
+  "category": "design",
+  "accept": [
+   "neuro-divergent",
+   "neuro-divergent-models",
+   "timesfm"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "temporal-compare",
+   "neuro-divergent-data",
+   "@claude-flow/plugin-healthcare-clinical",
+   "neuro-divergent"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5154
+ },
+ {
+  "qid": "Q082",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B09",
+  "category": "design",
+  "accept": [
+   "@ruvector/scipix"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@ruvector/scipix",
+   "@ruvector/cnn",
+   "ruvector-math",
+   "@ruvector/kge"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5851
+ },
+ {
+  "qid": "Q083",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B10",
+  "category": "design",
+  "accept": [
+   "ruvector-hybrid"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "bit-parallel-search",
+   "ruvector-recall-bounded",
+   "ruvector-namespace-merge",
+   "ruvector-filter"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6203
+ },
+ {
+  "qid": "Q084",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B11",
+  "category": "design",
+  "accept": [
+   "qudag-vault-core",
+   "qudag-crypto"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "qudag-vault-core",
+   "qudag-crypto",
+   "@daa/qudag-native",
+   "qudag-mcp"
+  ],
+  "status": 0,
+  "topSimilarity": 0.7119
+ },
+ {
+  "qid": "Q085",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B12",
+  "category": "design",
+  "accept": [
+   "rvf-federation",
+   "daa-compute",
+   "daa-prime-trainer"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "wifi-densepose-train",
+   "@claude-flow/memory",
+   "rvf-federation",
+   "@claude-flow/providers"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5023
+ },
+ {
+  "qid": "Q086",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B13",
+  "category": "design",
+  "accept": [
+   "ruvector-decompiler",
+   "ruvector-decompiler-wasm"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "ruvector-decompiler-wasm",
+   "@aqe/qe-browser-scripts",
+   "rvf-forge-core",
+   "rvlite"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6224
+ },
+ {
+  "qid": "Q087",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B14",
+  "category": "design",
+  "accept": [
+   "sublinear-time-solver",
+   "sublinear"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "ruflo-graph-intelligence",
+   "ruvector-gnn-rerank",
+   "cog-person-count",
+   "ruvector-capgated"
+  ],
+  "status": 0,
+  "topSimilarity": 0.4802
+ },
+ {
+  "qid": "Q088",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B15",
+  "category": "diagnosis",
+  "accept": [
+   "@ruvector/tiny-dancer",
+   "agentic-flow"
+  ],
+  "acceptStores": [],
+  "lane": "catalogue",
+  "offered": [
+   "agentic-flow"
+  ],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q089",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B16",
+  "category": "diagnosis",
+  "accept": [
+   "ruvector-query-cache",
+   "rulake"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "ruvector-dag",
+   "@agentic-flow/ephemeral-memory",
+   "@claude-flow/guidance",
+   "goalie"
+  ],
+  "status": 0,
+  "topSimilarity": 0.4528
+ },
+ {
+  "qid": "Q090",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B17",
+  "category": "diagnosis",
+  "accept": [
+   "agentdb",
+   "@claude-flow/memory"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@claude-flow/guidance",
+   "sublinear-time-solver",
+   "midstreamer-strange-loop",
+   "agentdb"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5089
+ },
+ {
+  "qid": "Q091",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B18",
+  "category": "diagnosis",
+  "accept": [
+   "agentic-qe",
+   "@claude-flow/plugin-test-intelligence"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@claude-flow/plugin-test-intelligence",
+   "ruvector-gpu-runner",
+   "kimi-k2-wasm-testing-suite",
+   "ruvector-staged-workspace"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5391
+ },
+ {
+  "qid": "Q092",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B19",
+  "category": "diagnosis",
+  "accept": [
+   "@ruvector/diskann",
+   "ruvector-rabitq",
+   "ruvector-pq-search"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "bit-parallel-search",
+   "ruvector-query-cache",
+   "ruvector-pq-search",
+   "rulake-py"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5638
+ },
+ {
+  "qid": "Q093",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B20",
+  "category": "diagnosis",
+  "accept": [
+   "ruvector-hnsw-repair",
+   "ruvector-delta-index"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "ruvector-bounded-rag",
+   "ruvector-recall-bounded",
+   "ruvector-retrieval-receipt",
+   "ruvector-hnsw-repair"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5271
+ },
+ {
+  "qid": "Q094",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B21",
+  "category": "diagnosis",
+  "accept": [
+   "ruvector-capgated",
+   "ruvector-context",
+   "ruvector-edge-tenancy"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@ruflo/ai-team-service",
+   "ruvector-namespace-merge",
+   "@claude-flow/integration",
+   "@claude-flow/embeddings"
+  ],
+  "status": 0,
+  "topSimilarity": 0.589
+ },
+ {
+  "qid": "Q095",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B22",
+  "category": "diagnosis",
+  "accept": [
+   "prime-radiant",
+   "@claude-flow/plugin-prime-radiant"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@claude-flow/guidance",
+   "goalie",
+   "@claude-flow/claims",
+   "ruvector-proof-gate"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5159
+ },
+ {
+  "qid": "Q096",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B23",
+  "category": "diagnosis",
+  "accept": [
+   "agent-booster"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@claude-flow/guidance",
+   "agent-booster",
+   "@agentic-flow/self-improving-codegen",
+   "agenticow"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5916
+ },
+ {
+  "qid": "Q097",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B24",
+  "category": "diagnosis",
+  "accept": [
+   "@claude-flow/claims"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@claude-flow/claims",
+   "@claude-flow/guidance",
+   "@claude-flow/v3-monorepo",
+   "ruflo"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5925
+ },
+ {
+  "qid": "Q098",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B25",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q099",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B26",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q100",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B27",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q101",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B28",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q102",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B29",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q103",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B30",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q104",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B31",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q105",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B32",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q106",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B33",
+  "category": "no-fit",
+  "accept": [],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@claude-flow/memory",
+   "ruvector-query-cache",
+   "@aqe/qe-browser-scripts",
+   "homecore-plugins"
+  ],
+  "status": 0,
+  "topSimilarity": 0.4916
+ },
+ {
+  "qid": "Q107",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B34",
+  "category": "no-fit",
+  "accept": [],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "ruvector-namespace-merge",
+   "ruvector-filter",
+   "ruvector-diverse-beam",
+   "ruvector-bounded-rag"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5119
+ },
+ {
+  "qid": "Q108",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B35",
+  "category": "no-fit",
+  "accept": [],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "rulake",
+   "@claude-flow/memory",
+   "@ruvector/spiking-neural",
+   "@agentic-flow/ephemeral-memory"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5525
+ },
+ {
+  "qid": "Q109",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B36",
+  "category": "no-fit",
+  "accept": [],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "agent-booster",
+   "@agentic-flow/self-improving-codegen",
+   "agent-booster-wasm",
+   "@claude-flow/integration"
+  ],
+  "status": 0,
+  "topSimilarity": 0.4612
+ },
+ {
+  "qid": "Q110",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B37",
+  "category": "no-fit",
+  "accept": [],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "ruview-auth",
+   "@claude-flow/providers",
+   "@ruvnet/rvagent",
+   "ruvector-edge-auth-worker"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5027
+ },
+ {
+  "qid": "Q111",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B38",
+  "category": "no-fit",
+  "accept": [],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@claude-flow/deployment",
+   "ruvector-staged-workspace",
+   "xtask",
+   "ruvector-namespace-merge"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5314
+ },
+ {
+  "qid": "Q112",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B39",
+  "category": "no-fit",
+  "accept": [],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "ruv-neural-viz",
+   "homecore-ui",
+   "ruview-offaxis",
+   "wifi-densepose-desktop"
+  ],
+  "status": 0,
+  "topSimilarity": 0.506
+ },
+ {
+  "qid": "Q113",
+  "set": "recommendation-eval.blind.v1.json",
+  "id": "B40",
+  "category": "no-fit",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q114",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "D01",
+  "category": "design",
+  "accept": [
+   "@ruvector/core",
+   "ruvector",
+   "@ruvector/node"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "homecore-assist",
+   "goalie",
+   "ruflo",
+   "@claude-flow/aidefence"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5547
+ },
+ {
+  "qid": "Q115",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "D02",
+  "category": "design",
+  "accept": [
+   "agentdb",
+   "@claude-flow/memory",
+   "@agentic-flow/ephemeral-memory"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "fact-memory-mcp",
+   "@agentic-flow/ephemeral-memory",
+   "@ruflo/ai-team-service",
+   "@claude-flow/plugin-cognitive-kernel"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5227
+ },
+ {
+  "qid": "Q116",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "D03",
+  "category": "design",
+  "accept": [
+   "@claude-flow/aidefence",
+   "aimds-detection",
+   "aidefence-core"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@ruflo/chatgpt-federation",
+   "wifi-densepose-privshield",
+   "wifi-densepose-privshield-harness",
+   "@ruvector/ospipe"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5631
+ },
+ {
+  "qid": "Q117",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "D04",
+  "category": "design",
+  "accept": [
+   "@ruvector/typesafe"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@claude-flow/codex",
+   "@claude-flow/hooks",
+   "bit-parallel-search",
+   "agentic-flow"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5359
+ },
+ {
+  "qid": "Q118",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "D05",
+  "category": "design",
+  "accept": [
+   "wifi-densepose-vitals",
+   "cog-vital-trend",
+   "cog-health-monitor"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "wifi-densepose-py",
+   "wifi-densepose-vitals",
+   "wifi-densepose-privshield-harness",
+   "@ruvnet/ruview"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5857
+ },
+ {
+  "qid": "Q119",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "D06",
+  "category": "design",
+  "accept": [
+   "@claude-flow/swarm",
+   "ruflo",
+   "claude-flow"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@ruflo/ai-team-service",
+   "ruflo",
+   "@claude-flow/claims",
+   "goalie"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5643
+ },
+ {
+  "qid": "Q120",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "D07",
+  "category": "design",
+  "accept": [
+   "@ruvector/graph-node",
+   "rvlite"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "neural-trader-core",
+   "cog-ha-matter",
+   "@ruvector/kge",
+   "ruvector-namespace-merge"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5103
+ },
+ {
+  "qid": "Q121",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "D08",
+  "category": "design",
+  "accept": [
+   "qudag-vault-core",
+   "qudag-crypto"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "qudag-vault-core",
+   "qudag-crypto",
+   "qudag-mcp",
+   "@daa/qudag-native"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6947
+ },
+ {
+  "qid": "Q122",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "D09",
+  "category": "design",
+  "accept": [
+   "@ruvector/agentic-synth"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@ruvector/agentic-synth",
+   "@claude-flow/plugin-healthcare-clinical",
+   "@medai/backend",
+   "agentic-qe"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6189
+ },
+ {
+  "qid": "Q123",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "D10",
+  "category": "design",
+  "accept": [
+   "neuro-divergent",
+   "neuro-divergent-models",
+   "timesfm"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "temporal-compare",
+   "neuro-divergent-data",
+   "neuro-divergent",
+   "neuro-divergent-models"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5545
+ },
+ {
+  "qid": "Q124",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "D11",
+  "category": "design",
+  "accept": [
+   "ai-text-watermark",
+   "@claude-flow/watermark",
+   "ruflo-watermark"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "ruvector-retrieval-receipt",
+   "ruvector-proof-gate",
+   "@claude-flow/watermark",
+   "goalie"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5917
+ },
+ {
+  "qid": "Q125",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "D12",
+  "category": "design",
+  "accept": [
+   "@ruvector/scipix"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@ruvector/scipix",
+   "@ruvector/kge",
+   "ruvector-math",
+   "rvf-wire"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6273
+ },
+ {
+  "qid": "Q126",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "D13",
+  "category": "design",
+  "accept": [
+   "@ruvector/wasm",
+   "rvlite"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@ruvector/wasm",
+   "ruvector-edge-auth-worker",
+   "@claude-flow/plugin-iot-cognitum",
+   "ruvix-dtb"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5516
+ },
+ {
+  "qid": "Q127",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "D14",
+  "category": "design",
+  "accept": [
+   "cog-fall-detect",
+   "cog-health-monitor"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "cog-person-count",
+   "wifi-densepose-py",
+   "wifi-densepose-mat",
+   "ruv-neural-biosense"
+  ],
+  "status": 0,
+  "topSimilarity": 0.4984
+ },
+ {
+  "qid": "Q128",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "D15",
+  "category": "design",
+  "accept": [
+   "agenticow"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "agenticow",
+   "agentic-jujutsu",
+   "@agentic-flow/integrations-shared",
+   "ruvector-staged-workspace"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6569
+ },
+ {
+  "qid": "Q129",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "D16",
+  "category": "design",
+  "accept": [
+   "@claude-flow/plugin-legal-contracts"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@claude-flow/plugin-legal-contracts",
+   "rvm-anchor",
+   "rvforge-reader",
+   "@claude-flow/providers"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5081
+ },
+ {
+  "qid": "Q130",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "X01",
+  "category": "diagnosis",
+  "accept": [
+   "@ruvector/tiny-dancer",
+   "@claude-flow/providers",
+   "agentic-flow"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "fact-memory-mcp",
+   "@ruvector/typesafe",
+   "@synaptic-mesh/mcp-integration",
+   "dspy.ts"
+  ],
+  "status": 0,
+  "topSimilarity": 0.49
+ },
+ {
+  "qid": "Q131",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "X02",
+  "category": "diagnosis",
+  "accept": [
+   "@claude-flow/plugin-test-intelligence",
+   "agentic-qe"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "ruvector-gpu-runner",
+   "agentic-qe",
+   "@claude-flow/plugin-test-intelligence",
+   "rvcsi-runtime"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6002
+ },
+ {
+  "qid": "Q132",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "X03",
+  "category": "diagnosis",
+  "accept": [
+   "ruvector-query-cache",
+   "fact-memory-mcp"
+  ],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q133",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "X04",
+  "category": "diagnosis",
+  "accept": [
+   "ruvector-hybrid"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "bit-parallel-search",
+   "ruvector-recall-bounded",
+   "@ruvector/cnn",
+   "ruvector-speculative-ann"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6107
+ },
+ {
+  "qid": "Q134",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "X05",
+  "category": "diagnosis",
+  "accept": [
+   "agentdb",
+   "@claude-flow/memory"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@agentic-flow/ephemeral-memory",
+   "midstreamer-strange-loop",
+   "ruvector-agent-memory",
+   "fact-memory-mcp"
+  ],
+  "status": 0,
+  "topSimilarity": 0.493
+ },
+ {
+  "qid": "Q135",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "X06",
+  "category": "diagnosis",
+  "accept": [
+   "@claude-flow/aidefence",
+   "aimds-detection",
+   "aimds-response"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@claude-flow/aidefence",
+   "@claude-flow/watermark",
+   "ruvector-retrieval-receipt",
+   "@ruflo/ai-team-service"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5323
+ },
+ {
+  "qid": "Q136",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "X07",
+  "category": "diagnosis",
+  "accept": [
+   "agent-booster"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "agent-booster",
+   "@agentic-flow/self-improving-codegen",
+   "@claude-flow/guidance",
+   "@claude-flow/plugin-code-intelligence"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6762
+ },
+ {
+  "qid": "Q137",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "X08",
+  "category": "diagnosis",
+  "accept": [
+   "@ruvector/burst-scaling"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@ruvector/burst-scaling",
+   "timesfm-harness",
+   "@claude-flow/memory",
+   "@qudag/ruvector-index"
+  ],
+  "status": 0,
+  "topSimilarity": 0.4966
+ },
+ {
+  "qid": "Q138",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "X09",
+  "category": "diagnosis",
+  "accept": [
+   "ruvector-agent-memory",
+   "ruvector-temporal-coherence"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@claude-flow/memory",
+   "ruvector-agent-memory",
+   "@agentic-flow/ephemeral-memory",
+   "@claude-flow/guidance"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5349
+ },
+ {
+  "qid": "Q139",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "X10",
+  "category": "diagnosis",
+  "accept": [
+   "ruvector-capgated"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "ruflo",
+   "@claude-flow/plugin-healthcare-clinical",
+   "ruvector-bounded-rag",
+   "homecore"
+  ],
+  "status": 0,
+  "topSimilarity": 0.4818
+ },
+ {
+  "qid": "Q140",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "X11",
+  "category": "diagnosis",
+  "accept": [
+   "ruvector-hnsw-repair"
+  ],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "ruvector-bounded-rag",
+   "ruvector-adaptive-ann",
+   "ruvector-recall-bounded",
+   "ruvector-staged-workspace"
+  ],
+  "status": 0,
+  "topSimilarity": 0.4886
+ },
+ {
+  "qid": "Q141",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "X12",
+  "category": "diagnosis",
+  "accept": [
+   "agentic-qe",
+   "@claude-flow/plugin-agentic-qe",
+   "@claude-flow/plugin-test-intelligence"
+  ],
+  "acceptStores": [],
+  "lane": "catalogue",
+  "offered": [
+   "agentic-qe"
+  ],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q142",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "O01",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q143",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "O02",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q144",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "O03",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q145",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "O04",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q146",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "O05",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q147",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "O06",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "rvm-sched",
+   "ruvix-sched",
+   "rvm-anchor",
+   "rvm-witness"
+  ],
+  "status": 0,
+  "topSimilarity": 0.4913
+ },
+ {
+  "qid": "Q148",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "O07",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q149",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "O08",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q150",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "O09",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q151",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "O10",
+  "category": "off-topic",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q152",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "N01",
+  "category": "no-fit",
+  "accept": [],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@ruvnet/rulake-console",
+   "@ruv/sparc-ui",
+   "kimi-k2-wasm-testing-suite",
+   "homecore-ui"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5844
+ },
+ {
+  "qid": "Q153",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "N02",
+  "category": "no-fit",
+  "accept": [],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@claude-flow/deployment",
+   "@claude-flow/memory",
+   "@aqe/qe-browser-scripts",
+   "ruvector-staged-workspace"
+  ],
+  "status": 0,
+  "topSimilarity": 0.6078
+ },
+ {
+  "qid": "Q154",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "N03",
+  "category": "no-fit",
+  "accept": [],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "ruvllm_retrieval_diffusion",
+   "ruvector-namespace-merge",
+   "ruvector-matryoshka",
+   "ruvector-bounded-rag"
+  ],
+  "status": 0,
+  "topSimilarity": 0.4848
+ },
+ {
+  "qid": "Q155",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "N04",
+  "category": "no-fit",
+  "accept": [],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "ruvector-namespace-merge",
+   "@claude-flow/providers",
+   "ruvector-staged-workspace",
+   "@ruvector/tiny-dancer"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5227
+ },
+ {
+  "qid": "Q156",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "N05",
+  "category": "no-fit",
+  "accept": [],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "ruflo",
+   "ruvector-rulake-mcp",
+   "@ruflo/ai-team-service",
+   "@claude-flow/plugin-agent-federation"
+  ],
+  "status": 0,
+  "topSimilarity": 0.4713
+ },
+ {
+  "qid": "Q157",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "N06",
+  "category": "no-fit",
+  "accept": [],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "homecore-migrate",
+   "@claude-flow/migration",
+   "rvm-wasm",
+   "rvm-witness"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5334
+ },
+ {
+  "qid": "Q158",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "N07",
+  "category": "no-fit",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q159",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "N08",
+  "category": "no-fit",
+  "accept": [],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "ruvix-proof",
+   "rvm-witness",
+   "ruvector-retrieval-receipt",
+   "ruvector-proof-gate"
+  ],
+  "status": 0,
+  "topSimilarity": 0.4946
+ },
+ {
+  "qid": "Q160",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "N09",
+  "category": "no-fit",
+  "accept": [],
+  "acceptStores": [],
+  "lane": null,
+  "offered": [],
+  "status": 0,
+  "topSimilarity": null
+ },
+ {
+  "qid": "Q161",
+  "set": "recommendation-eval.blind.v2.json",
+  "id": "N10",
+  "category": "no-fit",
+  "accept": [],
+  "acceptStores": [],
+  "lane": "semantic",
+  "offered": [
+   "@claude-flow/plugin-cognitive-kernel",
+   "photonlayer-ruvector",
+   "@ruvector/typesafe",
+   "ruv-neural-memory"
+  ],
+  "status": 0,
+  "topSimilarity": 0.5219
+ }
+]

@@ -64,6 +64,18 @@ describe.skipIf(!hasBash || process.platform === 'win32')('ground-before-write.s
     expect(r.stderr).toMatch(/search_ruvnet/); // it teaches the remedy, not just the refusal
   });
 
+  // 4.5: Grok sends its own tool spelling (`write`, `search_replace`). The match is case-insensitive, so
+  // the gate refuses the same ungrounded write whatever the host calls the tool — even invoked directly,
+  // without decision-gate's normalisation in front of it.
+  it.each(['write', 'WRITE', 'search_replace', 'edit'])('BLOCKS the same write under the host tool spelling %s', (toolName) => {
+    const r = runGate({ file_path: '/tmp/a.mjs', content: 'agentdb glue' }, { toolName });
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/BLOCKED/);
+  });
+  it('a non-write tool name is still ignored (case-insensitivity did not widen the gate)', () => {
+    expect(runGate({ file_path: '/tmp/a.mjs', content: 'agentdb glue' }, { toolName: 'read_file' }).status).toBe(0);
+  });
+
   it('BLOCKS the other real bug: a hand-rolled "metaharness" router, ungrounded', () => {
     const r = runGate({
       file_path: '/tmp/scripts/model-router-engine.mjs',

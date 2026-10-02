@@ -1,0 +1,2 @@
+{"budgetMB":"default","n":69,"matched":65,"kwMs":{"p50":1457,"p90":5124,"over1s":41},"bm25Pairs":{"p50":19,"mean":17.4},"poolPairs":{"p50":215,"mean":223.5}}
+{"budgetMB":"4000","n":69,"matched":65,"kwMs":{"p50":1103,"p90":5487,"over1s":36},"bm25Pairs":{"p50":19,"mean":17.4},"poolPairs":{"p50":215,"mean":223.5}}

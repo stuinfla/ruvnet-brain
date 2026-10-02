@@ -185,6 +185,28 @@ function safeJoin(destDir, name) {
 }
 
 /**
+ * The archive's declared total uncompressed bytes, read from its central directory only (no
+ * extraction) — what the disk-space preflight needs before anything is unpacked. The same safety
+ * limits as extractZip apply, so a hostile archive cannot make the preflight lie small.
+ */
+export function zipDeclaredBytes(zipPath) {
+  const fd = fs.openSync(zipPath, 'r');
+  try {
+    const size = fs.fstatSync(fd).size;
+    if (size === 0) throw new Error('archive is empty (0 bytes)');
+    const { cdSize, cdOffset } = centralDirectoryLocation(fd, size);
+    if (cdSize > ZIP_LIMITS.centralDirectoryBytes || cdOffset + cdSize > size) throw new Error('central directory is out of bounds');
+    let total = 0;
+    for (const entry of parseCentralDirectory(readAt(fd, cdSize, cdOffset))) {
+      if (!Number.isSafeInteger(entry.uncompSize) || entry.uncompSize < 0) throw new Error(`entry "${entry.name}" has an unsafe uncompressed size`);
+      total += entry.uncompSize;
+      if (total > ZIP_LIMITS.totalBytes) throw new Error(`archive claims more than ${ZIP_LIMITS.totalBytes} uncompressed bytes`);
+    }
+    return total;
+  } finally { fs.closeSync(fd); }
+}
+
+/**
  * Extract `zipPath` into `destDir`, overwriting existing files (idempotent — the `-o` of
  * `unzip -q -o`). Returns { entries, entryNames, files, bytes, crcChecked }.
  * Throws an Error naming the archive and the offending entry on ANY problem.

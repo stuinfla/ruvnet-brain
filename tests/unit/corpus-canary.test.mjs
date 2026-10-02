@@ -170,12 +170,12 @@ function stage(zipBytes, { signed = true, signature = null } = {}) {
   return served.tag;
 }
 
-async function canary(customer, { tag = served.tag, approvedVersion = VERSION, now = NOW } = {}) {
+async function canary(customer, { tag = served.tag, approvedVersion = VERSION, now = NOW, footprintUpdates = false } = {}) {
   const work = tempDir(dirs, 'canary-work');
   const before = fs.readFileSync(path.join(customer.kbDir, 'SOURCE.json'));
   const verdict = await runCanary({ repo: REPO, tag, approvedVersion, work, apiBase: origin, home: customer.home,
     install: () => ({ kbDir: customer.kbDir }), env: { GITHUB_RUN_ID: '4242', GITHUB_RUN_ATTEMPT: '1' },
-    now: () => now, retryDelayMs: 0 });
+    now: () => now, retryDelayMs: 0, footprintUpdates });
   return { verdict, before, work, check: (name) => verdict.checks.find((entry) => entry.name === name) };
 }
 
@@ -434,4 +434,40 @@ describe('storeFreshness (pure)', () => {
     expect(storeFreshness({ after: cov([row('a', '1', '1', '2026-09-01T00:00:00Z')]), before: cov([row('a', '1', '1')]), now }).ok).toBe(true);
     expect(storeFreshness({ after: null, now }).ok).toBe(false);
   });
+});
+
+// ADR-0098: the opt-in three-update footprint check (--footprint-updates). Measured here on the offline
+// fixture; its runtime on the real ~1.4 GB brain is unmeasured, which is why it is not on by default.
+describe('footprint-three-updates (opt-in canary check)', () => {
+  beforeAll(async () => { await buildNightly(); }, 180_000);
+
+  it('GREEN: apply + two more updates leave exactly one KB, within budget, with no net growth', async () => {
+    stage(nightly.zip);
+    const started = Date.now();
+    const { verdict, check } = await canary(customerInstall(), { footprintUpdates: true });
+    expect(check('footprint-three-updates'), JSON.stringify(verdict.checks, null, 2)).toMatchObject({ ok: true });
+    expect(check('footprint-three-updates').detail).toMatch(/^3 updates: 1 KB copy each time, within budget/);
+    expect(verdict.verdict).toBe('PASS');
+    expect(Date.now() - started).toBeLessThan(120_000);
+  }, 180_000);
+
+  it('BREAK IT: an updater that leaves its rollback copy behind -> the check goes red', async () => {
+    stage(nightly.zip);
+    const anchor = 'transaction = runStorageTransaction({ liveDir: KB_DIR, sourceDir: extractDir,';
+    const customer = customerInstall({ updaterPatch: (source) => {
+      expect(source).toContain(anchor);
+      return source.replace(anchor, `${anchor} removeRollback: () => {},`);
+    } });
+    const { verdict, check } = await canary(customer, { footprintUpdates: true });
+    expect(verdict.updater.exitCode).toBe(0); // the updater itself reports success
+    expect(check('footprint-three-updates')).toMatchObject({ ok: false });
+    expect(check('footprint-three-updates').detail).toMatch(/update 1: 2 KB copies \(.*kb\.rollback-/);
+    expect(verdict.verdict).toBe('FAIL');
+  }, 180_000);
+
+  it('is absent unless asked for (default-off)', async () => {
+    stage(nightly.zip);
+    const { check } = await canary(customerInstall());
+    expect(check('footprint-three-updates')).toBeUndefined();
+  }, 180_000);
 });

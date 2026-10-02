@@ -3,10 +3,10 @@ id: ADR-056
 title: Pay the debt, then wire the gate — document currency without a ratchet
 status: Proposed
 date: 2026-07-27
-updated: 2026-09-27
+updated: 2026-10-01
 updated_source: derived-from-git
 version: 1.2.1
-reviewed_digest: 3fe43538cf2c
+reviewed_digest: ad0f3db55a59
 impl: wired
 governs:
   - scripts/wired-check.mjs
@@ -344,6 +344,8 @@ Both models credited exactly one section of v1 as correct and correctly-sized: *
 fix** — which is the one section that was already built.
 
 ## Currency log
+| 2026-10-01 | Currency review (4.5, after merging release-integ-4.5 2b2ec6a9): decision unchanged. `scripts/wired-check.mjs` gains only STANDALONE registrations: the ADR-0093 recommendation harnesses and the package-card generator, plus the 4.5 retrieval harnesses. The onboarding-console note now lists the `/rnbc` and `/rnb` aliases. The currency chokepoint is untouched. reviewed_digest ad0f3db55a59. | Reviewed `scripts/wired-check.mjs`. |
+| 2026-10-01 | Currency review (4.5 retrieval): decision unchanged. `scripts/wired-check.mjs` only registers new human-run measurement harnesses as standalone entries (abstain-trace, abstain-threshold-sweep, need-set-split, judge-train, doc2query-generate, doc2query-reach, sona-query-adapter-eval, route-latency-warm, route-index-memory). The currency chokepoint is untouched. reviewed_digest 6d959f6ee19a. | Reviewed `scripts/wired-check.mjs`. |
 | 2026-09-27 | Currency review: decision unchanged. Motion: wired-check hardening (a lesson-migration reclassification, a hook-shim TABLE over-trust fix) and a QE gate consolidation. The chokepoint design is unchanged. | Reviewed `scripts/wired-check.mjs`, `scripts/doc-currency.mjs`, `scripts/git-hooks/pre-push`, `plugin/scripts/md-stamp.mjs` against the commits listed above; reviewed_digest 3fe43538cf2c. |
 
 | 2026-09-19 | Kept the currency verdict unchanged while removing repeated local scan work. Each governed path's caller search is memoized only inside one `evaluate()` call; the next invocation reads current Git/source state. | `scripts/doc-currency.mjs`; `tests/unit/doc-currency.test.mjs` proves one lookup for duplicate ADR declarations and fresh results after an edit. No threshold or finding rule changed. |
