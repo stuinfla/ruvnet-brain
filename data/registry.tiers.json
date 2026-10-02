@@ -156,6 +156,12 @@
           "sha": "RESOLVE_AT_BUILD",
           "note": "rUv QE fleet — 51 agents; collaborator org",
           "owner": "proffesor-for-testing"
+        },
+        {
+          "name": "agenticow",
+          "stars": 40,
+          "pushed": "2026-07-04",
+          "sha": "RESOLVE_AT_BUILD"
         }
       ]
     },
@@ -304,12 +310,6 @@
           "name": "SonicChamber",
           "stars": 2,
           "pushed": "2026-06-22",
-          "sha": "RESOLVE_AT_BUILD"
-        },
-        {
-          "name": "agenticow",
-          "stars": 40,
-          "pushed": "2026-07-04",
           "sha": "RESOLVE_AT_BUILD"
         },
         {

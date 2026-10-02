@@ -2,9 +2,9 @@
 id: ADR-086
 title: The corpus-seed pipeline consolidation — the written contract for the in-flight rewrite (twelve steps, amended to nineteen)
 status: Accepted  # 2026-09-26: steps 16-18 are live on main and this ADR governs the running corpus pipeline; unattended promotion is disarmed until a code release is install-verified (see ADR-085 status). Prior note 2026-09-15: C3 MEASURED AT 59.0% ON A REAL ARCHIVE AND REMOVED AS THE BLOCKING GATE -- see the 2026-09-15 amendment section. A frozen-fixture recall gate (194 human questions, 194/194 repositories answering, 176/194 exact-file Hit@5, ratcheted) now blocks instead. This is a DECLARED REDUCTION, not a C3 pass. Prior note, 2026-09-14 evening: 19 of 20 steps merged. main now also carries the seed bootstrap-deadlock and descriptor-schema fixes and an ENFORCED ADR-086:248 C3 gate (oracle schema 2: N = 2 x min(100,U), paired questions, repository-exact attribution). The committed 576-label oracle is schema 1 and is DIAGNOSTIC ONLY, so corpus sealing and publication fail closed until a compliant oracle (22,310 questions over 194 repositories) is produced. Steps 10, 11, 19 are owner-gated. The per-step table and currency log are the record. Same-day addendum: Step 16's redownload-loop fix is extended with genuine corpus-generation ORDERING (currencyVerdict/REFUSED — rollback protection for a candidate strictly older than installed, not just tag equality); see the 2026-09-26 currency-log row for the full record and branch fix/corpus-currency for the commits.
-reviewed_digest: 1b4e6017051c
+reviewed_digest: fe8ad22c92d9
 date: 2026-09-13
-updated: 2026-09-27
+updated: 2026-10-01
 updated_source: derived-from-git
 authors: [Stuart Kerr, Claude Fable 5.1]
 tags: [corpus, release, consolidation, provenance, gists, assembly, dual-review, living-plan, acceptance-criteria]
@@ -617,6 +617,7 @@ limitation taken in order to ship — not evidence of adequate general accuracy.
 - Known open defect: implementation-artifact questions rank prose documentation above source files.
 
 ## Currency log
+| 2026-10-01 | Currency review (4.5 retrieval): decision unchanged. `.github/workflows/ci.yml` reads the already-sealed bundle once more in release-qe, for the capability battery. Seed resolution, assembly and sealing are untouched. reviewed_digest fe8ad22c92d9. | Reviewed `.github/workflows/ci.yml`. |
 | 2026-09-27 | Currency review: decision unchanged. Motion: the same corpus-reconcile.mjs C3 gate fix and wired-check hardening (lesson-migration reclassification, hook-shim TABLE over-trust fix). Consistent with this ADR's consolidation goal. | Reviewed `.github/workflows/corpus-nightly-dispatch.yml`, `scripts/oracle/repo-recall.mjs`, `data/repo-recall-floor.json`, `data/retrieval-query-evidence.json`, `scripts/oracle/retrieval-accuracy.mjs`, `scripts/corpus-reconcile.mjs` against the commits listed above; reviewed_digest 1b4e6017051c. |
 | Date | What changed | Why (with referents) |
 |---|---|---|

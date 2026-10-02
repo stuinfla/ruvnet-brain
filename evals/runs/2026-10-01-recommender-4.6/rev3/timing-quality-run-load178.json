@@ -1,0 +1,19 @@
+{
+ "samples": 161,
+ "loadAvg1m": 178.1,
+ "host": "darwin arm64 16 vCPU node v24.18.0",
+ "flagOffMs": {
+  "p50": 217.2,
+  "p90": 331.8
+ },
+ "flagOnMs": {
+  "p50": 290.5,
+  "p90": 443.3,
+  "max": 944.8
+ },
+ "addedMs": {
+  "p50": 55.8,
+  "p90": 178.7,
+  "max": 445.9
+ }
+}

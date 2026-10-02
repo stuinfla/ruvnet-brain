@@ -137,11 +137,15 @@ describe.skipIf(!hasBash || process.platform === 'win32')('flywheel advisory cad
   it('uses the same claim through the Codex lifecycle adapter', () => {
     const first = codex(projects[0]);
     const second = codex(projects[0]);
+    const third = codex(projects[0]);
 
     expect(first.status).toBe(0);
     expect(second.status).toBe(0);
-    expect(count(first.stdout)).toBe(1);
-    expect(count(second.stdout)).toBe(0);
+    // 4.5: this payload carries a session_id, so the per-prompt injection budget applies, and on the first
+    // prompt the memory offer (higher priority) takes it — the flywheel offer is DEFERRED, unclaimed, to the
+    // next prompt. The property under test is unchanged: exactly once per project and day, via Codex too.
+    expect(count(first.stdout) + count(second.stdout) + count(third.stdout)).toBe(1);
     expect(() => JSON.parse(first.stdout)).not.toThrow();
+    expect(() => JSON.parse(second.stdout)).not.toThrow();
   });
 });

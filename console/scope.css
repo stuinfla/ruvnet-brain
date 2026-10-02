@@ -100,8 +100,11 @@ table.scope thead th {
   position: sticky; top: 58px; z-index: 2;
   background: color-mix(in srgb, var(--surface-2) 92%, var(--bg));
   font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);
-  cursor: pointer; user-select: none; white-space: nowrap;
+  user-select: none; white-space: nowrap;
 }
+/* Only sortable headers look clickable (RNBC QA 2026-10-01: the commits/revisions headers wore a
+   pointer cursor and did nothing when clicked). */
+table.scope thead th[data-key] { cursor: pointer; }
 table.scope thead th[aria-sort="descending"]::after { content: " ▾"; color: var(--amber-text); }
 table.scope thead th[aria-sort="ascending"]::after  { content: " ▴"; color: var(--amber-text); }
 table.scope tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--surface-2) 40%, transparent); }

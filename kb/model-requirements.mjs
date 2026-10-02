@@ -3,6 +3,9 @@ import path from 'node:path';
 
 export const MINILM_MODEL = 'Xenova/all-MiniLM-L6-v2';
 export const BGE_MODEL = 'Xenova/bge-base-en-v1.5';
+// The default cross-encoder every reranked answer loads (forge-rerank.mjs). Named here so the
+// doctor can tell a cold cache from a broken reader without importing the ONNX stack.
+export const RERANKER_MODEL = 'Xenova/ms-marco-MiniLM-L-6-v2';
 
 export function modelPath(modelCache, model) {
   return path.join(modelCache, ...model.split('/'));
@@ -71,7 +74,7 @@ export function requiredEmbedderModels(kbDir) {
   const models = new Set();
   try {
     for (const file of fs.readdirSync(kbDir)) {
-      if (!file.endsWith('.rvf.embed.json')) continue;
+      if (!file.endsWith('.rvf.embed.json') || file.startsWith('._')) continue; // ._: AppleDouble, not a sidecar
       const rvf = file.slice(0, -'.embed.json'.length);
       if (!fs.existsSync(path.join(kbDir, rvf))) continue;
       if (!rvf.endsWith('.big.rvf')) {

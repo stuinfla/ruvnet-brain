@@ -1,0 +1,59 @@
+// Which E2+E3 wins came through the bm25 lane, and what the dense pool's best cross-encoder score was
+// on those questions vs all questions -- to see whether a "dense is weak" gate can keep the wins
+// while skipping the lane (and its index build) on most questions.
+import fs from 'node:fs';
+import zlib from 'node:zlib';
+const R = '<worktree>/evals/runs/2026-10-01-retrieval-4.5';
+const WT = '<worktree>';
+const trace = (f) => {
+  const m = new Map();
+  for (const l of zlib.gunzipSync(fs.readFileSync(f)).toString('utf8').split('\n')) if (l) { const t = JSON.parse(l); m.set(t.query, t); }
+  return m;
+};
+const denseTop = (t) => Math.max(-99, ...t.cands.filter((c) => c.lane !== 'bm25').map((c) => c.ce));
+const split = JSON.parse(fs.readFileSync(`${R}/need-set-v1.split.json`, 'utf8'));
+const train = new Set(split.train);
+// needs
+const nt = trace(`${R}/e2e3-f725e0e7/needs.cetrace.jsonl.gz`);
+const needs = JSON.parse(fs.readFileSync(`${R}/e2e3-f725e0e7/needs.json`, 'utf8')).rows;
+const set = JSON.parse(fs.readFileSync('<need-baseline-worktree>/data/need-set/need-set-v1.json', 'utf8')).questions;
+const latIds = new Set(set.filter((_, i) => i % 3 === 0).map((q) => q.id));
+const needRows = [];
+for (const r of needs) {
+  const t = nt.get(r.need);
+  const rank = Math.min(r.fileRank ?? 99, r.altFileRank ?? 99);
+  let viaBm25 = null;
+  if (t && rank <= 5) {
+    const gold = t.cands.find((c) => c.repo === r.repo && c.path === r.path) || t.cands.find((c) => c.path === r.topPath);
+    viaBm25 = gold ? gold.lane === 'bm25' : null;
+  }
+  needRows.push({ id: r.id, train: train.has(r.id), lat: latIds.has(r.id), hit5: rank <= 5, viaBm25, dTop: t ? denseTop(t) : null, traced: !!t });
+}
+// recall
+const fx = JSON.parse(fs.readFileSync(`${WT}/data/retrieval-query-evidence.json`, 'utf8'));
+const qOf = new Map(Object.entries(fx.queries).map(([store, row]) => [store, row.query]));
+const rt = trace(`${R}/e2e3-f725e0e7/recall.cetrace.jsonl.gz`);
+const rec = JSON.parse(fs.readFileSync(`${R}/e2e3-f725e0e7/recall.json`, 'utf8')).rows;
+const recRows = [];
+for (const r of rec) {
+  const t = rt.get(qOf.get(r.store));
+  const hit5 = r.exactFileRank != null && r.exactFileRank <= 5;
+  let viaBm25 = null;
+  if (t && hit5) {
+    const gold = t.cands.find((c) => c.repo === r.store && c.path.toLowerCase() === String(r.expectedPath).toLowerCase());
+    viaBm25 = gold ? gold.lane === 'bm25' : null;
+  }
+  recRows.push({ store: r.store, hit5, viaBm25, dTop: t ? denseTop(t) : null, traced: !!t });
+}
+const fmt = (x) => (x == null ? null : +x.toFixed(2));
+console.log('needs traced', needRows.filter((r) => r.traced).length, 'hit5', needRows.filter((r) => r.hit5).length);
+console.log('needs bm25 wins', JSON.stringify(needRows.filter((r) => r.viaBm25).map((r) => ({ id: r.id.slice(0, 50), train: r.train, dTop: fmt(r.dTop) }))));
+console.log('needs hit5 unknown-lane', needRows.filter((r) => r.hit5 && r.viaBm25 == null).length);
+console.log('recall traced', recRows.filter((r) => r.traced).length, 'hit5', recRows.filter((r) => r.hit5).length);
+console.log('recall bm25 wins', JSON.stringify(recRows.filter((r) => r.viaBm25).map((r) => ({ store: r.store, dTop: fmt(r.dTop) }))));
+console.log('recall hit5 unknown-lane', recRows.filter((r) => r.hit5 && r.viaBm25 == null).map((r) => r.store).join(','));
+for (const t of [-2, -1, 0, 1, 2, 3, 4, 5, 6]) {
+  const fire = (rows) => rows.filter((r) => r.dTop != null && r.dTop < t).length + '/' + rows.filter((r) => r.dTop != null).length;
+  const keep = (rows) => rows.filter((r) => r.viaBm25 && r.dTop < t).length + '/' + rows.filter((r) => r.viaBm25).length;
+  console.log(`t=${t} needs fire ${fire(needRows)} (train ${fire(needRows.filter((r) => r.train))}, latency set ${fire(needRows.filter((r) => r.lat))}) keep needs ${keep(needRows)} (train ${keep(needRows.filter((r) => r.train))}); recall fire ${fire(recRows)} keep ${keep(recRows)}`);
+}

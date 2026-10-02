@@ -1,0 +1,274 @@
+{
+  "score": {
+    "grounded": {
+      "k": 0,
+      "n": 0,
+      "p": 0,
+      "lo": 0,
+      "hi": 1
+    },
+    "routed": {
+      "k": 0,
+      "n": 0,
+      "p": 0,
+      "lo": 0,
+      "hi": 1
+    },
+    "abstain": {
+      "k": 19,
+      "n": 20,
+      "p": 0.95,
+      "lo": 0.7638641064874331,
+      "hi": 0.9911187805671268
+    },
+    "banner": {
+      "k": 0,
+      "n": 0,
+      "p": 0,
+      "lo": 0,
+      "hi": 1
+    }
+  },
+  "rows": [
+    {
+      "id": "a-01",
+      "stratum": "adversarial",
+      "query": "How do I configure Kubernetes horizontal pod autoscaling with custom metrics?",
+      "citedRepo": "midstream",
+      "citedPath": "midstream/plans/AIMDS/claude-code.md",
+      "ce": -4.617,
+      "grounded": true,
+      "routed": null,
+      "abstained": true,
+      "pass": true
+    },
+    {
+      "id": "a-02",
+      "stratum": "adversarial",
+      "query": "What's the syntax to refresh a Postgres materialized view concurrently?",
+      "citedRepo": null,
+      "citedPath": null,
+      "ce": null,
+      "grounded": false,
+      "routed": null,
+      "abstained": true,
+      "pass": true
+    },
+    {
+      "id": "a-03",
+      "stratum": "adversarial",
+      "query": "How do I verify Stripe webhook signatures in Django?",
+      "citedRepo": null,
+      "citedPath": null,
+      "ce": null,
+      "grounded": false,
+      "routed": null,
+      "abstained": true,
+      "pass": true
+    },
+    {
+      "id": "a-04",
+      "stratum": "adversarial",
+      "query": "How does React's useTransition differ from useDeferredValue?",
+      "citedRepo": null,
+      "citedPath": null,
+      "ce": null,
+      "grounded": false,
+      "routed": null,
+      "abstained": true,
+      "pass": true
+    },
+    {
+      "id": "a-05",
+      "stratum": "adversarial",
+      "query": "How do I set up Terraform remote state locking with DynamoDB?",
+      "citedRepo": null,
+      "citedPath": null,
+      "ce": null,
+      "grounded": false,
+      "routed": null,
+      "abstained": true,
+      "pass": true
+    },
+    {
+      "id": "a-06",
+      "stratum": "adversarial",
+      "query": "How do I build a SwiftUI NavigationStack with deep links?",
+      "citedRepo": "rulake",
+      "citedPath": "rulake/crates/ruqu-backend/tests/tensor_network_smoke.rs",
+      "ce": -6.724,
+      "grounded": true,
+      "routed": null,
+      "abstained": true,
+      "pass": true
+    },
+    {
+      "id": "a-07",
+      "stratum": "adversarial",
+      "query": "Can Excel VLOOKUP use wildcards across multiple sheets?",
+      "citedRepo": null,
+      "citedPath": null,
+      "ce": null,
+      "grounded": false,
+      "routed": null,
+      "abstained": true,
+      "pass": true
+    },
+    {
+      "id": "a-08",
+      "stratum": "adversarial",
+      "query": "How do I tune the JVM G1 garbage collector's pause-time target?",
+      "citedRepo": null,
+      "citedPath": null,
+      "ce": null,
+      "grounded": false,
+      "routed": null,
+      "abstained": true,
+      "pass": true
+    },
+    {
+      "id": "a-09",
+      "stratum": "adversarial",
+      "query": "What are Salesforce Apex trigger best practices?",
+      "citedRepo": null,
+      "citedPath": null,
+      "ce": null,
+      "grounded": false,
+      "routed": null,
+      "abstained": true,
+      "pass": true
+    },
+    {
+      "id": "a-10",
+      "stratum": "adversarial",
+      "query": "How do I configure NGINX rate limiting per API key?",
+      "citedRepo": "dream-machine",
+      "citedPath": "dream-machine/docs/dream-cycle/2026-09-11-ledger-signals-report.md",
+      "ce": -4.961,
+      "grounded": true,
+      "routed": null,
+      "abstained": true,
+      "pass": true
+    },
+    {
+      "id": "a-11",
+      "stratum": "adversarial",
+      "query": "How do I do a pandas groupby with multiple renamed aggregations?",
+      "citedRepo": null,
+      "citedPath": null,
+      "ce": null,
+      "grounded": false,
+      "routed": null,
+      "abstained": true,
+      "pass": true
+    },
+    {
+      "id": "a-12",
+      "stratum": "adversarial",
+      "query": "How does Unity's DOTS ECS differ from classic GameObjects?",
+      "citedRepo": "swarm-world",
+      "citedPath": "swarm-world/plans/unity-swarm-ai-market-analysis.md",
+      "ce": 1.495,
+      "grounded": true,
+      "routed": null,
+      "abstained": false,
+      "pass": false
+    },
+    {
+      "id": "a-13",
+      "stratum": "adversarial",
+      "query": "What is the COBOL PERFORM VARYING loop syntax?",
+      "citedRepo": null,
+      "citedPath": null,
+      "ce": null,
+      "grounded": false,
+      "routed": null,
+      "abstained": true,
+      "pass": true
+    },
+    {
+      "id": "a-14",
+      "stratum": "adversarial",
+      "query": "How do I flash MicroPython onto a Raspberry Pi Pico?",
+      "citedRepo": null,
+      "citedPath": null,
+      "ce": null,
+      "grounded": false,
+      "routed": null,
+      "abstained": true,
+      "pass": true
+    },
+    {
+      "id": "a-15",
+      "stratum": "adversarial",
+      "query": "In what order does Active Directory apply group policy?",
+      "citedRepo": null,
+      "citedPath": null,
+      "ce": null,
+      "grounded": false,
+      "routed": null,
+      "abstained": true,
+      "pass": true
+    },
+    {
+      "id": "a-16",
+      "stratum": "adversarial",
+      "query": "How do I run blue-green deployments with AWS CodeDeploy?",
+      "citedRepo": "ruvector",
+      "citedPath": "ruvector/examples/vibecast-7sense/docs/adr/ADR-001-system-architecture.md",
+      "ce": -0.872,
+      "grounded": true,
+      "routed": null,
+      "abstained": true,
+      "pass": true
+    },
+    {
+      "id": "a-17",
+      "stratum": "adversarial",
+      "query": "What's the Wireshark display filter for TLS handshake failures?",
+      "citedRepo": null,
+      "citedPath": null,
+      "ce": null,
+      "grounded": false,
+      "routed": null,
+      "abstained": true,
+      "pass": true
+    },
+    {
+      "id": "a-18",
+      "stratum": "adversarial",
+      "query": "How do I add a calculated field to a Google Sheets pivot table?",
+      "citedRepo": null,
+      "citedPath": null,
+      "ce": null,
+      "grounded": false,
+      "routed": null,
+      "abstained": true,
+      "pass": true
+    },
+    {
+      "id": "a-19",
+      "stratum": "adversarial",
+      "query": "Should I use BLoC or Riverpod for Flutter state management?",
+      "citedRepo": null,
+      "citedPath": null,
+      "ce": null,
+      "grounded": false,
+      "routed": null,
+      "abstained": true,
+      "pass": true
+    },
+    {
+      "id": "a-20",
+      "stratum": "adversarial",
+      "query": "How do I renew a Let's Encrypt wildcard certificate with DNS-01?",
+      "citedRepo": null,
+      "citedPath": null,
+      "ce": null,
+      "grounded": false,
+      "routed": null,
+      "abstained": true,
+      "pass": true
+    }
+  ]
+}

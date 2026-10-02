@@ -75,31 +75,45 @@ test('REQUIRE_BRAIN=1 — THE MUTANT: the same empty brain dir converts the skip
   );
 });
 
-test('warm-brain explicitly instantiates the embedder the battery requires', () => {
+// The warm step moved out of ci.yml into scripts/ci/warm-brain-models.mjs (shared by warm-brain and
+// release-qe), and this test kept grepping the workflow for the inline code, so it went red on every 4.5
+// branch. It now checks the WIRING in the workflow and the BEHAVIOUR of the script: run against a KB whose
+// RVF sidecars name two embedders, with a recording stand-in for @xenova/transformers resolved from that
+// KB's own node_modules, every required embedder must be instantiated, reading/writing KB_MODEL_CACHE.
+test('warm-brain explicitly instantiates every embedder the battery requires', () => {
   const workflow = fs.readFileSync(CI_WORKFLOW, 'utf8');
-  assert.match(
-    workflow,
-    /requiredEmbedderModels\(process\.env\.RUVNET_BRAIN_KB\)/,
-    'CI must derive required embedders from the installed RVF sidecars, not a stale hard-coded model',
-  );
-  assert.match(
-    workflow,
-    /for\s*\(const model of requiredEmbedderModels\(process\.env\.RUVNET_BRAIN_KB\)\)/,
-    'CI must warm every embedder required by the installed RVF sidecars',
-  );
-  assert.match(
-    workflow,
-    /T\.pipeline\(['"]feature-extraction['"],\s*model,/,
-    'a successful reader query may warm only the reranker; CI must instantiate each required embedder explicitly',
-  );
-  assert.match(
-    workflow,
-    /T\.env\.localModelPath\s*=\s*modelCache/,
-    'the explicit warm must read models from the same KB_MODEL_CACHE the battery inspects',
-  );
-  assert.match(
-    workflow,
-    /T\.env\.cacheDir\s*=\s*modelCache/,
-    'the pinned installed resolver may set only localModelPath; CI must direct remote downloads to KB_MODEL_CACHE too',
-  );
+  const warmJob = (/\n  warm-brain:\n([\s\S]*?)(?=\n  [A-Za-z0-9_-]+:\n|$)/.exec(workflow) || [])[1] || '';
+  assert.match(warmJob, /run: node scripts\/ci\/warm-brain-models\.mjs/, 'the warm-brain job must run the shared warm script');
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'warm-brain-'));
+  try {
+    const kb = path.join(dir, 'kb'); const cache = path.join(dir, 'models'); const log = path.join(dir, 'calls.jsonl');
+    fs.mkdirSync(kb, { recursive: true });
+    fs.writeFileSync(path.join(kb, 'package.json'), '{"name":"fixture-kb","private":true}');
+    for (const [store, model] of [['alpha', 'Xenova/bge-small-en-v1.5'], ['beta', 'Xenova/all-MiniLM-L6-v2']]) {
+      fs.writeFileSync(path.join(kb, `${store}.big.rvf`), 'x');
+      fs.writeFileSync(path.join(kb, `${store}.big.rvf.embed.json`), JSON.stringify({ model }));
+    }
+    const xen = path.join(kb, 'node_modules', '@xenova', 'transformers');
+    fs.mkdirSync(xen, { recursive: true });
+    fs.writeFileSync(path.join(xen, 'package.json'), '{"name":"@xenova/transformers","type":"module","main":"index.js"}');
+    fs.writeFileSync(path.join(xen, 'index.js'), `import fs from 'node:fs';
+export const env = {};
+export async function pipeline(task, model) {
+  fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ task, model, localModelPath: env.localModelPath, cacheDir: env.cacheDir }) + '\\n');
+  return async () => ({});
+}
+`);
+    const r = spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'ci', 'warm-brain-models.mjs')], {
+      encoding: 'utf8', timeout: 60_000, env: { ...process.env, RUVNET_BRAIN_KB: kb, KB_MODEL_CACHE: cache } });
+    assert.equal(r.status, 0, r.stderr);
+    const calls = fs.readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.deepEqual(calls.map((c) => c.model).sort(), ['Xenova/all-MiniLM-L6-v2', 'Xenova/bge-small-en-v1.5'],
+      'every embedder named by the installed RVF sidecars, each instantiated explicitly');
+    for (const c of calls) {
+      assert.equal(c.task, 'feature-extraction');
+      assert.equal(c.localModelPath, cache, 'reads models from the same KB_MODEL_CACHE the battery inspects');
+      assert.equal(c.cacheDir, cache, 'downloads into KB_MODEL_CACHE too');
+    }
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

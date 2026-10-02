@@ -571,6 +571,78 @@
    "expectFire": false,
    "synthetic": true,
    "message": "## What the ruflo fix does\n\nIt's a one-line change in the hook."
+  },
+  {
+   "id": "neg-45-row-reinstalled",
+   "label": "no-ruv-capability-claim",
+   "category": "status-table",
+   "searchedOk": false,
+   "expectFire": false,
+   "synthetic": true,
+   "message": "| Package | Status |\n|---|---|\n| ruflo | Reinstalled from npm |"
+  },
+  {
+   "id": "neg-45-row-deprecated",
+   "label": "no-ruv-capability-claim",
+   "category": "status-table",
+   "searchedOk": false,
+   "expectFire": false,
+   "synthetic": true,
+   "message": "| agentic-flow | Deprecated in our stack |"
+  },
+  {
+   "id": "neg-45-row-pinned-version",
+   "label": "no-ruv-capability-claim",
+   "category": "status-table",
+   "searchedOk": false,
+   "expectFire": false,
+   "synthetic": true,
+   "message": "| ruvector | Pinned to 0.3.1 |"
+  },
+  {
+   "id": "neg-45-row-rolled-back",
+   "label": "no-ruv-capability-claim",
+   "category": "status-table",
+   "searchedOk": false,
+   "expectFire": false,
+   "synthetic": true,
+   "message": "| ruflo | Rolled back |"
+  },
+  {
+   "id": "neg-45-row-migrated",
+   "label": "no-ruv-capability-claim",
+   "category": "status-table",
+   "searchedOk": false,
+   "expectFire": false,
+   "synthetic": true,
+   "message": "| agentdb | Migrated and verified |"
+  },
+  {
+   "id": "pos-45-row-digit-claim",
+   "label": "asserts-ruv-capability",
+   "category": "capability-table",
+   "searchedOk": false,
+   "expectFire": true,
+   "synthetic": true,
+   "message": "| agentdb | Ships a built-in BM25 index |"
+  },
+  {
+   "id": "pos-45-row-participle-adjective",
+   "label": "asserts-ruv-capability",
+   "category": "capability-table",
+   "searchedOk": false,
+   "expectFire": true,
+   "synthetic": true,
+   "message": "| ruflo | Distributed consensus engine |"
+  },
+  {
+   "id": "neg-45-row-version-only",
+   "label": "no-ruv-capability-claim",
+   "category": "status-table",
+   "searchedOk": false,
+   "expectFire": false,
+   "synthetic": true,
+   "message": "| ruflo | Now at 3.41.2 on this machine |"
   }
  ]
 }

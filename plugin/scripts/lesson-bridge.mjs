@@ -23,6 +23,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { makeLesson, updateLessons, loadLessons, ENFORCEMENT, ORIGIN, STATUS, TRIGGERS } from './lesson-store.mjs';
+import { loadNodeSqlite } from './node-sqlite.mjs';
 
 /** Every bridged lesson id starts with this. It is how a merge knows which rows it owns. */
 export const BRIDGE_PREFIX = 'G-';
@@ -108,8 +109,11 @@ export function readProjectRows(dbPath = PROJECT_DB) {
   } catch { return []; }
 }
 
-/** Indirection so a missing node:sqlite is a caught throw rather than a module-load crash. */
-function require$(id) { return process.getBuiltinModule ? process.getBuiltinModule(id) : null; }
+/**
+ * Indirection so a missing node:sqlite is a caught throw rather than a module-load crash, loaded
+ * through node-sqlite.mjs so Node 22's SQLite ExperimentalWarning never reaches hook output.
+ */
+function require$(id) { return id === 'node:sqlite' ? loadNodeSqlite() : (process.getBuiltinModule ? process.getBuiltinModule(id) : null); }
 
 // ── Row → lesson ─────────────────────────────────────────────────────────────────────────────────
 

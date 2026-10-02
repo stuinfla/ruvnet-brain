@@ -1,0 +1,42 @@
+{
+ "n": 69,
+ "nOk": 69,
+ "arms": {
+  "A_base": {
+   "p50": 13665,
+   "p90": 20555,
+   "meanRepos": 3.29,
+   "errors": 0
+  },
+  "B_e2e3": {
+   "p50": 15303,
+   "p90": 26426,
+   "meanRepos": 3.29,
+   "errors": 0
+  }
+ },
+ "deltas": {
+  "B_e2e3 - A_base": {
+   "p50": 1638,
+   "p50CI": [
+    1052,
+    3430
+   ],
+   "p90": 5871,
+   "p90CI": [
+    3685,
+    8701
+   ],
+   "medianPairedDiff": 2111,
+   "medianPairedCI": [
+    1366,
+    2863
+   ],
+   "bFaster": "8/69"
+  }
+ },
+ "loadAt": {
+  "min": 27.5,
+  "max": 59.9
+ }
+}

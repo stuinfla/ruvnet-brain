@@ -1,0 +1,308 @@
+{
+ "kind": "ruvnet-brain-judge-report",
+ "features": [
+  "ce",
+  "ceGap",
+  "ceRankLog",
+  "dist",
+  "laneBm25",
+  "laneRescue",
+  "titlePathOverlap",
+  "lenLog"
+ ],
+ "trainedOn": {
+  "split": "v1",
+  "trainNeeds": 103,
+  "tracedTrain": 97,
+  "candidates": 20745,
+  "positives": 37,
+  "precisionTarget": 0.8
+ },
+ "threshold": null,
+ "weights": {
+  "ce": -0.083,
+  "ceGap": -0.6476,
+  "ceRankLog": -1.4784,
+  "dist": -0.7276,
+  "laneBm25": 1.1289,
+  "laneRescue": -0.131,
+  "titlePathOverlap": 0.6752,
+  "lenLog": 0.6217
+ },
+ "train": {
+  "crossEncoder": {
+   "traced": 97,
+   "goldWithin5": {
+    "k": 10,
+    "n": 103,
+    "lo": 0.0536,
+    "hi": 0.1696
+   },
+   "goldAt1": {
+    "k": 4,
+    "n": 103,
+    "lo": 0.0152,
+    "hi": 0.0956
+   },
+   "confidentHit": {
+    "k": 3,
+    "n": 103,
+    "lo": 0.01,
+    "hi": 0.0822
+   },
+   "confidentWrong": {
+    "k": 3,
+    "n": 103,
+    "lo": 0.01,
+    "hi": 0.0822
+   },
+   "confidentHitTop1": {
+    "k": 1,
+    "n": 103,
+    "lo": 0.0017,
+    "hi": 0.053
+   },
+   "abstained": {
+    "k": 97,
+    "n": 103,
+    "lo": 0.8787,
+    "hi": 0.973
+   },
+   "precision": {
+    "k": 1,
+    "n": 6,
+    "lo": 0.0301,
+    "hi": 0.5635
+   }
+  },
+  "judge": {
+   "traced": 97,
+   "goldWithin5": {
+    "k": 9,
+    "n": 103,
+    "lo": 0.0467,
+    "hi": 0.1578
+   },
+   "goldAt1": {
+    "k": 3,
+    "n": 103,
+    "lo": 0.01,
+    "hi": 0.0822
+   },
+   "confidentHit": {
+    "k": 0,
+    "n": 103,
+    "lo": 0,
+    "hi": 0.036
+   },
+   "confidentWrong": {
+    "k": 0,
+    "n": 103,
+    "lo": 0,
+    "hi": 0.036
+   },
+   "confidentHitTop1": {
+    "k": 0,
+    "n": 103,
+    "lo": 0,
+    "hi": 0.036
+   },
+   "abstained": {
+    "k": 103,
+    "n": 103,
+    "lo": 0.964,
+    "hi": 1
+   },
+   "precision": {
+    "k": 0,
+    "n": 0,
+    "lo": 0,
+    "hi": 1
+   }
+  }
+ },
+ "heldout": {
+  "crossEncoder": {
+   "traced": 99,
+   "goldWithin5": {
+    "k": 11,
+    "n": 103,
+    "lo": 0.0607,
+    "hi": 0.1812
+   },
+   "goldAt1": {
+    "k": 5,
+    "n": 103,
+    "lo": 0.0209,
+    "hi": 0.1086
+   },
+   "confidentHit": {
+    "k": 2,
+    "n": 103,
+    "lo": 0.0053,
+    "hi": 0.0681
+   },
+   "confidentWrong": {
+    "k": 4,
+    "n": 103,
+    "lo": 0.0152,
+    "hi": 0.0956
+   },
+   "confidentHitTop1": {
+    "k": 1,
+    "n": 103,
+    "lo": 0.0017,
+    "hi": 0.053
+   },
+   "abstained": {
+    "k": 97,
+    "n": 103,
+    "lo": 0.8787,
+    "hi": 0.973
+   },
+   "precision": {
+    "k": 1,
+    "n": 6,
+    "lo": 0.0301,
+    "hi": 0.5635
+   }
+  },
+  "judge": {
+   "traced": 99,
+   "goldWithin5": {
+    "k": 14,
+    "n": 103,
+    "lo": 0.0827,
+    "hi": 0.2153
+   },
+   "goldAt1": {
+    "k": 6,
+    "n": 103,
+    "lo": 0.027,
+    "hi": 0.1213
+   },
+   "confidentHit": {
+    "k": 0,
+    "n": 103,
+    "lo": 0,
+    "hi": 0.036
+   },
+   "confidentWrong": {
+    "k": 0,
+    "n": 103,
+    "lo": 0,
+    "hi": 0.036
+   },
+   "confidentHitTop1": {
+    "k": 0,
+    "n": 103,
+    "lo": 0,
+    "hi": 0.036
+   },
+   "abstained": {
+    "k": 103,
+    "n": 103,
+    "lo": 0.964,
+    "hi": 1
+   },
+   "precision": {
+    "k": 0,
+    "n": 0,
+    "lo": 0,
+    "hi": 1
+   }
+  }
+ },
+ "recallReplay": {
+  "crossEncoder": {
+   "traced": 182,
+   "goldWithin5": {
+    "k": 165,
+    "n": 182,
+    "lo": 0.8555,
+    "hi": 0.9409
+   },
+   "goldAt1": {
+    "k": 130,
+    "n": 182,
+    "lo": 0.6448,
+    "hi": 0.775
+   },
+   "confidentHit": {
+    "k": 146,
+    "n": 182,
+    "lo": 0.7383,
+    "hi": 0.8536
+   },
+   "confidentWrong": {
+    "k": 15,
+    "n": 182,
+    "lo": 0.0506,
+    "hi": 0.1315
+   },
+   "confidentHitTop1": {
+    "k": 113,
+    "n": 182,
+    "lo": 0.5486,
+    "hi": 0.6882
+   },
+   "abstained": {
+    "k": 21,
+    "n": 182,
+    "lo": 0.0767,
+    "hi": 0.17
+   },
+   "precision": {
+    "k": 113,
+    "n": 161,
+    "lo": 0.6272,
+    "hi": 0.7671
+   }
+  },
+  "judge": {
+   "traced": 182,
+   "goldWithin5": {
+    "k": 154,
+    "n": 182,
+    "lo": 0.7866,
+    "hi": 0.8914
+   },
+   "goldAt1": {
+    "k": 110,
+    "n": 182,
+    "lo": 0.5319,
+    "hi": 0.6726
+   },
+   "confidentHit": {
+    "k": 0,
+    "n": 182,
+    "lo": 0,
+    "hi": 0.0207
+   },
+   "confidentWrong": {
+    "k": 0,
+    "n": 182,
+    "lo": 0,
+    "hi": 0.0207
+   },
+   "confidentHitTop1": {
+    "k": 0,
+    "n": 182,
+    "lo": 0,
+    "hi": 0.0207
+   },
+   "abstained": {
+    "k": 182,
+    "n": 182,
+    "lo": 0.9793,
+    "hi": 1
+   },
+   "precision": {
+    "k": 0,
+    "n": 0,
+    "lo": 0,
+    "hi": 1
+   }
+  }
+ }
+}

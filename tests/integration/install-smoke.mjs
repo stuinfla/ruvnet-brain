@@ -38,6 +38,8 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { writeInstalledRuntimeIdentity } from '../../kb/corpus-release-identity.mjs';
+import { writeSignatureRecord } from '../../plugin/scripts/brain-confirmation.mjs';
+import { groundingCheckLine } from '../../bin/install.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const INSTALLER = path.join(ROOT, 'bin', 'install.mjs');
@@ -99,10 +101,19 @@ function assertVerdict(r, expected, label) {
   );
 }
 
-function writeCompleteBrainFixture(brainDir, { liveProof = true } = {}) {
+// A GENUINELY COMPLETE install, built from files (review 4.5): the search entry points, the reader's own
+// warm-up modules as no-model stubs (forge-ask.mjs / forge-rerank.mjs export no-op warmers, so the doctor's
+// warm-up step runs and succeeds without a model), a canned cited answer from forge-ask-all.mjs, a build
+// time, COVERAGE.json, and the signature record written by the REAL writer (writeSignatureRecord), exactly
+// as a verified install leaves it. `liveProof`: true = the verifier proves the citation; false = the reader
+// fails; 'inconclusive' = the verifier THROWS on import (an install defect, ✗ reader-broken); 'absent' = no
+// verifier file at all (with an installer that ships none, the live question genuinely cannot settle it).
+function writeCompleteBrainFixture(brainDir, { liveProof = true, brainHome } = {}) {
   const searchFiles = ['forge-mcp-all.mjs', 'forge-ask-all.mjs', 'forge-rerank.mjs', 'card-lane.mjs'];
   const runtimeFile = 'coverage-integrity.mjs';
   const contents = new Map(searchFiles.map((name) => [name, `// fixture ${name}\n`]));
+  contents.set('forge-ask.mjs', 'export async function warmQueryEmbedder() {}\n');
+  contents.set('forge-rerank.mjs', 'export async function warmReranker() {}\n');
   contents.set(runtimeFile, fs.readFileSync(path.join(ROOT, 'plugin', 'scripts', runtimeFile)));
   for (const [name, bytes] of contents) {
     fs.writeFileSync(path.join(brainDir, name), bytes);
@@ -110,13 +121,19 @@ function writeCompleteBrainFixture(brainDir, { liveProof = true } = {}) {
   fs.writeFileSync(path.join(brainDir, 'SOURCE.json'), JSON.stringify({
     brainVersion: PACKAGE_VERSION,
     releaseTag: `v${PACKAGE_VERSION}`,
+    builtUtc: new Date().toISOString(),
   }));
+  fs.writeFileSync(path.join(brainDir, 'COVERAGE.json'), JSON.stringify({ rows: [] }));
   const askScript = liveProof
     ? "console.log('RuvNet Brain package manifest declares ruvnet-brain [source/package.json]');\n"
     : "process.exit(1);\n";
   contents.set('forge-ask-all.mjs', askScript);
   fs.writeFileSync(path.join(brainDir, 'forge-ask-all.mjs'), askScript);
-  if (liveProof) {
+  if (liveProof === 'absent') {
+    /* no verifier in the brain */
+  } else if (liveProof === 'inconclusive') {
+    fs.writeFileSync(path.join(brainDir, 'verify-citation.mjs'), "throw new Error('fixture: this verifier does not load');\n");
+  } else if (liveProof) {
     fs.writeFileSync(path.join(brainDir, 'verify-citation.mjs'), [
       'export async function verifyGrounding() {',
       "  return { grounded: true, receipt: { path: 'source/package.json', file: 'passages.jsonl' } };",
@@ -136,6 +153,9 @@ function writeCompleteBrainFixture(brainDir, { liveProof = true } = {}) {
   }));
   const runtime = writeInstalledRuntimeIdentity(brainDir, { brainVersion: PACKAGE_VERSION });
   assert.equal(runtime.written, true, 'fixture must carry a verified installed-runtime identity');
+  assert.ok(brainHome, 'a complete install has a brain home holding its signature record');
+  writeSignatureRecord({ brainHome, kbDir: brainDir, source: 'fixture',
+    bundleSha256: createHash('sha256').update(fs.readFileSync(path.join(brainDir, 'ARCHIVE-MANIFEST.json'))).digest('hex') });
 }
 
 test('the installer file exists at bin/install.mjs', () => {
@@ -146,8 +166,11 @@ test('the install smoke warms the same model cache used by the stable MCP runtim
   const source = fs.readFileSync(INSTALLER, 'utf8');
   assert.match(source, /spawnSync\('node',\s*doctorSmokeArgs\(cacheDir\)/,
     'smokeQuery must launch the reader with the shared canonical argument builder');
-  assert.match(source, /KB_MODEL_CACHE:\s*resolveRuntimeModelCache\(\)/,
-    'smokeQuery must warm the same model cache used by the stable MCP runtime');
+  const smoke = source.slice(source.indexOf('async function smokeQuery('), source.indexOf('// ── `--demo`'));
+  assert.match(smoke, /const modelCache = resolveRuntimeModelCache\(\);/,
+    'smokeQuery must resolve the same model cache used by the stable MCP runtime');
+  assert.equal((smoke.match(/KB_MODEL_CACHE:\s*modelCache/g) || []).length, 2,
+    'both the warm-up and the question must use that one cache');
 });
 
 // Regression for the macOS public-verification failures on 2026-09-27 (runs 36324328134 job
@@ -206,14 +229,16 @@ test('`--doctor` runs a read-only health check, prints a diagnostic, and never c
 // dir is buildable from files alone. Deliberately no forge-ask-all.mjs: its absence is what keeps
 // smokeQuery() from warming a real local model, so this stays a fast, offline, hermetic test.
 test('`--doctor` on a COMPLETE brain dir returns the healthy verdict (exit 0) — the verdict is real, not hardwired', () => {
-  const brainDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-doctor-healthy-'));
+  const brainParent = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-doctor-healthy-'));
+  const brainDir = path.join(brainParent, 'kb');
+  fs.mkdirSync(brainDir);
   const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-doctor-healthy-cache-'));
   // Keep the complete-brain fixture independent of the runner's real Codex installation. Doctor
   // must inspect the fixture, not inherit a developer/runner host with unrelated retired hooks.
   const home = path.join(cacheDir, 'home');
   fs.mkdirSync(home, { recursive: true });
   try {
-    writeCompleteBrainFixture(brainDir);
+    writeCompleteBrainFixture(brainDir, { brainHome: path.join(cacheDir, 'brain-home') });
     // Current release bundles contain canonical *.big.rvf stores only. The older checker excluded
     // that suffix and falsely failed a real 60-store v3.9.131 install as "zero stores".
     fs.writeFileSync(path.join(brainDir, 'ruvector.big.rvf'), 'not a real store — presence is what gatherInstallState counts\n');
@@ -235,8 +260,15 @@ test('`--doctor` on a COMPLETE brain dir returns the healthy verdict (exit 0) �
     assert.match(out, /1 RuvNet repos? indexed/, `doctor must report the store it found; got:\n${out}`);
     assert.match(out, /local reader installed/, 'doctor must confirm the reader deps it verified');
     assert.doesNotMatch(out, /✗ FAILING/, 'a complete install must not print the FAILING verdict line');
+
+    // NOT WEAKENED: the same install without its signature record is a structural ✗, exit 1.
+    fs.rmSync(path.join(cacheDir, 'brain-home', 'knowledge-signature.json'));
+    const unsigned = runInstaller(['--doctor'], { RUVNET_BRAIN_KB: brainDir, RUVNET_BRAIN_HOME: path.join(cacheDir, 'brain-home'),
+      XDG_CACHE_HOME: cacheDir, HOME: home, USERPROFILE: home, CODEX_HOME: path.join(home, '.codex') });
+    assertVerdict(unsigned, 1, '--doctor (complete brain dir, signature record removed)');
+    assert.match(unsigned.stdout || '', /no signature verification recorded/);
   } finally {
-    fs.rmSync(brainDir, { recursive: true, force: true });
+    fs.rmSync(brainParent, { recursive: true, force: true });
     fs.rmSync(cacheDir, { recursive: true, force: true });
   }
 });
@@ -246,15 +278,16 @@ test('`--doctor` on a COMPLETE brain dir returns the healthy verdict (exit 0) �
 // older failure before the final gate reads it. Same complete-brain-dir fixture as the healthy test
 // above (repos/reader/mcp all present); absent forge-ask-all.mjs, the ONLY variable across the first
 // three cases is what install-state.json says, proving the gate is real and not another signal.
-function completeBrainFixture(options) {
-  const brainDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-doctor-grounding-'));
+function completeBrainFixture(options = {}) {
+  const brainDir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-doctor-grounding-')), 'kb');
+  fs.mkdirSync(brainDir);
   const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-doctor-grounding-cache-'));
   // Doctor reads host lifecycle state as part of its health verdict. Isolate that state so these
   // fixture assertions remain about the staged brain and cannot fail because a CI runner happens
   // to carry a different Codex installation or retired hooks.
   const home = path.join(cacheDir, 'home');
   fs.mkdirSync(home, { recursive: true });
-  writeCompleteBrainFixture(brainDir, options);
+  writeCompleteBrainFixture(brainDir, { ...options, brainHome: path.join(cacheDir, 'brain-home') });
   fs.writeFileSync(path.join(brainDir, 'ruvector.rvf'), 'not a real store — presence is what gatherInstallState counts\n');
   const xen = path.join(brainDir, 'node_modules', '@xenova', 'transformers');
   fs.mkdirSync(xen, { recursive: true });
@@ -263,20 +296,76 @@ function completeBrainFixture(options) {
   return { brainDir, cacheDir, brainHome: path.join(cacheDir, 'brain-home'), home };
 }
 
+// The persisted verdict must be the ONLY variable. Since the re-review (S1) a verifier that THROWS is a
+// broken install (✗), so the one case the live question cannot settle is "no verifier at all": an installer
+// that ships none (a copy of the package with kb/verify-citation.mjs removed) and a brain without one. There,
+// and only there, what install-state.json says — for THESE bytes — decides; flipped in the SAME fixture.
+function installerWithoutVerifier() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-no-verifier-pkg-'));
+  for (const sub of ['bin', 'plugin', 'scripts', 'kb', 'data', 'keys', 'config', 'console']) {
+    if (!fs.existsSync(path.join(ROOT, sub))) continue;
+    fs.cpSync(path.join(ROOT, sub), path.join(dir, sub), { recursive: true, filter: (src) => !/[\\/]node_modules$/.test(src) && !src.endsWith('.rvf') });
+  }
+  fs.copyFileSync(path.join(ROOT, 'package.json'), path.join(dir, 'package.json'));
+  fs.symlinkSync(fs.realpathSync(path.join(ROOT, 'node_modules')), path.join(dir, 'node_modules'), 'junction');
+  if (fs.existsSync(path.join(ROOT, 'kb', 'node_modules'))) fs.symlinkSync(fs.realpathSync(path.join(ROOT, 'kb', 'node_modules')), path.join(dir, 'kb', 'node_modules'), 'junction');
+  fs.rmSync(path.join(dir, 'kb', 'verify-citation.mjs'));
+  return dir;
+}
+
 test('`--doctor` FAILS (exit 1) on an otherwise-COMPLETE brain dir when the persisted verdict says grounding is unproven', () => {
-  const { brainDir, cacheDir, brainHome, home } = completeBrainFixture({ liveProof: false });
+  const { brainDir, cacheDir, brainHome, home } = completeBrainFixture({ liveProof: 'absent' });
+  const pkg = installerWithoutVerifier();
   try {
     const stateDir = path.join(cacheDir, 'ruvnet-brain');
     fs.mkdirSync(stateDir, { recursive: true });
-    fs.writeFileSync(path.join(stateDir, 'install-state.json'), JSON.stringify({ grounding: 'unproven', reason: 'no-answer' }));
-    const r = runInstaller(['--doctor'], {
-      RUVNET_BRAIN_KB: brainDir, RUVNET_BRAIN_HOME: brainHome, XDG_CACHE_HOME: cacheDir,
-      HOME: home, USERPROFILE: home, CODEX_HOME: path.join(home, '.codex'),
-    });
+    const env = { RUVNET_BRAIN_KB: brainDir, RUVNET_BRAIN_HOME: brainHome, XDG_CACHE_HOME: cacheDir,
+      HOME: home, USERPROFILE: home, CODEX_HOME: path.join(home, '.codex') };
+    const doctor = () => {
+      const r = spawnSync(process.execPath, [path.join(pkg, 'bin', 'install.mjs'), '--doctor'], { cwd: ROOT, encoding: 'utf8', timeout: 60000, env: { ...process.env, ...env } });
+      return { ...r, text: String(r.stdout || '').replace(/\u001b\[[0-9;]*m/g, '') };
+    };
+    const coverage = createHash('sha256').update(fs.readFileSync(path.join(brainDir, 'COVERAGE.json'))).digest('hex');
+    const state = (value) => fs.writeFileSync(path.join(stateDir, 'install-state.json'), JSON.stringify(value));
+    state({ grounding: 'unproven', reason: 'no-answer', coverageSha256: coverage });
+    const r = doctor();
     assertVerdict(r, 1, '--doctor (complete brain dir, but grounding persisted as unproven)');
-    assert.match(r.stdout || '', /Grounding UNPROVEN/, 'doctor must name the persisted verdict as the reason it failed');
+    assert.match(r.text, /Grounding UNPROVEN/, 'doctor must name the persisted verdict as the reason it failed');
+    assert.match(r.text, /✗ FAILING — grounding:/, 'grounding, and nothing else, fails this complete install');
+    assert.match(r.text, /✗ Grounding\s+recorded UNPROVEN/, 'the verdict line names the persisted verdict');
+    // FLIP only the persisted verdict: the same install passes, so the verdict was the whole reason.
+    state({ grounding: 'proven', clearedBy: 'search_ruvnet', coverageSha256: coverage });
+    const flipped = doctor();
+    assertVerdict(flipped, 0, '--doctor (same install, persisted verdict flipped to proven)');
+    assert.match(flipped.text, /not re-proven live .*last proven for these bytes/, 'it says the live question could not re-prove it');
+    // A 'proven' recorded for OTHER bytes (an older corpus) proves nothing about these (re-review S1).
+    state({ grounding: 'proven', clearedBy: 'search_ruvnet', coverageSha256: 'f'.repeat(64) });
+    const stale = doctor();
+    assertVerdict(stale, 1, '--doctor (proven verdict recorded for different knowledge bytes)');
+    assert.match(stale.text, /✗ Grounding\s+not verifiable live .*never proven for these bytes/);
+    // And with NO evidence at all (nothing persisted, nothing provable live) it is not healthy.
+    fs.rmSync(path.join(stateDir, 'install-state.json'));
+    assertVerdict(doctor(), 1, '--doctor (same install, no live proof and no recorded proof)');
   } finally {
-    fs.rmSync(brainDir, { recursive: true, force: true });
+    fs.rmSync(path.dirname(brainDir), { recursive: true, force: true });
+    fs.rmSync(cacheDir, { recursive: true, force: true });
+    fs.rmSync(pkg, { recursive: true, force: true });
+  }
+});
+
+test('`--doctor` FAILS (exit 1) when the installed verifier THROWS on import, whatever the persisted verdict says', () => {
+  const { brainDir, cacheDir, brainHome, home } = completeBrainFixture({ liveProof: 'inconclusive' });
+  try {
+    const stateDir = path.join(cacheDir, 'ruvnet-brain');
+    fs.mkdirSync(stateDir, { recursive: true });
+    const coverage = createHash('sha256').update(fs.readFileSync(path.join(brainDir, 'COVERAGE.json'))).digest('hex');
+    fs.writeFileSync(path.join(stateDir, 'install-state.json'), JSON.stringify({ grounding: 'proven', clearedBy: 'search_ruvnet', coverageSha256: coverage }));
+    const r = runInstaller(['--doctor'], { RUVNET_BRAIN_KB: brainDir, RUVNET_BRAIN_HOME: brainHome, XDG_CACHE_HOME: cacheDir,
+      HOME: home, USERPROFILE: home, CODEX_HOME: path.join(home, '.codex') });
+    assertVerdict(r, 1, '--doctor (a verifier that throws on import)');
+    assert.match(String(r.stdout || '').replace(/\u001b\[[0-9;]*m/g, ''), /✗ Grounding\s+not proven \(reader-broken: verify-citation\.mjs does not load/);
+  } finally {
+    fs.rmSync(path.dirname(brainDir), { recursive: true, force: true });
     fs.rmSync(cacheDir, { recursive: true, force: true });
   }
 });
@@ -294,7 +383,7 @@ test('`--doctor` PASSES (exit 0) on the same complete brain dir when the persist
     assertVerdict(r, 0, '--doctor (complete brain dir, grounding persisted as proven)');
     assert.doesNotMatch(r.stdout || '', /Grounding UNPROVEN/, 'a proven verdict must never print the unproven line');
   } finally {
-    fs.rmSync(brainDir, { recursive: true, force: true });
+    fs.rmSync(path.dirname(brainDir), { recursive: true, force: true });
     fs.rmSync(cacheDir, { recursive: true, force: true });
   }
 });
@@ -326,7 +415,7 @@ test('`--doctor` replaces a stale unproven verdict when its live citation proof 
       'the successful live proof must become the persisted verdict for later readers',
     );
   } finally {
-    fs.rmSync(brainDir, { recursive: true, force: true });
+    fs.rmSync(path.dirname(brainDir), { recursive: true, force: true });
     fs.rmSync(cacheDir, { recursive: true, force: true });
   }
 });
@@ -343,9 +432,59 @@ test('`--doctor` PASSES (exit 0) on the same complete brain dir when NO verdict 
     assertVerdict(r, 0, '--doctor (complete brain dir, no persisted verdict at all)');
     assert.doesNotMatch(r.stdout || '', /Grounding UNPROVEN/, 'absence of a verdict must never read as a failure');
   } finally {
-    fs.rmSync(brainDir, { recursive: true, force: true });
+    fs.rmSync(path.dirname(brainDir), { recursive: true, force: true });
     fs.rmSync(cacheDir, { recursive: true, force: true });
   }
+});
+
+// A brain on an exFAT disk carries AppleDouble `._*` shadows: `._ruvector.rvf` is volume metadata, not a store.
+test('`--doctor` does not count an AppleDouble `._*.rvf` shadow as an installed store', () => {
+  const { brainDir, cacheDir, brainHome, home } = completeBrainFixture();
+  try {
+    fs.renameSync(path.join(brainDir, 'ruvector.rvf'), path.join(brainDir, '._ruvector.rvf'));
+    const r = runInstaller(['--doctor'], { RUVNET_BRAIN_KB: brainDir, RUVNET_BRAIN_HOME: brainHome, XDG_CACHE_HOME: cacheDir,
+      HOME: home, USERPROFILE: home, CODEX_HOME: path.join(home, '.codex') });
+    assertVerdict(r, 1, '--doctor (only an AppleDouble shadow of a store)');
+    assert.match(r.stdout || '', /no \.rvf stores found/);
+    assert.doesNotMatch(r.stdout || '', /1 RuvNet repos? indexed/);
+  } finally {
+    fs.rmSync(path.dirname(brainDir), { recursive: true, force: true });
+    fs.rmSync(cacheDir, { recursive: true, force: true });
+  }
+});
+
+// A missing or incomplete reader is an INSTALL DEFECT: ✗ with its own cause and fix, never a silent skip
+// and never an ERR_MODULE_NOT_FOUND stack dressed up as "could not prepare the models".
+for (const [missing, cause] of [['forge-ask-all.mjs', /reader-missing: forge-ask-all\.mjs/], ['forge-ask.mjs', /reader-incomplete: forge-ask\.mjs/]]) {
+  test(`\`--doctor\` FAILS (exit 1) and names the cause when the reader file ${missing} is missing`, () => {
+    const { brainDir, cacheDir, brainHome, home } = completeBrainFixture();
+    try {
+      fs.rmSync(path.join(brainDir, missing));
+      const r = runInstaller(['--doctor'], { RUVNET_BRAIN_KB: brainDir, RUVNET_BRAIN_HOME: brainHome, XDG_CACHE_HOME: cacheDir,
+        HOME: home, USERPROFILE: home, CODEX_HOME: path.join(home, '.codex') });
+      assertVerdict(r, 1, `--doctor (${missing} missing)`);
+      const out = (r.stdout || '').replace(/\u001b\[[0-9;]*m/g, '');
+      assert.match(out, /✗ Grounding\s/);
+      assert.match(out, cause);
+      assert.doesNotMatch(out, /ERR_MODULE_NOT_FOUND/, 'a named cause, not a stack trace');
+    } finally {
+      fs.rmSync(path.dirname(brainDir), { recursive: true, force: true });
+      fs.rmSync(cacheDir, { recursive: true, force: true });
+    }
+  });
+}
+
+test('the Grounding line: a warm-up that ran out of time is advisory (!); a crash, a missing reader and a recorded UNPROVEN fail', () => {
+  assert.equal(groundingCheckLine({ smoke: { ran: true, grounded: false, slow: true, warmupTimeout: true, reason: 'model-warmup-timeout: stopped by SIGTERM' } }).state, 'warn');
+  assert.equal(groundingCheckLine({ smoke: { ran: true, grounded: false, reason: 'model-warmup-failed: exited 1' } }).state, 'fail');
+  assert.equal(groundingCheckLine({ smoke: { ran: false, grounded: false, reason: 'reader-missing: forge-ask-all.mjs' } }).state, 'fail');
+  assert.equal(groundingCheckLine({ smoke: { ran: true, grounded: true, receipt: { path: 'p' } }, persisted: { grounding: 'proven' } }).state, 'ok');
+  assert.equal(groundingCheckLine({ smoke: { ran: true, grounded: false, warmupTimeout: true }, persisted: { grounding: 'unproven' } }).state, 'fail');
+  assert.equal(groundingCheckLine({ smoke: { ran: true, grounded: null }, persisted: { grounding: 'proven', coverageSha256: 'a'.repeat(64) }, coverageSha256: 'a'.repeat(64) }).state, 'ok');
+  assert.equal(groundingCheckLine({ smoke: { ran: true, grounded: null }, persisted: { grounding: 'proven', coverageSha256: 'b'.repeat(64) }, coverageSha256: 'a'.repeat(64) }).state, 'fail');
+  assert.equal(groundingCheckLine({ smoke: { ran: true, grounded: null }, persisted: { grounding: 'proven' }, coverageSha256: 'a'.repeat(64) }).state, 'fail');
+  assert.equal(groundingCheckLine({ smoke: { ran: true, grounded: false, slow: true, reason: 'no-answer: still answering' } }).state, 'fail', 'the QUESTION timing out stays ✗');
+  assert.equal(groundingCheckLine({ smoke: { ran: true, grounded: null }, persisted: null }).state, 'fail');
 });
 
 test('`--help` lists the freshness flags: --update, --enable-nightly, --disable-nightly', () => {

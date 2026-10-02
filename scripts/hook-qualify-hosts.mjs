@@ -58,7 +58,15 @@ export function scanCodex({ stdout, stderr }) {
   for (const l of lines(stderr)) if (/hook/i.test(l)) f.push(`stderr: ${l.slice(0, 200)}`);
   return { findings: [...new Set(f)], unrelatedStderr: lines(stderr).filter((l) => !/hook/i.test(l)).slice(0, 3) };
 }
-/** Pure: scan a real `grok -p --debug-file` run. */
+/**
+ * Pure: scan a real `grok -p --debug-file` run.
+ *
+ * MEASURED 2026-10-01 (grok 1.0.13, docs/research/grok-hooks-2026-10-01.md): `grok -p` discovers the Brain
+ * from Claude Code's plugin cache ("plugin discovered name=ruvnet-brain … has_hooks=true") and attaches its
+ * MCP server, but the session's "loaded hooks hook_count=8" was exactly the 4 hooks in ~/.claude/settings.json
+ * plus the 4 in ~/.grok/hooks/ — no plugin's hooks at all — and no Brain hook ever completed. A discovered
+ * plugin whose hooks never dispatch is therefore a FINDING here, never a silent pass.
+ */
 export function scanGrok({ stdout, stderr, debug = '' }) {
   const f = []; let loaded = null; const pluginHooks = /plugin discovered name=ruvnet-brain .*has_hooks=true/.test(debug);
   for (const l of lines(debug)) {
@@ -68,7 +76,11 @@ export function scanGrok({ stdout, stderr, debug = '' }) {
   }
   if (stderr.trim()) f.push(`process stderr: ${JSON.stringify(stderr.trim().slice(0, 300))}`);
   if (/hook/i.test(stdout) && /(error|failed)/i.test(stdout.match(/.{0,80}hook.{0,120}/i)?.[0] || '')) f.push('hook error text in the output stream');
-  return { findings: [...new Set(f)], hooksLoaded: loaded, pluginHasHooks: pluginHooks, pluginHooksRan: /hook_name=plugin|hook_name=ruvnet/.test(debug) };
+  const brainHooksRan = /hook completed hook_name=\S*ruvnet/.test(debug);
+  if (pluginHooks && !brainHooksRan) {
+    f.push(`Brain plugin hooks discovered but never ran (session loaded ${loaded ?? '?'} hooks): grok -p loads only global hooks — see docs/research/grok-hooks-2026-10-01.md`);
+  }
+  return { findings: [...new Set(f)], hooksLoaded: loaded, pluginHasHooks: pluginHooks, pluginHooksRan: brainHooksRan };
 }
 
 async function runClaude(root, dbgDir) {
@@ -98,7 +110,7 @@ async function runGrok(root, dbgDir) {
   const debug = fs.existsSync(debugFile) ? fs.readFileSync(debugFile, 'utf8') : '';
   const s = scanGrok({ stdout: r.stdout || '', stderr: r.stderr || '', debug });
   fs.rmSync(dir, { recursive: true, force: true });
-  return { status: r.status === 0 && !s.findings.length ? 'PASS' : 'FAIL', exit: r.status, ...s, note: 'throwaway cwd is untrusted by Grok, so project/plugin hook loading there is part of what is measured' };
+  return { status: r.status === 0 && !s.findings.length ? 'PASS' : 'FAIL', exit: r.status, ...s, note: 'real HOME: the Brain is discovered from Claude Code\'s plugin cache; whether its hooks actually RUN in grok -p is what is measured (they did not on grok 1.0.13)' };
 }
 
 export async function layer2(hosts, { maxLoad = 40, waitMs = 15 * 60_000, log = () => {}, root = REPO } = {}) {

@@ -55,10 +55,29 @@ describe('sealed candidate canaries reuse the installed staged contexts', () => 
   it.each(['grounding', 'error'])('closes all real host sessions after %s rejection', async (fail) => {
     const { result, trace } = await run({ actualRpc: true, fail });
     expect(result.verdict).toBe('FAIL');
-    expect(trace.filter(({ event }) => event === 'initialize')).toHaveLength(3);
-    expect(trace.filter(({ event }) => event === 'closed')).toHaveLength(3);
+    // THE CONTRACT: every worker started is closed and no process survives. Each worker initializes
+    // once and closes once, so those counts must match, per process.
+    const started = trace.filter(({ event }) => event === 'initialize').map(({ pid }) => pid);
+    const closed = trace.filter(({ event }) => event === 'closed').map(({ pid }) => pid);
+    expect(new Set(started).size).toBe(started.length);
+    expect([...closed].sort()).toEqual([...started].sort());
     for (const pid of new Set(trace.map(({ pid }) => pid))) expect(() => process.kill(pid, 0)).toThrow();
-    if (fail === 'error') expect(Object.values(result.fixtures).every(({ retrieval }) => retrieval.metrics.unknown === 2)).toBe(true);
+    const hosts = new Set(trace.map(({ kb }) => kb));
+    expect(hosts.size).toBe(3);
+    const cases = candidateRetrievalFixture().plan.cases.length;
+    for (const kb of hosts) {
+      const workers = new Set(trace.filter((row) => row.kb === kb && row.event === 'initialize').map(({ pid }) => pid));
+      // A grounding rejection is not a failed search: the lane keeps ONE warm worker, as a customer
+      // has. A failed search retires its worker, and the next case gets a fresh one warmed first —
+      // so with every canary erroring there is one worker per case (bab805e5: one slow case fails
+      // only itself instead of handing every later case the same stored error).
+      expect(workers.size, kb).toBe(fail === 'error' ? cases : 1);
+      for (const pid of [...workers].slice(1)) {
+        const calls = trace.filter((row) => row.pid === pid && row.query);
+        expect(calls[0].k, `re-opened worker ${pid} is warmed before its case`).toBe(1);
+      }
+    }
+    if (fail === 'error') expect(Object.values(result.fixtures).every(({ retrieval }) => retrieval.metrics.unknown === cases)).toBe(true);
   });
   it('sends k5 smoke and k10 sealed cases through the real stdio MCP adapter', async () => {
     const { result, trace } = await run({ actualRpc: true });

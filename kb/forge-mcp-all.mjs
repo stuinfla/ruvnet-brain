@@ -27,6 +27,9 @@ import { implementationNotice, requiresImplementationProof } from './implementat
 import { isSourceDiscoveryIntent } from './source-discovery-intent.mjs';
 import { describeSearchOutcome, describeSearchFailure } from './search-outcome.mjs';
 import { groundedToolResult } from './grounded-response.mjs';
+import { startRecommendEndpoint, brainHomeFromEnv, recommenderFlagOn } from './recommend-endpoint.mjs';
+
+let recommendEndpoint = null;
 
 // ── THE GONG (brain-alarm.mjs): a total retrieval failure must NEVER read as "(no results)". ──
 // Loaded dynamically + guarded (same pattern as telemetry) so an older bundle without the module
@@ -303,6 +306,15 @@ async function handle(msg) {
     case 'brain/warmup':
       await Promise.all([warmQueryEmbedder(), warmReranker()]);
       await warmKnowledgeStores(KB_DIR, CORE_WARM_REPOS);
+      // ADR-093 rev 2: lend the now-warm embedder to the UserPromptSubmit package recommender over a
+      // private local endpoint. ONLY when the recommender flag is an explicit opt-in; default off
+      // starts nothing. A failure here never fails warmup — the hook falls back to its lexical lane.
+      if (recommenderFlagOn() && !recommendEndpoint) {
+        // Endpoint traffic does NOT reset the idle-exit clock (#122): typing must not pin a multi-GB
+        // worker resident. When the worker retires, the hook falls back to its lexical lane.
+        recommendEndpoint = startRecommendEndpoint({ brainHome: brainHomeFromEnv() })
+          .catch(() => null);
+      }
       return ok(id, { ready: true });
     case 'tools/call': {
       const name = params?.name;

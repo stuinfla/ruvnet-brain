@@ -1,0 +1,582 @@
+{
+ "n": 22,
+ "deliveryByLoad": [
+  {
+   "load": "0-60",
+   "k": 0,
+   "n": 0,
+   "pct": null,
+   "ci95": [
+    0,
+    0
+   ]
+  },
+  {
+   "load": "60-120",
+   "k": 0,
+   "n": 0,
+   "pct": null,
+   "ci95": [
+    0,
+    0
+   ]
+  },
+  {
+   "load": "120-240",
+   "k": 0,
+   "n": 0,
+   "pct": null,
+   "ci95": [
+    0,
+    0
+   ]
+  },
+  {
+   "load": ">=240",
+   "k": 0,
+   "n": 0,
+   "pct": null,
+   "ci95": [
+    0,
+    0
+   ]
+  }
+ ],
+ "recall": {
+  "k": 8,
+  "n": 14,
+  "pct": 57.1,
+  "ci95": [
+   32.6,
+   78.6
+  ]
+ },
+ "precision": {
+  "k": 8,
+  "n": 9,
+  "pct": 88.9,
+  "ci95": [
+   56.5,
+   98
+  ]
+ },
+ "falseFiring": {
+  "k": 0,
+  "n": 8,
+  "pct": 0,
+  "ci95": [
+   0,
+   32.4
+  ]
+ },
+ "hintDeliveredWhereExpected": {
+  "k": 13,
+  "n": 16,
+  "pct": 81.3,
+  "ci95": [
+   57,
+   93.4
+  ]
+ },
+ "hintsNotExpected": 0,
+ "agreement": {
+  "k": 19,
+  "n": 22,
+  "pct": 86.4,
+  "ci95": [
+   66.7,
+   95.3
+  ]
+ },
+ "agreementSameInput": {
+  "k": 16,
+  "n": 17,
+  "pct": 94.1,
+  "ci95": [
+   73,
+   99
+  ]
+ },
+ "rows": [
+  {
+   "qid": "Q074",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B01",
+   "category": "design",
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "agenticow",
+    "size",
+    "agentic-jujutsu",
+    "@claude-flow/guidance",
+    "ruvector"
+   ],
+   "said": "agenticow",
+   "answer": "rUv ships agenticow, which gives each agent copy-on-write branches of its vector memory that are cheap to create and discard (source: agenticow/package.json). I'd give each helper a shared base memory and have it fork a branch before any risky task, so all its reads and writes go to that branch while the base stays untouched. When the task finishes, we either merge the branch's new entries back into the base (if it went well) or delete the branch (if it went sideways). I'd add a small wrapper with `fork`, `commit`, and `discard` calls so the helpers never write to the base directly. The first thing I'd check is how agenticow handles merge conflicts when two helpers branch from the same base and both want to commit.",
+   "expectHint": true,
+   "accept": [
+    "agenticow"
+   ],
+   "sim": "agenticow",
+   "right": true,
+   "agree": true
+  },
+  {
+   "qid": "Q077",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B04",
+   "category": "design",
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "wifi-densepose-signal",
+    "wifi-densepose-py",
+    "core",
+    "wifi-densepose-calibration",
+    "@ruvnet/ruview",
+    "harness"
+   ],
+   "said": "wifi-densepose-calibration",
+   "answer": "Yes: WiFi sensing can detect presence because a person's body and movement disturb the signal between a transmitter and receiver, and the steadiness or variation of that signal shows whether a room is occupied. I'd start with Channel State Information (CSI) from cheap ESP32 boards or CSI-capable access points, since plain RSSI is too coarse to reliably catch someone sitting still in a meeting. For each room, I'd record an empty-room baseline, flag occupancy when the signal variance stays above that baseline, and add a hold-off timer (say 10–15 minutes of \"empty\") before turning the lights off so quiet meetings don't go dark. rUv ships wifi-densepose-calibration — its per-room baseline → enroll → train workflow matches the empty-vs-occupied calibration each conference room needs (source: ruview/v2/crates/wifi-densepose-calibration/Cargo.toml). Before choosing hardware, tell me what access points and lighting controls you have (e.g., Meraki, DALI, KNX, Hue).",
+   "expectHint": true,
+   "accept": [
+    "cog-person-count",
+    "rvcsi-events"
+   ],
+   "sim": "@ruvnet/ruview",
+   "right": false,
+   "agree": false
+  },
+  {
+   "qid": "Q080",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B07",
+   "category": "design",
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I'd first look at your bot's input format and a schema-only description of the customer records (field names, types, value ranges, no real values) so the fake data matches what the bot actually sees. Then I'd build a small Python generator using Faker for names, addresses, and IDs, plus seeded randomness for realistic distributions and edge cases like missing fields, typos, and long histories. A templated or Claude-driven layer would turn each fake record into question/answer pairs with known-correct answers derived from the record, so you get ground truth for both training and evaluation. Output would be JSONL with a fixed seed for reproducibility and a separate held-out test split so you don't evaluate on what you trained on. Can you point me to the record schema and a sample of the kinds of questions the bot should handle?",
+   "expectHint": true,
+   "accept": [
+    "@ruvector/agentic-synth"
+   ],
+   "sim": "@ruvector/agentic-synth",
+   "right": null,
+   "agree": null
+  },
+  {
+   "qid": "Q084",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B11",
+   "category": "design",
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "qudag-vault-core",
+    "qudag-crypto",
+    "@daa/qudag-native",
+    "qudag-mcp"
+   ],
+   "said": "qudag-vault-core",
+   "answer": "The vault data itself is already quantum-safe if you use 256-bit symmetric encryption (AES-256-GCM or XChaCha20-Poly1305), since Grover's algorithm only halves effective strength, and you'd derive that key from the master password with Argon2id. The real quantum risk is in the asymmetric parts: sharing vaults between users, device enrollment, and sync key exchange, all of which are exposed to \"harvest now, decrypt later\" attacks. For those I'd use a hybrid KEM, X25519 combined with ML-KEM-768 (FIPS 203), so you stay secure if either one breaks. If you sign anything, such as device identities or update manifests, use Ed25519 hybridized with ML-DSA (FIPS 204). rUv ships qudag-vault-core, a quantum-resistant password vault library with post-quantum cryptography (source: qudag/core/vault/Cargo.toml), but for a password manager I'd still prefer audited primitives like libsodium plus a vetted ML-KEM implementation unless that crate has had an independent audit.",
+   "expectHint": true,
+   "accept": [
+    "qudag-vault-core",
+    "qudag-crypto"
+   ],
+   "sim": "qudag-vault-core",
+   "right": true,
+   "agree": true
+  },
+  {
+   "qid": "Q091",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B18",
+   "category": "diagnosis",
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "@claude-flow/plugin-test-intelligence",
+    "ruvector-gpu-runner",
+    "kimi-k2-wasm-testing-suite",
+    "ruvector-staged-workspace"
+   ],
+   "said": "@claude-flow/plugin-test-intelligence",
+   "answer": "I'd start by measuring: pull the last few weeks of CI results to rank which tests flake most and which suites take the longest, so we fix the worst offenders first. Next I'd quarantine the known flaky tests into a separate non-blocking job, so a green check means something again while we fix them. Then I'd root-cause each flaky test; the usual culprits are shared state or test-order dependence, real time and sleeps, network or external services, and unawaited async work. For the 40 minutes, I'd profile the slowest tests, parallelize or shard the suite, and swap heavy setup like real databases for faster fixtures where it's safe. rUv ships @claude-flow/plugin-test-intelligence, which does flaky-test detection and predictive test selection and could speed up the triage and runtime work (source: ruflo/v3/plugins/test-intelligence/package.json).",
+   "expectHint": true,
+   "accept": [
+    "agentic-qe",
+    "@claude-flow/plugin-test-intelligence"
+   ],
+   "sim": "@claude-flow/plugin-test-intelligence",
+   "right": true,
+   "agree": true
+  },
+  {
+   "qid": "Q096",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B23",
+   "category": "diagnosis",
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "@claude-flow/guidance",
+    "agent-booster",
+    "@agentic-flow/self-improving-codegen",
+    "agenticow",
+    "size"
+   ],
+   "said": "agent-booster",
+   "answer": "I'd route trivial edits away from the big model: have the agent emit a structured edit (file, old string, new string, or a regex/AST pattern) and apply it locally, only escalating to the LLM when the match is ambiguous or fails. rUv ships agent-booster, a local code-editing engine that applies edits with no LLM round-trip at $0 cost, which is exactly this find-and-replace case (source: agentic-flow/packages/agent-booster/package.json). For edits that still need some judgment, I'd send them to a cheap fast model like Haiku 4.5 instead of Opus. I'd add a simple classifier, based on diff size, whether the edit is a rename or literal replace, and whether multiple files are touched, to pick local, small-model, or big-model. To confirm it's worth it, I'd log latency and cost per edit before and after.",
+   "expectHint": true,
+   "accept": [
+    "agent-booster"
+   ],
+   "sim": "agent-booster",
+   "right": true,
+   "agree": true
+  },
+  {
+   "qid": "Q116",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "D03",
+   "category": "design",
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I'd put a thin guard layer between the widget and the main model that screens both directions. On the way in, a fast, cheap classifier (e.g. Haiku 4.5 with a tight rubric, plus basic length and rate limits) flags jailbreak and prompt-injection attempts before they reach the main model. On the way out, a second check validates responses against your policy (off-topic content, leaked system prompt, unsafe or brand-damaging text) and swaps in a canned fallback when it fails. Alongside that, I'd harden the main system prompt itself (clear scope, no secrets in it, untrusted input explicitly delimited) and log flagged exchanges so you can tune thresholds from real traffic. If you point me at the widget's backend, I'll start by finding where requests hit the model and wire the input and output checks in there.",
+   "expectHint": true,
+   "accept": [
+    "@claude-flow/aidefence",
+    "aimds-detection",
+    "aidefence-core"
+   ],
+   "sim": null,
+   "right": null,
+   "agree": true
+  },
+  {
+   "qid": "Q118",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "D05",
+   "category": "design",
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "wifi-densepose-py",
+    "core",
+    "wifi-densepose-vitals",
+    "wifi-densepose-privshield-harness",
+    "Veil",
+    "@ruvnet/ruview",
+    "harness"
+   ],
+   "said": "wifi-densepose-vitals",
+   "answer": "Yes, contactless sensing can do this. The most practical route is a bedside **mmWave radar sleep monitor**, or WiFi Channel State Information (CSI) sensing, which reads breathing and heart rate from tiny chest movements. Your existing router almost certainly won't expose CSI, so the DIY WiFi path means adding a couple of cheap ESP32 boards near her bed. rUv ships wifi-densepose-vitals, which extracts heart and respiratory rate from ESP32 WiFi CSI and fits that setup (source: ruview/v2/crates/wifi-densepose-vitals/Cargo.toml). I'd still tell your mom and get her okay, since she's said no to being monitored. Also treat this as a \"something looks off, call her\" signal rather than medical-grade alerting.",
+   "expectHint": true,
+   "accept": [
+    "wifi-densepose-vitals",
+    "cog-vital-trend",
+    "cog-health-monitor"
+   ],
+   "sim": "wifi-densepose-vitals",
+   "right": true,
+   "agree": true
+  },
+  {
+   "qid": "Q122",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "D09",
+   "category": "design",
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "@ruvector/agentic-synth",
+    "@claude-flow/plugin-healthcare-clinical",
+    "@medai/backend",
+    "agentic-qe"
+   ],
+   "said": "@ruvector/agentic-synth",
+   "answer": "I'd use **Synthea** (open-source synthetic patient generator) as the backbone: it produces realistic longitudinal records (demographics, encounters, conditions, meds, labs) in FHIR/C-CDA/CSV at whatever scale you need, with no real PHI involved. For the unstructured docs (discharge summaries, progress notes, referral letters, scanned-style PDFs), I'd write a script that takes each Synthea patient and prompts an LLM to write notes grounded in that patient's actual record, so the text and structured data stay consistent. Then I'd add deliberate messiness: typos, abbreviations, OCR noise, missing fields, and edge cases like duplicate names or conflicting meds, so the pipeline isn't only tested on clean data. rUv ships @ruvector/agentic-synth — a synthetic data generator built for feeding AI/RAG pipelines, which could handle the LLM document-generation step (source: ruvector/npm/packages/agentic-synth/package.json). If you tell me your target format (FHIR, HL7v2, CSV, PDFs) and roughly how many records you need, I can scaffold the generator.",
+   "expectHint": true,
+   "accept": [
+    "@ruvector/agentic-synth"
+   ],
+   "sim": "@ruvector/agentic-synth",
+   "right": true,
+   "agree": true
+  },
+  {
+   "qid": "Q125",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "D12",
+   "category": "design",
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "@ruvector/scipix",
+    "@ruvector/kge",
+    "ruvector-math",
+    "rvf-wire"
+   ],
+   "said": "@ruvector/scipix",
+   "answer": "rUv ships @ruvector/scipix, an OCR client that extracts LaTeX/MathML from equations in research papers, which is exactly this task (source: ruvector/npm/packages/scipix/package.json). I'd wire up a small pipeline that rasterizes each scanned PDF page at about 300 DPI, detects equation regions, and runs them through scipix (or a fallback like pix2tex/Nougat if it struggles on your scans) to get LaTeX. The output would be one Markdown/LaTeX file per paper with each formula numbered and linked back to its page, plus a confidence score so shaky ones get flagged for review. I'd validate it by compiling the extracted LaTeX and spot-checking a few papers side by side before running the whole stack. Can you point me at the folder of scans and tell me whether you want LaTeX, MathML, or both?",
+   "expectHint": true,
+   "accept": [
+    "@ruvector/scipix"
+   ],
+   "sim": "@ruvector/scipix",
+   "right": true,
+   "agree": true
+  },
+  {
+   "qid": "Q131",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "X02",
+   "category": "diagnosis",
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "ruvector-gpu-runner",
+    "agentic-qe",
+    "@claude-flow/plugin-test-intelligence",
+    "rvcsi-runtime",
+    "composition"
+   ],
+   "said": "@claude-flow/plugin-test-intelligence",
+   "answer": "First I'd pull CI history (the last couple weeks of JUnit/test reports, or rerun the suite several times on an unchanged commit) and rank tests by how often they flip between pass and fail on the same code. Those are the flaky candidates. I'd also check whether the failures cluster by runner, shard, or test order, which would point to shared state, timing, or an external dependency rather than the tests themselves. For the 4000-per-push problem, I'd quarantine confirmed flakes into a separate non-blocking job and add change-based test selection, running only tests affected by the diff plus a full nightly run so nothing slips through. rUv ships @claude-flow/plugin-test-intelligence, which does flaky detection and predictive test selection, the two things you're asking for (source: ruflo/v3/plugins/test-intelligence/package.json). To start, I need to know your CI provider and test framework, and where the repo lives, since this directory isn't a git repository.",
+   "expectHint": true,
+   "accept": [
+    "@claude-flow/plugin-test-intelligence",
+    "agentic-qe"
+   ],
+   "sim": "@claude-flow/plugin-test-intelligence",
+   "right": true,
+   "agree": true
+  },
+  {
+   "qid": "Q136",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "X07",
+   "category": "diagnosis",
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "Yes: use targeted edit tools instead of full-file writes. In Claude Code, the Edit tool replaces only an exact string match, so it sends just the changed snippet rather than regenerating the file. If you're seeing full rewrites, ask explicitly (\"use Edit for a minimal change, don't rewrite the file\") or add that rule to your project's `CLAUDE.md` so it applies to every session. If you're building your own agent, give it a search-and-replace or unified-diff tool rather than only a \"write file\" tool. You can also save tokens by pointing it to the exact file and line (`src/foo.ts:42`) so it skips exploratory reads.",
+   "expectHint": true,
+   "accept": [
+    "agent-booster"
+   ],
+   "sim": "agent-booster",
+   "right": null,
+   "agree": null
+  },
+  {
+   "qid": "Q108",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B35",
+   "category": "no-fit",
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "rulake",
+    "AI",
+    "@claude-flow/memory",
+    "@ruvector/spiking-neural",
+    "@agentic-flow/ephemeral-memory"
+   ],
+   "said": null,
+   "answer": "First I'd confirm it's listeners: run with `--trace-warnings` to catch any `MaxListenersExceededWarning` stack traces, and periodically log `emitter.listenerCount(...)` on suspect emitters (sockets, DB clients, `process`, shared EventEmitters). Then I'd take two or three heap snapshots a while apart (`--inspect` with Chrome DevTools, or `v8.writeHeapSnapshot()`) and compare them to see which objects grow and which closures or listener arrays are holding them. In the code, I'd grep for `.on(`/`addListener` calls inside request handlers, intervals, or reconnect logic that have no matching `.off`/`removeListener`, or that should be `.once`. Common culprits are per-request listeners on long-lived objects, uncleared `setInterval`s, and listeners added on every reconnect. Once I find the leak, I'd fix it and verify with a load test (e.g. `autocannon`) while watching `process.memoryUsage()` stay flat.",
+   "expectHint": true,
+   "accept": [],
+   "sim": null,
+   "right": null,
+   "agree": true
+  },
+  {
+   "qid": "Q152",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "N01",
+   "category": "no-fit",
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "@ruvnet/rulake-console",
+    "Console",
+    "@ruv/sparc-ui",
+    "kimi-k2-wasm-testing-suite",
+    "homecore-ui",
+    "HOMECORE-UI"
+   ],
+   "said": null,
+   "answer": "I'd start by taking Chrome DevTools heap snapshots a few minutes apart with the dashboard open. Comparing them shows which objects keep growing, such as detached DOM nodes, chart instances, or ever-growing data arrays. Next I'd look at the chart components for the usual culprits: chart instances, `setInterval` or polling timers, websocket and resize listeners, or subscriptions created in `useEffect` without a cleanup that calls `chart.destroy()`, `clearInterval`, or `removeEventListener`. I'd also check whether live data is appended to state forever instead of being capped to a rolling window, and whether a changing `key` keeps remounting charts. Once the retainer is confirmed, I'd fix it and re-profile for an hour to verify memory stays flat.",
+   "expectHint": true,
+   "accept": [],
+   "sim": null,
+   "right": null,
+   "agree": true
+  },
+  {
+   "qid": "Q153",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "N02",
+   "category": "no-fit",
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "@claude-flow/deployment",
+    "@claude-flow/memory",
+    "@aqe/qe-browser-scripts",
+    "ruvector-staged-workspace"
+   ],
+   "said": null,
+   "answer": "I'd start by finding how the logo is served: locate the CDN config (CloudFront, Cloudflare, Fastly, or a `vercel.json`/`netlify.toml`/nginx file) and check the `Cache-Control` headers on the live logo URL with `curl -I`. The likely culprit is a long-lived `max-age`/`immutable` header on a logo whose filename doesn't change between deploys. The durable fix is to give the logo a content-hashed filename through the build pipeline so long caching stays safe. Where hashing isn't possible, I'd set a short `max-age` with revalidation (e.g. `no-cache` plus ETag) for that path and make sure HTML is never long-cached. Afterward, a CDN purge or invalidation of the logo path clears what's already cached, and I'd confirm with you before running it since it touches production.",
+   "expectHint": true,
+   "accept": [],
+   "sim": null,
+   "right": null,
+   "agree": true
+  },
+  {
+   "qid": "Q157",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "N06",
+   "category": "no-fit",
+   "exit": 0,
+   "injected": true,
+   "offered": [
+    "Brain",
+    "homecore-migrate",
+    "@claude-flow/migration",
+    "rvm-wasm",
+    "rvm-witness"
+   ],
+   "said": null,
+   "answer": "I'd first locate the Customer model and identify the ORM/framework (Django, Rails, SQLAlchemy/Alembic, Prisma, etc.) so the change matches existing conventions. Then I'd add a nullable `phone_number` string field (e.g. `max_length=20` or similar, with `null=True, blank=True` or the framework's equivalent), mirroring how other optional fields on the model are declared. Next I'd generate the migration with the project's own tooling (e.g. `makemigrations`, `rails g migration`, `alembic revision --autogenerate`) rather than hand-writing it, and review the generated file to confirm it's a simple additive, nullable column with no default backfill. Finally I'd run the migration against the local/dev database and the existing test suite to verify nothing breaks, and report back the files changed.",
+   "expectHint": true,
+   "accept": [],
+   "sim": null,
+   "right": null,
+   "agree": true
+  },
+  {
+   "qid": "Q075",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B02",
+   "category": "design",
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "Yes, I'd add a lightweight screening layer (e.g., a fast Claude Haiku 4.5 call or a dedicated prompt-injection classifier) that checks each incoming message for jailbreak attempts and a second pass on outgoing replies that blocks anything resembling PII or data the current user shouldn't see. But a filter alone won't reliably stop a determined attacker, so the bigger win is architectural: the bot should never be *able* to reach other customers' data. Any lookup tools it calls should be scoped server-side to the authenticated session's customer ID, not to whatever ID the model passes in. I'd also keep secrets out of the system prompt, log flagged conversations for review, and rate-limit repeat offenders. If you point me at the chatbot code and how it fetches customer data, I'll start with the data-scoping fix and then wire in the input/output guards.",
+   "expectHint": false,
+   "accept": [
+    "@claude-flow/aidefence",
+    "aimds-detection",
+    "aidefence-core"
+   ],
+   "sim": null,
+   "right": null,
+   "agree": true
+  },
+  {
+   "qid": "Q098",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B25",
+   "category": "off-topic",
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "Morning! No weekend for me, since I don't carry anything over between sessions, but I'm ready to go. What are you working on today?",
+   "expectHint": false,
+   "accept": [],
+   "sim": null,
+   "right": null,
+   "agree": true
+  },
+  {
+   "qid": "Q106",
+   "set": "recommendation-eval.blind.v1.json",
+   "id": "B33",
+   "category": "no-fit",
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "The ten-minute delay almost certainly means the price keys rely only on a ~600s TTL and nothing clears them when an admin saves a price. The fix is to invalidate on write: in the admin's price-update path (or a model save hook), delete or overwrite the affected Redis keys right after the DB commit succeeds. I'd start by finding where checkout reads prices (look for the `setex`/`expire` call and the key format) and where the admin persists price changes, then add the invalidation there. If prices are cached under several keys (per product, per variant, per cart), I'd either put a version number in the key and bump it on update, or publish an invalidation event so every app instance clears it. Since checkout charges real money, I'd also re-read the authoritative price from the database when the order is placed, so a stale cache entry can never cause an overcharge or undercharge.",
+   "expectHint": false,
+   "accept": [],
+   "sim": null,
+   "right": null,
+   "agree": true
+  },
+  {
+   "qid": "Q127",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "D14",
+   "category": "design",
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "I'd start by finding out which hub you have (Home Assistant, SmartThings, Hubitat, Aqara, etc.) and what sensors are already paired, since that determines what we can build on. For actual fall detection, a camera-free mmWave radar sensor in the bathroom works best (the Aqara FP2 has built-in fall detection, and others like Everything Presence can approximate it), because ordinary motion sensors can't tell \"lying still on the floor\" from \"left the room.\" If you'd rather use only what you have, a door sensor plus motion sensor can drive a \"bathroom occupied but no motion for X minutes\" rule, though that's cruder and slower to trigger. The alert should escalate: a push notification and phone call to you, then a second family member if nobody acknowledges within a few minutes, ideally with a check-in speaker in the room. I'd treat this as a backup to a wearable medical-alert pendant, not a replacement, and test it carefully with her so false alarms don't make everyone start ignoring it. Which hub do you have?",
+   "expectHint": false,
+   "accept": [
+    "cog-fall-detect",
+    "cog-health-monitor"
+   ],
+   "sim": null,
+   "right": null,
+   "agree": true
+  },
+  {
+   "qid": "Q142",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "O01",
+   "category": "off-topic",
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "Morning! No weekend for me, but I'm ready to go. I don't have any context on what we were working on before, and this directory isn't a git repo yet. What's on the agenda: a new project, a bug to chase, or something to review?",
+   "expectHint": false,
+   "accept": [],
+   "sim": null,
+   "right": null,
+   "agree": true
+  },
+  {
+   "qid": "Q150",
+   "set": "recommendation-eval.blind.v2.json",
+   "id": "O09",
+   "category": "off-topic",
+   "exit": 0,
+   "injected": false,
+   "offered": [],
+   "said": null,
+   "answer": "Thanks, glad it was helpful! Enjoy the rest of your day, and feel free to come back anytime you want to pick things up again.",
+   "expectHint": false,
+   "accept": [],
+   "sim": null,
+   "right": null,
+   "agree": true
+  }
+ ]
+}

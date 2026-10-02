@@ -49,7 +49,7 @@ import { inspectSessionSnapshots } from './session-snapshot-contract.mjs';
 import { learnings } from './learnings.mjs';
 import { gatesSurvey } from './gates.mjs';
 // The write-safety primitives, borrowed rather than re-implemented. See saveConfig for why.
-import { withLock, writeAtomic, LOCK_WAIT_MS, loadSettings, saveSettings, SETTINGS_SCHEMA as USER_SETTINGS_SCHEMA } from './user-settings.mjs';
+import { withLock, writeAtomic, LOCK_WAIT_MS, loadSettings, saveSettings, revertSettings, SETTINGS_SCHEMA as USER_SETTINGS_SCHEMA } from './user-settings.mjs';
 // The brain on/off switch (ADR-054). The sentinel is the enforcement artifact; settings.json holds
 // only a mirror. The console is the ONE surface allowed to flip it — protect-brain-state.sh walls
 // the file off from agent edits — so both halves of the write live here, in saveBrainPower().
@@ -69,6 +69,7 @@ import {
   openRouterCredentialStatus,
   saveOpenRouterCredential,
   learnerCwd,
+  loadRuntimePreferences,
 } from '../plugin/scripts/runtime-preferences.mjs';
 import { applyNightlyChoice, nightlyStatus } from './nightly-controller.mjs';
 // One canonical answer to "which directory is this, and have I counted it already?" — shared with
@@ -771,6 +772,30 @@ function gatherInventory() {
   };
 }
 
+/**
+ * Keys a project-level <project>/.swarm/ruvnet-brain-settings.json overrides FOR THE RUNTIME THAT
+ * READS IT. runtime-preferences merges that file over the user-level choices, and route-cheap, the
+ * managed-CLI gate (routing, qeFleet) and learn-capture/learn-flush (learningScope) obey the merge.
+ * The console saves user-level values only, so without this a project seeded by "Apply these choices
+ * to new projects" silently ignored every later change made here (RNBC QA 2026-10-01). Only keys whose
+ * consumer honours the project file are reported — advocacy, autoApply and provider are read at user
+ * level by their consumers, so a project value for them changes nothing and is not claimed to.
+ */
+const PROJECT_HONOURED_KEYS = Object.freeze(['routing', 'qeFleet', 'learningScope']);
+function projectOverrides(keys) {
+  try {
+    const prefs = loadRuntimePreferences({ cwd: process.cwd() });
+    if (!prefs.projectInherited) return null;
+    const raw = readJSON(prefs.paths.project) || {};
+    const values = raw.values && typeof raw.values === 'object' ? raw.values : raw;
+    const out = {};
+    for (const key of keys) {
+      if (PROJECT_HONOURED_KEYS.includes(key) && Object.hasOwn(values, key) && prefs.values[key] === values[key]) out[key] = values[key];
+    }
+    return Object.keys(out).length ? { path: prefs.paths.project.replace(CONSOLE_ROOT, '~'), values: out } : null;
+  } catch { return null; }
+}
+
 function gatherConfig() {
   const cfg = readJSON(CONFIG_PATH) || {};
   const credential = openRouterCredentialStatus({ cwd: process.cwd() });
@@ -798,6 +823,7 @@ function gatherConfig() {
     // What the project would pick FOR you, kept separate from what you actually picked. The form can
     // then say "recommended: on" without ever claiming that is the current state.
     defaults: { provider: 'auto', nightly: true, routing: 'auto', qeFleet: false },
+    projectOverrides: projectOverrides(CONFIG_SCHEMA.map((field) => field.key)),
     schema: CONFIG_SCHEMA.filter((field) =>
       !Object.hasOwn(CONFIG_CONTROL_SUPPORT, field.key)
       && (field.key !== 'nightly' || schedule.artifact.supported)),
@@ -842,6 +868,7 @@ function gatherAdvocacy() {
       Object.hasOwn(chosen, field.key) ? state.values[field.key] : null,
     ])),
     defaults: Object.fromEntries(LIVE_USER_FIELDS.map((field) => [field.key, field.default])),
+    projectOverrides: projectOverrides(LIVE_USER_SETTING_KEYS),
     schema: LIVE_USER_FIELDS,
     unavailable: [],
   };
@@ -881,8 +908,19 @@ function saveAdvocacy(values) {
   const result = saveSettings(supplied);
   if (!result.ok) return { ok: false, rejected: result.errors || [], log: result.log };
   publishSettingsToCache();
+  // THE SAVE IS REVERSIBLE FROM WHERE IT WAS MADE. The Settings card promises "every save is
+  // reversible", and saveSettings already writes the backup and the existedBefore flag its own
+  // revertSettings() consumes — but this form returned no undo token, so the console showed an Undo
+  // button for config.json and none here (RNBC QA 2026-10-01). Journalled only after the write.
+  const undoToken = journalUndo({
+    kind: 'restore-user-settings',
+    file: result.file,
+    backup: result.backup,
+    existedBefore: result.existedBefore,
+  });
   return {
     ok: true,
+    undoToken,
     backup: result.backup ? result.backup.replace(CONSOLE_ROOT, '~') : null,
     values: Object.fromEntries(LIVE_USER_SETTING_KEYS.map((key) => [key, result.values[key]])),
     log: result.log,
@@ -1114,6 +1152,14 @@ function publishSettingsToCache() {
     if (!c || !c.data || !c.data.sections) return;
     c.data.sections.config = gatherConfig();
     c.data.sections.userSettings = gatherAdvocacy();
+    // The Savings card reads two of the same choices (routing, and whether an OpenRouter key exists).
+    // Patching only Settings left the Savings card saying "No key added" / the old routing state on
+    // the next reload, beside a Settings card saying the opposite (RNBC QA 2026-10-01).
+    if (c.data.sections.savings) {
+      const cfgNow = readJSON(CONFIG_PATH) || {};
+      c.data.sections.savings.routing = cfgNow.routing === 'off' ? 'off' : cfgNow.routing === 'auto' ? 'auto' : null;
+      try { c.data.sections.savings.routerEngine = gatherRouterEngine(); } catch { /* the refresh replaces it */ }
+    }
     writeCache(STATE_CACHE, new Date(0).toISOString(), c.data, c.scope ?? null);
   } catch { /* the authoritative stores are already correct; refresh will replace an unreadable cache */ }
 }
@@ -1200,7 +1246,13 @@ function gatherLessons() {
     const trig = TRIGGER_BY_KEY.get(l.trigger);
     const meaning = ENFORCEMENT_MEANING[l.enforcement] || { label: l.enforcement, detail: '' };
     const userStated = l.origin === ORIGIN.USER_STATED && l.sourceClass === SOURCE_CLASS.CURRENT_USER;
-    const quarantined = l.sourceClass === SOURCE_CLASS.IMPORTED_OWNER || l.sourceClass === SOURCE_CLASS.DEMONSTRATION;
+    // Quarantine is about whether history can BECOME policy, so it applies to an imported row that
+    // was never ratified. A row that WAS ratified is delivered by lessonsFor() today whatever its
+    // source class — RNBC QA 2026-10-01 measured 12 such rows filed here as "quarantined, cannot be
+    // switched on" behind a checked, disabled box while the gate enforced every one of them. A rule in
+    // force must be reported in force and must keep a working off switch.
+    const importedClass = l.sourceClass === SOURCE_CLASS.IMPORTED_OWNER || l.sourceClass === SOURCE_CLASS.DEMONSTRATION;
+    const quarantined = importedClass && l.status !== STATUS.RATIFIED && l.status !== STATUS.ACTIVE;
     const origin = l.sourceClass === SOURCE_CLASS.CURRENT_USER
       ? 'you taught me this'
       : l.sourceClass === SOURCE_CLASS.IMPORTED_OWNER
@@ -1235,7 +1287,7 @@ function gatherLessons() {
       // Honest ceiling: ratifying a model-inferred lesson can NOT raise it to block
       // (lesson-store.mjs:380). Say so before they click, not after.
       canReachBlock: userStated,
-      canRatify: !quarantined,
+      canRatify: !importedClass,
       intendedEnforcement: l.intendedEnforcement || null,
     };
   });
@@ -1970,8 +2022,12 @@ function gatherRouterEngine() {
   const cfg = readJSON(CONFIG_PATH) || {};
   // User-constraint detection (Brain-side by design — a fact about THIS user, not routing logic):
   // an OpenRouter key decides whether metered cross-provider candidates are even reachable.
-  let openrouterKey = !!process.env.OPENROUTER_API_KEY;
-  if (!openrouterKey) openrouterKey = !!(cfg.openrouterKey && String(cfg.openrouterKey).length > 8);
+  // The SAME reader the Settings card uses (env → SOPS+age store → legacy plaintext). This read only
+  // env + plaintext, so a key saved through Settings (encrypted, plaintext retired) showed "No key
+  // added" here under a Settings row saying "•••• set" (RNBC QA 2026-10-01).
+  let openrouterKey = false;
+  try { openrouterKey = openRouterCredentialStatus({ cwd: process.cwd() }).configured === true; }
+  catch { openrouterKey = !!process.env.OPENROUTER_API_KEY || !!(cfg.openrouterKey && String(cfg.openrouterKey).length > 8); }
   // House (issue #21): three mechanisms used to disagree — Settings wrote config.json's `provider`,
   // but the chip strip derived "yours" from whichever pool candidate happened to be
   // subscriptionCovered first, sourced from profile.json (a file nothing in the console writes). The
@@ -2384,7 +2440,7 @@ function gatherStack() {
   const rows = a.rows.map((r) => ({ name: r.name, installed: r.installed, target: r.target, tag: r.tag, state: r.state, source: r.source ?? 'npm-global', marketplace: r.marketplace ?? null }));
   const shadows = a.shadows.map((s) => ({ name: s.name, version: s.version, global: s.global, dir: String(s.dir).replace(SYSTEM_HOME, '~'), stale: !!(s.global && s.version !== s.global) }));
   const by = (st) => rows.filter((r) => r.state === st).length;
-  const summary = { total: rows.length, behind: by('BEHIND'), broken: by('BROKEN'), ahead: by('AHEAD'), current: by('CURRENT'), unresolved: by('UNRESOLVED'), shadows: shadows.length, stale: a.stale.length };
+  const summary = { total: rows.length, behind: by('BEHIND'), broken: by('BROKEN'), ahead: by('AHEAD'), current: by('CURRENT'), unresolved: by('UNRESOLVED'), unverified: by('INSTALLED_UNVERIFIED'), shadows: shadows.length, stale: a.stale.length };
   const recommendations = buildStackRecommendations({ rows: a.rows, stale: a.stale });
   const result = { error: a.error, packages: rows, shadows, summary, recommendations };
   // Cache the last good audit so repeat page-loads render instantly ("as of HH:MM — re-checking").
@@ -2709,7 +2765,12 @@ function saveConfig(values) {
     credentialChange = saveOpenRouterCredential(requestedSecret, { cwd: process.cwd() });
     if (!credentialChange.ok) return { ok: false, rejected, log: credentialChange.log };
   }
-  if (requestedNightly !== undefined) {
+  // The page sends every field the person has ever chosen, so changing only the model house carries the
+  // already-saved nightly value with it. Re-running the installer for a choice the scheduler already
+  // satisfies rewrote the plist and re-registered the runner on every unrelated save (RNBC review
+  // 2026-10-01). Only a request that differs from the measured scheduler state is a scheduler change; a
+  // degraded or unknown state still goes to the installer, which is how it gets repaired.
+  if (requestedNightly !== undefined && nightlyStatus().state !== (requestedNightly ? 'on' : 'off')) {
     nightlyChange = applyNightlyChoice(requestedNightly);
     if (!nightlyChange.ok) {
       rollbackCredential();
@@ -2810,6 +2871,10 @@ function undo(undoToken) {
   if (!fs.existsSync(UNDO_JOURNAL)) return { ok: false, log: 'no undo history' };
   const journal = readUndoJournal();
   const entry = journal.find((e) => e.token === undoToken);
+  // "Saved again after this point" is decided by POSITION in the append-only journal, never by the `at`
+  // stamp: it has millisecond resolution and two saves do land in the same millisecond (a Linux runner,
+  // 2026-10-01), which made the later save invisible and let a stale undo wipe it.
+  const savedLater = (kind) => journal.slice(journal.indexOf(entry) + 1).some((e) => e.kind === kind && e.token && e.token !== undoToken);
   if (!entry) return { ok: false, log: 'that undo token was not found' };
 
   // ONE UNDO, ONCE. The token was never consumed, so the same button replayed forever: clicking it
@@ -2830,7 +2895,7 @@ function undo(undoToken) {
     // An undo can only speak for the last write. If something was written after it, the honest answer
     // is to refuse and say so — restoring anyway would be destroying newer data while claiming to
     // protect older data.
-    const laterSave = journal.some((e) => e.kind === 'restore-config' && e.at > entry.at && e.token !== undoToken);
+    const laterSave = savedLater('restore-config');
     if (laterSave) {
       return { ok: false, log: 'your settings were saved again after this point, so this undo would wipe out that newer save — nothing was changed. Use the undo from the most recent save, or restore a backup by hand.' };
     }
@@ -2869,6 +2934,19 @@ function undo(undoToken) {
       return { ok: true, log: 'removed the settings file (there was none before this save)' };
     }
     return { ok: false, log: 'no backup available to restore' };
+  }
+  if (entry.kind === 'restore-user-settings') {
+    // Same "an undo speaks only for the last write" rule as restore-config: a later save through this
+    // form would be wiped out by restoring an older backup.
+    const laterSave = savedLater('restore-user-settings');
+    if (laterSave) {
+      return { ok: false, log: 'your settings were saved again after this point, so this undo would wipe out that newer save — nothing was changed. Use the undo from the most recent save.' };
+    }
+    const r = revertSettings({ file: entry.file, backup: entry.backup || undefined, existedBefore: entry.existedBefore });
+    if (!r.ok) return { ok: false, log: r.log };
+    markUndoConsumed(undoToken);
+    publishSettingsToCache();
+    return { ok: true, log: entry.backup ? 'restored your previous settings' : 'removed the settings file (there was none before this save)' };
   }
   // EVERY branch below marks its token consumed on success, for the reason spelled out on the
   // restore-config branch above: these all copy a saved snapshot over a live file, so replaying one
@@ -2954,7 +3032,7 @@ function undo(undoToken) {
 // The undo kinds this function actually implements. Exported so the closure test can check the
 // registry against the REAL handler set rather than a hand-copied list that would drift from it.
 export const HANDLED_UNDO_KINDS = Object.freeze([
-  'restore-config', 'reinstall-version', 'restore-backup',
+  'restore-config', 'restore-user-settings', 'reinstall-version', 'restore-backup',
   'restore-memory-backup', 'restore-store-backups', 'restore-project-distill', 'auto-rebuild', 'none',
 ]);
 
@@ -2963,7 +3041,10 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; cha
 function serveStatic(req, res) {
   const rel = decodeURIComponent(req.url.split('?')[0]).replace(/^\/+/, '') || 'index.html';
   const file = path.join(CONSOLE_DIR, rel);
-  if (!file.startsWith(CONSOLE_DIR) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) return send(res, 404, 'text/plain', 'not found');
+  // Containment by path, not by string prefix: `startsWith(CONSOLE_DIR)` also accepted a sibling such
+  // as `<root>/console-anything/…` reached with an encoded `..` (RNBC review 2026-10-01).
+  const inside = path.relative(CONSOLE_DIR, file);
+  if (!inside || inside === '..' || inside.startsWith(`..${path.sep}`) || path.isAbsolute(inside) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) return send(res, 404, 'text/plain', 'not found');
   let body = fs.readFileSync(file);
   const ext = path.extname(file);
   if (ext === '.html') body = Buffer.from(String(body).replace('</head>', `<script>window.__CONSOLE_TOKEN__=${JSON.stringify(TOKEN)}</script></head>`));
@@ -3451,6 +3532,8 @@ export {
   saveBrainPower,
   gatherBrainProfile,
   saveBrainProfile,
+  setLesson,
+  gatherLessons,
   gatherRouterEngine,
   autoEligibleIds,
   gatherConfig,

@@ -207,6 +207,16 @@ describe('layer 2 scanners: the real-host output parsers detect hook errors', ()
     expect(w.hooksLoaded).toBe(4);
     expect(w.pluginHasHooks).toBe(true);
     expect(w.pluginHooksRan).toBe(false);
+    // 4.5, measured on grok 1.0.13: discovered-with-hooks but never dispatched is a finding, never a pass.
+    expect(w.findings.join()).toMatch(/Brain plugin hooks discovered but never ran \(session loaded 4 hooks\)/);
+  });
+  it('grok: a Brain hook that completed counts as ran, and is not reported as not-loaded', () => {
+    const debug = 'plugin discovered name=ruvnet-brain scope=user root=/r skills=1 agents=0 has_hooks=true\n'
+      + '2026 INFO s: xai_grok_shell::session::acp_session::spawn: loaded hooks hook_count=20\n'
+      + '2026 INFO s: xai_grok_hooks::dispatcher: hook completed hook_name=plugin/ruvnet-brain:pre_tool_use[4].hooks[0] elapsed_ms=400';
+    const w = scanGrok({ stdout: '', stderr: '', debug });
+    expect(w.pluginHooksRan).toBe(true);
+    expect(w.findings).toEqual([]);
   });
 });
 
@@ -219,7 +229,7 @@ describe.skipIf(process.platform === 'win32')('the write gate refuses the SAME u
   //                                  tool_name to Write|Edit|MultiEdit(|NotebookEdit) case-sensitively. Grok DOES fire the
   //                                  registered matcher on `write` (measured), so the hook runs and then silently allows.
   const term = ['ag', 'entdb'].join('');   // built at runtime: the repo's own write gate refuses this file otherwise
-  async function verdict(host) {
+  async function verdict(host, { camelOnly = false } = {}) {
     const r = registrations(ROOT, [host]).find((x) => x.hookId === 'decision-gate');
     const fix = fixturesFor(r, ROOT)[0];
     const w = makeWorld(host, { root: ROOT });
@@ -228,6 +238,9 @@ describe.skipIf(process.platform === 'win32')('the write gate refuses the SAME u
       const p = JSON.parse(JSON.stringify(fix.payload).split('{{ROOT}}').join(w.cwd).split('{{CWD}}').join(w.cwd).split('{{SESSION_ID}}').join('s1')
         .split('{{HOME}}').join(w.home).split('{{TRANSCRIPT}}').join('/nonexistent.jsonl').split('{{TOOL_USE_ID}}').join('t').split('{{PROMPT_ID}}').join('p'));
       for (const k of ['tool_input', 'toolInput']) if (p[k] !== undefined) p[k] = host === 'codex' ? { command: `*** Begin Patch\n*** Add File: ${file}\n+${content}\n*** End Patch` } : { file_path: file, content };
+      // Grok's documented input example (10-hooks.md "Input") is camelCase ONLY; the 1.0.13 capture adds
+      // snake_case duplicates. Strip them to prove the gate does not depend on the duplicates.
+      if (camelOnly) for (const k of Object.keys(p)) if (/_/.test(k)) delete p[k];
       const prof = path.join(w.home, 'profile.json'); fs.writeFileSync(prof, '{}');
       return (await runCommand(r.command, { cwd: w.cwd, env: worldEnv(w, { MODEL_ROUTER_PROFILE: prof }), stdin: JSON.stringify(p), timeoutMs: 30_000 })).status;
     } finally { cleanupWorld(w); }
@@ -236,10 +249,14 @@ describe.skipIf(process.platform === 'win32')('the write gate refuses the SAME u
     expect(await verdict('claude')).toBe(2);
     expect(await verdict('codex')).toBe(2);
   }, 60_000);
-  // KNOWN DEFECT, recorded as it.fails: passes while Grok's native payload is silently allowed, and goes RED
-  // the day it is fixed — at which point delete `.fails`.
-  it.fails('grok native payload is refused too (KNOWN DEFECT: lowercase tool_name "write" is allowed silently)', async () => {
+  // Was it.fails (4.4 KNOWN DEFECT: lowercase tool_name "write" allowed silently). Fixed in 4.5 two ways:
+  // decision-gate normalises a Grok payload to Claude's shape (hook-input.mjs normalizeHostEvent), and the
+  // bash write guards match the tool name case-insensitively.
+  it('grok native payload is refused too (exit 2)', async () => {
     expect(await verdict('grok')).toBe(2);
+  }, 60_000);
+  it('grok camelCase-only payload (no snake_case duplicates) is refused too — decision-gate normalises it', async () => {
+    expect(await verdict('grok', { camelOnly: true })).toBe(2);
   }, 60_000);
 });
 
@@ -264,6 +281,15 @@ describe.skipIf(process.platform === 'win32' || !BASH)('shell hooks stay silent 
   it('ground-ruvnet.sh: unset HOME and a read-only state dir produce no stderr', () => {
     expect(run('ground-ruvnet.sh', { stdin: prompt, env: { HOME: null } }).stderr).toBe('');
     expect(run('ground-ruvnet.sh', { stdin: prompt, readOnlyHome: true }).stderr).toBe('');
+  });
+  // 4.5, found by the full matrix (grok/PostToolUse/grounding-stamp, home-unset): on an ANSWERED search the
+  // stamp path read a bare $HOME under `set -u` and wrote "HOME: unbound variable" to stderr.
+  it('grounding-stamp.sh: an answered search with HOME unset produces no stderr', () => {
+    const answered = JSON.stringify({ hook_event_name: 'PostToolUse', tool_name: 'mcp__ruvnet_brain__search_ruvnet', tool_input: { query: 'what is ruflo' },
+      tool_response: { content: [{ type: 'text', text: 'Searched 1 RuvNet repos (ruflo).\n#1  repo=ruflo\npath : ruflo/docs/x.md' }] } });
+    const r = run('grounding-stamp.sh', { stdin: answered, env: { HOME: null } });
+    expect(r.status).toBe(0);
+    expect(r.stderr).toBe('');
   });
   // EVERY shell hook that combines `set -u` with a timed `read` (4.4.0: the hand-kept list of four missed
   // learn-capture.sh, kling-preflight.sh and route-dispatch.sh — measured red on macOS /bin/bash 3.2).

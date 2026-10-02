@@ -3,9 +3,9 @@ id: ADR-062
 title: Remote-durable staged release transaction
 status: Accepted
 date: 2026-08-02
-updated: 2026-09-27
+updated: 2026-10-01
 updated_source: derived-from-git
-reviewed_digest: 889398db3c8d
+reviewed_digest: 55d6f7131a2b
 version: 1.1.6
 authors: [Stuart Kerr]
 tags: [release, evidence, transaction, npm, github, receipts, recovery]
@@ -39,6 +39,8 @@ transaction remains `PUBLISHED_NOT_VERIFIED`; no unsuccessful closure or 4.3.10 
 established by this source review.
 
 ## Currency log
+| 2026-10-01 | Currency review (4.5, after merging release-integ-4.5 2b2ec6a9): decision unchanged. In `.github/workflows/protected-release.yml`, the corpus customer canary now passes `--cases clean,private-overlay,older-runtime`, run one after another inside the same 60-minute budget, and its comment records the measured 20.5 min. The release-qe battery step in `.github/workflows/ci.yml` is read-only. Neither changes the release transaction. reviewed_digest 55d6f7131a2b. | Reviewed `.github/workflows/protected-release.yml` and `.github/workflows/ci.yml`. |
+| 2026-10-01 | Currency review (4.5 retrieval): decision unchanged. The only governed change in this diff is a read-only release-qe step in `.github/workflows/ci.yml`: an unzip of the sealed bundle into a disposable directory, then the capability battery. It publishes nothing and does not touch the release transaction. reviewed_digest 69ce891b373d. | Reviewed `.github/workflows/ci.yml`; probe run 36889499709 (release-qe 8.5 min, battery step 1.1 min). |
 | 2026-09-27 | Currency review: decision unchanged. Motion: this session's own release-pipeline fixes (macOS Mac-runner diagnostics, ENOBUFS buffer fix in release-transaction-provider.mjs) plus CI workflow hardening. These ARE the durable-release-transaction machinery being repaired, consistent with the ADR's intent, not a contradiction of it. | Reviewed `.github/workflows/ci.yml`, `.github/workflows/stranger-matrix.yml`, `.github/workflows/protected-release.yml`, `.github/workflows/release-candidate-preflight.yml`, `scripts/release.mjs`, `scripts/release-transaction.mjs` against the commits listed above; reviewed_digest 889398db3c8d. |
 
 | 2026-09-20 | Release-QE refreshes Cognitum ruOS's RVF from the one curated capabilities summary before bundle assembly, removes legacy source-bearing sidecars, and rebinds the runtime generation ledger. | The immutable v4.3.26 seed predates the capability-only contract enforced by `kb/capability-only.mjs`; the prior release step stopped at that boundary. |

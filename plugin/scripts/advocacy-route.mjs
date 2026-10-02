@@ -58,8 +58,11 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { CAPABILITIES, INTENTS, MIN_CUES } from './advocacy-catalog.mjs';
 import {
-  ACTIONS, record, shouldStillOffer, stateHashOf, precision, pendingOffers, reconcileIgnored,
+  ACTIONS, record, shouldStillOffer, stateHashOf, precision, pendingOffers, reconcileIgnored, loadOutcomes,
 } from './advocacy-outcomes.mjs';
+import { packageRecommenderEnabled, offerNames } from './package-recommender-flag.mjs';
+// Matcher + socket client load only when the flag is on at process start: default-off pays nothing.
+const PKG = packageRecommenderEnabled() ? { ...(await import('./package-recommender.mjs')), ...(await import('./package-recommender-client.mjs')) } : null;
 
 const HOME = process.env.RUVNET_HOME_OVERRIDE || os.homedir();
 
@@ -67,6 +70,8 @@ const HOME = process.env.RUVNET_HOME_OVERRIDE || os.homedir();
  *  key that anticipate.sh offers into the SAME ledger. One ledger, two producers, disjoint identities. */
 export const FINDING_PREFIX = 'recommend:';
 
+export { packageRecommenderEnabled };
+export const PACKAGE_PREFIX = `${FINDING_PREFIX}pkg:`;   // package-card offers (ADR-093): same ledger and dial
 export const BUDGET_MS = Number(process.env.RUVNET_ADVOCACY_ROUTE_BUDGET_MS) || 1500;
 
 /** At most ONE recommendation per session. anticipate.sh allows two; this route is louder per offer
@@ -196,8 +201,10 @@ function putSession(st, sid, offers) {
 // names first.
 const ACCEPT_BARE = /^(y|yes|yeah|yep|ok|okay|sure|do it|go ahead|please do|sounds good|let'?s do it|use it)\b/i;
 const DECLINE_BARE = /^(n|no|nope|nah|skip|not now|no thanks|leave it|don'?t)\b/i;
-const acceptNamed = (id) => new RegExp(`\\b(use|add|wire|set ?up|install|try|go with|switch to)\\b[^.!?]{0,30}\\b${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
-const declineNamed = (id) => new RegExp(`\\b(no|not|don'?t|skip|drop|without|forget)\\b[^.!?]{0,30}\\b${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+// Name boundaries that also hold for scoped ids ("@ruvector/typesafe"), where \b before "@" never matches.
+const named = (verbs, id) => new RegExp(`\\b(${verbs})\\b[^.!?]{0,30}(?<![\\w@/-])${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w/-])`, 'i');
+const acceptNamed = (id) => named('use|add|wire|set ?up|install|try|go with|switch to', id);
+const declineNamed = (id) => named("no|not|don'?t|skip|drop|without|forget", id);
 
 /**
  * Resolve this session's still-pending offers against the prompt that just arrived.
@@ -227,12 +234,12 @@ export function resolvePriorOffers(promptText, sessionId, { file, state } = {}) 
   let changed = false;
   for (const offer of offers) {
     if (!deliverable.has(offer.id)) continue;
-    const cap = String(offer.capability || '');
+    const { names: caps, set } = offerNames(offer);   // a candidate set never resolves on a bare yes/no
     let action = null;
-    if (cap && declineNamed(cap).test(text)) action = ACTIONS.DISMISSED;
-    else if (cap && acceptNamed(cap).test(text)) action = ACTIONS.APPLIED;
-    else if (bareOk && DECLINE_BARE.test(text)) action = ACTIONS.DISMISSED;
-    else if (bareOk && ACCEPT_BARE.test(text)) action = ACTIONS.APPLIED;
+    if (caps.some((c) => declineNamed(c).test(text))) action = ACTIONS.DISMISSED;
+    else if (caps.some((c) => acceptNamed(c).test(text))) action = ACTIONS.APPLIED;
+    else if (bareOk && !set && DECLINE_BARE.test(text)) action = ACTIONS.DISMISSED;
+    else if (bareOk && !set && ACCEPT_BARE.test(text)) action = ACTIONS.APPLIED;
     if (!action) continue;
     let ok = false;
     try {
@@ -280,9 +287,12 @@ export function summary({ file } = {}) {
   // resolution here. Seven cheap reads beat a second copy of that logic drifting from the first.
   const counts = { applied: 0, dismissed: 0, ignored: 0 };
   let target = null;
-  for (const capId of Object.keys(CAPABILITIES)) {
+  // Package ids are open-ended: read them from the canonical ledger, not a static list.
+  const ids = new Set(Object.keys(CAPABILITIES).map((capId) => `${FINDING_PREFIX}${capId}`));
+  try { for (const r of loadOutcomes(...(file ? [file] : []))) if (r.id.startsWith(PACKAGE_PREFIX)) ids.add(r.id); } catch { /* catalogue ids only */ }
+  for (const id of ids) {
     try {
-      const p = precision({ ...(file ? { file } : {}), id: `${FINDING_PREFIX}${capId}` });
+      const p = precision({ ...(file ? { file } : {}), id });
       counts.applied += p.applied || 0;
       counts.dismissed += p.dismissed || 0;
       counts.ignored += p.ignored || 0;
@@ -356,26 +366,51 @@ export function buildCandidate({ prompt, match, availability }) {
 }
 
 /**
+ * The two lanes, as one shape: { capability, id, stateHash, intent, extra, build() }. The closed
+ * catalogue keeps precedence — each of its intents was measured missing on a real host. The package
+ * lane (ADR-0093) is consulted ONLY when the catalogue is silent AND the flag is an explicit opt-in.
+ */
+function chooseLane(prompt, env, semantic, getOffers, file) {
+  const match = classify(prompt);
+  if (match) {
+    return {
+      capability: match.capability, id: `${FINDING_PREFIX}${match.capability}`, intent: match.intent.id, extra: {},
+      stateHash: stateHashOf([`intent:${match.intent.id}`, `capability:${match.capability}`]),
+      build: () => buildCandidate({ prompt, match, availability: availabilityOf(match.capability) }),
+    };
+  }
+  if (!packageRecommenderEnabled(env) || !PKG) return null;
+  const allowed = (id) => { try { return shouldStillOffer(id, { severity: 'normal', ...(file ? { file } : {}) }); } catch { return false; } };
+  const warm = PKG.semanticLane({ prompt, semantic, offered: new Set(getOffers().flatMap((o) => o?.candidates || [o?.capability])), allowed, findingPrefix: PACKAGE_PREFIX });
+  if (warm) return warm;
+  const pick = PKG.recommend(prompt);   // cold worker: the lexical lane, fast and high-precision
+  if (!pick) return null;
+  return {
+    capability: PKG.shortName(pick.card), id: `${PACKAGE_PREFIX}${pick.card.id}`, intent: 'package-card',
+    extra: { package: pick.card.id }, stateHash: stateHashOf([`package:${pick.card.id}`]),
+    build: () => PKG.buildPackageCandidate({ prompt, pick, findingPrefix: PACKAGE_PREFIX }),
+  };
+}
+
+/**
  * The whole decision, minus process IO. Returns the candidate to emit, or null for SILENCE, and says
  * WHY it stayed silent so a test can distinguish "no intent" from "already said" from "suppressed" —
  * three very different bugs that all look identical from the outside.
  */
-export function decide({ prompt, sessionId, file, state, now = Date.now(), startedAt = Date.now() }) {
+export function decide({ prompt, sessionId, file, state, now = Date.now(), startedAt = Date.now(), env = process.env, semantic = null }) {
   if (Date.now() - startedAt > BUDGET_MS) return { candidate: null, reason: 'budget-exceeded' };
-  const match = classify(prompt);
-  if (!match) return { candidate: null, reason: 'no-intent' };
-  const st = state || readState();
-  const offers = offersOf(st, sessionId);
-  if (offers.filter((o) => o && o.at).length >= MAX_PER_SESSION) return { candidate: null, reason: 'session-cap' };
-  if (offers.some((o) => o && o.capability === match.capability)) return { candidate: null, reason: 'already-offered' };
+  let st = null; const getOffers = () => offersOf((st ||= state || readState()), sessionId);   // lazy: no lane, no read
+  const lane = chooseLane(prompt, env, semantic, getOffers, file);
+  if (!lane) return { candidate: null, reason: 'no-intent' };
+  const offers = getOffers();
+  if (offers.filter((o) => o && o.at).length >= (lane.cap || MAX_PER_SESSION)) return { candidate: null, reason: 'session-cap' };
+  if (offers.some((o) => o && o.capability === lane.capability)) return { candidate: null, reason: 'already-offered' };
 
-  const id = `${FINDING_PREFIX}${match.capability}`;
-  const stateHash = stateHashOf([`intent:${match.intent.id}`, `capability:${match.capability}`]);
   let allowed = true;
-  try { allowed = shouldStillOffer(id, { severity: 'normal', stateHash, ...(file ? { file } : {}) }); } catch { allowed = false; }
+  try { allowed = shouldStillOffer(lane.id, { severity: 'normal', stateHash: lane.stateHash, ...(file ? { file } : {}) }); } catch { allowed = false; }
   if (!allowed) return { candidate: null, reason: 'suppressed' };
 
-  const candidate = buildCandidate({ prompt, match, availability: availabilityOf(match.capability) });
+  const candidate = lane.build();
   if (!candidate) return { candidate: null, reason: 'no-card' };
   if (Date.now() - startedAt > BUDGET_MS) return { candidate: null, reason: 'budget-exceeded' };
 
@@ -384,7 +419,7 @@ export function decide({ prompt, sessionId, file, state, now = Date.now(), start
   // speaking without remembering it, which repeats on the very next prompt; repeating is what gets a
   // hook switched off for good.
   offers.push({
-    id, capability: match.capability, intent: match.intent.id,
+    id: lane.id, capability: lane.capability, intent: lane.intent, ...lane.extra,
     at: new Date(now).toISOString(), promptHash: candidate.promptHash,
     sessionId, severity: 'normal', resolved: null,
   });
@@ -438,7 +473,8 @@ async function main() {
   // decision is what lets "use agentic-qe" record an `applied` and still be classified on its merits.
   try { resolvePriorOffers(prompt, sessionId); } catch { /* a lost transition costs one row, never the turn */ }
 
-  const { candidate } = decide({ prompt, sessionId, startedAt });
+  const semantic = PKG ? await PKG.semanticFor(prompt, { catalogueMatched: Boolean(classify(prompt)), startedAt }) : null;
+  const { candidate } = decide({ prompt, sessionId, startedAt, semantic });
   if (!candidate) return 0;
 
   if (process.env.RUVNET_EMIT_CANDIDATES === '1') {

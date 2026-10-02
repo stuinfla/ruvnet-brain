@@ -43,6 +43,7 @@ import crypto from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { resolveRuflo, rufloInvocation } from './ruflo-bin.mjs';
+import { userLevelAgentdbHooks } from './continuity-events.mjs';
 
 export const TURN_NAMESPACE = 'turns';
 export const MIN_OUTCOME_CHARS = 200;
@@ -201,7 +202,17 @@ export function captureTurnOutcome({
   const project = projectName(projectDir);
   const receipts = path.join(brainHome, 'turn-capture', 'receipts.jsonl');
 
-  if (event === 'Stop') {
+  // ONE WRITER PER TURN (ADR-100 §3). Measured 2026-10-01 on this repo's real store: 624 `turns` rows
+  // in five days for 323 distinct outcomes — this writer (host-tagged) and the owner's user-level
+  // ~/.claude/hooks/agentdb-turn-capture.mjs both recorded every Claude turn. The user-level hook is
+  // the owner's and is never edited by the product, so where it is registered the product DEFERS
+  // (RUVNET_TURN_CAPTURE=force keeps both). Codex turns are not seen by that Claude-only hook.
+  const deferTo = event === 'Stop' && host === 'claude' && String(env.RUVNET_TURN_CAPTURE || '').toLowerCase() !== 'force'
+    && userLevelAgentdbHooks({ home }).turnCapture;
+  if (deferTo) {
+    report.skipped = 'deferred: the user-level ~/.claude/hooks/agentdb-turn-capture.mjs records this turn (one writer per turn)';
+    report.deferredToUserLevel = true;
+  } else if (event === 'Stop') {
     const sessionKey = String(payload.session_id || payload.transcript_path || '');
     const message = typeof payload.last_assistant_message === 'string' ? payload.last_assistant_message.trim() : '';
     let turn = { finalText: '', files: [], actions: [] };

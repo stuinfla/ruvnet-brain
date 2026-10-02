@@ -31,6 +31,7 @@ export function discoverStoreFamilies(dir) {
   let entries = [];
   try { entries = fs.readdirSync(dir); } catch { return []; }
   for (const entry of entries) {
+    if (entry.startsWith('._')) continue; // macOS AppleDouble from an exFAT/FAT volume, never a store
     const match = entry.match(/^(.+?)(?:\.big)?\.rvf$/);
     if (match && !/\.(?:idmap|embed)\b/.test(entry)) names.add(match[1]);
   }

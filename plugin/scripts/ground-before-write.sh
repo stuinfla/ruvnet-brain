@@ -105,7 +105,14 @@ SKIP_RECENCY=0
 # no quotes) and file_path (a truncated path merely fails the extension check → exit 0, harmless).
 field() { local re="\"$1\"[[:space:]]*:[[:space:]]*\"([^\"]*)\""; [[ $INPUT =~ $re ]] && printf '%s' "${BASH_REMATCH[1]}"; }
 
-case "$(field tool_name)" in Write|Edit|MultiEdit) ;; *) exit 0 ;; esac
+# Case-insensitive (4.5): Grok sends `write` / `search_replace`; a case-sensitive match allowed a Grok
+# write silently. A builtin (shopt), so this wall still depends on nothing outside bash.
+shopt -s nocasematch
+# Grok sends camelCase FIRST (toolName, toolInput) and the snake_case copies after the content, so a write
+# larger than the shim's 64 KiB bound arrives cut before `tool_name` — and was read as "not a write" (review
+# NIT, 2026-10-01). `toolName` sits before toolInput, inside the bound.
+TOOL_NAME=$(field tool_name); [ -n "$TOOL_NAME" ] || TOOL_NAME=$(field toolName)
+case "$TOOL_NAME" in Write|Edit|MultiEdit|search_replace|multi_edit) shopt -u nocasematch ;; *) exit 0 ;; esac
 
 FILE_PATH=$(field file_path)
 [ -n "$FILE_PATH" ] || exit 0
