@@ -44,6 +44,36 @@ afterEach(() => {
 });
 
 describe('capacity-aware parallel-work hook', () => {
+  it.each(['claude', 'codex'])('honors Brain OFF through the %s hook entrypoint (issue #330)', (host) => {
+    const home = tempDir('capacity-off-home-');
+    const cwd = tempDir('capacity-off-project-');
+    const brainHome = path.join(home, '.cache/ruvnet-brain');
+    const state = path.join(home, '.config/ruvnet-brain');
+    const generation = path.join(brainHome, 'versions/test');
+    fs.mkdirSync(state, { recursive: true });
+    fs.mkdirSync(generation, { recursive: true });
+    fs.cpSync(path.join(ROOT, 'plugin/scripts'), path.join(generation, 'scripts'), { recursive: true });
+    fs.writeFileSync(path.join(brainHome, 'active.json'), JSON.stringify({ codeRoot: 'versions/test', generation: 1 }));
+    fs.writeFileSync(path.join(brainHome, '.spine-seeded'), 'test');
+    const env = { ...process.env, HOME: home, USERPROFILE: home,
+      RUVNET_BRAIN_HOME: brainHome, RUVNET_BRAIN_STATE_DIR: state,
+      CLAUDE_PLUGIN_ROOT: path.join(ROOT, 'plugin'), PLUGIN_ROOT: path.join(ROOT, 'plugin') };
+    const entrypoint = host === 'codex' ? path.join(ROOT, 'plugin/scripts/codex-hook-wrapper.mjs') : SHIM;
+    const invoke = () => spawnSync(process.execPath, [entrypoint, 'capacity-aware-parallel-work'], {
+      cwd, env, encoding: 'utf8', timeout: 5000,
+      input: JSON.stringify({ hook_event_name: 'UserPromptSubmit', session_id: 'capacity-off', cwd,
+        prompt: 'Build the ruflo API, CLI and docs in parallel.' }),
+    });
+    const on = invoke();
+    expect(on.status).toBe(0);
+    expect(on.stdout).toContain('Capacity-aware parallel-work advisory');
+    fs.writeFileSync(path.join(state, 'brain-off'), 'user switched off');
+    const off = invoke();
+    expect(off.status).toBe(0);
+    expect(off.stdout).toBe('');
+    expect(off.stderr).toBe('');
+  });
+
   it('recognizes substantial independent work while leaving ordinary and trivial prompts silent', () => {
     const large = 'Implement the cross-cutting auth change across API, CLI, docs, and tests; split independent workstreams.';
     expect(isSubstantialParallelWork(large)).toBe(true);

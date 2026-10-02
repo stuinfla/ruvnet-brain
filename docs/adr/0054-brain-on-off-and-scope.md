@@ -3,7 +3,7 @@ id: ADR-054
 title: Brain on/off and per-part scope — a user-controlled brain that can never silently lie about being off
 status: Accepted
 date: 2026-07-26
-updated: 2026-10-01
+updated: 2026-10-02
 updated_source: derived-from-git
 reviewed_digest: 75556bed3285
 version: 1.1.6
@@ -26,7 +26,7 @@ governs:
   - bin/install.mjs
 created_at: 2026-07-26T20:19:14-04:00
 created_at_source: derived-from-git
-updated_at: 2026-08-21T08:10:43-04:00
+updated_at: 2026-10-02T07:27:18.493431+00:00
 updated_at_source: authored-current
 ---
 
@@ -124,7 +124,7 @@ publication; explicit QA and publication retain their own gates. See
   paths). The soft result must carry machine-readable `disabled:true` so telemetry never counts
   it as success or outage.
 - **Hooks — per-entry `offBehavior` in the shim's table** (silence / run / partial): advertising,
-  grounding, and the advisory legacy `verify-interface` notice go silent; the NON-brain safety
+  grounding, capacity-aware parallel-work guidance, and the advisory legacy `verify-interface` notice go silent; the NON-brain safety
   non-retrieval protections (route-dispatch cost audit and design-wall) STAY ON — they guard money and honesty, not
   retrieval. Issue #48 moved interface enforcement to structured MCP arguments.
 - **session-start splits internally**: auto-updater heartbeat, GONG health alarm and SLA banner

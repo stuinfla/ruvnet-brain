@@ -248,7 +248,7 @@
         "codex"
       ],
       "mode": "advisory",
-      "offBehavior": "run",
+      "offBehavior": "silence",
       "matcher": "*",
       "timeout": 6
     },

@@ -86,7 +86,9 @@ catch (e) { BRAIN_OFF = !(e && (e.code === 'ENOENT' || e.code === 'ENOTDIR')); }
 const TABLE = {
   'session-start':    { file: 'session-start-core.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'partial' },
   'ground-ruvnet':    { file: 'ground-ruvnet.sh',    interpreter: 'bash', mode: 'advisory', offBehavior: 'silence', stdinBytes: 32768 },
-  'capacity-aware-parallel-work': { file: 'capacity-aware-parallel-work.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'run', stdinBytes: 32768 },
+  // Issue #330 / ADR-054: coordination guidance is a Brain advisory, so OFF silences it before
+  // resource sampling or model steering, just like the other prompt directives.
+  'capacity-aware-parallel-work': { file: 'capacity-aware-parallel-work.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'silence', stdinBytes: 32768 },
   // ADR-063 / issue #103: `blocking` so an opt-in refusal can actually reach the host. The hook
   // still exits 0 for every user at the shipped default (managedMemoryBoundary=advise), so this
   // changes the CEILING of what it may do, not what it does.
