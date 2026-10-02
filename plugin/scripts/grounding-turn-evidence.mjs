@@ -63,7 +63,7 @@ export function loadVocabulary({ env = process.env } = {}) {
       // Installed store names — but a plain single word ("support", "concepts", "marketing") is an
       // English word far more often than a product; measured, it produced "doesn't support" claims.
       for (const name of fs.readdirSync(dir)) {
-        if (!name.endsWith('.meta.json')) continue;
+        if (!name.endsWith('.meta.json') || name.startsWith('._')) continue; // ._: AppleDouble, not a store
         const store = name.slice(0, -'.meta.json'.length);
         if (/[-_.0-9]/.test(store) || /^(?:ru|rv|agentic|cognitum)/i.test(store)) out.add(store);
       }
@@ -221,7 +221,7 @@ const RUV_SUBJECT = String.raw`(?<![\w/.@-])${RUV_PRODUCT}(?![\w-]|[./][\w])(?:(
 // ("rUv's tools turn …") — a lookbehind, so a rejected noun never consumes the real verb after it.
 // Not \b at the end: `support-ticket` is no verb.
 const PLURAL_NOUN = 'tools|packages|crates|plugins|libraries|hooks|agents|skills|servers|workers|daemons|commands|apis|clis|sdks|bindings|routers|gates|controllers';
-const VERBS = 'support|provide|expose|ship|offer|export|implement|include|allow|enable|accept|return|store|require|need|handle|route|record|persist|index|cache|spawn|create|generate|compute|sort|classif|scan|detect|block|prevent|replace|wrap|call|launch|keep|clamp|turn|give|make|run|use|take|let|write';
+const VERBS = 'support|provide|expose|ship|offer|export|implement|include|allow|enable|accept|return|store|require|need|handle|route|record|persist|index|cache|spawn|create|generate|compute|sort|classif|scan|detect|block|prevent|replace|wrap|call|launch|keep|clamp|turn|give|make|run|use|take|let|write|default';
 // "will not" is a capability claim only with a capability verb: "AgentDB will not open X" is, while
 // "Ruflo will not be touched by this patch" / "will not need a rebuild" report OUR change (4.4.0 nit).
 const WILL_NOT_VERBS = 'run|work|support|open|load|accept|start|install|handle|read|write|store|return|expose|allow|connect|recogni[sz]e|parse|build|compile|sync|scale|persist|import|export';
@@ -237,7 +237,20 @@ const RUV_DOC_CLAIM = new RegExp(`(?<![\\w/.@-])${RUV_PRODUCT}(?:(?:'|’)s)?(?:
 // "Ruflo is the orchestration layer and it has no hooks API": the pronoun refers back, in the same
 // sentence — only to a product that OPENS the sentence as its subject (a product inside a list or a
 // parenthetical is not what "they" means: "N-API builds (ruvector, rvf, …), so they don't depend…").
-const RUV_COREF_CLAIM = new RegExp(`^(?:the\\s+)?(${RUV_PRODUCT})(?![\\w-]|[./][\\w])(?:(?:'|’)s)?\\s+(?:(?:is|are)\\s+(?:a|an|the)\\b|has\\b|provides?\\b|ships?\\b)[^.;!?()]{0,80}?\\b(?:and|but|so|which|because)\\s+(?:it|they)\\s+(?:also\\s+|now\\s+|still\\s+|only\\s+)?${CAPABILITY_VERB}`, 'gi');
+// The opening subject phrase of a sentence: "The RuVector router package (`ruvector-router`)",
+// "RuVector's router", "Ruflo". Words stop at a copula; a parenthetical right after it is allowed.
+// OUR change to a product ("the ruflo upgrade", "the AgentDB write", "the ruflo fix") is not the product.
+const CHANGE_NOUN = 'upgrade|update|fix|change|patch|install|installation|write|read|call|run|release|build|migration|restart|bump|version|commit|test|tests|check|ci|job|workflow|step|lock|config|setting|settings|issue|bug|error|failure|outage|incident|pr|branch|diff|rollout|deploy|deployment';
+const OPENING_SUBJECT = String.raw`^(?:the\s+)?(${RUV_PRODUCT})(?![\w-]|[./][\w])(?:(?:'|’)s)?(?:\s+(?!(?:is|are|was|were|has|and|or|but|it|they|${CHANGE_NOUN})\b)[\w.@/-]+){0,4}?\s+(?:\([^)]{0,80}\)\s+)?`;
+const RUV_COREF_CLAIM = new RegExp(`${OPENING_SUBJECT}(?:(?:is|are)\\s+(?:a|an|the)\\b|has\\b|provides?\\b|ships?\\b|${CAPABILITY_VERB})[^.;!?]{0,200}?\\b(?:and|but|so|which|because)\\s+(?:it|they)\\s+(?:also\\s+|now\\s+|still\\s+|only\\s+)?${CAPABILITY_VERB}`, 'gi');
+// A DEFINITION is a capability claim too: "The RuVector router package (…) is a vector database …"
+// asserts what the product is and does (4.4.1, a live miss). Only as the sentence's opening subject,
+// and only "is a/an": "your ruflo is a version behind" (a status) does not open the sentence.
+const RUV_DEFINE_CLAIM = new RegExp(`${OPENING_SUBJECT}(?:is|are)\\s+(?:a|an)\\s+(?!(?:version|bit|few|lot|little|couple|day|week|month|commit|no-op|success|failure|regression|bug|fix|one-line|change|problem|mistake|non-issue|win|loss)s?\\b)\\w`, 'gi');
+// "this is agentic-qe's own static/heuristic estimate": a copula naming what the PRODUCT's output is.
+const RUV_COPULA_OWN_CLAIM = new RegExp(`\\b(?:this|that|it)\\s+is\\s+(${RUV_PRODUCT})(?![\\w-]|[./][\\w])(?:'|’)s\\s+own\\s+(?!(?:ci|tests?|build|pipeline|run|job|workflow|checks?|bug|failure|issue|repo|release|fault|problem|mistake|error)\\b)[\\w/-]+`, 'gi');
+// "is confirmed honored by the installed ruflo": the product as the passive AGENT of a behaviour.
+const RUV_PASSIVE_CLAIM = new RegExp(`\\b(?:is|are)\\s+(?:\\w+\\s+){0,2}?(?:honou?red|supported|handled|enforced|rejected|ignored|accepted|respected|read|parsed)\\s+by\\s+(?:the\\s+)?(?:installed\\s+|global\\s+|current\\s+)?(${RUV_PRODUCT})(?![\\w-]|[./][\\w])`, 'gi');
 // Not an assertion: a question, a hedge, a plan or hypothetical. Narrower than HEDGE above on purpose,
 // and narrower still since the 4.4.0 review (S2): "now", "if" and "will not" no longer silence a whole
 // sentence — "Ruflo now supports Windows natively", "RuVector cannot run on Windows, so if you need it
@@ -262,9 +275,55 @@ function isAssertion(s, m) {
   return !/^\s*(?:about\s+|around\s+|only\s+|~|≈)?\d/.test(s.slice(m.index + m[0].length));
 }
 
+// "## What AgentDB actually is" followed by "It's a SQLite database file …": the heading names the subject
+// and the section's sentence-initial "It" refers to it (4.4.1, a measured known miss).
+const DEFINING_HEADING = new RegExp(`^\\s*#{1,6}\\s+(?:what|how)\\s+(?:the\\s+)?(${RUV_PRODUCT})(?![\\w-])\\s+(?:(?:actually|really|even)\\s+)?(?:is|are|does|works?)\\b`, 'i');   // the product ITSELF, not "the ruflo fix"
+function bindHeadingPronouns(message) {
+  let subject = null;
+  return String(message || '').split('\n').map((line) => {
+    if (/^\s*#{1,6}\s/.test(line)) { subject = DEFINING_HEADING.exec(line)?.[1] ?? null; return line; }
+    if (!subject) return line;
+    return line.replace(/(^|[.!?]\s+)(?:\*\*)?It(?:'|’)s\b/g, `$1${subject} is`)
+      .replace(/(^|[.!?]\s+)(?:\*\*)?It\s+(?=(?:is|has|does|can|stores|runs|uses|keeps)\b)/g, `$1${subject} `);
+  }).join('\n');
+}
+// A table row whose FIRST cell is a product and whose other cells DESCRIBE it ("| AgentDB | Append-only
+// audit trail | Concurrent-write safe KB |") asserts what the product is. Only descriptive cells count:
+// letters only (no digits, hashes, dates or versions) and no status vocabulary — a status table about a
+// product ("| ruflo | 3.41.2 | PASS |", "| ruflo | No version at all … |") never qualifies.
+const STATUS_WORD = /\b(?:no|not|none|n\/a|missing|stale|behind|current|unverified|verified|pass(?:ed)?|fail(?:ed)?|yes|done|version|commit|ok|error|broken|pending|todo|skipped|live|shipped|absent|present|installed|upgraded|restarted|healthy|unhealthy|running|reachable|unreachable|updated|configured|enabled|disabled|failing|passing|green|red|removed|added|fixed|deployed|published|merged|stopped|started|restored|reset|rebuilt)\b/i;
+// 4.5 — GENERALISED BEYOND THE WORD LIST. A list of status words always lags the next status cell
+// ("Reinstalled from npm", "Deprecated in our stack", "Pinned to 0.3.1"). Two STRUCTURAL shapes mark a cell
+// as a report on the product's state rather than a description of what it does, whatever the word:
+//   · a version, date or commit hash anywhere in it;
+//   · a leading participle (…ed/…en) that is the whole cell or is followed by a particle — "Rolled back",
+//     "Migrated and verified", "Reinstalled from npm". A participle followed by a NOUN is an adjective in a
+//     description ("Distributed consensus", "Embedded vector store") and still counts as a claim.
+// Digits are otherwise allowed, so "| agentdb | Ships a built-in BM25 index |" is read as the claim it is.
+const STATE_PARTICLE = /^(?:from|in|to|on|at|by|back|out|up|down|off|over|via|for|with|and|again|globally|locally|successfully|cleanly|manually|automatically|today|yesterday|now|earlier|already|here|there)$/i;
+function isStatusCell(cell) {
+  if (STATUS_WORD.test(cell)) return true;
+  if (/\bv?\d+\.\d+(?:\.\d+)?\b|\b\d{4}-\d{2}-\d{2}\b|\b[0-9a-f]{7,40}\b/i.test(cell)) return true;
+  const [w1, w2] = cell.split(/\s+/);
+  return /^[A-Za-z]{3,}(?:ed|en)$/i.test(w1) && (!w2 || STATE_PARTICLE.test(w2));
+}
+function productRowClaims(message) {
+  const claims = [];
+  for (const line of String(message || '').split('\n')) {
+    if (!/^\s*\|/.test(line) || /^\s*\|[\s:|-]+\|\s*$/.test(line)) continue;
+    const cells = line.split('|').slice(1, -1).map((c) => c.replace(/\*\*|__|`/g, '').trim());
+    const first = new RegExp(`^(${RUV_PRODUCT})$`, 'i').exec(cells[0] || '');
+    if (!first || cells.length < 2) continue;
+    const described = cells.slice(1).filter((c) => /^[A-Za-z][A-Za-z0-9 +/.-]{3,80}$/.test(c) && c.split(/\s+/).length >= 2 && !isStatusCell(c));
+    if (described.length === cells.length - 1) claims.push({ text: line.trim(), match: `${first[1]} | ${described[0]}`, subject: first[1].toLowerCase() });
+  }
+  return claims;
+}
+
 /** The final answer's sentences (and table cells) that assert what a rUv product does. Never throws. */
 export function ruvCapabilityClaims(rawMessage) {
-  const text = String(rawMessage || '')
+  const rows = productRowClaims(String(rawMessage || '').replace(/```[\s\S]*?```/g, '\n'));
+  const text = bindHeadingPronouns(rawMessage)
     .replace(/```[\s\S]*?```/g, '\n')                    // command output and code are not prose claims
     .replace(/^\s*>.*$/gm, ' ')                          // quoted material
     .replace(/"[^"\n]{0,300}"|“[^”\n]{0,300}”/g, '\n')    // quoted speech: someone else's words (a break: it may carry the full stop)
@@ -272,11 +331,14 @@ export function ruvCapabilityClaims(rawMessage) {
     .replace(/^\s*#{1,6}\s.*$/gm, ' ')                   // headings name a topic
     .replace(/\*\*|__/g, '')
     .replace(/\|/g, '\n');                               // table cells judged one by one
-  const out = [];
+  const out = rows.slice(0, 8);
   for (const raw of text.split(/(?<=[.!?;])\s+|\n+|\s+[—–]\s+/)) {
+    if (out.length >= 8) break;
     const s = raw.replace(/^[\s\-*•#>\d.)]+/, '').trim();
     if (!s || s.length > 400 || NOT_RUV_ASSERTION.test(s)) continue;
-    const m = [...s.matchAll(RUV_CLAIM), ...s.matchAll(RUV_DOC_CLAIM), ...s.matchAll(RUV_COREF_CLAIM)].find((x) => isAssertion(s, x));
+    const m = [...s.matchAll(RUV_CLAIM), ...s.matchAll(RUV_DOC_CLAIM), ...s.matchAll(RUV_COREF_CLAIM), ...s.matchAll(RUV_DEFINE_CLAIM),
+      ...s.matchAll(RUV_COPULA_OWN_CLAIM), ...s.matchAll(RUV_PASSIVE_CLAIM)]
+      .find((x) => isAssertion(s, x));
     if (m) out.push({ text: s, match: m[0], subject: (m[1] || m[0]).trim().split(/\s+/)[0].replace(/(?:'|’)s$/, '').toLowerCase() });
     if (out.length >= 8) break;
   }

@@ -88,7 +88,8 @@ const BARE_PACKAGES = Object.freeze([
  * re-ranks results.
  */
 export function versionIntent(query) {
-  const q = String(query || '');
+  // A curly apostrophe ("what’s new", typed on a phone) reads like a straight one.
+  const q = String(query || '').replace(/[\u2018\u2019\u02BC]/g, "'");
   // "version control", "version history", "versioning" are about PRACTICE, not about which release
   // is current. Stripping them first keeps "Which version control approach does ruflo use?" out of
   // a lane that re-ranks every result toward changelogs.

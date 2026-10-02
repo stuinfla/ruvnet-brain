@@ -73,6 +73,11 @@ export function nightlyStatus(options = {}) {
     testMode: options.testMode ?? env.RUVNET_BRAIN_SCHEDULER_TEST === '1' });
 }
 
+export function stripAnsi(text) {
+  // eslint-disable-next-line no-control-regex
+  return String(text).replace(/\u001b\[[0-9;]*[A-Za-z]/g, '');
+}
+
 export function applyNightlyChoice(enabled, options = {}) {
   if (typeof enabled !== 'boolean') return { ok: false, log: 'nightly must be true or false' };
   const env = schedulerEnvironment(options.env || process.env);
@@ -97,6 +102,8 @@ export function applyNightlyChoice(enabled, options = {}) {
     after,
     log: ok
       ? `Nightly refresh is ${desired}; ${after.evidence}.`
-      : `Nightly refresh did not reach ${desired}: ${run.error?.message || run.stderr?.trim() || run.stdout?.trim() || `exit ${run.status}`}`,
+      // The installer colours its terminal output; this string is shown in the console page, where
+      // raw ANSI escapes render as "[31m✗" noise (RNBC QA 2026-10-01). Strip them here, once.
+      : `Nightly refresh did not reach ${desired}: ${stripAnsi(run.error?.message || run.stderr?.trim() || run.stdout?.trim() || `exit ${run.status}`)}`,
   };
 }

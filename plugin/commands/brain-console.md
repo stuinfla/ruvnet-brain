@@ -1,10 +1,11 @@
 ---
-description: "Brain Console — RuvNet Brain Console (same console as /rvbc, /brain-console, and /ruvnet-brain:configure — every spelling works). Opens the live console page: your whole RuvNet stack on one page. Read-only until you click."
-updated: 2026-07-20
+description: "Brain Console — the RuvNet Brain Console, also opened by /rnbc (same console as /rnb, /rvbc, /rvcb and /ruvnet-brain:configure — every spelling works). Your whole RuvNet stack on one page. Read-only until you click."
+updated: 2026-10-01
 ---
 
-Launch the **RuvNet Brain Console** for the user. Same console as `/ruvnet-brain:configure`,
-`/rvcb`, and `/brain-console` — every spelling lands here, so never tell the user they typed it wrong.
+Launch the **RuvNet Brain Console** (RNBC) for the user. `/rnbc` is its name; `/rnb`, `/rvbc`,
+`/rvcb`, `/brain-console` and `/ruvnet-brain:configure` open the very same console — every spelling
+lands here, so never tell the user they typed it wrong.
 
 ## The contract you are keeping
 

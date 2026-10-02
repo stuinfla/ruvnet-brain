@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { readInstalledRuntime, isCorpusReleaseTag } from '../kb/corpus-release-identity.mjs';
 import { cmpVersion } from './stack-sync.mjs';
 import { isRuntimeFile } from './approved-runtime.mjs';
+import { modelCacheReady, requiredEmbedderModels, RERANKER_MODEL } from '../kb/model-requirements.mjs';
 
 const SEARCH_FILES = ['forge-mcp-all.mjs', 'forge-ask-all.mjs', 'forge-rerank.mjs', 'card-lane.mjs'];
 // Keep the doctor probe answerable and bounded. A health probe must exercise a real indexed
@@ -14,6 +15,58 @@ export function doctorSmokeArgs(cacheDir) {
   return ['forge-ask-all.mjs', '--dir', cacheDir, '--q', DOCTOR_SMOKE_QUERY,
     '--repos', 'ruvnet-brain', '--k', '3', '--pool', '8', '--bounded'];
 }
+
+// The models the doctor's question loads whose local copy is not complete. A partial download is
+// cold, not ready: the reader would fetch it again inside the timed question.
+export function coldModels(kbDir, modelCache) {
+  return [...requiredEmbedderModels(kbDir), RERANKER_MODEL]
+    .filter((model, i, all) => all.indexOf(model) === i && !modelCacheReady(modelCache, model));
+}
+
+// One-time model download + load + first forward pass, kept OUT of the timed question so the
+// question's limit measures answering, not fetching. Exits 3 on a bundle that predates the hooks.
+export const MODEL_WARMUP_SCRIPT = [
+  "const ask = await import('./forge-ask.mjs');",
+  "const rr = await import('./forge-rerank.mjs');",
+  "if (typeof ask.warmQueryEmbedder !== 'function' || typeof rr.warmReranker !== 'function') process.exit(3);",
+  'await ask.warmQueryEmbedder();',
+  'await rr.warmReranker();',
+  'process.exit(0);',
+].join('\n');
+export const MODEL_WARMUP_TIMEOUT_MS = 300_000;
+
+// WHY the doctor's question produced no answer, from what spawnSync returned. "slow" is the reader's
+// own deadline: kb/query-deadline.mjs describeDeadline() prints this line, naming the phase still
+// running, only on that path (that module is not in the npm package, so its text is the contract
+// here). The reader works and was mid-answer — a different fault, with different advice, from a crash.
+export function classifySmokeFailure({ error, signal, status, stderr = '', secs, limitSecs }) {
+  // spawnSync delivers its own timeout as signal SIGTERM AND error ETIMEDOUT: a timeout, not a launch failure.
+  if (error?.code === 'ETIMEDOUT') return { kind: 'timeout', cause: `timed out after ${secs}s (240s limit) with no answer` };
+  if (error) return { kind: 'launch', cause: `could not launch the reader: ${error.message}` };
+  if (signal === 'SIGTERM') return { kind: 'timeout', cause: `timed out after ${secs}s (240s limit) with no answer` };
+  if (signal) return { kind: 'killed', cause: `the reader was killed by ${signal} after ${secs}s` };
+  const phase = (String(stderr).match(/QUERY DEADLINE EXCEEDED — phase "([^"]+)"/) || [])[1];
+  if (status !== 0 && phase) {
+    return { kind: 'slow', phase,
+      cause: `still answering (phase "${phase}") when the ${limitSecs}s limit ran out, after ${secs}s — slow on this machine, not broken` };
+  }
+  if (status !== 0) return { kind: 'crash', cause: `the reader exited ${status} after ${secs}s` };
+  return { kind: 'empty', cause: `the reader exited 0 after ${secs}s but printed nothing` };
+}
+
+/**
+ * Why the model warm-up did not finish (re-review B1). spawnSync's own timeout is signal SIGTERM WITH error
+ * ETIMEDOUT — a slow machine, advisory. A signal with NO error is the child dying on its own: SIGABRT,
+ * SIGSEGV, an OOM SIGKILL — a broken model runtime or cache, a failure with its own cause. The old test,
+ * `signal && !error`, had both backwards.
+ */
+export function classifyWarmupFailure({ error, signal, status, secs, limitSecs }) {
+  if (error?.code === 'ETIMEDOUT') return { kind: 'timeout', advisory: true, cause: `ran out of time after ${secs}s (${limitSecs}s limit) — slow on this machine, not broken` };
+  if (error) return { kind: 'launch', advisory: false, cause: `could not start: ${error.message}` };
+  if (signal) return { kind: 'crash', advisory: false, cause: `crashed (${signal}) after ${secs}s — the model runtime or its cache is broken` };
+  return { kind: 'exit', advisory: false, cause: `exited ${status} after ${secs}s` };
+}
+
 const version = value => typeof value === 'string' && /^v?\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(value)
   ? value.replace(/^v/, '') : null;
 

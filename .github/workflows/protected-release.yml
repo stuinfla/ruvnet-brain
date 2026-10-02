@@ -1012,7 +1012,10 @@ jobs:
     if: inputs.mode == 'corpus' && needs.corpus-publish.outputs.outcome == 'staged'
     needs: [corpus-identity, corpus-prepare, corpus-publish]
     runs-on: ubuntu-latest
-    # npm install (~1 min) + the approved release archive (~555 MB) + the candidate (~665 MB) + apply.
+    # Three customer states, one after another, each a fresh install deleted before the next (peak disk is
+    # one install + one apply): clean, private-overlay, older-runtime (N-1 through `npx ruvnet-brain@latest
+    # --update`). Measured on a GitHub runner (ci-probe/canary-cases-4.5, run 36874885572, 2026-10-01):
+    # all three in 1227 s (20.5 min) against a real 199-store generation, inside this 60-minute budget.
     timeout-minutes: 60
     # NO environment and NO secrets: a customer holds neither. The automatic token is read-only here and
     # is never handed to the customer install (corpus-canary.mjs builds the child environment from
@@ -1042,6 +1045,7 @@ jobs:
           status=0
           node scripts/corpus-canary.mjs --repo "$GITHUB_REPOSITORY" --tag "$CANDIDATE_TAG" \
             --approved-version "$APPROVED_VERSION" --work "$RUNNER_TEMP/canary" \
+            --cases clean,private-overlay,older-runtime \
             --verdict-out "$RUNNER_TEMP/canary-verdict/corpus-canary-verdict.json" | tee "$RUNNER_TEMP/canary.out" || status=$?
           {
             echo '### customer canary'

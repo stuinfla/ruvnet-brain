@@ -37,12 +37,60 @@ export function probeRuntimeSync(port, timeoutMs = 1500) {
 
 export const sameIdentity = (left, right) => IDENTITY_KEYS.every((key) => left?.[key] === right?.[key]);
 
+const MONTHS = 'JanFebMarAprMayJunJulAugSepOctNovDec';
+/** When process `pid` started (epoch ms, UTC, 1 s resolution), or null when it cannot be read. */
+let clockTicks = null;
 /**
- * Console receipts in `receiptDir`, with dead ones pruned. A receipt is dead only when BOTH hold:
- * its pid is not alive, and its port does not answer /api/runtime with the receipt's identity.
- * A receipt with no integer pid cannot be proven dead and is kept (counted as before).
+ * Linux: boot-relative start (/proc/<pid>/stat field 22, clock ticks since boot) anchored at the kernel's
+ * boot time (/proc/stat btime) — not `ps lstart`, which a forward wall-clock jump would push later.
  */
-export function readConsoleReceipts(receiptDir, { alive = pidAlive, probe = probeRuntimeSync } = {}) {
+export function linuxProcessStartMs(pid, { readFile = fs.readFileSync, spawn = spawnSync } = {}) {
+  try {
+    const stat = String(readFile(`/proc/${pid}/stat`, 'utf8'));
+    const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' '); // field 3 onward (comm may hold spaces)
+    const startTicks = Number(fields[22 - 3]);
+    const btime = Number(String(readFile('/proc/stat', 'utf8')).match(/^btime\s+(\d+)/m)?.[1]);
+    if (clockTicks === null) clockTicks = Number(String(spawn('getconf', ['CLK_TCK'], { encoding: 'utf8' })?.stdout || '').trim()) || 100;
+    if (!Number.isFinite(startTicks) || !Number.isFinite(btime)) return null;
+    return btime * 1000 + Math.round((startTicks * 1000) / clockTicks);
+  } catch { return null; }
+}
+
+export function processStartMs(pid, { spawn = spawnSync, platform = process.platform, readFile } = {}) {
+  if (!Number.isInteger(pid) || pid <= 0) return null;
+  if (platform === 'linux') {
+    const linux = linuxProcessStartMs(pid, { spawn, ...(readFile ? { readFile } : {}) });
+    if (linux !== null) return linux;
+  }
+  const run = process.platform === 'win32'
+    ? spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+      `$p=Get-Process -Id ${pid} -ErrorAction Stop; $p.StartTime.ToUniversalTime().ToString('ddd MMM d HH:mm:ss yyyy',[Globalization.CultureInfo]::InvariantCulture)`],
+    { encoding: 'utf8', windowsHide: true })
+    : spawn('ps', ['-p', String(pid), '-o', 'lstart='], { encoding: 'utf8', env: { ...process.env, TZ: 'UTC', LC_ALL: 'C', LANG: 'C' } });
+  if (run?.status !== 0) return null;
+  const m = String(run.stdout || '').trim().match(/^\w{3}\s+(\w{3})\s+(\d{1,2})\s+(\d{2}):(\d{2}):(\d{2})\s+(\d{4})$/);
+  if (!m || MONTHS.indexOf(m[1]) % 3 !== 0) return null;
+  return Date.UTC(+m[6], MONTHS.indexOf(m[1]) / 3, +m[2], +m[3], +m[4], +m[5]);
+}
+
+/**
+ * A live pid that is NOT the receipt's Console: the process now holding that pid started after the
+ * Console wrote its receipt (a Console's process always starts before it records startedAt). Two seconds
+ * of slack cover the 1 s resolution of the start time. Unreadable start time = not provably reused.
+ */
+export function pidReused(receipt, { startMs = processStartMs } = {}) {
+  const recorded = Date.parse(receipt?.startedAt || '');
+  const started = startMs(receipt?.pid);
+  return Number.isFinite(recorded) && Number.isFinite(started) && started > recorded + 2_000;
+}
+
+/**
+ * Console receipts in `receiptDir`, with dead ones pruned. A receipt is dead when its port does not
+ * answer /api/runtime with the receipt's identity AND either its pid is not alive or that pid now
+ * belongs to a process that started after the receipt was written (pid reuse). A busy live Console
+ * (pid alive, same process) is never pruned. A receipt with no integer pid cannot be proven dead.
+ */
+export function readConsoleReceipts(receiptDir, { alive = pidAlive, probe = probeRuntimeSync, startMs = processStartMs } = {}) {
   const live = [];
   const pruned = [];
   let names = [];
@@ -53,12 +101,17 @@ export function readConsoleReceipts(receiptDir, { alive = pidAlive, probe = prob
     let receipt;
     try { receipt = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { continue; }
     if (receipt?.product !== PRODUCT || receipt.schema !== 1) continue;
-    if (Number.isInteger(receipt.pid) && receipt.pid > 0 && !alive(receipt.pid)) {
-      const answer = probe(receipt.port);
-      if (!answer || !sameIdentity(answer, receipt)) {
-        try { fs.unlinkSync(file); } catch { /* raced or read-only: still not a running Console */ }
-        pruned.push({ file, pid: receipt.pid, port: receipt.port ?? null, startedAt: receipt.startedAt ?? null });
-        continue;
+    if (Number.isInteger(receipt.pid) && receipt.pid > 0) {
+      const dead = !alive(receipt.pid);
+      const reused = !dead && pidReused(receipt, { startMs });
+      if (dead || reused) {
+        const answer = probe(receipt.port);
+        if (!answer || !sameIdentity(answer, receipt)) {
+          try { fs.unlinkSync(file); } catch { /* raced or read-only: still not a running Console */ }
+          pruned.push({ file, pid: receipt.pid, port: receipt.port ?? null, startedAt: receipt.startedAt ?? null,
+            reason: dead ? 'pid not alive' : 'pid reused by a process started after the receipt' });
+          continue;
+        }
       }
     }
     live.push({ file, receipt });
@@ -73,8 +126,13 @@ export function readConsoleReceipts(receiptDir, { alive = pidAlive, probe = prob
 // process plumbing. A denylist, so nothing the Console legitimately reads is silently lost.
 const CONSOLE_ENV_DENY = new Set(['RUVNET_NIGHTLY', 'RUVNET_BRAIN_TEST', 'RUVNET_BRAIN_TEST_LATEST_TAG', 'RUVNET_BRAIN_SCHEDULER_TEST',
   'RUVNET_BRAIN_IMPORT_ONLY', 'RUVNET_BRAIN_NO_UPDATE_FALLBACK', 'RUVNET_STRICT_INSTALL', 'RUVNET_REFRESH_RUN_TOKEN',
-  'RUVNET_REFRESH_RECEIPT', 'RUVNET_UPGRADE_NOTICE_FILE', 'NODE_OPTIONS', 'NODE_TEST_CONTEXT', 'INIT_CWD', 'CONSOLE_PORT']);
-const CONSOLE_ENV_DENY_PREFIX = /^(?:RUVNET_NIGHTLY_|npm_|VITEST)/;
+  'RUVNET_REFRESH_RECEIPT', 'RUVNET_UPGRADE_NOTICE_FILE', 'NODE_OPTIONS', 'NODE_TEST_CONTEXT', 'INIT_CWD', 'CONSOLE_PORT',
+  // The launching host session's own identity (the spine version it booted, the hook host, its Node).
+  'RUVNET_BRAIN_ACTIVE_VERSION', 'RUVNET_HOOK_HOST', 'RUVNET_NODE_BIN']);
+// CLAUDE* describes the Claude Code SESSION that ran the installer (CLAUDECODE, CLAUDE_PROJECT_DIR,
+// CLAUDE_PLUGIN_ROOT, CLAUDE_SESSION_ID, CLAUDE_CODE_*): stale for a long-lived Console. CLAUDE_CONFIG_DIR
+// is the user's configuration location, not session state, and is kept (host-update.mjs forwards it too).
+const CONSOLE_ENV_DENY_PREFIX = /^(?:RUVNET_NIGHTLY_|npm_|VITEST|CLAUDE(?!_CONFIG_DIR$))/;
 export function consoleEnv(env = process.env, port) {
   const clean = Object.fromEntries(Object.entries(env).filter(([key, value]) => value != null
     && !CONSOLE_ENV_DENY.has(key) && !CONSOLE_ENV_DENY_PREFIX.test(key)));

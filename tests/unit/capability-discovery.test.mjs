@@ -87,7 +87,11 @@ describe('additive source-verified discovery', () => {
     expect(out.results[0].path).toBe('original.md');
     expect(out.results[0].fullText).toBe('Original richer evidence');
     expect(out.results[0].ceScore).toBe(5);
-    expect(rerankPairs.mock.calls[0][1].some((c) => c.path.includes('router-wasm'))).toBe(false);
+    // The reviewed supplement never enters the reranked pool. The same FILE may still be retrieved on
+    // its own merit by a primary lane (the keyword lane, ADR-090 §9 as amended 2026-10-01), where it
+    // carries no reviewed-witness provenance and is judged like any other candidate.
+    expect(rerankPairs.mock.calls[0][1].some((c) => c.path.includes('router-wasm') && c._lane !== 'bm25')).toBe(false);
+    expect(rerankPairs.mock.calls[0][1].some((c) => c._proofMethod === 'reviewed-capability-witness-candidate')).toBe(false);
     expect(out.relatedSources).toHaveLength(1);
   });
 

@@ -385,7 +385,7 @@ describe('Console instances — dead receipts and owned stale replacement', () =
     expect(install.classifyHostConvergence(live)).toEqual({ healthy: true, state: 'channels-converged' });
     expect(recorded.consoleRuntime.state).toBe('pending-console-restart'); // the input is not mutated
     // A Console that really is still running the old runtime keeps --doctor failing, with its recorded reason.
-    fs.writeFileSync(path.join(receiptDir, 'live.json'), JSON.stringify(ownedReceipt({ pid: process.pid })));
+    fs.writeFileSync(path.join(receiptDir, 'live.json'), JSON.stringify(ownedReceipt({ pid: process.pid, startedAt: new Date().toISOString() })));
     const still = install.withLiveConsoleState(recorded, { receiptDir });
     expect(still.consoleRuntime).toMatchObject({ state: 'pending-console-restart', staleInstances: 1,
       replacementFailures: recorded.consoleRuntime.replacementFailures });
@@ -394,7 +394,7 @@ describe('Console instances — dead receipts and owned stale replacement', () =
 
   it('keeps a live-pid stale receipt (a real running Console is never pruned)', () => {
     const receiptDir = temporary('brain-console-receipts-');
-    fs.writeFileSync(path.join(receiptDir, 'live.json'), JSON.stringify(ownedReceipt({ pid: process.pid })));
+    fs.writeFileSync(path.join(receiptDir, 'live.json'), JSON.stringify(ownedReceipt({ pid: process.pid, startedAt: new Date().toISOString() })));
     expect(install.consoleRestartState({ sourceSha256: 'c'.repeat(64) }, { receiptDir }))
       .toMatchObject({ state: 'pending-console-restart', staleInstances: 1 });
     expect(fs.readdirSync(receiptDir)).toEqual(['live.json']);
@@ -451,7 +451,7 @@ describe('Console instances — dead receipts and owned stale replacement', () =
 
   it('says exactly why when the stale Console cannot be replaced (its project directory is gone)', () => {
     const receiptDir = temporary('brain-console-receipts-');
-    fs.writeFileSync(path.join(receiptDir, 'gone.json'), JSON.stringify(ownedReceipt({ pid: process.pid, port: 7499, scope: '/definitely/not/here' })));
+    fs.writeFileSync(path.join(receiptDir, 'gone.json'), JSON.stringify(ownedReceipt({ pid: process.pid, startedAt: new Date().toISOString(), port: 7499, scope: '/definitely/not/here' })));
     const results = install.syncHostsAfterUpdate(temporary('brain-console-cache-'), {
       sourceRoot: candidate('GENERATION-B'), brainHome: temporary('brain-console-home-'), consoleReceiptDir: receiptDir,
       wireClaude: () => ({ host: false, wired: false }), wireCodexHost: () => ({ host: false, action: 'no-host' }),
