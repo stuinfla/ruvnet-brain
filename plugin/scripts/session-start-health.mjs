@@ -11,6 +11,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { json, exists, mtimeMs, read } from './session-start-fsutil.mjs';
+import { unmountedNotice } from './brain-location.mjs';
 import {
   describeFailedRefreshRun, readNightlyRegistration, refreshHistory, updateOwnedByAgenticKit,
 } from './nightly-scheduler.mjs';
@@ -33,9 +34,14 @@ export const brainState = (env, home) => {
 };
 
 export const health = (home, off) => {
+  // Moved to another disk that is not plugged in: say exactly that — not "MISSING, reinstall", which
+  // would re-create a fresh brain in ~/.cache over the link. A problem also stands the self-heal down.
+  const unmounted = unmountedNotice({ home });
+  if (unmounted) return { problem: unmounted, absentByChoice: false };
   const kb = path.join(home, '.cache', 'ruvnet-brain', 'kb');
   let rvf = false;
-  try { rvf = fs.readdirSync(kb).some((name) => name.endsWith('.rvf') && exists(path.join(kb, name))); }
+  // `._x.rvf` is macOS AppleDouble from an exFAT/FAT volume, not a store.
+  try { rvf = fs.readdirSync(kb).some((name) => name.endsWith('.rvf') && !name.startsWith('._') && exists(path.join(kb, name))); }
   catch { /* absent */ }
   const absentByChoice = off && (!exists(kb) || !rvf);
   if (absentByChoice) return { problem: '', absentByChoice };

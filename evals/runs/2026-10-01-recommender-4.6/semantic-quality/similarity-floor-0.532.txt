@@ -1,0 +1,8 @@
+self correct top1 sims 0.52 0.53 0.54 0.54 0.56 0.57 0.60 0.60 0.61 0.61 0.61 0.63 0.65 0.67 0.67 0.67 0.68 0.68 0.68 0.70 0.71 0.71 0.71 0.72 0.75 0.77 0.80 0.80
+self negative injected top1 sims 0.46 0.47 0.47 0.49 0.53 0.53 0.55 0.56 0.57 0.59
+FLOOR 0.532
+blinds                               recall 22/52 42.3% [29.9,55.8] prec 22/25 88% ff 0/36
+recommendation-eval.v1.json          recall 33/47 70.2% [56,81.3] prec 33/33 100% ff 0/26
+recommendation-eval.blind.v1.json    recall 11/24 45.8% [27.9,64.9] prec 11/12 91.7% ff 0/16
+recommendation-eval.blind.v2.json    recall 11/28 39.3% [23.6,57.6] prec 11/13 84.6% ff 0/20
+semantic injections on negatives: blinds 4 / 36 | all prompts blinds 36 / 88

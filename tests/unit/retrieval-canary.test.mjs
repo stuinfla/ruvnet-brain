@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { coverageGenerationFor, releaseCoverageGenerationFor, digest } from '../../scripts/coverage-integrity.mjs';
 import { getVersionTag } from '../../scripts/version.mjs';
+import { canarySearchDeadlineMs, CANARY_WORST_FIRST_PASS_MS, RELEASE_SEARCH_DEADLINE_MS } from '../../scripts/host-install-matrix.mjs';
 import {
   auditOracleCoverage,
   buildRetrievalCanaryPlan,
@@ -227,6 +228,39 @@ describe('coverage-derived retrieval canaries', () => {
     });
     expect(unknown.metrics.unknown).toBe(6);
     expect(() => validateRetrievalCanaryReceipt(unknown, { plan })).toThrow(/acceptance/);
+  });
+
+  it('bounds the canary first pass per OS: macOS 51s from its measured worst x1.5, Linux/Windows keep 30s', () => {
+    expect(canarySearchDeadlineMs('darwin')).toBe(51_000);
+    expect(canarySearchDeadlineMs('linux')).toBe(RELEASE_SEARCH_DEADLINE_MS);
+    expect(canarySearchDeadlineMs('win32')).toBe(RELEASE_SEARCH_DEADLINE_MS);
+    expect(canarySearchDeadlineMs('freebsd')).toBe(RELEASE_SEARCH_DEADLINE_MS);
+    for (const [os, worst] of Object.entries(CANARY_WORST_FIRST_PASS_MS)) {
+      const bound = canarySearchDeadlineMs(os);
+      expect(bound, os).toBeGreaterThanOrEqual(Math.max(RELEASE_SEARCH_DEADLINE_MS, worst * 1.5));
+      expect(bound, os).toBeLessThan(Math.max(RELEASE_SEARCH_DEADLINE_MS + 1, worst * 1.5 + 1000));
+    }
+  });
+
+  it('a case slower than the macOS bound still fails the lane', async () => {
+    const plan = buildRetrievalCanaryPlan({ ...fixture(), legacySampleSize: 4 });
+    const slow = plan.cases[1].query;
+    // Simulated latencies: three cases well inside, one past the bound. The search honours the
+    // deadline it is handed exactly as the MCP session does: past it, the call times out.
+    const receipt = await runRetrievalCanaries({ plan, sourceSha, artifactSha256,
+      candidateArchiveSha256: plan.candidate.archiveSha256, searchTimeoutMs: canarySearchDeadlineMs('darwin'),
+      search: async ({ query, timeoutMs }) => {
+        const latencyMs = query === slow ? canarySearchDeadlineMs('darwin') + 1 : 20_000;
+        if (latencyMs > timeoutMs) throw Object.assign(new Error('MCP search timed out'), { code: 'ETIMEDOUT' });
+        const expected = plan.cases.find((row) => row.query === query).expected;
+        return [{ repo: expected.repo, path: expected.path }];
+      },
+      citationResolver: async (_matched, expected) => ({ resolved: true,
+        evidence: { passageSha256: expected.passageSha256, passageFileSha256: 'e'.repeat(64) } }),
+    });
+    expect(receipt.metrics.unknown).toBe(1);
+    expect(receipt.cases.find((row) => row.status !== 'COMPLETED').error).toBe('MCP search timed out');
+    expect(() => validateRetrievalCanaryReceipt(receipt, { plan })).toThrow(/acceptance/);
   });
 
   it('forwards the release search deadline to every canary query', async () => {

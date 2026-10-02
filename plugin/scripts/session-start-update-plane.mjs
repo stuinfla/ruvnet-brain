@@ -9,6 +9,8 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { read, write, exists, json, firstVersion, dispatchDetached, mtimeMs } from './session-start-fsutil.mjs';
 import { KNOWLEDGE_LINE_PREFIX, AUTO_UPDATE_LOCK_STALE_MS, autoUpdateOptOut, knowledgeFacts } from './session-start-health.mjs';
+import { inventoryFootprint } from './brain-footprint.mjs';
+import { confirm, footprintAlarm } from './brain-confirmation.mjs';
 
 /**
  * KNOWLEDGE SELF-HEAL (owner invariant 2026-09-30: no brain may ever be more than 48h old). The
@@ -75,6 +77,39 @@ export const knowledgeAutoUpdate = ({ env, home, now, hookDir, emit = () => {}, 
     return { launched: false, why: 'launch failed' };
   }
   return { launched: true, why: 'stale' };
+};
+
+/**
+ * FOOTPRINT (ADR-0098): a cheap, read-only classification (names and sizes of single files only, no
+ * hashing, no tree walks) on every session. Silent when the machine is clean. When it is not: ONE line,
+ * and — at most once per 6h, never in test mode, never while a refresh holds the lock — a detached
+ * `brain-footprint.mjs --sweep --apply` that removes only what the proof allows (private-unique copies are
+ * kept). Self-heal installs and updates enforce the same sweep inside bin/install.mjs.
+ */
+export const FOOTPRINT_SWEEP_HOURS = 6;
+export const footprintCheck = ({ env, home, now, hookDir, emit = () => {}, dispatch = dispatchDetached }) => {
+  const footprint = inventoryFootprint({ env, home, now, measure: false });
+  const line = footprintAlarm(confirm({ footprint, env, home, now }));
+  if (!line) return { clean: true, dispatched: false };
+  const stamp = path.join(footprint.roots.brainHome, '.footprint-sweep');
+  const removable = footprint.cruft.some((i) => ['remove', 'remove-if-proven', 'rotate', 'truncate'].includes(i.action));
+  // Nothing a sweep could remove (e.g. a copy kept for the private data it holds — review S7): say it ONCE,
+  // until the line changes, instead of at every session; and dispatch no sweep that could only keep it again.
+  if (!removable && !footprint.roots.dangling) { // an unplugged brain disk is told every session, and nothing is written beside it
+    const notice = path.join(footprint.roots.brainHome, '.footprint-kept-notice');
+    if (read(notice) === line) return { clean: false, dispatched: false, repeated: true };
+    write(notice, line);
+  }
+  const due = !(now - mtimeMs(stamp) < FOOTPRINT_SWEEP_HOURS * 3_600_000);
+  const testMode = env.RUVNET_BRAIN_TEST === '1' && String(env.RUVNET_FOOTPRINT_SWEEP || '').toLowerCase() !== 'on';
+  let dispatched = false;
+  if (removable && due && !testMode && !footprint.lockHeld) {
+    write(stamp, `${new Date(now).toISOString()}\n`);
+    dispatched = dispatch(hookDir, 600, path.join(footprint.roots.brainHome, '.last-footprint-sweep.log'),
+      process.execPath, [path.join(hookDir, 'brain-footprint.mjs'), '--sweep', '--apply', '--json'], env);
+  }
+  emit(dispatched ? line.replace(/\. Fix: /, ' — cleaning it up in the background now. Fix: ') : line);
+  return { clean: false, dispatched };
 };
 
 export const compareVersions = (a, b) => {

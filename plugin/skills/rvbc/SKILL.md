@@ -1,7 +1,7 @@
 ---
 name: rvbc
-description: Open the RuvNet Brain Console in Claude Code and Codex when the user says "Configure RuvNet Brain", mentions "rvbc", asks for the Brain Console, or wants to configure or inspect RuvNet Brain. Claude Code supports /rvbc; Codex invokes the native $ruvnet-brain:rvbc skill.
-updated: 2026-07-30
+description: Open the RuvNet Brain Console in Claude Code and Codex when the user says "Configure RuvNet Brain", mentions "rvbc" or "rnbc", asks for the Brain Console, or wants to configure or inspect RuvNet Brain. Claude Code supports /rnbc and /rvbc; Codex invokes the native $ruvnet-brain:rvbc skill (or $ruvnet-brain:rnbc).
+updated: 2026-10-01
 ---
 
 # RuvNet Brain Console

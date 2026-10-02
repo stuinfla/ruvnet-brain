@@ -67,6 +67,9 @@ NODE_BIN="${RUVNET_NODE_BIN:-}"
 VERDICT="$(printf '%s' "$INPUT" | "$NODE_BIN" "$HERE/grounding-answer.mjs" 2>/dev/null)" || VERDICT=""
 [ "$VERDICT" = "answered" ] || exit 0
 
+# No HOME, no stamp dir to write — and under `set -u` a bare $HOME is an "unbound variable" on stderr
+# (found by hook-qualify's home-unset case on an ANSWERED search, 4.5). Exit quietly instead.
+[ -n "${HOME:-}" ] || exit 0
 DIR="$HOME/.cache/ruvnet-brain/grounded"
 mkdir -p "$DIR" 2>/dev/null || exit 0
 

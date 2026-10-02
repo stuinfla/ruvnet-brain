@@ -3,10 +3,10 @@ id: ADR-072
 title: Whole-product integrity is one executable contract
 status: Accepted
 date: 2026-08-21
-updated: 2026-09-27
+updated: 2026-10-01
 updated_source: derived-from-git
 version: 1.2.1
-reviewed_digest: fd6d8098f221
+reviewed_digest: e4226a2ff390
 authors: [Stuart Kerr, Codex]
 tags: [architecture, quality, corpus, lifecycle, release, traceability, smart, sparc]
 supersedes: []
@@ -377,6 +377,7 @@ link actor-specific products/materials and distinguish inspections; [TUF](https:
 defines expiry and rollback defenses. These are design references, not claims of conformance.
 
 ## Currency log
+| 2026-10-01 | Currency review (4.5 retrieval): decision unchanged. `.github/workflows/ci.yml` adds the capability-selection battery on the exact sealed bundle in release-qe, which tightens conformance evidence. No integrity contract changed. reviewed_digest e4226a2ff390. | Reviewed `.github/workflows/ci.yml`; probe runs 36889499709 and 36889505309. |
 | 2026-09-27 | Currency review: decision unchanged. Motion: broad release-pipeline hardening (this session's macOS and ENOBUFS fixes among them), corpus-currency consolidation, host-install-matrix search-timing fixes, and CI workflow fixes. All are reliability fixes to the integrity-conformance machinery itself; none change what conformance means. | Reviewed `docs/ddd/0018-product-integrity-context.md`, `docs/ddd/0019-project-continuity-context.md`, `docs/ddd/0020-capability-claim-integrity-context.md`, `docs/reviews/adr-072-traceability.md`, `scripts/build-bundle.mjs`, `scripts/corpus-candidate.mjs` against the commits listed above; reviewed_digest fd6d8098f221. |
 | 2026-09-19 | Reviewed the operational recovery changes against S-1/S-4/S-7: gist capture now precedes expensive corpus transformation; nightly dispatch identifies its unique child and propagates that outcome. Neither mechanism proves successful fresh corpus production. Doctor requires consistent identities and usable smoke evidence. All twelve whole-product obligations remain required and unclaimed. | `scripts/corpus-reconcile.mjs`, `.github/workflows/protected-release.yml`, `scripts/corpus-dispatch-receipt.mjs`, `bin/install.mjs`. Independent correlation and false-success tests passed; live dispatch and public release qualification are pending. |
 | 2026-09-13 | Corpus-seed pipeline consolidation, step 5 (remediated on top of `86cbe798`): S-2 "One immutable public release projection" is now produced in-process by `assembleBundle` (`scripts/build-bundle.mjs`) from VERIFIED sealed inputs — the public-input selection receipt is validated on read (`validateSelectionReceipt`: kind, schema 2, recomputed digest, per-file bytes, unsealed-prose leak check) and propagated into the archive so the archive carries its own proof and round-trips; the corpus coverage ledger is recomputed (`validateCoverageLedger`) and bound to the corpus ledger before projection — and `bindAssembledReleaseProjection` is validation-only (it no longer rewrites `RVF-GENERATIONS.json`). The 2026-08-23 implementation note at the end of this log ("ReleaseProjection is wired into the bundle workflow") still describes the OLD `ci.yml` wiring, which is unchanged until plan step 11. | Reviewed `scripts/release-projection.mjs`, `scripts/build-bundle.mjs`, `scripts/public-inputs.mjs`, `plugin/scripts/coverage-integrity.mjs` (`validateCoverageDirectory` unchanged, exercised end to end in `tests/unit/assemble-bundle.test.mjs`). |

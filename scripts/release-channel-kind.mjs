@@ -27,7 +27,7 @@
 
 /** Content-addressed corpus generation: the tag IS the archive's sha256. */
 export const CORPUS_TAG_PATTERN = /^corpus-sha256-[0-9a-f]{64}$/;
-/** Owner-approved product release: a plain semver tag. */
+/** Product (code) release: a plain semver tag. */
 export const CODE_TAG_PATTERN = /^v\d+\.\d+\.\d+$/;
 
 export function releaseKind(tag) {

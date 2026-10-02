@@ -14,7 +14,7 @@
 // "Pinning survives only through enforced equality to the approved shipped runtime and its
 // executable hashes. Copying current-main package.json or preserving a version string alone is
 // insufficient." So this compares every executable/runtime file's sha256 AND byte length against a
-// inventory produced from the owner-approved shipped code artifact — and, in the other
+// inventory produced from the install-verified shipped code artifact — and, in the other
 // direction, refuses any executable-shaped file in the archive that the inventory does not cover, so
 // a NEW unpinned executable cannot ride along.
 //
@@ -405,7 +405,7 @@ async function main() {
   catch (error) { console.error(`[approved-runtime] ${error.message}`); return 1; }
   const result = verifyApprovedRuntime({ manifest, pin });
   if (result.verdict !== 'PASS') {
-    console.error('[approved-runtime] FAIL: archive runtime is not the owner-approved shipped code artifact');
+    console.error('[approved-runtime] FAIL: archive runtime is not the install-verified shipped code artifact');
     for (const failure of result.failures) console.error(`  - ${failure}`);
     return 1;
   }

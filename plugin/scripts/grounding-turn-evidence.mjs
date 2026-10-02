@@ -63,7 +63,7 @@ export function loadVocabulary({ env = process.env } = {}) {
       // Installed store names — but a plain single word ("support", "concepts", "marketing") is an
       // English word far more often than a product; measured, it produced "doesn't support" claims.
       for (const name of fs.readdirSync(dir)) {
-        if (!name.endsWith('.meta.json')) continue;
+        if (!name.endsWith('.meta.json') || name.startsWith('._')) continue; // ._: AppleDouble, not a store
         const store = name.slice(0, -'.meta.json'.length);
         if (/[-_.0-9]/.test(store) || /^(?:ru|rv|agentic|cognitum)/i.test(store)) out.add(store);
       }
@@ -292,6 +292,21 @@ function bindHeadingPronouns(message) {
 // letters only (no digits, hashes, dates or versions) and no status vocabulary — a status table about a
 // product ("| ruflo | 3.41.2 | PASS |", "| ruflo | No version at all … |") never qualifies.
 const STATUS_WORD = /\b(?:no|not|none|n\/a|missing|stale|behind|current|unverified|verified|pass(?:ed)?|fail(?:ed)?|yes|done|version|commit|ok|error|broken|pending|todo|skipped|live|shipped|absent|present|installed|upgraded|restarted|healthy|unhealthy|running|reachable|unreachable|updated|configured|enabled|disabled|failing|passing|green|red|removed|added|fixed|deployed|published|merged|stopped|started|restored|reset|rebuilt)\b/i;
+// 4.5 — GENERALISED BEYOND THE WORD LIST. A list of status words always lags the next status cell
+// ("Reinstalled from npm", "Deprecated in our stack", "Pinned to 0.3.1"). Two STRUCTURAL shapes mark a cell
+// as a report on the product's state rather than a description of what it does, whatever the word:
+//   · a version, date or commit hash anywhere in it;
+//   · a leading participle (…ed/…en) that is the whole cell or is followed by a particle — "Rolled back",
+//     "Migrated and verified", "Reinstalled from npm". A participle followed by a NOUN is an adjective in a
+//     description ("Distributed consensus", "Embedded vector store") and still counts as a claim.
+// Digits are otherwise allowed, so "| agentdb | Ships a built-in BM25 index |" is read as the claim it is.
+const STATE_PARTICLE = /^(?:from|in|to|on|at|by|back|out|up|down|off|over|via|for|with|and|again|globally|locally|successfully|cleanly|manually|automatically|today|yesterday|now|earlier|already|here|there)$/i;
+function isStatusCell(cell) {
+  if (STATUS_WORD.test(cell)) return true;
+  if (/\bv?\d+\.\d+(?:\.\d+)?\b|\b\d{4}-\d{2}-\d{2}\b|\b[0-9a-f]{7,40}\b/i.test(cell)) return true;
+  const [w1, w2] = cell.split(/\s+/);
+  return /^[A-Za-z]{3,}(?:ed|en)$/i.test(w1) && (!w2 || STATE_PARTICLE.test(w2));
+}
 function productRowClaims(message) {
   const claims = [];
   for (const line of String(message || '').split('\n')) {
@@ -299,7 +314,7 @@ function productRowClaims(message) {
     const cells = line.split('|').slice(1, -1).map((c) => c.replace(/\*\*|__|`/g, '').trim());
     const first = new RegExp(`^(${RUV_PRODUCT})$`, 'i').exec(cells[0] || '');
     if (!first || cells.length < 2) continue;
-    const described = cells.slice(1).filter((c) => /^[A-Za-z][A-Za-z +/-]{3,80}$/.test(c) && c.split(/\s+/).length >= 2 && !STATUS_WORD.test(c));
+    const described = cells.slice(1).filter((c) => /^[A-Za-z][A-Za-z0-9 +/.-]{3,80}$/.test(c) && c.split(/\s+/).length >= 2 && !isStatusCell(c));
     if (described.length === cells.length - 1) claims.push({ text: line.trim(), match: `${first[1]} | ${described[0]}`, subject: first[1].toLowerCase() });
   }
   return claims;

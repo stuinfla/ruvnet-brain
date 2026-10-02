@@ -1,0 +1,329 @@
+{
+ "floor": 0.532,
+ "strict": {
+  "overall": {
+   "n": 161,
+   "recall": {
+    "k": 60,
+    "n": 99,
+    "pct": 60.6,
+    "ci95": [
+     50.8,
+     69.7
+    ]
+   },
+   "precision": {
+    "k": 60,
+    "n": 61,
+    "pct": 98.4,
+    "ci95": [
+     91.3,
+     99.7
+    ]
+   },
+   "falseFiring": {
+    "k": 0,
+    "n": 62,
+    "pct": 0,
+    "ci95": [
+     0,
+     5.8
+    ]
+   },
+   "wrongPackage": 1
+  },
+  "blinds": {
+   "n": 88,
+   "recall": {
+    "k": 26,
+    "n": 52,
+    "pct": 50,
+    "ci95": [
+     36.9,
+     63.1
+    ]
+   },
+   "precision": {
+    "k": 26,
+    "n": 27,
+    "pct": 96.3,
+    "ci95": [
+     81.7,
+     99.3
+    ]
+   },
+   "falseFiring": {
+    "k": 0,
+    "n": 36,
+    "pct": 0,
+    "ci95": [
+     0,
+     9.6
+    ]
+   },
+   "wrongPackage": 1
+  },
+  "bySet": {
+   "recommendation-eval.v1.json": {
+    "n": 73,
+    "recall": {
+     "k": 34,
+     "n": 47,
+     "pct": 72.3,
+     "ci95": [
+      58.2,
+      83.1
+     ]
+    },
+    "precision": {
+     "k": 34,
+     "n": 34,
+     "pct": 100,
+     "ci95": [
+      89.8,
+      100
+     ]
+    },
+    "falseFiring": {
+     "k": 0,
+     "n": 26,
+     "pct": 0,
+     "ci95": [
+      0,
+      12.9
+     ]
+    },
+    "wrongPackage": 0
+   },
+   "recommendation-eval.blind.v1.json": {
+    "n": 40,
+    "recall": {
+     "k": 12,
+     "n": 24,
+     "pct": 50,
+     "ci95": [
+      31.4,
+      68.6
+     ]
+    },
+    "precision": {
+     "k": 12,
+     "n": 13,
+     "pct": 92.3,
+     "ci95": [
+      66.7,
+      98.6
+     ]
+    },
+    "falseFiring": {
+     "k": 0,
+     "n": 16,
+     "pct": 0,
+     "ci95": [
+      0,
+      19.4
+     ]
+    },
+    "wrongPackage": 1
+   },
+   "recommendation-eval.blind.v2.json": {
+    "n": 48,
+    "recall": {
+     "k": 14,
+     "n": 28,
+     "pct": 50,
+     "ci95": [
+      32.6,
+      67.4
+     ]
+    },
+    "precision": {
+     "k": 14,
+     "n": 14,
+     "pct": 100,
+     "ci95": [
+      78.5,
+      100
+     ]
+    },
+    "falseFiring": {
+     "k": 0,
+     "n": 20,
+     "pct": 0,
+     "ci95": [
+      0,
+      16.1
+     ]
+    },
+    "wrongPackage": 0
+   }
+  }
+ },
+ "family": {
+  "overall": {
+   "n": 161,
+   "recall": {
+    "k": 60,
+    "n": 99,
+    "pct": 60.6,
+    "ci95": [
+     50.8,
+     69.7
+    ]
+   },
+   "precision": {
+    "k": 60,
+    "n": 61,
+    "pct": 98.4,
+    "ci95": [
+     91.3,
+     99.7
+    ]
+   },
+   "falseFiring": {
+    "k": 0,
+    "n": 62,
+    "pct": 0,
+    "ci95": [
+     0,
+     5.8
+    ]
+   },
+   "wrongPackage": 1
+  },
+  "blinds": {
+   "n": 88,
+   "recall": {
+    "k": 26,
+    "n": 52,
+    "pct": 50,
+    "ci95": [
+     36.9,
+     63.1
+    ]
+   },
+   "precision": {
+    "k": 26,
+    "n": 27,
+    "pct": 96.3,
+    "ci95": [
+     81.7,
+     99.3
+    ]
+   },
+   "falseFiring": {
+    "k": 0,
+    "n": 36,
+    "pct": 0,
+    "ci95": [
+     0,
+     9.6
+    ]
+   },
+   "wrongPackage": 1
+  },
+  "bySet": {
+   "recommendation-eval.v1.json": {
+    "n": 73,
+    "recall": {
+     "k": 34,
+     "n": 47,
+     "pct": 72.3,
+     "ci95": [
+      58.2,
+      83.1
+     ]
+    },
+    "precision": {
+     "k": 34,
+     "n": 34,
+     "pct": 100,
+     "ci95": [
+      89.8,
+      100
+     ]
+    },
+    "falseFiring": {
+     "k": 0,
+     "n": 26,
+     "pct": 0,
+     "ci95": [
+      0,
+      12.9
+     ]
+    },
+    "wrongPackage": 0
+   },
+   "recommendation-eval.blind.v1.json": {
+    "n": 40,
+    "recall": {
+     "k": 12,
+     "n": 24,
+     "pct": 50,
+     "ci95": [
+      31.4,
+      68.6
+     ]
+    },
+    "precision": {
+     "k": 12,
+     "n": 13,
+     "pct": 92.3,
+     "ci95": [
+      66.7,
+      98.6
+     ]
+    },
+    "falseFiring": {
+     "k": 0,
+     "n": 16,
+     "pct": 0,
+     "ci95": [
+      0,
+      19.4
+     ]
+    },
+    "wrongPackage": 1
+   },
+   "recommendation-eval.blind.v2.json": {
+    "n": 48,
+    "recall": {
+     "k": 14,
+     "n": 28,
+     "pct": 50,
+     "ci95": [
+      32.6,
+      67.4
+     ]
+    },
+    "precision": {
+     "k": 14,
+     "n": 14,
+     "pct": 100,
+     "ci95": [
+      78.5,
+      100
+     ]
+    },
+    "falseFiring": {
+     "k": 0,
+     "n": 20,
+     "pct": 0,
+     "ci95": [
+      0,
+      16.1
+     ]
+    },
+    "wrongPackage": 0
+   }
+  }
+ },
+ "hintsOnBlindNegatives": {
+  "k": 4,
+  "n": 36,
+  "ci95": [
+   4.4,
+   25.3
+  ]
+ }
+}

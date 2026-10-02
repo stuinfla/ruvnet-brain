@@ -1,0 +1,42 @@
+// Replays the latency run's keyword-lane store accesses (stride-3 need questions, the stores each
+// question's E2+E3 needs trace pooled from) and times keywordCandidates, to split E2's cost into
+// index (re)builds vs the extra cross-encoder pairs. Usage: node kw-cost-sim.mjs <kbDir> <needSet> <trace.gz>
+import fs from 'node:fs';
+import zlib from 'node:zlib';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+const [kb, setFile, traceFile] = process.argv.slice(2);
+const { keywordCandidates } = await import(pathToFileURL(path.join(kb, 'keyword-lane.mjs')).href);
+const qs = JSON.parse(fs.readFileSync(setFile, 'utf8')).questions.filter((_, i) => i % 3 === 0);
+const byQuery = new Map();
+for (const line of zlib.gunzipSync(fs.readFileSync(traceFile)).toString('utf8').split('\n')) {
+  if (!line) continue;
+  const t = JSON.parse(line);
+  byQuery.set(t.query, t);
+}
+const rows = [];
+for (const q of qs) {
+  const t = byQuery.get(q.need);
+  if (!t) { rows.push({ id: q.id, miss: true }); continue; }
+  const repos = [...new Set(t.cands.map((c) => c.repo))].filter((r) => !/meeting|transcript/i.test(r));
+  const bm25 = t.cands.filter((c) => c.lane === 'bm25').length;
+  const total = t.cands.length;
+  let ms = 0, maxMs = 0;
+  for (const r of repos) {
+    const t0 = performance.now();
+    keywordCandidates(kb, r, q.need);
+    const d = performance.now() - t0;
+    ms += d; maxMs = Math.max(maxMs, d);
+  }
+  rows.push({ id: q.id, repos: repos.length, kwMs: Math.round(ms), maxStoreMs: Math.round(maxMs), bm25, total });
+}
+const ok = rows.filter((r) => !r.miss);
+const med = (xs) => { const s = [...xs].sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };
+const p90 = (xs) => { const s = [...xs].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(0.9 * s.length))]; };
+console.log(JSON.stringify({
+  budgetMB: process.env.RUVNET_BRAIN_KEYWORD_INDEX_BUDGET_MB || 'default',
+  n: rows.length, matched: ok.length,
+  kwMs: { p50: med(ok.map((r) => r.kwMs)), p90: p90(ok.map((r) => r.kwMs)), over1s: ok.filter((r) => r.kwMs > 1000).length },
+  bm25Pairs: { p50: med(ok.map((r) => r.bm25)), mean: +(ok.reduce((s, r) => s + r.bm25, 0) / ok.length).toFixed(1) },
+  poolPairs: { p50: med(ok.map((r) => r.total)), mean: +(ok.reduce((s, r) => s + r.total, 0) / ok.length).toFixed(1) },
+}));

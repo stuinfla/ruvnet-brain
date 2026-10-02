@@ -1,0 +1,1391 @@
+{
+ "missingAcceptIds": [],
+ "overall": {
+  "n": 73,
+  "positives": 47,
+  "negatives": 26,
+  "recall": {
+   "k": 32,
+   "n": 47,
+   "pct": 68.1,
+   "ci95": [
+    53.8,
+    79.6
+   ]
+  },
+  "precision": {
+   "k": 32,
+   "n": 34,
+   "pct": 94.1,
+   "ci95": [
+    80.9,
+    98.4
+   ]
+  },
+  "falseFiring": {
+   "k": 1,
+   "n": 26,
+   "pct": 3.8,
+   "ci95": [
+    0.7,
+    18.9
+   ]
+  },
+  "wrongPackage": 1
+ },
+ "bySplit": {
+  "dev": {
+   "n": 37,
+   "positives": 24,
+   "negatives": 13,
+   "recall": {
+    "k": 20,
+    "n": 24,
+    "pct": 83.3,
+    "ci95": [
+     64.1,
+     93.3
+    ]
+   },
+   "precision": {
+    "k": 20,
+    "n": 20,
+    "pct": 100,
+    "ci95": [
+     83.9,
+     100
+    ]
+   },
+   "falseFiring": {
+    "k": 0,
+    "n": 13,
+    "pct": 0,
+    "ci95": [
+     0,
+     22.8
+    ]
+   },
+   "wrongPackage": 0
+  },
+  "heldout": {
+   "n": 36,
+   "positives": 23,
+   "negatives": 13,
+   "recall": {
+    "k": 12,
+    "n": 23,
+    "pct": 52.2,
+    "ci95": [
+     33,
+     70.8
+    ]
+   },
+   "precision": {
+    "k": 12,
+    "n": 14,
+    "pct": 85.7,
+    "ci95": [
+     60.1,
+     96
+    ]
+   },
+   "falseFiring": {
+    "k": 1,
+    "n": 13,
+    "pct": 7.7,
+    "ci95": [
+     1.4,
+     33.3
+    ]
+   },
+   "wrongPackage": 1
+  }
+ },
+ "rows": [
+  {
+   "id": "D01",
+   "category": "design",
+   "split": "dev",
+   "prompt": "so I need to sort incoming support emails into billing, bug report or feature request, ideally locally without paying for an LLM call on every single one",
+   "accept": [
+    "@ruvector/typesafe"
+   ],
+   "fired": true,
+   "pkg": "@ruvector/typesafe",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "@ruvector/typesafe:23.03[classification,decision,choice]",
+    "@metaharness/hackerone:13.71[bug,report]",
+    "latentmesh-cognitum-client:9.86[feature,request]"
+   ]
+  },
+  {
+   "id": "D02",
+   "category": "design",
+   "split": "heldout",
+   "prompt": "can we classify each user message by urgency and sentiment with a confidence score instead of asking gpt every time",
+   "accept": [
+    "@ruvector/typesafe"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "not-design-or-diagnosis",
+   "top": []
+  },
+  {
+   "id": "D03",
+   "category": "design",
+   "split": "dev",
+   "prompt": "I want a yes or no decision on whether a document mentions a deadline, with a calibrated confidence, and it has to run offline",
+   "accept": [
+    "@ruvector/typesafe"
+   ],
+   "fired": true,
+   "pkg": "@ruvector/typesafe",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "@ruvector/typesafe:20.35[decision,confidence,calibration]",
+    "helix-ocr:9.22[document,confidence]",
+    "latentmesh-align:8.68[confidence,calibration]"
+   ]
+  },
+  {
+   "id": "D04",
+   "category": "design",
+   "split": "heldout",
+   "prompt": "build a chatbot front door that figures out which intent the user has, weather versus booking versus help, and hands it to the right agent",
+   "accept": [
+    "@ruvector/router"
+   ],
+   "fired": true,
+   "pkg": "@ruvector/router",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "@ruvector/router:22.78[intent,intent-matching,match]",
+    "ruvbot:8.98[chatbot]",
+    "nvsim-server:5.99[front]"
+   ]
+  },
+  {
+   "id": "D05",
+   "category": "design",
+   "split": "dev",
+   "prompt": "I want to match user questions to the right handler by meaning not keywords, basically a semantic router in front of our agents",
+   "accept": [
+    "@ruvector/router"
+   ],
+   "fired": true,
+   "pkg": "@ruvector/router",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "@ruvector/router:23.84[match,semantic,router,embedding]",
+    "@claude-flow/neural:16.24[match,semantic,embedding]",
+    "@dream-machine/memory:11.59[keyword,semantic]"
+   ]
+  },
+  {
+   "id": "D06",
+   "category": "design",
+   "split": "heldout",
+   "prompt": "route each request to either a cheap model or the expensive one using a small learned router that knows when it is uncertain and falls back",
+   "accept": [
+    "@ruvector/tiny-dancer",
+    "agentic-flow"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "margin",
+   "top": [
+    "@ruvector/tiny-dancer:18.09[model,router,rout]",
+    "@ruvector/ruvllm:15.46[model,learn,router]",
+    "@claude-flow/neural:14.02[model,learn,rout]"
+   ]
+  },
+  {
+   "id": "D07",
+   "category": "design",
+   "split": "dev",
+   "prompt": "our product search needs exact keyword matching for part numbers and semantic similarity at the same time, merged into one ranked list",
+   "accept": [
+    "ruvector-hybrid"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "margin",
+   "top": [
+    "@ruvector/postgres-cli:49.16[search,semantic,similarity,embedding,bm25,sparse,hybrid-search,hybrid]",
+    "ruvector-hybrid:48.51[search,rank,bm25,sparse,fusion,rrf,hybrid-search,hybrid]",
+    "agentdb:44.94[search,semantic,embedding,bm25,rrf,hybrid-search,hybrid]"
+   ]
+  },
+  {
+   "id": "D08",
+   "category": "design",
+   "split": "heldout",
+   "prompt": "I want to combine bm25 with vector search and fuse the two rankings into one result set",
+   "accept": [
+    "ruvector-hybrid"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "margin",
+   "top": [
+    "ruvector-hybrid:42.14[bm25,vector,search,fusion,rrf,hybrid-search,hybrid]",
+    "agentdb:37.54[bm25,vector,search,rrf,hybrid-search,hybrid]",
+    "@ruvector/postgres-cli:29.17[bm25,vector,search,hybrid-search,hybrid]"
+   ]
+  },
+  {
+   "id": "D09",
+   "category": "design",
+   "split": "dev",
+   "prompt": "long documents that cover lots of topics get averaged into one embedding, I want multi-vector late interaction search like colbert so recall holds up",
+   "accept": [
+    "ruvector-maxsim"
+   ],
+   "fired": true,
+   "pkg": "ruvector-maxsim",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "ruvector-maxsim:56.39[document,averag,embedd,multi-vector,multi,vector,late,interaction,search,colbert,recall,maxsim]",
+    "helix-visual:20.97[document,late,interaction,maxsim]",
+    "agentdb:18.74[embedd,vector,search,recall]"
+   ]
+  },
+  {
+   "id": "D10",
+   "category": "design",
+   "split": "heldout",
+   "prompt": "after the nearest neighbor lookup I want to rerank the candidates with a graph neural network before we show them",
+   "accept": [
+    "ruvector-gnn-rerank",
+    "@ruvector/gnn"
+   ],
+   "fired": true,
+   "pkg": "@ruvector/postgres-cli",
+   "correct": false,
+   "firedCorrect": false,
+   "reason": null,
+   "top": [
+    "@ruvector/postgres-cli:25.13[nearest,neighbor,graph,neural,network]",
+    "@ruvector/diskann:13.45[nearest,neighbor]",
+    "rulake:13.45[nearest,neighbor]"
+   ]
+  },
+  {
+   "id": "D11",
+   "category": "design",
+   "split": "dev",
+   "prompt": "the agents keep asking nearly the same semantic queries, I want a cache in front of the vector index that also hits on similar queries not just identical ones",
+   "accept": [
+    "ruvector-query-cache",
+    "rulake"
+   ],
+   "fired": true,
+   "pkg": "ruvector-query-cache",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "ruvector-query-cache:27.05[semantic,query,cache,vector,cach]",
+    "rulake:20.46[semantic,cache,vector,embedding]",
+    "@ruvector/core:17.21[semantic,vector,index,embedding]"
+   ]
+  },
+  {
+   "id": "D12",
+   "category": "design",
+   "split": "heldout",
+   "prompt": "add protection against prompt injection and jailbreaks to the customer facing assistant before we launch it",
+   "accept": [
+    "@claude-flow/aidefence",
+    "aidefence-core"
+   ],
+   "fired": true,
+   "pkg": "@claude-flow/aidefence",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "@claude-flow/aidefence:42.79[prompt,injection,jailbreak,prompt-injection,jailbreak-detection,detection]",
+    "ruvbot:27.44[prompt,injection,assistant,prompt-injection]",
+    "aidefence-core:23.51[prompt,injection,prompt-injection,detection]"
+   ]
+  },
+  {
+   "id": "D13",
+   "category": "design",
+   "split": "dev",
+   "prompt": "give my agent long term memory that survives restarts, with episodic recall of what it tried before",
+   "accept": [
+    "agentdb",
+    "@agentic-flow/ephemeral-memory",
+    "@claude-flow/memory"
+   ],
+   "fired": true,
+   "pkg": "agentdb",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "agentdb:24.78[memory,episodic,recall,agent-memory]",
+    "@agentic-flow/ephemeral-memory:16.41[memory,agent-memory,persistent]",
+    "ruvector-adaptive-ann:15.80[memory,recall,agent-memory]"
+   ]
+  },
+  {
+   "id": "D14",
+   "category": "design",
+   "split": "heldout",
+   "prompt": "I want to store our embeddings locally in a single file with an HNSW index instead of paying for pinecone",
+   "accept": [
+    "ruvector",
+    "@ruvector/rvf",
+    "@ruvector/core",
+    "@ruvector/node",
+    "agentdb"
+   ],
+   "fired": true,
+   "pkg": "agentdb",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "agentdb:32.85[store,embedding,single,file,hnsw,vector,database]",
+    "@ruvector/core:21.15[embedding,hnsw,index,vector,database]",
+    "@ruvector/node:21.15[embedding,hnsw,index,vector,database]"
+   ]
+  },
+  {
+   "id": "D15",
+   "category": "design",
+   "split": "dev",
+   "prompt": "I want the vector search to run entirely inside the browser with no server behind it",
+   "accept": [
+    "@ruvector/wasm",
+    "@ruvector/wasm-unified",
+    "@ruvector/rvf"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "margin",
+   "top": [
+    "ruvector-acorn:12.55[vector,search,inside]",
+    "@ruvector/router:11.64[vector,search,browser]",
+    "agentdb:11.64[vector,search,browser]"
+   ]
+  },
+  {
+   "id": "D16",
+   "category": "design",
+   "split": "heldout",
+   "prompt": "we already run postgres, I want pgvector style vector search but faster and with more sql functions",
+   "accept": [
+    "@ruvector/postgres-cli"
+   ],
+   "fired": true,
+   "pkg": "@ruvector/postgres-cli",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "@ruvector/postgres-cli:44.09[postgre,pgvector,vector,search,sql,function,postgresql]",
+    "@claude-flow/neural:14.51[vector,search,function]",
+    "ruvector-cluster-rag:10.76[style,vector,search]"
+   ]
+  },
+  {
+   "id": "D17",
+   "category": "design",
+   "split": "dev",
+   "prompt": "we need billion scale nearest neighbor search where the index lives on SSD instead of RAM",
+   "accept": [
+    "@ruvector/diskann"
+   ],
+   "fired": true,
+   "pkg": "@ruvector/diskann",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "@ruvector/diskann:60.71[billion,scale,nearest,neighbor,search,ssd,diskann,billion-scale]",
+    "rvf-index:21.61[nearest,neighbor,search,index]",
+    "ruvector-rairs:20.88[nearest,neighbor,search,index]"
+   ]
+  },
+  {
+   "id": "D18",
+   "category": "design",
+   "split": "heldout",
+   "prompt": "build a knowledge graph of our customers and products and query it with cypher from node",
+   "accept": [
+    "@ruvector/graph-node"
+   ],
+   "fired": true,
+   "pkg": "@ruvector/graph-node",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "@ruvector/graph-node:31.22[knowledge,graph,query,cypher,knowledge-graph]",
+    "@ruvector/graph-data-generator:24.93[knowledge,graph,cypher,knowledge-graph]",
+    "@ruvector/postgres-cli:24.93[knowledge,graph,cypher,knowledge-graph]"
+   ]
+  },
+  {
+   "id": "D19",
+   "category": "design",
+   "split": "dev",
+   "prompt": "I want link prediction over our knowledge graph using embeddings like RotatE",
+   "accept": [
+    "@ruvector/kge"
+   ],
+   "fired": true,
+   "pkg": "@ruvector/kge",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "@ruvector/kge:46.06[link,prediction,knowledge,graph,embedding,rotate,knowledge-graph]",
+    "@ruvector/graph-data-generator:22.37[knowledge,graph,embedding,knowledge-graph]",
+    "@ruvector/postgres-cli:22.37[knowledge,graph,embedding,knowledge-graph]"
+   ]
+  },
+  {
+   "id": "D20",
+   "category": "design",
+   "split": "heldout",
+   "prompt": "let several agents branch the same memory, try something risky, and just throw the branch away if it goes wrong",
+   "accept": [
+    "agenticow"
+   ],
+   "fired": true,
+   "pkg": "agenticow",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "agenticow:36.15[branch,memory,copy-on-write,copy,write]",
+    "ruvector-lsm-ann:8.49[memory,write]",
+    "ruvector-memory-admission:8.49[memory,write]"
+   ]
+  },
+  {
+   "id": "D21",
+   "category": "design",
+   "split": "dev",
+   "prompt": "generate synthetic training data so we can evaluate our RAG pipeline before real users arrive",
+   "accept": [
+    "@ruvector/agentic-synth"
+   ],
+   "fired": true,
+   "pkg": "@ruvector/agentic-synth",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "@ruvector/agentic-synth:25.44[synthetic,train,rag,generator]",
+    "@ruvector/graph-data-generator:19.76[synthetic,train,generator]",
+    "runtime:11.16[generate,evaluate]"
+   ]
+  },
+  {
+   "id": "D22",
+   "category": "design",
+   "split": "heldout",
+   "prompt": "schedule a bunch of tasks that depend on each other, get a topological order and find the critical path",
+   "accept": [
+    "@ruvector/rudag"
+   ],
+   "fired": true,
+   "pkg": "@ruvector/rudag",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "@ruvector/rudag:45.95[task,topological,critical,path,dag,schedul]",
+    "@claude-flow/plugin-quantum-optimizer:13.19[schedule,schedul]",
+    "@dream-machine/schedule:8.37[schedule]"
+   ]
+  },
+  {
+   "id": "D23",
+   "category": "design",
+   "split": "dev",
+   "prompt": "extract the latex from equation images in scientific pdfs so we can index the math",
+   "accept": [
+    "@ruvector/scipix"
+   ],
+   "fired": true,
+   "pkg": "@ruvector/scipix",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "@ruvector/scipix:55.88[extract,latex,equation,image,scientific,math,ocr]",
+    "cuda-wasm:8.37[scientific]",
+    "ruvector-math:8.37[math]"
+   ]
+  },
+  {
+   "id": "D24",
+   "category": "design",
+   "split": "heldout",
+   "prompt": "I have to solve a huge sparse linear system really fast from node",
+   "accept": [
+    "@ruvector/solver",
+    "sublinear-time-solver"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "margin",
+   "top": [
+    "@ruvector/solver:20.65[sparse,linear,solver]",
+    "sublinear:20.65[sparse,linear,solver]",
+    "sublinear-time-solver:14.23[linear,solver]"
+   ]
+  },
+  {
+   "id": "D25",
+   "category": "design",
+   "split": "dev",
+   "prompt": "split a weighted graph at its minimum cut and keep it updated as edges change",
+   "accept": [
+    "@ruvector/mincut-wasm"
+   ],
+   "fired": true,
+   "pkg": "@ruvector/mincut-wasm",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "@ruvector/mincut-wasm:29.65[weight,graph,minimum,cut,mincut]",
+    "ruvector-attn-mincut:16.80[graph,cut,mincut]",
+    "ruv-neural-mincut:15.92[minimum,cut,mincut]"
+   ]
+  },
+  {
+   "id": "D26",
+   "category": "design",
+   "split": "heldout",
+   "prompt": "detect whether people are in a room and track their breathing through walls using wifi signals, no cameras",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "margin",
+   "top": [
+    "rufield-adapters:19.46[room,camera,sens,csi]",
+    "@ruvnet/ruview:18.80[through,wifi,sens,csi]",
+    "wifi-densepose-sensing-server:17.52[wifi,signal,sens,csi]"
+   ]
+  },
+  {
+   "id": "D27",
+   "category": "design",
+   "split": "dev",
+   "prompt": "we need replicas kept in sync across nodes with conflict resolution when two of them disagree",
+   "accept": [
+    "@ruvector/replication",
+    "@agentic-flow/crdt-gossip"
+   ],
+   "fired": true,
+   "pkg": "@ruvector/replication",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "@ruvector/replication:29.63[replica,conflict,resolution,replication]",
+    "@agentic-flow/crdt-gossip:16.31[conflict,replication]",
+    "@ruvector/raft:7.94[replication]"
+   ]
+  },
+  {
+   "id": "D28",
+   "category": "design",
+   "split": "heldout",
+   "prompt": "I need leader election and log replication for our little cluster of agent servers",
+   "accept": [
+    "@ruvector/raft"
+   ],
+   "fired": true,
+   "pkg": "@ruvector/raft",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "@ruvector/raft:52.18[leader,election,log,replication,cluster,raft,consensus]",
+    "@ruvector/replication:23.64[replication,conflict,resolution]",
+    "@ruvector/cluster:19.85[cluster,raft,consensus]"
+   ]
+  },
+  {
+   "id": "D29",
+   "category": "design",
+   "split": "dev",
+   "prompt": "make image embeddings from product photos for similarity search, CNN features that can run in wasm",
+   "accept": [
+    "@ruvector/cnn"
+   ],
+   "fired": true,
+   "pkg": "@ruvector/cnn",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "@ruvector/cnn:25.98[image,embedding,cnn,feature]",
+    "@claude-flow/neural:14.53[embedding,similarity,search]",
+    "@ruvector/core:14.53[embedding,similarity,search]"
+   ]
+  },
+  {
+   "id": "D30",
+   "category": "design",
+   "split": "heldout",
+   "prompt": "apply small code edits fast without calling an LLM for every tiny change",
+   "accept": [
+    "agent-booster"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "margin",
+   "top": [
+    "@ruvector/emergent-time:12.90[tiny,change]",
+    "agent-booster:12.57[code,edit]",
+    "@ruvector/rvdna:7.94[call]"
+   ]
+  },
+  {
+   "id": "D31",
+   "category": "design",
+   "split": "dev",
+   "prompt": "decide in microseconds whether an agent action should be permitted, deferred or denied before it runs",
+   "accept": [
+    "@cognitum/gate"
+   ],
+   "fired": true,
+   "pkg": "@cognitum/gate",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "@cognitum/gate:23.13[microsecond,permit,defer,deny]",
+    "ruvdrone:7.33[action]",
+    "cog-ha-matter:5.58[defer]"
+   ]
+  },
+  {
+   "id": "X01",
+   "category": "diagnosis",
+   "split": "dev",
+   "prompt": "our ticket classifier is an LLM call and it costs a fortune and it is slow, every message waits a full second just to get a category",
+   "accept": [
+    "@ruvector/typesafe"
+   ],
+   "fired": true,
+   "pkg": "@ruvector/typesafe",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "@ruvector/typesafe:28.11[cost,classification,decision,choice]",
+    "cog-sound-classifier:8.98[classifier]",
+    "@ruvector/rvdna:7.94[call]"
+   ]
+  },
+  {
+   "id": "X02",
+   "category": "diagnosis",
+   "split": "heldout",
+   "prompt": "the bot keeps sending billing questions to the tech support agent, the intent detection is basically keyword if statements and it is brittle",
+   "accept": [
+    "@ruvector/router",
+    "@ruvector/typesafe"
+   ],
+   "fired": true,
+   "pkg": "@ruvector/router",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "@ruvector/router:22.78[intent,intent-matching,match]",
+    "cognitum-license:8.98[bill]",
+    "bot-generator-bot-agent:8.37[bot]"
+   ]
+  },
+  {
+   "id": "X03",
+   "category": "diagnosis",
+   "split": "dev",
+   "prompt": "searching for part ABC-123 returns semantically similar junk but never the exact part, vector search alone misses exact terms",
+   "accept": [
+    "ruvector-hybrid"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "margin",
+   "top": [
+    "@ruvector/postgres-cli:45.97[search,vector,semantic,embedding,bm25,sparse,hybrid-search,hybrid]",
+    "agentdb:39.55[search,vector,semantic,embedding,bm25,hybrid-search,hybrid]",
+    "ruvector-hybrid:38.05[search,vector,bm25,sparse,hybrid-search,hybrid,fusion]"
+   ]
+  },
+  {
+   "id": "X04",
+   "category": "diagnosis",
+   "split": "heldout",
+   "prompt": "recall is bad on our long multi topic documents, the single embedding washes out all the details",
+   "accept": [
+    "ruvector-maxsim"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "margin",
+   "top": [
+    "ruvector-maxsim:20.61[recall,multi,document,single,embedd]",
+    "agentdb:17.06[recall,single,embedd]",
+    "cog-presence-field:13.05[multi,single,out]"
+   ]
+  },
+  {
+   "id": "X05",
+   "category": "diagnosis",
+   "split": "dev",
+   "prompt": "the vector store gets hammered with the same queries all day and latency spikes every afternoon",
+   "accept": [
+    "ruvector-query-cache",
+    "rulake",
+    "@ruvector/burst-scaling"
+   ],
+   "fired": true,
+   "pkg": "@ruvector/burst-scaling",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "@ruvector/burst-scaling:27.62[spike,burst,scal,traffic]",
+    "agenticow:12.95[vector,store,query]",
+    "cog-swarm-distributed-store:11.95[vector,store,query]"
+   ]
+  },
+  {
+   "id": "X06",
+   "category": "diagnosis",
+   "split": "heldout",
+   "prompt": "someone got our support bot to print its whole system prompt, how do we stop that from happening again",
+   "accept": [
+    "@claude-flow/aidefence",
+    "aidefence-core"
+   ],
+   "fired": true,
+   "pkg": "@claude-flow/aidefence",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "@claude-flow/aidefence:42.79[prompt,prompt-injection,injection,jailbreak-detection,jailbreak,detection]",
+    "ruvbot:29.25[bot,prompt,prompt-injection,injection]",
+    "aidefence-core:23.51[prompt,prompt-injection,injection,detection]"
+   ]
+  },
+  {
+   "id": "X07",
+   "category": "diagnosis",
+   "split": "dev",
+   "prompt": "the agent forgets everything between sessions and we keep re-explaining the whole project to it",
+   "accept": [
+    "agentdb",
+    "@claude-flow/memory",
+    "@agentic-flow/ephemeral-memory"
+   ],
+   "fired": true,
+   "pkg": "@agentic-flow/ephemeral-memory",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "@agentic-flow/ephemeral-memory:16.41[memory,agent-memory,persistent]",
+    "agentdb:9.07[memory,agent-memory]",
+    "agenticow:9.07[memory,agent-memory]"
+   ]
+  },
+  {
+   "id": "X08",
+   "category": "diagnosis",
+   "split": "heldout",
+   "prompt": "our pinecone bill is way too high and we only have a few million vectors",
+   "accept": [
+    "ruvector",
+    "@ruvector/rvf",
+    "@ruvector/core",
+    "@ruvector/node",
+    "@ruvector/diskann"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "margin",
+   "top": [
+    "@ruvector/postgres-cli:18.70[vector,database,hnsw,rout]",
+    "@claude-flow/neural:18.24[vector,hnsw,rout,model]",
+    "@ruvector/ruvllm:16.84[vector,database,hnsw,model]"
+   ]
+  },
+  {
+   "id": "X09",
+   "category": "diagnosis",
+   "split": "dev",
+   "prompt": "top k from the ANN index has the right document at rank eight instead of rank one, the ordering is off",
+   "accept": [
+    "ruvector-gnn-rerank",
+    "@ruvector/gnn"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "margin",
+   "top": [
+    "agentdb:12.41[ann,rerank]",
+    "ruvector-gnn-rerank:12.41[ann,rerank]",
+    "rupixel:12.18[ann,document]"
+   ]
+  },
+  {
+   "id": "X10",
+   "category": "diagnosis",
+   "split": "heldout",
+   "prompt": "every request goes to the biggest model and the bill tripled even though most prompts are trivial",
+   "accept": [
+    "@ruvector/tiny-dancer",
+    "agentic-flow"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "margin",
+   "top": [
+    "@claude-flow/guidance:10.48[model,prompt]",
+    "@claude-flow/neural:10.48[model,rout]",
+    "@ruvector/tiny-dancer:10.48[model,rout]"
+   ]
+  },
+  {
+   "id": "X11",
+   "category": "diagnosis",
+   "split": "dev",
+   "prompt": "one bad agent run corrupted the shared memory and we had no way to roll it back",
+   "accept": [
+    "agenticow"
+   ],
+   "fired": true,
+   "pkg": "agenticow",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "agenticow:36.15[memory,branch,copy-on-write,copy,write]",
+    "ruv-swarm-transport:9.53[shar,memory]",
+    "agentdb:8.49[memory,back]"
+   ]
+  },
+  {
+   "id": "X12",
+   "category": "diagnosis",
+   "split": "heldout",
+   "prompt": "vector search in postgres with pgvector is getting slow as the table grows",
+   "accept": [
+    "@ruvector/postgres-cli"
+   ],
+   "fired": true,
+   "pkg": "@ruvector/postgres-cli",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "@ruvector/postgres-cli:33.51[vector,search,postgre,pgvector,postgresql]",
+    "cog-table-turnover:7.94[table]",
+    "@agentic-flow/ephemeral-memory:6.57[vector,search]"
+   ]
+  },
+  {
+   "id": "X13",
+   "category": "diagnosis",
+   "split": "dev",
+   "prompt": "the index does not fit in RAM anymore now that we are at five hundred million vectors",
+   "accept": [
+    "@ruvector/diskann"
+   ],
+   "fired": true,
+   "pkg": "@ruvector/diskann",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "@ruvector/diskann:46.66[vector,diskann,ssd,billion-scale,billion,scale]",
+    "arcadia:8.75[index,vector]",
+    "ruvector-delta-index:8.75[index,vector]"
+   ]
+  },
+  {
+   "id": "X14",
+   "category": "diagnosis",
+   "split": "heldout",
+   "prompt": "our flaky tests fail randomly in CI and nobody trusts the coverage report anymore",
+   "accept": [
+    "agentic-qe"
+   ],
+   "fired": false,
+   "pkg": null,
+   "correct": false,
+   "firedCorrect": false,
+   "reason": "margin",
+   "top": [
+    "@claude-flow/plugin-test-intelligence:23.09[flaky,test,coverage]",
+    "@claude-flow/plugin-agentic-qe:20.84[test,coverage,quality]",
+    "agentic-qe:9.78[coverage,quality]"
+   ]
+  },
+  {
+   "id": "X15",
+   "category": "diagnosis",
+   "split": "dev",
+   "prompt": "traffic spikes twenty times during launches and the vector service just falls over",
+   "accept": [
+    "@ruvector/burst-scaling"
+   ],
+   "fired": true,
+   "pkg": "@ruvector/burst-scaling",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "@ruvector/burst-scaling:27.62[traffic,spike,burst,scal]",
+    "cog-fall-detect:13.23[spike,fall]",
+    "ruvector-entropy-ann:8.97[during,vector]"
+   ]
+  },
+  {
+   "id": "X16",
+   "category": "diagnosis",
+   "split": "heldout",
+   "prompt": "our replicas drift apart after network partitions and nobody knows which copy is right",
+   "accept": [
+    "@ruvector/replication",
+    "@agentic-flow/crdt-gossip"
+   ],
+   "fired": true,
+   "pkg": "@ruvector/replication",
+   "correct": true,
+   "firedCorrect": true,
+   "reason": null,
+   "top": [
+    "@ruvector/replication:29.63[replica,replication,conflict,resolution]",
+    "@agentic-flow/crdt-gossip:16.31[replication,conflict]",
+    "@ruvector/raft:7.94[replication]"
+   ]
+  },
+  {
+   "id": "O01",
+   "category": "off-topic",
+   "split": "dev",
+   "prompt": "commit this and push it to the branch please",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "not-design-or-diagnosis",
+   "top": []
+  },
+  {
+   "id": "O02",
+   "category": "off-topic",
+   "split": "heldout",
+   "prompt": "what time is it in tokyo right now",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "not-design-or-diagnosis",
+   "top": []
+  },
+  {
+   "id": "O03",
+   "category": "off-topic",
+   "split": "dev",
+   "prompt": "thanks, that worked perfectly, nice job",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "not-design-or-diagnosis",
+   "top": []
+  },
+  {
+   "id": "O04",
+   "category": "off-topic",
+   "split": "heldout",
+   "prompt": "summarize what we did today in a few bullet points",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "not-design-or-diagnosis",
+   "top": []
+  },
+  {
+   "id": "O05",
+   "category": "off-topic",
+   "split": "dev",
+   "prompt": "write me a short professional bio for my linkedin profile",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "not-design-or-diagnosis",
+   "top": []
+  },
+  {
+   "id": "O06",
+   "category": "off-topic",
+   "split": "heldout",
+   "prompt": "rename the variable foo to userCount everywhere in this file",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "not-design-or-diagnosis",
+   "top": []
+  },
+  {
+   "id": "O07",
+   "category": "off-topic",
+   "split": "dev",
+   "prompt": "why is the sky blue, explain it simply for a kid",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "not-design-or-diagnosis",
+   "top": []
+  },
+  {
+   "id": "O08",
+   "category": "off-topic",
+   "split": "heldout",
+   "prompt": "what is the status of the release, did the canary pass",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "not-design-or-diagnosis",
+   "top": []
+  },
+  {
+   "id": "O09",
+   "category": "off-topic",
+   "split": "dev",
+   "prompt": "make the submit button blue and center it on the page",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "overlap",
+   "top": [
+    "phone-agent:8.98[page]",
+    "ruvector-dither:5.99[blue]"
+   ]
+  },
+  {
+   "id": "O10",
+   "category": "off-topic",
+   "split": "heldout",
+   "prompt": "help me plan a five day trip to lisbon in may",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "not-design-or-diagnosis",
+   "top": []
+  },
+  {
+   "id": "O11",
+   "category": "off-topic",
+   "split": "dev",
+   "prompt": "explain the difference between git rebase and git merge",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "not-design-or-diagnosis",
+   "top": []
+  },
+  {
+   "id": "O12",
+   "category": "off-topic",
+   "split": "heldout",
+   "prompt": "format this json so it is readable and sort the keys",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "not-design-or-diagnosis",
+   "top": []
+  },
+  {
+   "id": "O13",
+   "category": "off-topic",
+   "split": "dev",
+   "prompt": "draft an email to the landlord about the broken heater",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "not-design-or-diagnosis",
+   "top": []
+  },
+  {
+   "id": "O14",
+   "category": "off-topic",
+   "split": "heldout",
+   "prompt": "ok continue with the next step of the plan",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "not-design-or-diagnosis",
+   "top": []
+  },
+  {
+   "id": "O15",
+   "category": "off-topic",
+   "split": "dev",
+   "prompt": "run the whole test suite again and tell me what failed",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "not-design-or-diagnosis",
+   "top": []
+  },
+  {
+   "id": "O16",
+   "category": "off-topic",
+   "split": "heldout",
+   "prompt": "what does this error mean: cannot find module react",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "not-design-or-diagnosis",
+   "top": []
+  },
+  {
+   "id": "H01",
+   "category": "no-fit",
+   "split": "dev",
+   "prompt": "add a dark mode toggle to the settings page and remember the choice",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "overlap",
+   "top": [
+    "@ruvector/typesafe:8.98[choice]",
+    "phone-agent:8.98[page]",
+    "qudag:5.58[dark]"
+   ]
+  },
+  {
+   "id": "H02",
+   "category": "no-fit",
+   "split": "heldout",
+   "prompt": "write a stripe webhook handler for subscription renewals and failed payments",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "overlap",
+   "top": [
+    "phone-agent:8.98[webhook]",
+    "agenticow:7.10[write]",
+    "helix-openmed:5.07[fail]"
+   ]
+  },
+  {
+   "id": "H03",
+   "category": "no-fit",
+   "split": "dev",
+   "prompt": "the css grid overflows on mobile, fix it so the cards wrap",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "not-design-or-diagnosis",
+   "top": []
+  },
+  {
+   "id": "H04",
+   "category": "no-fit",
+   "split": "heldout",
+   "prompt": "set up eslint and prettier for this repo with a pre-commit hook",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "overlap",
+   "top": [
+    "@claude-flow/cli:7.10[hook]",
+    "@claude-flow/hooks:7.10[hook]",
+    "@claude-flow/plugins:7.10[hook]"
+   ]
+  },
+  {
+   "id": "H05",
+   "category": "no-fit",
+   "split": "dev",
+   "prompt": "add pagination to the orders API endpoint with a cursor",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "overlap",
+   "top": [
+    "ruvector-delta-consensus:5.99[order]"
+   ]
+  },
+  {
+   "id": "H06",
+   "category": "no-fit",
+   "split": "heldout",
+   "prompt": "our docker image is two gigabytes, make it smaller with a multi stage build",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "margin",
+   "top": [
+    "agenticow:10.30[smaller,multi]",
+    "@synaptic-neural-mesh/claude-max-market:8.37[docker]",
+    "vscode-remote-mcp:8.37[docker]"
+   ]
+  },
+  {
+   "id": "H07",
+   "category": "no-fit",
+   "split": "dev",
+   "prompt": "design the database schema for a booking app with users, rooms and reservations",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "overlap",
+   "top": [
+    "cog-clean-room:6.90[room]",
+    "cog-meeting-room:6.90[room]",
+    "homecore-recorder:5.58[schema]"
+   ]
+  },
+  {
+   "id": "H08",
+   "category": "no-fit",
+   "split": "heldout",
+   "prompt": "the login page is slow to load because of a huge hero image",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "overlap",
+   "top": [
+    "phone-agent:8.98[page]",
+    "@ruvector/cnn:7.94[image]",
+    "@ruvector/scipix:7.94[image]"
+   ]
+  },
+  {
+   "id": "H09",
+   "category": "no-fit",
+   "split": "dev",
+   "prompt": "add internationalization so the app supports spanish and french",
+   "accept": [],
+   "fired": false,
+   "pkg": null,
+   "correct": true,
+   "firedCorrect": false,
+   "reason": "no-overlap",
+   "top": []
+  },
+  {
+   "id": "H10",
+   "category": "no-fit",
+   "split": "heldout",
+   "prompt": "migrate the cron job to a github action that runs every night",
+   "accept": [],
+   "fired": true,
+   "pkg": "ruvdrone",
+   "correct": false,
+   "firedCorrect": false,
+   "reason": null,
+   "top": [
+    "ruvdrone:15.70[github,action]",
+    "@dream-machine/schedule:8.98[cron]",
+    "homecore-migrate:8.98[migrate]"
+   ]
+  }
+ ]
+}

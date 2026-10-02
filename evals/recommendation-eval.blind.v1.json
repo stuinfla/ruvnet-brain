@@ -1,0 +1,357 @@
+{
+  "schema": "ruvnet-brain.recommendation-eval/1",
+  "author": "blind agent, no access to matcher",
+  "items": [
+    {
+      "id": "B01",
+      "category": "design",
+      "split": "blind",
+      "prompt": "ok so I want each of our AI helpers to be able to go try something risky in its own throwaway copy of what it knows, and if it goes sideways we just toss that copy and nothing in the main one changed, kinda like git branches but for its memory",
+      "accept": [
+        "agenticow"
+      ]
+    },
+    {
+      "id": "B02",
+      "category": "design",
+      "split": "blind",
+      "prompt": "we're about to put a chatbot on the website for customers and honestly I'm nervous people will talk it into ignoring its rules or get it to spit out other customers' info, can we put something in front of it that catches that",
+      "accept": [
+        "@claude-flow/aidefence",
+        "aimds-detection",
+        "aidefence-core"
+      ]
+    },
+    {
+      "id": "B03",
+      "category": "design",
+      "split": "blind",
+      "prompt": "I want the support assistant to actually remember past conversations with each user and get better from what worked, and it has to keep that even after a restart, ideally runs offline too",
+      "accept": [
+        "agentdb",
+        "@claude-flow/memory"
+      ]
+    },
+    {
+      "id": "B04",
+      "category": "design",
+      "split": "blind",
+      "prompt": "is there a way to tell if somebody is in a room just from the wifi signal, no cameras at all, we want to turn lights off in empty conference rooms",
+      "accept": [
+        "cog-person-count",
+        "rvcsi-events"
+      ]
+    },
+    {
+      "id": "B05",
+      "category": "design",
+      "split": "blind",
+      "prompt": "my dad lives alone and I'd love to keep an eye on his breathing and heart rate while he sleeps without him wearing anything, just using the wifi gear in the house",
+      "accept": [
+        "wifi-densepose-vitals"
+      ]
+    },
+    {
+      "id": "B06",
+      "category": "design",
+      "split": "blind",
+      "prompt": "we write a lot of our marketing copy with AI now and legal wants some invisible mark in the text so later we can prove a paragraph came out of our system and not someone else's",
+      "accept": [
+        "ai-text-watermark",
+        "ruflo-watermark",
+        "@claude-flow/watermark"
+      ]
+    },
+    {
+      "id": "B07",
+      "category": "design",
+      "split": "blind",
+      "prompt": "we can't use real customer records to test our question-answering bot, can you set up something that cranks out a big pile of realistic fake examples we can train and test on",
+      "accept": [
+        "@ruvector/agentic-synth"
+      ]
+    },
+    {
+      "id": "B08",
+      "category": "design",
+      "split": "blind",
+      "prompt": "add a feature that looks at our daily order history and predicts demand for the next couple of months so purchasing knows what to stock, something more modern than a moving average",
+      "accept": [
+        "neuro-divergent",
+        "neuro-divergent-models",
+        "timesfm"
+      ]
+    },
+    {
+      "id": "B09",
+      "category": "design",
+      "split": "blind",
+      "prompt": "teachers want to snap a photo of a page from a textbook or a research paper and get the equations back as something editable we can show on the site instead of a blurry image",
+      "accept": [
+        "@ruvector/scipix"
+      ]
+    },
+    {
+      "id": "B10",
+      "category": "design",
+      "split": "blind",
+      "prompt": "our help center search is weird, if you type an exact part number it finds nothing useful but if you type it in plain words it misses the exact match, I want it to be good at both at once",
+      "accept": [
+        "ruvector-hybrid"
+      ]
+    },
+    {
+      "id": "B11",
+      "category": "design",
+      "split": "blind",
+      "prompt": "we're building a password manager and our security advisor keeps saying the encryption needs to hold up even once quantum computers are a thing, what should the vault use",
+      "accept": [
+        "qudag-vault-core",
+        "qudag-crypto"
+      ]
+    },
+    {
+      "id": "B12",
+      "category": "design",
+      "split": "blind",
+      "prompt": "three hospitals want to train one model together but none of them is allowed to send patient data out of their building, how do we build that",
+      "accept": [
+        "rvf-federation",
+        "daa-compute",
+        "daa-prime-trainer"
+      ]
+    },
+    {
+      "id": "B13",
+      "category": "design",
+      "split": "blind",
+      "prompt": "we lost the original source for an old web app, all we have is the minified javascript bundle from the server, I need it turned back into something a human can read and work on",
+      "accept": [
+        "ruvector-decompiler",
+        "ruvector-decompiler-wasm"
+      ]
+    },
+    {
+      "id": "B14",
+      "category": "design",
+      "split": "blind",
+      "prompt": "we've got a referral network of a couple million users and I want to rank who's most influential in it, fast, without grinding through the entire thing every single night",
+      "accept": [
+        "sublinear-time-solver",
+        "sublinear"
+      ]
+    },
+    {
+      "id": "B15",
+      "category": "diagnosis",
+      "split": "blind",
+      "prompt": "our AI bill basically doubled this month and it looks like every tiny request, even 'say hi', goes to the most expensive model. can we stop that",
+      "accept": [
+        "@ruvector/tiny-dancer",
+        "agentic-flow"
+      ]
+    },
+    {
+      "id": "B16",
+      "category": "diagnosis",
+      "split": "blind",
+      "prompt": "people keep asking the assistant basically the same question just worded differently and we pay to look it up and answer from scratch every single time, it's slow and costs a fortune",
+      "accept": [
+        "ruvector-query-cache",
+        "rulake"
+      ]
+    },
+    {
+      "id": "B17",
+      "category": "diagnosis",
+      "split": "blind",
+      "prompt": "every morning my coding assistant has completely forgotten what we decided the day before and I have to re-explain the whole project again",
+      "accept": [
+        "agentdb",
+        "@claude-flow/memory"
+      ]
+    },
+    {
+      "id": "B18",
+      "category": "diagnosis",
+      "split": "blind",
+      "prompt": "our test suite is a disaster, random stuff fails then passes on rerun, it takes 40 minutes and nobody trusts the green checkmark anymore. help",
+      "accept": [
+        "agentic-qe",
+        "@claude-flow/plugin-test-intelligence"
+      ]
+    },
+    {
+      "id": "B19",
+      "category": "diagnosis",
+      "split": "blind",
+      "prompt": "the 'find similar items' thing used to be instant but now we're at a couple hundred million items and the server keeps running out of RAM trying to hold it all",
+      "accept": [
+        "@ruvector/diskann",
+        "ruvector-rabitq",
+        "ruvector-pq-search"
+      ]
+    },
+    {
+      "id": "B20",
+      "category": "diagnosis",
+      "split": "blind",
+      "prompt": "ever since we bulk deleted a ton of old records the similar-items results got noticeably worse and keep missing stuff that's obviously related",
+      "accept": [
+        "ruvector-hnsw-repair",
+        "ruvector-delta-index"
+      ]
+    },
+    {
+      "id": "B21",
+      "category": "diagnosis",
+      "split": "blind",
+      "prompt": "big problem: in our app that serves multiple client companies, the AI document search occasionally shows one company's files to a different company",
+      "accept": [
+        "ruvector-capgated",
+        "ruvector-context",
+        "ruvector-edge-tenancy"
+      ]
+    },
+    {
+      "id": "B22",
+      "category": "diagnosis",
+      "split": "blind",
+      "prompt": "the assistant writes these long answers that sound confident but contradict themselves halfway through, I want something that flags when an answer doesn't actually hang together before it goes out",
+      "accept": [
+        "prime-radiant",
+        "@claude-flow/plugin-prime-radiant"
+      ]
+    },
+    {
+      "id": "B23",
+      "category": "diagnosis",
+      "split": "blind",
+      "prompt": "every time the agent makes a tiny code change it round-trips to the big model, takes forever and costs money for what's basically a find-and-replace",
+      "accept": [
+        "agent-booster"
+      ]
+    },
+    {
+      "id": "B24",
+      "category": "diagnosis",
+      "split": "blind",
+      "prompt": "two of my AI agents keep grabbing the same ticket and redoing each other's work, sometimes overwriting it, how do I get them to stop stepping on each other",
+      "accept": [
+        "@claude-flow/claims"
+      ]
+    },
+    {
+      "id": "B25",
+      "category": "off-topic",
+      "split": "blind",
+      "prompt": "morning! how was your weekend lol",
+      "accept": []
+    },
+    {
+      "id": "B26",
+      "category": "off-topic",
+      "split": "blind",
+      "prompt": "can you squash my last three commits into one and push the branch",
+      "accept": []
+    },
+    {
+      "id": "B27",
+      "category": "off-topic",
+      "split": "blind",
+      "prompt": "where are we at on the release, anything still blocking?",
+      "accept": []
+    },
+    {
+      "id": "B28",
+      "category": "off-topic",
+      "split": "blind",
+      "prompt": "help me write a polite email to the landlord saying the rent will be a few days late",
+      "accept": []
+    },
+    {
+      "id": "B29",
+      "category": "off-topic",
+      "split": "blind",
+      "prompt": "explain like I'm five what an API actually is",
+      "accept": []
+    },
+    {
+      "id": "B30",
+      "category": "off-topic",
+      "split": "blind",
+      "prompt": "what time is it in Tokyo right now",
+      "accept": []
+    },
+    {
+      "id": "B31",
+      "category": "off-topic",
+      "split": "blind",
+      "prompt": "rename the variable userData to profile everywhere in this one file please",
+      "accept": []
+    },
+    {
+      "id": "B32",
+      "category": "off-topic",
+      "split": "blind",
+      "prompt": "summarize what we did today in a couple bullet points for my notes",
+      "accept": []
+    },
+    {
+      "id": "B33",
+      "category": "no-fit",
+      "split": "blind",
+      "prompt": "the redis cache on the checkout page keeps showing old prices for like ten minutes after we change them in the admin, how do we fix that",
+      "accept": []
+    },
+    {
+      "id": "B34",
+      "category": "no-fit",
+      "split": "blind",
+      "prompt": "add a little search box above the product list that filters by name as you type, there's only about 50 products",
+      "accept": []
+    },
+    {
+      "id": "B35",
+      "category": "no-fit",
+      "split": "blind",
+      "prompt": "our node server's memory climbs all day until it crashes, I think we're leaking event listeners somewhere",
+      "accept": []
+    },
+    {
+      "id": "B36",
+      "category": "no-fit",
+      "split": "blind",
+      "prompt": "add stripe subscriptions with a 14 day free trial and let our sales agents give out coupon codes",
+      "accept": []
+    },
+    {
+      "id": "B37",
+      "category": "no-fit",
+      "split": "blind",
+      "prompt": "set up sign in with google and a forgot-password email flow for the app",
+      "accept": []
+    },
+    {
+      "id": "B38",
+      "category": "no-fit",
+      "split": "blind",
+      "prompt": "routing is broken after the deploy, going to /settings directly gives a 404 but clicking the link works, it's a next.js app",
+      "accept": []
+    },
+    {
+      "id": "B39",
+      "category": "no-fit",
+      "split": "blind",
+      "prompt": "make the bar graph on the dashboard look nicer, the colors clash badly in dark mode",
+      "accept": []
+    },
+    {
+      "id": "B40",
+      "category": "no-fit",
+      "split": "blind",
+      "prompt": "our github actions runs take 20 minutes, can we cache node_modules between runs and run the jobs in parallel",
+      "accept": []
+    }
+  ]
+}

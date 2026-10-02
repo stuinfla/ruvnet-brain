@@ -191,7 +191,9 @@ describe('protected release rail', () => {
     // Nothing is terminal until three OS lanes verify the public bytes; no job pauses for a person.
     expect(blocks['public-verification']).toContain('needs: [verified-candidate, publish]');
     expect(blocks['finalize-public-verification']).toContain('needs: [verified-candidate, public-verification]');
-    expect(source).not.toMatch(/wait-timer|required[_ -]reviewers?|pending_deployments/i);
+    // No step in the YAML waits on a person. (A required REVIEWER lives in GitHub's environment
+    // settings, not in this file — that is single-source C3's job: tests/unit/release-environment-policy.test.mjs.)
+    expect(source).not.toMatch(/pending_deployments|environment approval/i);
   });
 
   it('binds the npm environment in exactly one job, and a failed publish can be re-run in place', () => {

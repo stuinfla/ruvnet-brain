@@ -37,8 +37,11 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const DIR = path.join(ROOT, 'plugin', 'commands');
-const CANONICAL = 'rvbc.md';
-const ALIASES = ['rvcb.md', 'brain-console.md', 'configure.md'];
+// 2026-10-01 (owner): RuvNet Brain abbreviates as RNB, so the console is `/rnbc` and it is the
+// producer now. `/rnb` was added as a short form; the older spellings stay as aliases because people
+// (and the installer's plugin-presence probe, which looks for rvbc.md) still use them.
+export const CANONICAL = 'rnbc.md';
+export const ALIASES = Object.freeze(['rnb.md', 'rvbc.md', 'rvcb.md', 'brain-console.md', 'configure.md']);
 const CHECK = process.argv.includes('--check');
 
 /** Split `---\n…\n---\n` frontmatter from the body. Both are returned verbatim. */

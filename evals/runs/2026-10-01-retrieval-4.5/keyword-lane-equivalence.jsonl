@@ -1,0 +1,5 @@
+{"store":"ruflo","passages":14983,"compactRetainedMB":82.2,"coldBuildMs":3417,"warmMsPerQuery":6.9,"identical":206,"of":206,"diffs":[]}
+{"store":"ruvector","passages":31168,"compactRetainedMB":162.2,"coldBuildMs":5432,"warmMsPerQuery":11.5,"identical":206,"of":206,"diffs":[]}
+{"store":"ruview","passages":9431,"compactRetainedMB":64.4,"coldBuildMs":1884,"warmMsPerQuery":3.1,"identical":206,"of":206,"diffs":[]}
+{"store":"agentdb","passages":3641,"compactRetainedMB":21.7,"coldBuildMs":596,"warmMsPerQuery":1.5,"identical":206,"of":206,"diffs":[]}
+{"store":"concepts","passages":332,"compactRetainedMB":1.7,"coldBuildMs":31,"warmMsPerQuery":0.6,"identical":206,"of":206,"diffs":[]}
