@@ -184,6 +184,16 @@ while an update is proven within 36h (a successful refresh receipt or a CURRENT 
 that, the SessionStart self-heal runs the Brain's own update anyway, so no machine exceeds 48h. `--host-sync-only` repairs host wiring and **never** updates
 knowledge — do not use it as an update command.
 
+**What makes a newly published corpus reach every install (ADR-098 §5).** Not age: identity. With no
+scheduler, at most once per 60 min per machine, SessionStart — and, inside a session left open for days,
+the MCP server's 15-min timer — launches the one detached updater worker in check mode
+(`host-update.mjs --knowledge … --if-newer`): the installed `kb/forge-update.mjs --check` reads
+`releases/latest` and only `UPDATE_AVAILABLE`/`UNKNOWN` runs `npx ruvnet-brain@latest --update`; `CURRENT`
+stops and `REFUSED` (published corpus older) never downgrades. The worker respawns on the new knowledge at
+the next search. Exact limits: nothing runs on a machine with no open session; a running session gains the
+timer only after its next restart (`server.mjs` is boot-frozen); `RUVNET_AUTO_UPDATE=off`, a recorded "no", or
+agentic-kit ownership proven within 36h turn it off. Proof: `tests/integration/corpus-auto-update-e2e.test.mjs`.
+
 **Putting the Brain on another disk.** `npx ruvnet-brain --move-brain <dir>` (for example
 `/Volumes/SanDisk/ruvnet-brain`) checks the target has room, copies the whole Brain there, proves the copy
 byte-identical, and leaves `~/.cache/ruvnet-brain` as a symlink to it; `--move-brain --back` brings it home, and

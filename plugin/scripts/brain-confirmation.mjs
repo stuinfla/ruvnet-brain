@@ -15,6 +15,7 @@ import crypto from 'node:crypto';
 import { cmpVersion, footprintRoots, physical } from './brain-footprint.mjs';
 import { readAll as readReadiness } from './mcp-readiness.mjs';
 import { volumeOf } from './brain-location.mjs';
+import { AUTO_UPDATE_LOCK_STALE_MS, autoUpdatePaths, newerCorpusPending } from './session-start-health.mjs';
 
 export const KNOWLEDGE_MAX_AGE_HOURS = 48;
 export const SIGNATURE_RECORD = 'knowledge-signature.json';
@@ -84,7 +85,7 @@ const line = (id, label, state, detail, fix = null) => ({ id, label, state, deta
  * @param installedVersion the package version the caller runs, used when no spine is active
  */
 export function confirm({ footprint, env = process.env, home = os.homedir(), now = Date.now(), npmLatest = null,
-  installedVersion = null, readiness = null } = {}) {
+  installedVersion = null, readiness = null, coverageIntegrity = null } = {}) {
   const roots = footprint?.roots || footprintRoots({ env, home });
   const lines = [];
   const active = readJson(path.join(roots.brainHome, 'active.json'));
@@ -135,12 +136,27 @@ export function confirm({ footprint, env = process.env, home = os.homedir(), now
   if (footprint.kbCopies !== 1) knowledgeProblems.push([`${footprint.kbCopies} copies on disk (must be exactly 1)`, footprint.kbCopyFix || (footprint.kbCopies ? CLEAN : 'npx ruvnet-brain@latest')]);
   if (!recorded) knowledgeAdvice.push([`installed or updated without a recorded signature verification — run ${UPDATE} to verify`, UPDATE]);
   else if (!signed) knowledgeProblems.push([signature ? 'signature record does not match the live COVERAGE.json' : 'signature record is unreadable', UPDATE]);
+  // The record binds COVERAGE.json's bytes only. The doctor passes the release-coverage check (every store's bytes
+  // against the release projection, ~0.3 s on a 1.4 GB KB): a projection that fails it is ✗; a directory without one
+  // (an older corpus) cannot be checked, and the line then claims only what the record proves (4.5.2).
+  const integrity = signed && coverageIntegrity ? coverageIntegrity(roots.kbDir) : null;
+  const checkable = Boolean(integrity) && fs.existsSync(path.join(roots.kbDir, 'CORPUS-COVERAGE.json'));
+  if (checkable && !integrity.valid) knowledgeProblems.push([`the bytes on disk fail the release-coverage check (${integrity.failures?.[0] || 'unknown'})`, UPDATE]);
+  // A newer corpus is published and not yet installed (identity, not age): advisory, never a gate.
+  const pending = newerCorpusPending({ source, corpusCheck: readJson(autoUpdatePaths(roots.brainHome).checkFile) });
+  if (pending) {
+    const lockAt = readJson(autoUpdatePaths(roots.brainHome).lockFile)?.at;
+    const running = Number.isFinite(Date.parse(lockAt || '')) && now - Date.parse(lockAt) < AUTO_UPDATE_LOCK_STALE_MS;
+    const short = pending.tag.length > 28 ? `${pending.tag.slice(0, 26)}…` : pending.tag;
+    knowledgeAdvice.push([`newer corpus ${short} published (checked ${iso(Date.parse(pending.checkedAt || ''))}); automatic update ${running ? 'running now' : 'pending'}`, UPDATE]);
+  }
   if (!Number.isFinite(builtMs) || (now - builtMs) / 3_600_000 >= KNOWLEDGE_MAX_AGE_HOURS) knowledgeAdvice.push([`built ${Number.isFinite(builtMs) ? ago(builtMs, now) : 'at an unknown time'} (limit ${KNOWLEDGE_MAX_AGE_HOURS}h)`, UPDATE]);
   const where = roots.location?.state === 'linked'
     ? `at ${roots.kbDir} (moved to ${volumeOf(roots.location.real)}, mounted)` : `at ${roots.kbDir}`;
   const moved = footprint.moveLeftovers || { copies: 0, bytes: 0 };
   const knowledgeDetail = [`${footprint.kbCopies} copy ${where}${moved.copies ? ` (not counted: ${moved.copies} interrupted-move cop${moved.copies === 1 ? 'y' : 'ies'} (${formatBytes(moved.bytes)}) — see the Move lines)` : ''}`, `built ${iso(builtMs)}${Number.isFinite(builtMs) ? ` (${ago(builtMs, now)})` : ''}`,
-    signed ? `signature verified ${iso(Date.parse(signature.verifiedAt))}` : 'signature NOT verified', `corpus ${tag ? (tag.length > 28 ? `${tag.slice(0, 26)}…` : tag) : 'unknown'}`].join(' · ');
+    !signed ? 'signature NOT verified' : integrity && !checkable ? `install record matches COVERAGE.json ${iso(Date.parse(signature.verifiedAt))}`
+      : `signature verified ${iso(Date.parse(signature.verifiedAt))}`, `corpus ${tag ? (tag.length > 28 ? `${tag.slice(0, 26)}…` : tag) : 'unknown'}`].join(' · ');
   const knowledgeIssues = [...knowledgeProblems, ...knowledgeAdvice];
   lines.push(line('knowledge', 'Knowledge', knowledgeProblems.length ? 'fail' : knowledgeAdvice.length ? 'warn' : 'ok',
     knowledgeIssues.length ? `${knowledgeDetail} — ${knowledgeIssues.map(([p]) => p).join('; ')}` : knowledgeDetail, knowledgeIssues[0]?.[1]));

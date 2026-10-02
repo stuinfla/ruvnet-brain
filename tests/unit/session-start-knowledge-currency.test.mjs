@@ -54,6 +54,9 @@ describe('SessionStart knowledge currency', () => {
     built(35 * 24 * H);
     receipt({ status: 'SUCCEEDED', hoursAgo: 5 });
     expect(line()).toBe('');
+    // runSessionStart uses the real clock (NOW is fixed): from 2026-10-02 the 5h receipt above reads >48h
+    // there, so the session half gets the same "5h before now" receipt on the real clock.
+    receipt({ status: 'SUCCEEDED', hoursAgo: (NOW - (Date.now() - 5 * H)) / H });
     expect(await sessionStartOutput()).not.toContain(KNOWLEDGE_LINE_PREFIX);
   });
 
