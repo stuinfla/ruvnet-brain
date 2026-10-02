@@ -2278,7 +2278,13 @@ async function sourceBackedCardLane({ dir, query, k, planned }) {
               )
         )) continue;
     if (specificationToCompletionMethodQuestion(query) || pythonFreeRustNeuralQuestion(query)) {
-      candidates.unshift({
+      // push, not unshift: this candidate's path (`capability-cards.md#<repo>`) is a hand-written
+      // top-level file no corpus builder ever chunks into any repo's passages store, so
+      // kb/verify-citation.mjs's citationResolves() can never resolve it. Forcing it to rank #1
+      // made the one citation a "read the top result" consumer relies on permanently unverifiable
+      // while real, resolvable evidence sat one rank lower. See tests/unit/forge-ask-all.test.mjs's
+      // "TEETH: the source-backed-card lane must not force an unverifiable citation to rank #1".
+      candidates.push({
         repo,
         path: `capability-cards.md#${cardRepo}`,
         title: `${cardRepo} capability card`,
@@ -2316,7 +2322,8 @@ async function sourceBackedCardLane({ dir, query, k, planned }) {
           ['manifest', 'source'].includes(String(candidate.kind || '').toLowerCase()))
         && !candidates.some((candidate) =>
           String(candidate.path || '') === `capability-cards.md#${cardRepo}`)) {
-      candidates.unshift({
+      // push, not unshift — same reasoning as the specification-to-completion branch above.
+      candidates.push({
         repo,
         path: `capability-cards.md#${cardRepo}`,
         title: `${cardRepo} capability card`,
