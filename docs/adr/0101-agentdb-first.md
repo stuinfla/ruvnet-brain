@@ -12,8 +12,10 @@ relates: [ADR-100, ADR-098, ADR-0030, ADR-054]
 
 # ADR-101 — Always check AgentDB first
 
-**Status**: Proposed (2026-10-02). Accepted once a release carrying it is `install-verified` and the
-`--doctor` line below reads ✓ on the owner's machine.
+**Status**: Proposed (2026-10-02)
+
+Accepted once a release carrying it is `install-verified` and the `--doctor` line below reads ✓ on the
+owner's machine.
 
 ## Owner requirement (R15, verbatim, 2026-10-02)
 
