@@ -52,7 +52,8 @@ export const kbCopyPrefixes = (base) => [
   `${base}-pre-gap-rebuild-backup-`, `${base}.install-preserved-`, `${base}.install-prior-`,
   `${base}.pre-update-`, `${base}.next-`, `${base}.rollback-`, `${base}.failed-`,
 ];
-const TRANSACTION_KINDS = { next: 'candidate', rollback: 'rollback', failed: 'failed' };
+const BRAIN_BACKUP_STAMP = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}(?:-\d{3})?Z$/; // the updater's stamp(); other kb.bak-* are the customer's
+const TRANSACTION_KINDS ={ next: 'candidate', rollback: 'rollback', failed: 'failed' };
 export const LOG_FILES = Object.freeze(['evidence.jsonl', 'token-ledger.jsonl', 'detached-jobs.jsonl',
   'update-receipts.jsonl', 'gate-blocks.jsonl', 'distill-receipts.jsonl', 'assertion-gate-shadow.jsonl',
   'capability-live-evidence.jsonl', 'design-grades.jsonl', 'grounding-overrides.jsonl']);
@@ -184,6 +185,10 @@ export function inventoryFootprint({ env = process.env, home = os.homedir(), now
   const classifySibling = (name, full, st) => {
     {
       const prefix = kbCopyPrefixes(base).find((p) => name.startsWith(p));
+      if (prefix === `${base}.bak-` && !BRAIN_BACKUP_STAMP.test(name.slice(prefix.length))) {
+        return void add({ id: 'foreign', path: full, class: 'unowned', kind: 'hand-made-backup', action: 'report', bytes: bytes(full),
+          reason: 'a hand-made KB backup (not the Brain\'s own kb.bak-<stamp> name): reported, never deleted' });
+      }
       if (prefix) {
         if (st.isSymbolicLink() || !st.isDirectory()) { add({ id: 'kb-copy', path: full, class: 'unowned', kind: 'kb-copy-link', action: 'report', reason: 'a link or file under a KB-copy name; never followed or removed' }); return; }
         const kind = Object.entries(TRANSACTION_KINDS).find(([k]) => prefix === `${base}.${k}-`)?.[1] || null;
@@ -392,10 +397,10 @@ function summarize({ roots, items, policy, kbCopyDirs, lockHeld }) {
     breakdown[group] = (breakdown[group] || 0) + (i.bytes || 0);
   }
   const cruft = items.filter((i) => i.class === 'must-not-exist');
-  // When every extra KB copy is one no command can remove, the copy-count fix is the honest remedy, not --clean.
-  const extra = items.filter((i) => i.kind === 'kb-copy' || i.kind === 'quarantine');
-  const onlyCopy = items.find((i) => i.kind === 'move-leftover' && i.onlyCopy);
-  const kbCopyFix = onlyCopy ? onlyCopy.fix : extra.length && extra.every((i) => i.keptUnique) ? extra[0].fix : null;
+  // Every extra copy unremovable → its own fix, not --clean; all owned by an update transaction → --update (4.5.2).
+  const extra = items.filter((i) => i.kind === 'kb-copy' || i.kind === 'quarantine'), onlyCopy = items.find((i) => i.kind === 'move-leftover' && i.onlyCopy);
+  const inTransaction = items.some((i) => /^transaction-/.test(i.kind)), kbCopyFix = onlyCopy ? onlyCopy.fix : extra.length && extra.every((i) => i.keptUnique) ? extra[0].fix
+    : !extra.length && inTransaction ? 'npx ruvnet-brain@latest --update' : null;
   const moved = items.filter((i) => i.kind === 'move-leftover');
   return { schemaVersion: 1, kind: 'ruvnet-brain-footprint', roots, items, policy, lockHeld, kbCopyFix,
     liveKb: items.find((i) => i.kind === 'live-kb'),

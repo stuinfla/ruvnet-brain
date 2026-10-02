@@ -27,7 +27,7 @@ import { assessLifecycleEvidence, pruneLifecycleEvidence } from '../kb/lifecycle
 import { checkDiskSpace, recoverIncompleteStorageTransactions } from '../kb/update-storage-transaction.mjs';
 import { footprintRoots, inventoryFootprint, sweepFootprint } from '../plugin/scripts/brain-footprint.mjs';
 import { kbCopyProof } from '../plugin/scripts/kb-copy-proof.mjs';
-import { isVolumeMetadata } from '../plugin/scripts/footprint-io.mjs';
+import { assessMoveLeftovers, isVolumeMetadata } from '../plugin/scripts/footprint-io.mjs';
 import { confirm, doctorVerdict, formatBytes, formatConfirmation, signatureEvidenceFromReceipts, signatureRecordValid, writeSignatureRecord } from '../plugin/scripts/brain-confirmation.mjs';
 import {
   requiredEmbedderModels,
@@ -3890,6 +3890,20 @@ function refuseUnmountedBrain() {
   die(roots.location.message, 'Nothing was installed, updated or removed.');
 }
 
+// An interrupted --move-brain left the ONLY Brain at <home>.old-<pid> while the home path is missing or was
+// recreated without a Brain by a hook (4.5.2): an install or update there would build a second, public-only
+// Brain beside it. Refuse with the restore command instead. Names only: no tree walk.
+function refuseOverSetAsideBrain() {
+  let lo = null;
+  try { const roots = footprintRoots(); lo = assessMoveLeftovers({ brainHome: roots.location?.path || roots.brainHome, location: roots.location }).find((l) => l.onlyCopy); }
+  catch { return false; }
+  if (!lo) return false;
+  warn(`the Brain is not at its path, but an interrupted move left the ONLY copy at ${lo.path} — restore it, do NOT reinstall:  ${lo.fix}`);
+  info(`then check:  ${c.bold('npx ruvnet-brain --doctor')}`);
+  process.exitCode = 1;
+  return true;
+}
+
 async function runUpdate() {
   printBanner('update');
   refuseUnmountedBrain();
@@ -4473,7 +4487,9 @@ async function printConfirmation({ footprint = null, json = false, print = true 
   const now = footprintNow();
   // Read-only: the inventory only — no copy is proven (no GB-sized hashing) and nothing is written (re-review S4).
   const fp = footprint || inventoryFootprint({ now, evidence: footprintEvidence() });
-  const result = confirm({ footprint: fp, npmLatest: await npmLatestVersion(), installedVersion: PACKAGE_VERSION, now });
+  // The doctor also checks the directory's bytes against the release projection (bounded: ~0.3 s on 1.4 GB).
+  const result = confirm({ footprint: fp, npmLatest: await npmLatestVersion(), installedVersion: PACKAGE_VERSION, now,
+    coverageIntegrity: FLAG_DOCTOR ? (dir) => validateCoverageDirectory(dir) : null });
   if (!print) return result;
   if (json) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   else console.log(`\n${formatConfirmation(result, { color: c })}`);
@@ -6061,7 +6077,7 @@ the installer reports that boot-level declarations changed.
   }
   if (FLAG_DEMO) return runDemo();
   if (FLAG_FEEDBACK) return runFeedback();
-  if (FLAG_UPDATE) return runUpdate();
+  if (FLAG_UPDATE) return refuseOverSetAsideBrain() || runUpdate();
   if (FLAG_ENABLE_NIGHTLY) return enableNightly();
   if (FLAG_DISABLE_NIGHTLY) return disableNightly();
   // Standalone, like the nightly pair above. Without these, the flags existed only as a way to
@@ -6074,6 +6090,7 @@ the installer reports that boot-level declarations changed.
   if (FLAG_WHAT_CHANGED) { printBanner('what RuvNet Brain put on this machine'); printFootprint(); return; }
   if (FLAG_WHATS_NEW) { showWhatsNew(); return; }
 
+  if (refuseOverSetAsideBrain()) return;
   printBanner('installer');
   console.log(c.dim("I'll set up the brain for Claude Code and Codex, explaining each step as I go.\n"));
 

@@ -33,6 +33,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import readline from 'node:readline';
+import { fileURLToPath } from 'node:url';
 import { writeOwn as writeOwnReadiness } from '../scripts/mcp-readiness.mjs';
 import { callManagedCli, MANAGED_CLI_TOOLS } from './managed-cli-interface.mjs';
 import { unmountedNotice } from '../scripts/brain-location.mjs';
@@ -133,7 +134,11 @@ function currentGeneration() {
   const a = readJSON(ACTIVE);
   let brainMtime = 0;
   try { brainMtime = fs.statSync(CHILD_MCP).mtimeMs; } catch { /* brain absent */ }
-  return `${a?.generation ?? 0}:${brainMtime}`;
+  // The KB's own identity record: every knowledge update (corpus-only included) rewrites SOURCE.json, so a
+  // swapped knowledge base respawns the worker even when its code file is byte- and mtime-identical.
+  let knowledgeMtime = 0;
+  try { knowledgeMtime = fs.statSync(path.join(KB, 'SOURCE.json')).mtimeMs; } catch { /* brain absent */ }
+  return `${a?.generation ?? 0}:${brainMtime}:${knowledgeMtime}`;
 }
 function refreshLease() {
   try {
@@ -392,6 +397,27 @@ async function handleClient(msg) {
       return clientErr(id, -32601, `unknown method: ${method}`);
   }
 }
+
+// KNOWLEDGE CURRENCY TIMER (2026-10-02). A session can stay open for days and SessionStart never fires
+// again, so this process — alive for the whole session on Claude Code and Codex alike — runs the SAME
+// throttled newer-published check SessionStart runs (session-start-update-plane.mjs knowledgeAutoUpdate:
+// per-machine throttle, shared O_EXCL lock, one detached updater). Unref'd (never keeps this process
+// alive), skipped while a query is in flight or the worker is starting, skipped when the brain is off.
+// The new knowledge reaches the worker through currentGeneration() above: the next call after the swap
+// respawns it between requests. announce:false — the once-per-session UPDATED line is SessionStart's.
+const CORPUS_CHECK_INTERVAL_MS = Number(process.env.RUVNET_CORPUS_CHECK_INTERVAL_MS) || 15 * 60_000;
+const SCRIPTS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'scripts');
+const corpusTimer = setInterval(() => {
+  if (pendingCount > 0 || childStartup) return;
+  Promise.all([import('../scripts/session-start-update-plane.mjs'), import('../scripts/session-start-health.mjs')])
+    .then(([plane, health]) => {
+      const home = os.homedir();
+      if (health.brainState(process.env, home).off) return;
+      plane.knowledgeAutoUpdate({ env: process.env, home, now: Date.now(), hookDir: SCRIPTS_DIR, announce: false });
+    })
+    .catch((e) => console.error(`[ruvnet-brain] knowledge currency check skipped: ${e.message}`));
+}, CORPUS_CHECK_INTERVAL_MS);
+corpusTimer.unref();
 
 const clientRl = readline.createInterface({ input: process.stdin });
 clientRl.on('line', (line) => {
