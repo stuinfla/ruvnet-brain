@@ -240,12 +240,15 @@ artifact only together with its classification there, or `--doctor` will report 
   COVERAGE.json), corpus tag; In use = the search worker opened that copy, last answer; Footprint vs budget;
   No cruft. `--doctor` text, `--doctor --json` (the same doctor; JSON on stdout) and the exit code are ONE
   verdict (`doctorVerdict` in `plugin/scripts/brain-confirmation.mjs`): exit 0 iff no ✗ line, counting the
-  doctor's own checks too. Structural problems are ✗ (a second KB copy, no/invalid signature record, a worker
-  on another copy, footprint, cruft, install, identity, grounding, Codex, nightly, host sync, ruflo); currency
-  is `!` and advisory (Software behind npm latest, a host plugin ≠ runtime, Knowledge built ≥ 48h), so a
-  correctly installed older build still passes install verification. Every ✗ and ! names one command; a
-  missing signature record is written by a verified install or update, and `--update` restores it from this
-  machine's receipt of a verified apply of the same bytes. SessionStart prints one `[RuvNet Brain — FOOTPRINT …]` line only
+  doctor's own checks too. Structural problems are ✗ (a second KB copy, a signature record that is unreadable
+  or does not match the live COVERAGE.json, a worker on another copy, footprint, cruft, install, identity,
+  grounding, Codex, nightly, host sync, ruflo); currency is `!` and advisory (Software behind npm latest, a
+  host plugin ≠ runtime, Knowledge built ≥ 48h), so a correctly installed older build still passes install
+  verification. A MISSING signature record is provenance unknown, not provably broken (an install from a
+  local sealed artifact, as the release's install verification does, and older installs never wrote one): it
+  is `!` and advisory too (4.5.1). Every ✗ and ! names one command; a missing signature record is written by a
+  verified install or update, and `--update` restores it from this machine's receipt of a verified apply of
+  the same bytes. SessionStart prints one `[RuvNet Brain — FOOTPRINT …]` line only
   when the footprint is wrong.
 - **Proof it holds**: `tests/integration/footprint-three-updates.test.mjs` (real install, forced reinstall,
   three updates, planted cruft, all lines green, and the same run with the sweep cut out goes red);

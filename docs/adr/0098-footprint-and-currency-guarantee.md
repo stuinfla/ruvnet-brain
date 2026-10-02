@@ -69,6 +69,13 @@ shouldn't be there isn't, nothing building up cruft" — confirmed positively, n
    verification of a correctly installed older build stays green. A verified local bundle (signature beside
    it) is recorded like a download, and `--update` that applies nothing restores a missing record only from
    this machine's receipt of a verified apply whose coverage digest equals the live COVERAGE.json.
+   *Amended 2026-10-01 (4.5.1):* only a PROVABLE signature problem is ✗ — a record that is unreadable or
+   does not match the live COVERAGE.json (the bytes changed since they were verified). A MISSING record is
+   provenance unknown, not provably broken: the release's own install verification installs a local sealed
+   artifact without verifying it, and the automatic updater of older installs never wrote one. It is `!`
+   advisory ("installed or updated without a recorded signature verification — run
+   `npx ruvnet-brain@latest --update` to verify") and does not fail the verdict. 4.5.0 gated on it and failed
+   its own public verification on all three OSes.
 
 ## Invariants (each enforced by a test that is proven red by breaking its guard)
 

@@ -143,6 +143,9 @@ process.exit(0);
       fs.writeFileSync(path.join(kb, 'forge-mcp-all.mjs'), '// fixture: never executed\n');
       fs.writeFileSync(path.join(kb, 'SOURCE.json'), JSON.stringify({ builtUtc: new Date().toISOString(), releaseTag: `v${VERSION}` }));
       fs.writeFileSync(path.join(kb, 'COVERAGE.json'), '{"rows":[]}');
+      // A record that does not match the live bytes: a provable, structural Knowledge ✗ (a missing one only advises).
+      fs.writeFileSync(path.join(home, '.cache', 'ruvnet-brain', 'knowledge-signature.json'), JSON.stringify({ schemaVersion: 1,
+        kind: 'ruvnet-brain-knowledge-signature', verifiedAt: new Date().toISOString(), bundleSha256: 'a'.repeat(64), coverageSha256: 'b'.repeat(64) }));
       const project = path.join(home, 'project'); // where the user runs --doctor: never written by it
       fs.mkdirSync(project);
       const stubBin = path.join(home, 'stub-bin');
@@ -179,7 +182,7 @@ process.exit(0);
         expect(verdictLines, text.stdout.slice(-3000)).toHaveLength(1);
         expect(verdictLines[0]).toMatch(/✗ FAILING — /);
         expect(text.stdout).not.toMatch(/✓ Healthy\./);
-        expect(text.stdout).toMatch(/✗ Knowledge .*no signature verification recorded/);
+        expect(text.stdout).toMatch(/✗ Knowledge .*signature record does not match the live COVERAGE\.json/);
         const textFailing = verdictLines[0].replace(/^.*✗ FAILING — /, '').replace(/:.*$/, '').split(', ');
         const verdict = JSON.parse(json.stdout); // stdout is ONLY the verdict object; narration went to stderr
         expect(verdict).toMatchObject({ kind: 'ruvnet-brain-doctor', ok: false, exitCode: 1 });
@@ -218,6 +221,64 @@ process.exit(0);
       'exited 0 after',
     ]) expect(HEALTH, `smoke failure cause "${cause}" is not reported`).toContain(cause);
   });
+});
+
+// 4.5.1 ruling through the REAL doctor, text and --json: a missing record advises (exit 0), a record that does not
+// match the live bytes gates (exit 1), and the three outputs agree in every case.
+describe('signature provenance: missing advises, mismatching gates (4.5.1)', () => {
+  for (const [label, mutate, expected] of [
+    ['valid record', () => {}, { exit: 0, state: 'ok' }],
+    ['missing record', (b) => fs.rmSync(path.join(b.brainHome, 'knowledge-signature.json')), { exit: 0, state: 'warn' }],
+    ['record not matching the live bytes', (b) => {
+      const f = path.join(b.brainHome, 'knowledge-signature.json');
+      fs.writeFileSync(f, JSON.stringify({ ...JSON.parse(fs.readFileSync(f, 'utf8')), coverageSha256: 'e'.repeat(64) }));
+    }, { exit: 1, state: 'fail' }],
+  ]) {
+    it(`${label}: text, --json and the exit code agree`, async () => {
+      const { completeBrain } = await import('../helpers/doctor-brain-fixture.mjs');
+      const b = completeBrain({ modelsReady: true });
+      try {
+        mutate(b);
+        const text = b.doctor();
+        const jsonRun = b.doctor(['--json']);
+        const verdict = JSON.parse(jsonRun.stdout);
+        expect(verdict.lines.find((l) => l.id === 'knowledge').state, text.text.slice(-1500)).toBe(expected.state);
+        expect([text.status, jsonRun.status, verdict.exitCode]).toEqual([expected.exit, expected.exit, expected.exit]);
+        const mark = { ok: '✓', warn: '!', fail: '✗' }[expected.state];
+        expect(text.text).toMatch(new RegExp(`^\\s+${mark} Knowledge `, 'm'));
+        expect(text.text).toMatch(expected.exit ? /✗ FAILING — knowledge/ : /✓ Healthy\./);
+      } finally { b.cleanup(); }
+    }, 120_000);
+  }
+
+  // The release's install-verification lane installs a local sealed artifact without verifying it (so no
+  // record), and a customer KB advanced by the AUTOMATIC updater never passes through install.mjs: both must
+  // still pass `--doctor --hooks` (what scripts/publication-receipt.mjs requires: exit 0), with the ! line.
+  for (const [label, extra] of [
+    ['a --local --no-verify style install (no record)', () => {}],
+    ['a legacy install the auto-updater advanced (no record, refresh receipts present)', async (b) => {
+      // The automatic updater's own receipt, written by the real refresh-run writer, for the live bytes.
+      const { acquireRefreshLock, openRefreshReceipt, recordRefreshPhase, settleRefreshRun, REQUIRED_REFRESH_PHASES } = await import('../../kb/refresh-run.mjs');
+      const lock = acquireRefreshLock({ kbDir: b.kbDir, brainHome: b.brainHome, action: 'update' });
+      const handle = openRefreshReceipt({ brainHome: b.brainHome, lock, action: 'update' });
+      const evidence = { 'coverage-generation': { coverageSha256: b.coverageSha256() }, 'bundle-assembly': { bundleSha256: 'd'.repeat(64) }, update: { terminalVerdict: 'applied' } };
+      for (const phase of REQUIRED_REFRESH_PHASES) recordRefreshPhase(handle, phase, 'PASS', evidence[phase] || null);
+      settleRefreshRun({ handle, lock, status: 'SUCCEEDED' });
+      expect(fs.readdirSync(path.join(b.brainHome, 'refresh-runs')).length).toBe(1);
+    }],
+  ]) {
+    it(`${label}: --doctor --hooks exits 0 with the advisory Knowledge line`, async () => {
+      const { completeBrain } = await import('../helpers/doctor-brain-fixture.mjs');
+      const b = completeBrain({ modelsReady: true });
+      try {
+        fs.rmSync(path.join(b.brainHome, 'knowledge-signature.json'));
+        await extra(b);
+        const r = b.doctor(['--hooks']);
+        expect(r.status, r.text.slice(-2000)).toBe(0);
+        expect(r.text).toMatch(/^\s+! Knowledge .*installed or updated without a recorded signature verification/m);
+      } finally { b.cleanup(); }
+    }, 120_000);
+  }
 });
 
 // An interrupted --move-brain can leave the ONLY copy of the Brain at <home>.old-<pid> with nothing at the

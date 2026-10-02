@@ -472,13 +472,34 @@ describe('positive confirmation', () => {
     expect(text).not.toMatch(/Not green/);
   });
 
-  it('a structural ✗ (no signature record) fails the ONE verdict; a failing doctor check fails it too', () => {
-    const m = clean();
-    fs.rmSync(path.join(m.brainHome, 'knowledge-signature.json'));
-    const r = run(m);
-    expect(r.lines.find((l) => l.id === 'knowledge')).toMatchObject({ state: 'fail', detail: expect.stringMatching(/no signature verification recorded/) });
-    expect(doctorVerdict(r, [])).toMatchObject({ ok: false, exitCode: 1, failing: ['knowledge'] });
-    expect(formatConfirmation(doctorVerdict(r, []))).toMatch(/Not green/);
+  // 4.5.1 ruling: a MISSING signature record is provenance UNKNOWN, not a provable defect — the release's own
+  // install verification (a local sealed artifact) and the automatic updater never write one. It advises (!).
+  // A record that is PRESENT but does not match the live bytes (or cannot be read) is provable: it gates (✗).
+  it('signature record: missing → ! (exit 0); present but not matching the live bytes, or unreadable → ✗ (exit 1); valid → ✓', () => {
+    const valid = run(clean());
+    expect(valid.lines.find((l) => l.id === 'knowledge')).toMatchObject({ state: 'ok', detail: expect.stringMatching(/signature verified/) });
+
+    const missing = clean();
+    fs.rmSync(path.join(missing.brainHome, 'knowledge-signature.json'));
+    const r = run(missing);
+    expect(r.lines.find((l) => l.id === 'knowledge')).toMatchObject({ state: 'warn', fix: 'npx ruvnet-brain@latest --update',
+      detail: expect.stringMatching(/installed or updated without a recorded signature verification/) });
+    expect(doctorVerdict(r, [])).toMatchObject({ ok: true, exitCode: 0, failing: [], advisories: ['knowledge'] });
+
+    const tampered = clean();
+    const recordFile = path.join(tampered.brainHome, 'knowledge-signature.json');
+    json(recordFile, { ...JSON.parse(fs.readFileSync(recordFile, 'utf8')), coverageSha256: 'f'.repeat(64) });
+    const t = run(tampered);
+    expect(t.lines.find((l) => l.id === 'knowledge')).toMatchObject({ state: 'fail', detail: expect.stringMatching(/signature record does not match the live COVERAGE\.json/) });
+    expect(doctorVerdict(t, [])).toMatchObject({ ok: false, exitCode: 1, failing: ['knowledge'] });
+    expect(formatConfirmation(doctorVerdict(t, []))).toMatch(/Not green/);
+
+    const unreadable = clean();
+    write(path.join(unreadable.brainHome, 'knowledge-signature.json'), '{ not json');
+    expect(run(unreadable).lines.find((l) => l.id === 'knowledge')).toMatchObject({ state: 'fail', detail: expect.stringMatching(/signature record is unreadable/) });
+  });
+
+  it('a failing doctor check fails the ONE verdict', () => {
     const green = run(clean());
     expect(doctorVerdict(green, [{ id: 'grounding', label: 'Grounding', state: 'fail', detail: 'not proven', fix: 'npx ruvnet-brain' }]))
       .toMatchObject({ ok: false, exitCode: 1, failing: ['grounding'] });
