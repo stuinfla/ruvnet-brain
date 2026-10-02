@@ -1,0 +1,10 @@
+{
+ "_provenance": "captured: claude 2.1.286 claude -p, plugin loaded via --plugin-dir, 2026-09-30",
+ "payload": {
+  "session_id": "{{SESSION_ID}}",
+  "transcript_path": "{{TRANSCRIPT}}",
+  "cwd": "{{CWD}}",
+  "hook_event_name": "SessionStart",
+  "source": "startup"
+ }
+}

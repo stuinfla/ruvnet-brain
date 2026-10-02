@@ -11,6 +11,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { json, exists, mtimeMs, read } from './session-start-fsutil.mjs';
+import { unmountedNotice } from './brain-location.mjs';
 import {
   describeFailedRefreshRun, readNightlyRegistration, refreshHistory, updateOwnedByAgenticKit,
 } from './nightly-scheduler.mjs';
@@ -33,9 +34,14 @@ export const brainState = (env, home) => {
 };
 
 export const health = (home, off) => {
+  // Moved to another disk that is not plugged in: say exactly that — not "MISSING, reinstall", which
+  // would re-create a fresh brain in ~/.cache over the link. A problem also stands the self-heal down.
+  const unmounted = unmountedNotice({ home });
+  if (unmounted) return { problem: unmounted, absentByChoice: false };
   const kb = path.join(home, '.cache', 'ruvnet-brain', 'kb');
   let rvf = false;
-  try { rvf = fs.readdirSync(kb).some((name) => name.endsWith('.rvf') && exists(path.join(kb, name))); }
+  // `._x.rvf` is macOS AppleDouble from an exFAT/FAT volume, not a store.
+  try { rvf = fs.readdirSync(kb).some((name) => name.endsWith('.rvf') && !name.startsWith('._') && exists(path.join(kb, name))); }
   catch { /* absent */ }
   const absentByChoice = off && (!exists(kb) || !rvf);
   if (absentByChoice) return { problem: '', absentByChoice };
@@ -93,13 +99,29 @@ export const knowledgeFacts = ({ env = process.env, home, now = Date.now() } = {
     lockMs: Date.parse(json(auto.lockFile)?.at || '') || mtimeMs(auto.lockFile) };
 };
 
+/**
+ * agentic-kit ownership is a CLAIM in kit.json, not a delivery: on the owner's Mac (2026-09-30)
+ * kit.json said ruvnetBrain:true while agentic-kit scheduled nothing, so the self-heal stood down
+ * forever and the knowledge base aged by hand only. Ownership is honoured only while an update is
+ * PROVEN inside this window (a successful refresh receipt or a CURRENT --check verdict); 36h leaves
+ * the self-heal 12h to land one before the 48h invariant breaks.
+ */
+export const AGENTIC_KIT_PROOF_HOURS = 36;
+/** 'none' | 'delivering' (kit.json claims it AND an update is proven) | 'not-delivering'. */
+export const agenticKitUpdates = ({ home, facts }) => {
+  if (!updateOwnedByAgenticKit(home)) return 'none';
+  return facts.provenWithin(AGENTIC_KIT_PROOF_HOURS) ? 'delivering' : 'not-delivering';
+};
+
 /** Why the SessionStart knowledge auto-update may NEVER run on this machine ('' = it may). */
 export const autoUpdateOptOut = ({ env = process.env, home, facts }) => {
   const flag = String(env.RUVNET_AUTO_UPDATE || '').toLowerCase();
   if (flag === 'off') return 'RUVNET_AUTO_UPDATE=off';
   if (env.RUVNET_BRAIN_TEST === '1' && flag !== 'on') return 'test mode';
   if (read(path.join(facts.brainHome, '.auto-update-pref')).trim() === 'no') return 'you answered no to background auto-update';
-  if (updateOwnedByAgenticKit(home)) return 'agentic-kit owns updates: ak sync';
+  if (agenticKitUpdates({ home, facts }) === 'delivering') {
+    return `agentic-kit owns updates and one is proven within ${AGENTIC_KIT_PROOF_HOURS}h: ak sync`;
+  }
   if (!exists(path.join(facts.kbDir, 'forge-update.mjs'))) return 'this install predates the self-updater';
   return '';
 };
@@ -122,8 +144,10 @@ export const knowledgeCurrency = ({ env = process.env, home, now = Date.now(), w
   const ageKnown = Number.isFinite(builtMs);
   if (!failing && proven) return '';
   if (!failing && ageKnown && hours(builtMs) <= windowHours) return '';
-  const agentKit = updateOwnedByAgenticKit(home);
-  const scheduled = agentKit || readNightlyRegistration({ brainHome }).ok;
+  const kit = agenticKitUpdates({ home, facts });
+  const agentKit = kit === 'delivering';
+  // An agentic-kit machine must never be told to also --enable-nightly (one owner per machine).
+  const scheduled = kit !== 'none' || readNightlyRegistration({ brainHome }).ok;
   const parts = [ageKnown ? `knowledge base built ${day(builtMs)} (${age(builtMs)})`
     : 'knowledge base age UNKNOWN (SOURCE.json missing or unreadable)'];
   if (autoFailed) {
@@ -138,6 +162,9 @@ export const knowledgeCurrency = ({ env = process.env, home, now = Date.now(), w
   parts.push(history.receipts
     ? `${history.failuresSinceSuccess} failed run(s) since the last success (${history.lastSuccess ? day(history.lastSuccess.at) : 'none recorded'})`
     : 'no refresh has ever run on this machine');
+  if (kit === 'not-delivering') {
+    parts.push(`agentic-kit claims updates (kit.json ruvnetBrain:true) but no update is proven in ${AGENTIC_KIT_PROOF_HOURS}h, so the Brain's own self-heal runs instead`);
+  }
   if (!scheduled) parts.push('no nightly refresh is scheduled');
   if (history.unreadable) parts.push(`${history.unreadable} unreadable receipt(s)`);
   const fix = agentKit ? 'ak sync' : scheduled ? 'npx ruvnet-brain@latest --update'

@@ -1,0 +1,58 @@
+{
+ "n": 206,
+ "infraErrors": 0,
+ "overall": {
+  "repoHit1": "55/206 26.7% [21.1-33.1]",
+  "repoHitK": "56/206 27.2% [21.6-33.6]",
+  "fileHit1": "3/206 1.5% [0.5-4.2]",
+  "fileHitK": "3/206 1.5% [0.5-4.2]",
+  "altFileHit1": "4/206 1.9% [0.8-4.9]",
+  "altFileHitK": "4/206 1.9% [0.8-4.9]",
+  "abstained": "201/206 97.6% [94.4-99.0]",
+  "confidentFileHitK": "0/206 0.0% [0.0-1.8]",
+  "confidentAltHitK": "0/206 0.0% [0.0-1.8]",
+  "goldIndexed": "206/206 100.0% [98.2-100.0]",
+  "altFileHitKWhereGoldIndexed": "4/206 1.9% [0.8-4.9]"
+ },
+ "perRepo": {
+  "RuView": {
+   "repoHit1": "23/64 35.9% [25.3-48.2]",
+   "repoHitK": "23/64 35.9% [25.3-48.2]",
+   "fileHit1": "2/64 3.1% [0.9-10.7]",
+   "fileHitK": "2/64 3.1% [0.9-10.7]",
+   "altFileHit1": "3/64 4.7% [1.6-12.9]",
+   "altFileHitK": "3/64 4.7% [1.6-12.9]",
+   "abstained": "63/64 98.4% [91.7-99.7]",
+   "confidentFileHitK": "0/64 0.0% [0.0-5.7]",
+   "confidentAltHitK": "0/64 0.0% [0.0-5.7]",
+   "goldIndexed": "64/64 100.0% [94.3-100.0]",
+   "altFileHitKWhereGoldIndexed": "3/64 4.7% [1.6-12.9]"
+  },
+  "ruflo": {
+   "repoHit1": "7/74 9.5% [4.7-18.3]",
+   "repoHitK": "8/74 10.8% [5.6-19.9]",
+   "fileHit1": "1/74 1.4% [0.2-7.3]",
+   "fileHitK": "1/74 1.4% [0.2-7.3]",
+   "altFileHit1": "1/74 1.4% [0.2-7.3]",
+   "altFileHitK": "1/74 1.4% [0.2-7.3]",
+   "abstained": "73/74 98.6% [92.7-99.8]",
+   "confidentFileHitK": "0/74 0.0% [0.0-4.9]",
+   "confidentAltHitK": "0/74 0.0% [0.0-4.9]",
+   "goldIndexed": "74/74 100.0% [95.1-100.0]",
+   "altFileHitKWhereGoldIndexed": "1/74 1.4% [0.2-7.3]"
+  },
+  "ruvector": {
+   "repoHit1": "25/68 36.8% [26.3-48.6]",
+   "repoHitK": "25/68 36.8% [26.3-48.6]",
+   "fileHit1": "0/68 0.0% [0.0-5.3]",
+   "fileHitK": "0/68 0.0% [0.0-5.3]",
+   "altFileHit1": "0/68 0.0% [0.0-5.3]",
+   "altFileHitK": "0/68 0.0% [0.0-5.3]",
+   "abstained": "65/68 95.6% [87.8-98.5]",
+   "confidentFileHitK": "0/68 0.0% [0.0-5.3]",
+   "confidentAltHitK": "0/68 0.0% [0.0-5.3]",
+   "goldIndexed": "68/68 100.0% [94.7-100.0]",
+   "altFileHitKWhereGoldIndexed": "0/68 0.0% [0.0-5.3]"
+  }
+ }
+}

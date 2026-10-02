@@ -376,9 +376,11 @@ describe('the existing dual-host session snapshot hook is the production caller'
       captureProgression(input) { calls.push(input); return { receipt: { eventKey: 'captured' } }; },
     });
 
-    // `turn` is turn-outcome-capture's report (disabled under vitest; see vitest.config.mjs).
+    // `turn` is turn-outcome-capture's report and `continuity` the material-event capture's (ADR-100);
+    // both are disabled under vitest (vitest.config.mjs) and report why.
     expect(result).toEqual({ metadataWritten: true, progressionCaptured: true, receipt: { eventKey: 'captured' },
-      turn: expect.objectContaining({ recorded: false }) });
+      turn: expect.objectContaining({ recorded: false }),
+      continuity: expect.objectContaining({ recorded: 0, skipped: 'RUVNET_CONTINUITY_CAPTURE=off' }) });
     expect(calls).toEqual([expect.objectContaining({ host: 'claude', projectDir: project })]);
     expect(fs.readFileSync(path.join(project, '.swarm', 'agentdb-sessions.jsonl'), 'utf8'))
       .toContain('"event":"PreCompact"');

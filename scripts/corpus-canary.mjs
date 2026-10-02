@@ -35,15 +35,17 @@
 // `codex` host is wired — this is the knowledge channel, not the host matrix.
 //
 //   node scripts/corpus-canary.mjs --repo owner/name --tag corpus-sha256-<64hex> --approved-version X.Y.Z
-//        --work <dir> --verdict-out <file> [--api-base URL] [--installed-kb <dir> --home <dir>]
+//        --work <dir> --verdict-out <file> [--api-base URL] [--installed-kb <dir> --home <dir>] [--footprint-updates]
 //   exit 0 = PASS, 1 = FAIL (verdict written either way), 2 = usage.
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { addPrivateStore, resolveRuntime, resultFromRefreshReceipt, runInstallerDoor } from './customer-seams.mjs';
 import { CANARY_VERDICT_KIND, CORPUS_TAG_PATTERN, REQUIRED_CANARY_CHECKS } from './corpus-promotion.mjs';
+import { inventoryFootprint } from '../plugin/scripts/brain-footprint.mjs';
 
 export const PUBLIC_API = 'https://api.github.com';
 export const FRESHNESS_LIMIT_MS = 48 * 3_600_000;
@@ -284,7 +286,7 @@ export function installCustomer({ approvedVersion, work, home, log = () => {} })
   runLogged(process.execPath, [installer, '--yes', '--force', '--version', `v${approvedVersion}`, '--no-nightly-prompt',
     '--no-telemetry', '--no-stack', '--no-enhance', '--no-statusline', '--no-selfcheck'],
   { env, cwd: home, timeoutMs: 1_800_000, log });
-  return { kbDir: env.RUVNET_BRAIN_KB };
+  return { kbDir: env.RUVNET_BRAIN_KB, home };
 }
 
 function runUpdater({ kbDir, env, resultFile }) {
@@ -310,17 +312,57 @@ async function fetchRelease({ apiBase, repo, tag }) {
  * installer); the unit suite hands in a customer tree built offline so the updater, the judge and the
  * verdict run for real without a 555 MB download.
  */
-export async function runCanary({
-  repo, tag, approvedVersion, work, apiBase = PUBLIC_API, install = installCustomer, home = path.join(work, 'home'),
-  env = process.env, now = () => Date.now(), retryDelayMs = 30_000, maxAttempts = 3, log = () => {},
-}) {
-  if (!/^[^/\s]+\/[^/\s]+$/.test(String(repo || ''))) throw new Error('--repo must be owner/name');
-  if (!CORPUS_TAG_PATTERN.test(String(tag || ''))) throw new Error('--tag must be corpus-sha256-<64 hex>');
-  if (!SEMVER.test(String(approvedVersion || ''))) throw new Error('--approved-version must be X.Y.Z');
+/**
+ * THE CUSTOMER STATES THE CANARY ASKS ABOUT. `clean` is the original (and default) case. The others are
+ * the two states 2026-09-30 showed are not covered by it (scripts/customer-state-matrix.mjs measured
+ * both on real releases): a machine carrying a private overlay, and a machine installed at an OLDER
+ * runtime that reaches the candidate through `npx ruvnet-brain@latest --update`. Each extra case is a
+ * fresh install in its own directory, run AFTER the clean case and deleted before the next, so peak disk
+ * stays one install + one apply. Its checks are the same judge's, prefixed `<case>:`; any failure is a FAIL.
+ */
+export const CANARY_CASES = Object.freeze({
+  clean: Object.freeze({ runtime: 'approved', door: 'updater', overlay: false }),
+  'private-overlay': Object.freeze({ runtime: 'approved', door: 'updater', overlay: true }),
+  'older-runtime': Object.freeze({ runtime: 'N-1', door: 'installer', overlay: false }),
+});
+
+async function fetchReleaseList({ apiBase, repo }) {
+  const response = await fetch(`${apiBase}/repos/${repo}/releases?per_page=100`, { headers: { accept: 'application/vnd.github+json' } });
+  if (!response.ok) throw new Error(`release list returned HTTP ${response.status}`);
+  return response.json();
+}
+
+/** The footprint of a customer HOME after one update (plugin/scripts/brain-footprint.mjs, never restated). */
+export function footprintSnapshot({ home, kbDir }) {
+  const fp = inventoryFootprint({ env: { HOME: home, RUVNET_BRAIN_KB: kbDir, RUVNET_BRAIN_HOME: path.dirname(kbDir) }, home });
+  const receipts = fp.breakdown.receipts || 0;
+  return { kbCopies: fp.kbCopies, netBytes: fp.totalBytes - receipts, receipts, budgetBytes: fp.budgetBytes,
+    withinBudget: fp.withinBudget, copies: fp.cruft.filter((i) => /kb-copy|quarantine|install-/.test(i.kind)).map((i) => i.path) };
+}
+
+/** Three updates, one KB: exactly one copy after each, nothing that must not exist, no net growth. */
+export function judgeFootprintStability(inventories, { growthAllowanceBytes = 1024 * 1024 } = {}) {
+  const problems = [];
+  inventories.forEach((inv, index) => {
+    if (inv.exitCode !== undefined && inv.exitCode !== 0) problems.push(`update ${index + 1} exited ${inv.exitCode}`);
+    if (inv.kbCopies !== 1) problems.push(`update ${index + 1}: ${inv.kbCopies} KB copies (${inv.copies.join(', ')})`);
+    if (!inv.withinBudget) problems.push(`update ${index + 1}: over the footprint budget`);
+  });
+  const growth = inventories.at(-1).netBytes - inventories[0].netBytes;
+  if (growth > growthAllowanceBytes) problems.push(`grew ${growth} bytes across ${inventories.length} updates (receipts excluded)`);
+  return problems.length ? { ok: false, detail: problems.join('; ') }
+    : { ok: true, detail: `${inventories.length} updates: 1 KB copy each time, within budget, net growth ${growth} bytes` };
+}
+
+async function runCase({ name, spec, repo, tag, approvedVersion, release, work, home, apiBase, install, now,
+  retryDelayMs, maxAttempts, log, writerRoot, approvedInstaller, footprintUpdates = false }) {
   fs.mkdirSync(home, { recursive: true });
-  const started = now();
-  const { kbDir } = await install({ approvedVersion, work, home, log });
-  const release = await fetchRelease({ apiBase, repo, tag });
+  let runtime = approvedVersion;
+  if (spec.runtime !== 'approved') runtime = resolveRuntime(spec.runtime, { candidateTag: `v${approvedVersion}`, releases: await fetchReleaseList({ apiBase, repo }) });
+  const installed = await install({ approvedVersion: runtime, work, home, log });
+  const { kbDir } = installed;
+  home = installed.home || home;
+  const overlay = spec.overlay ? await addPrivateStore({ kbDir, scratch: work, writerRoot }) : null;
   const beforeModules = installedModules(kbDir);
   const beforeCoverage = coverageRows(path.join(kbDir, 'CORPUS-COVERAGE.json'));
   const { before } = pointUpdaterAtCandidate({ kbDir, apiBase, repo, tag });
@@ -331,15 +373,123 @@ export async function runCanary({
   let updater = { exitCode: null, output: '', attempts: 0 };
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     fs.rmSync(resultFile, { force: true });
-    const run = await runUpdater({ kbDir, env: childEnv, resultFile });
+    const run = spec.door === 'installer'
+      ? await runInstallerDoor({ installer: await approvedInstaller(), env: childEnv, cwd: home })
+      : await runUpdater({ kbDir, env: childEnv, resultFile });
     updater = { ...run, attempts: attempt };
-    log(`--- forge-update.mjs --apply (attempt ${attempt}) exit ${run.exitCode}\n${run.output}`);
+    log(`--- [${name}] ${spec.door === 'installer' ? 'install.mjs --update' : 'forge-update.mjs --apply'} (attempt ${attempt}) exit ${run.exitCode}\n${run.output}`);
     if (run.exitCode !== NETWORK_EXIT || attempt === maxAttempts) break;
     await new Promise((resolve) => setTimeout(resolve, retryDelayMs * attempt));
   }
-  updater.result = fs.existsSync(resultFile) ? readJson(resultFile) : null;
+  updater.result = spec.door === 'installer' ? resultFromRefreshReceipt(childEnv.RUVNET_BRAIN_HOME)
+    : (fs.existsSync(resultFile) ? readJson(resultFile) : null);
   const judged = await judgeCanary({ tag, approvedVersion, release, updater, before, beforeModules, beforeCoverage,
     kbDir: fs.realpathSync(kbDir), home: fs.realpathSync(home), now: now() });
+  // ADR-0098 footprint check, OPT-IN (--footprint-updates): two more updates of the same customer through
+  // the same door, each followed by the footprint inventory. Off by default because its CI runtime on the
+  // real ~1.4 GB brain (two more full-tree validations) has not been measured yet; the offline fixture
+  // run is in tests/unit/corpus-canary.test.mjs.
+  if (footprintUpdates && name === 'clean' && updater.exitCode === 0) {
+    const inventories = [footprintSnapshot({ home: fs.realpathSync(home), kbDir })];
+    for (let extra = 0; extra < 2; extra += 1) {
+      fs.rmSync(resultFile, { force: true });
+      const again = spec.door === 'installer'
+        ? await runInstallerDoor({ installer: await approvedInstaller(), env: childEnv, cwd: home })
+        : await runUpdater({ kbDir, env: childEnv, resultFile });
+      log(`--- [${name}] footprint update ${extra + 2} exit ${again.exitCode}\n${again.output}`);
+      inventories.push({ ...footprintSnapshot({ home: fs.realpathSync(home), kbDir }), exitCode: again.exitCode });
+    }
+    judged.checks.push({ name: 'footprint-three-updates', ...judgeFootprintStability(inventories) });
+  }
+  if (overlay) {
+    const after = Object.fromEntries(Object.keys(overlay.digests).map((f) => [f,
+      fs.existsSync(path.join(kbDir, f)) ? sha256File(path.join(kbDir, f)) : null]));
+    const changed = Object.keys(after).filter((f) => after[f] !== overlay.digests[f]);
+    judged.checks.push({ name: 'private-store-preserved', ok: changed.length === 0,
+      detail: changed.length ? `private files changed or lost: ${changed.join(', ')}` : `${Object.keys(after).length} private file(s) byte-identical` });
+  }
+  return { updater, checks: judged.checks, runtime };
+}
+
+const physical = (dir) => { try { return fs.realpathSync(dir); } catch { return path.resolve(dir); } };
+
+/**
+ * `--installed-kb`: the clean case runs on the supplied KB (as before); every extra case gets its OWN copy
+ * of that KB as it was BEFORE the clean case touched it, under the case's work dir, so the supplied brain
+ * never gains the overlay case's private store or a rewritten PRIVATE-STORES.json.
+ *
+ * DISK: copies are reflink clones (COPYFILE_FICLONE) where the filesystem supports it (APFS, btrfs, XFS
+ * with reflink) and cost almost nothing; elsewhere (ext4, most CI runners) they are full copies. Then the
+ * peak is the supplied KB + one snapshot + one case copy (each case's copy is deleted before the next),
+ * i.e. about 3x the KB (~4 GB for a 1.3 GB brain). Hardlinks are not used: an update that rewrote a
+ * file in place would write through into the caller's brain.
+ */
+export function suppliedKbInstaller({ installedKb, work, cases }) {
+  const supplied = path.resolve(installedKb);
+  const snapshot = path.join(work, 'supplied-kb-snapshot');
+  const copy = (from, to) => fs.cpSync(from, to, { recursive: true, verbatimSymlinks: true, mode: fs.constants.COPYFILE_FICLONE });
+  if (cases.length > 1) { fs.rmSync(snapshot, { recursive: true, force: true }); copy(supplied, snapshot); }
+  return ({ work: caseWork, home }) => {
+    if (path.resolve(caseWork) === path.resolve(work)) return { kbDir: supplied };
+    const kbDir = path.join(home, '.cache', 'ruvnet-brain', 'kb');
+    fs.mkdirSync(path.dirname(kbDir), { recursive: true });
+    copy(snapshot, kbDir);
+    return { kbDir, home };
+  };
+}
+
+export async function runCanary({
+  repo, tag, approvedVersion, work, apiBase = PUBLIC_API, install = installCustomer, home = path.join(work, 'home'),
+  env = process.env, now = () => Date.now(), retryDelayMs = 30_000, maxAttempts = 3, log = () => {},
+  cases = ['clean'], writerRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'),
+  approvedInstaller = null, footprintUpdates = false,
+}) {
+  if (!/^[^/\s]+\/[^/\s]+$/.test(String(repo || ''))) throw new Error('--repo must be owner/name');
+  if (!CORPUS_TAG_PATTERN.test(String(tag || ''))) throw new Error('--tag must be corpus-sha256-<64 hex>');
+  if (!SEMVER.test(String(approvedVersion || ''))) throw new Error('--approved-version must be X.Y.Z');
+  if (cases[0] !== 'clean' || cases.some((name) => !CANARY_CASES[name])) {
+    throw new Error(`--cases must start with clean and name only: ${Object.keys(CANARY_CASES).join(', ')}`);
+  }
+  const started = now();
+  const release = await fetchRelease({ apiBase, repo, tag });
+  // The approved package's installer — what `npx ruvnet-brain@latest` runs — fetched once, on demand.
+  let installerPath = null;
+  const resolveInstaller = approvedInstaller || (async () => {
+    if (installerPath) return installerPath;
+    const prefix = path.join(work, 'approved-npx');
+    fs.mkdirSync(prefix, { recursive: true });
+    const npm = path.join(path.dirname(process.execPath), process.platform === 'win32' ? 'npm.cmd' : 'npm');
+    runLogged(npm, ['install', '--prefix', prefix, '--no-audit', '--no-fund', '--no-save', `ruvnet-brain@${approvedVersion}`],
+      { env: customerEnv({ home, work }), cwd: prefix, timeoutMs: 600_000, log });
+    installerPath = path.join(prefix, 'node_modules', 'ruvnet-brain', 'bin', 'install.mjs');
+    return installerPath;
+  });
+  const common = { repo, tag, approvedVersion, release, apiBase, install, now, retryDelayMs, maxAttempts, log, writerRoot,
+    approvedInstaller: resolveInstaller, footprintUpdates };
+  let cleanKb = null;
+  const clean = await runCase({ ...common, name: 'clean', spec: CANARY_CASES.clean, work, home,
+    install: async (args) => { const installed = await install(args); cleanKb = physical(installed.kbDir); return installed; } });
+  const { updater } = clean;
+  const judged = { checks: [...clean.checks] };
+  for (const name of cases.slice(1)) {
+    const caseWork = path.join(work, `case-${name}`);
+    let outcome;
+    try {
+      // An extra case adds a private store and rewrites PRIVATE-STORES.json: it must never do that to the
+      // clean case's KB (with --installed-kb, the caller's own brain). Each case gets its own tree.
+      const caseInstall = async (args) => {
+        const installed = await install(args);
+        if (physical(installed.kbDir) === cleanKb) throw new Error(`case ${name} was handed the clean case's KB (${installed.kbDir}); refusing to mutate it`);
+        return installed;
+      };
+      outcome = await runCase({ ...common, install: caseInstall, name, spec: CANARY_CASES[name], work: caseWork, home: path.join(caseWork, 'home') });
+    } catch (error) {
+      outcome = { checks: [{ name: 'case-ran', ok: false, detail: error.message }] };
+    }
+    for (const entry of outcome.checks) judged.checks.push({ ...entry, name: `${name}:${entry.name}` });
+    fs.rmSync(caseWork, { recursive: true, force: true });
+  }
+  judged.verdict = judged.checks.every((entry) => entry.ok) ? 'PASS' : 'FAIL';
   return {
     schemaVersion: 1,
     kind: CANARY_VERDICT_KIND,
@@ -365,18 +515,20 @@ async function main(argv = process.argv.slice(2)) {
   const work = opt('--work') && path.resolve(opt('--work'));
   const verdictOut = opt('--verdict-out') && path.resolve(opt('--verdict-out'));
   if (!work || !verdictOut) {
-    process.stderr.write('usage: corpus-canary.mjs --repo o/n --tag corpus-sha256-<hex> --approved-version X.Y.Z --work <dir> --verdict-out <file> [--api-base URL] [--installed-kb <dir> --home <dir>]\n');
+    process.stderr.write('usage: corpus-canary.mjs --repo o/n --tag corpus-sha256-<hex> --approved-version X.Y.Z --work <dir> --verdict-out <file> [--api-base URL] [--installed-kb <dir> --home <dir>] [--cases clean,private-overlay,older-runtime] [--footprint-updates]\n');
     return 2;
   }
   fs.mkdirSync(work, { recursive: true });
   const logFile = path.join(work, 'canary.log');
   const log = (text) => { fs.appendFileSync(logFile, `${text}\n`); };
   const installedKb = opt('--installed-kb');
-  const install = installedKb ? () => ({ kbDir: path.resolve(installedKb) }) : installCustomer;
+  const cases = String(opt('--cases') || 'clean').split(',').map((name) => name.trim()).filter(Boolean);
+  const install = installedKb ? suppliedKbInstaller({ installedKb, work, cases }) : installCustomer;
   let record;
   try {
     record = await runCanary({ repo: opt('--repo'), tag: opt('--tag'), approvedVersion: opt('--approved-version'), work,
-      apiBase: opt('--api-base') || PUBLIC_API, install, home: path.resolve(opt('--home') || path.join(work, 'home')), log });
+      apiBase: opt('--api-base') || PUBLIC_API, install, home: path.resolve(opt('--home') || path.join(work, 'home')), log, cases,
+      footprintUpdates: argv.includes('--footprint-updates') });
   } catch (error) {
     // Could not even reach a judgement = the consumer did not accept. Still a written verdict.
     record = { schemaVersion: 1, kind: CANARY_VERDICT_KIND, verdict: 'FAIL', repo: opt('--repo') || null, tag: opt('--tag') || null,

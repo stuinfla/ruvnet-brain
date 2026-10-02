@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { physicalPath } from './refresh-run.mjs';
 
 const TERMINAL_REFRESH = new Set(['SUCCEEDED', 'FAILED', 'ABANDONED']);
 const TERMINAL_TRANSACTION = new Set(['NOOP', 'COMMITTED', 'ROLLED_BACK']);
@@ -113,10 +114,11 @@ function newest(rows, predicate) {
 
 function trustedEvidenceRoot(root, unsafe) {
   try {
-    for (const entry of [path.dirname(root), root]) {
-      const stat = fs.lstatSync(entry);
-      if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('evidence root is not a trusted directory (symbolic or special entry)');
-    }
+    // The PARENT is where the user put the brain (`~/.cache/ruvnet-brain` may be a link to another disk):
+    // it must be a directory once resolved. The evidence root itself must not be a link.
+    if (!fs.statSync(physicalPath(path.dirname(root))).isDirectory()) throw new Error('evidence root parent is not a directory');
+    const stat = fs.lstatSync(root);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('evidence root is not a trusted directory (symbolic or special entry)');
     return true;
   } catch (error) {
     if (error.code !== 'ENOENT') unsafe.push({ path: root, reason: error.message });
@@ -130,7 +132,7 @@ function snapshot(options) {
   const refresh = trustedEvidenceRoot(roots.refresh, unsafe) ? scanRefresh(roots.refresh, unsafe) : [];
   const transactions = trustedEvidenceRoot(roots.transactions, unsafe) ? scanTransactions(roots.transactions, unsafe) : [];
   const preserveRefresh = new Set((options.preserveRefreshRunIds || []).map(String));
-  const preserveTransactions = new Set((options.preserveTransactionPaths || []).map((entry) => path.resolve(entry)));
+  const preserveTransactions = new Set((options.preserveTransactionPaths || []).map((entry) => physicalPath(entry)));
   const protectedRefresh = new Map();
   const protectRefresh = (row, reason) => { if (row) protectedRefresh.set(row.path, reason); };
   for (const row of refresh) {
@@ -147,17 +149,18 @@ function snapshot(options) {
     if (!protectedRefresh.has(row.path)) continue;
     for (const reference of transactionReferences(row.receipt)) {
       const resolved = path.resolve(String(reference || ''));
-      const relative = path.relative(roots.transactions, resolved);
+      // The updater records real paths; the caller may spell the brain through a link. Same space, both sides.
+      const relative = path.relative(physicalPath(roots.transactions), physicalPath(resolved));
       if (!relative || relative.startsWith('..') || path.isAbsolute(relative) || relative.includes(path.sep)) {
         unsafe.push({ path: row.path, reason: `forged external transaction reference: ${String(reference)}` });
-      } else retainedTransactionPaths.add(resolved);
+      } else retainedTransactionPaths.add(physicalPath(resolved));
     }
   }
   const protectedTransactions = new Map();
   for (const row of transactions) {
     if (!TERMINAL_TRANSACTION.has(row.latest.state)) protectedTransactions.set(row.path, `nonterminal ${row.latest.state}`);
-    if (preserveTransactions.has(row.path)) protectedTransactions.set(row.path, 'explicitly preserved transaction');
-    if (retainedTransactionPaths.has(row.path)) protectedTransactions.set(row.path, 'referenced by retained refresh receipt');
+    if (preserveTransactions.has(physicalPath(row.path))) protectedTransactions.set(row.path, 'explicitly preserved transaction');
+    if (retainedTransactionPaths.has(physicalPath(row.path))) protectedTransactions.set(row.path, 'referenced by retained refresh receipt');
   }
   const bytes = [...refresh, ...transactions].reduce((sum, row) => sum + row.bytes, 0)
     + unsafe.filter(({ reason }) => /quarantine remains/.test(reason)).reduce((sum, { path: entry }) => {

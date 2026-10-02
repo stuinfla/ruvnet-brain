@@ -7,7 +7,7 @@ Created: 2026-06-29 22:36:38 EDT
 
 # 🧠 RuvNet Brain
 
-### 🧠 RuvNet Brain — [![RuvNet Brain version 4.3.40 — updated 2026-07-30 03:24 EDT](https://img.shields.io/badge/version_4.3.40-updated_2026--07--30_03:24_EDT-1E90FF?style=for-the-badge&labelColor=0757BA)](https://github.com/stuinfla/ruvnet-brain/blob/main/plugin/.claude-plugin/plugin.json)
+### 🧠 RuvNet Brain — [![RuvNet Brain version 4.5.1 — updated 2026-07-30 03:24 EDT](https://img.shields.io/badge/version_4.5.1-updated_2026--07--30_03:24_EDT-1E90FF?style=for-the-badge&labelColor=0757BA)](https://github.com/stuinfla/ruvnet-brain/blob/main/plugin/.claude-plugin/plugin.json)
 
 **A portable, source-grounded brain over Reuven Cohen's (rUv's) RuvNet stack — delivered as a Claude Code plugin that makes Claude _use_ the stack instead of fighting it.**
 
@@ -248,7 +248,7 @@ The honest limit: this is **3.5, not 4.0**. The advocacy surface is live and the
 
 **Shipped 2026-07-16.** rUv's tools do their best work invisibly — which meant nobody could see them working, working stale, or working in conflict. The 3.x line makes the machinery visible, and everything it shows you is measured, never projected.
 
-- **A living console** — `/rvbc` puts your whole stack on one page: what's installed, how it's wired, what your AI learned. Every warning arrives paired with a one-click, undoable fix, and the page re-checks itself after every change so you always see the *after* state.
+- **A living console** — `/rnbc` puts your whole stack on one page: what's installed, how it's wired, what your AI learned. Every warning arrives paired with a one-click, undoable fix, and the page re-checks itself after every change so you always see the *after* state.
 - **Your brain, visible** — a live **Brain Activity** card: every memory stored, every lesson distilled, clickable down to the verbatim task → what-failed → what-works cards from your own AgentDB (ADR-0018).
 - **Receipts, not estimates** — the routing dashboard recomputes from real routing receipts against *your* frontier; subscriptions price at $0; a providers row shows exactly which license pays for what.
 - **No model fact ships from memory** — the 3.0 live-verification wall: every model/version claim checks the live catalog in CI (ADR-0016), and router profiles self-optimize from rUv's bench plus live prices (ADR-0015).
@@ -256,7 +256,7 @@ The honest limit: this is **3.5, not 4.0**. The advocacy surface is live and the
 
 ![The RuvNet Brain Console — your invisible AI stack, made visible: live Brain Activity card, real memories and lessons, one-click reversible fixes](assets/console-v31.png)
 
-**Open it any time with `/rvbc`** (RuvNet Brain Console) — and the first time you load the Brain, it offers to open it for you.
+**Open it any time with `/rnbc`** (RuvNet Brain Console — `/rnb` and the older `/rvbc` work too) — and the first time you load the Brain, it offers to open it for you.
 
 > New gate with this release: **narrative versions are tested.** If any public page says "What's new in X" where X isn't the shipping version, CI fails — because this README sat on 2.5 while 3.1 shipped, and nobody's eyes are a gate.
 
@@ -562,7 +562,7 @@ node forge-ask-all.mjs --dir . --q "How does RuVector implement HNSW vector sear
 
 This project versions in the open (see the live badge up top for the exact plugin version; the downloadable knowledge bundle is a separate track) — we don't claim “done,” “complete,” or “zero hallucinations.” Where it stands:
 
-- ✅ **The grounding brain is real and proven** — 199 public stores · 161,365 public source chunks, dual embeddings, cross-encoder rerank, plugin (MCP tool + explicit skills; automatic hooks retired), all re-runnable.
+- ✅ **The grounding brain is real and proven** — 199 public stores · 161,371 public source chunks, dual embeddings, cross-encoder rerank, plugin (MCP tool + explicit skills; automatic hooks retired), all re-runnable.
 - ✅ **Code-level depth** — the code-rich repos are indexed to full function bodies; “how is it implemented?” returns the implementation. Verified in the shipped bundle (clean-room 3/3).
 - ✅ **Routing holds** — named 47/48, described 26/28, scenario 7/8; behavioral L1–L3 all pass (**L4 downgraded — it measures that the brain spoke, not that anything listened**); private stores fenced out of the public bundle (zero-leak verified).
 - ⚠️ **Two routing residuals** (above) — surfaced, not hidden.

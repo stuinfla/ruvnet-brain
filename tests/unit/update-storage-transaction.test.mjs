@@ -126,6 +126,68 @@ checkpoint:(phase)=>{if(phase===${JSON.stringify(killAt)})process.exit(93);}});`
     expect(fs.readdirSync(f.root).filter((name) => /\.next-|\.rollback-|\.failed-/.test(name))).toEqual([]);
   });
 
+  it('recovers a process killed WHILE building the candidate (the long phase), without discarding or bricking', () => {
+    // MEASURED 2026-09-30 (scripts/customer-state-matrix.mjs, transaction=killed-during-candidate-build): the
+    // real 4.3.39 `--update` SIGKILLed while kb.next-* existed (lid close, Ctrl-C, detach.mjs TTL). The
+    // checkpoint kills above all fire at phase BOUNDARIES, where no unsealed candidate exists. Mid-phase the
+    // candidate exists with no sealed identity, so recovery wrote RECOVERY_REQUIRED, and from then on every
+    // update refused "requires manual recovery" (the installer fell back to a fresh reinstall each time).
+    const f = fixture();
+    const script = `import {runStorageTransaction} from ${JSON.stringify(MODULE)};
+runStorageTransaction({liveDir:${JSON.stringify(f.live)},sourceDir:${JSON.stringify(f.source)},transactionId:'killed-mid-build',
+prepareCandidate:()=>{process.exit(93);}});`;
+    expect(spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' }).status).toBe(93);
+    const candidate = path.join(f.root, 'kb.next-killed-mid-build');
+    expect(fs.existsSync(candidate)).toBe(true);
+    // Even bytes written into it after the crash survive: quarantine moves, it never deletes.
+    fs.writeFileSync(path.join(candidate, 'post-crash-private.txt'), 'must survive recovery');
+    const unsealed = treeIdentity(candidate);
+
+    expect(recoverIncompleteStorageTransactions(f.live)).toMatchObject([{ transactionId: 'killed-mid-build',
+      from: 'CANDIDATE_BUILDING', terminalVerdict: 'interrupted-run-restored' }]);
+    expect(treeIdentity(f.live)).toEqual(f.before);
+    // Nothing unproven is deleted: the unsealed bytes are quarantined intact, beside live, and named.
+    const quarantine = path.join(f.root, 'kb.failed-killed-mid-build');
+    expect(fs.existsSync(candidate)).toBe(false);
+    expect(treeIdentity(quarantine)).toEqual(unsealed);
+    // And it is settled: the next update is admitted and lands.
+    expect(recoverIncompleteStorageTransactions(f.live)).toEqual([]);
+    expect(runStorageTransaction({ liveDir: f.live, sourceDir: f.source, transactionId: 'after-kill' }))
+      .toMatchObject({ terminalVerdict: 'applied' });
+    expect(fs.readFileSync(path.join(f.live, 'public.txt'), 'utf8')).toBe('new');
+    // That next run released the quarantine (bytes unchanged since sealed): no permanent full-size copy.
+    expect(fs.existsSync(quarantine)).toBe(false);
+    expect(fs.readdirSync(f.root).filter((name) => /\.next-|\.rollback-|\.failed-/.test(name))).toEqual([]);
+  });
+
+  const killMidBuild = (f, id) => {
+    const script = `import {runStorageTransaction} from ${JSON.stringify(MODULE)};
+runStorageTransaction({liveDir:${JSON.stringify(f.live)},sourceDir:${JSON.stringify(f.source)},transactionId:'${id}',
+prepareCandidate:()=>{process.exit(93);}});`;
+    expect(spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' }).status).toBe(93);
+  };
+
+  it('TEETH: a mid-build kill whose LIVE tree changed afterwards still refuses, and moves nothing', () => {
+    const f = fixture();
+    killMidBuild(f, 'live-tampered');
+    fs.writeFileSync(path.join(f.live, 'public.txt'), 'changed after the crash');
+    const candidate = path.join(f.root, 'kb.next-live-tampered');
+    const before = treeIdentity(candidate);
+    expect(() => recoverIncompleteStorageTransactions(f.live)).toThrow(/interrupted live tree identity differs/);
+    expect(treeIdentity(candidate)).toEqual(before);
+    expect(fs.existsSync(path.join(f.root, 'kb.failed-live-tampered'))).toBe(false);
+  });
+
+  it('TEETH: a quarantine whose bytes changed after it was sealed is never released', () => {
+    const f = fixture();
+    killMidBuild(f, 'q-tampered');
+    recoverIncompleteStorageTransactions(f.live);
+    const quarantine = path.join(f.root, 'kb.failed-q-tampered');
+    fs.writeFileSync(path.join(quarantine, 'added-later.txt'), 'keep me');
+    recoverIncompleteStorageTransactions(f.live);
+    expect(fs.readFileSync(path.join(quarantine, 'added-later.txt'), 'utf8')).toBe('keep me');
+  });
+
   it('recovers a process killed after live was renamed but before OLD_RENAMED was receipted', () => {
     const f = fixture();
     const script = `import {runStorageTransaction} from ${JSON.stringify(MODULE)};
@@ -142,8 +204,9 @@ checkpoint:(phase)=>{if(phase==='OLD_RENAMED_UNRECEIPTED')process.exit(93);}});`
     expect(fs.readdirSync(f.root).filter((name) => /\.next-|\.rollback-|\.failed-/.test(name))).toEqual([]);
   });
 
+  // CANDIDATE_BUILDING with a candidate present is covered by the mid-build kill test above: the bytes are
+  // preserved by quarantine rather than by refusing every later update.
   it.each([
-    ['CANDIDATE_BUILDING', 'candidate'],
     ['CANDIDATE_VERIFIED', 'candidate'],
     ['OLD_RENAME_STARTED', 'candidate'],
     ['OLD_RENAMED', 'candidate'],

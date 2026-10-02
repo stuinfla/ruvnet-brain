@@ -3,10 +3,10 @@ id: ADR-069
 title: Source coverage is artifact-bound, complete, and release-blocking
 status: Accepted
 date: 2026-08-21
-updated: 2026-09-27
+updated: 2026-10-01
 updated_source: derived-from-git
 version: 1.2.2
-reviewed_digest: 4499be3d5974
+reviewed_digest: 14b7acb50247
 authors: [Stuart Kerr]
 tags: [coverage, corpus, rvf, github, gists, freshness, release]
 supersedes: []
@@ -273,6 +273,7 @@ this ADR means is the owner's decision; this review records the divergence and c
 of §1 nor the code.
 
 ## Currency log
+| 2026-10-01 | Currency review (4.5 retrieval): decision unchanged. `.github/workflows/ci.yml` adds a read-only capability-battery step on the sealed bundle in release-qe. Source coverage, its sidecars and the projection are untouched. reviewed_digest 14b7acb50247. | Reviewed `.github/workflows/ci.yml`. |
 | 2026-09-27 | Currency review: decision unchanged. Motion: onboarding-console continuity fixes and CI/release-workflow hardening (ruOS primer leak removal, corpus oracle coverage fix). The source-coverage artifact binding itself is untouched. | Reviewed `scripts/brain-stamp.mjs`, `scripts/ingest-new-repos.mjs`, `scripts/ingest-gists.mjs`, `scripts/nightly-wrapper.sh`, `scripts/source-coverage.mjs`, `scripts/release-projection.mjs` against the commits listed above; reviewed_digest 4499be3d5974. |
 | 2026-09-13 | Corpus-seed pipeline consolidation, step 5 (remediated on top of `86cbe798`): the release-time seeded scoping the 2026-09-12 row below describes (`scripts/release-projection.mjs` dropping unseeded gists and stamping survivors `CURRENT` — the 492-observed vs 479-sealed case) is RETIRED rather than tuned. Artifact-bound coverage now flows UNCHANGED from the Step-4 seal into `COVERAGE.json`, and `scripts/build-bundle.mjs`'s `assembleBundle` binds that coverage to the corpus it assembles: `validateCoverageLedger` must recompute; every eligible row's recorded `artifact.rvfSha256` (and, for repositories, `sourceCommit`) must equal the corpus ledger's generation; `validatePublicInventory` then binds the ledger to bytes. Drift is a REJECTION — a receipt that does not carry every observed gist stops the build (`tests/unit/assembled-release-projection.test.mjs`, "REJECTS coverage that names gists the sealed receipt does not carry"), it is no longer a filter. Not yet consumed by `ci.yml` (plan step 11). | Reviewed `scripts/build-bundle.mjs` (coverage block), `scripts/release-projection.mjs`, `plugin/scripts/coverage-integrity.mjs` (`validateCoverageLedger`, unchanged), `tests/unit/assemble-bundle.test.mjs` (coverage-drift rejections). |
 | 2026-09-13 | `scripts/source-coverage.mjs` moved (fd0647d1): `observeGists()` gained a fallback for a real failure hit live running `corpus-seed.yml` for the first time — Actions' default `GITHUB_TOKEN` is a GitHub App token and cannot list another user's gists (HTTP 403, "Resource not accessible by integration"); on that specific error `observeGists` now retries via an injectable synchronous `curl` call against the same unauthenticated public API (already the documented, working pattern in `scripts/ingest-gists.mjs`, just not previously reused here), returning the identical shape on success. Decision unchanged: coverage is still artifact-bound and gists are still scoped/verified exactly as before — this only fixes how the raw gist list is fetched when the default CI credential can't do it, it does not change what counts as CURRENT/covered. A full Dual end-to-end pipeline analysis the same night found this fix correct but flagged the fallback's real request budget was undercounted (V5: `rebuild-gists-from-receipts.mjs` fetches up to 576 raw files per aggregate rebuild, not just the list calls) — not yet addressed, tracked with the pipeline's other open defects, not a defect in this specific fix. | Reviewed `scripts/source-coverage.mjs` (`fd0647d1`, full diff), `tests/unit/source-coverage.test.mjs` (+3 tests, RED/GREEN proven by revert), `scripts/ingest-gists.mjs` (the prior art this pattern mirrors). reviewed_digest ea6f7bbf8bcb. |

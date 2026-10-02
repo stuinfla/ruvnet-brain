@@ -1,6 +1,6 @@
 ---
 description: "What's new in RuvNet Brain — the big things in the current MAJOR release (4.0), in plain English. Not the point-release churn — the headline changes since 3.x. Ends by offering to open the Console so you can see it live."
-updated: 2026-07-25
+updated: 2026-10-01
 ---
 
 # RuvNet-Brain: what's new
@@ -24,7 +24,7 @@ The user wants the headline story of the **major** release they're on — the 4.
 The 4.0 line is where the brain got **honest, legible, fast, and self-measuring** — landing now in the
 3.9.x releases. The big things:
 
-- **The Console is the front door.** One live local page (type `/rvbc`) — your whole RuvNet stack on
+- **The Console is the front door.** One live local page (type `/rnbc`) — your whole RuvNet stack on
   one screen: what's installed, what the AI has actually learned from *your* projects (real memories +
   distilled lessons, drill-down to the verbatim cards), which subscription pays for what, and one-click
   **reversible** fixes for anything stale. New in 4.0: a plain-English explainer on every card, each
@@ -46,8 +46,8 @@ The 4.0 line is where the brain got **honest, legible, fast, and self-measuring*
 **Then offer the Console (the point of the whole thing):**
 
 End by offering to open it: *"Want me to open the Console so you can see all of this live? Just say the
-word — or type `/rvbc`."* If they say yes, follow `rvbc.md` in this same directory exactly (including the
-warm heads-up about the ~20s scan).
+word — or type `/rnbc`."* If they say yes, follow `rnbc.md` in this same directory exactly (one warm sentence, then
+start it in the background — the page opens at once and scans itself live; never promise a duration).
 
 **Honesty rules for this command (same as the product):**
 - If the installed executable fails, report its failure and do not fabricate a highlight.

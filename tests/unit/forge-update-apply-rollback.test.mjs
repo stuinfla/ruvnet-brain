@@ -256,6 +256,62 @@ describe('forge-update --apply (issues #106 + #108)', () => {
     expect(served.hits).toEqual({ zip: 1, sig: 1 });
   });
 
+  // 4.5: an apply needs ~3.3 GB growth / ~5 GB peak on a real brain. Out of space, it must refuse BEFORE
+  // unpacking anything, name the exact amount and the one fix, and leave the live brain untouched.
+  it('refuses cleanly, before unpacking, when the disk cannot hold the unpacked bundle and new generation', async () => {
+    const current = sourceJson({ releaseTag: 'v4.0.7', brainVersion: '4.0.7', builtUtc: '2026-07-31T04:39:28.414Z', stores: [STORE_A] });
+    layDown(kbDir, current);
+    publish(sourceJson({ releaseTag: 'v4.0.8', brainVersion: '4.0.8', builtUtc: '2026-08-02T12:00:00.000Z', stores: [STORE_A] }), 'v4.0.8');
+    const before = fs.readdirSync(kbDir).sort();
+    const tmpBefore = fs.readdirSync(os.tmpdir()).filter((n) => n.startsWith('forge-update-release-')).length;
+
+    const { code, out } = await runWithEnv({ RUVNET_BRAIN_TEST: '1', RUVNET_TEST_FREE_BYTES: '1000' }, '--apply');
+
+    expect(code, out).toBe(6);
+    expect(out).toMatch(/not enough free disk space to apply this update: .* has 0\.00 GB free and needs \d+\.\d\d GB \(unpacked bundle .* \+ new generation .* \+ 0\.25 GB headroom\)\. Free \d+\.\d\d GB on that disk, or move the Brain to a bigger disk with {2}npx ruvnet-brain --move-brain <folder on that disk>\. Nothing was changed\./);
+    expect(out).not.toMatch(/RUVNET_BRAIN_HOME/);
+    expect(fs.readdirSync(kbDir).sort()).toEqual(before);
+    expect(JSON.parse(fs.readFileSync(path.join(kbDir, 'SOURCE.json'), 'utf8')).releaseTag).toBe('v4.0.7');
+    expect(fs.readdirSync(root).filter((n) => /\.next-|\.rollback-|\.failed-|kb\.bak-/.test(n))).toEqual([]);
+    expect(fs.readdirSync(os.tmpdir()).filter((n) => n.startsWith('forge-update-release-')).length).toBeLessThanOrEqual(tmpBefore);
+    // With room, the same release applies (the refusal was about space, nothing else).
+    const ok = await runWithEnv({ RUVNET_BRAIN_TEST: '1', RUVNET_TEST_FREE_BYTES: String(64 * 1024 ** 3) }, '--apply');
+    expect(ok.code, ok.out).toBe(0);
+  });
+
+  // Review S6: the estimate left out the private-store files restorePrivateFilesIntoCandidate copies into the new
+  // generation, so a brain with a large private store passed the preflight and could run out of space half-way.
+  it('counts private-store bytes carried into the new generation: refused when only they do not fit', async () => {
+    const current = sourceJson({ releaseTag: 'v4.0.7', brainVersion: '4.0.7', builtUtc: '2026-07-31T04:39:28.414Z', stores: [STORE_A] });
+    current.stores.mynotes = { kbName: 'mynotes', updateManaged: false, sourceCommit: null, builtUtc: '2026-08-01T00:00:00.000Z' };
+    layDown(kbDir, current);
+    const privateBytes = Buffer.alloc(8 * 1024 ** 2, 3); // 8 MiB of private vectors
+    fs.writeFileSync(path.join(kbDir, 'mynotes.big.rvf'), privateBytes);
+    const generations = JSON.parse(fs.readFileSync(path.join(kbDir, 'RVF-GENERATIONS.json'), 'utf8'));
+    generations.stores.mynotes = { file: 'mynotes.big.rvf', bytes: privateBytes.length,
+      sha256: crypto.createHash('sha256').update(privateBytes).digest('hex'), model: 'fixture-model', dimensions: 384 };
+    fs.writeFileSync(path.join(kbDir, 'RVF-GENERATIONS.json'), `${JSON.stringify(generations)}\n`);
+    fs.writeFileSync(path.join(kbDir, 'repo-aliases.json'), JSON.stringify({}));
+    fs.writeFileSync(path.join(kbDir, 'PRIVATE-STORES.json'), JSON.stringify({ privateStores: ['mynotes'] }));
+    publish(sourceJson({ releaseTag: 'v4.0.8', brainVersion: '4.0.8', builtUtc: '2026-08-02T12:00:00.000Z', stores: [STORE_A] }), 'v4.0.8',
+      (stage) => fs.writeFileSync(path.join(stage, 'repo-aliases.json'), JSON.stringify({})));
+    const { zipDeclaredBytes } = await import('../../kb/zip-extract.mjs');
+    const unpacked = zipDeclaredBytes(path.join(root, 'bundle-v4.0.8.zip'));
+    // Temp and the brain share this test's filesystem, so the public-only need is 2 × unpacked + headroom.
+    // Give exactly that plus half the private store: enough without the private bytes, short with them.
+    const free = 256 * 1024 ** 2 + 2 * unpacked + privateBytes.length / 2;
+    const { code, out } = await runWithEnv({ RUVNET_BRAIN_TEST: '1', RUVNET_TEST_FREE_BYTES: String(free) }, '--apply');
+    expect(code, out).toBe(6);
+    expect(out).toMatch(/not enough free disk space to apply this update: .*\(unpacked bundle .* \+ new generation .* \+ private stores carried into it 0\.01 GB \+ 0\.25 GB headroom\)/);
+    expect(JSON.parse(fs.readFileSync(path.join(kbDir, 'SOURCE.json'), 'utf8')).releaseTag).toBe('v4.0.7');
+    expect(fs.readFileSync(path.join(kbDir, 'mynotes.big.rvf')).equals(privateBytes)).toBe(true); // NOT toEqual: vitest walks every byte of a Buffer (8 MiB = GBs of heap)
+    expect(fs.readdirSync(root).filter((n) => /\.next-|\.rollback-|\.failed-|kb\.bak-/.test(n))).toEqual([]);
+    // With the private bytes' room as well, the same release applies and the private store survives.
+    const ok = await runWithEnv({ RUVNET_BRAIN_TEST: '1', RUVNET_TEST_FREE_BYTES: String(free + privateBytes.length) }, '--apply');
+    expect(ok.code, ok.out).toBe(0);
+    expect(fs.readFileSync(path.join(kbDir, 'mynotes.big.rvf')).equals(privateBytes)).toBe(true); // NOT toEqual: vitest walks every byte of a Buffer (8 MiB = GBs of heap)
+  }, 120_000); // two real signed applies; slow under load
+
   it('rejects invalid staged ReleaseCoverage before backup or live-tree mutation', async () => {
     const current = sourceJson({
       releaseTag: 'v4.0.7', brainVersion: '4.0.7', builtUtc: '2026-07-31T04:39:28.414Z', stores: [STORE_A],
@@ -434,6 +490,46 @@ describe('forge-update --apply (issues #106 + #108)', () => {
     expect(rollbackCopies()).toEqual([]);
   });
 
+  // The release-source gate allows ZERO skipped tests, so this never skips: the symlink half only runs where a
+  // process may create symlinks (not Windows); the private-store half runs everywhere.
+  it('updates a brain with a PRIVATE store and npm .bin symlinks: private bytes and links carried intact', async () => {
+    const canLink = process.platform !== 'win32';
+    // The owner's nightly failed 2026-09-24: "private overlay preflight failed: symbolic link is not a
+    // governed regular file: node_modules/.bin/semver". npm makes .bin symlinks on every install, so
+    // any customer with a private store would hit it. End to end through a real signed --apply.
+    const current = sourceJson({ releaseTag: 'v4.0.7', brainVersion: '4.0.7', builtUtc: '2026-07-31T04:39:28.414Z', stores: [STORE_A] });
+    current.stores.mynotes = { kbName: 'mynotes', updateManaged: false, sourceCommit: null, builtUtc: '2026-08-01T00:00:00.000Z' };
+    layDown(kbDir, current);
+    const privateBytes = Buffer.from('private-notes-vectors');
+    fs.writeFileSync(path.join(kbDir, 'mynotes.big.rvf'), privateBytes);
+    fs.writeFileSync(path.join(kbDir, 'mynotes.passages.jsonl'), '{"path":"notes.md","text":"mine"}\n');
+    const generations = JSON.parse(fs.readFileSync(path.join(kbDir, 'RVF-GENERATIONS.json'), 'utf8'));
+    generations.stores.mynotes = { file: 'mynotes.big.rvf', bytes: privateBytes.length,
+      sha256: crypto.createHash('sha256').update(privateBytes).digest('hex'), model: 'fixture-model', dimensions: 384 };
+    fs.writeFileSync(path.join(kbDir, 'RVF-GENERATIONS.json'), `${JSON.stringify(generations)}\n`);
+    fs.writeFileSync(path.join(kbDir, 'repo-aliases.json'), JSON.stringify({ mynotes: ['my-notes'] }));
+    fs.writeFileSync(path.join(kbDir, 'PRIVATE-STORES.json'), JSON.stringify({ privateStores: ['mynotes'] }));
+    fs.mkdirSync(path.join(kbDir, 'node_modules', 'semver', 'bin'), { recursive: true });
+    fs.writeFileSync(path.join(kbDir, 'node_modules', 'semver', 'bin', 'semver.js'), 'semver');
+    fs.mkdirSync(path.join(kbDir, 'node_modules', '.bin'));
+    if (canLink) fs.symlinkSync('../semver/bin/semver.js', path.join(kbDir, 'node_modules', '.bin', 'semver'));
+    publish(sourceJson({ releaseTag: 'v4.0.8', brainVersion: '4.0.8', builtUtc: '2026-08-02T12:00:00.000Z', stores: [STORE_A] }), 'v4.0.8',
+      (stage) => fs.writeFileSync(path.join(stage, 'repo-aliases.json'), JSON.stringify({})));
+
+    const { code, out } = await run('--apply');
+
+    expect(code, out).toBe(0);
+    expect(out).not.toMatch(/private overlay preflight failed|not a governed regular file/);
+    expect(JSON.parse(fs.readFileSync(path.join(kbDir, 'SOURCE.json'), 'utf8')).releaseTag).toBe('v4.0.8');
+    expect(fs.readFileSync(path.join(kbDir, 'mynotes.big.rvf')).equals(privateBytes)).toBe(true); // NOT toEqual: vitest walks every byte of a Buffer (8 MiB = GBs of heap)
+    expect(fs.readFileSync(path.join(kbDir, 'mynotes.passages.jsonl'), 'utf8')).toContain('"mine"');
+    if (canLink) {
+      expect(fs.lstatSync(path.join(kbDir, 'node_modules', '.bin', 'semver')).isSymbolicLink()).toBe(true);
+      expect(fs.readlinkSync(path.join(kbDir, 'node_modules', '.bin', 'semver')).split(/[\\/]/)).toEqual(['..', 'semver', 'bin', 'semver.js']);
+      expect(fs.readFileSync(path.join(kbDir, 'node_modules', '.bin', 'semver'), 'utf8')).toBe('semver');
+    }
+  });
+
   it('does not require a duplicate snapshot budget because rollback is the renamed live tree', async () => {
     const current = sourceJson({
       releaseTag: 'v4.0.7', brainVersion: '4.0.7', builtUtc: '2026-07-31T04:39:28.414Z', stores: [STORE_A],
@@ -549,5 +645,8 @@ describe('forge-update --check (issue #108 bug 2)', () => {
 
     expect(code, out).toBe(10);
     expect(out).toMatch(/BEHIND/);
+    // The hint names the self-upgrading door, never this (possibly old) updater run directly (matrix D8).
+    expect(out).toContain('Run:  npx ruvnet-brain@latest --update');
+    expect(out).not.toMatch(/node forge-update\.mjs --apply/);
   });
 });

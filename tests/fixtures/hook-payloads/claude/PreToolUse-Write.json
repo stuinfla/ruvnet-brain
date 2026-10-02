@@ -1,0 +1,20 @@
+{
+ "_provenance": "captured: claude 2.1.286 real Write call, 2026-09-30",
+ "payload": {
+  "session_id": "{{SESSION_ID}}",
+  "transcript_path": "{{TRANSCRIPT}}",
+  "cwd": "{{CWD}}",
+  "prompt_id": "{{PROMPT_ID}}",
+  "permission_mode": "acceptEdits",
+  "effort": {
+   "level": "medium"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Write",
+  "tool_input": {
+   "file_path": "{{CWD}}/note.txt",
+   "content": "hello"
+  },
+  "tool_use_id": "{{TOOL_USE_ID}}"
+ }
+}

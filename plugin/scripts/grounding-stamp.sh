@@ -23,12 +23,10 @@
 #     Measured on the pre-fix tree, in tests/unit/brain-off.test.mjs's recorded red run: five
 #     distinct non-answers, five valid stamps.
 #
-# The success signal is the one line kb/forge-mcp-all.mjs prints on every genuinely-executed search
-# and on nothing else — `Searched <n> RuvNet repos (...)` — with the four known non-answers refused
-# explicitly first. Cheapest reliable signal in the payload: no parsing, no field extraction, plain
-# substring matching over the raw stdin, all of it bash builtins. The refusal markers are quote-free
-# on purpose: a PostToolUse payload JSON-encodes the tool response, so anything containing a double
-# quote would arrive as \" and never match.
+# The success signal is the header the brain prints at the START of a genuine answer and nowhere
+# else — `Searched <n> RuvNet repos (...)` or the fast-lane card header. Since 4.4.0 it is decided by
+# grounding-answer.mjs on the PARSED answer text (substring matching over the raw payload was forged
+# twice: first by the query in tool_input, then by the same query echoed in retrieval.query).
 #
 # CONTRACT: PostToolUse is non-blocking — always exit 0, swallow every failure.
 
@@ -41,37 +39,37 @@ INPUT=""
 # exactly why a hook that CAN hang forever survives unnoticed. -t bounds the wait, and the string
 # is truncated AFTER the loop because a hook payload is one line with no newline, so `read` hands
 # the whole thing back at once and a per-iteration cap never fires.
+_l=""   # set -u: a read that times out before any byte leaves _l unset ("unbound variable" on stderr)
 while IFS= read -r -t 2 _l; do
   INPUT+="$_l"
-  [ ${#INPUT} -ge 65536 ] && break
+  [ ${#INPUT} -ge 2097152 ] && break
 done
 [ -n "$_l" ] && INPUT+="$_l"
-INPUT="${INPUT:0:65536}"
+# 2 MiB, not 64 KiB (4.4.0): the verdict below PARSES the payload, and a payload cut mid-JSON parses as
+# nothing — too small a cap would silently mint nothing for a large genuine answer.
+INPUT="${INPUT:0:2097152}"
 [ -n "$INPUT" ] || exit 0
 
-shopt -s nocasematch 2>/dev/null || true
+# ── 0-2. DID THE BRAIN ANSWER? ONE predicate, plugin/scripts/grounding-answer.mjs, shared with Stop. ──
+# 4.4.0 adversarial review, BLOCKER B1: matching markers anywhere in tool_response still minted from
+# the MODEL's query, because every lane echoes it back at structuredContent.retrieval.query — the
+# router-decline lane ("NO SEARCH WAS RUN") and source discovery included. The predicate now PARSES
+# the response and reads the ANSWER TEXT only (answer / content[].text), which must BEGIN with the
+# brain's own header; an oversize notice counts only as the host's whole response, pointing at the
+# host's own saved file, written during this call. No node, an unparseable payload, or any other
+# shape ⇒ nothing mints: a stamp that cannot be proven is not minted.
+HERE="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd)" || exit 0   # builtin expansion: no dirname on a bare PATH
+# hook-shim.mjs passes the node that is running it (RUVNET_NODE_BIN); PATH is only the fallback, since a
+# host may hand its hooks a PATH with no node on it.
+NODE_BIN="${RUVNET_NODE_BIN:-}"
+[ -n "$NODE_BIN" ] && [ -x "$NODE_BIN" ] || NODE_BIN="$(command -v node 2>/dev/null)" || NODE_BIN=""
+[ -n "$NODE_BIN" ] && [ -f "$HERE/grounding-answer.mjs" ] || exit 0
+VERDICT="$(printf '%s' "$INPUT" | "$NODE_BIN" "$HERE/grounding-answer.mjs" 2>/dev/null)" || VERDICT=""
+[ "$VERDICT" = "answered" ] || exit 0
 
-# ── 1. REFUSE the known non-answers, before anything else. Each of these minted a real 24h stamp. ──
-case "$INPUT" in
-  # ADR-054: the brain is switched off. The exact phrase is pinned to the producer by test.
-  *"RuvNet Brain is disabled"*) exit 0 ;;
-  # The GONG: every repo failed. An outage is not grounding.
-  *"RUVNET BRAIN IS DOWN"*)     exit 0 ;;
-  # A thrown error inside the tool.
-  *"search_ruvnet error:"*)     exit 0 ;;
-  # The search ran and matched nothing. A real answer to the wrong question — but the brain showed
-  # the model no source, so there is nothing for a stamp to attest to.
-  *"(no results"*)              exit 0 ;;
-esac
-
-# ── 2. REQUIRE the success banner. No banner ⇒ no successful search happened in this payload ⇒ no
-# stamp. This is what makes a missing or empty tool_response mint nothing, which is the query-only
-# behaviour finally gone.
-case "$INPUT" in
-  *"Searched "*"RuvNet repos"*) ;;
-  *) exit 0 ;;
-esac
-
+# No HOME, no stamp dir to write — and under `set -u` a bare $HOME is an "unbound variable" on stderr
+# (found by hook-qualify's home-unset case on an ANSWERED search, 4.5). Exit quietly instead.
+[ -n "${HOME:-}" ] || exit 0
 DIR="$HOME/.cache/ruvnet-brain/grounded"
 mkdir -p "$DIR" 2>/dev/null || exit 0
 
@@ -89,9 +87,15 @@ mkdir -p "$DIR" 2>/dev/null || exit 0
 
 # ── 3. WHICH terms — from the QUERY only, as it always was. The first raw "query" key in the JSON is
 # tool_input's; inside tool_response text the quotes are escaped (\"query\") so they cannot match.
+# Read from the tool_input segment only, so a raw "query" key inside an object-shaped response
+# (Codex passes the MCP result as an object, and the result carries retrieval.query) cannot decide
+# which products are stamped. Product terms match case-insensitively (a query says "RuVector").
 QUERY=""
+TI="${INPUT#*\"tool_input\"}"
+TI="${TI%%\"tool_response\"*}"
 re='"query"[[:space:]]*:[[:space:]]*"([^"]*)"'
-[[ $INPUT =~ $re ]] && QUERY="${BASH_REMATCH[1]}"
+[[ $TI =~ $re ]] && QUERY="${BASH_REMATCH[1]}"
+shopt -s nocasematch 2>/dev/null || true
 [ -n "$QUERY" ] || exit 0
 
 # WRITE_GATE terms — same product-term list as ground-before-write.sh's own copy, mirrored in both

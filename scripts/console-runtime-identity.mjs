@@ -42,6 +42,8 @@ export const CONSOLE_RUNTIME_SURFACE = Object.freeze([
   // Keep their bytes in the same copy/digest authority as the installer itself.
   'kb/refresh-run.mjs',
   'kb/lifecycle-evidence-retention.mjs',
+  // install.mjs --update recovers an interrupted storage transaction before it looks for the updater.
+  'kb/update-storage-transaction.mjs',
   'kb/model-requirements.mjs',
   'kb/zip-extract.mjs',
   // install.mjs imports this STATICALLY (corpus transport identity + approved-runtime stamping,
@@ -49,6 +51,11 @@ export const CONSOLE_RUNTIME_SURFACE = Object.freeze([
   // ERR_MODULE_NOT_FOUND on import, before a single line runs.
   'kb/corpus-release-identity.mjs',
   'bin/install.mjs',
+  // The Console's Settings → Nightly switch runs the copied installer's --enable-nightly, which installs
+  // THIS file (beside it, REPO_ROOT/bin) as the scheduler's immutable runner. Without it every installed
+  // customer got "nightly runner source is missing" (RNBC review 2026-10-01). It imports only node:
+  // built-ins, so nothing further travels with it.
+  'bin/nightly-refresh.mjs',
   'package.json',
 ]);
 

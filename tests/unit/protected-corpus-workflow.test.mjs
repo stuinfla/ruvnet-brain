@@ -88,6 +88,9 @@ describe('protected-release corpus chain (ADR-086 steps 9 + 17)', () => {
     expect(canary).toContain("needs.corpus-publish.outputs.outcome == 'staged'");
     expect(canary).toContain('needs: [corpus-identity, corpus-prepare, corpus-publish]');
     expect(canary).toContain('node scripts/corpus-canary.mjs --repo "$GITHUB_REPOSITORY" --tag "$CANDIDATE_TAG"');
+    // All three customer states (measured 20.5 min on a runner, inside the 60-minute budget).
+    expect(canary).toContain('--cases clean,private-overlay,older-runtime');
+    expect(canary).toMatch(/timeout-minutes: 60/);
     // A customer holds no secret and no environment: the canary runs with the read-only token only.
     expect(executable(canary)).not.toMatch(/secrets\.|environment:|contents: write|GH_TOKEN|GITHUB_TOKEN/);
     expect(canary).toMatch(/\n {4}permissions:\n {6}contents: read\n {4}steps:/);

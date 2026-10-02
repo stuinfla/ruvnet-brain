@@ -1,0 +1,928 @@
+{
+ "kind": "ruvnet-brain-abstain-trace",
+ "poolDepth": 64,
+ "eligible": 87,
+ "goldInPool": 35,
+ "goldViaKeyword": 22,
+ "notInPool": 52,
+ "sampled": 35,
+ "causes": {
+  "not-in-pool": 0,
+  "window": 0,
+  "calibration": 32,
+  "chunking": 1,
+  "outranked": 2
+ },
+ "rows": [
+  {
+   "id": "ruflo:.claude/skills/github-project-management/SKILL.md:14-25",
+   "repo": "ruflo",
+   "need": "I'm letting an AI assistant triage issues and comments on my public repository. How do I stop strangers from sneaking instructions or harmful shell commands into their posts and having the assistant act on them?",
+   "poolRank": 65,
+   "lane": "keyword",
+   "ceProduction": -5.966,
+   "ceBestChunk": -5.801,
+   "chunks": 9,
+   "goldDocChars": 3827,
+   "ceSpan": -4.108,
+   "ceTopProd": -6.021,
+   "prodTop": ".claude/commands/github/issue-triage.md",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "ruflo:plugins/ruflo-cost-tracker/skills/cost-benchmark/SKILL.md:12-17",
+   "repo": "ruflo",
+   "need": "I'd like to find out if a smaller, cheaper AI model would cost me less than the top model for my usual coding jobs before I switch. How can I compare them on real tasks?",
+   "poolRank": 56,
+   "lane": "dense",
+   "ceProduction": -10.882,
+   "ceBestChunk": -10.882,
+   "chunks": 1,
+   "goldDocChars": 2980,
+   "ceSpan": -8.33,
+   "ceTopProd": -3.425,
+   "prodTop": "explainer/index.html",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "ruflo:plugins/ruflo-cost-tracker/skills/cost-burn/SKILL.md:17-25",
+   "repo": "ruflo",
+   "need": "My spending on AI coding sessions seems to be climbing fast. How can I group costs by day over the last couple of weeks and have a script fail when today's spend jumps well above normal?",
+   "poolRank": 65,
+   "lane": "keyword",
+   "ceProduction": -4.668,
+   "ceBestChunk": -4.668,
+   "chunks": 1,
+   "goldDocChars": 3294,
+   "ceSpan": -9.415,
+   "ceTopProd": -6.101,
+   "prodTop": "plugins/ruflo-cost-tracker/scripts/burn.mjs",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "ruflo:plugins/ruflo-cost-tracker/skills/cost-session/SKILL.md:17-27",
+   "repo": "ruflo",
+   "need": "My last AI coding chat was surprisingly expensive. How can I see which individual replies cost the most, and whether one of them was way out of line compared to the rest?",
+   "poolRank": 42,
+   "lane": "dense",
+   "ceProduction": -3.762,
+   "ceBestChunk": -3.762,
+   "chunks": 1,
+   "goldDocChars": 3124,
+   "ceSpan": -8.891,
+   "ceTopProd": -3.731,
+   "prodTop": "plugins/ruflo-cost-tracker/skills/cost-session/SKILL.md",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "ruflo:plugins/ruflo-daa/skills/cognitive-pattern/SKILL.md:16-22",
+   "repo": "ruflo",
+   "need": "I'd like to set up a reusable way of reasoning for my autonomous agents, run it, see how well it works, and then pass the good ones to other agents. What's the process?",
+   "poolRank": 65,
+   "lane": "keyword",
+   "ceProduction": -5.992,
+   "ceBestChunk": -5.992,
+   "chunks": 1,
+   "goldDocChars": 1536,
+   "ceSpan": -10.775,
+   "ceTopProd": -1.279,
+   "prodTop": "agentic-flow/docs/releases/v1.4.6-reasoningbank-release.md",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "ruflo:plugins/ruflo-ddd/README.md:69-73",
+   "repo": "ruflo",
+   "need": "I design software around business domains. How can I save my domain model templates and business event names once and reuse them across several different projects?",
+   "poolRank": 65,
+   "lane": "keyword",
+   "ceProduction": -1.377,
+   "ceBestChunk": -1.377,
+   "chunks": 1,
+   "goldDocChars": 3398,
+   "ceSpan": -4.491,
+   "ceTopProd": 0.986,
+   "prodTop": ".agents/skills/ruflo/plugins/ruflo-ddd/agents/domain-modeler.md",
+   "prodAbstained": false,
+   "cause": "calibration"
+  },
+  {
+   "id": "ruflo:plugins/ruflo-music/skills/music-generate/SKILL.md:16-58",
+   "repo": "ruflo",
+   "need": "I asked my assistant to make an AI song, and after waiting several minutes it only said it failed. Did I describe the song badly, or should I just try again?",
+   "poolRank": 65,
+   "lane": "keyword",
+   "ceProduction": -8.669,
+   "ceBestChunk": -8.669,
+   "chunks": 1,
+   "goldDocChars": 3963,
+   "ceSpan": -8.114,
+   "ceTopProd": -7.96,
+   "prodTop": "tests/unit/release-asset-download-retry.test.mjs",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "ruflo:plugins/ruflo-music/skills/music-get/SKILL.md:16-23",
+   "repo": "ruflo",
+   "need": "I made a song with an AI music service and want to know whether separate instrument tracks or a MIDI version are ready yet. I'd rather not waste requests on details that never change.",
+   "poolRank": 4,
+   "lane": "dense",
+   "ceProduction": -5.286,
+   "ceBestChunk": -5.286,
+   "chunks": 1,
+   "goldDocChars": 1196,
+   "ceSpan": -6.887,
+   "ceTopProd": -1.834,
+   "prodTop": "plugins/ruflo-music/.claude-plugin/plugin.json",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "ruflo:v3/@claude-flow/cli/.claude/skills/flow-nexus-platform/SKILL.md:429-438",
+   "repo": "ruflo",
+   "need": "I'm about to share a project template I built on an online marketplace so others can use it. What should I include so people can set it up, trust it, and upgrade it later?",
+   "poolRank": 65,
+   "lane": "keyword",
+   "ceProduction": -8.15,
+   "ceBestChunk": -5.743,
+   "chunks": 8,
+   "goldDocChars": 3975,
+   "ceSpan": -9.889,
+   "ceTopProd": -4.362,
+   "prodTop": ".claude/agents/base-template-generator.md",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "ruvector:benchmarks/graph/docs/QUICKSTART.md:305-317",
+   "repo": "ruvector",
+   "need": "I've set up performance tests for a graph database. How do I tell whether everything is actually working as intended, and what results should I expect to see before trusting them?",
+   "poolRank": 11,
+   "lane": "dense",
+   "ceProduction": -7.545,
+   "ceBestChunk": -7.173,
+   "chunks": 3,
+   "goldDocChars": 7692,
+   "ceSpan": -9.369,
+   "ceTopProd": -3.185,
+   "prodTop": "tests/graph_integration.rs",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "ruvector:crates/cognitum-gate-kernel/README.md:86-99",
+   "repo": "ruvector",
+   "need": "I'm splitting a large graph across hundreds of small sandboxed workers, and each worker only gets 64KB of memory. How much memory does each worker's piece of the graph and its bookkeeping use?",
+   "poolRank": 65,
+   "lane": "keyword",
+   "ceProduction": -10.024,
+   "ceBestChunk": -8.017,
+   "chunks": 10,
+   "goldDocChars": 3402,
+   "ceSpan": -3.701,
+   "ceTopProd": -5.362,
+   "prodTop": ".github/benchmarks/graph-baseline.txt",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "ruvector:crates/emergent-time/README.md:12-23",
+   "repo": "ruvector",
+   "need": "I'm studying the idea that time emerges from entanglement. Starting from a completely static joint state of a clock and a system, I want to numerically show ordinary quantum evolution appearing, and check it against a regular propagator.",
+   "poolRank": 65,
+   "lane": "keyword",
+   "ceProduction": -0.138,
+   "ceBestChunk": -0.33,
+   "chunks": 2,
+   "goldDocChars": 3899,
+   "ceSpan": -2.65,
+   "ceTopProd": -1.707,
+   "prodTop": "examples/quantum-consciousness/RESEARCH.md",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "ruvector:crates/micro-hnsw-wasm/README.md:7-15",
+   "repo": "ruvector",
+   "need": "I want similarity search results to feed into a brain-inspired, event-driven network. The best matches should win out over the others and connections should keep learning, so I can eventually run it on neuromorphic chips.",
+   "poolRank": 65,
+   "lane": "keyword",
+   "ceProduction": 0.188,
+   "ceBestChunk": 0.354,
+   "chunks": 9,
+   "goldDocChars": 3945,
+   "ceSpan": 0.837,
+   "ceTopProd": -5.73,
+   "prodTop": "crates/mcp-brain-server/static/index.html",
+   "prodAbstained": true,
+   "cause": "outranked"
+  },
+  {
+   "id": "ruvector:crates/ruvector-postgres/src/graph/README.md:5-15",
+   "repo": "ruvector",
+   "need": "I already keep my data in a relational database. I'd like to model how records are linked, find the quickest route between two of them, and ask questions in a standard graph query language, all without running a separate graph server.",
+   "poolRank": 10,
+   "lane": "dense",
+   "ceProduction": -10.263,
+   "ceBestChunk": -8.75,
+   "chunks": 5,
+   "goldDocChars": 8198,
+   "ceSpan": -10.079,
+   "ceTopProd": -6.906,
+   "prodTop": "src/backends/GraphBackend.ts",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "ruvector:crates/ruvector-solver/README.md:110-116",
+   "repo": "ruvector",
+   "need": "My iterative solver for large sparse linear systems spends most of its time multiplying the matrix by a vector. How can I avoid paying for a safety check on every element and still stay correct?",
+   "poolRank": 22,
+   "lane": "dense",
+   "ceProduction": -7.854,
+   "ceBestChunk": -5.295,
+   "chunks": 5,
+   "goldDocChars": 8035,
+   "ceSpan": -5.155,
+   "ceTopProd": -0.944,
+   "prodTop": ".claude/agents/sublinear/matrix-solver-agent.md",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "ruvector:crates/sonic-ct/README.md:21-32",
+   "repo": "ruvector",
+   "need": "For research, I want to simulate a water-bath scanner where a circle of ultrasound sensors surrounds a body, rebuild sound-speed and attenuation maps, and label tissue types. I have no real scanner hardware.",
+   "poolRank": 65,
+   "lane": "keyword",
+   "ceProduction": -7.892,
+   "ceBestChunk": -7.798,
+   "chunks": 3,
+   "goldDocChars": 3871,
+   "ceSpan": 3.302,
+   "ceTopProd": 1.628,
+   "prodTop": "crates/sonic-ct/src/lib.rs",
+   "prodAbstained": false,
+   "cause": "chunking"
+  },
+  {
+   "id": "ruvector:docs/research/nightly/2026-06-24-spann-partition-spill/README.md:9-19",
+   "repo": "ruvector",
+   "need": "My clustered similarity search keeps missing good matches that sit near the edges between groups. How can I recover them without checking more groups per query, if I can accept using extra storage?",
+   "poolRank": 65,
+   "lane": "keyword",
+   "ceProduction": -9.173,
+   "ceBestChunk": -6.457,
+   "chunks": 11,
+   "goldDocChars": 3879,
+   "ceSpan": -10.078,
+   "ceTopProd": -3.173,
+   "prodTop": "docs/research/nightly/2026-07-26-diverse-beam-ann/gist.md",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "ruvector:docs/research/nightly/2026-07-23-adaptive-recall-ann/README.md:7-31",
+   "repo": "ruvector",
+   "need": "My similarity search over embeddings misses too many true matches, and I can't tell how wide the search should be. I want roughly 90% accuracy without making each lookup much slower. What should I use?",
+   "poolRank": 65,
+   "lane": "keyword",
+   "ceProduction": -5.302,
+   "ceBestChunk": -5.299,
+   "chunks": 9,
+   "goldDocChars": 3665,
+   "ceSpan": -10.444,
+   "ceTopProd": -1.07,
+   "prodTop": "src/integrations/agentic-flow/onnx-embeddings/similarity-search.ts",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "ruvector:docs/research/nightly/2026-09-02-mincut-streaming-memory-admission/README.md:13-59",
+   "repo": "ruvector",
+   "need": "As new memories stream into my assistant, I sort them into groups. Deciding whether each one joins an existing group or starts a new one, based only on distance to the closest group center, gives messy groups. Is there a better rule?",
+   "poolRank": 65,
+   "lane": "keyword",
+   "ceProduction": -8.941,
+   "ceBestChunk": -3.285,
+   "chunks": 15,
+   "goldDocChars": 3131,
+   "ceSpan": -10.14,
+   "ceTopProd": -3.914,
+   "prodTop": "docs/research/nightly/2026-09-02-mincut-streaming-memory-admission/gist.md",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "ruvector:docs/research/nightly/2026-09-03-state-root-anchoring/README.md:3-17",
+   "repo": "ruvector",
+   "need": "An auditor wants to prove our search index was really in a certain state at some point. They don't have a receipt for any specific query, and replaying the entire history of writes is too slow. What's a cheaper way?",
+   "poolRank": 65,
+   "lane": "keyword",
+   "ceProduction": 1.106,
+   "ceBestChunk": 1.244,
+   "chunks": 10,
+   "goldDocChars": 3985,
+   "ceSpan": 4.92,
+   "ceTopProd": 2.214,
+   "prodTop": "crates/ruvector-retrieval-receipt/src/state_anchor.rs",
+   "prodAbstained": false,
+   "cause": "outranked"
+  },
+  {
+   "id": "ruvector:docs/research/rvagent-gemini-grounding/README.md:3-5",
+   "repo": "ruvector",
+   "need": "My knowledge base only records simple 'X is a kind of Y' facts. I'd like an agent to check those facts against live web search on its own, correct the wrong ones, and add richer relationships between concepts.",
+   "poolRank": 2,
+   "lane": "dense",
+   "ceProduction": -7.822,
+   "ceBestChunk": -7.764,
+   "chunks": 2,
+   "goldDocChars": 4199,
+   "ceSpan": -10.527,
+   "ceTopProd": -4.547,
+   "prodTop": "crates/mcp-brain-server/static/agent-guide.md",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "ruvector:examples/exo-ai-2025/research/08-meta-simulation-consciousness/README.md:37-55",
+   "repo": "ruvector",
+   "need": "I'm reading about a theory that measures consciousness as a single number. I'd like background reading on why that number is so expensive to calculate for larger systems. Where should I start?",
+   "poolRank": 17,
+   "lane": "dense",
+   "ceProduction": -8.501,
+   "ceBestChunk": -5.402,
+   "chunks": 5,
+   "goldDocChars": 8068,
+   "ceSpan": -9.362,
+   "ceTopProd": -5.177,
+   "prodTop": "examples/exo-ai-2025/research/06-federated-collective-phi/BREAKTHROUGH_HYPOTHESIS.md",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "ruvector:examples/scipix/README.md:29-31",
+   "repo": "ruvector",
+   "need": "I have scanned research papers full of formulas and diagrams, and normal text-recognition tools mangle the math. I'd like a fast, reliable tool built for reading STEM content.",
+   "poolRank": 65,
+   "lane": "keyword",
+   "ceProduction": -9.024,
+   "ceBestChunk": -8.496,
+   "chunks": 5,
+   "goldDocChars": 3953,
+   "ceSpan": -3.816,
+   "ceTopProd": -4.847,
+   "prodTop": "docs/adr/ADR-282-nightly-research-quality-gate.md",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "RuView:docs/research/rvagent-rvf-integration/README.md:9-22",
+   "repo": "RuView",
+   "need": "I want smart automated assistants that watch the home sensing events and reason about them, e.g. notice nobody has been in the kitchen for hours with an appliance left on and alert a caregiver, without building an agent runtime myself.",
+   "poolRank": 65,
+   "lane": "keyword",
+   "ceProduction": -7.517,
+   "ceBestChunk": -7.408,
+   "chunks": 3,
+   "goldDocChars": 3862,
+   "ceSpan": -4.524,
+   "ceTopProd": -5.27,
+   "prodTop": "docs/adr/ADR-130-homecore-rest-websocket-api.md",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "RuView:examples/lovelace/README.md:15-28",
+   "repo": "RuView",
+   "need": "My home automation dashboard shows the presence sensors with long hardware-address names that I can't make sense of. How can I give them readable names like the bedroom one without breaking how they get picked up?",
+   "poolRank": 65,
+   "lane": "keyword",
+   "ceProduction": -2.496,
+   "ceBestChunk": -2.496,
+   "chunks": 1,
+   "goldDocChars": 2264,
+   "ceSpan": -3.377,
+   "ceTopProd": -1.04,
+   "prodTop": "docs/research/BFLD/05-automation-integration.md",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "RuView:examples/medical/README.md:9-24",
+   "repo": "RuView",
+   "need": "Can I get a rough blood pressure reading for someone without putting a cuff or anything else on their body? I only want to use their heart rhythm picked up from across the room.",
+   "poolRank": 65,
+   "lane": "keyword",
+   "ceProduction": -8.403,
+   "ceBestChunk": -8.437,
+   "chunks": 2,
+   "goldDocChars": 3863,
+   "ceSpan": -10.408,
+   "ceTopProd": -8.54,
+   "prodTop": "src/cogs/health-monitor/src/main.rs",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "RuView:examples/research-sota/04-rssi/README.md:20-30",
+   "repo": "RuView",
+   "need": "On a tight budget, I only want to use basic signal strength readings to see whether animals or people are in a barn and how many. Could that cheap setup also measure breathing?",
+   "poolRank": 39,
+   "lane": "dense",
+   "ceProduction": -9.988,
+   "ceBestChunk": -9.988,
+   "chunks": 1,
+   "goldDocChars": 1528,
+   "ceSpan": -9.728,
+   "ceTopProd": -9.654,
+   "prodTop": "docs/adr/ADR-013-feature-level-sensing-commodity-gear.md",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "RuView:examples/research-sota/05-cross-room-reid/README.md:33-42",
+   "repo": "RuView",
+   "need": "If the system recognises the same person as they move from room to room, what stops that identity data being misused? I want to keep it private and only store it if people agree.",
+   "poolRank": 20,
+   "lane": "dense",
+   "ceProduction": -2.484,
+   "ceBestChunk": -2.484,
+   "chunks": 1,
+   "goldDocChars": 2611,
+   "ceSpan": -9.602,
+   "ceTopProd": -2.39,
+   "prodTop": "examples/research-sota/05-cross-room-reid/README.md",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "RuView:examples/through-wall/README.md:29-36",
+   "repo": "RuView",
+   "need": "The body outline I estimate from wireless signals never lines up with the person on my laptop webcam. I trained it using video from another camera. How can I get the stick figure to match?",
+   "poolRank": 65,
+   "lane": "keyword",
+   "ceProduction": -4.128,
+   "ceBestChunk": -4.002,
+   "chunks": 2,
+   "goldDocChars": 3794,
+   "ceSpan": -1.992,
+   "ceTopProd": -4.956,
+   "prodTop": "docs/adr/ADR-037-multi-person-pose-detection.md",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "RuView:firmware/privshield/esp32/README.md:15-39",
+   "repo": "RuView",
+   "need": "Could I use a cheap hobby microcontroller board to scramble its own wireless feedback so outsiders can't fingerprint the people in my home, or do I need other hardware?",
+   "poolRank": 65,
+   "lane": "keyword",
+   "ceProduction": -8.36,
+   "ceBestChunk": -8.273,
+   "chunks": 2,
+   "goldDocChars": 3880,
+   "ceSpan": -11.049,
+   "ceTopProd": -5.615,
+   "prodTop": "ui/veil-console.html",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "RuView:integrations/iphone-lidar/README.md:19-32",
+   "repo": "RuView",
+   "need": "I'm building a phone app to capture room depth scans, but I get no depth data in the Mac simulator. I also don't want any camera pictures leaving the device. What do I need?",
+   "poolRank": 30,
+   "lane": "dense",
+   "ceProduction": -3.406,
+   "ceBestChunk": -3.177,
+   "chunks": 2,
+   "goldDocChars": 4082,
+   "ceSpan": -1.291,
+   "ceTopProd": -2.99,
+   "prodTop": "integrations/iphone-lidar/README.md",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "RuView:tools/bfi_learning/README.md:6-51",
+   "repo": "RuView",
+   "need": "I downloaded a public academic dataset of wireless recordings labeled by which person is present. I want to convert it into training data without running any untrusted code from the archive. How do I do that?",
+   "poolRank": 14,
+   "lane": "dense",
+   "ceProduction": -0.87,
+   "ceBestChunk": -0.292,
+   "chunks": 3,
+   "goldDocChars": 8257,
+   "ceSpan": -9.557,
+   "ceTopProd": -1.087,
+   "prodTop": "docs/adr/ADR-365-public-bfi-dataset-and-decoder-contract.md",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "RuView:v2/crates/homecore-assist/README.md:13-25",
+   "repo": "RuView",
+   "need": "I'd like to type or say plain sentences like \"turn off the kitchen light\" and have my self-hosted smart home understand them and do it. Is there a piece that handles understanding commands?",
+   "poolRank": 49,
+   "lane": "dense",
+   "ceProduction": -10.255,
+   "ceBestChunk": -10.315,
+   "chunks": 3,
+   "goldDocChars": 7216,
+   "ceSpan": -10.43,
+   "ceTopProd": -8.27,
+   "prodTop": "v2/crates/cog-ha-matter/blueprints/bfld/presence-lighting.yaml",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "RuView:v2/crates/wifi-densepose-mat/README.md:9-18",
+   "repo": "RuView",
+   "need": "After an earthquake, can ordinary wireless router signals help find people buried under a fallen building? I want something I can build into our own rescue software.",
+   "poolRank": 65,
+   "lane": "keyword",
+   "ceProduction": -7.694,
+   "ceBestChunk": -6.667,
+   "chunks": 2,
+   "goldDocChars": 3314,
+   "ceSpan": -6.646,
+   "ceTopProd": -5.522,
+   "prodTop": "docs/adr/ADR-001-wifi-mat-disaster-detection.md",
+   "prodAbstained": true,
+   "cause": "calibration"
+  },
+  {
+   "id": "RuView:wifi-veil/firmware/openwifi/README.md:11-40",
+   "repo": "RuView",
+   "need": "I want to build a real test where one radio scrambles its transmissions with a secret key and a second radio unscrambles them. Which open hardware setup actually lets me do both ends?",
+   "poolRank": 65,
+   "lane": "keyword",
+   "ceProduction": -8.21,
+   "ceBestChunk": -5.416,
+   "chunks": 2,
+   "goldDocChars": 3905,
+   "ceSpan": -8.945,
+   "ceTopProd": -3.3,
+   "prodTop": "wifi-veil/firmware/README.md",
+   "prodAbstained": true,
+   "cause": "calibration"
+  }
+ ],
+ "poolRanks": [
+  {
+   "id": "ruflo:.agents/skills/flow-nexus-swarm/SKILL.md:26-35",
+   "poolRank": null
+  },
+  {
+   "id": "ruflo:.agents/skills/github-project-management/SKILL.md:73-355",
+   "poolRank": null
+  },
+  {
+   "id": "ruflo:.claude/skills/flow-nexus-swarm/SKILL.md:20-29",
+   "poolRank": null
+  },
+  {
+   "id": "ruflo:.claude/skills/github-project-management/SKILL.md:14-25",
+   "poolRank": 65
+  },
+  {
+   "id": "ruflo:plugins/README.md:138-151",
+   "poolRank": null
+  },
+  {
+   "id": "ruflo:plugins/ruflo-agentdb/skills/agentdb-query/SKILL.md:16-24",
+   "poolRank": null
+  },
+  {
+   "id": "ruflo:plugins/ruflo-autopilot/README.md:14-20",
+   "poolRank": null
+  },
+  {
+   "id": "ruflo:plugins/ruflo-bbs-federation/skills/cross-host-federation/SKILL.md:19-27",
+   "poolRank": null
+  },
+  {
+   "id": "ruflo:plugins/ruflo-browser/README.md:73-77",
+   "poolRank": null
+  },
+  {
+   "id": "ruflo:plugins/ruflo-cost-tracker/skills/cost-benchmark/SKILL.md:12-17",
+   "poolRank": 56
+  },
+  {
+   "id": "ruflo:plugins/ruflo-cost-tracker/skills/cost-burn/SKILL.md:17-25",
+   "poolRank": 65
+  },
+  {
+   "id": "ruflo:plugins/ruflo-cost-tracker/skills/cost-session/SKILL.md:17-27",
+   "poolRank": 42
+  },
+  {
+   "id": "ruflo:plugins/ruflo-daa/skills/cognitive-pattern/SKILL.md:16-22",
+   "poolRank": 65
+  },
+  {
+   "id": "ruflo:plugins/ruflo-ddd/README.md:69-73",
+   "poolRank": 65
+  },
+  {
+   "id": "ruflo:plugins/ruflo-music/skills/music-generate/SKILL.md:16-58",
+   "poolRank": 65
+  },
+  {
+   "id": "ruflo:plugins/ruflo-music/skills/music-get/SKILL.md:16-23",
+   "poolRank": 4
+  },
+  {
+   "id": "ruflo:plugins/ruflo-plugin-creator/README.md:12-17",
+   "poolRank": null
+  },
+  {
+   "id": "ruflo:v3/@claude-flow/cli-core/README.md:11-15",
+   "poolRank": null
+  },
+  {
+   "id": "ruflo:v3/@claude-flow/cli/.claude/skills/flow-nexus-platform/SKILL.md:429-438",
+   "poolRank": 65
+  },
+  {
+   "id": "ruflo:v3/@claude-flow/mcp/.claude/helpers/README.md:83-89",
+   "poolRank": null
+  },
+  {
+   "id": "ruvector:.claude/agents/swarm/README.md:180-190",
+   "poolRank": null
+  },
+  {
+   "id": "ruvector:.claude/skills/agentdb-vector-search/SKILL.md:265-272",
+   "poolRank": null
+  },
+  {
+   "id": "ruvector:benchmarks/docs/README.md:20-28",
+   "poolRank": null
+  },
+  {
+   "id": "ruvector:benchmarks/graph/docs/QUICKSTART.md:305-317",
+   "poolRank": 11
+  },
+  {
+   "id": "ruvector:crates/cognitum-gate-kernel/README.md:86-99",
+   "poolRank": 65
+  },
+  {
+   "id": "ruvector:crates/emergent-time/README.md:12-23",
+   "poolRank": 65
+  },
+  {
+   "id": "ruvector:crates/micro-hnsw-wasm/README.md:7-15",
+   "poolRank": 65
+  },
+  {
+   "id": "ruvector:crates/ruvector-attention-cli/README.md:5-12",
+   "poolRank": null
+  },
+  {
+   "id": "ruvector:crates/ruvector-attention-wasm/pkg/README.md:5-23",
+   "poolRank": null
+  },
+  {
+   "id": "ruvector:crates/ruvector-bench/README.md:14-22",
+   "poolRank": null
+  },
+  {
+   "id": "ruvector:crates/ruvector-core/tests/README.md:9-37",
+   "poolRank": null
+  },
+  {
+   "id": "ruvector:crates/ruvector-graph-wasm/README.md:5-13",
+   "poolRank": null
+  },
+  {
+   "id": "ruvector:crates/ruvector-hailo/README.md:15-26",
+   "poolRank": null
+  },
+  {
+   "id": "ruvector:crates/ruvector-mincut/README.md:15-21",
+   "poolRank": null
+  },
+  {
+   "id": "ruvector:crates/ruvector-node/README.md:21-30",
+   "poolRank": null
+  },
+  {
+   "id": "ruvector:crates/ruvector-postgres/src/graph/README.md:5-15",
+   "poolRank": 10
+  },
+  {
+   "id": "ruvector:crates/ruvector-solver/README.md:110-116",
+   "poolRank": 22
+  },
+  {
+   "id": "ruvector:crates/ruvix/aarch64-boot/README.md:32-38",
+   "poolRank": null
+  },
+  {
+   "id": "ruvector:crates/rvf/README.md:32-118",
+   "poolRank": null
+  },
+  {
+   "id": "ruvector:crates/rvf/rvf-node/README.md:11-20",
+   "poolRank": null
+  },
+  {
+   "id": "ruvector:crates/sonic-ct/README.md:21-32",
+   "poolRank": 65
+  },
+  {
+   "id": "ruvector:docs/research/nightly/2026-06-19-lsm-ann/README.md:9-15",
+   "poolRank": null
+  },
+  {
+   "id": "ruvector:docs/research/nightly/2026-06-24-spann-partition-spill/README.md:9-19",
+   "poolRank": 65
+  },
+  {
+   "id": "ruvector:docs/research/nightly/2026-07-23-adaptive-recall-ann/README.md:7-31",
+   "poolRank": 65
+  },
+  {
+   "id": "ruvector:docs/research/nightly/2026-08-31-signed-retrieval-receipts/README.md:3-14",
+   "poolRank": null
+  },
+  {
+   "id": "ruvector:docs/research/nightly/2026-09-02-mincut-streaming-memory-admission/README.md:13-59",
+   "poolRank": 65
+  },
+  {
+   "id": "ruvector:docs/research/nightly/2026-09-03-state-root-anchoring/README.md:3-17",
+   "poolRank": 65
+  },
+  {
+   "id": "ruvector:docs/research/rvagent-gemini-grounding/README.md:3-5",
+   "poolRank": 2
+  },
+  {
+   "id": "ruvector:docs/training/QUICKSTART.md:213-218",
+   "poolRank": null
+  },
+  {
+   "id": "ruvector:examples/exo-ai-2025/crates/exo-backend-classical/README.md:7-24",
+   "poolRank": null
+  },
+  {
+   "id": "ruvector:examples/exo-ai-2025/crates/exo-core/README.md:7-20",
+   "poolRank": null
+  },
+  {
+   "id": "ruvector:examples/exo-ai-2025/crates/exo-hypergraph/README.md:7-18",
+   "poolRank": null
+  },
+  {
+   "id": "ruvector:examples/exo-ai-2025/research/08-meta-simulation-consciousness/README.md:37-55",
+   "poolRank": 17
+  },
+  {
+   "id": "ruvector:examples/exo-ai-2025/tests/README.md:7-35",
+   "poolRank": null
+  },
+  {
+   "id": "ruvector:examples/scipix/README.md:29-31",
+   "poolRank": 65
+  },
+  {
+   "id": "ruvector:npm/packages/kge/README.md:8-25",
+   "poolRank": null
+  },
+  {
+   "id": "ruvector:npm/packages/spiking-neural/README.md:8-15",
+   "poolRank": null
+  },
+  {
+   "id": "RuView:docs/research/rvagent-rvf-integration/README.md:9-22",
+   "poolRank": 65
+  },
+  {
+   "id": "RuView:examples/lovelace/README.md:15-28",
+   "poolRank": 65
+  },
+  {
+   "id": "RuView:examples/medical/README.md:9-24",
+   "poolRank": 65
+  },
+  {
+   "id": "RuView:examples/research-sota/03-spatial-intelligence/README.md:12-17",
+   "poolRank": null
+  },
+  {
+   "id": "RuView:examples/research-sota/04-rssi/README.md:20-30",
+   "poolRank": 39
+  },
+  {
+   "id": "RuView:examples/research-sota/05-cross-room-reid/README.md:33-42",
+   "poolRank": 20
+  },
+  {
+   "id": "RuView:examples/three.js/README.md:64-70",
+   "poolRank": null
+  },
+  {
+   "id": "RuView:examples/through-wall/README.md:29-36",
+   "poolRank": 65
+  },
+  {
+   "id": "RuView:firmware/privshield/esp32/README.md:15-39",
+   "poolRank": 65
+  },
+  {
+   "id": "RuView:firmware/privshield/openwrt/README.md:17-37",
+   "poolRank": null
+  },
+  {
+   "id": "RuView:harness/ruview/.claude/skills/calibrate-room/SKILL.md:12-22",
+   "poolRank": null
+  },
+  {
+   "id": "RuView:harness/ruview/.claude/skills/train-pose/SKILL.md:11-17",
+   "poolRank": null
+  },
+  {
+   "id": "RuView:harness/wifi-densepose-sar/README.md:28-34",
+   "poolRank": null
+  },
+  {
+   "id": "RuView:integrations/iphone-lidar/README.md:19-32",
+   "poolRank": 30
+  },
+  {
+   "id": "RuView:plugins/ruview/skills/ruview-applications/SKILL.md:51-58",
+   "poolRank": null
+  },
+  {
+   "id": "RuView:plugins/ruview/skills/ruview-configure/SKILL.md:21-47",
+   "poolRank": null
+  },
+  {
+   "id": "RuView:plugins/ruview/skills/ruview-mmwave/SKILL.md:20-28",
+   "poolRank": null
+  },
+  {
+   "id": "RuView:python/README.md:18-34",
+   "poolRank": null
+  },
+  {
+   "id": "RuView:tools/bfi_learning/README.md:6-51",
+   "poolRank": 14
+  },
+  {
+   "id": "RuView:ui/pose-fusion/pkg/ruvector-attention/README.md:5-23",
+   "poolRank": null
+  },
+  {
+   "id": "RuView:v2/crates/cog-ha-matter/cog/README.md:10-18",
+   "poolRank": null
+  },
+  {
+   "id": "RuView:v2/crates/cog-person-count/cog/README.md:5-7",
+   "poolRank": null
+  },
+  {
+   "id": "RuView:v2/crates/cog-pose-estimation/cog/README.md:5-7",
+   "poolRank": null
+  },
+  {
+   "id": "RuView:v2/crates/homecore-assist/README.md:13-25",
+   "poolRank": 49
+  },
+  {
+   "id": "RuView:v2/crates/wifi-densepose-desktop/README.md:86-94",
+   "poolRank": null
+  },
+  {
+   "id": "RuView:v2/crates/wifi-densepose-mat/README.md:9-18",
+   "poolRank": 65
+  },
+  {
+   "id": "RuView:v2/crates/wifi-densepose-nn/README.md:9-21",
+   "poolRank": null
+  },
+  {
+   "id": "RuView:v2/crates/wifi-densepose-sensing-server/README.md:9-20",
+   "poolRank": null
+  },
+  {
+   "id": "RuView:v2/crates/wifi-densepose-vitals/README.md:10-15",
+   "poolRank": null
+  },
+  {
+   "id": "RuView:wifi-veil/firmware/openwifi/README.md:11-40",
+   "poolRank": 65
+  }
+ ]
+}

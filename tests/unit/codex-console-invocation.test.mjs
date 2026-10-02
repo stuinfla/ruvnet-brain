@@ -12,7 +12,7 @@ describe('Codex Console invocation contract', () => {
     const source = fs.readFileSync(SESSION_START, 'utf8');
 
     expect(source).toContain('RUVNET_HOOK_HOST');
-    expect(source).toContain('$ruvnet-brain:rvbc');
+    expect(source).toContain('$ruvnet-brain:rnbc');
   });
 
   it('advertises one natural-language Console command in both hosts', () => {

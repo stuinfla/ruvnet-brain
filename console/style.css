@@ -229,6 +229,12 @@ p:last-child { margin-bottom: 0; }
 }
 
 .head-right { display: inline-flex; align-items: center; gap: 10px; }
+/* The header is full at desktop widths. When the update gong appears it needs ~155px; the host chip
+   (also shown in the intro's host line) gives way so the gong never slides under the header links
+   (RNBC QA 2026-10-01: it did, and clicking it opened the scope page). The brand text truncates. */
+.brand > * { flex: none; }
+.brand > .brand-text { flex: 0 1 auto; min-width: 0; }
+.head-inner:has(#brain-update:not([hidden])) .host-chip { display: none; }
 .host-chip {
   font-size: 12.5px; color: var(--ink-2);
   border: 1px solid var(--hair); border-radius: 100px; padding: 4px 11px;
@@ -247,6 +253,9 @@ p:last-child { margin-bottom: 0; }
   color: #7c3f00; background: rgba(217, 119, 6, .14);
   border: 1px solid rgba(217, 119, 6, .55); border-radius: 100px; padding: 3px 10px;
   margin-left: 6px; animation: gong-pulse 2.2s ease-in-out infinite;
+  /* Kept short in app.js and never squeezed: the brand text truncates before the gong does. A long
+     gong once overflowed under the header links, so clicking it opened the scope page. */
+  flex: none;
 }
 :root[data-theme="dark"] .update-gong { color: #fbbf24; background: rgba(217, 119, 6, .18); }
 .update-gong:hover { animation-play-state: paused; }
@@ -1137,6 +1146,10 @@ details.sub .sub-body > *:first-child { margin-top: 4px; }
      page-wide horizontal scrollbar. Cap + ellipsis keeps the click target and the full text in the
      title tooltip; nothing about the update claim is hidden, only its overflow. */
   .update-gong { max-width: 46vw; overflow: hidden; text-overflow: ellipsis; }
+  /* RNBC QA 2026-10-01, measured at 390px: the header did not fit one row — the version chip sat
+     under the scope link and the theme button was pushed off-screen. Let it wrap to two rows. */
+  .head-inner { flex-wrap: wrap; height: auto; min-height: 58px; row-gap: 6px; padding-block: 8px; }
+  .head-right { flex-wrap: wrap; justify-content: flex-end; row-gap: 6px; margin-left: auto; }
   .fact { grid-template-columns: minmax(0, 1fr); gap: 3px; }
   .dim { grid-template-columns: auto minmax(0, 1fr); }
   .dim-ded { grid-row: auto; grid-column: 2; }

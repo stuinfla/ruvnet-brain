@@ -63,7 +63,9 @@ describe.skipIf(!RUFLO)('RUFLO_DAEMON_AUTOSTART=0 acceptance probe (against the 
   });
 
   it('reports the version this probe is actually running against (VERIFY-FIRST, shown in the open)', () => {
-    const pkg = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.npm-global/lib/node_modules/ruflo/package.json'), 'utf8'));
+    // The package of the binary this probe actually executes (RUFLO resolves through `command -v`
+    // when ~/.npm-global is absent), not a hard-coded $HOME path that may name a different install.
+    const pkg = JSON.parse(fs.readFileSync(path.join(path.dirname(fs.realpathSync(RUFLO)), '..', 'package.json'), 'utf8'));
     console.log(`[ruflo-daemon-autostart probe] installed ruflo version: ${pkg.version}`);
     expect(typeof pkg.version).toBe('string');
   });

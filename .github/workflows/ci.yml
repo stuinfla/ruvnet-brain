@@ -101,25 +101,7 @@ jobs:
           echo "RVF_MODULE_PATH=$RUVNET_BRAIN_KB/node_modules" >> "$GITHUB_ENV"
       - name: Explicitly warm every required embedder
         shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "$KB_MODEL_CACHE"
-          node --input-type=module <<'NODE'
-          import path from 'node:path';
-          import { createRequire } from 'node:module';
-          import { pathToFileURL } from 'node:url';
-          import { requiredEmbedderModels } from './plugin/test/model-cache.mjs';
-          const modelCache = process.env.KB_MODEL_CACHE;
-          const kb = process.env.RUVNET_BRAIN_KB;
-          const requireFromKb = createRequire(path.join(kb, 'package.json'));
-          const T = await import(pathToFileURL(requireFromKb.resolve('@xenova/transformers')).href);
-          T.env.localModelPath = modelCache;
-          T.env.cacheDir = modelCache;
-          T.env.allowRemoteModels = true;
-          for (const model of requiredEmbedderModels(process.env.RUVNET_BRAIN_KB)) {
-            await T.pipeline('feature-extraction', model, { quantized: true });
-          }
-          NODE
+        run: node scripts/ci/warm-brain-models.mjs
       - name: Live source-grounding guarantee
         env:
           REQUIRE_BRAIN: '1'
@@ -303,6 +285,28 @@ jobs:
           # scripts/sign-bundle.mjs:59 writes (`${digest}  ${path.basename(bundle)}`), which is the
           # format the verifier and every user's `shasum -c` both expect.
           ( cd "$RUNNER_TEMP/release-evidence" && sha256sum ruvnet-brain.zip > ruvnet-brain.zip.sha256 )
+      # THE CAPABILITY-SELECTION BATTERY ON THE EXACT ARTIFACT. plugin/test/run-tests.mjs's 9 questions
+      # ran nowhere with a brain present (every runner skipped them), so "RuVector HNSW vector search
+      # overview" answering from agentdb (a reader defect since 2026-09-11) shipped unseen until an
+      # owner ran `npm test`. It runs here against a disposable unzip of the exact ruvnet-brain.zip this
+      # job just sealed (reader + corpus as they ship), never against dist/ or the seed, and
+      # REQUIRE_BRAIN makes a skip a failure.
+      - name: Capability selection battery against the exact candidate bundle
+        shell: bash
+        env:
+          REQUIRE_BRAIN: '1'
+        run: |
+          set -euo pipefail
+          battery="$RUNNER_TEMP/battery-kb"
+          mkdir -p "$battery"
+          unzip -q "$RUNNER_TEMP/release-evidence/ruvnet-brain.zip" -d "$battery"
+          mapfile -t kb_dirs < <(find "$battery" -type f -name 'forge-mcp-all.mjs' ! -path '*/__MACOSX/*' -printf '%h\n' | LC_ALL=C sort -u)
+          test "${#kb_dirs[@]}" -eq 1
+          export RUVNET_BRAIN_KB="${kb_dirs[0]}" KB_MODEL_CACHE="$RUNNER_TEMP/battery-models"
+          npm ci --prefix "$RUVNET_BRAIN_KB" --no-audit --no-fund --ignore-scripts
+          export XENOVA_PATH="$RUVNET_BRAIN_KB/node_modules/@xenova/transformers" RVF_MODULE_PATH="$RUVNET_BRAIN_KB/node_modules"
+          node scripts/ci/warm-brain-models.mjs
+          node plugin/test/run-tests.mjs
       - name: Derive public verification inputs from exact candidate bytes
         shell: bash
         run: |

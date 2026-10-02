@@ -53,6 +53,37 @@ describe('classifyUpdaterExit typed result boundary', () => {
       .toEqual({ verdict: 'failed', fallback: false, exitCode: 2 });
   });
 
+  it('does NOT fall back to a fresh install when the updater refused because of retained full-KB copies', () => {
+    // MEASURED 2026-09-30 (scripts/customer-state-matrix.mjs, leftovers=*): a 4.3.38 customer with two
+    // prior-generation copies beside the brain. The updater refused "unresolved rollback state exists;
+    // refusing to create another full-KB copy" — and the installer's fallback then ran a fresh install,
+    // which re-downloaded the bundle and PRESERVED ANOTHER full copy (2 -> 3 copies, +1.3 GB), every run.
+    const reason = 'unresolved rollback state exists; refusing to create another full-KB copy.\n  /x/kb.bak-1: PRESERVED_UNCLASSIFIED';
+    expect(install.classifyUpdaterExit(1, { result: { terminalVerdict: 'failed', reason } }))
+      .toEqual({ verdict: 'refused-retained-copies', fallback: false, exitCode: 1 });
+    // Any other failure keeps the documented fallback.
+    expect(install.classifyUpdaterExit(1, { result: { terminalVerdict: 'failed', reason: 'network failure' } }))
+      .toEqual({ verdict: 'failed', fallback: true, exitCode: 1 });
+  });
+
+  it('does NOT reinstall over a TRANSIENT GitHub refusal (rate limit / 5xx / offline); a dead manifest URL still falls back', () => {
+    // MEASURED 2026-09-30 (customer-state-matrix, network=manifest-rate-limited): the manifest answered 403
+    // (GitHub's anonymous rate limit). The updater exited 2 "nothing changed" and the installer reinstalled
+    // the whole brain from scratch, leaving a 1.3 GB preserved copy — every rate-limited run, until two such
+    // copies trip the retained-copy refusal and updates stop for good.
+    for (const reason of ['canonical manifest returned HTTP 403 for https://api.github.com/x — nothing changed.',
+      'canonical manifest returned HTTP 429 for https://api.github.com/x — nothing changed.',
+      'canonical manifest returned HTTP 503 for https://api.github.com/x — nothing changed.',
+      'network failure fetching https://api.github.com/x\n  getaddrinfo ENOTFOUND — nothing changed locally.']) {
+      expect(install.classifyUpdaterExit(2, { result: { terminalVerdict: 'failed', reason } }), reason)
+        .toEqual({ verdict: 'transient-network', fallback: false, exitCode: 2 });
+    }
+    // The case the fallback exists for (an old bundle polling a dead URL) keeps it.
+    expect(install.classifyUpdaterExit(2, { result: { terminalVerdict: 'failed',
+      reason: 'canonical manifest returned HTTP 404 for https://raw.githubusercontent.com/x/main/kb/.last-built.json — nothing changed.' } }))
+      .toEqual({ verdict: 'failed', fallback: true, exitCode: 2 });
+  });
+
   it('never converts a non-zero updater status into success', () => {
     for (const status of [1, 2, 3, 4, 10, 12, 127]) {
       expect(install.classifyUpdaterExit(status, { fallbackAllowed: false }).exitCode).not.toBe(0);

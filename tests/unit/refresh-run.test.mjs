@@ -41,6 +41,31 @@ describe('whole refresh transaction', () => {
     expect(releaseRefreshLock(parent)).toBe(true);
   });
 
+  it('a child reached through the REAL path inherits a lock its parent took through a symlinked path', () => {
+    // MEASURED 2026-09-30 (scripts/customer-state-matrix.mjs, location=symlinked-cache): the owner keeps
+    // the brain on an external disk via `~/.cache -> /Volumes/...`. bin/install.mjs locks
+    // RUVNET_BRAIN_KB as spelled (through the link); the child kb/forge-update.mjs derives KB_DIR from
+    // import.meta.url, which Node resolves to the REAL path. Same directory, two spellings — and the
+    // inheritance check compared strings, so every `--update` died "refresh lock inheritance does not match".
+    const { root, kbDir } = fixture();
+    const link = path.join(root, 'linked-cache');
+    fs.symlinkSync(root, link);
+    const viaLink = path.join(link, 'kb');
+    const parent = acquireRefreshLock({ kbDir: viaLink, pid: 101, isAlive: () => true });
+    const child = acquireRefreshLock({ kbDir: fs.realpathSync(kbDir), env: { RUVNET_REFRESH_RUN_TOKEN: parent.token }, pid: 202 });
+    expect(child).toMatchObject({ runId: parent.runId, token: parent.token, owned: false });
+    // Still the same directory while kb/ itself is absent (an update interrupted mid-rename).
+    fs.rmdirSync(kbDir);
+    expect(acquireRefreshLock({ kbDir: path.join(fs.realpathSync(root), 'kb'), env: { RUVNET_REFRESH_RUN_TOKEN: parent.token }, pid: 404 }))
+      .toMatchObject({ runId: parent.runId, owned: false });
+    fs.mkdirSync(kbDir);
+    // A different directory is still refused, whatever its spelling.
+    const other = path.join(root, 'other-kb');
+    fs.mkdirSync(other);
+    expect(() => acquireRefreshLock({ kbDir: other, env: { RUVNET_REFRESH_RUN_TOKEN: parent.token }, pid: 303 })).toThrow();
+    expect(releaseRefreshLock(parent)).toBe(true);
+  });
+
   it('publishes owner metadata atomically so a contender cannot steal an in-progress acquisition', () => {
     const { kbDir } = fixture();
     let contender;

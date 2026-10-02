@@ -17,6 +17,85 @@ const STATES = Object.freeze([
   'RECOVERY_REQUIRED',
 ]);
 
+// ── DISK-SPACE PREFLIGHT ──────────────────────────────────────────────────────────────────────────
+// An apply needs room for the unpacked bundle (temp), the candidate generation beside the live one
+// (the bundle plus the live node_modules carried into it) and its receipts; measured ~3.3 GB growth and
+// ~5 GB peak per apply on a 1.3 GB brain. Running out half-way leaves a half-built candidate and a
+// confusing ENOSPC, so every install/update measures first and refuses cleanly — nothing touched.
+export const DISK_HEADROOM_BYTES = 256 * 1024 ** 2;
+
+function nearestExisting(dir) {
+  let current = path.resolve(dir);
+  while (!fs.existsSync(current)) {
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return current;
+}
+
+/** Free bytes available to this user on the filesystem holding `dir` (or its nearest existing parent). */
+export function availableBytes(dir, env = process.env, statfs = fs.statfsSync) {
+  // Test seam, honoured only under RUVNET_BRAIN_TEST=1: a full disk cannot be produced on demand.
+  if (env.RUVNET_BRAIN_TEST === '1' && /^\d+$/.test(String(env.RUVNET_TEST_FREE_BYTES || ''))) return Number(env.RUVNET_TEST_FREE_BYTES);
+  // fs.statfsSync arrived in Node 18.15; the package supports node >= 18. Say so plainly instead of a TypeError.
+  if (typeof statfs !== 'function') throw new Error(`this Node (${process.version}) cannot measure free disk space (no fs.statfsSync; needs 18.15+)`);
+  const stat = statfs(nearestExisting(dir));
+  return Number(stat.bavail) * Number(stat.bsize);
+}
+
+/** Bytes of every regular file under `dir`; symlinks are not followed; an absent dir is 0. */
+export function directoryBytes(dir) {
+  let total = 0;
+  const walk = (current) => {
+    let entries;
+    try { entries = fs.readdirSync(current, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.isFile()) { try { total += fs.lstatSync(full).size; } catch { /* vanished */ } }
+    }
+  };
+  walk(dir);
+  return total;
+}
+
+const gb = (bytes) => `${(bytes / 1024 ** 3).toFixed(2)} GB`;
+
+// The ONE supported way to put the Brain on a bigger disk (CONTRIBUTING.md, "Putting the Brain on another
+// disk"). Not RUVNET_BRAIN_HOME: an env var never reaches GUI-launched hosts or launchd, and the installer
+// ignores it while the MCP server honours it — a split brain.
+export const MOVE_BRAIN_HINT = 'move the Brain to a bigger disk with  npx ruvnet-brain --move-brain <folder on that disk>';
+
+/**
+ * `requirements`: [{ dir, bytes, purpose, brain? }]. Requirements on the same filesystem add up. A group
+ * holds the Brain unless every requirement in it says `brain: false` (e.g. a temp-dir unpack), and only
+ * such a group is offered `bigger` as the alternative to freeing space. Returns
+ * { ok, shortfalls: [{ dir, needBytes, freeBytes, shortBytes, purposes }], message }.
+ */
+export function checkDiskSpace(requirements, { available = availableBytes, deviceOf = (dir) => fs.statSync(nearestExisting(dir)).dev,
+  headroom = DISK_HEADROOM_BYTES, what = 'apply this update', bigger = MOVE_BRAIN_HINT } = {}) {
+  const byDevice = new Map();
+  for (const { dir, bytes, purpose, brain = true } of requirements) {
+    const device = deviceOf(dir);
+    const group = byDevice.get(device) || { dir: nearestExisting(dir), bytes: 0, purposes: [], brain: false };
+    group.bytes += bytes;
+    group.purposes.push(`${purpose} ${gb(bytes)}`);
+    group.brain ||= brain !== false;
+    byDevice.set(device, group);
+  }
+  const shortfalls = [];
+  for (const group of byDevice.values()) {
+    const needBytes = group.bytes + headroom;
+    const freeBytes = available(group.dir);
+    if (freeBytes < needBytes) shortfalls.push({ dir: group.dir, needBytes, freeBytes, shortBytes: needBytes - freeBytes, purposes: group.purposes, brain: group.brain });
+  }
+  const message = shortfalls.map((s) => `not enough free disk space to ${what}: ${s.dir} has ${gb(s.freeBytes)} free and needs `
+    + `${gb(s.needBytes)} (${s.purposes.join(' + ')} + ${gb(headroom)} headroom). Free ${gb(s.shortBytes)} on that disk`
+    + `${s.brain && bigger ? `, or ${bigger}` : ''}. Nothing was changed.`).join('\n');
+  return { ok: shortfalls.length === 0, shortfalls, message };
+}
+
 function assertDirectory(dir, label) {
   const stat = fs.lstatSync(dir);
   if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error(`${label} is not a trusted directory: ${dir}`);
@@ -258,7 +337,23 @@ export function recoverIncompleteStorageTransactions(liveDir, { removeTree = rem
     const phaseFiles = fs.readdirSync(receipts).filter((name) => /^\d{3}-[A-Z_]+\.json$/.test(name)).sort();
     if (!phaseFiles.length) throw new Error(`storage transaction receipt is empty: ${receipts}`);
     const latest = JSON.parse(fs.readFileSync(path.join(receipts, phaseFiles.at(-1)), 'utf8'));
-    if (['NOOP', 'COMMITTED', 'ROLLED_BACK'].includes(latest.state)) continue;
+    if (['NOOP', 'COMMITTED', 'ROLLED_BACK'].includes(latest.state)) {
+      // A quarantined unsealed candidate is kept for ONE full update cycle, then released on the next
+      // run — but only if its bytes are exactly what was sealed when it was quarantined.
+      const quarantine = latest.quarantinedUnsealedCandidate;
+      if (latest.state === 'ROLLED_BACK' && quarantine && latest.quarantineReclaimed !== true
+        && path.resolve(quarantine) === transactionPaths(live, transactionId).failed) {
+        const unchanged = !fs.existsSync(quarantine) || (() => {
+          try { requireDigest(quarantine, latest.quarantineIdentity, 'quarantined candidate'); return true; } catch { return false; }
+        })();
+        if (unchanged) {
+          removeIfPresent(quarantine);
+          appendRecoveryReceipt(receipts, 'ROLLED_BACK', { quarantineReclaimed: true,
+            reason: 'released the quarantined unsealed candidate one update cycle later (bytes unchanged)' });
+        }
+      }
+      continue;
+    }
     if (latest.state === 'RECOVERY_REQUIRED') throw new Error(`storage transaction requires manual recovery: ${transactionId}`);
     const paths = latest.paths;
     const expectedPaths = transactionPaths(live, transactionId);
@@ -273,12 +368,22 @@ export function recoverIncompleteStorageTransactions(liveDir, { removeTree = rem
     try {
       // Validate every retained tree before any rename or deletion. A receipt owns
       // paths, but cannot authorize discarding bytes added after the process died.
-      if (fs.existsSync(paths.candidate)) requireDigest(paths.candidate, latest.candidate, 'interrupted candidate');
+      // A kill DURING candidate building (the long phase: copy, private restore, guard) leaves a candidate
+      // that was never sealed, so no receipt can vouch for its bytes. Refusing made every later update
+      // fail forever; deleting would discard bytes nothing proved disposable. It is QUARANTINED instead:
+      // renamed intact to this transaction's `failed` path, named in the receipt, and live (proved equal
+      // to the prior identity) stays in service.
+      const unsealedCandidate = fs.existsSync(paths.candidate) && !latest.candidate?.sha256
+        && ['LOCKED', 'CANDIDATE_BUILDING'].includes(latest.state);
+      if (fs.existsSync(paths.candidate) && !unsealedCandidate) requireDigest(paths.candidate, latest.candidate, 'interrupted candidate');
       if (fs.existsSync(paths.rollback)) requireDigest(paths.rollback, prior, 'interrupted rollback');
       if (fs.existsSync(paths.failed)) throw new Error('interrupted failed tree has no safe recovery disposition');
       if (['LOCKED', 'CANDIDATE_BUILDING', 'CANDIDATE_VERIFIED'].includes(latest.state)) {
         requireDigest(live, prior, 'interrupted live');
-        removeIfPresent(paths.candidate);
+        if (unsealedCandidate) {
+          assertDirectory(paths.candidate, 'unsealed candidate');
+          fs.renameSync(paths.candidate, paths.failed);
+        } else removeIfPresent(paths.candidate);
       } else if (latest.state === 'OLD_RENAME_STARTED') {
         const hasLive = fs.existsSync(live);
         const hasRollback = fs.existsSync(paths.rollback);
@@ -324,10 +429,12 @@ export function recoverIncompleteStorageTransactions(liveDir, { removeTree = rem
         continue;
       } else throw new Error(`unsupported interrupted state ${latest.state}`);
       const delta = storageDelta(paths, { prior, candidate: latest.candidate || null });
+      const quarantined = unsealedCandidate
+        ? { quarantinedUnsealedCandidate: paths.failed, quarantineIdentity: identitySummary(treeIdentity(paths.failed)) } : {};
       appendRecoveryReceipt(receipts, 'ROLLED_BACK', { terminalVerdict: 'interrupted-run-restored', prior,
-        storageDelta: delta, reason: `recovered interrupted ${latest.state} transaction before new work` });
+        storageDelta: delta, reason: `recovered interrupted ${latest.state} transaction before new work`, ...quarantined });
       recovered.push({ transactionId, from: latest.state, terminalVerdict: 'interrupted-run-restored',
-        storageDelta: delta });
+        storageDelta: delta, ...quarantined });
     } catch (error) {
       appendRecoveryReceipt(receipts, 'RECOVERY_REQUIRED', { terminalVerdict: 'recovery-required', prior,
         reason: error.message });

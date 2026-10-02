@@ -41,6 +41,7 @@ INPUT=""
 # exactly why a hook that CAN hang forever survives unnoticed. -t bounds the wait, and the string
 # is truncated AFTER the loop because a hook payload is one line with no newline, so `read` hands
 # the whole thing back at once and a per-iteration cap never fires.
+_l=""   # set -u: a read that times out before any byte leaves _l unset ("unbound variable" on stderr)
 while IFS= read -r -t 2 _l; do
   INPUT+="$_l"
   [ ${#INPUT} -ge 65536 ] && break
@@ -51,7 +52,10 @@ INPUT="${INPUT:0:65536}"
 
 field() { local re="\"$1\"[[:space:]]*:[[:space:]]*\"([^\"]*)\""; [[ $INPUT =~ $re ]] && printf '%s' "${BASH_REMATCH[1]}"; }
 
-case "$(field tool_name)" in Write|Edit|MultiEdit|NotebookEdit) ;; *) exit 0 ;; esac
+# Case-insensitive (4.5): Grok sends its own spelling (`write`, `search_replace`) — a case-sensitive
+# match let a Grok write past this guard silently. nocasematch is scoped to this one test.
+shopt -s nocasematch
+case "$(field tool_name)" in Write|Edit|MultiEdit|NotebookEdit|search_replace|multi_edit) shopt -u nocasematch ;; *) exit 0 ;; esac
 
 FILE_PATH=$(field file_path)
 [ -n "$FILE_PATH" ] || exit 0

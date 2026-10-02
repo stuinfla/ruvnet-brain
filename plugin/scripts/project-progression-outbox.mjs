@@ -65,31 +65,49 @@ export class ProgressionOutbox {
     });
   }
 
+  /**
+   * Snapshots fsynced but not committed. A key whose records DISAGREE (two snapshots, or a snapshot and
+   * a commit, with different digests) is still never replayed — that is the fail-closed part — but it
+   * is QUARANTINED, not thrown: on this repo's real outbox one such collision (2026-09-18, two Stop
+   * boundaries of one session producing the same sequence and dedup id) made this method throw on
+   * every call, every caller swallowed it, and no pending snapshot was replayed for 13 days while the
+   * SessionStart notice read 0 pending. Quarantined keys are reported by quarantinedKeys().
+   */
   pendingSnapshots() {
     const snapshots = new Map();
     const committed = new Map();
+    const quarantined = new Map();
     for (const record of this.records()) {
       requireIdentity(record?.eventKey, 'outbox eventKey');
       requireIdentity(record?.payloadDigest, 'outbox payloadDigest');
       if (record.type === 'snapshot') {
         const prior = snapshots.get(record.eventKey);
-        if (prior && prior.payloadDigest !== record.payloadDigest) throw new Error('outbox event key collision');
-        snapshots.set(record.eventKey, record);
+        if (prior && prior.payloadDigest !== record.payloadDigest) quarantined.set(record.eventKey, 'outbox event key collision');
+        else snapshots.set(record.eventKey, record);
       } else if (record.type === 'commit') {
         const prior = committed.get(record.eventKey);
-        if (prior && prior !== record.payloadDigest) throw new Error('outbox commit collision');
+        if (prior && prior !== record.payloadDigest) quarantined.set(record.eventKey, 'outbox commit collision');
         committed.set(record.eventKey, record.payloadDigest);
       } else {
         throw new Error('unsupported outbox record');
       }
     }
+    for (const record of snapshots.values()) {
+      const digest = committed.get(record.eventKey);
+      if (digest && digest !== record.payloadDigest && !quarantined.has(record.eventKey)) {
+        quarantined.set(record.eventKey, 'outbox commit digest mismatch');
+      }
+    }
+    this.quarantine = [...quarantined].map(([eventKey, reason]) => ({ eventKey, reason }));
     return [...snapshots.values()]
-      .filter((record) => {
-        const digest = committed.get(record.eventKey);
-        if (digest && digest !== record.payloadDigest) throw new Error('outbox commit digest mismatch');
-        return !digest;
-      })
+      .filter((record) => !quarantined.has(record.eventKey) && !committed.has(record.eventKey))
       .sort((left, right) => left.eventKey.localeCompare(right.eventKey))
       .map((record) => record.snapshot);
+  }
+
+  /** Keys pendingSnapshots() refused to replay because their records disagree, with the reason. */
+  quarantinedKeys() {
+    this.pendingSnapshots();
+    return this.quarantine;
   }
 }

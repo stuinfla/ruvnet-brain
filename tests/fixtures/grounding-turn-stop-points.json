@@ -1,0 +1,648 @@
+{
+ "_about": "Minimal Stop-point fixture for grounding-turn-gate's Gate 1 (4.4.0). Each `message` is the shortest final-answer excerpt that decides the label, taken from real Claude Code Stop points that were labelled by hand before the detector existed; `synthetic: true` marks an excerpt that was reworded to remove paths or sensitive detail while keeping its shape. label asserts-ruv-capability = a declarative, unhedged sentence states what a rUv product (or rUv's docs/research/source) does, can, cannot, requires, says or measured. expectFire = asserts and no successful search_ruvnet this turn. knownMiss = a real claim shape this deterministic detector does not see (pinned so a future fix goes red). The full labelled set is kept outside the repository. Guarded by the grounding-turn false-alarm unit test, which also refuses paths, usernames and sensitive strings in this file.",
+ "fixtures": [
+  {
+   "id": "pos-metaharness-routes",
+   "label": "asserts-ruv-capability",
+   "category": "asserts-ruv-capability",
+   "searchedOk": false,
+   "expectFire": true,
+   "message": "MetaHarness routes cheap-vs-frontier models for cost, not parallel throughput."
+  },
+  {
+   "id": "pos-rvf-index-source",
+   "label": "asserts-ruv-capability",
+   "category": "asserts-ruv-capability",
+   "searchedOk": false,
+   "expectFire": true,
+   "message": "Grounding against rUv's own rvf-index source showed that overclaims a bounded measurement."
+  },
+  {
+   "id": "pos-release-notes",
+   "label": "asserts-ruv-capability",
+   "category": "asserts-ruv-capability",
+   "searchedOk": false,
+   "expectFire": true,
+   "message": "rUv's own v3.32.34 release notes say no manual SQL is needed."
+  },
+  {
+   "id": "pos-tools-turn",
+   "label": "asserts-ruv-capability",
+   "category": "asserts-ruv-capability",
+   "searchedOk": false,
+   "expectFire": true,
+   "message": "Bottom line for your colleagues: rUv's tools turn \"read everything with an LLM\" into \"machine-scan everything in minutes, then have LLMs read only what's flagged\"."
+  },
+  {
+   "id": "pos-optimize-campaign",
+   "label": "asserts-ruv-capability",
+   "category": "asserts-ruv-capability",
+   "searchedOk": false,
+   "expectFire": true,
+   "message": "I haven't tried rUv's optimize campaign, which is what took his benchmark from 80% to 84%."
+  },
+  {
+   "id": "pos-skill-prescribes",
+   "label": "asserts-ruv-capability",
+   "category": "asserts-ruv-capability",
+   "searchedOk": false,
+   "expectFire": true,
+   "message": "I registered the swarm in Ruflo for tracking (swarm_init and five agent_spawn calls), which is the pattern ruflo's own skill prescribes."
+  },
+  {
+   "id": "pos-store-writes-cwd",
+   "label": "asserts-ruv-capability",
+   "category": "asserts-ruv-capability",
+   "searchedOk": false,
+   "expectFire": true,
+   "synthetic": true,
+   "message": "A trespass bug I found and fixed: ruflo memory store still writes its index files into whatever directory it is run from."
+  },
+  {
+   "id": "pos-review-recency",
+   "label": "asserts-ruv-capability",
+   "category": "asserts-ruv-capability",
+   "searchedOk": false,
+   "expectFire": true,
+   "synthetic": true,
+   "message": "Ruflo now supports Windows natively."
+  },
+  {
+   "id": "pos-review-negative-later-condition",
+   "label": "asserts-ruv-capability",
+   "category": "asserts-ruv-capability",
+   "searchedOk": false,
+   "expectFire": true,
+   "synthetic": true,
+   "message": "RuVector cannot run on Windows, so if you need it use WSL."
+  },
+  {
+   "id": "pos-review-coreference",
+   "label": "asserts-ruv-capability",
+   "category": "asserts-ruv-capability",
+   "searchedOk": false,
+   "expectFire": true,
+   "synthetic": true,
+   "message": "Ruflo is the orchestration layer and it has no hooks API."
+  },
+  {
+   "id": "pos-will-not",
+   "label": "asserts-ruv-capability",
+   "category": "asserts-ruv-capability",
+   "searchedOk": false,
+   "expectFire": true,
+   "synthetic": true,
+   "message": "AgentDB will not open a store written by a newer release."
+  },
+  {
+   "id": "pos-lifted-table-cells",
+   "label": "asserts-ruv-capability",
+   "category": "asserts-ruv-capability",
+   "searchedOk": false,
+   "expectFire": true,
+   "message": "| **AgentDB** | Append-only audit trail | Concurrent-write safe KB |"
+  },
+  {
+   "id": "pos-lifted-pronoun-under-heading",
+   "label": "asserts-ruv-capability",
+   "category": "asserts-ruv-capability",
+   "searchedOk": false,
+   "expectFire": true,
+   "message": "## What AgentDB actually is\n\nIt's a **SQLite database file** that stores notes across sessions. It's not a system monitor and doesn't run in the background."
+  },
+  {
+   "id": "pos-lifted-copula-estimate",
+   "label": "asserts-ruv-capability",
+   "category": "asserts-ruv-capability",
+   "searchedOk": false,
+   "expectFire": true,
+   "message": "Note this is agentic-qe's own static/heuristic estimate, not instrumented coverage."
+  },
+  {
+   "id": "pos-live-router-definition",
+   "label": "asserts-ruv-capability",
+   "category": "asserts-ruv-capability",
+   "searchedOk": false,
+   "expectFire": true,
+   "message": "The RuVector router package (`ruvector-router`) is a vector database with a neural routing and inference layer that uses HNSW indexing to send queries or requests to the best-matching target, and it defaults to cosine distance."
+  },
+  {
+   "id": "pos-live-router-possessive-default",
+   "label": "asserts-ruv-capability",
+   "category": "asserts-ruv-capability",
+   "searchedOk": false,
+   "expectFire": true,
+   "synthetic": true,
+   "message": "RuVector's router defaults to cosine distance."
+  },
+  {
+   "id": "pos-live-router-parenthetical-chain",
+   "label": "asserts-ruv-capability",
+   "category": "asserts-ruv-capability",
+   "searchedOk": false,
+   "expectFire": true,
+   "synthetic": true,
+   "message": "The RuVector router package (ruvector-router) uses HNSW indexing, and it defaults to cosine distance."
+  },
+  {
+   "id": "pos-live-router-definition-only",
+   "label": "asserts-ruv-capability",
+   "category": "asserts-ruv-capability",
+   "searchedOk": false,
+   "expectFire": true,
+   "synthetic": true,
+   "message": "The RuVector router package is a semantic intent router that ranks routes by embedding similarity."
+  },
+  {
+   "id": "pos-live-router-possessive-definition-chain",
+   "label": "asserts-ruv-capability",
+   "category": "asserts-ruv-capability",
+   "searchedOk": false,
+   "expectFire": true,
+   "synthetic": true,
+   "message": "RuVector's router package (ruvector-router) is an HNSW-backed vector index, and it defaults to cosine distance."
+  },
+  {
+   "id": "miss-parenthetical-threshold",
+   "label": "asserts-ruv-capability",
+   "category": "asserts-ruv-capability",
+   "searchedOk": false,
+   "expectFire": false,
+   "synthetic": true,
+   "knownMiss": "the claim is a parenthetical",
+   "message": "Both fixtures now build a real, minimal RVF (2-vector, below the 1,024 HNSW threshold, so no index persistence needed)."
+  },
+  {
+   "id": "miss-pronoun-cli-gates",
+   "label": "asserts-ruv-capability",
+   "category": "asserts-ruv-capability",
+   "searchedOk": false,
+   "expectFire": false,
+   "synthetic": true,
+   "knownMiss": "pronoun subject (\"its gates\") after the product was named in an earlier sentence",
+   "message": "I checked the ruflo guidance CLI. Its gates only cover destructive commands and tool allowlists."
+  },
+  {
+   "id": "pos-lifted-product-after-verb",
+   "label": "asserts-ruv-capability",
+   "category": "asserts-ruv-capability",
+   "searchedOk": false,
+   "expectFire": true,
+   "synthetic": true,
+   "message": "The daemon-autostart setting is confirmed honored by the installed ruflo."
+  },
+  {
+   "id": "grounded-research-found",
+   "label": "asserts-ruv-capability",
+   "category": "asserts-ruv-capability",
+   "searchedOk": true,
+   "expectFire": false,
+   "message": "rUv's own MetaHarness research found routing moves you along the cost-quality frontier and doesn't beat it."
+  },
+  {
+   "id": "grounded-native-fallback",
+   "label": "asserts-ruv-capability",
+   "category": "asserts-ruv-capability",
+   "searchedOk": true,
+   "expectFire": false,
+   "message": "rUv hasn't finished the fast native version for Macs (his own code marks it as a to-do), so it runs a slower fallback."
+  },
+  {
+   "id": "grounded-router-exists",
+   "label": "asserts-ruv-capability",
+   "category": "asserts-ruv-capability",
+   "searchedOk": true,
+   "expectFire": false,
+   "message": "The routing designs exist: four ADRs in this repo, plus rUv's router and Agent Booster."
+  },
+  {
+   "id": "neg-release-step-shipped",
+   "label": "no-ruv-capability-claim",
+   "category": "release-status",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "Step 1 shipped too."
+  },
+  {
+   "id": "neg-release-three-fixes",
+   "label": "no-ruv-capability-claim",
+   "category": "release-status",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "All three remediation fixes are now shipped."
+  },
+  {
+   "id": "neg-release-reviewed",
+   "label": "no-ruv-capability-claim",
+   "category": "release-status",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "Step 4 (the biggest piece of the night) and the #283/284/285 fixes both check out excellently on my own code review and targeted-test runs."
+  },
+  {
+   "id": "neg-release-reran",
+   "label": "no-ruv-capability-claim",
+   "category": "release-status",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "I independently re-ran the 5 changed test files (68/68 pass) myself, not from the agent's claim."
+  },
+  {
+   "id": "neg-release-store-behind",
+   "label": "no-ruv-capability-claim",
+   "category": "release-status",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "The ruflo store is at 913f9eae (committed 2026-08-01), which is 466 commits behind upstream HEAD."
+  },
+  {
+   "id": "neg-release-ruview-grade",
+   "label": "no-ruv-capability-claim",
+   "category": "release-status",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "RuView reads at grade 6.7, ruOS 5.2, mcp-studio 5.2 — down from 16.3 and 11.0."
+  },
+  {
+   "id": "neg-git-merge-clean",
+   "label": "no-ruv-capability-claim",
+   "category": "git-ci",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "Investigation concluded — Step 0's merge is confirmed clean."
+  },
+  {
+   "id": "neg-git-issues-closed",
+   "label": "no-ruv-capability-claim",
+   "category": "git-ci",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "Confirmed the #283/284/285 fixes are legitimately closed on GitHub with real, substantive comments — waiting on my own independent full-suite run before merging."
+  },
+  {
+   "id": "neg-git-no-commit-yet",
+   "label": "no-ruv-capability-claim",
+   "category": "git-ci",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "Step 5 shows real progress (5 files touched, matching expected scope) but no commit yet."
+  },
+  {
+   "id": "neg-git-repos-pushed",
+   "label": "no-ruv-capability-claim",
+   "category": "git-ci",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "Measured two independent ways: 8 ruvnet repos pushed in the last 24 hours, and 13 of 185 repos (7.0%) have moved since the committed observation."
+  },
+  {
+   "id": "neg-git-newest-table",
+   "label": "no-ruv-capability-claim",
+   "category": "git-ci",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "| Newest | `ruvector`, `ruview`, `worldgraph` | ~13.4h ago |"
+  },
+  {
+   "id": "neg-git-upgrade-drift",
+   "label": "no-ruv-capability-claim",
+   "category": "git-ci",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "The risk: after a future Ruflo upgrade the two versions can drift apart without any warning."
+  },
+  {
+   "id": "neg-disk-found-it",
+   "label": "no-ruv-capability-claim",
+   "category": "disk-backup",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "Found it — and it's not a file problem at all."
+  },
+  {
+   "id": "neg-disk-in-order",
+   "label": "no-ruv-capability-claim",
+   "category": "disk-backup",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "I'm doing exactly that, in this order."
+  },
+  {
+   "id": "neg-disk-audit-complete",
+   "label": "no-ruv-capability-claim",
+   "category": "disk-backup",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "Recovery Audit Complete"
+  },
+  {
+   "id": "neg-disk-no-claims",
+   "label": "no-ruv-capability-claim",
+   "category": "disk-backup",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "I made no claims about RuvNet tools this turn: I said RuvNet-Brain stays untouched until after the move, as you asked."
+  },
+  {
+   "id": "neg-disk-no-claims-2",
+   "label": "no-ruv-capability-claim",
+   "category": "disk-backup",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "I haven't made any claims about what RuvNet or rUv tools can do."
+  },
+  {
+   "id": "neg-disk-ruv-person",
+   "label": "no-ruv-capability-claim",
+   "category": "disk-backup",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "Ruv can't use Brain if every update breaks his swarms and requires a restart."
+  },
+  {
+   "id": "neg-mem-handoff",
+   "label": "no-ruv-capability-claim",
+   "category": "memory-write",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "Wrote the morning handoff to AgentDB (read-back verified) so the next session surfaces it at startup."
+  },
+  {
+   "id": "neg-mem-durable",
+   "label": "no-ruv-capability-claim",
+   "category": "memory-write",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "Handoff is durable in AgentDB with read-back proof."
+  },
+  {
+   "id": "neg-mem-probe",
+   "label": "no-ruv-capability-claim",
+   "category": "memory-write",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "The isolation-tester agent has completed their comprehensive probe of AgentDB and validation of the concurrency design."
+  },
+  {
+   "id": "neg-mem-verified",
+   "label": "no-ruv-capability-claim",
+   "category": "memory-write",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "AgentDB Setup — Verified Working"
+  },
+  {
+   "id": "neg-mem-only-writer",
+   "label": "no-ruv-capability-claim",
+   "category": "memory-write",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "ruflo memory store stays the only writer."
+  },
+  {
+   "id": "neg-mem-search-count",
+   "label": "no-ruv-capability-claim",
+   "category": "memory-write",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "Decisions ARE captured (ruflo memory search returns 10 results with timestamps from Aug 22 through Sep 11)."
+  },
+  {
+   "id": "neg-mem-call-time",
+   "label": "no-ruv-capability-claim",
+   "category": "memory-write",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "Restore gets 2.5 seconds, but each ruflo call takes about 3."
+  },
+  {
+   "id": "neg-mem-recommender-list",
+   "label": "no-ruv-capability-claim",
+   "category": "memory-write",
+   "searchedOk": false,
+   "expectFire": false,
+   "synthetic": true,
+   "message": "The recommender is a closed list of seven. It knows ruvector, agentdb, ruflo, aidefence, agentic-qe, agentic-flow and rulake, and seven request types."
+  },
+  {
+   "id": "neg-mem-ship-off",
+   "label": "no-ruv-capability-claim",
+   "category": "memory-write",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "Defer the SONA queue pipeline or ship it defaulted off and say so."
+  },
+  {
+   "id": "neg-mem-what-ships",
+   "label": "no-ruv-capability-claim",
+   "category": "memory-write",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "What not to build, so nothing duplicates what rUv or your repo already ships."
+  },
+  {
+   "id": "neg-mem-our-change-now",
+   "label": "no-ruv-capability-claim",
+   "category": "memory-write",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "AgentDB now records every turn automatically, in every repo, with no reliance on me remembering."
+  },
+  {
+   "id": "neg-release-they-list",
+   "label": "no-ruv-capability-claim",
+   "category": "release-status",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "The other native binaries are N-API builds (ruvector, rvf, onnxruntime napi-v6, sharp), so they don't depend on the Node version."
+  },
+  {
+   "id": "neg-review-will-not-touched",
+   "label": "no-ruv-capability-claim",
+   "category": "release-status",
+   "searchedOk": false,
+   "expectFire": false,
+   "synthetic": true,
+   "message": "Ruflo will not be touched by this patch."
+  },
+  {
+   "id": "neg-review-will-not-need",
+   "label": "no-ruv-capability-claim",
+   "category": "release-status",
+   "searchedOk": false,
+   "expectFire": false,
+   "synthetic": true,
+   "message": "RuVector will not need a rebuild after this change."
+  },
+  {
+   "id": "neg-review-now-records",
+   "label": "no-ruv-capability-claim",
+   "category": "memory-write",
+   "searchedOk": false,
+   "expectFire": false,
+   "synthetic": true,
+   "message": "AgentDB now records every turn automatically."
+  },
+  {
+   "id": "neg-review-installed-coref",
+   "label": "no-ruv-capability-claim",
+   "category": "disk-backup",
+   "searchedOk": false,
+   "expectFire": false,
+   "synthetic": true,
+   "message": "Ruflo is installed globally and it runs from the global npm bin directory."
+  },
+  {
+   "id": "neg-mem-non-firing",
+   "label": "no-ruv-capability-claim",
+   "category": "memory-write",
+   "searchedOk": false,
+   "expectFire": false,
+   "message": "I cannot let you or Ruv ship with non-firing hooks."
+  },
+  {
+   "id": "neg-define-status",
+   "label": "no-ruv-capability-claim",
+   "category": "release-status",
+   "searchedOk": false,
+   "expectFire": false,
+   "synthetic": true,
+   "message": "One small thing: your ruflo is a version behind."
+  },
+  {
+   "id": "neg-review441-row-upgraded",
+   "label": "no-ruv-capability-claim",
+   "category": "release-status",
+   "searchedOk": false,
+   "expectFire": false,
+   "synthetic": true,
+   "message": "| ruflo | Upgraded and restarted |"
+  },
+  {
+   "id": "neg-review441-row-installed",
+   "label": "no-ruv-capability-claim",
+   "category": "disk-backup",
+   "searchedOk": false,
+   "expectFire": false,
+   "synthetic": true,
+   "message": "| ruflo | Installed globally |"
+  },
+  {
+   "id": "neg-review441-row-healthy",
+   "label": "no-ruv-capability-claim",
+   "category": "release-status",
+   "searchedOk": false,
+   "expectFire": false,
+   "synthetic": true,
+   "message": "| agentdb | Healthy and reachable |"
+  },
+  {
+   "id": "neg-review441-upgrade-noop",
+   "label": "no-ruv-capability-claim",
+   "category": "release-status",
+   "searchedOk": false,
+   "expectFire": false,
+   "synthetic": true,
+   "message": "The ruflo upgrade is a no-op."
+  },
+  {
+   "id": "neg-review441-write-success",
+   "label": "no-ruv-capability-claim",
+   "category": "memory-write",
+   "searchedOk": false,
+   "expectFire": false,
+   "synthetic": true,
+   "message": "The AgentDB write is a success."
+  },
+  {
+   "id": "neg-review441-own-ci",
+   "label": "no-ruv-capability-claim",
+   "category": "git-ci",
+   "searchedOk": false,
+   "expectFire": false,
+   "synthetic": true,
+   "message": "This is ruflo's own CI failing."
+  },
+  {
+   "id": "neg-review441-fix-heading",
+   "label": "no-ruv-capability-claim",
+   "category": "git-ci",
+   "searchedOk": false,
+   "expectFire": false,
+   "synthetic": true,
+   "message": "## What the ruflo fix does\n\nIt's a one-line change in the hook."
+  },
+  {
+   "id": "neg-45-row-reinstalled",
+   "label": "no-ruv-capability-claim",
+   "category": "status-table",
+   "searchedOk": false,
+   "expectFire": false,
+   "synthetic": true,
+   "message": "| Package | Status |\n|---|---|\n| ruflo | Reinstalled from npm |"
+  },
+  {
+   "id": "neg-45-row-deprecated",
+   "label": "no-ruv-capability-claim",
+   "category": "status-table",
+   "searchedOk": false,
+   "expectFire": false,
+   "synthetic": true,
+   "message": "| agentic-flow | Deprecated in our stack |"
+  },
+  {
+   "id": "neg-45-row-pinned-version",
+   "label": "no-ruv-capability-claim",
+   "category": "status-table",
+   "searchedOk": false,
+   "expectFire": false,
+   "synthetic": true,
+   "message": "| ruvector | Pinned to 0.3.1 |"
+  },
+  {
+   "id": "neg-45-row-rolled-back",
+   "label": "no-ruv-capability-claim",
+   "category": "status-table",
+   "searchedOk": false,
+   "expectFire": false,
+   "synthetic": true,
+   "message": "| ruflo | Rolled back |"
+  },
+  {
+   "id": "neg-45-row-migrated",
+   "label": "no-ruv-capability-claim",
+   "category": "status-table",
+   "searchedOk": false,
+   "expectFire": false,
+   "synthetic": true,
+   "message": "| agentdb | Migrated and verified |"
+  },
+  {
+   "id": "pos-45-row-digit-claim",
+   "label": "asserts-ruv-capability",
+   "category": "capability-table",
+   "searchedOk": false,
+   "expectFire": true,
+   "synthetic": true,
+   "message": "| agentdb | Ships a built-in BM25 index |"
+  },
+  {
+   "id": "pos-45-row-participle-adjective",
+   "label": "asserts-ruv-capability",
+   "category": "capability-table",
+   "searchedOk": false,
+   "expectFire": true,
+   "synthetic": true,
+   "message": "| ruflo | Distributed consensus engine |"
+  },
+  {
+   "id": "neg-45-row-version-only",
+   "label": "no-ruv-capability-claim",
+   "category": "status-table",
+   "searchedOk": false,
+   "expectFire": false,
+   "synthetic": true,
+   "message": "| ruflo | Now at 3.41.2 on this machine |"
+  }
+ ]
+}

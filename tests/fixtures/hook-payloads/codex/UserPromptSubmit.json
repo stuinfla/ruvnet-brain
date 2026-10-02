@@ -1,0 +1,13 @@
+{
+ "_provenance": "captured: codex-cli 0.159.2 codex exec --json, hooks via -c, 2026-09-30",
+ "payload": {
+  "session_id": "{{SESSION_ID}}",
+  "turn_id": "{{TURN_ID}}",
+  "transcript_path": null,
+  "cwd": "{{CWD}}",
+  "hook_event_name": "UserPromptSubmit",
+  "model": "gpt-6.1-sol",
+  "permission_mode": "bypassPermissions",
+  "prompt": "Use apply_patch to create a file note.txt containing the single word hello, then reply with exactly: ok"
+ }
+}

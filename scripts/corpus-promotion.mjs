@@ -33,7 +33,7 @@ export function evaluateCorpusPromotion({ tag, generation, currentLatest } = {})
   if (!CORPUS_TAG_PATTERN.test(String(currentLatest.tagName || ''))) {
     // A code release holds latest. Corpus promotion does not regress the runtime, because
     // scripts/approved-runtime.mjs has already proved this archive's executables ARE the
-    // owner-approved shipped runtime, byte for byte.
+    // install-verified shipped runtime, byte for byte.
     return {
       allowed: true,
       reason: `current latest ${currentLatest.tagName} is a code release; runtime equality is enforced by the approved runtime pin`,
