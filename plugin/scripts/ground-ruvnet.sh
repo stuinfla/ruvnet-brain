@@ -138,6 +138,24 @@ inj_seen() {
 }
 inj_mark() { [ -n "$INJ_DIR" ] && mkdir -p "$INJ_DIR" 2>/dev/null && : > "$INJ_DIR/$1" 2>/dev/null; return 0; }
 
+# ── AGENTDB FIRST (owner requirement R15, ADR-0101) ─────────────────────────────────────────────
+# A prompt asking for a score, grade, audit, status, the plan, requirements, the North Star, a past
+# decision or an estimate gets the owner's own records first: agentdb-recall.mjs searches BOTH
+# AgentDB stores (.swarm/memory.db and .swarm/agentdb-memory.db) with the global ruflo, hard-bounded
+# at 2.0 s, from a private scratch cwd, and prints "<dedupe id>\n<block>". Priority 0: a few hundred
+# bytes the budget may never defer (it is the evidence the Stop gate later demands); deduped per
+# session by its content hash, so an identical recall is not repeated. No store, no ruflo, no trigger,
+# or RUVNET_AGENTDB_FIRST=off: zero bytes. The grep is a cheap superset prefilter so an ordinary
+# prompt never pays a node start; agentdb-recall.mjs holds the precise trigger and its negative corpus.
+if [ "${RUVNET_AGENTDB_FIRST:-on}" != "off" ] \
+  && printf '%s' "$TEXT" | grep -qiE 'scor|grad|rat(e|ing)|rank|rubric|audit|assess|evaluat|review|benchmark|status|where (are|do) we|progress|plan|roadmap|next step|what.?s next|requirement|decid|decision|estimat|\beta\b|ready|north.?star|out of 1|/ *100|how (good|far|long|close|mature|solid)|catch me up|up to speed|left|remain|shipped|done'; then
+  _ADB_OUT=$(printf '%s' "$INPUT" | "${RUVNET_NODE_BIN:-node}" "$(dirname "$0")/agentdb-recall.mjs" 2>/dev/null)
+  if [ -n "$_ADB_OUT" ]; then
+    _ADB_ID=$(printf '%s\n' "$_ADB_OUT" | head -n 1 | tr -cd 'A-Za-z0-9' | cut -c1-12)
+    [ -n "$_ADB_ID" ] && printf '%s\n' "$_ADB_OUT" | sed '1d' | out_to "0-0-agentdb-recall-$_ADB_ID"
+  fi
+fi
+
 # ── Gate 0: STACK WATCHDOG (always fires) — filesystem ground truth, not impressions. ───────────
 # Runs in the project's cwd every prompt, FROM the loaded plugin's own dir — so $CLAUDE_PLUGIN_ROOT
 # is the RUNNING (in-memory) version by construction, never the staged disk copy. Checks what's

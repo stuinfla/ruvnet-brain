@@ -181,6 +181,11 @@ const TABLE = {
   // enforcement (the same reasoning ground-before-write.sh's own BRAIN_OFF check already applies).
   'grounding-turn-mark': { file: 'grounding-turn-mark.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'silence' },
   'grounding-turn-gate': { file: 'grounding-turn-gate.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'silence' },
+  // ALWAYS CHECK AGENTDB FIRST (owner requirement R15, ADR-0101). Stop: a final answer that asserts a
+  // score/grade with no AgentDB read this turn is continued ONCE with the recall commands. offBehavior
+  // 'run' by ADR-054's own discriminator: it needs no corpus and guards honesty (a score that ignores
+  // the owner's recorded plan and scorecards), it does not advertise, ground or learn.
+  'agentdb-first-gate': { file: 'agentdb-first-gate.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'run' },
 };
 
 const hookId = process.argv[2];

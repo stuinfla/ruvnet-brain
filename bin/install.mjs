@@ -3213,6 +3213,19 @@ async function doctorRun({ json }) {
   } catch (error) {
     agentdbLine = { id: 'agentdb', label: 'AgentDB', state: 'unknown', detail: `recording status unavailable: ${error.message}`, fix: null };
   }
+  // ALWAYS CHECK AGENTDB FIRST (ADR-0101 D6): a project with an AgentDB store must have the recall and the
+  // Stop gate registered in the installed host plugin. Advisory '!' when not; no line without a store.
+  let agentdbFirstLine = null;
+  try {
+    const { agentdbFirstDoctorLine } = await import('../plugin/scripts/agentdb-recall.mjs');
+    const plugin = claudePluginStatus();
+    const installRoot = plugin.installed && plugin.installPath ? fs.realpathSync(plugin.installPath) : null;
+    agentdbFirstLine = agentdbFirstDoctorLine({ projectDir: process.cwd(),
+      hooksJson: installRoot ? path.join(installRoot, 'hooks', 'hooks.json') : null,
+      scriptsDir: installRoot ? path.join(installRoot, 'scripts') : null });
+  } catch (error) {
+    agentdbFirstLine = { id: 'agentdb-first', label: 'AgentDB first', state: 'unknown', detail: `could not check: ${error.message}`, fix: null };
+  }
 
   // ── THE MECHANICAL VERDICT ────────────────────────────────────────────────────────────────────
   // `--hooks` is retained as a compatibility alias for a read-only zero-registration proof. It must
@@ -3293,6 +3306,7 @@ async function doctorRun({ json }) {
     check('host-convergence', 'Hosts sync', !hostConvergence.healthy, hostConvergence.state, 'npx ruvnet-brain --update'),
     ...(rufloOperational ? [rufloCheckLine(rufloOperational)] : []),
     ...(agentdbLine ? [agentdbLine] : []),
+    ...(agentdbFirstLine ? [agentdbFirstLine] : []),
   ];
   // THE ONE VERDICT. Text, --json and the exit code are all read from this object; nothing else decides.
   const verdict = doctorVerdict(confirmation, checks);

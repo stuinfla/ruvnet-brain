@@ -29,6 +29,7 @@
  *   grounding-stamp     grounding receipt     at PostToolUse        claude, codex
  *   grounding-turn-mark grounding turn marker at UserPromptSubmit   claude, codex
  *   grounding-turn-gate answered-w/o-search   at turn end           claude, codex
+ *   agentdb-first-gate  scored-w/o-agentdb    at turn end           claude, codex
  *
  * THE GROUNDING ROWS WERE ADDED 2026-09-11 (Stuart), and this header is the record of why. The
  * 4.3.16 retirement took the ONLY enforcement of ADR-0012 — never write rUv-product code the brain
@@ -170,6 +171,9 @@ export const CONTINUITY_EVENTS = Object.freeze({
     // see grounding-turn-gate.mjs's header for why folding it in would corrupt that file's ledger
     // semantics rather than extend them.
     registration('grounding-turn-gate', '*', ['claude', 'codex']),
+    // ALWAYS CHECK AGENTDB FIRST (owner requirement R15, ADR-0101): a final answer that asserts a score with
+    // no AgentDB read this turn is continued once — same Stop-block contract as the gate above.
+    registration('agentdb-first-gate', '*', ['claude', 'codex']),
   ]),
   PreCompact: Object.freeze([
     registration('session-snapshot', '*', ['claude']),

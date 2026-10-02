@@ -373,18 +373,20 @@ describe('registry hygiene', () => {
     }
   });
 
-  it('registers exactly the guarded continuation hook, the capture hook, and the grounding-turn gate on Stop', () => {
+  it('registers exactly the guarded continuation hook, the capture hook, the grounding-turn gate and the AgentDB-first gate on Stop', () => {
     const stopCmds = (reg.hooks.Stop ?? []).flatMap((m) => (m.hooks ?? []).map((h) => h.command));
     // Stop carries THREE handlers now (grounding-turn-gate added 2026-09-12, the "answered without
     // searching" pair's Stop half): the continuation gate reads the work ledger and may nudge; the
     // capture hook writes the project snapshot that SessionStart restores; grounding-turn-gate forces
     // continuation if a RuvNet-relevant turn ended without a recorded search_ruvnet call. Before the
-    // capture hook, SessionStart restored a journal nothing ever wrote.
-    expect(stopCmds).toHaveLength(3);
-    const [gate, capture, groundingGate] = stopCmds;
+    // capture hook, SessionStart restored a journal nothing ever wrote. FOUR since 2026-10-02:
+    // agentdb-first-gate (ADR-0101, owner requirement R15) continues a turn that scored without AgentDB.
+    expect(stopCmds).toHaveLength(4);
+    const [gate, capture, groundingGate, agentdbGate] = stopCmds;
     expect(gate).toContain('continuation-gate');
     expect(capture).toContain('session-snapshot Stop');
     expect(groundingGate).toContain('grounding-turn-gate');
+    expect(agentdbGate).toContain('agentdb-first-gate');
     // All advisory: a turn-end hook that can fail a turn is worse than a missed snapshot.
     for (const command of stopCmds) expect(command).toContain('|| true');
   });

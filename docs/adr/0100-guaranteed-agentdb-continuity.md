@@ -7,7 +7,7 @@ updated: 2026-10-01
 authors: [Stuart Kerr, Claude Opus 5.5]
 tags: [agentdb, continuity, hooks, durability, memory]
 supersedes: []
-relates: [ADR-073, ADR-076]
+relates: [ADR-073, ADR-076, ADR-101]
 ---
 
 # ADR-100 — Guaranteed AgentDB continuity
@@ -124,3 +124,5 @@ whole-image mutator (access_count bump) — `ruflo/v3/@claude-flow/cli/src/memor
 - The outbox is not compacted yet; at the measured rate (tens of events/day, ~1 KB each) that is months.
 - Restore context (progression JSON, ≤ 8 KB) plus the brief (≤ 3 KB) can exceed a host's inline preview;
   the brief is first so it survives a cut.
+- Recording is not reading. That records are consulted before a score, status or plan answer is ADR-101's
+  job (recall of both stores at UserPromptSubmit, a Stop gate on a score that skipped it).

@@ -1,6 +1,6 @@
 # Contributing to RuvNet Brain — the one rulebook
 
-Updated: 2026-10-01
+Updated: 2026-10-02
 Created: 2026-07-07
 
 This file is the **only** place that says how to version, release, update the knowledge corpus,
@@ -287,7 +287,7 @@ are shadow-logged only). The Stop continuation body also asks for ONE
 correction when a final answer claims work is done without a check run after the last change this
 turn, a named check, and a NOT-verified disclosure, and it records first-person promises ("I'll do X
 next") in the project's work ledger until a later evidenced completion claim closes them (Claude
-only; `npm run completion-claim:replay` measures both on real transcripts). SessionStart prints one
+only; `npm run completion-claim:replay` measures both on real transcripts). ALWAYS CHECK AGENTDB FIRST (ADR-101): in a project with an AgentDB store, a prompt asking for a score, status, the plan, requirements, the North Star, a past decision or an estimate gets a recall of BOTH stores (`.swarm/memory.db` and `.swarm/agentdb-memory.db`, global ruflo, ≤ 2.0 s, private scratch cwd) injected by `ground-ruvnet` (`agentdb-recall.mjs`), and the Stop gate `agentdb-first-gate` continues ONCE a turn whose final answer asserts a score with no AgentDB read that turn (Claude transcript or Codex rollout; `npm run agentdb-first:replay` measures it on real transcripts); `RUVNET_AGENTDB_FIRST=off` disables both, and `--doctor` prints an `AgentDB first` line. SessionStart prints one
 `[RuvNet Brain — KNOWLEDGE …]` line when the installed knowledge cannot be proven current (older than
 48h, or the latest refresh receipt FAILED) and names the fix. The same snapshot capture records each
 turn's outcome at Stop (final assistant text, files changed, command descriptions — never user
