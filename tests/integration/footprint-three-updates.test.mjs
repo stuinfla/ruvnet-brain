@@ -134,7 +134,7 @@ function kbTrees(root) {
 /** The measured 2026-10-01 cruft, planted fresh before every update. */
 function plantCruft({ home, brainHome, kbDir, round }) {
   const copy = (to) => fs.cpSync(kbDir, to, { recursive: true, verbatimSymlinks: true });
-  copy(path.join(brainHome, `kb.bak-2026-09-0${round}`));
+  copy(path.join(brainHome, `kb.bak-2026-09-0${round}T03-47-00-000Z`));
   copy(path.join(brainHome, `kb.install-preserved-r${round}`));
   copy(path.join(brainHome, `kb.pre-update-2026093${round}`));
   const quarantine = path.join(home, '.cache', `ruvnet-brain-quarantine-2026091${round}`);

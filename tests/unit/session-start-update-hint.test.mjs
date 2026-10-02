@@ -30,12 +30,20 @@ describe('session-start update hint', () => {
     // An empty hookDir has no detach.mjs, so the heartbeat's background dispatches are inert here.
     const hookDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-update-hint-hooks-'));
     temps.push(hookDir);
-    const emitted = [];
-    heartbeat({ env: { HOME: home }, hookDir, stateDir, home, running: null, seedDispatched: false,
-      stamp: path.join(stateDir, '.last-update-check'), emit: (line) => emitted.push(line), now: Date.now() });
+    const beat = (env) => {
+      const emitted = [];
+      fs.rmSync(path.join(stateDir, '.last-update-check'), { force: true });
+      heartbeat({ env: { HOME: home, ...env }, hookDir, stateDir, home, running: null, seedDispatched: false,
+        stamp: path.join(stateDir, '.last-update-check'), emit: (line) => emitted.push(line), now: Date.now() });
+      return emitted;
+    };
+    // The manual-update hint is for a machine whose automatic knowledge update is OFF; otherwise the
+    // newer bundle IS applied automatically and "we do NOT auto-apply it" would be false (2026-10-02).
+    const emitted = beat({ RUVNET_AUTO_UPDATE: 'off' });
     const hint = emitted.find((line) => /newer knowledge bundle is available/.test(line));
     expect(hint, emitted.join('\n')).toBeTruthy();
     expect(hint).toContain(`To update: ${DOOR}`);
     expect(hint).not.toMatch(/forge-update\.mjs/);
+    expect(beat({}).find((line) => /newer knowledge bundle is available/.test(line))).toBeUndefined();
   });
 });
