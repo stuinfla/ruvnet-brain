@@ -59,6 +59,10 @@ const PIPELINE_ENTRY_POINTS = [
   'host-registry.mjs',
   'adr-072-completion.mjs',
   'product-integrity-contract.mjs',
+  // eval-brain.mjs: the gate of record (`npm run eval:gate`). Verified fast and non-mutating with no
+  // corpus present (this container's real state): prints "no brain at ..." and exits, in well under a
+  // second. Kept here rather than excluded, unlike build-concepts.mjs above.
+  'eval-brain.mjs',
 ];
 
 describe('KB entry points run when invoked through a symlink', () => {

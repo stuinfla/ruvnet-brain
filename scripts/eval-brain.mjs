@@ -279,6 +279,22 @@ async function main() {
   }
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// Entry-point guard. Compares REALPATHS on both sides: path.resolve() normalizes a path but does
+// NOT follow symlinks, while import.meta.url IS symlink-resolved by Node. Through a symlink (npm bin
+// shims, wrapper scripts, and every os.tmpdir() path on macOS) the two sides disagree, so main()
+// never ran -- and because nothing threw, the process exited 0 having done nothing: no table, no
+// --gate verdict, no --record write. A silent exit 0 is indistinguishable from "ran clean", which is
+// the one failure mode this repo's own entrypoint-guard fix (tests/unit/entrypoint-symlink.test.mjs,
+// PRs #295/#317/#333) exists to close -- this file was never covered by that sweep.
+function isDirectInvocation() {
+  try {
+    if (!process.argv[1]) return false;
+    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectInvocation()) {
   await main();
 }

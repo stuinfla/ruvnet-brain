@@ -3,7 +3,7 @@ id: ADR-088
 status: Accepted
 reviewed_digest: de06e4cc70c3
 date: 2026-09-19
-updated: 2026-09-27
+updated: 2026-10-02
 updated_source: derived-from-git
 version: 1.1.4
 authors: [Stuart Kerr, Codex]
@@ -80,6 +80,7 @@ The novice-50 evaluator also exposed `expectedRepoCited` but did not require it 
 Accepted decision; v1/v2 history remains preserved and v3 implementation is tracked by the governing code and tests above. The pinned 4.3.26 archive preflight currently validates 20 cases and records one explicit cross-project `CORPUS_GAP`. An initial full-corpus attempt is diagnostic-only because its isolated archive dependency setup failed; no valid baseline or candidate retrieval replay is claimed by this ADR update.
 
 ## Currency log
+| 2026-10-02 | Currency review: decision unchanged. `scripts/eval-brain.mjs`'s own CLI entry-point guard (`path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)`) carried the pre-`isDirectInvocation()` idiom this repo already fixed on 3 other gates (`tests/unit/entrypoint-symlink.test.mjs`, PRs #295/#317/#333): through a symlinked invocation it compared an unresolved path to a resolved one, so `main()` never ran — no table, no `--gate` verdict, no `--record` write — and the process exited 0 having done nothing. Replaced with the realpath-on-both-sides guard; no change to the evaluation model, strata, or gating threshold. | `scripts/eval-brain.mjs`, `tests/unit/entrypoint-symlink.test.mjs`. |
 | 2026-09-27 | Currency review: decision unchanged. Motion: routine version-surface bumps (4.3.29 through 4.3.32) and a CONTRIBUTING.md doc consolidation. No change to the operational-evaluation integrity model. | Reviewed `scripts/eval-brain.mjs`, `scripts/brain-novice-50.mjs`, `kb/verify-citation.mjs`, `evals/operational-benchmark.v1.mjs`, `evals/operational-benchmark.v2.mjs`, `evals/operational-benchmark.v3.mjs` against the commits listed above; reviewed_digest de06e4cc70c3. |
 
 | Date | Change | Evidence |
