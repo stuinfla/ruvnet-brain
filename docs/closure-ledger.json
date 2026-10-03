@@ -1,0 +1,1335 @@
+{
+  "schemaVersion": 1,
+  "adr": "ADR-102",
+  "generated": "2026-10-03",
+  "baseline": {
+    "commit": "3ddeb1fd",
+    "version": "4.5.2"
+  },
+  "note": "DRAFT. status is a claim checked by scripts/closure-gate.mjs (proposed); a row is closed only by a published proof receipt of evidence class EXECUTED. Severity order: SECURITY, PRIVACY, DATA-LOSS, FALSE-GREEN, DOES-NOT-FIRE, CUSTOMER-VISIBLE, HYGIENE.",
+  "issueDispositions": {
+    "198": "ALREADY FIXED (4 named tests pass on 3ddeb1fd; fixing commit not identified)",
+    "232": "ALREADY FIXED by removal 40166baf",
+    "236": "STILL OPEN -> G-004",
+    "249": "DUPLICATE -> G-047",
+    "258": "STILL OPEN (write side) -> G-051",
+    "260": "STILL OPEN -> G-050",
+    "264": "STILL OPEN -> G-017",
+    "274": "STILL OPEN -> G-049",
+    "286": "NOT-A-DEFECT as a gate (decision-release-canary-integrity-vs-quality-20260930); quality residual -> G-039",
+    "298": "STILL OPEN (needs owner) -> G-052",
+    "301": "STILL OPEN -> G-027",
+    "316": "ALREADY FIXED 5b28d8ca (v4.3.29); tests/unit/grounding-stamp-terms.test.mjs",
+    "319": "STILL OPEN -> G-036, G-003, G-033",
+    "320": "STILL OPEN (feature) -> G-032",
+    "326": "STILL OPEN (latent) -> G-040",
+    "329": "ALREADY FIXED d1f87ad6 (v4.4.0); tests/integration/project-progression-store.test.mjs",
+    "330": "STILL OPEN -> G-031",
+    "331": "ALREADY FIXED 4750f287 (v4.3.38); residual G-042",
+    "335": "PARTLY FIXED (ADR-098 --clean; hand-made kb.bak kept) -> G-028",
+    "341": "STILL OPEN -> G-016",
+    "369": "STILL OPEN -> G-030",
+    "370": "STILL OPEN -> G-001, G-002, G-014"
+  },
+  "rows": [
+    {
+      "id": "G-001",
+      "gap": "Turn capture is on by default, stores assistant text unredacted (a ghp_ token in a turn was stored verbatim) in memory.db AND a plaintext agentdb-turns.jsonl, passes the value on ruflo argv, and has only an environment off switch.",
+      "severity": "PRIVACY",
+      "issues": [
+        370
+      ],
+      "requirement": [
+        "R11",
+        "R6"
+      ],
+      "evidence": "plugin/scripts/turn-outcome-capture.mjs:139-146 (no redactText), :236 (--value argv), :257-258 (jsonl append), :195 (env-only off); fork-A probe; CONTRIBUTING.md:293 says \"never user text\"",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-001.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "real Stop with a token-bearing turn in an isolated home leaves zero raw token bytes in memory.db, the jsonl, receipts and sampled argv",
+          "jsonl holds only {ts,key,hash,len}",
+          "a persisted per-project/per-path opt-out takes effect on a live session without restart",
+          "CONTRIBUTING wording matches behaviour"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-001.json",
+      "release": "4.5.3",
+      "status": "open",
+      "tier": "opus",
+      "effort": "1d"
+    },
+    {
+      "id": "G-002",
+      "gap": "Turns from a linked worktree, and from any project without .swarm, are written to the machine-wide global store that loads in every project.",
+      "severity": "PRIVACY",
+      "issues": [
+        370
+      ],
+      "requirement": [
+        "R6",
+        "R11"
+      ],
+      "evidence": "turn-outcome-capture.mjs:149-154 resolveTurnDb uses projectDir/.swarm, not the git-common-dir; fork-A probe: worktree turn landed in ~/.claude/global-memory tagged project=wt, 0 rows in the canonical store",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-002.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "Stop from a git worktree child writes to <repo>/.swarm/memory.db with project=repo name and 0 rows to global",
+          "a project without .swarm writes nothing unless opted in"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-002.json",
+      "release": "4.5.3",
+      "status": "open",
+      "tier": "sonnet+opus-review",
+      "effort": "2h"
+    },
+    {
+      "id": "G-003",
+      "gap": "With no recorded preference the SessionStart self-heal runs unattended `npx --yes ruvnet-brain@latest --update`, which also updates code and host plugins; the installer and doctor say nothing runs unasked.",
+      "severity": "SECURITY",
+      "issues": [
+        319
+      ],
+      "requirement": [
+        "R3",
+        "R10",
+        "R11"
+      ],
+      "evidence": "session-start-health.mjs:135 (absent pref = consent), session-start-update-plane.mjs:211-225 (code path needs pref=yes, bypassed), install.mjs:3186-3190 text; fork-B probe: consent question shown 0 of 2 SessionStarts",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-003.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "pristine install, no pref, one SessionStart: knowledge (signed data) may update per R3, code/host plugins do not change without a recorded yes",
+          "installer, doctor and README state the default word for word",
+          "owner decision recorded in AgentDB (decision key)"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-003.json",
+      "release": "4.5.3",
+      "status": "open",
+      "tier": "opus",
+      "effort": "1d"
+    },
+    {
+      "id": "G-004",
+      "gap": "Citation binding accepts the next sequential rank, so a citation header can hijack attribution with a +1 offset.",
+      "severity": "SECURITY",
+      "issues": [
+        236
+      ],
+      "requirement": [
+        "R10",
+        "R11"
+      ],
+      "evidence": "kb/verify-citation.mjs:36-51 (comment: \"not airtight\"); structural fix ADR-0087 only on draft PR #287",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-004.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "an installed search answer with a forged +1 citation header is rejected by the published package",
+          "mutant: revert the fix, probe red"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-004.json",
+      "release": "4.5.3",
+      "status": "open",
+      "tier": "opus",
+      "effort": "0.5d"
+    },
+    {
+      "id": "G-005",
+      "gap": "No secret scan runs in CI; non-provider secret patterns are disabled on GitHub; the credential-shaped-literal push guard runs only on a laptop.",
+      "severity": "SECURITY",
+      "issues": [],
+      "requirement": [
+        "R11"
+      ],
+      "evidence": "fork-C: no secret-scan job in .github/workflows; scripts/development-push-check.mjs wiring unconfirmed",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-005.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "a ci-probe branch with a planted credential-shaped literal (built by concatenation) is red in CI"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-005.json",
+      "release": "4.5.3",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "1h"
+    },
+    {
+      "id": "G-006",
+      "gap": "Commits made in sibling worktrees (where all release work happens) and subagent outcomes are never journaled; the continuity record silently misses them.",
+      "severity": "DATA-LOSS",
+      "issues": [],
+      "requirement": [
+        "R6",
+        "R16"
+      ],
+      "evidence": "continuity-events.mjs:162 reads HEAD of the firing checkout only; no SubagentStop registration; real store missing 099b19c5, 64a062b3, 29705c63, adbcd75f",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-006.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "a commit in worktree B appears in continuity-events of the canonical store within one boundary fired in checkout A",
+          "a subagent outcome is recorded at SubagentStop"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-006.json",
+      "release": "4.5.4",
+      "status": "open",
+      "tier": "opus",
+      "effort": "3h"
+    },
+    {
+      "id": "G-007",
+      "gap": "Continuity is machine-local: .swarm/ is gitignored and nothing exports or imports it, so a second computer starts blank; copied homes break plugin registration (absolute paths).",
+      "severity": "DATA-LOSS",
+      "issues": [],
+      "requirement": [
+        "R6"
+      ],
+      "evidence": ".gitignore:42; no export/import in continuity-*.mjs; fork-B: copied home shows stale plugin generation and failed marketplace refresh",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-007.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "export on machine A, import on machine B (different username) restores the newest project-state, decisions and lessons; SessionStart on B shows them; doctor exit 0"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-007.json",
+      "release": "4.6.0",
+      "status": "open",
+      "tier": "opus",
+      "effort": "1d"
+    },
+    {
+      "id": "G-008",
+      "gap": "Nothing proves a requirement fires on the bytes customers install: preflight never runs the doctor/host matrix (the check that failed all 3 OSes for 4.5.0), and the scheduled published-surface probe only runs --help.",
+      "severity": "FALSE-GREEN",
+      "issues": [],
+      "requirement": [
+        "R3",
+        "R5",
+        "R13",
+        "R17"
+      ],
+      "evidence": "scripts/qe/agentic-qe-4.3.mjs:36-41 (no doctor); host-install-matrix.mjs:199 runs only after publication; scripts/published-surface-probe.mjs:140-163 (--help only)",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-008.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "preflight installs the packed candidate through the public-lane path on 3 OSes and runs --doctor --hooks and every requirement probe",
+          "re-introducing the 4.5.0 defect turns preflight red",
+          "daily requirements-probe.yml runs every probe against npm latest and pages on red"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-008.json",
+      "release": "4.5.3",
+      "status": "open",
+      "tier": "opus",
+      "effort": "1.5d"
+    },
+    {
+      "id": "G-009",
+      "gap": "There is no closure mechanism: no issue has been closed since 2026-09-13 although at least five are fixed on main, and nothing links an issue to the work or proof that closes it.",
+      "severity": "FALSE-GREEN",
+      "issues": [
+        316,
+        329,
+        331,
+        232,
+        198
+      ],
+      "requirement": [
+        "R17"
+      ],
+      "evidence": "gh issue list --state closed --search \"closed:>2026-09-13\" returns nothing (2026-10-03); fixes 5b28d8ca (#316), d1f87ad6 (#329), 4750f287 (#331), 40166baf (#232) on main",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-009.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "closure-gate --check fails on an open issue with no ledger row",
+          "a row hand-set to closed with no published receipt fails the gate",
+          "protected-release posts the closure comment only after install-verified, naming version, receipt and reporter"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-009.json",
+      "release": "4.5.3",
+      "status": "open",
+      "tier": "opus",
+      "effort": "1.5d"
+    },
+    {
+      "id": "G-010",
+      "gap": "Every open issue carries an automated \"maintainer has been paged and this is being worked\" comment, while issue-watch has been schedule-paused since 2026-09-18 after failing; the ack satisfies itself (lesson-automation-cannot-ack-itself).",
+      "severity": "FALSE-GREEN",
+      "issues": [],
+      "requirement": [
+        "R17",
+        "R10"
+      ],
+      "evidence": ".github/workflows/issue-watch.yml (schedule paused 2026-09-18; last runs failure); fork-A gh read of all open issues",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-010.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "the acknowledgement predicate is a ledger row with an acceptance test, never a comment",
+          "an unlinked issue older than 24h pages through ntfy"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-010.json",
+      "release": "4.5.3",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "2h"
+    },
+    {
+      "id": "G-011",
+      "gap": "Six honesty gates run only on a laptop (claims:verify full, doc:currency, substitution:check, test:cov, wired:check, single-source:check) while README:528 and CONTRIBUTING say they fail CI.",
+      "severity": "FALSE-GREEN",
+      "issues": [],
+      "requirement": [
+        "R10",
+        "R14"
+      ],
+      "evidence": "grep of .github/workflows/*.yml (fork C); README:528; CONTRIBUTING.md:9",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-011.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "each gate runs in ci.yml or canonical-qa",
+          "each is proven by a deliberately broken commit on a ci-probe branch going red",
+          "claims:verify fails on a README claim naming a CI gate absent from workflows"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-011.json",
+      "release": "4.5.3",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "3h"
+    },
+    {
+      "id": "G-012",
+      "gap": "The corpus watchdog dates promoted-age from releases/latest, which a code release restamps, so it reported 1.4h old while the newest corpus was 32.7h old.",
+      "severity": "FALSE-GREEN",
+      "issues": [],
+      "requirement": [
+        "R9",
+        "R3"
+      ],
+      "evidence": "scripts/corpus-watchdog.mjs:217-224, :339; run 37041004915 (2026-10-02 17:29Z)",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-012.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "replay of the 10-02 input gives promoted-age from the newest corpus-sha256-* generation",
+          "a 37h fixture turns the watchdog red"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-012.json",
+      "release": "4.5.3",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "2h"
+    },
+    {
+      "id": "G-013",
+      "gap": "learning-replay has been red every night since 2026-09-21 (UNKNOWN after hook files changed; regeneration needs an owner seat), so its nightly page is noise.",
+      "severity": "FALSE-GREEN",
+      "issues": [],
+      "requirement": [
+        "R6",
+        "R10"
+      ],
+      "evidence": "run 37104959300: LEARNING-REPLAY-PORTFOLIO UNKNOWN, exit 4",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-013.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "portfolio regenerated; a release changing load-bearing hook files without a fresh artifact is refused; workflow green 7 nights"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-013.json",
+      "release": "4.5.3",
+      "status": "open",
+      "tier": "sonnet+owner-seat",
+      "effort": "2h"
+    },
+    {
+      "id": "G-014",
+      "gap": "Failed turn-capture writes are invisible: the receipt records status 1 with error null, stderr is discarded, nothing reads the receipts, and SessionStart still says \"recording ✓\".",
+      "severity": "FALSE-GREEN",
+      "issues": [
+        370
+      ],
+      "requirement": [
+        "R6",
+        "R10"
+      ],
+      "evidence": "turn-outcome-capture.mjs:282 stdio ignore; fork-A probe with failing ruflo",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-014.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "a failing ruflo stub produces a receipt with the first stderr line",
+          "doctor and SessionStart show \"turn recording failing N/M\""
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-014.json",
+      "release": "4.5.3",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "2h"
+    },
+    {
+      "id": "G-015",
+      "gap": "The auto-update outcome is the exit code of the whole npx --update, so a host-sync failure after a successful knowledge apply is recorded as failed and SessionStart shows KNOWLEDGE UPDATE FAILING over a current KB.",
+      "severity": "FALSE-GREEN",
+      "issues": [],
+      "requirement": [
+        "R3",
+        "R10"
+      ],
+      "evidence": "host-update.mjs:136-138; fork-B probe",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-015.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "real update with host sync failing: knowledge reads UPDATED, hosts read failing, separately"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-015.json",
+      "release": "4.5.4",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "0.5d"
+    },
+    {
+      "id": "G-016",
+      "gap": "The installer prints \"✓ 11 router tools\" while 7 of 10 installed tools fail with ERR_MODULE_NOT_FOUND.",
+      "severity": "FALSE-GREEN",
+      "issues": [
+        341
+      ],
+      "requirement": [
+        "R12",
+        "R10"
+      ],
+      "evidence": "bin/install.mjs:4885 hand-written copy list; fork-B probe on published 4.5.2; PR #342 open, mergeable",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-016.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "from the published tarball every installed tool loads with --help from a temp cwd",
+          "installer ✓ is computed from that load check"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-016.json",
+      "release": "4.5.3",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "2h"
+    },
+    {
+      "id": "G-017",
+      "gap": "An opted-in BLOCK lesson can be silently dropped by cross-trigger nudge-budget truncation.",
+      "severity": "FALSE-GREEN",
+      "issues": [
+        264
+      ],
+      "requirement": [
+        "R15",
+        "R10"
+      ],
+      "evidence": "plugin/scripts/lesson-presentation.mjs:59-62; draft PR #366",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-017.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "a session with an opted-in BLOCK lesson and a full nudge budget still delivers the BLOCK line through the installed hook"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-017.json",
+      "release": "4.5.4",
+      "status": "open",
+      "tier": "opus",
+      "effort": "0.5d"
+    },
+    {
+      "id": "G-018",
+      "gap": "No recall-hit rate, write lag, or instructions-captured metric exists, so AgentDB use cannot be measured.",
+      "severity": "FALSE-GREEN",
+      "issues": [],
+      "requirement": [
+        "R16",
+        "R15"
+      ],
+      "evidence": "fork-A: only signal is the SessionStart \"recording ✓ (last write …)\" line, continuity events only",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-018.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "doctor --json reports recall-fire %, median journal-to-commit lag and instructions captured over the last N sessions",
+          "closure-gate --status reads them"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-018.json",
+      "release": "4.5.4",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "0.5d"
+    },
+    {
+      "id": "G-019",
+      "gap": "Knowledge auto-update is proven only on source in an isolated e2e; it never ran on the owner Mac (runtime 4.5.0, plugin 4.5.1, no newer corpus existed until 2026-10-03 08:42Z) and long-lived sessions keep running the hook and MCP code they booted with (this review session ran hooks from plugin cache 4.3.37 while installed_plugins.json named 4.5.2).",
+      "severity": "DOES-NOT-FIRE",
+      "issues": [],
+      "requirement": [
+        "R3"
+      ],
+      "evidence": "plugin/mcp/server.mjs:408-420; fork-B: SessionStart self-heal on published 4.5.2 did apply the new corpus in an isolated home; lead observation of the live PreToolUse hook path",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-019.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "scheduled and at release: published tarball, KB pinned to corpus N-1, corpus N published; one SessionStart and an MCP server left up past the interval move the KB to N; next SessionStart prints UPDATED; also with plugin cache != runtime"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-019.json",
+      "release": "4.5.4",
+      "status": "open",
+      "tier": "opus",
+      "effort": "1.5d"
+    },
+    {
+      "id": "G-020",
+      "gap": "On Windows the auto-update worker spawns npx.cmd without a shell, which current Node refuses (EINVAL), so every Windows auto-update would fail.",
+      "severity": "DOES-NOT-FIRE",
+      "issues": [],
+      "requirement": [
+        "R3",
+        "R13"
+      ],
+      "evidence": "host-update.mjs:38 (code read; bin/nightly-refresh.mjs avoids it)",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-020.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "the Windows public-verification lane runs one real self-heal to UPDATED"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-020.json",
+      "release": "4.5.4",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "2h"
+    },
+    {
+      "id": "G-021",
+      "gap": "The CORPUS_NIGHTLY kill switch set for a release window has no automatic re-arm or expiry (customers went 48h07m without a corpus 10-01 08:35Z to 10-03 08:42Z); a stand-down WARNING exits 0 and never pages; the watchdog runs twice a day.",
+      "severity": "DOES-NOT-FIRE",
+      "issues": [],
+      "requirement": [
+        "R9",
+        "R3"
+      ],
+      "evidence": "dispatch runs 36831639878, 36979538776 (\"CORPUS_NIGHTLY is off\", green), 37106933295; corpus-watchdog.yml:71-77; ntfy-alerts.yml:25,30",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-021.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "install-verified re-arms the switch (or the switch carries an expiry)",
+          "switch off for more than one night outside a release turns the watchdog red and pages a test topic",
+          "watchdog runs within 1h of the nightly window"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-021.json",
+      "release": "4.5.3",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "3h"
+    },
+    {
+      "id": "G-022",
+      "gap": "READ-ALWAYS is absent: main 4.5.2 recalls nothing from AgentDB at prompt time; the unpublished fix-agentdb-gate branch recalls on 10.9% of real prompts (keyword-triggered) and misses requirement statements and release-dispatch prompts; SessionStart never surfaces plan-*, decision-* or scorecard-* records; nothing recalls before an irreversible action.",
+      "severity": "DOES-NOT-FIRE",
+      "issues": [],
+      "requirement": [
+        "R15",
+        "R16"
+      ],
+      "evidence": "ground-ruvnet.sh:174,524 (main); agentdb-recall.mjs:74-90 (branch adbcd75f); fork-A replay over 266 real prompts",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-022.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "every non-trivial prompt (acks skipped) gets a relevance-thresholded block from both stores, <=600 B, <=2 s, deduped per session by content hash, never displacing a safety block",
+          "PreToolUse(Bash) recall fires on gh workflow run|npm publish|rm -rf|git push",
+          "replay over real transcripts reports the fire rate and it meets the ledger threshold"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-022.json",
+      "release": "4.5.3",
+      "status": "open",
+      "tier": "opus",
+      "effort": "2d"
+    },
+    {
+      "id": "G-023",
+      "gap": "Subagents get no recalled records and their recalls are invisible to the parent; no spawn-time injection exists.",
+      "severity": "DOES-NOT-FIRE",
+      "issues": [],
+      "requirement": [
+        "R15",
+        "R16"
+      ],
+      "evidence": "no SubagentStart/SubagentStop/PreToolUse(Task|Agent) registration in plugin/hooks/hooks.json or the branch",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-023.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "a real claude -p session spawning one agent shows the recalled keys in the subagent prompt and its outcome recorded at SubagentStop"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-023.json",
+      "release": "4.5.4",
+      "status": "open",
+      "tier": "opus",
+      "effort": "1d"
+    },
+    {
+      "id": "G-024",
+      "gap": "WRITE-ALWAYS is absent: the owner-instruction detector only matches \"from now on/always/never\" phrasing (missed 3 of 4 real owner requirements, including the 2026-10-03 one) and stores pronoun-only fragments; milestone checkpoints depend on the model remembering.",
+      "severity": "DOES-NOT-FIRE",
+      "issues": [],
+      "requirement": [
+        "R16",
+        "R6"
+      ],
+      "evidence": "continuity-events.mjs:213 DURABLE_RULE; fork-A detector run",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-024.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "replay over a labelled set of real owner requirement/correction statements meets a stated capture threshold, each stored with full sentence and context",
+          "post-commit and post-release-step boundaries write a checkpoint row without model action"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-024.json",
+      "release": "4.5.4",
+      "status": "open",
+      "tier": "opus",
+      "effort": "1d"
+    },
+    {
+      "id": "G-025",
+      "gap": "A default install says nothing on plain-language needs: lead probe of the UserPromptSubmit hooks fired advocacy for \"remember things between restarts\" (agentdb) but 0 bytes for \"add semantic search to my app\" and \"our LLM bill is too high\"; the recommender ships OFF; hijack-ruvnet advocacy is unreachable from registered hooks.",
+      "severity": "DOES-NOT-FIRE",
+      "issues": [],
+      "requirement": [
+        "R1"
+      ],
+      "evidence": "lead probe scratchpad/lead/ups-probe.mjs; package-recommender-flag.mjs:7; fork-A G-A12",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-025.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "need-prompt eval set run through the installed UserPromptSubmit hooks of the published package reaches the stated pass rate with zero firings on the off-topic controls"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-025.json",
+      "release": "4.6.0",
+      "status": "open",
+      "tier": "opus",
+      "effort": "1d+owner-decision"
+    },
+    {
+      "id": "G-026",
+      "gap": "No surface tells the owner, in local time, what changed and exactly when he must act.",
+      "severity": "DOES-NOT-FIRE",
+      "issues": [],
+      "requirement": [
+        "R7"
+      ],
+      "evidence": "no timeZone/toLocale/\"act by\" in session-start-core.mjs or continuity-brief.mjs (fork C)",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-026.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "SessionStart brief and console show owner actions with a deadline in the owner zone with its abbreviation; snapshot test with TZ=America/New_York"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-026.json",
+      "release": "4.6.0",
+      "status": "open",
+      "tier": "opus+sonnet",
+      "effort": "3h"
+    },
+    {
+      "id": "G-027",
+      "gap": "Grok hooks are not installed: payload normalisation exists but nothing writes ~/.grok/hooks.",
+      "severity": "DOES-NOT-FIRE",
+      "issues": [
+        301
+      ],
+      "requirement": [
+        "R4"
+      ],
+      "evidence": "plugin/scripts/hook-input.mjs:34-96; no installer writer (fork A)",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-027.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "installer writes the Grok hook file and bridge; a live grok -p shows the hooks firing (or an owner no-go decision recorded)"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-027.json",
+      "release": "4.6.0",
+      "status": "open",
+      "tier": "opus",
+      "effort": "1d"
+    },
+    {
+      "id": "G-028",
+      "gap": "Legacy kb.bak snapshots with an incomplete inventory are still blockingRetained, so --apply dies and the updater stays stuck in exactly the reporter state.",
+      "severity": "DOES-NOT-FIRE",
+      "issues": [
+        335
+      ],
+      "requirement": [
+        "R5",
+        "R3"
+      ],
+      "evidence": "kb/forge-update.mjs:1236-1237,1307,1548",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-028.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "fixture with a legacy kb.bak-<ISO> holding non-store files plus an empty kb.install-preserved-*: --update succeeds; --clean names what it keeps and why"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-028.json",
+      "release": "4.5.4",
+      "status": "open",
+      "tier": "opus",
+      "effort": "0.5d"
+    },
+    {
+      "id": "G-029",
+      "gap": "Fixes do not reach customers: fix PRs open against main, which moves only by release fast-forward, so they rot (#303, #327, #351, #353 CONFLICTING; #342 mergeable, unmerged); 41 dream PRs open, 0 merged in 30 days.",
+      "severity": "DOES-NOT-FIRE",
+      "issues": [],
+      "requirement": [
+        "R17",
+        "R14"
+      ],
+      "evidence": "gh pr list (2026-10-03); CONTRIBUTING.md:15; fork C",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-029.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "fix PRs target the open release/* branch; a PR to main is retargeted or closed with a pointer by the daily job",
+          "dream PRs older than 7 days without merge/close/ledger link fail the daily check; backlog <=5"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-029.json",
+      "release": "4.5.3",
+      "status": "open",
+      "tier": "opus",
+      "effort": "0.5d (policy) + 4h (triage, 4.6.1)"
+    },
+    {
+      "id": "G-030",
+      "gap": "Captured promises bind every session in the project (sessionIds [\"*\"]), conditional offers are captured, quoted closures do not close them, and --done refuses.",
+      "severity": "CUSTOMER-VISIBLE",
+      "issues": [
+        369
+      ],
+      "requirement": [
+        "R6"
+      ],
+      "evidence": "plugin/scripts/continuation-gate.mjs:392; fork-A reproduced the issue repro",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-030.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "a promise binds only its capturing session; \"say the word and I'll\" is not captured; a quoted verified closure closes it; --abandon <reason> exists"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-030.json",
+      "release": "4.5.4",
+      "status": "open",
+      "tier": "opus",
+      "effort": "0.5d"
+    },
+    {
+      "id": "G-031",
+      "gap": "Capacity advice is injected with the Brain switched OFF (974 B, identical to ON).",
+      "severity": "CUSTOMER-VISIBLE",
+      "issues": [
+        330
+      ],
+      "requirement": [
+        "R5"
+      ],
+      "evidence": "hook-shim.mjs:89 offBehavior run; PR #351 CONFLICTING",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-031.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "with brain-off present the installed UserPromptSubmit hooks emit 0 bytes"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-031.json",
+      "release": "4.5.3",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "1h"
+    },
+    {
+      "id": "G-032",
+      "gap": "There is no setting to narrow which products trigger grounding without turning search off.",
+      "severity": "CUSTOMER-VISIBLE",
+      "issues": [
+        320
+      ],
+      "requirement": [
+        "R5"
+      ],
+      "evidence": "no groundingScope setting (grep, fork A)",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-032.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "a persisted scope setting narrows the Stop gate and ground-ruvnet triggers in the installed package; console exposes it"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-032.json",
+      "release": "4.6.0",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "0.5d"
+    },
+    {
+      "id": "G-033",
+      "gap": "A published version older than the newest code release can no longer be freshly installed (4.3.40 fails integrity and leaves an empty kb/), so pinning is impossible and upgrade-from-4.3/4.4 is untested.",
+      "severity": "CUSTOMER-VISIBLE",
+      "issues": [
+        319
+      ],
+      "requirement": [
+        "R13"
+      ],
+      "evidence": "fork-B probe: \"staged ReleaseCoverage failed integrity — release version 4.5.2 differs from 4.3.40\"",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-033.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "captured installed homes per release (fixed HOME path); release gate runs npx <candidate> --update plus doctor on each, exit 0 with runtime = candidate"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-033.json",
+      "release": "4.6.0",
+      "status": "open",
+      "tier": "opus",
+      "effort": "2d"
+    },
+    {
+      "id": "G-034",
+      "gap": "The first auto-update leaves a second _npx copy of the same version, so footprint reports \"1 old installers\" and SessionStart shows FOOTPRINT NOT CLEAN.",
+      "severity": "CUSTOMER-VISIBLE",
+      "issues": [],
+      "requirement": [
+        "R5"
+      ],
+      "evidence": "fork-B: _npx/7c3291 (@latest) and _npx/a5c03c (@4.5.2)",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-034.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "install, one auto-update, SessionStart prints no FOOTPRINT line"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-034.json",
+      "release": "4.5.4",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "2h"
+    },
+    {
+      "id": "G-035",
+      "gap": "--uninstall leaves about 263 MB and the plugin enabled without listing them; every later session raises a HEALTH ALARM recommending a different install channel.",
+      "severity": "CUSTOMER-VISIBLE",
+      "issues": [],
+      "requirement": [
+        "R5",
+        "R10"
+      ],
+      "evidence": "fork-B probe",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-035.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "install, uninstall, follow the printed steps: footprint 0 bytes; next SessionStart silent"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-035.json",
+      "release": "4.6.0",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "3h"
+    },
+    {
+      "id": "G-036",
+      "gap": "The nightly updater has no download retry (one ECONNRESET fails it) and pins the interpreter to a versioned Homebrew Cellar path.",
+      "severity": "CUSTOMER-VISIBLE",
+      "issues": [
+        319
+      ],
+      "requirement": [
+        "R3",
+        "R13"
+      ],
+      "evidence": "PR #353 CONFLICTING; plugin/scripts/nightly-scheduler.mjs:137 nodePath = process.execPath",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-036.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "an injected mid-download reset recovers; scheduler survives a Homebrew node upgrade"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-036.json",
+      "release": "4.5.4",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "0.5d"
+    },
+    {
+      "id": "G-037",
+      "gap": "Node 18 and 24 are never tested while engines says >=18.",
+      "severity": "CUSTOMER-VISIBLE",
+      "issues": [],
+      "requirement": [
+        "R13"
+      ],
+      "evidence": "all workflow node-version values are 20 or 22; package.json engines",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-037.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "stranger ubuntu cell runs Node 18, 20, 22, 24, or engines is narrowed to what is tested"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-037.json",
+      "release": "4.6.0",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "2h"
+    },
+    {
+      "id": "G-038",
+      "gap": "Newcomer need retrieval is recorded at 4/206 right file in top 5 (not re-measured in this review); E2 keyword lane ships OFF for latency.",
+      "severity": "CUSTOMER-VISIBLE",
+      "issues": [],
+      "requirement": [
+        "R2"
+      ],
+      "evidence": "AgentDB decision-retrieval-4.5-e2-off-20261001, release-4-5-known-limits-1790948703000",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-038.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "206-need set through the installed search of the published package, with intervals, reaches the owner plan exit criterion; no regression on the recall gate"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-038.json",
+      "release": "4.6.0",
+      "status": "open",
+      "tier": "opus",
+      "effort": "2d"
+    },
+    {
+      "id": "G-039",
+      "gap": "Whole-corpus recall is below the owner target (recorded Hit@5 162/182 vs >=98%); #286 residual photonlayer miss is quality work, not a gate.",
+      "severity": "CUSTOMER-VISIBLE",
+      "issues": [
+        286
+      ],
+      "requirement": [
+        "R2",
+        "R10"
+      ],
+      "evidence": "CONTRIBUTING.md:149; AgentDB decision-release-canary-integrity-vs-quality-20260930",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-039.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "recall report on the published generation reaches the target or the gap is an owner decision row"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-039.json",
+      "release": "4.6.0",
+      "status": "open",
+      "tier": "opus",
+      "effort": "with G-038"
+    },
+    {
+      "id": "G-040",
+      "gap": "hijack-ruvnet.sh still emits permissionDecision \"defer\" on direct dispatch (latent: unreachable from registered hooks), and upgrades do not remove legacy direct registrations.",
+      "severity": "HYGIENE",
+      "issues": [
+        326
+      ],
+      "requirement": [
+        "R1"
+      ],
+      "evidence": "plugin/scripts/hijack-ruvnet.sh:13; PR #327 CONFLICTING",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-040.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "no defer anywhere; upgrading from settings with a legacy registration removes it; a real claude -p qdrant Bash call is not parked"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-040.json",
+      "release": "4.5.3",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "2h"
+    },
+    {
+      "id": "G-041",
+      "gap": "turn-capture/receipts.jsonl and agentdb-turns.jsonl are not in LOG_FILES and grow without bound (real repo jsonl 1.3 MB).",
+      "severity": "HYGIENE",
+      "issues": [],
+      "requirement": [
+        "R5"
+      ],
+      "evidence": "plugin/scripts/brain-footprint.mjs:57",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-041.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "footprint test with a planted 3 MB file rotates it"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-041.json",
+      "release": "4.5.4",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "1h"
+    },
+    {
+      "id": "G-042",
+      "gap": "The --if-newer check runs the installed kb/forge-update.mjs --check without first placing the packaged updater (same mechanism as #331).",
+      "severity": "HYGIENE",
+      "issues": [
+        331
+      ],
+      "requirement": [
+        "R3"
+      ],
+      "evidence": "host-update.mjs:79",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-042.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "an install with an older updater gets the packaged one before --check"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-042.json",
+      "release": "4.5.4",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "1h"
+    },
+    {
+      "id": "G-043",
+      "gap": "In --check mode die() overwrites .last-kb-check-result.json without a currency verdict and runs lifecycle GC, downgrading the next session to a full update.",
+      "severity": "HYGIENE",
+      "issues": [],
+      "requirement": [
+        "R3"
+      ],
+      "evidence": "kb/forge-update.mjs:106-125,185-189",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-043.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "a network failure in --check leaves the previous verdict intact and deletes nothing"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-043.json",
+      "release": "4.5.4",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "2h"
+    },
+    {
+      "id": "G-044",
+      "gap": "The online probe accepts any HTTP 200 (captive portal), recording failed (6h retry) instead of offline (30 min).",
+      "severity": "HYGIENE",
+      "issues": [],
+      "requirement": [
+        "R3"
+      ],
+      "evidence": "host-update.mjs:115-117",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-044.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "a portal stub records offline"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-044.json",
+      "release": "4.6.1",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "1h"
+    },
+    {
+      "id": "G-045",
+      "gap": "Stale or inconsistent text: doctor says \"retries at most every 6h\" (code: 60 min); APPROX_SIZE ~736MB vs ~555 MB; doctor reads RUVNET_BRAIN_KB while footprint reads RUVNET_BRAIN_HOME.",
+      "severity": "HYGIENE",
+      "issues": [],
+      "requirement": [
+        "R10"
+      ],
+      "evidence": "bin/install.mjs:121; session-start-health.mjs:100-101",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-045.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "claims:verify derives each stated number from code or a measured install"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-045.json",
+      "release": "4.6.1",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "1h"
+    },
+    {
+      "id": "G-046",
+      "gap": "A pending release transaction is discovered only at publish time (4.5.1 first run built everything then failed).",
+      "severity": "HYGIENE",
+      "issues": [],
+      "requirement": [
+        "R9"
+      ],
+      "evidence": "release-transaction.mjs:306; 4.5.1 run 36952792896",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-046.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "preflight and the identity job fail within a minute when a transaction is pending"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-046.json",
+      "release": "4.5.3",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "1h"
+    },
+    {
+      "id": "G-047",
+      "gap": "doc:currency exits 1 with 26 BLOCK docs; PROGRESS.md frozen since 2026-09-15; WORK-REGISTER header 2026-09-26.",
+      "severity": "HYGIENE",
+      "issues": [
+        249
+      ],
+      "requirement": [
+        "R14"
+      ],
+      "evidence": "node scripts/doc-currency.mjs --check (fork C)",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-047.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "doc:currency exits 0 in CI; PROGRESS top entry no older than the current release"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-047.json",
+      "release": "4.6.1",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "3h"
+    },
+    {
+      "id": "G-048",
+      "gap": "The cost-routing role is undecided (ADR-0080, ADR-0083 Rejected) yet SessionStart advertises routing \"available but not set up\"; rUv ships @metaharness/router (cost-optimal k-NN/KRR router, metaharness/packages/router/src/index.ts).",
+      "severity": "HYGIENE",
+      "issues": [],
+      "requirement": [
+        "R12"
+      ],
+      "evidence": "session-start-core.mjs:275; search_ruvnet receipt 872c86f0c4c6",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-048.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "owner decision ADR; SessionStart wording matches it"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-048.json",
+      "release": "4.6.0",
+      "status": "decision",
+      "tier": "opus",
+      "effort": "0.5d"
+    },
+    {
+      "id": "G-049",
+      "gap": "record-lesson round-trip proof accepts a stale value: deterministic key, includes() check, no nonce.",
+      "severity": "HYGIENE",
+      "issues": [
+        274
+      ],
+      "requirement": [
+        "R6"
+      ],
+      "evidence": "scripts/record-lesson.mjs:89-92; draft PR #275",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-049.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "a repeated identical invocation with a pre-seeded stale value fails the round trip"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-049.json",
+      "release": "4.5.4",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "1h"
+    },
+    {
+      "id": "G-050",
+      "gap": "forge-currency brainKnownSet() reads SOURCE.json from this checkout, not the root it is given.",
+      "severity": "HYGIENE",
+      "issues": [
+        260
+      ],
+      "requirement": [
+        "R3"
+      ],
+      "evidence": "kb/forge-currency.mjs:32,60; draft PRs #280, #328",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-050.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "brainKnownSet(root) with a temp root reads that root"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-050.json",
+      "release": "4.6.1",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "1h"
+    },
+    {
+      "id": "G-051",
+      "gap": "brain-grade-groundtruth writes no generatedAt, so panelStrict freshness still falls back to checkout mtime.",
+      "severity": "HYGIENE",
+      "issues": [
+        258
+      ],
+      "requirement": [
+        "R10"
+      ],
+      "evidence": "scripts/brain-grade-groundtruth.mjs; brain-score.mjs:114-138; draft PR #292",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-051.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "a fresh checkout of an old grade reads stale"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-051.json",
+      "release": "4.6.1",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "1h"
+    },
+    {
+      "id": "G-052",
+      "gap": "Dream-cycle compile is blocked by the session sandbox; the fix (vendor dream-machine as a devDependency) needs an owner install.",
+      "severity": "HYGIENE",
+      "issues": [
+        298
+      ],
+      "requirement": [
+        "R14"
+      ],
+      "evidence": "issue #298 thread",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-052.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "dream cycle compiles in its scheduled run, or the dream cycle is retired by owner decision"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<version>/G-052.json",
+      "release": "4.6.1",
+      "status": "decision",
+      "tier": "owner",
+      "effort": "15m"
+    }
+  ]
+}

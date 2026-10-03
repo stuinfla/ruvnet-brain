@@ -114,3 +114,4 @@ line), first clause only — see each ADR for the full, dated status history.
 | [0098](0098-footprint-and-currency-guarantee.md) | The footprint and currency guarantee — one knowledge base, current, in use, nothing building up | Accepted |
 | [0099](0099-self-learning-retrieval.md) | Self-learning newcomer retrieval with rUv's own learning tools | Proposed |
 | [0100](0100-guaranteed-agentdb-continuity.md) | Guaranteed AgentDB continuity — material events, durable outbox, come-up-to-speed brief, one writer | Proposed |
+| [0102](0102-completion-and-closure-ledger.md) | ADR-102 — Completion and the closure ledger | Proposed |
