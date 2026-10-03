@@ -1,130 +1,157 @@
-Updated: 2026-10-03 13:30:00 EDT | Version 0.1.0
+Updated: 2026-10-03 16:30:00 EDT | Version 0.2.0
 Created: 2026-10-03 13:30:00 EDT
 
 # DDD-0022 — Closure governance context
 
-Status: Proposed (with ADR-102)
+Status: Proposed (with ADR-102, revision 2)
 
-Governs: ADR-102. Consumes ReleaseTransaction (DDD-0015), ReleaseConvergence (DDD-0017),
-ProductIntegrityCase (DDD-0018) and ProjectContinuity (DDD-0019). It owns none of their data.
+Governs: ADR-102. It consumes four contexts and owns none of their data:
+
+- ReleaseTransaction (DDD-0015)
+- ReleaseConvergence (DDD-0017)
+- ProductIntegrityCase (DDD-0018)
+- ProjectContinuity (DDD-0019)
 
 ## Purpose and boundary
 
-Closure governance answers one question with a machine, not a person: **is every known gap and every
-owner requirement proven closed on the bytes customers actually install?** It owns the list of known
-gaps, the owner's requirements, the link from each open GitHub issue to a gap, and the proof receipts
-that close them. It does not own tests, hooks, the installer, or the release pipeline; it reads their
-outputs and refuses a release when the proof is missing.
+Closure governance answers one question with a machine, not a person: **is every known gap closed, and
+is every owner requirement due at this phase met, on the bytes customers actually install?**
 
-Out of scope: deciding what to build (that is the owner and the ADRs), grading quality on a 0–100 scale
-(scores are inputs to rows, never a closure), and running the release (DDD-0015).
+It owns:
+
+- the list of known gaps;
+- the owner's requirements;
+- the link from each GitHub issue to a gap;
+- the rules for when a release is blocked.
+
+It reads proof receipts and verifies them. It never writes them.
+
+Out of scope:
+
+- deciding what to build (the owner and the ADRs decide);
+- quality scores (a score is an input, never a closure);
+- running the release (DDD-0015).
+
+Operating rules reach contributors only through CONTRIBUTING.md (ADR-102 §i).
 
 ## Ubiquitous language
 
 | Term | Meaning |
 |---|---|
-| Gap | Something the product should do and provably does not, or a claim it makes that is false. One row, one ID (`G-NNN`). |
-| Requirement | One owner requirement, quoted from the owner's own words, with an ID (`R1`…`R16`). Never paraphrased into something weaker. |
-| Acceptance test | The command that proves a gap closed or a requirement met **as a real process** (installed package, real hook host or hook-shim payload, isolated customer home). A unit assertion alone is never an acceptance test. |
-| Proof receipt | The JSON a probe writes when it runs: probe ID, command, exit code, the package version and its npm `dist.integrity`, OS, Node, time, and the digest of its output. |
-| Published proof | A receipt whose `dist.integrity` equals the integrity npm serves for that version. Only published proofs close a row. |
-| Disposition | What happened to an issue: `fixed` (row closed with a published proof), `duplicate` (of a row), `not-a-defect` (reason recorded), `decision` (owner decision key recorded in AgentDB). |
+| Gap | Something the product should do and provably does not, or a false claim. One row, one immutable ID `G-NNN`. |
+| Requirement | One owner requirement in the owner's words, `R1`…`R17`, with a measurable statement where the words alone are not testable. |
+| Phase | `S1` (safety), `S2` (reliability), `P1` (product), `P2` (hygiene). Each maps to a version only after the D0 benchmark. |
+| blockingFrom | The first phase at which a row or requirement blocks a release. |
+| Acceptance test | A probe that runs the installed package as a real process in an isolated home, with assertions fixed in the ledger and an executable mutant. |
+| Receipt | The authenticated record of one probe run (fields below). |
+| State | Requirement state, which is separate from blocking: NOT-PROVEN, candidate-proven, published-proven, daily-proven (= MET), regressed, decision-pending. |
+| Decision | An owner decision that was actually made: owner's verbatim words, date, and `decisionKey`. "Pending" is not a decision. |
+| Disposition | duplicate-of, not-a-defect, withdrawn or closed-by-reporter, each with a decisionKey. |
 
-## Aggregate root: ClosureLedger
-
-```text
-ClosureLedger                       (docs/closure-ledger.json)
-  schemaVersion
-  rows[]: GapRow
-    id                G-NNN, immutable
-    gap               one sentence, customer-visible effect first
-    severity          SECURITY | PRIVACY | DATA-LOSS | FALSE-GREEN | DOES-NOT-FIRE | CUSTOMER-VISIBLE | HYGIENE
-    issues[]          GitHub issue numbers this row answers
-    requirement[]     R-IDs this row serves
-    acceptanceTest    { probe: path, asserts: [..], realProcess: true }
-    proofArtifact     receipt path pattern the probe writes
-    release           target X.Y.Z
-    status            open | in-progress | closed | decision
-    decisionKey       AgentDB key (only when status = decision)
-```
-
-Invariants (each enforced by `scripts/closure-gate.mjs`, never by review):
-
-1. **Closed is derived, not written.** A row may carry `status: closed` only if a published proof
-   receipt for its probe exists with exit 0, bound to a version ≥ `release`. Hand-editing `closed`
-   without one fails the gate.
-2. **Every open issue has a row.** Every open GitHub issue appears in some row's `issues[]`, or the
-   gate fails. Issues closed while their row is still open fail the gate as well (no closing by
-   comment).
-3. **Every requirement has a probe.** Every `R` in the RequirementsLedger has at least one acceptance
-   test that runs against the published package; a requirement with none fails the gate.
-4. **Severity order.** A release may not carry a row closed at HYGIENE or CUSTOMER-VISIBLE while a
-   SECURITY or PRIVACY row targeted at the same or an earlier release is still open.
-5. **No silent decision.** `status: decision` needs an AgentDB key that `ruflo memory retrieve`
-   returns, recording the owner's decision. "Won't fix" without one is not a state.
-6. **Append-only history.** Each status change is also written to AgentDB (namespace
-   `closure-ledger`, key `ledger-<id>-<epochms>`, never updated in place).
-
-## Aggregate root: RequirementsLedger
+## Aggregate root: ClosureLedger (`docs/closure-ledger.json`, schema 2)
 
 ```text
-RequirementsLedger                  (docs/requirements-ledger.json)
-  rows[]: Requirement
-    id               R1..R16
-    ownerWords       verbatim quote + AgentDB key it came from
-    probes[]         acceptance-test paths (shared with GapRow.acceptanceTest)
-    schedule         daily | release | both
-    lastPublishedProof   receipt path (written by the probe run, never by hand)
+GapRow
+  id, registeredAt                         immutable
+  severity                                 SECURITY | PRIVACY | DATA-LOSS | FALSE-GREEN | DOES-NOT-FIRE | CUSTOMER-VISIBLE | HYGIENE (rise-only)
+  gap, evidence, findingEvidenceClass      EXECUTED | STATIC
+  issues[], requirement[]
+  acceptanceTest { probe, realProcess, evidenceClass: EXECUTED, asserts[] (append-only) }
+  release, blockingFrom                    phase; may move later only with a decisionKey
+  status                                   open | in-progress | closed | closed-by-reporter | disposed (claim; derived)
+  owner { accountable, responsible }
+  dependsOn[], decision { id, state, decisionKey }
 ```
 
-Invariant: a requirement is MET only while its newest published proof is green and younger than its
-schedule allows (daily probes: 36h). A red or stale proof is NOT MET, whatever any document says.
+**Invariants.** All are enforced by `scripts/closure-gate.mjs --check` in CI, which is authoritative.
+The `--local` variant is advisory.
+
+1. **Closed is derived.** `closed` requires an authenticated published receipt of class EXECUTED.
+   Any mismatch between the claimed and the derived status fails the gate.
+2. **Every open issue has a row.** If the reporter closes an issue while its row is open, the row moves
+   to `closed-by-reporter` and needs a disposition. That is not a gate failure. An issue shared by
+   several rows closes only when all of them are closed.
+3. **Every requirement R1–R17 has at least one probe.**
+4. **Severity order.** No phase may close a HYGIENE or CUSTOMER-VISIBLE row while a SECURITY or PRIVACY
+   row of the same or an earlier phase is open.
+5. **Tamper rules.** Compared against the ledger at the last release tag:
+   - immutable fields are unchanged;
+   - severity has not been lowered;
+   - assertions have only been appended;
+   - no row or requirement disappeared without a disposition;
+   - no `release` or `blockingFrom` moved later without a decisionKey.
+6. **History.** Every status change is mirrored append-only to AgentDB, namespace `closure-ledger`,
+   key `ledger-<id>-<epochms>`, and read back by exact key.
+7. **Ledger edits are source changes.** Editing the ledger on `next` or `release/*` repeats preflight.
+
+## Aggregate root: RequirementsLedger (`docs/requirements-ledger.json`, schema 2)
+
+`Requirement { id, ownerWords, measurableStatement?, source, gaps[], probes[], schedule, blockingFrom,
+state, registeredAt }`
+
+**State and blocking are independent:**
+
+- State is computed daily and pages when it regresses.
+- `--release <phase>` blocks on the requirements whose `blockingFrom ≤ phase`, and on nothing else.
+- A blocking requirement is never report-only.
 
 ## Entity: ProofReceipt
 
-Written only by `scripts/requirement-probe.mjs` (or a probe it runs). Fields above. Immutable once
-written. Two receipts for the same probe and version are both kept; the newest decides.
+Written only by `scripts/requirement-probe.mjs`. Fields:
 
-## Commands and domain events
+- `ledgerRevision`
+- `probeId`, `probeSha256`, `assertionsSha256`
+- `mutant { executed, red, failedAssertion, sameRun }`
+- `package { version, integrity }`
+- `components[] { role, path, sha256 }`, recorded before and after
+- `from` and `to` identities, for upgrade probes
+- `corpusGeneration`
+- `host { name, version }`, `configDigest`, `os`, `node`
+- `producer { kind: ci | owner-seat, runId, runAttempt, artifactId, workflow, headSha }`
+- `startedAt`, `finishedAt`
+- `signature`
 
-| Command | Event | Who |
-|---|---|---|
-| RegisterGap | GapRegistered | reviewer, issue triage |
-| LinkIssue | IssueLinked | triage (daily job reports unlinked issues) |
-| RecordProof | ProofRecorded | probe runner only |
-| CloseRow | RowClosed | closure gate, derived from ProofRecorded |
-| DetectRegression | RegressionDetected | daily published-probe run; pages through ntfy |
-| RecordDecision | DecisionRecorded | owner (AgentDB key) |
+**Freshness:**
 
-`RowClosed` emits the closure comment on each linked issue (release workflow, after
-`install-verified`), naming the version, the receipt, and thanking the reporter by handle.
+- candidate: produced by this run;
+- published: bound to that version's integrity;
+- daily: no older than 36 h;
+- dated more than 5 min in the future: rejected.
+
+## Domain events
+
+| Event | Produced by |
+|---|---|
+| GapRegistered | Reviewer, or triage on `next` |
+| IssueLinked | Daily `issue-ledger-check` (read-only) when an issue gets its row |
+| ProofRecorded | Probe runner |
+| RowClosed | Derived by the gate. It triggers an idempotent closure comment from `protected-release` after `install-verified`, naming the version, the receipt and the reporter. |
+| RegressionDetected | Daily `--published` run. Reopens the row, comments on the issue, pages. |
+| DecisionRecorded | Owner. Stored as an AgentDB key and in the ledger. |
+| ClosedByReporter | Issue closed while its row is open. Needs a disposition. |
 
 ## Policies
 
-- **Recall before review.** Any review, score, or audit added under `docs/reviews/` or `docs/audits/`
-  after ADR-102 carries a recall manifest (`agentdbRecall: { stores: [..], keys: [..] }`) naming both
-  project stores. The gate rejects one without it (R15 applied to reviews, not only to chat turns).
-- **Customer bytes, not checkout.** Probes install the package the way a stranger does (`npx
-  ruvnet-brain@<v>` or the `npm pack` tarball through the same public-lane path) into an isolated
-  home. A probe that imports from the source checkout is a unit test and cannot close a row.
-- **Break it once.** Each probe ships with a recorded mutant run (the guarded behaviour removed, the
-  probe red). A probe without one is not accepted into the ledger.
-
-## Ports
-
-- `GitHubIssues` (read: list open issues; write: closure comment, only from protected-release after
-  `install-verified`).
-- `NpmRegistry` (read: `dist.integrity` for a version).
-- `AgentDbLedgerMirror` (`ruflo memory store --no-upsert --path <project>/.swarm/memory.db -n
-  closure-ledger`; read back by exact key).
-- `Pager` (ntfy-alerts workflow).
+- **Recall before review.** Reviews and scores under `docs/reviews/` or `docs/audits/` carry an
+  `agentdbRecall` manifest. Each manifest must match the hook-written per-session recall receipts
+  (from G-022's S1 stage). Until those exist, the match is advisory.
+- **Customer bytes only.** Probes run the installed package. Candidate probes use a local registry that
+  serves the candidate as `latest`. Components outside the tarball manifest fail the receipt.
+- **Owner hooks are never modified silently.** Migration of the owner's global capture hook needs
+  decision D8.
+- **Flaky is a row.** A probe that flakes becomes a gap row. It is never skipped. UNKNOWN is never PASS.
 
 ## Acceptance scenarios
 
-1. A row hand-edited to `closed` with no receipt → gate exits non-zero naming the row.
-2. A receipt produced from the source checkout (no `dist.integrity` match) → does not close the row.
-3. A new external issue with no row → the daily job fails and pages within 24h.
-4. A requirement probe red on the published package → daily job red and pages; the requirement shows
-   NOT MET in `node scripts/closure-gate.mjs --status` and in the job's step summary.
-5. A release candidate whose target rows are closed in source but whose public-lane install fails →
-   preflight red before anything is published.
+1. A row hand-edited to `closed` without a receipt fails, naming the row.
+2. A receipt from the source checkout (components not in the tarball manifest) does not close the row.
+3. A candidate probe that ran the previous public package through `@latest` fails on component identity.
+4. A row whose release is moved later without a decisionKey fails. So does a lowered severity, or an
+   assertion that was reworded.
+5. A new external issue with no row for 24 h fails `issue-ledger-check` and pages.
+6. A reporter closes an issue: the row becomes `closed-by-reporter`, and the gate stays green until a
+   disposition is due.
+7. A requirement probe red on the published package: the state becomes `regressed`, the run pages, and
+   the next release whose phase ≥ that requirement's `blockingFrom` is refused.
+8. The rejection suite (ADR-102 §c): every case fails with its own reason code, and the valid control
+   passes in the same file.

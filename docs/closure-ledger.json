@@ -1,15 +1,15 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "adr": "ADR-102",
   "generated": "2026-10-03",
   "baseline": {
     "commit": "3ddeb1fd",
     "version": "4.5.2"
   },
-  "note": "DRAFT. status is a claim checked by scripts/closure-gate.mjs (proposed); a row is closed only by a published proof receipt of evidence class EXECUTED. Severity order: SECURITY, PRIVACY, DATA-LOSS, FALSE-GREEN, DOES-NOT-FIRE, CUSTOMER-VISIBLE, HYGIENE.",
+  "note": "DRAFT rev 2 (after Fable 5.1 + GPT-6.1-Sol). Phases S1/S2/P1/P2 replace version labels until the probe-matrix benchmark (D0). status is a claim; the gate derives closure from authenticated EXECUTED receipts (ADR-102 Decision b). Immutable after registration: id, registeredAt, severity (may only rise), asserts (append-only). release may only move later with an owner decisionKey. Removal needs a disposition with decisionKey.",
   "issueDispositions": {
-    "198": "ALREADY FIXED (4 named tests pass on 3ddeb1fd; fixing commit not identified)",
-    "232": "ALREADY FIXED by removal 40166baf",
+    "198": "STILL OPEN until probed -> G-064 (7 named suites; 4 were run)",
+    "232": "ALREADY FIXED by removal 40166baf; closes on a published probe (G-009)",
     "236": "STILL OPEN -> G-004",
     "249": "DUPLICATE -> G-047",
     "258": "STILL OPEN (write side) -> G-051",
@@ -17,19 +17,19 @@
     "264": "STILL OPEN -> G-017",
     "274": "STILL OPEN -> G-049",
     "286": "NOT-A-DEFECT as a gate (decision-release-canary-integrity-vs-quality-20260930); quality residual -> G-039",
-    "298": "STILL OPEN (needs owner) -> G-052",
-    "301": "STILL OPEN -> G-027",
-    "316": "ALREADY FIXED 5b28d8ca (v4.3.29); tests/unit/grounding-stamp-terms.test.mjs",
-    "319": "STILL OPEN -> G-036, G-003, G-033",
+    "298": "STILL OPEN (D5) -> G-052",
+    "301": "STILL OPEN -> G-027 (D4)",
+    "316": "ALREADY FIXED 5b28d8ca (v4.3.29); closes on a published probe (G-009)",
+    "319": "STILL OPEN -> G-036, G-003, G-033, G-062",
     "320": "STILL OPEN (feature) -> G-032",
     "326": "STILL OPEN (latent) -> G-040",
-    "329": "ALREADY FIXED d1f87ad6 (v4.4.0); tests/integration/project-progression-store.test.mjs",
+    "329": "FIXED FOR ITS NAMED SYMPTOM d1f87ad6 (v4.4.0): no .swarm/.swarm in probes or in the real project/global stores; closes on the G-063 published probe that covers both writers",
     "330": "STILL OPEN -> G-031",
-    "331": "ALREADY FIXED 4750f287 (v4.3.38); residual G-042",
+    "331": "STILL OPEN: direct --update path fixed in 4750f287 (v4.3.38); the automatic --if-newer check still runs the installed updater -> G-042",
     "335": "PARTLY FIXED (ADR-098 --clean; hand-made kb.bak kept) -> G-028",
     "341": "STILL OPEN -> G-016",
     "369": "STILL OPEN -> G-030",
-    "370": "STILL OPEN -> G-001, G-002, G-014"
+    "370": "STILL OPEN -> G-001, G-002, G-014, G-057, G-065"
   },
   "rows": [
     {
@@ -49,17 +49,31 @@
         "realProcess": true,
         "evidenceClass": "EXECUTED",
         "asserts": [
-          "real Stop with a token-bearing turn in an isolated home leaves zero raw token bytes in memory.db, the jsonl, receipts and sampled argv",
-          "jsonl holds only {ts,key,hash,len}",
+          "real Stop with a turn containing a token, a person name and a medical phrase in an isolated home: zero raw token bytes in memory.db, WAL, jsonl, receipts, dedupe state and sampled argv",
+          "token redaction does not protect arbitrary private text: capture scope follows D8 (adopted projects only by default) and this limit is stated in CONTRIBUTING and SECURITY.md",
+          "jsonl holds only {ts,key,hash,len}; files created 0600",
           "a persisted per-project/per-path opt-out takes effect on a live session without restart",
-          "CONTRIBUTING wording matches behaviour"
+          "the owner global hook (~/.claude/hooks/agentdb-turn-capture.mjs) is never modified silently: install/update detects it, reports it, and offers the D8 migration; until accepted the product records nothing on its behalf and says so"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-001.json",
-      "release": "4.5.3",
+      "proofArtifact": "closure-receipts/<run>/G-001.json",
+      "release": "S1",
       "status": "open",
       "tier": "opus",
-      "effort": "1d"
+      "effort": "1d",
+      "blockingFrom": "S1",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": {
+        "id": "D8",
+        "state": "pending-owner",
+        "decisionKey": null
+      },
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-002",
@@ -82,15 +96,24 @@
           "a project without .swarm writes nothing unless opted in"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-002.json",
-      "release": "4.5.3",
+      "proofArtifact": "closure-receipts/<run>/G-002.json",
+      "release": "S1",
       "status": "open",
       "tier": "sonnet+opus-review",
-      "effort": "2h"
+      "effort": "2h",
+      "blockingFrom": "S1",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-003",
-      "gap": "With no recorded preference the SessionStart self-heal runs unattended `npx --yes ruvnet-brain@latest --update`, which also updates code and host plugins; the installer and doctor say nothing runs unasked.",
+      "gap": "With no recorded preference, SessionStart runs an unattended `npx --yes ruvnet-brain@latest --update`, which replaces executable tool files, the updater and host plugins; the consent \"question\" is an instruction to the model, not an enforced gate.",
       "severity": "SECURITY",
       "issues": [
         319
@@ -100,7 +123,7 @@
         "R10",
         "R11"
       ],
-      "evidence": "session-start-health.mjs:135 (absent pref = consent), session-start-update-plane.mjs:211-225 (code path needs pref=yes, bypassed), install.mjs:3186-3190 text; fork-B probe: consent question shown 0 of 2 SessionStarts",
+      "evidence": "host-update.mjs:121 spawns npx --yes ruvnet-brain@latest --update unattended; session-start-health.mjs:131-141 absent pref = run; session-start-core.mjs:286-294 consent is text to the model, not a gate; fork-B probe; Fable reproduction. REFRAMED: the signed bundle overwrites executable .mjs tool files and self-upgrades the updater (SECURITY.md:108; 4750f287), so knowledge auto-update is code auto-update until the bundle is split (D1).",
       "acceptanceTest": {
         "probe": "tests/e2e/closure/G-003.probe.mjs",
         "realProcess": true,
@@ -111,11 +134,26 @@
           "owner decision recorded in AgentDB (decision key)"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-003.json",
-      "release": "4.5.3",
+      "proofArtifact": "closure-receipts/<run>/G-003.json",
+      "release": "S1",
       "status": "open",
       "tier": "opus",
-      "effort": "1d"
+      "effort": "1d",
+      "blockingFrom": "S1",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [
+        "G-062"
+      ],
+      "decision": {
+        "id": "D1",
+        "state": "pending-owner",
+        "decisionKey": null
+      },
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-004",
@@ -138,11 +176,20 @@
           "mutant: revert the fix, probe red"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-004.json",
-      "release": "4.5.3",
+      "proofArtifact": "closure-receipts/<run>/G-004.json",
+      "release": "S1",
       "status": "open",
       "tier": "opus",
-      "effort": "0.5d"
+      "effort": "0.5d",
+      "blockingFrom": "S1",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-005",
@@ -161,11 +208,20 @@
           "a ci-probe branch with a planted credential-shaped literal (built by concatenation) is red in CI"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-005.json",
-      "release": "4.5.3",
+      "proofArtifact": "closure-receipts/<run>/G-005.json",
+      "release": "S1",
       "status": "open",
       "tier": "sonnet",
-      "effort": "1h"
+      "effort": "1h",
+      "blockingFrom": "S1",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-006",
@@ -186,11 +242,22 @@
           "a subagent outcome is recorded at SubagentStop"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-006.json",
-      "release": "4.5.4",
+      "proofArtifact": "closure-receipts/<run>/G-006.json",
+      "release": "S2",
       "status": "open",
       "tier": "opus",
-      "effort": "3h"
+      "effort": "3h",
+      "blockingFrom": "S2",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [
+        "G-001"
+      ],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-007",
@@ -209,11 +276,20 @@
           "export on machine A, import on machine B (different username) restores the newest project-state, decisions and lessons; SessionStart on B shows them; doctor exit 0"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-007.json",
-      "release": "4.6.0",
+      "proofArtifact": "closure-receipts/<run>/G-007.json",
+      "release": "P1",
       "status": "open",
       "tier": "opus",
-      "effort": "1d"
+      "effort": "1d",
+      "blockingFrom": "P1",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-008",
@@ -237,11 +313,20 @@
           "daily requirements-probe.yml runs every probe against npm latest and pages on red"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-008.json",
-      "release": "4.5.3",
+      "proofArtifact": "closure-receipts/<run>/G-008.json",
+      "release": "S2",
       "status": "open",
       "tier": "opus",
-      "effort": "1.5d"
+      "effort": "1.5d",
+      "blockingFrom": "S2",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-009",
@@ -250,9 +335,7 @@
       "issues": [
         316,
         329,
-        331,
-        232,
-        198
+        232
       ],
       "requirement": [
         "R17"
@@ -268,11 +351,22 @@
           "protected-release posts the closure comment only after install-verified, naming version, receipt and reporter"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-009.json",
-      "release": "4.5.3",
+      "proofArtifact": "closure-receipts/<run>/G-009.json",
+      "release": "S1",
       "status": "open",
       "tier": "opus",
-      "effort": "1.5d"
+      "effort": "1.5d",
+      "blockingFrom": "S1",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [
+        "G-008"
+      ],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-010",
@@ -293,11 +387,22 @@
           "an unlinked issue older than 24h pages through ntfy"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-010.json",
-      "release": "4.5.3",
+      "proofArtifact": "closure-receipts/<run>/G-010.json",
+      "release": "S1",
       "status": "open",
       "tier": "sonnet",
-      "effort": "2h"
+      "effort": "2h",
+      "blockingFrom": "S1",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [
+        "G-009"
+      ],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-011",
@@ -319,11 +424,20 @@
           "claims:verify fails on a README claim naming a CI gate absent from workflows"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-011.json",
-      "release": "4.5.3",
+      "proofArtifact": "closure-receipts/<run>/G-011.json",
+      "release": "S1",
       "status": "open",
       "tier": "sonnet",
-      "effort": "3h"
+      "effort": "3h",
+      "blockingFrom": "S1",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-012",
@@ -344,11 +458,20 @@
           "a 37h fixture turns the watchdog red"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-012.json",
-      "release": "4.5.3",
+      "proofArtifact": "closure-receipts/<run>/G-012.json",
+      "release": "S2",
       "status": "open",
       "tier": "sonnet",
-      "effort": "2h"
+      "effort": "2h",
+      "blockingFrom": "S2",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-013",
@@ -365,14 +488,24 @@
         "realProcess": true,
         "evidenceClass": "EXECUTED",
         "asserts": [
-          "portfolio regenerated; a release changing load-bearing hook files without a fresh artifact is refused; workflow green 7 nights"
+          "candidate: learning-replay portfolio regenerated and check green on the candidate (release-blocking)",
+          "daily-proven: workflow green 7 consecutive nights (informational, paging; never a release blocker)"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-013.json",
-      "release": "4.5.3",
+      "proofArtifact": "closure-receipts/<run>/G-013.json",
+      "release": "S2",
       "status": "open",
       "tier": "sonnet+owner-seat",
-      "effort": "2h"
+      "effort": "2h",
+      "blockingFrom": "S2",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-014",
@@ -395,11 +528,20 @@
           "doctor and SessionStart show \"turn recording failing N/M\""
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-014.json",
-      "release": "4.5.3",
+      "proofArtifact": "closure-receipts/<run>/G-014.json",
+      "release": "S1",
       "status": "open",
       "tier": "sonnet",
-      "effort": "2h"
+      "effort": "2h",
+      "blockingFrom": "S1",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-015",
@@ -419,11 +561,20 @@
           "real update with host sync failing: knowledge reads UPDATED, hosts read failing, separately"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-015.json",
-      "release": "4.5.4",
+      "proofArtifact": "closure-receipts/<run>/G-015.json",
+      "release": "S2",
       "status": "open",
       "tier": "sonnet",
-      "effort": "0.5d"
+      "effort": "0.5d",
+      "blockingFrom": "S2",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-016",
@@ -442,15 +593,24 @@
         "realProcess": true,
         "evidenceClass": "EXECUTED",
         "asserts": [
-          "from the published tarball every installed tool loads with --help from a temp cwd",
-          "installer ✓ is computed from that load check"
+          "from the published tarball every installed router tool loads with --help from a temp cwd (10 of 10)",
+          "installer prints a tick only when that load check passed"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-016.json",
-      "release": "4.5.3",
+      "proofArtifact": "closure-receipts/<run>/G-016.json",
+      "release": "S1",
       "status": "open",
       "tier": "sonnet",
-      "effort": "2h"
+      "effort": "2h",
+      "blockingFrom": "S1",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-017",
@@ -472,11 +632,20 @@
           "a session with an opted-in BLOCK lesson and a full nudge budget still delivers the BLOCK line through the installed hook"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-017.json",
-      "release": "4.5.4",
+      "proofArtifact": "closure-receipts/<run>/G-017.json",
+      "release": "P1",
       "status": "open",
       "tier": "opus",
-      "effort": "0.5d"
+      "effort": "0.5d",
+      "blockingFrom": "P1",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-018",
@@ -493,15 +662,27 @@
         "realProcess": true,
         "evidenceClass": "EXECUTED",
         "asserts": [
-          "doctor --json reports recall-fire %, median journal-to-commit lag and instructions captured over the last N sessions",
-          "closure-gate --status reads them"
+          "doctor --json fields: recallFirePct (last 7 days), recallP95Ms, writeLagMedianMs (journaled->committed), instructionsCapturedVsStated (last replay)",
+          "closure-gate --status prints the same four values; absent values are UNKNOWN, never 0"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-018.json",
-      "release": "4.5.4",
+      "proofArtifact": "closure-receipts/<run>/G-018.json",
+      "release": "P1",
       "status": "open",
       "tier": "sonnet",
-      "effort": "0.5d"
+      "effort": "0.5d",
+      "blockingFrom": "P1",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [
+        "G-022",
+        "G-024"
+      ],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-019",
@@ -517,14 +698,39 @@
         "realProcess": true,
         "evidenceClass": "EXECUTED",
         "asserts": [
-          "scheduled and at release: published tarball, KB pinned to corpus N-1, corpus N published; one SessionStart and an MCP server left up past the interval move the KB to N; next SessionStart prints UPDATED; also with plugin cache != runtime"
+          "R3-a SessionStart only (no MCP server): KB pinned to generation N-1 reaches N within 75 min of a SessionStart; next SessionStart prints UPDATED",
+          "R3-b MCP timer only (no SessionStart after boot, plugin cache from the previous version): KB reaches N within 20 min",
+          "R3-c host delivery: after host restart the plugin version Claude/Codex load equals the runtime; a session booted on an older plugin is named by doctor as \"running X, installed Y\"",
+          "R3-d agentic-kit ownership proven <=36h: Brain defers; >36h: Brain updates",
+          "R3-e consent states per D1 (absent / yes / no) each behave as decided",
+          "R3-f RUVNET_AUTO_UPDATE=off: nothing spawns",
+          "R3-g offline then online: update completes within 90 min of network return",
+          "R3-h after activation, search_ruvnet answers carry corpus generation N",
+          "owner-seat daily receipt (D9): doctor --json on the owner Mac asserts knowledge current (generation = published latest, <=36h) and update plane fired <=24h"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-019.json",
-      "release": "4.5.4",
+      "proofArtifact": "closure-receipts/<run>/G-019.json",
+      "release": "S2",
       "status": "open",
       "tier": "opus",
-      "effort": "1.5d"
+      "effort": "1.5d",
+      "blockingFrom": "S2",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [
+        "G-008",
+        "G-021",
+        "G-062"
+      ],
+      "decision": {
+        "id": "D9",
+        "state": "pending-owner",
+        "decisionKey": null
+      },
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-020",
@@ -544,11 +750,20 @@
           "the Windows public-verification lane runs one real self-heal to UPDATED"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-020.json",
-      "release": "4.5.4",
+      "proofArtifact": "closure-receipts/<run>/G-020.json",
+      "release": "S2",
       "status": "open",
       "tier": "sonnet",
-      "effort": "2h"
+      "effort": "2h",
+      "blockingFrom": "S2",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "STATIC"
     },
     {
       "id": "G-021",
@@ -570,11 +785,20 @@
           "watchdog runs within 1h of the nightly window"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-021.json",
-      "release": "4.5.3",
+      "proofArtifact": "closure-receipts/<run>/G-021.json",
+      "release": "S2",
       "status": "open",
       "tier": "sonnet",
-      "effort": "3h"
+      "effort": "3h",
+      "blockingFrom": "S2",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-022",
@@ -591,16 +815,37 @@
         "realProcess": true,
         "evidenceClass": "EXECUTED",
         "asserts": [
-          "every non-trivial prompt (acks skipped) gets a relevance-thresholded block from both stores, <=600 B, <=2 s, deduped per session by content hash, never displacing a safety block",
-          "PreToolUse(Bash) recall fires on gh workflow run|npm publish|rm -rf|git push",
-          "replay over real transcripts reports the fire rate and it meets the ledger threshold"
+          "non-trivial prompt = >=4 words and not in the ack list {ok, okay, yes, no, y, n, thanks, thank you, continue, go, go ahead, proceed, done}",
+          "replay over >=200 real non-trivial prompts: a recall block is injected on >=95% of them",
+          "hook wall time p95 <=500 ms per prompt (both stores, one process, queried in parallel); p99 <=1000 ms",
+          "block <=600 B; cumulative injected bytes per session <=12 KB; identical content never injected twice per session",
+          "labelled sample of 50 prompts: irrelevant record injected on <=10% (relevance threshold frozen at D0)",
+          "safety blocks are never displaced (0 displacements over the replay)",
+          "recall failure on a prompt classified score/status/plan/release/delete is NOT silent: the Stop or PreToolUse gate states \"AgentDB recall not performed\" and blocks once",
+          "PreToolUse(Bash) recall fires on 100% of: gh workflow run, npm publish, rm -rf, git push (enumerated fixture set)",
+          "each injection writes a per-session recall receipt {sessionId, promptSha256, keys[], storeDigests, at} before the first tool call of the turn"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-022.json",
-      "release": "4.5.3",
+      "proofArtifact": "closure-receipts/<run>/G-022.json",
+      "release": "P1",
       "status": "open",
       "tier": "opus",
-      "effort": "2d"
+      "effort": "2d",
+      "blockingFrom": "P1",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [
+        "G-001",
+        "G-002"
+      ],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED",
+      "stagedDeliverable": {
+        "S1": "ship the reviewed ADR-101 branch plus the per-session recall receipt (the review-recall verification in ADR-102 (d) depends on it); the full READ-ALWAYS asserts block from P1"
+      }
     },
     {
       "id": "G-023",
@@ -620,11 +865,22 @@
           "a real claude -p session spawning one agent shows the recalled keys in the subagent prompt and its outcome recorded at SubagentStop"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-023.json",
-      "release": "4.5.4",
+      "proofArtifact": "closure-receipts/<run>/G-023.json",
+      "release": "P1",
       "status": "open",
       "tier": "opus",
-      "effort": "1d"
+      "effort": "1d",
+      "blockingFrom": "P1",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [
+        "G-022"
+      ],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-024",
@@ -641,15 +897,29 @@
         "realProcess": true,
         "evidenceClass": "EXECUTED",
         "asserts": [
-          "replay over a labelled set of real owner requirement/correction statements meets a stated capture threshold, each stored with full sentence and context",
-          "post-commit and post-release-step boundaries write a checkpoint row without model action"
+          "labelled set of >=40 real owner requirement/correction statements from transcripts: >=90% captured",
+          "200 labelled non-instruction sentences: <=5% captured",
+          "each capture stores the full sentence plus the preceding owner sentence; 0 pronoun-only fragments",
+          "post-commit and post-release-step boundaries each write one checkpoint row with no model action (verified by exact-key read-back)"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-024.json",
-      "release": "4.5.4",
+      "proofArtifact": "closure-receipts/<run>/G-024.json",
+      "release": "P1",
       "status": "open",
       "tier": "opus",
-      "effort": "1d"
+      "effort": "1d",
+      "blockingFrom": "P1",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [
+        "G-001",
+        "G-002"
+      ],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-025",
@@ -665,14 +935,29 @@
         "realProcess": true,
         "evidenceClass": "EXECUTED",
         "asserts": [
-          "need-prompt eval set run through the installed UserPromptSubmit hooks of the published package reaches the stated pass rate with zero firings on the off-topic controls"
+          "eval set frozen at D0: >=40 plain-language need prompts covering >=10 rUv packages and 30 off-topic controls",
+          "through the installed UserPromptSubmit hooks of the published package: >=60% of need prompts get one line naming the right package with a source path",
+          "0 of 30 off-topic controls produce an advocacy line"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-025.json",
-      "release": "4.6.0",
+      "proofArtifact": "closure-receipts/<run>/G-025.json",
+      "release": "P1",
       "status": "open",
       "tier": "opus",
-      "effort": "1d+owner-decision"
+      "effort": "1d+owner-decision",
+      "blockingFrom": "P1",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": {
+        "id": "D2",
+        "state": "pending-owner",
+        "decisionKey": null
+      },
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-026",
@@ -691,11 +976,20 @@
           "SessionStart brief and console show owner actions with a deadline in the owner zone with its abbreviation; snapshot test with TZ=America/New_York"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-026.json",
-      "release": "4.6.0",
+      "proofArtifact": "closure-receipts/<run>/G-026.json",
+      "release": "P1",
       "status": "open",
       "tier": "opus+sonnet",
-      "effort": "3h"
+      "effort": "3h",
+      "blockingFrom": "P1",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-027",
@@ -716,11 +1010,24 @@
           "installer writes the Grok hook file and bridge; a live grok -p shows the hooks firing (or an owner no-go decision recorded)"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-027.json",
-      "release": "4.6.0",
+      "proofArtifact": "closure-receipts/<run>/G-027.json",
+      "release": "P1",
       "status": "open",
       "tier": "opus",
-      "effort": "1d"
+      "effort": "1d",
+      "blockingFrom": "P1",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": {
+        "id": "D4",
+        "state": "pending-owner",
+        "decisionKey": null
+      },
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-028",
@@ -742,11 +1049,20 @@
           "fixture with a legacy kb.bak-<ISO> holding non-store files plus an empty kb.install-preserved-*: --update succeeds; --clean names what it keeps and why"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-028.json",
-      "release": "4.5.4",
+      "proofArtifact": "closure-receipts/<run>/G-028.json",
+      "release": "S2",
       "status": "open",
       "tier": "opus",
-      "effort": "0.5d"
+      "effort": "0.5d",
+      "blockingFrom": "S2",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-029",
@@ -757,21 +1073,31 @@
         "R17",
         "R14"
       ],
-      "evidence": "gh pr list (2026-10-03); CONTRIBUTING.md:15; fork C",
+      "evidence": "gh pr list (2026-10-03): #327, #351, #353, #303 CONFLICTING, #342 mergeable; probes show #342/#351/#327/#353 changes are not in 4.5.2; CONTRIBUTING.md:15 has no standing integration branch between releases (Fable N7)",
       "acceptanceTest": {
         "probe": "tests/e2e/closure/G-029.probe.mjs",
         "realProcess": true,
         "evidenceClass": "EXECUTED",
         "asserts": [
           "fix PRs target the open release/* branch; a PR to main is retargeted or closed with a pointer by the daily job",
-          "dream PRs older than 7 days without merge/close/ledger link fail the daily check; backlog <=5"
+          "dream PRs older than 7 days without merge/close/ledger link fail the daily check; backlog <=5",
+          "a standing integration branch `next` exists; fix PRs target it; release/X.Y.Z is cut as origin/main + next"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-029.json",
-      "release": "4.5.3",
+      "proofArtifact": "closure-receipts/<run>/G-029.json",
+      "release": "S1",
       "status": "open",
       "tier": "opus",
-      "effort": "0.5d (policy) + 4h (triage, 4.6.1)"
+      "effort": "0.5d (policy) + 4h (triage, 4.6.1)",
+      "blockingFrom": "S1",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-030",
@@ -792,11 +1118,20 @@
           "a promise binds only its capturing session; \"say the word and I'll\" is not captured; a quoted verified closure closes it; --abandon <reason> exists"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-030.json",
-      "release": "4.5.4",
+      "proofArtifact": "closure-receipts/<run>/G-030.json",
+      "release": "P1",
       "status": "open",
       "tier": "opus",
-      "effort": "0.5d"
+      "effort": "0.5d",
+      "blockingFrom": "P1",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-031",
@@ -817,11 +1152,20 @@
           "with brain-off present the installed UserPromptSubmit hooks emit 0 bytes"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-031.json",
-      "release": "4.5.3",
+      "proofArtifact": "closure-receipts/<run>/G-031.json",
+      "release": "S2",
       "status": "open",
       "tier": "sonnet",
-      "effort": "1h"
+      "effort": "1h",
+      "blockingFrom": "S2",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-032",
@@ -842,11 +1186,20 @@
           "a persisted scope setting narrows the Stop gate and ground-ruvnet triggers in the installed package; console exposes it"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-032.json",
-      "release": "4.6.0",
+      "proofArtifact": "closure-receipts/<run>/G-032.json",
+      "release": "P1",
       "status": "open",
       "tier": "sonnet",
-      "effort": "0.5d"
+      "effort": "0.5d",
+      "blockingFrom": "P1",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-033",
@@ -864,14 +1217,24 @@
         "realProcess": true,
         "evidenceClass": "EXECUTED",
         "asserts": [
-          "captured installed homes per release (fixed HOME path); release gate runs npx <candidate> --update plus doctor on each, exit 0 with runtime = candidate"
+          "exact-version pinned fresh install of the previous two published versions succeeds (npx ruvnet-brain@<v>) and doctor exits 0",
+          "captured installed homes per release (fixed HOME path) upgrade with npx <candidate> --update; doctor exit 0, runtime = candidate"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-033.json",
-      "release": "4.6.0",
+      "proofArtifact": "closure-receipts/<run>/G-033.json",
+      "release": "S2",
       "status": "open",
       "tier": "opus",
-      "effort": "2d"
+      "effort": "2d",
+      "blockingFrom": "S2",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-034",
@@ -890,11 +1253,20 @@
           "install, one auto-update, SessionStart prints no FOOTPRINT line"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-034.json",
-      "release": "4.5.4",
+      "proofArtifact": "closure-receipts/<run>/G-034.json",
+      "release": "S2",
       "status": "open",
       "tier": "sonnet",
-      "effort": "2h"
+      "effort": "2h",
+      "blockingFrom": "S2",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-035",
@@ -911,14 +1283,25 @@
         "realProcess": true,
         "evidenceClass": "EXECUTED",
         "asserts": [
-          "install, uninstall, follow the printed steps: footprint 0 bytes; next SessionStart silent"
+          "install, uninstall, follow the printed steps: Brain-owned bytes = 0 (user memory and private stores excluded and listed as kept)",
+          "next SessionStart prints nothing",
+          "turn data removed per the D8 retention policy"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-035.json",
-      "release": "4.6.0",
+      "proofArtifact": "closure-receipts/<run>/G-035.json",
+      "release": "S2",
       "status": "open",
       "tier": "sonnet",
-      "effort": "3h"
+      "effort": "3h",
+      "blockingFrom": "S2",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-036",
@@ -940,11 +1323,20 @@
           "an injected mid-download reset recovers; scheduler survives a Homebrew node upgrade"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-036.json",
-      "release": "4.5.4",
+      "proofArtifact": "closure-receipts/<run>/G-036.json",
+      "release": "S2",
       "status": "open",
       "tier": "sonnet",
-      "effort": "0.5d"
+      "effort": "0.5d",
+      "blockingFrom": "S2",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-037",
@@ -960,14 +1352,27 @@
         "realProcess": true,
         "evidenceClass": "EXECUTED",
         "asserts": [
-          "stranger ubuntu cell runs Node 18, 20, 22, 24, or engines is narrowed to what is tested"
+          "per D7: engines >=20 in package.json and Node 20, 22, 24 in the stranger matrix (or Node 18 added if D7 keeps it)"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-037.json",
-      "release": "4.6.0",
+      "proofArtifact": "closure-receipts/<run>/G-037.json",
+      "release": "S2",
       "status": "open",
       "tier": "sonnet",
-      "effort": "2h"
+      "effort": "2h",
+      "blockingFrom": "S2",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": {
+        "id": "D7",
+        "state": "pending-owner",
+        "decisionKey": null
+      },
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-038",
@@ -983,14 +1388,27 @@
         "realProcess": true,
         "evidenceClass": "EXECUTED",
         "asserts": [
-          "206-need set through the installed search of the published package, with intervals, reaches the owner plan exit criterion; no regression on the recall gate"
+          "206-need set through the installed search of the published package",
+          "right file in top 5: Wilson 95% lower bound strictly above the baseline upper bound (recorded baseline 4/206, upper bound 4.9%)",
+          "recall gate set: no per-store regression versus the baseline report"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-038.json",
-      "release": "4.6.0",
+      "proofArtifact": "closure-receipts/<run>/G-038.json",
+      "release": "P1",
       "status": "open",
       "tier": "opus",
-      "effort": "2d"
+      "effort": "2d",
+      "blockingFrom": "P1",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [
+        "G-039"
+      ],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-039",
@@ -1012,11 +1430,20 @@
           "recall report on the published generation reaches the target or the gap is an owner decision row"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-039.json",
-      "release": "4.6.0",
+      "proofArtifact": "closure-receipts/<run>/G-039.json",
+      "release": "P1",
       "status": "open",
       "tier": "opus",
-      "effort": "with G-038"
+      "effort": "with G-038",
+      "blockingFrom": "P1",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-040",
@@ -1037,11 +1464,20 @@
           "no defer anywhere; upgrading from settings with a legacy registration removes it; a real claude -p qdrant Bash call is not parked"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-040.json",
-      "release": "4.5.3",
+      "proofArtifact": "closure-receipts/<run>/G-040.json",
+      "release": "S2",
       "status": "open",
       "tier": "sonnet",
-      "effort": "2h"
+      "effort": "2h",
+      "blockingFrom": "S2",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-041",
@@ -1060,11 +1496,20 @@
           "footprint test with a planted 3 MB file rotates it"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-041.json",
-      "release": "4.5.4",
+      "proofArtifact": "closure-receipts/<run>/G-041.json",
+      "release": "S2",
       "status": "open",
       "tier": "sonnet",
-      "effort": "1h"
+      "effort": "1h",
+      "blockingFrom": "S2",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-042",
@@ -1085,11 +1530,20 @@
           "an install with an older updater gets the packaged one before --check"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-042.json",
-      "release": "4.5.4",
+      "proofArtifact": "closure-receipts/<run>/G-042.json",
+      "release": "S2",
       "status": "open",
       "tier": "sonnet",
-      "effort": "1h"
+      "effort": "1h",
+      "blockingFrom": "S2",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-043",
@@ -1108,11 +1562,20 @@
           "a network failure in --check leaves the previous verdict intact and deletes nothing"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-043.json",
-      "release": "4.5.4",
+      "proofArtifact": "closure-receipts/<run>/G-043.json",
+      "release": "S2",
       "status": "open",
       "tier": "sonnet",
-      "effort": "2h"
+      "effort": "2h",
+      "blockingFrom": "S2",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-044",
@@ -1131,11 +1594,20 @@
           "a portal stub records offline"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-044.json",
-      "release": "4.6.1",
+      "proofArtifact": "closure-receipts/<run>/G-044.json",
+      "release": "P2",
       "status": "open",
       "tier": "sonnet",
-      "effort": "1h"
+      "effort": "1h",
+      "blockingFrom": "P2",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-045",
@@ -1154,11 +1626,20 @@
           "claims:verify derives each stated number from code or a measured install"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-045.json",
-      "release": "4.6.1",
+      "proofArtifact": "closure-receipts/<run>/G-045.json",
+      "release": "P2",
       "status": "open",
       "tier": "sonnet",
-      "effort": "1h"
+      "effort": "1h",
+      "blockingFrom": "P2",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-046",
@@ -1177,11 +1658,20 @@
           "preflight and the identity job fail within a minute when a transaction is pending"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-046.json",
-      "release": "4.5.3",
+      "proofArtifact": "closure-receipts/<run>/G-046.json",
+      "release": "S1",
       "status": "open",
       "tier": "sonnet",
-      "effort": "1h"
+      "effort": "1h",
+      "blockingFrom": "S1",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-047",
@@ -1202,11 +1692,20 @@
           "doc:currency exits 0 in CI; PROGRESS top entry no older than the current release"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-047.json",
-      "release": "4.6.1",
+      "proofArtifact": "closure-receipts/<run>/G-047.json",
+      "release": "P2",
       "status": "open",
       "tier": "sonnet",
-      "effort": "3h"
+      "effort": "3h",
+      "blockingFrom": "P2",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-048",
@@ -1222,14 +1721,28 @@
         "realProcess": true,
         "evidenceClass": "EXECUTED",
         "asserts": [
-          "owner decision ADR; SessionStart wording matches it"
+          "owner decision D3 recorded with decisionKey",
+          "SessionStart routing line equals exactly one of two enumerated strings fixed by D3 (or is absent), asserted by snapshot"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-048.json",
-      "release": "4.6.0",
-      "status": "decision",
+      "proofArtifact": "closure-receipts/<run>/G-048.json",
+      "release": "P1",
+      "status": "open",
       "tier": "opus",
-      "effort": "0.5d"
+      "effort": "0.5d",
+      "blockingFrom": "P1",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": {
+        "id": "D3",
+        "state": "pending-owner",
+        "decisionKey": null
+      },
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-049",
@@ -1250,11 +1763,20 @@
           "a repeated identical invocation with a pre-seeded stale value fails the round trip"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-049.json",
-      "release": "4.5.4",
+      "proofArtifact": "closure-receipts/<run>/G-049.json",
+      "release": "P1",
       "status": "open",
       "tier": "sonnet",
-      "effort": "1h"
+      "effort": "1h",
+      "blockingFrom": "P1",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-050",
@@ -1275,11 +1797,20 @@
           "brainKnownSet(root) with a temp root reads that root"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-050.json",
-      "release": "4.6.1",
+      "proofArtifact": "closure-receipts/<run>/G-050.json",
+      "release": "P2",
       "status": "open",
       "tier": "sonnet",
-      "effort": "1h"
+      "effort": "1h",
+      "blockingFrom": "P2",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-051",
@@ -1300,11 +1831,20 @@
           "a fresh checkout of an old grade reads stale"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-051.json",
-      "release": "4.6.1",
+      "proofArtifact": "closure-receipts/<run>/G-051.json",
+      "release": "P2",
       "status": "open",
       "tier": "sonnet",
-      "effort": "1h"
+      "effort": "1h",
+      "blockingFrom": "P2",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
     },
     {
       "id": "G-052",
@@ -1325,11 +1865,502 @@
           "dream cycle compiles in its scheduled run, or the dream cycle is retired by owner decision"
         ]
       },
-      "proofArtifact": "closure-receipts/<version>/G-052.json",
-      "release": "4.6.1",
-      "status": "decision",
+      "proofArtifact": "closure-receipts/<run>/G-052.json",
+      "release": "P2",
+      "status": "open",
       "tier": "owner",
-      "effort": "15m"
+      "effort": "15m",
+      "blockingFrom": "P2",
+      "registeredAt": "2026-10-03",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "stuinfla"
+      },
+      "dependsOn": [],
+      "decision": {
+        "id": "D5",
+        "state": "pending-owner",
+        "decisionKey": null
+      },
+      "findingEvidenceClass": "EXECUTED"
+    },
+    {
+      "id": "G-053",
+      "gap": "Turn-store selection follows repository symlinks; the canonical store containment check (isWithin) is bypassed by the turn writer.",
+      "severity": "SECURITY",
+      "issues": [],
+      "requirement": [
+        "R11",
+        "R6"
+      ],
+      "evidence": "turn-outcome-capture.mjs:149-154 vs project-store-resolver.mjs:80-83 (code read; GPT-6.1-Sol)",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-053.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "file and directory symlink plus replacement-race fixtures: 0 writes outside the project root, no automatic global fallback"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<run>/G-053.json",
+      "release": "S1",
+      "blockingFrom": "S1",
+      "status": "open",
+      "tier": "opus",
+      "effort": "3h",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "registeredAt": "2026-10-03",
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "STATIC"
+    },
+    {
+      "id": "G-054",
+      "gap": "A complete progression record without a trailing newline is discarded by the outbox reader.",
+      "severity": "DATA-LOSS",
+      "issues": [],
+      "requirement": [
+        "R6"
+      ],
+      "evidence": "project-progression-outbox.mjs:57-65 (lines.pop() drops an unterminated final record); GPT executed the parser: 0 records without newline, 1 with",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-054.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "a complete unterminated record is recovered; a genuinely torn record is reported, not silently dropped"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<run>/G-054.json",
+      "release": "S2",
+      "blockingFrom": "S2",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "1h",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "registeredAt": "2026-10-03",
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
+    },
+    {
+      "id": "G-055",
+      "gap": "Continuity compaction drops still-uncommitted events once the 2000-event cap is exceeded.",
+      "severity": "DATA-LOSS",
+      "issues": [],
+      "requirement": [
+        "R6"
+      ],
+      "evidence": "continuity-journal.mjs:221-229 (pendingDrop) (code read)",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-055.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "sustained store refusal beyond the cap preserves every uncommitted event or applies explicit backpressure; recovery replays them exactly"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<run>/G-055.json",
+      "release": "S2",
+      "blockingFrom": "S2",
+      "status": "open",
+      "tier": "opus",
+      "effort": "3h",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "registeredAt": "2026-10-03",
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "STATIC"
+    },
+    {
+      "id": "G-056",
+      "gap": "Fast-lane citations name a path (<repo>/kb/<path>) that differs from the stored CARD identity (<repo>-card), so a citation can be unresolvable against the published concepts store.",
+      "severity": "FALSE-GREEN",
+      "issues": [],
+      "requirement": [
+        "R10",
+        "R2"
+      ],
+      "evidence": "kb/card-lane.mjs:750-753 vs scripts/corpus-aggregates.mjs:120 (code read)",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-056.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "every installed fast-lane answer resolves its cited path in the published concepts store; reverting the renderer turns the probe red"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<run>/G-056.json",
+      "release": "S1",
+      "blockingFrom": "S1",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "2h",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "registeredAt": "2026-10-03",
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "STATIC"
+    },
+    {
+      "id": "G-057",
+      "gap": "Existing plaintext copies are not covered by any fix: every store, WAL, the jsonl files, ruflo scratch metadata, the owner hook dedupe state (~/.claude/hooks/.agentdb-turn-capture-last.json holds full final text) and queued payloads already hold unredacted turns; the active global writer keeps adding them.",
+      "severity": "PRIVACY",
+      "issues": [
+        370
+      ],
+      "requirement": [
+        "R11",
+        "R6"
+      ],
+      "evidence": "~/.claude/hooks/agentdb-turn-capture.mjs:121-133 (read-only); real ~/.claude/global-memory/.swarm/agentdb-turns.jsonl mode 0644; Fable N4; GPT G-057",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-057.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "one-time `--scrub-turns` (owner-approved, D8) scans both project stores, the global store, WAL, jsonl, scratch metadata, dedupe state and queued payloads; writes a receipt listing counts per location",
+          "a planted token in an old-format row is absent from every location after the scrub",
+          "disabling collection survives restart and update"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<run>/G-057.json",
+      "release": "S1",
+      "blockingFrom": "S1",
+      "status": "open",
+      "tier": "opus",
+      "effort": "1d",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "stuinfla"
+      },
+      "registeredAt": "2026-10-03",
+      "dependsOn": [],
+      "decision": {
+        "id": "D8",
+        "state": "pending-owner",
+        "decisionKey": null
+      },
+      "findingEvidenceClass": "EXECUTED"
+    },
+    {
+      "id": "G-058",
+      "gap": "Paging can succeed without delivery: an absent topic exits 0, curl failure is suppressed with || true, and new workflows are not in the watched list.",
+      "severity": "DOES-NOT-FIRE",
+      "issues": [],
+      "requirement": [
+        "R9"
+      ],
+      "evidence": ".github/workflows/ntfy-alerts.yml:68 ([ -z \"$TOPIC\" ] && exit 0), :89 (curl … || true) (lead read)",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-058.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "missing topic and HTTP error fail the job",
+          "a nonce-bearing test notification is received by an independent subscriber within 5 min",
+          "requirements-probe and every scheduled workflow are in the watched list (enumerated check)"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<run>/G-058.json",
+      "release": "S2",
+      "blockingFrom": "S2",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "2h",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "registeredAt": "2026-10-03",
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
+    },
+    {
+      "id": "G-059",
+      "gap": "Release credential and key lifecycle is unqualified: npm publishes with a long-lived NPM_TOKEN and no --provenance although id-token: write is granted; actions use mutable tags; there is no signing-key rotation or revocation drill. Control gap, not demonstrated compromise.",
+      "severity": "SECURITY",
+      "issues": [],
+      "requirement": [
+        "R11",
+        "R9"
+      ],
+      "evidence": "protected-release.yml:335-368; release-transaction-provider.mjs:454 (Fable N3, GPT G-059)",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-059.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "per D6: npm view ruvnet-brain@<v> shows provenance attestations and npm audit signatures passes",
+          "actions pinned by commit SHA",
+          "a revoked signing key and a replayed old aggregate are both refused by the installer (executed)",
+          "threat model document reviewed and recorded"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<run>/G-059.json",
+      "release": "S1",
+      "blockingFrom": "S1",
+      "status": "open",
+      "tier": "opus",
+      "effort": "1d+D6",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "stuinfla"
+      },
+      "registeredAt": "2026-10-03",
+      "dependsOn": [],
+      "decision": {
+        "id": "D6",
+        "state": "pending-owner",
+        "decisionKey": null
+      },
+      "findingEvidenceClass": "EXECUTED"
+    },
+    {
+      "id": "G-060",
+      "gap": "R8 (\"every console element works\") has no enumerated interaction inventory; the 205-element QA ledger is hand-maintained, not derived from the rendered console.",
+      "severity": "FALSE-GREEN",
+      "issues": [],
+      "requirement": [
+        "R8"
+      ],
+      "evidence": "docs/requirements-ledger.json R8 had no gap or probe (GPT G-060)",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-060.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "inventory generated from the rendered console DOM of the published package; count compared with the QA ledger; 0 unlisted controls",
+          "each control exercised, resulting state verified, including one failure path per write control"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<run>/G-060.json",
+      "release": "P1",
+      "blockingFrom": "P1",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "0.5d",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "registeredAt": "2026-10-03",
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
+    },
+    {
+      "id": "G-061",
+      "gap": "The published security policy states the opposite of shipped behaviour: SECURITY.md says knowledge-bundle updates are detect-and-notify only and the unattended code-overwrite path is disabled, while host-update.mjs:121 runs the full updater unattended; README:425 calls the consent a question, but it is a model instruction.",
+      "severity": "SECURITY",
+      "issues": [],
+      "requirement": [
+        "R10",
+        "R11"
+      ],
+      "evidence": "SECURITY.md:104-108,127-129 vs plugin/scripts/host-update.mjs:121 (lead read); Fable N1",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-061.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "every consent/update statement in SECURITY.md and README maps to a named probe on the published package; a probe is red until text and behaviour agree"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<run>/G-061.json",
+      "release": "S1",
+      "blockingFrom": "S1",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "2h",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "registeredAt": "2026-10-03",
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
+    },
+    {
+      "id": "G-062",
+      "gap": "Unattended self-update executes whatever npm latest is, with no check that the version is install-verified (that guarantee exists only for the corpus).",
+      "severity": "SECURITY",
+      "issues": [],
+      "requirement": [
+        "R11",
+        "R3"
+      ],
+      "evidence": "host-update.mjs:121,140-143; CONTRIBUTING.md:127 (Fable N2)",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-062.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "self-heal resolves the target through the signed install-verified aggregate and refuses otherwise",
+          "mutant: an npm latest without an install-verified aggregate spawns nothing"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<run>/G-062.json",
+      "release": "S1",
+      "blockingFrom": "S1",
+      "status": "open",
+      "tier": "opus",
+      "effort": "0.5d",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "registeredAt": "2026-10-03",
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
+    },
+    {
+      "id": "G-063",
+      "gap": "The first Stop in a project without .swarm creates agentdb-memory.db, ruvector.db (1.59 MB) and ~/.claude-flow/update-state.json; footprint and --uninstall do not list them. Turn capture runs ruflo with cwd = the store directory by design (containment), which leaves ruvector.db beside the store.",
+      "severity": "CUSTOMER-VISIBLE",
+      "issues": [
+        329
+      ],
+      "requirement": [
+        "R5",
+        "R11"
+      ],
+      "evidence": "Fable probe; real ~/.claude/global-memory/.swarm/ruvector.db and ~/.claude-flow/update-state.json present (lead ls); turn-outcome-capture.mjs:281-283",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-063.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "footprint names every file a Stop creates; --uninstall removes the Brain-owned ones",
+          "after Stop from both writers (progression and turn capture) no .swarm/.swarm exists"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<run>/G-063.json",
+      "release": "S1",
+      "blockingFrom": "S1",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "2h",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "registeredAt": "2026-10-03",
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
+    },
+    {
+      "id": "G-064",
+      "gap": "The SessionStart banner composition (#198) has no acceptance probe; the issue names seven suites and only four were run.",
+      "severity": "FALSE-GREEN",
+      "issues": [
+        198
+      ],
+      "requirement": [
+        "R10",
+        "R6"
+      ],
+      "evidence": "gh issue view 198 names 7 suites (lead); fork A ran 4 (Fable N8, GPT)",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-064.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "installed hook-shim SessionStart with each conditional section forced on (HEALTH ALARM, issue counts, CI-red, star-ask) prints each; all 7 named suites pass on the candidate"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<run>/G-064.json",
+      "release": "S1",
+      "blockingFrom": "S1",
+      "status": "open",
+      "tier": "sonnet",
+      "effort": "2h",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "registeredAt": "2026-10-03",
+      "dependsOn": [],
+      "decision": null,
+      "findingEvidenceClass": "EXECUTED"
+    },
+    {
+      "id": "G-065",
+      "gap": "Turn rows accumulate forever (distill reads, never prunes) and survive uninstall; there is no retention period or owner-controlled erase.",
+      "severity": "PRIVACY",
+      "issues": [
+        370
+      ],
+      "requirement": [
+        "R11",
+        "R6",
+        "R5"
+      ],
+      "evidence": "turn-outcome-capture.mjs:245 (Fable N10)",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-065.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "retention per D8 (recommended 90 days) enforced at SessionEnd; rows older than the period absent after one boundary",
+          "`--erase-turns` removes all turn data with a receipt; --uninstall offers it"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<run>/G-065.json",
+      "release": "S1",
+      "blockingFrom": "S1",
+      "status": "open",
+      "tier": "opus",
+      "effort": "0.5d+D8",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "stuinfla"
+      },
+      "registeredAt": "2026-10-03",
+      "dependsOn": [],
+      "decision": {
+        "id": "D8",
+        "state": "pending-owner",
+        "decisionKey": null
+      },
+      "findingEvidenceClass": "EXECUTED"
     }
-  ]
+  ],
+  "revision": 2,
+  "immutableFields": [
+    "id",
+    "registeredAt",
+    "severity:rise-only",
+    "acceptanceTest.asserts:append-only"
+  ],
+  "reviewMapping": {
+    "Fable N1": "G-061",
+    "Fable N2": "G-062",
+    "Fable N3": "G-059",
+    "Fable N4": "G-057",
+    "Fable N5": "G-063",
+    "Fable N6": "schema: registeredAt",
+    "Fable N7": "G-029 (next branch)",
+    "Fable N8": "G-064",
+    "Fable N9": "G-037 + D7",
+    "Fable N10": "G-065",
+    "Fable N11": "G-022 latency asserts",
+    "GPT G-053..G-060": "G-053..G-060"
+  }
 }
