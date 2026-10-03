@@ -1,6 +1,6 @@
 # Contributing to RuvNet Brain — the one rulebook
 
-Updated: 2026-10-01
+Updated: 2026-10-03
 Created: 2026-07-07
 
 This file is the **only** place that says how to version, release, update the knowledge corpus,
@@ -291,10 +291,20 @@ only; `npm run completion-claim:replay` measures both on real transcripts). Sess
 `[RuvNet Brain — KNOWLEDGE …]` line when the installed knowledge cannot be proven current (older than
 48h, or the latest refresh receipt FAILED) and names the fix. The same snapshot capture records each
 turn's outcome at Stop (final assistant text, files changed, command descriptions — never user
-text) to AgentDB namespace `turns` — the project's `.swarm/memory.db` if it exists, otherwise
-`~/.claude/global-memory/.swarm/memory.db`; `.swarm` is never created in a repository — and at
-SessionEnd/PreCompact runs `ruflo memory distill run` on that db so the records become patterns.
-Writes run in a detached worker; `RUVNET_TURN_CAPTURE=off` disables it. Where the owner's user-level
+text) to AgentDB namespace `turns` in the store of the canonical adopted root (`project-store-resolver.mjs`:
+a linked worktree writes to its repository's `.swarm/memory.db`); a symlinked, hard-linked or escaping store
+is refused with no fallback, and a project without `.swarm/memory.db` records nothing unless
+`node plugin/scripts/turn-capture-state.mjs --unadopted global` opts in to
+`~/.claude/global-memory/.swarm/memory.db` (the conservative default pending owner decision D8); `.swarm` is
+never created in a repository — and at SessionEnd/PreCompact runs `ruflo memory distill run` on that db so
+the records become patterns. The record is redacted (`redactText`) before anything is written;
+`agentdb-turns.jsonl` holds only `{ts,key,hash,len}` (0600); the text reaches ruflo in a 0600 spool file via
+`ruflo memory import`, never on a process argv. Redaction removes credential-shaped strings only — names,
+health details and client matters in an outcome are kept in the store (ADR-0102 (i)). A write counts only
+after an exact read-back; a failure's first stderr line is in `~/.cache/ruvnet-brain/turn-capture/receipts.jsonl`
+and doctor and SessionStart print `turn recording failing N/M`. Writes run in a detached worker;
+`RUVNET_TURN_CAPTURE=off` disables it for a process, and `turn-capture-state.mjs --capture off [--project <dir>]`
+persistently (read at every Stop). Where the owner's user-level
 `~/.claude/hooks/agentdb-turn-capture.mjs` is registered in `~/.claude/settings.json`, the product defers
 Claude turn records to it (one writer per turn; `RUVNET_TURN_CAPTURE=force` keeps both). The same
 boundaries also record MATERIAL EVENTS (ADR-100, `continuity-events.mjs` / `continuity-journal.mjs`):
