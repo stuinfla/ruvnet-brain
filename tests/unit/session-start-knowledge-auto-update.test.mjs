@@ -33,6 +33,7 @@ const built = (msAgo, extra = {}) => fs.writeFileSync(path.join(kb, 'SOURCE.json
   JSON.stringify({ builtUtc: new Date(NOW - msAgo).toISOString(), releaseTag: 'v4.0.1', ...extra }));
 const attemptFile = () => path.join(brain, 'auto-update.json');
 const lockFile = () => path.join(brain, 'auto-update.lock');
+const checkFile = () => path.join(brain, 'corpus-check.json');
 const writeAttempt = (value) => fs.writeFileSync(attemptFile(), JSON.stringify(value));
 const iso = (msAgo) => new Date(NOW - msAgo).toISOString();
 
@@ -65,8 +66,9 @@ const successReceipt = (msAgo) => {
 };
 
 describe('SessionStart knowledge auto-update — launch decision', () => {
-  it('fresh knowledge base (2h) does not launch; 30h-old launches exactly once, detached, via host-update --knowledge', () => {
+  it('fresh knowledge base (2h) checked 10 min ago does not launch; 30h-old launches exactly once, detached, via host-update --knowledge', () => {
     built(2 * H);
+    fs.writeFileSync(checkFile(), JSON.stringify({ schemaVersion: 1, launchedAt: iso(10 * 60_000), outcome: 'current' }));
     const fresh = fakeSpawn();
     expect(run({}, fresh.fn)).toMatchObject({ launched: false, why: 'fresh' });
     expect(fresh.calls).toHaveLength(0);

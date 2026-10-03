@@ -251,6 +251,22 @@ describe('signature provenance: missing advises, mismatching gates (4.5.1)', () 
     }, 120_000);
   }
 
+  // 4.5.2: the REAL doctor runs the release-coverage check (validateCoverageDirectory). A projection on disk that
+  // fails it is ✗ even with a matching record; a directory without one gets the narrower wording, not a failure.
+  it('real doctor: a broken release projection is ✗; no projection → "install record matches COVERAGE.json"', async () => {
+    const { completeBrain } = await import('../helpers/doctor-brain-fixture.mjs');
+    const b = completeBrain({ modelsReady: true });
+    try {
+      const k = () => JSON.parse(b.doctor(['--json']).stdout).lines.find((l) => l.id === 'knowledge');
+      expect(k()).toMatchObject({ state: 'ok', detail: expect.stringMatching(/install record matches COVERAGE\.json/) });
+      fs.writeFileSync(path.join(b.kbDir, 'CORPUS-COVERAGE.json'), '{"kind":"not-a-corpus-coverage"}');
+      const text = b.doctor();
+      expect(k()).toMatchObject({ state: 'fail', fix: 'npx ruvnet-brain@latest --update', detail: expect.stringMatching(/fail the release-coverage check/) });
+      expect(text.status).toBe(1);
+      expect(text.text).toMatch(/✗ Knowledge .*fail the release-coverage check/);
+    } finally { b.cleanup(); }
+  }, 120_000);
+
   // The release's install-verification lane installs a local sealed artifact without verifying it (so no
   // record), and a customer KB advanced by the AUTOMATIC updater never passes through install.mjs: both must
   // still pass `--doctor --hooks` (what scripts/publication-receipt.mjs requires: exit 0), with the ! line.
@@ -308,6 +324,56 @@ describe('the doctor names an interrupted move\'s set-aside Brain', () => {
       expect(fs.existsSync(path.join(old, 'kb', 'SOURCE.json'))).toBe(true); // reported, never touched
     } finally { b.cleanup(); }
   }, 120_000);
+});
+
+// 4.5.2 (Fable review): after an interrupted move, a hook or the search server RECREATES the home on a failure path
+// (health.json, a notice file). A home that exists but holds no Brain is still a missing Brain: the doctor names the
+// restore (clear the recreated home, mv the leftover back), never `rm` of the leftover and never a reinstall; the
+// installer refuses to install or update over it; SessionStart says restore, not reinstall.
+describe('a home recreated without a Brain after an interrupted move', () => {
+  const q = (p) => `'${p}'`;
+  for (const [label, recreate, clear] of [
+    ['recreated EMPTY', () => {}, (home) => `rmdir -- ${q(home)}`],
+    ['recreated by a hook (health.json inside)', (home) => fs.writeFileSync(path.join(home, 'health.json'), '{"status":"down"}'),
+      (home) => `mv -- ${q(home)} ${q(`${home}.recreated-${2 ** 30}`)}`],
+  ]) {
+    it(`${label}: doctor → ✗ restore (text and JSON), installer refuses, SessionStart says restore`, async () => {
+      const { completeBrain } = await import('../helpers/doctor-brain-fixture.mjs');
+      const { health } = await import('../../plugin/scripts/session-start-health.mjs');
+      const b = completeBrain();
+      try {
+        const brainHome = path.join(b.home, '.cache', 'ruvnet-brain');
+        const old = `${brainHome}.old-${2 ** 30}`;                           // set aside by a move that died
+        fs.mkdirSync(old, { recursive: true }); fs.renameSync(b.kbDir, path.join(old, 'kb'));
+        fs.mkdirSync(brainHome, { recursive: true }); recreate(brainHome);    // ... and the home came back without it
+        const extraEnv = { RUVNET_BRAIN_HOME: brainHome, RUVNET_BRAIN_KB: path.join(brainHome, 'kb') };
+        const restore = `${clear(brainHome)} && mv -- ${q(old)} ${q(brainHome)}`;
+        const text = b.doctor([], { extraEnv });
+        const json = JSON.parse(b.doctor(['--json'], { extraEnv }).stdout);
+        expect(json.lines.find((l) => l.id === 'move-leftover'), text.text.slice(-1500)).toMatchObject({ state: 'fail', fix: restore });
+        expect(json.lines.find((l) => l.id === 'install').fix).toBe(restore);
+        expect(text.text).toContain(`fix: ${restore}`);
+        expect(text.text).not.toContain(`rm -rf -- ${q(old)}`);
+        expect(text.text).not.toMatch(/run the installer first|npx ruvnet-brain\s*$/m);
+        expect([text.status, json.exitCode]).toEqual([1, 1]);
+
+        for (const args of [['--update'], ['--yes', '--no-nightly-prompt']]) {
+          const r = spawnSync(process.execPath, [path.join(ROOT, 'bin', 'install.mjs'), ...args],
+            { cwd: b.project, env: { ...b.env, ...extraEnv }, encoding: 'utf8', timeout: 60_000 });
+          const out = `${r.stdout}${r.stderr}`;
+          expect(r.status, `${args.join(' ')}: ${out.slice(-1200)}`).toBe(1);
+          expect(out).toContain('restore it, do NOT reinstall');
+          expect(out).toContain(restore);
+        }
+        expect(fs.readdirSync(path.join(old, 'kb')).length).toBeGreaterThan(1);  // never touched
+        expect(fs.existsSync(path.join(brainHome, 'kb'))).toBe(false);          // nothing installed beside it
+
+        const said = health(b.home, false).problem;
+        expect(said).toContain(`interrupted move left the ONLY copy at ${old}`);
+        expect(said).not.toMatch(/reinstall: npx/);
+      } finally { b.cleanup(); }
+    }, 180_000);
+  }
 });
 
 // Re-review S2: "AgentDB: recording stuck" was printed as narration but was not a line of the ONE verdict, so
