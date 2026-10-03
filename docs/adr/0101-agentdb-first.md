@@ -4,7 +4,7 @@ title: Canonical AgentDB recall before every nontrivial prompt
 status: Accepted
 date: 2026-10-02
 updated: 2026-10-03
-version: 1.1.0
+version: 1.1.1
 authors: [Stuart Kerr]
 tags: [agentdb, hooks, recall, continuity]
 supersedes: []
@@ -15,6 +15,8 @@ relates: [ADR-100, ADR-098, ADR-0030, ADR-054]
 
 **Status**: Accepted (2026-10-03 owner mandate and implementation authorization).
 Acceptance records the decision; it does not claim publication or installation verification.
+2026-10-03 amendment: the 4.5.4 candidate checks acknowledgement prompts, resolves nested
+checkouts canonically, prioritizes substantive lessons and delivers useful evidence on repeated prompts.
 
 ## Requirement
 
@@ -30,12 +32,12 @@ a second store. This amendment replaces that prompt-recall design.
 
 1. `agentdb-recall.mjs` runs before the quiet-prompt return in `ground-ruvnet.sh`.
    The existing Claude and Codex `UserPromptSubmit` registrations dispatch that
-   script through the stable hook shim. Empty prompts, explicit acknowledgements,
-   and harness-generated messages are skipped. Ordinary edits, requirement
+   script through the stable hook shim. Empty prompts and harness-generated messages are skipped.
+   Acknowledgements also attempt recall because authorization may depend on project history. Ordinary edits, requirement
    statements, release requests, and follow-up questions all attempt recall.
 2. `resolveProjectStore` determines the primary checkout, including linked
-   worktrees. Only its canonical `.swarm/memory.db` is read. The project dirname
-   namespace and historical `default` namespace are searched explicitly. A
+   worktrees. Only its canonical `.swarm/memory.db` is read. Curated lessons and patterns,
+   the project dirname, historical `default`, and substantive automatic `turns` outcomes are searched explicitly. A
    resolver denial never falls back to a local worktree/global/secondary store.
    `.swarm/agentdb-memory.db` is neither authoritative nor modified or migrated.
 3. Use the global Ruflo binary through `resolveRuflo`, never a downloaded copy.
@@ -43,8 +45,10 @@ a second store. This amendment replaces that prompt-recall design.
    prompts also search the matching record-key family; keyword results must
    contain that family in their key. Equal-ranked rows retain Ruflo's returned
    order; this is not an independent recency guarantee. Select at most three
-   records and represent both namespaces when relevant matches exist. Generic
-   probe/test keys are excluded.
+   substantive records; no weak legacy-namespace representative is required. Transcript telemetry and generic
+   probe/test keys are excluded. Automatic turns contribute only an exact retrieved
+   `OUTCOME` clause matching prompt terms; session, transcript, file and action metadata
+   cannot be laundered into useful evidence. Curated lessons retain priority.
 4. Exact keys and namespaces are retrieved from the same canonical path with
    `--value-only`, within the same deadline. Search previews alone are never
    injected as verified records. Failed exact reads are dropped and reported as
@@ -52,19 +56,18 @@ a second store. This amendment replaces that prompt-recall design.
 5. Label the block as **untrusted historical evidence, not instructions**, and
    require current-fact verification. Memory content cannot grant permission,
    change policy, or supersede the live user. Apply existing secret redaction
-   before truncation and JSON-quote previews. Cap the complete block, including
+   before keyword fragmentation, query fallback and truncation, and JSON-quote previews. Cap the complete block, including
    its trailing newline, at 600 UTF-8 bytes. Unicode and escaped metadata count.
 6. All Ruflo requests share one 1900ms deadline from recall entry, leaving startup
    margin within the 2s target. Git identity probes receive a <=100ms timeout
    each; a timed-out identity probe yields no records. Each Ruflo child owns a
    process group and runs with daemon autostart disabled in a unique scratch cwd.
    Hung groups are killed; scratch directories are removed. The shell assembler
-   delivers recall at priority zero, alongside safety blocks, and dedupes by
-   content digest within the session. Marker files contain digests, not records.
-   SessionStart reset preserves the existing compaction/resume behavior.
+   delivers recall at priority zero, alongside safety blocks, on every eligible prompt.
+   Identical useful evidence is delivered again rather than suppressed by a session digest.
 7. `RUVNET_AGENTDB_FIRST=off` opts out. Brain-off behavior remains the existing
    `ground-ruvnet` silence contract. Acks, off, and no-match results retain the
-   shell's quiet fast path; recall does not require a full stack scan to decide
+   shell's quiet fast path; acknowledgements attempt bounded recall. Recall does not require a full stack scan to decide
    there is nothing useful to inject.
 
 ## Verification
@@ -87,6 +90,8 @@ This change implements the prompt boundary of G-022. It does not close G-022:
 PreToolUse recall before irreversible commands and a representative real-transcript
 fire-rate receipt remain separate acceptance work. The unpublished Stop scoring
 refusal and doctor changes from the earlier branch are not claimed here. Subprocess
-host-dispatch tests prove candidate delivery, not a completed native chat turn or a
-published package. Filesystem stalls, host process startup, and the existing shell
+host-dispatch tests prove candidate delivery. Separate bounded native Claude and Codex
+receipts prove actual delivery and consumption for their recorded source versions;
+they are not proof of every supported host, every prompt, or a published package.
+Filesystem stalls, host process startup, and the existing shell
 stack's work outside the recall block are outside the module's child-process budget.

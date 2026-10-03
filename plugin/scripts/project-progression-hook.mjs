@@ -63,7 +63,7 @@ export function readProgressionAdapterVersion() {
   return requireString(parsed?.version, 'progression adapter version');
 }
 
-function normalizeSourceIdentity(value, checkoutRoot) {
+function normalizeSourceIdentity(value, checkoutRoot, projectDir) {
   requireRecord(value, 'sourceIdentity');
   const checkoutPath = requireString(value.checkoutPath, 'sourceIdentity.checkoutPath');
   let canonicalCheckout;
@@ -73,7 +73,7 @@ function normalizeSourceIdentity(value, checkoutRoot) {
   if (canonicalCheckout !== checkoutRoot) {
     throw new Error('source identity checkout path does not match the active checkout path');
   }
-  return { ...value, checkoutPath: canonicalCheckout };
+  return { ...value, checkoutPath: canonicalCheckout, capturePath: fs.realpathSync.native(projectDir) };
 }
 
 const OBSERVATION_TEXT_LIMIT = 4_096;
@@ -189,7 +189,7 @@ export function captureProjectTransition({
 
   const sourceIdentity = normalizeSourceIdentity(
     aliased(progression, 'sourceIdentity', 'source_identity'),
-    store.resolution.checkoutRoot,
+    store.resolution.checkoutRoot, projectDir,
   );
   const snapshot = createProgressionSnapshot({
     projectIdentity: store.resolution.projectIdentity,

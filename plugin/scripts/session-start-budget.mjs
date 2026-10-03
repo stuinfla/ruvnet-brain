@@ -31,9 +31,9 @@ export function sessionStartTimeoutMs(hooksJsonPath = HOOKS_JSON_PATH) {
 }
 
 // Per-stage budgets, ms. Every stage session-start-core.mjs (or continuity's restore) can run
-// appears here exactly once. Reviewer-mandated ceilings: restore <= 1000, banner <= 200.
+// appears here exactly once. Restore includes bounded durable replay; banner remains <= 200.
 export const STAGE_BUDGETS_MS = {
-  restore: 1000,          // continuity lane's project-progression restore — NOT this lane's code
+  restore: 3500,          // measured turn replay (1.5–2s) + progression write/readback + bounded restore
   misc: 250,              // settings/nightly/health/console-offer/auto-pref/star — small fs reads
   // The cache read itself is budgeted at 100ms internally (session-start-issue-alert.mjs's own
   // ISSUE_POINTER_BUDGET_MS, per correction #2's exact wording); this stage's total also carries

@@ -2443,11 +2443,11 @@ export function automaticHookRetirementStatus(root = REPO_ROOT, { scope = 'sourc
     if (pairs.length !== expectedPairs.length || expectedPairs.some((pair) => !pairs.includes(pair))) {
       errors.push(`${contractsFile}: contracts must list exactly the continuity handlers (${expectedPairs.join(', ')})`);
     }
-    // One allowlist entry per DISTINCT (event, matcher): the matcher is a property of the event, so
-    // three snapshot registrations on three events need three entries, not three copies of one.
-    const expectedMatchers = [...new Set(continuityRegistrations().map((spec) => `${spec.event}:${spec.matcher}`))];
+    // Matchers belong to a host registry: one host's exception grants no authority to another.
+    const expectedMatchers = [['plugin', 'claude'], ['codex', 'codex']].flatMap(([layer, host]) =>
+      [...new Set(continuityRegistrations(host).map((spec) => `${layer}:${spec.event}:${spec.matcher}`))]);
     const declaredMatchers = Array.isArray(contracts.matcherAllowlist)
-      ? contracts.matcherAllowlist.map((row) => `${row?.event}:${row?.matcher}`) : [];
+      ? contracts.matcherAllowlist.map((row) => `${row?.layer}:${row?.event}:${row?.matcher}`) : [];
     if (declaredMatchers.length !== expectedMatchers.length
       || expectedMatchers.some((entry) => !declaredMatchers.includes(entry))) {
       errors.push(`${contractsFile}: matcherAllowlist must list exactly the continuity matchers (${expectedMatchers.join(', ')})`);
