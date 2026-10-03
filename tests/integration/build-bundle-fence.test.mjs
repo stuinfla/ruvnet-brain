@@ -95,10 +95,22 @@ afterEach(() => { fs.rmSync(tmp, { recursive: true, force: true }); });
 function runBuildBundle(env = {}, args = []) {
   // spawnSync (not execFileSync) — execFileSync only returns stdout on a zero exit, and the
   // ALLOW_NO_PRIVATE_FENCE warning is written to stderr on the SUCCESS path via console.warn.
-  const r = spawnSync('node', ['scripts/build-bundle.mjs', ...args], {
+  const r = spawnSync(process.execPath, ['scripts/build-bundle.mjs', ...args], {
     cwd: tmp, env: { ...process.env, ...env }, encoding: 'utf8',
+    timeout: 30_000,
   });
+  expect(r.error, r.stderr || r.stdout).toBeUndefined();
+  expect(r.signal, r.stderr || r.stdout).toBeNull();
   return { code: r.status, stdout: r.stdout || '', stderr: r.stderr || '' };
+}
+
+// These discovery fixtures deliberately omit public sidecars. Partial manifest/README output
+// proves selection only; the same run must refuse to create a publishable archive.
+function expectIncompletePublicBundle(result) {
+  expect(result.code, result.stderr).toBe(1);
+  expect(result.stderr).toMatch(/FATAL.*missing required bundle files/i);
+  expect(result.stderr).toContain('public-repo.big.rvf.idmap.json');
+  expect(fs.existsSync(path.join(tmp, 'dist/ruvnet-brain.zip'))).toBe(false);
 }
 
 function stampGenerationLedger(assets, stores) {
@@ -152,13 +164,14 @@ describe('build-bundle.mjs — private-store fence (fail-closed)', () => {
     expect(r.stderr).toMatch(/no valid "privateStores" array/i);
   });
 
-  it('excludes a named private store from discovery and never surfaces it in the manifest/README', () => {
+  it('excludes a named private store from partial discovery output, then refuses missing public sidecars', () => {
     fs.writeFileSync(path.join(tmp, 'kb/PRIVATE-STORES.json'), JSON.stringify({ privateStores: ['cognitum-seed'] }));
     // Placeholder store files — discoverBuilt() matches by filename only, never opens them.
     fs.writeFileSync(path.join(tmp, 'kb/cognitum-seed.big.rvf'), '');
     fs.writeFileSync(path.join(tmp, 'kb/public-repo.big.rvf'), '');
     stampGenerationLedger(path.join(tmp, 'kb'), ['cognitum-seed', 'public-repo']);
     const r = runBuildBundle();
+    expectIncompletePublicBundle(r);
     expect(r.stdout).toMatch(/EXCLUDED 1 PRIVATE store\(s\): cognitum-seed/);
     const manifest = JSON.parse(fs.readFileSync(path.join(tmp, 'dist/ruvnet-brain/manifest.json'), 'utf8'));
     const names = manifest.builtRepos.map((b) => b.name.toLowerCase());
@@ -170,7 +183,7 @@ describe('build-bundle.mjs — private-store fence (fail-closed)', () => {
 });
 
 describe('build-bundle.mjs — publishable artifact gate (fail-closed)', () => {
-  it('ignores AppleDouble RVF metadata even when it sits beside canonical assets', () => {
+  it('ignores AppleDouble RVF metadata in partial discovery, then refuses missing public sidecars', () => {
     const assets = path.join(tmp, 'release-assets');
     fs.mkdirSync(assets);
     fs.writeFileSync(path.join(tmp, 'kb/PRIVATE-STORES.json'), JSON.stringify({ privateStores: [] }));
@@ -180,13 +193,14 @@ describe('build-bundle.mjs — publishable artifact gate (fail-closed)', () => {
     sealExternalAssets(assets, ['public-repo']);
 
     const r = runBuildBundle({}, ['--assets', assets]);
+    expectIncompletePublicBundle(r);
 
     expect(r.stdout).not.toContain('._public-repo');
     const manifest = JSON.parse(fs.readFileSync(path.join(tmp, 'dist/ruvnet-brain/manifest.json'), 'utf8'));
     expect(manifest.builtRepos.map(({ name }) => name)).toEqual(['public-repo']);
   });
 
-  it('assembles explicitly supplied external release assets while keeping the source-tree private fence authoritative', () => {
+  it('selects external assets through the source private fence, then refuses missing public sidecars', () => {
     const assets = path.join(tmp, 'release-assets');
     fs.mkdirSync(assets);
     fs.writeFileSync(path.join(tmp, 'kb/PRIVATE-STORES.json'), JSON.stringify({ privateStores: ['private-repo'] }));
@@ -196,6 +210,7 @@ describe('build-bundle.mjs — publishable artifact gate (fail-closed)', () => {
     sealExternalAssets(assets, ['private-repo', 'public-repo']);
 
     const r = runBuildBundle({}, ['--assets', assets]);
+    expectIncompletePublicBundle(r);
 
     expect(r.stdout).toMatch(/EXCLUDED 1 PRIVATE store\(s\): private-repo/);
     const manifest = JSON.parse(fs.readFileSync(path.join(tmp, 'dist/ruvnet-brain/manifest.json'), 'utf8'));

@@ -1,0 +1,30 @@
+{
+  "schema": 2,
+  "sourceSha": "0eb0b6bd686df0fcf48655987bd1aeabb880ae20",
+  "trap": "memory-search-query",
+  "mutant": "brain-off-treated",
+  "run": 1,
+  "arm": "control",
+  "record": {
+    "class": "positional",
+    "subcommandCorrect": true,
+    "command": "ruflo memory search \"caching strategy\" --path \"$PWD/.swarm/memory.db\"",
+    "exec": {
+      "ran": true,
+      "argv": [
+        "ruflo",
+        "memory",
+        "search",
+        "caching strategy",
+        "--path"
+      ],
+      "exit": 1,
+      "exitOk": false,
+      "retrieved": false,
+      "why": "exit 1; output matched failure shape /Required option missing/i",
+      "output": "[ERROR] Required option missing: --query\n"
+    },
+    "model": "gpt-6.1-sol",
+    "lessonDelivered": false
+  }
+}

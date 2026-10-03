@@ -293,16 +293,31 @@ describe('4. Codex SessionEnd budget (3s cap, 2200ms handed down)', () => {
 
 describe('5. one writer per turn', () => {
   const OUTCOME = 'Concluded the fixture refactor: the journal now commits through one drainer and every write is read back by its exact key before the commit line is written, so a refused store leaves a durable outbox copy that the next boundary retries.';
-  const fireTurn = (home, env = {}) => {
-    const project = tmp('cont-turn-proj-');
+  const fireTurn = (home, env = {}, { adopted = true } = {}) => {
+    // One-writer behavior applies only after the project has adopted its canonical store.
+    // A bare directory now correctly fails closed instead of falling back to global memory (G-002).
+    const project = adopted ? adoptedProject({ home }).dir : tmp('cont-turn-proj-');
     const launches = [];
     const r = captureTurnOutcome({ projectDir: project, event: 'Stop', payload: { session_id: 't1', last_assistant_message: OUTCOME },
       host: 'claude', env, home, brainHome: tmp('cont-brain-'), ruflo: '/fake/ruflo', launch: (steps) => { launches.push(steps); return { launched: true }; } });
-    return { r, stores: launches.flat().filter((s) => s.kind === 'store') };
+    return { r, project, stores: launches.flat().filter((s) => s.kind === 'store') };
   };
 
-  it('records the turn when no user-level turn writer exists', () => {
-    expect(fireTurn(tmp('cont-home-')).stores).toHaveLength(1);
+  it('queues the turn to the adopted canonical store when no user-level turn writer exists', () => {
+    const captured = fireTurn(tmp('cont-home-'));
+    expect(captured.stores).toHaveLength(1);
+    expect(captured.r).toMatchObject({ queued: true, recorded: false, scope: 'project' });
+    const args = captured.stores[0].args;
+    expect(args[args.indexOf('--path') + 1]).toBe(path.join(captured.project, '.swarm', 'memory.db'));
+  });
+
+  it('an unadopted project queues nothing even with force and creates no global store', () => {
+    const home = tmp('cont-home-');
+    const skipped = fireTurn(home, { RUVNET_TURN_CAPTURE: 'force' }, { adopted: false });
+    expect(skipped.stores).toHaveLength(0);
+    expect(skipped.r).toMatchObject({ queued: false, recorded: false, skipped: 'no project memory db; persisted opt-in required' });
+    expect(fs.existsSync(path.join(skipped.project, '.swarm'))).toBe(false);
+    expect(fs.existsSync(path.join(home, '.claude', 'global-memory'))).toBe(false);
   });
 
   // RED before ADR-100: both writers recorded every Claude turn (624 rows / 323 outcomes measured).
@@ -313,7 +328,11 @@ describe('5. one writer per turn', () => {
     const deferred = fireTurn(home);
     expect(deferred.stores).toHaveLength(0);
     expect(deferred.r).toMatchObject({ recorded: false, deferredToUserLevel: true });
-    expect(fireTurn(home, { RUVNET_TURN_CAPTURE: 'force' }).stores).toHaveLength(1);
+    const forced = fireTurn(home, { RUVNET_TURN_CAPTURE: 'force' });
+    expect(forced.stores).toHaveLength(1);
+    expect(forced.r).toMatchObject({ queued: true, recorded: false, scope: 'project' });
+    const args = forced.stores[0].args;
+    expect(args[args.indexOf('--path') + 1]).toBe(path.join(forced.project, '.swarm', 'memory.db'));
   });
 });
 
@@ -322,15 +341,12 @@ describe('real global ruflo (skipped where absent)', () => {
   (ruflo ? it : it.skip)('drains through the real CLI into a disposable store and reads back by exact key', () => {
     const p = adoptedProject();
     const db = path.join(p.dir, '.swarm', 'memory.db');
-    fs.rmSync(db);
-    const init = spawnSync(ruflo, ['memory', 'init', '--backend', 'agentdb', '--path', db], {
-      cwd: tmp('cont-init-'), encoding: 'utf8', timeout: 120_000, env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' } });
-    expect(init.status, init.stderr || init.stdout).toBe(0);
-    if (!fs.existsSync(db)) createStore(db);
+    // The journal drains an existing adopted store, as in production. Preserve that fixture
+    // instead of deleting it and invoking an unrelated embedding-backend initializer.
     const journal = new ContinuityJournal({ projectRoot: p.dir });
     journal.record([lesson('Real CLI round trip.')]);
     const result = drain(journal, { ruflo, budgetMs: 100_000 });
-    expect(result, JSON.stringify(journal.scan().failures)).toMatchObject({ committed: 1, remaining: 0 });
+    expect(result, JSON.stringify([...journal.scan().failures.values()])).toMatchObject({ committed: 1, remaining: 0 });
     expect(rows(db, CONTINUITY_NAMESPACE).map((r) => JSON.parse(r.content).summary)).toEqual(['Real CLI round trip.']);
   }, 180_000);
 });

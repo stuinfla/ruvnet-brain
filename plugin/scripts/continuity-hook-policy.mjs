@@ -125,6 +125,7 @@ export const CONTINUITY_EVENTS = Object.freeze({
     registration('session-start', 'startup|resume|clear|compact|fork', ['claude', 'codex']),
   ]),
   UserPromptSubmit: Object.freeze([
+    registration('session-snapshot', '*', ['claude', 'codex']),
     registration('unprompted-speech', '*', ['claude', 'codex']),
     registration('ground-ruvnet', '*', ['claude', 'codex']),
     // Context-only recommendation for clearly substantial, independently splittable work. The
@@ -142,6 +143,7 @@ export const CONTINUITY_EVENTS = Object.freeze({
   // Claude's `Edit` shape for decision-gate.mjs's own policies (protect-state, hijack-ruvnet,
   // ground-before-write, adr-currency all then see tool_name:"Edit" exactly as on Claude).
   PreToolUse: Object.freeze([
+    registration('session-snapshot', '*', ['claude', 'codex']),
     registration('decision-gate', '^(Write|Edit|MultiEdit|NotebookEdit|apply_patch)$', ['claude', 'codex']),
   ]),
   // Extended to Codex 2026-09-12: a real MCP `search_ruvnet` call was measured to fire PostToolUse
@@ -151,7 +153,14 @@ export const CONTINUITY_EVENTS = Object.freeze({
   // no change either (proven live: the real MCP tool_response's `content[0].text` carries the exact
   // "Searched N RuvNet repos" banner and query text the script already looks for).
   PostToolUse: Object.freeze([
+    registration('session-snapshot', '*', ['claude', 'codex']),
     registration('grounding-stamp', '^(?:.*__)?search_ruvnet$', ['claude', 'codex']),
+  ]),
+  PostToolUseFailure: Object.freeze([
+    registration('session-snapshot', '*', ['claude']),
+  ]),
+  SubagentStop: Object.freeze([
+    registration('session-snapshot', '*', ['claude', 'codex']),
   ]),
   Stop: Object.freeze([
     registration('continuation-gate', '*', ['claude', 'codex']),

@@ -27,7 +27,10 @@ function rootsFor({ brainHome, kbDir }) {
 function regularJson(file) {
   const stat = fs.lstatSync(file);
   if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('not a trusted regular file');
-  return { value: JSON.parse(fs.readFileSync(file, 'utf8')), bytes: stat.size };
+  const bytes = fs.readFileSync(file);
+  const text = bytes.toString('utf8');
+  if (!Buffer.from(text, 'utf8').equals(bytes)) throw new Error('evidence is not valid UTF-8');
+  return { value: JSON.parse(text), bytes: stat.size };
 }
 
 function treeBytes(root) {
@@ -88,6 +91,11 @@ function scanTransactions(root, unsafe) {
       if (!names.length || names.some((file) => !PHASE_FILE.test(file))) throw new Error('transaction phase inventory is malformed');
       const phases = names.map((file) => regularJson(path.join(dir, file)).value);
       const latest = phases.at(-1);
+      if (phases.some((phase, index) => phase?.schemaVersion !== 1
+        || phase.kind !== 'ruvnet-brain-storage-transaction-phase' || phase.transactionId !== name
+        || phase.sequence !== index + 1 || names[index] !== `${String(index + 1).padStart(3, '0')}-${phase.state}.json`)) {
+        throw new Error('transaction phase identity is malformed');
+      }
       if (latest?.kind !== 'ruvnet-brain-storage-transaction-phase' || latest.transactionId !== name
         || latest.sequence !== names.length || typeof latest.state !== 'string') {
         throw new Error('transaction phase identity is malformed');
@@ -210,6 +218,45 @@ function quarantineAndRemove(entry, root, removeEntry, afterQuarantine) {
   removeEntry(quarantine);
 }
 
+// Keep every JSON token (including numeric precision and escaped string spelling).
+// Only formatting whitespace is redundant; phase files remain readable by recovery.
+function compactTerminalPhases(row) {
+  const compacted = [];
+  for (const name of fs.readdirSync(row.path).sort()) {
+    const file = path.join(row.path, name);
+    const stat = fs.lstatSync(file);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1) throw new Error('phase is not an exclusive regular file');
+    const originalBytes = fs.readFileSync(file);
+    const original = originalBytes.toString('utf8');
+    if (!Buffer.from(original, 'utf8').equals(originalBytes)) throw new Error('phase is not valid UTF-8');
+    const compact = original.replace(/("(?:\\[\s\S]|[^"\\])*")|[ \t\r\n]+/g, (token, string) => string || '');
+    if (Buffer.byteLength(compact) >= stat.size) continue;
+    if (JSON.stringify(JSON.parse(original)) !== JSON.stringify(JSON.parse(compact))) throw new Error('phase compaction changed evidence');
+    const temporary = `${file}.compact-${crypto.randomBytes(8).toString('hex')}`;
+    let descriptor;
+    try {
+      descriptor = fs.openSync(temporary, 'wx', stat.mode & 0o777);
+      const replacementStat = fs.fstatSync(descriptor);
+      if (replacementStat.uid !== stat.uid || replacementStat.gid !== stat.gid) fs.fchownSync(descriptor, stat.uid, stat.gid);
+      fs.fchmodSync(descriptor, stat.mode & 0o777);
+      fs.writeFileSync(descriptor, compact);
+      fs.futimesSync(descriptor, stat.atimeMs / 1000, stat.mtimeMs / 1000);
+      fs.fsyncSync(descriptor);
+      fs.closeSync(descriptor); descriptor = undefined;
+      const current = fs.lstatSync(file);
+      if (!current.isFile() || current.isSymbolicLink() || current.ino !== stat.ino || current.dev !== stat.dev
+        || current.mode !== stat.mode || current.uid !== stat.uid || current.gid !== stat.gid || current.nlink !== 1
+        || !fs.readFileSync(file).equals(originalBytes)) throw new Error('phase changed during compaction');
+      fs.renameSync(temporary, file);
+      compacted.push(file);
+    } finally {
+      if (descriptor !== undefined) fs.closeSync(descriptor);
+      fs.rmSync(temporary, { force: true });
+    }
+  }
+  return compacted;
+}
+
 export function pruneLifecycleEvidence(options = {}) {
   const policy = options.policy || LIFECYCLE_EVIDENCE_RETENTION_POLICY;
   const removeEntry = options.removeEntry || ((entry) => fs.rmSync(entry, { recursive: true, force: true }));
@@ -218,6 +265,13 @@ export function pruneLifecycleEvidence(options = {}) {
   // the exact entry it just quarantined. Recovery must not guess away private data.
   const initial = assessLifecycleEvidence({ ...options, policy });
   const removed = { refresh: [], transactions: [] };
+  const compacted = [];
+  const compactState = snapshot(options);
+  if (!compactState.unsafe.length && compactState.bytes > policy.maxEvidenceBytes) {
+    for (const row of compactState.transactions.filter((entry) => TERMINAL_TRANSACTION.has(entry.latest.state))) {
+      compacted.push(...compactTerminalPhases(row));
+    }
+  }
   for (;;) {
     const state = snapshot(options);
     if (isWithin(state, policy)) break;
@@ -235,6 +289,6 @@ export function pruneLifecycleEvidence(options = {}) {
     removed[candidate.kind === 'refresh' ? 'refresh' : 'transactions'].push(candidate.path);
   }
   const final = assessLifecycleEvidence({ ...options, policy });
-  return { ...final, before: initial.before, removed,
+  return { ...final, before: initial.before, removed, compacted,
     after: final.after, withinBudget: final.withinBudget };
 }
