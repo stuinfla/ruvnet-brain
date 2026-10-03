@@ -65,6 +65,12 @@ function progression(projectRoot, overrides = {}) {
 function fixture() {
   const project = path.join(root, 'project');
   fs.mkdirSync(project);
+  // The fake CLI has no on-disk DB: explicit isolated consent authorizes initial replay.
+  const brainHome = path.join(root, 'brain');
+  fs.mkdirSync(path.join(brainHome, 'turn-capture'), { recursive: true });
+  fs.writeFileSync(path.join(brainHome, 'turn-capture', 'policy.json'), JSON.stringify({
+    schemaVersion: 1, projects: { [project]: 'on' }, paths: {},
+  }));
   const rows = new Map(), calls = [];
   const runner = (_binary, args) => {
     calls.push(args[1]);
@@ -77,7 +83,7 @@ function fixture() {
     if (args[1] === 'retrieve') return { status: rows.has(key) ? 0 : 1, stdout: rows.get(key) || '' };
     throw new Error('unexpected fake managed CLI call');
   };
-  const open = () => new ProjectProgressionStore({ projectDir: project, reader: null, rufloBinary: '/fake-managed-ruflo', runner });
+  const open = () => new ProjectProgressionStore({ projectDir: project, brainHome, reader: null, rufloBinary: '/fake-managed-ruflo', runner });
   return { open, rows, calls, snapshot: progression(project) };
 }
 

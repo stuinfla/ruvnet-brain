@@ -6,7 +6,7 @@
 //   S3d  the Stop line repeated at every turn;
 //   S4   with ruflo missing every Stop appended one failure line per pending event (305 → 910 → 1815
 //        lines in 3 days, measured), and nothing ever aged out.
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -24,12 +24,27 @@ const fastBackoff = [1, 1, 1, 1];
 let saved;
 beforeAll(() => { saved = process.env.RUVNET_RUFLO_CWD_ROOT; process.env.RUVNET_RUFLO_CWD_ROOT = tmp('cont-cwd-'); });
 afterAll(() => { if (saved === undefined) delete process.env.RUVNET_RUFLO_CWD_ROOT; else process.env.RUVNET_RUFLO_CWD_ROOT = saved; });
-afterEach(cleanup);
+afterEach(() => { vi.restoreAllMocks(); cleanup(); });
 
 const lines = (file) => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean) : []);
 const lesson = (text, at = Date.now()) => makeEvent({ kind: 'lesson', at, source: 'explicit', authoritative: true, summary: text });
 const raw = (event, journaledAt = new Date(Date.parse(event.at)).toISOString()) => ({ type: 'event', key: eventKey(event), digest: digestCanonical(event), journaledAt, event });
 const sameCommit = (session, at) => makeEvent({ kind: 'commit', at, session, source: 'git', authoritative: true, summary: 'abcdef12 fix: one commit', basis: 'a'.repeat(40), detail: { sha: 'a'.repeat(40) } });
+
+// These two stress cases already replace store/readback to measure outbox accounting.
+// Validate fixture consent once, then isolate its discovery cost at the existing seam.
+// Production consent/refusal tests retain real resolution and live policy reads.
+function isolatedDrainConsent(journal) {
+  const authorized = journal.captureConsent();
+  expect(authorized.skipped).toBeUndefined();
+  expect(authorized).toMatchObject({ db: journal.db, projectRoot: journal.projectRoot, capturePath: journal.projectDir });
+  return vi.spyOn(ContinuityJournal.prototype, 'captureConsent').mockImplementation(function (origin, unknownOriginalPath) {
+    expect(this.db).toBe(journal.db);
+    expect(origin).toBe(journal.projectDir);
+    expect(unknownOriginalPath).toBe(false);
+    return authorized;
+  });
+}
 
 describe('S3a: one event seen by two sessions is one event, never a quarantine', () => {
   it('two concurrent journal lines for the same commit (different session ids) dedupe to ONE pending event', () => {
@@ -167,10 +182,13 @@ describe('S4: the outbox stays bounded', () => {
     const p = adoptedProject();
     const journal = new ContinuityJournal({ projectRoot: p.dir, ruflo: 'ruflo' });
     journal.record(Array.from({ length: 20 }, (_, i) => lesson(`Contended ${i}.`)));
-    const refuse = () => ({ status: 1, output: WAL_REFUSAL_TEXT });
+    const consent = isolatedDrainConsent(journal);
+    const refuse = vi.fn(() => ({ status: 1, output: WAL_REFUSAL_TEXT }));
     for (let i = 0; i < 72; i += 1) {
       runDrain(p.dir, { ruflo: 'ruflo', store: refuse, readBack: () => ({ content: null }), backoff: fastBackoff, sleep: noSleep });
     }
+    expect(refuse).toHaveBeenCalledTimes(72 * 20 * (fastBackoff.length + 1));
+    expect(consent).toHaveBeenCalledTimes(refuse.mock.calls.length);
     const all = lines(journal.path).map((l) => JSON.parse(l));
     expect(all.filter((r) => r.type === 'event')).toHaveLength(20);
     const failures = all.filter((r) => r.type === 'failure');
@@ -231,11 +249,15 @@ describe('S4: the outbox stays bounded', () => {
     expect(reopened.status()).toMatchObject({ problem: 'capacity-pressure', capacityPressure: true, dropped: 0 });
     expect(recordingLine(reopened.status())).toMatch(/soft limit 2000; no pending events discarded/);
     const stored = new Map(); // Exact-content store/readback seam; no owner store or raw SQL mutation.
+    const consent = isolatedDrainConsent(reopened);
+    const store = vi.fn(({ key, value }) => { stored.set(key, value); return { status: 0 }; });
     const result = drain(reopened, {
-      store: ({ key, value }) => { stored.set(key, value); return { status: 0 }; },
+      store,
       readBack: ({ key }) => ({ content: stored.get(key), readPath: 'isolated-exact-content' }),
     });
     expect(result).toMatchObject({ committed: accepted.length, failed: 0, remaining: 0 });
+    expect(store).toHaveBeenCalledTimes(accepted.length);
+    expect(consent).toHaveBeenCalledTimes(store.mock.calls.length);
     for (const r of accepted) expect(stored.get(r.key)).toBe(JSON.stringify(r.event));
     expect(reopened.scan().events.size).toBe(MAX_EVENT_RECORDS);
     expect(reopened.scan().failures.size).toBe(0);

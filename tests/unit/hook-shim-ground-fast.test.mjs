@@ -31,7 +31,7 @@ function fire(prompt) {
 }
 
 describe('hook-shim ground quiet-prompt classifier', () => {
-  it('returns a provably quiet prompt without starting the shell body', () => {
+  it('keeps a no-store unrelated prompt quiet within the fast-path budget', () => {
     const r = fire('selfcheck probe');
     expect(r.status).toBe(0);
     expect(r.stdout).toBe('');

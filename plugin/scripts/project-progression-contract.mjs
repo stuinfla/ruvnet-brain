@@ -304,7 +304,7 @@ function mergeHeads(heads) {
       ...heads[0].completeProjectState,
       sourceIdentity: heads[0].sourceIdentity,
       journalHeads: [heads[0].eventKey],
-      resumeConflicts: [],
+      resumeConflicts: heads[0].completeProjectState.resumeConflicts,
     });
   }
 

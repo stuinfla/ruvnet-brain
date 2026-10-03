@@ -197,29 +197,9 @@ if (!entry) {
 // forgets to declare one fails toward the pre-ADR-054 behaviour rather than toward silent death.
 if (BRAIN_OFF && entry.offBehavior === 'silence') process.exit(0);
 
-// The ground hook is registered on every prompt. On Windows, starting Git Bash and then jq can
-// consume most of the hook's five-second declaration before an unrelated prompt reaches the
-// shell body's "emit nothing" verdict. Read a bounded copy here, in the Node process that is
-// already running, and skip the interpreter entirely only when BOTH prompt intent and project
-// state prove that no advisory can fire. The regex deliberately over-approximates the shell gates:
-// false positives take the established body; false negatives would be a product defect.
+// Read a bounded payload before dispatch. The ground body owns the quiet-prompt
+// decision because it resolves canonical memory beyond the hook process's cwd.
 let hookInput = null;
-const GROUND_RELEVANT = /ruvnet|ruflo|ruvector|\brvf\b|agentdb|agenticow|rulake|ruview|rupixel|ruv-fann|agentic-flow|synthlang|dspy|qudag|safla|metaharness|cve-bench|sparc|swarm|claude-flow|pinecone|pgvector|chroma|weaviate|faiss|milvus|qdrant|hnswlib|annoy|vector|langchain|llama|autogen|crew-ai|semantic-kernel|embedding|retrieval|prompt compression|token cost|post-quantum|quantum-resistant|\badr\b|decision|architect|design|plan|spec|refactor|migrat|implement|build|write|add|change|fix|update|deploy|create|enhance|set up|setup|wire|integrate|test|coverage|audit|review|benchmark|lint|scan|debug|optimi|app|feature|service|system|backend|frontend|\bapi\b|module|pipeline|infra|database|schema|workflow|roadmap|milestone|autonomous|unattended|do not stop|keep working|keep going|soak run|harness|quality|readiness|evolve|self-improv|hardening|cheaper|cheap|lower cost|compute arbitrage|cascade|scorecard|score .*repo/i;
-
-function projectCanSpeakWithoutPrompt() {
-  if (process.env.RUVNET_AUTONOMOUS === '1') return true;
-  try {
-    if (fs.existsSync(path.join(process.cwd(), '.claude-flow')) ||
-        fs.existsSync(path.join(process.cwd(), '.swarm'))) return true;
-    for (const name of ['package.json', '.mcp.json']) {
-      try {
-        if (/claude-flow|ruflo/i.test(fs.readFileSync(path.join(process.cwd(), name), 'utf8'))) return true;
-      } catch { /* absent/unreadable project metadata cannot create an advisory */ }
-    }
-  } catch { /* fail toward running the body below */ return true; }
-  return false;
-}
-
 function readHookInput(limit) {
   return new Promise((resolve) => {
     const chunks = [];
@@ -398,14 +378,8 @@ function dispatchHook() {
 if (entry.stdinBytes) {
   readHookInput(entry.stdinBytes).then((input) => {
     hookInput = input;
-    if (hookId === 'ground-ruvnet') {
-      let text = input.toString('utf8');
-      try {
-        const parsed = JSON.parse(text);
-        text = parsed?.prompt ?? parsed?.user_prompt ?? parsed?.input ?? text;
-      } catch { /* raw/malformed input is classified as-is */ }
-      if (!GROUND_RELEVANT.test(String(text)) && !projectCanSpeakWithoutPrompt()) process.exit(0);
-    }
+    // The body resolves canonical project memory before its quiet return. A cwd-only
+    // preflight here would hide eligible memory in nested directories and worktrees.
     process.exit(dispatchHook());
   }).catch(() => {
     hookInput = Buffer.alloc(0);

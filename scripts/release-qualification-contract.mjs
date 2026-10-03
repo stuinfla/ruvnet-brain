@@ -68,6 +68,7 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       "reason": "Canonical project isolation, persisted consent and truthful capture status",
       "files": [
         "tests/unit/turn-outcome-capture.test.mjs",
+        "tests/unit/turn-journal-platform.test.mjs",
         "tests/unit/project-store-resolver.test.mjs"
       ]
     },
@@ -158,6 +159,18 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
         "tests/integration/continuity-journal.test.mjs",
         "tests/integration/changed-memory-process-probes.test.mjs",
         "tests/unit/managed-memory-boundary.test.mjs"
+      ]
+    },
+    {
+      "id": "automatic-memory-transition-durability",
+      "reason": "Reviewed POSIX automatic boundary capture, complete history, consent suspension, first-start recovery and data-only turn replay; real global Ruflo and filesystem prerequisites are required",
+      "files": [
+        "tests/unit/project-transition-hook.test.mjs",
+        "tests/unit/turn-transport-security.test.mjs",
+        "tests/unit/turn-durable-transport.test.mjs",
+        "tests/integration/automatic-progression-continuation.test.mjs",
+        "tests/integration/capture-consent-boundary.test.mjs",
+        "tests/integration/session-start-turn-replay.test.mjs"
       ]
     },
     {

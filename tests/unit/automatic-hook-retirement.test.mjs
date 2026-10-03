@@ -57,6 +57,30 @@ it('rejects added registrations, malformed declarations and redirected pointers'
   }
 });
 
+it('rejects missing, duplicated, substituted and unsupported host matcher authority', () => {
+  const root = temporary();
+  for (const file of automaticHookRetirementStatus(ROOT).files) {
+    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    fs.copyFileSync(path.join(ROOT, file), path.join(root, file));
+  }
+  const target = path.join(root, 'plugin/hooks/hook-contracts.json');
+  const original = fs.readFileSync(target);
+  const mutations = [
+    rows => rows.filter(row => row.layer !== 'codex'),
+    rows => [...rows, rows[0]],
+    rows => rows.map(row => row.layer === 'codex' ? { ...row, layer: 'plugin' } : row),
+    rows => [...rows, { layer: 'codex', event: 'PostToolUseFailure', matcher: '*' }],
+    rows => rows.map((row, i) => i === 0 ? { ...row, layer: 'foreign' } : row),
+  ];
+  for (const mutate of mutations) {
+    const doc = JSON.parse(original); doc.matcherAllowlist = mutate(doc.matcherAllowlist);
+    fs.writeFileSync(target, JSON.stringify(doc));
+    expect(automaticHookRetirementStatus(root).ok).toBe(false);
+  }
+  fs.writeFileSync(target, original);
+  expect(automaticHookRetirementStatus(root).ok).toBe(true);
+});
+
 it('actual offline host install removes owned callbacks and preserves foreign settings and MCP', () => {
   const f = fixture(), result = f.install();
   expect(result.action).toBe('added');
