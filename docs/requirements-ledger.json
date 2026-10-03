@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "adr": "ADR-102",
   "generated": "2026-10-03",
-  "note": "DRAFT rev 2. State (MET = daily-proven) is informational and pages when red; release blocking is separate: closure-gate --release <phase> blocks on requirements whose blockingFrom <= that phase. Owner-approved deferral moves blockingFrom later only with a decisionKey.",
+  "note": "DRAFT rev 3. State (MET = daily-proven) is informational; results are classified per dailyClassification so not-yet-applicable observations never page. Release blocking is separate and cumulative (see applicability). Moving blockingFrom later or revising a requirement needs a verified decision file (ADR-102 Decision b).",
   "rows": [
     {
       "id": "R1",
@@ -201,14 +201,16 @@
         "G-059",
         "G-061",
         "G-062",
-        "G-065"
+        "G-065",
+        "G-066",
+        "G-068"
       ],
       "probes": [
         "tests/e2e/requirements/R11.probe.mjs"
       ],
       "schedule": "both",
       "state": "NOT-PROVEN",
-      "blockingFrom": "S1",
+      "blockingFrom": "S1a",
       "registeredAt": "2026-10-03"
     },
     {
@@ -217,7 +219,8 @@
       "source": "north-star-audit-2026-10-02-1790957160000",
       "gaps": [
         "G-048",
-        "G-016"
+        "G-016",
+        "G-067"
       ],
       "probes": [
         "tests/e2e/requirements/R12.probe.mjs"
@@ -235,15 +238,17 @@
         "G-008",
         "G-033",
         "G-037",
-        "G-020"
+        "G-020",
+        "G-069"
       ],
       "probes": [
         "tests/e2e/requirements/R13.probe.mjs"
       ],
       "schedule": "both",
       "state": "NOT-PROVEN",
-      "blockingFrom": "S2",
-      "registeredAt": "2026-10-03"
+      "blockingFrom": "S1b",
+      "registeredAt": "2026-10-03",
+      "measurableStatement": "A stranger installs on macOS, Linux and Windows on every Node major in the range decided by D7 (20-24 if Node 18 is dropped, 18-24 if kept), each tested in the stranger matrix."
     },
     {
       "id": "R14",
@@ -305,18 +310,21 @@
         "G-008",
         "G-009",
         "G-010",
-        "G-029"
+        "G-029",
+        "G-068",
+        "G-069",
+        "G-070"
       ],
       "probes": [
         "tests/e2e/requirements/R17.probe.mjs"
       ],
       "schedule": "both",
       "state": "NOT-PROVEN",
-      "blockingFrom": "S1",
+      "blockingFrom": "S1a",
       "registeredAt": "2026-10-03"
     }
   ],
-  "revision": 2,
+  "revision": 3,
   "states": {
     "NOT-PROVEN": "no authenticated receipt yet",
     "candidate-proven": "every probe green in this preflight run against the packed candidate",
@@ -324,5 +332,12 @@
     "daily-proven": "every probe green against the current npm latest within the last 36 h (this is MET)",
     "regressed": "a previously proven probe is red; pages",
     "decision-pending": "a gap row of this requirement waits on an owner decision"
+  },
+  "applicability": "cumulative: at phase p the gate blocks on every row stage with phase <= p and on every requirement probe of a requirement with blockingFrom <= p, plus the probes of each requirement gap whose blockingFrom <= p",
+  "dailyClassification": {
+    "applicable-pass": "state daily-proven",
+    "applicable-fail": "pages",
+    "not-yet-applicable": "recorded as an observation, never pages",
+    "regression": "previously daily-proven and now red: pages"
   }
 }

@@ -22,9 +22,9 @@ governs:
 
 **Status**: Proposed
 
-**Date**: 2026-10-03 (revision 2, after adversarial review) · **Baseline**: `origin/main` 3ddeb1fd =
+**Date**: 2026-10-03 (revision 3, after two adversarial review rounds) · **Baseline**: `origin/main` 3ddeb1fd =
 published 4.5.2 · **DDD**: [0022](../ddd/0022-closure-governance-context.md) · **Ledgers**:
-`docs/closure-ledger.json` (65 rows, schema 2), `docs/requirements-ledger.json` (R1–R17, schema 2)
+`docs/closure-ledger.json` (70 rows, schema 2 rev 3), `docs/requirements-ledger.json` (R1–R17, rev 3)
 
 ## The owner's order, verbatim
 
@@ -68,7 +68,9 @@ isolated homes. Every one of the 22 open issues was read with comments and check
 - Fable 5.1: APPROVE WITH CHANGES.
 - GPT-6.1-Sol, via codex: REJECT until the ADR changes.
 
-Every finding is answered in the [Adversarial review log](#adversarial-review-log).
+A GPT-6.1-Sol confirm round on revision 2 still rejected it, on narrower grounds: contradictions and
+loopholes. Revision 3 is scoped to that round's minimal changes. Every finding is answered in the
+[Adversarial review log](#adversarial-review-log).
 
 ## Context — why reviews kept being partial
 
@@ -117,324 +119,404 @@ the newer corpus: the mechanism works. It did not fire on the owner's Mac for th
 
 ## Decision
 
-**A release ships only when every gap targeted at its phase is proven closed, and every requirement
-blocking from its phase is proven met, by an authenticated, executed probe of the bytes customers
-install.** The parts follow.
+**A release ships only when every gap obligation applicable at its phase is closed, and every
+requirement applicable at its phase is met.** Proof is an authenticated, executed probe of the bytes
+customers install. Phase, decisions, probes and the verifier are all protected from the candidate they
+judge.
 
-### (a) The closure ledger — tamper-resistant by construction
+### (a) The ledger, one phase authority, staged obligations
 
-`docs/closure-ledger.json` (schema 2) holds one row per gap: `{id, gap, severity, issues[],
-requirement[], evidence, findingEvidenceClass, acceptanceTest{probe, realProcess, evidenceClass,
-asserts[]}, proofArtifact, release, blockingFrom, status, owner{accountable, responsible}, dependsOn[],
-decision{id, state, decisionKey}, registeredAt, tier, effort}`.
+**Rows.** `docs/closure-ledger.json` (schema 2, revision 3) holds one row per gap: `{id, gap, severity,
+issues[], requirement[], evidence, findingEvidenceClass, acceptanceTest{probe, realProcess,
+evidenceClass, asserts[]}, stages[]?, blockingFrom, release, status, owner{accountable, responsible},
+dependsOn[], decision{id, state, decisionFile}, registeredAt}`.
 
-Every row's accountable owner is `stuinfla`. The responsible party is the release agent, or the owner
-for decisions and owner-seat runs.
+- `release` is informational: the phase of the row's last stage.
+- The gate reads only `blockingFrom` and `stages`.
+- `stages[]` lets one row carry obligations that become due in different phases. For example, G-008
+  has an S1a stage (producer for applicable probes), an S1b stage (doctor matrix) and an S2 stage
+  (daily published probes).
 
-The gate compares the ledger at HEAD with the ledger at the last release tag and fails when any of
-these hold:
+**Phase authority — `phaseAuthority` in the ledger.**
 
-- an `id` or `registeredAt` changed;
-- `severity` was lowered;
-- an assertion was removed or reworded (assertions are append-only);
-- a probe path changed without its digest being re-recorded;
-- a row or requirement disappeared without a disposition `{kind: duplicate-of | not-a-defect |
-  withdrawn, decisionKey}`;
-- `release` or `blockingFrom` moved later without a `decisionKey`.
+- Phase order is `S1a < S1b < S2 < P1 < P2`.
+- `versionToPhase` is the only source of a version's phase. It is filled at D0 by a verified owner
+  decision. While it is empty, no release can claim a phase.
+- The map is monotonic. `--release` refuses a version whose phase is lower than the phase of the last
+  published version (no phase rollback).
 
-A decision key records an owner decision that was actually made, with the owner's verbatim words and
-date. "Needs a decision" is `decision.state = pending-owner`, never a status that releases a row.
+**Applicability is cumulative.** At phase p the gate blocks on:
 
-A ledger edit on a release branch is a source change: preflight repeats on the new SHA
-(CONTRIBUTING.md:46). This is accepted; it is the price of the ledger being in the release.
+- every row stage with phase ≤ p;
+- every requirement probe of a requirement with `blockingFrom` ≤ p;
+- the probes of every gap of any requirement, once that gap's `blockingFrom` ≤ p.
 
-### (b) Proof receipts — authenticated, bound, fresh
+A requirement can therefore block early on its own early gaps without demanding work scheduled later.
 
-A probe (`scripts/requirement-probe.mjs`) writes one receipt per run. Every field below is checked by
-the gate. A receipt missing any of them is rejected with a named reason code.
+**Dependencies are validated.** A row or stage may depend only on rows or stages of the same or an
+earlier phase. Dependencies are stage-qualified (`G-008@S1a`), and `--check` enforces the rule. The
+revision-3 ledger passes it with 0 violations, checked by the generator.
 
-| Binding | What is recorded and checked |
+**Tamper rules.** They take effect from the first release tag that carries the ledger. Until then the
+ledger is revised only by review, as in the two rounds below. Against the last release tag:
+
+- `id` and `registeredAt` are immutable;
+- `severity` may only rise;
+- assertions, stage contracts, requirement statements and probe lists may change only through a
+  verified owner decision bound to their old and new hashes;
+- `blockingFrom` may move later only through such a decision;
+- a row, a requirement or an issue link may disappear only with a disposition carrying a verified
+  decision.
+
+A ledger edit on `next` or `release/*` is a source change, so preflight repeats on the new SHA
+(CONTRIBUTING.md:46).
+
+### (b) Verifiable owner decisions
+
+A `decisionKey` is no longer accepted on presence alone. Every decision that defers, disposes, changes
+a contract or fills `versionToPhase` is a file `docs/decisions/<decisionId>.json`. It holds:
+
+- `{decisionId, scope: {rowIds[], requirementIds[]}, choice, oldContractSha256, newContractSha256,
+  disposition, ownerWords, decidedAt, expiresAt}`;
+- a detached signature, made with the **owner decision key**.
+
+The owner creates it by running one local command per decision, `npm run decide -- <id> <choice>`. The
+command:
+
+1. prints the scoped change;
+2. asks for the key's passphrase, or a touch on a hardware key, on the terminal;
+3. writes the signed file.
+
+This respects "owner never clicks GitHub": nothing is clicked on GitHub, and the agent commits the file.
+
+The public half (`keys/owner-decisions.allowed_signers`) is committed and listed in the trust registry.
+The gate verifies four things: the signature, that the scope matches the rows being changed, that the
+hashes match the actual old and new contracts, and that `expiresAt` has not passed.
+
+AgentDB keeps a mirror (`decision-*`) for recall. The file is the authority.
+
+**Residual risk, recorded as G-068.** A signature proves possession of the owner decision key, not the
+owner's personal intent. If that key had no passphrase, an agent on the same machine could sign. The
+keygen command refuses an unprotected key, but protection on the owner's machine cannot be verified
+remotely. D10 records it as an accepted risk.
+
+### (c) Receipt lifecycle and component provenance
+
+The lifecycle has four separate steps, so no step needs its own final conclusion.
+
+1. **Producer execution.** The preflight `requirements` job, or the owner-seat command, runs the probes
+   and writes unsigned receipts.
+2. **Artifact upload.** The producer uploads them, and the job ends.
+3. **Trusted attestation.** A separate job that `needs` the producer runs the trusted verifier (d) and
+   holds the signing key in the Production environment. It:
+   - downloads the artifact through the API;
+   - checks the **producer job's** conclusion (final by then), its run, attempt, head SHA and workflow
+     path;
+   - checks every receipt;
+   - signs an attestation over the receipt digests.
+4. **Consumer verification.** `closure-gate --release` in the aggregate job, and later in
+   `protected-release`, verifies attestations only.
+
+**Owner-seat receipts.** These replace the CI run, attempt and artifact fields with: `{producer:
+owner-seat, machineIdSha256, keyId, command, sequence, prevReceiptSha256}`. The sequence is monotonic
+and the receipts form a hash chain, which defeats replay. They are signed with the **owner-seat
+key**, a machine key distinct from the owner decision key, and uploaded to the dedicated
+`owner-seat-receipts` release.
+
+**Receipt contents.**
+
+- **Bindings:** `rowContractSha256` (the row's acceptance contract, with probe, oracle and mutant
+  digests), `ledgerRevision` (recorded, not used for invalidation), package `{version, integrity}`.
+- **Corpus:** the corpus generation **and the digest of that generation's ADR-069 source-coverage
+  receipt**. The gate verifies the source-coverage receipt, so a generation identity alone does not
+  prove complete inputs.
+- **Environment:** host `{name, version}`, a config digest, OS and Node.
+- **Execution record:** `loaded[]` and `spawned[]`, both described below.
+- **Timing:** start and finish times.
+
+**Historical vs current.** A closure receipt stays valid while its `rowContractSha256` is unchanged.
+Editing another row does not invalidate it. Regression evidence is a separate stream: daily receipts.
+
+**Component provenance is checked per role**, each against its own trusted manifest:
+
+| Role | Trusted manifest |
 |---|---|
-| Ledger | `ledgerRevision` = git blob sha of `docs/closure-ledger.json` at the candidate |
-| Probe | `probeSha256`, `assertionsSha256` (must equal the ledger row's assertions) |
-| Teeth | a mutant run in **this** run (`PROBE_MUTANT=1` flips the guarded behaviour). It must fail on a named assertion of the row. A mutant that fails with a module-load error is rejected. The unmutated run must load the same module set. |
-| Package under test | `version` plus `integrity`: sha512 of `npm pack` for the candidate, npm `dist.integrity` when published |
-| Executing components | resolved path and sha256 of every executing component (installer, `hook-shim.mjs` and each dispatched hook, MCP server, updater, plugin cache), recorded **before and after** the probe. Each must match the tarball manifest of the declared package. Any component matching neither the declared `from` nor `to` identity fails the receipt. |
-| World | corpus generation searched, host name and version, configuration digest (env allowlist, prefs files), OS, Node |
-| Producer | GitHub run id, run attempt, artifact id, job name, workflow path and head SHA. The gate validates these independently against the GitHub API: the run exists, the workflow and event are as declared, the artifact belongs to that attempt, and the conclusion holds. |
-| Signature | CI receipts are signed with the release signing key. Owner-seat receipts are signed with a second key whose public half is committed (`keys/owner-seat.pub.pem`). |
-| Freshness | candidate: produced by this run. Published: bound to the integrity of the version being verified. Daily: ≤36 h old. A receipt dated more than 5 min in the future is rejected. |
+| `npm-package` | the tarball file list and digests |
+| `knowledge-bundle-exec` | the signed bundle's executable manifest |
+| `runtime` | the Node version and binary sha256 |
+| `ruflo` | the global binary version and package integrity |
+| `deps` | the lockfile integrity of installed `node_modules` |
 
-**Package-under-test integrity.** The updater runs `npx --yes ruvnet-brain@latest`
-(`host-update.mjs:121`). During preflight, `latest` is the previous public package, so a broken
-candidate could be replaced by working public code and still produce green observations.
+The probe records identities throughout the run, not just before and after:
 
-Candidate probes therefore run against a local registry, inside the job, that serves the candidate as
-`latest`, with egress to registry.npmjs.org blocked. The before/after component identities make any
-substitution a failure. An upgrade test declares `from` and `to` explicitly. A component left at
-`from` when the probe asserts `to` fails the test, and so does any third identity.
+- **`loaded[]`:** a Node `--import` loader hook logs every module loaded, with its path and sha256.
+- **`spawned[]`:** PATH shims log every `node`, `npx`, `npm` and `ruflo` execution.
 
-**Evidence classes** follow rUv's agentic-qe quality gate, which "block[s] only on EXECUTED/STATIC"
-(`agentic-qe/assets/agents/v3/qe-quality-gate.md`). Here only EXECUTED receipts close a row. STATIC
-findings (code reads) can open a row but never close one.
+Any identity outside its role's manifest fails the receipt.
 
-**Requirement state is separate from release blocking.** State is NOT-PROVEN, candidate-proven,
-published-proven, daily-proven (= MET), regressed, or decision-pending. It is computed daily, shown
-by `closure-gate --status`, and pages when it regresses. Release blocking is separate:
+**Candidate update-test authority vs production trust.**
 
-- `closure-gate --release <phase>` blocks on every row with `release ≤ phase`.
-- It blocks on every requirement with `blockingFrom ≤ phase`.
-- Nothing else blocks, and nothing that blocks can be reported-only. A requirement whose gaps are
-  scheduled later blocks from that later phase. Moving it earlier is free; moving it later needs a
-  `decisionKey`.
+- **Fetch paths.** Candidate probes run with an empty npm cache, `npm_config_registry` pointed at a
+  local registry that serves the candidate as `latest`, and (on Linux) network limited to that
+  service. A post-run scan proves the npx cache holds only the declared identities.
+- **Test trust root.** Positive update tests use an isolated TEST trust root: a test-only signing key
+  and test aggregate served by the local registry. The production trust root must reject the test key,
+  and this is asserted (G-062).
+- **Published evidence.** Provenance is a published-proven obligation (G-059 under D6), never a
+  candidate obligation.
+- **Residual gaps (G-069).** Tracing does not reach native addons or non-Node children, and macOS and
+  Windows runners have no container network isolation.
 
-### (c) The gate, its modes, and its own rejection tests
+### (d) Trusted verifier, probe, oracle and mutant boundary
 
-`scripts/closure-gate.mjs` is deterministic and model-free.
+**Trust registry (`docs/closure-trust.json`).** It records the digests of:
 
-- **`--check`** runs on every PR to `next` or `release/*`, and in `canonical-qa`. **This is the
-  authoritative check.** It verifies:
+- `closure-gate.mjs` and `requirement-probe.mjs`;
+- every probe, oracle and mutant patch;
+- the frozen fixture sets;
+- the approved console inventory (G-060);
+- the three committed public keys: release, owner-seat, owner decision.
+
+Any change needs a verified owner decision bound to the old and new digests. A probe whose digest is
+re-recorded without such a decision fails `--check`.
+
+**Mutants alter guarded product behaviour.** A mutant is a patch to product files. It is applied to the
+installed copy of the package, and its `mutates[]` paths must lie inside the package manifest. A mutant
+that touches only probe or oracle files, or that sets a flag the oracle reads, is rejected. The mutant
+run must fail on a named assertion of the row. A module-load error does not count.
+
+**The verifier runs from the trusted base, not the candidate.** Preflight and `protected-release` check
+out `closure-gate.mjs`, the probe runner and the trust registry from the **previous release tag**. They
+take only the candidate's ledger and receipts as input. The signing keys live only in the Production
+environment of the attestation job, which runs that same base verifier. A change to the verifier takes
+effect only after it has itself been released.
+
+**Bootstrap (G-070).** The first gate-carrying release has no earlier verifier. Its verifier digest is
+registered through D10, after review by two independent adversarial reviewers.
+
+### (e) Gate modes and the rejection suite
+
+- **`--check`** runs in CI on every PR to `next` or `release/*` and in `canonical-qa`, and is
+  **authoritative**. It verifies:
   - the schema;
-  - the tamper rules in (a);
-  - issue linkage: every open issue appears in some row's `issues[]`;
-  - every requirement R1–R17 has at least one probe;
-  - every closed row has a published receipt;
-  - severity order (DDD-0022);
-  - SLA age computed from `registeredAt`.
+  - tamper rules, decision files, trust-registry digests and dependency validation;
+  - issue linkage, with the `closed-by-reporter` state;
+  - that every requirement has a probe;
+  - that every closed row has an attested published receipt;
+  - severity order;
+  - SLA age from `registeredAt`.
 
-  An issue closed by its reporter while its row is open moves the row to `closed-by-reporter`, which
-  needs a disposition. It does not fail the gate. A GitHub API failure is UNKNOWN, which fails the run;
-  it is never a pass.
-- **`--check --local`** additionally verifies decision keys and recall manifests against AgentDB with
-  `ruflo memory retrieve`. It is **advisory**: CI cannot read the local `.swarm/` store.
-- **`--release <phase>`** runs in preflight and in the `protected-release` identity job. It requires
-  candidate-proven receipts in preflight, and published-proven receipts before `install-verified`.
-- **`--published`** runs daily in `requirements-probe.yml`. It runs every requirement probe against npm
-  `latest` on ubuntu, macOS and Windows. A red result fails the run, and the run is on ntfy's watched
-  list (G-058).
-- **`--status`** is the only status surface. `WORK-REGISTER.md` and PROGRESS status paragraphs become
-  generated or retired (G-047).
+  A GitHub API failure is UNKNOWN, which fails the run.
+- **`--check --local`** additionally reads the AgentDB mirrors. It is **advisory** only.
+- **`--release <version>`** resolves the phase through `phaseAuthority`, then requires attested
+  candidate-proven receipts for everything applicable. Before `install-verified` it requires attested
+  published-proven receipts.
+- **`--published`** (daily, S2 stage of G-008) classifies each result:
+  - applicable-pass: daily-proven;
+  - applicable-fail: pages;
+  - not-yet-applicable: recorded as an observation, never pages;
+  - regression (previously daily-proven, now red): pages.
 
-**Rejection suite** (`tests/closure-gate/rejection/*.test.mjs`). Each case asserts the gate's specific
-reason code, and the same file asserts that a valid control fixture passes. A rejection caused by an
-import error therefore cannot count. Cases:
+  Future obligations therefore cannot recreate alarm noise.
+- **`--status`** is the only status surface.
 
-- forged signature; tampered field;
-- wrong package integrity; wrong probe digest; wrong corpus generation; executing component outside
-  the tarball manifest; substituted `latest`;
-- stale receipt; future-dated receipt;
-- receipt from another run attempt; artifact not owned by the run;
-- removed row; weakened assertion; lowered severity; release moved later without a decision; missing
-  requirement;
-- GitHub API failure; issue-close race (issue closed between read and comment); skipped job; missing
-  OS × host matrix cell;
-- gate invocation removed from the workflow, detected by a workflow-structure assertion.
+**Rejection suite** (`tests/closure-gate/rejection/*.test.mjs`). Each case asserts its own reason
+code, and a valid control passes in the same file. It covers:
 
-**Integrity of the gate itself is R17**, and R17 blocks from S1.
+- **Receipt forgery:** forged signature; tampered receipt field; receipt from another attempt;
+  artifact not owned by the run.
+- **Wrong subject:** wrong package integrity; wrong probe, oracle or mutant digest; wrong corpus
+  generation; missing or mismatched source-coverage receipt; executing component outside its role
+  manifest; substituted `latest`; npx cache holding an undeclared identity.
+- **Freshness:** stale receipt; future-dated receipt; replayed owner-seat sequence.
+- **Ledger tampering:** removed row; weakened assertion or requirement contract; lowered severity;
+  deferral without a verified decision; fabricated or unsigned decision file; decision scoped to
+  another row, or expired; missing requirement; dependency on a later phase.
+- **Probe tampering:** altered probe with a re-recorded digest but no decision; a mutant that only
+  touches the oracle; an empty or vacuous probe run (zero assertions executed, or an empty fixture
+  set).
+- **Phase:** phase rollback; version absent from `versionToPhase`.
+- **Environment:** GitHub API failure; issue-close race; skipped job; missing OS × host matrix cell.
+- **Workflow bypasses**, each checked by workflow-structure assertions on the base verifier:
+  - gate invocation removed;
+  - `if: false` on the gate step or job;
+  - `continue-on-error: true`;
+  - exit code masked (`|| true`, `; exit 0`);
+  - aggregate job no longer `needs` the attestation job.
 
-### (d) Preflight runs the public-lane install before anything is published
+### (f) Preflight runs the public-lane install before anything is published
 
-`release-candidate-preflight.yml` gains a `requirements` job on all three OSes. The aggregate needs it.
-It:
+The `requirements` producer job, the attestation job and the consumer are described in (c). By stage:
 
-1. runs the pending-transaction check first (G-046);
-2. installs the packed candidate through the public-lane path;
-3. runs `--doctor --hooks` in the claudeOnly, codexOnly and dual modes (the 4.5.0 failure);
-4. runs the probes blocking at the candidate's phase, with their mutants;
-5. runs `closure-gate --release`.
+- **S1a:** probes of every applicable row, on ubuntu, macOS and Windows, against the packed candidate
+  installed through the public-lane path.
+- **S1b:** adds `--doctor --hooks` in the claudeOnly, codexOnly and dual modes. Re-introducing the
+  4.5.0 defect turns it red.
+- **S2:** adds the daily published run.
 
-Re-introducing the 4.5.0 defect must turn it red.
+The pending-transaction check (G-046) runs first.
 
-### (e) The mechanism must catch the historical misses — walked one by one
+### (g) The historical misses, walked one by one
 
-| Miss | The probes that go red | Separate evidence required |
+| Miss | Probes that go red | Separate evidence |
 |---|---|---|
-| **4.5 auto-update did not fire** | G-019 probes R3-a to R3-h, below | Publication of corpus N (watchdog dated from the newest `corpus-sha256-*` generation, kill-switch re-arm: G-012, G-021). Activation (R3-a…h). Alert delivery (nonce received: G-058). Owner-seat daily receipt (D9): `--doctor --json` on the owner's Mac asserts "knowledge current" (generation = published, ≤36 h) and "update plane fired ≤24 h", signed with the owner-seat key. |
-| **AgentDB-first was missed** | The probe seeds a store with a constraint record (a recorded baseline and a recorded release rule), then asks for a score and a release dispatch. It asserts three things. (1) **Before:** the per-session recall receipt is timestamped before the first tool call and the final answer. (2) **Reached the model:** the injected block contains the seeded keys. (3) **Respected:** the Stop gate blocks a score that omits the recalled baseline, and PreToolUse on `gh workflow run protected-release` names the recorded rule. If recall fails on a score, status, plan, release or delete prompt, the gate says "AgentDB recall not performed" and blocks once. Silence on failure applies only to ordinary prompts. | A review's recall manifest is accepted only when it matches hook-written recall receipts for that session. That depends on G-022's S1 deliverable. Until it ships, recall verification of reviews is advisory, and this ADR says so. |
-| **Plaintext capture by default** | G-001, G-057, G-065: planted token, a person's name and a medical phrase. Every byte the Brain and the owner's hook write is searched. | Owner decision D8 on scope and retention. |
+| **4.5 auto-update did not fire** | G-019, eight separate probes listed below. R3-a and R3-b are separate, so neither trigger masks the other. | Publication of corpus N (G-012, G-021, with the source-coverage receipt bound). Activation (R3-a…h). Delivered alert (G-058 nonce). Owner machine: D9 "yes" gives a signed daily receipt; D9 "no" shows "owner-seat: declined", and clean-home receipts are never presented as owner-machine proof. |
+| **AgentDB-first was missed** | G-022 S1b stage, below | Review recall manifests must match those recall receipts. Before G-022's S1b stage ships, that match is advisory, and the ADR says so. |
+| **Plaintext capture by default** | G-001, G-057, G-065, with the postconditions decided in D8 | — |
 
-The auto-update probes, R3-a to R3-h:
+The eight auto-update probes:
 
-- **R3-a SessionStart only:** the KB moves from N−1 to N within 75 min, and the next SessionStart
-  prints UPDATED.
-- **R3-b MCP timer only:** no SessionStart after boot, and an old boot snapshot; the KB reaches N
-  within 20 min.
-- **R3-c host delivery:** after restart, the loaded plugin equals the runtime. A session booted on an
-  older plugin is named by doctor.
-- **R3-d agentic-kit ownership:** an ownership proof ≤36 h old makes the Brain defer; older than that,
-  the Brain updates.
+- **R3-a SessionStart only:** the KB reaches N within 75 min.
+- **R3-b MCP timer only:** with an old boot snapshot, the KB reaches N within 20 min.
+- **R3-c host delivery:** after a restart, the loaded plugin equals the runtime.
+- **R3-d kit ownership:** a proof ≤36 h old makes the Brain defer; an older one does not.
 - **R3-e consent:** the states decided in D1.
 - **R3-f OFF:** with the off switch set, nothing spawns.
-- **R3-g offline recovery:** the update completes within 90 min of the network returning.
+- **R3-g offline:** the update recovers within 90 min of the network returning.
 - **R3-h searched corpus:** after activation, answers carry generation N.
 
-R3-a and R3-b are separate probes, so neither trigger can mask the other.
+The G-022 S1b stage, which is enforceable at S1b:
 
-### (f) AgentDB — read always, write always, measured (R15, R16)
+- a frozen fixture of ≥20 score, status and plan prompts gets a recall block on 100% of them;
+- the recall receipt is timestamped before the first tool call and the final answer;
+- with ruflo unavailable, the gate says "AgentDB recall not performed" and blocks once;
+- PreToolUse **refuses** a `gh workflow run protected-release` that violates a seeded recorded rule.
 
-The base is ADR-101's branch (`fix-agentdb-gate` @adbcd75f, unpublished), which triggers on keywords:
-it fires on 10.9% of 266 real prompts in a replay. It is widened to the bounded targets in G-022,
-G-024 and G-018.
+### (h) AgentDB — read always, write always, measured (R15, R16)
 
-**Read (G-022):**
+The full G-022, G-024 and G-018 targets are in the ledger and block from P1:
 
-- **Coverage:** recall on ≥95% of non-trivial prompts. Non-trivial means ≥4 words and not an
-  enumerated acknowledgement.
-- **Latency:** hook p95 ≤500 ms (p99 ≤1000 ms), one process, both stores queried in parallel.
-- **Size:** ≤600 B per block and ≤12 KB per session, deduplicated.
-- **Relevance:** irrelevant records on ≤10% of a labelled 50-prompt sample.
-- **Safety:** zero displaced safety blocks.
-- **Before risky actions:** PreToolUse recall before `gh workflow run`, `npm publish`, `rm -rf` and
-  `git push`.
-- **Subagents:** spawn-time injection into subagent prompts (G-023).
+- recall on ≥95% of non-trivial prompts, with a hook p95 ≤500 ms (p99 ≤1000 ms);
+- ≤600 B per prompt and ≤12 KB per session;
+- irrelevant records on ≤10% of a labelled 50-prompt sample;
+- owner-instruction capture ≥90% at ≤5% false captures;
+- metrics in doctor, where UNKNOWN is never 0.
 
-The 500 ms budget exists because the current CLI path is too slow for every prompt. Measured on the
-owner's M3 Max, one run per store: `ruflo memory search --smart` took 0.60 s on `memory.db` and 0.78 s
-on `agentdb-memory.db` (Fable measured 0.69 s and 0.64 s). Two sequential stores per prompt would add
-well over a second.
+The 500 ms budget is set because two sequential CLI searches already exceed it. Measured, n=1 each:
+0.60 s on `memory.db` and 0.78 s on `agentdb-memory.db`. Privacy rows G-001, G-002, G-053, G-057 and
+G-065 ship first, in S1a.
 
-**Write (G-024, G-006, G-054, G-055):**
+### (i) Privacy and the owner's own hook
 
-- **Owner instructions:** capture ≥90% of a labelled set of ≥40 real requirement and correction
-  statements, with ≤5% false captures on 200 non-instructions, always as full sentences.
-- **Checkpoints:** post-commit and post-release-step checkpoints with no model action.
-- **Worktrees and subagents:** commits from every linked worktree; SubagentStop outcomes.
-- **Durability:** unterminated complete records recovered; no uncommitted event dropped at the cap.
+The owner's registered hook `~/.claude/hooks/agentdb-turn-capture.mjs` writes plaintext independently
+of the product: into the stores, into `agentdb-turns.jsonl` (0644 observed) and into its dedupe state.
+The product never modifies it silently.
 
-**Metrics (G-018):** recall-fire %, recall p95, median write lag and instructions captured vs stated.
-These appear in `--doctor --json` and `closure-gate --status`; UNKNOWN is never 0.
+**What D8's options remove, stated exactly:**
 
-**Privacy first.** Writing more without redaction multiplies a privacy defect, so G-001, G-002, G-053,
-G-057 and G-065 ship before or with WRITE-ALWAYS.
+- **Redaction on write** removes credential-shaped strings. It does not remove names, health details
+  or client matters.
+- **Retention** deletes whole rows older than the decided period.
+- **`--erase-turns`** deletes all turn rows.
+- **`--scrub-turns`** (one-time, with a receipt) removes credential-shaped strings from every historical
+  location. It does **not** remove other private text from rows it keeps, and its receipt says so.
 
-### (g) Privacy and the owner's own hook
+**If the owner refuses the hook migration:**
 
-The owner's registered global hook `~/.claude/hooks/agentdb-turn-capture.mjs` writes plaintext
-independently of the product:
+- the product writer is fixed anyway;
+- the owner hook keeps writing unredacted text, and doctor reports this on every run;
+- G-057's active-writer postcondition is disposed as an owner-accepted risk;
+- G-001 closes on the product writer only.
 
-- full final text into the stores;
-- the same text into `agentdb-turns.jsonl`, created with default permissions (0644 observed);
-- the same text into its dedupe state file.
+**"Project root" for containment (G-053)** is the canonical adopted root. Linked worktrees of that root
+are allowed and write to its store.
 
-The product defers Claude turns to that hook, which preserves the unsafe path. The product **never
-modifies owner hooks silently**. Install and update detect the hook, report it, and offer the D8
-migration: the product becomes the single redacted writer and the hook is deregistered. Until the
-owner accepts, the doctor shows "turn capture: owner hook active, unredacted".
+### (j) Issues and the branch fixes land on
 
-Token redaction does not protect arbitrary private text such as names, health details or client
-matters. That limit is stated in CONTRIBUTING and SECURITY.md, and capture scope follows D8:
-
-- **Scope:** only projects that adopted AgentDB.
-- **Retention:** a default of 90 days.
-- **Erase:** `--erase-turns`.
-- **Historical copies:** a one-time `--scrub-turns`, run with a receipt, covering both project stores,
-  the global store, WALs, jsonl files, ruflo scratch metadata, dedupe state and queued payloads (G-057).
-
-### (h) Issue handling and the branch fixes land on
-
-- **Integration branch `next` (G-029).** `next` is the standing integration branch. Fix PRs and ledger
-  edits land there. `release/X.Y.Z` is cut as `origin/main` + `next`. The daily jobs read the ledger
-  from `next`; branch selection is deterministic.
-- **Authority split.**
-  - `issue-ledger-check` (`issues: read`, `contents: read`) fails and pages when an open issue has had
-    no row for 24 h.
-  - A separate `pr-retarget` job (`pull-requests: write`) does only one thing: it moves a fix PR's base
-    from `main` to `next`, with a pointer comment.
-- **Acknowledgement is a row, never a comment.** The automated "being worked" comment is retired. The
-  first reply names the row, its severity, its phase and its acceptance test.
-- **Closure is posted by `protected-release` after `install-verified`.** The comment is idempotent,
-  marked with the row id and version, and retried. A publication whose closure comment fails is
-  reconciled by the next daily run. The comment names:
-  - the version, the receipt and the acceptance test;
-  - the reporter by handle, with thanks: @HF-teamdev (#370, #369, #341, #320, #319, #301), @pacphi
-    (#335, #331, #330, #329), @adambkovacs (#326), @sparkling (#316).
-- **Shared rows.** Where one row answers several issues, each issue is closed only when every row that
-  issue maps to is closed.
-- **Regression after closure.** A red daily probe reopens the row and comments on the issue.
+- **Integration branch.** `next` is the standing integration branch. Fix PRs target `next`, never
+  `release/*`. `release/X.Y.Z` = `origin/main` + `next`.
+- **Authority split.** `issue-ledger-check` (read-only) pages on an open issue that has had no row for
+  24 h. A separate `pr-retarget` job (`pull-requests: write`) only moves fix PRs from `main` to `next`.
+- **Acknowledgement** is a row, never a comment.
+- **Closure comment.** It is idempotent and posted by `protected-release` after `install-verified`. It
+  names the version, the receipt, the acceptance test and the reporter, with thanks: @HF-teamdev,
+  @pacphi, @adambkovacs, @sparkling. A failed comment is reconciled by the next daily run.
+- **Shared rows.** Where one row answers several issues, an issue closes only when all of its rows are
+  closed.
+- **Regression** reopens the row and comments on the issue.
 - **SLA, from `registeredAt`:**
-  - **SECURITY/PRIVACY:** a shipped mitigation (default changed, or the text corrected), or a recorded
-    owner decision, within 72 h. Full closure in the next safety release. A full fix in 72 h is not
-    realistic for multi-day rows such as G-001.
-  - **DATA-LOSS, FALSE-GREEN and DOES-NOT-FIRE:** the next two phases, or 14 days.
-  - **Everything else:** 30 days, or a decision.
-  - Breaches page.
+  - SECURITY/PRIVACY: a shipped mitigation or a verified owner decision within 72 h. Full closure in
+    the next safety phase.
+  - DATA-LOSS, FALSE-GREEN and DOES-NOT-FIRE: the next two phases, or 14 days.
+  - Everything else: 30 days, or a decision.
 
-### (i) How this policy becomes operating policy
+### (k) How this becomes operating policy
 
-CONTRIBUTING.md is the only operating rulebook; ADRs record why. The change that implements
-`closure-gate.mjs` also adds a "Closure ledger" section to CONTRIBUTING.md that states the rules in
-(a)–(h). `single-source:check` then enforces that no other file restates them. Until that change
-lands, this ADR is a proposal, not an operating rule.
+CONTRIBUTING.md is the only operating rulebook. The change that implements `closure-gate.mjs` adds a
+"Closure ledger" section to CONTRIBUTING.md stating the rules in (a)–(j). `single-source:check` then
+forbids restating them anywhere else. Until that change lands, this ADR is a proposal.
 
 ## Order of work
 
-Phase labels replace version numbers. Versions are assigned only after D0 measures the probe matrix
-runtime.
+Phases are mapped to versions only by `phaseAuthority.versionToPhase`, at D0.
 
-| Phase | Content | Rows | Blocking requirements |
-|---|---|---|---|
-| **D0 — before implementation** (no release) | Freeze the measurable acceptance thresholds above, the owners and the dependencies. Benchmark the probe matrix on all 3 OSes. Get decisions D1–D9. Store each as a `decision-*` key and in the ledger. | — | — |
-| **S1 — first safety release** | Privacy and containment with a historical-data policy; consent and truthful security text; truthful failures; citation integrity; the gate blocking at S1 with its rejection suite; the `next` branch; Node policy per D7 | G-001, G-002, G-003, G-004, G-005, G-009, G-010, G-011, G-014, G-016, G-029, G-046, G-053, G-056, G-057, G-059, G-061, G-062, G-063, G-064, G-065 (21) | R11, R17 |
-| **S2 — reliability** | Both update triggers and host delivery; Windows/Linux and the Node matrix; old and private-overlay upgrades; durable replay; published daily probes and delivered alerts; uninstall | G-006, G-008, G-012, G-013, G-015, G-019, G-020, G-021, G-028, G-031, G-033, G-034, G-035, G-036, G-037, G-040, G-041, G-042, G-043, G-054, G-055, G-058 (22) | R3, R5, R9, R10, R13 |
-| **P1 — product completion** | Always-read and always-write, subagents, owner-instruction capture, retrieval, advocacy, console inventory, local-time updates, optional hosts and routing per decisions | G-007, G-017, G-018, G-022, G-023, G-024, G-025, G-026, G-027, G-030, G-032, G-038, G-039, G-048, G-049, G-060 (16) | R1, R2, R4, R6, R7, R8, R12, R15, R16 |
-| **P2 — hygiene and currency** | Text, docs and ADR currency, dream-cycle decision | G-044, G-045, G-047, G-050, G-051, G-052 (6) | R14 |
-
-- **S1 is still large.** The reviewers' own estimates put the earlier 4.5.3 set at about 11
-  engineer-days. If D0's benchmark shows S1 cannot ship within the SLA, split it into S1a (G-001,
-  G-002, G-057, G-061, G-062, G-003 per D1, with the gate blocking on exactly those rows) and S1b. The
-  gate never runs report-only.
-- **G-022 ships in two stages.** Its S1 stage (ADR-101 reviewed, plus the per-session recall receipt)
-  ships in S1 because the review-recall verification depends on it; its full assertions block from P1.
+| Phase | Content | Rows first due (blockingFrom) |
+|---|---|---|
+| **D0 — before implementation** (no release) | Freeze thresholds, fixture sets and owners. Build a prototype benchmark of three probes (G-001, G-008@S1a, G-019 R3-a); the rest of the matrix is labelled *estimated*. Get decisions D1–D10. Fill `versionToPhase`. | — |
+| **S1a — privacy, consent, the gate** | Privacy and containment, historical-data policy, consent, truthful security text, the self-update trust check, the gate with its producer, attestation, verifier, trust registry and rejection suite | G-001, G-002, G-003, G-008@S1a, G-009@S1a, G-053, G-057, G-061, G-062, G-065, G-068, G-070 (12) |
+| **S1b — truthful failures and integrity** | Citation integrity, CI secret scan and honesty gates, truthful failures, router tools, `next` branch, Node policy, paging delivery, provenance and credential isolation, footprint disclosure, #198 probe, AgentDB-first S1b stage, doctor matrix | G-004, G-005, G-010, G-011, G-014, G-016, G-022@S1b, G-029@S1b, G-037, G-046, G-056, G-058, G-059, G-063, G-064 (15), plus G-008@S1b, G-009@S1b |
+| **S2 — reliability** | Both update triggers and host delivery, Windows/Linux, upgrades, durable replay, daily published probes, uninstall, the bundle split, tracing coverage | 22 rows, including G-045, G-066 and G-069, plus G-008@S2 |
+| **P1 — product completion** | Always-read and always-write in full, subagents, retrieval, advocacy, console inventory, local time, Grok, routing | 16 rows, including G-022 in full and G-067 |
+| **P2 — hygiene** | Remaining text, docs and ADR currency, dream-cycle outcome | 5 rows, plus G-029@P2 |
 
 ## Owner decisions (D0)
 
-| ID | Decision | Recommended default | Consequence of each choice |
-|---|---|---|---|
-| D1 (G-003) | The signed knowledge bundle also replaces executable tool files and the updater itself, so "update knowledge automatically, ask before code" is impossible until the bundle is split into data-only and executable parts (ADR-092). What should run without asking until then? | Keep automatic updates, but only to versions with a signed install-verified receipt (G-062), and state it truthfully in SECURITY.md (G-061). Split the bundle in S2/P1. Then data updates automatically and code asks. | **Ask first:** safest, but knowledge goes stale on every machine whose owner never answers, which breaks R3. **Automatic (recommended interim):** R3 holds, and code changes without a per-machine yes; the release gate, not consent, is the control. **Split now:** right end state; costs a release cycle before R3 is honest. |
-| D2 (G-025) | Should the Brain volunteer "rUv already ships X" by default? | On, at most one line per prompt, with zero lines on off-topic controls as a release criterion. | **On:** the product's purpose is delivered; risk of noise, bounded by the 0/30 control. **Off:** nothing changes for default users, and R1 stays unmet. |
-| D3 (G-048) | What role does cost routing play? rUv ships `@metaharness/router`, a cost-optimal router (`metaharness/packages/router/src/index.ts`). | Remove the "routing available but not set up" line until routing is wired to that router behind a setting. | **Wire it:** real savings, plus a P1 task. **Remove:** honest now, routing deferred. **Leave as is:** advertises something undecided. |
-| D4 (G-027) | Support Grok hooks? | Optional and best-effort, using the reporter's bridge. Not release-blocking until Grok loads plugin hooks in `grok -p`. | **Yes:** R4 met on a third host, plus maintenance cost. **No:** R4 narrows to Claude and Codex, and #301 closes as a decision. |
-| D5 (G-052) | The dream cycle: 41 open PRs, none merged in 30 days. | Pause it until its findings feed ledger rows automatically, then resume. | **Pause:** less noise, and findings stop until resumed. **Fix compile and continue:** more findings that nothing acts on. |
-| D6 (G-059) | npm trusted publishing (no long-lived token, provenance on). Needs a one-time setting on npmjs.com that only the owner's account can make. | Yes, one time. | **Yes:** removes the long-lived token and gives customers verifiable provenance. **No:** the token stays the single point of compromise; record it as accepted risk. |
-| D7 (G-037) | Node 18 has been end-of-life since 2025-04-30, and CI never tests it. | Raise engines to ≥20 and add Node 24 to the matrix in S1. | **Drop 18:** honest support statement, plus a one-line change. **Keep 18:** add an 18 lane and fix whatever it finds. |
-| D8 (G-001, G-057, G-065) | Turn capture: scope, retention, the owner's global hook, and historical data. | Redacted capture only in projects that adopted AgentDB; 90-day retention; `--erase-turns`; one `--scrub-turns`; migrate the global hook into the product's single writer (the owner approves the deregistration). | **Recommended:** continuity kept and plaintext removed. **Off everywhere:** the strongest privacy, and R6 continuity loses the turn record. **Keep as is:** the open privacy defect stays. |
-| D9 (G-019) | Allow a daily owner-seat job on the owner's Mac (a LaunchAgent) that signs a doctor receipt. A LaunchAgent change needs explicit approval. | Yes. | **Yes:** the machine that complained becomes evidence. **No:** R3 stays proven only in clean homes, which is the situation that hid the 4.5 miss. |
+Each decision has both outcomes encoded in `decisions` in the ledger. Choosing "no" yields an explicit
+disposition or contract, never an unmet row that sits silent. A choice becomes effective only as a
+signed decision file (b).
 
-D0 also freezes the numeric thresholds in G-022, G-024, G-025 and G-038. They are proposed here and
-become binding only with the owner's sign-off.
+| ID | Decision in plain words | Recommended | What each choice does to the ledger |
+|---|---|---|---|
+| D0 | Freeze the numbers, fixture sets, owners and version-to-phase map | approve | **Approve:** they enter the trust registry. **Amend:** the ledger is revised and D0 repeats. |
+| D1 | Updating knowledge today also replaces program files and the updater. What may run without asking until that bundle is split (G-066, S2)? | A — automatic, but only to install-verified versions, stated truthfully | **A:** with no preference recorded, the updater runs only to an install-verified version, and SECURITY.md says knowledge updates replace program files. **B:** nothing runs without consent, and R3 is revised to "after consent". |
+| D2 | Volunteer "rUv already ships X" by default? | On | **On:** G-025's targets block from P1. **Off:** R1 is revised by decision and shows NOT-MET, never MET. |
+| D3 | Cost routing | Wire it to `@metaharness/router` | **Wire:** G-067 must route a frozen 30-query set. **Defer:** the status line is removed (G-048) and R12 is revised; G-067 stays NOT-MET. |
+| D4 | Grok hooks | No for now | **Yes:** a live `grok -p` owner-seat receipt is required from P1. **No:** R4 is revised to Claude and Codex, G-027 is disposed, and #301 closes with the decision. |
+| D5 | Dream cycle | Pause | **Pause:** the workflow is disabled, and it resumes only when its findings create ledger rows. **Continue:** fix the compile, and the backlog stays ≤5. **Retire:** remove it and close its PRs. |
+| D6 | npm trusted publishing (one setting on npmjs.com) | Yes | **Yes:** provenance is asserted on published versions. **No:** an authorized risk disposition — a scoped token rotated at least every 90 days, usable only in the publish job — and provenance is not asserted. |
+| D7 | Node 18 support | Drop | **Drop 18:** engines ≥20, matrix 20/22/24, R13 range 20–24. **Keep 18:** engines ≥18, matrix 18/20/22/24, R13 range 18–24. Either way the change lands in S1b. |
+| D8 | Turn capture: scope, retention, the owner's hook, history | Recommended set in (i) | **Recommended:** removes credential-shaped strings everywhere and whole rows past retention; does not remove other private text in kept rows. **Refuse migration:** the owner hook stays unredacted and is reported. **Off everywhere:** R6 is revised to exclude turn records. |
+| D9 | Daily signed health receipt from the owner's Mac (LaunchAgent) | Yes | **Yes:** owner-machine proof. **No:** owner-machine proof is explicitly unavailable, a manual `--doctor --json --sign` run stays possible, and clean-home proof is never shown as owner proof. |
+| D10 | Trust bootstrap: accept the first verifier digest and the owner-key residual risk | Accept | **Accept:** the gate can ship. **Reject:** the gate does not ship until another trust root is decided. |
 
 ## Consequences
 
-- **Gains.**
-  - "Done" is a property of the published package, re-checked daily.
-  - Issues cannot sit behind a bot comment, and fixes have a branch to land on.
-  - Owner requirements are a checked list.
-  - Each historical miss needs a red probe to recur, and a red probe pages.
-- **Costs.**
-  - Preflight and public verification get slower by the probe-matrix runtime (unknown until D0).
-  - A local registry runs inside CI.
-  - A second signing key is held on the owner's machine.
-  - Every ledger edit repeats preflight.
-- **Limits stated plainly.**
-  - **AgentDB in CI.** CI cannot read AgentDB, so decision keys and recall manifests are checked
-    authoritatively only for presence. Their content is checked by the advisory local run and, after
-    G-022's S1 stage, by matching hook-written recall receipts.
-  - **Owner-seat signatures.** An owner-seat signature proves a receipt was produced on the owner's
-    machine. It does not prove the owner said the words in a decision record. The decision file quotes
-    the transcript turn it came from, and the reviewers may audit it.
-  - **Live model sessions.** `claude -p`, `codex exec` and `grok -p` need credentials CI does not hold.
-    Those probes (G-023, G-027, the owner-seat R3 receipt) are owner-seat receipts and are marked as
-    such.
-- **What would make this ADR wrong.** Flaky probes get disabled, as `issue-watch` and
-  `learning-replay` were. Mitigations:
-  - A flaking probe is itself a row.
-  - UNKNOWN is never PASS.
-  - Daily-only evidence such as G-013's seven green nights never blocks a release; the candidate check
-    does.
+**Gains.**
+
+- "Done" is a property of the published package, re-checked daily, and future obligations are kept
+  out of the paging stream.
+- Decisions, probes, phases and the verifier cannot be changed by the candidate they judge.
+
+**Costs.**
+
+- The S1a release must carry the gate, its producer, attestation, verifier and rejection suite, plus
+  the privacy rows. It is not small.
+- There are three keys (release, owner-seat, owner decision), a local registry in CI, and a trust
+  registry.
+- Each ledger edit repeats preflight.
+
+**Residual risks are rows, not prose:**
+
+- G-068: owner intent behind a signature;
+- G-069: tracing and egress coverage;
+- G-070: verifier bootstrap;
+- G-066: the bundle carries executables.
+
+**Limits.**
+
+- CI cannot read AgentDB, so the AgentDB mirrors are advisory. The signed decision files are the
+  authority.
+- Live model sessions are owner-seat receipts.
+- **What would make this ADR wrong:** flaky probes get disabled. A flaking probe is a row, and UNKNOWN
+  is never PASS.
 
 ## Adversarial review log
 
-Fable 5.1 (F) and GPT-6.1-Sol (G). "Verified" means I checked the code or ran a probe in this revision.
+Fable 5.1 (F) and GPT-6.1-Sol (G). "Verified" means I checked the code or ran a probe myself.
+
+### Round 1 — reviews of revision 1
+
+Section letters in round 1 refer to revision 2.
 
 | # | Finding (source) | Verdict | Evidence / change |
 |---|---|---|---|
@@ -475,6 +557,41 @@ Fable 5.1 (F) and GPT-6.1-Sol (G). "Verified" means I checked the code or ran a 
 | 35 | "Unmerged does not prove the changes never reached a release" (G) | **Accepted as a caveat, verified for 4 of 5** | Probes of published 4.5.2 show the #327, #342, #351 and #353 changes are absent; #303 is not verified. |
 | 36 | Corpus proofs must bind input completeness and the exact generation (G) | **Accepted** | Receipts bind the corpus generation (b); G-021 covers publication. Input completeness stays with ADR-069 source coverage (not re-verified here). |
 
+### Round 2 — GPT-6.1-Sol confirm review of revision 2 (REJECT, narrowed)
+
+| # | Finding | Verdict | Change in revision 3 |
+|---|---|---|---|
+| 37 | G-009 (S1) depends on G-008 (S2); R17 blocks at S1 but includes G-008; G-008 demands every requirement probe | **Accepted** | G-008 and G-009 are staged (S1a, S1b, S2). Applicability is cumulative and per gap (a). G-008 runs only applicable probes. 0 dependency violations. |
+| 38 | R10 blocks at S2 while G-045 is P2 | **Accepted** | G-045 moved to S2. |
+| 39 | G-010 needs delivered paging in S1 but G-058 is S2 | **Accepted** | G-058 moved to S1b; G-010 depends on it. |
+| 40 | G-029 needs dream cleanup in S1 but D5 is P2 | **Accepted** | G-029 staged: S1b covers `next` and fix PRs; P2 covers the dream backlog, which depends on G-052/D5. |
+| 41 | S1a omitted G-053 | **Accepted** | G-053 is in S1a. |
+| 42 | G-037 (S2) vs the D7 promise in S1 vs R13 "Node 18–24" | **Accepted** | G-037 is S1b. R13's range is whatever D7 decides. |
+| 43 | G-022's S1 subset had no enforceable acceptance | **Accepted** | G-022 S1b stage, with four executable assertions, including refusing a violating dispatch. |
+| 44 | S1a/S1b absent from the DDD | **Accepted** | DDD phase vocabulary updated. |
+| 45 | Fix PRs target both `release/*` and `next` | **Accepted** | G-029 asserts `next` only. |
+| 46 | D1 contract contradicts its recommendation | **Accepted** | G-003's acceptance is per outcome; the bundle split is registered as G-066 (S2). |
+| 47 | D6 "No" contradicts mandatory provenance | **Accepted** | Authorized risk disposition for "No"; provenance is a published-only obligation. |
+| 48 | D5 pause vs compile-or-retire | **Accepted** | Three outcomes, each with an observable state. |
+| 49 | D4 circular | **Accepted** | "Yes" requires a live third-host receipt; "No" revises R4. |
+| 50 | D3: removing a status line satisfies G-048, not R12 | **Accepted** | Functioning routing split out as G-067. |
+| 51 | D8 "plaintext removed" is only true for tokens; what does refusal permit | **Accepted** | (i) states exactly what each option removes and what refusal permits. |
+| 52 | D9 refusal has no gate outcome | **Accepted** | "No" makes owner-machine proof explicitly unavailable and forbids presenting clean-home proof as owner proof. |
+| 53 | Phase selection not authoritative; phase rollback | **Accepted** | `phaseAuthority`, monotonic, filled at D0 (a). |
+| 54 | Invented decision releases work | **Accepted** | Signed, scoped, hashed, expiring decision files (b). Residual G-068. |
+| 55 | Candidate can redefine its own examiner | **Accepted** | Trust registry; mutants must patch product files; verifier from the previous release tag (d). Bootstrap G-070. |
+| 56 | Receipt validation deadlocks its producer; no owner-seat alternative | **Accepted** | Four-step lifecycle checks the producer **job** conclusion; owner-seat sequence and hash chain (c). |
+| 57 | Candidate and publication evidence conflated; ledger blob invalidates history | **Accepted** | TEST trust root for candidate update tests; receipts bind `rowContractSha256`, not the whole ledger (c). |
+| 58 | Component binding incomplete and overbroad; npx cache and alternate fetch paths | **Accepted** | Role-specific manifests; `loaded[]` and `spawned[]` throughout the run; empty cache plus cache scan. Residual G-069. |
+| 59 | Rejection suite misses conditional bypasses and other attacks | **Accepted** | Cases added (e). |
+| 60 | Corpus completeness | **Accepted** | Receipt binds the generation's source-coverage receipt digest, and the gate verifies it (c). |
+| 61 | Daily runs of future requirements recreate alarm noise | **Accepted** | not-yet-applicable observations never page (e). |
+| 62 | D0 benchmarks probes that do not exist | **Accepted** | Prototype three probes; the rest is labelled estimated. |
+| 63 | G-039 can pass by becoming an owner-decision row | **Accepted** | Only a verified decision bound to R2 can change the target. |
+| 64 | G-053 project root; G-056 non-empty fixtures; G-057 postconditions; G-059 credential isolation and rotation; G-060 approved inventory; G-035 uninstall vs erase | **Accepted** | Asserts rewritten as specified. |
+| 65 | Frozen sample identities not bound to receipts | **Accepted** | Fixture sets are in the trust registry, and receipts bind the contract digest that includes them. |
+| 66 | #329: nesting inference withdrawn; cwd fact stands | **Agreed** | Disposition keeps the cwd fact (`turn-outcome-capture.mjs:281-283`) and G-063. Nesting is not established across versions or platforms. |
+
 ## What this review could not verify
 
 - Live Claude, Codex or Grok sessions. Hooks were driven through `hook-shim.mjs` with real payloads.
@@ -487,23 +604,28 @@ Fable 5.1 (F) and GPT-6.1-Sol (G). "Verified" means I checked the code or ran a 
 - G-053 and G-056: code read only.
 - The `ps` exposure of the turn-capture value: inferred from code.
 - The R15 branch: replayed for its trigger only.
-- The local-registry approach in (b): designed, not yet prototyped.
+- **None of the revision-3 mechanisms has been prototyped:** the local registry, the loader-hook
+  tracing, workflow-structure assertions, signed decision files and the base-verifier checkout are
+  designs.
+- Whether `ssh-keygen -Y sign`, or an equivalent, can enforce a passphrase on the owner's existing
+  key. This is G-068.
 
 ## Gap summary
 
-65 rows:
+70 rows:
 
 | Severity | Rows |
 |---|---|
-| SECURITY | 7 |
+| SECURITY | 9 |
 | PRIVACY | 4 |
 | DATA-LOSS | 4 |
-| FALSE-GREEN | 14 |
-| DOES-NOT-FIRE | 12 |
+| FALSE-GREEN | 16 |
+| DOES-NOT-FIRE | 13 |
 | CUSTOMER-VISIBLE | 11 |
 | HYGIENE | 13 |
 
-Reviewer findings map to rows in `reviewMapping` inside the ledger.
+First due, by phase: S1a 12, S1b 15, S2 22, P1 16, P2 5. Reviewer findings map to rows in
+`reviewMapping`; the round-2 residuals are G-066 to G-070.
 
 | Issue | Disposition (verified against 3ddeb1fd) |
 |---|---|
@@ -513,7 +635,7 @@ Reviewer findings map to rows in `reviewMapping` inside the ledger.
 | #335 | PARTLY FIXED (ADR-098 `--clean`) → G-028 |
 | #331 | STILL OPEN: the direct `--update` path was fixed in 4750f287; the automatic check still runs the installed updater → G-042 |
 | #330 | STILL OPEN → G-031 |
-| #329 | FIXED FOR ITS NAMED SYMPTOM (d1f87ad6); closes on G-063's published probe |
+| #329 | FIXED FOR ITS NAMED SYMPTOM (d1f87ad6). The turn writer's cwd is the store directory; nesting is not established. Closes on G-063's published probe. |
 | #326 | STILL OPEN (latent) → G-040 |
 | #320 | STILL OPEN (feature) → G-032 |
 | #319 | STILL OPEN → G-036, G-003, G-033, G-062 |

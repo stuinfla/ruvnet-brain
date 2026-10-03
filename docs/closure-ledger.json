@@ -6,7 +6,7 @@
     "commit": "3ddeb1fd",
     "version": "4.5.2"
   },
-  "note": "DRAFT rev 2 (after Fable 5.1 + GPT-6.1-Sol). Phases S1/S2/P1/P2 replace version labels until the probe-matrix benchmark (D0). status is a claim; the gate derives closure from authenticated EXECUTED receipts (ADR-102 Decision b). Immutable after registration: id, registeredAt, severity (may only rise), asserts (append-only). release may only move later with an owner decisionKey. Removal needs a disposition with decisionKey.",
+  "note": "DRAFT rev 3. Immutability rules apply from the first release tag that carries this ledger; until then revisions are by review (this file was revised after two review rounds). The gate uses blockingFrom and stages only; release = last stage phase (informational).",
   "issueDispositions": {
     "198": "STILL OPEN until probed -> G-064 (7 named suites; 4 were run)",
     "232": "ALREADY FIXED by removal 40166baf; closes on a published probe (G-009)",
@@ -23,7 +23,7 @@
     "319": "STILL OPEN -> G-036, G-003, G-033, G-062",
     "320": "STILL OPEN (feature) -> G-032",
     "326": "STILL OPEN (latent) -> G-040",
-    "329": "FIXED FOR ITS NAMED SYMPTOM d1f87ad6 (v4.4.0): no .swarm/.swarm in probes or in the real project/global stores; closes on the G-063 published probe that covers both writers",
+    "329": "FIXED FOR ITS NAMED SYMPTOM d1f87ad6 (v4.4.0); the turn writer still runs ruflo with cwd and CLAUDE_FLOW_MEMORY_PATH = the store directory (turn-outcome-capture.mjs:281-283), nesting not established; closes on the G-063 published probe covering both writers",
     "330": "STILL OPEN -> G-031",
     "331": "STILL OPEN: direct --update path fixed in 4750f287 (v4.3.38); the automatic --if-newer check still runs the installed updater -> G-042",
     "335": "PARTLY FIXED (ADR-098 --clean; hand-made kb.bak kept) -> G-028",
@@ -57,11 +57,11 @@
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-001.json",
-      "release": "S1",
+      "release": "S1a",
       "status": "open",
       "tier": "opus",
       "effort": "1d",
-      "blockingFrom": "S1",
+      "blockingFrom": "S1a",
       "registeredAt": "2026-10-03",
       "owner": {
         "accountable": "stuinfla",
@@ -71,7 +71,7 @@
       "decision": {
         "id": "D8",
         "state": "pending-owner",
-        "decisionKey": null
+        "decisionFile": null
       },
       "findingEvidenceClass": "EXECUTED"
     },
@@ -97,11 +97,11 @@
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-002.json",
-      "release": "S1",
+      "release": "S1a",
       "status": "open",
       "tier": "sonnet+opus-review",
       "effort": "2h",
-      "blockingFrom": "S1",
+      "blockingFrom": "S1a",
       "registeredAt": "2026-10-03",
       "owner": {
         "accountable": "stuinfla",
@@ -129,17 +129,15 @@
         "realProcess": true,
         "evidenceClass": "EXECUTED",
         "asserts": [
-          "pristine install, no pref, one SessionStart: knowledge (signed data) may update per R3, code/host plugins do not change without a recorded yes",
-          "installer, doctor and README state the default word for word",
-          "owner decision recorded in AgentDB (decision key)"
+          "acceptance depends on the D1 outcome recorded in decisions.D1 (both outcomes are listed there); no unconditional statement here"
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-003.json",
-      "release": "S1",
+      "release": "S1a",
       "status": "open",
       "tier": "opus",
       "effort": "1d",
-      "blockingFrom": "S1",
+      "blockingFrom": "S1a",
       "registeredAt": "2026-10-03",
       "owner": {
         "accountable": "stuinfla",
@@ -151,7 +149,7 @@
       "decision": {
         "id": "D1",
         "state": "pending-owner",
-        "decisionKey": null
+        "decisionFile": null
       },
       "findingEvidenceClass": "EXECUTED"
     },
@@ -177,11 +175,11 @@
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-004.json",
-      "release": "S1",
+      "release": "S1b",
       "status": "open",
       "tier": "opus",
       "effort": "0.5d",
-      "blockingFrom": "S1",
+      "blockingFrom": "S1b",
       "registeredAt": "2026-10-03",
       "owner": {
         "accountable": "stuinfla",
@@ -209,11 +207,11 @@
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-005.json",
-      "release": "S1",
+      "release": "S1b",
       "status": "open",
       "tier": "sonnet",
       "effort": "1h",
-      "blockingFrom": "S1",
+      "blockingFrom": "S1b",
       "registeredAt": "2026-10-03",
       "owner": {
         "accountable": "stuinfla",
@@ -318,7 +316,7 @@
       "status": "open",
       "tier": "opus",
       "effort": "1.5d",
-      "blockingFrom": "S2",
+      "blockingFrom": "S1a",
       "registeredAt": "2026-10-03",
       "owner": {
         "accountable": "stuinfla",
@@ -326,7 +324,28 @@
       },
       "dependsOn": [],
       "decision": null,
-      "findingEvidenceClass": "EXECUTED"
+      "findingEvidenceClass": "EXECUTED",
+      "stages": [
+        {
+          "phase": "S1a",
+          "asserts": [
+            "preflight `requirements` producer job installs the packed candidate through the public-lane path on ubuntu, macOS and Windows and runs the probes of every row and requirement applicable at the candidate phase (cumulative), with their product-side mutants",
+            "a separate attestation job verifies and signs the receipts (Decision c lifecycle)"
+          ]
+        },
+        {
+          "phase": "S1b",
+          "asserts": [
+            "the producer also runs --doctor --hooks in claudeOnly, codexOnly and dual modes on all 3 OSes; re-introducing the 4.5.0 missing-signature-record defect turns it red"
+          ]
+        },
+        {
+          "phase": "S2",
+          "asserts": [
+            "requirements-probe.yml runs daily against npm latest on 3 OSes; results are classified applicable-pass, applicable-fail (pages), not-yet-applicable (recorded, never pages), regression (previously daily-proven, pages)"
+          ]
+        }
+      ]
     },
     {
       "id": "G-009",
@@ -352,21 +371,38 @@
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-009.json",
-      "release": "S1",
+      "release": "S1b",
       "status": "open",
       "tier": "opus",
       "effort": "1.5d",
-      "blockingFrom": "S1",
+      "blockingFrom": "S1a",
       "registeredAt": "2026-10-03",
       "owner": {
         "accountable": "stuinfla",
         "responsible": "release-agent"
       },
       "dependsOn": [
-        "G-008"
+        "G-008@S1a"
       ],
       "decision": null,
-      "findingEvidenceClass": "EXECUTED"
+      "findingEvidenceClass": "EXECUTED",
+      "stages": [
+        {
+          "phase": "S1a",
+          "asserts": [
+            "closure-gate --check and --release run from the trusted base (Decision d) and block on applicable rows",
+            "the rejection suite (Decision e) passes: every case returns its own reason code and the valid control passes in the same file",
+            "decision files are verified (Decision b)"
+          ]
+        },
+        {
+          "phase": "S1b",
+          "asserts": [
+            "issue-ledger-check runs daily: an open issue without a row for 24h fails and pages",
+            "protected-release posts the idempotent closure comment after install-verified, naming version, receipt and reporter"
+          ]
+        }
+      ]
     },
     {
       "id": "G-010",
@@ -383,23 +419,25 @@
         "realProcess": true,
         "evidenceClass": "EXECUTED",
         "asserts": [
+          "the automated \"being worked\" comment is gone from the product and workflows",
           "the acknowledgement predicate is a ledger row with an acceptance test, never a comment",
-          "an unlinked issue older than 24h pages through ntfy"
+          "an unlinked issue older than 24h pages and the nonce delivery check of G-058 is green"
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-010.json",
-      "release": "S1",
+      "release": "S1b",
       "status": "open",
       "tier": "sonnet",
       "effort": "2h",
-      "blockingFrom": "S1",
+      "blockingFrom": "S1b",
       "registeredAt": "2026-10-03",
       "owner": {
         "accountable": "stuinfla",
         "responsible": "release-agent"
       },
       "dependsOn": [
-        "G-009"
+        "G-009@S1b",
+        "G-058"
       ],
       "decision": null,
       "findingEvidenceClass": "EXECUTED"
@@ -425,11 +463,11 @@
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-011.json",
-      "release": "S1",
+      "release": "S1b",
       "status": "open",
       "tier": "sonnet",
       "effort": "3h",
-      "blockingFrom": "S1",
+      "blockingFrom": "S1b",
       "registeredAt": "2026-10-03",
       "owner": {
         "accountable": "stuinfla",
@@ -529,11 +567,11 @@
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-014.json",
-      "release": "S1",
+      "release": "S1b",
       "status": "open",
       "tier": "sonnet",
       "effort": "2h",
-      "blockingFrom": "S1",
+      "blockingFrom": "S1b",
       "registeredAt": "2026-10-03",
       "owner": {
         "accountable": "stuinfla",
@@ -598,11 +636,11 @@
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-016.json",
-      "release": "S1",
+      "release": "S1b",
       "status": "open",
       "tier": "sonnet",
       "effort": "2h",
-      "blockingFrom": "S1",
+      "blockingFrom": "S1b",
       "registeredAt": "2026-10-03",
       "owner": {
         "accountable": "stuinfla",
@@ -706,7 +744,7 @@
           "R3-f RUVNET_AUTO_UPDATE=off: nothing spawns",
           "R3-g offline then online: update completes within 90 min of network return",
           "R3-h after activation, search_ruvnet answers carry corpus generation N",
-          "owner-seat daily receipt (D9): doctor --json on the owner Mac asserts knowledge current (generation = published latest, <=36h) and update plane fired <=24h"
+          "owner-specific evidence per decisions.D9 (both outcomes listed)"
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-019.json",
@@ -728,7 +766,7 @@
       "decision": {
         "id": "D9",
         "state": "pending-owner",
-        "decisionKey": null
+        "decisionFile": null
       },
       "findingEvidenceClass": "EXECUTED"
     },
@@ -831,7 +869,7 @@
       "status": "open",
       "tier": "opus",
       "effort": "2d",
-      "blockingFrom": "P1",
+      "blockingFrom": "S1b",
       "registeredAt": "2026-10-03",
       "owner": {
         "accountable": "stuinfla",
@@ -845,7 +883,32 @@
       "findingEvidenceClass": "EXECUTED",
       "stagedDeliverable": {
         "S1": "ship the reviewed ADR-101 branch plus the per-session recall receipt (the review-recall verification in ADR-102 (d) depends on it); the full READ-ALWAYS asserts block from P1"
-      }
+      },
+      "stages": [
+        {
+          "phase": "S1b",
+          "asserts": [
+            "the reviewed ADR-101 branch ships: on the fixture set of score/status/plan prompts (>=20, frozen at D0) the installed UserPromptSubmit hook injects a recall block from both stores on 100% of them",
+            "each injection writes a per-session recall receipt whose timestamp precedes the first tool call and the final answer of the turn (probe asserts ordering)",
+            "with ruflo made unavailable, a score/status/plan/release/delete prompt is not silent: the Stop or PreToolUse gate states \"AgentDB recall not performed\" and blocks once",
+            "PreToolUse on `gh workflow run protected-release` with a seeded recorded release rule REFUSES the dispatch when the rule is violated (not merely names it)"
+          ]
+        },
+        {
+          "phase": "P1",
+          "asserts": [
+            "non-trivial prompt = >=4 words and not in the ack list {ok, okay, yes, no, y, n, thanks, thank you, continue, go, go ahead, proceed, done}",
+            "replay over >=200 real non-trivial prompts: a recall block is injected on >=95% of them",
+            "hook wall time p95 <=500 ms per prompt (both stores, one process, queried in parallel); p99 <=1000 ms",
+            "block <=600 B; cumulative injected bytes per session <=12 KB; identical content never injected twice per session",
+            "labelled sample of 50 prompts: irrelevant record injected on <=10% (relevance threshold frozen at D0)",
+            "safety blocks are never displaced (0 displacements over the replay)",
+            "recall failure on a prompt classified score/status/plan/release/delete is NOT silent: the Stop or PreToolUse gate states \"AgentDB recall not performed\" and blocks once",
+            "PreToolUse(Bash) recall fires on 100% of: gh workflow run, npm publish, rm -rf, git push (enumerated fixture set)",
+            "each injection writes a per-session recall receipt {sessionId, promptSha256, keys[], storeDigests, at} before the first tool call of the turn"
+          ]
+        }
+      ]
     },
     {
       "id": "G-023",
@@ -937,7 +1000,8 @@
         "asserts": [
           "eval set frozen at D0: >=40 plain-language need prompts covering >=10 rUv packages and 30 off-topic controls",
           "through the installed UserPromptSubmit hooks of the published package: >=60% of need prompts get one line naming the right package with a source path",
-          "0 of 30 off-topic controls produce an advocacy line"
+          "0 of 30 off-topic controls produce an advocacy line",
+          "applies only if decisions.D2 = on; if off, R1 is revised by a verified decision and stays NOT-MET until revised"
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-025.json",
@@ -955,7 +1019,7 @@
       "decision": {
         "id": "D2",
         "state": "pending-owner",
-        "decisionKey": null
+        "decisionFile": null
       },
       "findingEvidenceClass": "EXECUTED"
     },
@@ -1007,7 +1071,7 @@
         "realProcess": true,
         "evidenceClass": "EXECUTED",
         "asserts": [
-          "installer writes the Grok hook file and bridge; a live grok -p shows the hooks firing (or an owner no-go decision recorded)"
+          "outcome per decisions.D4 (both listed)"
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-027.json",
@@ -1025,7 +1089,7 @@
       "decision": {
         "id": "D4",
         "state": "pending-owner",
-        "decisionKey": null
+        "decisionFile": null
       },
       "findingEvidenceClass": "EXECUTED"
     },
@@ -1085,19 +1149,37 @@
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-029.json",
-      "release": "S1",
+      "release": "P2",
       "status": "open",
       "tier": "opus",
       "effort": "0.5d (policy) + 4h (triage, 4.6.1)",
-      "blockingFrom": "S1",
+      "blockingFrom": "S1b",
       "registeredAt": "2026-10-03",
       "owner": {
         "accountable": "stuinfla",
         "responsible": "release-agent"
       },
-      "dependsOn": [],
+      "dependsOn": [
+        "G-052@P2"
+      ],
       "decision": null,
-      "findingEvidenceClass": "EXECUTED"
+      "findingEvidenceClass": "EXECUTED",
+      "stages": [
+        {
+          "phase": "S1b",
+          "asserts": [
+            "standing integration branch `next` exists; release/X.Y.Z = origin/main + next",
+            "pr-retarget moves every fix PR based on main to next with a pointer comment (fix PRs never target release/*)",
+            "the five open fix PRs (#303, #327, #342, #351, #353) are each merged into next, closed with a reason, or linked to a row"
+          ]
+        },
+        {
+          "phase": "P2",
+          "asserts": [
+            "per D5 outcome: dream PRs older than 7 days are merged, closed with a reason, or linked to a row; backlog <=5 (applies only if D5 = continue or resume)"
+          ]
+        }
+      ]
     },
     {
       "id": "G-030",
@@ -1283,9 +1365,9 @@
         "realProcess": true,
         "evidenceClass": "EXECUTED",
         "asserts": [
-          "install, uninstall, follow the printed steps: Brain-owned bytes = 0 (user memory and private stores excluded and listed as kept)",
-          "next SessionStart prints nothing",
-          "turn data removed per the D8 retention policy"
+          "interactive uninstall asks whether to erase turn data; non-interactive uninstall keeps it and lists every kept path; --uninstall --erase-turns removes it (D8 retention applies to kept data)",
+          "Brain-owned bytes other than listed kept user data = 0",
+          "next SessionStart prints nothing"
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-035.json",
@@ -1352,15 +1434,15 @@
         "realProcess": true,
         "evidenceClass": "EXECUTED",
         "asserts": [
-          "per D7: engines >=20 in package.json and Node 20, 22, 24 in the stranger matrix (or Node 18 added if D7 keeps it)"
+          "per D7 (see stages)"
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-037.json",
-      "release": "S2",
+      "release": "S1b",
       "status": "open",
       "tier": "sonnet",
       "effort": "2h",
-      "blockingFrom": "S2",
+      "blockingFrom": "S1b",
       "registeredAt": "2026-10-03",
       "owner": {
         "accountable": "stuinfla",
@@ -1370,9 +1452,17 @@
       "decision": {
         "id": "D7",
         "state": "pending-owner",
-        "decisionKey": null
+        "decisionFile": null
       },
-      "findingEvidenceClass": "EXECUTED"
+      "findingEvidenceClass": "EXECUTED",
+      "stages": [
+        {
+          "phase": "S1b",
+          "asserts": [
+            "per D7: package.json engines equals the decided range, and every Node major in that range plus the current release line is in the stranger matrix and green"
+          ]
+        }
+      ]
     },
     {
       "id": "G-038",
@@ -1427,7 +1517,7 @@
         "realProcess": true,
         "evidenceClass": "EXECUTED",
         "asserts": [
-          "recall report on the published generation reaches the target or the gap is an owner decision row"
+          "recall report on the published generation reaches the owner target; a change of the target is valid only through a verified owner decision file bound to R2 (not by adding a row)"
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-039.json",
@@ -1627,11 +1717,11 @@
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-045.json",
-      "release": "P2",
+      "release": "S2",
       "status": "open",
       "tier": "sonnet",
       "effort": "1h",
-      "blockingFrom": "P2",
+      "blockingFrom": "S2",
       "registeredAt": "2026-10-03",
       "owner": {
         "accountable": "stuinfla",
@@ -1659,11 +1749,11 @@
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-046.json",
-      "release": "S1",
+      "release": "S1b",
       "status": "open",
       "tier": "sonnet",
       "effort": "1h",
-      "blockingFrom": "S1",
+      "blockingFrom": "S1b",
       "registeredAt": "2026-10-03",
       "owner": {
         "accountable": "stuinfla",
@@ -1721,8 +1811,7 @@
         "realProcess": true,
         "evidenceClass": "EXECUTED",
         "asserts": [
-          "owner decision D3 recorded with decisionKey",
-          "SessionStart routing line equals exactly one of two enumerated strings fixed by D3 (or is absent), asserted by snapshot"
+          "truthful wording only: SessionStart routing line equals the string fixed by decisions.D3 (or is absent); functioning routing is G-067"
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-048.json",
@@ -1740,7 +1829,7 @@
       "decision": {
         "id": "D3",
         "state": "pending-owner",
-        "decisionKey": null
+        "decisionFile": null
       },
       "findingEvidenceClass": "EXECUTED"
     },
@@ -1862,7 +1951,7 @@
         "realProcess": true,
         "evidenceClass": "EXECUTED",
         "asserts": [
-          "dream cycle compiles in its scheduled run, or the dream cycle is retired by owner decision"
+          "outcome per decisions.D5 (pause / continue / retire, each listed)"
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-052.json",
@@ -1880,7 +1969,7 @@
       "decision": {
         "id": "D5",
         "state": "pending-owner",
-        "decisionKey": null
+        "decisionFile": null
       },
       "findingEvidenceClass": "EXECUTED"
     },
@@ -1899,12 +1988,13 @@
         "realProcess": true,
         "evidenceClass": "EXECUTED",
         "asserts": [
-          "file and directory symlink plus replacement-race fixtures: 0 writes outside the project root, no automatic global fallback"
+          "\"project root\" = the canonical adopted root (the main worktree of the git common dir, or the non-git directory that holds the adopted .swarm); writes from linked worktrees of that root are allowed and land in its store",
+          "file and directory symlink plus replacement-race fixtures: 0 writes outside the canonical adopted root, no automatic global fallback"
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-053.json",
-      "release": "S1",
-      "blockingFrom": "S1",
+      "release": "S1a",
+      "blockingFrom": "S1a",
       "status": "open",
       "tier": "opus",
       "effort": "3h",
@@ -1996,12 +2086,14 @@
         "realProcess": true,
         "evidenceClass": "EXECUTED",
         "asserts": [
-          "every installed fast-lane answer resolves its cited path in the published concepts store; reverting the renderer turns the probe red"
+          "a frozen non-empty fixture set of >=20 queries known to route to the fast lane (recorded at D0) is run through the installed search; the lane fires on >=90% of them (disabling the lane fails the probe)",
+          "every fast-lane answer in that set resolves its cited path in the published concepts store",
+          "product-side mutant: revert the renderer fix; probe red"
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-056.json",
-      "release": "S1",
-      "blockingFrom": "S1",
+      "release": "S1b",
+      "blockingFrom": "S1b",
       "status": "open",
       "tier": "sonnet",
       "effort": "2h",
@@ -2031,14 +2123,15 @@
         "realProcess": true,
         "evidenceClass": "EXECUTED",
         "asserts": [
-          "one-time `--scrub-turns` (owner-approved, D8) scans both project stores, the global store, WAL, jsonl, scratch metadata, dedupe state and queued payloads; writes a receipt listing counts per location",
-          "a planted token in an old-format row is absent from every location after the scrub",
-          "disabling collection survives restart and update"
+          "postconditions follow the D8 outcome recorded in decisions.D8 (token removal and whole-row deletion are separate obligations)",
+          "tokens: a planted credential-shaped string in an old-format row is absent from every listed location after --scrub-turns",
+          "arbitrary private text: removed ONLY by deleting whole turn rows (retention or --erase-turns); the receipt counts rows deleted per location and states that kept rows may still contain private text",
+          "active writer: the owner global hook is either migrated (decision D8 accepted) or reported by doctor as \"owner hook active, unredacted\" on every run (decision D8 refused)"
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-057.json",
-      "release": "S1",
-      "blockingFrom": "S1",
+      "release": "S1a",
+      "blockingFrom": "S1a",
       "status": "open",
       "tier": "opus",
       "effort": "1d",
@@ -2051,7 +2144,7 @@
       "decision": {
         "id": "D8",
         "state": "pending-owner",
-        "decisionKey": null
+        "decisionFile": null
       },
       "findingEvidenceClass": "EXECUTED"
     },
@@ -2075,8 +2168,8 @@
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-058.json",
-      "release": "S2",
-      "blockingFrom": "S2",
+      "release": "S1b",
+      "blockingFrom": "S1b",
       "status": "open",
       "tier": "sonnet",
       "effort": "2h",
@@ -2104,15 +2197,16 @@
         "realProcess": true,
         "evidenceClass": "EXECUTED",
         "asserts": [
-          "per D6: npm view ruvnet-brain@<v> shows provenance attestations and npm audit signatures passes",
+          "outcome per decisions.D6 (both listed)",
+          "credential isolation: NPM_TOKEN or OIDC usable only in the Production environment publish job (workflow-structure assertion)",
           "actions pinned by commit SHA",
           "a revoked signing key and a replayed old aggregate are both refused by the installer (executed)",
-          "threat model document reviewed and recorded"
+          "threat model recorded and reviewed"
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-059.json",
-      "release": "S1",
-      "blockingFrom": "S1",
+      "release": "S1b",
+      "blockingFrom": "S1b",
       "status": "open",
       "tier": "opus",
       "effort": "1d+D6",
@@ -2125,7 +2219,7 @@
       "decision": {
         "id": "D6",
         "state": "pending-owner",
-        "decisionKey": null
+        "decisionFile": null
       },
       "findingEvidenceClass": "EXECUTED"
     },
@@ -2143,8 +2237,9 @@
         "realProcess": true,
         "evidenceClass": "EXECUTED",
         "asserts": [
-          "inventory generated from the rendered console DOM of the published package; count compared with the QA ledger; 0 unlisted controls",
-          "each control exercised, resulting state verified, including one failure path per write control"
+          "an APPROVED control inventory (routes, states, controls) is committed and registered in the trust registry; changing it requires a verified owner decision",
+          "the rendered console DOM of the published package contains every approved control (hiding or deleting a control fails; a smaller QA ledger cannot count as completion)",
+          "each approved control is exercised and its resulting state verified, including one failure path per write control"
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-060.json",
@@ -2181,8 +2276,8 @@
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-061.json",
-      "release": "S1",
-      "blockingFrom": "S1",
+      "release": "S1a",
+      "blockingFrom": "S1a",
       "status": "open",
       "tier": "sonnet",
       "effort": "2h",
@@ -2210,13 +2305,13 @@
         "realProcess": true,
         "evidenceClass": "EXECUTED",
         "asserts": [
-          "self-heal resolves the target through the signed install-verified aggregate and refuses otherwise",
-          "mutant: an npm latest without an install-verified aggregate spawns nothing"
+          "production trust: self-heal resolves its target through the signed install-verified aggregate and refuses otherwise (mutant: npm latest without an aggregate spawns nothing)",
+          "candidate tests use an isolated TEST trust root (a test-only signing key and test aggregate served by the local registry); the production trust root rejects the test key (executed)"
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-062.json",
-      "release": "S1",
-      "blockingFrom": "S1",
+      "release": "S1a",
+      "blockingFrom": "S1a",
       "status": "open",
       "tier": "opus",
       "effort": "0.5d",
@@ -2251,8 +2346,8 @@
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-063.json",
-      "release": "S1",
-      "blockingFrom": "S1",
+      "release": "S1b",
+      "blockingFrom": "S1b",
       "status": "open",
       "tier": "sonnet",
       "effort": "2h",
@@ -2286,8 +2381,8 @@
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-064.json",
-      "release": "S1",
-      "blockingFrom": "S1",
+      "release": "S1b",
+      "blockingFrom": "S1b",
       "status": "open",
       "tier": "sonnet",
       "effort": "2h",
@@ -2323,8 +2418,8 @@
         ]
       },
       "proofArtifact": "closure-receipts/<run>/G-065.json",
-      "release": "S1",
-      "blockingFrom": "S1",
+      "release": "S1a",
+      "blockingFrom": "S1a",
       "status": "open",
       "tier": "opus",
       "effort": "0.5d+D8",
@@ -2337,12 +2432,198 @@
       "decision": {
         "id": "D8",
         "state": "pending-owner",
-        "decisionKey": null
+        "decisionFile": null
       },
       "findingEvidenceClass": "EXECUTED"
+    },
+    {
+      "id": "G-066",
+      "gap": "The signed knowledge bundle carries executable .mjs tools and self-upgrades the updater, so a knowledge update is a code update; data-only knowledge (ADR-092) is not delivered.",
+      "severity": "SECURITY",
+      "issues": [],
+      "requirement": [
+        "R11",
+        "R3"
+      ],
+      "evidence": "SECURITY.md:108; commit 4750f287; Fable and GPT reviews",
+      "findingEvidenceClass": "STATIC",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-066.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "the published knowledge bundle contains no executable file (manifest assertion)",
+          "executables arrive only through the npm package path governed by decisions.D1"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<receipt>/G-066.json",
+      "release": "S2",
+      "blockingFrom": "S2",
+      "status": "open",
+      "tier": "opus",
+      "effort": "tbd at D0",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": {
+        "id": "D1",
+        "state": "pending-owner",
+        "decisionFile": null
+      },
+      "registeredAt": "2026-10-03"
+    },
+    {
+      "id": "G-067",
+      "gap": "Cost routing does not function: no installed path routes model calls through a cost-optimal router (rUv ships @metaharness/router, metaharness/packages/router/src/index.ts).",
+      "severity": "DOES-NOT-FIRE",
+      "issues": [],
+      "requirement": [
+        "R12"
+      ],
+      "evidence": "G-048 split per GPT confirm review; search_ruvnet receipt 872c86f0c4c6",
+      "findingEvidenceClass": "STATIC",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-067.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "outcome per decisions.D3: if \"wire\", the installed route tool routes a frozen 30-query set through @metaharness/router and records the chosen model and price per query; if \"defer\", R12 is revised by a verified decision and stays NOT-MET until then"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<receipt>/G-067.json",
+      "release": "P1",
+      "blockingFrom": "P1",
+      "status": "open",
+      "tier": "opus",
+      "effort": "tbd at D0",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [
+        "G-016"
+      ],
+      "decision": {
+        "id": "D3",
+        "state": "pending-owner",
+        "decisionFile": null
+      },
+      "registeredAt": "2026-10-03"
+    },
+    {
+      "id": "G-068",
+      "gap": "An owner-decision signature proves possession of the owner decision key, not that the owner personally approved; if that key is not passphrase- or hardware-protected the agent on the same machine could sign.",
+      "severity": "SECURITY",
+      "issues": [],
+      "requirement": [
+        "R17"
+      ],
+      "evidence": "residual risk of Decision b (GPT confirm review attack 1)",
+      "findingEvidenceClass": "STATIC",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-068.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "the owner decision key is created by `npm run decision:keygen` with a passphrase prompt on a TTY or a hardware key; the command refuses a key without one (executed in an isolated home)",
+          "residual: key protection on the owner machine cannot be verified remotely; recorded as accepted risk by verified decision D10"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<receipt>/G-068.json",
+      "release": "S1a",
+      "blockingFrom": "S1a",
+      "status": "open",
+      "tier": "opus",
+      "effort": "tbd at D0",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": {
+        "id": "D10",
+        "state": "pending-owner",
+        "decisionFile": null
+      },
+      "registeredAt": "2026-10-03"
+    },
+    {
+      "id": "G-069",
+      "gap": "Component tracing does not cover every execution path: native addons, non-Node child processes, and network egress on macOS/Windows runners (no container network isolation) can execute or fetch code outside the recorded identities.",
+      "severity": "FALSE-GREEN",
+      "issues": [],
+      "requirement": [
+        "R13",
+        "R17"
+      ],
+      "evidence": "residual risk of Decision c (GPT confirm review attack 6)",
+      "findingEvidenceClass": "STATIC",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-069.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "linux producer runs with network limited to the local registry service; macOS/Windows producers run with an empty npm cache, npm_config_registry set to the local registry, and a post-run scan proving the npx cache holds only the declared identities",
+          "spawned executables are recorded through PATH shims for node, npx, npm and ruflo; any unrecorded executable fails the receipt"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<receipt>/G-069.json",
+      "release": "S2",
+      "blockingFrom": "S2",
+      "status": "open",
+      "tier": "opus",
+      "effort": "tbd at D0",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [
+        "G-008@S1a"
+      ],
+      "decision": null,
+      "registeredAt": "2026-10-03"
+    },
+    {
+      "id": "G-070",
+      "gap": "Bootstrap: the first release that carries the gate has no earlier trusted verifier, so its verifier is trusted on review alone.",
+      "severity": "FALSE-GREEN",
+      "issues": [],
+      "requirement": [
+        "R17"
+      ],
+      "evidence": "residual risk of Decision d",
+      "findingEvidenceClass": "STATIC",
+      "acceptanceTest": {
+        "probe": "tests/e2e/closure/G-070.probe.mjs",
+        "realProcess": true,
+        "evidenceClass": "EXECUTED",
+        "asserts": [
+          "the bootstrap verifier digest is reviewed by two independent adversarial reviewers (recorded) and registered by verified owner decision D10",
+          "from the next release on, the verifier runs from the previous release tag and a change to it takes effect only after it has itself been released"
+        ]
+      },
+      "proofArtifact": "closure-receipts/<receipt>/G-070.json",
+      "release": "S1a",
+      "blockingFrom": "S1a",
+      "status": "open",
+      "tier": "opus",
+      "effort": "tbd at D0",
+      "owner": {
+        "accountable": "stuinfla",
+        "responsible": "release-agent"
+      },
+      "dependsOn": [],
+      "decision": {
+        "id": "D10",
+        "state": "pending-owner",
+        "decisionFile": null
+      },
+      "registeredAt": "2026-10-03"
     }
   ],
-  "revision": 2,
+  "revision": 3,
   "immutableFields": [
     "id",
     "registeredAt",
@@ -2361,6 +2642,130 @@
     "Fable N9": "G-037 + D7",
     "Fable N10": "G-065",
     "Fable N11": "G-022 latency asserts",
-    "GPT G-053..G-060": "G-053..G-060"
-  }
+    "GPT G-053..G-060": "G-053..G-060",
+    "GPT confirm residuals": "G-066..G-070"
+  },
+  "phaseAuthority": {
+    "order": [
+      "S1a",
+      "S1b",
+      "S2",
+      "P1",
+      "P2"
+    ],
+    "rule": "phase(version) is read from versionToPhase only; it is monotonic (a later version never maps to an earlier phase); --release refuses a version whose phase is lower than the phase of the last published version (phase rollback)",
+    "versionToPhase": {},
+    "applicability": "cumulative: at phase p the gate blocks on every row stage with phase <= p and on every requirement probe of a requirement with blockingFrom <= p, plus the probes of each requirement gap whose blockingFrom <= p",
+    "dependencyRule": "a row or stage may depend only on rows/stages whose phase is <= its own (validated by --check)"
+  },
+  "decisions": {
+    "D0": {
+      "question": "Freeze thresholds, fixture sets, owners and the version->phase map; prototype benchmark of three probes (G-001, G-008@S1a, G-019 R3-a) labelled estimated for the rest",
+      "outcomes": {
+        "approve": "thresholds and fixtures bound into the trust registry",
+        "amend": "ledger revised, D0 repeated"
+      }
+    },
+    "D1": {
+      "rows": [
+        "G-003",
+        "G-066"
+      ],
+      "outcomes": {
+        "A-automatic-verified": "G-003 asserts: with no pref, SessionStart may run the updater only to a version with a signed install-verified aggregate (G-062); SECURITY.md and README state that knowledge updates replace executable files until G-066 ships (G-061)",
+        "B-ask-first": "G-003 asserts: with no pref, nothing spawns; the first SessionStart shows a consent line and records nothing until answered; R3 is revised by verified decision to \"after consent\""
+      }
+    },
+    "D2": {
+      "rows": [
+        "G-025"
+      ],
+      "outcomes": {
+        "on": "G-025 asserts apply; R1 blocks from P1",
+        "off": "R1 revised by verified decision (owner words kept, applicability removed); state NOT-MET, never labelled MET"
+      }
+    },
+    "D3": {
+      "rows": [
+        "G-048",
+        "G-067"
+      ],
+      "outcomes": {
+        "wire": "G-067 asserts apply (P1); G-048 line names the setting",
+        "defer": "G-048 line removed; R12 revised by verified decision; G-067 stays open as NOT-MET"
+      }
+    },
+    "D4": {
+      "rows": [
+        "G-027"
+      ],
+      "outcomes": {
+        "yes": "R4 includes Grok; G-027 requires an owner-seat receipt of a live `grok -p` session with the hooks firing; blocks from P1",
+        "no": "R4 revised by verified decision to Claude and Codex; G-027 disposed; #301 closed with the decision"
+      }
+    },
+    "D5": {
+      "rows": [
+        "G-052",
+        "G-029@P2"
+      ],
+      "outcomes": {
+        "pause": "dream workflow disabled (observable: workflow state disabled); resume condition = dream findings create ledger rows automatically (a new row when chosen)",
+        "continue": "compile fixed; G-029@P2 backlog rule applies",
+        "retire": "workflows and docs removed; open dream PRs closed with a pointer; G-052 disposed"
+      }
+    },
+    "D6": {
+      "rows": [
+        "G-059"
+      ],
+      "outcomes": {
+        "yes": "G-059 adds: npm view shows provenance and npm audit signatures passes (published-proven only, never a candidate obligation)",
+        "no": "authorized risk disposition: G-059 requires instead a scoped automation token, rotation <=90 days recorded, usable only in the Production publish job; provenance is NOT asserted"
+      }
+    },
+    "D7": {
+      "rows": [
+        "G-037"
+      ],
+      "outcomes": {
+        "drop-18": "engines >=20; matrix 20, 22, 24; R13 measurable range 20-24",
+        "keep-18": "engines >=18; matrix 18, 20, 22, 24; R13 range 18-24"
+      }
+    },
+    "D8": {
+      "rows": [
+        "G-001",
+        "G-002",
+        "G-057",
+        "G-065",
+        "G-035"
+      ],
+      "outcomes": {
+        "recommended": "capture only in adopted projects; tokens redacted on write; whole rows deleted after 90 days; --erase-turns; one --scrub-turns; owner global hook migrated into the single product writer. What is removed: credential-shaped strings everywhere, and whole rows past retention. What is NOT removed: other private text inside kept rows",
+        "refuse-migration": "product writer is fixed as above; the owner hook keeps writing unredacted; doctor reports it on every run; G-057 active-writer postcondition is disposed as owner-accepted risk; G-001 closes on the product writer only",
+        "off-everywhere": "no turn capture; R6 revised by verified decision to exclude turn records"
+      }
+    },
+    "D9": {
+      "rows": [
+        "G-019"
+      ],
+      "outcomes": {
+        "yes": "owner-seat daily signed doctor receipt from the owner Mac (knowledge current, update plane fired <=24h)",
+        "no": "owner-specific evidence explicitly UNAVAILABLE: R3 state shows \"owner-seat: declined\"; clean-home receipts are never presented as owner-machine proof; `npx ruvnet-brain --doctor --json --sign` remains available for a manual owner run that produces the same receipt"
+      }
+    },
+    "D10": {
+      "rows": [
+        "G-068",
+        "G-070"
+      ],
+      "outcomes": {
+        "accept": "bootstrap verifier digest and owner-key residual risk registered",
+        "reject": "gate does not ship until an alternative trust root is decided"
+      }
+    }
+  },
+  "trustRegistry": "docs/closure-trust.json (proposed): digests of closure-gate.mjs, requirement-probe.mjs, every probe, oracle and product-side mutant patch, the approved console inventory, fixture sets, and the committed public keys; any change needs a verified owner decision bound to old/new digests"
 }

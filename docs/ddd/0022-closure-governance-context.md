@@ -1,9 +1,9 @@
-Updated: 2026-10-03 16:30:00 EDT | Version 0.2.0
+Updated: 2026-10-03 18:30:00 EDT | Version 0.3.0
 Created: 2026-10-03 13:30:00 EDT
 
 # DDD-0022 — Closure governance context
 
-Status: Proposed (with ADR-102, revision 2)
+Status: Proposed (with ADR-102, revision 3)
 
 Governs: ADR-102. It consumes four contexts and owns none of their data:
 
@@ -40,13 +40,16 @@ Operating rules reach contributors only through CONTRIBUTING.md (ADR-102 §i).
 |---|---|
 | Gap | Something the product should do and provably does not, or a false claim. One row, one immutable ID `G-NNN`. |
 | Requirement | One owner requirement in the owner's words, `R1`…`R17`, with a measurable statement where the words alone are not testable. |
-| Phase | `S1` (safety), `S2` (reliability), `P1` (product), `P2` (hygiene). Each maps to a version only after the D0 benchmark. |
+| Phase | `S1a` (privacy, consent and the gate) < `S1b` (truthful failures and integrity) < `S2` (reliability) < `P1` (product) < `P2` (hygiene). A version's phase comes only from the monotonic `phaseAuthority.versionToPhase`, which is filled by a verified D0 decision. |
+| blockingFrom / stages | A row is first due at `blockingFrom`. `stages[]` carry obligations due at later phases. Applicability is cumulative, and a dependency may point only to the same or an earlier phase (stage-qualified, e.g. `G-008@S1a`). |
+| Verified decision | `docs/decisions/<id>.json`, scoped to rows or requirements, with old and new contract hashes, a disposition and an expiry, signed with the owner decision key (public half committed). Created by the owner running `npm run decide` with a passphrase or hardware touch. |
+| Trust registry | `docs/closure-trust.json`: digests of the verifier, probes, oracles, product-side mutant patches, fixtures, the approved console inventory and the public keys. A change needs a verified decision. |
 | blockingFrom | The first phase at which a row or requirement blocks a release. |
 | Acceptance test | A probe that runs the installed package as a real process in an isolated home, with assertions fixed in the ledger and an executable mutant. |
 | Receipt | The authenticated record of one probe run (fields below). |
 | State | Requirement state, which is separate from blocking: NOT-PROVEN, candidate-proven, published-proven, daily-proven (= MET), regressed, decision-pending. |
-| Decision | An owner decision that was actually made: owner's verbatim words, date, and `decisionKey`. "Pending" is not a decision. |
-| Disposition | duplicate-of, not-a-defect, withdrawn or closed-by-reporter, each with a decisionKey. |
+| Decision | An owner decision that was actually made, recorded as a verified decision file (owner words, scope, contract hashes, disposition, expiry, signature). "Pending" is not a decision, and a bare key is never accepted. |
+| Disposition | duplicate-of, not-a-defect, withdrawn or closed-by-reporter, each with a verified decision. |
 
 ## Aggregate root: ClosureLedger (`docs/closure-ledger.json`, schema 2)
 
@@ -57,10 +60,10 @@ GapRow
   gap, evidence, findingEvidenceClass      EXECUTED | STATIC
   issues[], requirement[]
   acceptanceTest { probe, realProcess, evidenceClass: EXECUTED, asserts[] (append-only) }
-  release, blockingFrom                    phase; may move later only with a decisionKey
+  release, blockingFrom                    phase; gate reads blockingFrom and stages[] only; later only with a verified decision
   status                                   open | in-progress | closed | closed-by-reporter | disposed (claim; derived)
   owner { accountable, responsible }
-  dependsOn[], decision { id, state, decisionKey }
+  dependsOn[], decision { id, state, decisionFile }   decisionFile = docs/decisions/<id>.json (verified)
 ```
 
 **Invariants.** All are enforced by `scripts/closure-gate.mjs --check` in CI, which is authoritative.
@@ -79,7 +82,9 @@ The `--local` variant is advisory.
    - severity has not been lowered;
    - assertions have only been appended;
    - no row or requirement disappeared without a disposition;
-   - no `release` or `blockingFrom` moved later without a decisionKey.
+   - no `blockingFrom` moved later, and no assertion, stage, requirement statement or probe changed, without a verified decision bound to the old and new hashes;
+   - no dependency on a later phase;
+   - no trust-registry digest changed without a verified decision.
 6. **History.** Every status change is mirrored append-only to AgentDB, namespace `closure-ledger`,
    key `ledger-<id>-<epochms>`, and read back by exact key.
 7. **Ledger edits are source changes.** Editing the ledger on `next` or `release/*` repeats preflight.
@@ -91,13 +96,35 @@ state, registeredAt }`
 
 **State and blocking are independent:**
 
-- State is computed daily and pages when it regresses.
+- State is computed daily. Each result is applicable-pass, applicable-fail (pages), not-yet-applicable (recorded, never pages) or regression (pages).
 - `--release <phase>` blocks on the requirements whose `blockingFrom ≤ phase`, and on nothing else.
 - A blocking requirement is never report-only.
 
+## Receipt lifecycle (four steps, none waits on its own conclusion)
+
+1. **Producer** (preflight `requirements` job, or the owner-seat command) runs the probes and writes
+   unsigned receipts.
+2. **Upload:** the producer uploads them, and the job ends.
+3. **Attestation:** a separate job runs the verifier from the previous release tag and holds the
+   Production signing key. It checks the producer **job** conclusion, run, attempt and artifact, then
+   signs an attestation.
+4. **Consumer:** `--release` verifies attestations only.
+
+Owner-seat receipts replace the run fields with a machine-id hash, key id, monotonic sequence and
+previous-receipt hash.
+
+**Mutants patch product files** inside the package manifest. Oracle-only or flag-based mutants are
+rejected.
+
+**Components** are matched per role: npm-package, knowledge-bundle-exec, runtime, ruflo, deps. They are
+recorded throughout the run through a loader hook and PATH shims.
+
+A closure receipt stays valid while its `rowContractSha256` is unchanged.
+
 ## Entity: ProofReceipt
 
-Written only by `scripts/requirement-probe.mjs`. Fields:
+Written only by `scripts/requirement-probe.mjs`. In addition to the fields below, it binds
+`rowContractSha256` and the generation's source-coverage receipt digest. Fields:
 
 - `ledgerRevision`
 - `probeId`, `probeSha256`, `assertionsSha256`
@@ -127,7 +154,7 @@ Written only by `scripts/requirement-probe.mjs`. Fields:
 | ProofRecorded | Probe runner |
 | RowClosed | Derived by the gate. It triggers an idempotent closure comment from `protected-release` after `install-verified`, naming the version, the receipt and the reporter. |
 | RegressionDetected | Daily `--published` run. Reopens the row, comments on the issue, pages. |
-| DecisionRecorded | Owner. Stored as an AgentDB key and in the ledger. |
+| DecisionRecorded | Owner, via `npm run decide`: a signed decision file is the authority, mirrored to AgentDB. Every D1–D10 has an encoded outcome for each choice. |
 | ClosedByReporter | Issue closed while its row is open. Needs a disposition. |
 
 ## Policies
@@ -146,7 +173,7 @@ Written only by `scripts/requirement-probe.mjs`. Fields:
 1. A row hand-edited to `closed` without a receipt fails, naming the row.
 2. A receipt from the source checkout (components not in the tarball manifest) does not close the row.
 3. A candidate probe that ran the previous public package through `@latest` fails on component identity.
-4. A row whose release is moved later without a decisionKey fails. So does a lowered severity, or an
+4. A row whose blockingFrom is moved later without a verified decision fails. So does a lowered severity, or an
    assertion that was reworded.
 5. A new external issue with no row for 24 h fails `issue-ledger-check` and pages.
 6. A reporter closes an issue: the row becomes `closed-by-reporter`, and the gate stays green until a
