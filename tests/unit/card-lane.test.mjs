@@ -32,6 +32,7 @@ import {
   renderCardHit,
   routeReposFromCards,
 } from '../../kb/card-lane.mjs';
+import { verifyGrounding } from '../../kb/verify-citation.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const KB = path.join(REPO, 'kb');
@@ -445,10 +446,37 @@ describe('renderCardHit — the answer must be usable and cited on its own', () 
     expect(hit.hit).toBe(true);
     const text = renderCardHit(hit);
     expect(text).toMatch(/FAST LANE/);
-    expect(text).toContain('capability-cards.md');
+    // The printed path must be the REAL stored passage path (concepts/<repo>/CARD/<repo>-card),
+    // not the card's source markdown file — `capability-cards.md` is never a passage path on disk.
+    expect(text).toContain('concepts/ruflo/CARD/ruflo-card');
     expect(text).toContain('ruflo');
     expect(text).toBe(text); // sanity: renders without throwing
     expect(text.length).toBeGreaterThan(hit.text.length); // more than just the bare card body
+  });
+
+  // RED FIRST (recorded verbatim before this fix): citationResolves() looks for a passage path
+  // under `<hit.repo>.passages.jsonl`. The card content actually lives in `concepts.passages.jsonl`
+  // under `<repo>/CARD/<repo>-card` (scripts/corpus-aggregates.mjs). Printing `repo=<subject>` /
+  // `path: <subject>/kb/capability-cards.md#<subject>` (the pre-fix behavior) can never resolve
+  // against that store, so verifyGrounding() always reported `grounded: false` for every fast-lane
+  // answer — the single most common query path this brain answers — even though the card is a real,
+  // curated, correctly-attributed source. This test fails on the pre-fix renderCardHit() with
+  // `reason: 'citations-do-not-resolve'` and passes once the printed citation matches the real store.
+  it('is grounded end-to-end: its own citation resolves against the real concepts store', async () => {
+    const kbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'card-lane-ground-'));
+    try {
+      const passage = { id: 0, text: 'x', path: 'ruvector/CARD/ruvector-card', title: 'ruvector — Capability' };
+      fs.writeFileSync(path.join(kbDir, 'concepts.passages.jsonl'), `${JSON.stringify(passage)}\n`);
+      const hit = {
+        repo: 'ruvector', path: 'capability-cards.md#ruvector',
+        text: 'ruvector is RuvNet’s vector database.', namedRepo: true, bodyOverlap: 2, coverage: 1,
+      };
+      const result = await verifyGrounding(renderCardHit(hit), kbDir);
+      expect(result).toMatchObject({ grounded: true, reason: 'ok' });
+      expect(result.receipt).toMatchObject({ repo: 'concepts', storedPath: 'ruvector/CARD/ruvector-card' });
+    } finally {
+      fs.rmSync(kbDir, { recursive: true, force: true });
+    }
   });
 });
 
