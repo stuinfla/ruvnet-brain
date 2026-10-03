@@ -1,19 +1,19 @@
 ---
 id: ADR-100
 title: Guaranteed AgentDB continuity — material events, durable outbox, come-up-to-speed brief, one writer
-status: Proposed
+status: Accepted
 date: 2026-10-01
 updated: 2026-10-03
 authors: [Stuart Kerr, Claude Opus 5.5]
 tags: [agentdb, continuity, hooks, durability, memory]
 supersedes: []
 relates: [ADR-073, ADR-076]
-version: 1.0.0
+version: 1.1.0
 ---
 
 # ADR-100 — Guaranteed AgentDB continuity
 
-**Status**: Proposed (2026-10-01)
+**Status**: Accepted requirements (owner reaffirmed automatic canonical memory on 2026-10-03); implementation acceptance remains incomplete.
 
 ## Owner requirement
 
@@ -144,4 +144,19 @@ These local process results are not published closure receipts.
 
 ## Candidate durability correction (2026-10-03)
 
-The bounded candidate stops deleting accepted pending events to satisfy the former cap and preserves complete final progression-outbox records without a newline. Torn-tail append fails explicitly without changing existing bytes; recovery remains manual. This supersedes the old cap claim and does not change Proposed status or establish published all-host acceptance.
+The bounded candidate stops deleting accepted pending events to satisfy the former cap and preserves complete final progression-outbox records without a newline. Torn-tail append fails explicitly without changing existing bytes; recovery remains manual. This supersedes the old cap claim and does not establish published all-host acceptance. Requirement acceptance is recorded separately above.
+
+## 2026-10-03 automatic-memory amendment
+
+The 4.5.4 candidate journals the redacted turn payload before spawning its writer, binds a stable
+key to canonical project identity and consent, explicitly refuses upsert, and commits transport
+only after exact key/content readback. Startup replays consent-eligible pending work before
+restoring a checkpoint. Historical status-zero receipts without verification remain unverified;
+they are not relabelled as explicit write failures or silently marked verified.
+
+The four unsafe legacy Claude memory registrations were removed on the owner's machine under
+explicit repair authorization, with the original configuration backed up and historical data and
+hook bodies preserved. This is a machine repair, not an automatic product permission to edit
+user-owned hooks elsewhere. The product's filename-based legacy-owner detection still does not
+establish that an arbitrary external writer meets the canonical contract. Full ADR-073 conformity,
+all-host native delivery and unrestricted semantic learning are not claimed by this amendment.

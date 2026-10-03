@@ -1,4 +1,4 @@
-Updated: 2026-10-03 14:33:51 EDT | Version 1.0.0
+Updated: 2026-10-03 16:32:20 EDT | Version 1.0.1
 Created: 2026-07-07 09:22:01 EDT
 
 # Contributing to RuvNet Brain — the one rulebook
@@ -300,9 +300,13 @@ text), redacted with the shared credential/private-key scanner before truncation
 namespace `turns` in the canonical project's `.swarm/memory.db` (a linked worktree uses the primary
 repository store). There is no automatic global fallback. An existing project store is eligible by
 default; a project without one records nothing until explicitly opted in. The breadcrumb
-`agentdb-turns.jsonl` holds only `{ts,key,hash,len}`, never outcome text. Writes run in a detached
-worker; a receipt is successful only after exact key/content readback. Recent failed or unverified
-turn writes appear as `turn recording failing N/M` at SessionStart and in `--doctor`, independently
+`agentdb-turns.jsonl` holds only `{ts,key,hash,len}`, never outcome text. A separate permission-restricted
+project-local transport journal fsyncs the redacted outcome and canonical binding before the detached
+writer starts. Startup replays eligible pending entries; exact key/content readback, with no upsert,
+commits transport. File fsync is mandatory. Where Windows directory handles cannot be flushed,
+the capture report explicitly records the missing directory flush; namespace survival across power
+loss is unproven. Unexpected I/O failures remain errors. Recent explicit failures and historical unverified receipts are diagnosed separately
+at SessionStart and in `--doctor`, independently
 of material-event recording status. `RUVNET_TURN_CAPTURE=off` disables it.
 
 Persisted consent lives in `<Brain home>/turn-capture/policy.json` (Brain home defaults to
@@ -366,3 +370,21 @@ a `privateStores` array. When you ingest a private repo, add its store name in t
 
 Every design decision is governed by [`docs/PRINCIPLES.md`](docs/PRINCIPLES.md). A change that
 contradicts a principle is wrong, and the contradiction is the finding.
+
+### Automatic memory observations and their limits (4.5.4 candidate)
+
+Claude and Codex prompt, pre-tool, post-tool and child-completion boundaries route through the
+existing snapshot dispatcher to a normalized observation handler; Claude also observes tool failure.
+Selected task intent is a bounded redacted user-text excerpt, not a raw prompt dump, and is labelled
+non-authoritative. Tool intent is pending; observed failure, success and unknown remain distinct.
+Lightweight observations declare head-only source evidence rather than claiming an exact tree scan.
+Startup uses an eight-second host envelope and a shared replay/restore deadline; unsettled debt
+is unavailable, never a silently stale successful restoration. Opt-out suspends replay.
+
+Canonical recall checks nonempty human prompts, including acknowledgements, from nested directories
+and worktrees. It prioritizes useful lessons and patterns, retrieves exact values and delivers
+bounded untrusted evidence again on repeated prompts. Empty/harness messages, explicit opt-out and
+honest no-match remain quiet. Native Grok prompt-first recall is not supported by the measured hook
+context surfaces. Fail-open capture and head-only observations do not satisfy every ADR-073 clause;
+that acceptance remains open. Unknown secrets and every semantically useful lesson are not guaranteed
+by the bounded classifier/redactor.

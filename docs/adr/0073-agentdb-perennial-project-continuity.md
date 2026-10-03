@@ -19,7 +19,7 @@ governs:
   - tests/unit/project-progression-contract.test.mjs
   - tests/integration/project-progression-hook.test.mjs
   - tests/acceptance/cross-host-project-resume.test.mjs
-version: 1.0.0
+version: 1.0.1
 ---
 
 # ADR-073 — AgentDB is the complete perennial project continuity record
@@ -198,3 +198,21 @@ recovery evidence, not proof of continuous capture or cross-host automatic resto
 ## Concurrent candidate reconciliation (2026-10-03)
 
 Candidate reconciliation preserves complete unterminated outbox records and every accepted pending continuity event; pending capacity is a reported soft limit, and append refuses a torn tail without altering its bytes. This bounded repair does not establish full all-host continuity or atomic hostile-process containment.
+
+## Automatic memory correction candidate (2026-10-03)
+
+The 4.5.4 candidate preserves prior substantive state and concurrent conflicts; it settles
+consent-eligible progression, turn and frozen capture queues before first restoration. Pending,
+suspended, failed or unverifiable work is not reported as the latest committed state. Prompt,
+pre-tool, post-tool and child boundaries now record bounded normalized observations; Claude also
+registers its tool-failure event. Selected user intent is redacted before excerpting and marked
+non-authoritative; it is not stored as raw turn text. Repeated prompt recall remains available.
+
+This implements additional slices, not the complete binary contract. Capture remains fail-open
+with explicit degradation rather than introducing a second blocking authority. Lightweight tool
+observations declare head-only, unmeasured-tree source evidence. The existing schema-pinned
+structural reader still uses the canonical SQLite file, rather than the fully managed structural
+read contract above. Legacy raw capture jobs are retained pending, never silently reconstructed.
+Native Grok prompt-first context delivery remains unsupported. None of these limits is waived or
+closed by unit counts, publication, or a manual memory probe. Unknown unlabelled secrets cannot be
+guaranteed detectable by the shared redactor. Full host-native boundary acceptance remains required.

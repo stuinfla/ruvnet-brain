@@ -18,7 +18,19 @@ try {
   assert.match(doctor.text, /turn recording failing 1\/1/);
   assert.ok(doctor.text.includes('synthetic database refused write'));
   const retry = f.stop({ session: 'same-failed-turn' });
-  assert.notEqual(retry.key, report.key);
-  assert.equal((await f.wait(retry.key)).verified, true);
-  console.log(JSON.stringify({ retriedIdenticalFailedTurn: true, gap: 'G-014', evidenceClass: 'EXECUTED', failureReceipt: receipt.error, sessionStartReported: true, doctorReported: true }));
+  assert.equal(retry.key, report.key);
+  assert.equal(retry.value, report.value);
+  assert.equal(retry.queued, true);
+  assert.equal(retry.recorded, false); // launch is pending until exact readback succeeds
+  const deadline = Date.now() + 30000;
+  let success;
+  while (Date.now() < deadline) {
+    success = f.receipts().find((row) => row.key === retry.key && row.status === 0 && row.verified === true);
+    if (success) break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.ok(success, 'the same failed turn must acquire a new verified success receipt');
+  assert.equal(f.retrieve(retry.key), report.value);
+  assert.deepEqual(f.receipts().find((row) => row.key === report.key && row.status === 1), receipt);
+  console.log(JSON.stringify({ retriedIdenticalFailedTurn: true, stableTurnKey: true, exactReadback: true, gap: 'G-014', evidenceClass: 'EXECUTED', failureReceipt: receipt.error, sessionStartReported: true, doctorReported: true }));
 } finally { f.cleanup(); brain.cleanup(); }

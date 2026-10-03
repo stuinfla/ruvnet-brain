@@ -9,6 +9,7 @@ import {
   restoreProjectProgression,
   validateProgressionSnapshot,
 } from './project-progression-contract.mjs';
+import { resolveTurnDb } from './turn-outcome-capture.mjs';
 import { resolveProjectStore } from './project-store-resolver.mjs';
 import { withProgressionReader } from './project-progression-reader.mjs';
 import { resolveRuflo, rufloInvocation, RUFLO_MISSING } from './ruflo-bin.mjs';
@@ -323,6 +324,8 @@ export class ProjectProgressionStore {
   constructor({
     projectDir,
     requestedStorePath,
+    env = process.env,
+    brainHome = env.RUVNET_BRAIN_HOME || path.join(env.HOME || os.homedir(), '.cache', 'ruvnet-brain'),
     rufloBinary = resolveRuflo(),
     runner = defaultRunner,
     clock = () => new Date().toISOString(),
@@ -336,6 +339,7 @@ export class ProjectProgressionStore {
     // Best effort: a cleanup that cannot run must never stop a capture or a restore.
     try { this.legacyDebris = cleanLegacyRufloDebris(path.dirname(this.resolution.canonicalAgentDbPath)); }
     catch (error) { this.legacyDebris = { removed: [], refused: [{ path: null, reason: error.message }] }; }
+    this.brainHome = brainHome;
     this.rufloBinary = rufloBinary;
     this.runner = runner;
     this.clock = clock;
@@ -374,8 +378,17 @@ export class ProjectProgressionStore {
     if (!verdict.ok) throw new Error(`invalid progression snapshot: ${verdict.errors.join(', ')}`);
   }
 
+  requireCaptureConsent(snapshot) {
+    const capturePath = snapshot.sourceIdentity.capturePath;
+    const target = resolveTurnDb({ projectDir: capturePath ?? snapshot.sourceIdentity.checkoutPath,
+      brainHome: this.brainHome, requestedStorePath: this.resolution.canonicalAgentDbPath,
+      unknownOriginalPath: !capturePath });
+    if (target.skipped) throw new Error(`progression capture suspended: ${target.skipped}`);
+  }
+
   appendExact(snapshot, { onPhase = () => {} } = {}) {
     this.validateSnapshot(snapshot);
+    this.requireCaptureConsent(snapshot);
     const stored = this.run([
       'memory', 'store', '--key', snapshot.eventKey, '--value', JSON.stringify(snapshot),
       '--namespace', PROGRESSION_NAMESPACE, '--no-upsert', '--provenance', 'system_observation',
@@ -429,6 +442,7 @@ export class ProjectProgressionStore {
 
   capture(snapshot, { onPhase = () => {} } = {}) {
     this.validateSnapshot(snapshot);
+    this.requireCaptureConsent(snapshot);
     this.outbox.appendSnapshot(snapshot);
     onPhase('outbox-fsynced');
     const receipt = this.appendExact(snapshot, { onPhase });
