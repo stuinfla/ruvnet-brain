@@ -27,40 +27,63 @@ import readline from 'node:readline';
 /**
  * Parse the reader's stdout into structured citations. Never throws; unparseable input → [].
  *
- * The reader dumps each hit's full document body inline (`forge-ask-all.mjs`'s "----- full
- * document -----" section), unescaped. A retrieved document can itself legitimately CONTAIN text
- * shaped exactly like this format — this very file's own header comment is an example, and so is
- * any doc, ADR, or transcript that quotes or discusses the reader's output. Two guards keep such
- * look-alike text from being parsed as a real citation: (1) a block's `path`/`title` are read only
- * from the span between its own header and the NEXT header, never past it, so a citation missing
- * one is not silently filled in from something appearing later in the dump; (2) real hits are
- * numbered `#1, #2, …` strictly in order with no repeats — embedded example text does not continue
- * that sequence, so any header whose rank isn't exactly the next expected one is skipped. This is
- * not airtight against a document engineered to predict and spoof the exact next rank (tracked as
- * an open item, not solved here); it closes the realistic case this repo's own docs demonstrate.
+ * STRUCTURE, NOT TEXT PATTERNS (ADR-0102 G-004, #236). The reader dumps each hit's full document body
+ * inline, and a retrieved document can contain text shaped exactly like a hit header — including a forged
+ * "#N+1 repo=…" block that predicts the next rank, which the old next-header/next-rank guards could not
+ * stop ("not airtight"). The reader prints, before each body, `chars: <exact body length>`; the parser
+ * consumes the body BY THAT COUNT and requires the 67-'=' terminator right after it, so nothing inside a
+ * body is ever scanned for headers. A declared length that does not land on the terminator fails closed:
+ * that hit keeps no body and nothing after it is trusted; so does a body without `chars:` once an earlier
+ * hit carried one. Output with no `chars:` line at all (a reader older than this field) keeps the previous
+ * bounded-span parsing; a header with no body keeps none. `path`/`title`/scores come only from the header lines between
+ * a hit's header and its body, never from a body, and hits are numbered #1, #2, … strictly in order.
  */
+const SEPARATOR = '='.repeat(67);
 export function parseCitations(stdout) {
   const out = [];
   const text = String(stdout ?? '');
-  const blockRe = /^#(\d+)[ \t]+repo=(\S+)([^\r\n]*)/gm;
+  const headerRe = /^#(\d+)[ \t]+repo=(\S+)([^\r\n]*)/gm;
   const nextHeaderRe = /^#\d+\s+repo=\S+/gm;
+  const markerRe = /^----- full document -----\r?\n/gm;
   let m;
   let expectedRank = 1;
-  while ((m = blockRe.exec(text)) !== null) {
+  let structured = false;
+  while ((m = headerRe.exec(text)) !== null) {
     const rank = Number(m[1]);
     if (rank !== expectedRank) continue; // out-of-sequence header: a look-alike, not a real hit
-    const blockStart = m.index + m[0].length;
-    nextHeaderRe.lastIndex = blockStart;
+    const headStart = m.index + m[0].length;
+    nextHeaderRe.lastIndex = headStart;
     const next = nextHeaderRe.exec(text);
-    const block = text.slice(blockStart, next ? next.index : text.length);
-    const pathM = /^path\s*:\s*(.+)$/m.exec(block);
-    const titleM = /^title\s*:\s*(.+)$/m.exec(block);
-    // Only a block that actually resolves to a path fills this rank slot. Advancing on rank match
-    // alone (before this check) let a headerless-of-path look-alike fragment (e.g. an incidental
-    // "#N repo=..." mention with no path/title following) consume the slot, permanently rejecting
-    // the REAL citation at that rank when it appeared later in the stream — a false negative on a
-    // genuinely grounded answer, worse than the fabrication this rank check exists to prevent.
+    const nextAt = next ? next.index : text.length;
+    markerRe.lastIndex = headStart;
+    const marker = markerRe.exec(text);
+    const markerAt = marker && marker.index < nextAt ? marker.index : -1;
+    const head = text.slice(headStart, markerAt >= 0 ? markerAt : nextAt);
+    const pathM = /^path\s*:\s*(.+)$/m.exec(head);
+    const titleM = /^title\s*:\s*(.+)$/m.exec(head);
+    const charsM = /^chars:\s*(\d+)\b/m.exec(head);
+    // A pathless match does not fill (or burn) its rank: real reader output never omits path, and a
+    // look-alike fragment consuming the slot would reject the real citation that fills it later.
     if (!pathM) continue;
+    let returnedText = null;
+    let stop = false;
+    if (charsM && markerAt >= 0) {
+      const bodyStart = markerAt + marker[0].length;
+      const bodyEnd = bodyStart + Number(charsM[1]);
+      const terminator = text.startsWith(`\n${SEPARATOR}`, bodyEnd) ? 1 + SEPARATOR.length
+        : text.startsWith(`\r\n${SEPARATOR}`, bodyEnd) ? 2 + SEPARATOR.length : 0;
+      if (terminator) {
+        returnedText = text.slice(bodyStart, bodyEnd);
+        structured = true;
+        headerRe.lastIndex = bodyEnd + terminator; // resume AFTER the body: its contents are never parsed
+      } else stop = true; // the declared body does not end where it says: its boundary, and all after it, is unknown
+    } else if (markerAt >= 0 && structured) {
+      stop = true; // a body with no declared length after length-bound hits: its boundary is unknown
+    } else if (markerAt >= 0) {
+      // A reader older than `chars:`: the body is the bounded span up to the next header.
+      const body = /^----- full document -----\r?\n([\s\S]*?)\r?\n={67}(?:\r?\n|$)/m.exec(text.slice(headStart, nextAt));
+      returnedText = body ? body[1] : null;
+    }
     expectedRank = rank + 1;
     const repo = m[2];
     // Metadata comes only from the header, never from a retrieved document body.
@@ -73,9 +96,6 @@ export function parseCitations(stdout) {
     const fullPath = pathM[1].trim();
     // Strip the repo prefix the reader adds, so the remainder can be matched against the store.
     const docPath = fullPath.startsWith(`${repo}/`) ? fullPath.slice(repo.length + 1) : fullPath;
-    // Retain only the reader's bounded document body. Missing/truncated delimiters fail
-    // closed, so evaluators cannot borrow claims from headers, diagnostics, or later hits.
-    const body = /^----- full document -----\r?\n([\s\S]*?)\r?\n={67}(?:\r?\n|$)/m.exec(block);
     out.push({
       rank,
       repo,
@@ -83,11 +103,12 @@ export function parseCitations(stdout) {
       vec: score('vec'),
       kind: field('kind'),
       proofMethod: field('proof'),
-      returnedText: body ? body[1] : null,
+      returnedText,
       fullPath,
       docPath,
       title: titleM ? titleM[1].trim() : null,
     });
+    if (stop) break;
   }
   return out;
 }

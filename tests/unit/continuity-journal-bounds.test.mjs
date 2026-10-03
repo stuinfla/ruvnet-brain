@@ -195,14 +195,55 @@ describe('S4: the outbox stays bounded', () => {
     expect(later.record([e])).toHaveLength(0);
   });
 
-  it('a hard cap bounds the file even when nothing can ever commit, and the drop is reported', () => {
+  it('keeps every accepted pending event over the soft cap and reports capacity pressure without repeated rewrites', () => {
     const p = adoptedProject();
     const journal = new ContinuityJournal({ projectRoot: p.dir, ruflo: null });
-    journal.record(Array.from({ length: MAX_EVENT_RECORDS + 500 }, (_, i) => lesson(`Uncommittable ${i}.`, Date.now() + i)));
-    journal.compact();
-    expect(lines(journal.path).length).toBeLessThanOrEqual(MAX_EVENT_RECORDS + 3);
-    expect(journal.status().dropped).toBe(500);
-    expect(journal.pending().at(-1).event.summary).toBe(`Uncommittable ${MAX_EVENT_RECORDS + 499}.`); // newest kept
+    const events = Array.from({ length: MAX_EVENT_RECORDS + 500 }, (_, i) => lesson(`Uncommittable ${i}.`, Date.now() + i));
+    const accepted = journal.record(events);
+    const result = journal.compact();
+    expect(result).toMatchObject({ kept: events.length, dropped: 0 });
+    const reopened = new ContinuityJournal({ projectRoot: p.dir, ruflo: null });
+    expect(reopened.pending()).toEqual([...accepted].sort((a, b) => a.key.localeCompare(b.key)));
+    expect(reopened.status()).toMatchObject({ pending: events.length, dropped: 0, capacityPressure: true });
+    expect(recordingLine(reopened.status())).toMatch(/Capacity pressure:.*no pending events discarded/);
+    expect(reopened.needsCompaction()).toBe(false); // No redundant history remains to shrink.
+    const bytes = fs.readFileSync(reopened.path);
+    expect(drain(reopened, { ruflo: null })).toMatchObject({ remaining: events.length, skipped: 'ruflo not found' });
+    expect(fs.readFileSync(reopened.path)).toEqual(bytes);
+  });
+
+  it('prunes committed history before pending, preserves failures, then drains every recovered event and returns within the cap', () => {
+    const p = adoptedProject();
+    const journal = new ContinuityJournal({ projectRoot: p.dir, ruflo: 'ruflo' });
+    const at = Date.now();
+    const accepted = journal.record(Array.from({ length: MAX_EVENT_RECORDS + 5 }, (_, i) => lesson(`Recover ${i}.`, at + i)));
+    const committed = journal.record(Array.from({ length: 20 }, (_, i) => lesson(`Already committed ${i}.`, at - 100 + i)));
+    journal.appendRecords(committed.map((r) => ({ type: 'commit', key: r.key, digest: r.digest, committedAt: new Date(at).toISOString() })));
+    const failure = { type: 'failure', key: accepted[0].key, at: new Date(at).toISOString(), attempts: 3, reason: 'wal-contention' };
+    journal.appendRecords([failure, failure]);
+    expect(journal.needsCompaction()).toBe(true);
+    expect(journal.compact()).toMatchObject({ kept: accepted.length, dropped: 0 });
+    const reopened = new ContinuityJournal({ projectRoot: p.dir, ruflo: 'ruflo' });
+    expect(reopened.pending()).toEqual([...accepted].sort((a, b) => a.key.localeCompare(b.key)));
+    expect(reopened.scan().committed.size).toBe(0);
+    expect(reopened.scan().failures.get(failure.key)).toMatchObject({ attempts: 6, reason: 'wal-contention' });
+    expect(reopened.needsCompaction()).toBe(false);
+    expect(reopened.status()).toMatchObject({ problem: 'capacity-pressure', capacityPressure: true, dropped: 0 });
+    expect(recordingLine(reopened.status())).toMatch(/soft limit 2000; no pending events discarded/);
+    const stored = new Map(); // Exact-content store/readback seam; no owner store or raw SQL mutation.
+    const result = drain(reopened, {
+      store: ({ key, value }) => { stored.set(key, value); return { status: 0 }; },
+      readBack: ({ key }) => ({ content: stored.get(key), readPath: 'isolated-exact-content' }),
+    });
+    expect(result).toMatchObject({ committed: accepted.length, failed: 0, remaining: 0 });
+    for (const r of accepted) expect(stored.get(r.key)).toBe(JSON.stringify(r.event));
+    expect(reopened.scan().events.size).toBe(MAX_EVENT_RECORDS);
+    expect(reopened.scan().failures.size).toBe(0);
+    expect(reopened.status()).toMatchObject({ pending: 0, capacityPressure: false, dropped: 0, problem: null });
+    const later = new ContinuityJournal({ projectRoot: p.dir, ruflo: 'ruflo', now: () => at + RETAIN_COMMITTED_MS + DAY });
+    later.compact();
+    expect(later.scan().events.size).toBe(0);
+    expect(stored.size).toBe(accepted.length); // History pruning never touches durable stored content.
   });
 
   it('an append that lands during a compaction is never lost', () => {

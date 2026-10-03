@@ -80,7 +80,7 @@ export function runQualification({ suite = 'source', platform = PLATFORM, report
   const execute = (name, args) => {
     const run = spawnSync(process.execPath, ['scripts/ci/step-watchdog.mjs', '--name', name,
       '--timeout-ms', '900000', '--receipt-dir', temp, '--', process.execPath, ...args],
-    { cwd: root, env: { ...process.env, ...(suite === 'integration' ? { RUVNET_REQUIRE_CODEX_DISCOVERY: '1' } : {}) },
+    { cwd: root, env: { ...process.env, ...(suite === 'integration' ? { RUVNET_REQUIRE_CODEX_DISCOVERY: '1', RUVNET_REQUIRE_LEARNING_REPLAY: '1' } : {}) },
       stdio: 'inherit' });
     const ok = !run.error && run.status === 0;
     results.push({ name, status: ok ? 'PASS' : 'FAIL', exitCode: run.status });
@@ -89,6 +89,15 @@ export function runQualification({ suite = 'source', platform = PLATFORM, report
   let failure = null;
   try {
     if (suite === 'source') {
+      // Fail early when the current filesystem cannot support required adversarial link fixtures.
+      execute('release-filesystem-prerequisite', ['--input-type=module', '-e',
+        `import fs from 'node:fs'; import os from 'node:os'; import path from 'node:path';
+         const root=fs.mkdtempSync(path.join(os.tmpdir(),'qualification-link-'));
+         try { const file=path.join(root,'target'); const link=path.join(root,'link');
+           fs.writeFileSync(file,'required link fixture'); fs.symlinkSync(file,link,'file');
+           if(!fs.lstatSync(link).isSymbolicLink() || fs.readFileSync(link,'utf8')!=='required link fixture')
+             throw new Error('required file-symlink fixture is unavailable');
+         } finally { fs.rmSync(root,{recursive:true,force:true}); }`]);
       execute('release-version', ['scripts/sync-version.mjs', '--check']);
       execute('release-source-identity', ['scripts/convergence-manifest.mjs']);
       execute('automatic-hook-retirement', ['scripts/hook-retirement-check.mjs']);

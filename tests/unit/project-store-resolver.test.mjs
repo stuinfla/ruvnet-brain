@@ -152,4 +152,17 @@ describe('canonical project store resolution', () => {
 
     expect(() => resolveProjectStore({ projectDir: project })).toThrow(/symlink.*escape/i);
   });
+
+  it('rejects a memory.db hard-linked to a foreign file (ADR-0102 G-053): every path check passes, the inode is foreign', () => {
+    const project = temporaryRoot('project-store-db-hardlink-project-');
+    const foreign = temporaryRoot('project-store-db-hardlink-target-');
+    fs.mkdirSync(path.join(project, '.swarm'));
+    const foreignDb = path.join(foreign, 'memory.db');
+    fs.writeFileSync(foreignDb, 'foreign store\n');
+    fs.linkSync(foreignDb, path.join(project, '.swarm', 'memory.db'));
+
+    expect(() => resolveProjectStore({ projectDir: project })).toThrow(/hard link rejected/);
+    fs.rmSync(foreignDb);
+    expect(resolveProjectStore({ projectDir: project }).canonicalAgentDbPath).toBe(path.join(project, '.swarm', 'memory.db'));
+  });
 });

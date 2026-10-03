@@ -455,6 +455,7 @@ async function handle(msg) {
         // as inert reference data so an autonomous Claude won't execute an instruction injected into
         // an untrusted ingested repo. Exit-safe: guardPassages never throws into the search path.
         const results = guardPassages(rawResults);
+        const line = (value) => String(value ?? '').replace(/[\r\n]+/g, ' ');
         const text = results.map((r, i) => {
           const body = r.fullText || r.text || '';
           const shown = renderedDocument(body);
@@ -462,12 +463,12 @@ async function handle(msg) {
             ? `----- full document (${body.length} chars, ${r.chunksJoined} chunk(s)${r.truncated ? ', truncated' : ''}) -----`
             : `----- document, first ${shown.length} of ${body.length} chars (${r.chunksJoined} chunk(s); `
               + `the WHOLE document is in structuredContent.retrieval.results[${i}].text, sha-bound) -----`;
-          return `#${i + 1}  repo=${r.repo}  (relevance ${r.ceScore == null ? 'n/a' : r.ceScore.toFixed(3)}; vec ${r.bestDistance == null ? 'n/a' : r.bestDistance.toFixed(4)})\n`
-            + `path : ${r.repo}/${r.path}\n`
-            + `title: ${r.title}\n`
-            + `evidence class: ${r.evidenceClass || 'unknown'}${r.lifecycleStatus ? `; lifecycle status: ${r.lifecycleStatus}` : ''}\n`
-            + `${header}\n`
-            + `${shown}\n`;
+          return `#${i + 1}  repo=${line(r.repo)}  (relevance ${r.ceScore == null ? 'n/a' : r.ceScore.toFixed(3)}; vec ${r.bestDistance == null ? 'n/a' : r.bestDistance.toFixed(4)})\n`
+            + `path : ${line(r.repo)}/${line(r.path)}\n`
+            + `title: ${line(r.title)}\n`
+            + `evidence class: ${line(r.evidenceClass || 'unknown')}${r.lifecycleStatus ? `; lifecycle status: ${line(r.lifecycleStatus)}` : ''}\n`
+            + `chars: ${shown.length}\n${header}\n----- full document -----\n`
+            + `${shown}\n${'='.repeat(67)}\n`;
         }).join('\n========================================================\n\n');
         // Partial failure is DEGRADED, not fine: name the dead repos in-band so a hit that "should
         // be there" missing is explainable, and the model can tell the user coverage was reduced.

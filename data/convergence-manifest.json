@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
   "kind": "ruvnet-brain-convergence-manifest",
-  "version": "4.5.2",
-  "sourceIdentity": "0221afaf9b304829522a6c1a6e68d8d825d2b08b01b536c0c2e4b0f5ae0cd648",
+  "version": "4.5.3",
+  "sourceIdentity": "138b563890a9f43a777ecdf5d0148003585cd042726c42b7b2c78b0581e5d6d9",
   "versionSurfaces": {
-    "package.json": "4.5.2",
-    "plugin/.claude-plugin/plugin.json": "4.5.2",
-    "plugin/.codex-plugin/plugin.json": "4.5.2",
-    "data/manifest.json": "4.5.2",
-    "kb/RVF-GENERATIONS.json": "4.5.2",
-    "explainer/index.html": "4.5.2",
-    "primer/ruvnet-primer.md": "4.5.2"
+    "package.json": "4.5.3",
+    "plugin/.claude-plugin/plugin.json": "4.5.3",
+    "plugin/.codex-plugin/plugin.json": "4.5.3",
+    "data/manifest.json": "4.5.3",
+    "kb/RVF-GENERATIONS.json": "4.5.3",
+    "explainer/index.html": "4.5.3",
+    "primer/ruvnet-primer.md": "4.5.3"
   },
   "adrInventory": [
     "0001-verified-bundle-not-single-file.md",
@@ -107,10 +107,12 @@
     "0098-footprint-and-currency-guarantee.md",
     "0099-self-learning-retrieval.md",
     "0100-guaranteed-agentdb-continuity.md",
+    "0101-agentdb-first.md",
+    "0102-completion-and-closure-ledger.md",
     "README.md"
   ],
-  "trackedFileCount": 1784,
-  "trackedFilesSha256": "2021db145db22d63e7caf992f29d552598aafb6c71160183b89f0a2b53ce3e12",
+  "trackedFileCount": 1819,
+  "trackedFilesSha256": "0f1dab309d71ee7ddfbd2f3759f9ee6e2e7f32b98fbe1e5d6af53d9448903cfa",
   "ownershipChecks": [
     "version:check",
     "doc:currency",
