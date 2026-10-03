@@ -35,6 +35,7 @@ import { restoreProgressionForSession } from './project-progression-session-star
 import { projectDirectory } from './project-identity.mjs';
 import { CONTINUITY_NAMESPACE, EVENT_KINDS, makeEvent, userLevelAgentdbHooks } from './continuity-events.mjs';
 import { ContinuityJournal, drain, launchDrain, recordingLine, storeReady } from './continuity-journal.mjs';
+import { turnRecordingLine, turnRecordingStatus } from './turn-capture-state.mjs';
 import { digestCanonical } from './project-progression-contract.mjs';
 
 export const BRIEF_HEADER = '[RuvNet Brain — COME UP TO SPEED';
@@ -205,6 +206,8 @@ export function buildBrief({ projectDir, env = process.env, home = os.homedir(),
   const now_ = `NOW: ${oneLine(branch, 80) || 'no branch'} @ ${oneLine(headLine, 160) || 'no commits'}${version ? ` · package ${oneLine(version, 40)}` : ''}${latestTag ? ` · latest tag ${oneLine(latestTag, 60)}` : ''} (git, live)`;
   const tail = [
     recordingLine(status, now),
+    // G-014: failed or refused TURN writes for this store (the worker's read-back receipts); absent when none exist.
+    ...[turnRecordingLine(turnRecordingStatus({ db: resolution.canonicalAgentDbPath, env, home, now }))].filter(Boolean),
     `MORE: ${env.RUVNET_HOOK_HOST === 'codex' ? '' : '/ruvnet-brain:rnb-brief, or '}node "${path.join(pluginRoot, 'scripts', 'continuity-brief.mjs')}" --full [--kind ${EVENT_KINDS.join('|')}] [--since 7d]`,
   ];
   const block = (list, caps, offset) => {

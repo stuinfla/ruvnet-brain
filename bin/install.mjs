@@ -3213,6 +3213,18 @@ async function doctorRun({ json }) {
   } catch (error) {
     agentdbLine = { id: 'agentdb', label: 'AgentDB', state: 'unknown', detail: `recording status unavailable: ${error.message}`, fix: null };
   }
+  // TURN RECORDING (ADR-0102 G-014): failed or refused turn writes for THIS project's store, from the worker's
+  // receipts (a write counts only after an exact read-back). Advisory '!' when any failed in 7 days; no line
+  // when the store has no turn receipts.
+  let turnLine = null;
+  try {
+    const { turnRecordingStatus, turnRecordingLine } = await import('../plugin/scripts/turn-capture-state.mjs');
+    const { resolveProjectStore } = await import('../plugin/scripts/project-store-resolver.mjs');
+    const status = turnRecordingStatus({ db: resolveProjectStore({ projectDir: process.cwd() }).canonicalAgentDbPath });
+    const detail = turnRecordingLine(status);
+    if (detail) turnLine = { id: 'turn-recording', label: 'Turns', detail: detail.replace(/^turn recording /, ''),
+      state: status.failed ? 'warn' : 'ok', fix: status.failed ? 'ruflo doctor --fix; the receipt names the first error line' : null };
+  } catch { /* no resolvable project: no line */ }
 
   // ── THE MECHANICAL VERDICT ────────────────────────────────────────────────────────────────────
   // `--hooks` is retained as a compatibility alias for a read-only zero-registration proof. It must
@@ -3293,6 +3305,7 @@ async function doctorRun({ json }) {
     check('host-convergence', 'Hosts sync', !hostConvergence.healthy, hostConvergence.state, 'npx ruvnet-brain --update'),
     ...(rufloOperational ? [rufloCheckLine(rufloOperational)] : []),
     ...(agentdbLine ? [agentdbLine] : []),
+    ...(turnLine ? [turnLine] : []),
   ];
   // THE ONE VERDICT. Text, --json and the exit code are all read from this object; nothing else decides.
   const verdict = doctorVerdict(confirmation, checks);

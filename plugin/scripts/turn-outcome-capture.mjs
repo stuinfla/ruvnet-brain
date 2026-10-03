@@ -10,9 +10,25 @@
  *                           is the RECORDING tier; distill mines it into episodes/reasoning_patterns/
  *                           causal_edges, the KNOWLEDGE tier, which stays empty unless it is run)
  *
- * WHERE: the project's `.swarm/memory.db` when it exists, else the machine-wide
- * `~/.claude/global-memory/.swarm/memory.db` (outside every repository). `.swarm` is NEVER created
- * inside a project — see session-snapshot-hook.mjs's writeSessionSnapshot for why that is trespass.
+ * WHERE (ADR-0102 G-053, G-002): the store of the CANONICAL ADOPTED ROOT, resolved by
+ * project-store-resolver.mjs — the main worktree of the git common dir (so a linked worktree writes to
+ * its repository's store), or the non-git directory holding `.swarm/memory.db`. A store that is a
+ * symlink, hard link, or escapes that root is REFUSED and nothing is written anywhere (no fallback). A
+ * project with no store records NOTHING unless the machine setting `unadopted: "global"` opts in to the
+ * machine-wide `~/.claude/global-memory/.swarm/memory.db` (the conservative default pending owner
+ * decision D8). `.swarm` is NEVER created inside a project (session-snapshot-hook.mjs: trespass).
+ *
+ * PRIVACY (G-001): the record is redacted (continuity-events.mjs redactText) BEFORE anything is
+ * written; the local `agentdb-turns.jsonl` index holds only {ts,key,hash,len}; the text reaches ruflo in
+ * a 0600 spool file read by `ruflo memory import` (ruflo's `memory store` takes a value only on argv),
+ * never on any process argv; ruflo runs in a private scratch dir that is removed afterwards. A
+ * persistent opt-out lives in `<brain home>/turn-capture/settings.json` (turn-capture-state.mjs
+ * `--capture off`, per machine or `--project <dir>`), read at every Stop, so it holds across restarts
+ * and updates.
+ *
+ * TRUTH (G-014): a write is OK only when the row is read back by its exact key; the receipt carries
+ * ruflo's first stderr line otherwise, and turnRecordingLine() reports "failing N/M" to doctor and
+ * the SessionStart brief.
  *
  * WHAT (measured facts carried over from the owner's local Claude hook, 2026-09-29):
  *   • The Brain's continuation gate continues most turns, so the turn's REAL final Stop carries
@@ -43,7 +59,11 @@ import crypto from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { resolveRuflo, rufloInvocation } from './ruflo-bin.mjs';
-import { userLevelAgentdbHooks } from './continuity-events.mjs';
+import { redactText, userLevelAgentdbHooks } from './continuity-events.mjs';
+import { resolveProjectStore } from './project-store-resolver.mjs';
+import { ensurePrivateDir, rufloRunDir } from './project-progression-store.mjs';
+import { withProgressionReader } from './project-progression-reader.mjs';
+import { appendPrivate, readTurnCaptureSettings } from './turn-capture-state.mjs';
 
 export const TURN_NAMESPACE = 'turns';
 export const MIN_OUTCOME_CHARS = 200;
@@ -136,26 +156,71 @@ export function readSettledTranscript(file, { stableMs = 400, maxMs = 2000, slee
   return readTail(file);
 }
 
+/** Redact the WHOLE turn first (continuity-events.mjs redactText), only then collapse and bound it. */
 export function buildTurnRecord({ turn, project, host, session, at = new Date() }) {
+  const clean = (text) => redactText(text).replace(/\s+/g, ' ').trim();
   const parts = [`[turn ${at.toISOString()} project=${project} host=${host}]`,
-    `OUTCOME: ${turn.finalText.replace(/\s+/g, ' ').slice(0, 2500)}`];
-  if (turn.files.length) parts.push(`FILES CHANGED: ${turn.files.slice(0, 25).join(', ')}`);
-  if (turn.actions.length) parts.push(`ACTIONS: ${turn.actions.slice(-15).join(' • ')}`);
-  parts.push(`SESSION: ${session || '?'}`);
-  return parts.join('  ||  ').slice(0, 4000);
+    `OUTCOME: ${clean(turn.finalText).slice(0, 2500)}`];
+  if (turn.files.length) parts.push(`FILES CHANGED: ${turn.files.slice(0, 25).map(clean).join(', ')}`);
+  if (turn.actions.length) parts.push(`ACTIONS: ${turn.actions.slice(-15).map(clean).join(' • ')}`);
+  parts.push(`SESSION: ${clean(session || '?')}`);
+  return redactText(parts.join('  ||  ').slice(0, 4000));
 }
 
-/** Project db if the project already has one; otherwise the machine-wide db outside every repo. */
-export function resolveTurnDb({ projectDir, home = os.homedir(), env = process.env } = {}) {
-  const projectDb = path.join(projectDir, '.swarm', 'memory.db');
-  try { if (fs.statSync(projectDb).isFile()) return { db: projectDb, scope: 'project' }; } catch { /* absent */ }
-  const globalDb = env.RUVNET_TURN_GLOBAL_DB || path.join(home, '.claude', 'global-memory', '.swarm', 'memory.db');
-  return { db: globalDb, scope: 'global' };
+const lstat = (file) => { try { return fs.lstatSync(file); } catch { return null; } };
+
+/**
+ * Why `db` is NOT a store this writer may touch, or null when it is: its directory must be a real
+ * directory at its own canonical path (no symlinked ancestor), and the db and its SQLite side files
+ * regular files that are not symlinks or hard links (a hard link would write into a foreign inode).
+ */
+export function storeContainmentProblem(db, { allowMissing = false } = {}) {
+  const dir = path.dirname(db);
+  const d = lstat(dir);
+  if (!d) return 'store directory is missing';
+  if (d.isSymbolicLink() || !d.isDirectory()) return 'store directory is a symlink or not a directory';
+  let real;
+  try { real = fs.realpathSync.native(dir); } catch { return 'store directory cannot be resolved'; }
+  if (real !== dir) return 'store directory resolves outside its canonical path (symlinked ancestor)';
+  const f = lstat(db);
+  if (!f) return allowMissing ? null : 'store file is missing';
+  if (f.isSymbolicLink() || !f.isFile()) return 'store file is a symlink or not a regular file';
+  if (f.nlink > 1) return 'store file is hard-linked';
+  for (const side of ['-wal', '-shm', '-journal']) {
+    const s = lstat(`${db}${side}`);
+    if (s && (s.isSymbolicLink() || !s.isFile() || s.nlink > 1)) return `store ${side} file is a symlink, hard link or not a regular file`;
+  }
+  return null;
 }
 
-const projectName = (projectDir) => path.basename(path.resolve(projectDir)).replace(/[^A-Za-z0-9._-]/g, '_') || 'project';
+const projectName = (dir) => path.basename(dir).replace(/[^A-Za-z0-9._-]/g, '_') || 'project';
+const globalDbOf = ({ home, env }) => env.RUVNET_TURN_GLOBAL_DB || path.join(home, '.claude', 'global-memory', '.swarm', 'memory.db');
 
-/** Detached worker launch: the hook returns immediately; the worker runs the steps in order. */
+/**
+ * The store of the canonical adopted root (G-053), or why there is none. Never falls back to the
+ * machine-wide store on a refusal; a project without a store uses it only when opted in (G-002).
+ */
+export function resolveTurnDb({ projectDir, home = os.homedir(), env = process.env, settings = {} } = {}) {
+  let resolution;
+  try { resolution = resolveProjectStore({ projectDir }); } catch (error) {
+    return { db: null, scope: 'refused', reason: `store refused: ${error.message}` };
+  }
+  const db = resolution.canonicalAgentDbPath;
+  const base = { projectRoot: resolution.projectRoot, project: projectName(resolution.projectRoot) };
+  if (lstat(db)) {
+    const problem = storeContainmentProblem(db);
+    return problem ? { ...base, db: null, canonicalDb: db, scope: 'refused', reason: `store refused: ${problem}` }
+      : { ...base, db, scope: 'project' };
+  }
+  if (settings.unadopted === 'global') return { ...base, db: globalDbOf({ home, env }), scope: 'global' };
+  return { ...base, db: null, scope: 'none',
+    reason: 'project has not adopted an AgentDB store (.swarm/memory.db): nothing recorded (machine-wide opt-in: --unadopted global)' };
+}
+
+const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex');
+
+/** Detached worker launch: the hook returns immediately; the worker runs the steps in order. No turn
+ * text is in this argv: a store step names its 0600 spool file, never the value. */
 export function launchDetached(steps, { receipts }) {
   const child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--run-steps', JSON.stringify({ steps, receipts })], {
     cwd: os.tmpdir(), detached: true, stdio: 'ignore', windowsHide: true, env: { ...process.env, ...RUFLO_ENV },
@@ -177,9 +242,17 @@ function sameTurnSeen(stateFile, sessionKey, fingerprint) {
   return false;
 }
 
+function appendReceipt(receipts, row) {
+  try {
+    fs.mkdirSync(path.dirname(receipts), { recursive: true, mode: 0o700 });
+    appendPrivate(receipts, `${JSON.stringify(row)}\n`);
+  } catch { /* receipts are best effort */ }
+}
+
 /**
  * Capture this turn's outcome (Stop) and/or queue distillation (SessionEnd, PreCompact).
- * Returns a plain report; `skipped` / `distill.skipped` carry the reason whenever nothing is written.
+ * Returns a plain report; `skipped` / `distill.skipped` carry the reason whenever nothing is queued.
+ * `queued` means handed to the worker — never "recorded": only the worker's read-back proves that.
  */
 export function captureTurnOutcome({
   projectDir, event, payload = {}, host = 'claude',
@@ -191,16 +264,30 @@ export function captureTurnOutcome({
   settleMs = 2000,
   now = () => new Date(),
 } = {}) {
-  const report = { event, host, recorded: false, distill: { queued: false } };
-  if (String(env.RUVNET_TURN_CAPTURE || '').toLowerCase() === 'off') {
-    return { ...report, skipped: 'RUVNET_TURN_CAPTURE=off', distill: { queued: false, skipped: 'RUVNET_TURN_CAPTURE=off' } };
-  }
-  if (!ruflo) return { ...report, skipped: 'ruflo not found', distill: { queued: false, skipped: 'ruflo not found' } };
-  const { db, scope } = resolveTurnDb({ projectDir, home, env });
-  Object.assign(report, { db, scope });
-  const steps = [];
-  const project = projectName(projectDir);
+  const report = { event, host, queued: false, recorded: false, distill: { queued: false } };
+  const skip = (reason) => ({ ...report, skipped: reason, distill: { queued: false, skipped: reason } });
+  if (String(env.RUVNET_TURN_CAPTURE || '').toLowerCase() === 'off') return skip('RUVNET_TURN_CAPTURE=off');
+  const settingsFile = path.join(brainHome, 'turn-capture', 'settings.json');
+  const read = readTurnCaptureSettings(settingsFile);
+  if (!read.ok) return skip(`turn capture settings ${settingsFile} are ${read.reason}: recording nothing until fixed`);
+  if (read.settings.capture === 'off') return skip(`turn capture is off on this machine (${settingsFile})`);
+  if (!ruflo) return skip('ruflo not found');
   const receipts = path.join(brainHome, 'turn-capture', 'receipts.jsonl');
+  const target = resolveTurnDb({ projectDir, home, env, settings: read.settings });
+  const { db, scope, project } = target;
+  Object.assign(report, { db, scope });
+  if (target.projectRoot && read.settings.projects?.[target.projectRoot] === 'off') {
+    return skip(`turn capture is off for ${target.projectRoot} (${settingsFile})`);
+  }
+  if (!db) {
+    // A refused store is a security event, so it is a failing receipt (doctor shows it); a project that
+    // never adopted a store is simply not recorded.
+    if (scope === 'refused' && event === 'Stop') {
+      appendReceipt(receipts, { at: now().toISOString(), kind: 'store', db: target.canonicalDb || null, ok: false, status: null, error: target.reason });
+    }
+    return skip(target.reason);
+  }
+  const steps = [];
 
   // ONE WRITER PER TURN (ADR-100 §3). Measured 2026-10-01 on this repo's real store: 624 `turns` rows
   // in five days for 323 distinct outcomes — this writer (host-tagged) and the owner's user-level
@@ -209,6 +296,7 @@ export function captureTurnOutcome({
   // (RUVNET_TURN_CAPTURE=force keeps both). Codex turns are not seen by that Claude-only hook.
   const deferTo = event === 'Stop' && host === 'claude' && String(env.RUVNET_TURN_CAPTURE || '').toLowerCase() !== 'force'
     && userLevelAgentdbHooks({ home }).turnCapture;
+  let record = null;
   if (deferTo) {
     report.skipped = 'deferred: the user-level ~/.claude/hooks/agentdb-turn-capture.mjs records this turn (one writer per turn)';
     report.deferredToUserLevel = true;
@@ -226,78 +314,126 @@ export function captureTurnOutcome({
     else if (turn.finalText.length < MIN_OUTCOME_CHARS && !turn.files.length) {
       report.skipped = host === 'codex' && !message ? 'codex payload carried no last_assistant_message' : 'trivial turn';
     } else {
-      const fingerprint = crypto.createHash('sha256').update(JSON.stringify([turn.finalText, turn.files])).digest('hex');
+      const fingerprint = sha256(JSON.stringify([turn.finalText, turn.files]));
       const stateFile = path.join(brainHome, 'turn-capture', 'last-turn.json');
-      if (sameTurnSeen(stateFile, `${host}:${sessionKey}`, fingerprint)) report.skipped = 'same turn outcome already recorded';
+      if (sameTurnSeen(stateFile, `${host}:${sha256(sessionKey)}`, fingerprint)) report.skipped = 'same turn outcome already recorded';
       else {
         const at = now();
         const key = `turn-${project}-${at.getTime()}`;
-        const value = buildTurnRecord({ turn, project, host, session: payload.session_id, at });
-        steps.push({ kind: 'store', ruflo, args: ['memory', 'store', '-k', key, '--value', value, '-n', TURN_NAMESPACE,
-          '--path', db, '--tags', `project=${project},host=${host}`, '--provenance', 'agent_output'] });
-        Object.assign(report, { recorded: true, key, value });
+        record = { key, value: buildTurnRecord({ turn, project, host, session: payload.session_id, at }), at };
       }
     }
   } else report.skipped = `turn outcomes are recorded at Stop, not ${event}`;
 
-  if (event === 'SessionEnd' || event === 'PreCompact') {
-    if (!fs.existsSync(db)) report.distill = { queued: false, skipped: 'no memory db to distill yet' };
-    else {
-      steps.push({ kind: 'distill', ruflo, args: ['memory', 'distill', 'run', '--db', db, '--namespace', TURN_NAMESPACE, '--max-entries', '500'] });
-      report.distill = { queued: true, db };
-    }
-  }
-  if (!steps.length) return report;
-
   try {
-    // The machine-wide db lives outside every repository; its directory is created on first use so a
-    // fresh machine records from its first turn. A project's `.swarm` is never created (scope check).
-    if (scope === 'global') fs.mkdirSync(path.dirname(db), { recursive: true, mode: 0o700 });
-    if (report.recorded) {
-      fs.appendFileSync(path.join(path.dirname(db), 'agentdb-turns.jsonl'),
-        `${JSON.stringify({ ts: Date.now(), key: report.key, project, host, value: report.value })}\n`, { mode: 0o600 });
+    if (record) {
+      // The machine-wide db lives outside every repository; its directory is created on first use when
+      // opted in. A project's `.swarm` is never created (it must already exist to be chosen).
+      if (scope === 'global') fs.mkdirSync(path.dirname(db), { recursive: true, mode: 0o700 });
+      const hash = sha256(record.value);
+      appendPrivate(path.join(path.dirname(db), 'agentdb-turns.jsonl'),
+        `${JSON.stringify({ ts: record.at.getTime(), key: record.key, hash, len: record.value.length })}\n`);
+      const spoolDir = path.join(brainHome, 'turn-capture', 'spool');
+      fs.mkdirSync(path.dirname(spoolDir), { recursive: true, mode: 0o700 });
+      ensurePrivateDir(spoolDir);
+      for (const name of fs.readdirSync(spoolDir)) { // a worker that never ran leaves its spool: swept after 1h
+        const stale = lstat(path.join(spoolDir, name));
+        if (stale && now().getTime() - stale.mtimeMs > 3_600_000) fs.rmSync(path.join(spoolDir, name), { force: true });
+      }
+      const spool = path.join(spoolDir, `${record.key}-${crypto.randomBytes(6).toString('hex')}.json`);
+      fs.writeFileSync(spool, JSON.stringify({ entries: [{ key: record.key, namespace: TURN_NAMESPACE, value: record.value }] }), { mode: 0o600, flag: 'wx' });
+      steps.push({ kind: 'store', ruflo, db, scope, key: record.key, spool, hash });
+      Object.assign(report, { queued: true, key: record.key, hash, len: record.value.length });
     }
+    if (event === 'SessionEnd' || event === 'PreCompact') {
+      if (!fs.existsSync(db)) report.distill = { queued: false, skipped: 'no memory db to distill yet' };
+      else {
+        steps.push({ kind: 'distill', ruflo, db, scope, args: ['memory', 'distill', 'run', '--db', db, '--namespace', TURN_NAMESPACE, '--max-entries', '500'] });
+        report.distill = { queued: true, db };
+      }
+    }
+    if (!steps.length) return report;
     report.launch = launch(steps, { receipts });
   } catch (error) {
-    return { ...report, recorded: false, distill: { queued: false, skipped: `launch failed: ${error.message}` }, skipped: `launch failed: ${error.message}` };
+    const reason = `launch failed: ${redactText(error.message).slice(0, 200)}`;
+    if (record) appendReceipt(receipts, { at: now().toISOString(), kind: 'store', db, key: record.key, ok: false, status: null, error: reason });
+    return { ...report, queued: false, distill: { queued: false, skipped: reason }, skipped: reason };
   }
   return report;
+}
+
+const firstLine = (text) => String(text || '').split(/\r?\n/).map((l) => l.trim()).find(Boolean) || '';
+const safeLine = (text) => redactText(firstLine(text)).slice(0, 200);
+
+function runRuflo(run, step, args) {
+  // CONTAINMENT (measured 2026-09-29, ruflo 3.48.0; 3.51.1 also copies the value into
+  // <cwd>/agentdb-memory.db-wal): ruflo writes `.swarm/`, `ruvector.db` and a copy of the value relative
+  // to its CWD even with --path. Every call runs in a fresh private run dir (project-progression-store
+  // rufloRunDir) that is removed afterwards, so neither the repository nor a lasting scratch holds it.
+  const cwd = rufloRunDir(step.db);
+  try {
+    const { executable, args: argv } = rufloInvocation(step.ruflo, args);
+    return run(executable, argv, { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', timeout: STEP_TIMEOUT_MS, cwd, windowsHide: true,
+      env: { ...process.env, ...RUFLO_ENV, CLAUDE_FLOW_MEMORY_PATH: cwd } });
+  } finally { fs.rmSync(cwd, { recursive: true, force: true }); }
+}
+
+/** The stored row by exact key: node:sqlite first, the ruflo CLI when that reader is unavailable. */
+function readBackRow(run, step) {
+  const fast = withProgressionReader(step.db, (reader) => reader.readContent(TURN_NAMESPACE, step.key));
+  if (fast.ok) return fast.value;
+  const r = runRuflo(run, step, ['memory', 'retrieve', '--key', step.key, '--namespace', TURN_NAMESPACE, '--value-only', '--path', step.db]);
+  return r.status === 0 ? String(r.stdout || '') : null;
 }
 
 /** The detached worker: run each step in order, bounded, and append one receipt per step. */
 export function runSteps({ steps = [], receipts } = {}, { run = spawnSync } = {}) {
   const results = [];
   for (const step of steps) {
-    let status = null;
-    let error = null;
-    const db = step.args[step.args.indexOf(step.kind === 'store' ? '--path' : '--db') + 1];
+    const row = { at: new Date().toISOString(), kind: step.kind, db: step.db, key: step.kind === 'store' ? step.key : undefined,
+      ok: false, status: null, error: null };
+    let value = null;
     try {
-      const { executable, args } = rufloInvocation(step.ruflo, step.args);
-      // CONTAINMENT (measured 2026-09-29, ruflo 3.48.0): even with an explicit --path, `memory store`
-      // writes `.swarm/hnsw.index` and `ruvector.db` relative to its CWD. Run from an inherited cwd,
-      // that planted `.swarm/` + `ruvector.db` in a repository that never adopted the brain — the
-      // exact trespass session-snapshot-hook.mjs forbids. So every step runs INSIDE the db's own
-      // directory, with ruflo's memory root pinned there too.
-      const home = path.dirname(db);
-      const r = run(executable, args, { stdio: 'ignore', timeout: STEP_TIMEOUT_MS, cwd: home, windowsHide: true,
-        env: { ...process.env, ...RUFLO_ENV, CLAUDE_FLOW_MEMORY_PATH: home } });
-      status = r.status;
-      if (r.error) error = r.error.message;
-    } catch (e) { error = e.message; }
-    const row = { at: new Date().toISOString(), kind: step.kind, db,
-      key: step.kind === 'store' ? step.args[step.args.indexOf('-k') + 1] : undefined, status, error };
-    results.push(row);
-    if (receipts) {
-      try {
-        fs.mkdirSync(path.dirname(receipts), { recursive: true, mode: 0o700 });
-        fs.appendFileSync(receipts, `${JSON.stringify(row)}\n`, { mode: 0o600 });
-      } catch { /* receipts are best effort */ }
+      if (step.kind === 'store') {
+        const doc = JSON.parse(fs.readFileSync(step.spool, 'utf8'));
+        value = doc?.entries?.[0]?.value;
+        if (typeof value !== 'string' || sha256(value) !== step.hash) throw new Error('spool does not hold the queued record');
+      }
+      // RE-CHECKED HERE (replacement race): the store may have been swapped for a link since the hook chose it.
+      const problem = storeContainmentProblem(step.db, { allowMissing: step.scope === 'global' });
+      if (problem) row.error = `refused before write: ${problem}`;
+      else if (step.kind === 'store') {
+        const r = runRuflo(run, step, ['memory', 'import', '-i', step.spool, '-n', TURN_NAMESPACE, '--path', step.db]);
+        row.status = Number.isInteger(r.status) ? r.status : null;
+        const said = safeLine(r.stderr) || safeLine(String(r.stdout || '').split(/\r?\n/).filter((l) => /skipped|error|fail|refus/i.test(l)).join('\n'));
+        if (r.error) row.error = safeLine(r.error.message);
+        else if (row.status !== 0) row.error = said || `ruflo exited ${row.status}`;
+        else {
+          // `memory import` exits 0 even when it skipped the entry (measured, ruflo 3.51.1): only an exact
+          // read-back of the same bytes proves the record exists.
+          const back = readBackRow(run, step);
+          row.readBack = back === null ? 'missing' : sha256(back) === step.hash ? 'verified' : 'different';
+          if (row.readBack === 'verified') row.ok = true;
+          else row.error = `ruflo exited 0 but the row was ${row.readBack === 'missing' ? 'not found' : 'different'} on exact read-back${said ? ` (${said})` : ''}`;
+        }
+      } else {
+        const r = runRuflo(run, step, step.args);
+        row.status = Number.isInteger(r.status) ? r.status : null;
+        row.ok = row.status === 0 && !r.error;
+        if (!row.ok) row.error = safeLine(r.stderr) || (r.error ? safeLine(r.error.message) : `ruflo exited ${row.status}`);
+      }
+    } catch (e) { row.error = safeLine(e.message); } finally {
+      if (step.spool) { try { fs.rmSync(step.spool, { force: true }); } catch { /* swept below */ } }
     }
+    results.push(row);
+    if (receipts) appendReceipt(receipts, row);
   }
   return results;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url) && process.argv[2] === '--run-steps') {
-  try { runSteps(JSON.parse(process.argv[3] || '{}')); } catch { /* a detached worker has no one to report to */ }
-  process.exit(0);
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  if (process.argv[2] === '--run-steps') {
+    try { runSteps(JSON.parse(process.argv[3] || '{}')); } catch { /* a detached worker has no one to report to */ }
+    process.exit(0);
+  }
 }

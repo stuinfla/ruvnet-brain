@@ -59,9 +59,11 @@ export function createStore(file) {
 
 /**
  * A fake `ruflo` on disk. `refusals` is how many store calls print the WAL refusal and exit 1 before
- * stores start succeeding (a file the test can rewrite mid-run). Every call is logged.
+ * stores start succeeding (a file the test can rewrite mid-run). Every call is logged, full argv in `all`.
+ * `memory import -i <file>` (the turn writer's path) mirrors ruflo 3.51.1: `importMode` 'ok' inserts the
+ * entries; 'fail' prints an error on stderr and exits 1; 'skip' exits 0 having stored nothing ("Skipped").
  */
-export function fakeRuflo({ refusals = 0 } = {}) {
+export function fakeRuflo({ refusals = 0, importMode = 'ok' } = {}) {
   const dir = tmp('cont-ruflo-');
   const counter = path.join(dir, 'refusals');
   const log = path.join(dir, 'calls.jsonl');
@@ -72,7 +74,7 @@ const fs = require('node:fs');
 const { DatabaseSync } = require('node:sqlite');
 const a = process.argv.slice(2);
 const flag = (n) => a[a.indexOf(n) + 1];
-fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ argv: a.slice(0, 2), key: flag('--key'), at: Date.now() }) + '\\n');
+fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ argv: a.slice(0, 2), all: a, cwd: process.cwd(), key: flag('--key'), at: Date.now() }) + '\\n');
 const db = flag('--path');
 if (a[0] === 'memory' && a[1] === 'store') {
   const left = Number(fs.readFileSync(${JSON.stringify(counter)}, 'utf8')) || 0;
@@ -84,6 +86,18 @@ if (a[0] === 'memory' && a[1] === 'store') {
     .run(flag('--namespace') + ':' + flag('--key'), flag('--namespace'), flag('--key'), flag('--value'), Date.now());
   d.close();
   console.log('[OK] Data stored successfully');
+  process.exit(0);
+}
+if (a[0] === 'memory' && a[1] === 'import') {
+  const mode = ${JSON.stringify(importMode)};
+  if (mode === 'fail') { console.error('[ERROR] Import error: database is locked'); console.error('second line'); process.exit(1); }
+  if (mode === 'skip') { console.log('  - Skipped (duplicates): 1'); process.exit(0); }
+  const doc = JSON.parse(fs.readFileSync(flag('-i'), 'utf8'));
+  const d = new DatabaseSync(db);
+  for (const e of doc.entries) d.prepare("INSERT INTO memory_entries (id, namespace, key, content, status, created_at) VALUES (?, ?, ?, ?, 'active', ?)")
+    .run((flag('-n') || e.namespace) + ':' + e.key, flag('-n') || e.namespace, e.key, e.value, Date.now());
+  d.close();
+  console.log('  - Entries: ' + doc.entries.length);
   process.exit(0);
 }
 if (a[0] === 'memory' && a[1] === 'retrieve') {

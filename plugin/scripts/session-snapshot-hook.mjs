@@ -129,8 +129,8 @@ export function runSessionSnapshotHook(projectDir, event, {
   const metadataWritten = writeMetadata ? writeSessionSnapshot(projectDir, event) : false;
   let payload;
   try { payload = rawInput ? JSON.parse(rawInput) : {}; } catch { payload = {}; }
-  // TURN OUTCOMES FIRST, and independent of `.swarm`: every turn in every repository is recorded
-  // (a project without `.swarm` records to the machine-wide db outside it — turn-outcome-capture.mjs).
+  // TURN OUTCOMES FIRST: recorded to the canonical adopted root's store (a linked worktree writes to its
+  // repository's store); a project without one records nothing unless opted in — turn-outcome-capture.mjs.
   // It only reads and spawns a detached writer, so it costs the progression budget below nothing.
   let turn;
   try { turn = captureTurn({ projectDir, event, payload, host }); } catch (error) {

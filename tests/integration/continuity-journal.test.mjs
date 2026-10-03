@@ -294,7 +294,7 @@ describe('4. Codex SessionEnd budget (3s cap, 2200ms handed down)', () => {
 describe('5. one writer per turn', () => {
   const OUTCOME = 'Concluded the fixture refactor: the journal now commits through one drainer and every write is read back by its exact key before the commit line is written, so a refused store leaves a durable outbox copy that the next boundary retries.';
   const fireTurn = (home, env = {}) => {
-    const project = tmp('cont-turn-proj-');
+    const project = adoptedProject().dir; // G-002: a project without a store records nothing
     const launches = [];
     const r = captureTurnOutcome({ projectDir: project, event: 'Stop', payload: { session_id: 't1', last_assistant_message: OUTCOME },
       host: 'claude', env, home, brainHome: tmp('cont-brain-'), ruflo: '/fake/ruflo', launch: (steps) => { launches.push(steps); return { launched: true }; } });
