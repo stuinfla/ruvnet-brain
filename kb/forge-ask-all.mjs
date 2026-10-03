@@ -3988,12 +3988,17 @@ async function main() {
   results.forEach((r, i) => {
     const proof = r._proofMethod ? `  proof=${r._proofMethod}` : '';
     console.log(`#${i + 1}  repo=${r.repo}  ce=${r.ceScore == null ? 'n/a' : r.ceScore.toFixed(3)}  vec=${r.bestDistance?.toFixed(4)}${r.kind ? `  kind=${r.kind}` : ''}  evidence=${r.evidenceClass || 'unknown'}${proof}${r.lifecycleStatus ? `  lifecycle=${r.lifecycleStatus}` : ''}`);
-    console.log(`path : ${r.repo}/${r.path}`);
-    console.log(`title: ${r.title}`);
-    if (r.designIntentWarning) console.log(r.designIntentWarning);
-    console.log(`chars: ${(r.fullText || '').length} | chunks: ${r.chunksJoined}${r.truncated ? ' (truncated)' : ''}`);
+    // Header fields are ONE line each: a newline in corpus-derived text could otherwise forge a header (G-004).
+    const line = (v) => String(v ?? '').replace(/[\r\n]+/g, ' ');
+    console.log(`path : ${r.repo}/${line(r.path)}`);
+    console.log(`title: ${line(r.title)}`);
+    if (r.designIntentWarning) console.log(line(r.designIntentWarning));
+    // `chars:` is the EXACT length of the body printed below: kb/verify-citation.mjs consumes the body by this
+    // count, so a citation-shaped line inside a document can never be read as a hit (ADR-0102 G-004, #236).
+    const body = r.fullText || r.text || '';
+    console.log(`chars: ${body.length} | chunks: ${r.chunksJoined}${r.truncated ? ' (truncated)' : ''}`);
     console.log('----- full document -----');
-    console.log(r.fullText || r.text || '');
+    console.log(body);
     console.log('===================================================================\n');
   });
   const related = renderRelatedSources(prepareRelatedSources(searched.relatedSources));
