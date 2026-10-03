@@ -77,6 +77,8 @@ export function turnRecordingStatus({ db, env = process.env, home = os.homedir()
     let row;
     try { row = JSON.parse(line); } catch { continue; }
     if (row?.kind !== 'store' || (db && row.db !== db) || now - Date.parse(row.at) > windowMs) continue;
+    // Receipts written before G-014 carry no read-back verdict (`ok`): neither proof of a write nor of a failure.
+    if (typeof row.ok !== 'boolean') continue;
     status.total += 1;
     if (row.ok === true) status.lastOkAt = row.at;
     else { status.failed += 1; status.lastError = row.error || `ruflo exited ${row.status}`; }

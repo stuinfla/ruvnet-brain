@@ -166,7 +166,9 @@ describe('each mutant turns its scenario red', () => {
       const brainHome = tmp('mut-receipts-');
       fs.mkdirSync(path.join(brainHome, 'turn-capture'));
       fs.writeFileSync(path.join(brainHome, 'turn-capture', 'receipts.jsonl'),
-        `${JSON.stringify({ at: new Date().toISOString(), kind: 'store', db: '/s/memory.db', ok: false, status: 1, error: 'boom' })}\n`);
+        // A pre-G-014 receipt (no `ok`) is neither a proven write nor a failure: it must not change N/M.
+        `${JSON.stringify({ at: new Date().toISOString(), kind: 'store', db: '/s/memory.db', status: 0, error: null })}\n`
+        + `${JSON.stringify({ at: new Date().toISOString(), kind: 'store', db: '/s/memory.db', ok: false, status: 1, error: 'boom' })}\n`);
       return m.turnRecordingLine(m.turnRecordingStatus({ db: '/s/memory.db', env: { RUVNET_BRAIN_HOME: brainHome } }));
     };
     expect(status(await load('turn-capture-state.mjs'))).toMatch(/^turn recording failing 1\/1/);
