@@ -3222,7 +3222,7 @@ async function doctorRun({ json }) {
     const { resolveProjectStore } = await import('../plugin/scripts/project-store-resolver.mjs');
     const status = turnRecordingStatus({ db: resolveProjectStore({ projectDir: process.cwd() }).canonicalAgentDbPath });
     const detail = turnRecordingLine(status);
-    if (detail) turnLine = { id: 'turn-recording', label: 'Turns', detail: detail.replace(/^turn recording /, ''),
+    if (detail) turnLine = { id: 'turn-recording', label: 'Turns', detail,
       state: status.failed ? 'warn' : 'ok', fix: status.failed ? 'ruflo doctor --fix; the receipt names the first error line' : null };
   } catch { /* no resolvable project: no line */ }
 
