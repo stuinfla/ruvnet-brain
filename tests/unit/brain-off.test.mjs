@@ -280,7 +280,7 @@ describe.skipIf(bashOnly)('ADR-054 gate 3 — a refusal mints NO grounding stamp
     const answer = fs.readFileSync(path.join(REPO, 'plugin/scripts/grounding-answer.mjs'), 'utf8');
     expect(fs.readFileSync(path.join(REPO, 'kb/search-outcome.mjs'), 'utf8')).toContain('header: `Searched ${repos.length} RuvNet repos (');
     expect(answer).toContain('/^Searched \\d+ RuvNet repos \\(/');
-    expect(fs.readFileSync(path.join(REPO, 'kb/card-lane.mjs'), 'utf8')).toContain('`#1  repo=${hit.repo}  evidence=curated-capability-card\\n`');
+    expect(fs.readFileSync(path.join(REPO, 'kb/card-lane.mjs'), 'utf8')).toContain('`#1  repo=concepts  evidence=curated-capability-card\\n`');
     expect(answer).toContain('#1  repo=\\S+  evidence=curated-capability-card\\n');
     expect(DISABLED_MARKER.startsWith('Searched')).toBe(false);
   });

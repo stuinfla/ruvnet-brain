@@ -742,15 +742,26 @@ export function answerFromCards(query, dir, { allowGuideAnswers = false, k = 1 }
 }
 
 /** Render a fast-lane hit into the same "text block" shape the heavy path returns, so a caller can
- *  read content[0].text uniformly either way — plus a plain marker a consumer can grep for. */
+ *  read content[0].text uniformly either way — plus a plain marker a consumer can grep for.
+ *
+ *  The printed `repo=`/`path :` pair must be the citation `kb/verify-citation.mjs`'s
+ *  `citationResolves()` can actually resolve on disk, not `hit.repo`/`hit.path` (those carry the
+ *  card's SUBJECT repo, e.g. "ruvector", for the separate ADR-055 receipt — see the call site in
+ *  forge-mcp-all.mjs). A capability card is folded into the derived `concepts` store at build time
+ *  (`scripts/corpus-aggregates.mjs`'s `add(repository, 'CARD', ...)`) under
+ *  `${repository}/CARD/${repository}-card` — the exact convention the heavy path already prints for
+ *  this same kind of hit (see this repo's own `kb/verify-citation.mjs` header example). Printing
+ *  anything else (this function previously printed `repo=<subject>` / a `kb/capability-cards.md#…`
+ *  path that is never a real stored passage path) makes every fast-lane answer permanently
+ *  unresolvable, even though it is a real, curated, correctly-cited source. */
 export function renderCardHit(hit) {
   const confidence = hit.namedRepo
     ? 'named directly'
     : `overlap ${hit.bodyOverlap}, coverage ${hit.coverage}`;
   return (
     `⚡ FAST LANE — zero-ML keyword match (${confidence})\n`
-    + `#1  repo=${hit.repo}  evidence=curated-capability-card\n`
-    + `path : ${hit.repo}/kb/${hit.path}\n`
+    + `#1  repo=concepts  evidence=curated-capability-card\n`
+    + `path : concepts/${hit.repo}/CARD/${hit.repo}-card\n`
     + `----- grounded summary -----\n`
     + `${hit.text}\n\n`
     + `➡ This is a curated summary card, not a full-text passage. For code-level detail (exact APIs, `
