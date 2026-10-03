@@ -3,7 +3,6 @@
 // belongs to the single hosted producer, never a second checkout's Git hook.
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export function inspectPush(root, input) {
@@ -27,7 +26,24 @@ export function inspectPush(root, input) {
   return { ok: true, checked, scope: 'unpublished-commit-secret-scan' };
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// Compares REALPATHS on both sides: path.resolve() normalizes a path but does NOT follow
+// symlinks, while import.meta.url IS symlink-resolved by Node. Through a symlink (this repo's
+// own $ROOT, from `git rev-parse --show-toplevel`, is symlinked whenever the checkout is reached
+// through a symlinked ancestor directory -- a symlinked home/mount/worktree layout) the two sides
+// disagree, so this body never runs -- and because nothing throws, the process exits 0, silently
+// skipping the pre-push credential scan. A silent exit 0 is indistinguishable from "scanned, found
+// nothing". Pinned by tests/unit/entrypoint-symlink.test.mjs (see this repo's established
+// isDirectInvocation() sibling copies, e.g. scripts/doc-currency.mjs).
+function isDirectInvocation() {
+  try {
+    if (!process.argv[1]) return false;
+    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectInvocation()) {
   try {
     const root = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim();
     console.log(JSON.stringify(inspectPush(root, fs.readFileSync(0, 'utf8'))));
