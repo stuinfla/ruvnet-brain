@@ -56,9 +56,11 @@ export function adoptedRepo(box, ruflo, name = 'probe-repo') {
 export function initStore(box, ruflo, db) {
   fs.mkdirSync(path.dirname(db), { recursive: true });
   const cwd = fs.mkdtempSync(path.join(box.root, 'init-cwd-'));
-  const r = spawnSync(ruflo, ['memory', 'init', '--path', db], { cwd, env: { ...box.gitEnv, RUFLO_DAEMON_AUTOSTART: '0' }, encoding: 'utf8', timeout: 120_000 });
+  const r = spawnSync(ruflo, ['memory', 'init', '--path', db, '--verify', 'false'], { cwd, env: { ...box.gitEnv, RUFLO_DAEMON_AUTOSTART: '0' }, encoding: 'utf8', timeout: 120_000 });
   fs.rmSync(cwd, { recursive: true, force: true });
-  if (r.status !== 0) throw new Error(`ruflo memory init failed: ${(r.stderr || r.stdout || '').slice(0, 300)}`);
+  // A fixture that cannot be built is UNKNOWN, never a product FAIL (ruflo 3.51.1 intermittently aborts at exit
+  // in its model runtime: "mutex lock failed", measured 2026-10-03, reproduced with no repository code).
+  if (r.status !== 0) throw Object.assign(new Error(`prerequisite: ruflo memory init exited ${r.status ?? r.signal}: ${(r.stderr || r.stdout || '').slice(-200)}`), { prerequisite: true });
 }
 
 /** argv of every process on the machine, one sample (POSIX ps; Windows: wmic is not sampled → []). */
@@ -151,7 +153,7 @@ export async function report(id, fn) {
   try {
     const result = await fn((name, ok, detail) => { out.checks.push({ name, ok: Boolean(ok), detail }); if (!ok) code = 1; });
     if (result?.unknown) { out.unknown = result.unknown; code = 2; }
-  } catch (error) { out.error = String(error?.stack || error).slice(0, 800); code = 1; }
+  } catch (error) { out.error = String(error?.stack || error).slice(0, 800); code = error?.prerequisite ? 2 : 1; }
   if (!out.checks.length && code === 0) { out.error = 'vacuous: zero assertions executed'; code = 1; }
   out.status = code === 0 ? 'PASS' : code === 2 ? 'UNKNOWN' : 'FAIL';
   process.stdout.write(`${JSON.stringify(out, null, 2)}\n`);
