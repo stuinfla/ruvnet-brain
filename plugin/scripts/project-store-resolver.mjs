@@ -82,6 +82,11 @@ export function resolveProjectStore({ projectDir = process.cwd(), requestedStore
   if (!isWithin(resolved.projectRoot, resolvedAgentDbPath)) {
     throw new Error('store symlink escape rejected');
   }
+  // A hard link passes every path check yet writes into a foreign inode (ADR-0102 G-053, measured: the
+  // Stop boundary's progression/continuity writers changed a hard-linked foreign store).
+  let storeStat = null;
+  try { storeStat = fs.statSync(resolvedAgentDbPath); } catch { /* not created yet */ }
+  if (storeStat && storeStat.nlink > 1) throw new Error('store hard link rejected');
   if (requestedStorePath !== undefined) {
     if (typeof requestedStorePath !== 'string' || !requestedStorePath.trim()) {
       throw new TypeError('requestedStorePath must be a non-empty path');

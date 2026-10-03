@@ -3226,6 +3226,18 @@ async function doctorRun({ json }) {
   } catch (error) {
     agentdbFirstLine = { id: 'agentdb-first', label: 'AgentDB first', state: 'unknown', detail: `could not check: ${error.message}`, fix: null };
   }
+  // TURN RECORDING (ADR-0102 G-014): failed or refused turn writes for THIS project's store, from the worker's
+  // receipts (a write counts only after an exact read-back). Advisory '!' when any failed in 7 days; no line
+  // when the store has no turn receipts.
+  let turnLine = null;
+  try {
+    const { turnRecordingStatus, turnRecordingLine } = await import('../plugin/scripts/turn-capture-state.mjs');
+    const { resolveProjectStore } = await import('../plugin/scripts/project-store-resolver.mjs');
+    const status = turnRecordingStatus({ db: resolveProjectStore({ projectDir: process.cwd() }).canonicalAgentDbPath });
+    const detail = turnRecordingLine(status);
+    if (detail) turnLine = { id: 'turn-recording', label: 'Turns', detail,
+      state: status.failed ? 'warn' : 'ok', fix: status.failed ? 'ruflo doctor --fix; the receipt names the first error line' : null };
+  } catch { /* no resolvable project: no line */ }
 
   // ── THE MECHANICAL VERDICT ────────────────────────────────────────────────────────────────────
   // `--hooks` is retained as a compatibility alias for a read-only zero-registration proof. It must
@@ -3307,6 +3319,7 @@ async function doctorRun({ json }) {
     ...(rufloOperational ? [rufloCheckLine(rufloOperational)] : []),
     ...(agentdbLine ? [agentdbLine] : []),
     ...(agentdbFirstLine ? [agentdbFirstLine] : []),
+    ...(turnLine ? [turnLine] : []),
   ];
   // THE ONE VERDICT. Text, --json and the exit code are all read from this object; nothing else decides.
   const verdict = doctorVerdict(confirmation, checks);

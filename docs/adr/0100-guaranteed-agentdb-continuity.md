@@ -66,6 +66,10 @@ whole-image mutator (access_count bump) — `ruflo/v3/@claude-flow/cli/src/memor
    `.swarm/agentdb-sessions.jsonl` gets the plugin's versioned metadata receipt (read by the Console's
    freshness check) and the owner's outcome summary — two record types in one file, not one record twice.
    The owner's `agentdb-autocapture.mjs` writes namespace `sessions`, which the product does not write.
+   *Amended by ADR-0102 (G-001, G-002, G-014, G-053):* the product's turn writer resolves the canonical
+   adopted root's store (no global fallback; projects without a store record nothing unless opted in),
+   redacts before writing, keeps text off argv (spool file + `ruflo memory import`), writes a hash-only
+   `agentdb-turns.jsonl`, honours a persisted opt-out, and counts a write only after an exact read-back.
 4. **Come up to speed** (`plugin/scripts/continuity-brief.mjs`): SessionStart prints, FIRST and within 3 KB,
    `[RuvNet Brain — COME UP TO SPEED …]`: branch/HEAD/version/latest tag (git, live), commits and releases
    since the last brief, decisions, standing rules/lessons, open items with owner (work ledger + explicit),

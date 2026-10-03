@@ -49,6 +49,17 @@ is every one of them, what it does, and whether it can block you:
 | `PostToolUse` (`Write`\|`Edit`\|`MultiEdit`\|`Bash`) | `learn-capture.sh` | Appends one line per tool call to a local per-session queue (mode `0600`, in a `0700` directory): the tool name plus either a Bash command's **leading verb chain only** — at most two tokens, stopping at the first token containing `=`, `/`, `@` or `:` — or an edited file's basename (never its path or contents). So `git push` is recorded as `git push`, while `export AWS_SECRET_ACCESS_KEY=…` records only `export` and `cd /Users/you/ClientProject` records only `cd`. **This previously captured the first 120 characters up to an embedded quote, which did not protect unquoted inline secrets; that was a real defect, fixed 2026-07-22 (ADR-038) and covered by a test that replays credential-bearing commands.** | No — always exits 0. |
 | `SessionEnd` | `learn-flush.mjs` | Reads that session's queue, dedupes to at most 8 distinct actions, and feeds them into the ruflo/AgentDB self-learning store **at `$HOME`** (i.e. your global, cross-project learner, not this project's `.swarm/memory.db`) via `ruflo hooks post-command`/`post-edit`. Deletes the queue file when done. | No — best-effort, every failure swallowed. |
 
+**Turn capture (`Stop` → `session-snapshot` → `turn-outcome-capture.mjs`).** Records the turn's final
+assistant text, files changed and command descriptions — never your prompt — in the AgentDB store of the
+project's canonical root (a linked worktree uses its repository's store). It is redacted before anything is
+written, but redaction removes **credential-shaped strings only**: a person's name, health details or a
+client matter in an assistant's outcome stays in that project's `.swarm/memory.db`. A project without
+`.swarm/memory.db` records nothing unless you opt in (`node plugin/scripts/turn-capture-state.mjs --unadopted
+global`); a symlinked or hard-linked store is refused. Turn it off persistently with
+`node plugin/scripts/turn-capture-state.mjs --capture off` (add `--project <dir>` for one project), or
+per process with `RUVNET_TURN_CAPTURE=off`. Scope and retention are pending owner decision D8 (ADR-0102).
+A user-level `~/.claude/hooks/agentdb-turn-capture.mjs` is a separate writer the product never edits.
+
 `plugin/scripts/` also ships three more scripts — `ground-before-write.sh`, `grounding-stamp.sh`,
 `kling-preflight.sh` — that are **not** referenced in `hooks.json`. They ship as inert files with every
 install; they only ever run if something *else* explicitly wires them into a `settings.json`. (A fourth,
