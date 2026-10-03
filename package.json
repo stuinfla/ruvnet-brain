@@ -107,6 +107,10 @@
     "kb/refresh-run.mjs",
     "kb/update-storage-transaction.mjs",
     "kb/model-requirements.mjs",
+    "kb/card-lane.mjs",
+    "kb/implementation-evidence.mjs",
+    "kb/exact-member-proof.mjs",
+    "kb/repo-aliases.json",
     "keys/ruvnet-brain-signing.pub.pem"
   ],
   "engines": {

@@ -43,11 +43,12 @@ const gist = (id, name, over = {}) => ({
   ...over,
 });
 
-function seed({ rows, generations, sources, installed, cards }) {
+function seed({ rows, generations, sources, installed, cards, aliases }) {
   fs.writeFileSync(path.join(kb, 'COVERAGE.json'), JSON.stringify({ kind: 'ruvnet-brain-release-coverage', owner: 'ruvnet', observedAt: OBSERVED, rows }));
   fs.writeFileSync(path.join(kb, 'RVF-GENERATIONS.json'), JSON.stringify({ brainVersion: '9.9.9', releaseTag: 'v9.9.9', stores: generations }));
   if (sources) fs.writeFileSync(path.join(kb, 'ruv-gists.sources.json'), JSON.stringify({ owner: 'ruvnet', generated: OBSERVED, gists: sources }));
   if (cards) fs.writeFileSync(path.join(kb, 'capability-cards.md'), cards);
+  if (aliases) fs.writeFileSync(path.join(kb, 'repo-aliases.json'), JSON.stringify(aliases));
   for (const s of installed) fs.writeFileSync(path.join(kb, `${s}.big.rvf`), 'rvf');
 }
 
@@ -256,5 +257,40 @@ describe('scope — the installed root is the arbiter', () => {
     const s = gather();
     expect(s.installedOutsideCoverage).toEqual(['zeta']);
     expect(s.installedStoreCount).toBe(6);
+  });
+});
+
+// kb/store-root.mjs's darkStores() and scripts/source-coverage.mjs's artifactEvidence() were both
+// fixed (ADR-058/069) for the same conflation: a store the router reaches under an ALIAS name reads
+// as absent to a reader that does a raw Set.has(canonicalName). onboarding-console.mjs's scopeRow()/
+// computeScope() never received that fix — they compare COVERAGE.json's canonical `artifact.store`
+// directly against the installed `.big.rvf` filename stem, with no repositoryNames() resolution.
+describe('scope — alias-aware installed/covered matching (repo-aliases.json)', () => {
+  const ALIASES = { 'agent-harness-generator': ['metaharness'] };
+
+  it('a repo installed only under its alias filename is NOT reported "not-in-brain"', () => {
+    seed({ ...FIXTURE,
+      rows: [...FIXTURE.rows, repo('agent-harness-generator', {
+        upstream: { sha: 'mmm', committedAt: '2026-08-01T00:00:00Z' },
+        artifact: { store: 'agent-harness-generator', sourceCommit: 'mmm', ingestedAt: '2026-08-02T00:00:00Z' } })],
+      generations: { ...FIXTURE.generations, 'agent-harness-generator': { builtUtc: '2026-08-02T00:00:00Z', sourceCommit: 'mmm' } },
+      // installed on disk under the ALIAS name, never the canonical name
+      installed: [...FIXTURE.installed, 'metaharness'],
+      aliases: ALIASES });
+    const s = gather();
+    expect(byName(s.repos, 'agent-harness-generator').bucket).not.toBe('not-in-brain');
+    expect(byName(s.repos, 'agent-harness-generator').bucket).toBe('current');
+  });
+
+  it('installedOutsideCoverage does not re-list an alias-named store that IS covered under its canonical name', () => {
+    seed({ ...FIXTURE,
+      rows: [...FIXTURE.rows, repo('agent-harness-generator', {
+        upstream: { sha: 'mmm', committedAt: '2026-08-01T00:00:00Z' },
+        artifact: { store: 'agent-harness-generator', sourceCommit: 'mmm', ingestedAt: '2026-08-02T00:00:00Z' } })],
+      generations: { ...FIXTURE.generations, 'agent-harness-generator': { builtUtc: '2026-08-02T00:00:00Z', sourceCommit: 'mmm' } },
+      installed: [...FIXTURE.installed, 'metaharness'],
+      aliases: ALIASES });
+    const s = gather();
+    expect(s.installedOutsideCoverage).not.toContain('metaharness');
   });
 });
