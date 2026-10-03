@@ -3214,6 +3214,10 @@ async function doctorRun({ json }) {
     agentdbLine = { id: 'agentdb', label: 'AgentDB', state: 'unknown', detail: `recording status unavailable: ${error.message}`, fix: null };
   }
 
+  const { turnRecordingStatus } = await import('../plugin/scripts/turn-outcome-capture.mjs');
+  const turnStatus = turnRecordingStatus({ projectDir: process.cwd() });
+  const turnLine = { id: 'turn-recording', label: 'Turn recording', state: turnStatus.state, detail: turnStatus.line, fix: null };
+
   // ── THE MECHANICAL VERDICT ────────────────────────────────────────────────────────────────────
   // `--hooks` is retained as a compatibility alias for a read-only zero-registration proof. It must
   // never execute dormant hook bodies.
@@ -3293,6 +3297,7 @@ async function doctorRun({ json }) {
     check('host-convergence', 'Hosts sync', !hostConvergence.healthy, hostConvergence.state, 'npx ruvnet-brain --update'),
     ...(rufloOperational ? [rufloCheckLine(rufloOperational)] : []),
     ...(agentdbLine ? [agentdbLine] : []),
+    turnLine,
   ];
   // THE ONE VERDICT. Text, --json and the exit code are all read from this object; nothing else decides.
   const verdict = doctorVerdict(confirmation, checks);

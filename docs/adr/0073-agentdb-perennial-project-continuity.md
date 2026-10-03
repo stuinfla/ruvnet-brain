@@ -3,7 +3,7 @@ id: ADR-073
 title: AgentDB is the complete perennial project continuity record
 status: Accepted
 date: 2026-08-22
-updated: 2026-09-27
+updated: 2026-10-03
 updated_source: derived-from-git
 reviewed_digest: c05f9c6169e4
 authors: [Stuart Kerr, Codex]
@@ -19,6 +19,7 @@ governs:
   - tests/unit/project-progression-contract.test.mjs
   - tests/integration/project-progression-hook.test.mjs
   - tests/acceptance/cross-host-project-resume.test.mjs
+version: 1.0.0
 ---
 
 # ADR-073 — AgentDB is the complete perennial project continuity record
@@ -193,3 +194,7 @@ recovery evidence, not proof of continuous capture or cross-host automatic resto
 | 2026-08-22 | Re-read the complete source-side continuity path from capture through managed AgentDB store/outbox replay to both-host SessionStart restoration. | `916db4a`, `34d5aba`, `f364eef`, `1b30bab`, `b63c763`, and `adeba05` supply the validated snapshot, project-store resolver, durable outbox, bridge, restore core, and host lifecycle wiring. The focused SessionStart/version gate passes, and the production CLI now uses the canonical `.swarm` cwd. The named killed-process cross-host acceptance file remains absent and global Ruflo pagination fix `a0262e84` is not installed/released, so the ADR remains source-built but not acceptance-proven. |
 | 2026-08-22 | Established the binary, host-neutral AgentDB continuity contract and fail-closed acceptance test. | Claude Code could not recover the active eight-process repair because current progression was absent from the automatically restored checkpoint stream. |
 | 2026-08-22 | Recorded the pure progression snapshot, redaction, validation, and deterministic restoration core in `916db4a`, with canonical adapter-version fixtures in `faf458a` (16 focused tests; 51 with version/restated-truth gates). Host hooks, managed AgentDB transport, outbox replay, and cross-host crash acceptance remain unbuilt and unproven. | The domain contract moved after this ADR. This row binds the implemented slice without overstating the lifecycle behavior required for acceptance. |
+
+## Concurrent candidate reconciliation (2026-10-03)
+
+Candidate reconciliation preserves complete unterminated outbox records and every accepted pending continuity event; pending capacity is a reported soft limit, and append refuses a torn tail without altering its bytes. This bounded repair does not establish full all-host continuity or atomic hostile-process containment.

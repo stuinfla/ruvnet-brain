@@ -41,6 +41,7 @@ const usage = () => `Usage:
   node scripts/learning-replay.mjs [--trap ${TRAP.MEMORY_SEARCH}|${TRAP.POST_TASK}] [--n N] [--host codex|claude-code] [--model MODEL]
   node scripts/learning-replay.mjs --check
   node scripts/learning-replay.mjs --check-portfolio
+  node scripts/learning-replay.mjs --measure-portfolio --host codex --model MODEL
   node scripts/learning-replay.mjs --check-mutants
   node scripts/learning-replay.mjs --dry-run
   node scripts/learning-replay.mjs --mutant <${Object.keys(MUTANTS).join('|')}>
@@ -86,6 +87,19 @@ function printed(label, result) {
   return EXIT[result.status] ?? EXIT.UNKNOWN;
 }
 
+// A portfolio includes both positive traps AND all four causal mutants. Run every scenario even
+// after a failure, then let the unchanged evidence checker decide the result; child exit 1 is the
+// expected outcome of a causal mutant, and is never by itself a successful portfolio measurement.
+export async function measurePortfolio({ host, model, execute = main, check = checkPortfolio }) {
+  for (const trap of [TRAP.MEMORY_SEARCH, TRAP.POST_TASK]) {
+    await execute(['--trap', trap, '--n', '3', '--host', host, '--model', model]);
+    for (const mutant of ['delete-lesson', 'brain-off-treated']) {
+      await execute(['--trap', trap, '--mutant', mutant, '--n', '1', '--host', host, '--model', model]);
+    }
+  }
+  return printed(`${INVARIANT}-PORTFOLIO`, check());
+}
+
 export async function main(argv = process.argv.slice(2)) {
   const { has, arg } = parse(argv);
   if (has('--help') || has('-h')) {
@@ -113,6 +127,7 @@ export async function main(argv = process.argv.slice(2)) {
   }
   if (has('--check-portfolio')) return printed(`${INVARIANT}-PORTFOLIO`, checkPortfolio());
   if (has('--check-mutants')) return printed(`${INVARIANT}-MUTANTS`, checkMutantArtifacts());
+  if (has('--measure-portfolio')) return measurePortfolio({ host, model });
 
   const source = checkSourceIdentity();
   if (!source.clean) {

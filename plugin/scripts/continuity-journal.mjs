@@ -26,7 +26,8 @@
  *   • BOUNDED. A failure is ONE record per event (attempt count, last error), never a line per attempt;
  *     compact() rewrites the file atomically (lock + size re-check, so a concurrent append is never
  *     lost): committed events older than RETAIN_COMMITTED_MS leave (the store keeps them and dedupes),
- *     corrupt lines become one notice, and a hard cap of MAX_EVENT_RECORDS drops the oldest, reported.
+ *     corrupt lines become one notice; MAX_EVENT_RECORDS bounds committed history, never pending events.
+ *     A prolonged outage can grow the pending file beyond that soft cap; status reports capacity pressure.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -54,7 +55,7 @@ export const STUCK_AFTER_MS = 10 * 60_000;
 export const QUARANTINE_REPORT_MS = 7 * 86_400_000;
 export const RETAIN_COMMITTED_MS = 7 * 86_400_000;
 export const MAX_EVENT_RECORDS = 2_000;
-const [COMPACT_AT_BYTES, LOCK_STALE_MS, APPEND_LOCK_WAIT_MS, APPEND_LOCK_STALE_MS] = [256 * 1024, 3 * 60_000, 1_000, 30_000];
+const [LOCK_STALE_MS, APPEND_LOCK_WAIT_MS, APPEND_LOCK_STALE_MS] = [3 * 60_000, 1_000, 30_000];
 const WAL_REFUSAL = /refusing an unsafe sql\.js|active native WAL|database is locked|SQLITE_BUSY/i;
 export const CLEAR_COMMAND = `node "${path.join(path.dirname(fileURLToPath(import.meta.url)), 'continuity-brief.mjs')}" --clear`;
 
@@ -192,11 +193,14 @@ export class ContinuityJournal {
   /** Does the file carry anything compact() would remove? (cheap: from one scan) */
   needsCompaction(scan = this.scan()) {
     const now = this.now();
-    if (scan.corrupt || scan.bytes > COMPACT_AT_BYTES || scan.events.size > MAX_EVENT_RECORDS) return true;
+    if (scan.corrupt) return true;
     const failureLines = scan.lines - scan.events.size - scan.committed.size - scan.quarantined.size - scan.notices.length - (scan.clearedAt ? 1 : 0) - scan.corrupt;
     if (failureLines > scan.failures.size) return true;
     for (const c of scan.committed.values()) if (now - ms(c.committedAt) > RETAIN_COMMITTED_MS) return true;
-    return false;
+    if (scan.notices.some((n) => now - ms(n.at) > QUARANTINE_REPORT_MS || ms(n.at) <= scan.clearedAt)) return true;
+    if ([...scan.quarantined.values()].some((q) => now - ms(q.at) > QUARANTINE_REPORT_MS)) return true;
+    // An unshrinkable pending backlog must not be rewritten on every capture boundary.
+    return scan.events.size > MAX_EVENT_RECORDS && [...scan.events.keys()].some((key) => scan.committed.has(key));
   }
 
   /**
@@ -210,7 +214,6 @@ export class ContinuityJournal {
       try { before = fs.statSync(this.path); } catch { return { compacted: false, reason: 'no outbox' }; }
       const scan = this.scan();
       const out = [];
-      let dropped = 0;
       const quarantineLive = (q) => now - ms(q.at) <= QUARANTINE_REPORT_MS;
       const keep = [...scan.events.values()].filter((rec) => {
         const c = scan.committed.get(rec.key);
@@ -218,16 +221,9 @@ export class ContinuityJournal {
         const q = scan.quarantined.get(rec.key);
         return q ? quarantineLive(q) : true;
       }).sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-      // The hard cap: committed events go first (the store holds them), then the oldest pending.
-      let over = keep.length - MAX_EVENT_RECORDS;
-      if (over > 0) {
-        const committedFirst = keep.filter((r) => scan.committed.has(r.key)).slice(0, over);
-        over -= committedFirst.length;
-        const pendingDrop = over > 0 ? keep.filter((r) => !scan.committed.has(r.key)).slice(0, over) : [];
-        dropped = pendingDrop.length;
-        const gone = new Set([...committedFirst, ...pendingDrop]);
-        keep.splice(0, keep.length, ...keep.filter((r) => !gone.has(r)));
-      }
+      // Only read-back committed events may leave at the cap. Pending bytes are the recovery copy.
+      const gone = new Set(keep.filter((r) => scan.committed.has(r.key)).slice(0, Math.max(0, keep.length - MAX_EVENT_RECORDS)));
+      keep.splice(0, keep.length, ...keep.filter((r) => !gone.has(r)));
       const kept = new Set(keep.map((r) => r.key));
       for (const rec of keep) {
         out.push(rec);
@@ -241,8 +237,8 @@ export class ContinuityJournal {
         notice.corrupt += Number(n.corrupt) || 0; notice.dropped += Number(n.dropped) || 0;
         notice.at = notice.at && notice.at < n.at ? notice.at : n.at;
       }
-      if (scan.corrupt || dropped) {
-        notice.corrupt += scan.corrupt; notice.dropped += dropped;
+      if (scan.corrupt) {
+        notice.corrupt += scan.corrupt;
         notice.at = notice.at || new Date(now).toISOString();
       }
       if (notice.corrupt || notice.dropped) out.push({ type: 'notice', ...notice });
@@ -258,7 +254,7 @@ export class ContinuityJournal {
         return { compacted: false, reason: 'the outbox changed during compaction; left as is' };
       }
       fs.renameSync(tmp, this.path);
-      return { compacted: true, lines: out.length, kept: kept.size, dropped };
+      return { compacted: true, lines: out.length, kept: kept.size, dropped: 0 };
     });
   }
 
@@ -279,14 +275,15 @@ export class ContinuityJournal {
     const ready = storeReady(this.db);
     const notApplicable = !ready ? 'no AgentDB store in this project (.swarm/memory.db is not initialized)'
       : !this.ruflo ? 'ruflo is not installed' : null;
+    const capacityPressure = pending.length > MAX_EVENT_RECORDS;
     const problem = quarantined.length ? 'quarantined' : corrupt ? 'corrupt' : dropped ? 'dropped'
-      : !notApplicable && oldest !== null && now - oldest > STUCK_AFTER_MS ? 'stuck-pending' : null;
+      : !notApplicable && capacityPressure ? 'capacity-pressure' : !notApplicable && oldest !== null && now - oldest > STUCK_AFTER_MS ? 'stuck-pending' : null;
     return {
       outbox: this.path, db: this.db, storeReady: ready, rufloPresent: Boolean(this.ruflo),
       applicable: !notApplicable, notApplicable,
       pending: pending.length, oldestPendingAt: oldest, lastCommitAt, eventsToday,
       lastFailure: lastFailure && (!lastCommitAt || ms(lastFailure.at) > lastCommitAt) ? lastFailure : null,
-      quarantined, corrupt, dropped, problem, stuck: Boolean(problem),
+      quarantined, corrupt, dropped, capacityPressure, problem, stuck: Boolean(problem),
     };
   }
 }
@@ -301,12 +298,14 @@ export function recordingLine(status, now = Date.now()) {
     const why = status.problem === 'quarantined' ? `${status.quarantined.length} quarantined (a different row holds its key; never retried — ${clears})`
       : status.problem === 'corrupt' ? `${status.corrupt} corrupt outbox line(s) removed (${clears})`
         : status.problem === 'dropped' ? `${status.dropped} uncommitted event(s) dropped at the outbox cap (${clears})`
+          : status.problem === 'capacity-pressure' ? `pending backlog exceeds soft limit ${MAX_EVENT_RECORDS}; no pending events discarded`
           : status.lastFailure ? `last error: ${status.lastFailure.reason || status.lastFailure.error}` : 'not committing';
     return `AgentDB: recording stuck — ${status.pending} event(s) pending${status.oldestPendingAt && status.problem === 'stuck-pending' ? ` for ${ago(now - status.oldestPendingAt)}` : ''}, ${why}.`
       + ` Pending events are durable in ${status.outbox} and retry at every capture boundary.`;
   }
   if (status.notApplicable) {
-    return `AgentDB: recording n/a — ${status.notApplicable}; ${status.pending} event(s) wait in the outbox (not a failure).`;
+    return `AgentDB: recording n/a — ${status.notApplicable}; ${status.pending} event(s) wait in the outbox (not a failure).`
+      + (status.capacityPressure ? ` Capacity pressure: pending backlog exceeds soft limit ${MAX_EVENT_RECORDS}; no pending events discarded.` : '');
   }
   // ✓ only on evidence: a committed, read-back event. "Nothing failed yet" is not proof of recording.
   if (!status.lastCommitAt) return `AgentDB: recording not yet proven — no event committed and read back yet (outbox ${status.pending} pending)`;
