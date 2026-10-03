@@ -4857,6 +4857,41 @@ export function parseNightlyAnswer(answer) {
 // (wasting it). Config templates ship in the npm package's config/; router tools are copied to
 // ~/.claude/model-router/bin/ because the npx run dir vanishes after install. Never overwrites
 // user-edited files. Non-fatal like every offer.
+// dispatch-receipt + metaharness-receipts added 2026-07-13: without the LOGGER, subagent routing is
+// invisible; without the VIEWER, the user has no scoreboard to hold it to. Shipping one without the
+// other is how a router ends up "working" with three test pings in its log and nobody the wiser.
+export const ROUTER_TOOLS = Object.freeze(['model-router-engine.mjs', 'model-router-setup.mjs', 'model-router-status.mjs', 'model-router-outcome.mjs', 'subscription-hosts.mjs', 'dual-host-deliberation.mjs', 'dual-host-suggest.mjs', 'route-cheap.mjs', 'dispatch-receipt.mjs', 'metaharness-receipts.mjs', 'codex-routed.sh']);
+
+// Copies ROUTER_TOOLS into <routerDir>/bin/, each WITH its static import graph. Returns how many
+// tools were copied.
+//
+// Which tools users get is a product decision, so that list stays hand-written. What each tool
+// IMPORTS is a fact about the code, so it is derived with serverDependencies(), the same walker
+// wireCodexHost() uses for the MCP server. A hand-kept import list drifted three times here:
+// ./review-model-defaults.mjs (8b8890d) and ../plugin/scripts/runtime-preferences.mjs (453ae58)
+// were never copied, and seven of the ten tools could not load from bin/. Relative specifiers are
+// preserved, so `../plugin/scripts/x.mjs` lands in <routerDir>/plugin/scripts/, where the import
+// looks. A dependency outside routerDir is refused rather than written somewhere unexpected.
+export function installRouterTools(pkgRoot, routerDir) {
+  const binDir = path.join(routerDir, 'bin');
+  fs.mkdirSync(binDir, { recursive: true });
+  let copied = 0;
+  for (const t of ROUTER_TOOLS) {
+    const s = path.join(pkgRoot, 'scripts', t);
+    if (!fs.existsSync(s)) continue;
+    fs.copyFileSync(s, path.join(binDir, t));
+    copied++;
+    for (const dep of serverDependencies(s)) {
+      const dst = path.resolve(binDir, dep.spec);
+      if (!dst.startsWith(routerDir + path.sep)) throw new Error(`${t} imports ${dep.spec}, which would land outside ${routerDir}`);
+      if (!fs.existsSync(dep.from)) throw new Error(`${t} imports ${dep.spec}, which is missing from this package`);
+      fs.mkdirSync(path.dirname(dst), { recursive: true });
+      fs.copyFileSync(dep.from, dst);
+    }
+  }
+  return copied;
+}
+
 export async function offerRouterProfile() {
   if (TEST_MODE) return 'suppressed';
   const routerDir = path.join(os.homedir(), '.claude', 'model-router');
@@ -4882,15 +4917,7 @@ export async function offerRouterProfile() {
   } catch (error) {
     warn(`managed model additions were not merged (${error.message}); your existing catalog was left unchanged`);
   }
-  let copied = 0;
-  // dispatch-receipt + metaharness-receipts added 2026-07-13: without the LOGGER, subagent routing is
-  // invisible; without the VIEWER, the user has no scoreboard to hold it to. Shipping one without the
-  // other is how a router ends up "working" with three test pings in its log and nobody the wiser.
-  // (dispatch-receipt.mjs relative-imports route-cheap.mjs — they land in the same bin/ dir, so it resolves.)
-  for (const t of ['model-router-engine.mjs', 'model-router-setup.mjs', 'model-router-status.mjs', 'model-router-outcome.mjs', 'subscription-hosts.mjs', 'dual-host-deliberation.mjs', 'dual-host-suggest.mjs', 'route-cheap.mjs', 'dispatch-receipt.mjs', 'metaharness-receipts.mjs', 'codex-routed.sh']) {
-    const s = path.join(pkgRoot, 'scripts', t);
-    if (fs.existsSync(s)) { fs.copyFileSync(s, path.join(routerDir, 'bin', t)); copied++; }
-  }
+  const copied = installRouterTools(pkgRoot, routerDir);
   if (copied) {
     try { fs.chmodSync(path.join(routerDir, 'bin', 'codex-routed.sh'), 0o755); } catch { /* not fatal */ }
     ok(`${copied} router tools at ~/.claude/model-router/bin/ (stable path — the npx dir vanishes)`);
