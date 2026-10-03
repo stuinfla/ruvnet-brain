@@ -3,11 +3,12 @@ id: ADR-100
 title: Guaranteed AgentDB continuity — material events, durable outbox, come-up-to-speed brief, one writer
 status: Proposed
 date: 2026-10-01
-updated: 2026-10-01
+updated: 2026-10-03
 authors: [Stuart Kerr, Claude Opus 5.5]
 tags: [agentdb, continuity, hooks, durability, memory]
 supersedes: []
 relates: [ADR-073, ADR-076]
+version: 1.0.0
 ---
 
 # ADR-100 — Guaranteed AgentDB continuity
@@ -96,7 +97,9 @@ whole-image mutator (access_count bump) — `ruflo/v3/@claude-flow/cli/src/memor
   corrupt lines and cap drops are reported for 7 days or until `continuity-brief.mjs --clear`; the Claude
   Stop line shows once per session per condition. Failures are one record per event; `compact()` rewrites
   the outbox atomically (append lock plus a size re-check so a concurrent append is never lost), ages out
-  committed events after 7 days and caps the file at 2000 events. Measured before the fix: 300 pending
+  committed events after 7 days. The 2000-event target is a soft limit when accepted events remain
+  pending: pending events and their failure counts survive, capacity pressure is reported, and a
+  prolonged outage can grow disk usage. Measured before the fix: 300 pending
   events with no ruflo grew to 1200 / 2100 / 3000 lines over three simulated days; after: constant.
 
 ## Alternatives considered
@@ -124,3 +127,21 @@ whole-image mutator (access_count bump) — `ruflo/v3/@claude-flow/cli/src/memor
 - The outbox is not compacted yet; at the measured rate (tens of events/day, ~1 KB each) that is months.
 - Restore context (progression JSON, ≤ 8 KB) plus the brief (≤ 3 KB) can exceed a host's inline preview;
   the brief is first so it survives a cut.
+
+## Implementation hardening (2026-10-03)
+
+ADR status remains **Proposed**; this repair does not claim publication or complete continuity.
+Turn capture now reuses the canonical project-store resolver and shared secret/private-key redaction,
+with no implicit global store fallback. Persisted canonical-project/path consent is reread per boundary;
+an absent store requires explicit opt-in. Turn breadcrumbs contain only key, digest, length and time.
+The detached writer verifies exact key/content readback and preserves a redacted first stderr line on
+failure; SessionStart and doctor expose recent turn failures separately from the material-event success
+line. Historical raw records and owner-managed user-level capture hooks are not rewritten.
+
+Evidence: `tests/e2e/closure/G-001.probe.mjs`, `G-002.probe.mjs`, and `G-014.probe.mjs` run the real
+detached process boundary against the global Ruflo CLI in isolated homes (synthetic credentials only).
+These local process results are not published closure receipts.
+
+## Candidate durability correction (2026-10-03)
+
+The bounded candidate stops deleting accepted pending events to satisfy the former cap and preserves complete final progression-outbox records without a newline. Torn-tail append fails explicitly without changing existing bytes; recovery remains manual. This supersedes the old cap claim and does not change Proposed status or establish published all-host acceptance.

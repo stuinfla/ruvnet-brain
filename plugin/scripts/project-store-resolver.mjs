@@ -40,21 +40,24 @@ function isWithin(root, candidate) {
   return relative === '' || (!path.isAbsolute(relative) && relative !== '..' && !relative.startsWith(`..${path.sep}`));
 }
 
-function gitValue(cwd, args) {
+function gitValue(cwd, args, gitTimeoutMs) {
   try {
     return execFileSync('git', args, {
       cwd,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
+      ...(gitTimeoutMs ? { timeout: gitTimeoutMs, killSignal: 'SIGKILL' } : {}),
     }).trim();
-  } catch {
+  } catch (error) {
+    // A timed-out Git identity check is not evidence for a non-git project.
+    if (error.code === 'ETIMEDOUT') throw new Error('Git project identity timed out');
     return null;
   }
 }
 
-function gitProject(projectDir) {
-  const commonValue = gitValue(projectDir, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
-  const checkoutValue = gitValue(projectDir, ['rev-parse', '--show-toplevel']);
+function gitProject(projectDir, gitTimeoutMs) {
+  const commonValue = gitValue(projectDir, ['rev-parse', '--path-format=absolute', '--git-common-dir'], gitTimeoutMs);
+  const checkoutValue = gitValue(projectDir, ['rev-parse', '--show-toplevel'], gitTimeoutMs);
   if (!commonValue || !checkoutValue) return null;
   const gitCommonDir = canonicalDirectory(commonValue, 'Git common directory');
   const checkoutRoot = canonicalDirectory(checkoutValue, 'Git checkout root');
@@ -68,9 +71,10 @@ function gitProject(projectDir) {
   };
 }
 
-export function resolveProjectStore({ projectDir = process.cwd(), requestedStorePath } = {}) {
+export function resolveProjectStore({ projectDir = process.cwd(), requestedStorePath, gitTimeoutMs } = {}) {
   const canonicalInput = canonicalDirectory(projectDir, 'projectDir');
-  const git = gitProject(canonicalInput);
+  if (gitTimeoutMs !== undefined && (!Number.isSafeInteger(gitTimeoutMs) || gitTimeoutMs <= 0)) throw new TypeError('gitTimeoutMs must be a positive integer');
+  const git = gitProject(canonicalInput, gitTimeoutMs);
   const resolved = git ?? {
     gitCommonDir: null,
     checkoutRoot: canonicalInput,
@@ -82,6 +86,11 @@ export function resolveProjectStore({ projectDir = process.cwd(), requestedStore
   if (!isWithin(resolved.projectRoot, resolvedAgentDbPath)) {
     throw new Error('store symlink escape rejected');
   }
+  // A hard link passes every path check yet writes into a foreign inode (ADR-0102 G-053, measured: the
+  // Stop boundary's progression/continuity writers changed a hard-linked foreign store).
+  let storeStat = null;
+  try { storeStat = fs.statSync(resolvedAgentDbPath); } catch { /* not created yet */ }
+  if (storeStat && storeStat.nlink > 1) throw new Error('store hard link rejected');
   if (requestedStorePath !== undefined) {
     if (typeof requestedStorePath !== 'string' || !requestedStorePath.trim()) {
       throw new TypeError('requestedStorePath must be a non-empty path');

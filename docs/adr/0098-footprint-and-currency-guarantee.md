@@ -3,7 +3,8 @@ id: ADR-098
 title: The footprint and currency guarantee — one knowledge base, current, in use, nothing building up
 status: Accepted
 date: 2026-10-01
-updated: 2026-10-01
+updated: 2026-10-03 13:27:32 EDT
+version: 0.1.1
 authors: [Stuart Kerr, Claude Opus 5.5]
 tags: [footprint, install, update, data-safety, confirmation]
 supersedes: []
@@ -146,3 +147,5 @@ shouldn't be there isn't, nothing building up cruft" — confirmed positively, n
   CI runtime on the real ~1.4 GB brain is not yet measured (offline fixture: +0.7 s).
 - Lifecycle receipts (`.kb.update-transactions`, `refresh-runs`) are the one thing allowed to accumulate,
   and only to their own retention policy (lifecycle-evidence-v1, 16 MiB).
+
+- *Source amendment 2026-10-03 (not published proof):* [lifecycle retention](../../kb/lifecycle-evidence-retention.mjs) first compacts formatting whitespace in terminal transaction phase files over the unchanged 16 MiB budget, preserving every JSON token, receipt payload and recorded inventory digest; raw phase-file bytes and their hashes change, active/malformed/shared-inode phases are not compacted, and the existing history/protection rules still govern pruning.

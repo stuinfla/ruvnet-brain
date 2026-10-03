@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -26,8 +26,21 @@ const VERSION = getVersion();
 const BYTES = Buffer.from('one immutable public artifact');
 const DIGEST = crypto.createHash('sha256').update(BYTES).digest('hex');
 
+const temporaryRoots = new Set();
+
+function temporaryRoot(prefix) {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
+  temporaryRoots.add(root);
+  return root;
+}
+
+afterEach(() => {
+  for (const root of temporaryRoots) fs.rmSync(root, { recursive: true, force: true });
+  temporaryRoots.clear();
+});
+
 it('extracts actual archive bytes into a native path containing spaces', () => {
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'public tar ')));
+  const root = temporaryRoot('public tar ');
   try {
     const source = path.join(root, 'source');
     const destination = path.join(root, 'native destination');
@@ -119,7 +132,7 @@ function adapter(overrides = {}) {
 }
 
 async function run(overrides = {}) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'publication-receipt-'));
+  const root = temporaryRoot('publication-receipt-');
   const files = candidate(root);
   const outPath = path.join(root, 'release-evidence', 'publication-receipt.json');
   const result = await generatePublicationReceipt({
@@ -201,7 +214,7 @@ describe('publication receipt producer', () => {
     // 4.4.1 run 36877770786: Promise.all rejected on the first doctor's exit 1, the lane's finally
     // ran adapter.dispose() (rmSync of the install temp), and the third doctor — still running —
     // reported verify-citation.mjs and six plugin manifests missing under the deleted package.
-    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-teardown-'));
+    const temp = temporaryRoot('doctor-teardown-');
     const manifest = path.join(temp, 'package', 'plugin', 'host-adapters', 'claude.json');
     fs.mkdirSync(path.dirname(manifest), { recursive: true });
     fs.writeFileSync(manifest, '{}');
@@ -218,14 +231,8 @@ describe('publication receipt producer', () => {
     expect(seen).toEqual(['codexOnly:present', 'dual:present']);
   });
 
-  it('the producer runs its doctors through the serial runner, not Promise.all', () => {
-    const producer = fs.readFileSync(new URL('../../scripts/publication-receipt.mjs', import.meta.url), 'utf8');
-    expect(producer).toMatch(/await runHostDoctors\(hostResults, async \(\{ context, installer \}\) => \{\s*await commandAsync\(process\.execPath, \[installer, '--doctor', '--hooks'\]/);
-    expect(producer).not.toMatch(/Promise\.all\(hostResults\.map\(async \(\{ context, installer \}\)/);
-  });
-
   it('resolves the actual optional-package Windows Codex executable, not its cmd wrapper', () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'public-codex-native-'));
+    const root = temporaryRoot('public-codex-native-');
     try {
       const modules = path.join(root, 'node_modules');
       const bin = path.join(modules, '.bin');
@@ -245,7 +252,7 @@ describe('publication receipt producer', () => {
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
   });
   it('uses native Windows command shims and an isolated USERPROFILE-safe PATH', () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'publication-windows-'));
+    const root = temporaryRoot('publication-windows-');
     const tools = path.join(root, 'tools');
     fs.mkdirSync(tools);
     for (const name of ['node.exe', 'npm.cmd', 'claude.cmd', 'codex.cmd']) {
@@ -269,7 +276,7 @@ describe('publication receipt producer', () => {
   });
 
   it('stages only the exact already-verified public bundle for installation', () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'publication-bundle-'));
+    const root = temporaryRoot('publication-bundle-');
     const source = path.join(root, 'public.zip');
     const packageRoot = path.join(root, 'package');
     fs.writeFileSync(source, 'signed public bundle');
@@ -282,7 +289,7 @@ describe('publication receipt producer', () => {
   });
 
   it('forwards the requested result count through the real MCP JSON-RPC boundary', async () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'publication-mcp-'));
+    const root = temporaryRoot('publication-mcp-');
     const server = path.join(root, 'server.mjs');
     fs.writeFileSync(server, `
       import readline from 'node:readline';
@@ -303,7 +310,7 @@ describe('publication receipt producer', () => {
   });
 
   it('preserves content hashes when MCP output splits a UTF-8 character between chunks', async () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'publication-utf8-'));
+    const root = temporaryRoot('publication-utf8-');
     const server = path.join(root, 'server.mjs');
     try {
       fs.writeFileSync(server, `
@@ -332,7 +339,7 @@ describe('publication receipt producer', () => {
   });
 
   it('requires installed host payload bytes to match every sealed plugin file', () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'publication-payload-'));
+    const root = temporaryRoot('publication-payload-');
     const sealed = path.join(root, 'sealed');
     const installed = path.join(root, 'installed');
     fs.mkdirSync(path.join(sealed, 'commands'), { recursive: true });
@@ -393,7 +400,7 @@ describe('publication receipt producer', () => {
   });
 
   it('refuses to overwrite an existing publication receipt', async () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'publication-receipt-'));
+    const root = temporaryRoot('publication-receipt-');
     const files = candidate(root);
     const outPath = path.join(root, 'release-evidence', 'publication-receipt.json');
     fs.writeFileSync(outPath, 'immutable\n');

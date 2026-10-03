@@ -22,8 +22,14 @@ const temporary = (prefix) => {
   cleanup.push(dir);
   return dir;
 };
-const isolatedEnv = (home, brain) => ({ ...process.env, HOME: home, USERPROFILE: home,
-  CODEX_HOME: path.join(home, '.codex'), RUVNET_BRAIN_HOME: brain });
+const isolatedEnv = (home, brain, ambient = process.env) => ({
+  ...Object.fromEntries(Object.entries(ambient).filter(([key]) =>
+    !/^(?:RUVNET_|CLAUDE_|CODEX_|XDG_)/i.test(key))),
+  HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: path.join(home, '.claude'),
+  CODEX_HOME: path.join(home, '.codex'), RUVNET_BRAIN_HOME: brain,
+  RUVNET_BRAIN_KB: path.join(brain, 'kb'), XDG_CONFIG_HOME: path.join(home, '.config'),
+  XDG_CACHE_HOME: path.join(home, '.cache'),
+});
 afterAll(() => cleanup.forEach((item) => fs.rmSync(item, { recursive: true, force: true })));
 
 function stagedPayload(home, host, version) {
@@ -106,6 +112,25 @@ describe('issue #64 — exact dual-host convergence', () => {
     });
     expect(result.status).toBe(0);
     expect(JSON.parse(fs.readFileSync(path.join(brain, 'active.json'), 'utf8')).version).toBe(EXPECTED);
+  });
+
+  it('ignores an ambient Claude cache containing the otherwise missing requested version', () => {
+    const home = temporary('rvb-issue64-isolated-');
+    const owner = temporary('rvb-issue64-owner-');
+    const brain = temporary('rvb-issue64-brain-');
+    const foreignPayload = stagedPayload(owner, 'claude', EXPECTED);
+    stagedPayload(home, 'codex', OTHER);
+    const result = spawnSync(process.execPath, [ENGINE, '--auto', '--expected-version', EXPECTED], {
+      encoding: 'utf8', timeout: 30_000,
+      env: isolatedEnv(home, brain, { ...process.env, CLAUDE_CONFIG_DIR: path.join(owner, '.claude') }),
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.signal).toBeNull();
+    expect(result.status).toBe(1);
+    expect(result.stderr + result.stdout).toContain(`exactly matches expected version ${EXPECTED}`);
+    expect(fs.existsSync(path.join(brain, 'active.json'))).toBe(false);
+    expect(fs.readFileSync(path.join(foreignPayload, 'scripts', 'body.mjs'), 'utf8'))
+      .toBe(`export default ${JSON.stringify(EXPECTED)};\n`);
   });
 
   it('fails closed when the exact requested candidate is absent', () => {
