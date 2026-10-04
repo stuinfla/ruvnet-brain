@@ -7,6 +7,19 @@ current campaign and is finalized by the lead session before the next release cu
 
 ## Unreleased
 
+4.5.5 routing and hook reliability candidate:
+
+- Native subscription routing persists per user through the installed gateways. Managed
+  updates preserve explicit user overrides and refresh launcher dependencies together.
+- Weekly model discovery retains the approved policy when no new model appears. A new
+  release triggers source-bound analysis and bounded independent qualification before adoption.
+  Interrupted qualification resumes its proposal; expired research refreshes once.
+- Qualification verifies native configured model and effort, completed turns, fixed acceptance
+  cases, independent review and an unchanged policy before atomic promotion. Backend identity
+  and exact subscription savings are not claimed. Incompatible clients retain the working policy.
+- Codex hook output compatibility and trust reconciliation preserve disabled owner hooks.
+
+
 Operational recovery candidate 4.3.27 (2026-09-19), published to npm and GitHub but still awaiting
 public installation verification:
 
