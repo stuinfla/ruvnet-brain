@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "reviewedAt": "2026-10-04T13:32:24.704091Z",
+  "maxAgeMs": 604800000,
+  "routes": {
+    "codex": {
+      "fast": {
+        "model": "gpt-6-luna",
+        "effort": "low"
+      },
+      "medium": {
+        "model": "gpt-6.1-sol",
+        "effort": "medium"
+      },
+      "hard": {
+        "model": "gpt-6-astra",
+        "effort": "high"
+      },
+      "substantial": {
+        "model": "gpt-6.1-sol",
+        "effort": "high"
+      },
+      "exceptional": {
+        "model": "gpt-6-astra",
+        "effort": "xhigh",
+        "requiresNamedReason": true
+      }
+    },
+    "claude-code": {
+      "fast": {
+        "model": "claude-sonnet-5-5",
+        "effort": "low"
+      },
+      "medium": {
+        "model": "claude-sonnet-5-5",
+        "effort": "medium"
+      },
+      "hard": {
+        "model": "claude-opus-5-5",
+        "effort": "high"
+      },
+      "codingEffort": "high"
+    }
+  },
+  "sources": [
+    {
+      "url": "https://artificialanalysis.ai/models/releases/comparisons/gpt-6-1-sol-vs-claude-sonnet-5-5",
+      "benchmark": "Intelligence Index v4.3.2; Terminal-Bench 4.0",
+      "checkedAt": "2026-10-04T13:32:24.704295Z"
+    },
+    {
+      "url": "https://artificialanalysis.ai/models/releases/comparisons/gpt-6-luna-vs-gpt-6-astra",
+      "benchmark": "Intelligence Index v4.3.2; Terminal-Bench 4.0",
+      "checkedAt": "2026-10-04T13:32:24.704301Z"
+    }
+  ],
+  "qualification": {
+    "basis": "live provider metadata, five native subscription smoke launches, independent effort comparisons, user allocation constraint",
+    "limits": [
+      "Not project-specific optimality proof",
+      "Luna fast limited to noncoding",
+      "No automatic newmodel entitlement claim",
+      "Parent conversation model remains host-controlled",
+      "Substantial/exceptional allocation reflects user correctness preference, not newly measured optimality",
+      "Free-text task classes are heuristic; caller taskFacts can express uncertainty and scope",
+      "No assumed completion-speed or subscription-quota multipliers",
+      "Native agent hook updatedInput rewrite has not passed host acceptance proof"
+    ]
+  },
+  "policyRevisionAt": "2026-10-04T13:50:05.851549+00:00",
+  "objectivePriority": [
+    "correctness",
+    "subscription-allowance",
+    "completion-time"
+  ]
+}

@@ -1,0 +1,74 @@
+--- a/hooks/security_reminder_hook.py
++++ b/hooks/security_reminder_hook.py
+@@ -198,6 +198,25 @@
+     "response."
+ )
+ 
++# Local Codex-cache compatibility boundary; review logic and exit channels stay unchanged.
++_CODEX_POST_TOOL_USE = False
++
++def _emit_codex_json(out, *, flush=False):
++    if _CODEX_POST_TOOL_USE:
++        telemetry = {key: out[key] for key in ("metrics", "rewakeSummary") if key in out}
++        if telemetry:
++            debug_log("Codex hook telemetry: " + json.dumps(telemetry))
++        out = {key: value for key, value in out.items() if key in (
++            "continue", "stopReason", "suppressOutput", "systemMessage", "decision", "reason",
++            "hookSpecificOutput")}
++        specific = out.get("hookSpecificOutput")
++        if isinstance(specific, dict):
++            out["hookSpecificOutput"] = {key: value for key, value in specific.items()
++                if key in ("hookEventName", "additionalContext")}
++        if not out:
++            return
++    print(json.dumps(out), flush=flush)
++
+ def emit_metrics(
+     metrics,
+     rewake_summary=None,
+@@ -296,7 +315,7 @@
+             }
+     if system_message:
+         out["systemMessage"] = system_message
+-    print(json.dumps(out), flush=True)
++    _emit_codex_json(out, flush=True)
+ 
+ # =====================================================================
+ # State management
+@@ -2279,6 +2298,8 @@
+     tool_name = input_data.get("tool_name", "")
+     tool_input = input_data.get("tool_input", {})
+     hook_event_name = input_data.get("hook_event_name", "")
++    global _CODEX_POST_TOOL_USE
++    _CODEX_POST_TOOL_USE = hook_event_name == "PostToolUse"
+     debug_log(f"Processing: hook_event={hook_event_name}, tool={tool_name}")
+ 
+     # Load project-specific security guidance and custom patterns once
+@@ -2334,7 +2355,7 @@
+             # Another spawn for this same tool_use_id already claimed the
+             # work (compound matched multiple `if` configs). Emit a single
+             # metric so telemetry can count how often the de-dupe kicks in.
+-            print(json.dumps({"metrics": {"bash_hook_dedup": True}}), flush=True)
++            _emit_codex_json({"metrics": {"bash_hook_dedup": True}}, flush=True)
+             sys.exit(0)
+         if _GIT_COMMIT_RE.search(cmd):
+             handle_commit_review_posttooluse(input_data)
+@@ -2410,15 +2431,15 @@
+                     "hookEventName": "PostToolUse",
+                     "additionalContext": PROVENANCE_TAG + "\n\n" + "\n\n".join(all_guidance),
+                 }
+-            print(json.dumps(output))
++            _emit_codex_json(output)
+         elif all_guidance:
+             # Defensive: pattern rules disabled but guidance somehow set (shouldn't happen)
+-            print(json.dumps({
++            _emit_codex_json({
+                 "hookSpecificOutput": {
+                     "hookEventName": "PostToolUse",
+                     "additionalContext": PROVENANCE_TAG + "\n\n" + "\n\n".join(all_guidance),
+                 }
+-            }))
++            })
+ 
+     sys.exit(0)
+ 
