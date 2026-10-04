@@ -142,7 +142,13 @@ export async function route(prompt, candidates, profile, { qualityBar = 0.7, k =
   }
 
   const prices = effectivePrices(candidates, profile);
-  const router = mod.Router.fromExamples(rows, prices, { k, qualityBar });
+  const allowed = new Set(candidates.map((m) => m.id));
+  const constrainedRows = rows.map((row) => ({ ...row,
+    scores: Object.fromEntries(Object.entries(row.scores).filter(([id]) => allowed.has(id))),
+  })).filter((row) => Object.keys(row.scores).length);
+  if (constrainedRows.length < MIN_LABELS) return { routedBy: 'COLD-START',
+    reason: 'Insufficient labels for policy-eligible models', labels: constrainedRows.length };
+  const router = mod.Router.fromExamples(constrainedRows, prices, { k, qualityBar });
   const pick = router.route(await embed(prompt));
 
   return {

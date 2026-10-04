@@ -48,6 +48,39 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       ]
     },
     {
+      "id": "approved-native-routing",
+      "reason": "Current owner allocations, classification floors, native model and effort support, subscription auth and ordinary allowance gate actual stdin dispatch without expanding spend",
+      "files": [
+        "tests/unit/model-router-engine.test.mjs",
+        "tests/unit/model-router-enforcement.test.mjs",
+        "tests/unit/native-subscription-usage.test.mjs",
+        "tests/unit/model-router-agent-hook.test.mjs"
+      ]
+    },
+    {
+      "id": "same-session-native-transport",
+      "reason": "Codex and Claude native JSONL preserve context, UTF-8, control progress, cancellation and deferred FIFO while binding each new turn to an approved native route",
+      "files": [
+        "tests/unit/model-routing-gateway.test.mjs",
+        "tests/unit/model-routing-launchers.test.mjs"
+      ]
+    },
+    {
+      "id": "weekly-routing-evidence",
+      "reason": "Weekly native dispatch requires allowance and trusted tool denial; bounded completions, source fencing and qualified promotion preserve original owner approval and reject requested-only identity",
+      "files": [
+        "tests/unit/model-weekly-assessment.test.mjs",
+        "tests/unit/model-weekly-analyst.test.mjs",
+        "tests/unit/model-weekly-cycle.test.mjs",
+        "tests/unit/model-weekly-qualification.test.mjs",
+        "tests/unit/model-native-qualification.test.mjs",
+        "tests/unit/model-native-catalog.test.mjs",
+        "tests/unit/user-model-prompt-hook.test.mjs",
+        "tests/unit/model-routing-policy-promotion.test.mjs",
+        "tests/unit/codex-hook-trust.test.mjs"
+      ]
+    },
+    {
       "id": "native-scheduler",
       "reason": "Owned scheduler lifecycle, execution identity, measured no-op and signed installed coverage",
       "files": [
@@ -133,6 +166,14 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       "reason": "Actual bundle builder rejects absent private fence and incomplete public payloads",
       "files": [
         "tests/integration/build-bundle-fence.test.mjs"
+      ]
+    },
+    {
+      "id": "installed-routing-and-hook-trust",
+      "reason": "Actual installer update converges managed routing while preserving private overrides; POSIX archive and native metadata subprocess probes bind authorized hook trust to verified released bytes and preserve concurrent or disabled owner state",
+      "files": [
+        "tests/unit/model-router-update-convergence.test.mjs",
+        "tests/unit/codex-hook-trust-reconcile.test.mjs"
       ]
     },
     {

@@ -21,6 +21,7 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'router-test-'));
 const CATALOG = path.join(TMP, 'catalog.json');
 const PROFILE = path.join(TMP, 'profile.json');
 const LOG = path.join(TMP, 'decisions.jsonl');
+const SELECTION = path.join(TMP, 'routing-policy.json');
 
 // Fixture catalog: the shapes the contract cares about — subscription-covered models on both
 // harnesses, billed OpenRouter models, tier spread. Prices are fixture values, not claims.
@@ -38,6 +39,10 @@ const FIXTURE = {
 
 beforeAll(() => {
   fs.writeFileSync(CATALOG, JSON.stringify(FIXTURE));
+  fs.writeFileSync(SELECTION, JSON.stringify({schemaVersion:1,reviewedAt:new Date().toISOString(),routes:{
+    codex:{fast:{model:'gpt-frontier-fixture',effort:'low'},medium:{model:'gpt-frontier-fixture',effort:'medium'},hard:{model:'gpt-frontier-fixture',effort:'high'}},
+    'claude-code':{fast:{model:'claude-haiku-fixture',effort:'low'},medium:{model:'claude-sonnet-fixture',effort:'medium'},hard:{model:'claude-opus-fixture',effort:'high'},codingEffort:'high'},
+  }}));
   fs.writeFileSync(PROFILE, JSON.stringify({
     harnesses: {
       'claude-code': { available: true, subscription: true, basis: 'fixture' },
@@ -56,13 +61,14 @@ const run = (args, extraEnv = {}) =>
         MODEL_ROUTER_CATALOG: CATALOG,
         MODEL_ROUTER_PROFILE: PROFILE,
         MODEL_ROUTER_DECISIONS: LOG,
+        MODEL_ROUTER_SELECTION: SELECTION,
         ...extraEnv,
       },
     })
   );
 
-test('claude-code short research -> cheap tier, a subscription model is chosen', () => {
-  const d = run(['--harness', 'claude-code', '--prompt', 'In one sentence, what is HNSW?']);
+test('claude-code narrow summary -> fast allocation, a subscription model is chosen', () => {
+  const d = run(['--harness', 'claude-code', '--prompt', 'summarize HNSW in one sentence']);
   expect(d.harness).toBe('claude-code');
   expect(d.tier).toBe('cheap');
   expect(d.model).toBe('claude-haiku-fixture');
@@ -83,9 +89,9 @@ test('security + code escalates above the cheap tier', () => {
 });
 
 test('$1,600 floor: claude-code prefers the $0 subscription model over a billed one in-tier', () => {
-  const d = run(['--harness', 'claude-code', '--prompt', 'hi']); // trivial -> cheap tier
+  const d = run(['--harness', 'claude-code', '--prompt', 'summarize notes']); // trivial -> cheap tier
   expect(d.provider).toBe('anthropic');
-  expect(d.est_input_cost_usd).toBeNull();
+  expect(d.est_input_cost_usd).toBe(0);
 });
 
 test('cross-tier $0 floor: codex never pays a billed model while a subscription model can do the job', () => {
@@ -94,41 +100,62 @@ test('cross-tier $0 floor: codex never pays a billed model while a subscription 
   expect(paysWhileSubscriptionExists).toBe(false);
 });
 
-test('per-user profile: a user WITHOUT a codex subscription gets billed candidates, never a phantom $0', () => {
-  const noCodexSub = path.join(TMP, 'profile-nocodex.json');
-  fs.writeFileSync(noCodexSub, JSON.stringify({
-    harnesses: {
-      'claude-code': { available: true, subscription: true },
-      codex: { available: true, subscription: false },
-    },
-  }));
-  const d = run(['--harness', 'codex', '--prompt', 'summarize this article'], { MODEL_ROUTER_PROFILE: noCodexSub });
-  expect(d.model).toBeTruthy();
-  expect(d.provider).not.toBe('openai'); // the codex-subscription model must NOT be treated as $0
+test('per-user profile: no subscription fails closed instead of spending', () => {
+  const noSub = path.join(TMP, 'no-sub.json');
+  fs.writeFileSync(noSub, JSON.stringify({harnesses:{codex:{available:true,subscription:false}}}));
+  expect(() => run(['--harness','codex','--prompt','summarize'], {MODEL_ROUTER_PROFILE:noSub})).toThrow();
 });
 
-test('per-user profile: an unavailable harness disappears from the candidate pool', () => {
-  const noCodex = path.join(TMP, 'profile-unavail.json');
-  fs.writeFileSync(noCodex, JSON.stringify({
-    harnesses: {
-      'claude-code': { available: true, subscription: true },
-      codex: { available: false, subscription: false },
-    },
-  }));
-  const d = run(['--harness', 'codex', '--prompt', 'hello'], { MODEL_ROUTER_PROFILE: noCodex });
-  expect(d.model || '').not.toMatch(/^gpt-/);
+test('per-user profile: unavailable host fails closed', () => {
+  const unavailable = path.join(TMP, 'unavailable.json');
+  fs.writeFileSync(unavailable, JSON.stringify({harnesses:{codex:{available:false,subscription:true}}}));
+  expect(() => run(['--harness','codex','--prompt','hello'], {MODEL_ROUTER_PROFILE:unavailable})).toThrow();
 });
 
 test('pluggable policy overrides selection (the core requirement)', () => {
   const forced = path.join(TMP, 'forced-policy.mjs');
   fs.writeFileSync(forced,
-    "export function choose(){ return { model:'or/cheap-fixture', provider:'openrouter', tier:'cheap', reason:'forced by test policy', confidence:1 }; }");
+    "export function choose(){ return { model:'gpt-frontier-fixture', provider:'openai', taskClass:'medium', effort:'medium', tier:'frontier', reason:'forced by test policy', confidence:1 }; }");
   const out = JSON.parse(
     execFileSync(process.execPath, [ENGINE, '--harness', 'codex', '--policy', forced, '--prompt', 'anything', '--json'], {
       encoding: 'utf8',
-      env: { ...process.env, MODEL_ROUTER_CATALOG: CATALOG, MODEL_ROUTER_PROFILE: PROFILE, MODEL_ROUTER_DECISIONS: LOG },
+      env: { ...process.env, MODEL_ROUTER_CATALOG: CATALOG, MODEL_ROUTER_PROFILE: PROFILE, MODEL_ROUTER_DECISIONS: LOG, MODEL_ROUTER_SELECTION: SELECTION },
     })
   );
-  expect(out.model).toBe('or/cheap-fixture');
+  expect(out.model).toBe('gpt-frontier-fixture');
   expect(out.reason).toMatch(/forced by test policy/);
+});
+
+test('decision receipt excludes raw prompt and custom reason',()=>{
+  const prompt='summarize PRIVATE_TOKEN_876';
+  run(['--harness','codex','--prompt',prompt]);
+  expect(fs.readFileSync(LOG,'utf8')).not.toContain('PRIVATE_TOKEN_876');
+});
+
+test('structured request travels through actual engine stdin and selects substantial qualified effort',()=>{
+  const selected=path.join(TMP,'substantial-policy.json');
+  const fixture=JSON.parse(fs.readFileSync(SELECTION,'utf8'));
+  fixture.routes.codex.substantial={model:'gpt-frontier-fixture',effort:'high'};
+  fs.writeFileSync(selected,JSON.stringify(fixture));
+  const raw=execFileSync(process.execPath,[ENGINE,'--harness','codex','--request-json','--policy-only','--policy',POLICY,'--json'],{
+    input:JSON.stringify({prompt:'implement PRIVATE_STRUCTURED_WORK',taskFacts:{taskType:'coding',scope:'substantial'}}),encoding:'utf8',
+    env:{...process.env,MODEL_ROUTER_CATALOG:CATALOG,MODEL_ROUTER_PROFILE:PROFILE,MODEL_ROUTER_SELECTION:selected,MODEL_ROUTER_DECISIONS:LOG},
+  });
+  expect(JSON.parse(raw)).toMatchObject({taskClass:'substantial',model:'gpt-frontier-fixture',effort:'high',classificationSource:'caller-task-facts'});
+  expect(fs.readFileSync(LOG,'utf8')).not.toContain('PRIVATE_STRUCTURED_WORK');
+});
+
+test('installed layout with preserved legacy default cannot silently disable mandatory classification floor',()=>{
+  const home=path.join(TMP,'installed-router');const bin=path.join(home,'bin');
+  fs.mkdirSync(bin,{recursive:true});
+  fs.mkdirSync(path.join(home,'plugin','scripts'),{recursive:true});
+  for(const file of ['model-router-engine.mjs','route-cheap.mjs']) fs.copyFileSync(path.join(ROOT,'scripts',file),path.join(bin,file));
+  fs.copyFileSync(path.join(ROOT,'plugin','scripts','runtime-preferences.mjs'),path.join(home,'plugin','scripts','runtime-preferences.mjs'));
+  fs.writeFileSync(path.join(home,'policy.default.mjs'),"export function choose(){return {model:'gpt-frontier-fixture',taskClass:'medium',effort:'medium'}}");
+  const custom=path.join(home,'policy.mjs');fs.writeFileSync(custom,"export function choose(){return {model:'gpt-frontier-fixture',taskClass:'medium',effort:'medium'}}");
+  const execute=()=>execFileSync(process.execPath,[fs.realpathSync(path.join(bin,'model-router-engine.mjs')),'--harness','codex','--policy-only','--json'],{
+    input:'substantial implementation across modules',encoding:'utf8',stdio:['pipe','pipe','pipe'],
+    env:{...process.env,MODEL_ROUTER_CONFIG_DIR:home,MODEL_ROUTER_CATALOG:CATALOG,MODEL_ROUTER_PROFILE:PROFILE,MODEL_ROUTER_SELECTION:SELECTION,MODEL_ROUTER_DECISIONS:LOG},
+  });
+  expect(execute).toThrow(/classifier missing required exports/);
 });

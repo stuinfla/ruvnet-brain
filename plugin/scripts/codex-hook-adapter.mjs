@@ -216,21 +216,20 @@ function validPostToolUseOutput(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const topLevelKeys = new Set([
     'continue', 'stopReason', 'suppressOutput', 'systemMessage',
-    'terminalSequence', 'decision', 'reason', 'hookSpecificOutput',
+    'decision', 'reason', 'hookSpecificOutput',
   ]);
   if (Object.keys(value).some((key) => !topLevelKeys.has(key))) return false;
   if (value.continue !== undefined && typeof value.continue !== 'boolean') return false;
   if (value.stopReason !== undefined && typeof value.stopReason !== 'string') return false;
   if (value.suppressOutput !== undefined && typeof value.suppressOutput !== 'boolean') return false;
   if (value.systemMessage !== undefined && typeof value.systemMessage !== 'string') return false;
-  if (value.terminalSequence !== undefined && typeof value.terminalSequence !== 'string') return false;
   if (value.decision !== undefined && value.decision !== 'block') return false;
   if (value.decision === 'block' && (typeof value.reason !== 'string' || !value.reason.trim())) return false;
   if (value.hookSpecificOutput !== undefined) {
     const specific = value.hookSpecificOutput;
     if (!specific || typeof specific !== 'object' || Array.isArray(specific)) return false;
     const specificKeys = new Set([
-      'hookEventName', 'additionalContext', 'updatedToolOutput', 'updatedMCPToolOutput',
+      'hookEventName', 'additionalContext',
     ]);
     if (Object.keys(specific).some((key) => !specificKeys.has(key))) return false;
     if (specific.hookEventName !== 'PostToolUse') return false;
@@ -268,13 +267,23 @@ if (!parsed) {
   process.exit(0);
 }
 
-// A body can emit syntactically valid JSON that is still invalid for Codex's event-specific wire
-// schema (wrong event name, unsupported fields, or bad field types). Preserve the advisory as text
-// inside the known-good PostToolUse envelope instead of forwarding a payload the host rejects.
+// Codex 0.160.0 post-tool-use.command.output (extracted from the installed binary on
+// 2026-10-04) rejects terminalSequence, updatedToolOutput, and telemetry fields. The
+// host additionally rejects updatedMCPToolOutput semantically after schema parsing. Keep
+// supported control fields even when a shared body includes incompatible metadata: wrapping
+// the whole output as context alone would silently discard a security block.
 if (event === 'PostToolUse' && !validPostToolUseOutput(parsed)) {
-  process.stdout.write(JSON.stringify({
-    hookSpecificOutput: { hookEventName: event, additionalContext: stdout.trim() },
-  }));
+  const normalized = {};
+  for (const key of ['continue', 'stopReason', 'suppressOutput', 'systemMessage', 'reason']) {
+    const type = ['continue', 'suppressOutput'].includes(key) ? 'boolean' : 'string';
+    if (typeof parsed[key] === type) normalized[key] = parsed[key];
+  }
+  if (parsed.decision === 'block') {
+    normalized.decision = 'block';
+    if (!normalized.reason?.trim()) normalized.reason = stdout.trim();
+  }
+  normalized.hookSpecificOutput = { hookEventName: event, additionalContext: stdout.trim() };
+  process.stdout.write(JSON.stringify(normalized));
   process.exit(0);
 }
 
