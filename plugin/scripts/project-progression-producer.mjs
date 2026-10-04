@@ -29,6 +29,7 @@
  * within those bounds.
  */
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import path from 'node:path';
 import { digestCanonical, fieldAuthorityAllows, redactProgression, restoreProjectProgression } from './project-progression-contract.mjs';
 import { readOwnerNote, readSourceIdentity, readTranscriptReference, readWorkLedger } from './project-progression-sources.mjs';
@@ -94,10 +95,14 @@ function committedHeads(canonicalAgentDbPath, projectIdentity) {
     }
     return snapshots;
   });
-  if (!result.ok) return { heads: [], readPath: `unavailable (${result.reason})` };
+  if (!result.ok) {
+    if (fs.existsSync(canonicalAgentDbPath)) throw new Error(`prior progression read unavailable: ${result.reason}`);
+    return { heads: [], state: null, readPath: `unavailable (${result.reason})` };
+  }
   const restored = restoreProjectProgression(result.value, { expectedProjectIdentity: projectIdentity });
+  if (result.value.length && !restored.ok) throw new Error('prior progression has no verifiable coherent state');
   const byKey = new Map(result.value.map((snapshot) => [snapshot?.eventKey, snapshot]));
-  return { heads: restored.heads.map((key) => byKey.get(key)).filter(Boolean), readPath: 'node:sqlite' };
+  return { heads: restored.heads.map((key) => byKey.get(key)).filter(Boolean), state: restored.state, readPath: 'node:sqlite' };
 }
 
 function uniqueStrings(values) {
@@ -115,6 +120,7 @@ function uniqueStrings(values) {
  */
 export function buildProjectProgression({
   resolution,
+  projectDir = resolution?.checkoutRoot,
   payload = {},
   host = 'claude',
   env = process.env,
@@ -123,20 +129,21 @@ export function buildProjectProgression({
 } = {}) {
   if (!resolution || typeof resolution !== 'object') throw new TypeError('resolution must be a project store resolution');
   const source = readSourceIdentity({ checkoutRoot: resolution.checkoutRoot, kind: resolution.kind });
+  source.identity.capturePath = fs.realpathSync.native(projectDir);
   const ledger = readWorkLedger({ projectId: resolution.projectIdentity.id, env });
   const note = readOwnerNote(() => ownerNoteRows(resolution.canonicalAgentDbPath, path.basename(resolution.projectRoot)));
   const transcript = readTranscriptReference(payload.transcript_path, { host });
-  const { heads } = committedHeads(resolution.canonicalAgentDbPath, resolution.projectIdentity);
+  const { heads, state: priorState } = committedHeads(resolution.canonicalAgentDbPath, resolution.projectIdentity);
 
   const priorSequence = heads.reduce((highest, head) => Math.max(highest, head.sequence ?? 0), 0);
-  const priorState = heads.length === 1 ? heads[0].completeProjectState : null;
 
-  const provenance = {};
+  const provenance = { ...(priorState?.provenance ?? {}) };
   const record = (field, sourceName) => {
     if (sourceName !== 'none' && !fieldAuthorityAllows(field === 'sourceIdentity' ? 'sourceIdentity' : field, sourceName)) {
       throw new Error(`source ${sourceName} is not authoritative for progression field ${field}`);
     }
-    provenance[field] = marker(sourceName);
+    provenance[field] = sourceName === 'prior-head' && priorState?.provenance?.[field]
+      ? priorState.provenance[field] : marker(sourceName);
   };
 
   // GOAL — the ledger's oldest open item is what the user actually committed to. A coherent prior
@@ -144,7 +151,7 @@ export function buildProjectProgression({
   // no durable goal exists. Neither contextual source is an instruction.
   let currentGoal = ledger.open[0] ?? null;
   if (currentGoal) record('currentGoal', 'ledger');
-  else if (typeof priorState?.currentGoal === 'string' && priorState.currentGoal) {
+  else if (priorState) {
     currentGoal = priorState.currentGoal;
     record('currentGoal', 'prior-head');
   } else if (note?.excerpt) {
@@ -159,12 +166,12 @@ export function buildProjectProgression({
   // Transcript text is evidence/context, never an invented structured action.
   let nextAction = ledger.open[1] ?? ledger.open[0] ?? null;
   if (nextAction) record('nextAction', 'ledger');
-  else if (typeof priorState?.nextAction === 'string' && priorState.nextAction) {
+  else if (priorState) {
     nextAction = priorState.nextAction;
     record('nextAction', 'prior-head');
   } else record('nextAction', 'none');
 
-  const decisions = [];
+  const decisions = [...(priorState?.decisions ?? [])];
   if (ledger.objective && typeof ledger.objective.text === 'string' && ledger.objective.text) {
     decisions.push({ text: ledger.objective.text, state: ledger.objective.state ?? null, source: 'ledger' });
     record('decisions', 'ledger');
@@ -173,31 +180,49 @@ export function buildProjectProgression({
     record('decisions', 'owner-note');
   } else record('decisions', 'prior-head');
 
-  record('plan', ledger.present ? 'ledger' : 'prior-head');
-  record('completed', ledger.present ? 'ledger' : 'prior-head');
-  record('inProgress', ledger.present ? 'ledger' : 'prior-head');
+  // A partial ledger speaks only for its own matching items; absence is not deletion.
+  const priorPlan = priorState?.plan ?? [];
+  const doneIds = new Set(ledger.done.map((text) => text.slice(0, 64)));
+  const openIds = new Set(ledger.open.map((text) => text.slice(0, 64)));
+  const ownedDone = new Set(priorPlan.filter((item) => item?.source === 'ledger' && doneIds.has(item.id)).map((item) => item.id));
+  const plan = priorPlan.map((item) => item?.source !== 'ledger' ? item
+    : doneIds.has(item.id) ? { ...item, status: 'done' }
+      : openIds.has(item.id) ? { ...item, status: 'open' } : item);
+  for (const text of ledger.open) {
+    const id = text.slice(0, 64);
+    if (!plan.some((item) => item?.source === 'ledger' && item.id === id)) plan.push({ id, status: 'open', source: 'ledger' });
+  }
+  const completed = [...(priorState?.completed ?? [])];
+  for (const text of ledger.done) if (!completed.includes(text)) completed.push(text);
+  const inProgress = uniqueStrings([...(priorState?.inProgress ?? []).filter((text) => !ownedDone.has(text.slice(0, 64))), ...ledger.open]);
+  for (const field of ['plan', 'completed', 'inProgress']) {
+    record(field, ledger.open.length || ledger.done.length ? 'ledger' : 'prior-head');
+    if (priorState && (ledger.open.length || ledger.done.length)) provenance[field] = { source: 'prior-head', authoritative: priorState.provenance?.[field]?.authoritative ?? true, sources: ['prior-head', 'ledger'] };
+  }
   record('changedFiles', 'git');
   record('sourceIdentity', 'git');
 
+  // Reducer annotations describe the prior heads, not application state in the new snapshot.
+  const { sourceIdentity: priorSource, journalHeads: priorHeads, ...carriedState } = priorState ?? {};
   const completeProjectState = {
+    ...carriedState,
     currentGoal,
     nextAction,
     acceptanceContract: priorState?.acceptanceContract ?? null,
-    activeProcess: 'ProjectContinuity',
-    activeStep: trigger ?? 'unknown',
-    plan: ledger.open.map((text) => ({ id: text.slice(0, 64), status: 'open', source: 'ledger' })),
-    completed: uniqueStrings(ledger.done),
-    inProgress: uniqueStrings(ledger.open),
-    blockers: [],
-    failures: [],
-    decisions,
-    // The three digests already identify the tree exactly; enumerating paths here would duplicate
-    // that and, for an untracked file, would put a filename we were never asked to keep into a row.
-    changedFiles: [],
-    commands: [],
-    proofArtifacts: [],
-    untested: [],
-    resumeConflicts: [],
+    activeProcess: priorState ? priorState.activeProcess : 'ProjectContinuity',
+    activeStep: priorState ? priorState.activeStep : trigger ?? 'unknown',
+    plan,
+    completed,
+    inProgress,
+    blockers: priorState?.blockers ?? [],
+    failures: priorState?.failures ?? [],
+    decisions: [...new Map(decisions.map((decision) => [digestCanonical(decision), decision])).values()],
+    // Retain previously recorded paths; the new tree's digests never invent additional filenames.
+    changedFiles: priorState?.changedFiles ?? [],
+    commands: priorState?.commands ?? [],
+    proofArtifacts: priorState?.proofArtifacts ?? [],
+    untested: priorState?.untested ?? [],
+    resumeConflicts: priorState?.resumeConflicts ?? [],
     provenance,
     evidence: {
       workLedger: { file: ledger.file, present: ledger.present, open: ledger.open.length, done: ledger.done.length },
@@ -236,7 +261,7 @@ export function buildProjectProgression({
     source: projectProgression.sourceIdentity,
   });
   const priorMeaning = heads.length === 1 ? digestCanonical({
-    state: { ...priorState, activeStep: null, evidence: null },
+    state: { ...carriedState, activeStep: null, evidence: null },
     source: heads[0].sourceIdentity,
   }) : null;
 

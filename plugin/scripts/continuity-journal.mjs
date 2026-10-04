@@ -1,32 +1,16 @@
 /**
- * continuity-journal.mjs — durable outbox FIRST, then AgentDB, then an exact read-back. Never silent.
- * THE GUARANTEE, and the failure it is built around. `ruflo memory store` refuses a write while another
- * process holds the store's native WAL sidecars: memory-initializer.ts storeEntry/getEntry check
- * `hasNativeWalSidecars(dbPath)` and return `walRefusalError` ("active native WAL connection — refusing
- * an unsafe sql.js whole-image write"; ruflo #2735/#2878, search_ruvnet:
- * ruflo/v3/@claude-flow/cli/src/memory/memory-initializer.ts). That is ordinary under concurrency, so an
- * event that is only ever handed to `ruflo` once is an event that can be lost. Here:
+ * Durable material events: fsync the outbox, store through canonical Ruflo, then exact-read back.
+ * Ruflo refuses sql.js writes during native WAL contention (#2735/#2878); a refused event stays
+ * pending and the bounded worker retries with backoff. Only verified bytes produce a commit receipt.
+ * Current original-path consent governs capture and every replay attempt; opt-out retains debt.
+ * One kind:id denotes one event, even when concurrent sessions observe it. A conflicting stored row
+ * is quarantined. Missing store/Ruflo is not applicable, while pending debt or corruption is reported
+ * by the SessionStart brief, doctor, and a once-per-session Claude Stop notice.
  *
- *   1. append(): every event is written to `.swarm/continuity-events-outbox.jsonl` and fsynced BEFORE
- *      any store call. From that instant it cannot be lost by a crash, a SIGKILL or a refusal.
- *   2. drain(): `ruflo memory store --no-upsert --path <db>` (the ONLY writer of memory.db), then the
- *      row is read back by exact key through the read-only node:sqlite reader (the same independent
- *      read path project-progression-store.mjs uses) and compared. Only then is a `commit` line
- *      appended. A refusal is retried with backoff inside the worker's budget; whatever is left stays
- *      pending and is retried by the next boundary's worker.
- *   3. status(): pending count, oldest pending, last commit, last failure — surfaced by the SessionStart
- *      brief, `--doctor`, and (Claude) a Stop line when recording is stuck. Never swallowed.
- * WHAT "✗" MEANS, AND WHAT KEEPS THE FILE SMALL (independent review S3/S4, 2026-10-01):
- *   • ONE EVENT, ONE KEY: two lines under one key are one event seen twice (first wins); only a stored row
- *     that is NOT that kind:id is a conflict, and that key is quarantined.
- *   • NOT APPLICABLE IS NOT A FAILURE: no initialized store → nothing journalled; no ruflo → events wait,
- *     no drainer, and the line says "n/a", never ✗.
- *   • A PROBLEM IS REPORTED, THEN CLEARS: quarantine/corrupt lines age out after QUARANTINE_REPORT_MS or
- *     with `continuity-brief.mjs --clear`; the Stop line shows once per session per condition.
- *   • BOUNDED. A failure is ONE record per event (attempt count, last error), never a line per attempt;
- *     compact() rewrites the file atomically (lock + size re-check, so a concurrent append is never
- *     lost): committed events older than RETAIN_COMMITTED_MS leave (the store keeps them and dedupes),
- *     corrupt lines become one notice, and a hard cap of MAX_EVENT_RECORDS drops the oldest, reported.
+ * Failures retain one attempts/last-error record per event. Lock-protected compaction checks the file
+ * size before atomic replacement so concurrent appends survive. It removes committed history after
+ * RETAIN_COMMITTED_MS, ages quarantine/corrupt notices after QUARANTINE_REPORT_MS, and bounds committed
+ * history at MAX_EVENT_RECORDS. Pending events are never dropped; prolonged outages report pressure.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -38,7 +22,7 @@ import { withProgressionReader } from './project-progression-reader.mjs';
 import { rufloRunDir } from './project-progression-store.mjs';
 import { resolveRuflo, rufloInvocation } from './ruflo-bin.mjs';
 import { resolveProjectStore } from './project-store-resolver.mjs';
-import { readSettledTranscript } from './turn-outcome-capture.mjs';
+import { resolveTurnDb, readSettledTranscript } from './turn-outcome-capture.mjs';
 import {
   CONTINUITY_NAMESPACE, INITIAL_LOOKBACK_MS, collectCommits, collectReleases, collectTurnEvents, eventIdOf, eventKey,
 } from './continuity-events.mjs';
@@ -54,7 +38,7 @@ export const STUCK_AFTER_MS = 10 * 60_000;
 export const QUARANTINE_REPORT_MS = 7 * 86_400_000;
 export const RETAIN_COMMITTED_MS = 7 * 86_400_000;
 export const MAX_EVENT_RECORDS = 2_000;
-const [COMPACT_AT_BYTES, LOCK_STALE_MS, APPEND_LOCK_WAIT_MS, APPEND_LOCK_STALE_MS] = [256 * 1024, 3 * 60_000, 1_000, 30_000];
+const [LOCK_STALE_MS, APPEND_LOCK_WAIT_MS, APPEND_LOCK_STALE_MS] = [3 * 60_000, 1_000, 30_000];
 const WAL_REFUSAL = /refusing an unsafe sql\.js|active native WAL|database is locked|SQLITE_BUSY/i;
 export const CLEAR_COMMAND = `node "${path.join(path.dirname(fileURLToPath(import.meta.url)), 'continuity-brief.mjs')}" --clear`;
 
@@ -71,9 +55,11 @@ const ms = (iso) => Date.parse(iso || '') || 0;
 
 export class ContinuityJournal {
   /** `ruflo`: the binary (string), null = not installed, undefined = resolve it. */
-  constructor({ projectRoot, fsync = fs.fsyncSync, now = Date.now, ruflo } = {}) {
+  constructor({ projectRoot, projectDir = projectRoot, env = process.env, fsync = fs.fsyncSync, now = Date.now, ruflo } = {}) {
     if (typeof projectRoot !== 'string' || !projectRoot) throw new TypeError('projectRoot is required');
     this.projectRoot = projectRoot;
+    this.projectDir = projectDir;
+    this.brainHome = env.RUVNET_BRAIN_HOME || path.join(env.HOME || os.homedir(), '.cache', 'ruvnet-brain');
     this.swarm = path.join(projectRoot, '.swarm');
     this.path = path.join(this.swarm, OUTBOX_NAME);
     this.db = path.join(this.swarm, 'memory.db');
@@ -168,15 +154,21 @@ export class ContinuityJournal {
     return ids;
   }
 
+  captureConsent(projectDir = this.projectDir, unknownOriginalPath = false) {
+    return resolveTurnDb({ projectDir, brainHome: this.brainHome, requestedStorePath: this.db, unknownOriginalPath });
+  }
+
   /** Journal the events this boundary observed that are not already known. Returns what was added. */
   record(events) {
+    const consent = this.captureConsent();
+    if (consent.skipped) throw new Error(`event capture suspended: ${consent.skipped}`);
     const known = this.knownIds();
     const fresh = [];
     for (const event of events) {
       const id = `${event.kind}:${event.id}`;
       if (known.has(id)) continue;
       known.add(id);
-      fresh.push({ type: 'event', key: eventKey(event), digest: digestCanonical(event), journaledAt: new Date(this.now()).toISOString(), event });
+      fresh.push({ type: 'event', capturePath: consent.capturePath, key: eventKey(event), digest: digestCanonical(event), journaledAt: new Date(this.now()).toISOString(), event });
     }
     this.appendRecords(fresh);
     return fresh;
@@ -192,11 +184,14 @@ export class ContinuityJournal {
   /** Does the file carry anything compact() would remove? (cheap: from one scan) */
   needsCompaction(scan = this.scan()) {
     const now = this.now();
-    if (scan.corrupt || scan.bytes > COMPACT_AT_BYTES || scan.events.size > MAX_EVENT_RECORDS) return true;
+    if (scan.corrupt) return true;
     const failureLines = scan.lines - scan.events.size - scan.committed.size - scan.quarantined.size - scan.notices.length - (scan.clearedAt ? 1 : 0) - scan.corrupt;
     if (failureLines > scan.failures.size) return true;
     for (const c of scan.committed.values()) if (now - ms(c.committedAt) > RETAIN_COMMITTED_MS) return true;
-    return false;
+    if (scan.notices.some((n) => now - ms(n.at) > QUARANTINE_REPORT_MS || ms(n.at) <= scan.clearedAt)) return true;
+    if ([...scan.quarantined.values()].some((q) => now - ms(q.at) > QUARANTINE_REPORT_MS)) return true;
+    // An unshrinkable pending backlog must not be rewritten on every capture boundary.
+    return scan.events.size > MAX_EVENT_RECORDS && [...scan.events.keys()].some((key) => scan.committed.has(key));
   }
 
   /**
@@ -210,7 +205,6 @@ export class ContinuityJournal {
       try { before = fs.statSync(this.path); } catch { return { compacted: false, reason: 'no outbox' }; }
       const scan = this.scan();
       const out = [];
-      let dropped = 0;
       const quarantineLive = (q) => now - ms(q.at) <= QUARANTINE_REPORT_MS;
       const keep = [...scan.events.values()].filter((rec) => {
         const c = scan.committed.get(rec.key);
@@ -218,16 +212,9 @@ export class ContinuityJournal {
         const q = scan.quarantined.get(rec.key);
         return q ? quarantineLive(q) : true;
       }).sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-      // The hard cap: committed events go first (the store holds them), then the oldest pending.
-      let over = keep.length - MAX_EVENT_RECORDS;
-      if (over > 0) {
-        const committedFirst = keep.filter((r) => scan.committed.has(r.key)).slice(0, over);
-        over -= committedFirst.length;
-        const pendingDrop = over > 0 ? keep.filter((r) => !scan.committed.has(r.key)).slice(0, over) : [];
-        dropped = pendingDrop.length;
-        const gone = new Set([...committedFirst, ...pendingDrop]);
-        keep.splice(0, keep.length, ...keep.filter((r) => !gone.has(r)));
-      }
+      // Only read-back committed events may leave at the cap. Pending bytes are the recovery copy.
+      const gone = new Set(keep.filter((r) => scan.committed.has(r.key)).slice(0, Math.max(0, keep.length - MAX_EVENT_RECORDS)));
+      keep.splice(0, keep.length, ...keep.filter((r) => !gone.has(r)));
       const kept = new Set(keep.map((r) => r.key));
       for (const rec of keep) {
         out.push(rec);
@@ -241,8 +228,8 @@ export class ContinuityJournal {
         notice.corrupt += Number(n.corrupt) || 0; notice.dropped += Number(n.dropped) || 0;
         notice.at = notice.at && notice.at < n.at ? notice.at : n.at;
       }
-      if (scan.corrupt || dropped) {
-        notice.corrupt += scan.corrupt; notice.dropped += dropped;
+      if (scan.corrupt) {
+        notice.corrupt += scan.corrupt;
         notice.at = notice.at || new Date(now).toISOString();
       }
       if (notice.corrupt || notice.dropped) out.push({ type: 'notice', ...notice });
@@ -258,7 +245,7 @@ export class ContinuityJournal {
         return { compacted: false, reason: 'the outbox changed during compaction; left as is' };
       }
       fs.renameSync(tmp, this.path);
-      return { compacted: true, lines: out.length, kept: kept.size, dropped };
+      return { compacted: true, lines: out.length, kept: kept.size, dropped: 0 };
     });
   }
 
@@ -279,14 +266,15 @@ export class ContinuityJournal {
     const ready = storeReady(this.db);
     const notApplicable = !ready ? 'no AgentDB store in this project (.swarm/memory.db is not initialized)'
       : !this.ruflo ? 'ruflo is not installed' : null;
+    const capacityPressure = pending.length > MAX_EVENT_RECORDS;
     const problem = quarantined.length ? 'quarantined' : corrupt ? 'corrupt' : dropped ? 'dropped'
-      : !notApplicable && oldest !== null && now - oldest > STUCK_AFTER_MS ? 'stuck-pending' : null;
+      : !notApplicable && capacityPressure ? 'capacity-pressure' : !notApplicable && oldest !== null && now - oldest > STUCK_AFTER_MS ? 'stuck-pending' : null;
     return {
       outbox: this.path, db: this.db, storeReady: ready, rufloPresent: Boolean(this.ruflo),
       applicable: !notApplicable, notApplicable,
       pending: pending.length, oldestPendingAt: oldest, lastCommitAt, eventsToday,
       lastFailure: lastFailure && (!lastCommitAt || ms(lastFailure.at) > lastCommitAt) ? lastFailure : null,
-      quarantined, corrupt, dropped, problem, stuck: Boolean(problem),
+      quarantined, corrupt, dropped, capacityPressure, problem, stuck: Boolean(problem),
     };
   }
 }
@@ -301,12 +289,14 @@ export function recordingLine(status, now = Date.now()) {
     const why = status.problem === 'quarantined' ? `${status.quarantined.length} quarantined (a different row holds its key; never retried — ${clears})`
       : status.problem === 'corrupt' ? `${status.corrupt} corrupt outbox line(s) removed (${clears})`
         : status.problem === 'dropped' ? `${status.dropped} uncommitted event(s) dropped at the outbox cap (${clears})`
+          : status.problem === 'capacity-pressure' ? `pending backlog exceeds soft limit ${MAX_EVENT_RECORDS}; no pending events discarded`
           : status.lastFailure ? `last error: ${status.lastFailure.reason || status.lastFailure.error}` : 'not committing';
     return `AgentDB: recording stuck — ${status.pending} event(s) pending${status.oldestPendingAt && status.problem === 'stuck-pending' ? ` for ${ago(now - status.oldestPendingAt)}` : ''}, ${why}.`
       + ` Pending events are durable in ${status.outbox} and retry at every capture boundary.`;
   }
   if (status.notApplicable) {
-    return `AgentDB: recording n/a — ${status.notApplicable}; ${status.pending} event(s) wait in the outbox (not a failure).`;
+    return `AgentDB: recording n/a — ${status.notApplicable}; ${status.pending} event(s) wait in the outbox (not a failure).`
+      + (status.capacityPressure ? ` Capacity pressure: pending backlog exceeds soft limit ${MAX_EVENT_RECORDS}; no pending events discarded.` : '');
   }
   // ✓ only on evidence: a committed, read-back event. "Nothing failed yet" is not proof of recording.
   if (!status.lastCommitAt) return `AgentDB: recording not yet proven — no event committed and read back yet (outbox ${status.pending} pending)`;
@@ -379,6 +369,11 @@ export function drain(journal, {
     let attempts = 0;
     let last = null;
     for (let attempt = 0; !done && now() < deadline; attempt += 1) {
+      let consent;
+      try { consent = journal.captureConsent(rec.capturePath || journal.projectRoot, !rec.capturePath); }
+      catch (error) { consent = { skipped: `capture consent unavailable: ${error.message}` }; }
+      if (consent.skipped) return { committed, failed, remaining: journal.pending().length, skipped: consent.skipped };
+      if (now() >= deadline) break;
       attempts += 1;
       const result = store({ ruflo, db: journal.db, key: rec.key, value });
       const back = readBack({ ruflo, db: journal.db, key: rec.key });
@@ -453,7 +448,11 @@ export function captureContinuityEvents({
   if (String(env.RUVNET_CONTINUITY_CAPTURE || '').toLowerCase() === 'off') return { ...report, skipped: 'RUVNET_CONTINUITY_CAPTURE=off' };
   let resolution;
   try { resolution = resolveProjectStore({ projectDir }); } catch { return { ...report, skipped: 'project store could not be resolved' }; }
-  const journal = new ContinuityJournal({ projectRoot: resolution.projectRoot, now, ruflo });
+  const journal = new ContinuityJournal({ projectRoot: resolution.projectRoot, projectDir, env, now, ruflo });
+  try {
+    const consent = journal.captureConsent();
+    if (consent.skipped) return { ...report, skipped: consent.skipped.startsWith('no project memory db') ? `not applicable: ${consent.skipped}` : consent.skipped };
+  } catch (error) { return { ...report, skipped: `capture consent unavailable: ${error.message}` }; }
   try {
     const st = fs.lstatSync(journal.swarm);
     if (!st.isDirectory() || st.isSymbolicLink()) return { ...report, skipped: '.swarm is not a real directory' };
@@ -488,7 +487,7 @@ export function captureContinuityEvents({
 
 /** The detached worker body. */
 export function runDrain(projectRoot, options = {}) {
-  const journal = new ContinuityJournal({ projectRoot, ...(options.ruflo !== undefined ? { ruflo: options.ruflo } : {}) });
+  const journal = new ContinuityJournal({ projectRoot, ...(options.env ? { env: options.env } : {}), ...(options.ruflo !== undefined ? { ruflo: options.ruflo } : {}) });
   const release = takeLock(journal);
   if (!release) return { skipped: 'another drainer holds the lock' };
   try { return drain(journal, options); } finally { release(); }

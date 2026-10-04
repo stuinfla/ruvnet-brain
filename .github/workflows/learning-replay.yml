@@ -15,11 +15,14 @@ name: learning-replay
 # GitHub runner has neither. Pretending otherwise would produce a permanently-UNKNOWN nightly, and a
 # check whose only outcome is UNKNOWN is a check nobody reads.
 #
-# So the spend lives where the credentials live — the owner's local nightly, scripts/nightly-wrapper.sh,
-# which runs the full N=3 replay every night and rewrites the artifact. THIS workflow is the CURRENCY
+# So the spend lives where the credentials live — an authorized operator runs
+# `node scripts/learning-replay.mjs --measure-portfolio --host codex --model gpt-6.1-sol`
+# in a clean author worktree and commits the resulting evidence through the release rail. The old
+# source-writing nightly is retired; installed-cache updates do not refresh repository proof.
+# THIS workflow is the CURRENCY
 # GATE on that artifact: every night it asserts the committed result is present, well-formed, PASS,
 # measured on a SHA that is still current for the load-bearing files, and not stale. A local nightly
-# that silently stops running therefore turns this red, which is the failure mode that matters —
+# measurement that stops being refreshed therefore turns this red, which is the failure mode that matters —
 # ADR-055's rule that a job must PROVE it ran, applied to a token-priced measurement.
 #
 # The token-burning path exists here too and is one click away (`workflow_dispatch` with
@@ -27,16 +30,17 @@ name: learning-replay
 # job says so and reports UNKNOWN — it never falls back to "green because we skipped it".
 on:
   schedule:
-    # 02:31 America/New_York = 06:31 UTC. Off-the-hour on purpose (every scheduled workflow on GitHub
-    # piles onto :00), and AFTER the local 03:15 nightly has had a night to rewrite the artifact.
+    # 02:31 America/New_York during daylight saving time. Off-the-hour to avoid runner contention.
     - cron: '31 6 * * *'
   push:
     branches: [main]
     paths:
       - 'scripts/learning-replay.mjs'
+      - 'scripts/learning-replay-*.mjs'
       - 'scripts/ci/learning-replay-recorder.mjs'
       - 'scripts/ci/learning-replay-codex-adapter.mjs'
-      - 'data/learning-replay-result.json'
+      - 'data/learning-replay*-result.json'
+      - 'data/learning-replay-transcripts/**'
       - '.github/workflows/learning-replay.yml'
   workflow_dispatch:
     inputs:
@@ -101,14 +105,15 @@ jobs:
           RUVNET_RUFLO_BIN: ruflo
         run: |
           npm i --no-audit --no-fund --loglevel=error
-          npm run learning:replay -- --n 3 --host claude-code --model haiku
+          npm run learning:replay -- --measure-portfolio --host claude-code --model haiku
       - name: Archive the transcripts (the trap's evidence, not its conclusion)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: learning-replay-transcripts
           path: |
-            data/learning-replay-result.json
+            data/learning-replay*-result.json
+            data/learning-replay-transcripts/**
             .ruvnet-brain/learning-replay/**
           if-no-files-found: warn
           retention-days: 30

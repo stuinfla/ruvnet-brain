@@ -1,6 +1,9 @@
+Updated: 2026-10-03 16:32:20 EDT | Version 1.0.1
+Created: 2026-07-07 09:22:01 EDT
+
 # Contributing to RuvNet Brain — the one rulebook
 
-Updated: 2026-10-01
+Updated: 2026-10-03
 Created: 2026-07-07
 
 This file is the **only** place that says how to version, release, update the knowledge corpus,
@@ -39,7 +42,9 @@ Nothing else publishes. `scripts/release-authority.mjs` fails CI if any file oth
 git switch -c release/X.Y.Z origin/main
 npm run version:set -- X.Y.Z && npm run convergence:write      # commit these first
 # …merge the reviewed work for this release onto the branch…
-npm test && npx vitest run && npm run single-source:check    # both suites assert different things
+npm run release:qualify -- --suite source --report /tmp/source-qualification-UNIQUE.json
+npm run release:qualify -- --suite integration --report /tmp/integration-qualification-UNIQUE.json
+npm test && npm run single-source:check                    # distinct grounding and rule checks
 git push origin release/X.Y.Z                                # triggers release-candidate-preflight
 ```
 
@@ -291,10 +296,30 @@ only; `npm run completion-claim:replay` measures both on real transcripts). Sess
 `[RuvNet Brain — KNOWLEDGE …]` line when the installed knowledge cannot be proven current (older than
 48h, or the latest refresh receipt FAILED) and names the fix. The same snapshot capture records each
 turn's outcome at Stop (final assistant text, files changed, command descriptions — never user
-text) to AgentDB namespace `turns` — the project's `.swarm/memory.db` if it exists, otherwise
-`~/.claude/global-memory/.swarm/memory.db`; `.swarm` is never created in a repository — and at
-SessionEnd/PreCompact runs `ruflo memory distill run` on that db so the records become patterns.
-Writes run in a detached worker; `RUVNET_TURN_CAPTURE=off` disables it. Where the owner's user-level
+text), redacted with the shared credential/private-key scanner before truncation, to AgentDB
+namespace `turns` in the canonical project's `.swarm/memory.db` (a linked worktree uses the primary
+repository store). There is no automatic global fallback. An existing project store is eligible by
+default; a project without one records nothing until explicitly opted in. The breadcrumb
+`agentdb-turns.jsonl` holds only `{ts,key,hash,len}`, never outcome text. A separate permission-restricted
+project-local transport journal fsyncs the redacted outcome and canonical binding before the detached
+writer starts. Startup replays eligible pending entries; exact key/content readback, with no upsert,
+commits transport. File fsync is mandatory. Where Windows directory handles cannot be flushed,
+the capture report explicitly records the missing directory flush; namespace survival across power
+loss is unproven. Unexpected I/O failures remain errors. Recent explicit failures and historical unverified receipts are diagnosed separately
+at SessionStart and in `--doctor`, independently
+of material-event recording status. `RUVNET_TURN_CAPTURE=off` disables it.
+
+Persisted consent lives in `<Brain home>/turn-capture/policy.json` (Brain home defaults to
+`~/.cache/ruvnet-brain`), and is reread at every capture boundary without restarting the host:
+`{"schemaVersion":1,"projects":{"/absolute/canonical/repository":"off"},"paths":{"/absolute/checkout/or/subdirectory":"off"}}`.
+A path entry overrides a canonical project entry; `on` explicitly opts in and permits creating the
+canonical project store directory, `off` disables both capture and distillation. A malformed consent
+file fails closed. An environment `force` does not override persisted opt-out. Existing historical
+records are not rewritten. The global Ruflo CLI currently accepts stored content through `--value`;
+only redacted content is passed there. Filesystem paths still have to be passed to the OS/CLI; avoid
+putting credentials in repository directory names. Receipt paths and project identifiers are redacted.
+
+Where the owner's user-level
 `~/.claude/hooks/agentdb-turn-capture.mjs` is registered in `~/.claude/settings.json`, the product defers
 Claude turn records to it (one writer per turn; `RUVNET_TURN_CAPTURE=force` keeps both). The same
 boundaries also record MATERIAL EVENTS (ADR-100, `continuity-events.mjs` / `continuity-journal.mjs`):
@@ -306,7 +331,9 @@ boundary, and a stuck one is shown (`AgentDB: recording stuck …`, an advisory 
 session per condition), at SessionStart and in `--doctor`. No initialized store or no ruflo reads `recording n/a`,
 and launches no drainer; a quarantined key or corrupt line is reported for 7 days or until
 `continuity-brief.mjs --clear`; failures are one record per event and the outbox is compacted (committed
-events leave after 7 days, hard cap 2000 events). SessionStart prints a bounded `[RuvNet Brain — COME UP TO SPEED …]` brief before the progression
+events leave after 7 days; 2000 is a soft cap when accepted events remain pending. Pending events
+are never evicted to satisfy that cap; capacity pressure is reported and a prolonged outage can grow
+the pending journal). SessionStart prints a bounded `[RuvNet Brain — COME UP TO SPEED …]` brief before the progression
 restore; everything it quotes from the repository (commit subjects, `.swarm` rows) sits inside a fenced
 `PROJECT RECORD` marked as untrusted data, and only lessons recorded with `--record` on this machine (an
 ownership ledger outside the repo) are shown as standing rules; `/ruvnet-brain:rnb-brief` (`continuity-brief.mjs --full | --record`) pulls history or records
@@ -316,13 +343,22 @@ explicitly. `RUVNET_CONTINUITY_CAPTURE=off` disables event capture. `npm run hoo
 ## Tests
 
 ```bash
+npm run release:qualify -- --suite source --report /tmp/source-qualification-UNIQUE.json
+npm run release:qualify -- --suite integration --report /tmp/integration-qualification-UNIQUE.json
 npm test                        # plugin battery over real JSON-RPC
-npx vitest run                  # unit + integration
-node scripts/full-suite-gate.mjs  # the same run, judged against tests/known-red.json (canonical-qa blocks on it)
-npm run qa:release              # release-scope checks
+npm run qa:release              # distinct packed-artifact release QE
 npm run single-source:check     # one version of every rule and fact
 npm run wired:check             # every module has a caller or a stated reason
 ```
+
+The reviewed requirement-to-test inventory in `scripts/release-qualification-contract.mjs` is
+the candidate gate. Each retained test must be read against the changed architecture before
+running it; changed behaviors and their failure cases must join that inventory. Integration
+qualification runs on Linux/POSIX with the global Ruflo, native Codex and KB dependencies present;
+missing prerequisites or skipped cases fail qualification. Use new receipt paths for every run.
+The historical whole suite (`npx vitest run` / `scripts/full-suite-gate.mjs`) remains an explicit
+developer diagnostic, not a second release gate. Public, signed-artifact, native-host and OS
+verification remain required independently; a local subset never means shipped.
 
 ## The fail-closed private fence
 
@@ -334,3 +370,21 @@ a `privateStores` array. When you ingest a private repo, add its store name in t
 
 Every design decision is governed by [`docs/PRINCIPLES.md`](docs/PRINCIPLES.md). A change that
 contradicts a principle is wrong, and the contradiction is the finding.
+
+### Automatic memory observations and their limits (4.5.4 candidate)
+
+Claude and Codex prompt, pre-tool, post-tool and child-completion boundaries route through the
+existing snapshot dispatcher to a normalized observation handler; Claude also observes tool failure.
+Selected task intent is a bounded redacted user-text excerpt, not a raw prompt dump, and is labelled
+non-authoritative. Tool intent is pending; observed failure, success and unknown remain distinct.
+Lightweight observations declare head-only source evidence rather than claiming an exact tree scan.
+Startup uses an eight-second host envelope and a shared replay/restore deadline; unsettled debt
+is unavailable, never a silently stale successful restoration. Opt-out suspends replay.
+
+Canonical recall checks nonempty human prompts, including acknowledgements, from nested directories
+and worktrees. It prioritizes useful lessons and patterns, retrieves exact values and delivers
+bounded untrusted evidence again on repeated prompts. Empty/harness messages, explicit opt-out and
+honest no-match remain quiet. Native Grok prompt-first recall is not supported by the measured hook
+context surfaces. Fail-open capture and head-only observations do not satisfy every ADR-073 clause;
+that acceptance remains open. Unknown secrets and every semantically useful lesson are not guaranteed
+by the bounded classifier/redactor.

@@ -6,7 +6,7 @@
 //   S3d  the Stop line repeated at every turn;
 //   S4   with ruflo missing every Stop appended one failure line per pending event (305 → 910 → 1815
 //        lines in 3 days, measured), and nothing ever aged out.
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -24,12 +24,27 @@ const fastBackoff = [1, 1, 1, 1];
 let saved;
 beforeAll(() => { saved = process.env.RUVNET_RUFLO_CWD_ROOT; process.env.RUVNET_RUFLO_CWD_ROOT = tmp('cont-cwd-'); });
 afterAll(() => { if (saved === undefined) delete process.env.RUVNET_RUFLO_CWD_ROOT; else process.env.RUVNET_RUFLO_CWD_ROOT = saved; });
-afterEach(cleanup);
+afterEach(() => { vi.restoreAllMocks(); cleanup(); });
 
 const lines = (file) => (fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean) : []);
 const lesson = (text, at = Date.now()) => makeEvent({ kind: 'lesson', at, source: 'explicit', authoritative: true, summary: text });
 const raw = (event, journaledAt = new Date(Date.parse(event.at)).toISOString()) => ({ type: 'event', key: eventKey(event), digest: digestCanonical(event), journaledAt, event });
 const sameCommit = (session, at) => makeEvent({ kind: 'commit', at, session, source: 'git', authoritative: true, summary: 'abcdef12 fix: one commit', basis: 'a'.repeat(40), detail: { sha: 'a'.repeat(40) } });
+
+// These two stress cases already replace store/readback to measure outbox accounting.
+// Validate fixture consent once, then isolate its discovery cost at the existing seam.
+// Production consent/refusal tests retain real resolution and live policy reads.
+function isolatedDrainConsent(journal) {
+  const authorized = journal.captureConsent();
+  expect(authorized.skipped).toBeUndefined();
+  expect(authorized).toMatchObject({ db: journal.db, projectRoot: journal.projectRoot, capturePath: journal.projectDir });
+  return vi.spyOn(ContinuityJournal.prototype, 'captureConsent').mockImplementation(function (origin, unknownOriginalPath) {
+    expect(this.db).toBe(journal.db);
+    expect(origin).toBe(journal.projectDir);
+    expect(unknownOriginalPath).toBe(false);
+    return authorized;
+  });
+}
 
 describe('S3a: one event seen by two sessions is one event, never a quarantine', () => {
   it('two concurrent journal lines for the same commit (different session ids) dedupe to ONE pending event', () => {
@@ -167,10 +182,13 @@ describe('S4: the outbox stays bounded', () => {
     const p = adoptedProject();
     const journal = new ContinuityJournal({ projectRoot: p.dir, ruflo: 'ruflo' });
     journal.record(Array.from({ length: 20 }, (_, i) => lesson(`Contended ${i}.`)));
-    const refuse = () => ({ status: 1, output: WAL_REFUSAL_TEXT });
+    const consent = isolatedDrainConsent(journal);
+    const refuse = vi.fn(() => ({ status: 1, output: WAL_REFUSAL_TEXT }));
     for (let i = 0; i < 72; i += 1) {
       runDrain(p.dir, { ruflo: 'ruflo', store: refuse, readBack: () => ({ content: null }), backoff: fastBackoff, sleep: noSleep });
     }
+    expect(refuse).toHaveBeenCalledTimes(72 * 20 * (fastBackoff.length + 1));
+    expect(consent).toHaveBeenCalledTimes(refuse.mock.calls.length);
     const all = lines(journal.path).map((l) => JSON.parse(l));
     expect(all.filter((r) => r.type === 'event')).toHaveLength(20);
     const failures = all.filter((r) => r.type === 'failure');
@@ -195,14 +213,59 @@ describe('S4: the outbox stays bounded', () => {
     expect(later.record([e])).toHaveLength(0);
   });
 
-  it('a hard cap bounds the file even when nothing can ever commit, and the drop is reported', () => {
+  it('keeps every accepted pending event over the soft cap and reports capacity pressure without repeated rewrites', () => {
     const p = adoptedProject();
     const journal = new ContinuityJournal({ projectRoot: p.dir, ruflo: null });
-    journal.record(Array.from({ length: MAX_EVENT_RECORDS + 500 }, (_, i) => lesson(`Uncommittable ${i}.`, Date.now() + i)));
-    journal.compact();
-    expect(lines(journal.path).length).toBeLessThanOrEqual(MAX_EVENT_RECORDS + 3);
-    expect(journal.status().dropped).toBe(500);
-    expect(journal.pending().at(-1).event.summary).toBe(`Uncommittable ${MAX_EVENT_RECORDS + 499}.`); // newest kept
+    const events = Array.from({ length: MAX_EVENT_RECORDS + 500 }, (_, i) => lesson(`Uncommittable ${i}.`, Date.now() + i));
+    const accepted = journal.record(events);
+    const result = journal.compact();
+    expect(result).toMatchObject({ kept: events.length, dropped: 0 });
+    const reopened = new ContinuityJournal({ projectRoot: p.dir, ruflo: null });
+    expect(reopened.pending()).toEqual([...accepted].sort((a, b) => a.key.localeCompare(b.key)));
+    expect(reopened.status()).toMatchObject({ pending: events.length, dropped: 0, capacityPressure: true });
+    expect(recordingLine(reopened.status())).toMatch(/Capacity pressure:.*no pending events discarded/);
+    expect(reopened.needsCompaction()).toBe(false); // No redundant history remains to shrink.
+    const bytes = fs.readFileSync(reopened.path);
+    expect(drain(reopened, { ruflo: null })).toMatchObject({ remaining: events.length, skipped: 'ruflo not found' });
+    expect(fs.readFileSync(reopened.path)).toEqual(bytes);
+  });
+
+  it('prunes committed history before pending, preserves failures, then drains every recovered event and returns within the cap', () => {
+    const p = adoptedProject();
+    const journal = new ContinuityJournal({ projectRoot: p.dir, ruflo: 'ruflo' });
+    const at = Date.now();
+    const accepted = journal.record(Array.from({ length: MAX_EVENT_RECORDS + 5 }, (_, i) => lesson(`Recover ${i}.`, at + i)));
+    const committed = journal.record(Array.from({ length: 20 }, (_, i) => lesson(`Already committed ${i}.`, at - 100 + i)));
+    journal.appendRecords(committed.map((r) => ({ type: 'commit', key: r.key, digest: r.digest, committedAt: new Date(at).toISOString() })));
+    const failure = { type: 'failure', key: accepted[0].key, at: new Date(at).toISOString(), attempts: 3, reason: 'wal-contention' };
+    journal.appendRecords([failure, failure]);
+    expect(journal.needsCompaction()).toBe(true);
+    expect(journal.compact()).toMatchObject({ kept: accepted.length, dropped: 0 });
+    const reopened = new ContinuityJournal({ projectRoot: p.dir, ruflo: 'ruflo' });
+    expect(reopened.pending()).toEqual([...accepted].sort((a, b) => a.key.localeCompare(b.key)));
+    expect(reopened.scan().committed.size).toBe(0);
+    expect(reopened.scan().failures.get(failure.key)).toMatchObject({ attempts: 6, reason: 'wal-contention' });
+    expect(reopened.needsCompaction()).toBe(false);
+    expect(reopened.status()).toMatchObject({ problem: 'capacity-pressure', capacityPressure: true, dropped: 0 });
+    expect(recordingLine(reopened.status())).toMatch(/soft limit 2000; no pending events discarded/);
+    const stored = new Map(); // Exact-content store/readback seam; no owner store or raw SQL mutation.
+    const consent = isolatedDrainConsent(reopened);
+    const store = vi.fn(({ key, value }) => { stored.set(key, value); return { status: 0 }; });
+    const result = drain(reopened, {
+      store,
+      readBack: ({ key }) => ({ content: stored.get(key), readPath: 'isolated-exact-content' }),
+    });
+    expect(result).toMatchObject({ committed: accepted.length, failed: 0, remaining: 0 });
+    expect(store).toHaveBeenCalledTimes(accepted.length);
+    expect(consent).toHaveBeenCalledTimes(store.mock.calls.length);
+    for (const r of accepted) expect(stored.get(r.key)).toBe(JSON.stringify(r.event));
+    expect(reopened.scan().events.size).toBe(MAX_EVENT_RECORDS);
+    expect(reopened.scan().failures.size).toBe(0);
+    expect(reopened.status()).toMatchObject({ pending: 0, capacityPressure: false, dropped: 0, problem: null });
+    const later = new ContinuityJournal({ projectRoot: p.dir, ruflo: 'ruflo', now: () => at + RETAIN_COMMITTED_MS + DAY });
+    later.compact();
+    expect(later.scan().events.size).toBe(0);
+    expect(stored.size).toBe(accepted.length); // History pruning never touches durable stored content.
   });
 
   it('an append that lands during a compaction is never lost', () => {
