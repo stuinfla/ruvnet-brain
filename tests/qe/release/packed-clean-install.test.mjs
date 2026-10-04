@@ -109,11 +109,6 @@ describe('clean host installation from only the packed artifact', () => {
     expect(marketplace.plugins.some((entry) => entry.name === plugin.name)).toBe(true);
     expect(plugin).not.toHaveProperty('updated');
     expect(hooks.hooks).toBeTypeOf('object');
-    // Derived from the source plane, not frozen to a literal: this assertion used to hardcode
-    // ['SessionStart', 'Stop'] and went stale the moment the plane was legitimately grown back
-    // (9c45d408 / 7b8e6e73 / ef2b8e12). What matters is that packing preserves the plane exactly.
-    const sourceHooks = JSON.parse(fs.readFileSync(path.join(ROOT, 'plugin/hooks/hooks.json'), 'utf8'));
-    expect(Object.keys(hooks.hooks).sort()).toEqual(Object.keys(sourceHooks.hooks).sort());
     expect(JSON.stringify(hooks.hooks)).toContain('session-start');
     expect(fs.existsSync(path.join(artifact, 'plugin/.mcp.json'))).toBe(true);
   });
@@ -153,7 +148,8 @@ describe('clean host installation from only the packed artifact', () => {
     for (const name of ['hooks.json', 'codex-hooks.json']) {
       const packed = JSON.parse(fs.readFileSync(path.join(artifact, 'plugin/hooks', name), 'utf8'));
       const source = JSON.parse(fs.readFileSync(path.join(ROOT, 'plugin/hooks', name), 'utf8'));
-      expect(Object.keys(packed.hooks).sort()).toEqual(Object.keys(source.hooks).sort());
+      // Event names alone miss altered commands, matchers, timeouts and host metadata.
+      expect(packed, `${name} must preserve every source declaration`).toEqual(source);
       const commands = Object.values(packed.hooks).flatMap((groups) => groups.flatMap((group) => group.hooks.map((hook) => hook.command)));
       expect(commands.filter((command) => command.includes('session-start'))).toHaveLength(1);
     }

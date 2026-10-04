@@ -90,11 +90,37 @@ describe('ProjectProgression crash outbox', () => {
     expect(outbox.quarantinedKeys().map((row) => row.eventKey)).toEqual([snapshot().eventKey]);
   });
 
-  it('ignores only a crash-truncated final line while retaining complete snapshots', () => {
+  it('replays a complete final snapshot without a newline and separates its appended commit', () => {
+    const outbox = new ProgressionOutbox({ projectRoot: temporaryRoot() });
+    outbox.appendSnapshot(snapshot());
+    fs.truncateSync(outbox.path, fs.statSync(outbox.path).size - 1);
+    const recovered = new ProgressionOutbox({ projectRoot: path.dirname(path.dirname(outbox.path)) });
+    expect(recovered.pendingSnapshots()).toEqual([snapshot()]);
+    recovered.markCommitted({ eventKey: snapshot().eventKey, payloadDigest: snapshot().payloadDigest,
+      readbackDigest: snapshot().payloadDigest, committedAt: '2026-08-22T17:30:00.000Z' });
+    expect(recovered.records().map((r) => r.type)).toEqual(['snapshot', 'commit']);
+    expect(recovered.pendingSnapshots()).toEqual([]);
+    // The complete commit is also authoritative when its delimiter was the interrupted write.
+    fs.truncateSync(recovered.path, fs.statSync(recovered.path).size - 1);
+    expect(new ProgressionOutbox({ projectRoot: path.dirname(path.dirname(outbox.path)) }).pendingSnapshots()).toEqual([]);
+  });
+
+  it('ignores a torn final suffix but refuses append without changing accepted records or torn bytes', () => {
     const outbox = new ProgressionOutbox({ projectRoot: temporaryRoot() });
     outbox.appendSnapshot(snapshot());
     fs.appendFileSync(outbox.path, '{"type":"snapshot"');
-
+    const before = fs.readFileSync(outbox.path);
     expect(outbox.pendingSnapshots()).toEqual([snapshot()]);
+    expect(() => outbox.markCommitted({ eventKey: snapshot().eventKey, payloadDigest: snapshot().payloadDigest,
+      readbackDigest: snapshot().payloadDigest, committedAt: '2026-08-22T17:30:00.000Z' })).toThrow(/recover the torn tail/);
+    expect(fs.readFileSync(outbox.path)).toEqual(before);
+    expect(outbox.pendingSnapshots()).toEqual([snapshot()]);
+  });
+
+  it('still fails closed on a malformed terminated record instead of treating it as a torn suffix', () => {
+    const outbox = new ProgressionOutbox({ projectRoot: temporaryRoot() });
+    outbox.appendSnapshot(snapshot());
+    fs.appendFileSync(outbox.path, '{"type":"snapshot"\n');
+    expect(() => outbox.pendingSnapshots()).toThrow(/malformed outbox record at line 2/);
   });
 });

@@ -1,0 +1,299 @@
+{
+  "schemaVersion": 2,
+  "adr": "ADR-102",
+  "generated": "2026-10-03",
+  "note": "DRAFT, NOT ENFORCING. All 17 owner requirements remain NOT-PROVEN. MET requires current complete authenticated published acceptance proof; passing linked gap probes supplies scope-level evidence only. Null fullRequirementTarget means complete scope is not yet assigned, and never excuses due gap obligations. Previously MET requirements remain regression-blocking.",
+  "rows": [
+    {
+      "id": "R1",
+      "ownerWords": "Proactive advocacy: \"tell me what rUv already ships\" before I hand-roll it.",
+      "source": "plan-4.4-4.5-20260930-v2; feedback_recommend_ruv_tools_unprompted",
+      "gaps": [
+        "G-025",
+        "G-040"
+      ],
+      "probes": [
+        "tests/e2e/requirements/R1.probe.mjs"
+      ],
+      "schedule": "both",
+      "state": "NOT-PROVEN",
+      "probeState": "planned",
+      "fullRequirementTarget": null
+    },
+    {
+      "id": "R2",
+      "ownerWords": "A newcomer asking in plain words gets the right rUv file.",
+      "source": "plan-4.4-4.5-20260930-v2 (4.5 exit criteria)",
+      "gaps": [
+        "G-038",
+        "G-039"
+      ],
+      "probes": [
+        "tests/e2e/requirements/R2.probe.mjs"
+      ],
+      "schedule": "both",
+      "state": "NOT-PROVEN",
+      "probeState": "planned",
+      "fullRequirementTarget": null
+    },
+    {
+      "id": "R3",
+      "ownerWords": "Knowledge auto-updates whenever a newer corpus is published, with no human action.",
+      "source": "release-4-5-enhancements-1790957060000; CONTRIBUTING.md:187",
+      "gaps": [
+        "G-019",
+        "G-020",
+        "G-021",
+        "G-012",
+        "G-015",
+        "G-003"
+      ],
+      "probes": [
+        "tests/e2e/requirements/R3.probe.mjs"
+      ],
+      "schedule": "both",
+      "state": "NOT-PROVEN",
+      "probeState": "planned",
+      "fullRequirementTarget": null
+    },
+    {
+      "id": "R4",
+      "ownerWords": "Hooks work on Claude, Codex and Grok.",
+      "source": "plan-4.4-4.5-20260930-v2 (Hosts)",
+      "gaps": [
+        "G-027"
+      ],
+      "probes": [
+        "tests/e2e/requirements/R4.probe.mjs"
+      ],
+      "schedule": "both",
+      "state": "NOT-PROVEN",
+      "probeState": "planned",
+      "fullRequirementTarget": null
+    },
+    {
+      "id": "R5",
+      "ownerWords": "One knowledge base, no cruft, positive confirmation.",
+      "source": "ADR-098",
+      "gaps": [
+        "G-034",
+        "G-035",
+        "G-028",
+        "G-031"
+      ],
+      "probes": [
+        "tests/e2e/requirements/R5.probe.mjs"
+      ],
+      "schedule": "both",
+      "state": "NOT-PROVEN",
+      "probeState": "planned",
+      "fullRequirementTarget": null
+    },
+    {
+      "id": "R6",
+      "ownerWords": "Continuity: every project is recorded in AgentDB and the next session (any machine) is instantly up to speed.",
+      "source": "ADR-100; HANDOFF-2026-10-02",
+      "gaps": [
+        "G-006",
+        "G-007",
+        "G-024",
+        "G-030"
+      ],
+      "probes": [
+        "tests/e2e/requirements/R6.probe.mjs"
+      ],
+      "schedule": "both",
+      "state": "NOT-PROVEN",
+      "probeState": "planned",
+      "fullRequirementTarget": null
+    },
+    {
+      "id": "R7",
+      "ownerWords": "Plain CEO updates in local time that say exactly when the owner must act.",
+      "source": "north-star-audit-2026-10-02-1790957160000",
+      "gaps": [
+        "G-026"
+      ],
+      "probes": [
+        "tests/e2e/requirements/R7.probe.mjs"
+      ],
+      "schedule": "both",
+      "state": "NOT-PROVEN",
+      "probeState": "planned",
+      "fullRequirementTarget": null
+    },
+    {
+      "id": "R8",
+      "ownerWords": "/rnbc console: every element works.",
+      "source": "release-4-5-enhancements-1790957060000 (5)",
+      "gaps": [],
+      "probes": [
+        "tests/e2e/requirements/R8.probe.mjs"
+      ],
+      "schedule": "both",
+      "state": "NOT-PROVEN",
+      "probeState": "planned",
+      "fullRequirementTarget": null
+    },
+    {
+      "id": "R9",
+      "ownerWords": "Release machinery, nightly corpus and paging work with no human click.",
+      "source": "feedback_owner_never_does_github_approvals; CONTRIBUTING.md:63",
+      "gaps": [
+        "G-021",
+        "G-012",
+        "G-013",
+        "G-046"
+      ],
+      "probes": [
+        "tests/e2e/requirements/R9.probe.mjs"
+      ],
+      "schedule": "both",
+      "state": "NOT-PROVEN",
+      "probeState": "planned",
+      "fullRequirementTarget": null
+    },
+    {
+      "id": "R10",
+      "ownerWords": "The product never lies.",
+      "source": "feedback_product_never_lies",
+      "gaps": [
+        "G-011",
+        "G-014",
+        "G-016",
+        "G-045"
+      ],
+      "probes": [
+        "tests/e2e/requirements/R10.probe.mjs"
+      ],
+      "schedule": "both",
+      "state": "NOT-PROVEN",
+      "probeState": "planned",
+      "fullRequirementTarget": null
+    },
+    {
+      "id": "R11",
+      "ownerWords": "Security and privacy.",
+      "source": "ADR-010; issue #370",
+      "gaps": [
+        "G-001",
+        "G-002",
+        "G-003",
+        "G-004",
+        "G-005"
+      ],
+      "probes": [
+        "tests/e2e/requirements/R11.probe.mjs"
+      ],
+      "schedule": "both",
+      "state": "NOT-PROVEN",
+      "probeState": "planned",
+      "fullRequirementTarget": null
+    },
+    {
+      "id": "R12",
+      "ownerWords": "Cost routing and a decided routing role.",
+      "source": "north-star-audit-2026-10-02-1790957160000",
+      "gaps": [
+        "G-048",
+        "G-016"
+      ],
+      "probes": [
+        "tests/e2e/requirements/R12.probe.mjs"
+      ],
+      "schedule": "both",
+      "state": "NOT-PROVEN",
+      "probeState": "planned",
+      "fullRequirementTarget": null
+    },
+    {
+      "id": "R13",
+      "ownerWords": "A stranger installs on macOS, Linux and Windows, Node 18-24.",
+      "source": "feedback_walk_every_channel_before_shipped",
+      "gaps": [
+        "G-008",
+        "G-033",
+        "G-037",
+        "G-020"
+      ],
+      "probes": [
+        "tests/e2e/requirements/R13.probe.mjs"
+      ],
+      "schedule": "both",
+      "state": "NOT-PROVEN",
+      "probeState": "planned",
+      "fullRequirementTarget": null
+    },
+    {
+      "id": "R14",
+      "ownerWords": "ADRs and status documents are current.",
+      "source": "north-star-audit-2026-10-02-1790957160000",
+      "gaps": [
+        "G-047",
+        "G-029"
+      ],
+      "probes": [
+        "tests/e2e/requirements/R14.probe.mjs"
+      ],
+      "schedule": "both",
+      "state": "NOT-PROVEN",
+      "probeState": "planned",
+      "fullRequirementTarget": null
+    },
+    {
+      "id": "R15",
+      "ownerWords": "ALWAYS CHECK AGENTDB FIRST; the Brain does it automatically and hooks enforce it.",
+      "source": "lesson-agentdb-first-before-any-score-status-or-plan; decision-agentdb-first-r15-20261002",
+      "gaps": [
+        "G-022",
+        "G-023",
+        "G-017"
+      ],
+      "probes": [
+        "tests/e2e/requirements/R15.probe.mjs"
+      ],
+      "schedule": "both",
+      "state": "NOT-PROVEN",
+      "probeState": "planned",
+      "fullRequirementTarget": null
+    },
+    {
+      "id": "R16",
+      "ownerWords": "Write to AgentDB all the time and read from it all the time, so every action understands prior work (owner, 2026-10-03).",
+      "source": "owner message 2026-10-03 (to be stored as decision-agentdb-read-write-always-20261003)",
+      "gaps": [
+        "G-022",
+        "G-023",
+        "G-024",
+        "G-006",
+        "G-018"
+      ],
+      "probes": [
+        "tests/e2e/requirements/R16.probe.mjs"
+      ],
+      "schedule": "both",
+      "state": "NOT-PROVEN",
+      "probeState": "planned",
+      "fullRequirementTarget": null
+    },
+    {
+      "id": "R17",
+      "ownerWords": "A review that covers every open issue and forces each to closure, one by one, until shipped (owner, 2026-10-03).",
+      "source": "ADR-102",
+      "gaps": [
+        "G-008",
+        "G-009",
+        "G-010",
+        "G-029"
+      ],
+      "probes": [
+        "tests/e2e/requirements/R17.probe.mjs"
+      ],
+      "schedule": "both",
+      "state": "NOT-PROVEN",
+      "probeState": "planned",
+      "fullRequirementTarget": null
+    }
+  ],
+  "implementationState": "NOT ENFORCING"
+}

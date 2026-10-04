@@ -27,6 +27,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { restoreWithBrief } from './continuity-brief.mjs';
+import { turnRecordingStatus } from './turn-outcome-capture.mjs';
 import {
   read, json, exists, mkdir, write, runNode,
 } from './session-start-fsutil.mjs';
@@ -120,6 +121,7 @@ export async function runSessionStart({
       || s.startsWith('[RuvNet Brain v')
       || s.startsWith('USER-LEVEL:')
       || s.startsWith('[ASCII→SVG]')
+      || s.startsWith('[RuvNet Brain — TURN RECORDING]')
       || s.startsWith('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN]')
       || s.startsWith('[RuvNet Brain — PROJECT CONTINUITY RESTORED]')
       || s.startsWith('[RuvNet Brain — COME UP TO SPEED')
@@ -183,6 +185,9 @@ export async function runSessionStart({
     emit('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN]');
     emit('The SessionStart restore boundary failed unexpectedly. Do not claim project state was restored; verify the canonical store before relying on remembered state.');
   }
+  // Turn health remains visible even when the separate progression restore fails.
+  const turnStatus = turnRecordingStatus({ projectDir: cwd, env, home });
+  if (turnStatus.state === 'warn') emit(`[RuvNet Brain — TURN RECORDING] ${turnStatus.line}`);
   // Opt-in, matching the pre-existing `trace()` convention below: several other tests assert
   // SessionStart's stderr is EMPTY in the clean case (hook-battery.test.mjs, hook-hardening.test.mjs
   // — a real contract, not incidental), so this must never write unconditionally. `restore` shares

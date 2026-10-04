@@ -23,10 +23,22 @@ export class ProgressionOutbox {
   appendRecord(record) {
     fs.mkdirSync(path.dirname(this.path), { recursive: true, mode: 0o700 });
     const noFollow = fs.constants.O_NOFOLLOW ?? 0;
-    const fd = fs.openSync(this.path, fs.constants.O_APPEND | fs.constants.O_CREAT | fs.constants.O_WRONLY | noFollow, 0o600);
+    const fd = fs.openSync(this.path, fs.constants.O_APPEND | fs.constants.O_CREAT | fs.constants.O_RDWR | noFollow, 0o600);
     try {
+      let separator = '';
+      const size = fs.fstatSync(fd).size;
+      if (size) {
+        const last = Buffer.alloc(1);
+        fs.readSync(fd, last, 0, 1, size - 1);
+        if (last[0] !== 10) {
+          const content = fs.readFileSync(fd, 'utf8');
+          try { JSON.parse(content.slice(content.lastIndexOf('\n') + 1)); }
+          catch { throw new Error('incomplete outbox final record; preserve and recover the torn tail before appending'); }
+          separator = '\n';
+        }
+      }
       fs.fchmodSync(fd, 0o600);
-      writeAll(fd, `${JSON.stringify(record)}\n`);
+      writeAll(fd, `${separator}${JSON.stringify(record)}\n`);
       this.fsync(fd);
     } finally {
       fs.closeSync(fd);
@@ -58,8 +70,11 @@ export class ProgressionOutbox {
     if (!fs.existsSync(this.path)) return [];
     const content = fs.readFileSync(this.path, 'utf8');
     const lines = content.split('\n');
-    if (lines.at(-1) !== '') lines.pop();
-    else lines.pop();
+    if (lines.at(-1) === '') lines.pop();
+    else {
+      // A missing delimiter is not a missing record; only a crash-torn JSON suffix is incomplete.
+      try { JSON.parse(lines.at(-1)); } catch { lines.pop(); }
+    }
     return lines.filter(Boolean).map((line, index) => {
       try { return JSON.parse(line); } catch { throw new Error(`malformed outbox record at line ${index + 1}`); }
     });

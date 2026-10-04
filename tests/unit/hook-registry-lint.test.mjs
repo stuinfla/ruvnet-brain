@@ -363,7 +363,8 @@ describe('mesh invariants over the layers this repo OWNS (must stay clean — th
     const f = lintAllowlistStale(repoReg.records, repoReg.matcherAllowlist);
     expect(f, `stale allowlist entr(ies):\n  ${show(f)}`).toEqual([]);
     expect(repoReg.matcherAllowlist.map((a) => `${a.layer}:${a.event}:${a.matcher}`).sort())
-      .toEqual([...new Set(continuityRegistrations().map((s) => `plugin:${s.event}:${s.matcher}`))].sort());
+      .toEqual([...new Set([['plugin', 'claude'], ['codex', 'codex']].flatMap(([layer, host]) =>
+        continuityRegistrations(host).map((s) => `${layer}:${s.event}:${s.matcher}`)))].sort());
     for (const a of repoReg.matcherAllowlist) {
       expect(a.reason, `allowlist entry ${a.layer}/${a.event}/${a.matcher} has no reason`).toBeTruthy();
       expect(a.retiredBy, `allowlist entry ${a.layer}/${a.event}/${a.matcher} names no exit condition`).toBeTruthy();
@@ -380,7 +381,8 @@ describe('mesh invariants over the layers this repo OWNS (must stay clean — th
     const doc = JSON.parse(fs.readFileSync(path.join(REPO, 'plugin/hooks/hook-contracts.json'), 'utf8'));
     expect(doc.contracts.map((c) => `${c.event}:${c.id}`).sort()).toEqual(continuityContractIds().sort());
     expect(doc.matcherAllowlist).toHaveLength(
-      new Set(continuityRegistrations().map((s) => `${s.event}:${s.matcher}`)).size);
+      new Set([['plugin', 'claude'], ['codex', 'codex']].flatMap(([layer, host]) =>
+        continuityRegistrations(host).map((s) => `${layer}:${s.event}:${s.matcher}`))).size);
     // The file must also still SAY what the plane is, in a form a reader can check against the code.
     expect(doc._version).toBeGreaterThanOrEqual(4);
     expect(doc._eventOwners.map((row) => `${row.event}:${row.owner}`).sort()).toEqual(continuityContractIds().sort());

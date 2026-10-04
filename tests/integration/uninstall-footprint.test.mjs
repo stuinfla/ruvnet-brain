@@ -28,12 +28,27 @@ afterEach(() => { fs.rmSync(home, { recursive: true, force: true }); });
 const claudeMd = () => path.join(home, '.claude', 'CLAUDE.md');
 const kbDir = () => path.join(home, '.cache', 'ruvnet-brain', 'kb');
 
-function run(args) {
+function isolatedEnv(ambient) {
+  const env = Object.fromEntries(Object.entries(ambient).filter(([key]) =>
+    !/^(?:RUVNET_|CLAUDE_|CODEX_|XDG_)/i.test(key)));
+  return { ...env, HOME: home, USERPROFILE: home,
+    CLAUDE_CONFIG_DIR: path.join(home, '.claude'), CODEX_HOME: path.join(home, '.codex'),
+    XDG_CONFIG_HOME: path.join(home, '.config'), XDG_CACHE_HOME: path.join(home, '.cache'),
+    RUVNET_BRAIN_HOME: path.dirname(kbDir()), RUVNET_BRAIN_KB: kbDir(),
+    RUVNET_BRAIN_STATE_DIR: path.join(home, '.config', 'ruvnet-brain'),
+    RUVNET_UPGRADE_NOTICE_FILE: path.join(home, '.config', 'ruvnet-brain', 'upgrade-notice.json'),
+    RUVNET_BRAIN_TEST: '1' };
+}
+
+function run(args, ambient = process.env) {
   const res = spawnSync(process.execPath, [INSTALLER, ...args], {
     encoding: 'utf8',
     timeout: 120_000,
-    env: { ...process.env, HOME: home, RUVNET_BRAIN_TEST: '1' },
+    env: isolatedEnv(ambient),
   });
+  expect(res.error, res.stderr || res.stdout).toBeUndefined();
+  expect(res.signal, res.stderr || res.stdout).toBeNull();
+  expect(res.status, res.stderr || res.stdout).toBe(0);
   return `${res.stdout || ''}${res.stderr || ''}`;
 }
 
@@ -79,6 +94,21 @@ describe('--what-changed', () => {
 });
 
 describe('--uninstall', () => {
+  it('ignores ambient owner paths while removing only the disposable install', () => {
+    seedFullInstall();
+    const foreign = path.join(home, 'foreign-owner');
+    fs.mkdirSync(foreign);
+    const reader = path.join(foreign, 'forge-ask.mjs');
+    fs.writeFileSync(reader, 'owner knowledge must survive');
+    const out = run(['--uninstall'], { ...process.env, RUVNET_BRAIN_KB: foreign,
+      RUVNET_BRAIN_HOME: foreign, CODEX_HOME: foreign, CLAUDE_CONFIG_DIR: foreign,
+      RUVNET_BRAIN_STATE_DIR: foreign, RUVNET_UPGRADE_NOTICE_FILE: reader,
+      XDG_CACHE_HOME: foreign, XDG_CONFIG_HOME: foreign });
+    expect(fs.existsSync(kbDir())).toBe(false);
+    expect(fs.readFileSync(reader, 'utf8')).toBe('owner knowledge must survive');
+    expect(out).not.toContain(foreign);
+  });
+
   it('removes the whole footprint', () => {
     seedFullInstall();
 

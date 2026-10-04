@@ -9,14 +9,36 @@ import { MANAGED_CLI_TOOLS } from '../../plugin/mcp/managed-cli-interface.mjs';
 const REPO = path.resolve(import.meta.dirname, '../..');
 const SERVER = path.join(REPO, 'plugin/mcp/server.mjs');
 const children = new Set();
+const childClosures = new WeakMap();
+const fixtureRoots = new Set();
 
-afterEach(() => {
-  for (const child of children) child.kill('SIGTERM');
+afterEach(async () => {
+  await Promise.all([...children].map(async (child) => {
+    const closed = childClosures.get(child);
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM');
+    let timer;
+    try {
+      await Promise.race([closed, new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('fixture MCP shutdown timed out')), 5_000);
+      })]);
+    } catch (error) {
+      clearTimeout(timer);
+      child.kill('SIGKILL');
+      await Promise.race([closed, new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('fixture MCP forced shutdown timed out')), 2_000);
+      })]);
+      throw error;
+    } finally { clearTimeout(timer); }
+  }));
   children.clear();
+  // Remove only roots created by this suite, after protocol shells finish retiring workers.
+  for (const root of fixtureRoots) fs.rmSync(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  fixtureRoots.clear();
 });
 
 function fixture({ withBrain = false } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'managed-cli-mcp-'));
+  fixtureRoots.add(root);
   const home = path.join(root, 'home');
   const bin = path.join(root, 'bin');
   const calls = path.join(root, 'calls.jsonl');
@@ -154,6 +176,7 @@ function startServer(fx, extraEnv = {}) {
     },
   });
   children.add(child);
+  childClosures.set(child, new Promise((resolve) => child.once('close', resolve)));
   const rl = readline.createInterface({ input: child.stdout });
   let id = 0;
   const waiting = new Map();
