@@ -76,3 +76,14 @@ it('accepts Windows separator normalization but does not collapse a different te
   value.testReport.testResults.forEach(row => { row.name = row.name.replaceAll('\\', '/'); });
   expect(validateQualificationReceipt(reseal(value), { suite: 'source', platform: 'windows', sourceSha: 'a'.repeat(40) })).toEqual(value.tests);
 });
+
+it('rejects a resealed passing receipt that omits the routed native transport boundary', () => {
+  const value = receipt();
+  const omitted = 'tests/unit/model-routing-gateway.test.mjs';
+  expect(value.files).toContain(omitted);
+  value.files = value.files.filter(file => file !== omitted);
+  value.testReport.testResults = value.testReport.testResults.filter(row => row.name !== path.win32.join(value.checkoutRoot, omitted));
+  value.testReport.numTotalTests--; value.testReport.numPassedTests--;
+  value.tests.total--; value.tests.passed--;
+  expect(() => validateQualificationReceipt(reseal(value), { suite: 'source', platform: 'windows', sourceSha: 'a'.repeat(40) })).toThrow();
+});
