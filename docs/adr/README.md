@@ -1,5 +1,5 @@
 
-Updated: 2026-09-26 08:39:57 EDT | Version 1.1.0
+Updated: 2026-10-03 16:32:20 EDT | Version 1.1.1
 Created: 2026-06-29 00:00:00 EDT
 > **Before writing or reviewing any ADR, read [`../PRINCIPLES.md`](../PRINCIPLES.md).**
 > An ADR that contradicts a principle is wrong, and the contradiction is the finding.
@@ -113,4 +113,6 @@ line), first clause only — see each ADR for the full, dated status history.
 | [0093](0093-proactive-package-recommender.md) | ADR-093 — The proactive package recommender — "what would rUv do" from package cards, behind a flag | Proposed |
 | [0098](0098-footprint-and-currency-guarantee.md) | The footprint and currency guarantee — one knowledge base, current, in use, nothing building up | Accepted |
 | [0099](0099-self-learning-retrieval.md) | Self-learning newcomer retrieval with rUv's own learning tools | Proposed |
-| [0100](0100-guaranteed-agentdb-continuity.md) | Guaranteed AgentDB continuity — material events, durable outbox, come-up-to-speed brief, one writer | Proposed |
+| [0100](0100-guaranteed-agentdb-continuity.md) | Guaranteed AgentDB continuity — material events, durable outbox, come-up-to-speed brief, one writer | Accepted |
+| [0101](0101-agentdb-first.md) | Canonical AgentDB recall before every nontrivial prompt | Accepted |
+| [0102](0102-completion-and-closure-ledger.md) | ADR-102 — Completion and the closure ledger | Proposed |

@@ -177,14 +177,14 @@ sh scripts/memdb-health.sh "$RUVNET_PROJECT_MEMORY_DB" >> "$LOG" 2>&1 \
   && echo "===== memdb-health canary: OK =====" >> "$LOG" \
   || echo "===== memdb-health canary: UNHEALTHY (see line above) =====" >> "$LOG"
 
-# ── LEARNING-REPLAY: the D4 counterfactual trap (ADR-058 §D4). THE ONE STANDING TOKEN SPEND, priced
-# in the open: N=3 replay, two model arms per run, ~$0.09 and ~55s measured 2026-07-27 on haiku.
+# ── LEARNING-REPLAY: the D4 counterfactual portfolio (ADR-058 §D4). This manual author run spends
+# real model tokens: two N=3 positive traps and four N=1 causal mutants, with two arms per run.
 #
 # It runs HERE, and not on a GitHub runner, because the trap needs credentials a bare runner does not
 # have — a real model session AND the real global `ruflo` binary (it records into a fixture project's
 # .swarm/memory.db and refreshes it with `ruflo memory distill`). .github/workflows/learning-replay.yml
-# is the currency gate on the artifact this writes; if this step stops running, that workflow goes red
-# on staleness rather than everything staying quietly green.
+# is the currency gate on the evidence this writes; if evidence stops being refreshed, it goes red
+# on staleness. This wrapper is an author diagnostic, not an installed scheduler or publisher.
 #
 # Best-effort, same shape as the canaries below: it never blocks the rebuild. Its exit code is not
 # thrown away though — it is written to the log by name, because 0/1/3/4 are four different facts
@@ -222,7 +222,7 @@ echo "===== RELEASE-CONVERGENCE watchdog — $(date -u +%FT%TZ) =====" >> "$LOG"
   || echo "[release-watchdog] exited non-zero — see above; nightly continues" >> "$LOG"
 
 echo "===== LEARNING-REPLAY counterfactual trap — $(date -u +%FT%TZ) =====" >> "$LOG"
-"$NODE_BIN" scripts/learning-replay.mjs --n 3 --model haiku >> "$LOG" 2>&1
+"$NODE_BIN" scripts/learning-replay.mjs --measure-portfolio --host codex --model gpt-6.1-sol >> "$LOG" 2>&1
 LR_RC=$?
 case "$LR_RC" in
   0) echo "===== LEARNING-REPLAY: PASS =====" >> "$LOG" ;;

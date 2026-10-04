@@ -20,6 +20,7 @@ import {
   replayOutboxDetached, runOutboxReplay, runSessionSnapshotHook, takeReplayLock, queuedWork, REPLAY_LOCK_ABANDON_MS,
   processStart, reclaimOrphans, adoptReplayLock,
 } from '../../plugin/scripts/session-snapshot-hook.mjs';
+import { createStore } from '../helpers/continuity-fixture.mjs';
 import { ProgressionOutbox } from '../../plugin/scripts/project-progression-outbox.mjs';
 import { ProjectProgressionStore } from '../../plugin/scripts/project-progression-store.mjs';
 
@@ -29,6 +30,7 @@ afterEach(() => { for (const r of roots.splice(0)) fs.rmSync(r, { recursive: tru
 function project() {
   const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'snap-budget-')));
   fs.mkdirSync(path.join(root, '.swarm'));
+  createStore(path.join(root, '.swarm', 'memory.db'));
   roots.push(root);
   return root;
 }
@@ -81,7 +83,7 @@ describe('session-snapshot: the budget it is handed, and what it spends it on fi
       makeStoreFactory: () => () => ({ replay: () => { order.push('replay'); return []; } }),
       spawnReplay: (x) => { spawned.push(x); return true; },
     });
-    expect(order).toEqual([]);
+    expect(order).toEqual(['produce']);
     expect(result).toMatchObject({ progressionCaptured: false, deferredToReplayer: true });
     expect(result.replaySkipped).toMatch(/1 pending; this capture queued behind it, handed to a detached worker/);
     expect(spawned).toHaveLength(1);
@@ -209,13 +211,13 @@ describe('ordering under a live worker, stranded queues, and lock ownership', ()
       expect(r).toMatchObject({ progressionCaptured: false, deferredToReplayer: true });
       expect(r.replaySkipped).toMatch(/a worker is committing older work; this capture queued behind it/);
     }
-    expect(order, 'nothing produced or captured ahead of the queued older boundary').toEqual([]);
+    expect(order, 'origin snapshots are frozen, but nothing captured ahead of older work').toEqual(['produce new-short', 'produce new-full']);
     expect(queuedCaptures(dir).map(sessionOf)).toEqual(['old', 'new-short', 'new-full']);
 
     const ran = [];
     const fakeStore = () => () => ({ outbox: new ProgressionOutbox({ projectRoot: dir }), appendExact: () => { throw new Error('no outbox debt here'); } });
     runOutboxReplay({ projectDir: dir, token: workerToken, makeStoreFactory: fakeStore,
-      runCapture: (d, ev, opts) => { ran.push(JSON.parse(opts.rawInput).session_id); expect(opts.ordered).toBe(workerToken); } });
+      runCapture: (d, ev, opts) => { ran.push(JSON.parse(opts.rawInput).session_id); expect(opts.ordered).toBe(workerToken); return { progressionCaptured: true, receipt: { eventKey: 'verified' } }; } });
     expect(ran, 'the worker commits strictly in queue order').toEqual(['old', 'new-short', 'new-full']);
     expect(queuedCaptures(dir)).toEqual([]);
     expect(fs.existsSync(path.join(dir, '.swarm', '.progression-replay.lock'))).toBe(false);
@@ -226,7 +228,7 @@ describe('ordering under a live worker, stranded queues, and lock ownership', ()
     queueCapture({ projectDir: dir, event: 'Stop', host: 'codex', payload: { session_id: 'stranded', hook_event_name: 'Stop' } });
     const order = []; const spawned = [];
     const r = boundary(dir, 30_000, order, spawned, 'later');
-    expect(order).toEqual([]);
+    expect(order).toEqual(['produce later']);
     expect(r.replaySkipped).toMatch(/1 older capture\(s\) queued; this capture queued behind it, handed to a detached worker/);
     expect(spawned).toHaveLength(1);
     expect(spawned[0].token, 'the boundary hands over the lock it took').toBeTruthy();
@@ -313,7 +315,7 @@ describe('ordering under a live worker, stranded queues, and lock ownership', ()
     const ran = [];
     const fakeStore = () => () => ({ outbox: new ProgressionOutbox({ projectRoot: dir }), appendExact: () => { throw new Error('none'); } });
     runOutboxReplay({ projectDir: dir, token: takeReplayLock(dir), makeStoreFactory: fakeStore,
-      runCapture: (d, ev, opts) => { ran.push(JSON.parse(opts.rawInput).session_id); } });
+      runCapture: (d, ev, opts) => { ran.push(JSON.parse(opts.rawInput).session_id); return { progressionCaptured: true, receipt: { eventKey: 'verified' } }; } });
     expect(ran, 'only the dead worker\'s claim was reclaimed and run').toEqual(['dead-claim']);
     expect(fs.existsSync(liveClaim), 'the live worker\'s claim is untouched').toBe(true);
   });
@@ -398,7 +400,7 @@ describe('ordering under a live worker, stranded queues, and lock ownership', ()
       makeStoreFactory: () => () => ({ replay: () => { fs.writeFileSync(lock, 'intruder\npid 1\n'); return []; } }),
       spawnReplay: () => false,
     });
-    expect(order).toEqual([]);
+    expect(order).toEqual(['produce']);
     expect(r).toMatchObject({ progressionCaptured: false, deferredToReplayer: true });
     expect(r.replaySkipped).toMatch(/the lock was taken over before this capture committed/);
     expect(fs.readFileSync(lock, 'utf8').split('\n')[0]).toBe('intruder');

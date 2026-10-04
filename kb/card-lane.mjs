@@ -747,12 +747,15 @@ export function renderCardHit(hit) {
   const confidence = hit.namedRepo
     ? 'named directly'
     : `overlap ${hit.bodyOverlap}, coverage ${hit.coverage}`;
+  const line = (value) => String(value ?? '').replace(/[\r\n]+/g, ' ');
+  const body = String(hit.text ?? '');
   return (
     `⚡ FAST LANE — zero-ML keyword match (${confidence})\n`
-    + `#1  repo=${hit.repo}  evidence=curated-capability-card\n`
-    + `path : ${hit.repo}/kb/${hit.path}\n`
+    + `#1  repo=${line(hit.repo)}  evidence=curated-capability-card\n`
+    + `path : ${line(hit.repo)}/kb/${line(hit.path)}\n`
     + `----- grounded summary -----\n`
-    + `${hit.text}\n\n`
+    + `chars: ${body.length}\n----- full document -----\n`
+    + `${body}\n${'='.repeat(67)}\n\n`
     + `➡ This is a curated summary card, not a full-text passage. For code-level detail (exact APIs, `
     + `function signatures, ADR status), ask a more specific question — that runs the full source search.`
   );

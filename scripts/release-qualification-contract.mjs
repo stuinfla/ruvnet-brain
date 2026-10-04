@@ -62,6 +62,62 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       "files": [
         "tests/unit/ux-render-best-of-n.test.mjs"
       ]
+    },
+    {
+      "id": "canonical-memory-privacy",
+      "reason": "Canonical project isolation, persisted consent and truthful capture status",
+      "files": [
+        "tests/unit/turn-outcome-capture.test.mjs",
+        "tests/unit/turn-journal-platform.test.mjs",
+        "tests/unit/project-store-resolver.test.mjs"
+      ]
+    },
+    {
+      "id": "lossless-lifecycle-retention",
+      "reason": "Evidence compaction preserves tokens, private state and atomic transaction recovery",
+      "files": [
+        "tests/unit/lifecycle-evidence-retention.test.mjs",
+        "tests/unit/update-storage-transaction.test.mjs"
+      ]
+    },
+    {
+      "id": "causal-learning-proof",
+      "reason": "Recorded learning evidence rejects forged, absent and mismatched causal transcripts",
+      "files": [
+        "tests/unit/learning-replay-proof.test.mjs"
+      ]
+    },
+    {
+      "id": "qualification-topology",
+      "reason": "Release promotion consumes qualified exact-source receipts and preserves required contexts",
+      "files": [
+        "tests/unit/qualify-once-workflow.test.mjs"
+      ]
+    },
+    {
+      "id": "managed-memory-test-safety",
+      "reason": "Only managed project memory is accessed and tests cannot target owner stores",
+      "files": [
+        "tests/unit/no-real-store-path-in-tests.test.mjs",
+        "tests/unit/managed-memory-no-raw-sql.test.mjs"
+      ]
+    },
+    {
+      "id": "citation-producer-boundaries",
+      "reason": "Actual CLI, card and MCP outputs reject document-injected citation headers; packed verifier and source mutants bind the changed boundary",
+      "files": [
+        "tests/unit/verify-citation.test.mjs",
+        "tests/unit/citation-producers.test.mjs",
+        "tests/mutation/citation-binding-mutation.test.mjs"
+      ]
+    },
+    {
+      "id": "pending-memory-durability",
+      "reason": "Complete outbox tails replay and accepted pending journal events survive capacity pressure without silent deletion",
+      "files": [
+        "tests/unit/project-progression-outbox.test.mjs",
+        "tests/unit/project-progression-durability.test.mjs"
+      ]
     }
   ],
   "integration": [
@@ -91,6 +147,37 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       "reason": "Actual offline uninstall preserves unrelated files and user guidance",
       "files": [
         "tests/integration/uninstall-footprint.test.mjs"
+      ]
+    },
+    {
+      "id": "canonical-memory-native-boundary",
+      "reason": "POSIX registered recall and capture use canonical project stores; global Ruflo prerequisites and real-process privacy/readback probes fail closed",
+      "files": [
+        "tests/unit/agentdb-recall.test.mjs",
+        "tests/unit/session-start-core-parity.test.mjs",
+        "tests/unit/learning-replay.test.mjs",
+        "tests/integration/continuity-journal.test.mjs",
+        "tests/integration/changed-memory-process-probes.test.mjs",
+        "tests/unit/managed-memory-boundary.test.mjs"
+      ]
+    },
+    {
+      "id": "automatic-memory-transition-durability",
+      "reason": "Reviewed POSIX automatic boundary capture, complete history, consent suspension, first-start recovery and data-only turn replay; real global Ruflo and filesystem prerequisites are required",
+      "files": [
+        "tests/unit/project-transition-hook.test.mjs",
+        "tests/unit/turn-transport-security.test.mjs",
+        "tests/unit/turn-durable-transport.test.mjs",
+        "tests/integration/automatic-progression-continuation.test.mjs",
+        "tests/integration/capture-consent-boundary.test.mjs",
+        "tests/integration/session-start-turn-replay.test.mjs"
+      ]
+    },
+    {
+      "id": "pending-continuity-capacity",
+      "reason": "POSIX non-root permission refusal, capacity-pressure reporting and recovery preserve all accepted pending continuity events",
+      "files": [
+        "tests/unit/continuity-journal-bounds.test.mjs"
       ]
     }
   ]

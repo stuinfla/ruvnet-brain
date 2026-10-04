@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { assessLifecycleEvidence, pruneLifecycleEvidence } from '../../kb/lifecycle-evidence-retention.mjs';
 
 const roots = [];
@@ -35,6 +35,105 @@ const policy = (overrides = {}) => ({ schemaVersion: 1, policyId: 'test-policy',
   maxTransactionDirectories: 99, maxEvidenceBytes: 1_000_000, ...overrides });
 
 describe('lifecycle evidence retention', () => {
+  it('fits three protected inventory-heavy transactions without deleting any evidence or changing tokens', () => {
+    const f = fixture();
+    const originals = new Map();
+    const inventories = Array.from({ length: 500 }, (_, index) => ({ path: `private/store-${index}.rvf`,
+      bytes: 12345, sha256: 'a'.repeat(64), note: 'spaces  stay\nwith \\"escapes" and unicode ☃' }));
+    const transactions = ['failed', 'update', 'current'].map((id) => {
+      const dir = transaction(f, id, { at: '2026-02-01T00:00:00Z' });
+      const file = path.join(dir, '001-COMMITTED.json');
+      const value = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const raw = JSON.stringify({ ...value, prior: { entries: inventories }, candidate: { entries: inventories } }, null, 2)
+        .replace('"sequence": 1', '"sequence": 1, "precise": 9007199254740993');
+      fs.writeFileSync(file, raw, { mode: 0o600 });
+      originals.set(file, { raw, value: JSON.parse(raw), stat: fs.statSync(file) });
+      return dir;
+    });
+    refresh(f, 'failed', { at: '2026-02-01T00:00:00Z', action: 'update', status: 'FAILED',
+      extra: { transactionReceipts: transactions[0] } });
+    refresh(f, 'update', { at: '2026-02-02T00:00:00Z', action: 'update', extra: { transactionReceipts: transactions[1] } });
+    const options = { ...f, preserveTransactionPaths: [transactions[2]], policy: policy({ maxEvidenceBytes: 600_000 }) };
+    expect(assessLifecycleEvidence(options).withinBudget).toBe(false); // Negative control: original formatting exceeds budget.
+    const result = pruneLifecycleEvidence(options);
+    expect(result.withinBudget).toBe(true);
+    expect(result.removed).toEqual({ refresh: [], transactions: [] });
+    expect(result.compacted).toHaveLength(3);
+    for (const [file, original] of originals) {
+      const raw = fs.readFileSync(file, 'utf8');
+      expect(JSON.parse(raw)).toEqual(original.value);
+      expect(raw).toContain('9007199254740993');
+      expect(fs.statSync(file).mode).toBe(original.stat.mode);
+      expect(fs.statSync(file).uid).toBe(original.stat.uid);
+      expect(fs.statSync(file).gid).toBe(original.stat.gid);
+      expect(fs.statSync(file).mtimeMs).toBeCloseTo(original.stat.mtimeMs, 2);
+    }
+    expect(pruneLifecycleEvidence(options).compacted).toEqual([]);
+  });
+
+  it('leaves active and malformed earlier phases byte-exact even above budget', () => {
+    const f = fixture();
+    const active = transaction(f, 'active', { at: '2026-02-01T00:00:00Z', state: 'CLEANUP_PENDING' });
+    const file = path.join(active, '001-CLEANUP_PENDING.json');
+    const raw = JSON.stringify(JSON.parse(fs.readFileSync(file, 'utf8')), null, 2);
+    fs.writeFileSync(file, raw);
+    expect(pruneLifecycleEvidence({ ...f, policy: policy({ maxEvidenceBytes: 0 }) }).compacted).toEqual([]);
+    expect(fs.readFileSync(file, 'utf8')).toBe(raw);
+    fs.writeFileSync(path.join(active, '002-COMMITTED.json'), JSON.stringify({ schemaVersion: 1,
+      kind: 'ruvnet-brain-storage-transaction-phase', transactionId: 'active', sequence: 2,
+      state: 'COMMITTED', recordedAt: '2026-02-02T00:00:00Z' }));
+    fs.writeFileSync(file, raw.replace('"sequence": 1', '"sequence": 3'));
+    const result = pruneLifecycleEvidence({ ...f, policy: policy({ maxEvidenceBytes: 0 }) });
+    expect(result.unsafe).toHaveLength(1);
+    expect(result.compacted).toEqual([]);
+  });
+
+  it('keeps the original complete phase when atomic replacement fails', () => {
+    const f = fixture();
+    const dir = transaction(f, 'protected', { at: '2026-02-01T00:00:00Z' });
+    const file = path.join(dir, '001-COMMITTED.json');
+    const raw = JSON.stringify(JSON.parse(fs.readFileSync(file, 'utf8')), null, 2);
+    fs.writeFileSync(file, raw);
+    const rename = vi.spyOn(fs, 'renameSync').mockImplementation(() => { throw new Error('injected rename failure'); });
+    try {
+      expect(() => pruneLifecycleEvidence({ ...f, preserveTransactionPaths: [dir], policy: policy({ maxEvidenceBytes: 0 }) }))
+        .toThrow('injected rename failure');
+    } finally { rename.mockRestore(); }
+    expect(fs.readFileSync(file, 'utf8')).toBe(raw);
+    expect(fs.readdirSync(dir)).toEqual(['001-COMMITTED.json']);
+  });
+
+  it('refuses to compact a phase that shares its inode with another evidence copy', () => {
+    const f = fixture();
+    const dir = transaction(f, 'shared', { at: '2026-02-01T00:00:00Z' });
+    const file = path.join(dir, '001-COMMITTED.json');
+    const raw = JSON.stringify(JSON.parse(fs.readFileSync(file, 'utf8')), null, 2);
+    fs.writeFileSync(file, raw);
+    const originalCopy = path.join(f.brainHome, 'original.json');
+    fs.linkSync(file, originalCopy);
+    expect(() => pruneLifecycleEvidence({ ...f, preserveTransactionPaths: [dir], policy: policy({ maxEvidenceBytes: 0 }) }))
+      .toThrow('exclusive regular file');
+    expect(fs.readFileSync(file, 'utf8')).toBe(raw);
+    expect(fs.readFileSync(originalCopy, 'utf8')).toBe(raw);
+  });
+
+  it('preserves malformed UTF-8 bytes rather than rewriting them as replacement characters', () => {
+    const f = fixture();
+    const dir = transaction(f, 'invalid-utf8', { at: '2026-02-01T00:00:00Z' });
+    const file = path.join(dir, '001-COMMITTED.json');
+    const value = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const text = JSON.stringify({ ...value, note: 'marker' }, null, 2);
+    const split = text.indexOf('marker');
+    const raw = Buffer.concat([Buffer.from(text.slice(0, split)), Buffer.from([0xff]), Buffer.from(text.slice(split + 6))]);
+    fs.writeFileSync(file, raw);
+    const result = pruneLifecycleEvidence({ ...f, policy: policy({ maxEvidenceBytes: 0 }) });
+    expect(result.withinBudget).toBe(false);
+    expect(result.unsafe[0].reason).toBe('evidence is not valid UTF-8');
+    expect(result.compacted).toEqual([]);
+    expect(result.removed).toEqual({ refresh: [], transactions: [] });
+    expect(fs.readFileSync(file).equals(raw)).toBe(true);
+  });
+
   it('prunes oldest semantic refresh timestamp and is idempotent', () => {
     const f = fixture();
     refresh(f, 'z-old', { at: '2026-01-01T00:00:00Z' });

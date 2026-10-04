@@ -14,7 +14,8 @@
 //   (c) THE LOAD-BEARING CHECK: every `ci` / `scheduled-live-probe` scenario carries structured
 //       `proofs`. Each proof joins a real workflow job to an exact repo test/driver path. The path
 //       must exist AND the named job must invoke it, either literally or through an npm script's
-//       explicit file/directory selector. A job-name-only join is ceremony: it stays green when the
+//       explicit file/directory selector, or through the producer's explicit qualification suite.
+//       A job-name-only join is ceremony: it stays green when the
 //       test is renamed or simply stops running.
 //
 // Usage:  node tests/experience/report.mjs [path/to/scenarios.json]
@@ -22,6 +23,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { qualificationInvocationFiles } from './qualification-invocation.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', '..');
@@ -112,6 +114,7 @@ function commandSurface(jobBody) {
 
 function invokedBy(jobBody, repoPath) {
   const target = repoPath.replaceAll('\\', '/');
+  if (qualificationInvocationFiles(jobBody).has(target)) return true;
   const surface = commandSurface(jobBody);
   if (surface.includes(target)) return true;
 
@@ -168,7 +171,7 @@ scenarios.forEach((s, i) => {
       continue;
     }
     if (!invokedBy(jobs.get(job), repoPath)) {
-      fail(`${label}: ${file}#${job} does not invoke "${repoPath}" directly or through an explicit npm-script file/directory selector`);
+      fail(`${label}: ${file}#${job} does not invoke "${repoPath}" directly, through an explicit npm-script file/directory selector, or through an explicit qualification suite`);
     }
   }
 });

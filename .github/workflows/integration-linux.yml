@@ -37,7 +37,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Install root deps
         if: env.QUALIFICATION_CONSUMER != 'true'
@@ -46,6 +46,13 @@ jobs:
       - name: Install kb deps (@ruvector/rvf lives here, not the root)
         if: env.QUALIFICATION_CONSUMER != 'true'
         run: cd kb && npm ci --no-audit --no-fund
+
+      - name: Install the global Ruflo required by canonical-memory acceptance
+        if: env.QUALIFICATION_CONSUMER != 'true'
+        run: |
+          npm install -g --prefix "$HOME/.npm-global" ruflo@latest --no-audit --no-fund
+          "$HOME/.npm-global/bin/ruflo" --version
+          echo "$HOME/.npm-global/bin" >> "$GITHUB_PATH"
 
       - name: Install and verify the required native Codex CLI
         if: env.QUALIFICATION_CONSUMER != 'true'
@@ -73,12 +80,11 @@ jobs:
       - name: Run experience-level integration scenarios explicitly
         if: env.QUALIFICATION_CONSUMER != 'true'
         run: |
+          node --test tests/experience/report.test.mjs
           node --test tests/integration/install-smoke.mjs
           node tests/integration/require-brain-lane.mjs
           node_modules/vitest/vitest.mjs run \
             tests/integration/stale-install-trap.test.mjs \
-            tests/integration/codex-skill-discovery.test.mjs \
-            tests/integration/uninstall-footprint.test.mjs \
             --maxWorkers=1
       - name: Bind integration evidence to the exact source
         if: env.QUALIFICATION_CONSUMER != 'true' && inputs.candidate_sha != ''

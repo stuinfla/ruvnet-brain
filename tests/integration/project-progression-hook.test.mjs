@@ -129,6 +129,7 @@ describe('ADR-073 host-neutral progression capture', () => {
     });
 
     expect(result.snapshot).toMatchObject({
+      sourceIdentity: { capturePath: project },
       hostIdentity: { host, adapterVersion: getVersion() },
       sessionIdentity: `${host}-session`,
       sequence: 4,

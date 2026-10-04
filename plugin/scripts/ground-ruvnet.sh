@@ -67,6 +67,13 @@ if printf '%s' "$TEXT" | grep -qiE '\[Your previous response|\[Request interrupt
   exit 0
 fi
 
+# Read canonical memory before the quiet path; useful evidence may exist even
+# for a worktree with no local .swarm. Off/absent/no-match keep the cheap return.
+_ADB_OUT=""
+if [ "${RUVNET_AGENTDB_FIRST:-on}" != "off" ]; then
+  _ADB_OUT=$(printf '%s' "$INPUT" | "${RUVNET_NODE_BIN:-node}" "$(dirname "$0")/agentdb-recall.mjs" 2>/dev/null)
+fi
+
 # ── QUIET-PROMPT FAST PATH. ────────────────────────────────────────────────────────────────────
 # A hook whose output contract is silence must not pay the full stack-currency/project-state scan
 # before discovering that nothing can fire. This mattered on a packed Windows install: immediately
@@ -83,7 +90,7 @@ QUICK_RELEVANT=0
 if printf '%s' "$TEXT" | grep -qiE 'ruvnet|ruflo|ruvector|rvf|agentdb|agenticow|rulake|ruview|rupixel|ruv-fann|agentic-flow|synthlang|dspy|qudag|safla|metaharness|cve-bench|sparc|swarm|claude-flow|pinecone|pgvector|chroma|weaviate|faiss|milvus|qdrant|hnswlib|annoy|vector|langchain|llama|autogen|crew-ai|semantic-kernel|embedding|retrieval|prompt compression|token cost|post-quantum|quantum-resistant|adr|decision|architect|design|plan|spec|refactor|migrat|implement|build|write|add|change|fix|update|deploy|create|enhance|set up|setup|wire|integrate|test|coverage|audit|review|benchmark|lint|scan|debug|optimi|app|feature|service|system|backend|frontend|api|module|pipeline|infra|database|schema|workflow|roadmap|milestone|autonomous|unattended|do not stop|keep working|keep going|soak run|harness|quality|readiness|evolve|self-improv|hardening|cheaper|cheap|lower cost|compute arbitrage|cascade|scorecard|score .*repo'; then
   QUICK_RELEVANT=1
 fi
-if [ "$QUICK_RUFLO" -eq 0 ] && [ "$QUICK_RELEVANT" -eq 0 ] && [ "${RUVNET_AUTONOMOUS:-0}" != "1" ]; then
+if [ "$QUICK_RUFLO" -eq 0 ] && [ "$QUICK_RELEVANT" -eq 0 ] && [ "${RUVNET_AUTONOMOUS:-0}" != "1" ] && [ -z "$_ADB_OUT" ]; then
   exit 0
 fi
 
@@ -137,6 +144,13 @@ inj_seen() {
   [ "$INJ_DIR/$1" -nt "$INJ_BASE/.reset" ]
 }
 inj_mark() { [ -n "$INJ_DIR" ] && mkdir -p "$INJ_DIR" 2>/dev/null && : > "$INJ_DIR/$1" 2>/dev/null; return 0; }
+
+# ── Canonical AgentDB recall (ADR-101): every nonempty human prompt. ──────────────
+# Priority 0 preserves safety output. Recall is delivered on every eligible prompt.
+if [ -n "$_ADB_OUT" ]; then
+  _ADB_ID=$(printf '%s\n' "$_ADB_OUT" | head -n 1 | tr -cd 'A-Za-z0-9' | cut -c1-12)
+  [ -n "$_ADB_ID" ] && printf '%s\n' "$_ADB_OUT" | sed '1d' | out_to "0-0-agentdb-recall-$_ADB_ID"
+fi
 
 # ── Gate 0: STACK WATCHDOG (always fires) — filesystem ground truth, not impressions. ───────────
 # Runs in the project's cwd every prompt, FROM the loaded plugin's own dir — so $CLAUDE_PLUGIN_ROOT
@@ -638,7 +652,7 @@ if [ -n "$BLK" ]; then
   INJ_USED=0
   for _f in $(cd "$BLK" 2>/dev/null && ls | grep -v '\.' | sort -t- -k2,2n -k1,1n); do
     _rest=${_f#*-}; _prio=${_rest%%-*}; _id=${_rest#*-}
-    if [ "$_id" != "resume" ] && inj_seen "$_id"; then
+    if [ "$_id" != "resume" ] && [ "${_id#agentdb-recall-}" = "$_id" ] && inj_seen "$_id"; then
       if [ -f "$BLK/$_f.short" ]; then echo short > "$BLK/$_f.pick"; INJ_SHORTENED=$((INJ_SHORTENED + 1)); fi
       continue
     fi
@@ -651,7 +665,7 @@ if [ -n "$BLK" ]; then
     if [ "$_id" = "flywheel" ]; then claim_flywheel_day || continue; fi
     echo full > "$BLK/$_f.pick"
     [ "$_prio" != "0" ] && INJ_USED=$((INJ_USED + _size))
-    [ "$_id" != "resume" ] && inj_mark "$_id"
+    [ "$_id" != "resume" ] && [ "${_id#agentdb-recall-}" = "$_id" ] && inj_mark "$_id"
   done
   for _f in $(cd "$BLK" 2>/dev/null && ls | grep -v '\.' | sort -n); do
     case "$(cat "$BLK/$_f.pick" 2>/dev/null)" in

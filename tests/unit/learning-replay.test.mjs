@@ -27,9 +27,44 @@ import {
   assertPostTaskPersisted,
   cleanupFixtureDaemons,
   buildFixtures, nightlyRefresh, seedProjectBMemory,
+  measurePortfolio,
 } from '../../scripts/learning-replay.mjs';
 import { spawn, spawnSync } from 'node:child_process';
 import { createReplaySource } from '../helpers/learning-replay-source.mjs';
+
+describe('portfolio measurement preserves the evidence gate', () => {
+  it('measures both N=3 traps and all four causal mutants using the explicit executor', async () => {
+    const calls = [];
+    const result = await measurePortfolio({
+      host: 'codex', model: 'gpt-6.1-sol',
+      execute: async (args) => { calls.push(args); return args.includes('--mutant') ? EXIT.FAIL : EXIT.PASS; },
+      check: () => ({ status: VERDICT.PASS, why: 'all six measurements verified' }),
+    });
+    expect(result).toBe(EXIT.PASS);
+    expect(calls).toHaveLength(6);
+    for (const trap of [TRAP.MEMORY_SEARCH, TRAP.POST_TASK]) {
+      expect(calls.filter((args) => args.includes(trap))).toHaveLength(3);
+      expect(calls).toContainEqual(['--trap', trap, '--n', '3', '--host', 'codex', '--model', 'gpt-6.1-sol']);
+      for (const mutant of ['delete-lesson', 'brain-off-treated']) {
+        expect(calls).toContainEqual(['--trap', trap, '--mutant', mutant, '--n', '1', '--host', 'codex', '--model', 'gpt-6.1-sol']);
+      }
+    }
+  });
+
+  it.each([VERDICT.UNKNOWN, VERDICT.FAIL, VERDICT.INCONCLUSIVE])(
+    'cannot turn successful child exits into a pass when portfolio evidence is %s', async (status) => {
+      let measurements = 0;
+      const result = await measurePortfolio({
+        host: 'codex', model: 'gpt-6.1-sol',
+        execute: async () => { measurements++; return EXIT.PASS; },
+        check: () => ({ status, why: 'negative control: evidence rejected' }),
+      });
+      expect(measurements).toBe(6);
+      expect(result).toBe(EXIT[status]);
+      expect(result).not.toBe(EXIT.PASS);
+    },
+  );
+});
 
 describe('CLI help is side-effect free', () => {
   it('--help prints usage, exits zero, and does not overwrite the replay artifact', () => {
@@ -592,6 +627,8 @@ describe('executeProducedCommand bounds its own blast radius', () => {
 // worthless if recalled rather than checked, and that silently rots if rUv changes the CLI.
 describe('the live CLI still behaves the way the gate assumes (Rule 0, re-checked every run)', () => {
   const haveRuflo = fs.existsSync(RUFLO_BIN);
+  const requireLiveRuflo = process.env.RUVNET_REQUIRE_LEARNING_REPLAY === '1';
+  let prerequisiteFailure = haveRuflo ? '' : 'configured global Ruflo binary is absent';
 
   /**
    * PRECONDITION: the live CLI must be able to round-trip a memory at all.
@@ -617,20 +654,32 @@ describe('the live CLI still behaves the way the gate assumes (Rule 0, re-checke
       probe = fs.mkdtempSync(path.join(os.tmpdir(), 'd4-probe-'));
       const pdb = path.join(probe, '.swarm', 'memory.db');
       fs.mkdirSync(path.join(probe, '.swarm'), { recursive: true });
-      spawnSync(RUFLO_BIN, ['memory', 'init', '--path', pdb, '--backend', 'hybrid'], { encoding: 'utf8', timeout: 120_000, cwd: probe });
+      const options = { encoding: 'utf8', timeout: 120_000, cwd: probe,
+        env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' } };
+      const initialized = spawnSync(RUFLO_BIN, ['memory', 'init', '--path', pdb, '--backend', 'hybrid'], options);
       const key = `precheck-${process.pid}-${Math.random().toString(16).slice(2)}`;
-      spawnSync(RUFLO_BIN, ['memory', 'store', '-k', key, '--value', 'precheck', '-n', 'default', '--path', pdb], { encoding: 'utf8', timeout: 120_000, cwd: probe });
-      const got = spawnSync(RUFLO_BIN, ['memory', 'retrieve', '-k', key, '--path', pdb], { encoding: 'utf8', timeout: 120_000, cwd: probe });
-      return !/Key not found/i.test(`${got.stdout || ''}${got.stderr || ''}`);
-    } catch { return false; }
+      const value = `precheck:${key}`;
+      const stored = spawnSync(RUFLO_BIN, ['memory', 'store', '-k', key, '--value', value, '-n', 'default', '--path', pdb, '--no-upsert'], options);
+      const got = spawnSync(RUFLO_BIN, ['memory', 'retrieve', '-k', key, '-n', 'default', '--path', pdb, '--value-only'], options);
+      const statuses = [initialized, stored, got].map((result) => result.status);
+      const verified = statuses.every((status) => status === 0) && [initialized, stored, got].every((result) => !result.error)
+        && got.stdout.trim() === value;
+      if (!verified) prerequisiteFailure = `init/store/retrieve exits ${statuses.join('/')}; exact unique content readback ${got.stdout?.trim() === value ? 'matched' : 'did not match'}`;
+      return verified;
+    } catch (error) { prerequisiteFailure = error.message; return false; }
     finally { try { if (probe) fs.rmSync(probe, { recursive: true, force: true }); } catch { /* best effort */ } }
   })();
+
+  // Protected Linux qualification requires these live cases; optional developer diagnostics may skip.
+  if (requireLiveRuflo && !roundTrips) {
+    throw new Error(`REQUIRED LEARNING REPLAY PREREQUISITE FAILED: ${prerequisiteFailure}`);
+  }
 
   if (haveRuflo && !roundTrips) {
     const v = spawnSync(RUFLO_BIN, ['--version'], { encoding: 'utf8', timeout: 30_000 });
     process.stderr.write(
       `\n  ⚠ LIVE-CLI PRECONDITION FAILED — skipping the live gate cases.\n`
-      + `    \`ruflo memory store\` reports success and \`memory retrieve -k\` cannot find the key.\n`
+      + `    ${prerequisiteFailure}.\n`
       + `    ruflo ${String(v.stdout || v.stderr || '?').trim().split('\n')[0]}. This is upstream of this repo.\n`
       + `    These cases resume automatically once a store/retrieve round-trip works again.\n\n`,
     );

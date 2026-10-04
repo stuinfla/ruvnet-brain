@@ -53,7 +53,7 @@ export function createStore(file) {
   db.exec(`CREATE TABLE IF NOT EXISTS memory_entries (id TEXT PRIMARY KEY, key TEXT NOT NULL, namespace TEXT, content TEXT,
     type TEXT, embedding TEXT, embedding_model TEXT, embedding_dimensions INTEGER, tags TEXT, metadata TEXT, owner_id TEXT,
     created_at INTEGER, updated_at INTEGER, expires_at INTEGER, last_accessed_at INTEGER, access_count INTEGER DEFAULT 0,
-    status TEXT DEFAULT 'active', provenance_type TEXT)`);
+    status TEXT DEFAULT 'active', provenance_type TEXT, UNIQUE(namespace, key))`);
   db.close();
 }
 
