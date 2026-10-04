@@ -2,6 +2,66 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const OUTBOX_NAME = 'project-progression-outbox.jsonl';
+const READ_CHUNK_BYTES = 64 * 1024;
+
+// Decode only complete records, so a multibyte character crossing reads stays intact.
+function* readJsonl(file) {
+  let fd;
+  try { fd = fs.openSync(file, 'r'); } catch (error) { if (error.code === 'ENOENT') return; throw error; }
+  const chunk = Buffer.alloc(READ_CHUNK_BYTES);
+  let parts = [];
+  let line = 0;
+  const parse = (bytes, terminated) => {
+    if (!bytes.length) return undefined;
+    const text = bytes.toString('utf8');
+    if (!text.trim()) return undefined;
+    try { return JSON.parse(text); } catch {
+      if (!terminated) return undefined;
+      throw new Error(`malformed outbox record at line ${line}`);
+    }
+  };
+  try {
+    let length;
+    while ((length = fs.readSync(fd, chunk, 0, chunk.length, null))) {
+      let start = 0;
+      for (let end = 0; end < length; end += 1) {
+        if (chunk[end] !== 10) continue;
+        parts.push(Buffer.from(chunk.subarray(start, end)));
+        line += 1;
+        const record = parse(Buffer.concat(parts), true);
+        if (record !== undefined) yield record;
+        parts = []; start = end + 1;
+      }
+      if (start < length) parts.push(Buffer.from(chunk.subarray(start, length)));
+    }
+    if (parts.length) {
+      line += 1;
+      const record = parse(Buffer.concat(parts), false);
+      if (record !== undefined) yield record;
+    }
+  } finally { fs.closeSync(fd); }
+}
+
+// Inspect only the final record; preceding history is never decoded or copied.
+function finalRecord(fd, size) {
+  const parts = [];
+  let position = size;
+  while (position > 0) {
+    const length = Math.min(READ_CHUNK_BYTES, position);
+    position -= length;
+    const chunk = Buffer.alloc(length);
+    let read = 0;
+    while (read < length) {
+      const count = fs.readSync(fd, chunk, read, length - read, position + read);
+      if (!count) throw new Error('outbox tail changed during inspection');
+      read += count;
+    }
+    const delimiter = chunk.lastIndexOf(10);
+    parts.unshift(delimiter < 0 ? chunk : chunk.subarray(delimiter + 1));
+    if (delimiter >= 0) break;
+  }
+  return Buffer.concat(parts).toString('utf8');
+}
 
 function requireIdentity(value, label) {
   if (typeof value !== 'string' || !value) throw new TypeError(`${label} must be a non-empty string`);
@@ -31,8 +91,7 @@ export class ProgressionOutbox {
         const last = Buffer.alloc(1);
         fs.readSync(fd, last, 0, 1, size - 1);
         if (last[0] !== 10) {
-          const content = fs.readFileSync(fd, 'utf8');
-          try { JSON.parse(content.slice(content.lastIndexOf('\n') + 1)); }
+          try { JSON.parse(finalRecord(fd, size)); }
           catch { throw new Error('incomplete outbox final record; preserve and recover the torn tail before appending'); }
           separator = '\n';
         }
@@ -82,17 +141,7 @@ export class ProgressionOutbox {
   }
 
   records() {
-    if (!fs.existsSync(this.path)) return [];
-    const content = fs.readFileSync(this.path, 'utf8');
-    const lines = content.split('\n');
-    if (lines.at(-1) === '') lines.pop();
-    else {
-      // A missing delimiter is not a missing record; only a crash-torn JSON suffix is incomplete.
-      try { JSON.parse(lines.at(-1)); } catch { lines.pop(); }
-    }
-    return lines.filter(Boolean).map((line, index) => {
-      try { return JSON.parse(line); } catch { throw new Error(`malformed outbox record at line ${index + 1}`); }
-    });
+    return [...readJsonl(this.path)];
   }
 
   /**
@@ -108,7 +157,7 @@ export class ProgressionOutbox {
     const committed = new Map();
     const quarantined = new Map();
     const recoveries = [];
-    for (const record of this.records()) {
+    for (const record of readJsonl(this.path)) {
       requireIdentity(record?.eventKey, 'outbox eventKey');
       requireIdentity(record?.payloadDigest, 'outbox payloadDigest');
       if (record.type === 'snapshot') {

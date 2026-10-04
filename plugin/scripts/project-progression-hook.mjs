@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createProgressionSnapshot } from './project-progression-contract.mjs';
 import { ProjectProgressionStore } from './project-progression-store.mjs';
+import { redactText } from './continuity-events.mjs';
 
 const HOSTS = new Set(['claude', 'codex']);
 const CAPTURE_TRIGGERS = new Set([
@@ -105,15 +106,17 @@ function toolAction(payload) {
   const exitCode = Number.isSafeInteger(explicitCode)
     ? explicitCode
     : textualCode ? Number(textualCode[1]) : undefined;
-  const interrupted = responseRecord?.interrupted === true || responseRecord?.signal === 'SIGINT';
+  const error = boundedText(typeof responseRecord?.error === 'string' ? redactText(responseRecord.error) : undefined);
+  const signal = boundedText(typeof responseRecord?.signal === 'string' ? redactText(responseRecord.signal) : undefined);
+  const interrupted = responseRecord?.interrupted === true || Boolean(signal);
   const explicitError = responseRecord?.isError === true || payload.is_error === true;
   const declaredOutcome = ['success', 'failure', 'interrupted', 'unknown'].includes(responseRecord?.outcome)
     ? responseRecord.outcome : null;
-  const failed = explicitError || (Number.isSafeInteger(exitCode) && exitCode !== 0);
+  const failed = explicitError || Boolean(error) || (Number.isSafeInteger(exitCode) && exitCode !== 0);
   const terminal = failed || Number.isSafeInteger(exitCode)
     || responseRecord?.success === true || responseRecord?.ok === true;
   const outcome = payload.hook_event_name === 'PostToolUse'
-    ? (interrupted ? 'interrupted' : failed ? 'failure' : declaredOutcome || (terminal ? 'success' : 'unknown'))
+    ? (error ? 'failure' : interrupted ? 'interrupted' : failed ? 'failure' : declaredOutcome || (terminal ? 'success' : 'unknown'))
     : 'pending';
   const observation = {
     trigger: payload.hook_event_name,
@@ -121,7 +124,9 @@ function toolAction(payload) {
     ...(command ? { command } : {}),
     ...(filePath && !command ? { filePath } : {}),
     outcome,
-    ...(Number.isSafeInteger(exitCode) ? { exitCode } : {}),
+    ...(Number.isSafeInteger(exitCode) ? { exitCode } : responseRecord?.exit_code === null || responseRecord?.exitCode === null ? { exitCode: null } : {}),
+    ...(error ? { error } : {}),
+    ...(signal ? { signal } : {}),
     ...(interrupted ? { interrupted: true } : {}),
     ...(explicitError ? { isError: true } : {}),
   };

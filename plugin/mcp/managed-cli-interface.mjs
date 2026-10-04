@@ -253,9 +253,10 @@ export function normalizeManagedExecution(execution) {
   const output = [execution?.stdout, execution?.stderr].filter(Boolean)
     .join(execution?.stdout && execution?.stderr ? '\n' : '');
   const contradictoryFailure = /(?:^|\n)\s*(?:❌|\[ERROR\])|invalid pragma command|key not found/i.test(output);
+  if (execution?.error) return { outcome: 'failure', output, contradictoryFailure };
   if (execution?.signal) return { outcome: 'interrupted', output, signal: execution.signal, contradictoryFailure };
-  if (execution?.error || contradictoryFailure || execution?.code === null || execution?.code === undefined) {
-    return { outcome: execution?.error || contradictoryFailure ? 'failure' : 'unknown', output, contradictoryFailure };
+  if (contradictoryFailure || execution?.code === null || execution?.code === undefined) {
+    return { outcome: contradictoryFailure ? 'failure' : 'unknown', output, contradictoryFailure };
   }
   return { outcome: execution.code === 0 ? 'success' : 'failure', output, contradictoryFailure };
 }
@@ -296,15 +297,19 @@ function managedProgressionCapture({ executable, argv, projectRoot, env, event, 
 function resultOf(executable, argv, result) {
   const output = [result.stdout, result.stderr].filter(Boolean).join(result.stdout && result.stderr ? '\n' : '');
   const normalized = normalizeManagedExecution(result);
+  const terminal = { outcome: normalized.outcome, code: result.code ?? null, signal: result.signal ?? null,
+    error: result.error ?? null, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
   if (normalized.outcome !== 'success') {
-    const reason = result.error || (normalized.contradictoryFailure ? 'fatal output despite exit 0' : result.code == null ? 'no terminal exit status' : `exit ${result.code}`);
+    const reason = result.error || (result.signal ? `signal ${result.signal}` : result.code != null && result.code !== 0 ? `exit ${result.code}` : normalized.contradictoryFailure ? 'fatal output without successful completion' : 'no terminal exit status');
     return {
-      content: [{ type: 'text', text: output || `${executable} ${argv.join(' ')} failed: ${reason}` }],
+      content: [{ type: 'text', text: [output, `${executable} ${argv.join(' ')} failed: ${reason}`].filter(Boolean).join('\n') }],
+      structuredContent: terminal,
       isError: true,
     };
   }
   return {
     content: [{ type: 'text', text: output || `${executable} ${argv.join(' ')} completed successfully` }],
+    structuredContent: terminal,
     isError: false,
   };
 }

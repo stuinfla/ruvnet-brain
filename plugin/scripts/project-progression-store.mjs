@@ -88,10 +88,26 @@ export function projectResumePayloadToBound(payload, maxOutputBytes) {
     });
   }
 
+  if (size() > maxOutputBytes && Array.isArray(summary.state?.resumeConflicts)) {
+    const groups = new Map();
+    for (const conflict of payload.state.resumeConflicts) {
+      if (!groups.has(conflict.field)) groups.set(conflict.field, []);
+      groups.get(conflict.field).push(conflict);
+    }
+    if (groups.size < payload.state.resumeConflicts.length) {
+      summary.state.resumeConflicts = [...groups].map(([field, conflicts]) => ({
+        field, conflictCount: conflicts.length,
+        valueCount: conflicts.reduce((count, conflict) => count + (conflict.values ?? []).length, 0),
+        conflictsDigest: digestCanonical(conflicts),
+      }));
+      omissions.push({ path: 'state.resumeConflicts', ...omissionSummary(payload.state.resumeConflicts) });
+    }
+  }
+
   if (size() > maxOutputBytes) recordOmission(summary.state, 'journalHeads', 'state.journalHeads');
   // Least central detail first. currentGoal and nextAction are deliberately absent from this list.
   const stateFields = [
-    'commands', 'proofArtifacts', 'changedFiles', 'completed', 'untested', 'decisions',
+    'observations', 'commands', 'proofArtifacts', 'changedFiles', 'completed', 'untested', 'decisions',
     'plan', 'inProgress', 'blockers', 'failures', 'acceptanceContract', 'provenance',
     'evidence', 'activeStep', 'activeProcess', 'sourceIdentity',
   ];
