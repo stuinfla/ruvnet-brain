@@ -227,7 +227,32 @@ export function applyPromotion(result, { file, now }) {
     ? existing.replace(new RegExp(`${BEGIN}[\\s\\S]*?${END}`), block)   // replace ONLY our fence
     : `${existing.trimEnd()}\n\n${block}\n`;                            // first run: append
 
-  try { fs.writeFileSync(file, next); } catch (e) { return { ok: false, log: `write failed: ${e.message}; backup at ${backup}` }; }
+  // ATOMIC write — temp sibling then rename, never in place. The same discipline bin/install.mjs's
+  // offerClaudeMd() already applies to this exact file (ADR-063 lineage): an in-place writeFileSync
+  // leaves the real file truncated if the process dies mid-write (disk full, SIGKILL, power loss).
+  // A rename within the same directory is atomic on every OS this project ships to, so CLAUDE.md is
+  // always either fully the old content or fully the new content, never a torn hybrid.
+  const tmp = `${file}.ruvnet-tmp`;
+  try {
+    fs.writeFileSync(tmp, next);
+    fs.renameSync(tmp, file);
+  } catch (e) {
+    try { fs.unlinkSync(tmp); } catch { /* best effort — the real file is untouched either way */ }
+    return { ok: false, log: `write failed: ${e.message}; backup at ${backup}` };
+  }
+
+  // ROUND-TRIP PROOF, not an inferred success: a successful rename proves the bytes landed at
+  // `file`'s path, but not that they are the bytes this call intended — read the real path back
+  // and compare, the same discipline degradation-watch.mjs's proveMemoryDurable() applies to every
+  // other durable write in this repo.
+  let onDisk = '';
+  try { onDisk = fs.readFileSync(file, 'utf8'); } catch (e) {
+    return { ok: false, log: `wrote ${file.replace(HOME, '~')} but could not read it back to verify (${e.message}); backup at ${backup}` };
+  }
+  if (onDisk !== next) {
+    return { ok: false, log: `wrote ${file.replace(HOME, '~')} but the read-back did not match — refusing to report success; backup at ${backup}` };
+  }
+
   return { ok: true, backup, promoted: result.promotable.length, log: `promoted ${result.promotable.length} process(es) into ${file.replace(HOME, '~')}` };
 }
 

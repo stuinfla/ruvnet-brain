@@ -16,7 +16,7 @@
 //   qualitative — the rendered block is human-readable and carries its own evidence (asserted on
 //                 structure; the actual reading is done by a human, per "never grade your own work")
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -180,6 +180,63 @@ describe('high — the write path, which touches the file governing every projec
     seedTwo();
     const res = applyPromotion(analyze(collectLessons(tmp)), { file: path.join(tmp, 'does-not-exist.md'), now: '2026-07-22' });
     expect(res.ok).toBe(false);
+  });
+
+  it('is ATOMIC — a failure mid-write leaves the real file completely untouched, not truncated', () => {
+    // The defect this guards: an in-place fs.writeFileSync that dies mid-write (disk full,
+    // SIGKILL, power loss) can leave CLAUDE.md truncated. Writing through a temp sibling and
+    // renaming means a failure before the rename can only ever leave the ORIGINAL file intact.
+    seedTwo();
+    fs.writeFileSync(globalFile(), '# My rules\n\nORIGINAL CONTENT\n');
+    const real = fs.writeFileSync;
+    const spy = vi.spyOn(fs, 'writeFileSync').mockImplementation((p, data) => {
+      if (String(p).endsWith('.ruvnet-tmp')) throw new Error('simulated disk full');
+      return real(p, data);
+    });
+    try {
+      const r = analyze(collectLessons(tmp));
+      const res = applyPromotion(r, { file: globalFile(), now: '2026-07-22' });
+      expect(res.ok).toBe(false);
+      expect(fs.readFileSync(globalFile(), 'utf8'), 'the real file must still be exactly the original bytes').toBe('# My rules\n\nORIGINAL CONTENT\n');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('never leaves a stray .ruvnet-tmp sibling behind after a successful promotion', () => {
+    seedTwo();
+    fs.writeFileSync(globalFile(), '# My rules\n');
+    const r = analyze(collectLessons(tmp));
+    const res = applyPromotion(r, { file: globalFile(), now: '2026-07-22' });
+    expect(res.ok).toBe(true);
+    expect(fs.existsSync(`${globalFile()}.ruvnet-tmp`)).toBe(false);
+  });
+
+  it('ROUND-TRIP PROOF — refuses to report success if reading the file back does not match what was written', () => {
+    // A rename proves bytes landed at the path; it does not prove they are the INTENDED bytes.
+    // Simulate a read-back that disagrees (e.g. a concurrent writer, or a filesystem lying about
+    // a completed write) and assert the function reports failure rather than trusting the rename.
+    seedTwo();
+    fs.writeFileSync(globalFile(), '# My rules\n');
+    const r = analyze(collectLessons(tmp)); // scan the fixture tree BEFORE installing the spy below
+    const real = fs.readFileSync;
+    let callsOnGlobalFile = 0;
+    const spy = vi.spyOn(fs, 'readFileSync').mockImplementation((p, enc) => {
+      if (p === globalFile()) {
+        callsOnGlobalFile += 1;
+        // 1st call on this path: applyPromotion reading `existing` before writing — must be real.
+        // 2nd call: the new post-rename verification read — corrupt it to prove the guard fires.
+        if (callsOnGlobalFile === 2) return 'SOMETHING ELSE ENTIRELY';
+      }
+      return real(p, enc);
+    });
+    try {
+      const res = applyPromotion(r, { file: globalFile(), now: '2026-07-22' });
+      expect(res.ok, 'a mismatched read-back must never be reported as success').toBe(false);
+      expect(res.log).toMatch(/read-back did not match/);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 
