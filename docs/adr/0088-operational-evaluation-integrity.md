@@ -3,9 +3,9 @@ id: ADR-088
 status: Accepted
 reviewed_digest: de06e4cc70c3
 date: 2026-09-19
-updated: 2026-09-27
+updated: 2026-10-03
 updated_source: derived-from-git
-version: 1.1.4
+version: 1.1.5
 authors: [Stuart Kerr, Codex]
 tags: [evaluation, benchmark, grounding, operations, abstention]
 supersedes: []
@@ -91,3 +91,7 @@ Accepted decision; v1/v2 history remains preserved and v3 implementation is trac
 | 2026-09-19 | Closed an evidence-boundary gap where fabricated non-source framing around a valid oracle span could pass. Each returned body must now be a verbatim projection of hash-bound source rows, including same-path row joins and ordered noncontiguous source excerpts. Baseline and candidate use the evaluator checkout's fixed parser, while receipt hashes separately identify the evaluator parser, archived runtime verifier, runner, grader, query set, and catalog. | `evals/operational-benchmark.v3.mjs`; `scripts/run-operational-benchmark.v3.mjs`; `tests/unit/operational-benchmark-v3.test.mjs`; focused gate: 34 tests passed. |
 
 | 2026-09-19 | Reviewed baseline fairness: exact whole source rows can be joined in retrieval order, and CE-null source cards are graded by the same independently frozen spans and verbatim source contract regardless of runtime-specific labels. Negative CE and explicit refusal still fail answerable cases. Retained old receipts are not overwritten; regrades bind their original hash and preserve measured timings. | `evals/operational-benchmark.v3.mjs`; `tests/unit/operational-benchmark-v3.test.mjs`; actual retained named-SPARC result exposed both false negatives. |
+
+## Concurrent candidate reconciliation (2026-10-03)
+
+Candidate citation framing binds the actual CLI, capability-card and MCP full/truncated shown-body boundaries. Document text cannot introduce another citation header. This repairs runtime output verification; it does not change the frozen grading oracle, North Star criteria, or grant published-install evidence.

@@ -64,6 +64,8 @@ import path from 'node:path';
 import { rmHome } from '../helpers/reap-detached.mjs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { continuityRegistrations } from '../../plugin/scripts/continuity-hook-policy.mjs';
+import { renderCardHit } from '../../kb/card-lane.mjs';
+import { answerTextAnswered } from '../../plugin/scripts/grounding-answer.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const BRAIN_STATE = path.join(REPO, 'scripts/brain-state.mjs');
@@ -280,7 +282,10 @@ describe.skipIf(bashOnly)('ADR-054 gate 3 — a refusal mints NO grounding stamp
     const answer = fs.readFileSync(path.join(REPO, 'plugin/scripts/grounding-answer.mjs'), 'utf8');
     expect(fs.readFileSync(path.join(REPO, 'kb/search-outcome.mjs'), 'utf8')).toContain('header: `Searched ${repos.length} RuvNet repos (');
     expect(answer).toContain('/^Searched \\d+ RuvNet repos \\(/');
-    expect(fs.readFileSync(path.join(REPO, 'kb/card-lane.mjs'), 'utf8')).toContain('`#1  repo=${hit.repo}  evidence=curated-capability-card\\n`');
+    const cardAnswer = renderCardHit({ repo: 'fixture', path: 'card.md', text: 'A substantive fixture capability.', namedRepo: true });
+    expect(cardAnswer).toContain('#1  repo=fixture  evidence=curated-capability-card\n');
+    expect(answerTextAnswered(cardAnswer)).toBe(true);
+    expect(answerTextAnswered(DISABLED_MARKER)).toBe(false);
     expect(answer).toContain('#1  repo=\\S+  evidence=curated-capability-card\\n');
     expect(DISABLED_MARKER.startsWith('Searched')).toBe(false);
   });

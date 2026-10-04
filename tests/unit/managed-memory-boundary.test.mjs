@@ -30,7 +30,9 @@ const run = (boundary, command) => {
   const r = spawnSync('bash', [HIJACK], {
     input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, session_id: 't' }),
     encoding: 'utf8',
-    env: { ...process.env, HOME: home, USERPROFILE: home, CLAUDE_PLUGIN_ROOT: path.join(ROOT, 'plugin') },
+    env: { ...process.env, HOME: home, USERPROFILE: home,
+      RUVNET_SETTINGS_FILE: path.join(home, '.config', 'ruvnet-brain', 'settings.json'),
+      CLAUDE_PLUGIN_ROOT: path.join(ROOT, 'plugin') },
   });
   return { code: r.status, err: `${r.stderr || ''}` };
 };
@@ -60,6 +62,19 @@ describe('ADR-063 — managed-memory boundary', () => {
     expect(run('block', "sqlite3 .swarm/memory.db 'SELECT 1'").code).toBe(2);
   });
 
+  it('uses fixture settings even when an ambient override selects a foreign policy', () => {
+    const foreign = path.join(home, 'foreign-settings.json');
+    fs.writeFileSync(foreign, JSON.stringify({ settings: { managedMemoryBoundary: 'advise' } }));
+    const previous = process.env.RUVNET_SETTINGS_FILE;
+    process.env.RUVNET_SETTINGS_FILE = foreign;
+    try {
+      expect(run('block', "sqlite3 .swarm/memory.db 'SELECT 1'").code).toBe(2);
+    } finally {
+      if (previous === undefined) delete process.env.RUVNET_SETTINGS_FILE;
+      else process.env.RUVNET_SETTINGS_FILE = previous;
+    }
+  });
+
   it('TEETH: an UNMANAGED database is never this rule\'s business, even at block', () => {
     // Refusing every sqlite3 call would be the same over-firing defect in a new coat.
     expect(run('block', "sqlite3 /tmp/scratch.sqlite 'DROP TABLE t'").code).toBe(0);
@@ -76,7 +91,8 @@ describe('ADR-063 — managed-memory boundary', () => {
     const r = spawnSync('bash', [HIJACK], {
       input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: "sqlite3 .swarm/memory.db 'DELETE FROM x'" }, session_id: 't' }),
       encoding: 'utf8',
-      env: { ...process.env, HOME: home, USERPROFILE: home },
+      env: { ...process.env, HOME: home, USERPROFILE: home,
+        RUVNET_SETTINGS_FILE: path.join(home, '.config', 'ruvnet-brain', 'settings.json') },
     });
     expect(r.status, 'a hook that cannot read a preference must never refuse because of it').toBe(0);
   });

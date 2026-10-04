@@ -1,0 +1,38 @@
+{
+  "schema": 2,
+  "sourceSha": "02cf2aa2e35d8b3f0d14c0a9c9951eed82818f88",
+  "trap": "hooks-post-task-persistence",
+  "mutant": null,
+  "run": 3,
+  "arm": "treated",
+  "record": {
+    "class": "flagged",
+    "subcommandCorrect": true,
+    "command": "ruflo hooks post-task --task 'release retry-budget investigation' --agent tester --success true --store-results",
+    "exec": {
+      "ran": true,
+      "argv": [
+        "ruflo",
+        "hooks",
+        "post-task",
+        "--task",
+        "release retry-budget investigation",
+        "--agent",
+        "tester",
+        "--success",
+        "true",
+        "--store-results"
+      ],
+      "exit": 0,
+      "exitOk": true,
+      "retrieved": true,
+      "why": "exit 0; routing outcome and routing-decision:task_1791048352064_1aizzj persisted",
+      "output": "\n[OK] Task outcome recorded: SUCCESS\n\nLearning Updates\n+---------------------+---------+\n| Metric              |   Value |\n+---------------------+---------+\n| Patterns Updated    |       2 |\n| New Patterns        | unknown |\n| Trajectory Recorded |     yes |\n| Duration            |    0.2s |\n+---------------------+---------+\n[INFO] Recording outcome for task: task_1791048352064_1aizzj\nTransformers"
+    },
+    "model": "gpt-6.1-sol",
+    "forcedCommand": false,
+    "lessonIndex": 0,
+    "firstToolIndex": 1,
+    "lessonBeforeFirstToolCall": true
+  }
+}

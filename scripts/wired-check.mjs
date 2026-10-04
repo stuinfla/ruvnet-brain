@@ -70,6 +70,7 @@ const argv = process.argv.slice(2);
  * every entry on every run, below, so they cannot rot unseen.
  */
 const STANDALONE = [
+  ['full-suite-gate', 'explicit historical developer diagnostic; reviewed requirement-bound qualification owns promotion, so no automatic release caller'],
   ['spike-run', 'ADR-086 Step 14 oracle feasibility-spike driver, run by hand against disposable snapshots outside the checkout. '
     + 'It is deliberately NOT imported by the pipeline: Step 14 only proves or disproves that a trustworthy unattended label '
     + 'producer exists, and Step 15 owns any prepareCorpusCandidate wiring. The three modules it drives (source-units, '

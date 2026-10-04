@@ -1,4 +1,4 @@
-Updated: 2026-09-07 11:30:00 EDT | Version 1.6.1
+Updated: 2026-10-03 13:56:00 EDT | Version 1.6.3
 Created: 2026-09-05 14:11:00 EDT
 
 # QA execution contract
@@ -11,29 +11,56 @@ The producer verifies the actual platform, exact reported file set, execution of
 zero skipped/pending/TODO cases, and unchanged source identity. It records the requirement IDs,
 contract digest, raw test report, result counts and source-before/source-after identities in a
 new receipt. Missing tools are failed prerequisites, never reasons to count skipped tests as proof.
+Source qualification also checks file-symlink support before starting adversarial link fixtures;
+unsupported filesystem permissions fail early on Windows and every other platform.
 
 Retained release tests were individually read for relevance; the approximately 4,332-case historical
 unit suite was not comprehensively reviewed. It is diagnostic only. Reviews under `docs/reviews/`
 disclose copied-verifier tests, obsolete automatic-hook assertions, and source-text checks excluded
 from authority. They also distinguish fake-provider tests from actual artifact/native execution.
 
-Automatic host hooks are retired. Source qualification checks empty manifests, canonical pointers,
-actual isolated installation cleanup, foreign-state preservation, and inspection without execution.
-Explicit MCP/skills and commands remain supported. A dormant handler fixture is not registration.
+The broad legacy routing, learning and release interceptors are retired; automatic host hooks as a
+whole are not. Current registrations are the shipped [Claude manifest](../plugin/hooks/hooks.json)
+and [Codex manifest](../plugin/hooks/codex-hooks.json), dispatched through
+[hook-shim](../plugin/scripts/hook-shim.mjs). They include SessionStart restore, UserPromptSubmit
+callbacks, write/grounding gates and lifecycle snapshot callbacks. In the integration source,
+[ground-ruvnet](../plugin/scripts/ground-ruvnet.sh) calls
+[canonical prompt recall](../plugin/scripts/agentdb-recall.mjs), and
+[session-snapshot](../plugin/scripts/session-snapshot-hook.mjs) invokes turn and continuity-event
+capture. These source paths and registrations do not prove native host delivery or published bytes.
+The historical empty-manifest assertions in retirement diagnostics describe the earlier cutover;
+they cannot establish current hook retirement or replace source-bound execution evidence. Isolated
+installation cleanup, foreign-state preservation and inspection without execution remain distinct
+checks. Explicit MCP/skills and commands remain supported.
 
 A successful local source receipt does not authorize promotion of a dirty tree. The candidate
 consumer requires a clean exact SHA and trusted same-candidate workflow evidence. Its sealed package
 and payload are reused through protected publication. Separate packaged-runtime and public evidence
-remain mandatory: nine OS/host-mode public leaves and native installed-update proof in all three
-dual-host leaves. `channels-converged` remains incomplete until the public finalizer records
+remain mandatory: nine OS/host-mode public leaves and package-bound native scheduler smoke in the
+three dual-host leaves. Smoke proves isolated registration/load/cleanup and supported trigger
+dispatch; it does not prove a completed unattended update or the separate two-run soak.
+Full installed-update/two-run evidence remains unproven without its own current receipt. `channels-converged` remains incomplete until the public finalizer records
 `install-verified`. Imported signed corpus phases are not current-run production; their upstream
 freshness remains UNKNOWN without the separate producer evidence.
+
+## Architecture-aligned release inventory
+
+The source inventory includes canonical capture/consent/isolation, lossless lifecycle evidence,
+atomic update recovery, causal transcript validation and qualification topology. Linux integration
+includes current registered recall, session-start parity, real global-Ruflo learning, continuity and
+the G-001/G-002/G-014 process probes. Platform-limited cases are not placed in the three-OS source
+inventory. Strict integration prerequisites fail; they cannot become skipped proof.
+
+Canonical release PR checks consume the exact successful preflight rather than rerunning the
+unreviewed historical suite. Discovery and uninstall run once inside reviewed integration;
+install-smoke, require-brain and stale-install-trap remain distinct. This does not remove sealed
+artifact, UX, grounding or public native-install evidence.
 
 ## Historical developer diagnostics
 
 The following describes `scripts/qa-runner.mjs`, whose diagnostic inventory is
-`scripts/qa-lanes.mjs`. `qa:pr` and `qa:release` retain these reports for explicit maintenance;
-neither is the reviewed release qualification producer. `--list` prints the selected inventory.
+`scripts/qa-lanes.mjs`. `qa:pr` retains these reports for explicit maintenance. `qa:release` runs the separate
+packed-artifact QE configuration; neither is the reviewed source/integration qualification producer. `--list` prints the selected inventory.
 
 Use `--base <base-sha>` to scope document debt to the candidate merge base. Historical
 drift remains in unscoped reports. Invalid base references fail explicitly. Without a
@@ -117,8 +144,11 @@ assertions or verdicts; failures retain their test name, source location, and tr
 Console staging has one shared copy/digest surface and a real isolated import regression,
 including its dynamically loaded archive helper. Syntax-only staging is not import proof.
 
-The historical `continuity` lane manually invokes retired SessionStart and snapshot callbacks.
-Its only production callers are dormant lifecycle adapters; no current explicit command invokes
-that path. It remains available as an explicit diagnostic, but is not release qualification.
-This stabilization release does not claim automatic cross-host restoration. Ordinary explicit
-AgentDB store and retrieval remain separate capabilities.
+The diagnostic `continuity` lane manually invokes SessionStart and snapshot callbacks through the
+packed shim. Those callbacks also have automatic manifest registrations; they are not retired or
+solely dormant adapters. The lane proves its explicitly driven packed-adapter path, not automatic
+native cross-host model-session restoration. The Codex manifest records observed SessionStart,
+UserPromptSubmit and SessionEnd events; Stop snapshot capture is registered but not live-observed,
+and PreCompact capture is absent. Current source changes to recall/capture do not upgrade those
+native-delivery limits or supply public verification. Ordinary explicit AgentDB store and retrieval
+remain separate capabilities; no statement here changes publication or install-verified proof.
