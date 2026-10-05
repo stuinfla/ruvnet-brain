@@ -30,7 +30,7 @@ jobs:
             const wrapper=JSON.parse(fs.readFileSync(root,"utf8")), alias=wrapper.optionalDependencies["@openai/codex-linux-x64"];
             const platformFile=createRequire(root).resolve("@openai/codex-linux-x64/package.json"), platform=JSON.parse(fs.readFileSync(platformFile,"utf8"));
             if(alias!==`npm:@openai/codex@${platform.version}`) throw Error("installed platform differs from current wrapper metadata");
-            const native=path.join(path.dirname(platformFile),"vendor/x86_64-unknown-linux-musl/codex/codex");
+            const native=path.join(path.dirname(platformFile),"vendor/x86_64-unknown-linux-musl/bin/codex");
             fs.accessSync(native,fs.constants.X_OK); console.log(JSON.stringify({wrapperVersion:wrapper.version,alias,platformVersion:platform.version,native:fs.realpathSync(native)}));'
           "$HOME/.npm-global/bin/codex" --version
           command -v bwrap || true
