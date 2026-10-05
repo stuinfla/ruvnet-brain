@@ -6,6 +6,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { developmentHooksSuspended } from './development-maintenance.mjs';
 import { resolveTurnDb } from './turn-outcome-capture.mjs';
+import { enrichStateWithObservation } from './project-progression-hook.mjs';
 import { buildProjectProgression } from './project-progression-producer.mjs';
 import { resolveProjectStore } from './project-store-resolver.mjs';
 import { redactProgression } from './project-progression-contract.mjs';
@@ -57,6 +58,10 @@ export function queueCapture({ projectDir, originProjectDir = projectDir, event,
   if (!progression && !payload?.normalizedTransition) {
     try { progression = buildProjectProgression({ resolution: resolveProjectStore({ projectDir: originProjectDir }), projectDir: originProjectDir, payload, host, trigger: event }).projectProgression; } catch { return null; }
   }
+  // Freeze the bounded native observation before discarding raw host input. Replay receives no
+  // tool fields, so the native writer cannot append it twice.
+  if (progression && (payload?.tool_name || payload?.tool_input)) progression = { ...progression,
+    completeProjectState: enrichStateWithObservation(progression.completeProjectState, { ...payload, hook_event_name: event }) };
   // This queue is durable: never serialize arbitrary host prompts, tool input or output.
   const minimized = { session_id: payload?.session_id, hook_event_name: event,
     ...(progression ? { projectProgression: progression } : {}),
@@ -273,7 +278,8 @@ export function runOutboxReplay({ projectDir, token = process.env.RUVNET_REPLAY_
       for (const snapshot of store.outbox.pendingSnapshots()) {
         if (now() >= deadlineAt) return replayed;
         if (!refreshReplayLock(projectDir, held)) return replayed;
-        store.outbox.markCommitted(store.appendExact(snapshot));
+        store.captureFrozen(snapshot, { canCommit: () => refreshReplayLock(projectDir, held) });
+        // captureFrozen commits only the verified key, retaining conflicting original history.
         replayed += 1;
       }
       for (const file of queuedCaptures(projectDir)) {

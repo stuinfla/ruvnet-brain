@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { redactText } from './continuity-events.mjs';
 
 const HEX40 = /^[a-f0-9]{40}$/;
 const HEX64 = /^[a-f0-9]{64}$/;
@@ -157,7 +158,13 @@ export function recordManagedCliObservation({ toolName, executable, argv, execut
   observedAt = new Date().toISOString() } = {}) {
   try {
     const output = [execution?.stdout, execution?.stderr].filter(Boolean).join('\n');
-    const reachable = execution?.code === 0 && !execution?.error;
+    const contradictoryFailure = /(?:^|\n)\s*(?:❌|\[ERROR\])|invalid pragma command|key not found/i.test(output);
+    const reachable = execution?.code === 0 && !execution?.error && !execution?.signal && !contradictoryFailure;
+    const outcome = execution?.error ? 'failure' : execution?.signal ? 'interrupted' : contradictoryFailure ? 'failure'
+      : Number.isSafeInteger(execution?.code) ? execution.code === 0 ? 'success' : 'failure' : 'unknown';
+    const terminal = { outcome, exitCode: Number.isSafeInteger(execution?.code) ? execution.code : null,
+      error: typeof execution?.error === 'string' ? redactText(execution.error).slice(0, 4096) : null,
+      signal: typeof execution?.signal === 'string' ? redactText(execution.signal).slice(0, 100) : null };
     const version = VERSION.exec(output)?.[1] || null;
     let observationClass = null;
     let fields = {};
@@ -169,7 +176,7 @@ export function recordManagedCliObservation({ toolName, executable, argv, execut
       observationClass = 'health';
       const negative = /\b(?:critical|degraded|error|failed|failure|unhealthy)\b/i.test(output);
       const positive = /\b(?:all checks passed|healthy|overall\s*[:=-]?\s*(?:ok|pass)|status\s*[:=-]\s*(?:ok|pass|healthy))\b/i.test(output);
-      fields = { healthVerdict: negative ? 'FAIL' : reachable && positive ? 'PASS' : 'UNKNOWN', reachable };
+      fields = { healthVerdict: negative || ['failure', 'interrupted'].includes(outcome) ? 'FAIL' : reachable && positive ? 'PASS' : 'UNKNOWN', reachable, terminal };
     }
     if (!observationClass) return null;
     const payload = {

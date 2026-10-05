@@ -15,6 +15,21 @@ import { subscriptionEnvironment, assertSubscriptionAuth, validateDispatchDecisi
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REFUSED = 'Current reviewed native model/effort allocation unavailable; new turn was not forwarded.';
 const EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
+// Native inference surfaces without qualified execution-time routing are denied.
+const UNQUALIFIED = new Set(['review/start', 'thread/queue/add', 'thread/queue/update', 'thread/queue/start',
+  'thread/realtime/start', 'thread/realtime/appendAudio', 'thread/realtime/appendSpeech', 'thread/realtime/appendText',
+  'thread/goal/set', 'thread/goal/create', 'thread/goal/resume', 'thread/compact/start', 'turn/addUserMessage', 'thread/startAeon']);
+
+function canonicalCodexConfig(config) {
+  if (!config || (config.model_provider ?? 'openai') !== 'openai') return false;
+  // Native 0.160 gives serviceTierForTurn precedence over daemon/thread Fast defaults.
+  // routeCodexTurn supplies both standard overrides; provider/auth checks remain mandatory.
+  // A provider with the built-in name can still be replaced by a custom endpoint.
+  if (config.model_providers && Object.hasOwn(config.model_providers, 'openai') && config.model_providers.openai != null) return false;
+  if (config.chatgpt_base_url != null && config.chatgpt_base_url !== 'https://chatgpt.com/backend-api/') return false;
+  // Native Config serializes openai_base_url:null when the override is unset.
+  return !Object.entries(config).some(([key, value]) => value != null && /^(model_providers\.openai|base_url|baseUrl|openai_base_url)(\.|$)/.test(key));
+}
 
 /** Fresh policy-only subprocess: prompt stays on stdin, never argv, receipts or diagnostics. */
 export function decideNativeTurn(prompt, harness, { env = process.env, spawnEngine = spawn, timeoutMs = 4000, multimodal = false } = {}) {
@@ -107,9 +122,9 @@ function unsafeSettings(value, prefix = '', routing = false) {
   if (!value || typeof value !== 'object') return false;
   return Object.entries(value).some(([key, entry]) => {
     const name = prefix ? `${prefix}.${key}` : key;
-    if (/^(model_providers|apiKeyHelper|api_key|apiKey|base_url|baseUrl|auth_token|authToken|customHeaders|env|modelSettings|alwaysThinkingEnabled|maxEffortLevel)(\.|$)/.test(name)) return true;
+    if (/^(model_providers|apiKeyHelper|api_key|apiKey|base_url|baseUrl|openai_base_url|chatgpt_base_url|auth_token|authToken|customHeaders|env|modelSettings|alwaysThinkingEnabled|maxEffortLevel)(\.|$)/.test(name)) return true;
     if (/^(model_provider|modelProvider)$/.test(name) && entry !== 'openai') return true;
-    if (/^(service_tier|serviceTier)$/.test(name) && entry != null && entry !== 'default') return true;
+    if (/^(service_tier|serviceTier|service_tier_for_turn|serviceTierForTurn)$/.test(name) && entry != null && entry !== 'default') return true;
     if (/^(features\.fast_mode|fastMode)$/.test(name) && entry !== false) return true;
     if (routing && /^(model|effort|effortLevel|reasoning_effort|collaborationMode)(\.|$)/.test(name)) return true;
     return unsafeSettings(entry, name, routing);
@@ -123,7 +138,7 @@ export function verifyNativeVision(decision, models = loadNativeCodexModels()) {
 
 /** Pure native override: preserve every context, tool, approval and collaboration instruction. */
 export function routeCodexTurn(message, decision) {
-  const params = { ...message.params, model: decision.model, effort: decision.effort, serviceTier: 'default' };
+  const params = { ...message.params, model: decision.model, effort: decision.effort, serviceTier: 'default', serviceTierForTurn: 'default' };
   if (params.collaborationMode) params.collaborationMode = { ...params.collaborationMode,
     settings: { ...params.collaborationMode.settings, model: decision.model, reasoning_effort: decision.effort } };
   return { ...message, params };
@@ -135,7 +150,7 @@ export function connectNativeGateway({ harness, child, input, output, diagnostic
   receipt = appendGatewayReceipt, timeoutMs = 5000, maxDeferredBytes = 64 * 1024 * 1024, tempRoot = os.tmpdir(), now = () => new Date().toISOString() } = {}) {
   const nonce = crypto.randomUUID();
   const pending = new Map(), initIds = new Set(), ownIds = new Set(), held = new Set();
-  const accepted = new Map(), starts = new Map(), inactiveWaiters = new Set();
+  const accepted = new Map(), starts = new Map(), inactiveWaiters = new Set(), boundedWaiters = new Set();
   let serial = Promise.resolve(), ready = harness === 'codex', active = false, closed = false, serialNumber = 0;
   let readiness = null, resolveReady;
   let queuedBytes = 0, spoolDirectory = null, spoolSequence = 0, declineUsers = false;
@@ -218,9 +233,10 @@ export function connectNativeGateway({ harness, child, input, output, diagnostic
   };
   function bounded(work) {
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(REFUSED)), timeoutMs);
-      Promise.resolve(work).then((value) => { clearTimeout(timer); resolve(value); },
-        (error) => { clearTimeout(timer); reject(error); });
+      const finish = (error, value) => { clearTimeout(timer); boundedWaiters.delete(cancel); error ? reject(error) : resolve(value); };
+      const cancel = () => finish(new Error(REFUSED));
+      const timer = setTimeout(cancel, timeoutMs); boundedWaiters.add(cancel);
+      Promise.resolve(work).then((value) => finish(null, value), (error) => finish(error));
     });
   }
   const control = (request) => new Promise((resolve, reject) => {
@@ -262,7 +278,7 @@ export function connectNativeGateway({ harness, child, input, output, diagnostic
       if (harness === 'codex') {
         if (message.method !== 'turn/start') {
           const pair = accepted.get(message.params?.threadId);
-          if (!pair || pair.model !== decision.model || pair.effort !== decision.effort) {
+          if (!pair || pair.turnId !== message.params?.expectedTurnId || pair.model !== decision.model || pair.effort !== decision.effort) {
             fail(message, 'Input not submitted: requires a new turn with reviewed allocation; current work continues.'); return;
           }
           record('active-input-approved', decision, false, { evidence: 'native-turn-start.accepted-configured-pair' });
@@ -271,6 +287,14 @@ export function connectNativeGateway({ harness, child, input, output, diagnostic
         const account = await control({ method: 'account/read', params: { refreshToken: false } });
         assertLive();
         if (account?.account?.type !== 'chatgpt') throw new Error(REFUSED);
+        const thread = await control({ method: 'thread/read', params: { threadId: message.params?.threadId, includeTurns: false } });
+        assertLive();
+        if (thread?.thread?.id !== message.params?.threadId || thread.thread.modelProvider !== 'openai') throw new Error(REFUSED);
+        const cwd = message.params?.cwd ?? thread.thread.cwd;
+        if (typeof cwd !== 'string' || !path.isAbsolute(cwd)) throw new Error(REFUSED);
+        const effective = await control({ method: 'config/read', params: { includeLayers: false, cwd } });
+        assertLive();
+        if (!canonicalCodexConfig(effective?.config)) throw new Error(REFUSED);
         const allowance = await control({ method: 'account/rateLimits/read', params: { excludeResetCreditDetails: true, supportsLunaReserve: false } });
         assertLive();
         if (allowance?.ordinaryUsageAllowed !== true) throw new Error(REFUSED);
@@ -310,10 +334,14 @@ export function connectNativeGateway({ harness, child, input, output, diagnostic
     stream.on('end', () => { buffer += decoder.end(); if (buffer) handler(buffer); });
   };
   listenLines(input, (line) => {
+    if (closed) return;
     let message;
     try { message = JSON.parse(line); } catch { if (!closed) writeHost(line); return; }
     if (harness === 'claude-code' && message.type === 'control_request' && message.request?.subtype === 'initialize') initIds.add(message.request_id);
-    const routable = harness === 'codex' ? ['turn/start', 'turn/steer', 'thread/queue/add'].includes(message.method) : message.type === 'user';
+    if (harness === 'codex' && UNQUALIFIED.has(message.method)) {
+      fail(message, 'Native inference method is not qualified for gateway routing; request not forwarded.'); return;
+    }
+    const routable = harness === 'codex' ? ['turn/start', 'turn/steer'].includes(message.method) : message.type === 'user';
     if (routable && harness === 'claude-code' && (declineUsers || queuedBytes + Buffer.byteLength(line) > maxDeferredBytes)) {
       declineUsers = true;
       const reason = 'Deferred input capacity (64 MiB) exceeded; new user packet not submitted; current work continues.';
@@ -334,9 +362,11 @@ export function connectNativeGateway({ harness, child, input, output, diagnostic
     let unsafe = false;
     if (harness === 'codex') {
       const params = message.params || {};
-      unsafe = unsafeSettings(params.config) || unsafeSettings({ modelProvider: params.modelProvider ?? 'openai', serviceTier: params.serviceTier ?? 'default' });
+      unsafe = unsafeSettings(params.config) || unsafeSettings({ modelProvider: params.modelProvider ?? 'openai',
+        serviceTier: params.serviceTier, service_tier: params.service_tier,
+        serviceTierForTurn: params.serviceTierForTurn, service_tier_for_turn: params.service_tier_for_turn });
       if (message.method === 'account/login/start' && !['chatgpt', 'chatgptDeviceCode', 'chatgptAuthTokens'].includes(params.type)) unsafe = true;
-      if (message.method === 'thread/settings/update') unsafe ||= unsafeSettings(params, '', true);
+      if (['thread/settings/update', 'turn/settings/update'].includes(message.method)) unsafe ||= unsafeSettings(params, '', true);
       const edits = message.method === 'config/value/write' ? [params] : message.method === 'config/batchWrite' ? params.edits || [] : [];
       if (message.method === 'config/batchWrite' && params.reloadUserConfig === true) unsafe = true;
       unsafe ||= edits.some((edit) => unsafeSettings({ [edit.keyPath]: edit.value }, '', true));
@@ -366,9 +396,9 @@ export function connectNativeGateway({ harness, child, input, output, diagnostic
     }
     if (starts.has(id)) {
       const pair = starts.get(id); starts.delete(id);
-      if (!message.error && message.result?.turn) accepted.set(pair.threadId, pair);
+      if (!message.error && typeof message.result?.turn?.id === 'string' && message.result.turn.id) accepted.set(pair.threadId, { ...pair, turnId: message.result.turn.id });
     }
-    if (message.method === 'turn/completed') accepted.delete(message.params?.threadId);
+    if (message.method === 'turn/completed' && accepted.get(message.params?.threadId)?.turnId === message.params?.turn?.id) accepted.delete(message.params.threadId);
     if (ownIds.has(id)) return; // late own-control replies never escape into the host client
     if (initIds.has(id) && message.response?.subtype === 'success') {
       ready = true; active = message.response.response?.session_state && message.response.response.session_state !== 'idle'; resolveReady?.();
@@ -379,7 +409,9 @@ export function connectNativeGateway({ harness, child, input, output, diagnostic
   });
   child.stderr?.on('data', (chunk) => diagnostics.write(chunk));
   const close = () => {
+    if (closed) return;
     closed = true; hostWriter.close(); inactiveWaiters.forEach((resolve) => resolve()); inactiveWaiters.clear();
+    boundedWaiters.forEach((cancel) => cancel()); boundedWaiters.clear(); accepted.clear(); starts.clear();
     for (const token of [...held]) { token.cancelled = true; retire(token); }
     if (spoolDirectory) fs.rmSync(spoolDirectory, { recursive: true, force: true });
     spoolKey.fill(0);
@@ -387,7 +419,8 @@ export function connectNativeGateway({ harness, child, input, output, diagnostic
     pending.clear();
   };
   child.once('error', close); child.once('exit', close); child.stdin.on('error', close); child.stdout.on('error', close);
-  input.on('end', () => { serial.finally(async () => { await hostWriter.idle(); if (!closed) child.stdin.end(); }); });
+  const disconnect = () => { close(); if (!child.stdin.destroyed) child.stdin.end(); };
+  input.on('end', disconnect); input.on('error', disconnect); input.on('close', disconnect);
   return { idle: () => serial, close, spoolState: () => ({ directory: spoolDirectory, queuedBytes }) };
 }
 

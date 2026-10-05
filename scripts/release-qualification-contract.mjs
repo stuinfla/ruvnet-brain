@@ -62,8 +62,15 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       "reason": "Codex and Claude native JSONL preserve context, UTF-8, control progress, cancellation and deferred FIFO while binding each new turn to an approved native route",
       "files": [
         "tests/unit/model-routing-gateway.test.mjs",
+        "tests/unit/model-routing-gateway-boundaries.test.mjs",
+        "tests/unit/claude-terminal-mod.test.mjs",
         "tests/unit/model-routing-launchers.test.mjs"
-      ]
+      ],
+      "platformFiles": {
+        "linux": ["tests/unit/model-terminal-gateway.test.mjs", "tests/unit/model-terminal-launchers.test.mjs"],
+        "macos": ["tests/unit/model-terminal-gateway.test.mjs", "tests/unit/model-terminal-launchers.test.mjs"],
+        "windows": ["tests/unit/windows-terminal-boundary.test.mjs"]
+      }
     },
     {
       "id": "weekly-routing-evidence",
@@ -149,7 +156,8 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       "reason": "Complete outbox tails replay and accepted pending journal events survive capacity pressure without silent deletion",
       "files": [
         "tests/unit/project-progression-outbox.test.mjs",
-        "tests/unit/project-progression-durability.test.mjs"
+        "tests/unit/project-progression-durability.test.mjs",
+        "tests/unit/continuity-customer-regressions.test.mjs"
       ]
     }
   ],

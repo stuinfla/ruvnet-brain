@@ -87,13 +87,31 @@ it('blocks exhausted allowance before inference and keeps last-known-good semant
 });
 it('timeout, protocol failure and concurrent input change never advance semantic timestamp', async () => {
   const f = fixture(); fs.writeFileSync(path.join(f.routerDir, 'semantic-current.json'), '{"completedAt":"old-valid"}');
-  const timed = await runWeeklyAnalyst({ routerDir: f.routerDir, now: NOW, timeoutMs: 100, nativeModels, spawnNative: native(f.report, {}, true), checkAuth: auth, checkAllowance: allowance });
+  // Hold the preparation clock fixed so this case exercises the launched-worker timer,
+  // independently of the runner's filesystem speed. Pre-launch expiry has its own case.
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now()); const capture = {}; let timed;
+  try {
+    timed = await runWeeklyAnalyst({ routerDir: f.routerDir, now: NOW, timeoutMs: 100, nativeModels, spawnNative: native(f.report, capture, true), checkAuth: auth, checkAllowance: allowance });
+  } finally { clock.mockRestore(); }
+  expect(capture.child).toBeDefined(); expect(timed.status).toBe('failed');
   expect(timed.reason).toMatch(/timed out/);
+  expect(JSON.parse(fs.readFileSync(path.join(f.routerDir, 'semantic-current.json'))).completedAt).toBe('old-valid');
   const bad = structuredClone(f.report); bad.findings[0].evidence[0].sourceId = 'invented';
   expect((await runWeeklyAnalyst({ routerDir: f.routerDir, now: NOW, nativeModels, spawnNative: native(bad, {}), checkAuth: auth, checkAllowance: allowance })).status).toBe('failed');
   const changedNative = (command, args, options) => { fs.appendFileSync(path.join(f.routerDir, 'routing-policy.json'), ' '); return native(f.report, {})(command, args, options); };
   expect((await runWeeklyAnalyst({ routerDir: f.routerDir, now: NOW, nativeModels, spawnNative: changedNative, checkAuth: auth, checkAllowance: allowance })).reason).toMatch(/Inputs changed/);
   expect(JSON.parse(fs.readFileSync(path.join(f.routerDir, 'semantic-current.json'))).completedAt).toBe('old-valid');
+});
+it('preparation consuming the shared deadline refuses launch without advancing semantic timestamp', async () => {
+  const f = fixture(); fs.writeFileSync(path.join(f.routerDir, 'semantic-current.json'), '{"completedAt":"old-valid"}');
+  const start = Date.now(); const clock = vi.spyOn(Date, 'now').mockReturnValue(start); const spawnNative = vi.fn();
+  try {
+    const result = await runWeeklyAnalyst({ routerDir: f.routerDir, now: NOW, timeoutMs: 100, nativeModels, spawnNative, checkAuth: auth, checkAllowance: allowance,
+      prepareSandbox: async () => { clock.mockReturnValue(start + 101); return { home: f.routerDir, proof: { trusted: true, currentHash: `sha256:${'a'.repeat(64)}` } }; } });
+    expect(result.status).toBe('failed'); expect(result.reason).toContain('deadline expired before launch');
+    expect(spawnNative).not.toHaveBeenCalled();
+    expect(JSON.parse(fs.readFileSync(path.join(f.routerDir, 'semantic-current.json'))).completedAt).toBe('old-valid');
+  } finally { clock.mockRestore(); }
 });
 it('offline catchup deduplicates, uses semantic completion not metadata assessment, and enforces cooldown', () => {
   const f = fixture(); let launches = 0;
