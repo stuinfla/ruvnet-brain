@@ -33,16 +33,18 @@ test('actual native read-only sandbox denies checker write outside authorized sc
   const outside = path.join(process.cwd(), 'tests/unit', `checker-escape-${crypto.randomUUID()}.txt`);
   try {
     const probe = path.join(root, 'denial-probe.mjs');
-    fs.writeFileSync(probe, `import fs from 'node:fs'; process.stdout.write('native-checker-started\\n');
+    fs.writeFileSync(probe, `import fs from 'node:fs'; fs.writeSync(1, 'native-checker-started\\n');
       try { fs.writeFileSync(${JSON.stringify(outside)},'escape'); process.exitCode = 1; }
       catch (error) { if (!['EPERM', 'EACCES', 'EROFS'].includes(error.code)) throw error;
-        console.log(JSON.stringify({ marker: 'native-checker-denial-observed', code: error.code, syscall: error.syscall })); }`);
+        fs.writeSync(1, JSON.stringify({ marker: 'native-checker-denial-observed', code: error.code, syscall: error.syscall, path: error.path }) + '\\n'); }`);
     const result = await runRegisteredChecker({ command: process.execPath,
       args: [probe], cwd: root },
       { deadline: Date.now() + 10_000, sandboxBinary: actualCodex() });
     assert.equal(result.passed, true, `Native denial probe did not finish successfully: ${JSON.stringify(result)}`);
     assert.match(result.output, /native-checker-started/, JSON.stringify(result));
     assert.match(result.output, /"marker":"native-checker-denial-observed","code":"(?:EPERM|EACCES|EROFS)","syscall":"open"/, JSON.stringify(result));
+    const witness = JSON.parse(result.output.match(/\{"marker":"native-checker-denial-observed"[^\n]*?\}/)?.[0] || '{}');
+    assert.equal(witness.path, outside, JSON.stringify(result));
     assert.equal(fs.existsSync(outside), false, JSON.stringify(result));
   } finally { if (fs.existsSync(outside)) fs.unlinkSync(outside); fs.rmSync(root, { recursive: true, force: true }); }
 });
@@ -52,14 +54,14 @@ test('diagnostic native checker preserves actual stdout, stderr, syntax errors a
   try {
     const invalid = path.join(root, 'invalid.mjs'), probe = path.join(root, 'execution-probe.mjs');
     fs.writeFileSync(invalid, 'export const invalid = ;\n');
-    fs.writeFileSync(probe, "process.stdout.write('native-file-executed\\n'); process.stderr.write('native-file-stderr\\n'); process.exitCode = 23;\n");
+    fs.writeFileSync(probe, "import fs from 'node:fs'; fs.writeSync(1, 'native-file-executed\\n'); fs.writeSync(2, 'native-file-stderr\\n'); process.exitCode = 23;\n");
     const binary = actualCodex(), results = [];
     for (const [name, command, args] of [
       ['echo-execution', '/bin/echo', ['native-echo-executed']],
       ['shell-exit', '/bin/sh', ['-c', 'exit 37']],
       ['invalid-syntax', process.execPath, ['--check', invalid]],
       ['file-execution', process.execPath, [probe]],
-      ['singleline-e', process.execPath, ['-e', "process.stdout.write('native-e-executed\\n'); process.stderr.write('native-e-stderr\\n'); process.exitCode = 29;"]],
+      ['singleline-e', process.execPath, ['-e', "const fs=require('node:fs'); fs.writeSync(1, 'native-e-executed\\n'); fs.writeSync(2, 'native-e-stderr\\n'); process.exitCode = 29;"]],
     ]) results.push({ name, ...await runRegisteredChecker({ command, args, cwd: root },
       { deadline: Date.now() + 10_000, sandboxBinary: binary }) });
     fs.writeSync(1, `Exact native execution diagnostics: ${JSON.stringify({ binary, node: process.execPath, results })}\n`);
