@@ -233,7 +233,7 @@ describe('promises (Piece C)', () => {
     const out = fire(repo, PROMISE, { transcriptPath: transcript() });
     const items = ledger().items.filter((i) => i.kind === 'assistant-commitment');
     expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({ text: 'add the retry test to the updater', done: false, sessionIds: ['*'] });
+    expect(items[0]).toMatchObject({ text: 'add the retry test to the updater', done: false, sessionIds: ['s1'] });
     expect(out).toContain('you said you would: add the retry test to the updater');
   });
 

@@ -105,6 +105,7 @@ export async function runSessionStart({
       || s.startsWith(KNOWLEDGE_LINE_PREFIX)
       || s.startsWith(FOOTPRINT_LINE_PREFIX)
       || s.startsWith('[RuvNet Brain — OPEN ISSUES')
+      || s.startsWith('[RuvNet Brain — TURN CAPTURE]')
       || /\bopen issue\(s\)/i.test(s)
       || /^\[RuvNet Brain — external signal/i.test(s)
       || (s.startsWith('Workflow ') && !/\b(Say it plainly|offer to look|ask only|run:|invoke)\b/i.test(s))
@@ -191,7 +192,8 @@ export async function runSessionStart({
   }
   const restoreProof = { name: 'restore', ms: Date.now() - restoreStart, failed: restoreFailed };
   // Turn health remains visible even when the separate progression restore fails.
-  const turnStatus = turnRecordingStatus({ projectDir: cwd, env, home });
+  const turnStatus = turnRecordingStatus({ projectDir: cwd, env, home, noticeOnFirstUse: true });
+  if (turnStatus.notice) emit(`[RuvNet Brain — TURN CAPTURE] ${turnStatus.notice}`);
   if (turnStatus.state === 'warn') emit(`[RuvNet Brain — TURN RECORDING] ${turnStatus.line}`);
   // Opt-in, matching the pre-existing `trace()` convention below: several other tests assert
   // SessionStart's stderr is EMPTY in the clean case (hook-battery.test.mjs, hook-hardening.test.mjs

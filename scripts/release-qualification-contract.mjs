@@ -2,6 +2,34 @@
 export const RELEASE_REQUIREMENTS = Object.freeze({
   "source": [
     {
+      "id": "installer-release-argument-safety",
+      "reason": "Incomplete named releases refuse before network or settings writes; valid named releases and installer help retain their contracts",
+      "files": ["tests/unit/install-release-fallback.test.mjs"]
+    },
+    {
+      "id": "honest-currency-lesson-and-metrics-evidence",
+      "reason": "Foreign KB roots remain isolated; panel currency derives from measured completion rather than checkout time; exact lesson readback binds this shell-free write; public metrics never fabricate performance or a competing product score",
+      "files": ["tests/unit/forge-currency-selected-root.test.mjs", "tests/unit/brain-score-producer.test.mjs", "tests/unit/brain-grade-groundtruth-timestamp.test.mjs", "tests/unit/record-lesson.test.mjs", "tests/unit/lesson-presentation-budget.test.mjs", "tests/unit/metrics-truth.test.mjs", "tests/unit/issue-watch-retry.test.mjs"]
+    },
+    {
+      "id": "automatic-update-source-and-transport",
+      "reason": "Captured owner policy never falls back on read failures; installed-only automation avoids npx; transient GET and body failures retry without weakening trust; POSIX executable aliases retain interpreter identity",
+      "files": ["tests/unit/automatic-update.test.mjs", "tests/unit/download-retry.test.mjs"],
+      "platformFiles": {
+        "linux": ["tests/unit/automatic-update-node-alias.test.mjs"],
+        "macos": ["tests/unit/automatic-update-node-alias.test.mjs"]
+      }
+    },
+    {
+      "id": "customer-scope-and-session-ownership",
+      "reason": "Captured assistant commitments retain their actual session owner and honest noncompleted states; scoped grounding retains strict conservative evidence under contention; legacy guidance never suppresses a tool call",
+      "files": ["tests/unit/continuation-commitment-ownership.test.mjs"],
+      "platformFiles": {
+        "linux": ["tests/unit/grounding-scope.test.mjs", "tests/unit/hijack-no-defer.test.mjs"],
+        "macos": ["tests/unit/grounding-scope.test.mjs", "tests/unit/hijack-no-defer.test.mjs"]
+      }
+    },
+    {
       "id": "bounded-advocacy-and-write-grounding",
       "reason": "Explicit document meaning requests retain corroboration; literal searches stay silent; POSIX complete-write exemptions preserve executable and managed-store grounding",
       "files": ["tests/unit/advocacy-route.test.mjs", "tests/unit/advocacy-catalog.test.mjs", "tests/unit/card-lane.test.mjs"],
@@ -83,7 +111,8 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
         "tests/unit/forge-update-apply-rollback.test.mjs",
         "tests/unit/forge-update-archive-digest.test.mjs",
         "tests/unit/kb-copy-proof-legacy-sidecars.test.mjs",
-        "tests/unit/kb-copy-proof-unknown-content.test.mjs"
+        "tests/unit/kb-copy-proof-unknown-content.test.mjs",
+        "tests/unit/user-model-hook-install.test.mjs"
       ]
     },
     {
@@ -106,8 +135,8 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
         "tests/unit/model-routing-launchers.test.mjs"
       ],
       "platformFiles": {
-        "linux": ["tests/unit/model-terminal-gateway.test.mjs", "tests/unit/model-terminal-launchers.test.mjs"],
-        "macos": ["tests/unit/model-terminal-gateway.test.mjs", "tests/unit/model-terminal-launchers.test.mjs"],
+        "linux": ["tests/unit/model-terminal-gateway.test.mjs", "tests/unit/model-terminal-launchers.test.mjs", "tests/unit/claude-controlled-terminal.test.mjs"],
+        "macos": ["tests/unit/model-terminal-gateway.test.mjs", "tests/unit/model-terminal-launchers.test.mjs", "tests/unit/claude-controlled-terminal.test.mjs"],
         "windows": ["tests/unit/windows-terminal-boundary.test.mjs"]
       }
     },
@@ -145,9 +174,11 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
     },
     {
       "id": "canonical-memory-privacy",
-      "reason": "Canonical project isolation, persisted consent and truthful capture status",
+      "reason": "Canonical project isolation, persisted consent, excluded-resource privacy before recording, immutable delivery refusal and truthful terminal failure status",
       "files": [
         "tests/unit/turn-outcome-capture.test.mjs",
+        "tests/unit/turn-capture-content-privacy.test.mjs",
+        "tests/integration/project-progression-hook.test.mjs",
         "tests/unit/turn-journal-platform.test.mjs",
         "tests/unit/project-store-resolver.test.mjs"
       ]

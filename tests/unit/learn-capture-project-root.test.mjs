@@ -47,7 +47,18 @@ const cleanup = async () => {
     if (Date.now() >= deadline) throw new Error('fixture recovery owner did not retire before cleanup');
     await new Promise(resolve => setTimeout(resolve, 25));
   }
-  temps.splice(0).forEach(d => fs.rmSync(d, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
+  // Releasing the queue fence confirms the worker tree, not the supervisor's own exit.
+  // Its cwd can remain open briefly on Windows; use the same finite cleanup budget.
+  for (const d of temps) {
+    for (;;) {
+      try { fs.rmSync(d, { recursive: true, force: true }); break; }
+      catch (error) {
+        if (!['EBUSY', 'EPERM', 'ENOTEMPTY'].includes(error.code) || Date.now() >= deadline) throw error;
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+    }
+  }
+  temps.length = 0;
 };
 afterEach(cleanup);
 

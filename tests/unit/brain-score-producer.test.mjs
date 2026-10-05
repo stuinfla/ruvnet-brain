@@ -162,8 +162,7 @@ describe('the panel reading is dated by when it was GRADED, not when the checkou
    * "now", so a panel graded 40 days ago read as freshly current on any fresh clone, exit an
    * `unmeasured`/`stale` reading being reported `current` — the same false-freshness class the file
    * header names for `evals/baseline.json`. The fix prefers each panel's own recorded
-   * `summary.generatedAt`; a legacy panel with no such field still falls back to mtime so this
-   * cannot regress a panel that predates the stamp.
+   * `summary.generatedAt`; a legacy panel with no such field remains undated and stale.
    */
   const tmpDirs = [];
   const makeTmpDir = () => {
@@ -195,18 +194,41 @@ describe('the panel reading is dated by when it was GRADED, not when the checkou
     expect(s.stale, `a panel recorded ${oldRecordedAt} must be stale against a ${dim.maxAgeDays}d budget regardless of file mtime`).toBe(true);
   });
 
-  it('a panel with NO recorded generatedAt still falls back to the checkout mtime (no regression for legacy panels)', () => {
+  it('a panel with NO recorded generatedAt remains undated despite fresh checkout mtime)', () => {
     const dir = makeTmpDir();
     fs.writeFileSync(path.join(dir, 'grade-legacy-big.json'), JSON.stringify({
       summary: { name: 'legacy', avgStrict: 70 }, // no generatedAt — every real data/grade-*.json today
       report: [],
     }));
-    const mtimeIso = fs.statSync(path.join(dir, 'grade-legacy-big.json')).mtime.toISOString();
     const panel = readPanel(dir);
-    expect(panel.at).toBe(mtimeIso);
+    expect(panel.at).toBe(null);
+    expect(staleness(panel.at, 14).stale).toBe(true);
   });
 
-  it('the newest reading wins across multiple graded stores, by recorded time not file order', () => {
+  it.each([undefined, 'not-a-date'])('a mixed unstamped or invalid contributor makes aggregate currency unknown (%s)', (generatedAt) => {
+    const dir = makeTmpDir();
+    fs.writeFileSync(path.join(dir, 'grade-a.json'), JSON.stringify({ summary: {
+      avgStrict: 60, generatedAt,
+    } }));
+    fs.writeFileSync(path.join(dir, 'grade-b.json'), JSON.stringify({ summary: {
+      avgStrict: 80, generatedAt: new Date().toISOString(),
+    } }));
+    expect(readPanel(dir)).toMatchObject({ value: 70, at: null });
+    expect(staleness(readPanel(dir).at, 14).stale).toBe(true);
+  });
+
+  it('a valid recent stamp is current; an unscored historical row does not contribute', () => {
+    const dir = makeTmpDir();
+    fs.writeFileSync(path.join(dir, 'grade-a.json'), JSON.stringify({ summary: {
+      avgStrict: 80, generatedAt: '2026-10-05T00:00:00Z',
+    } }));
+    fs.writeFileSync(path.join(dir, 'grade-b.json'), JSON.stringify({ summary: { avgStrict: null } }));
+    const panel = readPanel(dir);
+    expect(panel).toMatchObject({ value: 80, at: '2026-10-05T00:00:00.000Z' });
+    expect(staleness(panel.at, 14, Date.parse('2026-10-06T00:00:00Z')).stale).toBe(false);
+  });
+
+  it('the oldest contributor controls aggregate currency, despite a fresh contributor', () => {
     const dir = makeTmpDir();
     fs.writeFileSync(path.join(dir, 'grade-a-big.json'), JSON.stringify({
       summary: { name: 'a', avgStrict: 60, generatedAt: '2026-06-01T00:00:00.000Z' }, report: [],
@@ -215,7 +237,8 @@ describe('the panel reading is dated by when it was GRADED, not when the checkou
       summary: { name: 'b', avgStrict: 80, generatedAt: '2026-08-01T00:00:00.000Z' }, report: [],
     }));
     const panel = readPanel(dir);
-    expect(panel.at).toBe(new Date('2026-08-01T00:00:00.000Z').toISOString());
+    expect(panel.at).toBe(new Date('2026-06-01T00:00:00.000Z').toISOString());
+    expect(staleness(panel.at, 14, Date.parse('2026-08-02T00:00:00Z')).stale).toBe(true);
     expect(panel.value).toBe(70); // (60 + 80) / 2
   });
 });

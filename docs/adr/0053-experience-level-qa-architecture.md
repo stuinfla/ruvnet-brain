@@ -3,10 +3,10 @@ id: ADR-053
 title: Experience-level QA — test the journey a user actually has, on every host, OS, and install path
 status: Accepted
 date: 2026-07-26
-updated: 2026-10-01
+updated: 2026-10-05
 updated_source: derived-from-git
-version: 1.1.1
-reviewed_digest: 959c358e8ce4
+version: 1.1.4
+reviewed_digest: 4f28f1641ac0
 authors: [Stuart Kerr, Claude Code]
 tags: [qa, testing, experience, cross-platform, codex, agentic-qe, ci]
 supersedes: []
@@ -20,9 +20,41 @@ governs:
   - tests/ux/*.mjs
 ---
 
+
+## Current source review — 2026-10-05
+
+Reviewed candidate source `1ccc1e633772c549e4a23596a1ce3c743e797315`. The scenario-list
+architecture remains accepted; built declarations and locally available fixtures are not a
+blanket statement that every journey passed on the current public package.
+
+`tests/experience/report.mjs` now resolves an explicit producer suite through
+`qualification-invocation.mjs` and `scripts/release-qualification.mjs::qualificationPlan`.
+This binds a declared scenario to the executable files selected by a literal workflow run
+command. The adapter rejects comments, echo text, embedded fixtures, unknown/omitted suites,
+and ambiguous shell declarations. It proves declared invocation coverage, **not execution,
+reachability of arbitrary shell, a successful workflow, or installed user behavior**.
+`tests/experience/scenarios.json` remains the scenario inventory, and the report retains
+classification, owner, and invocation requirements rather than manufacturing coverage from
+job names. Governed report tests were read alongside the producer adapter.
+
+`.github/workflows/ci.yml` retains the sealed-candidate capability battery;
+`.github/workflows/ux-qe.yml` is now a reusable, exact-candidate workflow with Linux/macOS/Windows
+jobs and real UX driver commands. `scripts/qe` and `tests/ux` remain component producers with
+explicit budgets. Historical July rollout numbers and individual self-check findings below
+are dated design/incident records, not a current inventory of shipped or failing hooks. In
+particular the old universal 5-second prompt-path statement is superseded by the actual
+per-event deadlines in the owned hook registry; it must not be used to diagnose current hooks.
+The oldest-runtime coverage requirement remains unmet: package support declares Node >=18,
+but the checked-in workflow lanes use Node20/22. This review does not establish Node18 runtime
+compatibility or silently remove that requirement.
+No new latency distribution, hostile-home sweep, cross-platform native turn, or published-byte
+matrix was run in this review. Publication remains governed by CONTRIBUTING.md and the
+protected exact-artifact verification path; source review cannot promote `install-verified`.
+
 # ADR-053: Experience-level QA
 
 ## Currency log
+| 2026-10-05 | Reviewed current source and recorded remaining limitations; no verification or implementation-status promotion. | reviewed_digest 4f28f1641ac0; inspected `tests/experience/scenarios.json` and all expanded governs against source 5d9ea4df. Independent review preserved incident dates, Proposed/expired states and historical evidence; notification and oldest-runtime limits are explicit. |
 | 2026-10-01 | Currency review (4.5 retrieval): decision unchanged. `.github/workflows/ci.yml` gains one release-qe step, "Capability selection battery against the exact candidate bundle". It runs plugin/test/run-tests.mjs with REQUIRE_BRAIN=1 on an unzip of the sealed ruvnet-brain.zip. warm-brain's embedder warm-up moved to `scripts/ci/warm-brain-models.mjs`. The QA architecture is unchanged; the battery now runs where a brain is present. reviewed_digest 959c358e8ce4. | Reviewed `.github/workflows/ci.yml`; probe runs 36889499709 (58/58) and 36889505309 (57/58, red on the old reader) in `evals/runs/2026-10-01-retrieval-4.5/capability-battery/`. |
 | 2026-09-27 | Currency review: decision unchanged. RECONCILED (real drift, not just re-review): governs: named .github/workflows/qe-4-3.yml, deleted at commit 40166baf ("collapse check-only mode onto the one CI-enforced qualification gate") as legacy/manual-only, with its behavior superseded by .github/workflows/ux-qe.yml (already passing repeatedly in this session's CI). governs: updated to point at ux-qe.yml. Other motion since last review (release-pipeline CI hardening, QE gate consolidation) does not change the architecture. | Reviewed `tests/experience/scenarios.json`, `tests/experience/report.mjs`, `tests/experience/report.test.mjs`, `.github/workflows/ci.yml`, `.github/workflows/ux-qe.yml`, `scripts/qe/agentic-qe-4.3.mjs` against the commits listed above; reviewed_digest b49b737eabfc. |
 | 2026-09-11 | Currency review at commit 2eef2024: decision unchanged. Both drift commits (`0edb270d`, `987a3571`) add only CI environment-variable wiring to `.github/workflows/ci.yml` (absolute module-resolution paths for the bundled embedder, so the worker and warm-up probe resolve identical bytes from an immutable seed) — no scenario, lane, or gate logic changed. | Reviewed both diffs directly (5 and 8 line additions, `.github/workflows/ci.yml` only). reviewed_digest a366894a3c4c. |

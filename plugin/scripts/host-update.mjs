@@ -2,6 +2,7 @@
 // Host-neutral automatic updater. The published installer is the single coordinator for Claude
 // Code and Codex, so lifecycle updates cannot drift into host-specific shell pipelines again.
 import { spawnSync } from 'node:child_process';
+import { automaticInvocation, automaticPath, updateSource } from './automatic-update.mjs';
 
 const CHILD_ENV_KEYS = new Set([
   'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL',
@@ -15,9 +16,9 @@ const CHILD_ENV_KEYS = new Set([
 ]);
 
 export function childEnvironment(source = process.env) {
-  return Object.fromEntries(
-    Object.entries(source).filter(([key]) => CHILD_ENV_KEYS.has(key)),
-  );
+  const env = Object.fromEntries(Object.entries(source).filter(([key]) => CHILD_ENV_KEYS.has(key)));
+  env.PATH = automaticPath({ home: source.HOME || source.USERPROFILE, env: source });
+  return env;
 }
 
 if (process.argv.includes('--check')) {
@@ -35,7 +36,6 @@ if (process.argv.includes('--check')) {
   }
 }
 
-const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 
 // --knowledge <attemptFile> <lockFile> [--if-newer <kbDir> <checkFile> <resultFile>]: the SessionStart
 // (and MCP server timer) knowledge self-heal worker (launched by
@@ -57,8 +57,9 @@ if (knowledgeAt >= 0) {
     } catch { /* the next session reports a launch with no outcome as a failure */ }
   };
   try {
+    const source = updateSource();
     // --if-newer <kbDir> <checkFile> <resultFile>: the newer-published identity check (2026-10-02). Run the
-    // INSTALLED updater's --check (one GET of the canonical releases/latest pointer, no download) and only a
+    // INSTALLED updater's --check (bounded transient GET retries of the canonical releases/latest pointer, no download) and only a
     // newer identity proceeds to the update below. Exit codes are forge-update.mjs's own: 0 current (or
     // REFUSED: the published corpus is older — never downgrade), 10 newer, 2 network, 5 incompatible.
     const ifNewerAt = process.argv.indexOf('--if-newer');
@@ -113,12 +114,13 @@ if (knowledgeAt >= 0) {
       fs.renameSync(tmp, attemptFile);
     }
     const probe = process.env.RUVNET_AUTO_UPDATE_PROBE_URL || 'https://registry.npmjs.org/ruvnet-brain/latest';
-    let online = false;
-    try { online = (await fetch(probe, { signal: AbortSignal.timeout(5_000) })).ok; } catch { /* offline */ }
+    let online = source === 'installed';
+    if (!online) try { online = (await fetch(probe, { signal: AbortSignal.timeout(5_000) })).ok; } catch { /* offline */ }
     if (!online) {
       record({ outcome: 'offline', code: null, reason: `registry unreachable (${probe})` });
     } else {
-      const run = spawnSync(npx, ['--yes', 'ruvnet-brain@latest', '--update', '--no-nightly-prompt'], {
+      const invocation = automaticInvocation(['--update', '--no-nightly-prompt'], { source });
+      const run = spawnSync(invocation.executable, invocation.args, {
         env: childEnvironment(), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
         timeout: Number(process.env.RUVNET_KNOWLEDGE_UPDATE_TIMEOUT_MS || 25 * 60_000),
       });
@@ -131,19 +133,18 @@ if (knowledgeAt >= 0) {
       record({ outcome: code === 0 ? 'succeeded' : 'failed', code,
         reason: code === 0 ? '' : String(run.error?.message || tail.find((l) => /✗|error|fail/i.test(l)) || tail.at(-1) || 'no output').slice(0, 200) });
     }
+  } catch (error) {
+    record({ outcome: 'failed', code: null, reason: error.message.slice(0, 200) });
   } finally {
     try { fs.rmSync(lockFile, { force: true }); } catch { /* stale-lock rule reclaims it */ }
   }
   process.exit(0);
 }
 
-const result = spawnSync(npx, [
-  '--yes',
-  'ruvnet-brain@latest',
-  '--update',
-  '--host-sync-only',
-  '--no-nightly-prompt',
-], {
+let invocation;
+try { invocation = automaticInvocation(['--update', '--host-sync-only', '--no-nightly-prompt']); }
+catch (error) { process.stderr.write(`[ruvnet-brain] automatic update refused: ${error.message}\n`); process.exit(1); }
+const result = spawnSync(invocation.executable, invocation.args, {
   // The downloaded package must not inherit unrelated API keys, cloud credentials, or tokens from
   // the interactive host. npm's registry integrity protects the package bytes; this boundary
   // limits what those bytes can observe when they execute.
