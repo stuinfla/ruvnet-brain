@@ -176,7 +176,7 @@ function requireKey(value) {
  * @returns {{ listKeys: Function, readContent: Function, close: Function }}
  * @throws {ProgressionReaderUnavailable} when the CLI must be used instead.
  */
-export function openProgressionReader(dbPath) {
+export function openProgressionReader(dbPath, { consistentSnapshot = false } = {}) {
   const DatabaseSync = databaseSync();
   if (typeof DatabaseSync !== 'function') throw new ProgressionReaderUnavailable('node:sqlite is unavailable');
   if (typeof dbPath !== 'string' || !dbPath) throw new ProgressionReaderUnavailable('no canonical store path');
@@ -196,6 +196,7 @@ export function openProgressionReader(dbPath) {
   }
 
   try {
+    if (consistentSnapshot) database.exec("BEGIN");
     assertSchemaFingerprint(database);
   } catch (error) {
     try { database.close(); } catch { /* the fingerprint verdict is the news */ }
@@ -265,6 +266,7 @@ export function openProgressionReader(dbPath) {
     },
 
     close() {
+      try { if (consistentSnapshot) database.exec("ROLLBACK"); } catch { /* read transaction already closed */ }
       try { database.close(); } catch { /* closing a spent read handle is never news */ }
     },
   };
@@ -275,10 +277,10 @@ export function openProgressionReader(dbPath) {
  * Returns `{ ok: true, value }`, or `{ ok: false, reason }` when the CLI must be used instead.
  * Structural errors are NOT converted — they propagate, by design (see ProgressionReaderUnavailable).
  */
-export function withProgressionReader(dbPath, work) {
+export function withProgressionReader(dbPath, work, options = {}) {
   let reader;
   try {
-    reader = openProgressionReader(dbPath);
+    reader = openProgressionReader(dbPath, options);
   } catch (error) {
     if (error instanceof ProgressionReaderUnavailable) return { ok: false, reason: error.reason };
     throw error;

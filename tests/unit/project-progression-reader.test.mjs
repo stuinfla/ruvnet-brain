@@ -68,6 +68,23 @@ describe('canonical progression reader', () => {
     } finally { reader.close(); }
   });
 
+  it('optionally pins one WAL read snapshot across concurrent key/body writes', () => {
+    const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
+    const file = fixtureStore([{ key: 'alpha', content: 'original', status: 'active' }]);
+    const writer = new DatabaseSync(file);
+    writer.exec('PRAGMA journal_mode=WAL');
+    const reader = openProgressionReader(file, { consistentSnapshot: true });
+    try {
+      expect(reader.listKeys(NAMESPACE)).toEqual(['alpha']);
+      writer.prepare('UPDATE memory_entries SET content=? WHERE key=?').run('changed', 'alpha');
+      writer.prepare('INSERT INTO memory_entries (id,key,namespace,content,status) VALUES (?,?,?,?,?)')
+        .run('entry_later', 'bravo', NAMESPACE, 'new', 'active');
+      expect(reader.readContent(NAMESPACE, 'alpha')).toBe('original');
+      expect(reader.listKeys(NAMESPACE)).toEqual(['alpha']);
+    } finally { reader.close(); writer.close(); }
+    expect(withProgressionReader(file, current => current.listKeys(NAMESPACE)).value).toEqual(['alpha', 'bravo']);
+  });
+
   it('returns the exact stored bytes for an exact key, and null for an absent one', () => {
     const content = '{"eventKey":"alpha","payloadDigest":"' + 'a'.repeat(64) + '"}';
     const file = fixtureStore([{ key: 'alpha', content }]);

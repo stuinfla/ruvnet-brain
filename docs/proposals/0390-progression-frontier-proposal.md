@@ -1,9 +1,9 @@
-Updated: 2026-10-04 17:29:00 EDT | Version 1.0.0
+Updated: 2026-10-05 02:10:00 EDT | Version 1.1.0
 Created: 2026-10-04 17:29:00 EDT
 
 # ADR proposal: bounded progression with preserved historical evidence
 
-Status: PROPOSED — critical review required; frontier/compaction implementation is not authorized.
+Status: PROPOSED — isolated source prototype authorized; automatic activation and production cutover remain unpromoted.
 Scope: issue #390. This document does not change ADR-073, authorize deletion, or claim backlog closure.
 
 ## Source-bound problem
@@ -134,6 +134,57 @@ concurrent abandoned candidates remain append-only. Registration/route receipts 
 
 ## Decision pending
 
-Root will arrange critical review after the routing release. Until then, C remains a proposal, A/B
-remain separately qualified containment candidates, and #390 remains open with native mature-history
-capture/restore limits unproven.
+Critical review cleared the surgical v1 performance repair while identifying the native publication
+authority prerequisite for v2. C remains a proposal, A/B remain separately qualified containment,
+and #390 stays open with native mature-history capture/restore limits unproven.
+
+
+## Source prototype and provider prerequisite (2026-10-05)
+
+The isolated `project-progression-frontier.mjs` / `project-progression-frontier-store.mjs`
+prototype is not connected to the automatic capture, producer or SessionStart reader. Current
+production behavior remains v1. Its tests demonstrate protocol semantics only, not installed
+native continuity completion.
+
+Each v2 candidate holds the complete mandatory live state and exact operations for observations
+and commands, anchored to retained legacy key/body membership and the prior publication. A separate
+project-wide sequence publication is the only commit point. Routine reading validates the complete
+publication header chain and current candidate, enumerates key membership without opening old
+cumulative bodies, and explicitly reports `historicalContentAudit: deferred`. Full audit validates
+all referenced historical content, anchored body digests and exact materialization. Unknown fields,
+single-head history order and multi-head conflict/null semantics are retained. No history is deleted.
+The prototype refuses mandatory live state larger than 32 KiB; other retained live arrays can still
+grow, so this is not a constant-size promise for arbitrary future projects. Metadata enumeration and
+publication header verification remain proportional to record count.
+
+Fourteen narrow protocol tests pass, including six durable-outbox crash/recovery phases, orphan
+candidate exclusion, historical mutation detection on full audit, exact long-chain expansion,
+unknown/multi-head field preservation, and unsupported-provider refusal. The optional canonical
+reader transaction pins one WAL snapshot across concurrent key/body writes. These are deterministic
+fixtures, not kill-process or installed multi-host acceptance.
+
+The existing replay file lease does not fence an already in-flight native write after takeover.
+Accordingly, unconditional `ruflo memory store` cannot safely publish this prototype. The smallest
+upstream prerequisite is a native immutable conditional append: current authoritative parent,
+authority epoch, exact candidate and legacy key membership predicates must share one immediate
+transaction with insertion into a unique next publication slot. Tombstones must neither resurrect
+nor rewind authority, and in-memory/wrong-file/whole-image drivers must be refused.
+
+An isolated official Ruflo source candidate implements that prerequisite at upstream base
+`64d6c701857247a35eada14d9906fa6e90e18d00`, commits `148f0382` and `9d4eae2c`.
+Its 36 focused native/CLI tests and referenced TypeScript workspace build pass. The built local
+standard CLI rejected stale authority with exit 1 and no row; current authority returned exit 0
+with exact independent SQLite readback and NULL embedding. Two actual CLI processes contending
+for one publication slot returned [0,1], preserving the winning exact payload. This source
+candidate has not been installed or published; upstream repository access is READ, so a reviewed
+fork PR and maintainer publication are external prerequisites. No installed-global patch is allowed.
+
+Remaining promotion work includes canonical authority-epoch allocation/revocation, every Brain
+writer's integration, loser rebasing without false acknowledgement, native process-kill/concurrent
+suspension acceptance and mature-history host deadlines. The guarded v1 CPU benchmark at 1000
+snapshots improved 6932 ms to 1364 ms with full-result equivalence and the original historical
+mutation failure retained; 1364 ms still exceeds the 1000 ms SessionStart restore stage budget.
+A small installed-global append into the real 59.5 MB / 3871-row canonical project database took
+454 ms and exact readback passed. Neither measurement proves v2 native capture/restore completion;
+the actual 1000-row persisted-history and supplied 1325-row fixture paths remain unproved. Issue #390
+and capability status C therefore remain open/proposed.
