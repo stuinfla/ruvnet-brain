@@ -73,6 +73,17 @@ export const FIXTURE = [
 ];
 
 describe('the fixture: six ordinary requests route to a fitting capability, two controls stay silent', () => {
+  it('recognizes the explicit retrieval action and meaning need without a keyword contrast', () => {
+    expect(route.classify('search these docs by meaning')).toMatchObject({ capability: 'ruvector' });
+    expect(route.classify('please search these docs by meaning')).toMatchObject({ capability: 'ruvector' });
+    for (const prompt of [
+      'search these docs for exact keywords',
+      'explain what searching these docs by meaning means',
+      'do not search these docs by meaning',
+      'rename these docs to describe what we mean',
+    ]) expect(route.classify(prompt), prompt).toBeNull();
+  });
+
   for (const [label, prompt, expected] of FIXTURE) {
     it(`${label} → ${expected ?? 'SILENCE'}`, () => {
       const match = route.classify(prompt);
