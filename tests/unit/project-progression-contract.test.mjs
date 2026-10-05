@@ -90,6 +90,25 @@ describe('ADR-073 ProjectProgression snapshot identity', () => {
 });
 
 describe('secret redaction', () => {
+  it('keeps the verdict-only validator equivalent to the complete writer redactor', () => {
+    const samples = [
+      'ordinary verification', 'Bearer abcdefghijklmnop', 'sk-live-abcdefghijk',
+      'api-key_abcdefghijk', 'ghp_abcdefghijk', 'github_pat_abcdefghijk',
+      'password=abcdefghi', 'passwd: abcdefghi', 'token=abcdefghi', 'secret=abcdefghi',
+      'credential=abcdefghi', '-----BEGIN RSA PRIVATE KEY-----\nvalue\n-----END RSA PRIVATE KEY-----',
+      'Bearer [REDACTED:bearer-token]', 'password=[REDACTED:password]',
+      { 'p-a-s-s-w-o-r-d': 'value' }, { 'p\na\ns\nsword': 'value' },
+      { authorization: null }, { token: '[REDACTED:token]' }, { token: { nested: 'value' } },
+      { nested: ['safe', { apiKey: 'value' }] },
+    ];
+    for (const sample of samples) {
+      const { payloadDigest: _digest, ...base } = createProgressionSnapshot(input());
+      const body = { ...base, completeProjectState: { ...base.completeProjectState, commands: [sample] } };
+      const snapshot = { ...body, payloadDigest: digestCanonical(body) };
+      const expected = redactProgression(snapshot).redactions.length > 0;
+      expect(validateProgressionSnapshot(snapshot).errors.includes('unredacted secret material'), JSON.stringify(sample)).toBe(expected);
+    }
+  });
   it('removes secret values while preserving their type, location, and operational outcome', () => {
     const apiKey = 'sk-live-super-secret-value';
     const bearer = 'bearer-secret-token-value';
