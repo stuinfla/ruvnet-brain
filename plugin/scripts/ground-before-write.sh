@@ -98,11 +98,10 @@ SKIP_RECENCY=0
 [ "${RUVNET_SKIP_GROUNDING_CHECK:-0}" = "1" ] && SKIP_RECENCY=1
 
 # This gate is a BLOCKING wall (the #1-failure preventer), so by deliberate design (ADR-0021, and
-# enforced by ground-before-write.test.mjs) it depends on NOTHING fragile — pure bash builtins, no
-# node/jq/python — and therefore cannot fail-open because a tool went missing. The #13 quote-truncation
-# that justified hook-input.mjs for design-wall does NOT bite here: the product-term scan below runs
-# over the RAW payload (untouched by field()), and the only parsed values are tool_name (Write/Edit —
-# no quotes) and file_path (a truncated path merely fails the extension check → exit 0, harmless).
+# enforced by ground-before-write.test.mjs) its default refusal depends on no JSON parser. The optional
+# inert-code exemption below can narrow a valid input; a missing helper or any uncertainty leaves the
+# raw product scan intact. The legacy field parser below selects only tool name and code-file path;
+# it never supplies the code text used by the optional projection.
 field() { local re="\"$1\"[[:space:]]*:[[:space:]]*\"([^\"]*)\""; [[ $INPUT =~ $re ]] && printf '%s' "${BASH_REMATCH[1]}"; }
 
 # Case-insensitive (4.5): Grok sends `write` / `search_replace`; a case-sensitive match allowed a Grok
@@ -134,8 +133,8 @@ shopt -s nocasematch 2>/dev/null || true
 STAMP_DIR="$HOME/.cache/ruvnet-brain/grounded"
 NOW=$(date +%s 2>/dev/null) || exit 0
 
-# Scan the WHOLE tool input (path + content + new_string) — where the code mentions the
-# product is where the hand-roll hides.
+# Scan raw product terms without a parser; the optional inert-text exemption below may narrow
+# this result, but missing dependencies cannot erase the raw refusal.
 MISSING=""
 SEEN=""
 for t in agentdb metaharness ruvector aidefence agentic-flow agentic-qe ruv-swarm rvf ruflo; do
@@ -156,10 +155,10 @@ done
 # PASSED: a term the model has never grounded is stopped by stage 1 and never reaches here.
 #
 # ── THE DEPENDENCY CONTRACT, AND WHY THIS DOES NOT BREAK IT ────────────────────────────────────
-# Everything above this line is pure bash builtins, by standing contract (ADR-0021, enforced by
-# ground-before-write.test.mjs): the recency wall is THE blocking wall, so it can never fail open
-# because a tool went missing. That contract is unchanged and still tested — the assertion now
-# reads the file UP TO THIS MARKER.
+# Everything above this marker remains pure bash: the recency wall computes a refusal without
+# node/jq/python (ADR-0021). The optional exemption below can only narrow that raw result after
+# proving an inert mention; absence or uncertainty retains it. The substance stage keeps its
+# separate, explicitly fail-open contradiction contract.
 #
 # The substance stage is different in kind and is allowed one dependency, node, because deciding
 # "does this write contradict the source the brain returned?" requires a real JSON parse of the
@@ -169,6 +168,23 @@ done
 # produce a refusal here is a detector that found a contradiction, which is ADR-055 §1.2's
 # "malfunction ≠ decision" applied to the one stage that has something to malfunction.
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
+# Optional positive exemption (#373), only when a raw product mention exists. A missing helper,
+# node, empty output or lexical uncertainty leaves the pure-bash result unchanged. This stage
+# cannot manufacture a refusal and never changes the raw payload used by the substance wall.
+PROJECTION="$(dirname "${BASH_SOURCE[0]}")/grounding-code-projection.mjs"
+if [ -n "$SEEN" ] && [ -f "$PROJECTION" ] && command -v node >/dev/null 2>&1; then
+  PROJECTED=$(printf '%s' "$INPUT" | node "$PROJECTION" 2>/dev/null)
+  if [ "$?" = "0" ] && [ -n "$PROJECTED" ]; then
+    PROJECTED_MISSING=""; PROJECTED_SEEN=""
+    for t in $SEEN; do
+      [[ $PROJECTED == *"$t"* ]] || continue
+      PROJECTED_SEEN="$PROJECTED_SEEN$t "
+      [[ " $MISSING" == *" $t "* ]] && PROJECTED_MISSING="$PROJECTED_MISSING$t "
+    done
+    MISSING="$PROJECTED_MISSING"; SEEN="$PROJECTED_SEEN"
+  fi
+fi
+
 if [ -z "$MISSING" ] || [ "$SKIP_RECENCY" = "1" ]; then
   [ -n "$SEEN" ] || exit 0
   SUBSTANCE="$(dirname "${BASH_SOURCE[0]}")/grounding-substance.mjs"

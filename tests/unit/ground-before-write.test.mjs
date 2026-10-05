@@ -79,7 +79,7 @@ describe.skipIf(!hasBash || process.platform === 'win32')('ground-before-write.s
   it('BLOCKS the other real bug: a hand-rolled "metaharness" router, ungrounded', () => {
     const r = runGate({
       file_path: '/tmp/scripts/model-router-engine.mjs',
-      content: 'export function route(prompt) { /* the MetaHarness router placeholder policy */ }',
+      content: 'import { route } from "@metaharness/router"; export { route };',
     });
     expect(r.status).toBe(2);
     expect(r.stderr).toMatch(/metaharness/i);

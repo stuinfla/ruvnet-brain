@@ -141,6 +141,10 @@ function normalizePhrases(text) {
   // weakening the overlap, coverage, or winner-margin confidence gates.
   return normalizeApostrophes(text || '')
     .toLowerCase()
+    .replace(
+      /^(?:please\s+)?(?:search|retrieve|find)\s+(?:these|those|my|our|the)\s+(?:docs?|documents?|passages?|chunks?|notes?)\s+by\s+meaning\b(?:\s+(?:instead of|rather than)\s+(?:exact\s+)?keywords?)?/g,
+      'semantic vector search document embeddings',
+    )
     .replace(/\bthrow\s+(?:it\s+)?away\b/g, 'discard')
     .replace(/\bspend\s+less\s+money\s+on\s+model\s+calls?\b/g, 'reduce model cost')
     .replace(/\bwithout\s+getting\s+dumber\s+answers?\b/g, 'without sacrificing quality')
