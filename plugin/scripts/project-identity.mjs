@@ -87,3 +87,17 @@ export function projectDirectory({ env = process.env, cwd = process.cwd(), ...op
     : null;
   return declared && contains(declared, here, options) ? declared : here;
 }
+
+/**
+ * A host-reported `cwd` from a hook payload (Claude Code or Codex) is trustworthy only as an
+ * absolute path. A bare `payload.cwd || projectDirectory()` fallback — the shape `session-snapshot-
+ * hook.mjs`'s per-tool-call entrypoint carried until the 2026-10-05 dream-cycle finding — accepts a
+ * relative value verbatim and lets `resolveProjectStore()` resolve it against `process.cwd()`
+ * instead of against the real project, redirecting a capture into whatever relative path happens to
+ * sit underneath it (e.g. a nested "stranger" project such as a vendored dependency). Every site
+ * that reads a host payload's `cwd` should call this instead of inlining the check, so there is one
+ * authority instead of several independently-written cwd-trust rules.
+ */
+export function resolveHostProjectDir(candidateCwd, options = {}) {
+  return typeof candidateCwd === 'string' && path.isAbsolute(candidateCwd) ? candidateCwd : projectDirectory(options);
+}

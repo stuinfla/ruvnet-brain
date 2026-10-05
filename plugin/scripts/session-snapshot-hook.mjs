@@ -11,7 +11,7 @@ import {
   hasProjectProgression,
 } from './project-progression-hook.mjs';
 import { createSessionSnapshot } from './session-snapshot-contract.mjs';
-import { projectDirectory } from './project-identity.mjs';
+import { projectDirectory, resolveHostProjectDir } from './project-identity.mjs';
 import { buildProjectProgression } from './project-progression-producer.mjs';
 import { ProjectProgressionStore } from './project-progression-store.mjs';
 import { resolveProjectStore } from './project-store-resolver.mjs';
@@ -302,7 +302,7 @@ if (process.argv[1] && path.resolve(process.argv[1]).endsWith('session-snapshot-
   try {
     const { runProjectTransitionHook, transitionPendingNotice } = await import('./project-transition-hook.mjs');
     const payload = JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
-    const projectDir = payload.cwd || projectDirectory();
+    const projectDir = resolveHostProjectDir(payload.cwd);
     const result = runProjectTransitionHook(projectDir, process.argv[2], { payload });
     if (result.state === 'pending') {
       const message = transitionPendingNotice(projectDir, payload, 'Project memory transition remains pending; exact readback was not verified.');
@@ -317,8 +317,7 @@ if (process.argv[1] && path.resolve(process.argv[1]).endsWith('session-snapshot-
   try {
     let originProjectDir = projectDirectory();
     try {
-      const cwd = JSON.parse(rawInput || '{}').cwd;
-      if (typeof cwd === 'string' && path.isAbsolute(cwd)) originProjectDir = cwd;
+      originProjectDir = resolveHostProjectDir(JSON.parse(rawInput || '{}').cwd);
     } catch { /* malformed input keeps the host's project fallback */ }
     const result = runSessionSnapshotHook(originProjectDir, process.argv[2] || 'SessionEnd', { rawInput });
     // FAIL LOUDLY, NEVER SILENTLY — AND ONCE. When recording is stuck (events pending past STUCK_AFTER_MS,
