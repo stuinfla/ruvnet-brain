@@ -14,6 +14,9 @@ import { resolveRuflo, rufloInvocation } from './ruflo-bin.mjs';
 import { rufloCwdFor, rufloScratchRoot } from './project-progression-store.mjs';
 import { resolveProjectStore } from './project-store-resolver.mjs';
 import { isHarnessGenerated, readStdinBounded } from './hook-input.mjs';
+import { learningContext } from './runtime-preferences.mjs';
+import { learningTarget, LEARNING_NAMESPACE } from './learning-store.mjs';
+import { safeAction } from './learning-queue.mjs';
 
 import { redactText } from './continuity-events.mjs';
 export const STORE_FILES = Object.freeze(['memory.db']);
@@ -146,11 +149,22 @@ export function evidenceExcerpt(value, key, prompt = '') {
   return clean(start >= 0 ? text.slice(start) : text, 110);
 }
 
+export function learningObservationExcerpt(raw) {
+  try {
+    const row = JSON.parse(raw);
+    if (Object.keys(row).sort().join(',') !== 'action,authoritative,outcome,provenance,schemaVersion,scope,tool'
+      || row.schemaVersion !== 1 || row.authoritative !== false || row.provenance !== 'system-observation'
+      || row.outcome !== 'host-reported-success' || !['project', 'user'].includes(row.scope)
+      || !['Bash', 'Write', 'Edit', 'MultiEdit'].includes(row.tool) || safeAction(row.tool, row.action) !== row.action) return null;
+    return `Unratified host-reported success: ${row.tool} ${row.action}. Verify current results.`;
+  } catch { return null; }
+}
+
 export function pickRows(results, limit = 3) {
   const candidates = results.flatMap((r) => r.rows.filter((p) => p.namespace === r.namespace && (!NOISE_KEY.test(p.key) || p.namespace === 'turns' && /^turn[-_]/i.test(p.key))
     && (!r.family || p.key.toLowerCase().includes(r.family))
-    && Number.isFinite(p.score) && p.score >= MIN_RELEVANCE).map((p) => ({ ...p, targeted: Boolean(r.family) })));
-  const signal = (p) => SIGNAL_NAMESPACES.has(p.namespace) ? 2 : p.namespace === 'turns' ? 1 : 0;
+    && Number.isFinite(p.score) && p.score >= MIN_RELEVANCE).map((p) => ({ ...p, storePath: r.storePath, targeted: Boolean(r.family) })));
+  const signal = (p) => SIGNAL_NAMESPACES.has(p.namespace) ? 2 : p.namespace === 'turns' ? 1 : p.namespace === LEARNING_NAMESPACE ? -1 : 0;
   const ranked = candidates.sort((a, b) => Number(b.targeted) - Number(a.targeted) || signal(b) - signal(a) || b.score - a.score);
   // Curated lessons and patterns are signal; lifecycle transcript telemetry is not.
   // Do not reserve a slot for a weak match just because its namespace was searched.
@@ -159,7 +173,7 @@ export function pickRows(results, limit = 3) {
     if (chosen.length >= limit) break;
     if (!chosen.some((r) => r.key === row.key && r.namespace === row.namespace)) chosen.push(row);
   }
-  return chosen.map((p) => ({ store: 'memory.db', key: p.key, namespace: p.namespace,
+  return chosen.map((p) => ({ store: 'memory.db', ...(p.storePath ? { storePath: p.storePath } : {}), key: p.key, namespace: p.namespace,
     score: p.score, preview: clean(p.preview, 110) }));
 }
 
@@ -227,7 +241,15 @@ export async function recall({ prompt, projectDir = process.cwd(), env = process
     const budget = Number.isFinite(requested) && requested > 0 ? Math.min(requested, 1900) : DEFAULT_DEADLINE_MS;
     const deadline = started + budget;
     const { root, stores } = agentdbStores(projectDir, Math.max(1, Math.min(100, Math.floor(budget / 4))));
-    if (!stores.length) return empty;
+    let learningStore;
+    try {
+      const context = learningContext({ env, cwd: root });
+      if (context.enabled) {
+        const db = learningTarget(context, { env });
+        if (fs.lstatSync(db).isFile()) learningStore = { name: 'memory.db', path: db };
+      }
+    } catch { /* No global fallback: only an explicitly authorized existing learning store. */ }
+    if (!stores.length && !learningStore) return empty;
     const bin = ruflo === undefined ? resolveRuflo({ env }) : ruflo;
     if (!bin) return { ...empty, stores };
     const store = stores[0];
@@ -238,10 +260,15 @@ export async function recall({ prompt, projectDir = process.cwd(), env = process
       : /where are we|status|catch me up/i.test(prompt) ? 'project-state-current'
       : /releas|publish|workflow run|dispatch/i.test(prompt) ? 'release'
       : /requirement|always|every prompt/i.test(prompt) ? 'decision-agentdb' : null;
-    const jobs = namespaces.flatMap((namespace) => [{ namespace, family: null, args: ['--format', 'json', '-q', query, '-n', namespace, '--limit', '12'] },
-      ...(family && !SIGNAL_NAMESPACES.has(namespace) && namespace !== 'turns' ? [{ namespace, family, args: ['--format', 'json', '-q', family, '-n', namespace, '-t', 'keyword', '--limit', '4'] }] : [])]);
-    const results = await Promise.all(jobs.map(async ({ namespace, family: recordFamily, args }) => ({ namespace, family: recordFamily,
-      ...await searchOnce({ ruflo: bin, store, deadline, env, scratch: scratchFor, args }) })));
+    const jobs = (store ? namespaces : []).flatMap((namespace) => [{ store, namespace, family: null, args: ['--format', 'json', '-q', query, '-n', namespace, '--limit', '12'] },
+      ...(family && !SIGNAL_NAMESPACES.has(namespace) && namespace !== 'turns' ? [{ store, namespace, family, args: ['--format', 'json', '-q', family, '-n', namespace, '-t', 'keyword', '--limit', '4'] }] : [])]);
+    const words = promptKeywords(prompt, 14);
+    const workflowQuery = words.map(word => safeAction('Bash', word))
+      .find(action => action && action !== 'command');
+    if (learningStore && workflowQuery) jobs.push({ store: learningStore, namespace: LEARNING_NAMESPACE, family: null,
+      args: ['--format', 'json', '-q', workflowQuery, '-n', LEARNING_NAMESPACE, '-t', 'keyword', '--limit', '4'] });
+    const results = await Promise.all(jobs.map(async ({ store: jobStore, namespace, family: recordFamily, args }) => ({ namespace, family: recordFamily, storePath: jobStore.path,
+      ...await searchOnce({ ruflo: bin, store: jobStore, deadline, env, scratch: scratchFor, args }) })));
     let status = results.every((r) => r.state === 'ok') ? 'ok'
       : results.some((r) => r.state === 'timed out') ? 'timed out' : 'unavailable';
     // Overfetch a bounded six exact values so rejected turn metadata cannot hide
@@ -250,11 +277,12 @@ export async function recall({ prompt, projectDir = process.cwd(), env = process
     // Ruflo previews are ~60 characters. Read the actual selected values within
     // the same deadline so the block contains useful evidence rather than titles.
     const retrieved = await Promise.all(candidates.map(async (p) => {
-      const r = await searchOnce({ ruflo: bin, store, deadline, env, scratch: scratchFor, operation: 'retrieve',
+      const r = await searchOnce({ ruflo: bin, store: { name: 'memory.db', path: p.storePath }, deadline, env, scratch: scratchFor, operation: 'retrieve',
         args: ['-k', p.key, '-n', p.namespace, '--value-only'] });
       if (r.state === 'ok' && r.value && !r.value.startsWith('[WARN]')) {
         const clauses = p.namespace === 'turns' ? turnOutcomeClauses(r.value, prompt) : null;
-        const preview = clauses ? turnOutcomeExcerpt(r.value, prompt) : evidenceExcerpt(r.value, p.key, prompt);
+        const preview = p.namespace === LEARNING_NAMESPACE ? learningObservationExcerpt(r.value)
+          : clauses ? turnOutcomeExcerpt(r.value, prompt) : evidenceExcerpt(r.value, p.key, prompt);
         return { pick: preview ? { ...p, preview, clauses } : null, state: 'ok' };
       }
       return { pick: null, state: r.state === 'ok' ? 'unavailable' : r.state };

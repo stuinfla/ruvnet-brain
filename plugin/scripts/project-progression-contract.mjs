@@ -14,7 +14,32 @@ function canonicalize(value) {
 }
 
 export function digestCanonical(value) {
-  return crypto.createHash('sha256').update(JSON.stringify(canonicalize(value))).digest('hex');
+  return crypto.createHash('sha256').update(JSON.stringify(isCanonicalJson(value) ? value : canonicalize(value))).digest('hex');
+}
+
+// Stored snapshots are already canonical. Verify that fact without constructing a second
+// complete object graph; arbitrary callers still receive the original sorting/validation path.
+function isCanonicalJson(value) {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (Array.isArray(value)) {
+    if (Object.getPrototypeOf(value) !== Array.prototype || ['toJSON', 'map', 'constructor'].some(key => Object.hasOwn(value, key))) return false;
+    for (let index = 0; index < value.length; index++) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, index);
+      if (!descriptor || !Object.hasOwn(descriptor, 'value') || !isCanonicalJson(descriptor.value)) return false;
+    }
+    return true;
+  }
+  if (!value || typeof value !== 'object' || Object.getPrototypeOf(value) !== Object.prototype) return false;
+  if (Object.hasOwn(value, 'toJSON')) return false;
+  let previous;
+  for (const key of Object.keys(value)) {
+    if (previous !== undefined && previous > key) return false;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!Object.hasOwn(descriptor, 'value') || !isCanonicalJson(descriptor.value)) return false;
+    previous = key;
+  }
+  return true;
 }
 
 function requireRecord(value, label) {
@@ -114,6 +139,35 @@ const INLINE_SECRETS = Object.freeze([
     replace: '$1=[REDACTED:token]',
   },
 ]);
+
+// Validation needs a verdict, not a rebuilt redacted payload. Keep exactly the writer's
+// key and replacement semantics, including already-redacted markers and nested values.
+function containsUnredactedSecret(value) {
+  const kinds = new Map();
+  const visit = (current) => {
+    if (typeof current === 'string') {
+      if (!/PRIVATE KEY|Bearer|(?:sk|api-key|ghp|github_pat)[-_]|password|passwd|token|secret|credential/i.test(current)) return false;
+      for (const rule of INLINE_SECRETS) {
+        rule.pattern.lastIndex = 0;
+        if (current.replace(rule.pattern, rule.replace) !== current) return true;
+      }
+      return false;
+    }
+    if (Array.isArray(current)) {
+      for (const item of current) if (visit(item)) return true;
+    } else if (current && typeof current === 'object' && Object.getPrototypeOf(current) === Object.prototype) {
+      for (const key of Object.keys(current)) {
+        if (!kinds.has(key)) kinds.set(key, secretKind(key));
+        const kind = kinds.get(key);
+        if (kind && current[key] !== null && current[key] !== undefined) {
+          if (current[key] !== `[REDACTED:${kind}]`) return true;
+        } else if (visit(current[key])) return true;
+      }
+    }
+    return false;
+  };
+  return visit(value);
+}
 
 export function redactProgression(value) {
   const redactions = [];
@@ -239,15 +293,15 @@ export function validateProgressionSnapshot(snapshot, { expectedProjectIdentity 
     } catch { errors.push('event key is unverifiable'); }
   }
   try {
-    const body = canonicalize(snapshot);
-    delete body.payloadDigest;
+    if (Object.getPrototypeOf(snapshot) !== Object.prototype) throw new TypeError('snapshot must be a plain JSON object');
+    const { payloadDigest: _digest, ...body } = snapshot;
     if (snapshot.payloadDigest !== digestCanonical(body)) errors.push('payload digest mismatch');
   } catch { errors.push('payload is not canonical JSON'); }
   if (Array.isArray(snapshot.redactions)
     && snapshot.redactions.some((row) => !row || typeof row.path !== 'string' || typeof row.kind !== 'string'
       || Object.keys(row).sort().join(',') !== 'kind,path')) errors.push('invalid redaction marker');
   try {
-    if (redactProgression(snapshot).redactions.length > 0) errors.push('unredacted secret material');
+    if (containsUnredactedSecret(snapshot)) errors.push('unredacted secret material');
   } catch { /* canonical validation already reports the malformed payload */ }
 
   return { ok: errors.length === 0, errors: [...new Set(errors)] };

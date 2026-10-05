@@ -8,6 +8,7 @@ import { withProgressionReader } from './project-progression-reader.mjs';
 import { drainCaptureQueue, queuedWork } from './session-snapshot-hook.mjs';
 import { replayTurnQueue } from './turn-outcome-capture.mjs';
 import { STAGE_BUDGETS_MS } from './session-start-budget.mjs';
+import { operatorProgressionSuspension } from './project-progression-suspension.mjs';
 
 const PROGRESSION_NAMESPACE = 'project-progression';
 
@@ -191,6 +192,15 @@ export function restoreProgressionForSession({
   },
 } = {}) {
   const projectDir = env.CLAUDE_PROJECT_DIR || cwd;
+  try {
+    if (operatorProgressionSuspension(env)) {
+      // Turn recording is independent: suspension must not strand ordinary AgentDB capture.
+      const turns = replayTurnQueue({ projectDir, env, home: env.HOME || os.homedir(), synchronous: true,
+        deadlineMs: Date.now() + deadlineMs });
+      return { status: 'unavailable', reason: 'operator-suspended', severity: 'info', pendingTurns: turns.pending,
+        context: '[RuvNet Brain — PROJECT CONTINUITY UNAVAILABLE]\nAutomatic progression capture, replay and restore are operator-suspended. Evidence and queues are preserved. Ordinary AgentDB memory and explicit checkpoints remain available; no project progression was restored.' };
+    }
+  } catch { return unknown('restore-failed'); }
   let resolution;
   try {
     resolution = resolveProjectStore({ projectDir });

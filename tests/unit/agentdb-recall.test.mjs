@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { recall, recallTrigger, agentdbStores, parseSearchJson, pickRows, formatBlock, BLOCK_MAX_BYTES, evidenceExcerpt, promptKeywords, recallQuery, turnOutcomeExcerpt } from '../../plugin/scripts/agentdb-recall.mjs';
+import { recall, recallTrigger, agentdbStores, parseSearchJson, pickRows, formatBlock, BLOCK_MAX_BYTES, evidenceExcerpt, promptKeywords, recallQuery, turnOutcomeExcerpt, learningObservationExcerpt } from '../../plugin/scripts/agentdb-recall.mjs';
 
 import { captureTurnOutcome } from '../../plugin/scripts/turn-outcome-capture.mjs';
 
@@ -36,7 +36,7 @@ if (a[1] === 'retrieve') console.log(rows.find(r => r.key === get('-k') && r.nam
 else {
  const kw = a.includes('-t'), q = get('-q');
  console.log('[INFO] Searching');
- console.log(JSON.stringify({results:rows.filter(r => r.namespace === get('-n') && (!kw || r.key.includes(q)))}));
+ console.log(JSON.stringify({results:rows.filter(r => r.namespace === get('-n') && (!kw || r.key.includes(q) || r.namespace === 'learning-observations' && r.content?.includes(q)))}));
  console.log('[WARN] Partial result: other store was not searched.');
 }
 `, { mode: 0o755 });
@@ -310,4 +310,21 @@ describe('canonical prompt-time AgentDB recall', () => {
       expect(Buffer.byteLength(r.stdout.split('\n').slice(1).join('\n'))).toBeLessThanOrEqual(BLOCK_MAX_BYTES);
     } finally { w.cleanup(); }
   });
+});
+
+it('learning recall refuses extra fields and delivers only unratified fixed vocabulary',()=>{
+ const row={schemaVersion:1,tool:'Bash',action:'npm test',scope:'project',authoritative:false,provenance:'system-observation',outcome:'host-reported-success'};
+ expect(learningObservationExcerpt(JSON.stringify(row))).toBe('Unratified host-reported success: Bash npm test. Verify current results.');
+ for(const altered of [{...row,secret:'private'},{...row,action:'npm test --token private'},{...row,authoritative:true},{...row,provenance:'user_claim'},{...row,tool:'unknown'}])expect(learningObservationExcerpt(JSON.stringify(altered))).toBeNull();
+});
+it.each(['project','user'])('normal prompt recall reads exact %s observations from the authorized store',async scope=>{
+ const w=world();try{
+  fs.mkdirSync(w.env.HOME,{recursive:true});w.env.RUVNET_LEARNING_SCOPE=scope;
+  const db=scope==='project'?path.join(w.proj,'.swarm','memory.db'):path.join(w.env.HOME,'.claude','global-memory','.swarm','memory.db');
+  if(scope==='user'){fs.mkdirSync(path.dirname(db),{recursive:true});fs.writeFileSync(db,'');const prefs=path.join(w.env.HOME,'.config','ruvnet-brain');fs.mkdirSync(prefs,{recursive:true});fs.writeFileSync(path.join(prefs,'settings.json'),'{"learningScope":"user"}');}
+  fs.writeFileSync(w.env.RECALL_ROWS,JSON.stringify([{key:'workflow-test',namespace:'learning-observations',score:.9,preview:'unsafe preview ignored',content:JSON.stringify({schemaVersion:1,tool:'Bash',action:'npm test',scope,authoritative:false,provenance:'system-observation',outcome:'host-reported-success'})}]));
+  const result=await recall({prompt:'npm test',projectDir:w.proj,env:w.env});expect(result.block).toContain('Unratified host-reported success: Bash npm test');expect(result.block).not.toContain('unsafe preview');
+  const relevant=w.calls().filter(c=>c.args.includes('learning-observations'));expect(relevant).toHaveLength(2);expect(relevant.every(c=>c.args[c.args.indexOf('--path')+1]===db)).toBe(true);
+  w.env.RUVNET_LEARNING_SCOPE='off';const before=w.calls().length;await recall({prompt:'npm test',projectDir:w.proj,env:w.env});expect(w.calls().slice(before).some(c=>c.args.includes('learning-observations'))).toBe(false);
+ }finally{w.cleanup();}
 });

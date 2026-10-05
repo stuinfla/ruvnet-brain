@@ -157,13 +157,21 @@ export class ProgressionOutbox {
     const committed = new Map();
     const quarantined = new Map();
     const recoveries = [];
+    let ordinal = 0;
     for (const record of readJsonl(this.path)) {
+      ordinal += 1;
       requireIdentity(record?.eventKey, 'outbox eventKey');
       requireIdentity(record?.payloadDigest, 'outbox payloadDigest');
       if (record.type === 'snapshot') {
         const prior = snapshots.get(record.eventKey);
         if (prior && prior.payloadDigest !== record.payloadDigest) quarantined.set(record.eventKey, 'outbox event key collision');
-        else snapshots.set(record.eventKey, record);
+        // Retain identity/recovery metadata, never every historical snapshot's full payload.
+        // A second incremental scan materializes only the unresolved payloads selected here.
+        else snapshots.set(record.eventKey, { eventKey: record.eventKey, payloadDigest: record.payloadDigest,
+          ordinal, recoveryDiagnostics: record.snapshot?.recoveryDiagnostics && {
+            originalEventKey: record.snapshot.recoveryDiagnostics.originalEventKey,
+            frozenPayloadDigest: record.snapshot.recoveryDiagnostics.frozenPayloadDigest,
+          }, snapshotDigest: record.snapshot?.payloadDigest });
       } else if (record.type === 'commit') {
         const prior = committed.get(record.eventKey);
         if (prior && prior !== record.payloadDigest) quarantined.set(record.eventKey, 'outbox commit collision');
@@ -186,19 +194,27 @@ export class ProgressionOutbox {
       }
     }
     const recovered = new Set(recoveries.filter((record) => {
-      const target = snapshots.get(record.recoveryEventKey)?.snapshot;
+      const target = snapshots.get(record.recoveryEventKey);
       return !quarantined.has(record.recoveryEventKey)
         && committed.get(record.recoveryEventKey) === record.recoveryPayloadDigest
-        && target?.payloadDigest === record.recoveryPayloadDigest
+        && target?.snapshotDigest === record.recoveryPayloadDigest
         && target.recoveryDiagnostics?.originalEventKey === record.eventKey
         && target.recoveryDiagnostics?.frozenPayloadDigest === record.payloadDigest;
     }).map((record) => `${record.eventKey}:${record.payloadDigest}`));
     this.quarantine = [...quarantined].map(([eventKey, reason]) => ({ eventKey, reason }));
-    return [...snapshots.values()]
+    const pending = new Map([...snapshots.values()]
       .filter((record) => !quarantined.has(record.eventKey) && !committed.has(record.eventKey)
         && !recovered.has(`${record.eventKey}:${record.payloadDigest}`))
-      .sort((left, right) => left.eventKey.localeCompare(right.eventKey))
-      .map((record) => record.snapshot);
+      .map((record) => [record.ordinal, record.eventKey]));
+    const payloads = [];
+    ordinal = 0;
+    if (pending.size) {
+      for (const record of readJsonl(this.path)) {
+        ordinal += 1;
+        if (pending.has(ordinal)) payloads.push({ eventKey: pending.get(ordinal), snapshot: record.snapshot });
+      }
+    }
+    return payloads.sort((left, right) => left.eventKey.localeCompare(right.eventKey)).map((record) => record.snapshot);
   }
 
   /** Keys pendingSnapshots() refused to replay because their records disagree, with the reason. */

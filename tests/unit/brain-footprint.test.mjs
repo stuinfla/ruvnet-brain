@@ -892,9 +892,11 @@ describe('BREAK IT: every guard is proven by a mutant that goes red', () => {
   });
   it('symlink guard removed -> a symlinked KB-copy name is acted on', async () => {
     const mod = await mutant([['brain-footprint.mjs', "if (st.isSymbolicLink() || !st.isDirectory()) { add({ id: 'kb-copy', path: full, class: 'unowned'", "if (false) { add({ id: 'kb-copy', path: full, class: 'unowned'"],
-      ['kb-copy-proof.mjs', 'if (!copy || copy.isSymbolicLink() || !copy.isDirectory())', 'if (!copy)']]);
+      ['kb-copy-proof.mjs', 'if (!copy || copy.isSymbolicLink() || !copy.isDirectory())', 'if (!copy)'],
+      ['kb-copy-proof.mjs', 'if (!safeAncestors(copyDir, relative) || !safeAncestors(liveDir, relative)) {', 'if (false) {']]);
     const m = machine(); live(m);
-    const target = path.join(m.home, 'elsewhere'); write(path.join(target, 'SOURCE.json'), '{}');
+    // Genuine release provenance leaves root/ancestor rejection as the guards under mutation.
+    const target = kbTree(path.join(m.home, 'elsewhere'), { publicStores: { alpha: 'a0' } });
     fs.symlinkSync(target, path.join(m.brainHome, 'kb.pre-update-link'));
     mod.sweepFootprint(opts(m, { apply: true }));
     expect(fs.existsSync(path.join(m.brainHome, 'kb.pre-update-link'))).toBe(false); // the link itself was removed
@@ -972,7 +974,9 @@ describe('BREAK IT: every guard is proven by a mutant that goes red', () => {
     expect(fs.existsSync(path.join(m.brainHome, 'leases', 'mcp-me.json'))).toBe(false);
   });
   it('live-brain-present guard removed -> install-prior is deleted while no live KB exists', async () => {
-    const mod = await mutant([['kb-copy-proof.mjs', "return { disposable: false, unique: [], reason: 'the live brain is missing", "if (false) return { disposable: false, unique: [], reason: 'the live brain is missing"]]);
+    const mod = await mutant([['kb-copy-proof.mjs', "return { disposable: false, unique: [], reason: 'the live brain is missing", "if (false) return { disposable: false, unique: [], reason: 'the live brain is missing"],
+      ['kb-copy-proof.mjs', 'for (const root of [copyDir, liveDir]) {', 'for (const root of [copyDir]) {'],
+      ['kb-copy-proof.mjs', "if (!names(liveDir).some((name) => /\\.rvf$/i.test(name) && lstat(path.join(liveDir, name))?.isFile())) {", 'if (false) {']]);
     const m = machine(); fs.mkdirSync(m.brainHome, { recursive: true });
     const prior = `kb.install-prior-1-${2 ** 30}`; // a finished (dead-pid) activation, so only the live-brain guard keeps it
     kbTree(path.join(m.brainHome, prior), { publicStores: { alpha: 'a' } });

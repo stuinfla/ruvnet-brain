@@ -79,6 +79,7 @@ import {
 } from '../scripts/console-runtime-identity.mjs';
 import { shellDiff as pluginShellDiff } from '../plugin/scripts/host-shell-boundary.mjs';
 import { codexTrustChanges, CODEX_TRUST_ACTION } from '../scripts/codex-hook-trust.mjs';
+import { probeFreshCodexDeclarations } from '../scripts/codex-fresh-host-proof.mjs';
 import { repairSecurityGuidance } from '../scripts/security-guidance-codex-compat.mjs';
 import { installNativeLaunchers, installRoutingRuntime } from '../scripts/model-routing-launchers.mjs';
 import { installTerminalLaunchers } from '../scripts/model-terminal-launchers.mjs';
@@ -460,7 +461,9 @@ function resolveCacheDir() {
   );
   info(`brain dir: ${c.bold(cacheDir)}`);
   if (custom) info(`(from your RUVNET_BRAIN_KB override)`);
-  fs.mkdirSync(cacheDir, { recursive: true });
+  // Activation creates the KB from a validated stage. A placeholder here becomes a false prior
+  // generation, which the cleanup proof correctly retains because it has no SOURCE.json.
+  fs.mkdirSync(path.dirname(cacheDir), { recursive: true });
   return { cacheDir, isCustom: Boolean(custom) };
 }
 
@@ -3045,6 +3048,21 @@ async function doctorRun({ json }) {
       const recorded = withLiveConsoleState(JSON.parse(fs.readFileSync(convergencePath, 'utf8')),
         { receiptDir: path.join(path.dirname(convergencePath), 'console-instances') });
       hostConvergence = classifyHostConvergence(recorded);
+      const codex = recorded.hosts?.codex;
+      if (codex?.state === 'ready' && codex.restartRequired === true && codex.restartScope === 'unproven') {
+        let binary = process.env.CODEX_BIN || 'codex';
+        if (!process.env.CODEX_BIN) {
+          try {
+            const configured = JSON.parse(fs.readFileSync(path.join(path.dirname(convergencePath), 'model-routing', 'terminal-launcher-config.json'), 'utf8'));
+            if (typeof configured.realCodex === 'string' && path.isAbsolute(configured.realCodex)) binary = configured.realCodex;
+          } catch { /* native PATH resolution remains bounded and fail closed */ }
+        }
+        const fresh = await probeFreshCodexDeclarations({ binary, codexHome: codexHomeDir(), cwd: process.cwd(),
+          releasedPluginRoot: path.join(REPO_ROOT, 'plugin'), expectedVersion: PACKAGE_VERSION });
+        hostConvergence = reconcileFreshCodexDeclarations(recorded, fresh);
+        if (fresh.ok) info('Codex fresh-declarations-ready: current trusted hook declarations only; hook bodies and MCP execution were not tested. Existing open windows remain unproven.');
+        else warn(`Codex fresh declarations remain unproven: ${fresh.reason}`);
+      }
       if (hostConvergence.healthy) {
         ok(`host convergence receipt: ${hostConvergence.state}`);
         if (hostConvergence.notice) info(hostConvergence.notice);
@@ -3922,6 +3940,36 @@ export function classifyHostConvergence(receipt, expectedVersion = PACKAGE_VERSI
   return { healthy: true, state: 'channels-converged' };
 }
 
+/** Activation and host readiness are independent; never claim a rollback from a host refusal. */
+export function hostSynchronizationFailureMessage(convergence, active, expectedVersion = PACKAGE_VERSION) {
+  const verified = active?.version === expectedVersion && Number.isSafeInteger(active.generation) && active.generation > 0
+    && active.codeRoot === `versions/${expectedVersion}`;
+  const state = verified ? `runtime ${expectedVersion} generation ${active.generation} is active`
+    : 'the active runtime generation could not be verified';
+  return `host synchronization is incomplete — ${state}${convergence?.error ? ` (${convergence.error})` : ''}`;
+}
+
+/** Doctor projection only. Fresh hook metadata cannot clear an executable or MCP boot gap. */
+export function reconcileFreshCodexDeclarations(recorded, proof, expectedVersion = PACKAGE_VERSION) {
+  const original = classifyHostConvergence(recorded, expectedVersion);
+  const codex = recorded?.hosts?.codex;
+  if (!proof?.ok || proof.state !== 'fresh-declarations-ready' || proof.expectedVersion !== expectedVersion
+    || recorded?.desiredVersion !== expectedVersion || codex?.version !== expectedVersion
+    || codex.state !== 'ready' || codex.restartRequired !== true || codex.restartScope !== 'unproven') return original;
+  // Older receipts carry the paths only in this machine-generated reason. An unknown reason,
+  // body file, skill/command surface, or MCP declaration retains the historical restart refusal.
+  const prefix = 'boot-level declarations changed: ';
+  const reason = codex.sessionSafetyReason;
+  const changed = typeof reason === 'string' && reason.startsWith(prefix) ? reason.slice(prefix.length).split(', ') : [];
+  if (!changed.length || changed.some((file) => !['hooks/codex-hooks.json', 'hooks/hooks.json'].includes(file))) {
+    return { ...original, freshDeclarations: proof, notice: 'Fresh Codex hook declarations are ready; executable/MCP boot readiness and existing open windows remain unproven.' };
+  }
+  const projected = classifyHostConvergence({ ...recorded, hosts: { ...recorded.hosts,
+    codex: { ...codex, restartScope: 'open-sessions' } } }, expectedVersion);
+  return { ...projected, ...(projected.healthy ? { state: 'fresh-declarations-ready' } : {}), freshDeclarations: proof,
+    notice: 'Fresh Codex hook declarations are ready; hook bodies and MCP execution were not tested. Existing open windows remain unproven.' };
+}
+
 const HOST_LABELS = { claude: 'Claude Code', codex: 'Codex' };
 /** The one accurate line for converged hosts whose already-open windows booted the old declarations. */
 export function openSessionsNotice(hosts, version) {
@@ -4233,7 +4281,9 @@ async function runUpdate() {
     info(c.dim('\nsynchronizing every detected host to this exact published version…\n'));
     const convergence = syncHostsAfterUpdate(kbDir);
     if (!convergence.ok) {
-      warn(`host synchronization is incomplete — runtime stays on the prior verified generation${convergence.error ? ` (${convergence.error})` : ''}`);
+      let active;
+      try { active = JSON.parse(fs.readFileSync(path.join(footprintRoots().brainHome, 'active.json'), 'utf8')); } catch { /* report unknown activation */ }
+      warn(hostSynchronizationFailureMessage(convergence, active));
       updateStatus = 1;
     } else if (convergence.convergence?.notice) info(convergence.convergence.notice);
     try { reportLegacyRufloDebris(); } catch (error) { warn(`legacy ruflo debris cleanup failed: ${error.message}`); }
@@ -4953,6 +5003,7 @@ export function syncManagedRouterTools({ routerDir = path.join(os.homedir(), '.c
   }
   // Preserve package-relative imports without replacing user policy.mjs overrides.
   for (const runtimeRelative of [path.join('plugin', 'scripts', 'runtime-preferences.mjs'),
+    path.join('plugin', 'scripts', 'project-identity.mjs'),
     path.join('config', 'model-router', 'policy.default.mjs')]) {
   const runtimeTarget = path.join(routerDir, runtimeRelative);
   const runtimeBytes = fs.readFileSync(path.join(packageRoot, runtimeRelative));
