@@ -59,13 +59,16 @@ describe('low — schema completeness', () => {
 
   it('the declared type matches the declared default, and enums list their options', () => {
     for (const s of SETTINGS_SCHEMA) {
-      expect(['enum', 'bool'], `${s.key}.type`).toContain(s.type);
+      expect(['enum', 'bool', 'product-list'], `${s.key}.type`).toContain(s.type);
       if (s.type === 'bool') {
         expect(typeof s.default, `${s.key}`).toBe('boolean');
-      } else {
+      } else if (s.type === 'enum') {
         expect(Array.isArray(s.options), `${s.key}.options`).toBe(true);
         expect(s.options.length, `${s.key}.options`).toBeGreaterThan(1);
         expect(s.options, `${s.key}.default must be one of its own options`).toContain(s.default);
+      } else {
+        expect(s.key).toBe('groundingScope');
+        expect(s.default).toBe('all');
       }
     }
   });
@@ -90,7 +93,7 @@ describe('low — validation refuses rather than guesses', () => {
     // FULLY specified means every key in SETTINGS_SCHEMA — `brainEnabled` joined it with ADR-054,
     // and advocacy is the 1-5 dial (ADR-052 WIP). Deep equality against the complete values object,
     // so a new key must be added here rather than the assertion loosened.
-    const input = { brainEnabled: false, brainProfile: 'ruvector', learningScope: 'user', managedMemoryBoundary: 'read-only', advocacy: 4, autoApply: true, newProjectDefaults: true };
+    const input = { brainEnabled: false, groundingScope: 'all', updateSource: 'latest', brainProfile: 'ruvector', learningScope: 'user', managedMemoryBoundary: 'read-only', advocacy: 4, autoApply: true, newProjectDefaults: true };
     const r = validate(input);
     expect(r.ok).toBe(true);
     expect(r.values).toEqual(input);
@@ -193,7 +196,7 @@ describe('medium — round trip through a real file', () => {
     // MIRROR key survives a real save/load, which is the only thing settings.json is responsible for
     // under ADR-054. (Writing the mirror never touches the sentinel — the switch is flipped only by
     // brain-state.mjs, via the console. See brain-off.test.mjs for that half.)
-    const chosen = { brainEnabled: false, brainProfile: 'ruvector', learningScope: 'user', managedMemoryBoundary: 'read-only', advocacy: 4, autoApply: true, newProjectDefaults: true };
+    const chosen = { brainEnabled: false, groundingScope: 'all', updateSource: 'latest', brainProfile: 'ruvector', learningScope: 'user', managedMemoryBoundary: 'read-only', advocacy: 4, autoApply: true, newProjectDefaults: true };
     const saved = saveSettings(chosen, { file });
     expect(saved.ok).toBe(true);
 
@@ -487,5 +490,27 @@ describe('qualitative — every setting explains its own downside', () => {
         expect(s[field], `${s.key}.${field}`).not.toMatch(/\d+\.\d+\.\d+/);
       }
     }
+  });
+});
+
+
+describe('issue319 user-owned updater source declaration', () => {
+  it('defaults to latest and only accepts an explicit installed/latest choice', () => {
+    expect(defaults().updateSource).toBe('latest');
+    expect(validate({ updateSource: 'installed' }).values.updateSource).toBe('installed');
+    for (const value of ['', null, {}, 'project', 'auto', true]) {
+      const result = validate({ updateSource: value });
+      expect(result.ok).toBe(false); expect(result.values.updateSource).toBe('latest');
+    }
+  });
+  it('persists installed mode while preserving every other owner preference', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'update-source-owner-'));
+    const file = path.join(dir, 'settings.json');
+    try {
+      expect(saveSettings({ advocacy: 1, groundingScope: ['ruvector'], learningScope: 'user' }, { file }).ok).toBe(true);
+      const before = loadSettings(file).values;
+      expect(saveSettings({ updateSource: 'installed' }, { file }).ok).toBe(true);
+      expect(loadSettings(file).values).toEqual({ ...before, updateSource: 'installed' });
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   });
 });

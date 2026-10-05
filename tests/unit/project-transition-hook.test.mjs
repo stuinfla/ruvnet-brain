@@ -11,6 +11,7 @@ import { normalizeTransition, buildTransitionProgression, runProjectTransitionHo
 import { queueCapture, runOutboxReplay, queuedWork } from '../../plugin/scripts/session-snapshot-hook.mjs';
 import { createStore } from '../helpers/continuity-fixture.mjs';
 import { createProgressionSnapshot } from '../../plugin/scripts/project-progression-contract.mjs';
+import { privateTransitionObservation } from '../../plugin/scripts/turn-capture-privacy.mjs';
 const dirs = [];
 afterEach(() => vi.restoreAllMocks());
 afterEach(() => dirs.splice(0).forEach((p) => fs.rmSync(p, { recursive: true, force: true })));
@@ -20,6 +21,25 @@ const source = { checkoutPath: '/repo', worktreeId: 'x', branch: 'main', head: '
 const identity = { id: 'repo', canonicalAgentDbPath: '/repo/.swarm/memory.db' };
 function snapshot(goal, session) { return createProgressionSnapshot({ projectIdentity: identity, sourceIdentity: source, hostIdentity: { host: 'claude', adapterVersion: 'test' }, sessionIdentity: session, sequence: 1, occurredAt: opts.now(), trigger: 'Stop', parentEventKeys: [], dedupId: session, completeProjectState: { currentGoal: goal, nextAction: 'verify owner objective', acceptanceContract: null, activeProcess: 'work', activeStep: 'test', ...Object.fromEntries(['plan','completed','inProgress','blockers','failures','decisions','changedFiles','commands','proofArtifacts','untested','resumeConflicts'].map((x) => [x, []])) } }); }
 describe('minimal non-authoritative transitions', () => {
+  it('omits excluded selected intent and private action errors before observation queuing without changing identity', () => {
+    const prompt = { session_id: 's', prompt: 'Fix /project/public/../private/client-title.md.' };
+    const selected = normalizeTransition(prompt, 'UserPromptSubmit', opts);
+    const filtered = privateTransitionObservation(selected, ['/project/private'], '/project', prompt);
+    expect(filtered.selectedIntent).toBeUndefined(); expect(filtered.id).toBe(selected.id); expect(filtered.intent).toEqual(selected.intent); expect(filtered.authoritative).toBe(false);
+    const payload = { session_id: 's', tool_name: 'Bash', tool_input: { command: 'cat /project/public/../private/client-title.md' }, tool_response: { error: 'Confidential client title with no path', exit_code: 1 } };
+    const failure = privateTransitionObservation(normalizeTransition(payload, 'PostToolUse', opts), ['/project/private'], '/project', payload);
+    expect(failure.error).toBe('[REDACTED:excluded-resource-error]'); expect(failure.outcome).toBe('failure'); expect(failure.exitCode).toBe(1); expect(failure.id).toBe('event-1');
+  });
+  it('refuses an immutable older transition when current exclusions conflict before history or acknowledgement', () => {
+    const p = project(); const brainHome = path.join(p, 'brain'); fs.mkdirSync(path.join(brainHome, 'turn-capture'), { recursive: true });
+    const observation = normalizeTransition({ session_id: 's', prompt: 'Fix /private-vault/client-title.md.' }, 'UserPromptSubmit', opts);
+    const job = { originProjectDir: p, event: 'UserPromptSubmit', host: 'claude', payload: { session_id: 's', normalizedTransition: { observation, sourceIdentity: { ...source, checkoutPath: p, capturePath: p } } } };
+    const file = queueCapture({ projectDir: p, originProjectDir: p, event: job.event, host: job.host, payload: job.payload }); const bytes = fs.readFileSync(file, 'utf8');
+    fs.writeFileSync(path.join(brainHome, 'turn-capture', 'policy.json'), JSON.stringify({ schemaVersion: 1, projects: {}, contentPathExcludes: ['/private-vault'] }));
+    const readHistory = vi.fn(); const capture = vi.fn();
+    expect(() => captureNormalizedTransition(job, { env: { RUVNET_BRAIN_HOME: brainHome }, readHistory, capture })).toThrow('immutable transition retained');
+    expect(readHistory).not.toHaveBeenCalled(); expect(capture).not.toHaveBeenCalled(); expect(fs.readFileSync(file, 'utf8')).toBe(bytes);
+  });
   it('records semantic user intent without arbitrary prompt or secrets', () => {
     const observed = normalizeTransition({ session_id: 's', prompt: 'Please fix memory capture. password=private-objective-supersecret arbitrary private sentence' }, 'UserPromptSubmit', opts);
     expect(observed.intent).toEqual({ action: 'fix', subjects: ['project memory'] });

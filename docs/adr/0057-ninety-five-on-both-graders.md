@@ -3,14 +3,14 @@ id: ADR-057
 title: 95 on both graders — closing a 38/53 against a self-reported 83, dimension by dimension
 status: Proposed
 date: 2026-07-27
-updated: 2026-09-27
+updated: 2026-10-05
 updated_source: derived-from-git
-version: 1.0.1
+version: 1.0.3
 impl: verification-expired
 verified: 2026-07-30
 verified_digest: 1c276a7dfbc5
 verified_by: governed-source claim ledger in this ADR plus node scripts/doc-currency.mjs --json
-reviewed_digest: 9451bb97892a
+reviewed_digest: 39f280b80f15
 governs:
   - scripts/behavioral-l1-l4.mjs
   - scripts/no-silent-substitution.mjs
@@ -22,6 +22,41 @@ tags: [qa, gen2-qe, proactivity, learning, substitution, latency, honesty, gradi
 supersedes: []
 relates: [ADR-028, ADR-052, ADR-053, ADR-055, ADR-056]
 ---
+
+
+## Current source review — 2026-10-05
+
+Reviewed candidate source `1ccc1e633772c549e4a23596a1ce3c743e797315`. This ADR stays
+**Proposed**, with `impl: verification-expired`; no external grader was rerun and no score is
+awarded by this source review. Historical scores, thresholds, and receipts below describe the
+QE apparatus and their own dated artifacts.
+
+The **two-independent-grader ≥95 target here is not the current product North Star rubric**.
+The product rubric is `north-star-product-capability-v1`, frozen as eight categories and forty
+criteria in canonical AgentDB (`.swarm/memory.db`, namespace `ruvnet-brain`, key
+`north-star-product-rubric-v1-1791177098594`), with its readable snapshot in
+`docs/qe/NORTH-STAR-PRODUCT-RUBRIC-v1.md`. QE-apparatus grades, retrieval panel grades, evidence
+coverage, adoption metrics, and that product capability assessment have different subjects.
+Do not substitute one for another, infer a current product grade from an old apparatus score,
+or mint another composite rubric. The original apparatus improvement plan remains design
+history; any future apparatus grading must identify its unchanged subject, criteria, source,
+and independent grader evidence.
+
+The governed source still rejects unknown/zero-check behavioral levels, while L4's `must`
+checks observe emitted instructions rather than downstream obedience.
+`scripts/no-silent-substitution.mjs` still exposes `audit(root = ROOT)` but its CLI calls
+`audit()` without a user-project argument: the downstream audit limitation remains open.
+`tests/mesh/coexistence.test.mjs` supplies fixture-based coexistence evidence, not every live
+host. The installer and owned hook registry have materially evolved since the July build-order
+ledger: source presence, native registration, and focused customer receipts must retain their
+own boundaries and cannot collectively assert both graders awarded 95.
+
+No counterfactual replay, paid panel, or clean-room provider turn was launched for this review.
+The historical learning artifact is not claimed as the latest available learning evidence;
+current portfolio receipts must be checked independently against their source and causal
+controls. Remaining installer/privacy integration and final source-digest binding are not
+certified by this section. CONTRIBUTING.md controls current release authority and verification;
+the dated build-order ledger is not an alternative publisher or promotion procedure.
 
 # ADR-057: 95 on both graders
 
@@ -252,6 +287,7 @@ to the five governed paths; it does not adjudicate the product or substitute for
   last independent score recorded here; source reconciliation cannot revise it.
 
 ## Currency log
+| 2026-10-05 | Reviewed current source and recorded remaining limitations; no verification or implementation-status promotion. | reviewed_digest 39f280b80f15; inspected `scripts/behavioral-l1-l4.mjs` and all expanded governs against source 5d9ea4df. Independent review preserved incident dates, Proposed/expired states and historical evidence; notification and oldest-runtime limits are explicit. |
 | 2026-09-27 | Currency review: decision unchanged. Motion: bin/install.mjs release fixes (macOS deadline, serverDependencies, corpus-currency, capability discovery). No change to the dual-grader 95 threshold or its measurement. | Reviewed `scripts/behavioral-l1-l4.mjs`, `scripts/no-silent-substitution.mjs`, `tests/mesh/coexistence.test.mjs`, `bin/install.mjs`, `plugin/hooks/hooks.json` against the commits listed above; reviewed_digest 9451bb97892a. |
 
 | 2026-09-19 | Reviewed current source and normative claims; the detailed September 19 findings below retain their stated runtime limitations. reviewed_digest 2f8099012566. | `scripts/behavioral-l1-l4.mjs`, `scripts/no-silent-substitution.mjs`, `tests/mesh/coexistence.test.mjs`; source consistency review only, no new deployment or acceptance claim. |

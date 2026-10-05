@@ -23,6 +23,18 @@ describe.skipIf(!hasBash || process.platform === 'win32')('issue373 real guard s
 test('exact reported unrelated SQLite backup docstring passes the real bash guard', () => {
   assert.equal(run(event(example)).status, 0);
 });
+test('symlinked installed script directory executes the projection and retains strict negatives', () => {
+  const alias = path.join(home, 'scripts-alias');
+  fs.symlinkSync(path.dirname(gate), alias, 'dir');
+  for (const [content, expected] of [[example, 0], ['import agentdb\n', 2]]) {
+    const out = spawnSync('bash', [path.join(alias, 'ground-before-write.sh')], {
+      input: JSON.stringify(event(content)), encoding: 'utf8', timeout: 5000,
+      env: { ...process.env, HOME: home, MODEL_ROUTER_PROFILE: path.join(home, '.claude/model-router/profile.json'),
+        RUVNET_BRAIN_STATE_DIR: path.join(home, 'state'), RUVNET_SKIP_GROUNDING_CHECK: '0' } });
+    assert.equal(out.error, undefined); assert.equal(out.status, expected, out.stderr);
+    if (expected === 2) assert.match(out.stderr, /BLOCKED/);
+  }
+});
 test('leading Python module documentation and JavaScript comments pass', () => {
   for (const payload of [event('# SQLite helper\n"""Never access AgentDB."""\nimport sqlite3\n'),
     event('// Avoid AgentDB\n/* Ruflo is unrelated */\nexport const answer = 1;\n', '/tmp/app.mjs')]) assert.equal(run(payload).status, 0);

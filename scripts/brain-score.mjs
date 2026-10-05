@@ -116,9 +116,10 @@ function readJson(rel) {
  * tracked file's mtime to "now", so a panel graded weeks ago read as freshly current on any new
  * clone — the exact false-freshness failure this whole gate exists to prevent (see the file header:
  * "grounded 100/100... recorded 2026-07-10... quoted as current"). Each grader-produced file's own
- * `summary.generatedAt` (when present) is now preferred; checkout mtime is used only as a fallback
- * for older panels that predate the stamp, so this cannot regress a panel that never recorded one.
- * `dir` is overridable so a fixture test can exercise this without touching the real `data/` panel.
+ * `summary.generatedAt` dates each contributing score. Missing/invalid stamps leave the
+ * aggregate undated; otherwise the oldest contributor controls its currency. Checkout times
+ * cannot establish when a panel ran.
+ * `dir` is overridable so fixtures need not touch the real `data/` panel.
  */
 export function readPanel(dir = path.join(ROOT, 'data')) {
   let files = [];
@@ -127,17 +128,16 @@ export function readPanel(dir = path.join(ROOT, 'data')) {
     let j = null;
     try { j = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); } catch { /* unreadable/absent */ }
     return { f, j };
-  }).filter((r) => r.j?.summary);
+  }).filter((r) => Number.isFinite(r.j?.summary?.avgStrict));
   if (!rows.length) return { value: null, detail: null, at: null };
   const strict = rows.map((r) => r.j.summary.avgStrict).filter(Number.isFinite);
   if (!strict.length) return { value: null, detail: null, at: null };
-  const at = rows
-    .map((r) => {
-      const recorded = r.j.summary.generatedAt;
-      if (typeof recorded === 'string' && Number.isFinite(Date.parse(recorded))) return new Date(recorded).toISOString();
-      try { return fs.statSync(path.join(dir, r.f)).mtime.toISOString(); } catch { return null; }
-    })
-    .filter(Boolean).sort().pop();
+  const stamps = rows.map((r) => {
+    const recorded = r.j.summary.generatedAt;
+    return typeof recorded === 'string' && Number.isFinite(Date.parse(recorded))
+      ? new Date(recorded).toISOString() : null;
+  });
+  const at = stamps.every(Boolean) ? stamps.sort()[0] : null;
   return {
     value: Math.round((strict.reduce((a, b) => a + b, 0) / strict.length) * 10) / 10,
     detail: `${strict.length} store(s) graded`,

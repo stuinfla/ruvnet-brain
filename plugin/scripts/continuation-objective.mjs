@@ -39,17 +39,52 @@ export function authorizedContinuationObjective(objective, input, identity) {
   return objective;
 }
 
-// Promises the assistant made in a final answer ("I'll do X next"), captured by continuation-gate
-// into the SAME ledger (owner mandate 2026-09-15: "I will" is a contract). Same scoping discipline
-// as the objective above — project AND worktree must match, a session wildcard only as the literal
-// '*' — and the same loop guards. An item that is done, malformed, or foreign is never returned.
-export function authorizedPromiseItems(items, input, identity) {
-  if (!identity || input?.hook_event_name !== 'Stop' || !text(input.session_id)
-    || input.interrupted || input.cancelled || input.stop_hook_active) return [];
-  return (Array.isArray(items) ? items : []).filter((item) => item?.kind === 'assistant-commitment'
-    && item.schemaVersion === 1 && item.done !== true && text(item.text) && Number.isFinite(Date.parse(item.at))
+// Automatic assistant commitments never confer project-wide user authority. Retained legacy
+// wildcards belong only to their proven capturing session; unknown ownership stays historical.
+export function assistantCommitmentOwned(item, sessionId, identity) {
+  return Boolean(identity && text(sessionId) && sessionId !== '*'
+    && item?.kind === 'assistant-commitment' && item.schemaVersion === 1
+    && item.done !== true && text(item.text) && Number.isFinite(Date.parse(item.at))
     && item.authorization?.kind === 'owner-mandate' && text(item.authorization.reference)
     && item.projectId === identity.projectId
     && Array.isArray(item.worktreeIds) && item.worktreeIds.includes(identity.worktreeId)
-    && Array.isArray(item.sessionIds) && (item.sessionIds.includes('*') || item.sessionIds.includes(input.session_id)));
+    && item.capturedFrom?.sessionId === sessionId
+    && Array.isArray(item.sessionIds)
+    && (item.sessionIds.includes(sessionId) || item.sessionIds.includes('*')));
+}
+
+const noncompletedStates = new Set(['blocked', 'deferred', 'superseded', 'disputed']);
+
+/** Explicit owner-session preference, not verified completion or authority to cancel user work. */
+export function setAssistantCommitmentState(ledger, { itemText, state, sessionId, reason,
+  replacementReference, identity, at = new Date().toISOString() } = {}) {
+  if (!noncompletedStates.has(state) || !text(reason) || reason.length > 4000
+    || !text(sessionId) || sessionId === '*' || !Number.isFinite(Date.parse(at))) {
+    throw new Error('commitment state requires a supported noncompleted state, exact session id and reason');
+  }
+  if (state === 'superseded' && (!text(replacementReference) || replacementReference === itemText)) {
+    throw new Error('superseded requires a distinct replacement reference');
+  }
+  const matches = (Array.isArray(ledger.items) ? ledger.items : []).filter((item) => item.text === itemText
+    && assistantCommitmentOwned(item, sessionId, identity));
+  if (matches.length !== 1) throw new Error('exact assistant commitment is not uniquely owned by this session and worktree');
+  const item = matches[0];
+  if (item.stateHistory !== undefined && !Array.isArray(item.stateHistory)) {
+    throw new Error('existing commitment state history is malformed; retain it for explicit recovery');
+  }
+  const transition = { from: item.state || 'active', to: state, at, reason: reason.trim(),
+    provenance: { kind: 'explicit-session-cli', sessionId },
+    ...(text(replacementReference) ? { replacementReference: replacementReference.trim() } : {}) };
+  item.stateHistory = [...(Array.isArray(item.stateHistory) ? item.stateHistory : []), transition];
+  item.state = state;
+  item.stateChangedAt = at;
+  return item;
+}
+
+// A state change suppresses only this assistant's nudge. The independent user objective is untouched.
+export function authorizedPromiseItems(items, input, identity) {
+  if (!identity || input?.hook_event_name !== 'Stop' || !text(input.session_id)
+    || input.interrupted || input.cancelled || input.stop_hook_active) return [];
+  return (Array.isArray(items) ? items : []).filter((item) => assistantCommitmentOwned(item, input.session_id, identity)
+    && (item.state === undefined || item.state === 'active'));
 }

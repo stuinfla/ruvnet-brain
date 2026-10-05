@@ -165,7 +165,7 @@ process.exit(f.exit);
   const setup = (fake) => {
     fs.writeFileSync(path.join(kb, 'forge-update.mjs'), FAKE_UPDATER);
     writeJson(path.join(kb, 'fake-check.json'), fake);
-    const bin = path.join(home, 'bin');
+    const bin = path.join(home, '.npm-global', 'bin');
     fs.mkdirSync(bin, { recursive: true });
     fs.writeFileSync(path.join(bin, 'npx'), '#!/bin/sh\necho "$@" >> "$HOME/npx-called"\nexit 0\n', { mode: 0o755 });
     fs.writeFileSync(path.join(bin, 'npx.cmd'), '@echo %* >> "%HOME%\\npx-called"\r\n@exit /b 0\r\n');
