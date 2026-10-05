@@ -43,7 +43,7 @@ describe('integration evidence exclusions', () => {
 describe('reviewed release integration boundary', () => {
   const identity = { sourceSha: 'a'.repeat(40), runId: 1, runAttempt: 1 };
   const qualification = () => {
-    const plan = qualificationPlan('integration');
+    const plan = qualificationPlan('integration', 'linux');
     const value = { schemaVersion: 1, kind: 'ruvnet-brain-release-qualification',
       suite: 'integration', platform: 'linux', checkoutRoot: '/fixture/repository',
       source: { sha: identity.sourceSha, dirty: false, digest: 'c'.repeat(64) },
@@ -60,7 +60,7 @@ describe('reviewed release integration boundary', () => {
   };
   it('binds an actual fully passing reviewed report to exact source and run', () => {
     expect(buildQualifiedIntegrationEvidence(qualification(), identity)).toMatchObject({
-      sourceSha: identity.sourceSha, runId: 1, passed: qualificationPlan('integration').files.length, skipped: 0, todo: 0,
+      sourceSha: identity.sourceSha, runId: 1, passed: qualificationPlan('integration', 'linux').files.length, skipped: 0, todo: 0,
       exclusionPolicy: 'reviewed-release-integration-v1', qualificationReceiptSha256: qualification().receiptSha256 });
   });
   it.each(['wrong-source', 'dirty', 'changed-source', 'failed', 'zero-tests', 'skipped', 'count-mismatch', 'after-source', 'failed-command'])('rejects %s rather than manufacturing pass', mutation => {

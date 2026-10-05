@@ -1,78 +1,60 @@
 {
   "_comment": "Model candidate catalog for model-router-engine.mjs. EDIT ME freely. Pricing is $/Mtok. 'verified' names the source+date a price was confirmed live; null pricing means UNKNOWN \u2014 the engine will NOT invent a cost for it (same honesty rule as route-cheap.mjs). 'harness' = which agent(s) can launch each model \u2014 EMPTY [] means landscape-only: known to exist, but no wired execution path yet, so the engine will never select it (see model-router-engine.mjs pool filter). Do not add a real execution path (an entry to route-cheap.mjs PRICING or a harness value) until dispatch is actually implemented and tested \u2014 an engine that 'chooses' a model it can't run is worse than one that doesn't know the model exists. 'subscription' = harness(es) under which this model is covered by a flat subscription (Claude Max, Codex/ChatGPT), so its marginal cost to the user is ~$0 \u2014 the default policy treats those as free and will NOT prefer a billed model over them (never spend where the subscription is free).",
-  "managedVersion": 2,
-  "updated": "2026-08-02 (managed template)",
+  "managedVersion": 3,
+  "updated": "2026-10-04 (five native subscription launch receipts; Fable remains landscape-only)",
   "candidates": [
     {
       "id": "claude-haiku-4-5-20251001",
       "provider": "anthropic",
-      "harness": [
-        "claude-code"
-      ],
-      "subscription": [
-        "claude-code"
-      ],
+      "harness": [],
+      "subscription": [],
       "tier": "cheap",
       "costPerMTok": null,
       "verified": null,
-      "note": "covered by Claude Max under Claude Code (marginal $0); API price unverified"
+      "note": "Historical model retained for inventory only. No default execution eligibility in this refreshed template."
     },
     {
       "id": "claude-sonnet-5",
       "provider": "anthropic",
-      "harness": [
-        "claude-code"
-      ],
-      "subscription": [
-        "claude-code"
-      ],
+      "harness": [],
+      "subscription": [],
       "tier": "mid",
       "costPerMTok": null,
-      "verified": null
+      "verified": null,
+      "note": "Historical model retained for inventory only. No default execution eligibility in this refreshed template."
     },
     {
       "id": "claude-opus-4-8",
       "provider": "anthropic",
-      "harness": [
-        "claude-code"
-      ],
-      "subscription": [
-        "claude-code"
-      ],
+      "harness": [],
+      "subscription": [],
       "tier": "frontier",
       "costPerMTok": {
         "in": 5,
         "out": 25
       },
-      "verified": "2026-07-07 route-cheap.mjs FRONTIER (API price; $0 under Max)"
+      "verified": "2026-07-07 route-cheap.mjs FRONTIER (API price; $0 under Max)",
+      "note": "Historical model retained for inventory only. No default execution eligibility in this refreshed template."
     },
     {
       "id": "claude-opus-5",
       "provider": "anthropic",
-      "harness": [
-        "claude-code"
-      ],
-      "subscription": [
-        "claude-code"
-      ],
+      "harness": [],
+      "subscription": [],
       "tier": "frontier",
       "costPerMTok": null,
       "verified": "2026-08-02 Claude Code 2.1.220 subscription launch (canonicalModel claude-opus-5)",
-      "note": "Launchability is host-scoped. The managed row adds the reviewed candidate; the user's subscription profile still decides whether it is available and covered."
+      "note": "Historical model retained for inventory only. No default execution eligibility in this refreshed template."
     },
     {
       "id": "claude-fable-5",
       "provider": "anthropic",
-      "harness": [
-        "claude-code"
-      ],
-      "subscription": [
-        "claude-code"
-      ],
+      "harness": [],
+      "subscription": [],
       "tier": "frontier",
       "costPerMTok": null,
       "verified": "2026-07-12 Artificial Analysis leaderboard (WebSearch) \u2014 listed as top-intelligence tier alongside GPT-5.6 Sol",
-      "note": "covered by Claude Max under Claude Code (marginal $0); API price unverified. Use sparingly per Stuart's directive \u2014 Opus 4.8 measures ~96% of comparable quality at far lower cost; Fable 5 is for tasks that specifically need its top-tier profile, not a default."
+      "note": "Historical model retained for inventory only. No default execution eligibility in this refreshed template."
     },
     {
       "id": "deepseek/deepseek-chat",
@@ -123,16 +105,12 @@
     {
       "id": "gpt-5.5",
       "provider": "openai",
-      "harness": [
-        "codex"
-      ],
-      "subscription": [
-        "codex"
-      ],
+      "harness": [],
+      "subscription": [],
       "tier": "frontier",
       "costPerMTok": null,
       "verified": null,
-      "note": "Codex-harness model; whether YOUR install can launch it and whether a subscription covers it comes from profile.json (model-router-setup.mjs) and your live ~/.codex/models_cache.json"
+      "note": "Historical model retained for inventory only. No default execution eligibility in this refreshed template."
     },
     {
       "id": "gpt-5.6-sol",
@@ -142,7 +120,7 @@
       "tier": "frontier",
       "costPerMTok": null,
       "verified": null,
-      "note": "Codex-harness model; whether YOUR install can launch it and whether a subscription covers it comes from profile.json (model-router-setup.mjs) and your live ~/.codex/models_cache.json"
+      "note": "Historical model retained for inventory only. No default execution eligibility in this refreshed template."
     },
     {
       "id": "gpt-5.6-terra",
@@ -152,7 +130,7 @@
       "tier": "mid",
       "costPerMTok": null,
       "verified": null,
-      "note": "Codex-harness model; whether YOUR install can launch it and whether a subscription covers it comes from profile.json (model-router-setup.mjs) and your live ~/.codex/models_cache.json"
+      "note": "Historical model retained for inventory only. No default execution eligibility in this refreshed template."
     },
     {
       "id": "gpt-5.6-luna",
@@ -162,19 +140,17 @@
       "tier": "cheap",
       "costPerMTok": null,
       "verified": null,
-      "note": "Codex-harness model; whether YOUR install can launch it and whether a subscription covers it comes from profile.json (model-router-setup.mjs) and your live ~/.codex/models_cache.json"
+      "note": "Historical model retained for inventory only. No default execution eligibility in this refreshed template."
     },
     {
       "id": "gpt-5-mini",
       "provider": "openai",
-      "harness": [
-        "codex",
-        "claude-code"
-      ],
+      "harness": [],
       "subscription": [],
       "tier": "mid",
       "costPerMTok": null,
-      "verified": null
+      "verified": null,
+      "note": "Historical model retained for inventory only. No default execution eligibility in this refreshed template."
     },
     {
       "id": "x-ai/grok-4.5",
@@ -230,6 +206,104 @@
       },
       "verified": "2026-07-12 OpenRouter /models live (direct API check)",
       "note": "LANDSCAPE-ONLY: 295B MoE Apache-2.0, strong generalist, second-tier coder (SWE-bench V 78.0 vs GLM-5.2 84.2, vendor numbers). IMPORTANT: this is the PAID slug on purpose \u2014 the tencent/hy3:free promo window closes ~2026-07-20 and would silently die/bill; never wire the :free slug. See goldie/2026-07-12.md Q3."
+    },
+    {
+      "id": "claude-sonnet-5-5",
+      "provider": "anthropic",
+      "harness": [
+        "claude-code"
+      ],
+      "subscription": [
+        "claude-code"
+      ],
+      "tier": "mid",
+      "costPerMTok": {
+        "in": 2,
+        "out": 10
+      },
+      "verified": "2026-10-04 actual native subscription launch, exact modelUsage identity and MODEL_OK receipt; official API prices",
+      "note": "Verified native Claude subscription launch on the current machine. Per-user coverage still requires the router profile; higher effort settings are recommendations, not benchmark results."
+    },
+    {
+      "id": "claude-opus-5-5",
+      "provider": "anthropic",
+      "harness": [
+        "claude-code"
+      ],
+      "subscription": [
+        "claude-code"
+      ],
+      "tier": "frontier",
+      "costPerMTok": {
+        "in": 4,
+        "out": 20
+      },
+      "verified": "2026-10-04 actual native subscription launch, exact modelUsage identity and MODEL_OK receipt; official API prices",
+      "note": "Verified native Claude subscription launch on the current machine. Per-user coverage still requires the router profile; higher effort settings are recommendations, not benchmark results."
+    },
+    {
+      "id": "claude-fable-5-1",
+      "provider": "anthropic",
+      "harness": [],
+      "subscription": [],
+      "tier": "frontier",
+      "costPerMTok": {
+        "in": 10,
+        "out": 50
+      },
+      "verified": "2026-10-04 official provider documentation + fresh native inventory",
+      "note": "Landscape only until native launch/coverage is verified. Account catalog presence or historical observation is not a fresh execution proof."
+    },
+    {
+      "id": "gpt-6.1-sol",
+      "provider": "openai",
+      "harness": [
+        "codex"
+      ],
+      "subscription": [
+        "codex"
+      ],
+      "tier": "mid",
+      "costPerMTok": {
+        "in": 2,
+        "out": 10
+      },
+      "verified": "2026-10-04 actual native Codex subscription launch, requested model, completed turn and MODEL_OK receipt; official API prices",
+      "note": "Verified native Codex subscription launch on current machine. Coverage remains profile-scoped; selection does not switch the parent conversation."
+    },
+    {
+      "id": "gpt-6-luna",
+      "provider": "openai",
+      "harness": [
+        "codex"
+      ],
+      "subscription": [
+        "codex"
+      ],
+      "tier": "cheap",
+      "costPerMTok": {
+        "in": 0.1,
+        "out": 0.5
+      },
+      "verified": "2026-10-04 actual native Codex subscription launch, requested model, completed turn and MODEL_OK receipt; official API prices",
+      "note": "Verified native Codex subscription launch on current machine. Coverage remains profile-scoped; selection does not switch the parent conversation."
+    },
+    {
+      "id": "gpt-6-astra",
+      "provider": "openai",
+      "harness": [
+        "codex"
+      ],
+      "subscription": [
+        "codex"
+      ],
+      "tier": "frontier",
+      "costPerMTok": {
+        "in": 10,
+        "out": 50
+      },
+      "verified": "2026-10-04 actual native Codex subscription launch, requested model, completed turn and MODEL_OK receipt; official API prices",
+      "note": "Verified native Codex subscription launch on current machine. Coverage remains profile-scoped; selection does not switch the parent conversation."
     }
   ]
 }

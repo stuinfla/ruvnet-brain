@@ -385,7 +385,9 @@ function promiseBookkeeping() {
       }
     }
     const openKeys = new Set(led.items.filter((i) => i?.kind === PROMISE_KIND && !i.done && i.projectId === pid).map((i) => i.key));
-    for (const promise of extractCommitments(hookInput.last_assistant_message)) {
+    // Owner preference suppresses only new capture; verified closure above and integrity audits stay active.
+    const newPromises = process.env.RUVNET_PROMISE_CAPTURE === 'off' ? [] : extractCommitments(hookInput.last_assistant_message);
+    for (const promise of newPromises) {
       if (openKeys.has(promise.key) || openKeys.size >= PROMISE_CAP_OPEN) continue;
       openKeys.add(promise.key);
       led.items.push({ schemaVersion: 1, kind: PROMISE_KIND, text: promise.text, key: promise.key, done: false, at,

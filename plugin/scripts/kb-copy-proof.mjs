@@ -46,10 +46,11 @@ const storeList = (source) => {
   return stores && typeof stores === 'object' ? Object.entries(stores).map(([kbName, value]) => ({ kbName, ...value })) : [];
 };
 const stemOf = (file) => path.basename(String(file)).replace(/(?:\.big)?\.rvf$/i, '').toLowerCase();
-// The store a sidecar belongs to: <store>.big.rvf[.embed|.idmap].json, <store>.meta.json, <store>.passages.jsonl,
-// <store>.symbols.json, <store>-primer.md.
+// The store a sidecar belongs to: <store>.big.rvf[.embed|.idmap].json, <store>[.big].meta.json,
+// <store>[.big].passages.jsonl, <store>[.big].symbols.json, <store>-primer.md.
 const storeStem = (file) => path.basename(String(file)).toLowerCase()
-  .replace(/-primer\.md$/, '').replace(/(?:\.big)?\.rvf(?:\.[a-z]+\.json)?$/, '').replace(/\.(?:meta|symbols)\.json$|\.passages\.jsonl$/, '');
+  .replace(/-primer\.md$/, '').replace(/(?:\.big)?\.rvf(?:\.[a-z]+\.json)?$/, '')
+  .replace(/(?:\.big)?(?:\.(?:meta|symbols)\.json|\.passages\.jsonl)$/, '');
 // Files the installer/updater writes into a KB that no bundle ships (bin/install.mjs placeUpdater,
 // placeTrustedCoverageValidator, ensureVerifier; the updater's snapshot receipt). Re-created on every install.
 const INSTALLER_WRITTEN = new Set(['coverage-integrity.mjs', 'RUNTIME-IDENTITY.json', '.refresh-snapshot.json',

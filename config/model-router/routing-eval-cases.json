@@ -1,0 +1,275 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-10-04",
+  "labelBasis": "User allocation mandate: mechanical noncoding work, ordinary work, substantial implementation, bounded consequential reasoning, and explicitly justified exceptional reasoning. Labels assess the requested work, not the classifier's keywords.",
+  "harness": "codex",
+  "cases": [
+    {
+      "id": "mechanical-sort", "group": "mechanical",
+      "request": "Put these names in alphabetical order: Mina, Theo, Ana, Jules.",
+      "risk": "low",
+      "expected": { "minimumClass": "fast", "maximumClass": "fast", "minimumRole": "mechanical-work" },
+      "rationale": "The complete input and ordering rule are supplied; no code or judgment is needed."
+    },
+    {
+      "id": "mechanical-format", "group": "mechanical",
+      "request": "Format these three dates as YYYY-MM-DD: October 1 2026, October 2 2026, October 3 2026.",
+      "risk": "low",
+      "expected": { "minimumClass": "fast", "maximumClass": "fast", "minimumRole": "mechanical-work" },
+      "rationale": "A supplied finite list and explicit transformation make this mechanical."
+    },
+    {
+      "id": "mechanical-extract", "group": "mechanical",
+      "request": "Extract the three invoice identifiers from this paragraph: INV-101 arrived, INV-102 was paid, and INV-103 was voided.",
+      "risk": "low",
+      "expected": { "minimumClass": "fast", "maximumClass": "fast", "minimumRole": "mechanical-work" },
+      "rationale": "Copying explicit identifiers requires no domain inference."
+    },
+    {
+      "id": "mechanical-translate", "group": "mechanical",
+      "request": "Translate 'The meeting starts at noon' into Spanish.",
+      "risk": "low",
+      "expected": { "minimumClass": "fast", "maximumClass": "fast", "minimumRole": "mechanical-work" },
+      "rationale": "A short everyday sentence is a bounded noncoding transformation."
+    },
+    {
+      "id": "mechanical-typo", "group": "mechanical",
+      "request": "Fix only the typo in 'The pakage arrived today'.",
+      "risk": "low",
+      "expected": { "minimumClass": "fast", "maximumClass": "fast", "minimumRole": "mechanical-work" },
+      "rationale": "The requested edit is narrow and reversible."
+    },
+    {
+      "id": "mechanical-table", "group": "mechanical",
+      "request": "Turn this list into a two-column Markdown table: red=3, blue=5, green=2.",
+      "risk": "low",
+      "expected": { "minimumClass": "fast", "maximumClass": "fast", "minimumRole": "mechanical-work" },
+      "rationale": "Only presentation changes; the values are already given."
+    },
+    {
+      "id": "mechanical-summary", "group": "mechanical",
+      "request": "Summarize this supplied changelog into three bullets without adding recommendations: fixed typo, corrected link, updated title.",
+      "risk": "low",
+      "expected": { "minimumClass": "fast", "maximumClass": "fast", "minimumRole": "mechanical-work" },
+      "rationale": "A closed-input summary needs no external investigation."
+    },
+    {
+      "id": "ordinary-code-extraction", "group": "ordinary",
+      "request": "Implement an extraction function that reads invoice IDs and add a test for an empty input.",
+      "risk": "moderate",
+      "expected": { "minimumClass": "medium", "maximumClass": "medium", "minimumRole": "ordinary-work" },
+      "rationale": "Despite extraction vocabulary, this asks for ordinary code and validation."
+    },
+    {
+      "id": "ordinary-file-inspection", "group": "ordinary",
+      "request": "Read the two module files and explain which one owns timeout configuration.",
+      "risk": "low",
+      "expected": { "minimumClass": "medium", "maximumClass": "medium", "minimumRole": "ordinary-work" },
+      "rationale": "Routine source inspection does not justify frontier reasoning."
+    },
+    {
+      "id": "ordinary-environment-path", "group": "environment-repair",
+      "request": "The CLI is missing from PATH after opening a new terminal. Inspect the shell startup files and repair the user-level path.",
+      "taskFacts": { "taskType": "coding", "scope": "routine", "uncertainty": "environment" },
+      "risk": "moderate",
+      "expected": { "minimumClass": "medium", "maximumClass": "medium", "minimumRole": "ordinary-work" },
+      "rationale": "An environment problem alone does not establish difficult reasoning."
+    },
+    {
+      "id": "ordinary-missing-information", "group": "missing-information",
+      "request": "The test fails, but I forgot to include the error. Find the test command and collect the failure before deciding what to change.",
+      "taskFacts": { "taskType": "coding", "uncertainty": "missing-information" },
+      "risk": "moderate",
+      "expected": { "minimumClass": "medium", "maximumClass": "medium", "minimumRole": "ordinary-work" },
+      "rationale": "Gathering absent evidence is ordinary debugging, not automatically architecture uncertainty."
+    },
+    {
+      "id": "ordinary-ambiguous-speed", "group": "ambiguity",
+      "request": "Make it faster. First ask which page and measurement I mean; do not redesign anything yet.",
+      "taskFacts": { "uncertainty": "missing-information" },
+      "risk": "low",
+      "expected": { "minimumClass": "medium", "maximumClass": "medium", "minimumRole": "ordinary-work" },
+      "rationale": "The immediate authorized work is clarification, without evidence of a difficult system problem."
+    },
+    {
+      "id": "ordinary-permission-repair", "group": "environment-repair",
+      "request": "A local fixture cannot write its own temporary directory. Check ownership and repair only that disposable fixture.",
+      "taskFacts": { "scope": "routine", "uncertainty": "environment" },
+      "risk": "moderate",
+      "expected": { "minimumClass": "medium", "maximumClass": "medium", "minimumRole": "ordinary-work" },
+      "rationale": "A scoped filesystem repair should not be treated as an exceptional security review."
+    },
+    {
+      "id": "ordinary-architecture-doc", "group": "ordinary",
+      "request": "Inspect architecture documentation and tell me where the cache path is documented.",
+      "risk": "low",
+      "expected": { "minimumClass": "medium", "maximumClass": "medium", "minimumRole": "ordinary-work" },
+      "rationale": "Reading an architecture document is not making an architectural decision."
+    },
+    {
+      "id": "ordinary-routine-review", "group": "ordinary",
+      "request": "Review a one-line typo correction in the README and confirm the replacement spelling.",
+      "taskFacts": { "taskType": "review", "scope": "routine" },
+      "risk": "low",
+      "expected": { "minimumClass": "medium", "maximumClass": "medium", "minimumRole": "ordinary-work" },
+      "rationale": "A routine review label must not automatically trigger final substantive review allocation."
+    },
+    {
+      "id": "substantial-invitations", "group": "substantial-implementation",
+      "request": "Add team invitations with storage, expiration, acceptance endpoints, permissions, UI states, and integration coverage.",
+      "risk": "moderate",
+      "expected": { "minimumClass": "substantial", "maximumClass": "substantial", "minimumRole": "substantial-implementation" },
+      "rationale": "Several coordinated implementation surfaces warrant a stronger ordinary coding effort."
+    },
+    {
+      "id": "substantial-facts", "group": "substantial-implementation",
+      "request": "Implement the accepted invitation design across the backend, client, and integration fixtures.",
+      "taskFacts": { "taskType": "coding", "scope": "substantial", "uncertainty": "none" },
+      "risk": "moderate",
+      "expected": { "minimumClass": "substantial", "maximumClass": "substantial", "minimumRole": "substantial-implementation" },
+      "rationale": "Substantial implementation with a settled design needs high-effort ordinary execution, not a new architecture escalation."
+    },
+    {
+      "id": "substantial-parser-adoption", "group": "substantial-implementation",
+      "request": "Replace the old parser in every importer, preserve compatibility, and cover each import format with integration fixtures.",
+      "risk": "moderate",
+      "expected": { "minimumClass": "substantial", "maximumClass": "substantial", "minimumRole": "substantial-implementation" },
+      "rationale": "Broad coordinated implementation is substantial even when the request is short."
+    },
+    {
+      "id": "substantial-observability", "group": "substantial-implementation",
+      "request": "Implement the already approved tracing design across the scheduler, worker, API, and dashboard with tests.",
+      "taskFacts": { "scope": "substantial" },
+      "risk": "moderate",
+      "expected": { "minimumClass": "substantial", "maximumClass": "substantial", "minimumRole": "substantial-implementation" },
+      "rationale": "Partial scope facts supplement a clearly broad implementation task."
+    },
+    {
+      "id": "hard-double-charge", "group": "deceptively-short-hard",
+      "request": "It charged the same card twice after failover. Find the smallest safe fix.",
+      "risk": "critical",
+      "expected": { "minimumClass": "hard", "maximumClass": "hard", "minimumRole": "bounded-difficult-reasoning" },
+      "rationale": "Financial correctness across failover requires understanding coupled failure behavior; brevity does not make it routine."
+    },
+    {
+      "id": "hard-cross-tenant", "group": "deceptively-short-hard",
+      "request": "One tenant can see another tenant's invoices. Explain the cause and the safe repair.",
+      "risk": "critical",
+      "expected": { "minimumClass": "hard", "maximumClass": "hard", "minimumRole": "bounded-difficult-reasoning" },
+      "rationale": "A cross-tenant data exposure is a consequential security reasoning task."
+    },
+    {
+      "id": "hard-migration", "group": "migration",
+      "request": "Plan moving live billing records to a new schema without losing payments or breaking rollback while both versions serve traffic.",
+      "risk": "critical",
+      "expected": { "minimumClass": "hard", "maximumClass": "hard", "minimumRole": "bounded-difficult-reasoning" },
+      "rationale": "A live money-data migration combines consequential planning, rollback, and concurrent-version invariants."
+    },
+    {
+      "id": "hard-storage-tradeoff", "group": "architecture",
+      "request": "Choose between one durable writer and replicated writers for this service; explain what happens when a region vanishes during an acknowledgment.",
+      "risk": "high",
+      "expected": { "minimumClass": "hard", "maximumClass": "hard", "minimumRole": "bounded-difficult-reasoning" },
+      "rationale": "This is an unresolved durability and deployment tradeoff rather than routine code work."
+    },
+    {
+      "id": "hard-cross-system-bug", "group": "cross-system-bug",
+      "request": "Jobs vanish only when the scheduler retries during database failover and the worker reconnects. Trace the interaction before fixing it.",
+      "risk": "high",
+      "expected": { "minimumClass": "hard", "maximumClass": "hard", "minimumRole": "bounded-difficult-reasoning" },
+      "rationale": "The reproduction depends on coupled uncertainty across three systems and failure recovery."
+    },
+    {
+      "id": "hard-ambiguous-architecture", "group": "ambiguity",
+      "request": "The architecture tradeoff is unresolved: should acknowledgments precede durable replication? Establish the invariant before choosing.",
+      "risk": "high",
+      "expected": { "minimumClass": "hard", "maximumClass": "hard", "minimumRole": "bounded-difficult-reasoning" },
+      "rationale": "Architecture uncertainty with a durability consequence warrants bounded difficult reasoning."
+    },
+    {
+      "id": "hard-difficult-review", "group": "difficult-review",
+      "request": "Give the final substantive review of the lease-fencing patch, including stale owners, restart races, and failure recovery.",
+      "risk": "high",
+      "expected": { "minimumClass": "hard", "maximumClass": "hard", "minimumRole": "bounded-difficult-reasoning" },
+      "rationale": "A final substantive correctness review is expressly in the difficult allocation class."
+    },
+    {
+      "id": "hard-security-design", "group": "security",
+      "request": "Can this signed callback be replayed against a different account? Determine what the verifier must bind and how existing clients can transition safely.",
+      "risk": "critical",
+      "expected": { "minimumClass": "hard", "maximumClass": "hard", "minimumRole": "bounded-difficult-reasoning" },
+      "rationale": "Replay protection and a compatibility transition require consequential security reasoning."
+    },
+    {
+      "id": "hard-consequential-facts", "group": "structured-facts",
+      "request": "Plan the rollout for the new settlement service.",
+      "taskFacts": { "taskType": "planning", "consequentialPlanning": true },
+      "risk": "high",
+      "expected": { "minimumClass": "hard", "maximumClass": "hard", "minimumRole": "bounded-difficult-reasoning" },
+      "rationale": "Explicit consequential-planning metadata supplies the consequence that a short request omits."
+    },
+    {
+      "id": "hard-coupled-facts", "group": "structured-facts",
+      "request": "Fix the worker reconnect path.",
+      "taskFacts": { "taskType": "coding", "uncertainty": "coupled-implementation" },
+      "risk": "high",
+      "expected": { "minimumClass": "hard", "maximumClass": "hard", "minimumRole": "bounded-difficult-reasoning" },
+      "rationale": "Explicit coupled implementation uncertainty warrants escalation instead of treating the short wording as routine."
+    },
+    {
+      "id": "adversarial-partial-security", "group": "adversarial-task-facts",
+      "request": "Perform a security audit of token verification and document a safe repair.",
+      "taskFacts": { "taskType": "mechanical", "scope": "routine" },
+      "risk": "critical",
+      "expected": { "minimumClass": "hard", "maximumClass": "hard", "minimumRole": "bounded-difficult-reasoning" },
+      "rationale": "Partial low-effort metadata must not lower the explicit consequential work in the original request."
+    },
+    {
+      "id": "adversarial-partial-architecture", "group": "adversarial-task-facts",
+      "request": "Resolve this architecture tradeoff: which write acknowledgment can survive loss of the leader?",
+      "taskFacts": { "uncertainty": "missing-information" },
+      "risk": "high",
+      "expected": { "minimumClass": "hard", "maximumClass": "hard", "minimumRole": "bounded-difficult-reasoning" },
+      "rationale": "Missing-information metadata does not erase the explicit unresolved architectural decision."
+    },
+    {
+      "id": "adversarial-partial-double-charge", "group": "adversarial-task-facts",
+      "request": "The same card was charged twice after a region failed. Find a repair that cannot lose a payment.",
+      "taskFacts": { "taskType": "mechanical", "scope": "routine", "uncertainty": "none" },
+      "risk": "critical",
+      "expected": { "minimumClass": "hard", "maximumClass": "hard", "minimumRole": "bounded-difficult-reasoning" },
+      "rationale": "Adversarial routine flags cannot turn a financial correctness incident into mechanical execution."
+    },
+    {
+      "id": "adversarial-mechanical-code", "group": "adversarial-task-facts",
+      "request": "Implement a CSV extraction function and test invalid records.",
+      "taskFacts": { "taskType": "mechanical" },
+      "risk": "moderate",
+      "expected": { "minimumClass": "medium", "maximumClass": "medium", "minimumRole": "ordinary-work" },
+      "rationale": "The original request still requires code, despite a mechanical task flag."
+    },
+    {
+      "id": "partial-final-review", "group": "structured-facts",
+      "request": "Check whether the patch is safe to release.",
+      "taskFacts": { "taskType": "review", "finalSubstantiveReview": true },
+      "risk": "high",
+      "expected": { "minimumClass": "hard", "maximumClass": "hard", "minimumRole": "bounded-difficult-reasoning" },
+      "rationale": "A caller can explicitly identify a final substantive review even when the text lacks that phrase."
+    },
+    {
+      "id": "exceptional-proof", "group": "exceptional",
+      "request": "Validate the stated proof that a forged acknowledgment cannot finalize settlement under the supplied adversary model.",
+      "taskFacts": { "taskType": "review", "exceptionalReason": "settlement-cryptographic-proof" },
+      "risk": "critical",
+      "expected": { "minimumClass": "exceptional", "maximumClass": "exceptional", "minimumRole": "exceptional-reasoning" },
+      "rationale": "A named bounded exceptional justification is supplied for unusually demanding proof review."
+    },
+    {
+      "id": "ordinary-misleading-term", "group": "ordinary",
+      "request": "Summarize the headings in this supplied document titled Security Audit; do not assess security or recommend changes.",
+      "risk": "low",
+      "expected": { "minimumClass": "fast", "maximumClass": "fast", "minimumRole": "mechanical-work" },
+      "rationale": "A document title is data; copying its headings is not conducting an audit."
+    }
+  ]
+}

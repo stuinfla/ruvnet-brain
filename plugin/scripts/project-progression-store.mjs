@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { ProgressionOutbox } from './project-progression-outbox.mjs';
 import {
+  createProgressionSnapshot,
   digestCanonical,
   restoreProjectProgression,
   validateProgressionSnapshot,
@@ -87,10 +88,26 @@ export function projectResumePayloadToBound(payload, maxOutputBytes) {
     });
   }
 
+  if (size() > maxOutputBytes && Array.isArray(summary.state?.resumeConflicts)) {
+    const groups = new Map();
+    for (const conflict of payload.state.resumeConflicts) {
+      if (!groups.has(conflict.field)) groups.set(conflict.field, []);
+      groups.get(conflict.field).push(conflict);
+    }
+    if (groups.size < payload.state.resumeConflicts.length) {
+      summary.state.resumeConflicts = [...groups].map(([field, conflicts]) => ({
+        field, conflictCount: conflicts.length,
+        valueCount: conflicts.reduce((count, conflict) => count + (conflict.values ?? []).length, 0),
+        conflictsDigest: digestCanonical(conflicts),
+      }));
+      omissions.push({ path: 'state.resumeConflicts', ...omissionSummary(payload.state.resumeConflicts) });
+    }
+  }
+
   if (size() > maxOutputBytes) recordOmission(summary.state, 'journalHeads', 'state.journalHeads');
   // Least central detail first. currentGoal and nextAction are deliberately absent from this list.
   const stateFields = [
-    'commands', 'proofArtifacts', 'changedFiles', 'completed', 'untested', 'decisions',
+    'observations', 'commands', 'proofArtifacts', 'changedFiles', 'completed', 'untested', 'decisions',
     'plan', 'inProgress', 'blockers', 'failures', 'acceptanceContract', 'provenance',
     'evidence', 'activeStep', 'activeProcess', 'sourceIdentity',
   ];
@@ -448,6 +465,41 @@ export class ProjectProgressionStore {
     const receipt = this.appendExact(snapshot, { onPhase });
     this.outbox.markCommitted(receipt);
     return receipt;
+  }
+
+  /** Frozen queue recovery never rewrites the conflicting row or marks its key committed. */
+  captureFrozen(snapshot, { canCommit } = {}) {
+    if (typeof canCommit !== 'function') throw new Error('frozen recovery requires replay fencing');
+    const fenced = () => { if (!canCommit()) throw new Error('progression recovery lost replay fencing'); };
+    fenced();
+    try { return { snapshot, receipt: this.capture(snapshot, { onPhase: fenced }) }; } catch (error) {
+      if (error.message !== 'progression readback digest mismatch') throw error;
+    }
+    // An independently retrieved exact canonical value must be valid for this project. A failed,
+    // absent, malformed or foreign read is never evidence that the immutable key collided.
+    const exact = this.retrieveSnapshots([snapshot.eventKey]);
+    if (exact.rejected.length || exact.snapshots.length !== 1) throw new Error('immutable collision is not verified');
+    const existing = exact.snapshots[0];
+    this.validateSnapshot(existing);
+    if (existing.eventKey !== snapshot.eventKey || existing.payloadDigest === snapshot.payloadDigest) {
+      throw new Error('immutable collision is not verified');
+    }
+    const identity = { originalEventKey: snapshot.eventKey,
+      frozenPayloadDigest: snapshot.payloadDigest, existingPayloadDigest: existing.payloadDigest };
+    const created = createProgressionSnapshot({ ...snapshot,
+      dedupId: `immutable-recovery:${digestCanonical(identity)}` });
+    // Preserve the frozen state and source exactly; diagnostics carry no instruction authority.
+    const { payloadDigest: _digest, ...body } = created;
+    body.redactions = snapshot.redactions;
+    body.recoveryDiagnostics = { kind: 'immutable-event-key-collision', authoritative: false, ...identity };
+    const recovered = Object.freeze({ ...body, payloadDigest: digestCanonical(body) });
+    this.validateSnapshot(recovered);
+    this.requireCaptureConsent(recovered);
+    fenced();
+    const receipt = this.capture(recovered, { onPhase: fenced });
+    fenced();
+    this.outbox.markRecovered(snapshot, receipt);
+    return { snapshot: recovered, receipt };
   }
 
   replay() {

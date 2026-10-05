@@ -353,7 +353,7 @@ describe.skipIf(bashOnly)('ADR-054 gate 2 — off disarms the grounding gate and
       expect(line, `${wall} missing from the shim table`).toBeTruthy();
       expect(line, `${wall} must keep running while the brain is off`).toMatch(/offBehavior:\s*'run'/);
     }
-    for (const quiet of ['ground-ruvnet', 'hijack-ruvnet', 'verify-interface', 'unprompted-speech', 'md-stamp']) {
+    for (const quiet of ['ground-ruvnet', 'hijack-ruvnet', 'verify-interface', 'unprompted-speech', 'md-stamp', 'capacity-aware-parallel-work']) {
       const line = src.split('\n').find((l) => l.includes(`'${quiet}':`));
       expect(line, `${quiet} must go silent while the brain is off`).toMatch(/offBehavior:\s*'silence'/);
     }

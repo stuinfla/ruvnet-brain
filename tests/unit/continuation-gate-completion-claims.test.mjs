@@ -7,7 +7,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readSettledTranscript } from '../../plugin/scripts/turn-outcome-capture.mjs';
 import {
   extractCompletionClaims, extractCommitments, auditCompletionClaims, claudeTurnEvents,
 } from '../../plugin/scripts/completion-claim-evidence.mjs';
@@ -40,13 +41,14 @@ function transcript(...steps) {
   return file;
 }
 
-function fire(cwd, message, { transcriptPath, stopHookActive = false, host = 'claude', session = 's1' } = {}) {
+function fire(cwd, message, { transcriptPath, stopHookActive = false, host = 'claude', session = 's1', promiseCapture = '' } = {}) {
   const r = spawnSync(process.execPath, [GATE], {
     cwd,
     input: JSON.stringify({ hook_event_name: 'Stop', cwd, session_id: session, stop_hook_active: stopHookActive,
       last_assistant_message: message, ...(transcriptPath ? { transcript_path: transcriptPath } : {}) }),
     env: { ...process.env, HOME: home, USERPROFILE: home, RUVNET_HOOK_HOST: host,
       RUVNET_WORK_LEDGER: path.join(home, 'ledger.json'),
+      RUVNET_PROMISE_CAPTURE: promiseCapture,
       RUVNET_OPEN_ISSUES_FILE: path.join(home, 'none.json'), RUVNET_CI_STATUS_FILE: path.join(home, 'none.json'),
       RUVNET_CAPABILITY_ROOTS: path.join(home, 'caps'), RUVNET_CAPABILITY_LIVE_EVIDENCE: path.join(home, 'live.jsonl'),
       RUVNET_EVIDENCE_FILE: path.join(home, 'ev.jsonl'), RUVNET_CONTINUATION_COOLDOWN_MS: '1' },
@@ -118,6 +120,25 @@ describe('completion claims (Piece A)', () => {
     expect(fire(repo, GOOD, { transcriptPath: dirAsTranscript })).toBe('');
   });
 
+  it('rejects a non-regular transcript even when its stat size is zero on Windows', () => {
+    const file = transcript();
+    const stat = vi.spyOn(fs, 'statSync').mockReturnValue({ size: 0, isFile: () => false });
+    try {
+      expect(() => readSettledTranscript(file, { maxMs: 0 })).toThrow(/regular file/);
+      const directory = path.join(dir, 'changed.jsonl'); fs.mkdirSync(directory);
+      stat.mockReturnValue({ size: 0, isFile: () => true });
+      expect(() => readSettledTranscript(directory, { maxMs: 0 })).toThrow(/regular file/);
+    } finally { stat.mockRestore(); }
+  });
+
+  it('keeps missing transcripts unknown and accepts a real empty regular transcript', () => {
+    const repo = gitRepo('a');
+    expect(fire(repo, GOOD, { transcriptPath: path.join(dir, 'missing.jsonl') })).toBe('');
+    const file = path.join(dir, 'empty.jsonl'); fs.writeFileSync(file, '');
+    expect(readSettledTranscript(file, { maxMs: 0 })).toEqual(['']);
+    expect(fire(repo, GOOD, { transcriptPath: file })).toContain('no end-to-end check');
+  });
+
   it('on Codex enforces the answer-side half and discloses that the transcript half is UNKNOWN', () => {
     const repo = gitRepo('a');
     const out = fire(repo, 'The updater is fixed.', { host: 'codex' });
@@ -174,6 +195,38 @@ describe('completion claims (Piece A)', () => {
 
 describe('promises (Piece C)', () => {
   const PROMISE = 'Next I\'ll add the retry test to the updater.';
+
+  it('owner opt-out stops new capture, including continued stops, and toggles back on', () => {
+    const repo = gitRepo('a');
+    for (const stopHookActive of [false, true]) {
+      expect(fire(repo, 'I will ask again before the first push.', {
+        transcriptPath: transcript(), stopHookActive, promiseCapture: 'off',
+      })).toBe('');
+    }
+    expect(ledger().items).toEqual([]);
+    expect(fire(repo, PROMISE, { transcriptPath: transcript(), promiseCapture: 'on' })).toContain('you said you would');
+    expect(ledger().items.filter((i) => i.kind === 'assistant-commitment')).toHaveLength(1);
+  });
+
+  it('opt-out keeps existing promises forceable and closes them only with verified evidence', () => {
+    const repo = gitRepo('a');
+    fire(repo, PROMISE, { transcriptPath: transcript() });
+    expect(fire(repo, 'Here is the summary.', { transcriptPath: transcript(), promiseCapture: 'off' })).toContain('you said you would');
+    const claim = 'The updater retry test is now passing.';
+    expect(fire(repo, claim, { transcriptPath: transcript(edit()), promiseCapture: 'off' })).toContain('without end-to-end evidence');
+    expect(ledger().items.find((i) => i.kind === 'assistant-commitment').done).toBe(false);
+    fire(repo, `${claim}\nVerified: npx vitest run — 5 passed.\nNot verified: Windows.\nI will fix the parser.`,
+      { transcriptPath: transcript(edit(), bash('npx vitest run tests/unit/updater.test.mjs')), promiseCapture: 'off' });
+    expect(ledger().items.filter((i) => i.kind === 'assistant-commitment')).toHaveLength(1);
+    expect(ledger().items[0].done).toBe(true);
+    expect(ledger().items[0].completionEvidence.checks[0]).toContain('vitest');
+  });
+
+  it('only the documented off value suppresses capture', () => {
+    const repo = gitRepo('a');
+    expect(fire(repo, PROMISE, { transcriptPath: transcript(), promiseCapture: 'invalid' })).toContain('you said you would');
+    expect(ledger().items.filter((i) => i.kind === 'assistant-commitment')).toHaveLength(1);
+  });
 
   it('captures a first-person commitment into the project ledger and forces on it', () => {
     const repo = gitRepo('a');

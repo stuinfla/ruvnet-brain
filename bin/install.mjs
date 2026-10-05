@@ -79,6 +79,9 @@ import {
 } from '../scripts/console-runtime-identity.mjs';
 import { shellDiff as pluginShellDiff } from '../plugin/scripts/host-shell-boundary.mjs';
 import { codexTrustChanges, CODEX_TRUST_ACTION } from '../scripts/codex-hook-trust.mjs';
+import { repairSecurityGuidance } from '../scripts/security-guidance-codex-compat.mjs';
+import { installNativeLaunchers, installRoutingRuntime } from '../scripts/model-routing-launchers.mjs';
+import { installTerminalLaunchers } from '../scripts/model-terminal-launchers.mjs';
 import { readConsoleReceipts, replaceStaleConsoles } from '../scripts/console-instances.mjs';
 import { moveBrain, MoveRefused } from '../scripts/move-brain.mjs';
 import { brainLocation } from '../plugin/scripts/brain-location.mjs';
@@ -1629,6 +1632,7 @@ function codexManagedBlock(serverPath) {
     'command = "node"',
     `args = [${JSON.stringify(serverPath)}]`,
     'startup_timeout_sec = 30',
+    'env = { RUVNET_HOOK_HOST = "codex" }',
     CODEX_BLOCK_END,
   ].join('\n');
 }
@@ -1835,6 +1839,10 @@ export function wireCodexHost({
   // land where the server will look for them, and the walk is transitive because a dependency's own
   // dependency is no less required.
   const deps = serverDependencies(source);
+  // Progression capture reads its adapter version from this runtime resource, not an import.
+  // Keep it beside the copied plugin scripts, bound to the same source as the MCP shell.
+  deps.push({ spec: '../.claude-plugin/plugin.json',
+    from: path.resolve(path.dirname(source), '..', '.claude-plugin', 'plugin.json') });
   const missing = deps.filter((d) => !fs.existsSync(d.from));
   if (missing.length) {
     if (announce) warn(`MCP server dependency missing from this bundle (${missing.map((d) => d.spec).join(', ')}) — Codex left untouched (non-fatal)`);
@@ -2014,6 +2022,32 @@ export function codexPluginStatus(options = {}) {
   };
 }
 
+// User-scoped standing consent applies across projects, never implicitly to other installations.
+export function repairReleasedCodexHookTrust(status, { codexHome = codexHomeDir(), codexBin = process.env.CODEX_BIN || 'codex', cwd = process.cwd(), run = spawnSync } = {}) {
+  if (TEST_MODE || !status?.installed || !status?.enabled) return { state: 'not-applicable', changed: false };
+  let profile;
+  try { profile = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude', 'model-router', 'profile.json'), 'utf8')); } catch { return { state: 'not-authorized', changed: false }; }
+  if (profile.automaticHookTrustUpdates !== true) return { state: 'not-authorized', changed: false };
+  let compatibility;
+  try { compatibility = repairSecurityGuidance({ codexHome, apply: true }); }
+  catch (error) { compatibility = { status: 'blocked', reason: error.message }; }
+  const installedRoot = codexInstalledPluginRoot({ codexHome, status });
+  if (!installedRoot) return { state: 'blocked', changed: false, reason: 'Installed plugin root unavailable' };
+  const helper = path.join(REPO_ROOT, 'scripts', 'codex-hook-trust-reconcile.mjs');
+  const result = run(process.execPath, [helper, '--reconcile-installed'], {
+    input: JSON.stringify({ installedVersion: status.version, hooksPath: path.join(installedRoot, 'hooks', 'codex-hooks.json'),
+      configPath: path.join(codexHome, 'config.toml'), nativeBinary: codexBin, cwd }),
+    encoding: 'utf8', timeout: 30000, maxBuffer: 128 * 1024, env: process.env,
+  });
+  try {
+    const receipt = JSON.parse(result.stdout);
+    if (!result.error && ['registry-verified', 'unchanged', 'blocked', 'degraded'].includes(receipt.state)) return { ...receipt, compatibility };
+  } catch { /* a command exit alone never establishes hook trust */ }
+  return result.error?.code === 'ENOENT'
+    ? { state: 'blocked', changed: false, reason: 'Verified hook trust helper could not start' }
+    : { state: 'degraded', changed: 'unknown', reason: 'Hook trust helper acknowledgement unavailable; inspect native registry before retrying' };
+}
+
 export function wireCodexPlugin({
   codexDir = codexHomeDir(),
   codexHome = codexDir,
@@ -2062,9 +2096,13 @@ export function wireCodexPlugin({
   const hooksNeedingReview = codexHooksNeedingReview(before.installed
     ? codexInstalledPluginRoot({ codexHome, status: before }) : null, path.join(REPO_ROOT, 'plugin'));
   if (before.installed && before.enabled && versionSatisfies(before.version, expectedVersion)) {
-    if (announce) ok(`Codex Brain plugin already installed and enabled (${before.version || 'version unknown'}) — no changes.`);
+    const hookTrust = runJson === runCodexJson ? repairReleasedCodexHookTrust(before, options) : null;
+    if (announce) {
+      ok(`Codex Brain plugin already installed and enabled (${before.version || 'version unknown'}).`);
+      if (hookTrust && ['blocked', 'degraded'].includes(hookTrust.state)) warn(`Automatic Brain hook trust repair ${hookTrust.state}: ${hookTrust.reason}`);
+    }
     return {
-      host: true, action: 'unchanged', ...before,
+      host: true, action: 'unchanged', ...before, ...(hookTrust ? { hookTrust } : {}),
       shellChanged: shellBoundary.changed, shellChangedPaths: shellBoundary.paths,
       restartRequired: false,
     };
@@ -2107,14 +2145,17 @@ export function wireCodexPlugin({
     if (announce) warn('Codex accepted the install command but the Brain plugin is not installed and enabled.');
     return { host: true, action: 'verification-failed', expectedVersion, ...after };
   }
+  const hookTrust = runJson === runCodexJson ? repairReleasedCodexHookTrust(after, options) : null;
+  const trustVerified = hookTrust && ['registry-verified', 'unchanged'].includes(hookTrust.state);
   if (announce) {
     ok(`Codex Brain plugin installed and enabled (${after.version || 'version unknown'}).`);
+    if (hookTrust && ['blocked', 'degraded'].includes(hookTrust.state)) warn(`Automatic Brain hook trust repair ${hookTrust.state}: ${hookTrust.reason}`);
     if (shellBoundary.restartRequired) {
       warn(`boot-level plugin declarations changed; restart Codex, then review them in /hooks (${shellBoundary.paths.join(', ') || shellBoundary.reason}).`);
     } else if (before.installed && before.version !== after.version) {
       info('  body-only update: the Stable Spine is live on the next hook/MCP call; no restart is required.');
     }
-    if (hooksNeedingReview.length) {
+    if (hooksNeedingReview.length && !trustVerified) {
       warn(`Codex will NOT run ${hooksNeedingReview.length} Brain hook${hooksNeedingReview.length === 1 ? '' : 's'} until you review`
         + ` ${hooksNeedingReview.length === 1 ? 'it' : 'them'} (${hooksNeedingReview.map((h) => `${h.key.split(':').slice(-3).join(':')} ${h.status}`).join(', ')}).`);
       info(`  ${CODEX_TRUST_ACTION}`);
@@ -2123,7 +2164,8 @@ export function wireCodexPlugin({
   return {
     host: true,
     action: before.installed ? 'updated' : 'installed',
-    hooksNeedingReview,
+    hooksNeedingReview: trustVerified ? [] : hooksNeedingReview,
+    ...(hookTrust ? { hookTrust } : {}),
     ...after,
     shellChanged: shellBoundary.changed,
     shellChangedPaths: shellBoundary.paths,
@@ -3934,6 +3976,7 @@ async function runUpdate() {
     } catch (error) {
       warn(`managed model additions were not merged (${error.message}); your catalog was left unchanged`);
     }
+    refreshManagedRouterDefault();
     process.exitCode = 0;
     return;
   }
@@ -4207,6 +4250,8 @@ async function runUpdate() {
   // updated. Additive and non-interactive; their overrides win, metered rows are never auto-enabled,
   // and a failure here is reported but never fails an otherwise-good update.
   if (updateStatus === 0) {
+    const defaultReceipt = refreshManagedRouterDefault();
+    recordRefreshAdvisory(refreshReceipt, 'managed-router-default', defaultReceipt.action === 'failed' ? 'SKIP' : 'PASS', defaultReceipt);
     try {
       const managed = applyManagedCatalogUpdate({
         routerDir: path.join(os.homedir(), '.claude', 'model-router'),
@@ -4849,30 +4894,122 @@ export function parseNightlyAnswer(answer) {
 // suppression flags) is testable in-process under RUVNET_BRAIN_IMPORT_ONLY=1 without a real install.
 // Returns a status string; never throws (the caller also guards — a finished install must never
 // be broken by an optional offer).
+// The default classifier is managed executable source; overrides belong in policy.mjs.
+// Preserve every prior default by its content digest before replacing it atomically.
+export function syncManagedRouterDefault({ routerDir = path.join(os.homedir(), '.claude', 'model-router'), packageRoot = REPO_ROOT } = {}) {
+  const source = fs.readFileSync(path.join(packageRoot, 'config', 'model-router', 'policy.default.mjs'));
+  const destination = path.join(routerDir, 'policy.default.mjs');
+  fs.mkdirSync(routerDir, { recursive: true });
+  const prior = fs.existsSync(destination) ? fs.readFileSync(destination) : null;
+  if (prior?.equals(source)) return { action: 'unchanged' };
+  let backup = null;
+  if (prior) {
+    backup = `${destination}.pre-managed-upgrade-${crypto.createHash('sha256').update(prior).digest('hex').slice(0, 16)}`;
+    try { fs.writeFileSync(backup, prior, { flag: 'wx', mode: 0o600 }); }
+    catch (error) {
+      if (error.code !== 'EEXIST' || !fs.readFileSync(backup).equals(prior)) throw error;
+    }
+  }
+  const temporary = `${destination}.tmp-${process.pid}-${crypto.randomUUID()}`;
+  try {
+    fs.writeFileSync(temporary, source, { flag: 'wx', mode: prior ? fs.statSync(destination).mode & 0o777 : 0o600 });
+    fs.renameSync(temporary, destination);
+  } finally { fs.rmSync(temporary, { force: true }); }
+  return { action: prior ? 'upgraded' : 'created', backup };
+}
+
+export function refreshInstalledModelLaunchers({ sourceRoot = REPO_ROOT, home = os.homedir() } = {}) {
+  const terminalFile = path.join(home, '.cache', 'ruvnet-brain', 'model-routing', 'terminal-launcher-config.json');
+  let terminal = { action: 'not-installed' };
+  if (fs.existsSync(terminalFile)) {
+    const previous = JSON.parse(fs.readFileSync(terminalFile, 'utf8'));
+    const runtime = installRoutingRuntime({ sourceRoot, home, apply: true });
+    const receipt = installTerminalLaunchers({ home, ...runtime, nodeBinary: previous.nodeBinary,
+      realCodex: previous.realCodex, realClaude: previous.realClaude, apply: true });
+    terminal = { action: previous.runtimeDigest === runtime.runtimeDigest ? 'unchanged' : 'updated',
+      runtimeDigest: runtime.runtimeDigest, shellConflicts: receipt.shellConflicts };
+  }
+  const file = path.join(home, '.cache', 'ruvnet-brain', 'model-routing', 'launcher-config.json');
+  if (!fs.existsSync(file)) return { action: 'not-installed', terminal };
+  const previous = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const receipt = installNativeLaunchers({ sourceRoot, home, extensionsRoot: previous.extensionsRoot, nodeBinary: previous.nodeBinary, apply: true });
+  return { action: receipt.config.runtimeDigest === previous.runtimeDigest ? 'unchanged' : 'updated', runtimeDigest: receipt.config.runtimeDigest, terminal };
+}
+
+export function syncManagedRouterTools({ routerDir = path.join(os.homedir(), '.claude', 'model-router'), packageRoot = REPO_ROOT } = {}) {
+  const destination = path.join(routerDir, 'bin');
+  fs.mkdirSync(destination, { recursive: true });
+  let copied = 0;
+  for (const name of ['model-router-engine.mjs', 'model-router-setup.mjs', 'model-router-status.mjs', 'model-router-outcome.mjs', 'subscription-hosts.mjs', 'review-model-defaults.mjs', 'dual-host-deliberation.mjs', 'dual-host-suggest.mjs', 'route-cheap.mjs', 'dispatch-receipt.mjs', 'metaharness-receipts.mjs', 'metaharness-router.mjs', 'model-router-dispatch.mjs', 'model-currency.mjs', 'model-currency-evidence.mjs', 'user-model-prompt-hook.mjs', 'model-router-agent-hook.mjs', 'model-weekly-assessment.mjs', 'model-weekly-analyst.mjs', 'model-weekly-cycle.mjs', 'model-weekly-qualification.mjs', 'model-native-qualification.mjs', 'model-routing-launchers.mjs', 'model-terminal-gateway.mjs', 'model-terminal-launchers.mjs', 'claude-terminal-mod.mjs', 'model-native-catalog.mjs', 'model-analyst-sandbox.mjs', 'model-routing-policy-promotion.mjs', 'model-routing-gateway.mjs', 'native-subscription-usage.mjs', 'codex-routed.sh', 'goldie-weekly.sh']) {
+    const source = path.join(packageRoot, 'scripts', name);
+    if (!fs.existsSync(source)) throw new Error(`Packaged router tool missing: ${name}`);
+    const target = path.join(destination, name);
+    const bytes = fs.readFileSync(source);
+    if (fs.existsSync(target) && fs.readFileSync(target).equals(bytes)) continue;
+    const temporary = `${target}.${crypto.randomUUID()}.tmp`;
+    try { fs.writeFileSync(temporary, bytes, { mode: name.endsWith('.sh') ? 0o755 : 0o600 }); fs.renameSync(temporary, target); }
+    finally { fs.rmSync(temporary, { force: true }); }
+    copied++;
+  }
+  // Preserve package-relative imports without replacing user policy.mjs overrides.
+  for (const runtimeRelative of [path.join('plugin', 'scripts', 'runtime-preferences.mjs'),
+    path.join('config', 'model-router', 'policy.default.mjs')]) {
+  const runtimeTarget = path.join(routerDir, runtimeRelative);
+  const runtimeBytes = fs.readFileSync(path.join(packageRoot, runtimeRelative));
+  if (!fs.existsSync(runtimeTarget) || !fs.readFileSync(runtimeTarget).equals(runtimeBytes)) {
+    fs.mkdirSync(path.dirname(runtimeTarget), { recursive: true });
+    const temporary = `${runtimeTarget}.${crypto.randomUUID()}.tmp`;
+    try { fs.writeFileSync(temporary, runtimeBytes, { mode: 0o600 }); fs.renameSync(temporary, runtimeTarget); }
+    finally { fs.rmSync(temporary, { force: true }); }
+    copied++;
+  }
+  }
+  const qualificationSource = path.join(packageRoot, 'config', 'model-router', 'qualification-contract.json');
+  const qualificationTarget = path.join(routerDir, 'qualification-contract.json');
+  const qualificationBytes = fs.readFileSync(qualificationSource);
+  if (!fs.existsSync(qualificationTarget) || !fs.readFileSync(qualificationTarget).equals(qualificationBytes)) {
+    const temporary = `${qualificationTarget}.${crypto.randomUUID()}.tmp`;
+    try { fs.writeFileSync(temporary, qualificationBytes, { mode: 0o600 }); fs.renameSync(temporary, qualificationTarget); }
+    finally { fs.rmSync(temporary, { force: true }); }
+    copied++;
+  }
+  const launchers = routerDir === path.join(os.homedir(), '.claude', 'model-router')
+    ? refreshInstalledModelLaunchers({ sourceRoot: packageRoot }) : { action: 'custom-router-directory' };
+  return { action: copied ? 'updated' : 'unchanged', copied, launchers };
+}
+
+function refreshManagedRouterDefault() {
+  try {
+    const receipt = syncManagedRouterDefault();
+    syncManagedRouterTools();
+    if (receipt.action === 'created') ok('installed managed model-router default (custom overrides belong in policy.mjs)');
+    if (receipt.action === 'upgraded') ok(`upgraded managed model-router default; prior source preserved at ${receipt.backup}`);
+    return receipt;
+  } catch (error) {
+    warn(`managed model-router default was not refreshed (${error.message}); native dispatch remains fail-closed`);
+    return { action: 'failed' };
+  }
+}
+
 // ── MetaHarness router: config materialization + THIS user's subscription profile (2026-07-12) ──
 // Stuart's mandate: subscription-awareness must be per-user. Detect what the machine can PROVE
 // (Codex auth mode from ~/.codex/auth.json's SHAPE — never its secrets), ASK what it can't (Claude
 // plan tiers aren't probeable from disk), and RECORD both with their basis, so the router's
 // $0-floor never assumes a plan this user doesn't have (billing them) or misses one they do
 // (wasting it). Config templates ship in the npm package's config/; router tools are copied to
-// ~/.claude/model-router/bin/ because the npx run dir vanishes after install. Never overwrites
-// user-edited files. Non-fatal like every offer.
+// ~/.claude/model-router/bin/ because the npx run dir vanishes after install. Managed defaults
+// upgrade with a backup; custom policy.mjs, profiles and reviewed allocation overrides remain user-owned. Non-fatal like every offer.
 export async function offerRouterProfile() {
   if (TEST_MODE) return 'suppressed';
   const routerDir = path.join(os.homedir(), '.claude', 'model-router');
   const pkgRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
   step(
-    'MetaHarness model router — the right model for each task, cheapest first',
-    "your subscription models are $0 marginal; the router just needs to know which ones YOU have",
+    'Model router — appropriate intelligence for each task',
+    "native subscription routes preserve your overrides; weekly analysis checks the evidence",
   );
 
   fs.mkdirSync(path.join(routerDir, 'bin'), { recursive: true });
-  const policySrc = path.join(pkgRoot, 'config', 'model-router', 'policy.default.mjs');
-  const policyDst = path.join(routerDir, 'policy.default.mjs');
-  if (fs.existsSync(policySrc) && !fs.existsSync(policyDst)) {
-    fs.copyFileSync(policySrc, policyDst);
-    ok('installed policy.default.mjs (edit freely — goldie keeps prices fresh where scheduled)');
-  }
+  refreshManagedRouterDefault();
   // ONE implementation of the managed-catalog step, shared with runUpdate() (issue #87). It used to
   // live here only, which is exactly why existing users never received managed additions.
   try {
@@ -4882,19 +5019,17 @@ export async function offerRouterProfile() {
   } catch (error) {
     warn(`managed model additions were not merged (${error.message}); your existing catalog was left unchanged`);
   }
-  let copied = 0;
-  // dispatch-receipt + metaharness-receipts added 2026-07-13: without the LOGGER, subagent routing is
-  // invisible; without the VIEWER, the user has no scoreboard to hold it to. Shipping one without the
-  // other is how a router ends up "working" with three test pings in its log and nobody the wiser.
-  // (dispatch-receipt.mjs relative-imports route-cheap.mjs — they land in the same bin/ dir, so it resolves.)
-  for (const t of ['model-router-engine.mjs', 'model-router-setup.mjs', 'model-router-status.mjs', 'model-router-outcome.mjs', 'subscription-hosts.mjs', 'dual-host-deliberation.mjs', 'dual-host-suggest.mjs', 'route-cheap.mjs', 'dispatch-receipt.mjs', 'metaharness-receipts.mjs', 'codex-routed.sh']) {
-    const s = path.join(pkgRoot, 'scripts', t);
-    if (fs.existsSync(s)) { fs.copyFileSync(s, path.join(routerDir, 'bin', t)); copied++; }
-  }
-  if (copied) {
-    try { fs.chmodSync(path.join(routerDir, 'bin', 'codex-routed.sh'), 0o755); } catch { /* not fatal */ }
-    ok(`${copied} router tools at ~/.claude/model-router/bin/ (stable path — the npx dir vanishes)`);
-  }
+  const toolsReceipt = syncManagedRouterTools({ routerDir, packageRoot: pkgRoot });
+  if (toolsReceipt.copied) ok(`updated ${toolsReceipt.copied} managed routing tools`);
+
+  // Allocation is user-owned. A shipped seed retains its real review date; installation never
+  // certifies it fresh or overwrites a reviewed user policy.
+  const selectionSrc = path.join(pkgRoot, 'config', 'model-router', 'routing-policy.template.json');
+  const selectionDst = path.join(routerDir, 'routing-policy.json');
+  if (fs.existsSync(selectionSrc) && !fs.existsSync(selectionDst)) fs.copyFileSync(selectionSrc, selectionDst);
+  const instructionSrc = path.join(pkgRoot, 'config', 'model-router', 'weekly-analyst-instruction.md');
+  const instructionDst = path.join(routerDir, 'weekly-analyst-instruction.md');
+  if (fs.existsSync(instructionSrc) && !fs.existsSync(instructionDst)) fs.copyFileSync(instructionSrc, instructionDst);
 
   const profilePath = path.join(routerDir, 'profile.json');
   if (fs.existsSync(profilePath)) { ok('subscription profile already exists — routing already uses it'); return 'already'; }
