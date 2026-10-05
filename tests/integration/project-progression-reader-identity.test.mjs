@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createProgressionSnapshot } from '../../plugin/scripts/project-progression-contract.mjs';
 import { ProjectProgressionStore } from '../../plugin/scripts/project-progression-store.mjs';
 import { resolveProjectStore } from '../../plugin/scripts/project-store-resolver.mjs';
@@ -20,12 +20,27 @@ import { restoreProgressionForSession } from '../../plugin/scripts/project-progr
 const NAMESPACE = 'project-progression';
 const ruflo = resolveRuflo();
 const roots = [];
+const originalBrainHome = process.env.RUVNET_BRAIN_HOME;
+let privateBrainHome;
+beforeEach(() => {
+  privateBrainHome = fs.mkdtempSync(path.join(os.tmpdir(), 'reader-identity-consent-'));
+  roots.push(privateBrainHome);
+  process.env.RUVNET_BRAIN_HOME = privateBrainHome;
+  fs.mkdirSync(path.join(privateBrainHome, 'turn-capture'));
+  fs.writeFileSync(path.join(privateBrainHome, 'turn-capture', 'policy.json'), JSON.stringify({ schemaVersion: 1, projects: {} }));
+});
 
 function temporaryProject() {
   const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'reader-identity-')));
   roots.push(root);
   execFileSync('git', ['init', '-q'], { cwd: root });
   fs.writeFileSync(path.join(root, 'package.json'), '{"name":"reader-identity"}\n');
+  const policyFile = path.join(privateBrainHome, 'turn-capture', 'policy.json');
+  fs.writeFileSync(policyFile, JSON.stringify({ schemaVersion: 1, projects: { [root]: 'on' } }));
+  const store = new ProjectProgressionStore({ projectDir: root });
+  // Bootstrap schema only; actual canonical store/readback/restore remains the subject below.
+  const initialized = store.run(['memory', 'init', '--no-verify', '--path', store.resolution.canonicalAgentDbPath]);
+  expect(initialized.status, initialized.stderr).toBe(0);
   return root;
 }
 
@@ -62,6 +77,8 @@ function snapshotFor(resolution, sequence, parents) {
 }
 
 afterEach(() => {
+  if (originalBrainHome === undefined) delete process.env.RUVNET_BRAIN_HOME;
+  else process.env.RUVNET_BRAIN_HOME = originalBrainHome;
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
 

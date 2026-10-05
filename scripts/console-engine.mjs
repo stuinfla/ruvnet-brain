@@ -100,44 +100,57 @@ export function buildHealthRecommendations({ memory = null, learning = null } = 
   }
 
   // 2. A capture queue that fills but does not drain. The depth IS the evidence.
-  const depth = Number(learning?.queueDepth);
-  if (Number.isFinite(depth) && depth > 50) {
+  const depth = learning?.enabled === false || learning?.queueKnown === false ? 0 : Number(learning?.queueDepth);
+  if (Number.isFinite(depth) && (depth > 50 || depth > 0 && learning.capturePendingFailure || learning.workerRetirementUnconfirmed)) {
     recs.push(makeRecommendation({
       id: 'learning:flush',
-      scope: 'user',
-      title: 'Feed your captured work into the learner',
-      rationale: 'Your AI captured this work, but none of it has reached the learner yet — so none of it has taught it anything.',
+      scope: learning?.scope === 'project' ? 'project' : 'user',
+      title: learning.workerRetirementUnconfirmed ? 'Learning recovery is paused' : 'Feed your captured work into the learner',
+      rationale: learning.workerRetirementUnconfirmed ? 'A previous learning worker could not be confirmed stopped. Its queue remains fenced and original observations are retained.' : 'Captured workflow observations remain pending until their canonical AgentDB rows are verified.',
       severity: 'IMPORTANT',
       touchesMachine: true,
       plainImpact:
-        'Sends events already captured on your own machine into the local learner so it improves from them. '
-        + 'Nothing leaves your computer, and the queue is kept intact if the feed fails.',
-      evidence: [{ observed: `${depth} captured events waiting, undelivered` }],
+        'Stores already captured workflow observations in local project memory. '
+        + 'Canonical AgentDB readback verifies each observation; original queue bytes stay retained.',
+      evidence: [{ observed: `${depth} captured events waiting, undelivered${learning?.queueDir ? ` in ${learning.queueDir}` : ''}` }],
       cost: { time: 'under a minute', risk: 'low — local only; queue preserved on failure' },
       change: { human: 'drain the capture queue into the learner' },
       undo: { human: 'nothing to reverse — this only adds observations; learned state can be cleared separately' },
     }));
   }
 
+  if (learning?.enabled && learning.scope === 'project' && learning.legacyUserKnown && learning.legacyUserDepth > 0) {
+    recs.push(makeRecommendation({
+      id: 'learning:flush-legacy-user', scope: 'user', title: 'Process retained legacy user history',
+      rationale: 'Older captures belong to the home learner and are isolated from this project.',
+      severity: 'IMPORTANT', touchesMachine: true,
+      plainImpact: 'Minimizes old actions again and feeds only the original local home learner. Original queue bytes remain retained. Project learning is separate.',
+      evidence: [{ observed: `${learning.legacyUserDepth} legacy user events pending` }],
+      cost: { time: 'bounded rounds', risk: 'local observations; originals retained' },
+      change: { human: 'explicitly drain legacy user queue into home learner' },
+      undo: { human: 'original history retained; learned observations can be reset separately' },
+    }));
+  }
+
   // 3. A learner that has not trained in days. Installed-but-dormant is a DEFECT, not a neutral
   //    state — the entire point of shipping a learning system is that it runs.
   const STALE_TRAIN_SECONDS = 60 * 60 * 24 * 2; // two days
-  const age = Number(learning?.lastTrainSeconds);
-  if (Number.isFinite(age) && age > STALE_TRAIN_SECONDS) {
+  const age = learning?.enabled === false ? 0 : Number(learning?.lastTrainSeconds);
+  if (learning?.statusKnown && ((Number.isFinite(age) && age > STALE_TRAIN_SECONDS) || (learning.observations > 0 && learning.lastTrainSeconds === null))) {
     recs.push(makeRecommendation({
       id: 'learning:train',
-      scope: 'project',
+      scope: learning?.scope === 'user' ? 'user' : 'project',
       title: 'Your learner has gone quiet',
-      rationale: 'It is installed and switched on, but it has not learned anything recently — so it is not getting smarter.',
+      rationale: 'Captured observations have no recent structural distillation receipt. Recorded observations and reusable patterns are separate.',
       severity: 'SUGGESTED',
       touchesMachine: true,
       plainImpact:
         'Runs one local training cycle so recent work becomes patterns it can reuse next time. '
-        + 'Runs on your machine only and changes nothing about your projects.',
-      evidence: [{ observed: `last trained ${(age / 86400).toFixed(1)} days ago (${learning?.trajectories ?? 0} trajectories recorded)` }],
-      cost: { time: 'under a minute', risk: 'low — local, and the learned state is resettable' },
+        + 'Uses the same AgentDB, retains a checked local snapshot, and verifies pattern counts separately from recorded observations.',
+      evidence: [{ observed: `last distillation ${learning.lastTrainSeconds === null ? "not recorded" : (age / 86400).toFixed(1) + " days ago"} (${learning?.observations ?? learning?.trajectories ?? 0} observations recorded)${learning?.learningDb ? ` in ${learning.learningDb}` : ''}` }],
+      cost: { time: 'under a minute', risk: 'local structural patterns; snapshot retained; automatic exact restore unavailable' },
       change: { human: 'run one training cycle so captured work becomes reusable patterns' },
-      undo: { human: 'the learned state can be reset, returning it to its pre-training condition' },
+      undo: { human: 'retain the WAL-safe snapshot for supervised offline recovery; automatic exact restore is unavailable' },
     }));
   }
 

@@ -82,6 +82,13 @@ describe('installer exact-swap failure recovery', () => {
       expect(validateCoverageDirectory(source, { expectedVersion: version }).valid).toBe(true);
       fs.cpSync(source, live, { recursive: true });
       fs.writeFileSync(path.join(live, 'forge-mcp-all.mjs'), '// prior bytes, ownership not inferable from filename');
+      // The prior synthetic public generation has exact release provenance, not filename ownership.
+      // Capture it before personal additions; none of those additions receive a public witness.
+      fs.writeFileSync(path.join(live, 'ARCHIVE-MANIFEST.json'), JSON.stringify({ files:
+        ['SOURCE.json', 'forge-mcp-all.mjs'].map((file) => {
+          const bytes = fs.readFileSync(path.join(live, file));
+          return { path: file, bytes: bytes.length, sha256: crypto.createHash('sha256').update(bytes).digest('hex') };
+        }) }));
       if (contents === 'unlisted-file') fs.writeFileSync(path.join(live, 'personal.txt'), 'private bytes');
       if (contents === 'declared-private') {
         const manifest = JSON.parse(fs.readFileSync(path.join(live, 'SOURCE.json')));
@@ -115,7 +122,7 @@ describe('installer exact-swap failure recovery', () => {
         expect(fs.readFileSync(path.join(root, 'external.txt'), 'utf8')).toBe('external private bytes');
       }
       // ADR-0098: the installer no longer leaves a second KB behind. A prior generation holding nothing
-      // unique (managed-only: every name it has, the new generation ships) is RELEASED at once; one
+      // unique (managed-only: every file has exact live bytes or public release provenance) is RELEASED at once; one
       // holding a user file or a link the new tree lacks is KEPT, and the reason names that file.
       if (contents === 'managed-only') {
         expect(retained).toHaveLength(0);

@@ -78,11 +78,18 @@ export const REMEDIES = [
     inverse: () => ({ kind: K.NONE, human: 'nothing to reverse — this only adds observations the learner already had queued; learned state can be reset separately' }),
   },
   {
+    key: 'learning-legacy-user-flush',
+    summary: 'drain retained legacy user history into its original home learner',
+    match: (id) => (id === 'learning:flush-legacy-user' ? {} : null),
+    plan: () => ({ script: 'scripts/health-repair.mjs', args: ['--flush-legacy-user-learning'] }),
+    inverse: () => ({ kind: K.NONE, human: 'original queue bytes stay retained; learned observations can be reset separately' }),
+  },
+  {
     key: 'learning-train',
-    summary: 'run one training cycle',
+    summary: 'distill canonical observations into structural patterns',
     match: (id) => (id === 'learning:train' ? {} : null),
     plan: () => ({ script: 'scripts/health-repair.mjs', args: ['--train-learning'] }),
-    inverse: () => ({ kind: K.NONE, human: 'nothing to reverse here — learned state is reset with `ruflo hooks intelligence --reset`, which is a separate, deliberate action' }),
+    inverse: () => ({ kind: K.NONE, human: 'a verified snapshot is retained; automatic exact restore is unavailable and no ratified lessons are claimed' }),
   },
   {
     // THE ONE THAT HAD NO EXECUTOR. See ADR-027's North Star case: stores full of memories that
