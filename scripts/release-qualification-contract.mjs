@@ -44,7 +44,49 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       "files": [
         "tests/unit/automatic-hook-retirement.test.mjs",
         "tests/unit/install-activation-rollback.test.mjs",
-        "tests/unit/forge-update-apply-rollback.test.mjs"
+        "tests/unit/forge-update-apply-rollback.test.mjs",
+        "tests/unit/forge-update-archive-digest.test.mjs",
+        "tests/unit/kb-copy-proof-legacy-sidecars.test.mjs"
+      ]
+    },
+    {
+      "id": "approved-native-routing",
+      "reason": "Current owner allocations, classification floors, native model and effort support, subscription auth and ordinary allowance gate actual stdin dispatch without expanding spend",
+      "files": [
+        "tests/unit/model-router-engine.test.mjs",
+        "tests/unit/model-router-enforcement.test.mjs",
+        "tests/unit/native-subscription-usage.test.mjs",
+        "tests/unit/model-router-agent-hook.test.mjs"
+      ]
+    },
+    {
+      "id": "same-session-native-transport",
+      "reason": "Codex and Claude native JSONL preserve context, UTF-8, control progress, cancellation and deferred FIFO while binding each new turn to an approved native route",
+      "files": [
+        "tests/unit/model-routing-gateway.test.mjs",
+        "tests/unit/model-routing-gateway-boundaries.test.mjs",
+        "tests/unit/claude-terminal-mod.test.mjs",
+        "tests/unit/model-routing-launchers.test.mjs"
+      ],
+      "platformFiles": {
+        "linux": ["tests/unit/model-terminal-gateway.test.mjs", "tests/unit/model-terminal-launchers.test.mjs"],
+        "macos": ["tests/unit/model-terminal-gateway.test.mjs", "tests/unit/model-terminal-launchers.test.mjs"],
+        "windows": ["tests/unit/windows-terminal-boundary.test.mjs"]
+      }
+    },
+    {
+      "id": "weekly-routing-evidence",
+      "reason": "Weekly native dispatch requires allowance and trusted tool denial; bounded completions, source fencing and qualified promotion preserve original owner approval and reject requested-only identity",
+      "files": [
+        "tests/unit/model-weekly-assessment.test.mjs",
+        "tests/unit/model-weekly-analyst.test.mjs",
+        "tests/unit/model-weekly-cycle.test.mjs",
+        "tests/unit/model-weekly-qualification.test.mjs",
+        "tests/unit/model-native-qualification.test.mjs",
+        "tests/unit/model-native-catalog.test.mjs",
+        "tests/unit/user-model-prompt-hook.test.mjs",
+        "tests/unit/model-routing-policy-promotion.test.mjs",
+        "tests/unit/codex-hook-trust.test.mjs"
       ]
     },
     {
@@ -53,7 +95,8 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       "files": [
         "tests/unit/nightly-scheduler.test.mjs",
         "tests/unit/nightly-refresh-launcher.test.mjs",
-        "tests/unit/nightly-two-run-proof.test.mjs"
+        "tests/unit/nightly-two-run-proof.test.mjs",
+        "tests/unit/nightly-refresh-run-health.test.mjs"
       ]
     },
     {
@@ -112,11 +155,30 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       ]
     },
     {
+      "id": "owner-capture-and-off-controls",
+      "reason": "Brain OFF suppresses capacity execution; promise opt-out suppresses only new capture and preserves existing closure and capability truth",
+      "files": [
+        "tests/unit/capacity-aware-parallel-work.test.mjs",
+        "tests/unit/continuation-gate-capability-truth.test.mjs",
+        "tests/unit/continuation-gate-completion-claims.test.mjs"
+      ]
+    },
+    {
+      "id": "active-managed-generation",
+      "reason": "Active code selection binds help authorization and execution to one immutable leased generation across promotion",
+      "files": [
+        "tests/unit/managed-cli-generation.test.mjs"
+      ]
+    },
+    {
       "id": "pending-memory-durability",
       "reason": "Complete outbox tails replay and accepted pending journal events survive capacity pressure without silent deletion",
       "files": [
         "tests/unit/project-progression-outbox.test.mjs",
-        "tests/unit/project-progression-durability.test.mjs"
+        "tests/unit/project-progression-durability.test.mjs",
+        "tests/unit/continuity-customer-regressions.test.mjs",
+        "tests/unit/progression-outbox-containment.test.mjs",
+        "tests/unit/transition-pending-notices.test.mjs"
       ]
     }
   ],
@@ -125,7 +187,8 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       "id": "native-explicit-interface",
       "reason": "Real MCP subprocess readiness, command policy and literal argv safety",
       "files": [
-        "tests/integration/managed-cli-mcp.test.mjs"
+        "tests/integration/managed-cli-mcp.test.mjs",
+        "tests/integration/managed-cli-server-boundary.test.mjs"
       ]
     },
     {
@@ -133,6 +196,14 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       "reason": "Actual bundle builder rejects absent private fence and incomplete public payloads",
       "files": [
         "tests/integration/build-bundle-fence.test.mjs"
+      ]
+    },
+    {
+      "id": "installed-routing-and-hook-trust",
+      "reason": "Actual installer update converges managed routing while preserving private overrides; POSIX archive and native metadata subprocess probes bind authorized hook trust to verified released bytes and preserve concurrent or disabled owner state",
+      "files": [
+        "tests/unit/model-router-update-convergence.test.mjs",
+        "tests/unit/codex-hook-trust-reconcile.test.mjs"
       ]
     },
     {
@@ -170,7 +241,8 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
         "tests/unit/turn-durable-transport.test.mjs",
         "tests/integration/automatic-progression-continuation.test.mjs",
         "tests/integration/capture-consent-boundary.test.mjs",
-        "tests/integration/session-start-turn-replay.test.mjs"
+        "tests/integration/session-start-turn-replay.test.mjs",
+        "tests/integration/progression-suspension.test.mjs"
       ]
     },
     {

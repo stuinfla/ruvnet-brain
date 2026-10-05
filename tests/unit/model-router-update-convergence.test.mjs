@@ -15,6 +15,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { runtimeSnapshot } from '../../scripts/model-routing-launchers.mjs';
 import { applyManagedCatalogUpdate } from '../../scripts/model-router-catalog.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
@@ -132,4 +133,93 @@ describe('issue #87 — managed additions reach an existing user', () => {
     expect(after.candidates).toContainEqual(catalog.candidates[1]);
     expect(after.candidates.filter((c) => c.provider === 'openrouter')).toEqual([]);
   }, 120_000);
+});
+
+function runRouterUpdate(home) {
+  const kb = path.join(home,'.cache','ruvnet-brain','kb');
+  fs.mkdirSync(path.join(kb,'.console-runtime','scripts'),{recursive:true});
+  fs.writeFileSync(path.join(kb,'.console-runtime','scripts','onboarding-console.mjs'),'// PRIOR\n');
+  stagedPayload(home);
+  const result=spawnSync(process.execPath,[INSTALLER,'--update','--host-sync-only'],{
+    env:{...process.env,HOME:home,USERPROFILE:home,CODEX_HOME:path.join(home,'.codex'),RUVNET_BRAIN_HOME:path.join(home,'.cache','ruvnet-brain'),RUVNET_BRAIN_KB:kb,RUVNET_BRAIN_TEST:'1'},
+    encoding:'utf8',timeout:120000,
+  });
+  expect(result.status,`${result.stdout}\n${result.stderr}`).toBe(0);
+}
+
+describe('managed router default reaches the real installer update entry',()=>{
+  it('upgrades a legacy default with exact backup, preserves all user overrides, and repeats idempotently',()=>{
+    const home=temporary('router-default-upgrade-');const dir=path.join(home,'.claude','model-router');
+    fs.mkdirSync(dir,{recursive:true});
+    const legacy="// personal legacy source\nexport function choose(){return {model:'fixture',taskClass:'medium',effort:'medium'}}\n";
+    fs.writeFileSync(path.join(dir,'policy.default.mjs'),legacy);
+    const overrides={'policy.mjs':'// CUSTOM OVERRIDE\n','profile.json':'{"custom":"profile"}\n','routing-policy.json':'{"custom":"allocation"}\n'};
+    for(const [name,value] of Object.entries(overrides))fs.writeFileSync(path.join(dir,name),value);
+    runRouterUpdate(home);
+    const shipped=fs.readFileSync(path.join(ROOT,'config','model-router','policy.default.mjs'),'utf8');
+    expect(fs.readFileSync(path.join(dir,'policy.default.mjs'),'utf8')).toBe(shipped);
+    const backups=fs.readdirSync(dir).filter(name=>name.startsWith('policy.default.mjs.pre-managed-upgrade-'));
+    expect(backups).toHaveLength(1);expect(fs.readFileSync(path.join(dir,backups[0]),'utf8')).toBe(legacy);
+    for(const [name,value] of Object.entries(overrides))expect(fs.readFileSync(path.join(dir,name),'utf8')).toBe(value);
+    const first=fs.statSync(path.join(dir,'policy.default.mjs')).mtimeMs;
+    runRouterUpdate(home);
+    expect(fs.statSync(path.join(dir,'policy.default.mjs')).mtimeMs).toBe(first);
+    expect(fs.readdirSync(dir).filter(name=>name.startsWith('policy.default.mjs.pre-managed-upgrade-'))).toEqual(backups);
+    expect(fs.readdirSync(dir).filter(name=>name.includes('.tmp-'))).toEqual([]);
+  },120000);
+  it('creates the missing default on the actual fresh-router entry and its strict classifier works',()=>{
+    const home=temporary('router-default-fresh-');const dir=path.join(home,'.claude','model-router');
+    runRouterUpdate(home);
+    expect(fs.readFileSync(path.join(dir,'policy.default.mjs'),'utf8')).toBe(fs.readFileSync(path.join(ROOT,'config','model-router','policy.default.mjs'),'utf8'));
+    expect(fs.readdirSync(dir).some(name=>name.includes('pre-managed-upgrade'))).toBe(false);
+    const bin=path.join(dir,'bin');fs.mkdirSync(bin,{recursive:true});
+    fs.mkdirSync(path.join(dir,'plugin','scripts'),{recursive:true});
+    for(const file of ['model-router-engine.mjs','route-cheap.mjs'])fs.copyFileSync(path.join(ROOT,'scripts',file),path.join(bin,file));
+    fs.copyFileSync(path.join(ROOT,'plugin','scripts','runtime-preferences.mjs'),path.join(dir,'plugin','scripts','runtime-preferences.mjs'));
+    fs.writeFileSync(path.join(dir,'profile.json'),JSON.stringify({harnesses:{codex:{available:true,subscription:true}}}));
+    const now=new Date().toISOString();
+    fs.writeFileSync(path.join(dir,'routing-policy.json'),JSON.stringify({schemaVersion:1,reviewedAt:now,routes:{codex:{medium:{model:'sol-fixture',effort:'medium'},substantial:{model:'sol-fixture',effort:'high'}}}}));
+    fs.writeFileSync(path.join(dir,'catalog.json'),JSON.stringify({candidates:[{id:'sol-fixture',provider:'openai',harness:['codex'],subscription:['codex']}]}));
+    const selected=spawnSync(process.execPath,[fs.realpathSync(path.join(bin,'model-router-engine.mjs')),'--harness','codex','--policy-only','--json'],{
+      input:'substantial implementation across modules',encoding:'utf8',env:{...process.env,MODEL_ROUTER_CONFIG_DIR:dir,MODEL_ROUTER_CATALOG:path.join(dir,'catalog.json'),MODEL_ROUTER_PROFILE:path.join(dir,'profile.json'),MODEL_ROUTER_SELECTION:path.join(dir,'routing-policy.json'),MODEL_ROUTER_DECISIONS:path.join(dir,'decisions.jsonl')},
+    });
+    expect(selected.status,selected.stderr).toBe(0);
+    expect(JSON.parse(selected.stdout)).toMatchObject({model:'sol-fixture',taskClass:'substantial',effort:'high'});
+    runRouterUpdate(home);
+    expect(fs.readdirSync(dir).some(name=>name.includes('pre-managed-upgrade'))).toBe(false);
+  },120000);
+});
+
+
+it('ships every relative module dependency into a fresh managed router installation', () => {
+  const routerDir = temporary('router-dependency-closure-');
+  const script = `import { syncManagedRouterTools } from ${JSON.stringify(INSTALLER)};
+    syncManagedRouterTools({ routerDir: ${JSON.stringify(routerDir)}, packageRoot: ${JSON.stringify(ROOT)} });`;
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+    env: { ...process.env, RUVNET_BRAIN_IMPORT_ONLY: '1' }, encoding: 'utf8', timeout: 15000,
+  });
+  expect(result.status, result.stderr).toBe(0);
+  const bin = path.join(routerDir, 'bin');
+  for (const file of fs.readdirSync(bin).filter((name) => name.endsWith('.mjs'))) {
+    const text = fs.readFileSync(path.join(bin, file), 'utf8');
+    for (const match of text.matchAll(/(?:from\s*|import\s*\()\s*['"](\.[^'"]+\.mjs)['"]/g)) {
+      expect(fs.existsSync(path.resolve(bin, match[1])), `${file} needs ${match[1]}`).toBe(true);
+    }
+  }
+});
+
+ it('allows fresh installer dependencies to import without terminal-only WebSocket packages', () => {
+  const root = temporary('rnb-installer-no-terminal-dependency-');
+  for (const [file, bytes] of runtimeSnapshot(ROOT).files) {
+    if (file.startsWith('node_modules/')) continue;
+    const destination = path.join(root, file);
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.writeFileSync(destination, bytes);
+  }
+  const entry = path.join(root, 'scripts/model-terminal-launchers.mjs');
+  const run = spawnSync(process.execPath, ['--input-type=module', '-e',
+    'await import(process.argv[2]); console.log("INSTALLER_IMPORT_OK")', 'import-only', entry],
+    { encoding: 'utf8', timeout: 5000 });
+  expect(run.status, run.stderr).toBe(0);
+  expect(run.stdout.trim()).toBe('INSTALLER_IMPORT_OK');
 });

@@ -101,8 +101,12 @@ export function describeFailedRefreshRun(receipt, { reasonLimit = 200 } = {}) {
   const ledger = receipt.phases.map((entry) => entry?.phase);
   if (ledger.length > declared.length || ledger.some((phase, index) => phase !== declared[index])) return null;
   if (ledger.length === 0) return `failed before its first phase (${receipt.terminalVerdict || 'unknown'})`;
-  const failing = [...receipt.phases].reverse().find((entry) => entry?.status !== 'PASS') || receipt.phases[receipt.phases.length - 1];
-  const reason = String(failing.evidence?.updateResult?.reason ?? failing.evidence?.reason ?? '').split('\n')[0].trim();
+  const failing = receipt.phases.find((entry) => entry?.required !== false && entry?.status === 'FAIL')
+    || receipt.phases.find((entry) => entry?.status === 'FAIL')
+    || [...receipt.phases].reverse().find((entry) => entry?.status !== 'PASS')
+    || receipt.phases[receipt.phases.length - 1];
+  const reason = String(failing.evidence?.updateResult?.reason ?? failing.evidence?.error
+    ?? failing.evidence?.reason ?? '').split('\n')[0].trim();
   return reason ? `failed at ${failing.phase}: ${reason.slice(0, reasonLimit)}` : `failed at ${failing.phase}`;
 }
 

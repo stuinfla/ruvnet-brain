@@ -17,6 +17,7 @@ import { ProjectProgressionStore } from './project-progression-store.mjs';
 import { resolveProjectStore } from './project-store-resolver.mjs';
 import { resolveTurnDb, captureTurnOutcome } from './turn-outcome-capture.mjs';
 import { captureContinuityEvents, stopNotice } from './continuity-journal.mjs';
+import { automaticProgressionSuspensionResult } from './project-progression-suspension.mjs';
 
 /**
  * The capture boundary's whole budget. hooks.json declares 10s; this keeps the internal work well
@@ -158,12 +159,15 @@ export function runSessionSnapshotHook(projectDir, event, {
     continuity = { recorded: 0, skipped: `continuity capture failed: ${error.message}` };
   }
   const idle = { metadataWritten, progressionCaptured: false, receipt: null, turn, continuity };
+  const operatorSuspended = automaticProgressionSuspensionResult(env, idle);
+  if (operatorSuspended) return operatorSuspended;
 
   if (hasProjectProgression(payload)) {
     if (payload.hook_event_name !== event) {
       throw new Error(`progression boundary mismatch: expected ${event}, received ${payload.hook_event_name}`);
     }
-    const result = captureProgression({ host, payload, projectDir, storeFactory: (options) => makeStoreFactory(now() + budgetMs)({ ...options, env }) });
+    const result = captureProgression({ host, payload, projectDir, recoverFrozen: Boolean(ordered),
+      canCommit: () => Boolean(ordered) && refreshReplayLock(resolveProjectStore({ projectDir }).projectRoot, ordered), storeFactory: (options) => makeStoreFactory(now() + budgetMs)({ ...options, env }) });
     return { ...idle, progressionCaptured: true, receipt: result.receipt };
   }
 
@@ -205,7 +209,7 @@ export function runSessionSnapshotHook(projectDir, event, {
     try { frozen = produce({ resolution, projectDir, payload, host, trigger: event }); } catch { frozen = null; }
     const queued = frozen?.projectProgression ? queueCapture({ projectDir: root, originProjectDir: projectDir, env, event, host,
       payload: { session_id: payload.session_id, hook_event_name: event, projectProgression: frozen.projectProgression } }) : null;
-    const handed = queued ? spawnReplay({ projectDir: root, token }) : false;
+    const handed = queued ? spawnReplay({ projectDir: root, token, env }) : false;
     if (!handed && token && token !== ordered) releaseReplayLock(root, token);
     return { ...idle, replayed: 0, progressionCaptured: false, deferredToReplayer: Boolean(queued),
       replaySkipped: `${why}; this capture ${queued ? 'queued behind it' : 'NOT queued (queue unwritable)'}`
@@ -261,7 +265,7 @@ export function runSessionSnapshotHook(projectDir, event, {
       // NOT LOST — DEFERRED. capture() fsyncs the snapshot to the durable outbox BEFORE it writes to
       // the store, so a budget overrun leaves the evidence on disk. On a short budget nothing later in
       // this process can settle it, so the lock goes straight to a detached worker.
-      handedLock = !ordered && budgetMs < REPLAY_MIN_BUDGET_MS && pendingCount() > 0 && spawnReplay({ projectDir: root, token });
+      handedLock = !ordered && budgetMs < REPLAY_MIN_BUDGET_MS && pendingCount() > 0 && spawnReplay({ projectDir: root, token, env });
       return { ...idle, replayed, skipped: `capture deferred: ${error.message}`,
         ...(handedLock ? { replaySkipped: 'deferred capture handed to a detached worker' } : {}) };
     }
@@ -280,9 +284,9 @@ export function runSessionSnapshotHook(projectDir, event, {
     // simultaneous SessionEnds lost the second one's final state (4.4.1). So: queued work → hand THIS
     // lock to a worker; and re-check after releasing, for a boundary that queued in between.
     if (!ordered && !handedLock) {
-      if (!(queuedWork(root) && spawnReplay({ projectDir: root, token }))) {
+      if (!(queuedWork(root) && spawnReplay({ projectDir: root, token, env }))) {
         releaseReplayLock(root, token);
-        if (queuedWork(root)) spawnReplay({ projectDir: root });
+        if (queuedWork(root)) spawnReplay({ projectDir: root, env });
       }
     }
   }
@@ -296,10 +300,14 @@ if (process.argv[1] && path.resolve(process.argv[1]).endsWith('session-snapshot-
   // Finish evaluating this module before importing its transition consumer.
   void (async () => {
   try {
-    const { runProjectTransitionHook } = await import('./project-transition-hook.mjs');
+    const { runProjectTransitionHook, transitionPendingNotice } = await import('./project-transition-hook.mjs');
     const payload = JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
-    const result = runProjectTransitionHook(payload.cwd || projectDirectory(), process.argv[2], { payload });
-    if (result.state === 'pending') process.stdout.write(JSON.stringify({ systemMessage: 'Project memory transition remains pending; exact readback was not verified.' }));
+    const projectDir = payload.cwd || projectDirectory();
+    const result = runProjectTransitionHook(projectDir, process.argv[2], { payload });
+    if (result.state === 'pending') {
+      const message = transitionPendingNotice(projectDir, payload, 'Project memory transition remains pending; exact readback was not verified.');
+      if (message) process.stdout.write(JSON.stringify({ systemMessage: message }));
+    }
   } catch { process.stdout.write(JSON.stringify({ systemMessage: 'Project memory transition capture degraded; exact readback was not verified.' })); }
   })();
 } else if (process.argv[1] && path.resolve(process.argv[1]).endsWith('session-snapshot-hook.mjs')) {
