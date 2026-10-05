@@ -35,7 +35,7 @@ it('rejects undefined qualification classes rather than falling back to the hist
 
 const reseal = value => { const { receiptSha256: _old, ...body } = value; return { ...body, receiptSha256: digest(body) }; };
 function receipt(platform = 'windows') {
-  const plan = qualificationPlan('source');
+  const plan = qualificationPlan('source', platform);
   const checkoutRoot = platform === 'windows' ? 'D:\\a\\ruvnet-brain\\ruvnet-brain' : '/home/runner/work/ruvnet-brain/ruvnet-brain';
   const paths = platform === 'windows' ? path.win32 : path.posix;
   const testReport = { ...report(), numTotalTests: plan.files.length, numPassedTests: plan.files.length,
@@ -51,6 +51,29 @@ function receipt(platform = 'windows') {
 it.each(['linux', 'macos', 'windows'])('collector validates %s absolute test names without host-path assumptions', platform => {
   const value = receipt(platform);
   expect(validateQualificationReceipt(value, { suite: 'source', platform, sourceSha: value.source.sha })).toEqual(value.tests);
+});
+
+it('requires POSIX transport on both supported platforms and an active Windows refusal boundary', () => {
+  const windows = qualificationPlan('source', 'windows');
+  for (const platform of ['linux', 'macos']) {
+    const plan = qualificationPlan('source', platform);
+    expect(plan.files).toContain('tests/unit/model-terminal-gateway.test.mjs');
+    expect(plan.files).toContain('tests/unit/model-terminal-launchers.test.mjs');
+    expect(plan.contractSha256).not.toBe(windows.contractSha256);
+  }
+  expect(windows.files).toContain('tests/unit/windows-terminal-boundary.test.mjs');
+  expect(windows.files).toContain('tests/unit/claude-terminal-mod.test.mjs');
+  expect(windows.files).toContain('tests/unit/model-routing-gateway.test.mjs');
+  expect(windows.files).not.toContain('tests/unit/model-terminal-gateway.test.mjs');
+  expect(windows.files).not.toContain('tests/unit/model-terminal-launchers.test.mjs');
+  expect(() => qualificationPlan('source', 'unknown')).toThrow('platform');
+});
+
+it('rejects a macOS contract resealed with a Windows platform and paths', () => {
+  const value = receipt('macos');
+  value.platform = 'windows'; value.checkoutRoot = 'D:\\fixture';
+  value.testReport.testResults.forEach((row, index) => { row.name = path.win32.join(value.checkoutRoot, value.files[index]); });
+  expect(() => validateQualificationReceipt(reseal(value), { suite: 'source', platform: 'windows', sourceSha: value.source.sha })).toThrow();
 });
 it.each(['failed-case', 'extra-file', 'relative-file', 'outside-root', 'wrong-root', 'missing-root', 'false-summary',
   'command-failed', 'command-exit', 'missing-command', 'after-sha', 'after-digest', 'after-dirty', 'before-dirty'])('rejects resealed malformed receipt: %s', mutation => {

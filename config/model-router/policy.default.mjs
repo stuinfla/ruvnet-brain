@@ -57,10 +57,13 @@ export function classify(features, harness = features.harness || 'codex') {
   const text = String(features.taskHints || '');
   const coding = features.hasCode || CODING.test(text);
   const assessedText = assessmentText(text);
+  const securityActions = assessedText.replace(/\bdo not (?:assess|recommend)[^.;\n]*/gi, '');
+  const securityReview = /\b(security|risks?)\b/i.test(securityActions) &&
+    /\b(review|assess(?:ment)?|audit|evaluat\w*|analy[sz]\w*|identify|determine)\b/i.test(securityActions);
   const consequential = /\b(consequential planning|substantive planning|substantive review|final substantive review|plan (?:a |the )?new system|design (?:a |the )?new architecture|ambiguous architecture|architecture ambiguity|architectur\w* tradeoff|tightly coupled uncertain implementation|uncertain tightly coupled implementation)\b/i.test(text);
   const architectureAmbiguity = /architectur\w*/i.test(text) && /\b(ambiguous|ambiguity|unresolved|uncertain|trade[- ]?off)\b/i.test(text);
   const coupledUncertainty = /tightly coupled/i.test(text) && /implementation|coding/i.test(text) && /uncertain|unresolved|ambiguous/i.test(text);
-  const hardText = HARD.test(assessedText) || consequenceFloor(assessedText) || consequential || architectureAmbiguity || coupledUncertainty;
+  const hardText = HARD.test(assessedText) || securityReview || consequenceFloor(assessedText) || consequential || architectureAmbiguity || coupledUncertainty;
   const substantialText = /\b(substantial (?:implementation|coding|feature|task)|cross-module (?:implementation|feature|refactor)|multi-file (?:implementation|feature|refactor)|end-to-end implementation|broad refactor)\b/i.test(text);
   const facts = validateTaskFacts(features.taskFacts);
   // Partial caller metadata supplements the assessment; it cannot lower explicit high-consequence text.

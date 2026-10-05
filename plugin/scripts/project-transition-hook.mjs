@@ -75,20 +75,25 @@ export function normalizeTransition(payload, event, { now = () => new Date().toI
   const toolInput = input.tool_input ?? {};
   const response = input.tool_response && typeof input.tool_response === 'object' ? input.tool_response : {};
   const exitCode = [response.exit_code, response.exitCode, response.status].find(Number.isSafeInteger);
-  const failure = event === 'PostToolUseFailure' || response.isError === true || input.is_error === true || (Number.isSafeInteger(exitCode) && exitCode !== 0);
-  const interrupted = response.interrupted === true || response.signal === 'SIGINT';
+  const error = typeof response.error === 'string' && response.error ? redactText(response.error).slice(0, 4096) : undefined;
+  const signal = typeof response.signal === 'string' && response.signal ? redactText(response.signal).slice(0, 100) : undefined;
+  const failure = Boolean(error) || event === 'PostToolUseFailure' || response.isError === true || input.is_error === true || (Number.isSafeInteger(exitCode) && exitCode !== 0);
+  const interrupted = response.interrupted === true || Boolean(signal);
+  const declaredOutcome = ['success', 'failure', 'interrupted', 'unknown'].includes(response.outcome) ? response.outcome : null;
   // Measured native Claude Bash PostToolUse has no exit code. Its completion envelope
   // is host-reported success, never an inferred exit-code zero. Other hosts stay unknown.
   const claudeBashCompletion = host === 'claude' && input.tool_name === 'Bash' && event === 'PostToolUse'
     && typeof response.stdout === 'string' && typeof response.stderr === 'string'
     && response.interrupted === false && typeof response.isImage === 'boolean'
     && typeof response.noOutputExpected === 'boolean';
-  const outcome = event === 'PreToolUse' ? 'pending' : interrupted ? 'interrupted' : failure ? 'failure'
-    : Number.isSafeInteger(exitCode) || response.success === true || response.ok === true || claudeBashCompletion ? 'success' : 'unknown';
+  const outcome = event === 'PreToolUse' ? 'pending' : error ? 'failure' : interrupted ? 'interrupted' : failure ? 'failure'
+    : declaredOutcome || (Number.isSafeInteger(exitCode) || response.success === true || response.ok === true || claudeBashCompletion ? 'success' : 'unknown');
   return { ...common, kind: 'tool-observation', tool: String(input.tool_name).split('__').at(-1).slice(0, 100),
     intent: semanticIntent(toolInput.description ?? toolInput.command ?? toolInput.cmd ?? toolInput.file_path), outcome,
     ...(outcome === 'success' && claudeBashCompletion ? { outcomeEvidence: 'claude-bash-completion' } : {}),
-    ...(event !== 'PreToolUse' && Number.isSafeInteger(exitCode) ? { exitCode } : {}) };
+    ...(event !== 'PreToolUse' && Number.isSafeInteger(exitCode) ? { exitCode } : event !== 'PreToolUse' && (response.exit_code === null || response.exitCode === null) ? { exitCode: null } : {}),
+    ...(event !== 'PreToolUse' && error ? { error } : {}),
+    ...(event !== 'PreToolUse' && signal ? { signal } : {}) };
 }
 
 export function readTransitionHistory(resolution, { deadlineAt = Infinity } = {}) {
@@ -107,6 +112,11 @@ export function readTransitionHistory(resolution, { deadlineAt = Infinity } = {}
 export function buildTransitionProgression({ resolution, observation, snapshots = [], sessionIdentity, host, sourceIdentity: originalSourceIdentity }) {
   const restored = restoreProjectProgression(snapshots, { expectedProjectIdentity: resolution.projectIdentity });
   if (snapshots.length && !restored.ok) throw new Error('nonempty transition journal has no coherent ancestry');
+  return buildRestoredTransitionProgression({ resolution, observation, snapshots, sessionIdentity, host, sourceIdentity: originalSourceIdentity }, restored);
+}
+
+// Only the validated result computed in this module can reach this private builder.
+function buildRestoredTransitionProgression({ resolution, observation, snapshots, sessionIdentity, host, sourceIdentity: originalSourceIdentity }, restored) {
   const heads = snapshots.filter((snapshot) => restored.heads.includes(snapshot.eventKey));
   const prior = restored.state;
   const empty = Object.fromEntries(['plan', 'completed', 'inProgress', 'blockers', 'failures', 'decisions', 'changedFiles', 'commands', 'proofArtifacts', 'untested', 'resumeConflicts'].map((key) => [key, []]));
@@ -145,7 +155,8 @@ export function captureNormalizedTransition(job, { readHistory = readTransitionH
   if (!normalized || normalized.observation?.authoritative !== false || !normalized.observation?.id
     || normalized.sourceIdentity?.checkoutPath !== resolution.checkoutRoot) throw new Error('invalid normalized transition binding');
   const snapshots = readHistory(resolution, { deadlineAt });
-  if (snapshots.length && !restoreProjectProgression(snapshots, { expectedProjectIdentity: resolution.projectIdentity }).ok) {
+  const restored = restoreProjectProgression(snapshots, { expectedProjectIdentity: resolution.projectIdentity });
+  if (snapshots.length && !restored.ok) {
     throw new Error('nonempty transition journal has no coherent ancestry');
   }
   // A failed first store already fsynced a snapshot to the outbox. If startup/replay committed
@@ -159,9 +170,9 @@ export function captureNormalizedTransition(job, { readHistory = readTransitionH
   if (committed) return { progressionCaptured: true, eventId: normalized.observation.id,
     receipt: { eventKey: committed.eventKey, payloadDigest: committed.payloadDigest,
       readbackDigest: committed.payloadDigest, readPath: 'canonical progression reader' } };
-  const progression = buildTransitionProgression({ resolution, observation: normalized.observation,
+  const progression = buildRestoredTransitionProgression({ resolution, observation: normalized.observation,
     snapshots, sessionIdentity: job.payload.session_id, host: job.host,
-    sourceIdentity: normalized.sourceIdentity });
+    sourceIdentity: normalized.sourceIdentity }, restored);
   const result = capture(job.originProjectDir, job.event, { host: job.host, budgetMs: Math.max(0, deadlineAt - now()),
     ...(makeStoreFactory ? { makeStoreFactory } : {}), writeMetadata: false,
     rawInput: JSON.stringify({ session_id: job.payload.session_id, hook_event_name: job.event, projectProgression: progression }),
