@@ -11,6 +11,7 @@ import {
   validateProgressionSnapshot,
 } from './project-progression-contract.mjs';
 import { resolveTurnDb } from './turn-outcome-capture.mjs';
+import { privateProgressionState } from './turn-capture-privacy.mjs';
 import { resolveProjectStore } from './project-store-resolver.mjs';
 import { withProgressionReader } from './project-progression-reader.mjs';
 import { resolveRuflo, rufloInvocation, RUFLO_MISSING } from './ruflo-bin.mjs';
@@ -401,6 +402,8 @@ export class ProjectProgressionStore {
       brainHome: this.brainHome, requestedStorePath: this.resolution.canonicalAgentDbPath,
       unknownOriginalPath: !capturePath });
     if (target.skipped) throw new Error(`progression capture suspended: ${target.skipped}`);
+    if (digestCanonical(privateProgressionState(snapshot.completeProjectState, target.contentPathExcludes, capturePath ?? snapshot.sourceIdentity.checkoutPath))
+      !== digestCanonical(snapshot.completeProjectState)) throw new Error('progression capture suspended: content exclusions changed; frozen snapshot retained');
   }
 
   appendExact(snapshot, { onPhase = () => {} } = {}) {

@@ -48,12 +48,14 @@ function sentences(message) {
 }
 
 // A sentence that is itself a disclosure, a negation, a hedge or a condition is not a claim.
-const NOT_A_CLAIM = /\b(?:not|never|no|nothing|none|cannot|can't|won't|isn't|aren't|wasn't|weren't|hasn't|haven't|didn't|doesn't|don't|without|unverified|untested|unproven|unknown|yet|if|unless|until|once|when|whether|should|would|could|might|may|maybe|probably|likely|expected|supposed|hopefully|assuming|pending|remaining|remains|todo|tbd|before|after|previously|earlier|already|yesterday|ago|last\s+(?:week|night|time|session|release)|claimed|claims|said|says|reported|told|neither|nor|as\s+soon\s+as|tell\s+me|I(?:'ll|’ll)|we(?:'ll|’ll)|will\s+(?!now\b)|(?:was|were)\s+working|damage\s+is\s+done)\b|\?/i;
+const NOT_A_CLAIM = /\b(?:not|never|no|nothing|none|cannot|can't|won't|isn't|aren't|wasn't|weren't|hasn't|haven't|didn't|doesn't|don't|without|unverified|untested|unproven|unknown|yet|if|unless|until|once|when|whether|should|would|could|might|may|maybe|probably|likely|expected|supposed|hopefully|assuming|pending|remaining|remains|todo|tbd|before|after|previously|earlier|already|yesterday|ago|last\s+(?:week|night|time|session|release)|neither|nor|as\s+soon\s+as|tell\s+me|I(?:'ll|’ll)|we(?:'ll|’ll)|will\s+(?!now\b)|(?:was|were)\s+working|damage\s+is\s+done)\b|\?/i;
+const HEARSAY = /\b(?:claimed|claims|said|says|reported|told)\b/i;
+const FIRST_PERSON_ASSERTION = /^(?:[-*•]\s*|#+\s*)*(?:I|we)(?:'ve|’ve|\s+have)?\s+(?:now\s+|just\s+|successfully\s+|also\s+|fully\s+)*(?:fixed|shipped|deployed|resolved|completed|implemented|landed|published|released|verified|finished|reported|wired\s+up)\b/i;
 const CLAIM_PATTERNS = [
   // "X is fixed", "the gate is now live", "tests are passing", "it's done"
   /\b(?:is|are|was|were|has\s+been|have\s+been|(?:it|that|this|what|everything|there)(?:'s|’s)|now)\s+(?:all\s+|fully\s+|now\s+|finally\s+|successfully\s+|actually\s+)*(?:fixed|done|complete|completed|resolved|shipped|deployed|live(?!\s+(?:in|inside|under|with|alongside))|implemented|landed|published|merged|released|verified|green|passing|operational|in\s+place|wired(?:\s+up)?|working(?!\s+(?:on|with|through|in|as|tree|copy|dir)))\b/i,
   // "I fixed", "I've shipped", "we deployed"
-  /\b(?:I|we)(?:'ve|’ve|\s+have)?\s+(?:now\s+|just\s+|successfully\s+|also\s+|fully\s+)*(?:fixed|shipped|deployed|resolved|completed|implemented|landed|published|released|verified|finished|wired\s+up)\b/i,
+  /\b(?:I|we)(?:'ve|’ve|\s+have)?\s+(?:now\s+|just\s+|successfully\s+|also\s+|fully\s+)*(?:fixed|shipped|deployed|resolved|completed|implemented|landed|published|released|verified|finished|reported|wired\s+up)\b/i,
   // "Done." "Fixed:" "Shipped —" "✅ Deployed" at the start of a line
   /^(?:[-*•]\s*|#+\s*|\*\*|✅\s*)*(?:done|fixed|shipped|deployed|resolved|complete|completed|implemented|all\s+done|all\s+set|all\s+green)\b\s*(?:[.!:—–-]|\*\*|$)/i,
   // "now works", "it will now block …", "works end to end"
@@ -64,7 +66,7 @@ const CLAIM_PATTERNS = [
 export function extractCompletionClaims(message) {
   const out = [];
   for (const sentence of sentences(message)) {
-    if (NOT_A_CLAIM.test(sentence)) continue;
+    if (NOT_A_CLAIM.test(sentence) || (HEARSAY.test(sentence) && !FIRST_PERSON_ASSERTION.test(sentence))) continue;
     if (CLAIM_PATTERNS.some((re) => re.test(sentence))) out.push({ class: 'completion', text: sentence });
   }
   return out;
@@ -219,6 +221,8 @@ export function auditCompletionClaims(message, { turn = null, host = 'claude' } 
 const PROMISE_LEAD = /\b(?:I(?:'ll|’ll|\s+will)|I(?:'m|’m|\s+am)\s+going\s+to|next,?\s+I(?:'ll|’ll|\s+will)|I\s+commit\s+to)\s+(?:now\s+|next\s+|then\s+|also\s+|immediately\s+|first\s+)*([a-z][^.!?\n]{6,158})/i;
 const PROMISE_REJECT = /\?|:\*\*|\b(?:if|unless|once|when|whenever|as\s+soon\s+as|after|the\s+moment|until|whether|shortly|regularly|periodically|every\s+\d+|check\s+(?:back|again|on\s+it)|keep\s+(?:watching|an\s+eye)|maybe|might|could|would|probably|perhaps|possibly|option|alternatively|either|or\s+I\s+(?:can|could)|want\s+me|should\s+I|shall\s+I|let\s+you\s+know|wait|await|stand\s+by|hold\s+off|leave\s+(?:it|that|this)\s+to\s+you|happy\s+to|glad\s+to|be\s+honest|note\s+that|keep\s+(?:that|this)\s+in\s+mind|try\s+to|need\s+your|your\s+(?:approval|go-ahead|call|decision|confirmation))\b/i;
 const TRIVIAL_PROMISE = /^(?:not|never|be|say|mention|note|admit|point|flag|stop|stay|leave|keep|summari[sz]e|explain|answer|respond|reply|report|remember|give|tell|send|paste|bring|hand|show|walk|notify|post|update\s+you|come\s+back|get\s+back|handle|only|stand|work)\b/i;
+const OWNER_DEPENDENT_OFFER = /\b(?:say\s+the\s+word|(?:just|simply)\s+(?:ask|say)|ask\s+me|let\s+me\s+know|give\s+me\s+the\s+(?:word|go|nod|ok)|on\s+your\s+(?:word|go|ok|say)|up\s+to\s+you)\b/i;
+const STANDING_APPROVAL = /^(?:ask|confirm|check\s+with\s+you|clear\s+(?:it|this|that)\s+with\s+you|run\s+.+\s+by\s+you)\b.*\b(?:before|first)\b/i;
 
 export const normalizePromise = (value) => String(value || '').toLowerCase().replace(/[`*_"“”'’]/g, '')
   .replace(/[^a-z0-9./:+-]+/g, ' ').trim().slice(0, 160);
@@ -237,7 +241,8 @@ export function extractCommitments(message) {
     const candidates = item ? [item[1]] : sentences(line).map((s) => PROMISE_LEAD.exec(s)?.[1]).filter(Boolean);
     const whole = item ? item[1] : line;
     for (const action of candidates) {
-      if (PROMISE_REJECT.test(whole) || TRIVIAL_PROMISE.test(action.trim())) continue;
+      if (PROMISE_REJECT.test(whole) || OWNER_DEPENDENT_OFFER.test(whole)
+        || STANDING_APPROVAL.test(action.trim()) || TRIVIAL_PROMISE.test(action.trim())) continue;
       const text = action.replace(/\s+/g, ' ').trim().replace(/[,;:]$/, '');
       const key = normalizePromise(text);
       if (key.length < 6 || seen.has(key)) continue;

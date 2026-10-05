@@ -568,7 +568,7 @@ export function preToolUseEnvelope(decision, additionalContext) {
   return JSON.stringify({
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
-      permissionDecision: String(decision || 'defer'),
+      ...(decision ? { permissionDecision: String(decision) } : {}),
       additionalContext: String(additionalContext || ''),
     },
   }, null, 2);

@@ -39,7 +39,7 @@ const REPO = 'stuinfla/ruvnet-brain';
 const VERSION = getVersion();
 const BUILDER_SHA = 'c'.repeat(40);
 const UPDATER_MODULES = ['forge-update.mjs', 'zip-extract.mjs', 'brain-profile.mjs', 'refresh-run.mjs',
-  'update-storage-transaction.mjs', 'lifecycle-evidence-retention.mjs', 'corpus-release-identity.mjs'];
+  'update-storage-transaction.mjs', 'lifecycle-evidence-retention.mjs', 'corpus-release-identity.mjs', 'download-retry.mjs'];
 // The fixture coverage is observed at 2026-09-13T00:00Z (tests/helpers/assemble-bundle-fixture.mjs).
 const NOW = Date.parse('2026-09-13T06:00:00.000Z');
 const READER_MODULES = ['@babel/parser', '@ruvector/rvf', '@xenova/transformers'];
@@ -303,11 +303,12 @@ describe('the customer canary applies the staged candidate through a real custom
     expect(verdict.verdict).toBe('FAIL');
   }, 180_000);
 
-  it('a transient 503 on the manifest is retried (exit 2 only) and the retry is recorded', async () => {
+  it('a transient manifest 503 is retried inside the updater without repeating the whole apply', async () => {
     stage(nightly.zip);
     served.failFirstManifest = 1;
     const { verdict } = await canary(customerInstall());
-    expect(verdict.updater).toMatchObject({ exitCode: 0, attempts: 2 });
+    expect(verdict.updater).toMatchObject({ exitCode: 0, attempts: 1 });
+    expect(served.failFirstManifest).toBe(0);
     expect(verdict.verdict).toBe('PASS');
   }, 180_000);
 });

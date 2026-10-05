@@ -79,7 +79,12 @@ export function projectGroundingInput(raw) {
   return projection;
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+function isMain() {
+  try { return Boolean(process.argv[1]) && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); }
+  catch { return false; }
+}
+
+if (isMain()) {
   try { process.stdout.write(projectGroundingInput(fs.readFileSync(0, 'utf8'))); }
   catch { process.exitCode = 1; } // A failed exemption leaves the original guard in force.
 }

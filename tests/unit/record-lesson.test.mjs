@@ -38,27 +38,55 @@ function sandbox() {
 }
 
 /** Run the script against an isolated project dir with a controllable fake `ruflo` on disk. */
-function run(args, { rufloBody = null } = {}) {
+function run(args, { rufloBody = null, windowsShim = false } = {}) {
+  const nodeArgs = [];
   const dir = tmp || sandbox();
   let ruflo = '/nonexistent/ruflo';
   if (rufloBody) {
-    ruflo = path.join(dir, 'fake-ruflo');
-    if (process.platform === 'win32') {
-      const mode = rufloBody.includes('Key not found') ? 'missing'
-        : rufloBody.includes('no such table') ? 'corrupt' : 'healthy';
-      fs.writeFileSync(path.join(dir, 'fake-ruflo.mjs'), `
+    const mode = rufloBody.includes('Key not found') ? 'missing'
+      : rufloBody.includes('no such table') ? 'corrupt'
+      : rufloBody.includes('OLD_IDENTICAL') ? 'old-identical'
+      : rufloBody.includes('WRAPPED_VALUE') ? 'wrapped' : 'healthy';
+    const entry = path.join(dir, 'fake-ruflo.mjs');
+    fs.writeFileSync(entry, `#!/usr/bin/env node
+import fs from 'node:fs';
 const mode = ${JSON.stringify(mode)};
-const op = process.argv[3];
-if (op === 'store') console.log('[OK] Data stored successfully');
-else if (op === 'retrieve') console.log(mode === 'healthy' ? 'TASK: probe task OUTCOME: success' : mode === 'missing' ? '[WARN] Key not found: lesson-probe' : '[ERROR] no such table: memory_entries');
-else if (op === 'distill') console.log(mode === 'healthy' ? 'Episodes | 1' : 'Episodes | 0');
-else if (op === 'search') console.log(mode === 'healthy' ? 'lesson-probe' : '[WARN] No results found');
+const args = process.argv.slice(2);
+const op = args[1];
+const flag = name => args[args.indexOf(name) + 1];
+const saved = ${JSON.stringify(path.join(dir, 'fake-value.json'))};
+if (op === 'store') {
+  if (mode === 'healthy' || mode === 'wrapped') fs.writeFileSync(saved, JSON.stringify(flag('--value')));
+  console.log('[OK] Data stored successfully');
+} else if (op === 'retrieve') {
+  const value = mode === 'old-identical' ? 'TASK: probe task OUTCOME: success'
+    : fs.existsSync(saved) ? JSON.parse(fs.readFileSync(saved, 'utf8')) : '';
+  process.stdout.write(mode === 'missing' ? '[WARN] Key not found: lesson-probe'
+    : mode === 'corrupt' ? '[ERROR] no such table: memory_entries'
+    : mode === 'wrapped' ? 'unexpected wrapper ' + value : value);
+} else if (op === 'distill') console.log('Episodes | 1');
+else if (op === 'search') console.log('lesson-probe');
 `);
-      fs.writeFileSync(`${ruflo}.cmd`, '@echo off\r\nnode "%~dp0fake-ruflo.mjs" %*\r\n');
-      ruflo = `${ruflo}.cmd`;
-    } else fs.writeFileSync(ruflo, rufloBody, { mode: 0o755 });
+    if (process.platform === 'win32' || windowsShim) {
+      const prefix = path.join(dir, 'managed npm global');
+      const pkg = path.join(prefix, 'node_modules', 'ruflo');
+      fs.mkdirSync(pkg, { recursive: true });
+      fs.renameSync(entry, path.join(pkg, 'cli.mjs'));
+      fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: 'ruflo', bin: { ruflo: 'cli.mjs' } }));
+      ruflo = path.join(prefix, 'ruflo.cmd');
+      // The adapter must bypass this shim and call its package entry directly.
+      fs.writeFileSync(ruflo, '@echo off\r\nexit /b 99\r\n');
+      if (windowsShim && process.platform !== 'win32') {
+        const preload = path.join(dir, 'windows-platform.mjs');
+        fs.writeFileSync(preload, "Object.defineProperty(process, 'platform', { value: 'win32' });");
+        nodeArgs.push('--import', preload);
+      }
+    } else {
+      ruflo = entry;
+      fs.chmodSync(entry, 0o755);
+    }
   }
-  return spawnSync(process.execPath, [SCRIPT, '--dir', dir, ...args], {
+  return spawnSync(process.execPath, [...nodeArgs, SCRIPT, '--dir', dir, ...args], {
     encoding: 'utf8',
     timeout: 30_000,
     env: { ...process.env, RUFLO_BIN: ruflo },
@@ -123,6 +151,48 @@ describe('record-lesson — a lesson is not "stored" until it round-trips', () =
     const r = run(['--task', 'probe task', '--slug', 'probe'], { rufloBody: CORRUPT_STORE_RUFLO });
     expect(r.status).toBe(1);
     expect(r.stdout).not.toMatch(/round-trip verified/);
+  });
+
+  it('rejects a no-op write even when an identical old lesson is retrieved', () => {
+    sandbox();
+    const r = run(['--task', 'probe task', '--slug', 'probe'], { rufloBody: 'OLD_IDENTICAL' });
+    expect(r.status).toBe(1);
+    expect(r.stdout).not.toMatch(/round-trip verified/);
+    expect(r.stdout).toMatch(/capture NOT verified/);
+  });
+
+  it('rejects extra output surrounding the stored value', () => {
+    sandbox();
+    const r = run(['--task', 'probe task', '--slug', 'probe'], { rufloBody: 'WRAPPED_VALUE' });
+    expect(r.status).toBe(1);
+    expect(r.stdout).not.toMatch(/round-trip verified/);
+  });
+
+  it('binds repeated writes to distinct recording IDs inside the canonical value', () => {
+    sandbox();
+    const first = run(['--task', 'probe task', '--slug', 'probe'], { rufloBody: HEALTHY_RUFLO });
+    const value1 = JSON.parse(fs.readFileSync(path.join(tmp, 'fake-value.json'), 'utf8'));
+    const second = run(['--task', 'probe task', '--slug', 'probe'], { rufloBody: HEALTHY_RUFLO });
+    const value2 = JSON.parse(fs.readFileSync(path.join(tmp, 'fake-value.json'), 'utf8'));
+    expect(first.status).toBe(0);
+    expect(second.status).toBe(0);
+    expect(value1).toMatch(/TASK: probe task OUTCOME: success RECORDING: [0-9a-f-]{36}$/);
+    expect(value2).not.toBe(value1);
+  });
+
+  it('preserves literal lesson text through the managed Windows npm shim adapter', () => {
+    sandbox();
+    const task = 'spaces "quotes" & | < > ^ %PATH% !value! $(touch SHOULD_NOT_EXIST) `echo nope`';
+    const tried = "single 'quote' and more words";
+    const r = run(['--task', task, '--tried', tried, '--slug', 'probe'], {
+      rufloBody: HEALTHY_RUFLO, windowsShim: true,
+    });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toMatch(/round-trip verified/);
+    const value = JSON.parse(fs.readFileSync(path.join(tmp, 'fake-value.json'), 'utf8'));
+    expect(value).toMatch(/ RECORDING: [0-9a-f-]{36}$/);
+    expect(value.slice(0, value.lastIndexOf(' RECORDING: '))).toBe(`TASK: ${task} TRIED(failed): ${tried} OUTCOME: success`);
+    expect(fs.existsSync(path.join(tmp, 'SHOULD_NOT_EXIST'))).toBe(false);
   });
 
   it('fails loudly, not silently, when the resolved ruflo binary does not exist', () => {
