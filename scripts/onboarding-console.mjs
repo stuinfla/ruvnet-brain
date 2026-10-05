@@ -68,9 +68,9 @@ import { loadLessons, updateLessons, ratify, demote, restore, pending, weightOf,
 import {
   openRouterCredentialStatus,
   saveOpenRouterCredential,
-  learnerCwd,
   loadRuntimePreferences,
 } from '../plugin/scripts/runtime-preferences.mjs';
+import { observeLearning as observeScopedLearning } from '../plugin/scripts/learning-observation.mjs';
 import { applyNightlyChoice, nightlyStatus } from './nightly-controller.mjs';
 // One canonical answer to "which directory is this, and have I counted it already?" — shared with
 // the PreCompact snapshot producer (#85) and with memory-doctor's root scan (#107).
@@ -2462,8 +2462,8 @@ function journalUndo(entry) {
   fs.appendFileSync(UNDO_JOURNAL, JSON.stringify({ token, at: new Date().toISOString(), ...entry }) + '\n');
   return token;
 }
-function runNode(scriptRelPath, args) {
-  const r = spawnSync(process.execPath, [path.join(REPO, scriptRelPath), ...args], { encoding: 'utf8', timeout: 16 * 60 * 1000, cwd: REPO });
+function runNode(scriptRelPath, args, options = {}) {
+  const r = spawnSync(process.execPath, [path.join(REPO, scriptRelPath), ...args], { encoding: 'utf8', timeout: 16 * 60 * 1000, cwd: REPO, ...options });
   return { ok: r.status === 0, code: r.status, log: `${r.stdout || ''}${r.stderr || ''}`.trim().slice(-4000) };
 }
 function elapsedMs(startedAt) {
@@ -2484,57 +2484,11 @@ function resolveProjectDir(project) {
 /**
  * Observe the learner's REAL state, for the health recommendations.
  *
- * Deliberately reads the global learner, because that is the store the capture flush
- * actually writes to. Reading the project-local `.claude-flow/neural` instead is exactly the mistake
- * that made the console display a dead learner (5 trajectories, last trained 6 days earlier) while
- * the live one held 412 — rUv documents this fragmentation as issue #2245, "four contradictory
- * sources". Until it is unified upstream we read the store that learning writes, never the corpse.
+ * The queue and learner are selected together for the served project. Apply uses this same
+ * snapshot and remeasures it, so a successful child exit alone cannot clear a learning finding.
  */
 function observeLearning() {
-  const queueDir = path.join(SYSTEM_HOME, '.cache', 'ruvnet-brain', 'learn');
-  let queueDepth = 0;
-  try {
-    for (const f of fs.readdirSync(queueDir)) {
-      if (!f.endsWith('.jsonl')) continue;
-      queueDepth += fs.readFileSync(path.join(queueDir, f), 'utf8').split('\n').filter(Boolean).length;
-    }
-  } catch { /* no queue dir yet — depth stays 0, which is honest */ }
-
-  let lastTrainSeconds = null; let trajectories = 0;
-  try {
-    // ISSUE #136 — THE LEARNER IS PROJECT-SCOPED, so this must ask about the SERVED project.
-    //
-    // `ruflo hooks intelligence --status` reports `Data Dir: <cwd>/.claude-flow/neural`. With
-    // `cwd: SYSTEM_HOME` this measured `~/.claude-flow/neural` — a store nothing writes to on a
-    // machine whose work happens inside project directories. Measured on one machine, one minute:
-    // the home store held 1,216 trajectories last trained 6.9 DAYS ago while the served project held
-    // 9,940 last trained 22 SECONDS ago. The card said "Your learner has gone quiet" about a learner
-    // training every few seconds.
-    //
-    // This file already carries the verdict on this exact mistake at the refresh-child spawn: "cwd =
-    // the SERVED project, NOT REPO … it was a real console-honesty bug". Same rule, same file,
-    // different call site — #104's and #134's residual arriving a third time.
-    // ISSUE #139 (@ObiWanKenobi) — `process.cwd()` was a HARDCODE in the opposite direction from
-    // #136's `SYSTEM_HOME`. Neither asked which scope was in effect; the first was wrong by default
-    // and the second is right only BECAUSE `project` is the default. Under
-    // `RUVNET_LEARNING_SCOPE=user` the flush feeds ~/.claude-flow/neural while this read
-    // <project>/.claude-flow/neural — the same false-positive card, inverted. The writer and this
-    // reader now call ONE resolver (runtime-preferences.learnerCwd), so they agree by construction
-    // instead of by coincidence.
-    const r = spawnSync(path.join(SYSTEM_HOME, '.npm-global/bin/ruflo'),
-      ['hooks', 'intelligence', '--status'],
-      {
-        cwd: learnerCwd(),
-        env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' },
-        encoding: 'utf8',
-        timeout: 20_000,
-      });
-    const out = `${r.stdout || ''}`;
-    const t = out.match(/Last Training:\s*(\d+)s ago/);
-    const j = out.match(/Trajectories\s*\|\s*(\d+)/);
-    if (t) lastTrainSeconds = Number(t[1]);
-    if (j) trajectories = Number(j[1]);
-  } catch { /* ruflo absent or slow — leave null, and null NEVER produces a recommendation */ }
+  const learning = observeScopedLearning({ cwd: projectDirectory() });
 
   // The fleet is what makes ADR-027's North Star recommendation constructible at all — without it,
   // `learning:distill-fleet` can never be built, so it can never be offered, so clicking it would be
@@ -2546,7 +2500,7 @@ function observeLearning() {
   // produces no recommendation, which is the correct answer when we have not looked.
   const fleet = readJSON(MEMORY_CACHE)?.data?.fleet ?? [];
 
-  return { queueDepth, lastTrainSeconds, trajectories, fleet };
+  return { ...learning, fleet };
 }
 
 function currentValidIds(onlyId = null) {
@@ -2650,7 +2604,23 @@ function apply(ids) {
     const undoToken = journalUndo(undoSpec);
     phaseMs.undoJournalMs += elapsedMs(journalStartedAt);
     const remedyStartedAt = performance.now();
-    const res = runNode(plan.exec.script, args);
+    const learningBefore = ['learning:flush', 'learning:train', 'learning:flush-legacy-user'].includes(id) ? observeLearning() : null;
+    const res = runNode(plan.exec.script, args, learningBefore ? {
+      cwd: learningBefore.projectDir,
+      env: { ...process.env, RUVNET_BRAIN_PROJECT_DIR: learningBefore.projectDir },
+    } : {});
+    if (res.ok && learningBefore) {
+      const after = observeLearning();
+      const progressed = id === 'learning:flush-legacy-user'
+        ? after.legacyUserKnown && after.legacyUserDepth < learningBefore.legacyUserDepth
+        : id === 'learning:flush'
+        ? after.queueKnown && after.queueDepth < learningBefore.queueDepth
+        : learningBefore.statusKnown && after.statusKnown && after.patterns > learningBefore.patterns;
+      if (!progressed) {
+        res.ok = false;
+        res.log += `\nNo measured learning progress: queue ${after.queueDir}; learner ${after.learnerCwd}. Reload to inspect the remaining evidence.`;
+      }
+    }
     phaseMs.childRemedyMs += elapsedMs(remedyStartedAt);
     results.push({ id, ...res, undoToken });
   }
@@ -3538,6 +3508,7 @@ export {
   autoEligibleIds,
   gatherConfig,
   gatherSavings,
+  observeLearning,
 };
 // Exported for the cross-project cache-isolation test (console-cache-scope.test.mjs). serveCached's
 // scopeKey is the guard that stops one project's cached state being served for another.

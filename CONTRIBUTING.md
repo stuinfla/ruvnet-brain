@@ -1,4 +1,4 @@
-Updated: 2026-10-03 16:32:20 EDT | Version 1.0.1
+Updated: 2026-10-05 01:45:00 EDT | Version 1.0.2
 Created: 2026-07-07 09:22:01 EDT
 
 # Contributing to RuvNet Brain — the one rulebook
@@ -271,6 +271,20 @@ artifact only together with its classification there, or `--doctor` will report 
   three-update footprint check is opt-in: `scripts/corpus-canary.mjs --footprint-updates`.
 
 ## Hooks (what runs automatically)
+
+Consent-eligible learning registers fixed-vocabulary PostToolUse capture and bounded recovery at
+SessionStart/SessionEnd. Project observations use the resolved project's `.swarm/memory.db` and
+namespace `learning-observations`; acknowledgments require exact CLI retrieval plus independent
+canonical row verification. Original queue bytes stay retained. Persisted OFF, malformed consent,
+Brain OFF, or an unadopted project prevent capture. User scope requires explicit persisted consent
+and an existing adopted `~/.claude/global-memory/.swarm/memory.db`; retained legacy home queues are
+never imported into project memory automatically. Explicit Console Apply can drain them only into
+that existing user store. Structural distillation is a separate bounded $0 operation, requires a
+source-reported native online snapshot plus independently checked observation rows, and reports
+pattern progress without ratifying lessons. Automatic cycles run at most hourly and retain three owned snapshots. A finite supervisor confirms
+owned worker-tree retirement before releasing the queue fence; unconfirmed retirement pauses
+recovery without consuming original observations. Automatic exact rollback is unavailable. Registration
+and manual invocation do not prove native event delivery.
 
 Project-level hooks are empty. The installed plugin registers exactly the hooks in
 `plugin/hooks/hooks.json` (Codex: `plugin/hooks/codex-hooks.json`), all dispatched through

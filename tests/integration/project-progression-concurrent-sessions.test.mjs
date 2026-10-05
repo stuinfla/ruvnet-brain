@@ -28,6 +28,11 @@ function temporaryProject() {
   fs.writeFileSync(path.join(root, 'package.json'), '{"name":"concurrent"}\n');
   const resolution = resolveProjectStore({ projectDir: root });
   fs.mkdirSync(path.dirname(resolution.canonicalAgentDbPath), { recursive: true });
+  // Capture now requires an adopted project store; a directory alone is not consent.
+  // Use the real managed initializer so this remains a native writer integration test.
+  execFileSync(ruflo, ['memory', 'init', '--no-verify', '--path', resolution.canonicalAgentDbPath], {
+    cwd: root, timeout: 30_000, stdio: 'ignore', env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' },
+  });
   return { root, resolution };
 }
 
