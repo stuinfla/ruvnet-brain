@@ -73,6 +73,28 @@ export const FIXTURE = [
 ];
 
 describe('the fixture: six ordinary requests route to a fitting capability, two controls stay silent', () => {
+  it('recognizes the explicit retrieval action and meaning need without a keyword contrast', () => {
+    expect(route.classify('search these docs by meaning')).toMatchObject({ capability: 'ruvector' });
+    expect(route.classify('please search these docs by meaning')).toMatchObject({ capability: 'ruvector' });
+    expect(route.classify('retrieve our notes by meaning')).toMatchObject({ capability: 'ruvector' });
+    expect(route.classify('find my passages by meaning')).toMatchObject({ capability: 'ruvector' });
+    for (const prompt of [
+      'search these docs for exact keywords',
+      'explain what searching these docs by meaning means',
+      'do not search these docs by meaning',
+      'rename these docs to describe what we mean',
+    ]) expect(route.classify(prompt), prompt).toBeNull();
+  });
+
+  it.each([
+    'search these docs for the exact keyword "embeddings"',
+    'find my notes containing the literal word embeddings',
+    'search these docs for the literal phrase "semantic search"; do not use meaning-based retrieval',
+    'search these docs for exact keywords; retrieval by meaning is not requested',
+  ])('literal document retrieval stays silent: %s', (prompt) => {
+    expect(route.classify(prompt)).toBeNull();
+  });
+
   for (const [label, prompt, expected] of FIXTURE) {
     it(`${label} → ${expected ?? 'SILENCE'}`, () => {
       const match = route.classify(prompt);
@@ -225,17 +247,16 @@ describe('lifecycle: every transition is observed at a boundary that is actually
 describe('fail-open: a broken environment produces silence, never an exception and never a wrong claim', () => {
   const P1 = FIXTURE.find(([l]) => l === 'P1')[1];
 
-  it('an unwritable state directory yields NO candidate (cannot remember ⇒ must not speak)', () => {
+  it('a non-directory state ancestor yields NO candidate (cannot remember ⇒ must not speak)', () => {
     const blocked = path.join(dir, 'blocked');
-    fs.mkdirSync(blocked);
-    fs.writeFileSync(path.join(blocked, 'state.json'), 'x');
-    fs.chmodSync(blocked, 0o500);
+    // An actual filesystem failure on every OS; Windows does not enforce POSIX chmod bits.
+    fs.writeFileSync(blocked, 'existing file must remain unchanged');
     process.env.RUVNET_ADVOCACY_ROUTE_STATE = path.join(blocked, 'sub', 'state.json');
     return import(`${MOD}?t=${Date.now()}b`).then((r) => {
       const { candidate, reason } = r.decide({ prompt: P1, sessionId: 's1', file: ledger() });
-      try { fs.chmodSync(blocked, 0o700); } catch { /* cleanup */ }
       expect(candidate).toBeNull();
       expect(reason).toBe('state-unwritable');
+      expect(fs.readFileSync(blocked, 'utf8')).toBe('existing file must remain unchanged');
     });
   });
 

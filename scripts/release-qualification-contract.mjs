@@ -2,6 +2,15 @@
 export const RELEASE_REQUIREMENTS = Object.freeze({
   "source": [
     {
+      "id": "bounded-advocacy-and-write-grounding",
+      "reason": "Explicit document meaning requests retain corroboration; literal searches stay silent; POSIX complete-write exemptions preserve executable and managed-store grounding",
+      "files": ["tests/unit/advocacy-route.test.mjs", "tests/unit/advocacy-catalog.test.mjs", "tests/unit/card-lane.test.mjs"],
+      "platformFiles": {
+        "linux": ["tests/unit/advocacy-route-budget.test.mjs", "tests/unit/ground-before-write.test.mjs", "tests/unit/grounding-code-projection.test.mjs"],
+        "macos": ["tests/unit/advocacy-route-budget.test.mjs", "tests/unit/ground-before-write.test.mjs", "tests/unit/grounding-code-projection.test.mjs"]
+      }
+    },
+    {
       "id": "owned-startup-execution-evidence",
       "reason": "Opt-in native execution and private stage diagnostics bind released source and preserve unknown convergence and incomplete cleanup boundaries",
       "files": ["tests/unit/codex-host-execution-proof.test.mjs", "tests/unit/codex-host-proof-runtime.test.mjs", "tests/unit/session-start-proof.test.mjs"]

@@ -461,7 +461,9 @@ function resolveCacheDir() {
   );
   info(`brain dir: ${c.bold(cacheDir)}`);
   if (custom) info(`(from your RUVNET_BRAIN_KB override)`);
-  fs.mkdirSync(cacheDir, { recursive: true });
+  // Activation creates the KB from a validated stage. A placeholder here becomes a false prior
+  // generation, which the cleanup proof correctly retains because it has no SOURCE.json.
+  fs.mkdirSync(path.dirname(cacheDir), { recursive: true });
   return { cacheDir, isCustom: Boolean(custom) };
 }
 
