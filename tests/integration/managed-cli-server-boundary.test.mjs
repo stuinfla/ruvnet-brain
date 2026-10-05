@@ -174,6 +174,23 @@ describe('real MCP managed execution boundary', () => {
     fs.rmSync(fx.root, { recursive: true, force: true });
   });
 
+  it('keeps real Ruflo memory store/retrieve active through MCP while progression alone is operator-suspended', async () => {
+    const fx = fixture(); const mcp = server(fx, 'codex', { command: process.execPath, args: [SERVER],
+      env: { RUVNET_BRAIN_PROGRESSION_SUSPENDED: '1' } });
+    try {
+      const tool = (name, argv) => mcp.request('tools/call', { name, arguments: { executable: 'ruflo', argv } });
+      const db = path.join(fx.project, '.swarm/memory.db'); const key = 'ordinary-suspended-memory'; const value = 'Explicit ordinary AgentDB checkpoint remains active';
+      for (const command of ['store', 'retrieve']) expect((await tool('ruvnet_cli_help', ['memory', command])).result.isError).not.toBe(true);
+      const stored = await tool('ruvnet_cli_run', ['memory', 'store', '--key', key, '--value', value, '--namespace', 'fixture-memory', '--path', db]);
+      expect(stored.result.isError, stored.result.content?.[0]?.text).not.toBe(true);
+      expect(stored.result.structuredContent.continuity).toBe('operator-suspended');
+      const retrieved = await tool('ruvnet_cli_run', ['memory', 'retrieve', '--key', key, '--namespace', 'fixture-memory', '--value-only', '--path', db]);
+      expect(retrieved.result.isError, retrieved.result.content?.[0]?.text).not.toBe(true); expect(retrieved.result.structuredContent.stdout).toContain(value);
+      const exact = JSON.parse(execFileSync('sqlite3', ['-json', db, "select key,content from memory_entries where namespace='fixture-memory' and key='ordinary-suspended-memory';"], { encoding: 'utf8' }));
+      expect(exact).toEqual([{ key, content: value }]); expect(rows(fx)).toEqual([]);
+    } finally { await stopChildren(); fs.rmSync(fx.root, { recursive: true, force: true }); }
+  });
+
   it('refuses missing trusted host identity even with a Codex-named session id', async () => {
     const fx = fixture(); const mcp = server(fx, undefined);
     await mcp.request('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'fixture', version: '1' } });

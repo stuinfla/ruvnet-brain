@@ -9,6 +9,7 @@ import { projectDirectory } from '../scripts/project-identity.mjs';
 import { recordManagedCliObservation, recordRegistryLatestObservation } from '../scripts/capability-claim-evidence.mjs';
 import { runSessionSnapshotHook } from '../scripts/session-snapshot-hook.mjs';
 import { resolveProjectStore } from '../scripts/project-store-resolver.mjs';
+import { isAutomaticProgressionSuspension } from '../scripts/project-progression-suspension.mjs';
 
 export const MANAGED_EXECUTABLES = Object.freeze([
   'ruflo',
@@ -304,7 +305,8 @@ function managedProgressionCapture({ executable, argv, projectRoot, env, event, 
       },
     } : {}),
   };
-  return { adopted: true, ...runSessionSnapshotHook(projectRoot, event, { rawInput: JSON.stringify(payload), host }) };
+  const result = runSessionSnapshotHook(projectRoot, event, { rawInput: JSON.stringify(payload), host, env });
+  return isAutomaticProgressionSuspension(result) ? result : { adopted: true, ...result };
 }
 
 function resultOf(executable, argv, result) {
@@ -406,7 +408,8 @@ export async function callManagedCli(toolName, args, env = process.env, fetchImp
         : env;
       const capture = typeof lifecycle.capture === 'function' ? lifecycle.capture : managedProgressionCapture;
       const beforeCapture = await capture({ executable, argv, projectRoot, env: childEnv, event: 'PreToolUse' });
-      if (beforeCapture?.error || (beforeCapture?.adopted && beforeCapture.progressionCaptured !== true)) {
+      if (beforeCapture?.error || (beforeCapture?.adopted && beforeCapture.progressionCaptured !== true
+        && !isAutomaticProgressionSuspension(beforeCapture))) {
         const reason = beforeCapture.error || beforeCapture.skipped || 'pre-execution progression was not durably captured';
         return { content: [{ type: 'text', text: `managed execution refused: ${reason}` }], isError: true };
       }
@@ -420,13 +423,19 @@ export async function callManagedCli(toolName, args, env = process.env, fetchImp
         await lifecycle.afterExecute({ executable, argv, projectRoot, env: childEnv, execution, normalized });
       }
       recordManagedCliObservation({ toolName, executable, argv, execution, env });
-      if (afterCapture?.adopted && afterCapture.progressionCaptured !== true) {
+      if (afterCapture?.adopted && afterCapture.progressionCaptured !== true
+        && !isAutomaticProgressionSuspension(afterCapture)) {
         return {
           content: [{ type: 'text', text: `managed command ${normalized.outcome}; continuity result was not durably captured: ${afterCapture.skipped || 'unknown reason'}` }],
           isError: true,
         };
       }
-      return resultOf(executable, argv, execution);
+      const result = resultOf(executable, argv, execution);
+      if (isAutomaticProgressionSuspension(beforeCapture) || isAutomaticProgressionSuspension(afterCapture)) {
+        result.content.push({ type: 'text', text: 'Automatic project progression is operator-suspended; suspended captures produced no progression receipt. Ordinary AgentDB memory and explicit checkpoints remain available.' });
+        result.structuredContent.continuity = 'operator-suspended';
+      }
+      return result;
     }
 
     return {
