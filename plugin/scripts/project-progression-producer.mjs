@@ -29,6 +29,7 @@
  * within those bounds.
  */
 import crypto from 'node:crypto';
+import { enrichStateWithObservation } from './project-progression-hook.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { digestCanonical, fieldAuthorityAllows, redactProgression, restoreProjectProgression } from './project-progression-contract.mjs';
@@ -250,6 +251,16 @@ export function buildProjectProgression({
     completeProjectState,
   });
   const projectProgression = redactedProgression;
+  // Compare the same redacted observation the native writer will append, without returning it
+  // twice. Tool input and terminal evidence must participate before the no-op decision.
+  const observedState = redactProgression(enrichStateWithObservation(
+    projectProgression.completeProjectState, { ...payload, hook_event_name: trigger },
+  )).value;
+  // A committed sequence is not an event identity: several boundaries may freeze before replay.
+  // Bind all immutable captured fields (including the native observation and occurrence time).
+  projectProgression.dedupId += `:${digestCanonical({
+    ...projectProgression, completeProjectState: observedState,
+  })}`;
 
   // RETENTION (ADR-073). Three capture boundaries per session times every session is unbounded
   // growth unless a capture that changes nothing writes nothing. Compare what a snapshot MEANS —
@@ -257,7 +268,7 @@ export function buildProjectProgression({
   // differ (sequence, timestamp, dedup id, the trigger that happens to be firing, and the evidence
   // block's own timestamps), because comparing those would make every capture look novel.
   const meaning = digestCanonical({
-    state: { ...projectProgression.completeProjectState, activeStep: null, evidence: null },
+    state: { ...observedState, activeStep: null, evidence: null },
     source: projectProgression.sourceIdentity,
   });
   const priorMeaning = heads.length === 1 ? digestCanonical({

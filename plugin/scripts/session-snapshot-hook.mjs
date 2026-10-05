@@ -163,7 +163,8 @@ export function runSessionSnapshotHook(projectDir, event, {
     if (payload.hook_event_name !== event) {
       throw new Error(`progression boundary mismatch: expected ${event}, received ${payload.hook_event_name}`);
     }
-    const result = captureProgression({ host, payload, projectDir, storeFactory: (options) => makeStoreFactory(now() + budgetMs)({ ...options, env }) });
+    const result = captureProgression({ host, payload, projectDir, recoverFrozen: Boolean(ordered),
+      canCommit: () => Boolean(ordered) && refreshReplayLock(resolveProjectStore({ projectDir }).projectRoot, ordered), storeFactory: (options) => makeStoreFactory(now() + budgetMs)({ ...options, env }) });
     return { ...idle, progressionCaptured: true, receipt: result.receipt };
   }
 

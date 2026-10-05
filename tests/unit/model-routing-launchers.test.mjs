@@ -50,6 +50,9 @@ it('tests POSIX installed launcher probes and refuses unsupported Windows instal
   expect(installed.config.gatewayPath).not.toContain(sourceRoot);
   expect(installed.runtimeFiles.map(([file]) => file)).toContain('scripts/model-router-engine.mjs');
   expect(installed.runtimeFiles.map(([file]) => file)).toContain('config/model-router/policy.default.mjs');
+  expect(installed.runtimeFiles.map(([file]) => file)).toContain('node_modules/ws/wrapper.mjs');
+  const imported = spawnSync(process.execPath, ['--input-type=module', '-e', `const m=await import(${JSON.stringify(new URL(`file://${installed.config.terminalGatewayPath}`).href)});if(typeof m.runTerminalGateway!=='function')process.exit(2)`], { encoding: 'utf8' });
+  expect(imported.status, imported.stderr).toBe(0);
   for (const [harness, args, expected] of [['codex', ['--version'], 'native-codex-probe'], ['claude-code', [fx.claude, '--version'], 'native-claude-probe']]) {
     const result = spawnSync(installed.launchers[harness], args, { encoding: 'utf8' });
     expect(result.status, result.stderr).toBe(0); expect(result.stdout.trim()).toBe(expected);

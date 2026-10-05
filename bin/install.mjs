@@ -80,7 +80,8 @@ import {
 import { shellDiff as pluginShellDiff } from '../plugin/scripts/host-shell-boundary.mjs';
 import { codexTrustChanges, CODEX_TRUST_ACTION } from '../scripts/codex-hook-trust.mjs';
 import { repairSecurityGuidance } from '../scripts/security-guidance-codex-compat.mjs';
-import { installNativeLaunchers } from '../scripts/model-routing-launchers.mjs';
+import { installNativeLaunchers, installRoutingRuntime } from '../scripts/model-routing-launchers.mjs';
+import { installTerminalLaunchers } from '../scripts/model-terminal-launchers.mjs';
 import { readConsoleReceipts, replaceStaleConsoles } from '../scripts/console-instances.mjs';
 import { moveBrain, MoveRefused } from '../scripts/move-brain.mjs';
 import { brainLocation } from '../plugin/scripts/brain-location.mjs';
@@ -1631,6 +1632,7 @@ function codexManagedBlock(serverPath) {
     'command = "node"',
     `args = [${JSON.stringify(serverPath)}]`,
     'startup_timeout_sec = 30',
+    'env = { RUVNET_HOOK_HOST = "codex" }',
     CODEX_BLOCK_END,
   ].join('\n');
 }
@@ -1837,6 +1839,10 @@ export function wireCodexHost({
   // land where the server will look for them, and the walk is transitive because a dependency's own
   // dependency is no less required.
   const deps = serverDependencies(source);
+  // Progression capture reads its adapter version from this runtime resource, not an import.
+  // Keep it beside the copied plugin scripts, bound to the same source as the MCP shell.
+  deps.push({ spec: '../.claude-plugin/plugin.json',
+    from: path.resolve(path.dirname(source), '..', '.claude-plugin', 'plugin.json') });
   const missing = deps.filter((d) => !fs.existsSync(d.from));
   if (missing.length) {
     if (announce) warn(`MCP server dependency missing from this bundle (${missing.map((d) => d.spec).join(', ')}) — Codex left untouched (non-fatal)`);
@@ -4913,18 +4919,28 @@ export function syncManagedRouterDefault({ routerDir = path.join(os.homedir(), '
 }
 
 export function refreshInstalledModelLaunchers({ sourceRoot = REPO_ROOT, home = os.homedir() } = {}) {
+  const terminalFile = path.join(home, '.cache', 'ruvnet-brain', 'model-routing', 'terminal-launcher-config.json');
+  let terminal = { action: 'not-installed' };
+  if (fs.existsSync(terminalFile)) {
+    const previous = JSON.parse(fs.readFileSync(terminalFile, 'utf8'));
+    const runtime = installRoutingRuntime({ sourceRoot, home, apply: true });
+    const receipt = installTerminalLaunchers({ home, ...runtime, nodeBinary: previous.nodeBinary,
+      realCodex: previous.realCodex, realClaude: previous.realClaude, apply: true });
+    terminal = { action: previous.runtimeDigest === runtime.runtimeDigest ? 'unchanged' : 'updated',
+      runtimeDigest: runtime.runtimeDigest, shellConflicts: receipt.shellConflicts };
+  }
   const file = path.join(home, '.cache', 'ruvnet-brain', 'model-routing', 'launcher-config.json');
-  if (!fs.existsSync(file)) return { action: 'not-installed' };
+  if (!fs.existsSync(file)) return { action: 'not-installed', terminal };
   const previous = JSON.parse(fs.readFileSync(file, 'utf8'));
   const receipt = installNativeLaunchers({ sourceRoot, home, extensionsRoot: previous.extensionsRoot, nodeBinary: previous.nodeBinary, apply: true });
-  return { action: receipt.config.runtimeDigest === previous.runtimeDigest ? 'unchanged' : 'updated', runtimeDigest: receipt.config.runtimeDigest };
+  return { action: receipt.config.runtimeDigest === previous.runtimeDigest ? 'unchanged' : 'updated', runtimeDigest: receipt.config.runtimeDigest, terminal };
 }
 
 export function syncManagedRouterTools({ routerDir = path.join(os.homedir(), '.claude', 'model-router'), packageRoot = REPO_ROOT } = {}) {
   const destination = path.join(routerDir, 'bin');
   fs.mkdirSync(destination, { recursive: true });
   let copied = 0;
-  for (const name of ['model-router-engine.mjs', 'model-router-setup.mjs', 'model-router-status.mjs', 'model-router-outcome.mjs', 'subscription-hosts.mjs', 'review-model-defaults.mjs', 'dual-host-deliberation.mjs', 'dual-host-suggest.mjs', 'route-cheap.mjs', 'dispatch-receipt.mjs', 'metaharness-receipts.mjs', 'metaharness-router.mjs', 'model-router-dispatch.mjs', 'model-currency.mjs', 'model-currency-evidence.mjs', 'user-model-prompt-hook.mjs', 'model-router-agent-hook.mjs', 'model-weekly-assessment.mjs', 'model-weekly-analyst.mjs', 'model-weekly-cycle.mjs', 'model-weekly-qualification.mjs', 'model-native-qualification.mjs', 'model-routing-launchers.mjs', 'model-native-catalog.mjs', 'model-analyst-sandbox.mjs', 'model-routing-policy-promotion.mjs', 'model-routing-gateway.mjs', 'native-subscription-usage.mjs', 'codex-routed.sh', 'goldie-weekly.sh']) {
+  for (const name of ['model-router-engine.mjs', 'model-router-setup.mjs', 'model-router-status.mjs', 'model-router-outcome.mjs', 'subscription-hosts.mjs', 'review-model-defaults.mjs', 'dual-host-deliberation.mjs', 'dual-host-suggest.mjs', 'route-cheap.mjs', 'dispatch-receipt.mjs', 'metaharness-receipts.mjs', 'metaharness-router.mjs', 'model-router-dispatch.mjs', 'model-currency.mjs', 'model-currency-evidence.mjs', 'user-model-prompt-hook.mjs', 'model-router-agent-hook.mjs', 'model-weekly-assessment.mjs', 'model-weekly-analyst.mjs', 'model-weekly-cycle.mjs', 'model-weekly-qualification.mjs', 'model-native-qualification.mjs', 'model-routing-launchers.mjs', 'model-terminal-gateway.mjs', 'model-terminal-launchers.mjs', 'claude-terminal-mod.mjs', 'model-native-catalog.mjs', 'model-analyst-sandbox.mjs', 'model-routing-policy-promotion.mjs', 'model-routing-gateway.mjs', 'native-subscription-usage.mjs', 'codex-routed.sh', 'goldie-weekly.sh']) {
     const source = path.join(packageRoot, 'scripts', name);
     if (!fs.existsSync(source)) throw new Error(`Packaged router tool missing: ${name}`);
     const target = path.join(destination, name);
@@ -4935,8 +4951,9 @@ export function syncManagedRouterTools({ routerDir = path.join(os.homedir(), '.c
     finally { fs.rmSync(temporary, { force: true }); }
     copied++;
   }
-  // Preserve the package-relative import used by the optional legacy routing helper.
-  const runtimeRelative = path.join('plugin', 'scripts', 'runtime-preferences.mjs');
+  // Preserve package-relative imports without replacing user policy.mjs overrides.
+  for (const runtimeRelative of [path.join('plugin', 'scripts', 'runtime-preferences.mjs'),
+    path.join('config', 'model-router', 'policy.default.mjs')]) {
   const runtimeTarget = path.join(routerDir, runtimeRelative);
   const runtimeBytes = fs.readFileSync(path.join(packageRoot, runtimeRelative));
   if (!fs.existsSync(runtimeTarget) || !fs.readFileSync(runtimeTarget).equals(runtimeBytes)) {
@@ -4945,6 +4962,7 @@ export function syncManagedRouterTools({ routerDir = path.join(os.homedir(), '.c
     try { fs.writeFileSync(temporary, runtimeBytes, { mode: 0o600 }); fs.renameSync(temporary, runtimeTarget); }
     finally { fs.rmSync(temporary, { force: true }); }
     copied++;
+  }
   }
   const qualificationSource = path.join(packageRoot, 'config', 'model-router', 'qualification-contract.json');
   const qualificationTarget = path.join(routerDir, 'qualification-contract.json');

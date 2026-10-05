@@ -1,11 +1,12 @@
 import fs from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it } from 'vitest';
+import { getVersion } from '../../scripts/version.mjs';
 import { adoptedProject, cleanup, fakeRuflo } from '../helpers/continuity-fixture.mjs';
 import { ProjectProgressionStore } from '../../plugin/scripts/project-progression-store.mjs';
 import { buildProjectProgression } from '../../plugin/scripts/project-progression-producer.mjs';
 import { createProgressionSnapshot, restoreProjectProgression } from '../../plugin/scripts/project-progression-contract.mjs';
-import { queueCapture, queuedWork } from '../../plugin/scripts/session-snapshot-hook.mjs';
+import { runSessionSnapshotHook, runOutboxReplay, queueCapture, queuedWork } from '../../plugin/scripts/session-snapshot-hook.mjs';
 import { restoreProgressionForSession } from '../../plugin/scripts/project-progression-session-start.mjs';
 
 function fixture() {
@@ -180,5 +181,217 @@ describe('automatic progression preserves durable work', () => {
     expect(result.reason).toBe('outbox-replay');
     expect(result.context).not.toContain('Keep all unfinished work');
     expect(f.store.outbox.pendingSnapshots()).toHaveLength(1);
+  });
+});
+
+
+describe('customer managed actions and immutable frozen recovery', () => {
+  function boundary(f, payload) {
+    return runSessionSnapshotHook(f.dir, payload.hook_event_name, {
+      rawInput: JSON.stringify(payload), host: 'codex', env: f.env,
+      makeStoreFactory: () => () => f.store, spawnReplay: () => false,
+      captureTurn: () => ({}), captureEvents: () => ({}),
+    });
+  }
+  function settle(f) {
+    const payload = { session_id: 'settled', hook_event_name: 'SessionEnd' };
+    for (let i = 0; i < 4; i++) boundary(f, payload);
+    expect(boundary(f, payload).skipped).toMatch(/no-op/);
+  }
+  it.each([
+    ['pending', 'PreToolUse', undefined],
+    ['failure', 'PostToolUse', { exit_code: 7, stderr: 'failed' }],
+    ['interrupted', 'PostToolUse', { interrupted: true }],
+    ['unknown', 'PostToolUse', 'unstructured success-looking prose'],
+  ])('captures a new %s action on a settled unchanged project exactly once', (outcome, trigger, response) => {
+    const f = fixture(); settle(f);
+    const payload = { session_id: 'managed', hook_event_name: trigger, tool_name: 'Bash',
+      tool_input: { command: 'ruflo status password=hunter2' }, tool_response: response };
+    const produced = buildProjectProgression({ resolution: f.resolution, env: f.env, host: 'codex', payload });
+    expect(produced.skipped).toBeUndefined();
+    expect(produced.projectProgression.completeProjectState.commands).toHaveLength(0);
+    const result = boundary(f, payload);
+    expect(result.progressionCaptured).toBe(true);
+    const recorded = f.store.retrieveSnapshots([result.receipt.eventKey]).snapshots[0];
+    expect(recorded.completeProjectState.commands).toHaveLength(1);
+    expect(recorded.completeProjectState.commands[0].outcome).toBe(outcome);
+    expect(JSON.stringify(recorded)).not.toContain('hunter2');
+    expect(recorded.completeProjectState.failures).toHaveLength(['failure', 'interrupted'].includes(outcome) ? 1 : 0);
+    expect(boundary(f, { session_id: 'settled', hook_event_name: 'SessionEnd' }).skipped).toMatch(/no-op/);
+  });
+
+  it('freezes a bounded redacted tool result before queue minimization and writes it only once', () => {
+    const f = fixture(); settle(f);
+    queueCapture({ projectDir: f.dir, event: 'PostToolUse', host: 'codex', env: f.env,
+      payload: { session_id: 'queued-tool', tool_name: 'Bash', tool_input: { command: 'check password=hunter2' },
+        tool_response: { exit_code: 2, stderr: 'failure' } } });
+    const captured = [];
+    drain(f, { onCaptured: (result) => captured.push(result) });
+    expect(queuedWork(f.dir)).toBe(0);
+    const recorded = f.store.retrieveSnapshots([captured[0].receipt.eventKey]).snapshots[0];
+    expect(recorded.completeProjectState.commands).toHaveLength(1);
+    expect(recorded.completeProjectState.commands[0].outcome).toBe('failure');
+    expect(recorded.completeProjectState.failures).toHaveLength(1);
+    expect(JSON.stringify(recorded)).not.toContain('hunter2');
+  });
+
+  it('binds future frozen identity to exact content despite the same committed sequence', () => {
+    const f = fixture(); settle(f);
+    const options = { resolution: f.resolution, host: 'codex', env: f.env,
+      payload: { session_id: 'deferred', hook_event_name: 'SessionEnd' }, now: () => '2026-10-04T00:00:00.000Z' };
+    const first = buildProjectProgression(options).projectProgression;
+    fs.writeFileSync(`${f.dir}/dirty.txt`, 'changed between boundaries');
+    const second = buildProjectProgression(options).projectProgression;
+    expect(first.sequence).toBe(second.sequence);
+    expect(first.dedupId).not.toBe(second.dedupId);
+    expect(buildProjectProgression(options).projectProgression.dedupId).toBe(second.dedupId);
+  });
+
+  function extension(row, f) {
+    return { canonicalAgentDbPath: f.resolution.canonicalAgentDbPath, sourceIdentity: row.sourceIdentity,
+      sequence: row.sequence, occurredAt: row.occurredAt, parentEventKeys: row.parentEventKeys,
+      dedupId: row.dedupId, completeProjectState: row.completeProjectState };
+  }
+  function collidingQueue(f, { canonicalOnly = false } = {}) {
+    // Same event identity and distinct content, the actual pre-fix frozen SessionEnd shape.
+    const first = createProgressionSnapshot({ ...snapshot(f, 'codex'), trigger: 'SessionEnd',
+      sourceIdentity: { ...snapshot(f, 'codex').sourceIdentity, capturePath: f.dir },
+      hostIdentity: { host: 'codex', adapterVersion: getVersion() }, sequence: 20, dedupId: 'codex:deferred:SessionEnd:20' });
+    const second = createProgressionSnapshot({ ...first,
+      sourceIdentity: { ...first.sourceIdentity, dirtyTreeDigest: 'e'.repeat(64) },
+      completeProjectState: { ...first.completeProjectState, nextAction: 'Original frozen unfinished action' } });
+    expect(second.eventKey).toBe(first.eventKey);
+    expect(second.payloadDigest).not.toBe(first.payloadDigest);
+    if (canonicalOnly) f.store.appendExact(first);
+    else f.store.capture(first);
+    queueCapture({ projectDir: f.dir, event: 'SessionEnd', host: 'codex', env: f.env,
+      payload: { session_id: second.sessionIdentity, projectProgression: extension(second, f) } });
+    const later = createProgressionSnapshot({ ...second, sequence: 21, dedupId: 'later',
+      completeProjectState: { ...second.completeProjectState, nextAction: 'Later frozen action' } });
+    queueCapture({ projectDir: f.dir, event: 'SessionEnd', host: 'codex', env: f.env,
+      payload: { session_id: later.sessionIdentity, projectProgression: extension(later, f) } });
+    expect(queuedWork(f.dir)).toBe(2);
+    return { first, second, later };
+  }
+  function drain(f, extra = {}) {
+    return runOutboxReplay({ projectDir: f.dir, makeStoreFactory: () => () => f.store, ...extra });
+  }
+
+  it('preserves the immutable row and frozen content, verifies recovery before advancing later work', () => {
+    const f = fixture(); const { first, second, later } = collidingQueue(f);
+    const before = f.store.retrieveSnapshots([first.eventKey]).snapshots[0];
+    const captured = [];
+    drain(f, { onCaptured: (result) => captured.push(result) });
+    expect(queuedWork(f.dir)).toBe(0);
+    expect(captured).toHaveLength(2);
+    const recovered = f.store.retrieveSnapshots([captured[0].receipt.eventKey]).snapshots[0];
+    expect(f.store.retrieveSnapshots([first.eventKey]).snapshots[0]).toEqual(before);
+    expect(recovered.eventKey).not.toBe(first.eventKey);
+    for (const field of ['sourceIdentity', 'completeProjectState', 'sequence', 'occurredAt', 'parentEventKeys']) {
+      expect(recovered[field], field).toEqual(second[field]);
+    }
+    expect(recovered.recoveryDiagnostics).toEqual({ kind: 'immutable-event-key-collision', authoritative: false,
+      originalEventKey: first.eventKey, existingPayloadDigest: first.payloadDigest, frozenPayloadDigest: second.payloadDigest });
+    expect(captured[0].receipt.readbackDigest).toBe(recovered.payloadDigest);
+    expect(f.store.retrieveSnapshots([later.eventKey]).snapshots).toHaveLength(1);
+    expect(f.store.outbox.quarantinedKeys()).toEqual([expect.objectContaining({ eventKey: first.eventKey })]);
+    // Exact deterministic retry verifies the same recovered event; it creates no new identity.
+    expect(f.store.captureFrozen(second, { canCommit: () => true }).snapshot).toEqual(recovered);
+  });
+
+  it('settles recovered debt when the immutable original exists only in the canonical store', () => {
+    const f = fixture(); const { first, second } = collidingQueue(f, { canonicalOnly: true });
+    const captured = [];
+    drain(f, { onCaptured: (result) => captured.push(result) });
+    expect(queuedWork(f.dir)).toBe(0);
+    expect(captured).toHaveLength(2);
+    expect(f.store.outbox.pendingSnapshots()).toEqual([]);
+    const records = f.store.outbox.records();
+    expect(records).toContainEqual(expect.objectContaining({ type: 'recovery',
+      eventKey: second.eventKey, payloadDigest: second.payloadDigest,
+      recoveryEventKey: captured[0].receipt.eventKey }));
+    expect(records.filter((row) => row.type === 'commit' && row.eventKey === first.eventKey)).toEqual([]);
+    const before = records.length;
+    expect(drain(f)).toBe(0);
+    expect(f.store.outbox.records()).toHaveLength(before);
+    expect(f.store.retrieveSnapshots([first.eventKey]).snapshots[0]).toEqual(first);
+  });
+
+  it('retries an interruption after recovery readback before the append-only disposition', () => {
+    const f = fixture(); collidingQueue(f, { canonicalOnly: true });
+    const record = f.store.outbox.markRecovered.bind(f.store.outbox);
+    f.store.outbox.markRecovered = () => { throw new Error('interrupted disposition fsync'); };
+    drain(f);
+    expect(queuedWork(f.dir)).toBe(2);
+    expect(f.store.outbox.pendingSnapshots()).toHaveLength(1);
+    const keys = f.store.listSnapshotKeys();
+    f.store.outbox.markRecovered = record;
+    drain(f);
+    expect(queuedWork(f.dir)).toBe(0);
+    expect(f.store.outbox.pendingSnapshots()).toEqual([]);
+    expect(f.store.listSnapshotKeys()).toHaveLength(keys.length + 1); // only later work adds a row
+  });
+
+  it('retains frozen queue work on failed recovery and retries the deterministic key', () => {
+    const f = fixture(); const { first } = collidingQueue(f);
+    fs.writeFileSync(f.cli.counter, '10');
+    drain(f);
+    expect(queuedWork(f.dir)).toBe(2);
+    const pending = f.store.outbox.pendingSnapshots();
+    expect(pending).toHaveLength(1);
+    const recoveryKey = pending[0].eventKey;
+    expect(recoveryKey).not.toBe(first.eventKey);
+    fs.writeFileSync(f.cli.counter, '0');
+    drain(f);
+    expect(queuedWork(f.dir)).toBe(0);
+    expect(f.store.retrieveSnapshots([recoveryKey]).snapshots).toHaveLength(1);
+  });
+
+  it('retains the queue when the recovery write lacks exact readback, then verifies the same key', () => {
+    const f = fixture(); const { first } = collidingQueue(f);
+    const read = f.store.readFast.bind(f.store);
+    f.store.readFast = (work) => {
+      const result = read(work);
+      if (result.ok && typeof result.value === 'string') {
+        const row = JSON.parse(result.value);
+        if (row.recoveryDiagnostics) return { ok: true, value: JSON.stringify({ ...row, payloadDigest: 'wrong-readback' }) };
+      }
+      return result;
+    };
+    drain(f);
+    expect(queuedWork(f.dir)).toBe(2);
+    const pending = f.store.outbox.pendingSnapshots();
+    expect(pending).toHaveLength(1);
+    expect(pending[0].eventKey).not.toBe(first.eventKey);
+    f.store.readFast = read;
+    drain(f);
+    expect(queuedWork(f.dir)).toBe(0);
+    expect(f.store.retrieveSnapshots([pending[0].eventKey]).snapshots[0]).toEqual(pending[0]);
+  });
+
+  it('suspends frozen recovery after opt-out and requires an explicit replay fence', () => {
+    const f = fixture(); const { second } = collidingQueue(f);
+    expect(() => f.store.captureFrozen(second)).toThrow(/requires replay fencing/);
+    const brainHome = `${f.home}/.cache/ruvnet-brain`;
+    fs.mkdirSync(`${brainHome}/turn-capture`, { recursive: true });
+    fs.writeFileSync(`${brainHome}/turn-capture/policy.json`, JSON.stringify({
+      schemaVersion: 1, projects: { [f.dir]: 'off' }, paths: {},
+    }));
+    expect(() => f.store.captureFrozen(second, { canCommit: () => true })).toThrow(/opt-out/);
+    expect(queuedWork(f.dir)).toBe(2);
+  });
+
+  it('refuses recovery for unavailable exact reads, invalid canonical content and lost fencing', () => {
+    const f = fixture(); const { first, second } = collidingQueue(f);
+    const originalRetrieve = f.store.retrieveSnapshots.bind(f.store);
+    f.store.retrieveSnapshots = () => { throw new Error('canonical read unavailable'); };
+    expect(() => f.store.captureFrozen(second, { canCommit: () => true })).toThrow(/unavailable/);
+    expect(queuedWork(f.dir)).toBe(2);
+    f.store.retrieveSnapshots = () => ({ rejected: [], snapshots: [{ ...first, payloadDigest: 'invalid' }] });
+    expect(() => f.store.captureFrozen(second, { canCommit: () => true })).toThrow(/invalid progression snapshot/);
+    f.store.retrieveSnapshots = originalRetrieve;
+    let calls = 0;
+    expect(() => f.store.captureFrozen(second, { canCommit: () => ++calls === 1 })).toThrow(/fencing/);
+    expect(f.store.listSnapshotKeys()).toEqual([first.eventKey]);
   });
 });
