@@ -19,8 +19,22 @@ jobs:
         run: npm ci --no-audit --no-fund --loglevel=error
       - name: Install native sandbox CLI without authentication
         run: |
-          npm install --global --prefix "$HOME/.npm-global" @openai/codex@latest --no-audit --no-fund
+          set -euo pipefail
+          npm config get omit
+          npm install --global --prefix "$HOME/.npm-global" @openai/codex@latest --include=optional --fetch-retries=1 --no-audit --no-fund
+          # JavaScript template literals must remain literal shell input.
+          # shellcheck disable=SC2016
+          CODEX_PREFIX="$HOME/.npm-global" node --input-type=module -e '
+            import fs from "node:fs"; import path from "node:path"; import { createRequire } from "node:module";
+            const root=path.join(process.env.CODEX_PREFIX,"lib/node_modules/@openai/codex/package.json");
+            const wrapper=JSON.parse(fs.readFileSync(root,"utf8")), alias=wrapper.optionalDependencies["@openai/codex-linux-x64"];
+            const platformFile=createRequire(root).resolve("@openai/codex-linux-x64/package.json"), platform=JSON.parse(fs.readFileSync(platformFile,"utf8"));
+            if(alias!==`npm:@openai/codex@${platform.version}`) throw Error("installed platform differs from current wrapper metadata");
+            const native=path.join(path.dirname(platformFile),"vendor/x86_64-unknown-linux-musl/codex/codex");
+            fs.accessSync(native,fs.constants.X_OK); console.log(JSON.stringify({wrapperVersion:wrapper.version,alias,platformVersion:platform.version,native:fs.realpathSync(native)}));'
           "$HOME/.npm-global/bin/codex" --version
+          command -v bwrap || true
+          if command -v bwrap >/dev/null; then bwrap --version; fi
           echo "$HOME/.npm-global/bin" >> "$GITHUB_PATH"
       - name: Qualify Bubblewrap namespaces on the disposable hosted runner
         if: runner.environment == 'github-hosted'

@@ -54,18 +54,22 @@ test('diagnostic native checker preserves actual stdout, stderr, syntax errors a
     fs.writeFileSync(invalid, 'export const invalid = ;\n');
     fs.writeFileSync(probe, "process.stdout.write('native-file-executed\\n'); process.stderr.write('native-file-stderr\\n'); process.exitCode = 23;\n");
     const binary = actualCodex(), results = [];
-    for (const [name, args] of [
-      ['invalid-syntax', ['--check', invalid]],
-      ['file-execution', [probe]],
-      ['singleline-e', ['-e', "process.stdout.write('native-e-executed\\n'); process.stderr.write('native-e-stderr\\n'); process.exitCode = 29;"]],
-    ]) results.push({ name, ...await runRegisteredChecker({ command: process.execPath, args, cwd: root },
+    for (const [name, command, args] of [
+      ['echo-execution', '/bin/echo', ['native-echo-executed']],
+      ['shell-exit', '/bin/sh', ['-c', 'exit 37']],
+      ['invalid-syntax', process.execPath, ['--check', invalid]],
+      ['file-execution', process.execPath, [probe]],
+      ['singleline-e', process.execPath, ['-e', "process.stdout.write('native-e-executed\\n'); process.stderr.write('native-e-stderr\\n'); process.exitCode = 29;"]],
+    ]) results.push({ name, ...await runRegisteredChecker({ command, args, cwd: root },
       { deadline: Date.now() + 10_000, sandboxBinary: binary }) });
-    console.log('Exact native execution diagnostics:', JSON.stringify({ binary, node: process.execPath, results }));
-    assert.equal(results[0].passed, false, JSON.stringify(results));
-    assert.match(results[0].output, /SyntaxError/, JSON.stringify(results));
-    assert.equal(results[1].exitCode, 23, JSON.stringify(results));
-    assert.match(results[1].output, /native-file-executed[\s\S]*native-file-stderr/, JSON.stringify(results));
-    assert.equal(results[2].exitCode, 29, JSON.stringify(results));
-    assert.match(results[2].output, /native-e-executed[\s\S]*native-e-stderr/, JSON.stringify(results));
+    fs.writeSync(1, `Exact native execution diagnostics: ${JSON.stringify({ binary, node: process.execPath, results })}\n`);
+    assert.match(results[0].output, /native-echo-executed/, JSON.stringify(results));
+    assert.equal(results[1].exitCode, 37, JSON.stringify(results));
+    assert.equal(results[2].passed, false, JSON.stringify(results));
+    assert.match(results[2].output, /SyntaxError/, JSON.stringify(results));
+    assert.equal(results[3].exitCode, 23, JSON.stringify(results));
+    assert.match(results[3].output, /native-file-executed[\s\S]*native-file-stderr/, JSON.stringify(results));
+    assert.equal(results[4].exitCode, 29, JSON.stringify(results));
+    assert.match(results[4].output, /native-e-executed[\s\S]*native-e-stderr/, JSON.stringify(results));
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
