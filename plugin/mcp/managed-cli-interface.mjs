@@ -2,6 +2,8 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { managedGenerationIdentity } from './managed-cli-generation.mjs';
 import { loadRuntimePreferences, runtimeChildEnv } from '../scripts/runtime-preferences.mjs';
 import { projectDirectory } from '../scripts/project-identity.mjs';
 import { recordManagedCliObservation, recordRegistryLatestObservation } from '../scripts/capability-claim-evidence.mjs';
@@ -34,6 +36,12 @@ const MAX_ARG_BYTES = 8192;
 const DEFAULT_FRESH_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_OUTPUT_BYTES = 1024 * 1024;
+// Bind direct calls to the module loaded at process start, too. Missing shell resources do not
+// prevent declarations from loading; the active dispatcher supplies the execution binding.
+const LOCAL_BINDING = (() => {
+  try { return managedGenerationIdentity(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')).binding; }
+  catch { return null; }
+})();
 
 const executableSchema = {
   type: 'string',
@@ -139,27 +147,32 @@ function stateDir(env) {
   return env.RUVNET_BRAIN_HELP_READ_DIR || path.join(brainHome, 'help-read');
 }
 
-function freshStamp(executable, argv, env, now = Date.now()) {
+function freshStamp(executable, argv, env, binding, now = Date.now()) {
   const stamp = path.join(stateDir(env), helpKey(executable, argv));
-  let stat;
+  let stat; let readAt;
   try {
-    stat = fs.statSync(stamp);
+    stat = fs.lstatSync(stamp);
+    if (!stat.isFile()) return false;
+    const receipt = JSON.parse(fs.readFileSync(stamp, 'utf8'));
+    if (receipt.schemaVersion !== 1 || receipt.generation !== binding
+      || !Number.isFinite(receipt.readAt) || receipt.readAt > now) return false;
+    readAt = receipt.readAt;
   } catch {
     return false;
   }
   const configured = Number(env.RUVNET_BRAIN_HELP_MAX_AGE_MS);
   const maxAge = Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_FRESH_MS;
-  return now - stat.mtimeMs < maxAge;
+  return now - stat.mtimeMs < maxAge && now - readAt < maxAge;
 }
 
-function writeStamps(executable, argv, env) {
+function writeStamps(executable, argv, env, binding) {
   const dir = stateDir(env);
   fs.mkdirSync(dir, { recursive: true });
   for (const key of stampKeysForHelp(executable, argv)) {
     const stamp = path.join(dir, key);
     const temporary = path.join(dir, `.${key}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`);
     try {
-      fs.writeFileSync(temporary, '', { flag: 'wx', mode: 0o600 });
+      fs.writeFileSync(temporary, JSON.stringify({ schemaVersion: 1, generation: binding, readAt: Date.now() }), { flag: 'wx', mode: 0o600 });
       fs.renameSync(temporary, stamp);
     } finally {
       try { fs.unlinkSync(temporary); } catch { /* renamed or never created */ }
@@ -316,6 +329,8 @@ function resultOf(executable, argv, result) {
 
 export async function callManagedCli(toolName, args, env = process.env, fetchImpl = globalThis.fetch, lifecycle = {}) {
   try {
+    const binding = lifecycle.generationBinding || LOCAL_BINDING;
+    if (!binding) throw new Error('managed generation identity unavailable');
     const executable = assertExecutable(args?.executable);
     const argv = literalArgv(args?.argv ?? []);
     const projectRoot = env.RUVNET_BRAIN_PROJECT_DIR || projectDirectory({ env });
@@ -344,13 +359,13 @@ export async function callManagedCli(toolName, args, env = process.env, fetchImp
       stampKeysForHelp(executable, argv);
       const commandArgv = [...argv, '--help'];
       const execution = await execute(executable, commandArgv, env);
-      if (execution.code === 0 && !execution.error) writeStamps(executable, argv, env);
+      if (normalizeManagedExecution(execution).outcome === 'success') writeStamps(executable, argv, env, binding);
       recordManagedCliObservation({ toolName, executable, argv: commandArgv, execution, env });
       return resultOf(executable, commandArgv, execution);
     }
 
     if (toolName === 'ruvnet_cli_run') {
-      if (!freshStamp(executable, argv, env)) {
+      if (!freshStamp(executable, argv, env, binding)) {
         const key = helpKey(executable, argv).replaceAll('.', ' ');
         return {
           content: [{ type: 'text', text: `Read the interface first with ruvnet_cli_help for: ${key}` }],
