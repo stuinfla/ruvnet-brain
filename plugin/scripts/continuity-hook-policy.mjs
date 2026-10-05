@@ -123,6 +123,7 @@ const registration = (id, matcher, hosts) => Object.freeze({ id, matcher, hosts:
 export const CONTINUITY_EVENTS = Object.freeze({
   SessionStart: Object.freeze([
     registration('session-start', 'startup|resume|clear|compact|fork', ['claude', 'codex']),
+    registration('learn-flush', 'startup|resume|clear|compact|fork', ['claude', 'codex']),
   ]),
   UserPromptSubmit: Object.freeze([
     registration('session-snapshot', '*', ['claude', 'codex']),
@@ -153,6 +154,7 @@ export const CONTINUITY_EVENTS = Object.freeze({
   // no change either (proven live: the real MCP tool_response's `content[0].text` carries the exact
   // "Searched N RuvNet repos" banner and query text the script already looks for).
   PostToolUse: Object.freeze([
+    registration('learn-capture', '^(?:Bash|Write|Edit|MultiEdit|exec_command|apply_patch|functions(?:\\.|__)(?:exec_command|apply_patch))$', ['claude', 'codex']),
     registration('session-snapshot', '*', ['claude', 'codex']),
     registration('grounding-stamp', '^(?:.*__)?search_ruvnet$', ['claude', 'codex']),
   ]),
@@ -184,6 +186,7 @@ export const CONTINUITY_EVENTS = Object.freeze({
     registration('session-snapshot', '*', ['claude']),
   ]),
   SessionEnd: Object.freeze([
+    registration('learn-flush', '*', ['claude', 'codex']),
     registration('session-snapshot', '*', ['claude', 'codex']),
   ]),
 });

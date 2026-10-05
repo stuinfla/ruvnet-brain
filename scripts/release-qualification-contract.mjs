@@ -2,6 +2,33 @@
 export const RELEASE_REQUIREMENTS = Object.freeze({
   "source": [
     {
+      "id": "owned-startup-execution-evidence",
+      "reason": "Opt-in native execution and private stage diagnostics bind released source and preserve unknown convergence and incomplete cleanup boundaries",
+      "files": ["tests/unit/codex-host-execution-proof.test.mjs", "tests/unit/codex-host-proof-runtime.test.mjs", "tests/unit/session-start-proof.test.mjs"]
+    },
+    {
+      "id": "canonical-learning-capture",
+      "reason": "Fixed metadata capture, canonical scope, consent, acknowledgement and bounded owned recovery retain privacy and originals",
+      "files": [
+        "tests/unit/learn-flush-partial-failure.test.mjs",
+        "tests/unit/learn-capture-project-root.test.mjs",
+        "tests/unit/learn-capture-redaction.test.mjs",
+        "tests/unit/learner-scope-agreement.test.mjs",
+        "tests/unit/health-repair-flush-learning.test.mjs",
+        "tests/unit/learning-worker-supervisor.test.mjs"
+      ]
+    },
+    {
+      "id": "fresh-owned-host-proof",
+      "reason": "Source-bound native registry declarations reject warnings, trust changes and unretired owned processes",
+      "files": ["tests/unit/codex-fresh-host-proof.test.mjs"]
+    },
+    {
+      "id": "complete-progression-validation",
+      "reason": "Canonical digest validation retains full-history and serialization semantics",
+      "files": ["tests/unit/project-progression-contract.test.mjs"]
+    },
+    {
       "id": "signed-artifacts",
       "reason": "Signature verification and exact assembled coverage reject changed bytes",
       "files": [
@@ -46,7 +73,8 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
         "tests/unit/install-activation-rollback.test.mjs",
         "tests/unit/forge-update-apply-rollback.test.mjs",
         "tests/unit/forge-update-archive-digest.test.mjs",
-        "tests/unit/kb-copy-proof-legacy-sidecars.test.mjs"
+        "tests/unit/kb-copy-proof-legacy-sidecars.test.mjs",
+        "tests/unit/kb-copy-proof-unknown-content.test.mjs"
       ]
     },
     {
@@ -184,6 +212,20 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
   ],
   "integration": [
     {
+      "id": "canonical-learning-recovery",
+      "reason": "Cross-session recovery and Console evidence agree on the same canonical scope without ratifying tool metadata as instructions",
+      "files": ["tests/integration/learning-recovery-377.test.mjs", "tests/integration/learning-console-scope.test.mjs"]
+    },
+    {
+      "id": "canonical-progression-store",
+      "reason": "Actual adopted canonical storage, exact readback, and concurrent session restoration retain consent and complete history",
+      "files": ["tests/integration/project-progression-concurrent-sessions.test.mjs", "tests/integration/project-progression-reader-identity.test.mjs"],
+      "platformFiles": {
+        "linux": ["tests/integration/project-progression-store.test.mjs"],
+        "macos": ["tests/integration/project-progression-store.test.mjs"]
+      }
+    },
+    {
       "id": "native-explicit-interface",
       "reason": "Real MCP subprocess readiness, command policy and literal argv safety",
       "files": [
@@ -215,10 +257,14 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
     },
     {
       "id": "owned-uninstall",
-      "reason": "Actual offline uninstall preserves unrelated files and user guidance",
+      "reason": "Actual offline uninstall and POSIX copy-cleanup callers preserve unrelated files, changed unknown bytes and private state",
       "files": [
         "tests/integration/uninstall-footprint.test.mjs"
-      ]
+      ],
+      "platformFiles": {
+        "linux": ["tests/unit/brain-footprint.test.mjs"],
+        "macos": ["tests/unit/brain-footprint.test.mjs"]
+      }
     },
     {
       "id": "canonical-memory-native-boundary",
