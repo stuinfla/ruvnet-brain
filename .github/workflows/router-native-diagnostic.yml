@@ -1,0 +1,26 @@
+name: router-native-diagnostic
+on:
+  push:
+    branches: [diagnose/router-native-linux]
+permissions:
+  contents: read
+jobs:
+  native-checker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install root dependencies
+        run: npm ci --no-audit --no-fund --loglevel=error
+      - name: Install native sandbox CLI without authentication
+        run: |
+          npm install --global --prefix "$HOME/.npm-global" @openai/codex@latest --no-audit --no-fund
+          "$HOME/.npm-global/bin/codex" --version
+          echo "$HOME/.npm-global/bin" >> "$GITHUB_PATH"
+      - name: Run only the two native sandbox checks
+        run: node node_modules/vitest/vitest.mjs run tests/integration/model-managed-checker-native.test.mjs --maxWorkers=1
