@@ -453,6 +453,20 @@ describe('renderCardHit — the answer must be usable and cited on its own', () 
 });
 
 describe('routeReposFromCards — routing never masquerades as a card answer', () => {
+  it('routes the original ordinary meaning-search request without naming a product', () => {
+    const available = ['ruvector', 'rupixel', 'ruvnet', 'ruflo', 'agentdb', 'rulake', 'concepts'];
+    for (const query of [
+      'search these docs by meaning instead of exact keywords',
+      'search these docs by meaning',
+      'please search these docs by meaning',
+    ]) {
+      const result = routeReposFromCards(query, KB, available);
+      expect(result.repos[0], query).toBe('ruvector');
+      expect(result.namedRepos, query).toEqual([]);
+      expect(result.confidence, query).toBe('described');
+    }
+  });
+
   it('routes the Brain product name to its own RVF store', () => {
     const route = routeReposFromCards(
       'How does RuvNet Brain open its Console in Claude Code and Codex?',

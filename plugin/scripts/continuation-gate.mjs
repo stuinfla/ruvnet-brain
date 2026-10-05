@@ -47,7 +47,7 @@ import {
   buildCapabilityInventoryReceipt,
 } from './capability-inventory-receipt.mjs';
 import { auditCurrentCapabilityEvidence } from './capability-claim-evidence.mjs';
-import { continuationProjectIdentity, authorizedContinuationObjective, authorizedPromiseItems } from './continuation-objective.mjs';
+import { continuationProjectIdentity, authorizedContinuationObjective, authorizedPromiseItems, assistantCommitmentOwned, setAssistantCommitmentState } from './continuation-objective.mjs';
 import {
   auditCompletionClaims, readClaudeTurn, extractCommitments, claimClosesPromise,
   PROMISE_KIND, PROMISE_CAP_OPEN,
@@ -178,7 +178,8 @@ function save(led) {
   try {
     fs.mkdirSync(path.dirname(LEDGER), { recursive: true });
     fs.writeFileSync(LEDGER, JSON.stringify({ ...led, updated: new Date().toISOString() }, null, 2) + '\n');
-  } catch { /* the ledger is advisory — never break a turn over it */ }
+    return true;
+  } catch { return false; /* the ledger is advisory — never break a turn over it */ }
 }
 
 // ── commands ─────────────────────────────────────────────────────────────────────────────────────
@@ -215,6 +216,20 @@ if (has('--commit-to')) {
   save(led);
   console.log(`committed: ${text}`);
   process.exit(0);
+}
+
+if (has('--set-commitment-state')) {
+  try {
+    const sessionId = arg('--session-id');
+    const nativeSession = process.env.RUVNET_BRAIN_SESSION_ID || process.env.RUVNET_HOOK_SESSION_ID;
+    if (nativeSession && nativeSession !== sessionId) throw new Error('supplied session id differs from native session context');
+    const led = load();
+    setAssistantCommitmentState(led, { itemText: arg('--item'), state: arg('--set-commitment-state'),
+      sessionId, reason: arg('--reason'), replacementReference: arg('--replacement'),
+      identity: continuationProjectIdentity(process.cwd()) });
+    if (!save(led)) throw new Error('assistant commitment state could not be recorded');
+    console.log('assistant commitment state recorded; user objective unchanged'); process.exit(0);
+  } catch (error) { console.error(`refused: ${error.message}`); process.exit(2); }
 }
 
 if (has('--done')) {
@@ -297,6 +312,9 @@ if (has('--help') || has('-h')) {
     '  --commit-to "<text>"               record work the model agreed to do; opens/reopens the',
     '                                      objective as state: active',
     '  --done "<exact item text>"         mark a plain ledger item done (exact text match only)',
+    '  --set-commitment-state <blocked|deferred|superseded|disputed> --item "<exact text>"',
+    '    --session-id "<capturing session>" --reason "<why>" [--replacement "<reference>"]',
+    '                                      retain a noncompleted assistant item; user work unchanged',
     '  --complete-objective "<evidence>"  close the current objective as state: completed, with the',
     '                                      completion evidence recorded — leaves other ledger items',
     '                                      untouched',
@@ -368,30 +386,33 @@ const completion = (() => {
  * normalized text; project + worktree scoped exactly like --commit-to's objective. Fails open.
  */
 function promiseBookkeeping() {
-  if (HOST !== 'claude' || !hookInput.session_id) return;
+  if (HOST !== 'claude' || !hookInput.session_id || hookInput.session_id === '*') return;
   try {
     const pid = projectIdentity.projectId;
     const at = new Date(nowMs).toISOString();
     let changed = false;
     if (completion.verdict === 'PASS') {
       for (const item of led.items) {
-        if (item?.kind !== PROMISE_KIND || item.done || item.projectId !== pid) continue;
+        if (!assistantCommitmentOwned(item, hookInput.session_id, projectIdentity)) continue;
         const claim = completion.claims.find((c) => claimClosesPromise(c.text, item.text));
         if (!claim) continue;
-        Object.assign(item, { done: true, doneAt: at, completionEvidence: { claim: claim.text,
+        Object.assign(item, { done: true, state: 'completed', doneAt: at, completionEvidence: { claim: claim.text,
           checks: completion.verification.checks.slice(-5).map((c) => c.what),
           transcript: String(hookInput.transcript_path || ''), sessionId: hookInput.session_id } });
         changed = true;
       }
     }
-    const openKeys = new Set(led.items.filter((i) => i?.kind === PROMISE_KIND && !i.done && i.projectId === pid).map((i) => i.key));
+    const owned = led.items.filter((i) => assistantCommitmentOwned(i, hookInput.session_id, projectIdentity));
+    const openKeys = new Set(owned.map((i) => i.key));
+    let activeCount = owned.filter((i) => i.state === undefined || i.state === 'active').length;
     // Owner preference suppresses only new capture; verified closure above and integrity audits stay active.
     const newPromises = process.env.RUVNET_PROMISE_CAPTURE === 'off' ? [] : extractCommitments(hookInput.last_assistant_message);
     for (const promise of newPromises) {
-      if (openKeys.has(promise.key) || openKeys.size >= PROMISE_CAP_OPEN) continue;
+      if (openKeys.has(promise.key) || activeCount >= PROMISE_CAP_OPEN) continue;
       openKeys.add(promise.key);
-      led.items.push({ schemaVersion: 1, kind: PROMISE_KIND, text: promise.text, key: promise.key, done: false, at,
-        projectId: pid, worktreeIds: [projectIdentity.worktreeId], sessionIds: ['*'],
+      activeCount += 1;
+      led.items.push({ schemaVersion: 1, kind: PROMISE_KIND, text: promise.text, key: promise.key, done: false, state: 'active', at,
+        projectId: pid, worktreeIds: [projectIdentity.worktreeId], sessionIds: [hookInput.session_id],
         capturedFrom: { sessionId: hookInput.session_id },
         authorization: { kind: 'owner-mandate', reference: 'i-will-is-a-contract-2026-09-15' } });
       changed = true;
@@ -786,7 +807,10 @@ const lines = [
     ? ['Name the check you ran (a "Verified:" line with the command or artifact) and say what is NOT verified.']
     : promises.length
     ? ['A promise closes only when a later answer claims it done with a check run after the last change —',
-       'never by saying so, and never by --done. If you genuinely cannot do it, say so plainly and why.']
+       'never by saying so, and never by --done. For blocked, deferred, superseded or disputed assistant',
+       'commitments, use --set-commitment-state with --item (exact text), --session-id (capturing session)',
+       'and --reason; superseded also requires --replacement. This retains the item, never completes it,',
+       'and does not cancel or complete authorized user work.']
     : committed.length
     ? ['Record objective completion only with actual completion evidence; legacy --done does not complete an objective.']
     : ['These clear by being done, not by being marked: merge or fix the PR, get the build green,',

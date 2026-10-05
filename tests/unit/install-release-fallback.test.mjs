@@ -8,8 +8,9 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import os from 'node:os';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const SRC = fs.readFileSync(path.join(ROOT, 'bin', 'install.mjs'), 'utf8');
@@ -32,6 +33,31 @@ describe('install.mjs has no built-in fallback release', () => {
     expect(bare.hint).toMatch(/no longer falls back to a built-in release/);
     expect(namedReleaseFromArgs(['--pin', '--yes']).error).toMatch(/--pin needs/);
     expect(namedReleaseFromArgs(['--pin', 'v9.9.1', '--version', 'v9.9.0']).error).toMatch(/disagree/);
+    for (const args of [['--version'], ['--version', '--yes'], ['--pin', 'v9.9.1', '--version']]) {
+      expect(namedReleaseFromArgs(args).error).toMatch(/--version needs/);
+    }
+  });
+
+  it('refuses incomplete named-release options before network or settings writes at the actual CLI', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'rnb-missing-release-'));
+    const preload = path.join(home, 'network-sentinel.mjs');
+    const marker = path.join(home, 'network-attempt');
+    fs.writeFileSync(preload, `import fs from 'node:fs'; globalThis.fetch = () => { fs.writeFileSync(${JSON.stringify(marker)}, 'attempt'); throw new Error('network must not run'); };`);
+    const snapshot = () => fs.readdirSync(home).sort().map(name => [name, fs.readFileSync(path.join(home, name), 'utf8')]);
+    const before = snapshot();
+    try {
+      for (const flag of ['--version', '--pin']) {
+        const r = spawnSync(process.execPath, ['--import', pathToFileURL(preload).href, path.join(ROOT, 'bin/install.mjs'), '--update-source', 'installed', flag], {
+          encoding: 'utf8', timeout: 10_000,
+          env: { ...process.env, HOME: home, USERPROFILE: home, XDG_CACHE_HOME: home, PATH: '', RUVNET_BRAIN_HOME: path.join(home, 'brain') },
+        });
+        expect(r.status).toBe(1);
+        expect(r.stderr).toContain(`${flag} needs`);
+        expect(r.stdout).not.toMatch(/installing|downloading|saved/i);
+        expect(snapshot()).toEqual(before);
+      }
+      expect(fs.existsSync(marker)).toBe(false);
+    } finally { fs.rmSync(home, { recursive: true, force: true }); }
   });
 
   it('is NOT a silent fallback for a failed lookup: that bundle predates COVERAGE.json and failed two steps later', () => {

@@ -35,6 +35,9 @@ import path from 'node:path';
 import { digestCanonical, fieldAuthorityAllows, redactProgression, restoreProjectProgression } from './project-progression-contract.mjs';
 import { readOwnerNote, readSourceIdentity, readTranscriptReference, readWorkLedger } from './project-progression-sources.mjs';
 import { withProgressionReader } from './project-progression-reader.mjs';
+import os from 'node:os';
+import { resolveTurnDb } from './turn-outcome-capture.mjs';
+import { privateProgressionState, maskExcludedPaths } from './turn-capture-privacy.mjs';
 
 const PROGRESSION_NAMESPACE = 'project-progression';
 const OWNER_NOTE_NAMESPACES = Object.freeze(['default']);
@@ -205,7 +208,7 @@ export function buildProjectProgression({
 
   // Reducer annotations describe the prior heads, not application state in the new snapshot.
   const { sourceIdentity: priorSource, journalHeads: priorHeads, ...carriedState } = priorState ?? {};
-  const completeProjectState = {
+  let completeProjectState = {
     ...carriedState,
     currentGoal,
     nextAction,
@@ -233,6 +236,12 @@ export function buildProjectProgression({
     },
   };
 
+  const privacy = resolveTurnDb({ projectDir, brainHome: env.RUVNET_BRAIN_HOME || path.join(env.HOME || os.homedir(), '.cache', 'ruvnet-brain') });
+  // Pure derivation may run before adoption; the capture boundary still refuses an absent store.
+  if (privacy.skipped && !privacy.skipped.startsWith('no project memory db')) return { skipped: { reason: privacy.skipped } };
+  if ([...ledger.open, ...ledger.done].some((text) => maskExcludedPaths(text, privacy.contentPathExcludes, projectDir) !== text)) throw new Error('content exclusion conflicts with immutable work-ledger plan binding');
+  completeProjectState = privateProgressionState(completeProjectState, privacy.contentPathExcludes, projectDir);
+
   // REDACT HERE, NOT ONLY AT THE STORE.
   //
   // createProgressionSnapshot already redacts, so the STORED row was always safe. What was not safe
@@ -255,6 +264,7 @@ export function buildProjectProgression({
   // twice. Tool input and terminal evidence must participate before the no-op decision.
   const observedState = redactProgression(enrichStateWithObservation(
     projectProgression.completeProjectState, { ...payload, hook_event_name: trigger },
+    { contentPathExcludes: privacy.contentPathExcludes, projectDir },
   )).value;
   // A committed sequence is not an event identity: several boundaries may freeze before replay.
   // Bind all immutable captured fields (including the native observation and occurrence time).

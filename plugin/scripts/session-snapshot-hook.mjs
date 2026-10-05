@@ -166,7 +166,7 @@ export function runSessionSnapshotHook(projectDir, event, {
     if (payload.hook_event_name !== event) {
       throw new Error(`progression boundary mismatch: expected ${event}, received ${payload.hook_event_name}`);
     }
-    const result = captureProgression({ host, payload, projectDir, recoverFrozen: Boolean(ordered),
+    const result = captureProgression({ host, payload, projectDir, env, recoverFrozen: Boolean(ordered),
       canCommit: () => Boolean(ordered) && refreshReplayLock(resolveProjectStore({ projectDir }).projectRoot, ordered), storeFactory: (options) => makeStoreFactory(now() + budgetMs)({ ...options, env }) });
     return { ...idle, progressionCaptured: true, receipt: result.receipt };
   }
@@ -206,7 +206,7 @@ export function runSessionSnapshotHook(projectDir, event, {
   let token = ordered;
   const handOff = (why) => {
     let frozen;
-    try { frozen = produce({ resolution, projectDir, payload, host, trigger: event }); } catch { frozen = null; }
+    try { frozen = produce({ resolution, projectDir, payload, host, env, trigger: event }); } catch { frozen = null; }
     const queued = frozen?.projectProgression ? queueCapture({ projectDir: root, originProjectDir: projectDir, env, event, host,
       payload: { session_id: payload.session_id, hook_event_name: event, projectProgression: frozen.projectProgression } }) : null;
     const handed = queued ? spawnReplay({ projectDir: root, token, env }) : false;
@@ -247,7 +247,7 @@ export function runSessionSnapshotHook(projectDir, event, {
 
     let produced;
     try {
-      produced = produce({ resolution, projectDir, payload, host, trigger: event });
+      produced = produce({ resolution, projectDir, payload, host, env, trigger: event });
     } catch (error) {
       return { ...idle, replayed, skipped: `producer failed: ${error.message}` };
     }
@@ -259,6 +259,7 @@ export function runSessionSnapshotHook(projectDir, event, {
         host,
         payload: { ...payload, hook_event_name: event, projectProgression: produced.projectProgression },
         projectDir,
+        env,
         storeFactory,
       });
     } catch (error) {

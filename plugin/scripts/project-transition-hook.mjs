@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import os from 'node:os';
 import { developmentHooksSuspended } from './development-maintenance.mjs';
 import { resolveTurnDb } from './turn-outcome-capture.mjs';
+import { privateTransitionObservation } from './turn-capture-privacy.mjs';
 import { automaticProgressionSuspensionResult } from './project-progression-suspension.mjs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -159,6 +160,9 @@ export function captureNormalizedTransition(job, { readHistory = readTransitionH
   const normalized = job.payload.normalizedTransition;
   if (!normalized || normalized.observation?.authoritative !== false || !normalized.observation?.id
     || normalized.sourceIdentity?.checkoutPath !== resolution.checkoutRoot) throw new Error('invalid normalized transition binding');
+  const policy = resolveTurnDb({ projectDir: job.originProjectDir, brainHome: env.RUVNET_BRAIN_HOME || path.join(env.HOME || os.homedir(), '.cache', 'ruvnet-brain') });
+  if (policy.skipped) throw new Error(policy.skipped);
+  if (digestCanonical(privateTransitionObservation(normalized.observation, policy.contentPathExcludes, job.originProjectDir)) !== digestCanonical(normalized.observation)) throw new Error('content exclusions changed; immutable transition retained');
   const snapshots = readHistory(resolution, { deadlineAt });
   const restored = restoreProjectProgression(snapshots, { expectedProjectIdentity: resolution.projectIdentity });
   if (snapshots.length && !restored.ok) {
@@ -191,11 +195,13 @@ export function runProjectTransitionHook(projectDir, event, { payload = {}, host
   if (developmentHooksSuspended(projectDir)) return { state: 'skipped', reason: 'development hooks suspended' };
   const suspended = automaticProgressionSuspensionResult(env, { state: 'suspended', reason: 'automatic project progression is operator-suspended' });
   if (suspended) return suspended;
-  const observation = normalizeTransition(payload, event, { host });
+  payload = normalizeHostEvent(payload);
+  let observation = normalizeTransition(payload, event, { host });
   if (observation.skipped) return { state: 'skipped', reason: observation.skipped };
   const brainHome = env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain');
   const consent = resolveTurnDb({ projectDir, brainHome, gitTimeoutMs: 500 });
   if (consent.skipped) return { state: 'skipped', reason: consent.skipped };
+  observation = privateTransitionObservation(observation, consent.contentPathExcludes, projectDir, payload);
   const resolution = resolveProjectStore({ projectDir, gitTimeoutMs: 500 });
   if (!fs.existsSync(resolution.canonicalAgentDbPath)) return { state: 'skipped', reason: 'no adopted canonical store' };
   const transportEvent = event === 'PostToolUseFailure' ? 'PostToolUse' : event;
