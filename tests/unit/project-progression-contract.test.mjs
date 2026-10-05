@@ -80,6 +80,21 @@ describe('ADR-073 ProjectProgression snapshot identity', () => {
       .toBe(digestCanonical({ a: 1, nested: { x: 1, y: 2 }, b: 2 }));
   });
 
+  it('does not execute serialization hooks that canonicalization previously stripped', () => {
+    const value = ['safe'];
+    Object.defineProperty(value, 'toJSON', { value: () => ['different'] });
+    expect(digestCanonical(value)).toBe(digestCanonical(['safe']));
+  });
+
+  it('reads object and array accessors once through the canonicalization fallback', () => {
+    for (const value of [{}, []]) {
+      let reads = 0;
+      Object.defineProperty(value, Array.isArray(value) ? '0' : 'field', { enumerable: true, get: () => ++reads });
+      expect(digestCanonical(value)).toBe(digestCanonical(Array.isArray(value) ? [1] : { field: 1 }));
+      expect(reads).toBe(1);
+    }
+  });
+
   it('is reproducible for one observation and sortable by monotonic sequence', () => {
     expect(createProgressionSnapshot(input())).toEqual(createProgressionSnapshot(input()));
 

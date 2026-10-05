@@ -23,14 +23,20 @@ function isCanonicalJson(value) {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
   if (typeof value === 'number') return Number.isFinite(value);
   if (Array.isArray(value)) {
-    for (const item of value) if (!isCanonicalJson(item)) return false;
+    if (Object.getPrototypeOf(value) !== Array.prototype || ['toJSON', 'map', 'constructor'].some(key => Object.hasOwn(value, key))) return false;
+    for (let index = 0; index < value.length; index++) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, index);
+      if (!descriptor || !Object.hasOwn(descriptor, 'value') || !isCanonicalJson(descriptor.value)) return false;
+    }
     return true;
   }
   if (!value || typeof value !== 'object' || Object.getPrototypeOf(value) !== Object.prototype) return false;
+  if (Object.hasOwn(value, 'toJSON')) return false;
   let previous;
   for (const key of Object.keys(value)) {
     if (previous !== undefined && previous > key) return false;
-    if (!isCanonicalJson(value[key])) return false;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!Object.hasOwn(descriptor, 'value') || !isCanonicalJson(descriptor.value)) return false;
     previous = key;
   }
   return true;
