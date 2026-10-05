@@ -75,7 +75,7 @@ export function projectGroundingInput(raw) {
   const projectedCode = codeWithoutInertText(code, file.endsWith('.py'));
   // Never exempt a product-owned path. Preserve managed-store paths even without a product name.
   const projection = `${file}\n${projectedCode}`;
-  if (/\.swarm[\/\\](?:agentdb-)?memory\.db/i.test(projection)) throw new Error('Managed memory needs original scan');
+  if (/\.swarm|(?:agentdb-)?memory\.db|memory_entries/i.test(projection)) throw new Error('Managed memory indicators need original scan');
   return projection;
 }
 

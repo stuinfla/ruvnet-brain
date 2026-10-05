@@ -38,6 +38,24 @@ test('imports, executable strings, assigned/call-argument triples, interpolation
 test('raw SQL against canonical managed memory is not exempted by inert documentation', () => {
   assert.equal(run(event(`${example}\ndb = sqlite3.connect(".swarm/memory.db")\ndb.execute("DELETE FROM memory_entries")\n`)).status, 2);
 });
+test('split managed-store paths and table indicators retain strict guard and Add File scanning', () => {
+  for (const body of [
+    'db = sqlite3.connect(str(Path(".swarm") / "memory.db"))\ndb.execute("DELETE FROM memory_entries")\n',
+    'db = sqlite3.connect("memory.db")\n',
+    'db.execute("DELETE FROM memory_entries")\n',
+    'directory = Path(".swarm")\n',
+  ]) {
+    const source = '"""AgentDB memory is managed."""\nimport sqlite3\nfrom pathlib import Path\n' + body;
+    assert.throws(() => projectGroundingInput(JSON.stringify(event(source))), /Managed memory/);
+    assert.equal(run(event(source)).status, 2, body);
+    assert.equal(invokeAddFile(source).status, 2, body);
+  }
+});
+test('ordinary application SQLite with inert product documentation still passes both paths', () => {
+  const source = example + '\ndb = sqlite3.connect(str(Path("app-data") / "orders.db"))\ndb.execute("DELETE FROM orders WHERE expired = 1")\n';
+  assert.equal(run(event(source)).status, 0);
+  assert.equal(invokeAddFile(source).status, 0);
+});
 test('malformed/ambiguous source retains strict original scan instead of granting exemption', () => {
   for (const [content, file] of [['"""AgentDB unfinished', '/tmp/app.py'], ['/* AgentDB unfinished', '/tmp/app.mjs'],
     ['const pattern = /agentdb/;', '/tmp/app.mjs'], ['"""AgentDB"""\nexec(__doc__)\n', '/tmp/app.py']]) assert.equal(run(event(content, file)).status, 2);
