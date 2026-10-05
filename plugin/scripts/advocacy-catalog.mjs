@@ -145,7 +145,7 @@ export const INTENTS = Object.freeze([
     fit: 'the request is to retrieve by meaning rather than by literal match',
     cues: Object.freeze([
       /\bby meaning\b/,
-      /^(?:please\s+)?(?:search|retrieve|find)\s+(?:these|those|my|our|the)\s+(?:docs?|documents?|passages?|chunks?|notes?)\b/,
+      /^(?:please\s+)?(?:search|retrieve|find)\s+(?:these|those|my|our|the)\s+(?:docs?|documents?|passages?|chunks?|notes?)\s+by meaning\b/,
       /\bsemantic(ally)?\s+(search|retriev|match|similar)/,
       /\b(instead of|rather than|not just|beyond)\s+(an?\s+)?(exact\s+)?(keywords?|string|substring|literal|grep)/,
       /\bvector\s+(search|database|db|store|index|embedding)/,

@@ -76,12 +76,23 @@ describe('the fixture: six ordinary requests route to a fitting capability, two 
   it('recognizes the explicit retrieval action and meaning need without a keyword contrast', () => {
     expect(route.classify('search these docs by meaning')).toMatchObject({ capability: 'ruvector' });
     expect(route.classify('please search these docs by meaning')).toMatchObject({ capability: 'ruvector' });
+    expect(route.classify('retrieve our notes by meaning')).toMatchObject({ capability: 'ruvector' });
+    expect(route.classify('find my passages by meaning')).toMatchObject({ capability: 'ruvector' });
     for (const prompt of [
       'search these docs for exact keywords',
       'explain what searching these docs by meaning means',
       'do not search these docs by meaning',
       'rename these docs to describe what we mean',
     ]) expect(route.classify(prompt), prompt).toBeNull();
+  });
+
+  it.each([
+    'search these docs for the exact keyword "embeddings"',
+    'find my notes containing the literal word embeddings',
+    'search these docs for the literal phrase "semantic search"; do not use meaning-based retrieval',
+    'search these docs for exact keywords; retrieval by meaning is not requested',
+  ])('literal document retrieval stays silent: %s', (prompt) => {
+    expect(route.classify(prompt)).toBeNull();
   });
 
   for (const [label, prompt, expected] of FIXTURE) {
