@@ -150,16 +150,19 @@ export async function run({ dryRun = false, now = Date.now(), repo = REPO } = {}
     // lastAlertAt: state is only written when the push actually went out, so a failed push
     // retries next run instead of burying the sighting.
     const firstSighting = !state[key];
+    // Acknowledgment delivery is not page delivery. Retry each missing channel independently.
+    const needsNewPage = !state[key]?.newAlertAt;
+    const needsAck = !state[key]?.ackAt;
 
     results.push({ number: issue.number, title: issue.title, ageHours, ownerComment, breach, dueForAlert, firstSighting, url });
 
-    if (firstSighting) {
+    if (needsNewPage || needsAck) {
       if (dryRun) {
         alertsSent.push({ number: issue.number, sent: false, kind: 'new-issue', reason: 'dry-run' });
       } else {
-        const topic = resolveTopic();
-        let sent = false;
-        if (topic) sent = await pushNtfy(topic, {
+        const topic = needsNewPage ? resolveTopic() : null;
+        let sent = !needsNewPage;
+        if (needsNewPage && topic) sent = await pushNtfy(topic, {
           title: `New issue #${issue.number} (open ${fmtAge(ageHours)})`,
           body: `${issue.title}\n${url}`,
           priority: 'high', tags: 'new,eyes',
@@ -171,12 +174,20 @@ export async function run({ dryRun = false, now = Date.now(), repo = REPO } = {}
         // not caring — the opposite of the point). Carries BOT_MARKER so judgeIssue() can never
         // mistake it for the owner responding. Best-effort like ntfy: a comment failure must not
         // break the watch; unacked issues simply retry next run (ackAt is delivery-derived).
-        let ackAt = null;
-        const ackBody = `🤖 Automated acknowledgment — received and opened. The maintainer has been paged and this is being worked. The next update here will be a fix, findings, or the maintainer in person.`;
-        const ack = spawnSync(GH_BIN, ['issue', 'comment', String(issue.number), '--repo', repo, '--body', ackBody], { encoding: 'utf8' });
-        if (ack.status === 0) ackAt = new Date(now).toISOString();
-        if (sent || ackAt) state[key] = { firstSeenAt: new Date(now).toISOString(), ...(sent ? { newAlertAt: new Date(now).toISOString() } : {}), ...(ackAt ? { ackAt } : {}), title: issue.title, url };
-        alertsSent.push({ number: issue.number, sent, acked: Boolean(ackAt), kind: 'new-issue', reason: topic ? null : 'no ntfy topic configured' });
+        let acked = !needsAck;
+        if (needsAck) {
+          const ackBody = `${BOT_MARKER} acknowledgment — received and opened. The next update here will be a fix, findings, or the maintainer in person.`;
+          const ack = spawnSync(GH_BIN, ['issue', 'comment', String(issue.number), '--repo', repo, '--body', ackBody], { encoding: 'utf8' });
+          acked = ack.status === 0;
+        }
+        if (sent || acked) state[key] = {
+          ...(state[key] || {}), firstSeenAt: state[key]?.firstSeenAt || new Date(now).toISOString(),
+          ...(needsNewPage && sent ? { newAlertAt: new Date(now).toISOString() } : {}),
+          ...(needsAck && acked ? { ackAt: new Date(now).toISOString() } : {}), title: issue.title, url,
+        };
+        alertsSent.push({ number: issue.number, sent, acked, kind: 'new-issue',
+          pageAttempted: needsNewPage, ackAttempted: needsAck,
+          reason: needsNewPage && !topic ? 'no ntfy topic configured' : null });
       }
     }
 

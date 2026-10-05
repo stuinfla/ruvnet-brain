@@ -3,10 +3,10 @@ id: ADR-054
 title: Brain on/off and per-part scope — a user-controlled brain that can never silently lie about being off
 status: Accepted
 date: 2026-07-26
-updated: 2026-10-01
+updated: 2026-10-05
 updated_source: derived-from-git
 reviewed_digest: 75556bed3285
-version: 1.1.6
+version: 1.1.7
 impl: verification-expired
 verified: 2026-07-31
 verified_digest: 7e4e5c249715
@@ -282,3 +282,32 @@ source review does not renew the expired verification or prove the native-host a
 | 2026-07-28 | Added the Complete Brain / RuVector Only storage profile to the console and installer/update paths | The 2026-07-28 owner request is implemented in `kb/brain-profile.mjs`; it uses ADR-006's per-repo RVF boundary and does not revive the rejected claim that hard query scoping is a relevance improvement. |
 | 2026-07-27 | **Re-read against the governed code; NO change required — every claim still holds.** | Flagged `presumed-stale`: 10 commits (1d) after this document's last commit (`3501ef4`), across all 5 governed files. Checked each: (1) `scripts/user-settings.mjs` — `61f9f9d` (the ADR-052 1-5 advocacy dial) only rewrites the `advocacy` schema entry; grepped `brainEnabled` — the key, its sentinel-authority comment, and the sentinel-wins-on-disagreement rule are untouched, and the enum-migration code it adds doesn't reach the boolean branch `brainEnabled` uses. (2) `kb/forge-ask-all.mjs` — `71b0be2` (symlink main-entry fix) and `a44899b`/`1a6b54d` (cross-encoder pool cap, shipped OFF by default) are unrelated to the on/off contract; grepped `disabled` — no hits in this file (the `disabled:true` soft-answer this ADR describes lives in `kb/forge-mcp-all.mjs`, governed separately). (3) `plugin/mcp/server.mjs` — `879d88e` fixes a timeout-outage health-reporting bug, does not touch the boot-frozen tool-description claim in §4. (4) `plugin/scripts/hook-shim.mjs` — `920f9ba` (mesh census) adds new table entries but the `offBehavior: silence\|run\|partial` contract and the existing 11 entries' values are byte-identical. (5) `scripts/onboarding-console.mjs` — `408b01c` moved the on/off switch from a collapsed checkbox to its own always-open card FIRST on the page (commit message: "ADR-054's on/off switch was rendered... below the things it governs, behind a chevron. It is now its own always-open card FIRST"); this is a UI relocation, not a contract change — the three redundant state channels, consent-gated OFF with downside copy, off-since-date, maintenance disclosure, and sentinel-vs-mirror disagreement line this ADR requires are all still present, just promoted to the top of the page |
 | 2026-07-27 | Re-verified against `kb/forge-ask-all.mjs`, which moved under the two-stage cascade | In `kb/forge-ask-all.mjs`, the cascade adds `cascadeRerankPool` and two env-read defaults; it touches **zero** brain-off lines — measured, not assumed (`git diff` over the governed path, filtered for brain-off/sentinel/offState/disabled: 0 changed lines). The off switch, the per-call read and the sentinel authority are untouched. |
+
+
+## Amendment 2026-10-05: conversational grounding trigger scope (#320)
+
+`groundingScope` is a user preference in `~/.config/ruvnet-brain/settings.json`, separate
+from `brainProfile`, the master switch, and retrieval eligibility. Its default is `"all"`;
+a nonempty list of known product terms narrows only Gate 1's prompt directive and corresponding
+turn marker/Stop checks. For example, inside the existing `settings` object:
+
+```json
+"groundingScope": ["ruvector", "metaharness"]
+```
+
+RuVector includes RVF and ruvector-postgres; Ruflo includes claude-flow. Unknown terms,
+wrong types and empty lists report validation errors and retain default-all enforcement.
+This is a hand-editable setting; no new console control is claimed. Existing owner preferences
+are preserved through the ordinary atomic settings save/undo contract.
+
+The turn marker records the validated scope for that episode. Queued prompts merge scopes
+conservatively without moving the original boundary. The separate capability-assertion audit
+also respects excluded rUv subjects, so questions about the user's excluded fork do not recreate
+the same Brain-only demand through another classifier. Non-rUv capability evidence checks
+and independently meaningful architecture/build guidance remain unchanged.
+
+`search_ruvnet` remains available and searches the same installed repositories; no retrieval,
+repo selection, storage profile, consent sentinel, product stamp or dangerous write/managed-memory
+safety behavior changes. This does not approve an unsafe AgentDB write merely because AgentDB
+is excluded from conversational prompts. The source repair and disposable registered-command
+acceptance are bounded evidence, not proof of delivery in every existing native host session.

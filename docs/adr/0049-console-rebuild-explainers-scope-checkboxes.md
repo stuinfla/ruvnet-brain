@@ -3,9 +3,10 @@ id: ADR-049
 title: The console rebuild — explain every section, scope every suggestion, and make the safe ones checkable
 status: Accepted
 date: 2026-07-24
-updated: 2026-09-27
+updated: 2026-10-05
 updated_source: derived-from-git
-reviewed_digest: 9f5c0ce4d4a0
+reviewed_digest: 4555b8c6896d
+version: 1.0.3
 authors: [Stuart Kerr, Claude Code]
 tags: [onboarding, ux, console, advocacy, capability, cache, honesty]
 supersedes: []
@@ -18,6 +19,28 @@ governs:
   - scripts/nightly-controller.mjs
   - bin/install.mjs
 ---
+
+
+## Current source review — 2026-10-05
+
+Reviewed candidate source `1ccc1e633772c549e4a23596a1ce3c743e797315`; this is a
+source review, not a new browser, published-install, undo, or release verification.
+The original explainer, per-recommendation scope, project-cache isolation, and consent-gated
+Apply decisions remain accepted. `console/app.js` retains `infoBtn`, `jumpToRec`, and the
+server-vouched capability predicate; `scripts/onboarding-console.mjs` retains project-keyed
+`serveCached` and stamps `recId` only for recommendations built by the engine.
+`scripts/console-engine.mjs` still has `CAPABILITY_ELIGIBLE = {}`: **zero capability checkboxes
+currently qualify**, even though the bridge is built. An empty eligibility set is not proof that
+an OFF capability has an available inverse.
+
+The Complete Brain / RuVector Only install profile remains a coarse corpus-install choice.
+It is distinct from the user-scoped `groundingScope` conversational trigger setting and
+`updateSource` tool-source preference introduced in the candidate; neither setting proves a new
+capability undo or broadens retrieval eligibility. Runtime preference and nightly/installer
+wiring were checked for this boundary. The broader granular install checklist remains a design
+follow-up; this review did not validate it in a live installed Console. The historical runtime
+and browser receipts below retain their original source/date bounds. The final integration
+must separately rebind the governed-source review digest after remaining installer changes.
 
 # ADR-049: The console rebuild
 
@@ -113,8 +136,9 @@ project the data is about. A cross-project isolation test proves it, mutation-ch
 - The Recommendation aggregate now has a `scope` field and a fourth builder
   (`buildCapabilityRecommendations`). ADR-013's schema description is extended, not replaced.
 - The checkbox's honesty rule (present only with a server-vouched recId + proven undo) means the
-  control surface grows only as capabilities earn verified undos — one today. That is the intended
-  rate: a checkbox is a promise that the inverse exists.
+  control surface grows only as capabilities earn verified undos. The historical decision counted
+  one; the current source review above finds zero eligible capability checkboxes. A checkbox
+  remains a promise that the inverse exists.
 - **Partially resolved 2026-07-28:** the console now offers the owner-approved coarse install
   profile — **Complete Brain** or **RuVector Only** — and physically applies it to the installed RVF
   families. The broader granular install checklist (item 4 above) is still open — designed, with
@@ -132,6 +156,7 @@ project the data is about. A cross-project isolation test proves it, mutation-ch
   precisely the failure ADR-055 was written to end, found by the drift check rather than by a reader.
 
 ## Currency log
+| 2026-10-05 | Reviewed current source and recorded remaining limitations; no verification or implementation-status promotion. | reviewed_digest 4555b8c6896d; inspected `console/app.js` and all expanded governs against source 5d9ea4df. Independent review preserved incident dates, Proposed/expired states and historical evidence; notification and oldest-runtime limits are explicit. |
 | 2026-09-27 | Currency review: decision unchanged. Motion: same onboarding-console.mjs learner-scope fix, plus unrelated bin/install.mjs release-pipeline fixes (macOS deadline, serverDependencies parsing, corpus-currency). No explainer/scope/checkbox logic touched. | Reviewed `console/app.js`, `scripts/console-engine.mjs`, `scripts/onboarding-console.mjs`, `plugin/scripts/runtime-preferences.mjs`, `scripts/nightly-controller.mjs`, `bin/install.mjs` against the commits listed above; reviewed_digest 9f5c0ce4d4a0. |
 | 2026-09-12 | Currency review at commit 491ea740: decision unchanged. `40d8c16b` moved the release-provenance card out of the end-user flow into a closed maintainer `<details>` and added Newest/A–Z/Behind-first views + description search to the scope page — both extend this ADR's console-scope decision rather than contradict it. `5f919c52` (`bin/install.mjs`) added `placeTrustedCoverageValidator()`, unrelated to console UI/scope; read in full, no capability-checkbox or explainer logic touched. | Reviewed `console/app.js`, `scripts/console-engine.mjs`, `scripts/onboarding-console.mjs`, `plugin/scripts/runtime-preferences.mjs`, `scripts/nightly-controller.mjs`, `bin/install.mjs` against commits `40d8c16b` and `5f919c52`; both diffs read in full. |
 

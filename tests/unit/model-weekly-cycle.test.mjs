@@ -1,4 +1,5 @@
 import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import {EventEmitter} from 'node:events';
+import {spawn} from 'node:child_process';
 import {afterEach,expect,it,vi} from 'vitest';
 import {digest} from '../../scripts/model-currency-evidence.mjs';
 import {runWeeklyCycle,runCycleStage,canonicalTextReleases,maybeLaunchWeeklyCycle} from '../../scripts/model-weekly-cycle.mjs';
@@ -9,7 +10,7 @@ function fixture(withState=true){const dir=fs.mkdtempSync(path.join(os.tmpdir(),
 function currency(dir,now=NOW){const checkedAt=new Date(now).toISOString();write(dir,'currency.json',{schemaVersion:1,inventory:{checkedAt,discoveryOnly:true,models:Array(50).fill({})},evaluations:{checkedAt,sources:[{checkedAt,sha256:'a'.repeat(64)}],records:[{}]},lastAttempt:{status:'complete'}});}
 const fetcher=(body=inventory())=>vi.fn(async()=>({ok:true,text:async()=>body}));
 const newRelease={id:'openai/new-sol',canonical_slug:'openai/new-sol-20261008',architecture:{output_modalities:['text']}};
-afterEach(()=>{for(const d of dirs.splice(0))fs.rmSync(d,{recursive:true,force:true});});
+afterEach(()=>{vi.restoreAllMocks();vi.useRealTimers();for(const d of dirs.splice(0))fs.rmSync(d,{recursive:true,force:true});});
 it('collapses canonical aliases and effort variants; excludes unrelated providers and image-only rows',()=>{
   const variants=['low','medium','high'].map(effort=>({id:'openai/sol:'+effort,canonical_slug:releases[0].id,architecture:{output_modalities:['text']}}));
   const result=canonicalTextReleases(inventory([...variants,{id:'openai/image',canonical_slug:'openai/image-v1',architecture:{output_modalities:['image']}}]));
@@ -97,4 +98,87 @@ it('refreshes an expired pending semantic review once before retrying qualificat
   return {code:0,result:{status:'unchanged',terminal:true}};
  }});
  expect(result.status).toBe('complete');expect(calls).toEqual(['model-currency.mjs','model-weekly-analyst.mjs','model-weekly-qualification.mjs']);
+});
+
+function ownedStageChild(kill=()=>false){
+ const child=new EventEmitter();child.pid=4242;
+ for(const name of ['stdout','stderr']){child[name]=new EventEmitter();child[name].destroy=vi.fn();}
+ child.unref=vi.fn();child.kill=vi.fn(kill);return child;
+}
+const stageFor=(child,timeoutMs=100)=>runCycleStage({script:'model-currency.mjs',args:[],timeoutMs,env:{},spawnHost:()=>child});
+const fakeStageTime=()=>vi.useFakeTimers({toFake:['setTimeout','clearTimeout','Date','performance']});
+it.each(['false','throws'])('settles within its entire budget when kill %s and no exit/error/close ever arrives',async(mode)=>{
+ fakeStageTime();const child=ownedStageChild(()=>{if(mode==='throws')throw new Error('ESRCH');return false;});
+ const result=stageFor(child).catch(e=>e);
+ await vi.advanceTimersByTimeAsync(89);expect(child.kill).not.toHaveBeenCalled();
+ await vi.advanceTimersByTimeAsync(11);const error=await result;
+ expect(error.message).toMatch(/bounded deadline/);expect(child.kill.mock.calls).toEqual([['SIGTERM'],['SIGKILL']]);
+ expect(error.stageCleanup).toEqual({ownedChildPid:4242,childExitObserved:false,ownedChildRetirement:'unverified',descendantRetirement:'unproven'});
+ expect(child.stdout.destroy).toHaveBeenCalledOnce();expect(child.stderr.destroy).toHaveBeenCalledOnce();expect(child.unref).toHaveBeenCalledOnce();expect(vi.getTimerCount()).toBe(0);
+ // A late receipt or process error cannot turn the already failed request into a success.
+ child.stdout.emit('data','{"status":"promoted"}\n');child.emit('exit',0);child.emit('error',new Error('late'));
+ expect(await result).toBe(error);expect(child.unref).toHaveBeenCalledOnce();expect(vi.getTimerCount()).toBe(0);
+});
+it('a success-shaped receipt during retirement still fails, while acknowledging only the observed child exit',async()=>{
+ fakeStageTime();const child=ownedStageChild(),result=stageFor(child).catch(e=>e);
+ await vi.advanceTimersByTimeAsync(90);child.stdout.emit('data','{"status":"current"}\n');child.emit('exit',0);
+ const error=await result;expect(error.message).toMatch(/bounded deadline/);expect(error.stageCleanup).toMatchObject({childExitObserved:true,ownedChildRetirement:'exit-observed',descendantRetirement:'unproven'});
+ expect(child.kill.mock.calls).toEqual([['SIGTERM']]);expect(vi.getTimerCount()).toBe(0);
+});
+it.each(['stdout-utf8','stderr','combined'])('bounds cumulative %s bytes even if the overflowing child never exits',async(source)=>{
+ fakeStageTime();const child=ownedStageChild(),result=stageFor(child).catch(e=>e);
+ if(source==='stdout-utf8')child.stdout.emit('data','€'.repeat(90000));
+ else if(source==='stderr')child.stderr.emit('data',Buffer.alloc(262145));
+ else {child.stdout.emit('data',Buffer.alloc(200000));child.stderr.emit('data',Buffer.alloc(62145));}
+ expect(child.kill).toHaveBeenCalledWith('SIGTERM');await vi.advanceTimersByTimeAsync(10);
+ expect((await result).message).toMatch(/output limit/);expect(child.kill).toHaveBeenCalledWith('SIGKILL');expect(child.unref).toHaveBeenCalledOnce();expect(vi.getTimerCount()).toBe(0);
+});
+it('host errors settle without exit and successful/nonzero receipts settle once without a later timeout kill',async()=>{
+ fakeStageTime();const unavailable=ownedStageChild(),failed=stageFor(unavailable).catch(e=>e);
+ unavailable.emit('error',new Error('spawn failure'));await vi.advanceTimersByTimeAsync(10);expect((await failed).message).toMatch(/host unavailable/);
+ for(const code of [0,1]){
+  const child=ownedStageChild(),result=stageFor(child);child.stderr.emit('data','diagnostic');child.stdout.emit('data','{"status":"current"}\n');child.emit('exit',code);
+  expect(await result).toEqual({code,result:{status:'current'}});child.emit('error',new Error('late'));child.stdout.emit('data',Buffer.alloc(262145));await vi.advanceTimersByTimeAsync(100);
+  expect(child.kill).not.toHaveBeenCalled();expect(child.unref).toHaveBeenCalledOnce();expect(child.stdout.destroy).toHaveBeenCalledOnce();expect(child.stderr.destroy).toHaveBeenCalledOnce();
+ }
+ expect(vi.getTimerCount()).toBe(0);
+});
+it('records bounded retirement uncertainty while retaining the incumbent policy, pending release and ownership fence',async()=>{
+ fakeStageTime();vi.setSystemTime(NOW);const dir=fixture(),state=JSON.parse(fs.readFileSync(path.join(dir,'weekly-model-discovery.json')));
+ state.pendingReleases=[{id:newRelease.canonical_slug}];write(dir,'weekly-model-discovery.json',state);const before=fs.readFileSync(path.join(dir,'routing-policy.json')),child=ownedStageChild();
+ const result=runWeeklyCycle({routerDir:dir,now:NOW,stage:options=>runCycleStage({...options,timeoutMs:100,spawnHost:()=>child})});
+ await vi.advanceTimersByTimeAsync(100);const receipt=await result;
+ expect(receipt).toMatchObject({status:'failed',policyApplied:false,changed:false,reviewExecuted:false,releaseStatus:'unknown-or-pending',stageCleanup:{ownedChildRetirement:'unverified',descendantRetirement:'unproven'}});
+ expect(JSON.parse(fs.readFileSync(path.join(dir,'weekly-cycle-last-attempt.json')))).toEqual(receipt);expect(fs.readFileSync(path.join(dir,'routing-policy.json'))).toEqual(before);
+ expect(JSON.parse(fs.readFileSync(path.join(dir,'weekly-model-discovery.json')))).toEqual(state);expect(fs.existsSync(path.join(dir,'weekly-cycle-owner.json'))).toBe(false);
+});
+it('bounds and releases an actual owned Node child without launching a provider or claiming descendant retirement',async()=>{
+ let child;const started=Date.now();
+ const error=await runCycleStage({script:'model-currency.mjs',args:[],timeoutMs:1000,env:{},spawnHost:(binary,_args,options)=>{
+  child=spawn(binary,['-e',"process.on('SIGTERM',()=>{});setInterval(()=>{},1000)"],options);return child;
+ }}).catch(e=>e);
+ expect(error.message).toMatch(/bounded deadline/);expect(Date.now()-started).toBeLessThan(3000);
+ expect(error.stageCleanup).toMatchObject({ownedChildPid:child.pid,descendantRetirement:'unproven'});
+ expect(child.stdout.destroyed).toBe(true);expect(child.stderr.destroyed).toBe(true);
+});
+it.each(['late-receipt-and-exit','late-exit'])('refuses %s when monotonic time passed the deadline before any timer ran',async(mode)=>{
+ fakeStageTime();const child=ownedStageChild(),result=stageFor(child,20).catch(e=>e);
+ if(mode==='late-exit')child.stdout.emit('data','{"status":"promoted","terminal":true}\n');
+ // Advancing only the clock models a blocked event loop dispatching exit before its overdue timer.
+ vi.spyOn(performance,'now').mockReturnValue(45);vi.setSystemTime(NOW-100000);
+ if(mode==='late-receipt-and-exit')child.stdout.emit('data','{"status":"promoted","terminal":true}\n');
+ child.emit('exit',0);const error=await result;
+ expect(error.message).toMatch(/bounded deadline/);expect(error.stageCleanup).toMatchObject({childExitObserved:true,descendantRetirement:'unproven'});
+ expect(child.stdout.destroy).toHaveBeenCalledOnce();expect(child.unref).toHaveBeenCalledOnce();expect(vi.getTimerCount()).toBe(0);
+});
+it('a late promotion-shaped qualification cannot mark the cycle promoted or retire the pending release',async()=>{
+ fakeStageTime();vi.setSystemTime(NOW);const dir=fixture(),state=JSON.parse(fs.readFileSync(path.join(dir,'weekly-model-discovery.json')));
+ state.pendingReleases=[{id:newRelease.canonical_slug}];state.pendingSemanticReleaseIds=[newRelease.canonical_slug];
+ state.pendingSemanticReceipt={runDir:'/private/bound-review',completedAt:new Date(NOW).toISOString()};write(dir,'weekly-model-discovery.json',state);
+ const before=fs.readFileSync(path.join(dir,'routing-policy.json')),child=ownedStageChild();
+ const result=runWeeklyCycle({routerDir:dir,now:NOW,stage:options=>runCycleStage({...options,timeoutMs:20,spawnHost:()=>child})});
+ vi.spyOn(performance,'now').mockReturnValue(45);child.stdout.emit('data','{"status":"promoted","terminal":true}\n');child.emit('exit',0);
+ const receipt=await result;expect(receipt).toMatchObject({status:'failed',changed:false,policyApplied:false,reviewExecuted:false});
+ expect(JSON.parse(fs.readFileSync(path.join(dir,'weekly-model-discovery.json')))).toEqual(state);expect(fs.readFileSync(path.join(dir,'routing-policy.json'))).toEqual(before);
+ expect(JSON.parse(fs.readFileSync(path.join(dir,'weekly-cycle-last-attempt.json')))).toEqual(receipt);
 });

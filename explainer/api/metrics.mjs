@@ -1,12 +1,8 @@
-// api/metrics.mjs — Real production metrics dashboard
-// Data sources: GitHub API, npm API, Vercel Analytics, telemetry counters, deployment health
-// All data is REAL, never fabricated. Empty when source is unavailable.
-
-import crypto from 'node:crypto';
+// Adoption and telemetry observations. Unmeasured performance is unavailable.
+// This endpoint does not calculate the product North Star rubric.
 
 const REPO = 'stuinfla/ruvnet-brain';
 const NPM_PKG = 'ruvnet-brain';
-const UPSTASH_KEY_PREFIX = 'rb:';
 
 function ghHeaders(token) {
   const h = { Accept: 'application/vnd.github+json', 'User-Agent': 'ruvnet-brain-metrics' };
@@ -16,7 +12,7 @@ function ghHeaders(token) {
 
 async function ghJson(path, token) {
   try {
-    const r = await fetch(`https://api.github.com${path}`, { headers: ghHeaders(token) });
+    const r = await fetch(`https://api.github.com${path}`, { headers: ghHeaders(token), signal: AbortSignal.timeout(8000) });
     return r.ok ? await r.json() : null;
   } catch { return null; }
 }
@@ -29,80 +25,15 @@ function kvEnv(env = process.env) {
 
 // HGETALL over Upstash REST returns { result: [field, value, field, value, ...] }
 function hashFromResult(entry) {
-  const arr = entry && Array.isArray(entry.result) ? entry.result : [];
+  const arr = entry?.result;
+  if (!Array.isArray(arr) || arr.length % 2) return null;
   const out = {};
-  for (let i = 0; i + 1 < arr.length; i += 2) out[arr[i]] = Number(arr[i + 1]) || 0;
+  for (let i = 0; i + 1 < arr.length; i += 2) {
+    const value = Number(arr[i + 1]);
+    if (typeof arr[i] !== 'string' || !Number.isFinite(value) || value < 0) return null;
+    Object.defineProperty(out, arr[i], { value, enumerable: true });
+  }
   return out;
-}
-
-// Calculate North Star score: composite KPI combining multiple health signals
-// Range: 0–100. Higher is better.
-function calculateNorthStarScore(metrics) {
-  let score = 0;
-  let maxScore = 0;
-
-  // Stars signal (GitHub community interest) — up to 25 points
-  if (metrics.repo?.stars !== undefined) {
-    maxScore += 25;
-    const starsNormalized = Math.min(metrics.repo.stars / 500, 1); // Cap at 500 stars = max
-    score += starsNormalized * 25;
-  }
-
-  // npm downloads (adoption signal) — up to 25 points
-  if (metrics.npm?.thisWeek !== undefined) {
-    maxScore += 25;
-    const downloadsNormalized = Math.min(metrics.npm.thisWeek / 1000, 1); // Cap at 1000/week = max
-    score += downloadsNormalized * 25;
-  }
-
-  // Uptime (deployment health) — up to 25 points
-  if (metrics.uptime !== undefined) {
-    maxScore += 25;
-    // Uptime already 0-100, so map to 0-25
-    score += (metrics.uptime / 100) * 25;
-  }
-
-  // Community engagement (issues + PRs from external contributors) — up to 25 points
-  if (metrics.community?.externalEngagers !== undefined) {
-    maxScore += 25;
-    const engagersNormalized = Math.min(metrics.community.externalEngagers / 20, 1);
-    score += engagersNormalized * 25;
-  }
-
-  return maxScore > 0 ? Math.round((score / maxScore) * 100) : 0;
-}
-
-// Simulate uptime based on deployment history (all Vercel deployments are tracked)
-// In production, this would come from a real monitoring service (Datadog, New Relic, etc.)
-// For now, we calculate based on deployment success rate
-function calculateUptime(deployments = []) {
-  if (!Array.isArray(deployments) || deployments.length === 0) return 99.9;
-
-  const last30Days = deployments.filter(d => {
-    const deployDate = new Date(d.created || d.createdAt || 0);
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    return deployDate > thirtyDaysAgo;
-  });
-
-  if (last30Days.length === 0) return 99.9;
-
-  const successful = last30Days.filter(d => d.state === 'READY').length;
-  return (successful / last30Days.length) * 100;
-}
-
-// Synthetic but realistic latency metrics based on known patterns
-// This would be pulled from real monitoring in production
-function getLatencyMetrics() {
-  // Vercel serverless latencies typically:
-  // - Cold: 200-500ms
-  // - Warm: 50-150ms
-  // Average p95: ~180ms, p99: ~300ms (realistic for a Next.js API)
-  return {
-    p50: 45,
-    p95: 180,
-    p99: 310,
-    unit: 'ms'
-  };
 }
 
 // Read telemetry counters from Upstash
@@ -117,128 +48,69 @@ async function readTelemetryData() {
     ];
 
     const r = await fetch(`${kv.url}/pipeline`, {
-      method: 'POST',
+      method: 'POST', signal: AbortSignal.timeout(8000),
       headers: { Authorization: `Bearer ${kv.token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(cmds),
     });
 
     if (!r.ok) return null;
     const rows = await r.json();
-    return {
-      totals: hashFromResult(rows[0]),
-      today: hashFromResult(rows[1]),
-    };
+    if (!Array.isArray(rows)) return null;
+    const totals = hashFromResult(rows[0]);
+    const today = hashFromResult(rows[1]);
+    return totals && today ? { totals, today } : null;
   } catch {
     return null;
   }
-}
-
-// Build 30-day trend data from historical metrics
-// In production, this would come from a time-series database
-async function build30DayTrends(telemetry) {
-  const trends = [];
-  const today = new Date();
-
-  for (let i = 29; i >= 0; i--) {
-    const date = new Date(today);
-    date.setDate(date.getDate() - i);
-    const dateStr = date.toISOString().slice(0, 10);
-
-    // For now, return placeholder data structure. Real implementation
-    // would query historical metrics from telemetry store
-    trends.push({
-      date: dateStr,
-      downloads: Math.floor(Math.random() * 500) + 100, // synthetic, shows typical variance
-      stars: Math.floor(Math.random() * 5) + 10, // synthetic
-      errors: Math.floor(Math.random() * 20),
-      avgLatency: Math.floor(Math.random() * 100) + 80,
-    });
-  }
-
-  return trends;
 }
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'content-type');
-  res.setHeader('Cache-Control', 'max-age=300, public'); // Cache for 5 minutes
+  res.setHeader('Cache-Control', 'max-age=300, public');
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'GET') return res.status(405).json({ ok: false, error: 'GET only' });
 
-  const gh = process.env.GITHUB_TOKEN || '';
+  const npmUrl = `https://api.npmjs.org/downloads/range/last-month/${NPM_PKG}`;
+  const [repo, npmData, telemetry] = await Promise.all([
+    ghJson(`/repos/${REPO}`, process.env.GITHUB_TOKEN || ''),
+    fetch(npmUrl, { signal: AbortSignal.timeout(8000) })
+      .then(r => r.ok ? r.json() : null).catch(() => null),
+    readTelemetryData(),
+  ]);
   const generatedAt = new Date().toISOString();
-
-  try {
-    // Fetch all data in parallel
-    const [repo, npmData, telemetry] = await Promise.all([
-      ghJson(`/repos/${REPO}`, gh),
-      fetch(`https://api.npmjs.org/downloads/range/last-month/${NPM_PKG}`)
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null),
-      readTelemetryData(),
-    ]);
-
-    // Calculate metrics
-    const npmDownloads = npmData && Array.isArray(npmData.downloads) ? npmData.downloads : [];
-    const thisWeek = npmDownloads.slice(-7).reduce((a, d) => a + d.downloads, 0);
-    const thisMonth = npmDownloads.reduce((a, d) => a + d.downloads, 0);
-
-    // Synthetic but realistic uptime (99.8% is typical for Vercel)
-    const uptime = 99.85;
-
-    // Error rate (1-5% is typical for serverless)
-    const errorRate = 2.1;
-
-    // Requests per second (estimated from npm downloads + API usage)
-    const requestsPerSecond = Math.max(10, Math.floor(thisWeek / (7 * 24 * 3600)));
-
-    // Build trending data
-    const trends = await build30DayTrends(telemetry);
-
-    // Prepare response object
-    const metrics = {
+  const daily = Array.isArray(npmData?.downloads)
+    ? npmData.downloads.filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d?.day)
+      && Number.isFinite(d.downloads) && d.downloads >= 0) : null;
+  const repoAvailable = Number.isFinite(repo?.stargazers_count)
+    && Number.isFinite(repo?.forks_count) && Number.isFinite(repo?.open_issues_count);
+  const npmAvailable = daily !== null && daily.length > 0;
+  const observation = (available, source, period = null) => ({
+    status: available ? 'observed' : 'unavailable', source,
+    checkedAt: generatedAt, cacheMaxAgeSeconds: 300, period,
+  });
+  return res.status(200).json({
+    ok: true, timestamp: generatedAt,
+    data: {
       generatedAt,
-      repo: repo ? {
-        stars: repo.stargazers_count || 0,
-        forks: repo.forks_count || 0,
-        openIssues: repo.open_issues_count || 0,
+      sources: {
+        github: observation(repoAvailable, `https://api.github.com/repos/${REPO}`),
+        npm: observation(npmAvailable, npmUrl, npmAvailable
+          ? { start: daily[0].day, end: daily.at(-1).day } : null),
+        telemetry: observation(telemetry !== null, 'Configured Upstash counters'),
+      },
+      repo: repoAvailable ? {
+        stars: repo.stargazers_count, forks: repo.forks_count, openIssues: repo.open_issues_count,
       } : null,
-      npm: {
-        thisWeek,
-        thisMonth,
-        daily: npmDownloads,
-      },
-      telemetry: telemetry ? {
-        totals: telemetry.totals,
-        today: telemetry.today,
+      npm: npmAvailable ? {
+        thisWeek: daily.slice(-7).reduce((a, d) => a + d.downloads, 0),
+        thisMonth: daily.reduce((a, d) => a + d.downloads, 0), daily,
       } : null,
-      performance: {
-        uptime: uptime,
-        errorRate: errorRate,
-        latency: getLatencyMetrics(),
-        requestsPerSecond: requestsPerSecond,
-      },
-      community: {
-        externalEngagers: (repo?.watchers_count || 0) + Math.floor((repo?.forks_count || 0) * 0.5),
-      },
-      trends: trends,
-    };
-
-    // Calculate North Star Score
-    const northStarScore = calculateNorthStarScore(metrics);
-    metrics.northStarScore = northStarScore;
-
-    return res.status(200).json({
-      ok: true,
-      data: metrics,
-      timestamp: generatedAt,
-    });
-  } catch (error) {
-    return res.status(500).json({
-      ok: false,
-      error: 'Failed to generate metrics',
-      timestamp: generatedAt,
-    });
-  }
+      telemetry,
+      performance: { status: 'unavailable', reason: 'No monitoring measurements connected',
+        uptime: null, errorRate: null, latency: null, requestsPerSecond: null },
+      trends: npmAvailable ? daily.map(d => ({ date: d.day, downloads: d.downloads })) : [],
+    },
+  });
 }
