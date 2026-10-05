@@ -32,13 +32,40 @@ test('actual native read-only sandbox denies checker write outside authorized sc
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'native-managed-check-')));
   const outside = path.join(process.cwd(), 'tests/unit', `checker-escape-${crypto.randomUUID()}.txt`);
   try {
+    const probe = path.join(root, 'denial-probe.mjs');
+    fs.writeFileSync(probe, `import fs from 'node:fs'; process.stdout.write('native-checker-started\\n');
+      try { fs.writeFileSync(${JSON.stringify(outside)},'escape'); process.exitCode = 1; }
+      catch (error) { if (!['EPERM', 'EACCES', 'EROFS'].includes(error.code)) throw error;
+        console.log(JSON.stringify({ marker: 'native-checker-denial-observed', code: error.code, syscall: error.syscall })); }`);
     const result = await runRegisteredChecker({ command: process.execPath,
-      args: ['-e', `try { require('node:fs').writeFileSync(${JSON.stringify(outside)},'escape'); process.exitCode = 1; }
-        catch (error) { if (!['EPERM', 'EACCES', 'EROFS'].includes(error.code)) throw error;
-          console.log(JSON.stringify({ marker: 'native-checker-denial-observed', code: error.code, syscall: error.syscall })); }`], cwd: root },
+      args: [probe], cwd: root },
       { deadline: Date.now() + 10_000, sandboxBinary: actualCodex() });
     assert.equal(result.passed, true, `Native denial probe did not finish successfully: ${JSON.stringify(result)}`);
+    assert.match(result.output, /native-checker-started/, JSON.stringify(result));
     assert.match(result.output, /"marker":"native-checker-denial-observed","code":"(?:EPERM|EACCES|EROFS)","syscall":"open"/, JSON.stringify(result));
     assert.equal(fs.existsSync(outside), false, JSON.stringify(result));
   } finally { if (fs.existsSync(outside)) fs.unlinkSync(outside); fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('diagnostic native checker preserves actual stdout, stderr, syntax errors and exit codes', async () => {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'native-managed-check-')));
+  try {
+    const invalid = path.join(root, 'invalid.mjs'), probe = path.join(root, 'execution-probe.mjs');
+    fs.writeFileSync(invalid, 'export const invalid = ;\n');
+    fs.writeFileSync(probe, "process.stdout.write('native-file-executed\\n'); process.stderr.write('native-file-stderr\\n'); process.exitCode = 23;\n");
+    const binary = actualCodex(), results = [];
+    for (const [name, args] of [
+      ['invalid-syntax', ['--check', invalid]],
+      ['file-execution', [probe]],
+      ['singleline-e', ['-e', "process.stdout.write('native-e-executed\\n'); process.stderr.write('native-e-stderr\\n'); process.exitCode = 29;"]],
+    ]) results.push({ name, ...await runRegisteredChecker({ command: process.execPath, args, cwd: root },
+      { deadline: Date.now() + 10_000, sandboxBinary: binary }) });
+    console.log('Exact native execution diagnostics:', JSON.stringify({ binary, node: process.execPath, results }));
+    assert.equal(results[0].passed, false, JSON.stringify(results));
+    assert.match(results[0].output, /SyntaxError/, JSON.stringify(results));
+    assert.equal(results[1].exitCode, 23, JSON.stringify(results));
+    assert.match(results[1].output, /native-file-executed[\s\S]*native-file-stderr/, JSON.stringify(results));
+    assert.equal(results[2].exitCode, 29, JSON.stringify(results));
+    assert.match(results[2].output, /native-e-executed[\s\S]*native-e-stderr/, JSON.stringify(results));
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

@@ -35,8 +35,8 @@ jobs:
           printf '%s\n' "$value" > "$RUNNER_TEMP/router-native-userns-original"
           sudo sysctl -w "$key=0"
           test "$(sysctl -n "$key")" = 0
-      - name: Run only the two native sandbox checks
-        run: node node_modules/vitest/vitest.mjs run tests/integration/model-managed-checker-native.test.mjs --maxWorkers=1
+      - name: Run only the bounded native sandbox diagnostics
+        run: node node_modules/vitest/vitest.mjs run tests/integration/model-managed-checker-native.test.mjs --maxWorkers=1 --silent=false
       - name: Restore the hosted runner namespace setting
         if: always() && runner.environment == 'github-hosted'
         run: |
