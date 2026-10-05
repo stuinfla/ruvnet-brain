@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { kbCopyProof } from '../../plugin/scripts/kb-copy-proof.mjs';
 
@@ -16,6 +17,9 @@ function fixture({ privateStore = false, extra = {} } = {}) {
   fs.writeFileSync(path.join(liveDir, 'SOURCE.json'), JSON.stringify({ stores: [{ kbName: 'agentdb', updateManaged: !privateStore }] }));
   fs.writeFileSync(path.join(liveDir, 'agentdb.big.rvf'), 'live public fixture');
   fs.writeFileSync(path.join(copyDir, 'SOURCE.json'), '{}');
+  // This positive fixture's differing public metadata has the existing exact release-file witness.
+  fs.writeFileSync(path.join(copyDir, 'ARCHIVE-MANIFEST.json'), JSON.stringify({ files: [{ path: 'SOURCE.json', bytes: 2,
+    sha256: crypto.createHash('sha256').update('{}').digest('hex') }] }));
   for (const [name, bytes] of Object.entries(extra)) fs.writeFileSync(path.join(copyDir, name), bytes);
   return { liveDir, copyDir };
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -22,9 +22,10 @@ import { resolveBash } from '../../plugin/scripts/hook-shim-bash.mjs';
  * hook proven any other way is proven on a channel that cannot observe the defect.
  */
 const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
-const CAPTURE = path.join(ROOT, 'plugin', 'scripts', 'learn-capture.sh');
+const CAPTURE = path.join(ROOT, 'plugin', 'scripts', 'learn-capture.mjs');
 
 const temps = [];
+const originalCwd = process.cwd();
 // realpathSync.native, not the raw mkdtemp result: GitHub Actions Windows runners hand out the 8.3
 // short form (C:\Users\RUNNER~1\...) from os.tmpdir(), while a subprocess's own $PWD resolves the
 // long form — the exact mismatch tests/unit/memory-doctor-discovery.test.mjs and
@@ -37,7 +38,18 @@ const mktemp = () => {
   temps.push(d);
   return fs.realpathSync.native(d);
 };
-const cleanup = () => temps.splice(0).forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
+const cleanup = async () => {
+  process.chdir(originalCwd);
+  // Capture schedules a real detached recovery owner. Windows cannot remove its cwd
+  // until the finite supervisor has confirmed retirement and released the queue lock.
+  const deadline = Date.now() + 19_000;
+  while (temps.some(d => fs.existsSync(path.join(d, '.swarm', 'ruvnet-brain-learn', '.worker-lock')))) {
+    if (Date.now() >= deadline) throw new Error('fixture recovery owner did not retire before cleanup');
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+  temps.splice(0).forEach(d => fs.rmSync(d, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
+};
+afterEach(cleanup);
 
 /** Fire the hook exactly as PostToolUse does: JSON on stdin, from some working directory. */
 function capture({ cwd, projectDir, claudeProjectDir }) {
@@ -50,7 +62,7 @@ function capture({ cwd, projectDir, claudeProjectDir }) {
   // Explicit, not just "absent from the ambient env": a real hook run always carries a definite
   // CLAUDE_PROJECT_DIR value or none, never "whatever this test runner's own process happened to have".
   if (claudeProjectDir) env.CLAUDE_PROJECT_DIR = claudeProjectDir; else delete env.CLAUDE_PROJECT_DIR;
-  try { execFileSync(resolveBash(), [CAPTURE], { cwd, env, input: payload, stdio: 'pipe', timeout: 20_000 }); }
+  try { execFileSync(process.execPath, [CAPTURE], { cwd, env, input: payload, stdio: 'pipe', timeout: 20_000 }); }
   catch { /* the hook fails open by design; the queue on disk is what this asserts */ }
 }
 
@@ -70,7 +82,7 @@ const queued = (root) => {
  * mistake as reading `.claude/settings.json` to decide whether a daemon is running — ask the thing
  * that actually decides.
  */
-const behavioural = resolveBash() ? describe : describe.skip;
+const behavioural = describe;
 
 behavioural('issue #134 — captured events land where the flush looks', () => {
   it('honours RUVNET_BRAIN_PROJECT_DIR even when the shell has drifted below the root', () => {
@@ -83,7 +95,6 @@ behavioural('issue #134 — captured events land where the flush looks', () => {
     expect(queued(project), 'the queue belongs to the project the reader will open').not.toEqual([]);
     expect(queued(drifted), 'and must NOT be stranded in whatever directory the shell happened to be in')
       .toEqual([]);
-    cleanup();
   });
 
   it('TEETH: without the variable it still uses cwd — so the fix is the variable, not a hardcoded root', () => {
@@ -93,7 +104,6 @@ behavioural('issue #134 — captured events land where the flush looks', () => {
     const loose = mktemp();
     capture({ cwd: loose, projectDir: null, claudeProjectDir: null });
     expect(queued(loose), 'unset variable → cwd, exactly as learn-flush.mjs resolves it').not.toEqual([]);
-    cleanup();
   });
 
   it('ISSUE #134 RESIDUAL — RUVNET_BRAIN_PROJECT_DIR is never actually set by real hook dispatch on ' +
@@ -115,7 +125,6 @@ behavioural('issue #134 — captured events land where the flush looks', () => {
       .not.toEqual([]);
     expect(queued(drifted), 'and the event must NOT be orphaned in the drifted directory')
       .toEqual([]);
-    cleanup();
   });
 
   it('CONTAINMENT — an unrelated CLAUDE_PROJECT_DIR that does not contain cwd must NOT overrule it ' +
@@ -130,22 +139,6 @@ behavioural('issue #134 — captured events land where the flush looks', () => {
       .not.toEqual([]);
     expect(queued(unrelated), 'an unrelated declared root must never receive the queue')
       .toEqual([]);
-    cleanup();
   });
 
-});
-
-describe('issue #134 — the invariant is pinned in source, on every platform', () => {
-  it('the writer and the reader resolve the project root by the same rule, in source', () => {
-    // The behavioural cases above cover today. This one fails if a future edit reintroduces the
-    // asymmetry in either file — which is how #104 came back as #134 in the first place.
-    const writer = fs.readFileSync(CAPTURE, 'utf8');
-    const reader = fs.readFileSync(path.join(ROOT, 'plugin', 'scripts', 'learn-flush.mjs'), 'utf8');
-    expect(writer, 'learn-capture.sh must consult the variable the flush honours')
-      .toMatch(/RUVNET_BRAIN_PROJECT_DIR/);
-    expect(reader).toMatch(/RUVNET_BRAIN_PROJECT_DIR/);
-    expect(reader).toMatch(/projectDirectory\(\{ env: process\.env \}\)/);
-    expect(writer, 'and must not fall back to a bare $PWD queue path')
-      .not.toMatch(/DIR="\$PWD\/\.swarm/);
-  });
 });
