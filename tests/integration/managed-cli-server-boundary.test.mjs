@@ -37,10 +37,13 @@ function fixture() {
   fs.writeFileSync(path.join(project, 'README.md'), 'managed boundary fixture\n');
   execFileSync('git', ['add', '.'], { cwd: project });
   execFileSync('git', ['commit', '-qm', 'fixture'], { cwd: project });
-  const home = path.join(root, 'home'); const brain = path.join(root, 'brain');
+  const home = path.join(root, 'home'); const brain = path.join(home, '.cache/ruvnet-brain');
   fs.mkdirSync(home, { recursive: true });
   // A directory alone is not adoption: exercise the existing canonical-store boundary.
   createStore(path.join(project, '.swarm', 'memory.db'));
+  const version = JSON.parse(fs.readFileSync(path.join(ROOT, 'plugin/.claude-plugin/plugin.json'), 'utf8')).version;
+  fs.cpSync(path.join(ROOT, 'plugin'), path.join(brain, 'versions', version), { recursive: true });
+  fs.writeFileSync(path.join(brain, 'active.json'), JSON.stringify({ version, generation: 1, codeRoot: `versions/${version}` }));
   return { root, project, home, brain };
 }
 
@@ -72,6 +75,33 @@ function rows(fx) {
 }
 
 describe('real MCP managed execution boundary', () => {
+  it('repairs the original copied-shell missing manifest and detects the frozen-handler mutant (#384)', async () => {
+    const fx = fixture();
+    try {
+      fs.mkdirSync(path.join(fx.home, '.codex'), { recursive: true });
+      fs.writeFileSync(path.join(fx.home, '.codex/config.toml'), '');
+      const installed = wireCodexHost({ codexDir: path.join(fx.home, '.codex'), serverDir: path.join(fx.home, '.claude/ruvnet-brain/mcp'), announce: false });
+      fs.rmSync(path.join(fx.home, '.claude/ruvnet-brain/.claude-plugin'), { recursive: true });
+      const registration = { command: process.execPath, args: [installed.serverPath], env: {} };
+      const mcp = server(fx, 'codex', registration);
+      const tool = (client, name) => client.request('tools/call', { name, arguments: { executable: 'ruflo', argv: ['status'] } });
+      expect((await tool(mcp, 'ruvnet_cli_help')).result.isError).not.toBe(true);
+      const run = await tool(mcp, 'ruvnet_cli_run'); expect(run.result.isError, run.result.content[0].text).not.toBe(true);
+      expect(rows(fx).length).toBeGreaterThanOrEqual(2);
+      await stopChildren();
+      // Restore the original frozen-handler authorization and call-site in the disposable shell. The
+      // native active tree stays healthy: this mutant must reproduce the old resource failure.
+      fs.writeFileSync(path.join(path.dirname(installed.serverPath), 'managed-cli-interface.mjs'), fs.readFileSync(path.join(ROOT, 'plugin/mcp/managed-cli-interface.mjs'), 'utf8')
+        .replace('const binding = lifecycle.generationBinding || LOCAL_BINDING;', "const binding = 'frozen-shell';"));
+      fs.writeFileSync(installed.serverPath, fs.readFileSync(installed.serverPath, 'utf8')
+        .replace("import { MANAGED_CLI_TOOLS }", "import { callManagedCli, MANAGED_CLI_TOOLS }")
+        .replace('await dispatchManagedCli(params.name,', 'await callManagedCli(params.name,'));
+      const mutant = server(fx, 'codex', registration);
+      expect((await tool(mutant, 'ruvnet_cli_help')).result.isError).not.toBe(true);
+      const refused = await tool(mutant, 'ruvnet_cli_run'); expect(refused.result.isError).toBe(true);
+      expect(refused.result.content[0].text).toMatch(/progression adapter version is unreadable/);
+    } finally { await stopChildren(); fs.rmSync(fx.root, { recursive: true, force: true }); }
+  });
   const codexAvailable = spawnSync(CODEX, ['--version'], { encoding: 'utf8' }).status === 0;
   if (!codexAvailable && process.env.RUVNET_REQUIRE_CODEX_DISCOVERY === '1') {
     throw new Error(`required Codex CLI is unavailable: ${CODEX}`);
@@ -118,7 +148,7 @@ describe('real MCP managed execution boundary', () => {
         expect(started.error).toBeUndefined();
         const threadId = started.result.thread.id;
         const help = await mcp.request('mcpServer/tool/call', { threadId, server: 'ruvnet-brain', tool: 'ruvnet_cli_help', arguments: { executable: 'ruflo', argv: ['status'] } });
-        expect(help.result.isError).not.toBe(true);
+        expect(help.result.isError, JSON.stringify(help.result)).not.toBe(true);
         const run = await mcp.request('mcpServer/tool/call', { threadId, server: 'ruvnet-brain', tool: 'ruvnet_cli_run', arguments: { executable: 'ruflo', argv: ['status'], host: 'claude' } });
         expect(run.result.isError, run.result.content?.[0]?.text).not.toBe(true);
         const entries = rows(fx).map((row) => JSON.parse(row.content));
@@ -142,6 +172,23 @@ describe('real MCP managed execution boundary', () => {
     expect(entries.length).toBeGreaterThanOrEqual(2);
     expect(entries.every((entry) => entry.hostIdentity.host === 'codex')).toBe(true);
     fs.rmSync(fx.root, { recursive: true, force: true });
+  });
+
+  it('keeps real Ruflo memory store/retrieve active through MCP while progression alone is operator-suspended', async () => {
+    const fx = fixture(); const mcp = server(fx, 'codex', { command: process.execPath, args: [SERVER],
+      env: { RUVNET_BRAIN_PROGRESSION_SUSPENDED: '1' } });
+    try {
+      const tool = (name, argv) => mcp.request('tools/call', { name, arguments: { executable: 'ruflo', argv } });
+      const db = path.join(fx.project, '.swarm/memory.db'); const key = 'ordinary-suspended-memory'; const value = 'Explicit ordinary AgentDB checkpoint remains active';
+      for (const command of ['store', 'retrieve']) expect((await tool('ruvnet_cli_help', ['memory', command])).result.isError).not.toBe(true);
+      const stored = await tool('ruvnet_cli_run', ['memory', 'store', '--key', key, '--value', value, '--namespace', 'fixture-memory', '--path', db]);
+      expect(stored.result.isError, stored.result.content?.[0]?.text).not.toBe(true);
+      expect(stored.result.structuredContent.continuity).toBe('operator-suspended');
+      const retrieved = await tool('ruvnet_cli_run', ['memory', 'retrieve', '--key', key, '--namespace', 'fixture-memory', '--value-only', '--path', db]);
+      expect(retrieved.result.isError, retrieved.result.content?.[0]?.text).not.toBe(true); expect(retrieved.result.structuredContent.stdout).toContain(value);
+      const exact = JSON.parse(execFileSync('sqlite3', ['-json', db, "select key,content from memory_entries where namespace='fixture-memory' and key='ordinary-suspended-memory';"], { encoding: 'utf8' }));
+      expect(exact).toEqual([{ key, content: value }]); expect(rows(fx)).toEqual([]);
+    } finally { await stopChildren(); fs.rmSync(fx.root, { recursive: true, force: true }); }
   });
 
   it('refuses missing trusted host identity even with a Codex-named session id', async () => {

@@ -110,10 +110,12 @@ export function claudeTurn(lines) {
 }
 
 function readTail(file, bytes = TRANSCRIPT_TAIL_BYTES) {
-  const size = fs.statSync(file).size;
-  const offset = Math.max(0, size - bytes);
   const handle = fs.openSync(file, 'r');
   try {
+    const stat = fs.fstatSync(handle);
+    if (!stat.isFile()) throw new Error('Transcript must be a regular file');
+    const size = stat.size;
+    const offset = Math.max(0, size - bytes);
     const buf = Buffer.alloc(size - offset);
     fs.readSync(handle, buf, 0, buf.length, offset);
     const lines = buf.toString('utf8').split(/\r?\n/);
@@ -128,7 +130,9 @@ export function readSettledTranscript(file, { stableMs = 400, maxMs = 2000, slee
   const deadline = Date.now() + Math.max(0, maxMs);
   let size = -1;
   for (;;) {
-    const now = fs.statSync(file).size;
+    const stat = fs.statSync(file);
+    if (!stat.isFile()) throw new Error('Transcript must be a regular file');
+    const now = stat.size;
     if (now === size || Date.now() >= deadline) break;
     size = now;
     pause(Math.min(stableMs, Math.max(0, deadline - Date.now())));

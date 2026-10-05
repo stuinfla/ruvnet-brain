@@ -5,9 +5,11 @@ import crypto from 'node:crypto';
 import os from 'node:os';
 import { developmentHooksSuspended } from './development-maintenance.mjs';
 import { resolveTurnDb } from './turn-outcome-capture.mjs';
+import { automaticProgressionSuspensionResult } from './project-progression-suspension.mjs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { redactText } from './continuity-events.mjs';
+import { conditionNotice } from './continuity-journal.mjs';
 import { normalizeHostEvent } from './hook-input.mjs';
 import { resolveProjectStore } from './project-store-resolver.mjs';
 import { withProgressionReader } from './project-progression-reader.mjs';
@@ -148,7 +150,9 @@ export function observeTransitionSource(resolution, projectDir = resolution.chec
 
 /** Called only by the fenced queue drainer; current heads merge, original observations stay fixed. */
 export function captureNormalizedTransition(job, { readHistory = readTransitionHistory, capture = runSessionSnapshotHook,
-  budgetMs = 6500, makeStoreFactory, now = Date.now } = {}) {
+  budgetMs = 6500, makeStoreFactory, now = Date.now, env = process.env } = {}) {
+  const suspended = automaticProgressionSuspensionResult(env);
+  if (suspended) return suspended;
   const deadlineAt = now() + budgetMs;
   const resolution = resolveProjectStore({ projectDir: job.originProjectDir, gitTimeoutMs: Math.max(1, Math.min(500, budgetMs)) });
   const normalized = job.payload.normalizedTransition;
@@ -173,7 +177,7 @@ export function captureNormalizedTransition(job, { readHistory = readTransitionH
   const progression = buildRestoredTransitionProgression({ resolution, observation: normalized.observation,
     snapshots, sessionIdentity: job.payload.session_id, host: job.host,
     sourceIdentity: normalized.sourceIdentity }, restored);
-  const result = capture(job.originProjectDir, job.event, { host: job.host, budgetMs: Math.max(0, deadlineAt - now()),
+  const result = capture(job.originProjectDir, job.event, { host: job.host, env, budgetMs: Math.max(0, deadlineAt - now()),
     ...(makeStoreFactory ? { makeStoreFactory } : {}), writeMetadata: false,
     rawInput: JSON.stringify({ session_id: job.payload.session_id, hook_event_name: job.event, projectProgression: progression }),
     captureTurn: () => ({ recorded: false, skipped: 'transition boundary' }),
@@ -184,6 +188,8 @@ export function captureNormalizedTransition(job, { readHistory = readTransitionH
 export function runProjectTransitionHook(projectDir, event, { payload = {}, host = process.env.RUVNET_HOOK_HOST || 'claude',
   readHistory = readTransitionHistory, capture = runSessionSnapshotHook, env = process.env } = {}) {
   if (developmentHooksSuspended(projectDir)) return { state: 'skipped', reason: 'development hooks suspended' };
+  const suspended = automaticProgressionSuspensionResult(env, { state: 'suspended', reason: 'automatic project progression is operator-suspended' });
+  if (suspended) return suspended;
   const observation = normalizeTransition(payload, event, { host });
   if (observation.skipped) return { state: 'skipped', reason: observation.skipped };
   const brainHome = env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain');
@@ -194,22 +200,33 @@ export function runProjectTransitionHook(projectDir, event, { payload = {}, host
   const transportEvent = event === 'PostToolUseFailure' ? 'PostToolUse' : event;
   // Fsync the selected observation BEFORE any history enumeration/merge. A deadline, corruption,
   // or long-lived project must leave it pending rather than erase it or fabricate root ancestry.
-  const queued = queueCapture({ projectDir: resolution.projectRoot, originProjectDir: projectDir, event: transportEvent, host,
+  const queued = queueCapture({ projectDir: resolution.projectRoot, originProjectDir: projectDir, env, event: transportEvent, host,
     payload: { session_id: payload.session_id, hook_event_name: transportEvent,
       normalizedTransition: { observation, sourceIdentity: observeTransitionSource(resolution, projectDir) } } });
   if (!queued) return { state: 'degraded', reason: 'normalized observation queue unwritable', eventId: observation.id };
   let result = null;
-  runOutboxReplay({ projectDir: resolution.projectRoot, budgetMs: Math.min(6500, effectiveBudgetMs(env)),
-    captureNormalized: (job, options) => captureNormalizedTransition(job, { ...options, readHistory, capture }),
+  runOutboxReplay({ projectDir: resolution.projectRoot, env, budgetMs: Math.min(6500, effectiveBudgetMs(env)),
+    captureNormalized: (job, options) => captureNormalizedTransition(job, { ...options, env, readHistory, capture }),
     onCaptured: (captured) => { if (captured?.eventId === observation.id) result = captured; } });
-  if (!result?.receipt) replayOutboxDetached({ projectDir: resolution.projectRoot });
+  if (!result?.receipt) replayOutboxDetached({ projectDir: resolution.projectRoot, env });
   return { state: result?.progressionCaptured && result.receipt ? 'committed' : 'pending', eventId: observation.id, result };
+}
+
+/** One pending-readback condition across prompt/tool boundaries and both CLI entrypoints. */
+export function transitionPendingNotice(projectDir, payload, message) {
+  const { projectRoot } = resolveProjectStore({ projectDir, gitTimeoutMs: 500 });
+  return conditionNotice({ swarm: path.join(projectRoot, '.swarm'),
+    session: normalizeHostEvent(payload)?.session_id, condition: 'project-transition-pending-readback', message });
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const payload = JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
-    const result = runProjectTransitionHook(payload.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd(), process.argv[2], { payload });
-    if (result.state === 'pending') process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: process.argv[2], additionalContext: 'Project memory transition is pending; exact AgentDB readback was not verified at this boundary.' } }));
+    const projectDir = payload.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
+    const result = runProjectTransitionHook(projectDir, process.argv[2], { payload });
+    if (result.state === 'pending') {
+      const message = transitionPendingNotice(projectDir, payload, 'Project memory transition is pending; exact AgentDB readback was not verified at this boundary.');
+      if (message) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: process.argv[2], additionalContext: message } }));
+    }
   } catch { process.stdout.write(JSON.stringify({ systemMessage: 'Project memory transition capture degraded; exact readback was not verified.' })); }
 }
