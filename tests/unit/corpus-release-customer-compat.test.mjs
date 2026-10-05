@@ -104,7 +104,7 @@ beforeEach(() => {
   kbDir = path.join(root, 'kb');
   fs.mkdirSync(kbDir, { recursive: true });
   for (const f of ['forge-update.mjs', 'zip-extract.mjs', 'brain-profile.mjs', 'refresh-run.mjs',
-    'update-storage-transaction.mjs', 'lifecycle-evidence-retention.mjs', 'corpus-release-identity.mjs']) {
+    'update-storage-transaction.mjs', 'lifecycle-evidence-retention.mjs', 'corpus-release-identity.mjs', 'download-retry.mjs']) {
     const from = path.join(ROOT, 'kb', f);
     if (fs.existsSync(from)) fs.copyFileSync(from, path.join(kbDir, f));
   }
@@ -188,7 +188,7 @@ if (!doc.stores?.[value('--name')]) { console.error('no entry for store "'+value
   fs.writeFileSync(path.join(dir, 'COVERAGE.json'), JSON.stringify(release));
   if (path.resolve(dir) !== path.resolve(kbDir)) {
     for (const file of ['forge-update.mjs', 'zip-extract.mjs', 'brain-profile.mjs', 'refresh-run.mjs',
-      'update-storage-transaction.mjs', 'lifecycle-evidence-retention.mjs', 'corpus-release-identity.mjs']) {
+      'update-storage-transaction.mjs', 'lifecycle-evidence-retention.mjs', 'corpus-release-identity.mjs', 'download-retry.mjs']) {
       const from = path.join(kbDir, file);
       if (fs.existsSync(from)) fs.copyFileSync(from, path.join(dir, file));
     }

@@ -44,6 +44,7 @@ import { resolveRuflo, rufloInvocation } from './ruflo-bin.mjs';
 import { redactText, userLevelAgentdbHooks } from './continuity-events.mjs';
 import { resolveProjectStore } from './project-store-resolver.mjs';
 import { digest, journalTurn, readJournal, pendingTurnFiles, acknowledgeJournal, appendReceipt, storeData } from './turn-transport-journal.mjs';
+import { contentPathExcludes, pathIsExcluded, privateTurn, maskExcludedPaths, captureFailureReason, firstTurnCaptureNotice } from './turn-capture-privacy.mjs';
 
 export const TURN_NAMESPACE = 'turns';
 export const MIN_OUTCOME_CHARS = 200;
@@ -83,6 +84,7 @@ export function claudeTurn(lines) {
   const texts = [];
   const files = new Set();
   const actions = [];
+  const resources = []; const resourceTexts = [];
   for (const o of recs.slice(start)) {
     if ((o?.message?.role || o?.role) !== 'assistant') continue;
     const c = o.message?.content;
@@ -92,6 +94,8 @@ export function claudeTurn(lines) {
     for (const u of c) {
       if (!u || u.type !== 'tool_use') continue;
       const inp = u.input || {};
+      const resource = inp.file_path || inp.notebook_path || inp.path; if (typeof resource === 'string' && resource) resources.push(resource);
+      if (u.name === 'Bash' && typeof inp.command === 'string') resourceTexts.push(inp.command);
       if (['Edit', 'Write', 'MultiEdit', 'NotebookEdit'].includes(u.name)) {
         const f = inp.file_path || inp.notebook_path;
         if (typeof f === 'string' && f) files.add(f);
@@ -106,7 +110,7 @@ export function claudeTurn(lines) {
   // other assistant text is kept too, newest last, so the record still says what happened.
   const last = texts.length ? texts[texts.length - 1] : '';
   const finalText = last.length >= MIN_OUTCOME_CHARS ? last : texts.join('\n').slice(-2500);
-  return { finalText, files: [...files], actions };
+  return { finalText, files: [...files], actions, resources, resourceTexts };
 }
 
 function readTail(file, bytes = TRANSCRIPT_TAIL_BYTES) {
@@ -168,12 +172,15 @@ export function resolveTurnDb({ projectDir, brainHome, requestedStorePath, gitTi
       policy = JSON.parse(fs.readFileSync(file, 'utf8'));
       if (policy?.schemaVersion !== 1 || !consentMap(policy.projects)
         || (Object.hasOwn(policy, 'paths') && !consentMap(policy.paths))) throw new Error('invalid policy');
+      contentPathExcludes(policy.contentPathExcludes);
     } catch { return { skipped: 'turn capture policy unreadable or invalid', projectRoot: resolved.projectRoot }; }
   }
   // A path rule wins over a project rule, allowing a linked checkout/subdirectory to opt out.
   const setting = policy.paths?.[capturePath] ?? policy.projects?.[resolved.projectRoot];
   if (setting !== undefined && !['on', 'off'].includes(setting)) return { skipped: 'invalid turn capture consent', projectRoot: resolved.projectRoot };
   const db = resolved.canonicalAgentDbPath;
+  const exclusions = contentPathExcludes(policy.contentPathExcludes);
+  if ([db, capturePath].some((binding) => pathIsExcluded(binding, exclusions, capturePath))) return { skipped: 'content exclusion conflicts with canonical source/store binding', projectRoot: resolved.projectRoot };
   if (unknownOriginalPath && Object.entries(policy.paths || {}).some(([origin, choice]) => choice === 'off'
     && (origin === resolved.checkoutRoot || origin.startsWith(`${resolved.checkoutRoot}${path.sep}`)))) {
     return { db, scope: 'project', capturePath, projectRoot: resolved.projectRoot, skipped: 'capture origin cannot be verified under path opt-out' };
@@ -183,7 +190,8 @@ export function resolveTurnDb({ projectDir, brainHome, requestedStorePath, gitTi
   let exists = false;
   try { exists = fs.statSync(db).isFile(); } catch { /* absent */ }
   if (!exists && setting !== 'on') return { db, scope: 'project', capturePath, projectRoot: resolved.projectRoot, skipped: 'no project memory db; persisted opt-in required' };
-  return { db, scope: 'project', capturePath, projectRoot: resolved.projectRoot, optedIn: setting === 'on' };
+  return { db, scope: 'project', capturePath, projectRoot: resolved.projectRoot, optedIn: setting === 'on',
+    contentPathExcludes: exclusions };
 }
 
 // Revalidation narrows the queue-to-launch window; it does not make SQLite's later open atomic.
@@ -292,9 +300,10 @@ export function captureTurnOutcome({
       try { turn = claudeTurn(readTranscript(payload.transcript_path, { maxMs: message ? 0 : settleMs })); } catch { /* unreadable */ }
     }
     if (message && (message.length >= MIN_OUTCOME_CHARS || message.length >= turn.finalText.length)) turn.finalText = message;
+    turn = privateTurn(turn, target.contentPathExcludes, target.capturePath);
     if (!sessionKey) report.skipped = 'no session identity in the host payload';
     else if (turn.finalText.length < MIN_OUTCOME_CHARS && !turn.files.length) {
-      report.skipped = host === 'codex' && !message ? 'codex payload carried no last_assistant_message' : 'trivial turn';
+      report.skipped = turn.excludedResource ? 'turn content withheld: explicitly excluded resource' : host === 'codex' && !message ? 'codex payload carried no last_assistant_message' : 'trivial turn';
     } else {
       const fingerprint = crypto.createHash('sha256').update(JSON.stringify([turn.finalText, turn.files])).digest('hex');
       const stateFile = path.join(brainHome, 'turn-capture', 'last-turn.json');
@@ -365,7 +374,7 @@ export function runSteps({ steps = [], receipts } = {}, { run: suppliedRun = spa
   };
   const results = [];
   for (const queued of steps) {
-    let status = 1; let error = null; let verified = false; let db = ''; let key;
+    let status = 1; let error = null; let verified = false; let db = ''; let key; let privacyPatterns = [];
     const kind = queued.kind === 'journal' ? 'store' : queued.kind;
     try {
       if (String(env.RUVNET_TURN_CAPTURE || '').toLowerCase() === 'off') throw new Error('RUVNET_TURN_CAPTURE=off');
@@ -373,6 +382,7 @@ export function runSteps({ steps = [], receipts } = {}, { run: suppliedRun = spa
       if (queued.kind !== 'journal' && (!queued.projectRoot || !queued.projectDir || !queued.brainHome)) throw new Error('queued step has no canonical project binding');
       const target = resolveTurnDb({ projectDir, brainHome, gitTimeoutMs: 1000 });
       if (target.skipped) throw new Error(target.skipped);
+      privacyPatterns = target.contentPathExcludes;
       db = target.db;
       let args; let value; let binding;
       if (kind === 'store') {
@@ -382,7 +392,8 @@ export function runSteps({ steps = [], receipts } = {}, { run: suppliedRun = spa
         if (data.legacyBrainHome && data.legacyBrainHome !== brainHome) throw new Error('queued consent settings differ from trusted caller');
         if (queued.kind !== 'journal' && queued.brainHome !== brainHome) throw new Error('queued consent settings differ from trusted caller');
         binding = queued.kind === 'journal' ? data.binding : queued;
-        key = data.key; value = redactText(data.value);
+        key = data.key; value = maskExcludedPaths(redactText(data.value), target.contentPathExcludes, target.capturePath);
+        if (value !== redactText(data.value)) throw new Error('content exclusions changed; immutable turn retained');
         args = ['memory', 'store', '-k', key, '--value', value, '-n', TURN_NAMESPACE, '--path', db, '--no-upsert', '--provenance', 'agent_output'];
       } else if (kind === 'distill') {
         if (queued.brainHome !== brainHome) throw new Error('queued consent settings differ from trusted caller');
@@ -420,9 +431,10 @@ export function runSteps({ steps = [], receipts } = {}, { run: suppliedRun = spa
       status = Number.isInteger(r.status) ? r.status : 1;
       if (kind === 'store' && !verified) verified = read({ ruflo, db, key, run, options }) === value;
       if (verified) status = 0;
-      if (!verified && (r.error || status !== 0)) error = redactText(r.error?.message || String(r.stderr || '').trim().split(/\r?\n/)[0] || `ruflo exited ${status}`).slice(0, 300);
+      if (!verified && (r.error || status !== 0)) error = captureFailureReason(r, status);
       else if (kind === 'store' && !verified) { status = 1; error = 'exact turn key/content readback failed'; }
     } catch (e) { status = 1; error = redactText(e.message).slice(0, 300); }
+    if (error) error = maskExcludedPaths(error, privacyPatterns, projectDir);
     const row = { at: new Date().toISOString(), kind, db: redactText(db), storeIdentity: digest(db), key, status, error,
       ...(kind === 'store' ? { verified } : {}) };
     results.push(row);
@@ -454,11 +466,14 @@ export function replayTurnQueue({ projectDir = process.cwd(), env = process.env,
 }
 
 /** Bounded recent evidence, isolated by canonical db. A continuity success cannot mask turn failures. */
-export function turnRecordingStatus({ projectDir = process.cwd(), env = process.env, home = os.homedir(), now = Date.now() } = {}) {
+export function turnRecordingStatus({ projectDir = process.cwd(), env = process.env, home = os.homedir(), now = Date.now(), noticeOnFirstUse = false } = {}) {
   const brainHome = env.RUVNET_BRAIN_HOME || path.join(home, '.cache', 'ruvnet-brain');
   let target;
   try { target = resolveTurnDb({ projectDir, brainHome }); } catch { return { state: 'unknown', line: 'turn recording unavailable: canonical store resolution failed' }; }
   if (String(env.RUVNET_TURN_CAPTURE || '').toLowerCase() === 'off' || target.skipped) return { state: 'unknown', line: `turn recording n/a — ${target.skipped || 'RUVNET_TURN_CAPTURE=off'}` };
+  const deferred = String(env.RUVNET_HOOK_HOST || 'claude') === 'claude' && String(env.RUVNET_TURN_CAPTURE || '').toLowerCase() !== 'force' && userLevelAgentdbHooks({ home }).turnCapture;
+  const notice = noticeOnFirstUse && !deferred ? firstTurnCaptureNotice({ target, brainHome, policyFile: turnCapturePolicyFile(brainHome), env }) : null;
+  const status = (value) => ({ ...value, ...(notice ? { notice } : {}) });
   let rows = [];
   try {
     rows = readTail(path.join(brainHome, 'turn-capture', 'receipts.jsonl'), 128 * 1024).flatMap((line) => {
@@ -467,14 +482,14 @@ export function turnRecordingStatus({ projectDir = process.cwd(), env = process.
   } catch { /* first run */ }
   rows = [...new Map(rows.map((row) => [row.key || row.at, row])).values()];
   let pending = 0;
-  try { pending = pendingTurnFiles(target.db, 25).length; } catch { return { state: 'warn', line: 'turn recording durable queue unsafe or unreadable' }; }
+  try { pending = pendingTurnFiles(target.db, 25).length; } catch { return status({ state: 'warn', line: 'turn recording durable queue unsafe or unreadable' }); }
   const historical = rows.filter((r) => r.status === 0 && r.verified === undefined);
   const failed = rows.filter((r) => r.status !== 0 || r.verified === false);
-  if (failed.length) return { state: 'warn', line: `turn recording failing ${failed.length}/${rows.length} — ${redactText(failed.at(-1).error || 'write has no exact readback evidence').slice(0, 300)}` };
-  if (historical.length) return { state: 'unknown', line: `turn recording unverified historical (${historical.length} receipts without exact readback evidence)` };
-  if (pending) return { state: 'unknown', line: `turn recording pending durable replay (${pending} entries); not yet proven` };
-  return rows.length ? { state: 'ok', line: `turn recording ✓ (${rows.length}/${rows.length} exact readbacks)` }
-    : { state: 'unknown', line: 'turn recording not yet proven — no exact readback receipt' };
+  if (failed.length) return status({ state: 'warn', line: `turn recording failing ${failed.length}/${rows.length} — ${redactText(failed.at(-1).error || 'write has no exact readback evidence').slice(0, 300)}` });
+  if (historical.length) return status({ state: 'unknown', line: `turn recording unverified historical (${historical.length} receipts without exact readback evidence)` });
+  if (pending) return status({ state: 'unknown', line: `turn recording pending durable replay (${pending} entries); not yet proven` });
+  return status(rows.length ? { state: 'ok', line: `turn recording ✓ (${rows.length}/${rows.length} exact readbacks)` }
+    : { state: 'unknown', line: 'turn recording not yet proven — no exact readback receipt' });
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url) && process.argv[2] === '--run-steps') {

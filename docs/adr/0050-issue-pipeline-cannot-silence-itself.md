@@ -4,11 +4,13 @@ title: The issue pipeline may never manufacture its own acknowledgment — aware
 status: Accepted
 date: 2026-07-24
 updated: 2026-09-11
+
 # PINNED: this records the incident cutoff, not the last edit. Asserted by
 # tests/unit/fix-workstream-guidance.test.mjs. Do not let a currency stamp move it.
 updated_pinned: true
 impl: wired
-reviewed_digest: 51940a548841
+reviewed_digest: 217aeebc7672
+version: 1.0.4
 authors: [Stuart Kerr, Claude Code]
 tags: [issues, automation, alerting, sla, security, circuit-breaker]
 supersedes: []
@@ -22,6 +24,36 @@ governs:
 ---
 
 # ADR-050 — The issue pipeline may never manufacture its own acknowledgment
+
+## Current source review — 2026-10-05
+
+Reviewed candidate source `1ccc1e633772c549e4a23596a1ce3c743e797315`; no GitHub comments,
+pages, unattended fixer, or account configuration were executed for this review. The incident
+cutoff and its 40/100 apparatus verdict below remain historical, not a current product grade.
+
+`scripts/issue-watch.mjs::judgeIssue` still excludes owner-authored bot-marked comments from
+human acknowledgment. `scripts/issue-fix.mjs` preserves prior fields through
+`attemptStartRecord`, defaults its consecutive-failure breaker to one, and its unattended
+execution policy prohibits public comments. These are source boundaries, not evidence that a
+current scheduled watcher delivered a page. The marker convention is still weaker than a
+separate GitHub App identity; that durable identity follow-up remains open.
+
+The previous source review reproduced a delivery-state defect: acknowledgment success could
+suppress retry of a failed first-sighting page. The later source repair, integrated as
+`2c2469c4`, now retries missing `newAlertAt` and `ackAt` independently, preserves prior state,
+and uses neutral acknowledgment wording that does not claim a page was delivered. The focused
+two-run regressions cover both failure directions, missing-topic recovery, delivered-channel
+deduplication, and dry-run behavior with mocked external calls. This repairs the source contract;
+it does not prove the owner's real notification service delivered a current scheduled page.
+
+The hook's issue pointer is independently constrained by
+`plugin/scripts/session-start-issue-alert.mjs`: a bounded cached observation, private owner-only
+repo entitlement, matching current repository, and freshness/future-time checks. It emits a
+count and pointer, not the full issue report, and has no network lookup in that stage. Windows
+entitlement currently fails closed. The source review does not prove installed provider delivery
+or privacy changes not yet integrated at this SHA. The `updated_pinned` date continues to identify
+the incident cutoff; this section records the new review date without rewriting that cutoff.
+
 
 **Status**: Accepted (implemented)
 
@@ -188,6 +220,7 @@ The four parallel agents working tonight support this distinction. They show tha
   regressions (8 of 12 assertions fail on the pre-fix code, proven by stash-mutation).
 
 ## Currency log
+| 2026-10-05 | Reviewed current source and recorded remaining limitations; no verification or implementation-status promotion. | reviewed_digest 217aeebc7672; inspected `scripts/issue-watch.mjs` and all expanded governs against source 5d9ea4df. Independent review preserved incident dates, Proposed/expired states and historical evidence; notification and oldest-runtime limits are explicit. |
 | 2026-09-27 | Currency review: decision unchanged. Motion: session-start-core's corpus-currency verdict consolidation and a silent-exit-0 guard closure; a release-proof SKILL.md diagnostics alignment. The issue-pipeline's own self-silencing guard is untouched. | Reviewed `scripts/issue-watch.mjs`, `scripts/issue-fix.mjs`, `plugin/scripts/session-start-core.mjs`, `plugin/skills/ruvnet-brain/SKILL.md`, `plugin/skills/release-proof/SKILL.md` against the commits listed above; reviewed_digest 51940a548841. |
 | 2026-09-11 | Currency review at commit 7296c984: decision unchanged — I1–I3 live in `scripts/issue-watch.mjs` / `issue-fix.mjs`, which did not move. `plugin/scripts/session-start-core.mjs` received ADR-076 scaffolding today (`da7f28c0`, `a90c674b`, `11c79110`) and was then restored byte-for-byte to 85f584b2 (`1de708e3`; `git diff 85f584b2 HEAD` is empty), so the file is exactly what the previous row reviewed at 2eef2024 — `e917fa25`'s version-comparison helper is an ancestor of 85f584b2 and is present. `plugin/skills/ruvnet-brain/SKILL.md` `60f269ad` is pre-session worktree work merged at 85f584b2 (recommend-first contract) and does not touch the issue-thread voice rules; `plugin/skills/release-proof/SKILL.md` did not move. | Reviewed `scripts/issue-watch.mjs`, `scripts/issue-fix.mjs`, `plugin/scripts/session-start-core.mjs`. reviewed_digest 580842da1f9a. |
 | 2026-09-11 | Currency review at commit 2eef2024: decision unchanged. `plugin/scripts/session-start-core.mjs` (`e917fa25`) added a version-comparison helper for the boot-declaration restart notice; `plugin/skills/ruvnet-brain/SKILL.md` (`7cfd9e17`) added dual-host deliberation memory-persistence guidance; `plugin/skills/release-proof/SKILL.md` (`c0234b69`, `7cf26dea`, `9b3e1d3f`, `af544ec6`) refined release-qualification handoff wording. None touch issue awareness, acknowledgment, escalation, or fixer stop-condition logic; `scripts/issue-watch.mjs` and `scripts/issue-fix.mjs` were not touched at all in this range. | Reviewed all six drift commits against the five governed paths (`git show --name-only` per commit; content diffs on the two touching `session-start-core.mjs` and `ruvnet-brain/SKILL.md`). reviewed_digest cc7d85186f27. |

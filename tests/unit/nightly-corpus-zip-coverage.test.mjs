@@ -35,7 +35,7 @@ const { placeTrustedCoverageValidator } = await import('../../bin/install.mjs');
 const VERSION = getVersion(); // the runtime the nightly builds at (build-bundle stamps package.json's version)
 const BUILDER_SHA = 'c'.repeat(40);
 const UPDATER_MODULES = ['forge-update.mjs', 'zip-extract.mjs', 'brain-profile.mjs', 'refresh-run.mjs',
-  'update-storage-transaction.mjs', 'lifecycle-evidence-retention.mjs', 'corpus-release-identity.mjs'];
+  'update-storage-transaction.mjs', 'lifecycle-evidence-retention.mjs', 'corpus-release-identity.mjs', 'download-retry.mjs'];
 
 const dirs = [];
 afterEach(() => { while (dirs.length) fs.rmSync(dirs.pop(), { recursive: true, force: true }); });

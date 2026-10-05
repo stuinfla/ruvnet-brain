@@ -29,7 +29,6 @@ import { fileURLToPath } from 'node:url';
 import { storeRoot, storesAt } from './store-root.mjs';
 
 const KB_DIR = path.dirname(fileURLToPath(import.meta.url));
-const SOURCE_PATH = path.join(KB_DIR, 'SOURCE.json');
 const HOME = os.homedir();
 
 const argv = process.argv.slice(2);
@@ -57,9 +56,10 @@ const git = (dir, args, opts) => run('git', ['-C', dir, ...args], opts);
 export function brainKnownSet(root = storeRoot()) {
   const known = new Set();
   for (const s of storesAt(root)) known.add(s.toLowerCase());
-  if (fs.existsSync(SOURCE_PATH)) {
+  const sourcePath = path.join(root, 'SOURCE.json');
+  if (fs.existsSync(sourcePath)) {
     try {
-      const src = JSON.parse(fs.readFileSync(SOURCE_PATH, 'utf8'));
+      const src = JSON.parse(fs.readFileSync(sourcePath, 'utf8'));
       const stores = Array.isArray(src.stores) ? src.stores
         : (src.stores && typeof src.stores === 'object') ? Object.values(src.stores) : [];
       for (const s of stores) {

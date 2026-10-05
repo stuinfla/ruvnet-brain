@@ -67,7 +67,8 @@ export function buildLessonPresentation({
   for (const lesson of order) {
     if (isBlocking(lesson)) continue;   // already admitted above, unconditionally
     const cost = renderLesson(lesson, '·').length;
-    if (inForce.length && spent + cost > nudgeBudget) continue;
+    // A display budget may trim an advisory, never a refusal already authorized by the adapter.
+    if (!isBlocking(lesson) && inForce.length && spent + cost > nudgeBudget) continue;
     inForce.push(lesson);
     spent += cost;
   }

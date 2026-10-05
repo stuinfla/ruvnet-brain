@@ -19,7 +19,8 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { resolveRuflo, RUFLO_MISSING } from '../plugin/scripts/ruflo-bin.mjs';
+import { randomUUID } from 'node:crypto';
+import { resolveRuflo, rufloInvocation, RUFLO_MISSING } from '../plugin/scripts/ruflo-bin.mjs';
 
 const arg = (name, def = '') => {
   const i = process.argv.indexOf(`--${name}`);
@@ -60,21 +61,26 @@ const value = [
   worked ? `WORKED: ${worked}` : null,
   critique ? `CRITIQUE: ${critique}` : null,
   `OUTCOME: ${outcome}`,
+  `RECORDING: ${randomUUID()}`, // binds the read-back to THIS canonical lesson write
 ].filter(Boolean).join(' ');
 
 // Every `ruflo` invocation auto-starts a project background daemon unless this is set (verified
 // live: ~/.npm-global/lib/node_modules/ruflo/node_modules/@claude-flow/cli/dist/src/services/
 // daemon-autostart.js:85) — recording a lesson has no business leaving one running.
-const ruflo = (args) =>
-  execFileSync(RUFLO, args, { cwd: dir, encoding: 'utf8', timeout: 60000,
-    shell: process.platform === 'win32', env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' } });
+const ruflo = (args) => {
+  const invocation = rufloInvocation(RUFLO, args);
+  return execFileSync(invocation.executable, invocation.args, {
+    cwd: dir, encoding: 'utf8', timeout: 60000, shell: false,
+    env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' },
+  });
+};
 
 console.log(`\nRecording lesson into ${path.basename(dir)}/.swarm/memory.db  (namespace: ${ns})`);
 console.log(`  key: ${key}`);
 
 // 1a. STORE (native, signal namespace) — L1 content + L2 embedding
 try {
-  ruflo(['memory', 'store', '-k', key, '-n', ns, '--value', value]);
+  ruflo(['memory', 'store', '-k', key, '-n', ns, '--value', value, '--path', db]);
 } catch (e) {
   console.error('  store FAILED:', String(e.stdout || e.message).split('\n')[0]);
   process.exit(1);
@@ -91,7 +97,7 @@ try {
 let stored = false;
 try {
   const back = ruflo(['memory', 'retrieve', '-k', key, '-n', ns, '--value-only', '--path', db]);
-  stored = String(back).includes(value);
+  stored = String(back) === value;
 } catch (e) {
   console.error('  round-trip FAILED:', String(e.stdout || e.message).split('\n')[0]);
 }
@@ -133,6 +139,6 @@ console.log(
 // DERIVED, not asserted (F15): the closing line reports exactly what was verified, never more. The
 // old line claimed "captured, refined, and recall-verified" even when distill failed and recall
 // didn't return the key — asserted prose over an honest exit code.
-const parts = ['captured', distillOk ? 'refined' : 'NOT refined (distill failed)', recalled ? 'recall-verified' : 'recall NOT verified'];
+const parts = [stored ? 'captured' : 'capture NOT verified', distillOk ? 'refined' : 'NOT refined (distill failed)', recalled ? 'recall-verified' : 'recall NOT verified'];
 console.log(`\nDone. Lesson is ${parts.join(', ')}.\n`);
 process.exit(stored ? 0 : 1);

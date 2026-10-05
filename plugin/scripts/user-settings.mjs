@@ -34,6 +34,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { normalizeGroundingScope } from './ruvnet-gate1-pattern.mjs';
 
 const HOME = os.homedir();
 
@@ -102,6 +103,23 @@ export const SETTINGS_SCHEMA = Object.freeze([
     // ─────────────────────────────────────────────────────────────────────────────────────────────
     whyItMatters: 'On, the brain retrieves from rUv\'s real source before answering, and its hooks watch the write path. Off, it stops retrieving, stops volunteering, and stops learning from your work — the machine is quiet and answers about the RuvNet stack come from the model\'s own memory instead of from source. The switch is a file, so it survives updates and both states are readable by every part of the product at once.',
     downside: 'Off, answers about rUv\'s ecosystem are no longer grounded in his source and nothing warns you when they drift, the write-path grounding gate stops enforcing, and nothing is learned from this or any later session until you switch it back on. Updates and health alarms keep running while it is off, which the console states plainly rather than hiding.',
+  }),
+
+  Object.freeze({
+    key: 'updateSource', label: 'Code source used by explicitly requested updates',
+    type: 'enum', options: Object.freeze(['latest', 'installed']), default: 'latest',
+    escalates: Object.freeze([]),
+    help: 'Latest uses the published updater; installed explicitly uses the verified installed updater.',
+    whyItMatters: 'This user-owned preference selects updater code, not corpus freshness or search scope. Consumers must read the canonical user settings path, never project overrides.',
+    downside: 'Installed mode may retain older updater code; if that updater is unavailable or invalid it must report failure rather than silently download or switch sources.',
+  }),
+
+  Object.freeze({
+    key: 'groundingScope', label: 'Products that trigger conversational grounding',
+    type: 'product-list', default: 'all', escalates: Object.freeze([]),
+    help: 'All products, or a nonempty list such as ["ruvector", "metaharness"]. RuVector includes RVF and ruvector-postgres.',
+    whyItMatters: 'Only narrows prompt grounding directives and corresponding Stop checks. Search still accesses the installed corpus. Independent write and managed-memory safety guards remain active.',
+    downside: 'Excluded product claims are not forced through Brain grounding; verify your fork against its own sources. Unknown, malformed or empty lists use all products.',
   }),
 
   Object.freeze({
@@ -289,7 +307,11 @@ export function validate(input) {
       warnings.push({ key, reason: 'not a known setting — ignored' });
       continue;
     }
-    if (entry.type === 'bool') {
+    if (entry.type === 'product-list') {
+      const scope = normalizeGroundingScope(raw);
+      if (!scope.ok) { errors.push({ key, reason: 'expected all or a nonempty list of known product terms — using all' }); continue; }
+      values[key] = scope.value;
+    } else if (entry.type === 'bool') {
       if (typeof raw !== 'boolean') { errors.push({ key, reason: `expected true or false, got ${JSON.stringify(raw)} — using the default (${entry.default})` }); continue; }
       values[key] = raw;
     } else if (entry.type === 'enum') {

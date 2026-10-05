@@ -24,20 +24,28 @@ function run(platform, mutant) {
   }
   const runner = path.join(root, 'runner.mjs');
   fs.copyFileSync(new URL('../../bin/nightly-refresh.mjs', import.meta.url), runner);
-  const pkg = path.join(root, 'node_modules/npm'); fs.mkdirSync(path.join(pkg, 'bin'), { recursive: true });
-  fs.writeFileSync(path.join(root, 'npx.cmd'), '@echo unused');
+  const bin = path.join(root, '.npm-global', 'bin');
+  fs.mkdirSync(bin, { recursive: true });
+  const pkg = path.join(bin, 'node_modules/npm'); fs.mkdirSync(path.join(pkg, 'bin'), { recursive: true });
+  fs.writeFileSync(path.join(bin, 'npx.cmd'), '@echo unused');
   const entry = path.join(pkg, 'bin/npx-cli.js');
   fs.writeFileSync(entry, 'console.log(JSON.stringify(process.argv.slice(2))); process.exitCode=7;');
   fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: mutant === 'foreign' ? 'foreign' : 'npm', bin: { npx: mutant === 'escape' ? '../../outside.js' : 'bin/npx-cli.js' } }));
   if (mutant === 'missing-entry') fs.unlinkSync(entry);
-  if (mutant === 'missing-shim') fs.unlinkSync(path.join(root, 'npx.cmd'));
+  if (mutant === 'missing-shim') fs.unlinkSync(path.join(bin, 'npx.cmd'));
   if (mutant === 'symlink-escape') {
     const outside = path.join(root, 'outside.js'); fs.renameSync(entry, outside); fs.symlinkSync(outside, entry);
   }
   const spec = path.join(root, 'candidate & %PATH% !literal!.tgz'); fs.writeFileSync(spec, 'sealed fixture');
   const hash = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+  const files = ['automatic-update.mjs', 'user-settings.mjs', 'ruvnet-gate1-pattern.mjs'];
+  const updateModules = Object.fromEntries(files.map(name => {
+    const dest = path.join(root, name);
+    fs.copyFileSync(new URL(`../../plugin/scripts/${name}`, import.meta.url), dest);
+    return [name, { path: dest, sha256: hash(dest) }];
+  }));
   const registration = path.join(root, 'registration.json');
-  fs.writeFileSync(registration, JSON.stringify({ schemaVersion: 2, kind: 'ruvnet-brain-nightly-scheduler', identity: 'com.ruvnet.brain-update', environment: { RUVNET_BRAIN_HOME: root, RUVNET_BRAIN_KB: path.join(root, 'custom-kb') }, runnerPath: runner, runnerSha256: hash(runner), nodePath: node, argv: [], packageTarget: { spec, sha256: hash(spec) }, bundleTarget: null }));
+  fs.writeFileSync(registration, JSON.stringify({ updateModules, schemaVersion: 2, kind: 'ruvnet-brain-nightly-scheduler', identity: 'com.ruvnet.brain-update', environment: { RUVNET_BRAIN_HOME: root, RUVNET_BRAIN_KB: path.join(root, 'custom-kb') }, runnerPath: runner, runnerSha256: hash(runner), nodePath: node, argv: [], packageTarget: { spec, sha256: hash(spec) }, bundleTarget: null }));
   const preload = path.join(root, 'preload.mjs');
   fs.writeFileSync(preload, `import cp from 'node:child_process'; import {syncBuiltinESMExports} from 'node:module';
     Object.defineProperty(process,'platform',{value:${JSON.stringify(platform)}});
@@ -48,7 +56,7 @@ function run(platform, mutant) {
       ${platform === 'win32' ? `if(command!==process.execPath) throw Error('Windows cannot directly execute cmd shim'); if(args[0]!==${JSON.stringify(entry)}) throw Error('launcher escaped fixture npm');` : `if(!command.endsWith('npx')) throw Error('POSIX invocation changed'); command=process.execPath; args=[${JSON.stringify(entry)},...args];`}
       return original(command,args,opts);
     }; syncBuiltinESMExports();`);
-  return { spec, result: spawnSync(node, ['--import', pathToFileURL(preload).href, runner, '--registration', registration], { encoding: 'utf8', env: { PATH: root } }) };
+  return { spec, result: spawnSync(node, ['--import', pathToFileURL(preload).href, runner, '--registration', registration], { encoding: 'utf8', env: { PATH: root, HOME: root, USERPROFILE: root } }) };
 }
 it.each(['win32', 'darwin', 'linux'])('launches the registered target without shell argument rewriting on %s', platform => {
   const { spec, result } = run(platform);
@@ -59,5 +67,5 @@ it.each(['foreign', 'escape', 'missing-entry', 'missing-shim', 'symlink-escape']
   const { result } = run('win32', mutant);
   expect(result.status).toBe(1);
   expect(result.stdout).toBe('');
-  expect(result.stderr).toMatch(/managed npm/);
+  expect(result.stderr).toMatch(/managed npm|npm npx/);
 });
