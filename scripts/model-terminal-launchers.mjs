@@ -28,15 +28,44 @@ function regular(file, { privateFile = false } = {}) {
 function executable(file) {
   const result = regular(fs.realpathSync(file)); fs.accessSync(result, fs.constants.X_OK); return result;
 }
-function atomic(file, content, mode = 0o600) {
+function nativeExecutable(file) {
+  const result = executable(file), fd = fs.openSync(result, 'r');
+  const header = Buffer.alloc(512);
+  try {
+    if (header.subarray(0, fs.readSync(fd, header, 0, header.length, 0)).toString().includes(MARKER)) throw new Error('Native terminal launcher recursion refused');
+  } finally { fs.closeSync(fd); }
+  return result;
+}
+function atomic(file, content, mode = 0o600, replaceLink = false) {
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-  if (fs.existsSync(file)) regular(file);
+  if (fs.existsSync(file) && !replaceLink) regular(file);
   const temp = `${file}.${crypto.randomUUID()}.tmp`;
   try {
     const fd = fs.openSync(temp, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, mode);
     try { fs.writeFileSync(fd, content); fs.fchmodSync(fd, mode); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
     fs.renameSync(temp, file);
   } finally { fs.rmSync(temp, { force: true }); }
+}
+function canonicalEntry(file, binary, replace) {
+  let stat;
+  try { stat = fs.lstatSync(file); } catch (error) { if (error.code === 'ENOENT') return { file, symlink: false }; throw error; }
+  if (stat.uid !== process.getuid?.()) throw new Error(`Preserving foreign canonical terminal entry: ${file}`);
+  if (stat.isSymbolicLink()) {
+    if (fs.realpathSync(file) !== binary) throw new Error(`Preserving unrelated canonical terminal link: ${file}`);
+    return { file, symlink: true, link: fs.readlinkSync(file) };
+  }
+  regular(file);
+  if (fs.realpathSync(file) === binary) throw new Error('Separate native binary required before replacing canonical terminal entry');
+  if (!fs.readFileSync(file, 'utf8').includes(MARKER) && !replace) throw new Error(`Preserving unmanaged canonical terminal entry: ${file}`);
+  return { file, symlink: false };
+}
+function backupCanonical(entry) {
+  if (!entry.symlink) return backup(entry.file);
+  const target = `${entry.file}.${digest(entry.link)}.original`;
+  try { fs.symlinkSync(entry.link, target); } catch (error) {
+    if (error.code !== 'EEXIST' || !fs.lstatSync(target).isSymbolicLink() || fs.lstatSync(target).uid !== process.getuid?.() || fs.readlinkSync(target) !== entry.link) throw new Error('Canonical link backup mismatch');
+  }
+  return target;
 }
 function backup(file) {
   if (!fs.existsSync(file)) return null;
@@ -84,40 +113,48 @@ export function terminalShellPlan(text, sourcePath, launchers) {
 
 /** Runtime is supplied by the snapshot installer; this module does not rebuild or mutate it. */
 export function installTerminalLaunchers({ home = os.homedir(), nodeBinary = process.execPath, runtimeRoot,
-  runtimeDigest, realCodex = path.join(home, '.local/bin/codex'), realClaude, apply = false, manageZsh = true } = {}) {
+  runtimeDigest, realCodex, realClaude, apply = false, manageZsh = true,
+  replaceCanonicalEntries = [] } = {}) {
   if (!['darwin', 'linux'].includes(process.platform)) throw new Error('Terminal launchers require macOS or Linux');
   if (!path.isAbsolute(home) || !path.isAbsolute(runtimeRoot || '') || !/^[a-f0-9]{64}$/.test(runtimeDigest || '')) throw new Error('Absolute home and identified runtime required');
+  const configPath = path.join(home, '.cache/ruvnet-brain/model-routing/terminal-launcher-config.json');
+  const previous = fs.existsSync(configPath) ? JSON.parse(fs.readFileSync(regular(configPath), 'utf8')) : null;
+  if (previous && previous.managedBy !== 'ruvnet-brain-terminal-launchers') throw new Error('Preserving unmanaged terminal configuration');
+  realCodex ??= previous?.realCodex || path.join(home, '.local/bin/codex');
   const runner = regular(path.join(runtimeRoot, 'scripts/model-terminal-launchers.mjs'));
   const config = { schemaVersion: 1, managedBy: 'ruvnet-brain-terminal-launchers', runtimeDigest, runtimeRoot: fs.realpathSync(runtimeRoot), nodeBinary: executable(nodeBinary),
-    runner, realCodex: executable(realCodex), gatewayPath: regular(path.join(runtimeRoot, 'scripts/model-terminal-gateway.mjs')) };
+    runner, realCodex: nativeExecutable(realCodex), gatewayPath: regular(path.join(runtimeRoot, 'scripts/model-terminal-gateway.mjs')) };
   if (realClaude) {
-    config.realClaude = executable(realClaude);
+    config.realClaude = nativeExecutable(realClaude);
     config.claudeHelperPath = regular(path.join(runtimeRoot, 'scripts/claude-terminal-mod.mjs'));
     config.enginePath = regular(path.join(runtimeRoot, 'scripts/model-router-engine.mjs'));
   }
-  const configPath = path.join(home, '.cache/ruvnet-brain/model-routing/terminal-launcher-config.json');
-  if (fs.existsSync(configPath) && JSON.parse(fs.readFileSync(regular(configPath), 'utf8')).managedBy !== config.managedBy) throw new Error('Preserving unmanaged terminal configuration');
   const launchers = { codex: path.join(home, '.local/bin/ruvnet-brain-codex-terminal') };
   if (realClaude) launchers.claude = path.join(home, '.local/bin/ruvnet-brain-claude-terminal');
+  if (!Array.isArray(replaceCanonicalEntries) || replaceCanonicalEntries.some(host => !Object.hasOwn(launchers, host))) throw new Error('Explicit installed host names required for canonical entry migration');
+  const canonicalEntries = Object.fromEntries(Object.keys(launchers).map(host => [host, path.join(home, '.local/bin', host)]));
+  const canonical = Object.entries(canonicalEntries).map(([host, file]) => canonicalEntry(file, config[host === 'codex' ? 'realCodex' : 'realClaude'], replaceCanonicalEntries.includes(host)));
   const contents = Object.fromEntries(Object.entries(launchers).map(([host, file]) => [file,
     `#!/bin/sh\n${MARKER}\nexec ${quote(config.nodeBinary)} ${quote(runner)} --launch ${quote(host)} --config ${quote(configPath)} -- "$@"\n`]));
+  for (const [host, file] of Object.entries(canonicalEntries)) contents[file] = contents[launchers[host]];
   const shellSource = path.join(home, '.config/ruvnet-brain/terminal-routing.zsh');
   const zshrc = path.join(home, '.zshrc');
   const shell = terminalShellPlan(fs.existsSync(zshrc) ? fs.readFileSync(regular(zshrc), 'utf8') : '', shellSource, launchers);
-  for (const file of [...Object.keys(contents), shellSource]) {
+  for (const file of [...Object.values(launchers), shellSource]) {
     if (fs.existsSync(file) && !fs.readFileSync(regular(file), 'utf8').includes(MARKER)) throw new Error(`Preserving unmanaged terminal integration: ${file}`);
   }
   for (const binary of [config.realCodex, config.realClaude].filter(Boolean)) {
     if ([runner, ...Object.keys(contents)].includes(binary)) throw new Error('Native terminal launcher recursion refused');
   }
-  const receipt = { apply, launchers, configPath, config, shellSource, shellConflicts: shell.conflicts, backups: [],
+  const receipt = { apply, launchers, canonicalEntries, configPath, config, shellSource, shellConflicts: shell.conflicts, backups: [],
     claudeEnforcementScope: realClaude ? 'Controlled native prompt boundary; model observations and effective effort settings checked for each completed turn' : null };
   if (!apply) return receipt;
-  for (const file of [configPath, ...Object.keys(contents), ...(manageZsh ? [shellSource, zshrc] : [])]) {
+  for (const file of [configPath, ...Object.values(launchers), ...(manageZsh ? [shellSource, zshrc] : [])]) {
     const original = backup(file); if (original) receipt.backups.push(original);
   }
+  for (const entry of canonical) { const original = backupCanonical(entry); if (original) receipt.backups.push(original); }
   atomic(configPath, JSON.stringify(config, null, 2) + '\n');
-  for (const [file, content] of Object.entries(contents)) atomic(file, content, 0o755);
+  for (const [file, content] of Object.entries(contents)) atomic(file, content, 0o755, canonical.some(entry => entry.file === file && entry.symlink));
   if (manageZsh) { atomic(shellSource, shell.source); atomic(zshrc, shell.zshrc, fs.existsSync(zshrc) ? fs.statSync(zshrc).mode & 0o777 : 0o600); }
   return receipt;
 }
@@ -131,7 +168,7 @@ export function ensureTerminalDaemon(binary, env = process.env, { exec = execFil
 }
 export function terminalInvocation({ host, args = [], config, env = process.env, daemonExec = execFileSync }) {
   if (config.schemaVersion !== 1 || env.RNB_TERMINAL_LAUNCH_ACTIVE) throw new Error('Invalid or recursive terminal launch');
-  const binary = executable(host === 'codex' ? config.realCodex : config.realClaude);
+  const binary = nativeExecutable(host === 'codex' ? config.realCodex : config.realClaude);
   if (host !== 'codex') throw new Error('Use guarded native Claude launch');
   const mode = classifyTerminalArguments(args);
   if (mode === 'admin') return { command: binary, args: [...args], routed: false };
@@ -240,7 +277,7 @@ export async function runClaudeTerminal({ config, args = [], env = process.env, 
   tempRoot = os.tmpdir(), cwd = process.cwd(), signalSource = process, diagnostics = process.stderr } = {}) {
   if (env.RNB_TERMINAL_LAUNCH_ACTIVE) throw new Error('Native terminal launcher recursion refused');
   if (!Number.isFinite(startupMs) || startupMs <= 0 || startupMs > 60000) throw new Error('Bounded native hook startup deadline required');
-  const binary = executable(config.realClaude), clean = subscriptionEnvironment(env);
+  const binary = nativeExecutable(config.realClaude), clean = subscriptionEnvironment(env);
   if (claudeAdministrativeArguments(args)) {
     const child = spawn(binary, args, { env: clean, cwd, stdio: 'inherit', shell: false });
     const unforward = forwardSignals(child, signalSource);
@@ -289,10 +326,17 @@ export async function runTerminalLauncher({ host, args = [], config, env = proce
     if (claudeAdministrativeArguments(args)) return runClaudeTerminal({ config, args, env, signalSource });
     if (env.RNB_TERMINAL_LAUNCH_ACTIVE) throw new Error('Native terminal launcher recursion refused');
     const { launchControlledClaudeTerminal } = await import('./claude-controlled-terminal.mjs');
-    await launchControlledClaudeTerminal({ binary: executable(config.realClaude), args, env, cwd: process.cwd() });
+    await launchControlledClaudeTerminal({ binary: nativeExecutable(config.realClaude), args, env, cwd: process.cwd() });
     return { code: 0, signal: null };
   }
   if (host !== 'codex') throw new Error('Unsupported terminal host');
+  const classification = classifyTerminalArguments(args);
+  if (classification === 'interactive') {
+    if (env.RNB_TERMINAL_LAUNCH_ACTIVE) throw new Error('Native terminal launcher recursion refused');
+    const { launchManagedCodexTerminal } = await import('./codex-managed-terminal.mjs');
+    await launchManagedCodexTerminal({ binary: nativeExecutable(config.realCodex), args, env, cwd: process.cwd() });
+    return { code: 0, signal: null };
+  }
   const invocation = terminalInvocation({ host, args, config, env });
   const child = spawn(invocation.command, invocation.args, { env: { ...subscriptionEnvironment(env), RNB_TERMINAL_LAUNCH_ACTIVE: '1' }, stdio: 'inherit', shell: false });
   const unforward = forwardSignals(child, signalSource);

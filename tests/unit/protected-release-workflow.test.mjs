@@ -29,7 +29,7 @@ describe('protected release rail', () => {
     expect(upload).toContain('if: always()');
     expect(upload).toContain('candidate-host-evidence-macos.json.failure.json');
     expect(upload).toContain('if-no-files-found: warn');
-    expect(source).toContain('needs: [ci, integration, ux, stranger, early-public-linux, early-public-macos, early-public-windows, macos-candidate-search]');
+    expect(source).toContain('needs: [candidate-preflight, ci, integration, ux, stranger, early-public-linux, early-public-macos, early-public-windows, macos-candidate-search]');
   });
   it('installs both host CLIs before the exact Mac candidate matrix uses them', () => {
     const source = read('.github/workflows/release-candidate-preflight.yml');
