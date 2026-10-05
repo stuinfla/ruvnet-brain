@@ -117,6 +117,27 @@ describe('ProjectProgression crash outbox', () => {
     expect(outbox.pendingSnapshots()).toEqual([snapshot()]);
   });
 
+  it('a recovery disposition settles only its exact original payload after a linked verified commit', () => {
+    const outbox = new ProgressionOutbox({ projectRoot: temporaryRoot() });
+    const original = snapshot();
+    const recovery = snapshot({ eventKey: 'project-progress-v1-recovered', payloadDigest: 'c'.repeat(64),
+      recoveryDiagnostics: { originalEventKey: original.eventKey, frozenPayloadDigest: original.payloadDigest } });
+    const receipt = { eventKey: recovery.eventKey, payloadDigest: recovery.payloadDigest,
+      readbackDigest: recovery.payloadDigest, committedAt: '2026-10-04T00:00:00.000Z' };
+    outbox.appendSnapshot(original);
+    expect(() => outbox.markRecovered(original, { ...receipt, readbackDigest: 'wrong' })).toThrow(/unverified/);
+    expect(() => outbox.markRecovered(original, { ...receipt, eventKey: original.eventKey })).toThrow(/unverified/);
+    // A marker alone cannot consume debt; both the linked snapshot and verified commit are needed.
+    outbox.markRecovered(original, receipt);
+    expect(outbox.pendingSnapshots()).toEqual([original]);
+    outbox.appendSnapshot(recovery);
+    expect(outbox.pendingSnapshots()).toHaveLength(2);
+    outbox.markCommitted(receipt);
+    expect(outbox.pendingSnapshots()).toEqual([]);
+    expect(outbox.records().filter((row) => row.type === 'commit' && row.eventKey === original.eventKey)).toEqual([]);
+    expect(new ProgressionOutbox({ projectRoot: path.dirname(path.dirname(outbox.path)) }).pendingSnapshots()).toEqual([]);
+  });
+
   it('still fails closed on a malformed terminated record instead of treating it as a torn suffix', () => {
     const outbox = new ProgressionOutbox({ projectRoot: temporaryRoot() });
     outbox.appendSnapshot(snapshot());

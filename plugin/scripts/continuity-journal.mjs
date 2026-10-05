@@ -22,7 +22,8 @@ import { withProgressionReader } from './project-progression-reader.mjs';
 import { rufloRunDir } from './project-progression-store.mjs';
 import { resolveRuflo, rufloInvocation } from './ruflo-bin.mjs';
 import { resolveProjectStore } from './project-store-resolver.mjs';
-import { resolveTurnDb, readSettledTranscript } from './turn-outcome-capture.mjs';
+import { resolveTurnDb, readSettledTranscript, claudeTurn } from './turn-outcome-capture.mjs';
+import { privateContinuityEvent, maskExcludedPaths, captureFailureReason, turnReferencesExcludedResource } from './turn-capture-privacy.mjs';
 import {
   CONTINUITY_NAMESPACE, INITIAL_LOOKBACK_MS, collectCommits, collectReleases, collectTurnEvents, eventIdOf, eventKey,
 } from './continuity-events.mjs';
@@ -162,9 +163,8 @@ export class ContinuityJournal {
   record(events) {
     const consent = this.captureConsent();
     if (consent.skipped) throw new Error(`event capture suspended: ${consent.skipped}`);
-    const known = this.knownIds();
-    const fresh = [];
-    for (const event of events) {
+    const known = this.knownIds(); const fresh = [];
+    for (const original of events) { const event = privateContinuityEvent(original, consent.contentPathExcludes, consent.capturePath);
       const id = `${event.kind}:${event.id}`;
       if (known.has(id)) continue;
       known.add(id);
@@ -303,24 +303,24 @@ export function recordingLine(status, now = Date.now()) {
   return `AgentDB: recording ✓ (last write ${ago(now - status.lastCommitAt)} ago, ${status.eventsToday} event(s) today, outbox ${status.pending} pending)`;
 }
 
-/**
- * The Claude Stop line, at most ONCE per session per condition (review S3: it repeated at every turn).
- * State is a tiny file in the project's own .swarm, bounded to the last 20 sessions.
- */
-export function stopNotice({ journal, status, session }) {
-  if (!status?.stuck || !status.problem) return '';
-  const file = path.join(journal.swarm, NOTICE_STATE);
+/** Shared notices: once per session/condition, bounded to the last twenty sessions in .swarm. */
+export function conditionNotice({ swarm, session, condition, message, now = Date.now }) {
+  const file = path.join(swarm, NOTICE_STATE);
   let state = {};
   try { state = JSON.parse(fs.readFileSync(file, 'utf8')) || {}; } catch { /* first notice */ }
   const id = String(session || 'unknown');
   const shown = Array.isArray(state[id]?.conditions) ? state[id].conditions : [];
-  if (shown.includes(status.problem)) return '';
-  state[id] = { at: new Date(journal.now()).toISOString(), conditions: [...shown, status.problem] };
+  if (shown.includes(condition)) return '';
+  state[id] = { at: new Date(now()).toISOString(), conditions: [...shown, condition] };
   const recent = Object.entries(state).sort((a, b) => String(b[1]?.at).localeCompare(String(a[1]?.at))).slice(0, 20);
   try { fs.writeFileSync(file, JSON.stringify(Object.fromEntries(recent)), { mode: 0o600 }); } catch { /* still show it once */ }
-  return `[RuvNet Brain] ${recordingLine(status, journal.now())}`;
+  return message;
 }
-
+export function stopNotice({ journal, status, session }) {
+  if (!status?.stuck || !status.problem) return '';
+  return conditionNotice({ swarm: journal.swarm, session, condition: status.problem, now: () => journal.now(),
+    message: `[RuvNet Brain] ${recordingLine(status, journal.now())}` });
+}
 function defaultStore({ ruflo, db, key, value }) {
   const cwd = rufloRunDir(db);
   try {
@@ -364,7 +364,6 @@ export function drain(journal, {
   if (!ruflo) return { committed, failed, remaining: journal.pending().length, skipped: 'ruflo not found' };
   if (!storeReady(journal.db)) return { committed, failed, remaining: journal.pending().length, skipped: 'store not initialized' };
   for (const rec of journal.pending()) {
-    const value = JSON.stringify(rec.event);
     let done = false;
     let attempts = 0;
     let last = null;
@@ -374,11 +373,12 @@ export function drain(journal, {
       catch (error) { consent = { skipped: `capture consent unavailable: ${error.message}` }; }
       if (consent.skipped) return { committed, failed, remaining: journal.pending().length, skipped: consent.skipped };
       if (now() >= deadline) break;
-      attempts += 1;
-      const result = store({ ruflo, db: journal.db, key: rec.key, value });
+      const value = JSON.stringify(privateContinuityEvent(rec.event, consent.contentPathExcludes, consent.capturePath));
+      if (value !== JSON.stringify(rec.event)) return { committed, failed, remaining: journal.pending().length, skipped: 'content exclusions changed; immutable continuity retained' };
+      attempts += 1; const result = store({ ruflo, db: journal.db, key: rec.key, value });
       const back = readBack({ ruflo, db: journal.db, key: rec.key });
       const content = typeof back.content === 'string' ? back.content.trim() : '';
-      if (content && (content === value || sameEvent(content, rec.event))) {
+      if (content && (content === value || value === JSON.stringify(rec.event) && sameEvent(content, rec.event))) {
         journal.appendRecords([{ type: 'commit', key: rec.key, digest: rec.digest, committedAt: new Date(now()).toISOString(), readPath: back.readPath,
           alreadyStored: result.status !== 0 || content !== value, ...(attempts > 1 ? { attempts, lastError: last?.reason } : {}) }]);
         committed += 1;
@@ -389,7 +389,7 @@ export function drain(journal, {
         failed += 1;
         done = true;
       } else {
-        last = { reason: WAL_REFUSAL.test(result.output || '') ? 'wal-contention' : `store exited ${result.status}`, error: String(result.output || '').trim().slice(-300) };
+        last = { reason: WAL_REFUSAL.test(result.output || '') ? 'wal-contention' : `store exited ${result.status}`, error: maskExcludedPaths(captureFailureReason({ stderr: result.output }, result.status), consent.contentPathExcludes) };
         const wait = backoff[Math.min(attempt, backoff.length - 1)];
         if (attempt >= backoff.length || now() + wait >= deadline) break;
         sleep(wait);
@@ -474,8 +474,8 @@ export function captureContinuityEvents({
     if (host === 'claude' && typeof payload.transcript_path === 'string' && payload.transcript_path) {
       try { lines = readTranscript(payload.transcript_path); } catch { /* unreadable transcript: git events still count */ }
     }
-    const last = typeof payload.last_assistant_message === 'string' ? payload.last_assistant_message : '';
-    events.push(...collectTurnEvents({ lines, lastAssistantMessage: last, host, session, project, env, at: now() }));
+    const last = typeof payload.last_assistant_message === 'string' ? payload.last_assistant_message : ''; const policy = journal.captureConsent();
+    if (!policy.skipped && !(lines && turnReferencesExcludedResource(claudeTurn(lines), policy.contentPathExcludes, projectDir))) events.push(...collectTurnEvents({ lines, lastAssistantMessage: last, host, session, project, env, at: now() }));
   }
   try { report.recorded = journal.record(events).length; } catch (error) { return { ...report, skipped: `outbox write failed: ${error.message}` }; }
   try { if (journal.needsCompaction()) journal.compact(); } catch { /* bounded next time */ }

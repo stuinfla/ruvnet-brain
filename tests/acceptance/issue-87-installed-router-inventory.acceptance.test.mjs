@@ -47,7 +47,7 @@ async function installedInventory(candidates) {
   const page = await browser.newPage();
   await page.goto(server.url, { waitUntil: 'domcontentloaded' });
   const development = page.locator('.rp-profile').filter({ hasText: 'Development' });
-  await expect.poll(() => development.locator('tbody tr').count()).toBe(5);
+  await expect.poll(() => development.locator('tbody tr').count()).toBe(4);
   const rows = await development.locator('tbody tr').evaluateAll((items) => items.map((row) => ({
     model: row.cells[1].textContent.trim(),
     routing: row.cells[3].textContent.trim(),
@@ -63,22 +63,22 @@ describe('issue #87 packed installed Console inventory', () => {
     const second = await installedInventory([opus, fable]);
     const expectedIds = [
       'claude-fable-5',
-      'claude-haiku-4-5-20251001',
       'claude-opus-4-8',
-      'claude-opus-5',
-      'claude-sonnet-5',
+      'claude-opus-5-5',
+      'claude-sonnet-5-5',
     ];
 
     for (const result of [first, second]) {
       const router = result.state.sections.savings.routerEngine;
       expect(router.catalogSource).toBe('catalog');
       expect(router.pool.filter((row) => row.provider === 'anthropic').map((row) => row.id).sort()).toEqual(expectedIds);
-      expect(router.pool.find((row) => row.id === 'claude-opus-5').verified).toMatch(/2026-08-02.*launch/i);
+      for (const id of ['claude-sonnet-5-5', 'claude-opus-5-5']) expect(router.pool.find((row) => row.id === id).verified).toMatch(/2026-10-04.*native.*launch/i);
       expect(router.pool.find((row) => row.id === 'claude-fable-5').verified).toBeTruthy();
       expect(router.decisions[0]).toMatchObject({ model: 'claude-fable-5', reason: 'policy-backed fixture receipt' });
 
       const installed = JSON.parse(fs.readFileSync(result.fixture.installedCatalog, 'utf8'));
-      expect(installed.managedVersion).toBe(2);
+      for (const original of [fable, opus]) expect(installed.candidates.find((row) => row.id === original.id)).toEqual(original);
+      expect(installed.managedVersion).toBe(3);
       expect(installed.updated).toBe('2026-07-12 old user catalog');
       expect(result.rows.filter((row) => row.routing === 'last selected')).toEqual([
         expect.objectContaining({ model: expect.stringMatching(/Fable 5/i) }),
@@ -86,6 +86,6 @@ describe('issue #87 packed installed Console inventory', () => {
     }
 
     expect(first.rows.map((row) => row.model)).toEqual(second.rows.map((row) => row.model));
-    expect(first.rows.map((row) => row.model).join(' ')).toMatch(/Haiku.*Sonnet.*Fable.*Opus 4\.8.*Opus 5/i);
+    expect(first.rows.map((row) => row.model).join(' ')).toMatch(/Sonnet 5\.5.*Fable.*Opus 4\.8.*Opus 5\.5/i);
   }, 120_000);
 });

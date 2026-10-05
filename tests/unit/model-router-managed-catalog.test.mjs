@@ -9,7 +9,7 @@ const MANAGED = JSON.parse(fs.readFileSync(
 ));
 
 describe('issue #87 — managed catalog additions and user overlay preservation', () => {
-  it('adds Opus 5 to an old catalog while preserving overrides and never enabling a metered candidate', () => {
+  it('adds verified Opus 5.5 to an old catalog while preserving overrides and never enabling a metered candidate', () => {
     const existing = {
       updated: '2026-07-12 (local)',
       candidates: [
@@ -20,7 +20,7 @@ describe('issue #87 — managed catalog additions and user overlay preservation'
     const merged = mergeManagedCatalog(existing, MANAGED);
     expect(merged.candidates.find((candidate) => candidate.id === 'claude-opus-4-8')).toEqual(existing.candidates[0]);
     expect(merged.candidates).toContainEqual(existing.candidates[1]);
-    expect(merged.candidates.find((candidate) => candidate.id === 'claude-opus-5')).toMatchObject({
+    expect(merged.candidates.find((candidate) => candidate.id === 'claude-opus-5-5')).toMatchObject({
       provider: 'anthropic', harness: ['claude-code'], subscription: ['claude-code'], tier: 'frontier',
     });
     expect(merged.candidates.filter((candidate) => candidate.provider === 'openrouter' && !existing.candidates.some((old) => old.id === candidate.id)))

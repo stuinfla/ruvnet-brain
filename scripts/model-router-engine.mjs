@@ -1,49 +1,28 @@
 #!/usr/bin/env node
-// scripts/model-router-engine.mjs — the harness-neutral MODEL SELECTION engine.
-//
-// WHAT THIS IS (and is NOT):
-//   • IS: a pure `prompt -> {model, provider, reason, cost}` DECISION engine. It extracts features
-//     from the prompt and hands them to a PLUGGABLE POLICY that decides which model to use. The
-//     policy is the swappable part — drop your researched heuristics (or a learned router) into
-//     ~/.claude/model-router/policy.mjs and the engine picks them up. NO heuristics are baked in
-//     here. (ADR-040 / DRACO, verified via search_ruvnet: a hand-built self-signal threshold routed
-//     WORSE than always-cheapest; a learned map from a real feature beat the best fixed model. So
-//     the SIGNAL/policy is everything and must never be hard-coded into the engine.)
-//   • IS harness-neutral: the SAME CLI is consulted by Claude Code AND Codex. It only DECIDES; it
-//     does not launch a model. The caller acts on the JSON. (Codex has no native routing surface —
-//     ~/.codex/config.toml launches one model per run — so a consulted CLI is the only way to make
-//     selection work for Codex too. That is the fix for "only partially OK for Codex.")
-//   • Is NOT an executor. Running a task on a cheap model is route-cheap.mjs's job (OpenRouter).
-//     This answers only "which model should handle this prompt?"
-//
-// INTEGRATION:
-//   Claude Code : call from a hook/skill, parse the JSON, use .model.
-//                   node model-router-engine.mjs --harness claude-code --prompt "$PROMPT" --json
-//   Codex       : wrap the codex launch —
-//                   M=$(node model-router-engine.mjs --harness codex --prompt "$TASK" --json | jq -r .model)
-//                   codex --model "$M"  ...
-//
-// Config (edit freely):  ~/.claude/model-router/catalog.json   (candidates + verified pricing)
-//                        ~/.claude/model-router/policy.mjs      (YOUR policy; falls back to policy.default.mjs)
-// Decision log:          ~/.claude/metaharness/routing-decisions.jsonl  (sibling to route-cheap's execution receipts)
-//
-// Usage:
-//   node model-router-engine.mjs --prompt "..." [--harness claude-code|codex] [--policy <path>] [--json|--line]
-//   echo "the prompt text" | node model-router-engine.mjs --harness codex
+// Deterministic prompt classification + reviewed per-user native model/effort allocation.
+// This selects only; model-router-dispatch.mjs enforces a managed worker launch. Parent chat
+// model selection is controlled by the host, not a UserPromptSubmit recommendation hook.
+// ~/.claude/model-router: catalog.json, profile.json, routing-policy.json, optional policy.mjs.
+// Learned routes are constrained to the reviewed policy pick, never given first refusal.
+// Usage: node model-router-engine.mjs --harness codex --policy-only --json < prompt.txt
+// Decision receipts retain model/effort/class metadata only; no raw prompt or policy reason.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import crypto from 'node:crypto';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { estTokens } from './route-cheap.mjs'; // reuse the verified char/4 estimator (DRY)
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const CONFIG_DIR = path.join(os.homedir(), '.claude', 'model-router');
+export const CONFIG_DIR = process.env.MODEL_ROUTER_CONFIG_DIR || path.join(os.homedir(), '.claude', 'model-router');
 // Overridable for hermetic tests + CI (runners have no ~/.claude): the 2026-07-12 CI redness was
 // exactly this — tests that silently depended on one developer's machine state.
 const CATALOG_PATH = process.env.MODEL_ROUTER_CATALOG || path.join(CONFIG_DIR, 'catalog.json');
 const POLICY_USER = path.join(CONFIG_DIR, 'policy.mjs');
 const POLICY_DEFAULT = path.join(CONFIG_DIR, 'policy.default.mjs');
+const POLICY_SHIPPED = path.join(__dirname, '..', 'config', 'model-router', 'policy.default.mjs');
+export const TASK_CLASSES = ['fast', 'medium', 'substantial', 'hard', 'exceptional'];
 const DECISIONS_LOG =
   process.env.MODEL_ROUTER_DECISIONS ||
   path.join(os.homedir(), '.claude', 'metaharness', 'routing-decisions.jsonl');
@@ -51,7 +30,7 @@ const DECISIONS_LOG =
 // ─── feature extraction: this is "based on what the prompt is" ────────────────────────────────
 // Pure and deterministic. Emits SIGNALS only — it never decides. Policies consume these; extend
 // this object as your research identifies new predictive features (it is the documented surface).
-export function extractFeatures(prompt, harness) {
+export function extractFeatures(prompt, harness, taskFacts) {
   const text = prompt || '';
   const codeFences = Math.floor((text.match(/```/g) || []).length / 2);
   const fileTypes = [...new Set((text.match(/\.[a-z0-9]{1,5}\b/gi) || []).map((s) => s.toLowerCase()))].slice(0, 12);
@@ -64,8 +43,9 @@ export function extractFeatures(prompt, harness) {
     hasCode,
     fileTypes,
     questionCount: (text.match(/\?/g) || []).length,
-    taskHints: text.slice(0, 4000), // policies may regex over the actual prompt head
+    taskHints: text, // policies may regex over the actual prompt head
     harness,
+    taskFacts,
   };
 }
 
@@ -94,44 +74,31 @@ export function applyProfile(candidates, profile) {
   }));
 }
 
-// Honest provenance of the catalog the engine is actually using, so no surface can pass the
-// built-in stub off as a real personal catalog (trust rule: never present a fallback as the thing).
-// Returns 'catalog' when a real ~/.claude/model-router/catalog.json is present + valid, else
-// 'built-in-fallback'. Same check loadCatalog() uses — kept in lockstep.
-export function catalogSource() {
-  try {
-    const j = JSON.parse(fs.readFileSync(CATALOG_PATH, 'utf8'));
-    if (Array.isArray(j.candidates) && j.candidates.length) return 'catalog';
-  } catch { /* fall through */ }
-  return 'built-in-fallback';
+// Catalog absence is not permission to use stale built-in identities.
+export function catalogSource(file = CATALOG_PATH) {
+  try { loadCatalog(file); return 'catalog'; }
+  catch { return 'unavailable'; }
 }
 
-export function loadCatalog() {
+export function loadCatalog(file = CATALOG_PATH) {
   try {
-    const j = JSON.parse(fs.readFileSync(CATALOG_PATH, 'utf8'));
-    if (Array.isArray(j.candidates) && j.candidates.length) return j.candidates;
-  } catch {
-    /* fall through to a minimal built-in so the engine still answers */
-  }
-  // Built-in fallback. Claude launchability was verified against Claude Code 2.1.220 on 2026-08-02;
-  // prices remain null where the subscription host, rather than a metered API, is authoritative.
-  return [
-    { id: 'deepseek/deepseek-chat', provider: 'openrouter', harness: ['claude-code', 'codex'], tier: 'cheap', costPerMTok: { in: 0.2, out: 0.8 }, verified: '2026-07-07' },
-    { id: 'claude-opus-4-8', provider: 'anthropic', harness: ['claude-code'], tier: 'frontier', costPerMTok: { in: 5.0, out: 25.0 }, verified: '2026-07-07' },
-    { id: 'claude-opus-5', provider: 'anthropic', harness: ['claude-code'], subscription: ['claude-code'], tier: 'frontier', costPerMTok: null, verified: '2026-08-02 Claude Code 2.1.220 launch' },
-    { id: 'claude-fable-5', provider: 'anthropic', harness: ['claude-code'], subscription: ['claude-code'], tier: 'frontier', costPerMTok: null, verified: '2026-08-02 Claude Code 2.1.220 launch' },
-    { id: 'gpt-5.5', provider: 'openai', harness: ['codex'], tier: 'frontier', costPerMTok: null, verified: null },
-  ];
+    const catalog = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (Array.isArray(catalog.candidates) && catalog.candidates.length) return catalog.candidates;
+  } catch { /* report one bounded configuration error, never substitute old models */ }
+  throw new Error('Current per-user model catalog missing or invalid; no built-in model fallback');
 }
 
 export async function loadPolicy(explicit) {
-  const candidatePaths = [explicit, POLICY_USER, POLICY_DEFAULT].filter(Boolean);
+  if (explicit && !fs.existsSync(explicit)) throw new Error(`Explicit routing policy missing: ${explicit}`);
+  const candidatePaths = [explicit, POLICY_USER, POLICY_DEFAULT, POLICY_SHIPPED].filter(Boolean);
   for (const p of candidatePaths) {
     if (!fs.existsSync(p)) continue;
     try {
       const mod = await import(pathToFileURL(p).href);
       if (typeof mod.choose === 'function') return { choose: mod.choose, source: p };
+      throw new Error('Policy must export choose()');
     } catch (e) {
+      if (p === explicit || p === POLICY_USER) throw new Error(`User routing policy failed to load: ${e.message}`);
       process.stderr.write(`[model-router] policy at ${p} failed to load: ${e.message}\n`);
     }
   }
@@ -139,12 +106,14 @@ export async function loadPolicy(explicit) {
 }
 
 function parseArgs(argv) {
-  const a = { harness: null, prompt: null, policy: null, mode: 'json' };
+  const a = { harness: null, prompt: null, policy: null, mode: 'json', policyOnly: false, requestJson: false };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];
     if (k === '--prompt') a.prompt = argv[++i];
     else if (k === '--harness') a.harness = argv[++i];
     else if (k === '--policy') a.policy = argv[++i];
+    else if (k === '--request-json') a.requestJson = true;
+    else if (k === '--policy-only') a.policyOnly = true;
     else if (k === '--line') a.mode = 'line';
     else if (k === '--json') a.mode = 'json';
     else if (k === '--help' || k === '-h') a.help = true;
@@ -164,6 +133,111 @@ function estInputCost(candidate, inTokens) {
   return +((inTokens * p.in) / 1e6).toFixed(6);
 }
 
+export function loadSelection(file = process.env.MODEL_ROUTER_SELECTION || path.join(CONFIG_DIR, 'routing-policy.json')) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+  catch { throw new Error('No reviewed per-user routing-policy.json available'); }
+}
+
+export function assertCurrentSelection(selection, now = Date.now()) {
+  const age = now - Date.parse(selection?.reviewedAt);
+  const configuredMaxAge = selection?.maxAgeMs === undefined ? 604800000 : selection.maxAgeMs;
+  if (!Number.isSafeInteger(configuredMaxAge) || configuredMaxAge <= 0) {
+    throw new Error('Routing allocation maxAgeMs must be a finite positive integer');
+  }
+  const reviewedAt = selection?.reviewedAt;
+  const isoDate = typeof reviewedAt === 'string' && /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2}))?$/.test(reviewedAt);
+  const calendarDate = isoDate && Date.parse(reviewedAt.slice(0, 10));
+  const validCalendar = Number.isFinite(calendarDate) && new Date(calendarDate).toISOString().slice(0, 10) === reviewedAt.slice(0, 10);
+  if (selection?.schemaVersion !== 1 || !isoDate || !validCalendar || !Number.isFinite(age) || age < 0) {
+    throw new Error('Routing allocation missing, invalid or future-dated; owner-reviewed policy required');
+  }
+  // Evidence age is not revocation of an approved allocation. Retain the original reviewedAt;
+  // every managed launch still rechecks allocation integrity, native support, auth and allowance.
+  return selection;
+}
+
+function normalizedRoutes(value) {
+  if (Array.isArray(value)) return value.map(normalizedRoutes);
+  if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort()
+    .map((key) => [key, normalizedRoutes(value[key])]));
+  return value;
+}
+
+export function selectionEvidenceStatus(selection, now = Date.now()) {
+  assertCurrentSelection(selection, now);
+  const maxAgeMs = Math.min(selection.maxAgeMs ?? 604800000, 604800000);
+  const ageMs = now - Date.parse(selection.reviewedAt);
+  const routeDigest = selection.routes && typeof selection.routes === 'object' && !Array.isArray(selection.routes)
+    ? crypto.createHash('sha256').update(JSON.stringify(normalizedRoutes(selection.routes))).digest('hex') : null;
+  return { reviewedAt: selection.reviewedAt, maxAgeMs, ageMs, stale: ageMs > maxAgeMs, routeDigest };
+}
+
+// Eligibility is independent of policy and learning: catalog pricing is never spend permission.
+export function eligibleCandidates(candidates, profile, harness) {
+  const host = profile?.harnesses?.[harness];
+  if (host?.available !== true || host?.subscription !== true) return [];
+  const provider = { codex: 'openai', 'claude-code': 'anthropic' }[harness];
+  return candidates.filter((m) => m.provider === provider &&
+    (m.harness || []).includes(harness) && (m.subscription || []).includes(harness));
+}
+
+export async function selectDecision({ prompt, harness, candidates, profile, policy,
+  features = extractFeatures(prompt, harness), learnedRoute, selection = loadSelection(), now = Date.now() } = {}) {
+  const evidence = selectionEvidenceStatus(selection, now);
+  const pool = eligibleCandidates(candidates, profile, harness);
+  if (!pool.length) throw new Error(`No available native subscription candidates for ${harness}; no metered fallback`);
+  if (!policy?.choose) throw new Error('No routing policy available');
+  const classifierFile = fs.existsSync(POLICY_SHIPPED) ? POLICY_SHIPPED : POLICY_DEFAULT;
+  const classifier = await import(pathToFileURL(classifierFile).href);
+  if (typeof classifier.classify !== 'function' || typeof classifier.validateTaskFacts !== 'function') {
+    throw new Error('Managed routing classifier missing required exports; update installed policy.default.mjs before dispatch');
+  }
+  classifier.validateTaskFacts(features.taskFacts);
+  const assessedClass = classifier.classify(features, harness);
+  const decision = await policy.choose({ features, candidates: pool, harness, profile, selection });
+  if (harness === 'codex' && ['substantial', 'exceptional', 'hard'].includes(assessedClass) && decision?.taskClass !== assessedClass) {
+    throw new Error(`Task requires explicit qualified ${assessedClass} route; legacy policy cannot silently use medium`);
+  }
+  const chosen = pool.find((m) => m.id === decision?.model);
+  if (!chosen) throw new Error(`Policy model unavailable or unauthorized: ${decision?.model || 'none'}`);
+  const taskClass = decision.taskClass;
+  if (!TASK_CLASSES.includes(taskClass)) {
+    throw new Error('Routing policy must return an explicit qualified taskClass; update legacy policy');
+  }
+  const effort = decision.effort || selection.routes?.[harness]?.[taskClass]?.effort;
+  if (!TASK_CLASSES.includes(taskClass) || !['low', 'medium', 'high', 'xhigh', 'max'].includes(effort)) {
+    throw new Error('Policy must specify a supported task class and effort');
+  }
+  const approved = selection.routes?.[harness]?.[taskClass];
+  const codingEffort = selection.routes?.[harness]?.codingEffort;
+  const coding = features.hasCode || /\b(implement|code|coding|debug|refactor|test|endpoint|API|repository|module|function)\b/i.test(features.taskHints || '');
+  const approvedEffort = harness === 'claude-code' && taskClass === 'medium' && coding
+    ? codingEffort || approved?.effort : approved?.effort;
+  if (harness === 'codex' && ['xhigh', 'max'].includes(effort) &&
+      (taskClass !== 'exceptional' || effort !== 'xhigh' || !approved?.requiresNamedReason ||
+       !/^[a-z][a-z0-9-]{2,79}$/.test(decision.exceptionalReason || ''))) {
+    throw new Error('Exceptional xhigh requires an explicit qualified route and named reason; no automatic max effort');
+  }
+  if (approved?.model !== chosen.id || approvedEffort !== effort) {
+    throw new Error('Custom policy decision exceeds reviewed model/effort allocation; update per-user routing-policy.json');
+  }
+  if (chosen.supportedEfforts && !chosen.supportedEfforts.includes(effort)) {
+    throw new Error(`Policy effort unavailable for ${chosen.id}: ${effort}`);
+  }
+  let routedBy = 'user-policy';
+  try {
+    const route = learnedRoute || (await import('./metaharness-router.mjs')).route;
+    // Explicit allocation is authoritative. A learned model outside it never gets first refusal.
+    const learned = await route(prompt, [chosen], profile);
+    routedBy = learned.routedBy === '@metaharness/router' && learned.model === chosen.id
+      ? '@metaharness/router (policy constrained)'
+      : `user-policy (${learned.routedBy || 'learned decision rejected'})`;
+  } catch (e) { routedBy = `user-policy (learned router unavailable: ${e.message})`; }
+  return { ...decision, provider: chosen.provider, tier: chosen.tier, taskClass, effort,
+    subscriptionCovered: true, selectionReviewedAt: selection.reviewedAt, selectionMaxAgeMs: evidence.maxAgeMs,
+    selectionRouteDigest: evidence.routeDigest, selectionEvidence: evidence, routedBy };
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
@@ -175,7 +249,10 @@ async function main() {
     args.harness ||
     (process.env.CODEX_SANDBOX || fs.existsSync(path.join(os.homedir(), '.codex', 'config.toml')) && process.env.CODEX ? 'codex' : null) ||
     'claude-code';
-  const prompt = args.prompt || readStdin();
+  const raw = args.prompt || readStdin();
+  const request = args.requestJson ? JSON.parse(raw) : { prompt: raw };
+  const prompt = request.prompt;
+  if (typeof prompt !== 'string') throw new Error('Request prompt must be a string');
   if (!prompt || !prompt.trim()) {
     process.stderr.write('model-router-engine: no prompt (use --prompt "..." or pipe text on stdin)\n');
     process.exit(2);
@@ -184,47 +261,11 @@ async function main() {
   const profile = loadProfile();
   const candidates = applyProfile(loadCatalog(), profile);
   const policy = await loadPolicy(args.policy);
-  const features = extractFeatures(prompt, harness);
+  const features = extractFeatures(prompt, harness, request.taskFacts);
 
-  // ── rUv's REAL router gets FIRST REFUSAL. ────────────────────────────────────────────────────────
-  // 2026-07-13: this is the fix for a lie I shipped. v2.5's headline was "it uses @metaharness/router",
-  // I wrote the wrapper, tested it, gated CI against faking — and NEVER WIRED IT INTO THIS FILE. The
-  // engine users actually run stayed 100% hand-rolled while the README said otherwise. An honest
-  // artifact sitting next to a lying claim is still a lie. The decision now comes from rUv's code
-  // whenever it CAN decide, and the local heuristic is a fallback that must ANNOUNCE ITSELF.
-  let decision;
-  let routedBy;
-  const pool = candidates.filter((m) => (m.harness || []).includes(harness));
-  try {
-    const mh = await import('./metaharness-router.mjs');
-    const r = await mh.route(prompt, pool.length ? pool : candidates, profile);
-    if (r.routedBy === '@metaharness/router') {
-      const pick = candidates.find((m) => m.id === r.model);
-      decision = {
-        model: r.model,
-        provider: pick?.provider ?? null,
-        tier: pick?.tier ?? null,
-        reason: `@metaharness/router (rUv's learned cost-optimal router): predicted quality ${r.predictedQuality?.toFixed(2)}, ${r.metBar ? 'clears' : 'BELOW'} the bar, ${r.subscriptionCovered ? '$0 (your subscription)' : `$${r.costPerMTok}/Mtok`}, from ${r.labels} labelled example(s)`,
-        confidence: r.predictedQuality ?? 0,
-      };
-      routedBy = '@metaharness/router';
-    } else {
-      // COLD-START or the package is absent. Say which, out loud — never pass the fallback off as the
-      // learned router. That substitution is the entire sin this wiring exists to end.
-      routedBy = `local-heuristic (${r.routedBy}: ${r.reason})`;
-    }
-  } catch (e) {
-    routedBy = `local-heuristic (@metaharness/router unavailable: ${e.message})`;
-  }
-
-  if (!decision) {
-    if (!policy) {
-      const pick = pool.slice().sort((x, y) => (x.costPerMTok?.out ?? Infinity) - (y.costPerMTok?.out ?? Infinity))[0] || candidates[0];
-      decision = { model: pick?.id ?? null, provider: pick?.provider ?? null, tier: pick?.tier ?? null, reason: 'NO POLICY FOUND — fell back to cheapest priced candidate for the harness', confidence: 0 };
-    } else {
-      decision = policy.choose({ features, candidates, harness });
-    }
-  }
+  const decision = await selectDecision({ prompt, harness, candidates, profile, policy, features,
+    learnedRoute: args.policyOnly ? async () => ({ routedBy: 'SKIPPED (policy-only)' }) : undefined });
+  const routedBy = decision.routedBy;
 
   const chosen = candidates.find((m) => m.id === decision.model) || null;
   const out = {
@@ -233,6 +274,15 @@ async function main() {
     model: decision.model,
     provider: decision.provider,
     tier: decision.tier,
+    taskClass: decision.taskClass,
+    exceptionalReason: decision.exceptionalReason,
+    classificationSource: decision.classificationSource,
+    effort: decision.effort,
+    subscriptionCovered: decision.subscriptionCovered,
+    selectionReviewedAt: decision.selectionReviewedAt,
+    selectionMaxAgeMs: decision.selectionMaxAgeMs,
+    selectionRouteDigest: decision.selectionRouteDigest,
+    selectionEvidence: decision.selectionEvidence,
     reason: decision.reason,
     confidence: decision.confidence,
     // WHO decided. Never let a caller assume the learned router made a call the heuristic made.
@@ -240,14 +290,15 @@ async function main() {
     policy_source: policy ? policy.source.replace(os.homedir(), '~') : 'none',
     profile: profile ? PROFILE_PATH.replace(os.homedir(), '~') : 'none (catalog taken as-is — run model-router-setup.mjs)',
     price_verified: chosen ? chosen.verified : null,
-    est_input_cost_usd: estInputCost(chosen, features.estTokens), // null if price unknown — never invented
+    est_input_cost_usd: decision.subscriptionCovered ? 0 : estInputCost(chosen, features.estTokens),
+    api_list_input_cost_usd: estInputCost(chosen, features.estTokens), // API sticker estimate, not subscription billing
     features: { estTokens: features.estTokens, hasCode: features.hasCode, codeFences: features.codeFences, fileTypes: features.fileTypes, questionCount: features.questionCount },
   };
 
   // Durable decision log (append-only; separate from route-cheap's execution/savings ledger).
   try {
     fs.mkdirSync(path.dirname(DECISIONS_LOG), { recursive: true });
-    fs.appendFileSync(DECISIONS_LOG, JSON.stringify({ ...out, features: undefined, prompt_head: prompt.slice(0, 120) }) + '\n');
+    fs.appendFileSync(DECISIONS_LOG, JSON.stringify({ ts: out.ts, harness, model: out.model, effort: out.effort, taskClass: out.taskClass, exceptionalReason: out.exceptionalReason, subscriptionCovered: out.subscriptionCovered, policy_source: out.policy_source }) + '\n');
   } catch { /* logging must never break selection */ }
 
   if (args.mode === 'line') {

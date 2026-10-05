@@ -324,6 +324,56 @@ describe('the adapter emits output Codex will accept, per event', () => {
     });
   });
 
+  it('normalizes fields rejected by the installed Codex 0.160.0 PostToolUse schema', () => {
+    const raw = JSON.stringify({ terminalSequence: 'legacy', hookSpecificOutput: {
+      hookEventName: 'PostToolUse', updatedToolOutput: { legacy: true },
+      updatedMCPToolOutput: { content: [] },
+    } });
+    const r = runAdapter({
+      shim: `process.stdin.resume();process.stdin.on("end",()=>process.stdout.write(${JSON.stringify(raw)}));`,
+      payload: { session_id: 'p', hook_event_name: 'PostToolUse', cwd: os.tmpdir() },
+    });
+    expect(JSON.parse(r.stdout)).toEqual({ hookSpecificOutput: {
+      hookEventName: 'PostToolUse', additionalContext: raw,
+    } });
+  });
+
+  it('preserves a security refusal when unsupported telemetry accompanies it', () => {
+    for (const reason of ['unsafe operation', '']) {
+      const raw = JSON.stringify({ metrics: { reviews: 1 }, rewakeSummary: 'reviewed',
+        decision: 'block', reason, continue: false, stopReason: 'security', suppressOutput: false,
+        systemMessage: 'Review required' });
+      const r = runAdapter({
+        shim: `process.stdin.resume();process.stdin.on("end",()=>process.stdout.write(${JSON.stringify(raw)}));`,
+        payload: { session_id: 'p', hook_event_name: 'PostToolUse', cwd: os.tmpdir() },
+      });
+      expect(JSON.parse(r.stdout)).toEqual({ decision: 'block', reason: reason || raw,
+        continue: false, stopReason: 'security', suppressOutput: false, systemMessage: 'Review required',
+        hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: raw } });
+    }
+  });
+
+  it('keeps block when a schema-valid MCP replacement is semantically unsupported', () => {
+    const raw = JSON.stringify({ decision: 'block', reason: 'unsafe replacement',
+      hookSpecificOutput: { hookEventName: 'PostToolUse', updatedMCPToolOutput: { content: [] } } });
+    const r = runAdapter({
+      shim: `process.stdin.resume();process.stdin.on("end",()=>process.stdout.write(${JSON.stringify(raw)}));`,
+      payload: { session_id: 'p', hook_event_name: 'PostToolUse', cwd: os.tmpdir() },
+    });
+    expect(JSON.parse(r.stdout)).toEqual({ decision: 'block', reason: 'unsafe replacement',
+      hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: raw } });
+  });
+
+  it('forwards supported PostToolUse controls without alteration', () => {
+    const raw = JSON.stringify({ decision: 'block', reason: 'unsafe', continue: false,
+      hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: 'review' } });
+    const r = runAdapter({
+      shim: `process.stdin.resume();process.stdin.on("end",()=>process.stdout.write(${JSON.stringify(raw)}));`,
+      payload: { session_id: 'p', hook_event_name: 'PostToolUse', cwd: os.tmpdir() },
+    });
+    expect(r.stdout).toBe(raw);
+  });
+
   it.each(NO_CONTEXT_EVENTS)('drops a body\'s plain text on %s, which has nowhere to put it', (event) => {
     // session-end.command.output does not exist in the Codex schema set and pre-compact.command
     // .output has no additionalContext. Emitting an envelope here would trade a silent no-op for a

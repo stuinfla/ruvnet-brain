@@ -1,0 +1,183 @@
+{
+  "sourceUrl": "https://artificialanalysis.ai/agents/coding-agents",
+  "sourceSha256": "3f06b11ba257c5ad802f7c5aa3bdd744d22171c9553de8617ab698b4cf19bee4",
+  "capturedAt": "2026-10-04",
+  "indexVersion": "1.5",
+  "rows": [
+    {
+      "id": "fa2595093fa640e73d072e7d1aa7df82",
+      "agentName": "Devin Fusion CLI",
+      "provider": "cognition",
+      "hostModelSlug": "cognition_fusion-gpt-6-astra-xhigh-sidekick-penguin-medium",
+      "display": {
+        "agent": "Devin Fusion CLI",
+        "model": "GPT-6 Astra XHigh + SWE-2 Medium"
+      },
+      "displayLabel": "Devin Fusion CLI - GPT-6 Astra XHigh + SWE-2 Medium",
+      "modelRelease": null,
+      "indexComponentCount": 3,
+      "evals": [
+        {
+          "datasetIndexName": "deep-swe-v1.1",
+          "refDatasetName": "datacurve/deep-swe-1-1@1",
+          "mean": {
+            "reward": 0.672566371681416,
+            "inputTokens": 10312445.209439527,
+            "outputTokens": 83838.11799410029
+          }
+        },
+        {
+          "datasetIndexName": "swe-atlas-qna",
+          "refDatasetName": "datasets/swe-atlas-qna",
+          "mean": {
+            "reward": 0.594086021505376,
+            "inputTokens": 2112115.313172043,
+            "outputTokens": 23623.837365591397
+          }
+        },
+        {
+          "datasetIndexName": "terminal-bench-v4",
+          "refDatasetName": "terminal-bench/terminal-bench@sha256:39d9f44b40420cde8fdcc087579c0d72a7e14fa3656d603c3f0d22fb35e27732",
+          "mean": {
+            "reward": 0.5,
+            "inputTokens": 6001673.575757576,
+            "outputTokens": 71827.65656565657
+          }
+        }
+      ],
+      "indexScore": 0.588884131062264,
+      "mean": {
+        "reward": 0.588884131062264,
+        "costUsd": 4.536492777821779,
+        "agentWallTimeSec": 1481.89598019802,
+        "steps": 78.55115511551155,
+        "inputTokens": 6017554.665016501,
+        "outputTokens": 56579.83003300329,
+        "cacheTokens": 5695796.99229923,
+        "cacheHitRate": 0.920061132172241,
+        "totalTokens": 6074134.4950494915
+      },
+      "versions": {
+        "deep-swe-v1.1": {
+          "min": {
+            "version": "3000.10.7",
+            "dateReleased": null
+          },
+          "max": {
+            "version": "3000.10.7",
+            "dateReleased": null
+          }
+        },
+        "swe-atlas-qna": {
+          "min": {
+            "version": "3000.10.7",
+            "dateReleased": null
+          },
+          "max": {
+            "version": "3000.10.7",
+            "dateReleased": null
+          }
+        },
+        "terminal-bench-v4": {
+          "min": {
+            "version": "3000.10.7",
+            "dateReleased": null
+          },
+          "max": {
+            "version": "3000.10.7",
+            "dateReleased": null
+          }
+        }
+      }
+    },
+    {
+      "id": "4aee8aa2d4a0bad6068644f40edae235",
+      "agentName": "Codex",
+      "provider": "openai",
+      "hostModelSlug": "openai_quasar-alpha",
+      "display": {
+        "agent": "Codex",
+        "model": "GPT-6.1 Sol (high)"
+      },
+      "displayLabel": "Codex - GPT-6.1 Sol (high) ({'reasoning_effort': 'high'})",
+      "modelRelease": {
+        "slug": "gpt-6-1-sol",
+        "name": "GPT-6.1 Sol"
+      },
+      "indexComponentCount": 3,
+      "evals": [
+        {
+          "datasetIndexName": "deep-swe-v1.1",
+          "refDatasetName": "datacurve/deep-swe-1-1@1",
+          "mean": {
+            "reward": 0.705014749262537,
+            "inputTokens": 2382530.2064896757,
+            "outputTokens": 31206.94395280236
+          }
+        },
+        {
+          "datasetIndexName": "swe-atlas-qna",
+          "refDatasetName": "datasets/swe-atlas-qna",
+          "mean": {
+            "reward": 0.599462365591398,
+            "inputTokens": 2421836.2786885244,
+            "outputTokens": 17768.75956284153
+          }
+        },
+        {
+          "datasetIndexName": "terminal-bench-v4",
+          "refDatasetName": "terminal-bench/terminal-bench@sha256:39d9f44b40420cde8fdcc087579c0d72a7e14fa3656d603c3f0d22fb35e27732",
+          "mean": {
+            "reward": 0.5,
+            "inputTokens": 4184679.611111111,
+            "outputTokens": 45169.030303030304
+          }
+        }
+      ],
+      "indexScore": 0.6014923716179784,
+      "mean": {
+        "reward": 0.6014923716179784,
+        "costUsd": 0.8892413135295484,
+        "agentWallTimeSec": 799.7652123212325,
+        "steps": 38.97909790979098,
+        "inputTokens": 2791163.2548648305,
+        "outputTokens": 28748.735486663423,
+        "cacheTokens": 2665415.3918375443,
+        "cacheHitRate": 0.9278388366571144,
+        "totalTokens": 2819911.9903514963
+      },
+      "versions": {
+        "deep-swe-v1.1": {
+          "min": {
+            "version": "0.154.0",
+            "dateReleased": null
+          },
+          "max": {
+            "version": "0.154.0",
+            "dateReleased": null
+          }
+        },
+        "swe-atlas-qna": {
+          "min": {
+            "version": "0.154.0",
+            "dateReleased": null
+          },
+          "max": {
+            "version": "0.154.0",
+            "dateReleased": null
+          }
+        },
+        "terminal-bench-v4": {
+          "min": {
+            "version": "0.154.0",
+            "dateReleased": null
+          },
+          "max": {
+            "version": "0.154.0",
+            "dateReleased": null
+          }
+        }
+      }
+    }
+  ]
+}

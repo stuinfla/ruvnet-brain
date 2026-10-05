@@ -17,23 +17,27 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadNodeSqlite } from '../../plugin/scripts/node-sqlite.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const HOOK = path.join(ROOT, 'plugin', 'scripts', 'learn-capture.sh');
+const HOOK = path.join(ROOT, 'plugin', 'scripts', 'learn-capture.mjs');
 const SID = 'redaction-test';
 
 let home;
-const queuePath = () => path.join(home, '.cache', 'ruvnet-brain', 'learn', `session-${SID}.jsonl`);
+const queuePath = () => { const dir = path.join(home, '.cache', 'ruvnet-brain', 'learn'); return fs.readdirSync(dir).filter(n => n.endsWith('.jsonl')).map(n => path.join(dir,n)).sort((a,b)=>fs.statSync(a).mtimeMs-fs.statSync(b).mtimeMs).at(-1); };
 
 /** Run the hook against an explicit user-scope fake HOME so nothing touches the real queue. */
 function capture(command) {
   const payload = JSON.stringify({ tool_name: 'Bash', tool_input: { command } });
-  execFileSync('bash', [HOOK], {
+  execFileSync(process.execPath, [HOOK], {
     input: payload,
     env: {
       ...process.env,
       HOME: home,
+      USERPROFILE: home,
+      RUVNET_BRAIN_PROJECT_DIR: home,
       CLAUDE_SESSION_ID: SID,
+      RUFLO_BIN: path.join(home, 'missing-ruflo'),
       // This suite asserts the user-scope queue path. The product default is project scope, so
       // leaving this implicit would test one scope and read another.
       RUVNET_LEARNING_SCOPE: 'user',
@@ -46,6 +50,10 @@ function capture(command) {
 
 beforeAll(() => {
   home = fs.mkdtempSync(path.join(os.tmpdir(), 'lcap-'));
+  const dir = path.join(home, '.claude', 'global-memory', '.swarm');
+  fs.mkdirSync(dir, { recursive: true }); new (loadNodeSqlite().DatabaseSync)(path.join(dir, 'memory.db')).close();
+  fs.mkdirSync(path.join(home, '.config', 'ruvnet-brain'), { recursive: true });
+  fs.writeFileSync(path.join(home, '.config', 'ruvnet-brain', 'settings.json'), '{"learningScope":"user"}');
 });
 afterAll(() => {
   try { fs.rmSync(home, { recursive: true, force: true }); } catch { /* best effort */ }
@@ -84,10 +92,11 @@ describe('learn-capture.sh records intent, never data', () => {
     expect(action.split(/\s+/).length).toBeLessThanOrEqual(2);
   });
 
-  it.skipIf(process.platform === 'win32')('writes the queue owner-only (0600) inside an owner-only directory (0700)', () => { // POSIX permission bits do not exist on win32
+  it('writes the queue owner-only (0600) inside an owner-only directory (0700)', () => { // POSIX permission bits do not exist on win32
     capture('git status');
     const fileMode = fs.statSync(queuePath()).mode & 0o777;
     const dirMode = fs.statSync(path.dirname(queuePath())).mode & 0o777;
+    if (process.platform === 'win32') { expect(fs.statSync(queuePath()).isFile()).toBe(true); return; }
     expect(fileMode, `queue must be 0600, got ${fileMode.toString(8)}`).toBe(0o600);
     expect(dirMode, `dir must be 0700, got ${dirMode.toString(8)}`).toBe(0o700);
   });

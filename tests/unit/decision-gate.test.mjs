@@ -163,7 +163,7 @@ describe('ADR-067 — the structural invariant, read from hooks.json', () => {
     expect(blockingIds.size, 'a parse failure here would make the invariant vacuous').toBeGreaterThan(0);
   });
 
-  it('no PreToolUse tool can be refused by an automatic Brain hook', () => {
+  it('exactly one active blocking PreToolUse registration composes the mandatory policies', () => {
     const refusers = (HOOKS.hooks.PreToolUse || [])
       .flatMap((entry) => entry.hooks.map((h) => ({ matcher: entry.matcher, id: idOf(h.command) })))
       .filter((h) => blockingIds.has(h.id));
@@ -178,7 +178,9 @@ describe('ADR-067 — the structural invariant, read from hooks.json', () => {
     // Derive the allowed set from the policy module so manifest and policy are checked against
     // each other — a literal here is what kept this file red across a plane change.
     const declared = continuityRegistrations('claude')
-      .filter((r) => r.event === 'PreToolUse').map((r) => r.id).sort();
+      .filter((r) => r.event === 'PreToolUse' && blockingIds.has(r.id)).map((r) => r.id).sort();
+    expect(declared, 'passive captures cannot substitute for the mandatory decision gate').toHaveLength(1);
+    expect(refusers, 'the active plane must retain exactly one blocking registration').toHaveLength(1);
     expect(refusers.map((r) => r.id).sort(), 'the refusers registered in hooks.json must be exactly the PreToolUse handlers the plane declares')
       .toEqual(declared);
   });

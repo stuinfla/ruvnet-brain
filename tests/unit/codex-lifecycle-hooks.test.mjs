@@ -303,9 +303,10 @@ describe.skip('HISTORICAL: Codex automatic lifecycle packaging before ADR-076 re
     expect(detached, 'the wrapper declares no detached hooks').toBeTruthy();
 
     const flush = fs.readFileSync(path.join(ROOT, 'plugin', 'scripts', 'learn-flush.mjs'), 'utf8');
-    const deadlineMs = Number(flush.match(/LEARN_FLUSH_DEADLINE_MS\) \|\| (\d+)_?(\d*)/)
-      ?.slice(1).join('') || 0);
-    expect(deadlineMs, 'learn-flush.mjs no longer declares a deadline').toBeGreaterThan(0);
+    const queue = fs.readFileSync(path.join(ROOT, 'plugin', 'scripts', 'learning-queue.mjs'), 'utf8');
+    const deadlineMs = Number(queue.match(/WORKER_BUDGET_MS = (\d+)/)?.[1]);
+    expect(deadlineMs, 'finite worker budget is absent').toBeGreaterThan(3000);
+    expect(flush).toContain("'--worker'");
 
     for (const handler of (codex.SessionEnd ?? []).flatMap((g) => g.hooks ?? [])) {
       expect(handler.timeout, `SessionEnd "${handler.command.slice(-30)}" asks for `
@@ -320,13 +321,12 @@ describe.skip('HISTORICAL: Codex automatic lifecycle packaging before ADR-076 re
       }
     }
 
-    // Claude Code has no such cap, so there the budget must simply exceed the work.
+    // Both hosts run only a scheduler at this boundary; the finite worker owns its deadline.
     const claude = JSON.parse(fs.readFileSync(CLAUDE_HOOKS, 'utf8')).hooks;
     const ccFlush = (claude.SessionEnd ?? []).flatMap((g) => g.hooks ?? [])
       .find((h) => h.command.includes(' learn-flush'));
     expect(ccFlush, 'Claude Code does not register learn-flush').toBeTruthy();
-    expect(ccFlush.timeout * 1_000, 'Claude Code kills learn-flush before its own deadline')
-      .toBeGreaterThan(deadlineMs);
+    expect(ccFlush.timeout).toBe(3);
 
     // The Codex chain nests budgets; each outer one must outlive the one it supervises, or the inner
     // deadline is decorative. host timeout > inline `node -e` timeout > wrapper budget.

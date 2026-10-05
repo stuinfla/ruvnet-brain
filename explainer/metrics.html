@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RuvNet Brain — Production Metrics</title>
+  <title>RuvNet Brain — Adoption & Telemetry</title>
   <style>
     * {
       margin: 0;
@@ -241,7 +241,7 @@
     <header>
       <div>
         <h1>RuvNet Brain</h1>
-        <div style="font-size: 0.85rem; color: #64748b; margin-top: 0.25rem;">Production Metrics</div>
+        <div style="font-size: 0.85rem; color: #64748b; margin-top: 0.25rem;">Adoption & Telemetry</div>
       </div>
       <div class="header-right">
         <div class="status-indicator"></div>
@@ -262,10 +262,10 @@
     </div>
 
     <div class="charts-section">
-      <div class="charts-title">30-Day Trends</div>
+      <div class="charts-title">Available Daily Observations</div>
       <div class="charts-grid" id="charts">
         <div class="chart-container">
-          <div style="font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.5rem;">npm Downloads (7d avg)</div>
+          <div style="font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.5rem;">npm Downloads (daily)</div>
           <div class="simple-chart" id="downloads-chart"></div>
         </div>
         <div class="chart-container">
@@ -280,11 +280,11 @@
         Data sources:
         <span class="data-source">GitHub API</span>
         <span class="data-source">npm Registry</span>
-        <span class="data-source">Upstash Telemetry</span>
-        <span class="data-source">Vercel Analytics</span>
+        <span class="data-source">Configured Upstash counters (optional)</span>
+        <span class="data-source">Monitoring: unavailable</span>
       </div>
       <div style="font-size: 0.75rem; color: #475569;">
-        All metrics are real production data. Last 5 minutes cached.
+        GitHub/npm adoption and configured telemetry counters. Performance measurements are unavailable. Responses may be cached for 5 minutes; collection time is shown above.
       </div>
     </div>
   </div>
@@ -296,7 +296,7 @@
 
     // Format number with commas
     function formatNumber(num) {
-      return Math.round(num).toLocaleString();
+      return Number.isFinite(num) ? num.toLocaleString() : 'Unavailable';
     }
 
     // Create a simple bar chart
@@ -324,80 +324,38 @@
       const dashboard = document.getElementById('dashboard');
       const data = metrics.data;
 
+      const sourceLabel = key => {
+        const source = data.sources?.[key];
+        if (source?.status !== 'observed') return 'Source unavailable';
+        const at = Date.parse(source.checkedAt);
+        const stale = !Number.isFinite(at) || Date.now() - at > (source.cacheMaxAgeSeconds || 300) * 1000;
+        return `${key === 'github' ? 'GitHub API' : 'npm downloads API'} · ${stale ? 'stale observation' : 'collected ' + new Date(at).toLocaleTimeString()}`;
+      };
       const cards = [
-        {
-          title: 'North Star Score',
-          value: data.northStarScore,
-          unit: '/100',
-          subtitle: 'Composite health metric',
-          special: 'north-star-card'
-        },
-        {
-          title: 'Uptime',
-          value: data.performance.uptime.toFixed(2),
-          unit: '%',
-          subtitle: 'Last 30 days',
-          className: data.performance.uptime >= 99.5 ? 'success-state' : 'warning-state'
-        },
-        {
-          title: 'Error Rate',
-          value: data.performance.errorRate.toFixed(2),
-          unit: '%',
-          subtitle: 'Last 24 hours',
-          className: data.performance.errorRate < 5 ? 'success-state' : 'warning-state'
-        },
-        {
-          title: 'Latency p95',
-          value: data.performance.latency.p95,
-          unit: 'ms',
-          subtitle: 'API response time',
-          className: 'success-state'
-        },
-        {
-          title: 'Latency p99',
-          value: data.performance.latency.p99,
-          unit: 'ms',
-          subtitle: 'API response time',
-          className: 'success-state'
-        },
-        {
-          title: 'Requests/sec',
-          value: data.performance.requestsPerSecond,
-          unit: 'req/s',
-          subtitle: 'Estimated throughput'
-        },
-        {
-          title: 'GitHub Stars',
-          value: data.repo?.stars || 0,
-          unit: '',
-          subtitle: 'Community interest'
-        },
-        {
-          title: 'npm Downloads',
-          value: data.npm.thisWeek,
-          unit: '/week',
-          subtitle: 'Last 7 days'
-        },
+        { title: 'Uptime', value: null, subtitle: 'No monitoring measurements connected' },
+        { title: 'Error Rate', value: null, subtitle: 'No monitoring measurements connected' },
+        { title: 'Latency p95', value: null, subtitle: 'No monitoring measurements connected' },
+        { title: 'Latency p99', value: null, subtitle: 'No monitoring measurements connected' },
+        { title: 'Requests/sec', value: null, subtitle: 'No monitoring measurements connected' },
+        { title: 'GitHub Stars', value: data.repo?.stars, subtitle: sourceLabel('github') },
+        { title: 'npm Downloads', value: data.npm?.thisWeek, unit: '/week', subtitle: sourceLabel('npm') },
       ];
 
       dashboard.innerHTML = cards.map(card => `
         <div class="card ${card.special || ''}" style="${card.className ? `color: var(--${card.className.replace('state', 'color')}); color: ${card.className === 'success-state' ? '#10b981' : '#f59e0b'};` : ''}">
           <div class="card-title">${card.title}</div>
           <div class="card-value" ${card.className ? `style="color: ${card.className === 'success-state' ? '#10b981' : card.className === 'error-state' ? '#ef4444' : '#f59e0b'}"` : ''}>
-            ${formatNumber(card.value)}<span class="card-unit">${card.unit}</span>
+            ${formatNumber(card.value)}<span class="card-unit">${Number.isFinite(card.value) ? card.unit || '' : ''}</span>
           </div>
           <div class="card-subtitle">${card.subtitle}</div>
         </div>
       `).join('');
 
-      // Update charts
-      if (data.trends && data.trends.length > 0) {
-        const last30Days = data.trends.map(d => d.downloads || 0);
-        createBarChart('downloads-chart', last30Days);
-
-        const latencyData = data.trends.map(d => d.avgLatency || data.performance.latency.p95);
-        createBarChart('latency-chart', latencyData);
-      }
+      // Only the npm API's actual daily observations can populate a trend.
+      const downloads = Array.isArray(data.npm?.daily) ? data.npm.daily : [];
+      if (downloads.length) createBarChart('downloads-chart', downloads.map(d => d.downloads));
+      else document.getElementById('downloads-chart').textContent = 'Unavailable — npm source did not return daily observations.';
+      document.getElementById('latency-chart').textContent = 'Unavailable — no latency measurements connected.';
     }
 
     // Fetch metrics from API

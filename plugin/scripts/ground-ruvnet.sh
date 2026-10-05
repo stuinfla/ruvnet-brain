@@ -446,6 +446,9 @@ fi
 RUVNET=0
 if printf '%s' "$TEXT" | grep -qiE '\bruvnet\b|\bruflo\b|\bruvector\b|\brvf\b|\bagentdb\b|\bagenticow\b|\brulake\b|\bruview\b|\brupixel\b|\bruv-fann\b|\bagentic-flow\b|\bsynthlang\b|\bdspy\b|\bqudag\b|\bsafla\b|\bmetaharness\b|\bcve-bench\b|\bsparc\b|\bswarms?\b|\bclaude-flow\b|\brUv\b'; then
   RUVNET=1
+  # Only Gate1 is optional by product. Errors/no node retain default-all.
+  _SCOPE=$(printf '%s' "$TEXT" | "${RUVNET_NODE_BIN:-node}" "${BASH_SOURCE[0]%/*}/ruvnet-gate1-pattern.mjs" --scope-matches 2>/dev/null) || _SCOPE=1
+  [ "$_SCOPE" = "0" ] && RUVNET=0
 fi
 
 # ── Gate 2: is the task reaching for a CLASSICAL DEFAULT that rUv already replaced? ──────────────

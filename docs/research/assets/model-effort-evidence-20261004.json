@@ -1,0 +1,2526 @@
+{
+  "checkedAt": "2026-10-04T13:34:54.416Z",
+  "metric": "Artificial Analysis Intelligence Index v4.3.2",
+  "rows": [
+    {
+      "sourceModelId": "2f3c4dc9-a450-4303-8697-0237257cf08f",
+      "sourceReleaseSlug": "claude-opus-5-5",
+      "sourceName": "Claude Opus 5.5 (Max, Default Fallback)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "max",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 57.6223698102963,
+        "estimated": false
+      },
+      "benchmarks": [
+        {
+          "suite": "aa-briefcase",
+          "score": 1807.81,
+          "costUsd": 21.045972715658657,
+          "timeSeconds": 2251.7710705612785
+        },
+        {
+          "suite": "gdpval-aa",
+          "score": 1867.05,
+          "costUsd": 8.918386645138963,
+          "timeSeconds": 1246.5924939949944
+        },
+        {
+          "suite": "automationbench-aa",
+          "score": 0.6953868128636069,
+          "costUsd": 1.428755110542112,
+          "timeSeconds": 273.7637411450659
+        },
+        {
+          "suite": "terminalbench-4-0",
+          "score": 0.595959595959596,
+          "costUsd": 13.109276120148786,
+          "timeSeconds": 1684.661339750758
+        },
+        {
+          "suite": "scicode",
+          "score": 0.668981481481482,
+          "costUsd": 0.46911601388888885,
+          "timeSeconds": 150.56377577348417
+        },
+        {
+          "suite": "humanitys-last-exam",
+          "score": 0.613531047265987,
+          "costUsd": 0.7184060055607044,
+          "timeSeconds": 238.64618725092976
+        },
+        {
+          "suite": "gdp-pdf",
+          "score": 0.262,
+          "costUsd": 1.55233548,
+          "timeSeconds": 281.85169189347283
+        },
+        {
+          "suite": "critpt",
+          "score": 0.317142857142857,
+          "costUsd": 2.189617085714286,
+          "timeSeconds": 722.6359706785689
+        },
+        {
+          "suite": "omniscience",
+          "score": 46.416666666666664,
+          "costUsd": 0.16091283733333334,
+          "timeSeconds": 53.35484017597649
+        },
+        {
+          "suite": "artificial-analysis-long-context-reasoning",
+          "score": 0.846666666666667,
+          "costUsd": 0.67655392,
+          "timeSeconds": 34.102899525081014
+        }
+      ],
+      "costPerTaskUsd": 5.982012019521066,
+      "timePerTaskSeconds": 793.6573645783164,
+      "speedTokensPerSecond": 92.0177600238087,
+      "inputUsdPerMillion": 4,
+      "outputUsdPerMillion": 20,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/claude-opus-5-5-vs-gpt-6-astra",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "f5dd8e6b944448872a006c3f81a3b548505e4220f46a924f2072cdcf191e1f2a",
+        "parser": "aa-next-flight-v1"
+      }
+    },
+    {
+      "sourceModelId": "2f339a97-9a0d-499a-9cb5-e0db665bfa25",
+      "sourceReleaseSlug": "gpt-6-astra",
+      "sourceName": "GPT-6 Astra (Max)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "max",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 52.673669395513,
+        "estimated": false
+      },
+      "benchmarks": [
+        {
+          "suite": "aa-briefcase",
+          "score": 1568.86,
+          "costUsd": 9.50208391505787,
+          "timeSeconds": 1118.9181135718688
+        },
+        {
+          "suite": "gdpval-aa",
+          "score": 1541.89,
+          "costUsd": 4.529484400556546,
+          "timeSeconds": 651.1492476557174
+        },
+        {
+          "suite": "automationbench-aa",
+          "score": 0.6849174806688876,
+          "costUsd": 1.5955923111377626,
+          "timeSeconds": 210.1258583202536
+        },
+        {
+          "suite": "terminalbench-4-0",
+          "score": 0.590909090909091,
+          "costUsd": 8.498119471851334,
+          "timeSeconds": 1232.4901873645379
+        },
+        {
+          "suite": "scicode",
+          "score": 0.564814814814815,
+          "costUsd": 0.23225916666666663,
+          "timeSeconds": 68.1989847736705
+        },
+        {
+          "suite": "humanitys-last-exam",
+          "score": 0.546802594995366,
+          "costUsd": 0.3780767979610751,
+          "timeSeconds": 122.14309896825013
+        },
+        {
+          "suite": "gdp-pdf",
+          "score": 0.31,
+          "costUsd": 2.0758207,
+          "timeSeconds": 150.63240467838563
+        },
+        {
+          "suite": "critpt",
+          "score": 0.317142857142857,
+          "costUsd": 1.1661618571428571,
+          "timeSeconds": 367.8693424625013
+        },
+        {
+          "suite": "omniscience",
+          "score": 43.4,
+          "costUsd": 0.09700390833333333,
+          "timeSeconds": 31.199676162699557
+        },
+        {
+          "suite": "artificial-analysis-long-context-reasoning",
+          "score": 0.806666666666667,
+          "costUsd": 0.9973057000000002,
+          "timeSeconds": 17.58515843994571
+        }
+      ],
+      "costPerTaskUsd": 3.2575003134834164,
+      "timePerTaskSeconds": 443.1515458885015,
+      "speedTokensPerSecond": 60.5920685787271,
+      "inputUsdPerMillion": 10,
+      "outputUsdPerMillion": 50,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/claude-opus-5-5-vs-gpt-6-astra",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "f5dd8e6b944448872a006c3f81a3b548505e4220f46a924f2072cdcf191e1f2a",
+        "parser": "aa-next-flight-v1"
+      }
+    },
+    {
+      "sourceModelId": "3e87c73e-a257-495e-9730-367a66229811",
+      "sourceReleaseSlug": "claude-fable-5-1",
+      "sourceName": "Claude Fable 5.1 (Max, Default Fallback)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "max",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 53.3549259623252,
+        "estimated": false
+      },
+      "benchmarks": [
+        {
+          "suite": "aa-briefcase",
+          "score": 1675.51,
+          "costUsd": 22.71345865423513,
+          "timeSeconds": 1816.7581016066645
+        },
+        {
+          "suite": "gdpval-aa",
+          "score": 1757.77,
+          "costUsd": 9.774869276879294,
+          "timeSeconds": 1022.8221864897171
+        },
+        {
+          "suite": "automationbench-aa",
+          "score": 0.5937591715646424,
+          "costUsd": 2.611294257588544,
+          "timeSeconds": 301.4061006047081
+        },
+        {
+          "suite": "terminalbench-4-0",
+          "score": 0.52020202020202,
+          "costUsd": 19.218480031061166,
+          "timeSeconds": 1856.6021834431103
+        },
+        {
+          "suite": "scicode",
+          "score": 0.630787037037037,
+          "costUsd": 0.6585189583333333,
+          "timeSeconds": 119.59197227889479
+        },
+        {
+          "suite": "humanitys-last-exam",
+          "score": 0.591288229842447,
+          "costUsd": 1.5858915690099744,
+          "timeSeconds": 310.2413997110272
+        },
+        {
+          "suite": "gdp-pdf",
+          "score": 0.262,
+          "costUsd": 2.7748912999999997,
+          "timeSeconds": 197.60892477029978
+        },
+        {
+          "suite": "critpt",
+          "score": 0.297142857142857,
+          "costUsd": 5.713794857142857,
+          "timeSeconds": 1094.7703746695338
+        },
+        {
+          "suite": "omniscience",
+          "score": 43.45,
+          "costUsd": 0.2683618295521425,
+          "timeSeconds": 52.06179374894335
+        },
+        {
+          "suite": "artificial-analysis-long-context-reasoning",
+          "score": 0.853333333333333,
+          "costUsd": 1.5844795862932,
+          "timeSeconds": 29.427854262046818
+        }
+      ],
+      "costPerTaskUsd": 7.629706364004841,
+      "timePerTaskSeconds": 757.0283861829373,
+      "speedTokensPerSecond": 66.1929828344904,
+      "inputUsdPerMillion": 10,
+      "outputUsdPerMillion": 50,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/claude-opus-5-5-vs-gpt-6-astra",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "f5dd8e6b944448872a006c3f81a3b548505e4220f46a924f2072cdcf191e1f2a",
+        "parser": "aa-next-flight-v1"
+      }
+    },
+    {
+      "sourceModelId": "b25ac058-1e33-4c31-bbc9-a20c3ad0717a",
+      "sourceReleaseSlug": "gpt-6-1-sol",
+      "sourceName": "GPT-6.1 Sol (Max)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "max",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 51.8332597011541,
+        "estimated": false
+      },
+      "benchmarks": [
+        {
+          "suite": "aa-briefcase",
+          "score": 1564.21,
+          "costUsd": 2.3126027773097606,
+          "timeSeconds": 2216.942656253244
+        },
+        {
+          "suite": "gdpval-aa",
+          "score": 1575.09,
+          "costUsd": 0.8935140711105688,
+          "timeSeconds": 883.8718070844411
+        },
+        {
+          "suite": "automationbench-aa",
+          "score": 0.6486844882398171,
+          "costUsd": 0.2968194851747073,
+          "timeSeconds": 269.04983031719826
+        },
+        {
+          "suite": "terminalbench-4-0",
+          "score": 0.560606060606061,
+          "costUsd": 1.8227634618325743,
+          "timeSeconds": 2085.6863561006007
+        },
+        {
+          "suite": "scicode",
+          "score": 0.541666666666667,
+          "costUsd": 0.04341916666666667,
+          "timeSeconds": 74.89286378737066
+        },
+        {
+          "suite": "humanitys-last-exam",
+          "score": 0.529193697868397,
+          "costUsd": 0.07757399165894348,
+          "timeSeconds": 148.338419950706
+        },
+        {
+          "suite": "gdp-pdf",
+          "score": 0.31,
+          "costUsd": 0.41986644,
+          "timeSeconds": 187.3459648594977
+        },
+        {
+          "suite": "critpt",
+          "score": 0.317142857142857,
+          "costUsd": 0.24241428571428572,
+          "timeSeconds": 452.61038337159346
+        },
+        {
+          "suite": "omniscience",
+          "score": 41.53333333333333,
+          "costUsd": 0.016735740000000002,
+          "timeSeconds": 31.788381294997208
+        },
+        {
+          "suite": "artificial-analysis-long-context-reasoning",
+          "score": 0.83,
+          "costUsd": 0.19940344,
+          "timeSeconds": 20.701616335771696
+        }
+      ],
+      "costPerTaskUsd": 0.7241670655535033,
+      "timePerTaskSeconds": 735.0718074803056,
+      "speedTokensPerSecond": 51.9060457522288,
+      "inputUsdPerMillion": 2,
+      "outputUsdPerMillion": 10,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/claude-opus-5-5-vs-gpt-6-astra",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "f5dd8e6b944448872a006c3f81a3b548505e4220f46a924f2072cdcf191e1f2a",
+        "parser": "aa-next-flight-v1"
+      }
+    },
+    {
+      "sourceModelId": "b171d979-5ec1-45de-b8b9-db1ee65e77ec",
+      "sourceReleaseSlug": "claude-sonnet-5-5",
+      "sourceName": "Claude Sonnet 5.5 (Max, Default Fallback)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "max",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 56.0001286580794,
+        "estimated": false
+      },
+      "benchmarks": [
+        {
+          "suite": "aa-briefcase",
+          "score": 1824.26,
+          "costUsd": 29.485613828746587,
+          "timeSeconds": 2917.9357615086838
+        },
+        {
+          "suite": "gdpval-aa",
+          "score": 1840.08,
+          "costUsd": 9.209469334460676,
+          "timeSeconds": 1332.4148951925322
+        },
+        {
+          "suite": "automationbench-aa",
+          "score": 0.7176882128193995,
+          "costUsd": 1.1375200750655383,
+          "timeSeconds": 284.2953052902708
+        },
+        {
+          "suite": "terminalbench-4-0",
+          "score": 0.636363636363636,
+          "costUsd": 18.763860643260998,
+          "timeSeconds": 1784.9444297890063
+        },
+        {
+          "suite": "scicode",
+          "score": 0.609953703703704,
+          "costUsd": 0.2780096319444444,
+          "timeSeconds": 125.96361884644435
+        },
+        {
+          "suite": "humanitys-last-exam",
+          "score": 0.549582947173309,
+          "costUsd": 0.5438353660797034,
+          "timeSeconds": 253.4239762501947
+        },
+        {
+          "suite": "gdp-pdf",
+          "score": 0.258,
+          "costUsd": 0.7943279200000001,
+          "timeSeconds": 206.24766512561462
+        },
+        {
+          "suite": "critpt",
+          "score": 0.314285714285714,
+          "costUsd": 1.8915142857142857,
+          "timeSeconds": 878.1994184352549
+        },
+        {
+          "suite": "omniscience",
+          "score": 32.3,
+          "costUsd": 0.14660985466666665,
+          "timeSeconds": 68.26726835199419
+        },
+        {
+          "suite": "artificial-analysis-long-context-reasoning",
+          "score": 0.826666666666667,
+          "costUsd": 0.33930086000000004,
+          "timeSeconds": 24.377143038449024
+        }
+      ],
+      "costPerTaskUsd": 7.666776317411276,
+      "timePerTaskSeconds": 921.4834772594425,
+      "speedTokensPerSecond": 132.254907724538,
+      "inputUsdPerMillion": 2,
+      "outputUsdPerMillion": 10,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/claude-opus-5-5-vs-gpt-6-astra",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "f5dd8e6b944448872a006c3f81a3b548505e4220f46a924f2072cdcf191e1f2a",
+        "parser": "aa-next-flight-v1"
+      }
+    },
+    {
+      "sourceModelId": "df5bf99d-d228-4715-b41b-19ca86118777",
+      "sourceReleaseSlug": "claude-opus-5-5",
+      "sourceName": "Claude Opus 5.5 (Xhigh, Default Fallback)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "xhigh",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 55.9873505840139,
+        "estimated": false
+      },
+      "benchmarks": [
+        {
+          "suite": "aa-briefcase",
+          "score": 1767.91,
+          "costUsd": 12.266185533590876,
+          "timeSeconds": 1576.4812738525977
+        },
+        {
+          "suite": "gdpval-aa",
+          "score": 1836.81,
+          "costUsd": 4.211652288983977,
+          "timeSeconds": 735.0698723378752
+        },
+        {
+          "suite": "automationbench-aa",
+          "score": 0.6495283516401527,
+          "costUsd": 0.8780356310854309,
+          "timeSeconds": 173.27569795809285
+        },
+        {
+          "suite": "terminalbench-4-0",
+          "score": 0.595959595959596,
+          "costUsd": 8.77835633170967,
+          "timeSeconds": 1348.2162820847648
+        },
+        {
+          "suite": "scicode",
+          "score": 0.650462962962963,
+          "costUsd": 0.06755947222222222,
+          "timeSeconds": 21.09168786695246
+        },
+        {
+          "suite": "humanitys-last-exam",
+          "score": 0.575069508804449,
+          "costUsd": 0.2405343225208526,
+          "timeSeconds": 94.96876512743327
+        },
+        {
+          "suite": "gdp-pdf",
+          "score": 0.266,
+          "costUsd": 0.9642728800000001,
+          "timeSeconds": 102.68750062322844
+        },
+        {
+          "suite": "critpt",
+          "score": 0.317142857142857,
+          "costUsd": 1.170762742857143,
+          "timeSeconds": 457.3695558690368
+        },
+        {
+          "suite": "omniscience",
+          "score": 42.65,
+          "costUsd": 0.013470695999999999,
+          "timeSeconds": 5.082460633441778
+        },
+        {
+          "suite": "artificial-analysis-long-context-reasoning",
+          "score": 0.846666666666667,
+          "costUsd": 0.59892312,
+          "timeSeconds": 9.854773837197385
+        }
+      ],
+      "costPerTaskUsd": 3.459110175822289,
+      "timePerTaskSeconds": 522.3314501535995,
+      "speedTokensPerSecond": 77.8148687706481,
+      "inputUsdPerMillion": 4,
+      "outputUsdPerMillion": 20,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/claude-opus-5-5-vs-gpt-6-astra",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "f5dd8e6b944448872a006c3f81a3b548505e4220f46a924f2072cdcf191e1f2a",
+        "parser": "aa-next-flight-v1"
+      }
+    },
+    {
+      "sourceModelId": "f314eade-2232-44bf-a3ab-9b326bc67de6",
+      "sourceReleaseSlug": "claude-opus-5-5",
+      "sourceName": "Claude Opus 5.5 (High, Default Fallback)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "high",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 53.5831959822067,
+        "estimated": false
+      },
+      "benchmarks": [
+        {
+          "suite": "aa-briefcase",
+          "score": 1689.14,
+          "costUsd": 6.270821902675123,
+          "timeSeconds": 938.8674598944167
+        },
+        {
+          "suite": "gdpval-aa",
+          "score": 1706.88,
+          "costUsd": 1.5426848886979923,
+          "timeSeconds": 321.94466187343096
+        },
+        {
+          "suite": "automationbench-aa",
+          "score": 0.6320677483186213,
+          "costUsd": 0.6986116140385024,
+          "timeSeconds": 137.24289562025663
+        },
+        {
+          "suite": "terminalbench-4-0",
+          "score": 0.565656565656566,
+          "costUsd": 5.118905183990514,
+          "timeSeconds": 831.437273725884
+        },
+        {
+          "suite": "scicode",
+          "score": 0.604166666666667,
+          "costUsd": 0.04019579166666666,
+          "timeSeconds": 10.922254705099713
+        },
+        {
+          "suite": "humanitys-last-exam",
+          "score": 0.555607043558851,
+          "costUsd": 0.10378723632993513,
+          "timeSeconds": 42.34206299041011
+        },
+        {
+          "suite": "gdp-pdf",
+          "score": 0.288,
+          "costUsd": 0.82542564,
+          "timeSeconds": 49.52769432381116
+        },
+        {
+          "suite": "critpt",
+          "score": 0.308571428571429,
+          "costUsd": 0.5298188,
+          "timeSeconds": 211.69183983046725
+        },
+        {
+          "suite": "omniscience",
+          "score": 40.63333333333333,
+          "costUsd": 0.008533217333333332,
+          "timeSeconds": 3.254209433196552
+        },
+        {
+          "suite": "artificial-analysis-long-context-reasoning",
+          "score": 0.826666666666667,
+          "costUsd": 0.59178232,
+          "timeSeconds": 7.319404577832399
+        }
+      ],
+      "costPerTaskUsd": 1.822504718771704,
+      "timePerTaskSeconds": 295.33294415395676,
+      "speedTokensPerSecond": 71.9355143730301,
+      "inputUsdPerMillion": 4,
+      "outputUsdPerMillion": 20,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/claude-opus-5-5-vs-gpt-6-astra",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "f5dd8e6b944448872a006c3f81a3b548505e4220f46a924f2072cdcf191e1f2a",
+        "parser": "aa-next-flight-v1"
+      }
+    },
+    {
+      "sourceModelId": "9b166bf3-42db-4f63-8338-1c4a1244ffe8",
+      "sourceReleaseSlug": "claude-fable-5-1",
+      "sourceName": "Claude Fable 5.1 (Xhigh, Default Fallback)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "xhigh",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 53.2032587538944,
+        "estimated": false
+      },
+      "benchmarks": [
+        {
+          "suite": "aa-briefcase",
+          "score": 1656.65,
+          "costUsd": 17.794043286109893,
+          "timeSeconds": 1501.9394561466981
+        },
+        {
+          "suite": "gdpval-aa",
+          "score": 1735.06,
+          "costUsd": 7.215166664909917,
+          "timeSeconds": 780.9115702147079
+        },
+        {
+          "suite": "automationbench-aa",
+          "score": 0.57772425084896,
+          "costUsd": 2.2012117020030537,
+          "timeSeconds": 248.36020826187382
+        },
+        {
+          "suite": "terminalbench-4-0",
+          "score": 0.55050505050505,
+          "costUsd": 15.783099429315186,
+          "timeSeconds": 1571.1077498096593
+        },
+        {
+          "suite": "scicode",
+          "score": 0.608796296296296,
+          "costUsd": 0.24103836805555554,
+          "timeSeconds": 40.131245050247315
+        },
+        {
+          "suite": "humanitys-last-exam",
+          "score": 0.587117701575533,
+          "costUsd": 1.0254394518594254,
+          "timeSeconds": 205.0939342897845
+        },
+        {
+          "suite": "gdp-pdf",
+          "score": 0.262,
+          "costUsd": 2.3229670000000002,
+          "timeSeconds": 114.89399018648636
+        },
+        {
+          "suite": "critpt",
+          "score": 0.311428571428571,
+          "costUsd": 4.533751571428571,
+          "timeSeconds": 887.0680254017051
+        },
+        {
+          "suite": "omniscience",
+          "score": 42.38333333333333,
+          "costUsd": 0.07733337209837085,
+          "timeSeconds": 15.212751428042308
+        },
+        {
+          "suite": "artificial-analysis-long-context-reasoning",
+          "score": 0.83,
+          "costUsd": 1.5078182999999998,
+          "timeSeconds": 14.377896188033928
+        }
+      ],
+      "costPerTaskUsd": 5.978304247388257,
+      "timePerTaskSeconds": 600.6303878539654,
+      "speedTokensPerSecond": 66.291194813225,
+      "inputUsdPerMillion": 10,
+      "outputUsdPerMillion": 50,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/claude-opus-5-5-vs-gpt-6-astra",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "f5dd8e6b944448872a006c3f81a3b548505e4220f46a924f2072cdcf191e1f2a",
+        "parser": "aa-next-flight-v1"
+      }
+    },
+    {
+      "sourceModelId": "1f541ef3-913f-4eb2-9d07-0e93c7a9a5e3",
+      "sourceReleaseSlug": "gpt-6-astra",
+      "sourceName": "GPT-6 Astra (Xhigh)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "xhigh",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 52.3863277108782,
+        "estimated": false
+      },
+      "benchmarks": [
+        {
+          "suite": "aa-briefcase",
+          "score": 1543.68,
+          "costUsd": 6.563521325092937,
+          "timeSeconds": 802.3229289463712
+        },
+        {
+          "suite": "gdpval-aa",
+          "score": 1516.48,
+          "costUsd": 3.0381411031489387,
+          "timeSeconds": 431.5035469925598
+        },
+        {
+          "suite": "automationbench-aa",
+          "score": 0.6717778020215392,
+          "costUsd": 1.406388714811355,
+          "timeSeconds": 185.1711971708253
+        },
+        {
+          "suite": "terminalbench-4-0",
+          "score": 0.595959595959596,
+          "costUsd": 5.855482520522051,
+          "timeSeconds": 776.906208280253
+        },
+        {
+          "suite": "scicode",
+          "score": 0.556712962962963,
+          "costUsd": 0.12163322916666665,
+          "timeSeconds": 35.38171128456549
+        },
+        {
+          "suite": "humanitys-last-exam",
+          "score": 0.545875810936052,
+          "costUsd": 0.25322250695088044,
+          "timeSeconds": 89.78737718351562
+        },
+        {
+          "suite": "gdp-pdf",
+          "score": 0.322,
+          "costUsd": 1.9127230999999998,
+          "timeSeconds": 100.16528360889983
+        },
+        {
+          "suite": "critpt",
+          "score": 0.314285714285714,
+          "costUsd": 0.7980151428571428,
+          "timeSeconds": 273.2454968156242
+        },
+        {
+          "suite": "omniscience",
+          "score": 43.416666666666664,
+          "costUsd": 0.05020671666666665,
+          "timeSeconds": 17.583431819625503
+        },
+        {
+          "suite": "artificial-analysis-long-context-reasoning",
+          "score": 0.8,
+          "costUsd": 0.9699102000000001,
+          "timeSeconds": 9.544697241560534
+        }
+      ],
+      "costPerTaskUsd": 2.308795912269076,
+      "timePerTaskSeconds": 303.42071125206064,
+      "speedTokensPerSecond": 55.8147165197591,
+      "inputUsdPerMillion": 10,
+      "outputUsdPerMillion": 50,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/claude-opus-5-5-vs-gpt-6-astra",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "f5dd8e6b944448872a006c3f81a3b548505e4220f46a924f2072cdcf191e1f2a",
+        "parser": "aa-next-flight-v1"
+      }
+    },
+    {
+      "sourceModelId": "975aeaef-50bd-4a65-9c73-f1015adcd4d4",
+      "sourceReleaseSlug": "claude-sonnet-5-5",
+      "sourceName": "Claude Sonnet 5.5 (Xhigh, Default Fallback)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "xhigh",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 51.8955544183089,
+        "estimated": false
+      },
+      "benchmarks": [
+        {
+          "suite": "aa-briefcase",
+          "score": 1751.34,
+          "costUsd": 9.656112029228414,
+          "timeSeconds": 1470.5095279197424
+        },
+        {
+          "suite": "gdpval-aa",
+          "score": 1730.55,
+          "costUsd": 2.4603761595039693,
+          "timeSeconds": 569.0064803301677
+        },
+        {
+          "suite": "automationbench-aa",
+          "score": 0.6552026949665557,
+          "costUsd": 0.47062803462691216,
+          "timeSeconds": 126.5305635730874
+        },
+        {
+          "suite": "terminalbench-4-0",
+          "score": 0.570707070707071,
+          "costUsd": 8.86990753731452,
+          "timeSeconds": 1168.9329943381672
+        },
+        {
+          "suite": "scicode",
+          "score": 0.572916666666667,
+          "costUsd": 0.023654777777777778,
+          "timeSeconds": 10.1077255789532
+        },
+        {
+          "suite": "humanitys-last-exam",
+          "score": 0.5,
+          "costUsd": 0.11786841890639481,
+          "timeSeconds": 71.19722004666457
+        },
+        {
+          "suite": "gdp-pdf",
+          "score": 0.246,
+          "costUsd": 0.46012694,
+          "timeSeconds": 65.1762094498161
+        },
+        {
+          "suite": "critpt",
+          "score": 0.311428571428571,
+          "costUsd": 0.6495111142857144,
+          "timeSeconds": 389.2592432510839
+        },
+        {
+          "suite": "omniscience",
+          "score": 23.5,
+          "costUsd": 0.008493120333333333,
+          "timeSeconds": 4.958425349591823
+        },
+        {
+          "suite": "artificial-analysis-long-context-reasoning",
+          "score": 0.796666666666667,
+          "costUsd": 0.29660586,
+          "timeSeconds": 5.802379406565122
+        }
+      ],
+      "costPerTaskUsd": 2.7461969619444453,
+      "timePerTaskSeconds": 455.304827438868,
+      "speedTokensPerSecond": 101.153975993291,
+      "inputUsdPerMillion": 2,
+      "outputUsdPerMillion": 10,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/claude-opus-5-5-vs-gpt-6-astra",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "f5dd8e6b944448872a006c3f81a3b548505e4220f46a924f2072cdcf191e1f2a",
+        "parser": "aa-next-flight-v1"
+      }
+    },
+    {
+      "sourceModelId": "ea9e0da6-169f-43c6-92f5-730a10d6ff8d",
+      "sourceReleaseSlug": "claude-opus-5-5",
+      "sourceName": "Claude Opus 5.5 (Medium, Default Fallback)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "medium",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 51.2434931792768,
+        "estimated": false
+      },
+      "benchmarks": [
+        {
+          "suite": "aa-briefcase",
+          "score": 1627.67,
+          "costUsd": 4.398209833004038,
+          "timeSeconds": 715.0374575559999
+        },
+        {
+          "suite": "gdpval-aa",
+          "score": 1586.25,
+          "costUsd": 0.8564266374284286,
+          "timeSeconds": 200.40285388697166
+        },
+        {
+          "suite": "automationbench-aa",
+          "score": 0.6121742919892179,
+          "costUsd": 0.6384449284910688,
+          "timeSeconds": 129.1128582627507
+        },
+        {
+          "suite": "terminalbench-4-0",
+          "score": 0.525252525252525,
+          "costUsd": 4.042978672513101,
+          "timeSeconds": 648.5831311601498
+        },
+        {
+          "suite": "scicode",
+          "score": 0.592592592592593,
+          "costUsd": 0.03547125,
+          "timeSeconds": 9.452429300840842
+        },
+        {
+          "suite": "humanitys-last-exam",
+          "score": 0.547265987025023,
+          "costUsd": 0.06194126042632067,
+          "timeSeconds": 25.80057418698372
+        },
+        {
+          "suite": "gdp-pdf",
+          "score": 0.256,
+          "costUsd": 0.7953176399999999,
+          "timeSeconds": 38.249139787775825
+        },
+        {
+          "suite": "critpt",
+          "score": 0.277142857142857,
+          "costUsd": 0.3450835428571429,
+          "timeSeconds": 139.72518797545032
+        },
+        {
+          "suite": "omniscience",
+          "score": 40.31666666666667,
+          "costUsd": 0.007548308000000001,
+          "timeSeconds": 2.939207565072825
+        },
+        {
+          "suite": "artificial-analysis-long-context-reasoning",
+          "score": 0.843333333333333,
+          "costUsd": 0.59002952,
+          "timeSeconds": 6.8091782902146605
+        }
+      ],
+      "costPerTaskUsd": 1.3360093438976588,
+      "timePerTaskSeconds": 220.7139332256264,
+      "speedTokensPerSecond": 72.8293245681095,
+      "inputUsdPerMillion": 4,
+      "outputUsdPerMillion": 20,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/claude-opus-5-5-vs-gpt-6-astra",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "f5dd8e6b944448872a006c3f81a3b548505e4220f46a924f2072cdcf191e1f2a",
+        "parser": "aa-next-flight-v1"
+      }
+    },
+    {
+      "sourceModelId": "9d7d72cd-d95d-45a0-b109-4ad292c9aabd",
+      "sourceReleaseSlug": "claude-fable-5-1",
+      "sourceName": "Claude Fable 5.1 (High, Default Fallback)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "high",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 51.1515708852237,
+        "estimated": false
+      },
+      "benchmarks": [
+        {
+          "suite": "aa-briefcase",
+          "score": 1581.3,
+          "costUsd": 11.39879255421772,
+          "timeSeconds": 1134.7440941202622
+        },
+        {
+          "suite": "gdpval-aa",
+          "score": 1634.7,
+          "costUsd": 3.4787048154705342,
+          "timeSeconds": 439.45325874928506
+        },
+        {
+          "suite": "automationbench-aa",
+          "score": 0.5532309746463979,
+          "costUsd": 1.7661763758709552,
+          "timeSeconds": 216.00624507959986
+        },
+        {
+          "suite": "terminalbench-4-0",
+          "score": 0.52020202020202,
+          "costUsd": 11.639562774933841,
+          "timeSeconds": 1283.8461513566003
+        },
+        {
+          "suite": "scicode",
+          "score": 0.586805555555556,
+          "costUsd": 0.08909774305555554,
+          "timeSeconds": 12.070515286852594
+        },
+        {
+          "suite": "humanitys-last-exam",
+          "score": 0.559314179796108,
+          "costUsd": 0.3969842688825093,
+          "timeSeconds": 91.40329979567791
+        },
+        {
+          "suite": "gdp-pdf",
+          "score": 0.268,
+          "costUsd": 2.0204515,
+          "timeSeconds": 62.80989464894212
+        },
+        {
+          "suite": "critpt",
+          "score": 0.302857142857143,
+          "costUsd": 2.747660142857143,
+          "timeSeconds": 610.7340606046316
+        },
+        {
+          "suite": "omniscience",
+          "score": 40.8,
+          "costUsd": 0.02066991919596167,
+          "timeSeconds": 4.461263775155133
+        },
+        {
+          "suite": "artificial-analysis-long-context-reasoning",
+          "score": 0.836666666666667,
+          "costUsd": 1.4810448,
+          "timeSeconds": 10.37784695532543
+        }
+      ],
+      "costPerTaskUsd": 3.912526554325558,
+      "timePerTaskSeconds": 432.2317263302578,
+      "speedTokensPerSecond": 53.1279710725806,
+      "inputUsdPerMillion": 10,
+      "outputUsdPerMillion": 50,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/claude-opus-5-5-vs-gpt-6-astra",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "f5dd8e6b944448872a006c3f81a3b548505e4220f46a924f2072cdcf191e1f2a",
+        "parser": "aa-next-flight-v1"
+      }
+    },
+    {
+      "sourceModelId": "092a3b0e-c5c8-45dc-bf1b-53673c8ff352",
+      "sourceReleaseSlug": "gpt-6-1-sol",
+      "sourceName": "GPT-6.1 Sol (Xhigh)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "xhigh",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 51.0377679093761,
+        "estimated": false
+      },
+      "benchmarks": [
+        {
+          "suite": "aa-briefcase",
+          "score": 1506.81,
+          "costUsd": 1.0385626211756458,
+          "timeSeconds": 842.050946744398
+        },
+        {
+          "suite": "gdpval-aa",
+          "score": 1510.4,
+          "costUsd": 0.558465178851431,
+          "timeSeconds": 495.6055716915452
+        },
+        {
+          "suite": "automationbench-aa",
+          "score": 0.6657372141364344,
+          "costUsd": 0.2505578926118788,
+          "timeSeconds": 205.62596049304932
+        },
+        {
+          "suite": "terminalbench-4-0",
+          "score": 0.54040404040404,
+          "costUsd": 1.0259491542428139,
+          "timeSeconds": 1101.1620671048906
+        },
+        {
+          "suite": "scicode",
+          "score": 0.556712962962963,
+          "costUsd": 0.022047979166666665,
+          "timeSeconds": 33.80189099670774
+        },
+        {
+          "suite": "humanitys-last-exam",
+          "score": 0.526413345690454,
+          "costUsd": 0.04281734198331789,
+          "timeSeconds": 81.63863885400558
+        },
+        {
+          "suite": "gdp-pdf",
+          "score": 0.318,
+          "costUsd": 0.36805063999999993,
+          "timeSeconds": 87.78263094364742
+        },
+        {
+          "suite": "critpt",
+          "score": 0.317142857142857,
+          "costUsd": 0.11908842857142854,
+          "timeSeconds": 215.89969447959984
+        },
+        {
+          "suite": "omniscience",
+          "score": 40.86666666666667,
+          "costUsd": 0.008223530000000001,
+          "timeSeconds": 15.436123422874653
+        },
+        {
+          "suite": "artificial-analysis-long-context-reasoning",
+          "score": 0.796666666666667,
+          "costUsd": 0.19346964,
+          "timeSeconds": 9.297049363320877
+        }
+      ],
+      "costPerTaskUsd": 0.39286117158850653,
+      "timePerTaskSeconds": 340.958260424949,
+      "speedTokensPerSecond": 52.0137873885742,
+      "inputUsdPerMillion": 2,
+      "outputUsdPerMillion": 10,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/claude-opus-5-5-vs-gpt-6-astra",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "f5dd8e6b944448872a006c3f81a3b548505e4220f46a924f2072cdcf191e1f2a",
+        "parser": "aa-next-flight-v1"
+      }
+    },
+    {
+      "sourceModelId": "e05a4828-0536-4876-870d-a235023f992b",
+      "sourceReleaseSlug": "gpt-6-astra",
+      "sourceName": "GPT-6 Astra (High)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "high",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 50.9191471636152,
+        "estimated": false
+      },
+      "benchmarks": [
+        {
+          "suite": "aa-briefcase",
+          "score": 1506.86,
+          "costUsd": 4.763525793864493,
+          "timeSeconds": 592.2827906166673
+        },
+        {
+          "suite": "gdpval-aa",
+          "score": 1484.52,
+          "costUsd": 2.4321981651397477,
+          "timeSeconds": 344.1414789468531
+        },
+        {
+          "suite": "automationbench-aa",
+          "score": 0.666122174975011,
+          "costUsd": 1.2951847697570744,
+          "timeSeconds": 169.35163401345633
+        },
+        {
+          "suite": "terminalbench-4-0",
+          "score": 0.54040404040404,
+          "costUsd": 4.0469926217499435,
+          "timeSeconds": 560.8003597474883
+        },
+        {
+          "suite": "scicode",
+          "score": 0.554398148148148,
+          "costUsd": 0.06957760416666667,
+          "timeSeconds": 17.30366275767706
+        },
+        {
+          "suite": "humanitys-last-exam",
+          "score": 0.530583873957368,
+          "costUsd": 0.1618475764596849,
+          "timeSeconds": 58.490823551023915
+        },
+        {
+          "suite": "gdp-pdf",
+          "score": 0.31,
+          "costUsd": 1.7948240999999998,
+          "timeSeconds": 59.36786139023225
+        },
+        {
+          "suite": "critpt",
+          "score": 0.288571428571429,
+          "costUsd": 0.4335251428571428,
+          "timeSeconds": 146.39114904450216
+        },
+        {
+          "suite": "omniscience",
+          "score": 43.733333333333334,
+          "costUsd": 0.02721698333333333,
+          "timeSeconds": 9.576436467176258
+        },
+        {
+          "suite": "artificial-analysis-long-context-reasoning",
+          "score": 0.8,
+          "costUsd": 0.9597182000000001,
+          "timeSeconds": 6.041389043702796
+        }
+      ],
+      "costPerTaskUsd": 1.7252530861048456,
+      "timePerTaskSeconds": 217.69806875921213,
+      "speedTokensPerSecond": 54.4216556438529,
+      "inputUsdPerMillion": 10,
+      "outputUsdPerMillion": 50,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/claude-opus-5-5-vs-gpt-6-astra",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "f5dd8e6b944448872a006c3f81a3b548505e4220f46a924f2072cdcf191e1f2a",
+        "parser": "aa-next-flight-v1"
+      }
+    },
+    {
+      "sourceModelId": "3b84fee3-b70a-41bc-819e-5fbdef9a0042",
+      "sourceReleaseSlug": "gpt-6-1-sol",
+      "sourceName": "GPT-6.1 Sol (High)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "high",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 50.2377777519769,
+        "estimated": false
+      },
+      "benchmarks": [
+        {
+          "suite": "aa-briefcase",
+          "score": 1471.09,
+          "costUsd": 0.8369288919931835,
+          "timeSeconds": 686.34509510478
+        },
+        {
+          "suite": "gdpval-aa",
+          "score": 1486.41,
+          "costUsd": 0.42773535751108593,
+          "timeSeconds": 377.5737765650162
+        },
+        {
+          "suite": "automationbench-aa",
+          "score": 0.6449523732184466,
+          "costUsd": 0.22578054709230252,
+          "timeSeconds": 184.8570824997243
+        },
+        {
+          "suite": "terminalbench-4-0",
+          "score": 0.515151515151515,
+          "costUsd": 0.8281767981765117,
+          "timeSeconds": 878.1527700090292
+        },
+        {
+          "suite": "scicode",
+          "score": 0.55787037037037,
+          "costUsd": 0.012967263888888888,
+          "timeSeconds": 16.95385577665628
+        },
+        {
+          "suite": "humanitys-last-exam",
+          "score": 0.513901760889713,
+          "costUsd": 0.02663372752548656,
+          "timeSeconds": 52.312376987061285
+        },
+        {
+          "suite": "gdp-pdf",
+          "score": 0.32,
+          "costUsd": 0.34940143999999995,
+          "timeSeconds": 53.73932827601646
+        },
+        {
+          "suite": "critpt",
+          "score": 0.3,
+          "costUsd": 0.07568757142857144,
+          "timeSeconds": 137.46518103720135
+        },
+        {
+          "suite": "omniscience",
+          "score": 41.45,
+          "costUsd": 0.0045785316666666675,
+          "timeSeconds": 8.714202654389599
+        },
+        {
+          "suite": "artificial-analysis-long-context-reasoning",
+          "score": 0.823333333333333,
+          "costUsd": 0.19138134,
+          "timeSeconds": 5.463860499581952
+        }
+      ],
+      "costPerTaskUsd": 0.31914442375664703,
+      "timePerTaskSeconds": 265.39467067893884,
+      "speedTokensPerSecond": 49.7791018423757,
+      "inputUsdPerMillion": 2,
+      "outputUsdPerMillion": 10,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/claude-opus-5-5-vs-gpt-6-astra",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "f5dd8e6b944448872a006c3f81a3b548505e4220f46a924f2072cdcf191e1f2a",
+        "parser": "aa-next-flight-v1"
+      }
+    },
+    {
+      "sourceModelId": "e97a4ef5-e817-480e-9595-12f81dc4974f",
+      "sourceReleaseSlug": "gpt-6-astra",
+      "sourceName": "GPT-6 Astra (Medium)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "medium",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 49.5704363034369,
+        "estimated": false
+      },
+      "benchmarks": [
+        {
+          "suite": "aa-briefcase",
+          "score": 1459.22,
+          "costUsd": 3.9399856621415905,
+          "timeSeconds": 503.6467362104231
+        },
+        {
+          "suite": "gdpval-aa",
+          "score": 1467.88,
+          "costUsd": 1.8224126078347798,
+          "timeSeconds": 246.69693562430498
+        },
+        {
+          "suite": "automationbench-aa",
+          "score": 0.6459498850561176,
+          "costUsd": 1.1770207482301795,
+          "timeSeconds": 149.21841054949488
+        },
+        {
+          "suite": "terminalbench-4-0",
+          "score": 0.494949494949495,
+          "costUsd": 4.430107637760555,
+          "timeSeconds": 565.4717226672916
+        },
+        {
+          "suite": "scicode",
+          "score": 0.541666666666667,
+          "costUsd": 0.05087506944444444,
+          "timeSeconds": 10.733920880644446
+        },
+        {
+          "suite": "humanitys-last-exam",
+          "score": 0.527340129749768,
+          "costUsd": 0.10052880908248378,
+          "timeSeconds": 37.119655924999805
+        },
+        {
+          "suite": "gdp-pdf",
+          "score": 0.304,
+          "costUsd": 1.7198086,
+          "timeSeconds": 32.80543748395337
+        },
+        {
+          "suite": "critpt",
+          "score": 0.291428571428571,
+          "costUsd": 0.28512042857142855,
+          "timeSeconds": 95.13756855042386
+        },
+        {
+          "suite": "omniscience",
+          "score": 42.21666666666667,
+          "costUsd": 0.015017399999999998,
+          "timeSeconds": 5.253969291525106
+        },
+        {
+          "suite": "artificial-analysis-long-context-reasoning",
+          "score": 0.796666666666667,
+          "costUsd": 0.9532502000000002,
+          "timeSeconds": 3.7827282791337007
+        }
+      ],
+      "costPerTaskUsd": 1.5406493220021167,
+      "timePerTaskSeconds": 182.78168687988543,
+      "speedTokensPerSecond": 51.9445711921391,
+      "inputUsdPerMillion": 10,
+      "outputUsdPerMillion": 50,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/claude-opus-5-5-vs-gpt-6-astra",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "f5dd8e6b944448872a006c3f81a3b548505e4220f46a924f2072cdcf191e1f2a",
+        "parser": "aa-next-flight-v1"
+      }
+    },
+    {
+      "sourceModelId": "3b7de71c-e034-4591-8ca6-6b6be2fa471f",
+      "sourceReleaseSlug": "claude-fable-5-1",
+      "sourceName": "Claude Fable 5.1 (Medium, Default Fallback)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "medium",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 48.9206162609523,
+        "estimated": false
+      },
+      "benchmarks": [
+        {
+          "suite": "aa-briefcase",
+          "score": 1529.31,
+          "costUsd": 8.58019464476686,
+          "timeSeconds": 874.4734491970214
+        },
+        {
+          "suite": "gdpval-aa",
+          "score": 1550.37,
+          "costUsd": 2.184169881694239,
+          "timeSeconds": 284.54490958506744
+        },
+        {
+          "suite": "automationbench-aa",
+          "score": 0.5466103465672885,
+          "costUsd": 1.6430460085985101,
+          "timeSeconds": 197.2265635319539
+        },
+        {
+          "suite": "terminalbench-4-0",
+          "score": 0.44949494949495,
+          "costUsd": 9.124327942195764,
+          "timeSeconds": 954.400091511319
+        },
+        {
+          "suite": "scicode",
+          "score": 0.563657407407407,
+          "costUsd": 0.07562430555555556,
+          "timeSeconds": 9.182280976246803
+        },
+        {
+          "suite": "humanitys-last-exam",
+          "score": 0.537998146431881,
+          "costUsd": 0.22541674659424474,
+          "timeSeconds": 51.70841567661292
+        },
+        {
+          "suite": "gdp-pdf",
+          "score": 0.268,
+          "costUsd": 1.9601907,
+          "timeSeconds": 48.57246423259286
+        },
+        {
+          "suite": "critpt",
+          "score": 0.291428571428571,
+          "costUsd": 1.8038545714285714,
+          "timeSeconds": 397.07071779151886
+        },
+        {
+          "suite": "omniscience",
+          "score": 37.6,
+          "costUsd": 0.015322394698615002,
+          "timeSeconds": 3.1956262488237694
+        },
+        {
+          "suite": "artificial-analysis-long-context-reasoning",
+          "score": 0.846666666666667,
+          "costUsd": 1.4751832999999999,
+          "timeSeconds": 9.039332086681181
+        }
+      ],
+      "costPerTaskUsd": 2.982597436096585,
+      "timePerTaskSeconds": 316.51154407514434,
+      "speedTokensPerSecond": 53.1624592205054,
+      "inputUsdPerMillion": 10,
+      "outputUsdPerMillion": 50,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/claude-opus-5-5-vs-gpt-6-astra",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "f5dd8e6b944448872a006c3f81a3b548505e4220f46a924f2072cdcf191e1f2a",
+        "parser": "aa-next-flight-v1"
+      }
+    },
+    {
+      "sourceModelId": "a2e51d62-ea4e-4f15-8be0-be9dc1fb489d",
+      "sourceReleaseSlug": "gpt-6-1-sol",
+      "sourceName": "GPT-6.1 Sol (Medium)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "medium",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 47.7833271274065,
+        "estimated": false
+      },
+      "benchmarks": [
+        {
+          "suite": "aa-briefcase",
+          "score": 1364.77,
+          "costUsd": 0.4643700654607732,
+          "timeSeconds": 408.00162427145347
+        },
+        {
+          "suite": "gdpval-aa",
+          "score": 1432.94,
+          "costUsd": 0.23116139731597238,
+          "timeSeconds": 221.03838529640117
+        },
+        {
+          "suite": "automationbench-aa",
+          "score": 0.6257350970435687,
+          "costUsd": 0.19630359332471714,
+          "timeSeconds": 163.3505881911092
+        },
+        {
+          "suite": "terminalbench-4-0",
+          "score": 0.47979797979798,
+          "costUsd": 0.6137554705459501,
+          "timeSeconds": 696.6854134520107
+        },
+        {
+          "suite": "scicode",
+          "score": 0.532407407407407,
+          "costUsd": 0.009314833333333333,
+          "timeSeconds": 10.496139248761834
+        },
+        {
+          "suite": "humanitys-last-exam",
+          "score": 0.498609823911029,
+          "costUsd": 0.01261928359592215,
+          "timeSeconds": 26.139057585873736
+        },
+        {
+          "suite": "gdp-pdf",
+          "score": 0.3,
+          "costUsd": 0.33747823999999993,
+          "timeSeconds": 32.24530264509639
+        },
+        {
+          "suite": "critpt",
+          "score": 0.277142857142857,
+          "costUsd": 0.03952825714285714,
+          "timeSeconds": 71.09836059200946
+        },
+        {
+          "suite": "omniscience",
+          "score": 39.95,
+          "costUsd": 0.0022205533333333333,
+          "timeSeconds": 4.303116683159843
+        },
+        {
+          "suite": "artificial-analysis-long-context-reasoning",
+          "score": 0.833333333333333,
+          "costUsd": 0.19022724000000002,
+          "timeSeconds": 3.4053279286427256
+        }
+      ],
+      "costPerTaskUsd": 0.21370088267875537,
+      "timePerTaskSeconds": 175.9537728311949,
+      "speedTokensPerSecond": 45.5715307591152,
+      "inputUsdPerMillion": 2,
+      "outputUsdPerMillion": 10,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/gpt-6-1-sol-vs-claude-sonnet-5-5",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "f9df0e33006e764473dede9ec36d16f47c7572b3d59b87506211060bd4ad62e8",
+        "parser": "aa-next-flight-v1"
+      }
+    },
+    {
+      "sourceModelId": "e76e0fe5-93ca-4272-9359-2eb1740467d1",
+      "sourceReleaseSlug": "gpt-6-1-sol",
+      "sourceName": "GPT-6.1 Sol (Low)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "low",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 42.0835618555848,
+        "estimated": false
+      },
+      "benchmarks": [
+        {
+          "suite": "aa-briefcase",
+          "score": 1118.39,
+          "costUsd": 0.17709095010309106,
+          "timeSeconds": 136.41712079455073
+        },
+        {
+          "suite": "gdpval-aa",
+          "score": 1297,
+          "costUsd": 0.10499175787579802,
+          "timeSeconds": 103.33291384706082
+        },
+        {
+          "suite": "automationbench-aa",
+          "score": 0.5257088964747538,
+          "costUsd": 0.15943911386155785,
+          "timeSeconds": 110.92679262581342
+        },
+        {
+          "suite": "terminalbench-4-0",
+          "score": 0.308080808080808,
+          "costUsd": 0.3829418451399688,
+          "timeSeconds": 352.57593231229964
+        },
+        {
+          "suite": "scicode",
+          "score": 0.532407407407407,
+          "costUsd": 0.008424590277777777,
+          "timeSeconds": 8.120718128238588
+        },
+        {
+          "suite": "humanitys-last-exam",
+          "score": 0.473586654309546,
+          "costUsd": 0.0073080926784059325,
+          "timeSeconds": 13.568265490495504
+        },
+        {
+          "suite": "gdp-pdf",
+          "score": 0.27,
+          "costUsd": 0.33414024,
+          "timeSeconds": 23.26879229243856
+        },
+        {
+          "suite": "critpt",
+          "score": 0.248571428571429,
+          "costUsd": 0.027210571428571424,
+          "timeSeconds": 42.17264670570755
+        },
+        {
+          "suite": "omniscience",
+          "score": 37.63333333333333,
+          "costUsd": 0.0014547916666666665,
+          "timeSeconds": 2.454320308349271
+        },
+        {
+          "suite": "artificial-analysis-long-context-reasoning",
+          "score": 0.84,
+          "costUsd": 0.18992764,
+          "timeSeconds": 2.5648749110556426
+        }
+      ],
+      "costPerTaskUsd": 0.13075190869859377,
+      "timePerTaskSeconds": 80.80922641990252,
+      "speedTokensPerSecond": 50.2504530919404,
+      "inputUsdPerMillion": 2,
+      "outputUsdPerMillion": 10,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/gpt-6-1-sol-vs-claude-sonnet-5-5",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "f9df0e33006e764473dede9ec36d16f47c7572b3d59b87506211060bd4ad62e8",
+        "parser": "aa-next-flight-v1"
+      }
+    },
+    {
+      "sourceModelId": "268525e2-f873-4178-bc07-e6a0ee1f002d",
+      "sourceReleaseSlug": "claude-sonnet-5-5",
+      "sourceName": "Claude Sonnet 5.5 (High, Default Fallback)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "high",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 46.7533528066958,
+        "estimated": false
+      },
+      "benchmarks": [
+        {
+          "suite": "aa-briefcase",
+          "score": 1639.45,
+          "costUsd": 4.18991666170974,
+          "timeSeconds": 893.1465263382815
+        },
+        {
+          "suite": "gdpval-aa",
+          "score": 1550.92,
+          "costUsd": 0.7947506093322274,
+          "timeSeconds": 255.0801499474051
+        },
+        {
+          "suite": "automationbench-aa",
+          "score": 0.5942923026067375,
+          "costUsd": 0.34705460890119366,
+          "timeSeconds": 93.77133592080672
+        },
+        {
+          "suite": "terminalbench-4-0",
+          "score": 0.439393939393939,
+          "costUsd": 3.0643122554616866,
+          "timeSeconds": 489.1141433019754
+        },
+        {
+          "suite": "scicode",
+          "score": 0.537037037037037,
+          "costUsd": 0.0160004375,
+          "timeSeconds": 5.986486070185891
+        },
+        {
+          "suite": "humanitys-last-exam",
+          "score": 0.458294717330862,
+          "costUsd": 0.04726052734012975,
+          "timeSeconds": 29.58914054631937
+        },
+        {
+          "suite": "gdp-pdf",
+          "score": 0.252,
+          "costUsd": 0.40860073999999996,
+          "timeSeconds": 35.452985839216105
+        },
+        {
+          "suite": "critpt",
+          "score": 0.245714285714286,
+          "costUsd": 0.28051582857142854,
+          "timeSeconds": 172.9477817242693
+        },
+        {
+          "suite": "omniscience",
+          "score": 20.95,
+          "costUsd": 0.005356353666666667,
+          "timeSeconds": 3.1969050609633958
+        },
+        {
+          "suite": "artificial-analysis-long-context-reasoning",
+          "score": 0.78,
+          "costUsd": 0.29391706,
+          "timeSeconds": 4.36753690462937
+        }
+      ],
+      "costPerTaskUsd": 1.1224835755720677,
+      "timePerTaskSeconds": 238.17552709409566,
+      "speedTokensPerSecond": 96.3319673391155,
+      "inputUsdPerMillion": 2,
+      "outputUsdPerMillion": 10,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/gpt-6-1-sol-vs-claude-sonnet-5-5",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "f9df0e33006e764473dede9ec36d16f47c7572b3d59b87506211060bd4ad62e8",
+        "parser": "aa-next-flight-v1"
+      }
+    },
+    {
+      "sourceModelId": "042e8a37-fcd0-40f4-8f41-99215fb68eda",
+      "sourceReleaseSlug": "claude-sonnet-5-5",
+      "sourceName": "Claude Sonnet 5.5 (Medium, Default Fallback)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "medium",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 40.838652287929,
+        "estimated": false
+      },
+      "benchmarks": [
+        {
+          "suite": "aa-briefcase",
+          "score": 1442.01,
+          "costUsd": 1.6349375639380848,
+          "timeSeconds": 467.07020211906087
+        },
+        {
+          "suite": "gdpval-aa",
+          "score": 1323.6,
+          "costUsd": 0.3341521830138988,
+          "timeSeconds": 155.20262854215983
+        },
+        {
+          "suite": "automationbench-aa",
+          "score": 0.5490962996121462,
+          "costUsd": 0.28958158937187606,
+          "timeSeconds": 79.74450321928296
+        },
+        {
+          "suite": "terminalbench-4-0",
+          "score": 0.297979797979798,
+          "costUsd": 2.2451861407346856,
+          "timeSeconds": 336.628874183537
+        },
+        {
+          "suite": "scicode",
+          "score": 0.528935185185185,
+          "costUsd": 0.013536590277777776,
+          "timeSeconds": 4.6900031926548635
+        },
+        {
+          "suite": "humanitys-last-exam",
+          "score": 0.39805375347544,
+          "costUsd": 0.02319133086190918,
+          "timeSeconds": 14.540526198548333
+        },
+        {
+          "suite": "gdp-pdf",
+          "score": 0.202,
+          "costUsd": 0.38142373999999996,
+          "timeSeconds": 18.511925106806828
+        },
+        {
+          "suite": "critpt",
+          "score": 0.168571428571429,
+          "costUsd": 0.14917562857142858,
+          "timeSeconds": 91.39342956451199
+        },
+        {
+          "suite": "omniscience",
+          "score": 20.1,
+          "costUsd": 0.002940345333333333,
+          "timeSeconds": 1.6918586669182767
+        },
+        {
+          "suite": "artificial-analysis-long-context-reasoning",
+          "score": 0.763333333333333,
+          "costUsd": 0.29160706,
+          "timeSeconds": 2.957465525488478
+        }
+      ],
+      "costPerTaskUsd": 0.5894076802052765,
+      "timePerTaskSeconds": 136.54614623395733,
+      "speedTokensPerSecond": 94.7747226959862,
+      "inputUsdPerMillion": 2,
+      "outputUsdPerMillion": 10,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/gpt-6-1-sol-vs-claude-sonnet-5-5",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "f9df0e33006e764473dede9ec36d16f47c7572b3d59b87506211060bd4ad62e8",
+        "parser": "aa-next-flight-v1"
+      }
+    },
+    {
+      "sourceModelId": "bbc2ffea-cf6b-43be-8c41-1769347e234d",
+      "sourceReleaseSlug": "claude-sonnet-5-5",
+      "sourceName": "Claude Sonnet 5.5 (Low, Default Fallback)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "low",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 35.8681594577587,
+        "estimated": false
+      },
+      "benchmarks": [
+        {
+          "suite": "aa-briefcase",
+          "score": 1272.3,
+          "costUsd": 0.8965162706574035,
+          "timeSeconds": 304.38758494214596
+        },
+        {
+          "suite": "gdpval-aa",
+          "score": 1178.6,
+          "costUsd": 0.2151956630998509,
+          "timeSeconds": 107.90273647366972
+        },
+        {
+          "suite": "automationbench-aa",
+          "score": 0.4942092641344955,
+          "costUsd": 0.2659004765275505,
+          "timeSeconds": 74.46315314203633
+        },
+        {
+          "suite": "terminalbench-4-0",
+          "score": 0.207070707070707,
+          "costUsd": 1.8426878944390828,
+          "timeSeconds": 268.80291557055307
+        },
+        {
+          "suite": "scicode",
+          "score": 0.490740740740741,
+          "costUsd": 0.012945277777777778,
+          "timeSeconds": 4.481975740829259
+        },
+        {
+          "suite": "humanitys-last-exam",
+          "score": 0.362372567191844,
+          "costUsd": 0.012811643188137163,
+          "timeSeconds": 7.952362457826575
+        },
+        {
+          "suite": "gdp-pdf",
+          "score": 0.16,
+          "costUsd": 0.37231423999999996,
+          "timeSeconds": 12.864576867914115
+        },
+        {
+          "suite": "critpt",
+          "score": 0.114285714285714,
+          "costUsd": 0.08619905714285714,
+          "timeSeconds": 51.56464992681191
+        },
+        {
+          "suite": "omniscience",
+          "score": 19.366666666666667,
+          "costUsd": 0.002740045333333333,
+          "timeSeconds": 1.5976787558701633
+        },
+        {
+          "suite": "artificial-analysis-long-context-reasoning",
+          "score": 0.76,
+          "costUsd": 0.29143206,
+          "timeSeconds": 2.909716058477229
+        }
+      ],
+      "costPerTaskUsd": 0.41697045178975856,
+      "timePerTaskSeconds": 95.12335471848856,
+      "speedTokensPerSecond": 92.5773690831386,
+      "inputUsdPerMillion": 2,
+      "outputUsdPerMillion": 10,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/gpt-6-1-sol-vs-claude-sonnet-5-5",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "f9df0e33006e764473dede9ec36d16f47c7572b3d59b87506211060bd4ad62e8",
+        "parser": "aa-next-flight-v1"
+      }
+    },
+    {
+      "sourceModelId": "6fb13851-40ce-4bda-ad3f-6b38e0c5daa7",
+      "sourceReleaseSlug": "gpt-6-luna",
+      "sourceName": "GPT-6 Luna (Max)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "max",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 38.1245186869738,
+        "estimated": false
+      },
+      "benchmarks": [
+        {
+          "suite": "aa-briefcase",
+          "score": 1335.95,
+          "costUsd": 0.16999207407261596,
+          "timeSeconds": 782.2645615758722
+        },
+        {
+          "suite": "gdpval-aa",
+          "score": 1437.53,
+          "costUsd": 0.08935398436610914,
+          "timeSeconds": 434.0609739896426
+        },
+        {
+          "suite": "automationbench-aa",
+          "score": 0.5316814034483175,
+          "costUsd": 0.03639964442044852,
+          "timeSeconds": 241.99222238298574
+        },
+        {
+          "suite": "terminalbench-4-0",
+          "score": 0.126262626262626,
+          "costUsd": 0.23621085607736897,
+          "timeSeconds": 1002.3646841780221
+        },
+        {
+          "suite": "scicode",
+          "score": 0.546296296296296,
+          "costUsd": 0.0036765802083333337,
+          "timeSeconds": 49.10264470343294
+        },
+        {
+          "suite": "humanitys-last-exam",
+          "score": 0.385078776645042,
+          "costUsd": 0.011812253938832253,
+          "timeSeconds": 167.53221987611488
+        },
+        {
+          "suite": "gdp-pdf",
+          "score": 0.228,
+          "costUsd": 0.028547064,
+          "timeSeconds": 176.55674542229312
+        },
+        {
+          "suite": "critpt",
+          "score": 0.194285714285714,
+          "costUsd": 0.02656206857142857,
+          "timeSeconds": 373.04201616826884
+        },
+        {
+          "suite": "omniscience",
+          "score": 0.65,
+          "costUsd": 0.0025233736666666665,
+          "timeSeconds": 35.70822903418842
+        },
+        {
+          "suite": "artificial-analysis-long-context-reasoning",
+          "score": 0.833333333333333,
+          "costUsd": 0.010187532000000001,
+          "timeSeconds": 10.726018795119742
+        }
+      ],
+      "costPerTaskUsd": 0.06782295669812205,
+      "timePerTaskSeconds": 355.5977590841918,
+      "speedTokensPerSecond": 140.696516985607,
+      "inputUsdPerMillion": 0.1,
+      "outputUsdPerMillion": 0.5,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/gpt-6-luna-vs-gpt-6-astra",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "c4102ef225c4bedd694595d3c2e053cde46c43fa7f70442eea1bef6a47205ee7",
+        "parser": "aa-next-flight-v1"
+      }
+    },
+    {
+      "sourceModelId": "19813eb2-460a-475c-af65-810bb8660fec",
+      "sourceReleaseSlug": "gpt-6-luna",
+      "sourceName": "GPT-6 Luna (Xhigh)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "xhigh",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 34.5587320217785,
+        "estimated": false
+      },
+      "benchmarks": [
+        {
+          "suite": "aa-briefcase",
+          "score": 1236.79,
+          "costUsd": 0.08249954686550107,
+          "timeSeconds": 415.93995458729466
+        },
+        {
+          "suite": "gdpval-aa",
+          "score": 1363.6,
+          "costUsd": 0.04571538846185774,
+          "timeSeconds": 235.47783596901658
+        },
+        {
+          "suite": "automationbench-aa",
+          "score": 0.47800686767566575,
+          "costUsd": 0.023298294600704986,
+          "timeSeconds": 145.1292588308136
+        },
+        {
+          "suite": "terminalbench-4-0",
+          "score": 0.0808080808080808,
+          "costUsd": 0.1981783100252545,
+          "timeSeconds": 756.6930510587167
+        },
+        {
+          "suite": "scicode",
+          "score": 0.517361111111111,
+          "costUsd": 0.0014390868055555554,
+          "timeSeconds": 17.676491361932797
+        },
+        {
+          "suite": "humanitys-last-exam",
+          "score": 0.343373493975904,
+          "costUsd": 0.00509183609823911,
+          "timeSeconds": 73.46006530813301
+        },
+        {
+          "suite": "gdp-pdf",
+          "score": 0.186,
+          "costUsd": 0.020663617,
+          "timeSeconds": 65.74941943387104
+        },
+        {
+          "suite": "critpt",
+          "score": 0.174285714285714,
+          "costUsd": 0.00899588,
+          "timeSeconds": 126.12947139589829
+        },
+        {
+          "suite": "omniscience",
+          "score": -1.8333333333333333,
+          "costUsd": 0.0009628764999999999,
+          "timeSeconds": 13.798758151868837
+        },
+        {
+          "suite": "artificial-analysis-long-context-reasoning",
+          "score": 0.8,
+          "costUsd": 0.009817157000000002,
+          "timeSeconds": 5.572843412911616
+        }
+      ],
+      "costPerTaskUsd": 0.042183547923951084,
+      "timePerTaskSeconds": 199.51454547581767,
+      "speedTokensPerSecond": 137.334042447252,
+      "inputUsdPerMillion": 0.1,
+      "outputUsdPerMillion": 0.5,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/gpt-6-luna-vs-gpt-6-astra",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "c4102ef225c4bedd694595d3c2e053cde46c43fa7f70442eea1bef6a47205ee7",
+        "parser": "aa-next-flight-v1"
+      }
+    },
+    {
+      "sourceModelId": "7d1229bc-deea-4717-ba5b-f59a35d991e3",
+      "sourceReleaseSlug": "gpt-6-luna",
+      "sourceName": "GPT-6 Luna (High)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "high",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 32.9282054150837,
+        "estimated": false
+      },
+      "benchmarks": [
+        {
+          "suite": "aa-briefcase",
+          "score": 1185.75,
+          "costUsd": 0.06220832086165862,
+          "timeSeconds": 311.78774707262664
+        },
+        {
+          "suite": "gdpval-aa",
+          "score": 1344.09,
+          "costUsd": 0.03190170403500649,
+          "timeSeconds": 183.16567864759472
+        },
+        {
+          "suite": "automationbench-aa",
+          "score": 0.4782449139916615,
+          "costUsd": 0.020749699267145254,
+          "timeSeconds": 122.46462647838537
+        },
+        {
+          "suite": "terminalbench-4-0",
+          "score": 0.0454545454545455,
+          "costUsd": 0.12040055149702272,
+          "timeSeconds": 545.1213263246403
+        },
+        {
+          "suite": "scicode",
+          "score": 0.503472222222222,
+          "costUsd": 0.0009804875000000001,
+          "timeSeconds": 11.22253053899046
+        },
+        {
+          "suite": "humanitys-last-exam",
+          "score": 0.329471733086191,
+          "costUsd": 0.0030390533827618165,
+          "timeSeconds": 44.16699550463345
+        },
+        {
+          "suite": "gdp-pdf",
+          "score": 0.182,
+          "costUsd": 0.018825166,
+          "timeSeconds": 39.51448487464814
+        },
+        {
+          "suite": "critpt",
+          "score": 0.154285714285714,
+          "costUsd": 0.005755518571428571,
+          "timeSeconds": 80.11427794318845
+        },
+        {
+          "suite": "omniscience",
+          "score": -5.5,
+          "costUsd": 0.0005826524166666666,
+          "timeSeconds": 8.37523866625454
+        },
+        {
+          "suite": "artificial-analysis-long-context-reasoning",
+          "score": 0.793333333333333,
+          "costUsd": 0.009703947000000003,
+          "timeSeconds": 3.975026226846739
+        }
+      ],
+      "costPerTaskUsd": 0.02903157640372802,
+      "timePerTaskSeconds": 144.6769598794633,
+      "speedTokensPerSecond": 133.571230996637,
+      "inputUsdPerMillion": 0.1,
+      "outputUsdPerMillion": 0.5,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/gpt-6-luna-vs-gpt-6-astra",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "c4102ef225c4bedd694595d3c2e053cde46c43fa7f70442eea1bef6a47205ee7",
+        "parser": "aa-next-flight-v1"
+      }
+    },
+    {
+      "sourceModelId": "36667da0-9222-4967-adbb-f7efa15ad213",
+      "sourceReleaseSlug": "gpt-6-luna",
+      "sourceName": "GPT-6 Luna (Medium)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "medium",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 29.9251773515762,
+        "estimated": false
+      },
+      "benchmarks": [],
+      "costPerTaskUsd": 0.017476906067835942,
+      "timePerTaskSeconds": null,
+      "speedTokensPerSecond": null,
+      "inputUsdPerMillion": 0.1,
+      "outputUsdPerMillion": 0.5,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/gpt-6-luna-vs-gpt-6-astra",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "c4102ef225c4bedd694595d3c2e053cde46c43fa7f70442eea1bef6a47205ee7",
+        "parser": "aa-next-flight-v1"
+      }
+    },
+    {
+      "sourceModelId": "bf9708d8-933d-44f6-affa-b696a7a650c9",
+      "sourceReleaseSlug": "gpt-6-luna",
+      "sourceName": "GPT-6 Luna (Low)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "low",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 21.5261980080866,
+        "estimated": false
+      },
+      "benchmarks": [
+        {
+          "suite": "aa-briefcase",
+          "score": 741.01,
+          "costUsd": 0.0060857300903773325,
+          "timeSeconds": 34.26462124330712
+        },
+        {
+          "suite": "gdpval-aa",
+          "score": 1035.61,
+          "costUsd": 0.0037933271240714194,
+          "timeSeconds": 32.942371986692635
+        },
+        {
+          "suite": "automationbench-aa",
+          "score": 0.12049187272690505,
+          "costUsd": 0.005878499065985337,
+          "timeSeconds": 25.74740936649355
+        },
+        {
+          "suite": "terminalbench-4-0",
+          "score": 0,
+          "costUsd": 0.005448337009257049,
+          "timeSeconds": 29.40091290712047
+        },
+        {
+          "suite": "scicode",
+          "score": 0.46875,
+          "costUsd": 0.0005107920138888889,
+          "timeSeconds": 4.683629630186468
+        },
+        {
+          "suite": "humanitys-last-exam",
+          "score": 0.202502316960148,
+          "costUsd": 0.0005215371640407784,
+          "timeSeconds": 7.796853515260756
+        },
+        {
+          "suite": "gdp-pdf",
+          "score": 0.09,
+          "costUsd": 0.016602051000000003,
+          "timeSeconds": 7.440315257669155
+        },
+        {
+          "suite": "critpt",
+          "score": 0.0257142857142857,
+          "costUsd": 0.0011786857142857144,
+          "timeSeconds": 14.622122375829065
+        },
+        {
+          "suite": "omniscience",
+          "score": -9.166666666666666,
+          "costUsd": 0.00017533333333333333,
+          "timeSeconds": 2.5934569951630113
+        },
+        {
+          "suite": "artificial-analysis-long-context-reasoning",
+          "score": 0.74,
+          "costUsd": 0.009561002000000002,
+          "timeSeconds": 2.032489558710983
+        }
+      ],
+      "costPerTaskUsd": 0.004516607569410252,
+      "timePerTaskSeconds": 16.6063272493066,
+      "speedTokensPerSecond": 124.571057858291,
+      "inputUsdPerMillion": 0.1,
+      "outputUsdPerMillion": 0.5,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/gpt-6-luna-vs-gpt-6-astra",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "c4102ef225c4bedd694595d3c2e053cde46c43fa7f70442eea1bef6a47205ee7",
+        "parser": "aa-next-flight-v1"
+      }
+    },
+    {
+      "sourceModelId": "a3f8100d-e38f-408b-b0fa-0085dae18dc1",
+      "sourceReleaseSlug": "gpt-6-astra",
+      "sourceName": "GPT-6 Astra (Low)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "low",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 45.7819243120341,
+        "estimated": false
+      },
+      "benchmarks": [
+        {
+          "suite": "aa-briefcase",
+          "score": 1260.6,
+          "costUsd": 1.442990915952804,
+          "timeSeconds": 189.1168611004846
+        },
+        {
+          "suite": "gdpval-aa",
+          "score": 1365.6,
+          "costUsd": 0.854509247197223,
+          "timeSeconds": 127.80769831112464
+        },
+        {
+          "suite": "automationbench-aa",
+          "score": 0.5909672610445402,
+          "costUsd": 0.9990851589068359,
+          "timeSeconds": 116.1023789004896
+        },
+        {
+          "suite": "terminalbench-4-0",
+          "score": 0.419191919191919,
+          "costUsd": 2.2485580260976215,
+          "timeSeconds": 283.87494980398344
+        },
+        {
+          "suite": "scicode",
+          "score": 0.540509259259259,
+          "costUsd": 0.04250701388888889,
+          "timeSeconds": 7.7212634548816785
+        },
+        {
+          "suite": "humanitys-last-exam",
+          "score": 0.492122335495829,
+          "costUsd": 0.03886476830398517,
+          "timeSeconds": 13.628847312526565
+        },
+        {
+          "suite": "gdp-pdf",
+          "score": 0.304,
+          "costUsd": 1.6963186,
+          "timeSeconds": 23.87893586639631
+        },
+        {
+          "suite": "critpt",
+          "score": 0.262857142857143,
+          "costUsd": 0.14485971428571429,
+          "timeSeconds": 42.685324517849786
+        },
+        {
+          "suite": "omniscience",
+          "score": 40.55,
+          "costUsd": 0.006962741666666666,
+          "timeSeconds": 2.1860384375006383
+        },
+        {
+          "suite": "artificial-analysis-long-context-reasoning",
+          "score": 0.8,
+          "costUsd": 0.9500977,
+          "timeSeconds": 2.5840079800442126
+        }
+      ],
+      "costPerTaskUsd": 0.8175139285656057,
+      "timePerTaskSeconds": 84.58945620140074,
+      "speedTokensPerSecond": 52.3883376319083,
+      "inputUsdPerMillion": 10,
+      "outputUsdPerMillion": 50,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/claude-opus-5-5-vs-gpt-6-astra",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "f5dd8e6b944448872a006c3f81a3b548505e4220f46a924f2072cdcf191e1f2a",
+        "parser": "aa-next-flight-v1"
+      }
+    },
+    {
+      "sourceModelId": "4416ca93-fde6-4b7b-abbc-3a6be109cc3d",
+      "sourceReleaseSlug": "claude-opus-5-5",
+      "sourceName": "Claude Opus 5.5 (Low, Default Fallback)",
+      "model": null,
+      "identityEvidence": null,
+      "effort": "low",
+      "benchmark": {
+        "suite": "artificial-analysis-intelligence-index",
+        "version": "4.3.2"
+      },
+      "quality": {
+        "intelligenceIndex": 42.3077781466168,
+        "estimated": false
+      },
+      "benchmarks": [
+        {
+          "suite": "aa-briefcase",
+          "score": 1279.55,
+          "costUsd": 1.1528222834592368,
+          "timeSeconds": 229.90292172761187
+        },
+        {
+          "suite": "gdpval-aa",
+          "score": 1235.8,
+          "costUsd": 0.21375396134987892,
+          "timeSeconds": 58.12513198074289
+        },
+        {
+          "suite": "automationbench-aa",
+          "score": 0.5292537042934996,
+          "costUsd": 0.49261272846377885,
+          "timeSeconds": 102.24907864883824
+        },
+        {
+          "suite": "terminalbench-4-0",
+          "score": 0.313131313131313,
+          "costUsd": 2.077650464264361,
+          "timeSeconds": 324.9215870350334
+        },
+        {
+          "suite": "scicode",
+          "score": 0.585648148148148,
+          "costUsd": 0.026438402777777776,
+          "timeSeconds": 6.017767995349184
+        },
+        {
+          "suite": "humanitys-last-exam",
+          "score": 0.483317886932345,
+          "costUsd": 0.028577929564411495,
+          "timeSeconds": 11.53392641361618
+        },
+        {
+          "suite": "gdp-pdf",
+          "score": 0.256,
+          "costUsd": 0.76411812,
+          "timeSeconds": 24.957558214514226
+        },
+        {
+          "suite": "critpt",
+          "score": 0.177142857142857,
+          "costUsd": 0.1237826857142857,
+          "timeSeconds": 45.5058282739462
+        },
+        {
+          "suite": "omniscience",
+          "score": 38.86666666666667,
+          "costUsd": 0.005768217333333333,
+          "timeSeconds": 2.182942488643966
+        },
+        {
+          "suite": "artificial-analysis-long-context-reasoning",
+          "score": 0.806666666666667,
+          "costUsd": 0.58658212,
+          "timeSeconds": 5.34812804408663
+        }
+      ],
+      "costPerTaskUsd": 0.551180473909146,
+      "timePerTaskSeconds": 87.29891995840482,
+      "speedTokensPerSecond": 71.023722593362,
+      "inputUsdPerMillion": 4,
+      "outputUsdPerMillion": 20,
+      "source": {
+        "url": "https://artificialanalysis.ai/models/releases/comparisons/claude-opus-5-5-vs-gpt-6-astra",
+        "checkedAt": "2026-10-04T13:34:54.416Z",
+        "sha256": "f5dd8e6b944448872a006c3f81a3b548505e4220f46a924f2072cdcf191e1f2a",
+        "parser": "aa-next-flight-v1"
+      }
+    }
+  ]
+}

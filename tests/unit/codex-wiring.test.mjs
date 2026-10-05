@@ -75,6 +75,7 @@ describe('mergeCodexConfig — the three outcomes, and only three', () => {
     expect(text).toContain('command = "node"');
     expect(text).toContain(`args = [${JSON.stringify(SERVER)}]`);
     expect(text).toContain('startup_timeout_sec = 30');
+    expect(text).toContain('env = { RUVNET_HOOK_HOST = "codex" }');
     expect(text.startsWith(START)).toBe(true);
     expect(text.trimEnd().endsWith(END)).toBe(true);
   });
@@ -82,6 +83,16 @@ describe('mergeCodexConfig — the three outcomes, and only three', () => {
   it('treats a non-string (never-read file) as empty rather than throwing', () => {
     expect(mergeCodexConfig(undefined, SERVER).action).toBe('added');
     expect(mergeCodexConfig(null, SERVER).action).toBe('added');
+  });
+
+  it('repairs the pre-381 managed registration while preserving private config around it', () => {
+    const legacy = mergeCodexConfig(REAL_CONFIG, SERVER).text
+      .replace('env = { RUVNET_HOOK_HOST = "codex" }\n', '');
+    const tail = '\n[mcp_servers.private]\ncommand = "private-server"\n';
+    const repaired = mergeCodexConfig(legacy + tail, SERVER);
+    expect(repaired.action).toBe('rewritten');
+    expect(repaired.text).toBe(mergeCodexConfig(REAL_CONFIG, SERVER).text + tail);
+    expect(mergeCodexConfig(repaired.text, SERVER).text).toBe(repaired.text);
   });
 
   it('appends after existing content, separated by a blank line', () => {
@@ -220,6 +231,9 @@ describe('wireCodexHost — the filesystem round trip', () => {
     expect(fs.existsSync(r.serverPath)).toBe(true);
     // It is the real supervisor, not a stub.
     expect(fs.readFileSync(r.serverPath, 'utf8')).toContain('search_ruvnet');
+    const installedManifest = path.join(serverDir, '..', '.claude-plugin', 'plugin.json');
+    expect(fs.readFileSync(installedManifest, 'utf8'))
+      .toBe(fs.readFileSync(path.join(ROOT, 'plugin/.claude-plugin/plugin.json'), 'utf8'));
 
     const written = fs.readFileSync(path.join(codexDir, 'config.toml'), 'utf8');
     expect(written).toContain('[mcp_servers.ruvnet-brain]');

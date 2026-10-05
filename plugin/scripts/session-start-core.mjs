@@ -38,6 +38,7 @@ import { stableSpine, heartbeat, knowledgeAutoUpdate, footprintCheck } from './s
 import { FOOTPRINT_LINE_PREFIX } from './brain-confirmation.mjs';
 import { describeLifecycleHooks, readHookContracts } from './session-start-hook-description.mjs';
 import { createStageTracer } from './session-start-trace.mjs';
+import { sessionStartProofRecorder } from './session-start-proof.mjs';
 
 // Re-exported for callers/tests that import the entitlement check directly from this file's own
 // long-standing public surface (tests/unit/session-start-core-parity.test.mjs).
@@ -104,6 +105,7 @@ export async function runSessionStart({
       || s.startsWith(KNOWLEDGE_LINE_PREFIX)
       || s.startsWith(FOOTPRINT_LINE_PREFIX)
       || s.startsWith('[RuvNet Brain — OPEN ISSUES')
+      || s.startsWith('[RuvNet Brain — TURN CAPTURE]')
       || /\bopen issue\(s\)/i.test(s)
       || /^\[RuvNet Brain — external signal/i.test(s)
       || (s.startsWith('Workflow ') && !/\b(Say it plainly|offer to look|ask only|run:|invoke)\b/i.test(s))
@@ -170,6 +172,7 @@ export async function runSessionStart({
   const activeVersion = typeof env.RUVNET_BRAIN_ACTIVE_VERSION === 'string'
     ? env.RUVNET_BRAIN_ACTIVE_VERSION : '';
   const effectiveVersion = activeVersion || running;
+  const recordProof = sessionStartProofRecorder({ env, sourcePath: fileURLToPath(import.meta.url), cwd, version: effectiveVersion });
   const updated = typeof manifest?.updated === 'string' ? manifest.updated : '';
   const trace = (stage) => {
     if (env.RUVNET_SESSION_TRACE === '1') {
@@ -178,15 +181,19 @@ export async function runSessionStart({
   };
 
   const restoreStart = Date.now();
+  let restoreFailed = false;
   try {
     const continuity = await restoreContinuity({ env, cwd });
     if (continuity?.context) emit(continuity.context);
   } catch {
+    restoreFailed = true;
     emit('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN]');
     emit('The SessionStart restore boundary failed unexpectedly. Do not claim project state was restored; verify the canonical store before relying on remembered state.');
   }
+  const restoreProof = { name: 'restore', ms: Date.now() - restoreStart, failed: restoreFailed };
   // Turn health remains visible even when the separate progression restore fails.
-  const turnStatus = turnRecordingStatus({ projectDir: cwd, env, home });
+  const turnStatus = turnRecordingStatus({ projectDir: cwd, env, home, noticeOnFirstUse: true });
+  if (turnStatus.notice) emit(`[RuvNet Brain — TURN CAPTURE] ${turnStatus.notice}`);
   if (turnStatus.state === 'warn') emit(`[RuvNet Brain — TURN RECORDING] ${turnStatus.line}`);
   // Opt-in, matching the pre-existing `trace()` convention below: several other tests assert
   // SessionStart's stderr is EMPTY in the clean case (hook-battery.test.mjs, hook-hardening.test.mjs
@@ -202,6 +209,7 @@ export async function runSessionStart({
     write: (chunk) => stderr.write(chunk),
   });
   let bannerEmitted = false;
+  let bodyFailed = false;
 
   try {
     trace('body-start');
@@ -387,6 +395,7 @@ export async function runSessionStart({
       }
     });
   } catch (error) {
+    bodyFailed = true;
     if (env.RUVNET_SESSION_TRACE === '1') stderr.write(`SESSION_TRACE native-fail-open ${error?.message || error}\n`);
   }
 
@@ -401,6 +410,7 @@ export async function runSessionStart({
   meter({ env, cwd, stateDir, output });
   stdout.write(output);
   trace('body-finished');
+  recordProof({ stages: tracer.table(), restore: restoreProof, bodyFailed, bannerFallback: !bannerEmitted });
   return { ok: true, outputBytes: Buffer.byteLength(output, 'utf8'), platform };
 }
 
