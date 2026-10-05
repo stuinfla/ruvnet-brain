@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createProgressionSnapshot, digestCanonical } from '../../plugin/scripts/project-progression-contract.mjs';
 import { resolveProjectStore } from '../../plugin/scripts/project-store-resolver.mjs';
 import {
@@ -19,7 +19,17 @@ import { getVersion } from '../../scripts/version.mjs';
 
 const NAMESPACE = 'project-progression';
 let temporaryRoots = [];
+const originalBrainHome = process.env.RUVNET_BRAIN_HOME;
+let privateBrainHome;
 const { DatabaseSync } = await import('node:sqlite');
+
+beforeEach(() => {
+  privateBrainHome = fs.mkdtempSync(path.join(os.tmpdir(), 'progression-consent-'));
+  temporaryRoots.push(privateBrainHome);
+  process.env.RUVNET_BRAIN_HOME = privateBrainHome;
+  fs.mkdirSync(path.join(privateBrainHome, 'turn-capture'));
+  fs.writeFileSync(path.join(privateBrainHome, 'turn-capture', 'policy.json'), JSON.stringify({ schemaVersion: 1, projects: {} }));
+});
 
 /** A real store with ruflo's memory_entries shape (the 18 columns the reader pins), aged an hour. */
 function memoryStore(file, rows, { replace = false } = {}) {
@@ -39,6 +49,11 @@ function memoryStore(file, rows, { replace = false } = {}) {
 function temporaryProject() {
   const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'progression-store-')));
   temporaryRoots.push(root);
+  // Positive capture fixtures explicitly opt in through private per-test policy.
+  const policyFile = path.join(privateBrainHome, 'turn-capture', 'policy.json');
+  const policy = JSON.parse(fs.readFileSync(policyFile, 'utf8'));
+  policy.projects[root] = 'on';
+  fs.writeFileSync(policyFile, JSON.stringify(policy));
   return root;
 }
 
@@ -111,6 +126,8 @@ function memoryRunner({ beforeStore } = {}) {
 }
 
 afterEach(() => {
+  if (originalBrainHome === undefined) delete process.env.RUVNET_BRAIN_HOME;
+  else process.env.RUVNET_BRAIN_HOME = originalBrainHome;
   for (const root of temporaryRoots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
 
@@ -353,8 +370,10 @@ describe('managed ProjectProgression append and readback', () => {
     const projectRoot = temporaryProject();
     const resolution = resolveProjectStore({ projectDir: projectRoot });
     const env = { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' };
+    // Bootstrap only: this suite verifies the actual native store/readback below. The
+    // unrelated ONNX initialization self-test currently aborts at shutdown in Ruflo 3.51.1.
     const initialized = spawnSync(ruflo, [
-      'memory', 'init', '--backend', 'agentdb', '--path', resolution.canonicalAgentDbPath,
+      'memory', 'init', '--backend', 'agentdb', '--no-verify', '--path', resolution.canonicalAgentDbPath,
     ], { cwd: rufloCwdFor(resolution.canonicalAgentDbPath), env, encoding: 'utf8', timeout: 120_000 });
     expect(initialized.status, initialized.stderr || initialized.stdout).toBe(0);
     const observed = [];
@@ -496,7 +515,7 @@ describe('managed ProjectProgression append and readback', () => {
     const cwd = rufloCwdFor(store, { root: path.join(temporaryProject(), 'ruflo-cwd') });
     const env = { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' };
     const call = (args) => spawnSync(ruflo, args, { cwd, env, encoding: 'utf8', timeout: 120_000 });
-    const init = call(['memory', 'init', '--backend', 'agentdb', '--path', store]);
+    const init = call(['memory', 'init', '--backend', 'agentdb', '--no-verify', '--path', store]);
     expect(init.status, init.stderr || init.stdout).toBe(0);
     const stored = call(['memory', 'store', '--key', 'n3-probe', '--value', '{"ok":true}', '--namespace', 'n3', '--path', store]);
     expect(stored.status, stored.stderr || stored.stdout).toBe(0);
@@ -516,7 +535,7 @@ describe('managed ProjectProgression append and readback', () => {
     const env = { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' };
     const projectScratch = rufloCwdFor(resolution.canonicalAgentDbPath);
     // Seed what 4.4.0 left behind in the project scratch (a cwd ruflo had already used).
-    const initialized = spawnSync(ruflo, ['memory', 'init', '--backend', 'agentdb', '--path', resolution.canonicalAgentDbPath],
+    const initialized = spawnSync(ruflo, ['memory', 'init', '--backend', 'agentdb', '--no-verify', '--path', resolution.canonicalAgentDbPath],
       { cwd: projectScratch, env, encoding: 'utf8', timeout: 120_000 });
     expect(initialized.status, initialized.stderr || initialized.stdout).toBe(0);
     expect(fs.readdirSync(projectScratch).length).toBeGreaterThan(0);
@@ -545,7 +564,7 @@ describe('managed ProjectProgression append and readback', () => {
     fs.mkdirSync(storeDir, { recursive: true });
     const env = { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' };
     const legacy = (args) => spawnSync(ruflo, args, { cwd: storeDir, env, encoding: 'utf8', timeout: 120_000 });
-    expect(legacy(['memory', 'init', '--backend', 'agentdb', '--path', resolution.canonicalAgentDbPath]).status).toBe(0);
+    expect(legacy(['memory', 'init', '--backend', 'agentdb', '--no-verify', '--path', resolution.canonicalAgentDbPath]).status).toBe(0);
     expect(legacy(['memory', 'store', '--key', 'legacy-row', '--value', '{"kept":true}', '--namespace', 'legacy',
       '--path', resolution.canonicalAgentDbPath]).status).toBe(0);
     // 4.3.40 also retrieved: that is what writes .claude-flow/policy/state.json (measured, ruflo 3.49.0).

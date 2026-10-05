@@ -36,16 +36,50 @@ function writeOwned(dir, token, file, value) { const committed = transaction(dir
 function release(dir, token) { transaction(dir, () => { if (json(dir, ownerFile, 4096)?.token === token) fs.unlinkSync(path.join(dir, ownerFile)); }); }
 export function runCycleStage({ script, args, timeoutMs, env, spawnHost = spawn }) {
   return new Promise((resolve, reject) => {
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 900000) throw new Error('Invalid weekly stage deadline');
+    const deadline = performance.now() + timeoutMs, retirementMs = Math.min(1000, timeoutMs / 10);
+    const workDeadline = deadline - retirementMs;
     const child = spawnHost(process.execPath, [path.join(DIR, script), ...args], { env, shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
-    let stdout = '', timedOut = false, killTimer;
-    const timer = setTimeout(() => { timedOut = true; child.kill('SIGTERM'); killTimer = setTimeout(() => child.kill('SIGKILL'), 1000); }, timeoutMs);
-    child.stderr.on('data', () => {}); child.stdout.on('data', (d) => { stdout += d; if (stdout.length > 262144) { timedOut = true; child.kill('SIGKILL'); } });
-    child.once('error', () => { clearTimeout(timer); clearTimeout(killTimer); reject(new Error('Weekly cycle child host unavailable')); });
-    child.once('exit', (code) => { clearTimeout(timer); clearTimeout(killTimer);
-      if (timedOut) return reject(new Error('Weekly cycle child exceeded bounded deadline or output limit'));
-      let result; try { result = JSON.parse(stdout.trim().split('\n').at(-1)); } catch { return reject(new Error('Weekly cycle child receipt missing')); }
-      resolve({ code, result });
+    let stdout = '', outputBytes = 0, failure, settled = false, exitObserved = false;
+    let timer, killTimer, retirementTimer;
+    const kill = (signal) => { try { child.kill(signal); } catch { /* owned child retirement remains unverified */ } };
+    const finish = (error, value) => {
+      if (settled) return; settled = true;
+      clearTimeout(timer); clearTimeout(killTimer); clearTimeout(retirementTimer);
+      // Drop only our child's referenced handles, including pipes held open after its exit.
+      // Signals/exit cannot prove detached descendants retired.
+      for (const stream of [child.stdin, child.stdout, child.stderr]) { try { stream?.destroy?.(); } catch { /* best effort */ } }
+      try { child.unref?.(); } catch { /* best effort */ }
+      if (error) {
+        error.stageCleanup = { ownedChildPid: child.pid ?? null, childExitObserved: exitObserved,
+          ownedChildRetirement: exitObserved ? 'exit-observed' : 'unverified', descendantRetirement: 'unproven' };
+        reject(error);
+      } else resolve(value);
+    };
+    const fail = (reason) => {
+      if (settled || failure) return; failure = new Error(reason);
+      // Reserve retirement inside the caller's budget; do not wait indefinitely for exit/close.
+      const remaining = Math.max(0, Math.min(retirementMs, deadline - performance.now()));
+      killTimer = setTimeout(() => kill('SIGKILL'), remaining / 2);
+      retirementTimer = setTimeout(() => finish(failure), remaining);
+      kill('SIGTERM');
+    };
+    const consume = (chunk, capture) => {
+      if (settled || failure) return;
+      if (performance.now() >= workDeadline) return fail('Weekly cycle child exceeded bounded deadline or output limit');
+      outputBytes += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(String(chunk));
+      if (outputBytes > 262144) return fail('Weekly cycle child exceeded bounded deadline or output limit');
+      if (capture) stdout += chunk;
+    };
+    child.stderr.on('data', (chunk) => consume(chunk, false)); child.stdout.on('data', (chunk) => consume(chunk, true));
+    child.on('error', () => fail('Weekly cycle child host unavailable'));
+    child.once('exit', (code) => {
+      exitObserved = true; if (failure) return finish(failure); if (settled) return;
+      if (performance.now() >= workDeadline) { fail('Weekly cycle child exceeded bounded deadline or output limit'); return finish(failure); }
+      let result; try { result = JSON.parse(stdout.trim().split('\n').at(-1)); } catch { return finish(new Error('Weekly cycle child receipt missing')); }
+      finish(null, { code, result });
     });
+    timer = setTimeout(() => fail('Weekly cycle child exceeded bounded deadline or output limit'), Math.max(0, workDeadline - performance.now()));
   });
 }
 const INVENTORY_URL = 'https://openrouter.ai/api/v1/models';
@@ -172,7 +206,9 @@ export async function runWeeklyCycle({ routerDir = path.join(os.homedir(), '.cla
     delete state.pendingSemanticReceipt; delete state.pendingSemanticReleaseIds;
     state.lastQualification = qualified.result; save(STATE_FILE, state); record.status = 'complete';
     save('weekly-cycle-last-attempt.json', record); return record;
-  } catch (error) { record.status = 'failed'; record.releaseStatus = 'unknown-or-pending'; record.reason = error.message.slice(0, 240); try { save('weekly-cycle-last-attempt.json', record); } catch { /* superseded cannot write */ } return record;
+  } catch (error) { record.status = 'failed'; record.releaseStatus = 'unknown-or-pending'; record.reason = error.message.slice(0, 240);
+    if (error.stageCleanup) record.stageCleanup = error.stageCleanup;
+    try { save('weekly-cycle-last-attempt.json', record); } catch { /* superseded cannot write */ } return record;
   } finally { release(routerDir, token); }
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -25,6 +25,7 @@ import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createHash, createPublicKey, verify as verifySignature } from 'node:crypto';
+import { fetchJsonWithRetry, fetchBytesWithRetry } from './download-retry.mjs';
 import { extractZip, zipDeclaredBytes } from './zip-extract.mjs';
 import { applyBrainProfile, discoverStoreFamilies, readBrainProfile } from './brain-profile.mjs';
 import { acquireRefreshLock, releaseRefreshLock } from './refresh-run.mjs';
@@ -773,18 +774,19 @@ if (!manifestUrl && !STAGED_RELEASE_FILE) {
 }
 
 async function fetchJson(url) {
-  let res;
-  try { res = await fetch(url, { redirect: 'follow' }); }
-  catch (e) { die(`network failure fetching ${url}\n  ${e.message} — nothing changed locally.`, 2); }
-  if (!res.ok) die(`canonical manifest returned HTTP ${res.status} for ${url} — nothing changed.`, 2);
-  try { return await res.json(); } catch (e) { die(`canonical manifest was not valid JSON: ${e.message}`, 2); }
+  try { return await fetchJsonWithRetry(url); }
+  catch (error) {
+    if (error instanceof SyntaxError) die(`canonical manifest was not valid JSON: ${error.message}`, 2);
+    if (error.status) die(`canonical manifest returned HTTP ${error.status} for ${url} — nothing changed.`, 2);
+    die(`network failure fetching ${url}: ${error.message} — nothing changed locally.`, 2);
+  }
 }
 async function fetchBuffer(url, { failureCode = 2, kind = 'bundle' } = {}) {
-  let res;
-  try { res = await fetch(url, { redirect: 'follow' }); }
-  catch (e) { die(`network failure downloading ${kind} ${url}\n  ${e.message} — nothing changed locally.`, failureCode); }
-  if (!res.ok) die(`${kind} download returned HTTP ${res.status} for ${url} — nothing changed.`, failureCode);
-  return Buffer.from(await res.arrayBuffer());
+  try { return await fetchBytesWithRetry(url); }
+  catch (error) {
+    if (error.status) die(`${kind} download returned HTTP ${error.status} for ${url} — nothing changed.`, failureCode);
+    die(`network failure downloading ${kind} ${url}: ${error.message} — nothing changed locally.`, failureCode);
+  }
 }
 
 // The canonical manifest can be ONE of three shapes — handle all three:

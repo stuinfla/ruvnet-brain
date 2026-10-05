@@ -1,7 +1,7 @@
 {
   "name": "ruvnet-brain",
-  "version": "4.5.7",
-  "description": "One-command installer for RuvNet Brain — a portable, source-grounded brain over rUv's RuvNet building blocks, delivered as a Claude Code plugin so Claude uses the stack instead of fighting it.",
+  "version": "4.5.11",
+  "description": "One-command installer for RuvNet Brain \u2014 a portable, source-grounded brain over rUv's RuvNet building blocks, delivered as a Claude Code plugin so Claude uses the stack instead of fighting it.",
   "type": "module",
   "bin": {
     "ruvnet-brain": "bin/install.mjs"
@@ -41,6 +41,7 @@
     "metaharness:receipts": "node scripts/metaharness-receipts.mjs",
     "route:cheap": "node scripts/route-cheap.mjs",
     "routing:eval": "node scripts/model-routing-eval.mjs",
+    "routing:hooks:plan": "node scripts/user-model-hook-install.mjs --plan",
     "hooks:security-guidance:compat": "node scripts/security-guidance-codex-compat.mjs",
     "route:receipt": "node scripts/dispatch-receipt.mjs",
     "trismart": "node scripts/trismart.mjs",
@@ -74,7 +75,9 @@
     "hooks:check": "node scripts/hook-retirement-check.mjs",
     "release:qualify": "node scripts/release-qualification.mjs",
     "rehearse:corpus": "node scripts/rehearse-corpus-pipeline.mjs",
-    "single-source:check": "node scripts/single-source-check.mjs"
+    "single-source:check": "node scripts/single-source-check.mjs",
+    "benchmark:continuity": "node scripts/qa/progression-validation-benchmark.mjs",
+    "host:codex:execution-proof": "node scripts/codex-host-execution-proof.mjs"
   },
   "files": [
     ".claude-plugin/marketplace.json",
@@ -100,6 +103,7 @@
     "kb/verify-citation.mjs",
     "kb/retrieval-result.mjs",
     "kb/forge-update.mjs",
+    "kb/download-retry.mjs",
     "kb/corpus-release-identity.mjs",
     "kb/capability-only.mjs",
     "kb/capability-summaries/",

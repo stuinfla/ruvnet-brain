@@ -7,12 +7,14 @@ import { runSessionSnapshotHook } from '../../plugin/scripts/session-snapshot-ho
 import { PROVENANCE_SOURCES } from '../../plugin/scripts/project-progression-producer.mjs';
 import { resolveProjectStore } from '../../plugin/scripts/project-store-resolver.mjs';
 import { getVersion } from '../../scripts/version.mjs';
+import { createStore } from '../helpers/continuity-fixture.mjs';
 
 const temporaryRoots = [];
 
 function temporaryProject() {
   const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'progression-hook-')));
   fs.mkdirSync(path.join(root, '.swarm'));
+  createStore(path.join(root, '.swarm', 'memory.db'));
   temporaryRoots.push(root);
   return root;
 }
@@ -116,6 +118,25 @@ afterEach(() => {
 });
 
 describe('ADR-073 host-neutral progression capture', () => {
+  it.each(['NotebookEdit', 'Bash'])('classifies original %s resource before output persistence and preserves public counterparts', (tool) => {
+    const project = temporaryProject(); const store = recordingStore(project); const brainHome = path.join(project, 'brain');
+    fs.mkdirSync(path.join(brainHome, 'turn-capture'), { recursive: true }); fs.writeFileSync(path.join(brainHome, 'turn-capture', 'policy.json'), JSON.stringify({ schemaVersion: 1, projects: {}, contentPathExcludes: ['/project/private'] }));
+    const capture = (directory) => captureProjectTransition({ host: 'claude', projectDir: project, env: { RUVNET_BRAIN_HOME: brainHome }, storeFactory: store.factory,
+      payload: envelope(project, 'claude', {}, { tool_name: tool, tool_input: tool === 'NotebookEdit' ? { notebook_path: `/project/${directory}/client.ipynb` } : { command: `echo ${'x'.repeat(4100)}; cat /project/${directory}/client-title.md` }, tool_response: { stdout: 'PRIVATE_BODY_TOKEN', error: 'PRIVATE_ERROR_TOKEN', exit_code: 1 } }) });
+    const privateResult = capture('private'); expect(JSON.stringify(privateResult.snapshot)).not.toMatch(/PRIVATE_BODY_TOKEN|PRIVATE_ERROR_TOKEN|client-title|client.ipynb/); expect(privateResult.snapshot.completeProjectState.commands[0].outcome).toBe('failure');
+    const publicResult = capture('public'); expect(publicResult.snapshot.completeProjectState.commands[0].stdout).toBe('PRIVATE_BODY_TOKEN'); expect(publicResult.snapshot.completeProjectState.commands[0].error).toBe('PRIVATE_ERROR_TOKEN');
+  });
+  it('filters new content but refuses to rewrite a queued frozen progression under changed exclusions', () => {
+    const project = temporaryProject(); const store = recordingStore(project);
+    const brainHome = path.join(project, 'brain'); fs.mkdirSync(path.join(brainHome, 'turn-capture'), { recursive: true });
+    fs.writeFileSync(path.join(brainHome, 'turn-capture', 'policy.json'), JSON.stringify({ schemaVersion: 1, projects: {}, contentPathExcludes: ['/private-vault'] }));
+    const payload = envelope(project, 'codex', { completeProjectState: completeState({ currentGoal: 'Inspect "/private-vault/secret-title.md"' }) });
+    const original = JSON.stringify(payload); const options = { host: 'codex', payload, projectDir: project, env: { RUVNET_BRAIN_HOME: brainHome }, storeFactory: store.factory };
+    expect(() => captureProjectTransition({ ...options, recoverFrozen: true })).toThrow('frozen snapshot retained');
+    expect(store.snapshots).toEqual([]); expect(JSON.stringify(payload)).toBe(original);
+    const captured = captureProjectTransition(options); expect(captured.snapshot.completeProjectState.currentGoal).not.toContain('secret-title');
+    expect(captured.snapshot.sourceIdentity.checkoutPath).toBe(project);
+  });
   it.each(['claude', 'codex'])('normalizes a complete %s envelope and captures it through one store', (host) => {
     const project = temporaryProject();
     const store = recordingStore(project);
@@ -403,10 +424,11 @@ describe('the existing dual-host session snapshot hook is the production caller'
     const result = runSessionSnapshotHook(project, 'SessionEnd', {
       rawInput: JSON.stringify({ session_id: 'native-only', hook_event_name: 'SessionEnd', cwd: project }),
       host: 'codex',
+      budgetMs: 8000,
       captureProgression(input) { calls.push(input); return { receipt: { eventKey: 'produced' } }; },
     });
 
-    expect(result).toMatchObject({ metadataWritten: true, progressionCaptured: true, receipt: { eventKey: 'produced' } });
+    expect(result, JSON.stringify(result)).toMatchObject({ metadataWritten: true, progressionCaptured: true, receipt: { eventKey: 'produced' } });
     expect(calls).toHaveLength(1);
     const produced = calls[0].payload.projectProgression;
     expect(calls[0].host).toBe('codex');
@@ -439,7 +461,7 @@ describe('the existing dual-host session snapshot hook is the production caller'
       rawInput: JSON.stringify({ session_id: 's', hook_event_name: 'SessionEnd' }),
       host: 'claude',
       captureProgression: capture,
-    })).toMatchObject({ progressionCaptured: false, skipped: 'project has not adopted the canonical store' });
+    })).toMatchObject({ progressionCaptured: false, skipped: 'no project memory db; persisted opt-in required' });
     expect(fs.existsSync(path.join(unadopted, '.swarm'))).toBe(false);
     expect(called).toBe(false);
   });

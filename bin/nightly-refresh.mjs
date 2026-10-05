@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const runnerPath = path.resolve(fileURLToPath(import.meta.url));
 const registrationPath = String((process.argv[2] === '--registration' ? process.argv[3] : null) || process.env.RUVNET_NIGHTLY_REGISTRATION
@@ -21,7 +21,7 @@ try {
       && !/^com\.ruvnet\.brain-update\.proof-[A-Za-z0-9._-]+$/.test(registration.identity || ''))
     || path.resolve(registration.runnerPath || '') !== runnerPath
     || registration.runnerSha256 !== runnerSha256
-    || path.resolve(registration.nodePath || '') !== path.resolve(process.execPath)
+    || fs.realpathSync(registration.nodePath || '') !== fs.realpathSync(process.execPath)
     || !Array.isArray(registration.argv) || registration.argv.length !== 0
     || !registration.packageTarget || typeof registration.packageTarget.spec !== 'string') {
     throw new Error('registration does not bind this exact runner and Node executable');
@@ -58,44 +58,30 @@ if (registration.environment !== undefined && (!registration.environment || Arra
 }
 Object.assign(process.env, registration.environment || {});
 
-const npxName = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-const adjacent = path.join(path.dirname(process.execPath), npxName);
-const npx = fs.existsSync(adjacent) ? adjacent : npxName;
-const argv = ['--yes', registration.packageTarget.spec, '--update', '--no-nightly-prompt'];
-let executable = npx;
-let launchArgs = argv;
-if (process.platform === 'win32') {
-  // This content-addressed runner is copied alone: keep its dependency closure standalone.
-  // Like rufloInvocation, execute the managed package's declared JS entry, never a .cmd shell.
-  try {
-    const shim = fs.existsSync(adjacent) ? adjacent : String(process.env.PATH || '')
-      .split(path.delimiter).filter(Boolean).map(dir => path.join(dir, npxName))
-      .find(candidate => fs.existsSync(candidate) && fs.statSync(candidate).isFile());
-    if (!shim) throw new Error('managed npm npx shim is missing');
-    const packageRoot = fs.realpathSync(path.join(path.dirname(fs.realpathSync(shim)), 'node_modules', 'npm'));
-    const manifest = JSON.parse(fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf8'));
-    const declared = manifest.bin?.npx;
-    if (manifest.name !== 'npm' || typeof declared !== 'string' || !declared
-      || path.isAbsolute(declared) || path.win32.isAbsolute(declared) || declared.split(/[\\/]/).includes('..')) {
-      throw new Error('managed npm package has no safe declared npx entry');
-    }
-    const entry = fs.realpathSync(path.resolve(packageRoot, declared));
-    const relative = path.relative(packageRoot, entry);
-    if (!relative || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative) || !fs.statSync(entry).isFile()) {
-      throw new Error('managed npm npx entry escapes its package');
-    }
-    executable = process.execPath;
-    launchArgs = [entry, ...argv];
-  } catch (error) {
-    console.error(`RuvNet Brain nightly refresh could not resolve managed npm: ${error.message}`);
-    process.exit(1);
+let invocation;
+try {
+  const modules = registration.updateModules;
+  if (!modules || Object.keys(modules).sort().join(',') !== 'automatic-update.mjs,ruvnet-gate1-pattern.mjs,user-settings.mjs') throw new Error('registered update module closure is missing');
+  for (const [name, item] of Object.entries(modules)) {
+    if (!path.isAbsolute(item.path) || path.basename(item.path) !== name
+      || path.dirname(item.path) !== path.dirname(modules['automatic-update.mjs'].path)
+      || !fs.lstatSync(item.path).isFile()
+      || crypto.createHash('sha256').update(fs.readFileSync(item.path)).digest('hex') !== item.sha256) throw new Error('update module digest mismatch');
   }
+  const policy = await import(pathToFileURL(modules['automatic-update.mjs'].path).href);
+  process.env.PATH = policy.automaticPath({ nodePath: registration.nodePath });
+  invocation = policy.automaticInvocation(['--update', '--no-nightly-prompt'], {
+    nodePath: registration.nodePath, packageTarget: registration.packageTarget.spec,
+  });
+} catch (error) {
+  console.error(`RuvNet Brain automatic update refused: ${error.message}`);
+  process.exit(1);
 }
 const allowed = ['PATH', 'HOME', 'USERPROFILE', 'RUVNET_BRAIN_HOME', 'RUVNET_BRAIN_KB',
   'npm_config_cache', 'NO_COLOR', 'SystemRoot', 'SYSTEMROOT', 'ComSpec', 'COMSPEC', 'PATHEXT', 'TEMP', 'TMP'];
 const childEnv = Object.fromEntries(allowed.filter((key) => process.env[key] !== undefined)
   .map((key) => [key, process.env[key]]));
-const result = spawnSync(executable, launchArgs, {
+const result = spawnSync(invocation.executable, invocation.args, {
   stdio: 'inherit',
   shell: false,
   env: { ...childEnv, RUVNET_NIGHTLY: '1',

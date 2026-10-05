@@ -2,6 +2,70 @@
 export const RELEASE_REQUIREMENTS = Object.freeze({
   "source": [
     {
+      "id": "installer-release-argument-safety",
+      "reason": "Incomplete named releases refuse before network or settings writes; valid named releases and installer help retain their contracts",
+      "files": ["tests/unit/install-release-fallback.test.mjs"]
+    },
+    {
+      "id": "honest-currency-lesson-and-metrics-evidence",
+      "reason": "Foreign KB roots remain isolated; panel currency derives from measured completion rather than checkout time; exact lesson readback binds this shell-free write; public metrics never fabricate performance or a competing product score",
+      "files": ["tests/unit/forge-currency-selected-root.test.mjs", "tests/unit/brain-score-producer.test.mjs", "tests/unit/brain-grade-groundtruth-timestamp.test.mjs", "tests/unit/record-lesson.test.mjs", "tests/unit/lesson-presentation-budget.test.mjs", "tests/unit/metrics-truth.test.mjs", "tests/unit/issue-watch-retry.test.mjs"]
+    },
+    {
+      "id": "automatic-update-source-and-transport",
+      "reason": "Captured owner policy never falls back on read failures; installed-only automation avoids npx; transient GET and body failures retry without weakening trust; POSIX executable aliases retain interpreter identity",
+      "files": ["tests/unit/automatic-update.test.mjs", "tests/unit/download-retry.test.mjs"],
+      "platformFiles": {
+        "linux": ["tests/unit/automatic-update-node-alias.test.mjs"],
+        "macos": ["tests/unit/automatic-update-node-alias.test.mjs"]
+      }
+    },
+    {
+      "id": "customer-scope-and-session-ownership",
+      "reason": "Captured assistant commitments retain their actual session owner and honest noncompleted states; scoped grounding retains strict conservative evidence under contention; legacy guidance never suppresses a tool call",
+      "files": ["tests/unit/continuation-commitment-ownership.test.mjs"],
+      "platformFiles": {
+        "linux": ["tests/unit/grounding-scope.test.mjs", "tests/unit/hijack-no-defer.test.mjs"],
+        "macos": ["tests/unit/grounding-scope.test.mjs", "tests/unit/hijack-no-defer.test.mjs"]
+      }
+    },
+    {
+      "id": "bounded-advocacy-and-write-grounding",
+      "reason": "Explicit document meaning requests retain corroboration; literal searches stay silent; POSIX complete-write exemptions preserve executable and managed-store grounding",
+      "files": ["tests/unit/advocacy-route.test.mjs", "tests/unit/advocacy-catalog.test.mjs", "tests/unit/card-lane.test.mjs"],
+      "platformFiles": {
+        "linux": ["tests/unit/advocacy-route-budget.test.mjs", "tests/unit/ground-before-write.test.mjs", "tests/unit/grounding-code-projection.test.mjs"],
+        "macos": ["tests/unit/advocacy-route-budget.test.mjs", "tests/unit/ground-before-write.test.mjs", "tests/unit/grounding-code-projection.test.mjs"]
+      }
+    },
+    {
+      "id": "owned-startup-execution-evidence",
+      "reason": "Opt-in native execution and private stage diagnostics bind released source and preserve unknown convergence and incomplete cleanup boundaries",
+      "files": ["tests/unit/codex-host-execution-proof.test.mjs", "tests/unit/codex-host-proof-runtime.test.mjs", "tests/unit/session-start-proof.test.mjs"]
+    },
+    {
+      "id": "canonical-learning-capture",
+      "reason": "Fixed metadata capture, canonical scope, consent, acknowledgement and bounded owned recovery retain privacy and originals",
+      "files": [
+        "tests/unit/learn-flush-partial-failure.test.mjs",
+        "tests/unit/learn-capture-project-root.test.mjs",
+        "tests/unit/learn-capture-redaction.test.mjs",
+        "tests/unit/learner-scope-agreement.test.mjs",
+        "tests/unit/health-repair-flush-learning.test.mjs",
+        "tests/unit/learning-worker-supervisor.test.mjs"
+      ]
+    },
+    {
+      "id": "fresh-owned-host-proof",
+      "reason": "Source-bound native registry declarations reject warnings, trust changes and unretired owned processes",
+      "files": ["tests/unit/codex-fresh-host-proof.test.mjs"]
+    },
+    {
+      "id": "complete-progression-validation",
+      "reason": "Canonical digest validation retains full-history and serialization semantics",
+      "files": ["tests/unit/project-progression-contract.test.mjs"]
+    },
+    {
       "id": "signed-artifacts",
       "reason": "Signature verification and exact assembled coverage reject changed bytes",
       "files": [
@@ -46,7 +110,9 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
         "tests/unit/install-activation-rollback.test.mjs",
         "tests/unit/forge-update-apply-rollback.test.mjs",
         "tests/unit/forge-update-archive-digest.test.mjs",
-        "tests/unit/kb-copy-proof-legacy-sidecars.test.mjs"
+        "tests/unit/kb-copy-proof-legacy-sidecars.test.mjs",
+        "tests/unit/kb-copy-proof-unknown-content.test.mjs",
+        "tests/unit/user-model-hook-install.test.mjs"
       ]
     },
     {
@@ -69,8 +135,8 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
         "tests/unit/model-routing-launchers.test.mjs"
       ],
       "platformFiles": {
-        "linux": ["tests/unit/model-terminal-gateway.test.mjs", "tests/unit/model-terminal-launchers.test.mjs"],
-        "macos": ["tests/unit/model-terminal-gateway.test.mjs", "tests/unit/model-terminal-launchers.test.mjs"],
+        "linux": ["tests/unit/model-terminal-gateway.test.mjs", "tests/unit/model-terminal-launchers.test.mjs", "tests/unit/claude-controlled-terminal.test.mjs"],
+        "macos": ["tests/unit/model-terminal-gateway.test.mjs", "tests/unit/model-terminal-launchers.test.mjs", "tests/unit/claude-controlled-terminal.test.mjs"],
         "windows": ["tests/unit/windows-terminal-boundary.test.mjs"]
       }
     },
@@ -108,9 +174,11 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
     },
     {
       "id": "canonical-memory-privacy",
-      "reason": "Canonical project isolation, persisted consent and truthful capture status",
+      "reason": "Canonical project isolation, persisted consent, excluded-resource privacy before recording, immutable delivery refusal and truthful terminal failure status",
       "files": [
         "tests/unit/turn-outcome-capture.test.mjs",
+        "tests/unit/turn-capture-content-privacy.test.mjs",
+        "tests/integration/project-progression-hook.test.mjs",
         "tests/unit/turn-journal-platform.test.mjs",
         "tests/unit/project-store-resolver.test.mjs"
       ]
@@ -184,6 +252,20 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
   ],
   "integration": [
     {
+      "id": "canonical-learning-recovery",
+      "reason": "Cross-session recovery and Console evidence agree on the same canonical scope without ratifying tool metadata as instructions",
+      "files": ["tests/integration/learning-recovery-377.test.mjs", "tests/integration/learning-console-scope.test.mjs"]
+    },
+    {
+      "id": "canonical-progression-store",
+      "reason": "Actual adopted canonical storage, exact readback, and concurrent session restoration retain consent and complete history",
+      "files": ["tests/integration/project-progression-concurrent-sessions.test.mjs", "tests/integration/project-progression-reader-identity.test.mjs"],
+      "platformFiles": {
+        "linux": ["tests/integration/project-progression-store.test.mjs"],
+        "macos": ["tests/integration/project-progression-store.test.mjs"]
+      }
+    },
+    {
       "id": "native-explicit-interface",
       "reason": "Real MCP subprocess readiness, command policy and literal argv safety",
       "files": [
@@ -215,10 +297,14 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
     },
     {
       "id": "owned-uninstall",
-      "reason": "Actual offline uninstall preserves unrelated files and user guidance",
+      "reason": "Actual offline uninstall and POSIX copy-cleanup callers preserve unrelated files, changed unknown bytes and private state",
       "files": [
         "tests/integration/uninstall-footprint.test.mjs"
-      ]
+      ],
+      "platformFiles": {
+        "linux": ["tests/unit/brain-footprint.test.mjs"],
+        "macos": ["tests/unit/brain-footprint.test.mjs"]
+      }
     },
     {
       "id": "canonical-memory-native-boundary",

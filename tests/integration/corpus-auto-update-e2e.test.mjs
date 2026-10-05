@@ -24,6 +24,7 @@ import readline from 'node:readline';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { assembleBundle } from '../../scripts/build-bundle.mjs';
+import { extractZip } from '../../kb/zip-extract.mjs';
 import { prepareCorpusCandidate } from '../../scripts/corpus-reconcile.mjs';
 import { addPrivateStore } from '../../scripts/customer-seams.mjs';
 import { getVersion } from '../../scripts/version.mjs';
@@ -37,7 +38,7 @@ const KEYS = crypto.generateKeyPairSync('ed25519');
 const TEST_PUB = KEYS.publicKey.export({ type: 'spki', format: 'pem' }).trim();
 const sign = (bytes) => crypto.sign(null, crypto.createHash('sha256').update(bytes).digest(), KEYS.privateKey);
 const UPDATER_FILES = ['forge-update.mjs', 'zip-extract.mjs', 'brain-profile.mjs', 'refresh-run.mjs',
-  'update-storage-transaction.mjs', 'lifecycle-evidence-retention.mjs', 'corpus-release-identity.mjs'];
+  'update-storage-transaction.mjs', 'lifecycle-evidence-retention.mjs', 'corpus-release-identity.mjs', 'download-retry.mjs'];
 const shared = [];
 const log = (line) => { if (process.env.CORPUS_E2E_TRANSCRIPT) fs.appendFileSync(process.env.CORPUS_E2E_TRANSCRIPT, `${line}\n`); };
 
@@ -47,8 +48,14 @@ const release = (gen) => ({ tag_name: gen.tag, draft: false, prerelease: false, 
     { name: 'ruvnet-brain.zip', size: gen.zip.length, digest: `sha256:${gen.sha256}`, browser_download_url: `${origin}/dl/${gen.sha256}.zip` },
     { name: 'ruvnet-brain.zip.sig', size: gen.sig.length, browser_download_url: `${origin}/dl/${gen.sha256}.zip.sig` }] });
 
-async function buildChain(count) {
+async function buildChain(count, pkg) {
+  const placeActualUpdater = corpus => {
+    for (const name of UPDATER_FILES) fs.copyFileSync(path.join(pkg, 'kb', name), path.join(corpus, name));
+    const file = path.join(corpus, 'SOURCE.json');
+    fs.writeFileSync(file, JSON.stringify({ ...readJson(file), canonicalManifestUrl: `${origin}/repos/${REPO}/releases/latest` }));
+  };
   const runtimeRoot = buildRuntimeRoot(shared);
+  for (const name of UPDATER_FILES) fs.copyFileSync(path.join(pkg, 'kb', name), path.join(runtimeRoot, 'kb', name));
   fs.mkdirSync(path.join(runtimeRoot, 'scripts', 'oracle'), { recursive: true });
   for (const file of ['build-bundle.mjs', 'corpus-candidate.mjs', 'public-verification-inputs.mjs', 'oracle/retrieval-accuracy.mjs', 'oracle/repo-recall.mjs']) {
     fs.writeFileSync(path.join(runtimeRoot, 'scripts', file), '// routed to the real implementation by the test run seam\n');
@@ -56,6 +63,7 @@ async function buildChain(count) {
   for (const file of ['retrieval-accuracy-oracle.json', 'repo-recall-floor.json']) fs.writeFileSync(path.join(runtimeRoot, 'data', file), '{}');
   fs.copyFileSync(path.join(ROOT, 'data', 'retrieval-query-evidence.json'), path.join(runtimeRoot, 'data', 'retrieval-query-evidence.json'));
   const seedCorpus = await buildCorpus(shared, { runtimeRoot, stores: ['alpha', 'beta'] });
+  placeActualUpdater(seedCorpus);
   writeCoverage(runtimeRoot, seedCorpus);
   const seedOut = path.join(tempDir(shared, 'seed'), 'ruvnet-brain');
   await assembleBundle({ corpusDir: seedCorpus, runtimeRoot, outDir: seedOut,
@@ -70,6 +78,7 @@ await assembleBundle(JSON.parse(process.env.ASSEMBLE_OPTIONS));\n`);
   const extra = ['gamma', 'delta', 'epsilon', 'zeta'];
   for (let i = 0; i < count; i += 1) {
     const corpusDir = await buildCorpus(shared, { runtimeRoot, stores: ['alpha', 'beta', ...extra.slice(0, i + 1)] });
+    placeActualUpdater(corpusDir);
     const coverage = writeCoverage(runtimeRoot, corpusDir);
     const out = tempDir(shared, `nightly-${i}`);
     const candidate = prepareCorpusCandidate({
@@ -114,6 +123,10 @@ function harness() {
     if (swapped === source) throw new Error(`trust-root anchor missing in ${file}`);
     fs.writeFileSync(target, swapped);
   }
+  if (process.env.RNB319_SETTINGS_SOURCE) {
+    fs.copyFileSync(process.env.RNB319_SETTINGS_SOURCE, path.join(dir, 'plugin', 'scripts', 'user-settings.mjs'));
+    fs.copyFileSync(process.env.RNB319_PATTERN_SOURCE, path.join(dir, 'plugin', 'scripts', 'ruvnet-gate1-pattern.mjs'));
+  }
   return dir;
 }
 
@@ -150,178 +163,228 @@ afterAll(async () => {
   while (shared.length) fs.rmSync(shared.pop(), { recursive: true, force: true });
 });
 
-describe('a newly published corpus reaches an install automatically — SessionStart and the long-lived MCP server', () => {
+describe('a newly published corpus reaches an install automatically — latest and installed sources', () => {
   it.skipIf(process.platform === 'win32')('A → B by SessionStart (no age trigger), throttled after; → C by the server timer, served without restart; offline, lock, older, tampered all keep the live KB', async () => {
-    const { seed, generations } = await buildChain(4);
-    const [A, B, C, D] = generations;
-    const pkg = harness();
-    fs.mkdirSync(path.join(pkg, 'dist'));
-    fs.copyFileSync(seed.file, path.join(pkg, 'dist', 'ruvnet-brain.zip'));
-    const home = fs.realpathSync(tempDir(shared, 'home'));
-    const brainHome = path.join(home, '.cache', 'ruvnet-brain');
-    const kbDir = path.join(brainHome, 'kb');
-    const pluginDir = path.join(home, '.claude', 'plugins', 'cache', 'ruvnet-brain', 'ruvnet-brain', VERSION);
-    fs.cpSync(path.join(pkg, 'plugin'), pluginDir, { recursive: true });
-    fs.writeFileSync(path.join(home, '.claude', 'plugins', 'installed_plugins.json'),
-      JSON.stringify({ plugins: { 'ruvnet-brain@ruvnet-brain': [{ installPath: pluginDir, version: VERSION }] } }));
-    const bin = tempDir(shared, 'bin');
-    const npxLog = path.join(home, 'npx-calls.log');
-    // `npx --yes ruvnet-brain@latest <args>` → this package's installer (it is ruvnet-brain@latest here).
-    fs.writeFileSync(path.join(bin, 'npx'), `#!/bin/sh
-echo "$@" >> "${npxLog}"
-shift 2
-export RUVNET_BRAIN_TEST=1 RUVNET_BRAIN_TEST_NPM_LATEST="${VERSION}" RUVNET_BRAIN_NO_UPDATE_FALLBACK=1 RUVNET_NO_TELEMETRY=1 RUFLO_DAEMON_AUTOSTART=0 RUVNET_TURN_CAPTURE=off npm_config_cache="${home}/.npm" npm_config_update_notifier=false
-"${process.execPath}" "${path.join(pkg, 'bin', 'install.mjs')}" "$@"; code=$?
-"${process.execPath}" -e 'const fs=require("fs");const f=process.argv[1];const s=JSON.parse(fs.readFileSync(f,"utf8"));s.canonicalManifestUrl=process.argv[2];fs.writeFileSync(f,JSON.stringify(s,null,2))' "${path.join(kbDir, 'SOURCE.json')}" "${origin}/repos/${REPO}/releases/latest"
-if grep -q "fixture entry point" "${path.join(kbDir, 'forge-update.mjs')}" 2>/dev/null; then for f in ${UPDATER_FILES.join(' ')}; do cp "${path.join(pkg, 'kb')}/$f" "${kbDir}/$f"; done; fi
-exit $code
-`, { mode: 0o755 });
-    const baseEnv = { PATH: [bin, path.dirname(process.execPath), '/usr/bin', '/bin'].join(path.delimiter), HOME: home,
-      TMPDIR: tempDir(shared, 'tmp'), CODEX_HOME: path.join(home, '.codex'), XDG_CACHE_HOME: path.join(home, '.cache'),
-      npm_config_cache: path.join(home, '.npm'), npm_config_update_notifier: 'false', RUVNET_NO_TELEMETRY: '1',
-      RUFLO_DAEMON_AUTOSTART: '0', RUVNET_TURN_CAPTURE: 'off', RUVNET_BRAIN_METER: '0' };
-    const installEnv = { ...baseEnv, RUVNET_BRAIN_TEST: '1', RUVNET_BRAIN_TEST_NPM_LATEST: VERSION, RUVNET_BRAIN_NO_UPDATE_FALLBACK: '1' };
-    const installer = path.join(pkg, 'bin', 'install.mjs');
-    const installFlags = ['--yes', '--no-nightly-prompt', '--no-telemetry', '--no-stack', '--no-enhance', '--no-statusline', '--no-selfcheck', '--no-verify'];
-    const pointAtLocalGithub = () => {
-      const source = readJson(path.join(kbDir, 'SOURCE.json'));
-      fs.writeFileSync(path.join(kbDir, 'SOURCE.json'), JSON.stringify({ ...source, canonicalManifestUrl: `${origin}/repos/${REPO}/releases/latest` }, null, 2));
-    };
-    const tagNow = () => readJson(path.join(kbDir, 'SOURCE.json')).corpusReleaseTag;
-    const npxCalls = () => { try { return fs.readFileSync(npxLog, 'utf8').trim().split('\n').filter(Boolean).length; } catch { return 0; } };
-    const checkRecord = () => json(path.join(brainHome, 'corpus-check.json'));
-    const attempt = () => json(path.join(brainHome, 'auto-update.json'));
-    // The REAL SessionStart door: hooks.json's command, through hook-shim.mjs and the installed spine.
-    const sessionEnv = { ...baseEnv, CLAUDE_PLUGIN_ROOT: pluginDir, RUVNET_BRAIN_TEST: '1', RUVNET_AUTO_UPDATE: 'on',
-      RUVNET_AUTO_UPDATE_PROBE_URL: `${origin}/registry/ruvnet-brain/latest` };
-    const session = (extra = {}) => run([path.join(pluginDir, 'scripts', 'hook-shim.mjs'), 'session-start'], { ...sessionEnv, ...extra }, home,
-      JSON.stringify({ session_id: `e2e-${Date.now()}`, cwd: home, hook_event_name: 'SessionStart', source: 'startup' }));
+    for (const mode of ['latest', 'installed']) {
+      const pkg = harness();
+      const { seed, generations } = await buildChain(4, pkg);
+      const [A, B, C, D] = generations;
+      fs.mkdirSync(path.join(pkg, 'dist'));
+      fs.copyFileSync(seed.file, path.join(pkg, 'dist', 'ruvnet-brain.zip'));
+      const home = fs.realpathSync(tempDir(shared, 'home'));
+      const brainHome = path.join(home, '.cache', 'ruvnet-brain');
+      const kbDir = path.join(brainHome, 'kb');
+      const pluginDir = path.join(home, '.claude', 'plugins', 'cache', 'ruvnet-brain', 'ruvnet-brain', VERSION);
+      fs.cpSync(path.join(pkg, 'plugin'), pluginDir, { recursive: true });
+      fs.writeFileSync(path.join(home, '.claude', 'plugins', 'installed_plugins.json'),
+        JSON.stringify({ plugins: { 'ruvnet-brain@ruvnet-brain': [{ installPath: pluginDir, version: VERSION }] } }));
+      const bin = path.join(home, '.npm-global', 'bin');
+      fs.mkdirSync(bin, { recursive: true });
+      const npxLog = path.join(home, 'npx-calls.log');
+      const globalPkg = path.join(home, '.npm-global', 'lib', 'node_modules', 'ruvnet-brain');
+      fs.mkdirSync(path.dirname(globalPkg), { recursive: true });
+      fs.symlinkSync(pkg, globalPkg, 'junction');
+      // `npx --yes ruvnet-brain@latest <args>` → this package's installer (it is ruvnet-brain@latest here).
+      fs.writeFileSync(path.join(bin, 'npx'), `#!/bin/sh
+  echo "$@" >> "${npxLog}"
+  shift 2
+  export RUVNET_BRAIN_TEST=1 RUVNET_BRAIN_TEST_NPM_LATEST="${VERSION}" RUVNET_BRAIN_NO_UPDATE_FALLBACK=1 RUVNET_NO_TELEMETRY=1 RUFLO_DAEMON_AUTOSTART=0 RUVNET_TURN_CAPTURE=off npm_config_cache="${home}/.npm" npm_config_update_notifier=false
+  "${process.execPath}" "${path.join(pkg, 'bin', 'install.mjs')}" "$@"; code=$?
+  "${process.execPath}" -e 'const fs=require("fs");const f=process.argv[1];const s=JSON.parse(fs.readFileSync(f,"utf8"));s.canonicalManifestUrl=process.argv[2];fs.writeFileSync(f,JSON.stringify(s,null,2))' "${path.join(kbDir, 'SOURCE.json')}" "${origin}/repos/${REPO}/releases/latest"
+  if grep -q "fixture entry point" "${path.join(kbDir, 'forge-update.mjs')}" 2>/dev/null; then for f in ${UPDATER_FILES.join(' ')}; do cp "${path.join(pkg, 'kb')}/$f" "${kbDir}/$f"; done; fi
+  exit $code
+  `, { mode: 0o755 });
+      const baseEnv = { PATH: [bin, path.dirname(process.execPath), '/usr/bin', '/bin'].join(path.delimiter), HOME: home,
+        TMPDIR: tempDir(shared, 'tmp'), CODEX_HOME: path.join(home, '.codex'), XDG_CACHE_HOME: path.join(home, '.cache'),
+        npm_config_cache: path.join(home, '.npm'), npm_config_update_notifier: 'false', RUVNET_NO_TELEMETRY: '1',
+        RUFLO_DAEMON_AUTOSTART: '0', RUVNET_TURN_CAPTURE: 'off', RUVNET_BRAIN_METER: '0' };
+      const installEnv = { ...baseEnv, RUVNET_BRAIN_TEST: '1', RUVNET_BRAIN_TEST_NPM_LATEST: VERSION, RUVNET_BRAIN_NO_UPDATE_FALLBACK: '1' };
+      const installer = path.join(pkg, 'bin', 'install.mjs');
+      if (mode === 'installed') {
+        const settings = await run([installer, '--update-source', 'installed'], installEnv, home);
+        expect(settings.code, settings.output).toBe(0);
+      }
+      const installFlags = ['--yes', '--no-nightly-prompt', '--no-telemetry', '--no-stack', '--no-enhance', '--no-statusline', '--no-selfcheck', '--no-verify'];
+      const pointAtLocalGithub = () => {
+        const source = readJson(path.join(kbDir, 'SOURCE.json'));
+        fs.writeFileSync(path.join(kbDir, 'SOURCE.json'), JSON.stringify({ ...source, canonicalManifestUrl: `${origin}/repos/${REPO}/releases/latest` }, null, 2));
+      };
+      const tagNow = () => readJson(path.join(kbDir, 'SOURCE.json')).corpusReleaseTag;
+      const npxCalls = () => { try { return fs.readFileSync(npxLog, 'utf8').trim().split('\n').filter(Boolean).length; } catch { return 0; } };
+      const checkRecord = () => json(path.join(brainHome, 'corpus-check.json'));
+      const attempt = () => json(path.join(brainHome, 'auto-update.json'));
+      // The REAL SessionStart door: hooks.json's command, through hook-shim.mjs and the installed spine.
+      const sessionEnv = { ...baseEnv, CLAUDE_PLUGIN_ROOT: pluginDir, RUVNET_BRAIN_TEST: '1', RUVNET_AUTO_UPDATE: 'on',
+        RUVNET_AUTO_UPDATE_PROBE_URL: `${origin}/registry/ruvnet-brain/latest` };
+      const session = (extra = {}) => run([path.join(pluginDir, 'scripts', 'hook-shim.mjs'), 'session-start'], { ...sessionEnv, ...extra }, home,
+        JSON.stringify({ session_id: `e2e-${Date.now()}`, cwd: home, hook_event_name: 'SessionStart', source: 'startup' }));
 
-    // ── install A (real installer), add a private store, then fix the clock rules: built 1h ago, receipt fresh ──
-    expect((await run([installer, ...installFlags], installEnv, home)).code).toBe(0);
-    pointAtLocalGithub();
-    served.gen = A;
-    const toA = await run([installer, '--update', '--no-nightly-prompt'], installEnv, home);
-    expect(toA.code, toA.output.slice(-4000)).toBe(0);
-    expect(tagNow()).toBe(A.tag);
-    for (const f of UPDATER_FILES) fs.copyFileSync(path.join(pkg, 'kb', f), path.join(kbDir, f));
-    // The reader dependencies a real install's `npm i` provides (the fixture skips the 300 MB download); the
-    // updater carries live node_modules across every swap, so this one placement must survive B, C.
-    fs.mkdirSync(path.join(kbDir, 'node_modules', '@xenova', 'transformers'), { recursive: true });
-    fs.writeFileSync(path.join(kbDir, 'node_modules', '@xenova', 'transformers', 'package.json'), '{"name":"@xenova/transformers"}');
-    const overlay = await addPrivateStore({ kbDir, scratch: tempDir(shared, 'overlay'), writerRoot: pkg });
-    pointAtLocalGithub();
-    const sourceA = readJson(path.join(kbDir, 'SOURCE.json'));
-    fs.writeFileSync(path.join(kbDir, 'SOURCE.json'), JSON.stringify({ ...sourceA, builtUtc: new Date(Date.now() - 3_600_000).toISOString() }, null, 2));
-    log(`installed A=${A.tag.slice(0, 26)} built 1h ago, refresh receipt fresh; private files=${Object.keys(overlay.digests).length}`);
+      // ── install A (real installer), add a private store, then fix the clock rules: built 1h ago, receipt fresh ──
+      const initial = await run([installer, ...installFlags], installEnv, home);
+      expect(initial.code, initial.output.slice(-6000)).toBe(0);
+      pointAtLocalGithub();
+      served.gen = A;
+      const toA = await run([installer, '--update', '--no-nightly-prompt'], installEnv, home);
+      expect(toA.code, toA.output.slice(-4000)).toBe(0);
+      expect(tagNow()).toBe(A.tag);
+      for (const f of UPDATER_FILES) fs.copyFileSync(path.join(pkg, 'kb', f), path.join(kbDir, f));
+      // The reader dependencies a real install's `npm i` provides (the fixture skips the 300 MB download); the
+      // updater carries live node_modules across every swap, so this one placement must survive B, C.
+      fs.mkdirSync(path.join(kbDir, 'node_modules', '@xenova', 'transformers'), { recursive: true });
+      fs.writeFileSync(path.join(kbDir, 'node_modules', '@xenova', 'transformers', 'package.json'), '{"name":"@xenova/transformers"}');
+      const overlay = await addPrivateStore({ kbDir, scratch: tempDir(shared, 'overlay'), writerRoot: pkg });
+      pointAtLocalGithub();
+      const sourceA = readJson(path.join(kbDir, 'SOURCE.json'));
+      fs.writeFileSync(path.join(kbDir, 'SOURCE.json'), JSON.stringify({ ...sourceA, builtUtc: new Date(Date.now() - 3_600_000).toISOString() }, null, 2));
+      log(`mode=${mode} installed A=${A.tag.slice(0, 26)} built 1h ago, refresh receipt fresh; private files=${Object.keys(overlay.digests).length}`);
 
-    // ── 1. publish B; ONE SessionStart; the detached updater must land B with no age condition ──
-    served.gen = B;
-    const started = Date.now();
-    const s1 = await session();
-    expect(Date.now() - started, 'SessionStart never waits on the update').toBeLessThan(15_000);
-    expect(await waitFor(() => checkRecord() !== null, 20_000), `no check launched; SessionStart said:\n${s1.output.slice(-3000)}`).toBe(true);
-    expect(await waitFor(() => attempt()?.outcome === 'succeeded' && !fs.existsSync(path.join(brainHome, 'auto-update.lock')), 240_000),
-      `attempt=${JSON.stringify(attempt())} check=${JSON.stringify(checkRecord())}\n${fs.existsSync(path.join(brainHome, '.last-auto-update-knowledge.log')) ? fs.readFileSync(path.join(brainHome, '.last-auto-update-knowledge.log'), 'utf8').slice(-6000) : ''}`).toBe(true);
-    expect(tagNow()).toBe(B.tag);
-    expect(attempt()).toMatchObject({ trigger: 'newer-corpus-published', targetTag: B.tag });
-    expect(checkRecord()).toMatchObject({ outcome: 'updating', verdict: 'UPDATE_AVAILABLE', candidateTag: B.tag });
-    const signature = json(path.join(brainHome, 'knowledge-signature.json'));
-    expect(signature.coverageSha256).toBe(sha256File(path.join(kbDir, 'COVERAGE.json')));
-    expect(signature.bundleSha256).toBe(B.sha256);
-    for (const [file, digest] of Object.entries(overlay.digests)) expect(sha256File(path.join(kbDir, file)), file).toBe(digest);
-    expect(npxCalls()).toBe(1);
-    log(`1 SessionStart: launched in ${Date.now() - started}ms-ish; KB now ${tagNow().slice(0, 26)}; signature bound to COVERAGE; private bytes identical; s1 knowledge line: ${(s1.stdout.match(/KNOWLEDGE[^\n]*/) || ['(none)'])[0].slice(0, 160)}`);
-
-    // ── 2. the next session says what happened ONCE and does not relaunch (60-min per-machine throttle) ──
-    const checkedAt = checkRecord().launchedAt;
-    const s2 = await session();
-    expect(s2.stdout).toContain('KNOWLEDGE UPDATED]');
-    const s3 = await session();
-    expect(s3.stdout).not.toContain('KNOWLEDGE UPDATED]');
-    expect(checkRecord().launchedAt).toBe(checkedAt);
-    expect(npxCalls()).toBe(1);
-    log(`2 next session: "${(s2.stdout.match(/KNOWLEDGE UPDATED][^\n]*/) || [''])[0].slice(0, 140)}"; third session silent; no relaunch (check stamp unchanged, npx calls=1)`);
-
-    // ── 3. the long-lived MCP server: a session open for days never fires SessionStart again ──
-    const worker = path.join(tempDir(shared, 'worker'), 'worker.mjs');
-    fs.writeFileSync(worker, `import fs from 'node:fs'; import path from 'node:path'; import readline from 'node:readline';
-const tag = JSON.parse(fs.readFileSync(path.join(process.env.KB_DIR, 'SOURCE.json'), 'utf8')).corpusReleaseTag;
-const rl = readline.createInterface({ input: process.stdin });
-const send = (m) => process.stdout.write(JSON.stringify(m) + '\\n');
-rl.on('line', (l) => { const m = JSON.parse(l);
-  if (m.method === 'initialize') send({ jsonrpc: '2.0', id: m.id, result: { protocolVersion: '2024-11-05', capabilities: {} } });
-  else if (m.method === 'brain/warmup') send({ jsonrpc: '2.0', id: m.id, result: { ready: true } });
-  else if (m.method === 'tools/call') send({ jsonrpc: '2.0', id: m.id, result: { content: [{ type: 'text', text: 'serving ' + tag }] } });
-  else send({ jsonrpc: '2.0', id: m.id, result: {} }); });
-rl.on('close', () => process.exit(0));
-`);
-    const mcp = spawn(process.execPath, [path.join(pluginDir, 'mcp', 'server.mjs')], { env: { ...sessionEnv,
-      RUVNET_BRAIN_CHILD_MCP: worker, RUVNET_CORPUS_CHECK_INTERVAL_MS: '500', RUVNET_CORPUS_CHECK_MINUTES: '0' }, stdio: ['pipe', 'pipe', 'pipe'] });
-    const replies = new Map(); let nextId = 1;
-    readline.createInterface({ input: mcp.stdout }).on('line', (l) => { try { const m = JSON.parse(l); replies.set(m.id, m); } catch { /* ignore */ } });
-    const call = async (method, params) => { const id = nextId++; mcp.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
-      await waitFor(() => replies.has(id), 30_000); return replies.get(id); };
-    try {
-      await call('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'e2e', version: '0' } });
-      const ask = async () => (await call('tools/call', { name: 'search_ruvnet', arguments: { query: 'x' } }))?.result?.content?.[0]?.text;
-      expect(await ask()).toBe(`serving ${B.tag}`);
-      served.gen = C;
-      expect(await waitFor(() => tagNow() === C.tag && attempt()?.outcome === 'succeeded' && !fs.existsSync(path.join(brainHome, 'auto-update.lock')), 240_000),
-        `attempt=${JSON.stringify(attempt())} check=${JSON.stringify(checkRecord())}`).toBe(true);
-      expect(await ask()).toBe(`serving ${C.tag}`);
-      expect(mcp.exitCode).toBe(null);
+      // ── 1. publish B; ONE SessionStart; the detached updater must land B with no age condition ──
+      served.gen = B;
+      const started = Date.now();
+      const s1 = await session();
+      expect(Date.now() - started, 'SessionStart never waits on the update').toBeLessThan(15_000);
+      expect(await waitFor(() => checkRecord() !== null, 20_000), `no check launched; SessionStart said:\n${s1.output.slice(-3000)}`).toBe(true);
+      expect(await waitFor(() => attempt()?.outcome === 'succeeded' && !fs.existsSync(path.join(brainHome, 'auto-update.lock')), 240_000),
+        `attempt=${JSON.stringify(attempt())} check=${JSON.stringify(checkRecord())}\n${fs.existsSync(path.join(brainHome, '.last-auto-update-knowledge.log')) ? fs.readFileSync(path.join(brainHome, '.last-auto-update-knowledge.log'), 'utf8').slice(-6000) : ''}`).toBe(true);
+      expect(tagNow()).toBe(B.tag);
+      expect(attempt()).toMatchObject({ trigger: 'newer-corpus-published', targetTag: B.tag });
+      expect(checkRecord()).toMatchObject({ outcome: 'updating', verdict: 'UPDATE_AVAILABLE', candidateTag: B.tag });
+      const signature = json(path.join(brainHome, 'knowledge-signature.json'));
+      expect(signature.coverageSha256).toBe(sha256File(path.join(kbDir, 'COVERAGE.json')));
+      expect(signature.bundleSha256).toBe(B.sha256);
       for (const [file, digest] of Object.entries(overlay.digests)) expect(sha256File(path.join(kbDir, file)), file).toBe(digest);
+      expect(npxCalls()).toBe(mode === 'installed' ? 0 : 1);
+      log(`1 SessionStart: launched in ${Date.now() - started}ms-ish; KB now ${tagNow().slice(0, 26)}; signature bound to COVERAGE; private bytes identical; s1 knowledge line: ${(s1.stdout.match(/KNOWLEDGE[^\n]*/) || ['(none)'])[0].slice(0, 160)}`);
+
+      // ── 2. the next session says what happened ONCE and does not relaunch (60-min per-machine throttle) ──
+      const checkedAt = checkRecord().launchedAt;
+      const s2 = await session();
+      expect(s2.stdout).toContain('KNOWLEDGE UPDATED]');
+      const s3 = await session();
+      expect(s3.stdout).not.toContain('KNOWLEDGE UPDATED]');
+      expect(checkRecord().launchedAt).toBe(checkedAt);
+      expect(npxCalls()).toBe(mode === 'installed' ? 0 : 1);
+      log(`2 next session: "${(s2.stdout.match(/KNOWLEDGE UPDATED][^\n]*/) || [''])[0].slice(0, 140)}"; third session silent; no relaunch (check stamp unchanged, npx calls=${npxCalls()})`);
+
+      // ── 3. the long-lived MCP server: a session open for days never fires SessionStart again ──
+      const worker = path.join(tempDir(shared, 'worker'), 'worker.mjs');
+      fs.writeFileSync(worker, `import fs from 'node:fs'; import path from 'node:path'; import readline from 'node:readline';
+  const tag = JSON.parse(fs.readFileSync(path.join(process.env.KB_DIR, 'SOURCE.json'), 'utf8')).corpusReleaseTag;
+  const rl = readline.createInterface({ input: process.stdin });
+  const send = (m) => process.stdout.write(JSON.stringify(m) + '\\n');
+  rl.on('line', (l) => { const m = JSON.parse(l);
+    if (m.method === 'initialize') send({ jsonrpc: '2.0', id: m.id, result: { protocolVersion: '2024-11-05', capabilities: {} } });
+    else if (m.method === 'brain/warmup') send({ jsonrpc: '2.0', id: m.id, result: { ready: true } });
+    else if (m.method === 'tools/call') send({ jsonrpc: '2.0', id: m.id, result: { content: [{ type: 'text', text: 'serving ' + tag }] } });
+    else send({ jsonrpc: '2.0', id: m.id, result: {} }); });
+  rl.on('close', () => process.exit(0));
+  `);
+      const mcp = spawn(process.execPath, [path.join(pluginDir, 'mcp', 'server.mjs')], { env: { ...sessionEnv,
+        RUVNET_BRAIN_CHILD_MCP: worker, RUVNET_CORPUS_CHECK_INTERVAL_MS: '500', RUVNET_CORPUS_CHECK_MINUTES: '0' }, stdio: ['pipe', 'pipe', 'pipe'] });
+      const replies = new Map(); let nextId = 1;
+      readline.createInterface({ input: mcp.stdout }).on('line', (l) => { try { const m = JSON.parse(l); replies.set(m.id, m); } catch { /* ignore */ } });
+      const call = async (method, params) => { const id = nextId++; mcp.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
+        await waitFor(() => replies.has(id), 30_000); return replies.get(id); };
+      try {
+        await call('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'e2e', version: '0' } });
+        const ask = async () => (await call('tools/call', { name: 'search_ruvnet', arguments: { query: 'x' } }))?.result?.content?.[0]?.text;
+        expect(await ask()).toBe(`serving ${B.tag}`);
+        served.gen = C;
+        expect(await waitFor(() => tagNow() === C.tag && attempt()?.outcome === 'succeeded' && !fs.existsSync(path.join(brainHome, 'auto-update.lock')), 240_000),
+          `attempt=${JSON.stringify(attempt())} check=${JSON.stringify(checkRecord())}`).toBe(true);
+        expect(await ask()).toBe(`serving ${C.tag}`);
+        expect(mcp.exitCode).toBe(null);
+        for (const [file, digest] of Object.entries(overlay.digests)) expect(sha256File(path.join(kbDir, file)), file).toBe(digest);
+        expect(json(path.join(brainHome, 'knowledge-signature.json')).bundleSha256).toBe(C.sha256);
+        expect(npxCalls()).toBe(mode === 'installed' ? 0 : 2);
+        log(`3 MCP server (pid ${mcp.pid}, never restarted): served B, its own timer installed C, next answer served C`);
+      } finally {
+        mcp.stdin.end(); mcp.kill();
+      }
+
+      const current = await run([installer, '--update', '--no-nightly-prompt'], installEnv, home);
+      expect(current.code, current.output.slice(-5000)).toBe(0);
+      expect(tagNow()).toBe(C.tag);
+      for (const [file, digest] of Object.entries(overlay.digests)) expect(sha256File(path.join(kbDir, file)), file).toBe(digest);
+      // ── 4. offline: recorded quietly; nothing changes; nothing reports a failure ──
+      const fast = { RUVNET_CORPUS_CHECK_MINUTES: '0' };
+      served.offline = true;
+      const calls = npxCalls();
+      await session(fast);
+      expect(await waitFor(() => checkRecord()?.outcome === 'offline', 60_000), JSON.stringify(checkRecord())).toBe(true);
+      expect(tagNow()).toBe(C.tag);
+      expect(npxCalls()).toBe(calls);
+      expect((await session({ RUVNET_CORPUS_CHECK_MINUTES: '60' })).stdout).not.toMatch(/FAILING/);
+      served.offline = false;
+      log('4 offline: check recorded "offline", KB stays C, no updater run, no FAILING line');
+
+      // ── 5. lock held: an update already running blocks a second one ──
+      await waitFor(() => !fs.existsSync(path.join(brainHome, 'auto-update.lock')), 30_000);
+      fs.writeFileSync(path.join(brainHome, 'auto-update.lock'), JSON.stringify({ pid: 1, at: new Date().toISOString() }));
+      const before = checkRecord().launchedAt;
+      served.gen = D;
+      await session(fast);
+      await new Promise((r) => setTimeout(r, 1500));
+      expect(checkRecord().launchedAt).toBe(before);
+      expect(tagNow()).toBe(C.tag);
+      fs.rmSync(path.join(brainHome, 'auto-update.lock'));
+      log('5 lock held: no check, no update, KB stays C');
+
+      // ── 6. remote OLDER than local (A is published again): REFUSED, never downgrades ──
+      served.gen = A;
+      await session(fast);
+      expect(await waitFor(() => checkRecord()?.outcome === 'refused' && !fs.existsSync(path.join(brainHome, 'auto-update.lock')), 60_000), JSON.stringify(checkRecord())).toBe(true);
+      expect(checkRecord().verdict).toBe('REFUSED');
+      expect(tagNow()).toBe(C.tag);
+      expect(npxCalls()).toBe(calls);
+      log('6 remote older (A): verdict REFUSED, no download, KB stays C');
+
+      // ── 7. tampered signature on a newer corpus: the update refuses, the live KB and private bytes stay ──
+      served.gen = { ...D, sig: sign(Buffer.from('not the bundle')) };
+      await session(fast);
+      expect(await waitFor(() => attempt()?.targetTag === D.tag && ['failed', 'succeeded'].includes(attempt()?.outcome)
+        && !fs.existsSync(path.join(brainHome, 'auto-update.lock')), 240_000), JSON.stringify(attempt())).toBe(true);
+      expect(tagNow()).toBe(C.tag);
       expect(json(path.join(brainHome, 'knowledge-signature.json')).bundleSha256).toBe(C.sha256);
-      log(`3 MCP server (pid ${mcp.pid}, never restarted): served B, its own timer installed C, next answer served C`);
-    } finally {
-      mcp.stdin.end(); mcp.kill();
+      for (const [file, digest] of Object.entries(overlay.digests)) expect(sha256File(path.join(kbDir, file)), file).toBe(digest);
+      const after = await session();
+      log(`7 tampered D: attempt ${attempt().outcome} (exit ${attempt().code}: ${String(attempt().reason).slice(0, 120)}); KB stays C; next session: ${(after.stdout.match(/KNOWLEDGE[^\n]*/) || ['(none)'])[0].slice(0, 200)}`);
+      expect(attempt().outcome).toBe('failed');
+      expect(after.stdout).toMatch(/KNOWLEDGE UPDATE FAILING/);
+
+      // ── 8. authentic but incompatible corpus: the full coordinator retains every live/private byte ──
+      const stage = tempDir(shared, 'incompatible');
+      const input = path.join(stage, 'input.zip'); fs.writeFileSync(input, D.zip);
+      const tree = path.join(stage, 'tree'); await extractZip(input, tree);
+      const sourceFile = path.join(tree, 'SOURCE.json');
+      fs.writeFileSync(sourceFile, JSON.stringify({ ...readJson(sourceFile), brainVersion: '999.0.0' }));
+      const file = path.join(stage, 'incompatible.zip');
+      const zipped = spawnSync('zip', ['-q', '-r', '-X', file, ...fs.readdirSync(tree)], { cwd: tree });
+      expect(zipped.status).toBe(0);
+      const zip = fs.readFileSync(file); const sha256 = crypto.createHash('sha256').update(zip).digest('hex');
+      served.gen = { ...D, zip, sha256, tag: `corpus-sha256-${sha256}`, sig: sign(zip) };
+      const incompatible = await run([installer, '--update', '--no-nightly-prompt'], installEnv, home);
+      expect(incompatible.code, incompatible.output.slice(-5000)).not.toBe(0);
+      expect(incompatible.output).toMatch(/INCOMPATIBLE/);
+      expect(tagNow()).toBe(C.tag);
+      for (const [privateFile, digest] of Object.entries(overlay.digests)) expect(sha256File(path.join(kbDir, privateFile)), privateFile).toBe(digest);
+      expect(npxCalls()).toBe(mode === 'installed' ? 0 : 3);
+      log(`8 mode=${mode} authentic incompatible corpus refused; KB stays C; private ${Object.keys(overlay.digests).length} bytes/hash rows unchanged; npx calls=${npxCalls()}`);
+      if (process.env.RNB319_EVIDENCE_FILE) {
+        const evidenceFile = process.env.RNB319_EVIDENCE_FILE;
+        const prior = json(evidenceFile) || [];
+        const sourceFiles = ['bin/install.mjs', 'bin/nightly-refresh.mjs', 'kb/forge-update.mjs', 'kb/download-retry.mjs',
+          'plugin/scripts/automatic-update.mjs', 'plugin/scripts/host-update.mjs', 'plugin/scripts/nightly-scheduler.mjs'];
+        fs.writeFileSync(evidenceFile, JSON.stringify([...prior, { schemaVersion: 1, mode, fixtureHome: home,
+          entry: installer, entrySha256: sha256File(installer), publishedRuntimeAcceptance: false,
+          substitutions: ['generated test Ed25519 trust root', 'signed local synthetic corpus', 'existing mutation-safe installer test mode', 'fixture reader dependency markers', 'fixture MCP search worker'],
+          canonicalSettingsSha256: sha256File(path.join(pkg, 'plugin/scripts/user-settings.mjs')),
+          canonicalPatternSha256: sha256File(path.join(pkg, 'plugin/scripts/ruvnet-gate1-pattern.mjs')),
+          sourceFiles: Object.fromEntries(sourceFiles.map(name => [name, sha256File(path.join(ROOT, name))])),
+          corpus: { A: A.tag, B: B.tag, C: C.tag, current: tagNow() }, npxCalls: npxCalls(),
+          privateDigests: overlay.digests, privateUnchanged: true, active: json(path.join(brainHome, 'active.json')),
+          convergence: json(path.join(brainHome, 'host-convergence.json')), negatives: ['current', 'offline', 'held lock', 'older corpus', 'invalid signature', 'authentic incompatible corpus'] }], null, 2));
+      }
     }
-
-    // ── 4. offline: recorded quietly; nothing changes; nothing reports a failure ──
-    const fast = { RUVNET_CORPUS_CHECK_MINUTES: '0' };
-    served.offline = true;
-    const calls = npxCalls();
-    await session(fast);
-    expect(await waitFor(() => checkRecord()?.outcome === 'offline', 60_000), JSON.stringify(checkRecord())).toBe(true);
-    expect(tagNow()).toBe(C.tag);
-    expect(npxCalls()).toBe(calls);
-    expect((await session({ RUVNET_CORPUS_CHECK_MINUTES: '60' })).stdout).not.toMatch(/FAILING/);
-    served.offline = false;
-    log('4 offline: check recorded "offline", KB stays C, no updater run, no FAILING line');
-
-    // ── 5. lock held: an update already running blocks a second one ──
-    await waitFor(() => !fs.existsSync(path.join(brainHome, 'auto-update.lock')), 30_000);
-    fs.writeFileSync(path.join(brainHome, 'auto-update.lock'), JSON.stringify({ pid: 1, at: new Date().toISOString() }));
-    const before = checkRecord().launchedAt;
-    served.gen = D;
-    await session(fast);
-    await new Promise((r) => setTimeout(r, 1500));
-    expect(checkRecord().launchedAt).toBe(before);
-    expect(tagNow()).toBe(C.tag);
-    fs.rmSync(path.join(brainHome, 'auto-update.lock'));
-    log('5 lock held: no check, no update, KB stays C');
-
-    // ── 6. remote OLDER than local (A is published again): REFUSED, never downgrades ──
-    served.gen = A;
-    await session(fast);
-    expect(await waitFor(() => checkRecord()?.outcome === 'refused' && !fs.existsSync(path.join(brainHome, 'auto-update.lock')), 60_000), JSON.stringify(checkRecord())).toBe(true);
-    expect(checkRecord().verdict).toBe('REFUSED');
-    expect(tagNow()).toBe(C.tag);
-    expect(npxCalls()).toBe(calls);
-    log('6 remote older (A): verdict REFUSED, no download, KB stays C');
-
-    // ── 7. tampered signature on a newer corpus: the update refuses, the live KB and private bytes stay ──
-    served.gen = { ...D, sig: sign(Buffer.from('not the bundle')) };
-    await session(fast);
-    expect(await waitFor(() => attempt()?.targetTag === D.tag && ['failed', 'succeeded'].includes(attempt()?.outcome)
-      && !fs.existsSync(path.join(brainHome, 'auto-update.lock')), 240_000), JSON.stringify(attempt())).toBe(true);
-    expect(tagNow()).toBe(C.tag);
-    expect(json(path.join(brainHome, 'knowledge-signature.json')).bundleSha256).toBe(C.sha256);
-    for (const [file, digest] of Object.entries(overlay.digests)) expect(sha256File(path.join(kbDir, file)), file).toBe(digest);
-    const after = await session();
-    log(`7 tampered D: attempt ${attempt().outcome} (exit ${attempt().code}: ${String(attempt().reason).slice(0, 120)}); KB stays C; next session: ${(after.stdout.match(/KNOWLEDGE[^\n]*/) || ['(none)'])[0].slice(0, 200)}`);
-    expect(attempt().outcome).toBe('failed');
-    expect(after.stdout).toMatch(/KNOWLEDGE UPDATE FAILING/);
   }, 900_000);
 });

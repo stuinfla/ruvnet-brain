@@ -70,6 +70,46 @@ if (!doc.stores?.[value('--name')]) { console.error('no entry for store "'+value
   fs.writeFileSync(path.join(dir, 'COVERAGE.json'), JSON.stringify(release));
 }
 
+describe('fresh installer prepares a parent, never a placeholder KB', () => {
+  for (const prior of ['absent', 'empty', 'unknown', 'malformed']) {
+    it(`leaves ${prior} prior data unchanged when bundle acquisition fails through the actual CLI`, () => {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), 'installer-bootstrap-'));
+      roots.push(root);
+      const home = path.join(root, 'home');
+      const live = path.join(home, '.cache', 'ruvnet-brain', 'kb');
+      if (prior !== 'absent') fs.mkdirSync(live, { recursive: true });
+      if (prior === 'unknown') fs.writeFileSync(path.join(live, 'personal.bin'), Buffer.from([0, 255, 3, 0]));
+      if (prior === 'malformed') fs.writeFileSync(path.join(live, 'SOURCE.json'), '{unreadable legacy metadata');
+      const before = prior === 'absent' ? null : {
+        ino: fs.statSync(live).ino,
+        files: fs.readdirSync(live).map((name) => [name, fs.readFileSync(path.join(live, name)).toString('hex')]),
+      };
+      // A scoped read-only acquisition fault works even when release qualification has assembled dist/.
+      // It never substitutes activation, cleanup, metadata proof, or the direct installer entry point.
+      const fault = path.join(root, 'missing-local-bundle.cjs');
+      fs.writeFileSync(fault, `const fs=require('node:fs');const path=require('node:path');
+const exists=fs.existsSync;const dist=${JSON.stringify(path.join(ROOT, 'dist'))};
+fs.existsSync=(file)=>path.resolve(String(file)).startsWith(dist+path.sep)?false:exists(file);\n`);
+      const result = spawnSync(process.execPath, ['--require', fault, path.join(ROOT, 'bin', 'install.mjs'),
+        '--local', '--yes', '--force', '--no-nightly-prompt', '--no-telemetry', '--no-stack', '--no-enhance', '--no-statusline'], {
+        cwd: root, encoding: 'utf8', timeout: 15_000,
+        env: { ...process.env, HOME: home, USERPROFILE: home, CODEX_HOME: path.join(home, '.codex'),
+          RUVNET_BRAIN_HOME: path.dirname(live), RUVNET_BRAIN_KB: live, RUVNET_BRAIN_TEST: '1', RUFLO_DAEMON_AUTOSTART: '0' },
+      });
+      expect(result.error).toBeUndefined();
+      expect(result.status).toBe(1);
+      expect(result.stdout + result.stderr).toContain('--local was passed but');
+      expect(fs.existsSync(path.dirname(live))).toBe(true);
+      if (prior === 'absent') expect(fs.existsSync(live)).toBe(false);
+      else {
+        expect(fs.statSync(live).ino).toBe(before.ino);
+        expect(fs.readdirSync(live).map((name) => [name, fs.readFileSync(path.join(live, name)).toString('hex')])).toEqual(before.files);
+      }
+      expect(fs.readdirSync(path.dirname(live)).filter((name) => name.startsWith('kb.install-'))).toEqual([]);
+    });
+  }
+});
+
 describe('installer exact-swap failure recovery', () => {
   for (const contents of ['unlisted-file', 'declared-private', 'symlink', 'managed-only']) {
     it(`preserves prior contents for ${contents} during a valid swap`, () => {
@@ -82,6 +122,13 @@ describe('installer exact-swap failure recovery', () => {
       expect(validateCoverageDirectory(source, { expectedVersion: version }).valid).toBe(true);
       fs.cpSync(source, live, { recursive: true });
       fs.writeFileSync(path.join(live, 'forge-mcp-all.mjs'), '// prior bytes, ownership not inferable from filename');
+      // The prior synthetic public generation has exact release provenance, not filename ownership.
+      // Capture it before personal additions; none of those additions receive a public witness.
+      fs.writeFileSync(path.join(live, 'ARCHIVE-MANIFEST.json'), JSON.stringify({ files:
+        ['SOURCE.json', 'forge-mcp-all.mjs'].map((file) => {
+          const bytes = fs.readFileSync(path.join(live, file));
+          return { path: file, bytes: bytes.length, sha256: crypto.createHash('sha256').update(bytes).digest('hex') };
+        }) }));
       if (contents === 'unlisted-file') fs.writeFileSync(path.join(live, 'personal.txt'), 'private bytes');
       if (contents === 'declared-private') {
         const manifest = JSON.parse(fs.readFileSync(path.join(live, 'SOURCE.json')));
@@ -115,7 +162,7 @@ describe('installer exact-swap failure recovery', () => {
         expect(fs.readFileSync(path.join(root, 'external.txt'), 'utf8')).toBe('external private bytes');
       }
       // ADR-0098: the installer no longer leaves a second KB behind. A prior generation holding nothing
-      // unique (managed-only: every name it has, the new generation ships) is RELEASED at once; one
+      // unique (managed-only: every file has exact live bytes or public release provenance) is RELEASED at once; one
       // holding a user file or a link the new tree lacks is KEPT, and the reason names that file.
       if (contents === 'managed-only') {
         expect(retained).toHaveLength(0);
