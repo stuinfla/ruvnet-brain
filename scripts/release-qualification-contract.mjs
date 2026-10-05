@@ -111,7 +111,8 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
         "tests/unit/forge-update-apply-rollback.test.mjs",
         "tests/unit/forge-update-archive-digest.test.mjs",
         "tests/unit/kb-copy-proof-legacy-sidecars.test.mjs",
-        "tests/unit/kb-copy-proof-unknown-content.test.mjs"
+        "tests/unit/kb-copy-proof-unknown-content.test.mjs",
+        "tests/unit/user-model-hook-install.test.mjs"
       ]
     },
     {
@@ -134,8 +135,8 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
         "tests/unit/model-routing-launchers.test.mjs"
       ],
       "platformFiles": {
-        "linux": ["tests/unit/model-terminal-gateway.test.mjs", "tests/unit/model-terminal-launchers.test.mjs"],
-        "macos": ["tests/unit/model-terminal-gateway.test.mjs", "tests/unit/model-terminal-launchers.test.mjs"],
+        "linux": ["tests/unit/model-terminal-gateway.test.mjs", "tests/unit/model-terminal-launchers.test.mjs", "tests/unit/claude-controlled-terminal.test.mjs"],
+        "macos": ["tests/unit/model-terminal-gateway.test.mjs", "tests/unit/model-terminal-launchers.test.mjs", "tests/unit/claude-controlled-terminal.test.mjs"],
         "windows": ["tests/unit/windows-terminal-boundary.test.mjs"]
       }
     },
