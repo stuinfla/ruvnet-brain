@@ -109,21 +109,40 @@ and independently reviewable; those remain a disclosed follow-up, not silently d
 
 ## Reward-Hack Check
 
-Independent critic review requested (separate agent invocation, not this candidate's author) — see
-Witness/PR for its verdict. Self-check: no benchmark, threshold, or gold data touched anywhere in the
-repo; no existing assertion weakened (diff is +163/−0); the new assertions were shown, outside the real
-suite, to actually flag broken-hook-shaped behavior rather than passing by construction; no undocumented
-cache (each `fire()` call builds a fresh Stable Spine fixture per stranger-project temp dir, matching
-every other call in the file).
+Independent critic review completed (separate agent invocation, not this candidate's author).
+Verdict: **CLEAR**, with one corrected claim (see Security Review). Confirmed: no benchmark,
+threshold, or gold data touched anywhere in the repo (`evals/` untouched); no existing assertion
+weakened (diff is +163/−0, two files, nothing else touched); no undocumented cache or test-order
+dependency (each `fire()` call builds a fresh `strangerProject()` temp dir and, for Codex, a fresh
+`installCodexSpine()`, matching every other call in the file). The critic independently proved the
+new TEETH assertions are non-vacuous by deliberately injecting a `stderr`-writing line into BOTH
+hosts' real dispatchers in turn (`plugin/scripts/hook-shim.mjs` for Claude Code,
+`plugin/scripts/codex-hook-wrapper.mjs` for Codex — two independent code paths, not shared) and
+confirming the stderr TEETH test went red each time (17 and 15 offenders respectively), then
+reverted both and confirmed `git status` clean. Blast radius: nothing imports this file's
+`hookCommands` export; only `scripts/qe/agentic-qe-4.3.mjs` shells out to the file by path.
 
 ## Security Review
 
 All new code runs exclusively inside `os.tmpdir()`-rooted temporary directories (`strangerProject()`,
 `installCodexSpine()`'s `brainHome`); `RUVNET_BRAIN_HOME`/`RUVNET_CONFIG_ROOT` are pointed at those temp
-paths specifically so the real installed ledgers/spine are never touched. The spawned commands are the
+paths so the real installed KB/spine/ledgers-of-record are never touched. The spawned commands are the
 repo's own already-shipped hook commands (read from `plugin/hooks/*.json` at HEAD), not
 attacker-controlled input. No credentials are introduced, read, or logged. Test-only file; nothing here
 is imported by shipped code.
+
+**Correction, found by the independent critic, not by this candidate's own author:** two append-only
+log files under the real `$HOME/.cache/ruvnet-brain` — `token-ledger.jsonl` and
+`detached-jobs.jsonl` — DO get written during a real run of this suite. `detach.mjs` and
+`session-start-core.mjs` resolve their paths from `os.homedir()`/`XDG_CACHE_HOME`, not from
+`RUVNET_CONFIG_ROOT`, so the fixture's own inline comment ("keep real ledgers untouched") is
+inaccurate for these two files specifically — independently confirmed on this container
+(`detached-jobs.jsonl`/`token-ledger.jsonl` both touched at the exact run time). Impact is low: no
+credentials, no destructive mutation, only append-only JSONL growth, and this is pre-existing
+fixture behavior inherited verbatim from the last known-good version (`00526b12^`), not newly
+introduced tonight. Flagged rather than silently merged as originally (inaccurately) stated; a
+follow-up candidate should either redirect these two paths via an injectable override or document
+the fixture's real footprint precisely.
 
 ## Scan Findings
 
@@ -142,7 +161,27 @@ session. Not fabricated.
 
 ## Witness
 
-See PR body / ledger row for the final stamp (computed after this report's content was frozen).
+```text
+SESSION_COMMIT = f7ec936b5c760661d0806980a341cf781861f08d   (main, HEAD at run start)
+REPORT_HASH    = sha256sum of this file at commit time
+WITNESS        = sha256(REPORT_HASH + SESSION_COMMIT)
+```
+
+Reproduce (5 steps, from a clean checkout of this PR's branch):
+1. `git checkout dream/2026-10-05-cross-host-conformance`
+2. `git show f7ec936:` — confirm this is the `main` commit the session started from (the parent of
+   this branch's first commit).
+3. `sha256sum docs/dream-cycle/2026-10-05-cross-host-conformance-report.md` → must equal
+   `REPORT_HASH` below.
+4. `printf '%s%s' "<REPORT_HASH from step 3>" f7ec936b5c760661d0806980a341cf781861f08d | sha256sum`
+   → must equal `WITNESS` below.
+5. `npx vitest run tests/integration/hook-conformance-both-hosts.test.mjs` → 14/14 pass, independently
+   reproducing the Evaluation Receipt above.
+
+```text
+REPORT_HASH = b35df3571ffe1c4d3a807bb24c6089d1f90a7e038f68b4758e9f891c8685aeda
+WITNESS     = 7751cfa570858e3caa7a3c7651bdf3ecdd3e5f9ed55ed9977ba5e85ab78a09a5
+```
 
 ## Recommendation
 
