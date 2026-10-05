@@ -23,7 +23,8 @@ test('actual native read-only sandbox runs exact-file syntax checker without inf
     const file = path.join(root, 'valid.mjs'); fs.writeFileSync(file, 'export const ready = true;\n');
     const result = await runRegisteredChecker({ command: process.execPath, args: ['--check', file], cwd: root },
       { deadline: Date.now() + 10_000, sandboxBinary: actualCodex() });
-    assert.equal(result.passed, true); assert.equal(result.exitCode, 0);
+    assert.equal(result.passed, true, `Native syntax checker failed: ${JSON.stringify(result)}`);
+    assert.equal(result.exitCode, 0, JSON.stringify(result));
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -32,8 +33,12 @@ test('actual native read-only sandbox denies checker write outside authorized sc
   const outside = path.join(process.cwd(), 'tests/unit', `checker-escape-${crypto.randomUUID()}.txt`);
   try {
     const result = await runRegisteredChecker({ command: process.execPath,
-      args: ['-e', `require('node:fs').writeFileSync(${JSON.stringify(outside)},'escape')`], cwd: root },
+      args: ['-e', `try { require('node:fs').writeFileSync(${JSON.stringify(outside)},'escape'); process.exitCode = 1; }
+        catch (error) { if (!['EPERM', 'EACCES', 'EROFS'].includes(error.code)) throw error;
+          console.log(JSON.stringify({ marker: 'native-checker-denial-observed', code: error.code, syscall: error.syscall })); }`], cwd: root },
       { deadline: Date.now() + 10_000, sandboxBinary: actualCodex() });
-    assert.equal(result.passed, false); assert.equal(fs.existsSync(outside), false);
+    assert.equal(result.passed, true, `Native denial probe did not finish successfully: ${JSON.stringify(result)}`);
+    assert.match(result.output, /"marker":"native-checker-denial-observed","code":"(?:EPERM|EACCES|EROFS)","syscall":"open"/, JSON.stringify(result));
+    assert.equal(fs.existsSync(outside), false, JSON.stringify(result));
   } finally { if (fs.existsSync(outside)) fs.unlinkSync(outside); fs.rmSync(root, { recursive: true, force: true }); }
 });
