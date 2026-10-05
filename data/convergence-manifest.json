@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
   "kind": "ruvnet-brain-convergence-manifest",
-  "version": "4.5.5",
-  "sourceIdentity": "311166707250e0a40890a61b1f40068b0f41aecbeda89830f7aa8e3e435aa5e5",
+  "version": "4.5.6",
+  "sourceIdentity": "91214f57884685b828b243ae60c128b9d944f74a49fdca302f70c3ccedb9a9c2",
   "versionSurfaces": {
-    "package.json": "4.5.5",
-    "plugin/.claude-plugin/plugin.json": "4.5.5",
-    "plugin/.codex-plugin/plugin.json": "4.5.5",
-    "data/manifest.json": "4.5.5",
-    "kb/RVF-GENERATIONS.json": "4.5.5",
-    "explainer/index.html": "4.5.5",
-    "primer/ruvnet-primer.md": "4.5.5"
+    "package.json": "4.5.6",
+    "plugin/.claude-plugin/plugin.json": "4.5.6",
+    "plugin/.codex-plugin/plugin.json": "4.5.6",
+    "data/manifest.json": "4.5.6",
+    "kb/RVF-GENERATIONS.json": "4.5.6",
+    "explainer/index.html": "4.5.6",
+    "primer/ruvnet-primer.md": "4.5.6"
   },
   "adrInventory": [
     "0001-verified-bundle-not-single-file.md",
@@ -111,8 +111,8 @@
     "0102-completion-and-closure-ledger.md",
     "README.md"
   ],
-  "trackedFileCount": 1867,
-  "trackedFilesSha256": "7c482272e5ded5e11929fd2c5ab7660a32298bb65210845a64a2c6dff41171ed",
+  "trackedFileCount": 1876,
+  "trackedFilesSha256": "4e26aaf1e4dce7e52c2cd757a8f5457f525390b089c9bbc9c8868dee9173eb68",
   "ownershipChecks": [
     "version:check",
     "doc:currency",

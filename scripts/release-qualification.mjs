@@ -11,13 +11,16 @@ import { RELEASE_REQUIREMENTS } from './release-qualification-contract.mjs';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PLATFORM = { linux: 'linux', darwin: 'macos', win32: 'windows' }[process.platform];
 
-export function qualificationPlan(suite = 'source') {
-  const requirements = RELEASE_REQUIREMENTS[suite];
-  if (!requirements?.length) throw new Error('unknown qualification suite');
+export function qualificationPlan(suite = 'source', platform = PLATFORM) {
+  if (!['linux', 'macos', 'windows'].includes(platform)) throw new Error('invalid qualification platform');
+  const inventory = RELEASE_REQUIREMENTS[suite];
+  if (!inventory?.length) throw new Error('unknown qualification suite');
+  const requirements = inventory.map(({ platformFiles, ...entry }) => ({ ...entry,
+    files: [...entry.files, ...(platformFiles?.[platform] || [])] }));
   const files = requirements.flatMap((entry) => entry.files);
   if (new Set(files).size !== files.length || files.some((file) => !file.startsWith('tests/')
     || !file.endsWith('.test.mjs') || file.includes('..'))) throw new Error('invalid qualification inventory');
-  return { requirements, files, contractSha256: digest(requirements) };
+  return { requirements, files, contractSha256: digest({ platform, requirements }) };
 }
 
 export function assessTestReport(report, files, root = ROOT, platform = PLATFORM) {
@@ -44,7 +47,7 @@ export function assessTestReport(report, files, root = ROOT, platform = PLATFORM
 }
 
 export function validateQualificationReceipt(report, { suite, platform, sourceSha }) {
-  const plan = qualificationPlan(suite);
+  const plan = qualificationPlan(suite, platform);
   const { receiptSha256, ...payload } = report || {};
   if (report?.schemaVersion !== 1 || report.kind !== 'ruvnet-brain-release-qualification'
     || report.suite !== suite || report.platform !== platform || report.status !== 'PASS'
@@ -70,7 +73,7 @@ export function validateQualificationReceipt(report, { suite, platform, sourceSh
 export function runQualification({ suite = 'source', platform = PLATFORM, report: output, root = ROOT } = {}) {
   if (platform !== PLATFORM) throw new Error(`cannot produce ${platform} evidence on ${PLATFORM}`);
   if (!output || fs.existsSync(output)) throw new Error('a new --report path is required');
-  const plan = qualificationPlan(suite);
+  const plan = qualificationPlan(suite, platform);
   for (const file of plan.files) if (!fs.statSync(path.resolve(root, file)).isFile()) throw new Error(`missing test ${file}`);
   const source = sourceIdentity(root);
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'release-qualification-'));

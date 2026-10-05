@@ -57,6 +57,8 @@ function autoCodex(f, allowance = true) {
     for (const line of chunk.toString().trim().split('\n')) {
       const msg = JSON.parse(line);
       if (msg.method === 'account/read') f.reply(msg, { account: { type: 'chatgpt' } });
+      if (msg.method === 'config/read') f.reply(msg, { config: { model_provider: 'openai', openai_base_url: null } });
+      if (msg.method === 'thread/read') f.reply(msg, { thread: { id: msg.params.threadId, modelProvider: 'openai', cwd: '/tmp' } });
       if (msg.method === 'account/rateLimits/read') f.reply(msg, { ordinaryUsageAllowed: allowance });
     }
   });
@@ -75,6 +77,7 @@ describe('native turn routing transport', () => {
     const f = fixture('codex'); autoCodex(f);
     const original = turn(); f.send(original); await f.idle();
     expect(f.sent.at(-1)).toEqual(routeCodexTurn(original, decision()));
+    expect(f.sent.at(-1).params).toMatchObject({ serviceTier: 'default', serviceTierForTurn: 'default' });
     expect(f.sent.at(-1).params.collaborationMode.settings.developer_instructions).toBe('CONTEXT TO RETAIN');
     expect(f.prompts).toEqual(['PRIVATE PROMPT']);
     expect(f.receipts).toEqual(expect.arrayContaining([expect.objectContaining({ status: 'turn-forwarded', modelObserved: false, serviceMode: 'standard', allowanceVerified: true })]));
@@ -83,7 +86,13 @@ describe('native turn routing transport', () => {
     expect(f.received).toEqual([result]);
   });
 
-  it('keeps native steering, queued additions, cancellation and tool traffic unchanged', async () => {
+  it('pure normalization replaces both native service precedence fields without mutating the original', () => {
+    const original = turn(); original.params.serviceTier = 'priority'; original.params.serviceTierForTurn = 'priority';
+    expect(routeCodexTurn(original, decision()).params).toMatchObject({ serviceTier: 'default', serviceTierForTurn: 'default' });
+    expect(original.params).toMatchObject({ serviceTier: 'priority', serviceTierForTurn: 'priority' });
+  });
+
+  it('keeps cancellation and tool traffic immediate while refusing unqualified queue inference', async () => {
     let resolve; const f = fixture('codex', { decide: () => new Promise((r) => { resolve = r; }) });
     autoCodex(f); f.send(turn()); await tick();
     const messages = [ { id: 'steer', method: 'turn/steer', params: { threadId: 'existing-thread', input: ['keep'] } },
@@ -134,7 +143,7 @@ describe('native turn routing transport', () => {
     g.send(turn()); await tick(); g.close(); resolve(decision()); await g.idle(); expect(g.sent).toEqual([]);
   });
 
-  it('drops backpressured held turns on cancellation or close and drains EOF safely', async () => {
+  it('drops backpressured held turns on cancellation, close or EOF without late dispatch', async () => {
     for (const action of ['cancel', 'close']) {
       const f = fixture('codex'); let blocked = false;
       const nativeWrite = f.child.stdin.write.bind(f.child.stdin);
@@ -150,10 +159,9 @@ describe('native turn routing transport', () => {
     const f = fixture('codex'); const nativeWrite = f.child.stdin.write.bind(f.child.stdin);
     f.child.stdin.write = (line) => { nativeWrite(line); return false; };
     f.input.end('{"id":1,"method":"ping"}\n{"id":2,"method":"ping"}\n'); await tick();
-    expect(f.child.stdin.writableEnded).toBe(false);
-    f.child.stdin.emit('drain'); await until(() => f.sent.length === 2);
-    expect(f.child.stdin.writableEnded).toBe(false);
-    f.child.stdin.emit('drain'); await until(() => f.child.stdin.writableEnded);
+    expect(f.child.stdin.writableEnded).toBe(true);
+    f.child.stdin.emit('drain'); await tick();
+    expect(f.sent.map((m) => m.id)).toEqual([1]);
     const g = fixture('codex'); const write = g.child.stdin.write.bind(g.child.stdin);
     g.child.stdin.write = (line) => { write(line); return false; };
     g.input.write('{"id":1,"method":"ping"}\n{"id":2,"method":"ping"}\n');
@@ -186,11 +194,12 @@ describe('native turn routing transport', () => {
     for (const message of [
       { method: 'thread/resume', params: { config: { model_providers: { openai: { base_url: 'foreign' } } } } },
       { method: 'thread/settings/update', params: { threadId: 'same', model: 'override' } },
+      { method: 'turn/settings/update', params: { threadId: 'same', turnId: 'active', model: 'override' } },
       { method: 'config/value/write', params: { keyPath: 'model_providers.openai.base_url', value: 'foreign', mergeStrategy: 'replace' } },
       { method: 'config/batchWrite', params: { edits: [{ keyPath: 'features.fast_mode', value: true }] } },
       { method: 'account/login/start', params: { type: 'apiKey', apiKey: 'PRIVATE' } },
     ]) f.send({ id: 'blocked', ...message });
-    expect(f.sent).toEqual([]); expect(f.received).toHaveLength(5); expect(JSON.stringify(f.received)).not.toContain('PRIVATE');
+    expect(f.sent).toEqual([]); expect(f.received).toHaveLength(6); expect(JSON.stringify(f.received)).not.toContain('PRIVATE');
     const allowed = { id: 'safe', method: 'config/value/write', params: { keyPath: 'sandbox_mode', value: 'read-only', mergeStrategy: 'replace' } };
     f.send(allowed); expect(f.sent).toEqual([allowed]);
   });
@@ -350,7 +359,7 @@ describe('native turn routing transport', () => {
   it('allows Codex active additions only for exact native accepted configured pair', async () => {
     let d = decision(); const f = fixture('codex', { decide: () => d }); autoCodex(f);
     f.send(turn()); await f.idle();
-    const steer = { id: 'steer', method: 'turn/steer', params: { threadId: 'existing-thread', input: turn().params.input } };
+    const steer = { id: 'steer', method: 'turn/steer', params: { threadId: 'existing-thread', expectedTurnId: 'accepted-native-turn', input: turn().params.input } };
     f.send(steer); await f.idle(); expect(f.received.at(-1).error.message).toContain('requires a new turn');
     f.respond({ id: 9, result: { turn: { id: 'accepted-native-turn' } } });
     f.send(steer); await f.idle(); expect(f.sent.at(-1)).toEqual(steer);
@@ -358,7 +367,7 @@ describe('native turn routing transport', () => {
     const queue = { ...steer, id: 'queue', method: 'thread/queue/add' }; f.send(queue); await f.idle();
     expect(f.sent.at(-1)).toEqual(steer); expect(f.received.at(-1)).toMatchObject({ id: 'queue', error: { code: -32001 } });
     expect(f.receipts.find((r) => r.status === 'active-input-approved')).toMatchObject({ modelObserved: false, evidence: 'native-turn-start.accepted-configured-pair' });
-    f.respond({ method: 'turn/completed', params: { threadId: 'existing-thread' } });
+    f.respond({ method: 'turn/completed', params: { threadId: 'existing-thread', turn: { id: 'accepted-native-turn' } } });
     d = decision(); f.send(steer); await f.idle(); expect(f.received.at(-1).error.message).toContain('requires a new turn');
   });
 
