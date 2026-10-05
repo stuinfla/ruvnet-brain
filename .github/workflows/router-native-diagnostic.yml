@@ -22,5 +22,33 @@ jobs:
           npm install --global --prefix "$HOME/.npm-global" @openai/codex@latest --no-audit --no-fund
           "$HOME/.npm-global/bin/codex" --version
           echo "$HOME/.npm-global/bin" >> "$GITHUB_PATH"
+      - name: Qualify Bubblewrap namespaces on the disposable hosted runner
+        if: runner.environment == 'github-hosted'
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          key=kernel.apparmor_restrict_unprivileged_userns
+          sysctl "$key"
+          value=$(sysctl -n "$key")
+          test "$value" = 0 || test "$value" = 1
+          printf '%s\n' "$value" > "$RUNNER_TEMP/router-native-userns-original"
+          sudo sysctl -w "$key=0"
+          test "$(sysctl -n "$key")" = 0
       - name: Run only the two native sandbox checks
         run: node node_modules/vitest/vitest.mjs run tests/integration/model-managed-checker-native.test.mjs --maxWorkers=1
+      - name: Restore the hosted runner namespace setting
+        if: always() && runner.environment == 'github-hosted'
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          original="$RUNNER_TEMP/router-native-userns-original"
+          if test -f "$original"; then
+            value=$(cat "$original")
+            test "$value" = 0 || test "$value" = 1
+            sudo sysctl -w "kernel.apparmor_restrict_unprivileged_userns=$value"
+            restored=$(sysctl -n kernel.apparmor_restrict_unprivileged_userns)
+            test "$restored" = "$value"
+            printf 'Verified restored namespace setting: %s\n' "$restored"
+          fi
