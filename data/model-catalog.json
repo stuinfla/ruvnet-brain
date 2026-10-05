@@ -1,20 +1,20 @@
 {
   "_meta": {
-    "purpose": "Per-provider (house) tier ladders. The FRONTIER — the escalation target AND the savings baseline — is personalized to the user's own house: a Claude shop's frontier is Fable 5, a ChatGPT shop's is GPT-5.6 Sol, a Codex shop's is Sol, a Gemini shop's is Gemini 3.1 Pro, a Grok shop's is Grok 4.5. Modeled on ruflo ADR-148 (assets/model-router/openrouter-alts.json), extended with a provider-house axis rUv's registry does not carry.",
+    "purpose": "Verified provider tier ladders and task-fit recommendations. Frontier is the hard-work target; it is not the routine default. API prices are comparison metadata, not subscription charges.",
     "generated": "2026-07-15",
     "schema_version": 1,
     "sources": {
-      "prices": "OpenRouter /api/v1/models live catalog, pulled 2026-09-19 (in/out USD per Mtok).",
-      "rankings": "Artificial Analysis Intelligence Index (artificialanalysis.ai) + Arena/LMArena (arena.ai) — the ONLY independent evaluators carrying current-generation models as of 2026-07-15; each figure cross-verified twice.",
-      "provenance_rule": "rUv ADR-206: vendor-reported scores are optimistic and harness-confounded — trust independent (AA/Arena) numbers, treat vendor self-scaffold SWE-bench/LiveCodeBench figures as noisy features, never as truth.",
-      "benchmark_lag": "The canonical hard coding benchmarks (SWE-bench Verified standardized harness, LiveCodeBench, Aider polyglot) were ALL months stale on 2026-07-15 and carry NONE of these models. The '88.6% / 95% SWE-bench' figures in the press are vendor self-scaffold scores, not the standardized harness — excluded here.",
+      "prices": "OpenRouter /api/v1/models live catalog, pulled 2026-10-04 (in/out USD per Mtok).",
+      "rankings": "Anthropic/OpenAI official role guidance checked 2026-10-04 for refreshed entries. Historical ranks for other providers unchanged and not revalidated in this two-provider refresh.",
+      "provenance_rule": "rUv ADR-206: vendor-reported scores are optimistic and harness-confounded \u2014 trust independent (AA/Arena) numbers, treat vendor self-scaffold SWE-bench/LiveCodeBench figures as noisy features, never as truth.",
+      "benchmark_lag": "The canonical hard coding benchmarks (SWE-bench Verified standardized harness, LiveCodeBench, Aider polyglot) were ALL months stale on 2026-07-15 and carry NONE of these models. The '88.6% / 95% SWE-bench' figures in the press are vendor self-scaffold scores, not the standardized harness \u2014 excluded here.",
       "release_refs": "OpenAI GPT-5.6 GA 2026-07-09 (openai.com/index/gpt-5-6); Anthropic Fable 5 2026-06-09 (anthropic.com/news/claude-fable-5-mythos-5); Google Gemini 3.1 Pro 2026-02-19; xAI/SpaceXAI Grok 4.5 2026-07-08."
     },
-    "caveat": "Prices are live-verified; tier placements are sensible, independent-benchmark-grounded starters, NOT this user's measured results. Override per-installation via $RUVNET_MODEL_CATALOG or the console. The automated always-current path is rUv's ADR-206 (BenchPress predictor + hourly OpenRouter watcher) — see scripts/refresh-model-catalog.mjs for the live re-pull.",
-    "effort_note": "Frontier effort defaults to 'xhigh' (the max reasoning a shop reaches for on the hardest tasks); this is a principled default, not a per-effort measurement."
+    "caveat": "Refreshed Anthropic/OpenAI tiers use official provider guidance and owner preferences, not newly measured independent rankings. Other provider claims remain historical and were not reassessed in this refresh.",
+    "effort_note": "Start ordinary work at low/medium, hard work at high; xhigh/max only when representative evals justify latency and cost. Per-model supports and API/host defaults differ; see dated October 4 refresh."
   },
   "default_provider": "anthropic",
-  "default_provider_reason": "This is a Claude Code plugin, so DEVELOPMENT genuinely runs on Anthropic — that is a detected fact, not an arbitrary house preference. Set your PRODUCTION house in the console (or $RUVNET_PROVIDER) if your app runs on a different provider; it is never assumed silently.",
+  "default_provider_reason": "This is a Claude Code plugin, so DEVELOPMENT genuinely runs on Anthropic \u2014 that is a detected fact, not an arbitrary house preference. Set your PRODUCTION house in the console (or $RUVNET_PROVIDER) if your app runs on a different provider; it is never assumed silently.",
   "providers": {
     "anthropic": {
       "label": "Claude (Anthropic)",
@@ -24,29 +24,27 @@
         "CLAUDECODE"
       ],
       "frontier": {
-        "model": "claude-fable-5",
-        "in": 10,
-        "out": 50,
-        "released": "2026-06-09",
-        "rank": "AA Intelligence #1 (60) · Arena #1 (1508 Elo)",
-        "source": "independent (AA + Arena)"
+        "model": "anthropic/claude-opus-5.5",
+        "in": 4,
+        "out": 20,
+        "rank": "Hard work; Fable 5.1 is a bounded exceptional escalation, not the ordinary baseline",
+        "source": "2026-10-04 provider documentation + live OpenRouter catalog; project task-fit recommendation, not measured independent rank"
       },
       "mid": {
-        "model": "claude-sonnet-5",
+        "model": "anthropic/claude-sonnet-5.5",
         "in": 2,
         "out": 10,
-        "released": "2026-06-30",
-        "rank": "AA 53; intro price $2/$10 → $3/$15 after 2026-08-31",
-        "source": "independent (AA)"
+        "rank": "Routine work at medium effort",
+        "source": "2026-10-04 provider documentation + live OpenRouter catalog; project task-fit recommendation, not measured independent rank"
       },
       "cheap": {
-        "model": "claude-haiku-4.5",
-        "in": 1,
-        "out": 5,
-        "released": "2025-10-15",
-        "rank": "cheap tier (AA index low; cost-cascade prefers a cross-provider value pick when an OpenRouter key is present)",
-        "source": "catalog"
-      }
+        "model": "anthropic/claude-sonnet-5.5",
+        "in": 2,
+        "out": 10,
+        "rank": "Fast work at low effort; Haiku excluded by owner preference, not claimed discontinued",
+        "source": "2026-10-04 provider documentation + live OpenRouter catalog; project task-fit recommendation, not measured independent rank"
+      },
+      "note": "API/OpenRouter IDs differ from native Claude IDs: claude-opus-5-5 and claude-sonnet-5-5. Same Sonnet model serves two effort roles. No measured latency/quality guarantee."
     },
     "openai": {
       "label": "ChatGPT (OpenAI)",
@@ -54,35 +52,32 @@
         "OPENAI_API_KEY"
       ],
       "frontier": {
-        "model": "openai/gpt-5.6-sol",
-        "in": 2,
-        "out": 10,
-        "released": "2026-07-09",
-        "rank": "AA Intelligence #2 (59) · AA Coding Index leader (80) · Terminal-Bench 2.1 SOTA · ~1/3 Fable 5's cost/task",
-        "source": "independent (AA)"
+        "model": "openai/gpt-6-astra",
+        "in": 10,
+        "out": 50,
+        "rank": "Bounded difficult reasoning and critical independent review",
+        "source": "2026-10-04 provider documentation + live OpenRouter catalog; project task-fit recommendation, not measured independent rank"
       },
       "mid": {
-        "model": "openai/gpt-5.6-terra",
+        "model": "openai/gpt-6.1-sol",
         "in": 2,
-        "out": 12,
-        "released": "2026-07-09",
-        "rank": "AA Coding 77.4 — beats prev-gen flagship GPT-5.5 (76.4) at lower live catalog pricing",
-        "source": "independent (AA)"
+        "out": 10,
+        "rank": "Default ordinary coding, research and debugging",
+        "source": "2026-10-04 provider documentation + live OpenRouter catalog; project task-fit recommendation, not measured independent rank"
       },
       "cheap": {
-        "model": "openai/gpt-5.6-luna",
-        "in": 0.2,
-        "out": 1.2,
-        "released": "2026-07-09",
-        "rank": "AA 51 · Coding 74.6 — beats most last-gen mid-tier",
-        "source": "independent (AA)"
+        "model": "openai/gpt-6-luna",
+        "in": 0.1,
+        "out": 0.5,
+        "rank": "Focused high-volume tasks and small well-specified coding changes",
+        "source": "2026-10-04 provider documentation + live OpenRouter catalog; project task-fit recommendation, not measured independent rank"
       }
     },
     "codex": {
       "label": "Codex (OpenAI)",
       "detect_env": [],
       "aliasOf": "openai",
-      "note": "Codex folded into the GPT-5.6 Sol/Terra/Luna tiers on 2026-07-09 — there is NO separate '-codex' SKU this generation; gpt-5.3-codex (2026-02-05) was the last dedicated one and is superseded. A Codex shop's frontier IS Sol."
+      "note": "Alias of current OpenAI tier ladder; native availability checked through fresh Codex account catalog. Updating metadata does not switch active conversations."
     },
     "google": {
       "label": "Gemini (Google)",
@@ -95,15 +90,15 @@
         "in": 2,
         "out": 12,
         "released": "2026-02-19",
-        "rank": "AA Intelligence 46 — BELOW the Anthropic/OpenAI/xAI frontier cluster (54–60); still preview-named. Honest: Gemini is not frontier-competitive on independent indices right now.",
-        "source": "independent (AA) — vendor's GPQA-D 94.3% / ARC-AGI-2 77.1% are Google's own, uncorroborated"
+        "rank": "AA Intelligence 46 \u2014 BELOW the Anthropic/OpenAI/xAI frontier cluster (54\u201360); still preview-named. Honest: Gemini is not frontier-competitive on independent indices right now.",
+        "source": "independent (AA) \u2014 vendor's GPQA-D 94.3% / ARC-AGI-2 77.1% are Google's own, uncorroborated"
       },
       "mid": {
         "model": "google/gemini-3.5-flash",
         "in": 1.5,
         "out": 9,
         "released": "2026",
-        "rank": "AA 50 — out-scores Google's own 3.1 Pro on this index (real anomaly, not a typo)",
+        "rank": "AA 50 \u2014 out-scores Google's own 3.1 Pro on this index (real anomaly, not a typo)",
         "source": "independent (AA)"
       },
       "cheap": {
@@ -121,13 +116,13 @@
         "XAI_API_KEY",
         "GROK_API_KEY"
       ],
-      "note": "xAI's live lineup has no distinct budget SKU below Grok 4.3 as of 2026-07-15 (the 'grok-4.1-fast' I first wrote does not exist in the live catalog — the verify gate caught it). A Grok shop's cheap tasks route to Grok 4.3 or a cross-provider value pick.",
+      "note": "xAI's live lineup has no distinct budget SKU below Grok 4.3 as of 2026-07-15 (the 'grok-4.1-fast' I first wrote does not exist in the live catalog \u2014 the verify gate caught it). A Grok shop's cheap tasks route to Grok 4.3 or a cross-provider value pick.",
       "frontier": {
         "model": "x-ai/grok-4.5",
         "in": 2,
         "out": 6,
         "released": "2026-07-08",
-        "rank": "AA Intelligence 54 (#8) at ~1/3 Opus 4.7's blended price — the frontier VALUE standout; 'Opus-class, faster, cheaper' (Musk)",
+        "rank": "AA Intelligence 54 (#8) at ~1/3 Opus 4.7's blended price \u2014 the frontier VALUE standout; 'Opus-class, faster, cheaper' (Musk)",
         "source": "independent (AA)"
       },
       "mid": {
@@ -135,7 +130,7 @@
         "in": 1.25,
         "out": 2.5,
         "released": "2026-04-30",
-        "rank": "AA 38 — also xAI's cheapest verified stable tier",
+        "rank": "AA 38 \u2014 also xAI's cheapest verified stable tier",
         "source": "independent (AA)"
       }
     }

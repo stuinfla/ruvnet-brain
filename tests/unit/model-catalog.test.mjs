@@ -131,19 +131,19 @@ describe('model-catalog accessor — per-house personalization over the REAL ver
     expect(detectProvider(cat, { env: {} })).toEqual({ provider: 'anthropic', source: 'default' });
   });
 
-  it('frontierFor personalizes per house; codex aliases to OpenAI Sol; price is real', () => {
-    expect(frontierFor(cat, 'anthropic').model).toBe('claude-fable-5');
-    expect(frontierFor(cat, 'openai').model).toBe('openai/gpt-5.6-sol');
-    expect(frontierFor(cat, 'codex').model).toBe('openai/gpt-5.6-sol'); // aliasOf openai
+  it('frontierFor personalizes per house; codex aliases to OpenAI Astra; price is real', () => {
+    expect(frontierFor(cat, 'anthropic').model).toBe('anthropic/claude-opus-5.5');
+    expect(frontierFor(cat, 'openai').model).toBe('openai/gpt-6-astra');
+    expect(frontierFor(cat, 'codex').model).toBe('openai/gpt-6-astra'); // aliasOf openai
     expect(frontierFor(cat, 'xai').model).toBe('x-ai/grok-4.5');
-    expect(frontierFor(cat, 'anthropic').costPerMTok).toBe(30); // (10 + 50) / 2
+    expect(frontierFor(cat, 'anthropic').costPerMTok).toBe(12); // (4 + 20) / 2
   });
 
   it('ladderFor returns cheap/mid/frontier; xai honestly has no cheap tier', () => {
     const l = ladderFor(cat, 'anthropic');
-    expect(l.cheap.model).toBe('claude-haiku-4.5');
-    expect(l.mid.model).toBe('claude-sonnet-5');
-    expect(l.frontier.model).toBe('claude-fable-5');
+    expect(l.cheap.model).toBe('anthropic/claude-sonnet-5.5');
+    expect(l.mid.model).toBe('anthropic/claude-sonnet-5.5');
+    expect(l.frontier.model).toBe('anthropic/claude-opus-5.5');
     expect(ladderFor(cat, 'xai').cheap).toBeNull();
   });
 
