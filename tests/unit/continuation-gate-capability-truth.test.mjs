@@ -19,7 +19,7 @@ beforeEach(() => {
 });
 afterEach(() => fs.rmSync(home, { recursive: true, force: true }));
 
-function run(lastAssistantMessage, { malformed = false, hookInput = {}, preferenceState } = {}) {
+function run(lastAssistantMessage, { malformed = false, hookInput = {}, preferenceState, promiseCapture = '' } = {}) {
   if (preferenceState) fs.writeFileSync(path.join(home, 'ledger.json'), JSON.stringify({ items: [],
     objective: { kind: 'continuation-preferences', authoritative: false, state: preferenceState } }));
   if (malformed) {
@@ -42,6 +42,7 @@ function run(lastAssistantMessage, { malformed = false, hookInput = {}, preferen
       USERPROFILE: home,
       RUVNET_HOOK_HOST: 'codex',
       RUVNET_WORK_LEDGER: path.join(home, 'ledger.json'),
+      RUVNET_PROMISE_CAPTURE: promiseCapture,
       RUVNET_OPEN_ISSUES_FILE: path.join(home, 'signals/open.json'),
       RUVNET_CI_STATUS_FILE: path.join(home, 'signals/ci.json'),
       RUVNET_CAPABILITY_ROOTS: path.join(home, 'capabilities'),
@@ -56,6 +57,11 @@ function run(lastAssistantMessage, { malformed = false, hookInput = {}, preferen
 }
 
 describe('continuation gate capability truth', () => {
+  it('keeps capability integrity correction active while new promise capture is off', () => {
+    const output = run('Ruflo ADR Verify is not installed.', { promiseCapture: 'off' });
+    expect(output).toContain('contradicts the sealed');
+    expect(output).toContain('ruflo-adr:adr-verify');
+  });
   it('forces correction when the final answer denies an installed RuvNet skill', () => {
     const output = run('Ruflo ADR Verify is not installed.');
     expect(output).toContain('additionalContext');

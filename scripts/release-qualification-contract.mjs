@@ -44,7 +44,9 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       "files": [
         "tests/unit/automatic-hook-retirement.test.mjs",
         "tests/unit/install-activation-rollback.test.mjs",
-        "tests/unit/forge-update-apply-rollback.test.mjs"
+        "tests/unit/forge-update-apply-rollback.test.mjs",
+        "tests/unit/forge-update-archive-digest.test.mjs",
+        "tests/unit/kb-copy-proof-legacy-sidecars.test.mjs"
       ]
     },
     {
@@ -93,7 +95,8 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       "files": [
         "tests/unit/nightly-scheduler.test.mjs",
         "tests/unit/nightly-refresh-launcher.test.mjs",
-        "tests/unit/nightly-two-run-proof.test.mjs"
+        "tests/unit/nightly-two-run-proof.test.mjs",
+        "tests/unit/nightly-refresh-run-health.test.mjs"
       ]
     },
     {
@@ -152,12 +155,30 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       ]
     },
     {
+      "id": "owner-capture-and-off-controls",
+      "reason": "Brain OFF suppresses capacity execution; promise opt-out suppresses only new capture and preserves existing closure and capability truth",
+      "files": [
+        "tests/unit/capacity-aware-parallel-work.test.mjs",
+        "tests/unit/continuation-gate-capability-truth.test.mjs",
+        "tests/unit/continuation-gate-completion-claims.test.mjs"
+      ]
+    },
+    {
+      "id": "active-managed-generation",
+      "reason": "Active code selection binds help authorization and execution to one immutable leased generation across promotion",
+      "files": [
+        "tests/unit/managed-cli-generation.test.mjs"
+      ]
+    },
+    {
       "id": "pending-memory-durability",
       "reason": "Complete outbox tails replay and accepted pending journal events survive capacity pressure without silent deletion",
       "files": [
         "tests/unit/project-progression-outbox.test.mjs",
         "tests/unit/project-progression-durability.test.mjs",
-        "tests/unit/continuity-customer-regressions.test.mjs"
+        "tests/unit/continuity-customer-regressions.test.mjs",
+        "tests/unit/progression-outbox-containment.test.mjs",
+        "tests/unit/transition-pending-notices.test.mjs"
       ]
     }
   ],
@@ -166,7 +187,8 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       "id": "native-explicit-interface",
       "reason": "Real MCP subprocess readiness, command policy and literal argv safety",
       "files": [
-        "tests/integration/managed-cli-mcp.test.mjs"
+        "tests/integration/managed-cli-mcp.test.mjs",
+        "tests/integration/managed-cli-server-boundary.test.mjs"
       ]
     },
     {
@@ -219,7 +241,8 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
         "tests/unit/turn-durable-transport.test.mjs",
         "tests/integration/automatic-progression-continuation.test.mjs",
         "tests/integration/capture-consent-boundary.test.mjs",
-        "tests/integration/session-start-turn-replay.test.mjs"
+        "tests/integration/session-start-turn-replay.test.mjs",
+        "tests/integration/progression-suspension.test.mjs"
       ]
     },
     {
