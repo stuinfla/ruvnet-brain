@@ -4,8 +4,17 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 export function codeWithoutInertText(source, python = false) {
+  if (/\r(?!\n)|[\u2028\u2029]/.test(source)) throw new Error('Unsupported line boundary');
   // Template interpolation and Python f-string expressions need a parser, not a guessed lexer.
   if ((!python && source.includes('`')) || (python && /(?:^|[^\w])(?:fr|rf|f)["']/i.test(source))) throw new Error('Interpolation requires original scan');
+  if (python) {
+    // A different source decoder can turn apparent comments into executable statements.
+    for (const line of source.split(/\r?\n/).slice(0, 2)) {
+      const cookie = line.match(/^[ \t\f]*#.*?coding[=:][ \t]*([^ \t\r\n]+)/i);
+      if (cookie && !/^utf[-_]?8$/i.test(cookie[1])) throw new Error('Unsupported source encoding');
+    }
+    if (/\\\r?\n/.test(source)) throw new Error('Continuation requires original scan');
+  }
   let out = ''; let i = 0;
   while (i < source.length) {
     const c = source[i]; const pair = source.slice(i, i + 2);
@@ -28,11 +37,11 @@ export function codeWithoutInertText(source, python = false) {
         i++;
       }
       if (!closed) throw new Error('Incomplete string');
-      // Plain standalone Python string statements are inert, including module/function docs.
-      // Prefixes (especially f-strings), assignments, call arguments and inline suites stay intact.
+      // Exempt only a leading module docstring before any executable text. Standalone-looking
+      // literals inside functions, open expressions or control flow retain the original scan.
       const before = source.slice(source.lastIndexOf('\n', start - 1) + 1, start);
       const endOfLine = source.indexOf('\n', i); const after = source.slice(i, endOfLine < 0 ? source.length : endOfLine);
-      const inert = triple && !/\b(?:exec|eval|compile|__doc__)\b/.test(source) && /^[ \t]*$/.test(before) && /^[ \t\r]*(?:#.*)?$/.test(after);
+      const inert = triple && out.trim() === '' && !/\b(?:exec|eval|compile|__doc__)\b/.test(source) && /^[ \t]*$/.test(before) && /^[ \t\r]*(?:#.*)?$/.test(after);
       out += inert ? ' ' : source.slice(start, i); continue;
     }
     // Regex literals, heredocs, language-specific nested comments etc. are not guessed.
@@ -49,29 +58,23 @@ export function projectGroundingInput(raw) {
   const file = input.file_path; if (typeof file !== 'string') throw new Error('Unknown path');
   // Limited lexical scope; other languages retain their existing strict gate.
   if (!/\.(?:py|[cm]?js|jsx|ts|tsx)$/.test(file)) throw new Error('Unsupported language');
-  const fragments = [];
-  for (const part of Array.isArray(input.edits) ? input.edits : [input]) {
-    if (!part || typeof part !== 'object' || Array.isArray(part)) throw new Error('Unknown edit');
-    const values = ['content', 'old_string', 'new_string'].filter((key) => Object.hasOwn(part, key));
-    if (!values.length || values.some((key) => typeof part[key] !== 'string')) throw new Error('Unknown code field');
-    for (const key of values) {
-      let code = part[key];
-      // Existing Codex adapter supplies the complete raw patch as new_string. Exempt only a
-      // single complete Add File, never guess Update hunks or drop other files from a patch.
-      if (code.startsWith('*** Begin Patch')) {
-        const lines = code.trimEnd().split(/\r?\n/);
-        if (lines[0] !== '*** Begin Patch' || lines[1] !== `*** Add File: ${file}`
-          || lines.at(-1) !== '*** End Patch' || !lines.slice(2, -1).every((line) => line.startsWith('+'))) {
-          throw new Error('Ambiguous patch');
-        }
-        code = lines.slice(2, -1).map((line) => line.slice(1)).join('\n');
-      }
-      fragments.push(codeWithoutInertText(code, file.endsWith('.py')));
+  // Partial edits have no enclosing lexical context. Only complete Write or a verified
+  // single Add File patch may receive an exemption; never reconstruct user files here.
+  const tool = event.tool_name ?? event.toolName;
+  let code;
+  if (tool === 'Write' && typeof input.content === 'string' && !Object.hasOwn(input, 'edits')) {
+    code = input.content;
+  } else if (tool === 'Edit' && typeof input.new_string === 'string' && input.new_string.startsWith('*** Begin Patch')) {
+    const lines = input.new_string.trimEnd().split(/\r?\n/);
+    if (lines[0] !== '*** Begin Patch' || lines[1] !== `*** Add File: ${file}`
+      || lines.at(-1) !== '*** End Patch' || !lines.slice(2, -1).every((line) => line.startsWith('+'))) {
+      throw new Error('Ambiguous patch');
     }
-  }
-  if (!fragments.length) throw new Error('No code fragments');
+    code = lines.slice(2, -1).map((line) => line.slice(1)).join('\n');
+  } else throw new Error('Partial or unknown write context');
+  const projectedCode = codeWithoutInertText(code, file.endsWith('.py'));
   // Never exempt a product-owned path. Preserve managed-store paths even without a product name.
-  const projection = `${file}\n${fragments.join('\n')}`;
+  const projection = `${file}\n${projectedCode}`;
   if (/\.swarm[\/\\](?:agentdb-)?memory\.db/i.test(projection)) throw new Error('Managed memory needs original scan');
   return projection;
 }

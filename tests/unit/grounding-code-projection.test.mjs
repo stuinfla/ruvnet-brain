@@ -23,8 +23,8 @@ describe.skipIf(!hasBash || process.platform === 'win32')('issue373 real guard s
 test('exact reported unrelated SQLite backup docstring passes the real bash guard', () => {
   assert.equal(run(event(example)).status, 0);
 });
-test('inert Python function documentation and comments, and JavaScript comments pass', () => {
-  for (const payload of [event('def backup():\n    """Never access AgentDB."""\n    # Do not use Ruflo\n    return 1\n'),
+test('leading Python module documentation and JavaScript comments pass', () => {
+  for (const payload of [event('# SQLite helper\n"""Never access AgentDB."""\nimport sqlite3\n'),
     event('// Avoid AgentDB\n/* Ruflo is unrelated */\nexport const answer = 1;\n', '/tmp/app.mjs')]) assert.equal(run(payload).status, 0);
 });
 test('imports, executable strings, assigned/call-argument triples, interpolation and owned paths still block', () => {
@@ -47,6 +47,7 @@ test('inline comment-looking executable strings are retained byte for byte', () 
     assert.equal(codeWithoutInertText(text, text.startsWith('x =')), text);
   }
   assert.throws(() => codeWithoutInertText('const nested = `x${`// agentdb`}y`;'));
+  assert.equal(run(event('// harmless\u2028import agentdb;', '/tmp/app.mjs')).status, 2);
 });
 test('missing optional helper retains the original stricter guard', () => {
   const copy = path.join(home, 'standalone-guard.sh'); fs.copyFileSync(gate, copy);
@@ -55,11 +56,53 @@ test('missing optional helper retains the original stricter guard', () => {
       RUVNET_BRAIN_STATE_DIR: path.join(home, 'state'), RUVNET_SKIP_GROUNDING_CHECK: '0' } });
   assert.equal(out.status, 2); assert.match(out.stderr, /BLOCKED/);
 });
-test('MultiEdit projects all fragments and preserves an executable product in any edit', () => {
+test('MultiEdit retains strict scanning because fragments lack enclosing context', () => {
   const payload = { tool_name: 'MultiEdit', tool_input: { file_path: '/tmp/app.py', edits: [
     { old_string: '# AgentDB prohibited', new_string: '# Ruflo prohibited' }, { old_string: 'x = 1', new_string: 'import agentdb' }] } };
-  assert.match(projectGroundingInput(JSON.stringify(payload)), /import agentdb/); assert.equal(run(payload).status, 2);
+  assert.throws(() => projectGroundingInput(JSON.stringify(payload)), /context/); assert.equal(run(payload).status, 2);
 });
+
+const executableContexts = [
+  'import importlib\nx = importlib.import_module(\n    """agentdb"""\n)\n',
+  'x = [\n    """agentdb"""\n]\n',
+  'x = (\n    """agentdb"""\n)\n',
+  'x = {\n    """agentdb""": 1\n}\n',
+  'x = lambda: (\n    """agentdb"""\n)\n',
+  'if True:\n    use(\n        """agentdb"""\n    )\n',
+  'def helper():\n    """agentdb"""\n    return 1\n',
+  'x = ' + String.fromCharCode(92) + '\n    """agentdb"""\n',
+  '# coding: utf-7\n#+AAo-import agentdb\n',
+  '# coding: unknown\n# agentdb\n',
+  '# harmless\rimport agentdb\r',
+];
+function invokeAddFile(content) {
+  const adapter = path.resolve(import.meta.dirname, '../../plugin/scripts/codex-hook-adapter.mjs');
+  const payload = { hook_event_name: 'PreToolUse', cwd: home, session_id: '373-regression', tool_name: 'apply_patch',
+    tool_input: `*** Begin Patch\n*** Add File: backup.py\n${content.trimEnd().split('\n').map(line => `+${line}`).join('\n')}\n*** End Patch` };
+  return spawnSync(process.execPath, [adapter, 'ground-before-write'], { input: JSON.stringify(payload), encoding: 'utf8', timeout: 5000,
+    env: { ...process.env, HOME: home, MODEL_ROUTER_PROFILE: path.join(home, '.claude/model-router/profile.json'),
+      RUVNET_BRAIN_STATE_DIR: path.join(home, 'state'), RUVNET_SKIP_GROUNDING_CHECK: '0', RUVNET_HOOK_HOST: 'codex' } });
+}
+test('expression, continuation and encoding regressions block through real guard and native Add File', () => {
+  for (const source of executableContexts) {
+    assert.equal(run(event(source)).status, 2, source);
+    const native = invokeAddFile(source); assert.equal(native.status, 2, source + native.stderr);
+  }
+});
+test('isolated Edit and MultiEdit cannot exempt literals used by an enclosing call', () => {
+  for (const tool of ['Edit', 'MultiEdit']) {
+    const edit = { old_string: '"old_module"', new_string: '"""agentdb"""' };
+    const payload = { tool_name: tool, tool_input: { file_path: '/tmp/app.py', ...(tool === 'Edit' ? edit : { edits: [edit] }) } };
+    assert.throws(() => projectGroundingInput(JSON.stringify(payload)), /context/);
+    assert.equal(run(payload).status, 2);
+  }
+});
+test('UTF-7 witness compiles to an import without executing the import', () => {
+  const probe = spawnSync('python3', ['-c', 'import json; source = b"# coding: utf-7\\n#+AAo-import agentdb\\n"; print(json.dumps(compile(source, "<encoding-witness>", "exec").co_names))'], { encoding: 'utf8' });
+  if (probe.error?.code === 'ENOENT') return;
+  assert.equal(probe.status, 0, probe.stderr); assert.deepEqual(JSON.parse(probe.stdout), ['agentdb']);
+});
+
 test('actual Codex Add File normalization preserves the reported documentation exemption', () => {
   const native = { hook_event_name: 'PreToolUse', cwd: '/tmp', session_id: '373-native', tool_name: 'apply_patch',
     tool_input: `*** Begin Patch\n*** Add File: backup.py\n${example.trimEnd().split('\n').map(line => `+${line}`).join('\n')}\n*** End Patch` };
