@@ -3,7 +3,7 @@ id: ADR-068
 title: The Dream Machine runs this repo's nights — evaluation is not promotion
 status: Accepted
 date: 2026-08-19
-updated: 2026-09-04
+updated: 2026-09-22
 authors: [Stuart Kerr, Claude Code]
 tags: [automation, evaluation, nightly, self-improvement, promotion-gate]
 supersedes: []
@@ -136,6 +136,7 @@ committed config).
 
 ## Currency log
 
+| 2026-09-22 (night, slot 2) | `docs/dream-cycle/LEDGER.md` appended (one row). Deep `enforcement-integrity`, scans `lesson-delivery`+`gate-teeth`: `scripts/development-push-check.mjs`'s CLI entry-point guard used the pre-`43bf391`/pre-`#295` idiom (does not resolve symlinks), a 5th instance of an already-twice-swept defect class, on the repo's own pre-push credential scanner. Fixed with the established `isDirectInvocation()` pattern; TEETH-proven red→green, independent critic CLEAR, zero regression across `test:unit`/`test:integration`/`claims:verify`/`qa:pr`. No new issue (ISSUE DISPOSITION OVERRIDE — verified integrated fix is a work record). Separately reconciled, not re-fixed: issue #264 (this same surface) remains live on `main`, its verified fix PR #281 still unmerged after 10 days. | candidate PR (this row's own) |
 | 2026-08-30 | Reviewed against release candidate 4.3.3: the nightly ledger status vocabulary was corrected to the engine's yes/no/blocked contract; auto-merge remains disabled. | 1beedaa |
 
 | 2026-08-30 | Nightly findings are separated from the bounded release gate; deterministic contract lanes run on PRs while corpus/nightly work remains explicit. | `scripts/qa-runner.mjs` and `docs/QA-RELEASE-PROCESS.md` prevent exploratory work from silently approving or blocking publication. |
