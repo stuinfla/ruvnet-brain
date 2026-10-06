@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { maintainerIssueEntitlement } from '../../plugin/scripts/session-start-core.mjs';
 import { describeLifecycleHooks, readHookContracts } from '../../plugin/scripts/session-start-hook-description.mjs';
+import { ALIAS_NOTICE, ALIAS_MARKER, installCodexConsoleAlias } from '../../plugin/scripts/codex-console-alias.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const SOURCE_SCRIPTS = path.join(ROOT, 'plugin/scripts');
@@ -240,6 +241,51 @@ function warmed({ cache }) {
 
 afterEach(() => {
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
+});
+
+describe.skipIf(process.platform === 'win32')('Codex short console startup availability', () => {
+  function aliasFixture({ missing = false, collision = false, disabled = false, unregistered = false,
+    timeout = false, off = false, source = 'startup', host = 'codex' } = {}) {
+    const f = makeFixture(warmed);
+    const skill = path.join(f.home, '.agents/skills/rvbc/SKILL.md');
+    if (collision) write(skill, '---\nname: rvbc\n---\nUser-owned console.\n');
+    else if (!missing) installCodexConsoleAlias({ home: f.home });
+    if (off) write(path.join(f.home, '.config/ruvnet-brain/brain-off'), {});
+    const native = path.join(f.root, 'native-codex');
+    const registered = JSON.stringify({ id: 2, result: { data: [{ cwd: f.project, errors: [],
+      skills: unregistered ? [] : [{ name: 'rvbc', path: skill, enabled: !disabled }] }] } });
+    // Keep the real process/protocol boundary without timing a second Node bootstrap against
+    // the production metadata deadline. POSIX builtins respond after the expected requests.
+    const quote = (value) => `'${value.replaceAll("'", "'\\''")}'`;
+    write(native, `#!/bin/sh\nwhile IFS= read -r request; do\n  case "$request" in\n    *'"method":"initialize"'*) ${timeout ? ':' : "printf '%s\\n' '{\"id\":1,\"result\":{}}'"} ;;\n    *'"method":"skills/list"'*) printf '%s\\n' ${quote(registered)} ;;\n  esac\ndone\n`);
+    fs.chmodSync(native, 0o755);
+    const result = spawnSync(process.execPath, [path.join(f.scripts, 'session-start-core.mjs')], {
+      cwd: f.project, input: JSON.stringify({ source }), encoding: 'utf8', timeout: 10000,
+      env: { ...childEnv(f), RUVNET_HOOK_HOST: host, CODEX_BIN: native },
+    });
+    return { f, skill, result };
+  }
+  it('emits the exact line once through the actual SessionStart entrypoint', () => {
+    const { result } = aliasFixture();
+    expect(result.status).toBe(0);
+    expect(result.stdout.split('\n').filter(line => line === ALIAS_NOTICE)).toHaveLength(1);
+  });
+  it.each([{ missing: true }, { collision: true }, { disabled: true }, { unregistered: true },
+    { timeout: true }, { off: true }, { source: 'resume' }, { host: 'claude' }])('does not advertise unavailable or non-startup aliases %j', (options) => {
+    const { result } = aliasFixture(options);
+    expect(result.status).toBe(0);
+    expect(result.stdout).not.toContain(ALIAS_NOTICE);
+  });
+  it('preserves an unowned alias and explicit disablement', () => {
+    const f = makeFixture(); const skill = path.join(f.home, '.agents/skills/rvbc/SKILL.md');
+    write(skill, 'owner data');
+    expect(installCodexConsoleAlias({ home: f.home }).action).toBe('user-owned');
+    expect(fs.readFileSync(skill, 'utf8')).toBe('owner data');
+    write(skill, `---\nname: rvbc\n---\n${ALIAS_MARKER}\nOld owned bytes\n`);
+    write(path.join(f.home, '.codex/config.toml'), `[[skills.config]]\npath = "${skill}"\nenabled = false\n`);
+    expect(installCodexConsoleAlias({ home: f.home }).action).toBe('disabled');
+    expect(fs.readFileSync(skill, 'utf8')).toContain('Old owned bytes');
+  });
 });
 
 describe.skipIf(process.platform === 'win32')('host-neutral SessionStart core parity with the shell host surface', () => {

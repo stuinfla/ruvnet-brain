@@ -206,3 +206,17 @@ describe('bounded weekly native qualification (synthetic inference only)', () =>
     expect((await runWeeklyQualification(f)).status).toBe('deferred'); expect(f.promote).not.toHaveBeenCalled();
   });
 });
+
+it('records unchanged qualification without native comparisons or policy writes', async () => {
+  const f = setup(); const before = fs.readFileSync(f.policyPath);
+  const proposalPath = path.join(f.runDir, 'proposal.json'); const proposal = JSON.parse(fs.readFileSync(proposalPath));
+  proposal.candidateRoutes = structuredClone(f.policy.routes);
+  const receipt = JSON.parse(fs.readFileSync(f.semanticReceipt));
+  receipt.proposalSha256 = f.write(proposalPath, proposal); f.write(f.semanticReceipt, receipt);
+  const result = await runWeeklyQualification(f);
+  expect(result).toMatchObject({ status: 'unchanged', terminal: true, policyApplied: false, nativeComparisonsExecuted: false, pendingRoles: [] });
+  expect(f.probe).not.toHaveBeenCalled(); expect(f.promote).not.toHaveBeenCalled();
+  expect(fs.readFileSync(f.policyPath)).toEqual(before);
+  expect(JSON.parse(fs.readFileSync(path.join(f.routerDir, 'qualification-last-attempt.json')))).toEqual(result);
+  expect(result.priorPolicySha256).toBe(sha256(before)); expect(result.semanticReceiptSha256).toBe(sha256(fs.readFileSync(f.semanticReceipt)));
+});
