@@ -1,3 +1,5 @@
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -108,5 +110,55 @@ describe('host failure does not imply a runtime rollback', () => {
   for (const active of [null, { version: '0.0.1', generation: 38, codeRoot: 'versions/0.0.1' }, { version: VERSION, generation: 38, codeRoot: '/edited/path' }]) it('reports unknown activation without inventing retention or rollback', () => {
     expect(hostSynchronizationFailureMessage({}, active)).toContain('active runtime generation could not be verified');
     expect(hostSynchronizationFailureMessage({}, active)).not.toContain('prior verified generation');
+  });
+});
+
+
+describe('native administrative lifecycle probe', () => {
+  it('uses configured native hooks transport, preserves explicit overrides, and fails closed on invalid configuration', () => {
+    const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'native-doctor-probe-'));
+    try {
+      const brain = path.join(home, 'brain'), config = path.join(brain, 'model-routing', 'terminal-launcher-config.json');
+      fs.mkdirSync(path.dirname(config), { recursive: true });
+      const preload = path.join(home, 'protocol.mjs');
+      fs.writeFileSync(preload, `import path from 'node:path'; if (path.basename(process.argv[1] || '') === 'app-server') {
+        await new Promise(resolve => {
+          let buffer = '';
+          process.stdin.on('data', chunk => {
+            buffer += chunk;
+            let at;
+            while ((at = buffer.indexOf('\\n')) >= 0) {
+              const row = JSON.parse(buffer.slice(0, at)); buffer = buffer.slice(at + 1);
+              if (row.id === 1) process.stdout.write(JSON.stringify({id:1,result:{}}) + '\\n');
+              if (row.id === 2) { process.stdout.write(JSON.stringify({id:2,result:{data:[]}}) + '\\n'); resolve(); }
+            }
+          });
+        });
+        process.exit(0);
+      }`);
+      const script = `process.env.RUVNET_BRAIN_IMPORT_ONLY='1';
+        const {codexLifecycleStatus}=await import(${JSON.stringify(pathToFileURL(path.join(ROOT, 'bin/install.mjs')).href)});
+        const options={runJson:()=>({ok:true,value:{installed:[{pluginId:'ruvnet-brain@ruvnet-brain',installed:true,enabled:true}]}}),codexHome:${JSON.stringify(home)},timeoutMs:1500};
+        if(process.env.EXPLICIT_PROBE) options.codexBin=process.env.EXPLICIT_PROBE;
+        console.log(JSON.stringify(await codexLifecycleStatus(options)));`;
+      const missing = path.join(home, 'absent-native');
+      const run = (extra = {}) => {
+        const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+          encoding: 'utf8', timeout: 5000,
+          env: { ...process.env, RUVNET_BRAIN_HOME: brain, CODEX_BIN: '', EXPLICIT_PROBE: '',
+            PATH: home, NODE_OPTIONS: '--import=' + pathToFileURL(preload).href, ...extra },
+        });
+        expect(result.status).toBe(0); return JSON.parse(result.stdout);
+      };
+      fs.writeFileSync(config, JSON.stringify({realCodex:process.execPath}));
+      expect(run().state).toBe('inactive-by-design');
+      expect(run({EXPLICIT_PROBE:missing}).state).toBe('probe-failed');
+      expect(run({CODEX_BIN:missing}).state).toBe('probe-failed');
+      for (const value of ['{malformed', JSON.stringify({realCodex:'relative-native'})]) {
+        fs.writeFileSync(config, value); expect(run().state).toBe('probe-failed');
+      }
+      fs.unlinkSync(config); expect(run().state).toBe('probe-failed');
+    } finally { fs.rmSync(home, {recursive:true,force:true}); }
   });
 });

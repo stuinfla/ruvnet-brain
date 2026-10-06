@@ -4,8 +4,8 @@ title: Routing architecture qualification requires a current finite source revie
 status: Accepted
 date: 2026-10-05
 updated: 2026-10-05
-version: 0.1.6
-reviewed_digest: a67879ce1eb0
+version: 0.1.9
+reviewed_digest: 6e41d9bb1970
 impl: built
 authors: [Stuart Kerr, Codex]
 tags: [routing, governance, review, release, traceability]
@@ -30,6 +30,7 @@ governs:
   - tests/unit/codex-managed-terminal.test.mjs
   - tests/unit/managed-terminal-input.test.mjs
   - tests/unit/model-managed-parent-context-posix.test.mjs
+  - tests/unit/codex-fresh-host-proof.test.mjs
   - tests/integration/model-managed-checker-native.test.mjs
   - docs/model-routing-operation.md
   - scripts/model-router-engine.mjs
@@ -123,13 +124,13 @@ substitute for release qualification, exact-candidate receipts or published veri
 
 | Boundary | Actual source responsibility | Executable mapping |
 |---|---|---|
-| Input and parent context | model-managed-prompt, managed-terminal-input, claude-controlled-terminal, codex-managed-terminal | Corresponding unit files; model-managed-parent-context-posix and model-managed-checker-native integration |
+| Input and parent context | model-managed-prompt, managed-terminal-input, claude-controlled-terminal, codex-managed-terminal | Corresponding unit files; model-managed-parent-context-posix and model-managed-checker-native integration. Oversized Codex parent context uses a bounded, explicitly incomplete projection of the last native compaction and retained tail, while preserving native session identity, full-source digest and turn count. The existing 16MiB projection limit remains; text never grants host authority. |
 | Managed service and AgentDB completion | model-managed-workflow-service, model-routing-controller, continuity-journal, routing-outcome-capture | Managed service/controller and routing-outcome-capture unit files; managed native integration. Verified quality repair may continue the exact freshly approved hard harness/provider/model/effort allocation within existing scoped ownership, deadlines and attempt caps; stronger-route selection remains required otherwise, and independent negative review still blocks completion. |
-| Execution, checking and independent review | model-routing-execution-adapters, model-routing-defence, model-routing-gateway, model-routing-launchers | Corresponding unit files and gateway boundary tests |
+| Execution, checking and independent review | model-routing-execution-adapters, model-routing-defence, model-routing-gateway, model-routing-launchers | Corresponding unit files and gateway boundary tests; private native-history filesystem assertions run in model-managed-parent-context-posix on Linux/macOS, while shared tests retain the explicit Windows ACL-unavailable refusal. Streamed native observation binds actual session metadata, final model/effort/cwd/sandbox and full turn count without loading oversized rollouts; the native process retains its original full history. Small-rollout behavior, ownership, deadline and output guards remain required. |
 | Dispatch and owner policy | model-router-engine, model-router-dispatch, policy.default, model-router-setup, model-router-outcome | Managed service/controller tests; model-router-outcome and model-router-update-convergence tests |
 | Native subscription and catalog | subscription-hosts, native-subscription-usage, model-native-catalog, model-native-qualification, model-router-catalog | Corresponding native/catalog tests and installer convergence tests |
 | Weekly assessment and promotion | model-weekly-cycle, model-weekly-analyst, model-weekly-assessment, model-weekly-qualification, model-routing-policy-promotion, weekly-analyst-instruction | Corresponding weekly and promotion unit files |
-| Installation seam | bin/install.mjs, model-routing-operation.md, codex-console-alias and SessionStart core/budget | model-router-update-convergence, session-start-core-parity, model-terminal-launchers and npm-tarball-codex; bounded routing and console-alias installation, not an all-installer review; packed-clean-install and npm-tarball-codex retain sealed archive metadata reads with basename and controlled cwd, rejecting the Windows GNU-tar remote drive-letter seam |
+| Installation seam | bin/install.mjs (native administrative hooks probe uses explicit caller/CODEX_BIN or configured realCodex, leaving managed app-server refusal intact), model-routing-operation.md, codex-console-alias and SessionStart core/budget | codex-fresh-host-proof native resolution/override/fallback regression; model-router-update-convergence, session-start-core-parity, model-terminal-launchers and npm-tarball-codex; bounded routing and console-alias installation, not an all-installer review; packed-clean-install and npm-tarball-codex retain sealed archive metadata reads with basename and controlled cwd, rejecting the Windows GNU-tar remote drive-letter seam |
 | Qualification and release guard | architecture-review-lock, doc-currency, release-qualification-contract, source-scope-receipt, release-transaction, release-transaction-provider, package-lock.json; candidate/CI/protected workflows | architecture-review-lock refusal fixtures and doc-currency-review; release-evidence-dag, protected-release-workflow and agentic-qe-early-public bind the outer candidate-preflight dependency and same-run receipts; existing release contract chooses execution evidence. release-transaction-provider-buffer executes the actual payload upload path with size-based 30s–600s per-file deadlines while metadata and small sidecars retain 30s; the separate download budget and immutable asset checks remain. The npm audit at the exact-candidate seal rejects high-severity dependency advisories; a compatible transitive development patch still requires source-bound qualification, not reuse of an old candidate's receipt. This does not prove transfer throughput or a hard process-tree retirement bound. |
 
 The exact files are enumerated in frontmatter. This mapping identifies test responsibilities; it
@@ -138,6 +139,11 @@ The existing bounded execution, persistence and release audits are evidence for 
 not a whole-repository or live-provider certification. The final review must identify its source SHA,
 actual read coverage, unresolved limitations and architecture/test mapping findings in canonical
 project AgentDB. CI cannot verify a local AgentDB decision record merely from a cited key.
+
+The large-history candidate has a read-only capture witness on an authentic oversized source and an
+actual normal managed UUID-resume witness on an owned synthetic native-cache fixture. The latter is
+synthetic-context acceptance, not proof the live user conversation resumed or the owner activated a
+new release. Its native full-history source and projected context have distinct digests and provenance.
 
 ## Assurance limits and consequences
 
@@ -163,3 +169,6 @@ finite release refusal. No paid provider call, model generation or system config
 | 2026-10-05 | Reviewed Windows sealed-archive metadata setup repair; reviewed_digest 2312bba4180a; source 33b70d222d03f5c2f883a9e8fffdfb2b486b1313 | tests/unit/npm-tarball-codex.test.mjs and packed-clean-install retain the same archive assertions using basename plus controlled cwd. Independent source review confirms 81 resolved paths and bounded local regression/smoke evidence; actual Windows acceptance remains required on the new exact candidate. Prior failed setup receipt remains a failure. |
 | 2026-10-05 | Reviewed core repair/upload changes; reviewed_digest c591a7821ef7; source 0727de405570e8e44fbd1ca8ebda28737f535dcf | scripts/model-managed-workflow-service.mjs and scripts/release-transaction-provider.mjs retain original authority, identity and budget gates. Scoped independent review confirms 82 resolved paths and the existing protected-publication selector includes the upload regression. Exact native hard continuation completed with positive independent review; actual new protected upload and release/owner activation remain required. Earlier failures remain failures. |
 | 2026-10-05 | Reviewed security lock delta; reviewed_digest a67879ce1eb0; source 896fb7a78d4cf0e8ce10cfece815d04539c325ac | .github/workflows/ci.yml retains the exact-candidate npm audit gate that rejected the vulnerable package; package-lock.json changes only compatible transitive development source-map-js 1.2.1 to patched 1.2.2. Independent scoped review confirms 83 resolved paths, current audit has zero vulnerabilities, and packed core/runtime bytes retain their existing proof. New exact source/integration qualification and protected publication remain required; the old failed audit is not relabeled. |
+| 2026-10-05 | Reviewed bounded history integration; reviewed_digest a7175c649296; source fc34e4b2a1b0d313b7559ffe1b1823638249959c | scripts/model-managed-prompt.mjs and scripts/model-routing-execution-adapters.mjs retain native identity, authority and existing size limits while binding streamed full-source provenance and bounded compaction context. Independent combined-source review confirms 83 resolved paths and 112 joint focused tests; authentic read-only capture and normal managed synthetic-cache resume witnesses retain their original distinct runtime identities. No full combined-native or live-user activation claim is made. |
+| 2026-10-05 | Reviewed native-home fixture correction; reviewed_digest fb295b1e3e97; source c60637ae825a3a6978b0b33b75988645bce70462 | tests/unit/model-managed-parent-context-posix.test.mjs places Codex fixtures in its native session home and retains missing, ambiguity, symlink, digest and escape refusals. Independent scoped review confirms 83 unique resolved paths and 4 focused tests; production bytes and prior component-proof limits are unchanged. The earlier source qualification remains failed; fresh exact-source qualification is required. |
+| 2026-10-05 | Reviewed native administrative doctor and platform fixture correction; reviewed_digest 6e41d9bb1970; source d6e0ddb5a18456a437c4ad497abf205df593a87e | bin/install.mjs reuses existing explicit native binary resolution for hooks/list; tests/unit/codex-fresh-host-proof.test.mjs retains overrides and bounded fallback. Six byte-identical private-history assertions moved into tests/unit/model-managed-parent-context-posix.test.mjs without changing Windows ACL/getuid refusal. Independent review confirms 84 unique paths and 100 focused checks; candidate default metadata probe registers 18 hooks with zero native model turns. The failed Windows qualification remains failed, new exact Windows qualification and installed default doctor verification remain required. |

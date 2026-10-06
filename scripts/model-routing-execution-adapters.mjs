@@ -18,36 +18,93 @@ export function nativeWorkflowBinaries(home = os.homedir()) {
   return { claude: config.realClaude, codex: config.realCodex };
 }
 
-export function readCodexWorkerObservation(sessionId, { home = process.env.CODEX_HOME || path.join(os.homedir(), '.codex'), now = Date.now(), expectedPriorTurns, evidencePath, allowHistory = false } = {}) {
+export function readCodexWorkerObservation(sessionId, { home = process.env.CODEX_HOME || path.join(os.homedir(), '.codex'), now = Date.now(), expectedPriorTurns, evidencePath, expectedPrefix, allowHistory = false, deadline = Infinity, signal } = {}) {
   if (!/^[a-f0-9-]{36}$/.test(sessionId || '')) throw blocked('Native worker session identity missing');
   const matches = [];
   const directories = [];
-  const base = path.join(home, 'sessions');
-  if (evidencePath) directories.push(path.dirname(evidencePath));
+  const base = path.join(fs.existsSync(home) ? fs.realpathSync(home) : home, 'sessions');
+  if (evidencePath) {
+    const directory = fs.realpathSync(path.dirname(evidencePath));
+    if (!directory.startsWith(base + path.sep)) throw blocked('Native evidence escaped its session home');
+    evidencePath = path.join(directory, path.basename(evidencePath)); directories.push(directory);
+  }
   else if ((expectedPriorTurns !== undefined || allowHistory) && fs.existsSync(base)) {
     for (const year of fs.readdirSync(base)) if (/^\d{4}$/.test(year))
       for (const month of fs.readdirSync(path.join(base, year))) if (/^\d{2}$/.test(month))
         for (const day of fs.readdirSync(path.join(base, year, month))) if (/^\d{2}$/.test(day)) directories.push(path.join(base, year, month, day));
   } else for (const offset of [0, 86400000]) {
     const date = new Date(now - offset).toISOString().slice(0, 10).split('-');
-    directories.push(path.join(home, 'sessions', ...date));
+    directories.push(path.join(base, ...date));
   }
   for (const directory of new Set(directories)) {
     if (!fs.existsSync(directory)) continue;
     for (const name of fs.readdirSync(directory)) {
       if (!name.endsWith(`-${sessionId}.jsonl`)) continue;
       const file = path.join(directory, name), stat = fs.lstatSync(file);
-      if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 16 * 1024 * 1024) throw blocked('Unsafe native worker evidence file');
-      matches.push({ file, bytes: fs.readFileSync(file) });
+      if (!stat.isFile() || stat.isSymbolicLink() || fs.realpathSync(file) !== file || process.getuid && stat.uid !== process.getuid()) throw blocked('Unsafe native worker evidence file');
+      if (!evidencePath || evidencePath === file) matches.push({ file });
     }
   }
   if (matches.length !== 1) throw blocked('Exact native worker rollout unavailable or ambiguous');
-  const rows = matches[0].bytes.toString('utf8').trim().split('\n').map(line => JSON.parse(line));
-  const contexts = rows.filter(row => row.type === 'turn_context');
-  if (!contexts.length || !allowHistory && contexts.length !== (expectedPriorTurns === undefined ? 1 : expectedPriorTurns + 1)) throw blocked('Native worker has unexpected turn history');
-  const context = contexts.at(-1).payload;
+  const file = matches[0].file, fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  const limit = 16 * 1024 * 1024, decoder = new TextDecoder('utf-8', { fatal: true }), hash = crypto.createHash('sha256');
+  const prefix = expectedPrefix && crypto.createHash('sha256'), buffer = Buffer.alloc(256 * 1024);
+  let before, offset = 0, rowOffset = 0, rowBytes = 0, parts = [], context, contextRange, meta, compact, turnCount = 0, metaCount = 0;
+  const live = () => { if (signal?.aborted || Date.now() >= deadline) throw blocked('Native evidence capture cancelled or expired'); };
+  const consume = () => {
+    let row;
+    try { row = JSON.parse(decoder.decode(Buffer.concat(parts, rowBytes))); } catch { throw blocked('Malformed native evidence record or UTF-8'); }
+    if (!row || typeof row !== 'object' || typeof row.type !== 'string') throw blocked('Malformed native evidence record');
+    const range = { offset: rowOffset, bytes: rowBytes };
+    if (row.type === 'session_meta') { metaCount++; meta = { ...range, id: row.payload?.id }; }
+    if (row.type === 'turn_context') { turnCount++; context = row.payload; contextRange = range; }
+    if (row.type === 'compacted') {
+      if (!Array.isArray(row.payload?.replacement_history) || !row.payload.replacement_history.length) throw blocked('Native compaction provenance unavailable');
+      compact = range;
+    }
+    rowOffset += rowBytes; rowBytes = 0; parts = [];
+  };
+  try {
+    before = fs.fstatSync(fd, { bigint: true });
+    if (!before.isFile() || process.getuid && before.uid !== BigInt(process.getuid()) || before.size > BigInt(Number.MAX_SAFE_INTEGER)
+      || !process.getuid && before.size > BigInt(limit)) throw blocked('Unsafe native worker evidence file');
+    if (expectedPrefix && (!Number.isSafeInteger(expectedPrefix.bytes) || expectedPrefix.bytes < 0 || expectedPrefix.bytes > Number(before.size)
+      || !/^[a-f0-9]{64}$/.test(expectedPrefix.sha256 || ''))) throw blocked('Native history prefix changed');
+    while (offset < Number(before.size)) {
+      live(); const count = fs.readSync(fd, buffer, 0, Math.min(buffer.length, Number(before.size) - offset), offset);
+      if (!count) throw blocked('Native evidence truncated during capture');
+      hash.update(buffer.subarray(0, count));
+      if (prefix && offset < expectedPrefix.bytes) prefix.update(buffer.subarray(0, Math.min(count, expectedPrefix.bytes - offset)));
+      let start = 0;
+      while (start < count) {
+        const newline = buffer.indexOf(10, start), end = newline >= start && newline < count ? newline + 1 : count;
+        const part = Buffer.from(buffer.subarray(start, end)); rowBytes += part.length;
+        if (rowBytes > limit) throw blocked('Native evidence record exceeded bound');
+        parts.push(part); if (end <= count && buffer[end - 1] === 10) consume(); start = end;
+      }
+      offset += count;
+    }
+    if (rowBytes) { if (Number(before.size) > limit) throw blocked('Partial native evidence terminal record'); consume(); }
+    const after = fs.fstatSync(fd, { bigint: true }), current = fs.lstatSync(file, { bigint: true });
+    if (['dev', 'ino', 'size', 'mtimeNs', 'ctimeNs'].some(key => before[key] !== after[key] || after[key] !== current[key]) || current.isSymbolicLink()) throw blocked('Native evidence changed during capture');
+    live();
+  } finally { fs.closeSync(fd); }
+  if (prefix && prefix.digest('hex') !== expectedPrefix.sha256) throw blocked('Native history prefix changed');
+  if (!turnCount || !context || !allowHistory && turnCount !== (expectedPriorTurns === undefined ? 1 : expectedPriorTurns + 1)) throw blocked('Native worker has unexpected turn history');
+  const sha256 = hash.digest('hex'), bytes = Number(before.size);
+  if (metaCount > 1 || meta && meta.id !== sessionId) throw blocked('Native history session provenance mismatch');
+  let sourceBound;
+  if (bytes > limit) {
+    if (metaCount !== 1 || meta?.id !== sessionId) throw blocked('Native history session provenance mismatch');
+    if (compact) {
+      const ranges = [{ offset: meta.offset, bytes: meta.bytes }, ...(contextRange.offset < compact.offset ? [contextRange] : []), { offset: compact.offset, bytes: bytes - compact.offset }];
+      if (ranges.some((range, index) => index && range.offset < ranges[index - 1].offset + ranges[index - 1].bytes)) throw blocked('Native projection provenance overlaps');
+      sourceBound = { kind: 'native-compaction-projection', nativeSessionId: sessionId, sourceSha256: sha256, sourceBytes: bytes,
+        fullTurnCount: turnCount, omittedHistoryPrefix: true, ranges };
+    }
+  }
   return { model: context.model, effort: context.effort, cwd: context.cwd, sandbox: context.sandbox_policy, sessionId,
-    turnCount: contexts.length, evidence: { path: matches[0].file, sha256: digest(matches[0].bytes), type: 'native-turn-context' } };
+    turnCount, evidence: { path: file, sha256, type: 'native-turn-context', byteLength: bytes, ...(sourceBound ? { sourceBound } : {}) } };
 }
 
 /** Only the installed user-owned Brain search server is projected into isolated native workers. */
@@ -96,7 +153,8 @@ export async function executeCodexWorkflowWorker({ binary, decision, prompt, cwd
   if (performance.now() >= limit || signal?.aborted) throw blocked('Native worker deadline expired during readiness');
   const spec = buildLaunch(decision, { cwd });
   const evidenceHome = clean.CODEX_HOME || path.join(os.homedir(), '.codex');
-  const prior = sessionId ? observe(sessionId, { home: evidenceHome, expectedPriorTurns: undefined, allowHistory: true }) : null;
+  const prior = sessionId ? observe(sessionId, { home: evidenceHome, expectedPriorTurns: undefined, allowHistory: true,
+    deadline: Date.now() + Math.max(0, limit - performance.now()), signal }) : null;
   const args = sessionId ? ['exec', 'resume', '--ignore-user-config', '--skip-git-repo-check', '--json', '--model', decision.model,
     '-c', `model_reasoning_effort=\"${decision.effort}\"`, '-c', 'model_provider=\"openai\"',
     '-c', 'service_tier=\"default\"', '-c', `sandbox_mode=\"${readOnly ? 'read-only' : 'workspace-write'}\"`,
@@ -104,6 +162,7 @@ export async function executeCodexWorkflowWorker({ binary, decision, prompt, cwd
     : [...spec.args.slice(0, -1), '--skip-git-repo-check', '--json', '--sandbox', readOnly ? 'read-only' : 'workspace-write',
       '-c', 'features.multi_agent=false', '-c', 'features.multi_agent_v2=false', '-'];
   args.splice(args.length - 1, 0, ...codexBrainSearchArguments(clean));
+  if (performance.now() >= limit || signal?.aborted) throw blocked('Native worker deadline expired before launch');
   const result = await new Promise((resolve, reject) => {
     const child = launch(binary, args, { cwd, env: clean, shell: false, stdio: ['pipe', 'pipe', 'pipe'] });
     let stdout = '', stderr = '', finished = false, timer, killTimer, cancelled = false, cancelReason;
@@ -140,7 +199,9 @@ export async function executeCodexWorkflowWorker({ binary, decision, prompt, cwd
     throw blocked('Native Codex turn did not complete successfully');
   }
   if (sessionId && thread?.thread_id !== sessionId) throw blocked('Native parent session changed');
-  const observation = observe(thread?.thread_id, sessionId ? { home: evidenceHome, expectedPriorTurns: prior.turnCount, evidencePath: prior.evidence.path } : { home: evidenceHome });
+  const observation = observe(thread?.thread_id, { home: evidenceHome, deadline: Date.now() + Math.max(0, limit - performance.now()), signal,
+    ...(sessionId ? { expectedPriorTurns: prior.turnCount, evidencePath: prior.evidence.path,
+      expectedPrefix: { bytes: prior.evidence.byteLength, sha256: prior.evidence.sha256 } } : {}) });
   if (observation.model !== decision.model || observation.effort !== decision.effort || observation.cwd !== cwd
     || (readOnly && observation.sandbox?.type !== 'read-only')) throw blocked('Native worker model, effort, directory or sandbox mismatch');
   const messages = events.filter(event => event.type === 'item.completed' && event.item?.type === 'agent_message');
