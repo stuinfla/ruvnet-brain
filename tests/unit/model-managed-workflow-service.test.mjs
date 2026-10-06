@@ -194,7 +194,7 @@ test('scoped repair maps successful final result back to original task without r
   } finally { f.cleanup(); }
 });
 
-test('verified quality repair dynamically selects the approved eligible hard route and refuses an unchanged route', async () => {
+test('verified repair selects a stronger route or continues the exact freshly approved hard allocation', async () => {
   const profile = { harnesses: { codex: { available: true, subscription: true } } };
   const candidates = ['routine-fixture', 'strong-fixture'].map((id) => ({ id, provider: 'openai',
     harness: ['codex'], subscription: ['codex'], supportedEfforts: ['medium', 'high'] }));
@@ -208,7 +208,17 @@ test('verified quality repair dynamically selects the approved eligible hard rou
   const repairInput = { ...input, feedback: { verifiedTaskQualityFailure: true }, priorDecision: ordinary };
   const repair = await managedRoute(repairInput, deps);
   assert.equal(repair.model, 'strong-fixture'); assert.equal(repair.effort, 'high'); assert.equal(repair.taskClass, 'hard');
-  await assert.rejects(managedRoute({ ...repairInput, priorDecision: repair }, deps), /No stronger eligible owner-approved/);
+  let validations = 0;
+  const continuation = await managedRoute({ ...repairInput, priorDecision: repair },
+    { ...deps, verifyDecision: () => validations++ });
+  assert.equal(validations, 1); assert.equal(continuation.model, repair.model); assert.equal(continuation.effort, repair.effort);
+  assert.match(continuation.reason, /bounded scoped repair at approved hard allocation/);
+  for (const priorDecision of [{ ...repair, provider: 'different-provider' }, { ...repair, effort: 'max' },
+    { ...repair, taskClass: 'medium' }, { ...repair, taskClass: 'exceptional' }]) {
+    await assert.rejects(managedRoute({ ...repairInput, priorDecision }, deps), /No stronger eligible owner-approved/);
+  }
+  await assert.rejects(managedRoute({ ...repairInput, priorDecision: repair },
+    { ...deps, verifyDecision: () => { throw new Error('Native auth or allowance unavailable'); } }), /auth or allowance unavailable/);
   selection.routes.codex.hard = { model: 'routine-fixture', effort: 'high' };
   assert.equal((await managedRoute(repairInput, deps)).effort, 'high');
   selection.routes.codex.hard = { model: 'routine-fixture', effort: 'medium' };
@@ -216,6 +226,41 @@ test('verified quality repair dynamically selects the approved eligible hard rou
   selection.routes.codex.hard = { model: 'unavailable-fixture', effort: 'high' };
   await assert.rejects(managedRoute(repairInput, deps), /unavailable or unauthorized/);
   await assert.rejects(managedRoute({ ...input, taskFacts: { verifiedTaskQualityFailure: true } }, deps), /validated controller feedback/);
+});
+
+test('hard repair continuation still requires a digest-bound failed gate and a fresh independent review', async () => {
+  const f = fixture(true); try {
+    f.input.taskFacts.uncertainty = 'architecture';
+    const profile = { harnesses: { codex: { available: true, subscription: true } } };
+    const candidates = [{ id: 'hard-fixture', provider: 'openai', harness: ['codex'], subscription: ['codex'] }];
+    const selection = { schemaVersion: 1, reviewedAt: new Date().toISOString(), routes: { codex: { hard: { model: 'hard-fixture', effort: 'high' } } } };
+    const routes = [], route = async ctx => {
+      const picked = await managedRoute(ctx, { readProfile: () => profile, readCatalog: () => candidates,
+        readPolicy: async () => routingPolicy, decide: input => selectDecision({ ...input, selection }), verifyDecision: () => {} });
+      routes.push({ ctx, picked }); return picked;
+    };
+    const plan = await planManagedTask(f.input, { route: async () => decision, runPlanner: planner(f) });
+    let checks = 0; const log = [];
+    const result = await executeManagedWorkflow(plan.request, { route, createAdapters: executor(log),
+      check: async () => ({ passed: ++checks > 1, exitCode: checks > 1 ? 0 : 1 }), verifyDecision: () => {}, recordReceipt: async () => ({ durable: true }) });
+    assert.equal(result.status, 'complete'); assert.equal(result.attemptsUsed, 3);
+    assert.deepEqual(log.filter(id => !id.startsWith('repair-')), ['work', 'independent-review']);
+    const repair = routes.find(({ ctx }) => ctx.task?.repairsTaskId);
+    assert.equal(repair.ctx.feedback.acceptance.artifactDigest, artifactDigest(repair.ctx.feedback.acceptance.artifactRefs));
+    assert.match(repair.picked.reason, /bounded scoped repair at approved hard allocation/);
+    assert.equal(result.review.passed, true); assert.deepEqual(result.review.findings, []);
+  } finally { f.cleanup(); }
+});
+
+test('environmental failed checker blocks without hard repair continuation or later native launch', async () => {
+  const f = fixture(true); try {
+    const plan = await planManagedTask(f.input, { route: async () => decision, runPlanner: planner(f) });
+    const log = [], routes = [];
+    const result = await executeManagedWorkflow(plan.request, { route: async ctx => { routes.push(ctx); return { ...decision, taskClass: 'hard' }; },
+      createAdapters: executor(log), check: async () => ({ passed: false, exitCode: 127, output: 'command unavailable' }),
+      verifyDecision: () => {}, recordReceipt: async () => ({ durable: true }) });
+    assert.equal(result.status, 'blocked'); assert.deepEqual(log, ['work']); assert.equal(routes.length, 1);
+  } finally { f.cleanup(); }
 });
 
 test('actual independent review defects reach the classifier and a stronger scoped repair still needs fresh review', async () => {

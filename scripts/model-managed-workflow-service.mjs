@@ -54,7 +54,10 @@ export async function managedRoute({ originalPrompt, taskFacts, harness, feedbac
     const stronger = decision.model === priorDecision.model
       ? efforts.indexOf(decision.effort) > efforts.indexOf(priorDecision.effort)
       : classes.indexOf(decision.taskClass) > classes.indexOf(priorDecision.taskClass);
-    assert(stronger, 'No stronger eligible owner-approved native repair route; same or weaker route refused');
+    const hardContinuation = priorDecision.taskClass === 'hard' && decision.taskClass === 'hard'
+      && ['harness', 'provider', 'model', 'effort'].every((field) => decision[field] === priorDecision[field]);
+    assert(stronger || hardContinuation, 'No stronger eligible owner-approved native repair route; same or weaker route refused');
+    if (hardContinuation) decision.reason += '; bounded scoped repair at approved hard allocation';
   }
   return decision;
 }
