@@ -45,6 +45,7 @@ export function buildPrepublicationEvidence({
   sha,
   version,
   runId,
+  runAttempt,
   manifestFile,
   payloadProofFile,
   hostFile,
@@ -118,12 +119,15 @@ export function buildPrepublicationEvidence({
   const requiredCiJobs = ['candidate-preflight', 'release-acceptance-linux', 'release-acceptance-windows', 'release-acceptance-macos', 'release-qe'];
   if (ci.value.schemaVersion !== 1 || ci.value.kind !== 'ruvnet-brain-candidate-ci-evidence'
     || ci.value.sourceSha !== sha || ci.value.version !== version || ci.value.payloadId !== payload.payloadId
-    || ci.value.payloadManifestSha256 !== sha256(manifestBytes) || ci.value.workflow !== 'ci'
+    || ci.value.payloadManifestSha256 !== sha256(manifestBytes) || ci.value.producerWorkflow !== 'release-candidate-preflight'
+    || ci.value.producerJob !== 'aggregate' || ci.value.summarizedWorkflow !== 'ci'
+    || !Number.isSafeInteger(ci.value.runAttempt) || ci.value.runAttempt <= 0 || ci.value.runAttempt !== runAttempt
     || ci.value.runId !== runId || ci.value.verdict !== 'PASS' || ci.value.skipped !== 0 || ci.value.unknown !== 0) {
     throw new Error('candidate CI receipt identity or verdict mismatch');
   }
   requireExactSet(ci.value.jobs?.map(({ name }) => name) || [], requiredCiJobs, 'candidate CI jobs');
-  if (ci.value.jobs.some(({ conclusion }) => conclusion !== 'success')) throw new Error('candidate CI receipt contains a non-success job');
+  if (ci.value.jobs.some(({ name, conclusion, workflow }) => conclusion !== 'success'
+    || workflow !== (name === 'candidate-preflight' ? 'release-candidate-preflight' : 'ci'))) throw new Error('candidate CI receipt contains a non-success job');
   requireExactSet(ci.value.acceptanceReceipts?.map(({ platform }) => platform) || [], ['linux', 'macos', 'windows'], 'release acceptance platforms');
   if (ci.value.acceptanceReceipts.some(row => row.sourceSha !== sha || !(row.passed > 0)
     || !/^[a-f0-9]{64}$/.test(row.receiptSha256 || ''))) throw new Error('release acceptance receipt identity mismatch');
@@ -199,6 +203,7 @@ if (isCli) {
     sha: arg('--sha'),
     version: arg('--version'),
     runId: Number(arg('--run-id')),
+    runAttempt: Number(arg('--run-attempt')),
     manifestFile: path.resolve(arg('--manifest')),
     payloadProofFile: path.resolve(arg('--payload-proof')),
     hostFile: path.resolve(arg('--hosts')),

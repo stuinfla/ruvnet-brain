@@ -35,8 +35,11 @@ const LANES = Object.freeze({
   // still owns public bytes, retrieval canaries, and native scheduled-update proof.
   'early-public': [
     vitest([
-      'tests/qe/release/packed-clean-install.test.mjs',
-      'tests/qe/release/issue-64-host-convergence.test.mjs',
+      // Linux release QE already runs these two suites against the sealed package.
+      ...(process.platform === 'linux' ? [] : [
+        'tests/qe/release/packed-clean-install.test.mjs',
+        'tests/qe/release/issue-64-host-convergence.test.mjs',
+      ]),
       'tests/unit/npm-tarball-codex.test.mjs',
     ], 180_000),
   ],
@@ -171,6 +174,12 @@ function main() {
   const requestedLane = arg('--lane');
   const lane = requestedLane;
   if (!requestedLane || !LANES[lane]) throw new Error(`unknown lane: ${requestedLane || '<missing>'}`);
+  const sealedPackage = process.env.RUVNET_SEALED_PACKAGE;
+  if (lane === 'early-public' && process.env.CI && (!sealedPackage || !process.env.RUVNET_SEALED_PAYLOAD_ID)) {
+    throw new Error('early-public CI requires the sealed candidate package and payload identity');
+  }
+  const artifactSha256 = lane === 'early-public' && sealedPackage
+    ? sha256(fs.readFileSync(sealedPackage)) : null;
   const dir = outputDir();
   fs.rmSync(path.join(dir, `${requestedLane}.json`), { force: true });
   const runDir = path.join(dir, `.run-${requestedLane}-${process.pid}-${Date.now()}`);
@@ -186,6 +195,7 @@ function main() {
     schema: 'ruvnet-brain.agentic-qe.receipt', receiptVersion: RECEIPT_VERSION,
     contract: 'agentic-qe-4.3', lane: requestedLane, sha: gitSha(),
     runId: process.env.GITHUB_RUN_ID || `local-${gitSha()}`, host: `${os.platform()}-${os.arch()}`,
+    ...(lane === 'early-public' ? { payloadId: process.env.RUVNET_SEALED_PAYLOAD_ID || null, artifactSha256 } : {}),
     startedAt: steps[0]?.startedAt || now(), endedAt: steps.at(-1)?.endedAt || now(), status, steps,
   };
   const file = path.join(dir, `${requestedLane}.json`);
