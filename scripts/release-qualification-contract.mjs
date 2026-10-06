@@ -80,6 +80,7 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
         "tests/unit/protected-release-invocation.test.mjs",
         "tests/unit/release-identity-invariants.test.mjs",
         "tests/unit/release-transaction.test.mjs",
+        "tests/unit/release-transaction-provider-buffer.test.mjs",
         "tests/unit/prepublication-evidence.test.mjs",
         "tests/unit/candidate-host-evidence.test.mjs",
         "tests/unit/host-install-matrix-concurrency.test.mjs",

@@ -24,6 +24,13 @@ export const ASSET_DOWNLOAD_TIMEOUT_MS = Number(process.env.RUVNET_RELEASE_ASSET
 const command = (name, args, options = {}) => execFileSync(name, args, {
   encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30_000, maxBuffer: 32 * 1024 * 1024, ...options,
 }).trim();
+
+// The 683MB 4.5.12 payload outlasted metadata's 30s budget despite completing remotely.
+// Size uploads independently at 1MiB/s, capped at ten minutes per file; no added retry.
+export function assetUploadTimeoutMs(bytes) {
+  if (!Number.isSafeInteger(bytes) || bytes < 0) throw new Error('Safe asset byte count required');
+  return Math.max(30_000, Math.min(600_000, Math.ceil(bytes / (1024 * 1024)) * 1000));
+}
 const json = (name, args, options) => JSON.parse(command(name, args, options));
 // ADR-086 S1: `releases/latest` is the customer download pointer and is a corpus generation on any
 // night a corpus round shipped. Every question this provider asks is about the CODE generation, so
@@ -436,7 +443,9 @@ export function liveReleaseProvider({ root = process.cwd() } = {}) {
           }
           continue;
         }
-        command('gh', ['release', 'upload', draft.tag, file, '--repo', REPO]);
+        command('gh', ['release', 'upload', draft.tag, file, '--repo', REPO], {
+          timeout: assetUploadTimeoutMs(fs.statSync(file).size),
+        });
       }
     },
 
