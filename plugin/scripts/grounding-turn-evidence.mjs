@@ -414,9 +414,9 @@ export function answerSubjects(message) {
   return [...out];
 }
 
-export function auditAssertions({ message, subjects = [], vocab = [], sources = null, stampTerms = [] }) {
+export function auditAssertions({ message, subjects = [], vocab = [], sources = null, stampTerms = [], subjectAllowed = () => true }) {
   const tools = [...new Set([...vocab, ...subjects, ...answerSubjects(message)])].filter((t) => t.length >= 3);
-  const claims = capabilityClaims(message, tools);
+  const claims = capabilityClaims(message, tools).filter((claim) => subjectAllowed(claim.subject));
   const findings = [];
   const unknown = [];
   for (const claim of claims) {

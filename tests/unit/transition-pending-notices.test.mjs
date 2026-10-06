@@ -17,12 +17,20 @@ function project() {
   fs.writeFileSync(path.join(dir, '.swarm', '.progression-replay.lock'), `${process.pid}-${Date.now()}-fixture`);
   return dir;
 }
-function run(dir, script, session = 'one', event = 'UserPromptSubmit', extra = {}, raw) {
+function run(dir, script, session = 'one', event = 'UserPromptSubmit', extra = {}, raw, expected) {
   const result = spawnSync(process.execPath, [path.join(scripts, script), event], {
     cwd: dir, input: raw ?? JSON.stringify({ cwd: dir, session_id: session, prompt: 'Fix parser', tool_name: 'Bash', tool_response: { exit_code: 0 } }),
     encoding: 'utf8', timeout: 5000, env: { ...process.env, RUVNET_BRAIN_HOME: dir, RUVNET_HOOK_HOST: 'claude', RUFLO_DAEMON_AUTOSTART: '0', ...extra },
   });
-  expect(result.status).toBe(0); return result.stdout;
+  const diagnostics = JSON.stringify({ script, event, session, status: result.status,
+    signal: result.signal, error: result.error ? { name: result.error.name, message: result.error.message, code: result.error.code } : null,
+    stdout: result.stdout, stderr: result.stderr });
+  expect(result.status, diagnostics).toBe(0);
+  if (expected) expect(result.stdout, diagnostics).toMatch(expected);
+  return result.stdout;
+}
+function pending(dir, script, session = 'one') {
+  return run(dir, script, session, 'UserPromptSubmit', {}, undefined, /pending.*readback/);
 }
 const direct = 'project-transition-hook.mjs';
 const compatibility = 'session-snapshot-hook.mjs';
@@ -30,10 +38,10 @@ const ledger = (dir) => path.join(dir, '.swarm', '.continuity-stop-notices.json'
 describe('#380 pending notices retain capture and independent warning conditions', () => {
   for (const first of [direct, compatibility]) it(`deduplicates actual ${first} boundaries across both entrypoints`, () => {
     const dir = project();
-    expect(run(dir, first)).toMatch(/pending.*readback/);
+    pending(dir, first);
     expect(run(dir, first, 'one', 'PreToolUse')).toBe('');
     expect(run(dir, first === direct ? compatibility : direct, 'one', 'PostToolUse')).toBe('');
-    expect(run(dir, first, 'two')).toMatch(/pending.*readback/);
+    pending(dir, first, 'two');
     expect(fs.readdirSync(path.join(dir, '.swarm')).filter((name) => name.startsWith('.progression-capture-queue-'))).toHaveLength(4);
     expect(fs.lstatSync(ledger(dir)).isFile()).toBe(true);
     if (process.platform !== 'win32') expect(fs.statSync(ledger(dir)).mode & 0o777).toBe(0o600);

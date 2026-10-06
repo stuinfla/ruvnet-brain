@@ -87,6 +87,7 @@ const mean = (k) => valid.reduce((s, r) => s + r[k], 0) / valid.length;
 const minK = (k) => Math.min(...valid.map(r => r[k]));
 const gtFail = report.filter(r => !r.groundTruthPathExists).length;
 const summary = {
+  generatedAt: new Date().toISOString(),
   name: NAME, variant: VARIANT, questions: questions.length, models: MODELS,
   avgStrict: +mean('avgStrict').toFixed(2), avgRealUse: +mean('avgRealUse').toFixed(2),
   minStrict: minK('avgStrict'), minRealUse: minK('avgRealUse'),

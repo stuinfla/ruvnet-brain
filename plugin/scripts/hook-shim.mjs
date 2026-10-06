@@ -119,7 +119,7 @@ const TABLE = {
   // own header already says: "remains reachable through hook-shim's dispatch table by explicit
   // invocation". Restored. wired-check.mjs's H6 fix does not depend on these keys existing either
   // way — it stopped trusting hook-shim.mjs as a blind generic spawner, not their presence here.
-  'learn-capture':    { file: 'learn-capture.sh',    interpreter: 'bash', mode: 'advisory', offBehavior: 'silence' },
+  'learn-capture':    { file: 'learn-capture.mjs',   interpreter: 'node', mode: 'advisory', offBehavior: 'silence', stdinBytes: 65536 },
   'learn-flush':      { file: 'learn-flush.mjs',     interpreter: 'node', mode: 'advisory', offBehavior: 'silence' },
   // 1 MiB, not 64 KiB: the Stop payload now carries `last_assistant_message`, and a long closing
   // message truncated mid-JSON would parse as `{}` and silently drop the whole capture.

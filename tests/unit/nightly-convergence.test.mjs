@@ -16,14 +16,12 @@ function argvFrom(source, anchor, terminator = '];') {
 
 describe('automatic refresh paths use the product coordinator with explicit scope', () => {
   it('the nightly runner performs the full update; the plugin updater stays host-sync-only; the knowledge self-heal runs the nightly argv', () => {
-    const session = argvFrom(HOST_UPDATE, 'const result = spawnSync(npx, [', '], {');
-    const knowledge = argvFrom(HOST_UPDATE, "const run = spawnSync(npx, [", '], {');
-    const nightly = argvFrom(RUNNER, 'const argv = [');
+    const session = argvFrom(HOST_UPDATE, "automaticInvocation(['--update', '--host-sync-only'", ']);');
+    const knowledge = argvFrom(HOST_UPDATE, "automaticInvocation(['--update', '--no-nightly-prompt'], { source })", ');');
     expect(session).toContain('--host-sync-only');
-    expect(nightly).not.toContain('--host-sync-only');
-    expect(nightly).toEqual(['--yes', '--update', '--no-nightly-prompt']);
-    // Same update path as the nightly, with the production package spec the nightly registers.
-    expect(knowledge).toEqual(['--yes', 'ruvnet-brain@latest', '--update', '--no-nightly-prompt']);
+    expect(knowledge.slice(0, 2)).toEqual(['--update', '--no-nightly-prompt']);
+    expect(RUNNER).toContain("automaticInvocation(['--update', '--no-nightly-prompt']");
+    expect(RUNNER).not.toContain('--host-sync-only');
     expect(RUNNER).toContain("registration.packageTarget.spec");
     expect(RUNNER).toContain("registration.packageTarget.spec !== 'ruvnet-brain@latest'");
     expect(RUNNER).toContain('registration.bundleTarget');

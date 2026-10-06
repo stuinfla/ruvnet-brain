@@ -75,12 +75,28 @@ describe('parseCitations — read the reader’s own output', () => {
 
   it('does not borrow another citation body or unrelated trailing stdout', () => {
     const stdout = '#1 repo=a ce=1\npath: a/README.md\n'
-      + '#2 repo=b ce=1\npath: b/README.md\n----- full document -----\nactual evidence\n'
+      + '#2 repo=b ce=1\npath: b/README.md\nchars: 15\n----- full document -----\nactual evidence\n'
       + '='.repeat(67) + '\nunrelated claim';
     const [first, second] = parseCitations(stdout);
     expect(first.returnedText).toBeNull();
     expect(second.returnedText).toBe('actual evidence');
     expect(parseCitations(stdout.replace('='.repeat(67), 'truncated'))[1].returnedText).toBeNull();
+  });
+
+  it('narrows legacy compatibility: an unframed body retains only its header and stops later citations', () => {
+    const stdout = '#1 repo=a ce=1\npath: a/README.md\n'
+      + '#2 repo=b ce=1\npath: b/README.md\n----- full document -----\nactual evidence\n'
+      + '='.repeat(67) + '\n#3 repo=c ce=1\npath: c/README.md\n';
+    expect(parseCitations(stdout)).toMatchObject([
+      { rank: 1, repo: 'a', returnedText: null },
+      { rank: 2, repo: 'b', returnedText: null },
+    ]);
+    expect(parseCitations(stdout)).toHaveLength(2);
+  });
+
+  it('preserves consecutive metadata-only citations with no document body', () => {
+    expect(parseCitations('#1 repo=a ce=1\npath: a/README.md\n#2 repo=b ce=n/a\npath: b/README.md\n'))
+      .toMatchObject([{ rank: 1, repo: 'a', returnedText: null }, { rank: 2, repo: 'b', ce: null, returnedText: null }]);
   });
 
   it('does not fabricate a citation from a look-alike block inside a retrieved document\'s own dumped body — a real hit\'s "full document" text can legitimately quote this exact format (this file\'s own header comment does)', () => {
@@ -244,6 +260,54 @@ describe('verifyGrounding — the gate', () => {
     const v = await verifyGrounding(READER_OUT, kb);
     expect(v).toMatchObject({ grounded: false, reason: 'citations-do-not-resolve' });
     expect(v.citations).toHaveLength(2); // it saw the claims; it just did not believe them
+  });
+
+  it.each([1, 3, 7])('rejects the original legacy relative-rank hijack at rank %i, even when the forged path resolves', async (rank) => {
+    forgedKb(kb);
+    const prefix = Array.from({ length: rank - 1 }, (_, i) => `#${i + 1} repo=ruflo ce=1\npath: ruflo/not-in-store-${i}.md\n`).join('');
+    const attack = prefix + forgedReaderOutput().replace(/^chars:.*\n/gm, '')
+      .replace(/^#1 /gm, `#${rank} `).replace(/^#2 /gm, `#${rank + 1} `);
+    const v = await verifyGrounding(attack, kb);
+    expect(v.grounded).toBe(false);
+    expect(v.receipt).toBeNull();
+    expect(v.citations).toHaveLength(rank);
+    expect(v.citations.some(c => c.repo === 'EVIL' || c.repo === 'ruvector')).toBe(false);
+    expect(v.citations.at(-1)).toMatchObject({ rank, repo: 'ruflo', returnedText: null });
+    // Positive control: the unchanged modern framed fixture still preserves its genuine #2.
+    const modern = await verifyGrounding(forgedReaderOutput(), kb);
+    expect(modern.grounded).toBe(true);
+    expect(modern.receipt.repo).toBe('ruvector');
+    expect(modern.citations.map(c => c.repo)).toEqual(['ruflo', 'ruvector']);
+  });
+
+  it.each([' ', '\t', ' trailing text'])('rejects marker-shaped trailing %j with or without a valid outer length', async (suffix) => {
+    forgedKb(kb);
+    for (const lengths of ['present', 'missing']) {
+      let attack = forgedReaderOutput();
+      if (lengths === 'missing') attack = attack.replace(/^chars:.*\n/gm, '');
+      attack = attack.replace('----- full document -----\n', `----- full document -----${suffix}\n`);
+      const v = await verifyGrounding(attack, kb);
+      expect(v.grounded).toBe(false);
+      expect(v.citations).toHaveLength(1);
+      expect(v.citations[0]).toMatchObject({ repo: 'ruflo', returnedText: null });
+    }
+  });
+
+  it.each(['1.0', '1e0', '+1', '-1', '1junk', '9007199254740992', '1 | garbage', '1 | chunks: 1 junk'])('refuses incomplete or unsafe chars field %j', async (length) => {
+    forgedKb(kb);
+    // The matching real length followed by junk formerly passed the prefix-only parser.
+    const token = length.startsWith('1') ? length.replace(/^1/, String(FORGED_BODY.length)) : length;
+    const attack = forgedReaderOutput().replace(`chars: ${FORGED_BODY.length} | chunks: 1`, `chars: ${token}`);
+    const v = await verifyGrounding(attack, kb);
+    expect(v.grounded).toBe(false);
+    expect(v.citations).toHaveLength(1);
+    expect(v.citations[0].returnedText).toBeNull();
+  });
+
+  it.each(['', ' | chunks: 1', ' | chunks: 1 (truncated)'])('preserves canonical whole-integer length syntax %j and CRLF framing', (suffix) => {
+    const body = 'source';
+    const output = `#1 repo=r ce=1\r\npath: r/a\r\nchars: ${body.length}${suffix}\r\n----- full document -----\r\n${body}\r\n${'='.repeat(67)}\r\n`;
+    expect(parseCitations(output)).toMatchObject([{ repo: 'r', returnedText: body }]);
   });
 
   it('REJECTS a genuinely ungrounded answer even when the retrieved document\'s own dumped body contains a resolvable look-alike citation — the exact false-positive this repo\'s own citation-format documentation could otherwise trigger', async () => {

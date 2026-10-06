@@ -47,7 +47,7 @@ export const STAGE_BUDGETS_MS = {
   'stable-spine': 300,    // seed-dispatch decision + a single detach launch
   heartbeat: 300,         // update-check dispatch launch
   'ascii-drift': 300,     // optional ascii->svg drift advisory, already spawnSync-timeout bounded
-  banner: 200,            // version/readiness/health banner assembly — pure fs reads, no subprocess
+  banner: 200,            // banner assembly, including a bounded native skill metadata probe
 };
 
 export function sumBudgetsMs(budgets = STAGE_BUDGETS_MS) {

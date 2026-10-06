@@ -8,7 +8,7 @@
 //  3. TWO SESSIONS: session 1's commits, decision, lesson and gate are in session 2's SessionStart brief.
 //  4. CODEX BUDGET: SessionEnd capture stays far inside Codex's 3s cap and runs no ruflo inline.
 //  5. ONE WRITER: where the owner's user-level turn hook is registered, the product defers.
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -26,7 +26,6 @@ import {
 } from '../helpers/continuity-fixture.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const HOOK = path.join(ROOT, 'plugin', 'scripts', 'session-snapshot-hook.mjs');
 const noSleep = () => {};
 const fastBackoff = [1, 1, 1, 1];
 let saved;
@@ -37,7 +36,41 @@ beforeAll(() => {
 afterAll(() => {
   for (const [k, v] of [['RUVNET_RUFLO_CWD_ROOT', saved.cwd], ['RUFLO_BIN', saved.bin]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
 });
-afterEach(cleanup);
+let stopDrain;
+async function waitForStopDrain(state) {
+  const { journal, key } = state;
+  const lock = path.join(journal.swarm, '.continuity-events.lock');
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    // A commit can appear during scan; never pair it with an earlier absent-lock observation.
+    const committed = journal.scan().committed.has(key);
+    let held = false;
+    try {
+      const match = /^([1-9]\d*) ([1-9]\d*)\n$/.exec(fs.readFileSync(lock, 'utf8'));
+      if (!match || !Number.isSafeInteger(Number(match[1])) || !Number.isSafeInteger(Number(match[2]))) {
+        throw new Error(`Malformed Stop drain lock; fixtures retained at ${journal.projectRoot}`);
+      }
+      const pid = Number(match[1]);
+      if (state.pid && state.pid !== pid) throw new Error('Stop drain lock owner changed; fixtures retained');
+      state.pid = pid; // retain the observed owner across both polling and afterEach re-entry
+      held = true;
+    } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    let alive = false;
+    if (state.pid) {
+      try { process.kill(state.pid, 0); alive = true; }
+      catch (error) { if (error.code !== 'ESRCH') throw error; }
+    }
+    if (committed && !held && !alive) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`Stop drainer did not commit ${key} and retire; fixtures retained at ${journal.projectRoot}`);
+}
+afterEach(async () => {
+  // On an assertion failure, still await this test's owned writer. A retirement failure leaves
+  // the fixtures intact and fails cleanup honestly, rather than deleting its live outbox.
+  if (stopDrain) { await waitForStopDrain(stopDrain); stopDrain = null; }
+  cleanup();
+});
 
 const lesson = (text, at = Date.now()) => makeEvent({ kind: 'lesson', at, source: 'explicit', authoritative: true, summary: text });
 
@@ -98,6 +131,38 @@ describe('1. contention → outbox → eventual commit', () => {
 });
 
 describe('2. never silent', () => {
+  it('cleanup reads the lock after a newly observed commit and retains its PID across waits', async () => {
+    const p = adoptedProject();
+    const lock = path.join(p.dir, '.swarm', '.continuity-events.lock');
+    const key = 'synthetic-drain-key';
+    let scans = 0;
+    const journal = { projectRoot: p.dir, swarm: path.dirname(lock), scan: () => {
+      scans += 1;
+      // The lock was absent at entry; the worker acquires it and commits DURING scan.
+      if (scans === 1) fs.writeFileSync(lock, '12345 123456789\n');
+      if (scans === 2) fs.unlinkSync(lock);
+      return { committed: new Map([[key, {}]]) };
+    } };
+    let probes = 0;
+    const kill = vi.spyOn(process, 'kill').mockImplementation((pid, signal) => {
+      expect([pid, signal]).toEqual([12345, 0]);
+      if (++probes % 2 === 0) throw Object.assign(new Error('retired'), { code: 'ESRCH' });
+      return true;
+    });
+    const state = { journal, key };
+    try {
+      await waitForStopDrain(state);
+      expect(scans).toBe(2);
+      expect(state.pid).toBe(12345);
+      expect(fs.existsSync(lock)).toBe(false);
+      await waitForStopDrain(state); // afterEach re-entry must still check the observed owner
+      expect(probes).toBe(4);
+      expect(scans).toBe(4);
+      fs.writeFileSync(lock, 'malformed-owner\n');
+      await expect(waitForStopDrain(state)).rejects.toThrow(/Malformed Stop drain lock/);
+    } finally { kill.mockRestore(); }
+  });
+
   it('a healthy journal prints the positive confirmation — and never before a committed read-back', () => {
     const p = adoptedProject();
     const journal = new ContinuityJournal({ projectRoot: p.dir, ruflo: fakeRuflo().bin });
@@ -107,31 +172,40 @@ describe('2. never silent', () => {
     expect(recordingLine(journal.status())).toMatch(/^AgentDB: recording ✓ \(last write \d+s ago, 1 event\(s\) today, outbox 0 pending\)$/);
   });
 
-  it('stuck past STUCK_AFTER_MS → red line; the Claude Stop boundary shows it, Codex stays silent', () => {
+  it('stuck past STUCK_AFTER_MS → red line; the Claude Stop boundary shows it, Codex stays silent', async () => {
     const p = adoptedProject();
     const old = Date.now() - STUCK_AFTER_MS - 60_000;
-    const journal = new ContinuityJournal({ projectRoot: p.dir, now: () => old });
-    journal.record([lesson('Stuck event.', old)]);
-    const status = new ContinuityJournal({ projectRoot: p.dir, ruflo: fakeRuflo().bin }).status();
-    expect(status.stuck).toBe(true);
-    expect(recordingLine(status)).toMatch(/^AgentDB: recording stuck — 1 event\(s\) pending for \d+m/);
-    const ruflo = fakeRuflo({ refusals: 99 });
-    const fire = (host) => spawnSync(process.execPath, [HOOK, 'Stop'], {
+    const ruflo = fakeRuflo();
+    const journal = new ContinuityJournal({ projectRoot: p.dir, now: () => old, ruflo: ruflo.bin });
+    // Exercise the registered shim/body path, with unrelated progression explicitly suspended.
+    // A healthy learner lets this status test await completion instead of leaving 32s of retries.
+    const fire = (host) => spawnSync(process.execPath, [path.join(ROOT, 'plugin/scripts/hook-shim.mjs'), 'session-snapshot', 'Stop'], {
       cwd: p.dir,
       input: JSON.stringify({ session_id: `s-${host}`, hook_event_name: 'Stop', cwd: p.dir }), encoding: 'utf8', timeout: 20_000,
       env: { ...p.env, CLAUDE_PROJECT_DIR: p.dir, RUVNET_HOOK_HOST: host, RUFLO_BIN: ruflo.bin, RUVNET_BRAIN_HOME: tmp('cont-brain-'),
+        CLAUDE_PLUGIN_ROOT: path.join(ROOT, 'plugin'), RUVNET_BRAIN_PROGRESSION_SUSPENDED: '1',
         RUVNET_RUFLO_CWD_ROOT: process.env.RUVNET_RUFLO_CWD_ROOT, RUVNET_TURN_CAPTURE: 'off', RUVNET_CONTINUITY_CAPTURE: '' },
     });
-    const claude = fire('claude');
-    expect(claude.status, claude.stderr).toBe(0);
-    expect(claude.stdout, claude.stderr).not.toBe('');
-    expect(JSON.parse(claude.stdout).systemMessage).toMatch(/\[RuvNet Brain\] AgentDB: recording stuck/);
-    const again = fire('claude'); // same session, same condition: shown once, not at every turn (review S3)
-    expect(again.status).toBe(0);
-    expect(again.stdout).toBe('');
-    const codex = fire('codex');
-    expect(codex.status).toBe(0);
-    expect(codex.stdout).toBe('');
+    for (const [host, summary, notice] of [
+      ['claude', 'First stuck Claude event.', true],
+      ['claude', 'Same-session stuck Claude event.', false],
+      ['codex', 'Fresh stuck Codex event.', false],
+    ]) {
+      const [rec] = journal.record([lesson(summary, old)]);
+      const status = new ContinuityJournal({ projectRoot: p.dir, ruflo: ruflo.bin }).status();
+      expect(status.stuck).toBe(true);
+      expect(recordingLine(status)).toMatch(/^AgentDB: recording stuck — 1 event\(s\) pending for \d+m/);
+      stopDrain = { journal, key: rec.key };
+      const result = fire(host);
+      expect(result.status, result.stderr).toBe(0);
+      if (notice) expect(JSON.parse(result.stdout).systemMessage).toMatch(/\[RuvNet Brain\] AgentDB: recording stuck/);
+      else expect(result.stdout).toBe(''); // same Claude session/condition once; Codex never blocks
+      await waitForStopDrain(stopDrain);
+      stopDrain = null;
+      expect(journal.pending()).toHaveLength(0);
+      expect(journal.scan().committed.get(rec.key)).toMatchObject({ readPath: 'node:sqlite' });
+      expect(JSON.parse(rows(journal.db, CONTINUITY_NAMESPACE).find((row) => row.key === rec.key).content).summary).toBe(summary);
+    }
   });
 });
 

@@ -24,7 +24,11 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { findStores, diagnose } from './memory-doctor.mjs';
-import { learnerCwd, loadRuntimePreferences } from '../plugin/scripts/runtime-preferences.mjs';
+import { distillLearning } from '../plugin/scripts/learning-store.mjs';
+import { readSafe } from '../plugin/scripts/learning-queue.mjs';
+import { learningContext } from '../plugin/scripts/runtime-preferences.mjs';
+import { learningQueueDepth, learningQueueFiles, observeLearning } from '../plugin/scripts/learning-observation.mjs';
+import { resolveRuflo, rufloInvocation } from '../plugin/scripts/ruflo-bin.mjs';
 import { projectDirectory } from '../plugin/scripts/project-identity.mjs';
 import { newestSnapshot, snapshotInventory, MTIME_GRACE_MS } from './snapshot-freshness.mjs';
 
@@ -34,9 +38,10 @@ const HOME = os.homedir();
 // RESIDUAL of #134: RUVNET_BRAIN_PROJECT_DIR is never set by real hook dispatch on either host, so
 // consult `projectDirectory()` (project-identity.mjs) — the CLAUDE_PROJECT_DIR-with-containment
 // rule #85/#107 already established, reused rather than trusting the variable unconditionally.
-const PROJECT = process.env.RUVNET_BRAIN_PROJECT_DIR || projectDirectory();
 const argv = process.argv.slice(2);
 const has = (f) => argv.includes(f);
+const requestedProject = has('--project') ? argv[argv.indexOf('--project') + 1] : undefined;
+const PROJECT = learningContext({ cwd: requestedProject || process.env.RUVNET_BRAIN_PROJECT_DIR || projectDirectory() }).projectDir;
 
 /**
  * Find ruflo HONESTLY.
@@ -50,13 +55,6 @@ const has = (f) => argv.includes(f);
  * Rule 21 still holds — ONE ruflo, the global one, never `npx ruflo@latest`. This resolves WHERE
  * that one global binary is rather than assuming a path.
  */
-function resolveRuflo() {
-  const preferred = path.join(HOME, '.npm-global/bin/ruflo');
-  if (fs.existsSync(preferred)) return preferred;
-  const which = spawnSync('sh', ['-lc', 'command -v ruflo'], { encoding: 'utf8', timeout: 10_000 });
-  const found = String(which.stdout || '').trim().split('\n')[0];
-  return found && fs.existsSync(found) ? found : null;
-}
 const RUFLO = resolveRuflo();
 const RUFLO_ENV = { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' };
 
@@ -121,61 +119,45 @@ function repairMemory() {
  * queue — the reporter needed 15 rounds for 293 entries. A single call would leave a queue that
  * "flushes" every time and never empties, which is the same lie in slow motion.
  */
-function flushLearning() {
+function flushLearning(legacyUser = false) {
+  const original = learningContext({ cwd: PROJECT });
+  const context = legacyUser && original.enabled
+    ? learningContext({ cwd: PROJECT, env: { ...process.env, RUVNET_LEARNING_SCOPE: 'user' } }) : original;
+  if (!context.enabled) return { ok: true, noop: true, log: 'learning is switched off for this project — queued evidence is untouched' };
+  const { scope, queueDir } = context;
+  const bundled = path.resolve(import.meta.dirname, '../plugin/scripts/learn-flush.mjs');
   const flusher = path.join(HOME, '.claude', 'plugins', 'marketplaces', 'ruvnet-brain', 'plugin', 'scripts', 'learn-flush.mjs');
   const local = path.join(PROJECT, 'plugin', 'scripts', 'learn-flush.mjs');
-  const script = fs.existsSync(flusher) ? flusher : (fs.existsSync(local) ? local : null);
+  const script = [bundled, local, flusher].find((file) => fs.existsSync(file));
   if (!script) return { ok: false, log: 'learn-flush.mjs not found — cannot drain the queue' };
 
-  const configured = process.env.RUVNET_LEARNING_SCOPE
-    || loadRuntimePreferences({ cwd: PROJECT }).values.learningScope;
-  const scope = ['off', 'project', 'user'].includes(configured) ? configured : 'project';
-  if (scope === 'off') {
-    return { ok: true, noop: true, log: 'learning is switched off for this project — nothing is being captured, so there is nothing to feed' };
-  }
-
-  // Derived from the scope, never assumed: this is the directory the child will actually read.
-  const queueDir = scope === 'user'
-    ? path.join(HOME, '.cache', 'ruvnet-brain', 'learn')
-    : path.join(PROJECT, '.swarm', 'ruvnet-brain-learn');
   // Displayed to a human and matched by tests, so it is normalised to forward slashes on every
   // platform. Without this, Windows reports `~\.cache\ruvnet-brain\learn` while macOS and Linux
   // report `~/.cache/ruvnet-brain/learn` — the same location under two spellings, which is the
   // exact defect class this branch has been closing (one fact, two representations).
   const where = queueDir.replace(HOME, '~').split(path.sep).join('/');
 
-  const queueFiles = () => {
-    try { return fs.readdirSync(queueDir).filter((f) => f.endsWith('.jsonl')).map((f) => path.join(queueDir, f)); }
-    catch { return []; }
-  };
-  const depthOf = (f) => {
-    try { return fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).length; } catch { return 0; }
-  };
-  const depth = () => queueFiles().reduce((n, f) => n + depthOf(f), 0);
-
-  const before = depth();
+  const depth = () => learningQueueDepth(queueDir);
+  try {
+    const lock = JSON.parse(readSafe(path.join(queueDir, '.worker-lock'), 4096));
+    if (lock.retirementUnconfirmed || (lock.retirementRequired && lock.expires < Date.now())) return { ok: false, log: 'learning recovery is paused: owned worker retirement is unconfirmed; queue fence and original observations retained' };
+  } catch { /* Regular safety checks below still decide whether a queue is readable. */ }
+  let before;
+  try { before = depth(); }
+  catch { return { ok: false, log: `cannot read learning queue ${where} safely — evidence is preserved` }; }
   if (!before) return { ok: true, noop: true, log: `nothing queued in ${where} — the learner is already caught up` };
-
-  const env = { ...process.env, RUVNET_LEARNING_SCOPE: scope, RUVNET_BRAIN_PROJECT_DIR: PROJECT };
-  const deadline = Date.now() + 540_000; // inside the 600s this action is allowed overall
+  const env = { ...process.env, RUVNET_BRAIN_PROJECT_DIR: PROJECT, ...(legacyUser ? { RUVNET_LEARNING_SCOPE: 'user', RUVNET_LEGACY_USER_APPLY: '1' } : {}) };
+  const deadline = Date.now() + 540_000;
   const stalled = [];
-  for (const file of queueFiles()) {
-    let d = depthOf(file);
-    while (d > 0 && Date.now() < deadline) {
-      try {
-        execFileSync(process.execPath, [script], {
-          env: { ...env, LEARN_QUEUE: file },
-          stdio: 'ignore',
-          timeout: Math.min(120_000, Math.max(1_000, deadline - Date.now())),
-        });
-      } catch (e) { stalled.push(`${path.basename(file)}: ${String(e.message).split('\n')[0].slice(0, 80)}`); break; }
-      const next = depthOf(file);
-      // STRICT progress, or stop. learn-flush KEEPS a queue it could not feed (by design — the queue
-      // is evidence), so a round that shrinks nothing means the learner is not accepting the work.
-      // Spinning on it would burn the whole budget and still report zero.
-      if (next >= d) { stalled.push(`${path.basename(file)}: ${d} entr${d === 1 ? 'y' : 'ies'} would not feed`); break; }
-      d = next;
-    }
+  let previous = before;
+  while (previous > 0 && Date.now() < deadline) {
+    try {
+      execFileSync(process.execPath, [script, '--sync'], { env, cwd: PROJECT, stdio: 'ignore',
+        timeout: Math.min(25_000, Math.max(1000, deadline - Date.now())) });
+    } catch { stalled.push('bounded worker failed'); break; }
+    const next = depth();
+    if (next >= previous) { stalled.push(`${next} entries would not feed`); break; }
+    previous = next;
   }
 
   const after = depth();
@@ -183,10 +165,8 @@ function flushLearning() {
   if (fed <= 0) {
     // Name the most likely cause instead of shrugging: learn-flush invokes ruflo at a FIXED path,
     // so on a machine with a different npm prefix it feeds nothing and honestly keeps the queue.
-    const rufloAtFixedPath = fs.existsSync(path.join(HOME, '.npm-global/bin/ruflo'));
     const why = stalled.length ? ` (${stalled.slice(0, 3).join('; ')})` : '';
-    const hint = rufloAtFixedPath ? '' : ' ruflo is not at ~/.npm-global/bin/ruflo, which is where the flusher looks for it —'
-      + ' `npm i -g ruflo@latest` installs it there.';
+    const hint = RUFLO ? '' : ' No global ruflo was resolved from the managed prefix or PATH.';
     return { ok: false, log: `fed 0 of ${before} queued events from ${where}${why} — the queue is preserved for retry.${hint}` };
   }
   return {
@@ -196,22 +176,20 @@ function flushLearning() {
   };
 }
 
-/** One training cycle, via rUv's own CLI, in the GLOBAL (cross-project) learner. */
+/** One explicit training cycle in the same learner the Console measures. */
 function trainLearning() {
+  const context = learningContext({ cwd: PROJECT });
+  if (!context.enabled) return { ok: true, noop: true, log: 'learning is switched off — queued evidence and learner are untouched' };
   if (!RUFLO) return { ok: false, log: 'ruflo is not on this machine — install it with `npm i -g ruflo@latest` to enable learning' };
   try {
-    // ISSUE #136: train the SAME store the console card reads. With `cwd: HOME` the card read the
-    // project's learner and this trained the home one, so the button could never clear the card it
-    // was offered for — a remedy that cannot resolve its own finding is worse than no button.
-    // PROJECT is the same root learn-flush.mjs and learn-capture.sh resolve (#134).
-    // ISSUE #139 — now that ruflo v3.38.9 made `--train` REAL (ruvnet/ruflo#2940 was a no-op
-    // before), training the wrong store is no longer harmless: it moves that store's
-    // lastAdaptation to 0s and the card SILENTLY SELF-CLEARS while the learner the operator
-    // actually uses is untouched. #136 already moved this off `cwd: HOME`; it now shares the
-    // console's resolver so the remedy provably trains the store the card measured.
-    execFileSync(RUFLO, ['hooks', 'intelligence', '--train'], { cwd: learnerCwd({ cwd: PROJECT }), env: RUFLO_ENV, stdio: 'ignore', timeout: 600_000 });
-  } catch (e) { return { ok: false, log: `training cycle failed: ${e.message}` }; }
-  return { ok: true, log: 'ran one training cycle in the cross-project learner' };
+    const evidence = distillLearning(RUFLO, context, { deadline: Date.now() + 18_000, allowed: () => {
+      const current = learningContext({ cwd: PROJECT }); return current.enabled && current.scope === context.scope && current.queueDir === context.queueDir;
+    } });
+    const verified = evidence.completed && evidence.patternDelta > 0;
+    return { ok: verified, log: verified
+      ? `verified ${evidence.patternDelta} new structural patterns in ${evidence.db}; no ratified lessons claimed; snapshot ${evidence.snapshot}`
+      : `distillation returned without measurable pattern progress in ${evidence.db}; recorded observations remain separate; snapshot retained` };
+  } catch { return { ok: false, log: 'canonical distillation unavailable; observations and pending queue retained' }; }
 }
 
 /**
@@ -326,6 +304,7 @@ function distillFleet() {
 }
 
 const action = has('--repair-memory') ? repairMemory
+  : has('--flush-legacy-user-learning') ? () => flushLearning(true)
   : has('--flush-learning') ? flushLearning
     : has('--train-learning') ? trainLearning
       : has('--distill-fleet') ? distillFleet

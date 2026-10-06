@@ -1,5 +1,12 @@
 # Metrics Dashboard — Production Verification
 
+> **Invalidated 2026-10-05:** The performance figures and randomized trends below were
+> fabricated, and the 71/100 adoption formula was not the authoritative product North Star
+> rubric. Direct examination of the handler and live endpoint reproduced this failure.
+> This document is preserved as historical evidence, not current verification. The repair
+> removes those figures and the competing score; unavailable measurements remain unavailable.
+
+
 **Date**: 2026-09-11  
 **Delivered by**: Metrics Lead (W4)  
 **Status**: ✅ LIVE & VERIFIED
