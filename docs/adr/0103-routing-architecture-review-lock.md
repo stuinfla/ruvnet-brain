@@ -4,7 +4,7 @@ title: Routing architecture qualification requires a current finite source revie
 status: Accepted
 date: 2026-10-05
 updated: 2026-10-06
-version: 0.1.10
+version: 0.1.11
 reviewed_digest: ba3f055e09da
 impl: built
 authors: [Stuart Kerr, Codex]
@@ -18,6 +18,7 @@ governs:
   - plugin/scripts/update-apply.mjs
   - scripts/update-apply.mjs
   - tests/unit/update-apply.test.mjs
+  - tests/unit/update-apply-posix.test.mjs
   - package-lock.json
   - scripts/model-managed-prompt.mjs
   - scripts/model-managed-workflow-service.mjs
@@ -179,7 +180,7 @@ update-apply engine and root wrapper validate supported arguments and return hel
 lock acquisition, recovery, receipts or finally-GC. Unknown flags/missing operands fail before effects;
 no-argument, --auto and existing valid modes retain behavior. update-apply tests exercise both real CLI
 entries only against disposable absent/present homes and bind all spine bytes and metadata.
-This closes only the argument-safety portion of issue 377, not legacy USER-store adoption or recovery.
+The preexisting symlink assertion remains unchanged in its Linux/macOS-selected companion; the shared Windows core has no skipped required cases. This closes only the argument-safety portion of issue 377, not legacy USER-store adoption or recovery.
 
 ## Currency log
 

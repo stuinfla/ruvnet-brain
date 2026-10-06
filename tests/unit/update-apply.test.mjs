@@ -1,6 +1,6 @@
 // update-apply.test.mjs — the Stable Spine engine (ADR-023). Every test runs the REAL
 // scripts/update-apply.mjs as a subprocess against a temp RUVNET_BRAIN_HOME — no mocks of the
-// engine itself. Windows-safe by design (no symlinks anywhere), so no win32 skip.
+// engine itself. Portable core cases; the POSIX symlink rejection lives in a platform-selected companion.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -83,21 +83,6 @@ describe('update-apply.mjs — the single writer of the spine', () => {
     fs.rmSync(payload, { recursive: true, force: true });
   });
 
-  it('rejects payload symlinks instead of copying files from outside the payload', (ctx) => {
-    if (process.platform === 'win32') return ctx.skip();
-    const payload = makePayload('9.9.1-test');
-    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'spine-outside-'));
-    const secret = path.join(outside, 'secret.txt');
-    fs.writeFileSync(secret, 'must-not-enter-generation');
-    fs.symlinkSync(secret, path.join(payload, 'scripts', 'outside-link.txt'));
-    const r = run('--from-dir', payload);
-    expect(r.status).not.toBe(0);
-    expect(r.stderr + r.stdout).toMatch(/payload contains a symbolic link/);
-    expect(active()).toBe(null);
-    expect(fs.existsSync(path.join(HOME_DIR, 'versions', '9.9.1-test', 'scripts', 'outside-link.txt'))).toBe(false);
-    fs.rmSync(payload, { recursive: true, force: true });
-    fs.rmSync(outside, { recursive: true, force: true });
-  });
 
   it('--rollback is an instant flip to previous — generation increments, old payload still on disk', () => {
     const p1 = makePayload('9.9.1-test'); const p2 = makePayload('9.9.2-test');

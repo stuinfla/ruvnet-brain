@@ -4,7 +4,11 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
     {
       "id": "installer-release-argument-safety",
       "reason": "Incomplete named releases refuse before network or settings writes; valid named releases and installer help retain their contracts",
-      "files": ["tests/unit/install-release-fallback.test.mjs", "tests/unit/update-apply.test.mjs"]
+      "files": ["tests/unit/install-release-fallback.test.mjs", "tests/unit/update-apply.test.mjs"],
+      "platformFiles": {
+        "linux": ["tests/unit/update-apply-posix.test.mjs"],
+        "macos": ["tests/unit/update-apply-posix.test.mjs"]
+      }
     },
     {
       "id": "honest-currency-lesson-and-metrics-evidence",
