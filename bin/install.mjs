@@ -2140,8 +2140,18 @@ export function codexSessionSafety(status) {
   };
 }
 
+function codexAdministrativeProbeBinary() {
+  if (process.env.CODEX_BIN) return process.env.CODEX_BIN;
+  try {
+    const brainHome = process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain');
+    const configured = JSON.parse(fs.readFileSync(path.join(brainHome, 'model-routing', 'terminal-launcher-config.json'), 'utf8'));
+    if (typeof configured.realCodex === 'string' && path.isAbsolute(configured.realCodex)) return configured.realCodex;
+  } catch { /* absent or malformed configuration retains the ordinary bounded PATH probe */ }
+  return 'codex';
+}
+
 function codexHooksList({
-  codexBin = process.env.CODEX_BIN || 'codex',
+  codexBin = codexAdministrativeProbeBinary(),
   codexHome = codexHomeDir(),
   cwd = process.cwd(),
   timeoutMs = 8_000,
@@ -2997,13 +3007,7 @@ async function doctorRun({ json }) {
       hostConvergence = classifyHostConvergence(recorded);
       const codex = recorded.hosts?.codex;
       if (codex?.state === 'ready' && codex.restartRequired === true && codex.restartScope === 'unproven') {
-        let binary = process.env.CODEX_BIN || 'codex';
-        if (!process.env.CODEX_BIN) {
-          try {
-            const configured = JSON.parse(fs.readFileSync(path.join(path.dirname(convergencePath), 'model-routing', 'terminal-launcher-config.json'), 'utf8'));
-            if (typeof configured.realCodex === 'string' && path.isAbsolute(configured.realCodex)) binary = configured.realCodex;
-          } catch { /* native PATH resolution remains bounded and fail closed */ }
-        }
+        const binary = codexAdministrativeProbeBinary();
         const fresh = await probeFreshCodexDeclarations({ binary, codexHome: codexHomeDir(), cwd: process.cwd(),
           releasedPluginRoot: path.join(REPO_ROOT, 'plugin'), expectedVersion: PACKAGE_VERSION });
         hostConvergence = reconcileFreshCodexDeclarations(recorded, fresh);

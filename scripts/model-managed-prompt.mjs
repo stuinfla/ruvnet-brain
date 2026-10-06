@@ -30,19 +30,22 @@ function verifyRefs(refs) {
   }
 }
 
-/** Private immutable-by-digest copy of the actual parent transcript, never a generated summary. */
+/** Actual native bytes only; large histories use a source-bound native compaction projection. */
 export async function captureNativeParentContext({ harness, sessionId, env = process.env,
   evidenceRoot = path.join(env.HOME || os.homedir(), '.cache/ruvnet-brain/model-routing/parent-context'),
-  observeCodex } = {}) {
+  observeCodex, deadline = Infinity, signal } = {}) {
   requireValue(process.platform !== 'win32', 'private native parent transcript capture unsupported on Windows; ACL proof unavailable');
   if (!sessionId) return [];
   requireValue(/^[a-f0-9-]{36}$/i.test(sessionId) && ['codex', 'claude-code'].includes(harness), 'native parent identity required');
-  let source, expected;
+  let source, expected, sourceBound, observedTurns, observedBytes;
   if (harness === 'codex') {
     const observe = observeCodex ?? (await import('./model-routing-execution-adapters.mjs')).readCodexWorkerObservation;
-    const observed = observe(sessionId, { home: env.CODEX_HOME || path.join(env.HOME || os.homedir(), '.codex'), allowHistory: true });
+    const observed = observe(sessionId, { home: env.CODEX_HOME || path.join(env.HOME || os.homedir(), '.codex'), allowHistory: true, deadline, signal });
     requireValue(observed?.sessionId === sessionId && HASH.test(observed.evidence?.sha256 || ''), 'actual Codex parent evidence unproven');
-    source = observed.evidence.path; expected = observed.evidence.sha256;
+    source = observed.evidence.path; expected = observed.evidence.sha256; sourceBound = observed.evidence.sourceBound;
+    observedTurns = observed.turnCount; observedBytes = observed.evidence.byteLength;
+    const nativeHome = fs.realpathSync(env.CODEX_HOME || path.join(env.HOME || os.homedir(), '.codex'));
+    requireValue(source.startsWith(path.join(nativeHome, 'sessions') + path.sep), 'parent evidence escaped native session home');
   } else {
     const projects = path.join(env.CLAUDE_CONFIG_DIR || path.join(env.HOME || os.homedir(), '.claude'), 'projects');
     const matches = [];
@@ -57,14 +60,54 @@ export async function captureNativeParentContext({ harness, sessionId, env = pro
   requireValue(path.isAbsolute(source || '') && fs.realpathSync(source) === source, 'canonical native parent transcript required');
   const fd = fs.openSync(source, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW); let bytes;
   try {
-    const before = fs.fstatSync(fd);
-    requireValue(before.isFile() && before.uid === process.getuid?.() && before.size <= 16 * 1024 * 1024, 'owned bounded parent transcript required');
-    bytes = fs.readFileSync(fd); const after = fs.fstatSync(fd), current = fs.lstatSync(source);
-    requireValue(before.ino === after.ino && before.size === after.size && before.mtimeMs === after.mtimeMs &&
-      current.ino === after.ino && !current.isSymbolicLink(), 'parent transcript changed while captured');
+    const before = fs.fstatSync(fd, { bigint: true }), limit = 16 * 1024 * 1024;
+    requireValue(before.isFile() && before.uid === BigInt(process.getuid()), 'owned bounded parent transcript required');
+    const live = () => requireValue(!signal?.aborted && Date.now() < deadline, 'parent capture cancelled or expired'); live();
+    if (before.size <= BigInt(limit)) {
+      sourceBound = undefined; bytes = Buffer.alloc(Number(before.size)); let offset = 0;
+      while (offset < bytes.length) {
+        live(); const count = fs.readSync(fd, bytes, offset, Math.min(256 * 1024, bytes.length - offset), offset);
+        requireValue(count > 0, 'parent transcript truncated while captured'); offset += count;
+      }
+    }
+    else {
+      requireValue(harness === 'codex' && sourceBound?.kind === 'native-compaction-projection'
+        && sourceBound.nativeSessionId === sessionId && sourceBound.sourceSha256 === expected
+        && sourceBound.sourceBytes === Number(before.size) && sourceBound.sourceBytes === observedBytes
+        && sourceBound.fullTurnCount === observedTurns && sourceBound.omittedHistoryPrefix === true
+        && Number.isSafeInteger(sourceBound.fullTurnCount) && sourceBound.fullTurnCount > 0
+        && Array.isArray(sourceBound.ranges) && sourceBound.ranges.length >= 2 && sourceBound.ranges.length <= 3,
+      'bounded native compaction provenance required');
+      let total = 0, priorEnd = 0;
+      for (const range of sourceBound.ranges) {
+        requireValue(Number.isSafeInteger(range.offset) && range.offset >= priorEnd && Number.isSafeInteger(range.bytes)
+          && range.bytes > 0 && range.offset + range.bytes <= Number(before.size), 'unsafe native projection range');
+        priorEnd = range.offset + range.bytes; total += range.bytes;
+      }
+      requireValue(sourceBound.ranges[0].offset === 0 && priorEnd === Number(before.size) && total <= limit, 'native projection exceeded bound');
+      const hash = crypto.createHash('sha256'), buffer = Buffer.alloc(256 * 1024), parts = []; let offset = 0;
+      while (offset < Number(before.size)) {
+        live(); const count = fs.readSync(fd, buffer, 0, Math.min(buffer.length, Number(before.size) - offset), offset);
+        requireValue(count > 0, 'parent transcript truncated while captured'); hash.update(buffer.subarray(0, count));
+        for (const range of sourceBound.ranges) {
+          const start = Math.max(offset, range.offset), end = Math.min(offset + count, range.offset + range.bytes);
+          if (end > start) parts.push(Buffer.from(buffer.subarray(start - offset, end - offset)));
+        }
+        offset += count;
+      }
+      requireValue(hash.digest('hex') === expected, 'parent transcript evidence changed'); bytes = Buffer.concat(parts, total);
+      const rows = new TextDecoder('utf-8', { fatal: true }).decode(bytes).trim().split('\n').map(line => JSON.parse(line));
+      requireValue(rows[0]?.type === 'session_meta' && rows[0].payload?.id === sessionId && rows.filter(row => row.type === 'session_meta').length === 1
+        && rows.some(row => row.type === 'compacted' && Array.isArray(row.payload?.replacement_history)), 'native projection provenance mismatch');
+      sourceBound = { kind: sourceBound.kind, nativeSessionId: sessionId, sourceSha256: expected, sourceBytes: Number(before.size),
+        fullTurnCount: sourceBound.fullTurnCount, omittedHistoryPrefix: true, ranges: sourceBound.ranges, nativeHistoryMutated: false };
+    }
+    const after = fs.fstatSync(fd, { bigint: true }), current = fs.lstatSync(source, { bigint: true });
+    requireValue(['dev', 'ino', 'size', 'mtimeNs', 'ctimeNs'].every(key => before[key] === after[key] && after[key] === current[key])
+      && !current.isSymbolicLink(), 'parent transcript changed while captured'); live();
   } finally { fs.closeSync(fd); }
   const digest = sha(bytes);
-  requireValue(bytes.length > 0 && (!expected || digest === expected), 'parent transcript evidence changed');
+  requireValue(bytes.length > 0 && (!expected || sourceBound || digest === expected), 'parent transcript evidence changed');
   if (harness === 'claude-code') {
     const rows = bytes.toString('utf8').split('\n').filter(Boolean).map(line => JSON.parse(line));
     requireValue(rows.some(row => row.sessionId === sessionId), 'actual Claude transcript session identity missing');
@@ -77,7 +120,7 @@ export async function captureNativeParentContext({ harness, sessionId, env = pro
   const file = path.join(directory, `${sessionId}.jsonl`);
   const output = fs.openSync(file, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, 0o600);
   try { fs.writeFileSync(output, bytes); fs.fsyncSync(output); } finally { fs.closeSync(output); }
-  return [{ path: file, digest }];
+  return [{ path: file, digest, ...(sourceBound ? { sourceBound } : {}) }];
 }
 
 async function service() {
@@ -264,7 +307,7 @@ export async function runManagedPrompt({ originalPrompt, prompt = originalPrompt
     }
     if (!contextRefs.length && (retainedContext.sessionId || retainedContext.threadId)) {
       contextRefs = await bounded(() => captureContext({ harness, sessionId: retainedContext.sessionId ?? retainedContext.threadId,
-        env: primaryOptions.env ?? process.env }));
+        env: primaryOptions.env ?? process.env, deadline, signal: combined }));
       requireValue(contextRefs.length > 0, 'existing parent transcript required');
     }
     requireValue(original.length <= 120000, 'substantive request exceeds bounded completion-frame input');
