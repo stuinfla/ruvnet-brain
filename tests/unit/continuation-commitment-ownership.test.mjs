@@ -101,18 +101,23 @@ describe('registered Stop assistant commitment ownership', () => {
 
   it('a different session cannot close another session promise even with PASS evidence', () => {
     const f = fixture(); f.stop('session-A', promise); checkedTranscript(f.transcript);
-    expect(f.stop('session-B', verified).stdout).toBe('');
-    expect(f.read().items[0].done).toBe(false);
+    const original = f.read().items[0];
+    const correction = JSON.parse(f.stop('session-B', verified).stdout);
+    expect(correction.decision).toBe('block');
+    expect(correction.reason).not.toContain('you said you would');
+    expect(f.read().items[0]).toEqual(original);
     f.stop('session-A', verified);
-    expect(f.read().items[0]).toMatchObject({ done: true, state: 'completed' });
+    expect(f.read().items[0]).toEqual(original);
   });
 
-  it('a quoted exact promise can close only through the existing verified claim contract', () => {
+  it('a quoted exact promise and one local check cannot establish whole-task completion', () => {
     const f = fixture(); f.stop('session-A', promise);
     const answer = "'add the retry test to the updater' is done.\nVerified: npm test — PASS.\nNot verified: native host delivery.";
     f.stop('session-A', answer); expect(f.read().items[0].done).toBe(false);
-    checkedTranscript(f.transcript); f.stop('session-A', answer);
-    expect(f.read().items[0].done).toBe(true);
+    checkedTranscript(f.transcript);
+    expect(JSON.parse(f.stop('session-A', answer).stdout).decision).toBe('block');
+    expect(f.read().items[0]).toMatchObject({ done: false, state: 'active' });
+    expect(f.read().items[0].completionEvidence).toBeUndefined();
   });
 
   it('exact --done still cannot invent completion', () => {
@@ -121,7 +126,7 @@ describe('registered Stop assistant commitment ownership', () => {
     expect(f.read().items[0].done).toBe(false);
   });
 
-  it('recognizes first-person reported completion but still requires the existing PASS checks', () => {
+  it('distinguishes unsupported first-person completion from an accurately scoped check result', () => {
     const f = fixture();
     f.stop('session-A', "I'll run the four checks and report each as pass or fail.");
     const claim = 'I completed the run of the four checks and reported each as pass or fail.';
@@ -130,10 +135,15 @@ describe('registered Stop assistant commitment ownership', () => {
     expect(extractCompletionClaims('Someone reported the four checks are passing.')).toEqual([]);
     expect(extractCompletionClaims('The log said the updater is fixed.')).toEqual([]);
     const answer = `${claim}\nVerified: npm test — PASS.\nNot verified: native host delivery.`;
-    expect(f.stop('session-A', answer).stdout).toContain('without end-to-end evidence');
+    const correction = JSON.parse(f.stop('session-A', answer).stdout);
+    expect(correction.decision).toBe('block');
+    expect(correction.reason).toContain('beyond the available verified scope');
     expect(f.read().items[0].done).toBe(false);
-    checkedTranscript(f.transcript); f.stop('session-A', answer);
-    expect(f.read().items[0].done).toBe(true);
+    checkedTranscript(f.transcript);
+    expect(JSON.parse(f.stop('session-A', answer).stdout).decision).toBe('block');
+    expect(f.read().items[0]).toMatchObject({ done: false, state: 'active' });
+    expect(f.stop('session-B', 'Targeted unit tests are passing.\nVerified: npm test — PASS.\nNot verified: native host delivery.').stdout).toBe('');
+    expect(f.read().items[0].done).toBe(false);
   });
 
   it.each(['blocked', 'deferred', 'superseded', 'disputed'])('records honest %s state without completing or erasing the item', (state) => {

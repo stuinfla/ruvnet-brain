@@ -72,7 +72,7 @@ describe('completion claims (Piece A)', () => {
   it('blocks a completion claim when no check ran this turn', () => {
     const repo = gitRepo('a');
     const out = fire(repo, GOOD, { transcriptPath: transcript(edit()) });
-    expect(out).toContain('claims work is done without end-to-end evidence');
+    expect(out).toContain('claims completion beyond the available verified scope');
     expect(out).toContain('no end-to-end check ran this turn after the last change');
     expect(out).toContain('restate it as UNVERIFIED');
   });
@@ -85,7 +85,7 @@ describe('completion claims (Piece A)', () => {
 
   it('allows a claim with a post-edit check that the answer names and a NOT-verified disclosure', () => {
     const repo = gitRepo('a');
-    expect(fire(repo, GOOD, { transcriptPath: transcript(edit(), bash('npx vitest run tests/unit/updater.test.mjs')) })).toBe('');
+    expect(fire(repo, GOOD, { transcriptPath: transcript(edit(), bash('npx vitest run tests/unit/updater.test.mjs')) })).toContain('whole-task completion is UNKNOWN');
   });
 
   it('blocks when the check ran but the answer neither names it nor discloses gaps', () => {
@@ -117,7 +117,7 @@ describe('completion claims (Piece A)', () => {
     expect(fire(repo, GOOD, { transcriptPath: transcript(edit()), stopHookActive: true })).toBe('');
     const dirAsTranscript = path.join(dir, 'broken.jsonl');
     fs.mkdirSync(dirAsTranscript);
-    expect(fire(repo, GOOD, { transcriptPath: dirAsTranscript })).toBe('');
+    expect(fire(repo, GOOD, { transcriptPath: dirAsTranscript })).toContain('UNKNOWN');
   });
 
   it('rejects a non-regular transcript even when its stat size is zero on Windows', () => {
@@ -133,7 +133,7 @@ describe('completion claims (Piece A)', () => {
 
   it('keeps missing transcripts unknown and accepts a real empty regular transcript', () => {
     const repo = gitRepo('a');
-    expect(fire(repo, GOOD, { transcriptPath: path.join(dir, 'missing.jsonl') })).toBe('');
+    expect(fire(repo, GOOD, { transcriptPath: path.join(dir, 'missing.jsonl') })).toContain('UNKNOWN');
     const file = path.join(dir, 'empty.jsonl'); fs.writeFileSync(file, '');
     expect(readSettledTranscript(file, { maxMs: 0 })).toEqual(['']);
     expect(fire(repo, GOOD, { transcriptPath: file })).toContain('no end-to-end check');
@@ -143,7 +143,7 @@ describe('completion claims (Piece A)', () => {
     const repo = gitRepo('a');
     const out = fire(repo, 'The updater is fixed.', { host: 'codex' });
     expect(out).toContain('(codex) transcript is unavailable or not parsed');
-    expect(fire(repo, GOOD, { host: 'codex' })).toBe('');
+    expect(fire(repo, GOOD, { host: 'codex' })).toContain('UNKNOWN');
   });
 
   it('reaches Codex through the real adapter as decision:block with the correction as reason', () => {
@@ -161,7 +161,7 @@ describe('completion claims (Piece A)', () => {
     expect(r.status).toBe(0);
     const out = JSON.parse(r.stdout);
     expect(out.decision).toBe('block');
-    expect(out.reason).toContain('without end-to-end evidence');
+    expect(out.reason).toContain('beyond the available verified scope');
   });
 
   it('BREAK-IT: with the detector removed, the unverified claim is no longer blocked', () => {
@@ -179,17 +179,31 @@ describe('completion claims (Piece A)', () => {
       RUVNET_OPEN_ISSUES_FILE: path.join(home, 'none.json'), RUVNET_CAPABILITY_ROOTS: path.join(home, 'caps'), RUVNET_CONTINUATION_COOLDOWN_MS: '1' };
     const mutant = spawnSync(process.execPath, [path.join(copy, 'continuation-gate.mjs')], { cwd: repo, input, env, encoding: 'utf8' });
     const real = spawnSync(process.execPath, [GATE], { cwd: repo, input, env, encoding: 'utf8' });
-    expect(real.stdout).toContain('without end-to-end evidence');
+    expect(real.stdout).toContain('beyond the available verified scope');
     expect(mutant.stdout).toBe('');
   });
 
+  it('allows an accurate targeted-check statement without claiming the whole task is complete', () => {
+    const repo = gitRepo('a'); const message = 'Targeted unit tests are passing.\nVerified: npx vitest run tests/unit/updater.test.mjs — 5 passed.\nNot verified: the complete consumer path.';
+    const t = transcript(edit(), bash('npx vitest run tests/unit/updater.test.mjs'));
+    expect(fire(repo, message, { transcriptPath: t })).toBe('');
+    const turn = claudeTurnEvents(readSettledTranscript(t, { maxMs: 0 }));
+    expect(auditCompletionClaims(message, { turn }).verdict).toBe('OBSERVED_CHECK');
+    expect(fire(repo, 'Hello. Five targeted tests passed; the task remains unverified.', { host: 'codex' })).toBe('');
+  });
+  it('one observed check cannot excuse a broad completion assertion in the same sentence', () => {
+    const turn = claudeTurnEvents([rec('user', 'go'), ...edit(), ...bash('npx vitest run tests/unit/updater.test.mjs')]);
+    for (const assertion of ['the updater is fixed', 'it now works', 'it will now work']) {
+      expect(auditCompletionClaims(`Targeted unit tests are passing, so ${assertion}.\nVerified: vitest.\nNot verified: Windows.`, { turn }).verdict).toBe('UNKNOWN');
+    }
+  });
   it('detector unit cases', () => {
     expect(extractCompletionClaims('Done. The gate is now live.').length).toBe(2);
     expect(extractCompletionClaims("I'll run the baseline as soon as the set is complete.")).toEqual([]);
     expect(extractCompletionClaims("ADR-272's published calibration table made that the suspect.")).toEqual([]);
     expect(extractCompletionClaims('Free space fell while I was working.')).toEqual([]);
     const turn = claudeTurnEvents([rec('user', 'go'), ...edit(), ...bash('npm run hooks:check', 'PASS')]);
-    expect(auditCompletionClaims('Hooks are wired. hooks:check passed; not verified on Codex.', { turn }).verdict).toBe('PASS');
+    expect(auditCompletionClaims('Hooks are wired. hooks:check passed; not verified on Codex.', { turn }).verdict).toBe('UNKNOWN');
   });
 });
 
@@ -213,13 +227,13 @@ describe('promises (Piece C)', () => {
     fire(repo, PROMISE, { transcriptPath: transcript() });
     expect(fire(repo, 'Here is the summary.', { transcriptPath: transcript(), promiseCapture: 'off' })).toContain('you said you would');
     const claim = 'The updater retry test is now passing.';
-    expect(fire(repo, claim, { transcriptPath: transcript(edit()), promiseCapture: 'off' })).toContain('without end-to-end evidence');
+    expect(fire(repo, claim, { transcriptPath: transcript(edit()), promiseCapture: 'off' })).toContain('beyond the available verified scope');
     expect(ledger().items.find((i) => i.kind === 'assistant-commitment').done).toBe(false);
     fire(repo, `${claim}\nVerified: npx vitest run — 5 passed.\nNot verified: Windows.\nI will fix the parser.`,
       { transcriptPath: transcript(edit(), bash('npx vitest run tests/unit/updater.test.mjs')), promiseCapture: 'off' });
     expect(ledger().items.filter((i) => i.kind === 'assistant-commitment')).toHaveLength(1);
-    expect(ledger().items[0].done).toBe(true);
-    expect(ledger().items[0].completionEvidence.checks[0]).toContain('vitest');
+    expect(ledger().items[0].done).toBe(false);
+    expect(ledger().items[0].completionEvidence).toBeUndefined();
   });
 
   it('only the documented off value suppresses capture', () => {
@@ -269,8 +283,8 @@ describe('promises (Piece C)', () => {
     fire(repo, `${claim}\nVerified: npx vitest run — 5 passed.\nNot verified: Windows.`,
       { transcriptPath: transcript(edit(), bash('npx vitest run tests/unit/updater.test.mjs')) });
     const item = ledger().items.find((i) => i.kind === 'assistant-commitment');
-    expect(item.done).toBe(true);
-    expect(item.completionEvidence.checks[0]).toContain('vitest');
+    expect(item.done).toBe(false);
+    expect(item.completionEvidence).toBeUndefined();
   });
 
   it('a promise captured in one repository never forces in another', () => {

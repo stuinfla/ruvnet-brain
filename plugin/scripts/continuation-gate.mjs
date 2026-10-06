@@ -272,16 +272,12 @@ if (has('--complete-objective')) {
   }
   const led = load();
   if (led.objective) {
-    // DERIVED from the required argument checked above, not asserted (ADR-0024 / status-honesty.mjs):
-    // this line is unreachable with blank/missing evidence — the guard exits 2 first. That proves an
-    // explicit, human/model-invoked CLI action supplied named evidence; it does not verify the
-    // evidence is TRUE, which is exactly why continuation-objective.mjs's own header already
-    // documents this ledger as non-authoritative ("neither prove user provenance nor establish task
-    // completion") — a nudge-suppression preference with the reason attached for audit, not a
-    // verified fact standing in for a real completion check.
-    led.objective.state = evidence.trim() ? 'completed' : led.objective.state;
-    led.objective.completedAt = new Date().toISOString();
-    led.objective.completionEvidence = evidence;
+    // Prose is a request, never verified completion or authority to suppress truth audits.
+    led.objective.completionRequestedAt = new Date().toISOString();
+    led.objective.completionRequest = evidence.trim();
+    save(led);
+    console.error('completion unverified: prose cannot complete this objective; retain unfinished work');
+    process.exit(2);
   }
   save(led);
   console.log(led.objective ? `objective completed: ${evidence}` : 'no objective to complete');
@@ -315,8 +311,8 @@ if (has('--help') || has('-h')) {
     '  --set-commitment-state <blocked|deferred|superseded|disputed> --item "<exact text>"',
     '    --session-id "<capturing session>" --reason "<why>" [--replacement "<reference>"]',
     '                                      retain a noncompleted assistant item; user work unchanged',
-    '  --complete-objective "<evidence>"  close the current objective as state: completed, with the',
-    '                                      completion evidence recorded — leaves other ledger items',
+    '  --complete-objective "<evidence>"  request closure; prose alone never marks completed',
+    '                                      unverified requests retain the unfinished objective;',
     '                                      untouched',
     '  --cancel-objective "<reason>"      close the current objective as state: cancelled, with the',
     '                                      reason recorded — leaves other ledger items untouched',
@@ -372,7 +368,7 @@ const completion = (() => {
     const turn = HOST === 'claude' ? readClaudeTurn(hookInput.transcript_path) : null;
     // Claude always sends a JSONL transcript; one we cannot read is OUR failure, and a Stop hook
     // fails open on its own machinery (ADR-074 failure semantics) — never a correction request.
-    if (HOST === 'claude' && !turn) return { verdict: 'NONE', claims: [], unreadable: true };
+    // Missing native evidence stays UNKNOWN; it cannot silently validate a completion claim.
     return auditCompletionClaims(message, { turn, host: HOST });
   } catch { return { verdict: 'NONE', claims: [] }; }
 })();
@@ -427,8 +423,7 @@ promiseBookkeeping();
  * emitted on a stop that is already a continuation.
  */
 if (hookInput.stop_hook_active) process.exit(EXIT_ALLOW);
-// Terminal objectives remain terminal even if legacy/global ledger rows or observations stay open.
-if (['cancelled', 'completed', 'blocked'].includes(led.objective?.state)) process.exit(EXIT_ALLOW);
+// A terminal preference suppresses only its own nudge, never independent truth audits.
 const objective = authorizedContinuationObjective(led.objective, hookInput, projectIdentity);
 
 // LOOP-SAFETY 1b (GPT-5.6-Sol review) — an empty-but-parseable `{}` is NOT a real Stop payload; a genuine
@@ -665,7 +660,7 @@ if (observations.length) console.error(JSON.stringify({ kind: 'continuation-advi
   authority: false, items: observations.map(({ text, at }) => ({ text, at })) }));
 // ONE correction per turn: a single item however many claims the answer made; the stop_hook_active
 // exit and the cooldown lock below bound it to one request per stop episode.
-const completionWork = completion.verdict === 'FAIL' ? [{
+const completionWork = ['FAIL', 'UNKNOWN'].includes(completion.verdict) ? [{
   text: `You claimed "${completion.claims[0].text.slice(0, 160)}" is done; ${completion.problems.join('; ')}. Run the real consumer path, or restate it as UNVERIFIED.`,
   at: new Date(nowMs).toISOString(), derived: true, kind: 'completion-claim-integrity',
 }] : [];
@@ -733,7 +728,9 @@ const ageLabel = (i) => {
  * This replaces a read-lastForcedAt-then-write that failed OPEN on a write error and let two hooks race.
  */
 const COOLDOWN_MS = Number(process.env.RUVNET_CONTINUATION_COOLDOWN_MS ?? 20000);
-const LOCK = LEDGER + '.cooldown';
+const episode = crypto.createHash('sha256').update(JSON.stringify([projectIdentity.projectId, projectIdentity.worktreeId,
+  hookInput.session_id, led.objective?.id ?? null, hookInput.turn_id ?? String(hookInput.last_assistant_message || '')])).digest('hex');
+const LOCK = LEDGER + '.cooldown.' + episode;
 function claimCooldown(now, windowMs) {
   try {
     const prev = Date.parse(fs.readFileSync(LOCK, 'utf8'));
@@ -771,8 +768,8 @@ const header = capabilityClaims.length
   ? ['Your proposed final answer contains a RuvNet capability claim that is contradicted or not provable.',
      'Do NOT deliver it unchanged — continue now and correct the claim from the sealed live-host inventory.']
   : completionClaims.length
-  ? ['Your proposed final answer claims work is done without end-to-end evidence from this turn.',
-     'Do NOT deliver it unchanged — run the real consumer path now, or restate the claim as UNVERIFIED.']
+  ? ['Your proposed final answer claims completion beyond the available verified scope.',
+     'Correct only that claim: report the observed check scope and what remains UNVERIFIED.']
   : committed.length && observed.length
   ? [`You have unfinished work you committed to, and ${repoLabel} has open work of its own.`,
      'Do NOT end the turn — continue now.']
@@ -836,12 +833,4 @@ const lines = [
     : []),
 ];
 
-process.stdout.write(JSON.stringify({
-  hookSpecificOutput: {
-    hookEventName: 'Stop',            // must name the firing event or the envelope is discarded
-    additionalContext: lines.join('\n'),
-  },
-}));
-
-// Exit 0 regardless. This gate informs at the boundary; it never breaks the turn.
-process.exit(EXIT_ALLOW);
+process.stdout.write(JSON.stringify({ decision: 'block', reason: lines.join('\n') }));

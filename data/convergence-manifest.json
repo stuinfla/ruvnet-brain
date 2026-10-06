@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
   "kind": "ruvnet-brain-convergence-manifest",
-  "version": "4.5.14",
-  "sourceIdentity": "11f055f2bb563dec61c061f59e16ff940035881895b592b6700735436b90d9cc",
+  "version": "4.5.15",
+  "sourceIdentity": "e280875a367736914ae14ec53af196ab9c7d366560c1230c5b326ae75e482f9f",
   "versionSurfaces": {
-    "package.json": "4.5.14",
-    "plugin/.claude-plugin/plugin.json": "4.5.14",
-    "plugin/.codex-plugin/plugin.json": "4.5.14",
-    "data/manifest.json": "4.5.14",
-    "kb/RVF-GENERATIONS.json": "4.5.14",
-    "explainer/index.html": "4.5.14",
-    "primer/ruvnet-primer.md": "4.5.14"
+    "package.json": "4.5.15",
+    "plugin/.claude-plugin/plugin.json": "4.5.15",
+    "plugin/.codex-plugin/plugin.json": "4.5.15",
+    "data/manifest.json": "4.5.15",
+    "kb/RVF-GENERATIONS.json": "4.5.15",
+    "explainer/index.html": "4.5.15",
+    "primer/ruvnet-primer.md": "4.5.15"
   },
   "adrInventory": [
     "0001-verified-bundle-not-single-file.md",
@@ -112,8 +112,8 @@
     "0103-routing-architecture-review-lock.md",
     "README.md"
   ],
-  "trackedFileCount": 1948,
-  "trackedFilesSha256": "6afdbb1f8e47b2bc7084b461d4412afcdc4b7130513dd4333cc602b566732c60",
+  "trackedFileCount": 1949,
+  "trackedFilesSha256": "25e80c2f7848eada82b2ba6c3f7abafec8129e75a138ba022dd68bf4d63b3e35",
   "ownershipChecks": [
     "version:check",
     "doc:currency",
