@@ -1,4 +1,5 @@
 import { test, vi } from 'vitest';
+import { performance } from 'node:perf_hooks';
 import * as controlledClaude from '../../scripts/claude-controlled-terminal.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -132,6 +133,23 @@ test('native resumed evidence requires exactly one new context and retains origi
     assert.equal(readCodexWorkerObservation(id,{home,expectedPriorTurns:1,evidencePath:file}).model,'second');
     assert.throws(()=>readCodexWorkerObservation(id,{home,expectedPriorTurns:2,evidencePath:file}),/unexpected turn/);
   }finally{fs.rmSync(home,{recursive:true,force:true});}
+});
+
+test('native observation consuming the remaining deadline launches no worker', async () => {
+  const { executeCodexWorkflowWorker } = await import('../../scripts/model-routing-execution-adapters.mjs');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'rnb-observation-deadline-')); let now = 0, launches = 0;
+  fs.writeFileSync(path.join(home, 'auth.json'), JSON.stringify({ tokens: {}, auth_mode: 'chatgpt' }));
+  const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
+  try {
+    await assert.rejects(executeCodexWorkflowWorker({ binary: '/owned/native', prompt: 'Inspect the supplied fixture.', cwd: home,
+      sessionId: crypto.randomUUID(), readOnly: true, timeoutMs: 1000, env: { HOME: home, CODEX_HOME: home },
+      decision: { harness: 'codex', provider: 'openai', taskClass: 'medium', model: 'fixture-model', effort: 'medium',
+        subscriptionCovered: true, selectionReviewedAt: new Date().toISOString() },
+      allowance: async () => ({ ordinaryUsageAllowed: true }),
+      observe: () => { now = 1001; return { turnCount: 1, evidence: { path: '/owned/history', byteLength: 1, sha256: '0'.repeat(64) } }; },
+      launch: () => { launches++; throw new Error('must not launch'); } }), /deadline expired before launch/);
+    assert.equal(launches, 0);
+  } finally { clock.mockRestore(); fs.rmSync(home, { recursive: true, force: true }); }
 });
 
 test('live child errors, failed kills and overflow cannot settle as clean success', async () => {
