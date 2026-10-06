@@ -3,14 +3,21 @@ id: ADR-103
 title: Routing architecture qualification requires a current finite source review
 status: Accepted
 date: 2026-10-05
-updated: 2026-10-05
-version: 0.1.9
+updated: 2026-10-06
+version: 0.1.10
 reviewed_digest: 6e41d9bb1970
 impl: built
 authors: [Stuart Kerr, Codex]
 tags: [routing, governance, review, release, traceability]
 relates: [ADR-024, ADR-069, ADR-072, ADR-100, ADR-101]
 governs:
+  - console/scope.html
+  - console/scope.css
+  - console/scope.js
+  - tests/unit/console-scope-client.test.mjs
+  - plugin/scripts/update-apply.mjs
+  - scripts/update-apply.mjs
+  - tests/unit/update-apply.test.mjs
   - package-lock.json
   - scripts/model-managed-prompt.mjs
   - scripts/model-managed-workflow-service.mjs
@@ -159,6 +166,20 @@ This is the smallest immediate lock over existing semantics. It serves P1/P2 by 
 proof from workflow enforcement, P6 by deriving current review from bytes, P7 by stating partial wiring,
 and P10 by reusing doc-currency. It trades P3's usual nudge for the owner's explicit opt-in to this
 finite release refusal. No paid provider call, model generation or system configuration is added.
+
+### Existing Console and stable-spine boundary additions
+
+The existing Console coverage display preserves authoritative snapshot totals, nonzero attention states,
+sort/search and narrow-screen access. Its presentation regression is mapped to console/scope.html,
+console/scope.css, console/scope.js and console-scope-client; rendered fixture evidence is not a claim
+about a fresh live user corpus. ADR-084 remains Proposed; this repair does not adopt a new control-surface architecture.
+
+ADR-023 (Accepted, 2026-07-18; updated 2026-08-01) governs stable-spine updates. The direct plugin
+update-apply engine and root wrapper validate supported arguments and return help before mkdir,
+lock acquisition, recovery, receipts or finally-GC. Unknown flags/missing operands fail before effects;
+no-argument, --auto and existing valid modes retain behavior. update-apply tests exercise both real CLI
+entries only against disposable absent/present homes and bind all spine bytes and metadata.
+This closes only the argument-safety portion of issue 377, not legacy USER-store adoption or recovery.
 
 ## Currency log
 

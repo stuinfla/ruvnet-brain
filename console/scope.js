@@ -1,4 +1,4 @@
-/* scope.js — "what's in the brain". Reads /api/scope once, renders four verdict buckets and two
+/* scope.js — "what's in the brain". Reads /api/scope once, renders snapshot totals, attention buckets and two
    sortable, searchable tables. Every number on this page comes from that payload; nothing is typed
    here. With JS off the page shows the as-of rule and an honest "needs the console server" line. */
 (function () {
@@ -62,7 +62,18 @@
     return String(row.name || '').toLowerCase().indexOf(needle) !== -1
       || String(row.desc || '').toLowerCase().indexOf(needle) !== -1;
   }
-  window.RBScope = { match: match, sortFor: sortFor };
+  function summarizeCounts(d) {
+    var counts = d.counts || {}, repos = counts.repos || {}, gists = counts.gists || {};
+    var keys = ['current', 'behind', 'unverified', 'notInBrain'];
+    var count = function (value) { return Number.isInteger(value) && value >= 0 ? value : null; };
+    var sum = function (values) { return values.some(function (n) { return n == null; }) ? null : values.reduce(function (a, b) { return a + b; }, 0); };
+    var buckets = {};
+    keys.forEach(function (key) { buckets[key] = sum([count(repos[key]), count(gists[key])]); });
+    return { buckets: buckets, repos: sum(keys.map(function (key) { return count(repos[key]); })),
+      gists: sum(keys.map(function (key) { return count(gists[key]); })), total: sum(keys.map(function (key) { return buckets[key]; })),
+      attention: sum(['behind', 'unverified', 'notInBrain'].map(function (key) { return buckets[key]; })) };
+  }
+  window.RBScope = { match: match, sortFor: sortFor, summarizeCounts: summarizeCounts };
 
   var VIEW_SORT = { newest: ['ruvChangedAt', 'desc'], az: ['name', 'asc'], behind: ['bucket', 'asc'] };
   var state = { data: null, q: '', view: 'newest', sort: { repos: ['ruvChangedAt', 'desc'], gists: ['ruvChangedAt', 'desc'] } };
@@ -119,13 +130,25 @@
   function renderBuckets(d) {
     var c = d.counts || {};
     var r = c.repos || {}, g = c.gists || {};
+    var summary = summarizeCounts(d);
+    var number = function (n) { return Number.isInteger(n) && n >= 0 ? n.toLocaleString('en-US') : '—'; };
+    var verdict = summary.attention == null ? 'Status counts unavailable' : summary.total === 0 ? 'No eligible sources recorded'
+      : summary.attention === 0 ? 'No gaps recorded in this snapshot' : number(summary.attention) + ' need attention in this snapshot';
+    var markup = '<div class="coverage-total"><span class="summary-label">Eligible sources listed</span><strong>' + number(summary.total) + '</strong>' +
+      '<span>' + number(summary.repos) + ' repositories · ' + number(summary.gists) + ' gists</span></div>' +
+      '<div class="coverage-health' + (summary.attention > 0 ? ' needs-attention' : summary.attention === 0 && summary.total > 0 ? ' is-clear' : '') + '">' +
+      '<span class="summary-label">Snapshot status</span><strong>' + verdict + '</strong><span>' + number(summary.buckets.current) + ' current at the recorded as-of date</span></div>';
+    if ($('coverage-summary').innerHTML !== markup) $('coverage-summary').innerHTML = markup;
+    var clear = [['behind', 'behind'], ['unverified', 'unverified'], ['notInBrain', 'missing']]
+      .filter(function (item) { return summary.buckets[item[0]] === 0; }).map(function (item) { return '0 ' + item[1]; });
+    $('clear-checks').textContent = clear.length ? 'Clear in this snapshot: ' + clear.join(' · ') : '';
     var tile = function (cls, key, label, desc) {
-      var n = (r[key] || 0) + (g[key] || 0);
-      return '<div class="bucket ' + cls + '"><div class="n">' + n + '<small>' + (r[key] || 0) + ' repos · ' + (g[key] || 0) + ' gists</small></div>' +
+      var n = summary.buckets[key];
+      if (n === 0) return '';
+      return '<div class="bucket ' + cls + '"><div class="n">' + number(n) + '<small>' + number(r[key]) + ' repos · ' + number(g[key]) + ' gists</small></div>' +
         '<div class="l">' + label + '</div><div class="d">' + desc + '</div></div>';
     };
     $('buckets').innerHTML =
-      tile('b-current', 'current', 'in the brain · current', 'The brain holds exactly the commit (or gist revision) that is live upstream.') +
       tile('b-behind', 'behind', 'in the brain · behind', 'rUv changed it after the brain last read it. The gap is shown per row.') +
       tile('b-unverified', 'unverified', 'in the brain · unverified', 'Installed here, but no source commit was recorded, so currency cannot be proven either way.') +
       tile('b-notin', 'notInBrain', 'not in the brain', 'Eligible upstream, no store on this machine.');
@@ -148,7 +171,7 @@
       ' · ' + (d.installedStoreCount != null ? d.installedStoreCount + ' stores installed' : '');
     $('asof-note').textContent = d.stale
       ? 'This is the coverage record that shipped with the installed brain, not a live probe. Repos rUv changed since this date are not reflected until the brain updates.'
-      : 'This is the coverage record that shipped with the installed brain.';
+      : 'This is the coverage record that shipped with the installed brain, not a live upstream check.';
   }
 
   function render() {

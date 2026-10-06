@@ -183,3 +183,43 @@ describe('update-apply.mjs — the single writer of the spine', () => {
     fs.rmSync(p1, { recursive: true, force: true }); fs.rmSync(p2, { recursive: true, force: true });
   });
 });
+
+
+describe('CLI argument safety before every spine side effect', () => {
+  const DIRECT_ENGINE = path.resolve(path.dirname(ENGINE), '../plugin/scripts/update-apply.mjs');
+  const cases = [
+    [['--help'], 0], [['-h'], 0], [['--unknown-update-option'], 2],
+    [['--from-dir'], 2], [['--expected-version'], 2],
+    [['--from-dir', '--doctor'], 2], [['--expected-version', '-h'], 2],
+    [['--help', '--unknown-update-option'], 2], [['--dev', '--help'], 0],
+  ];
+  function snapshot(root) {
+    const rows = [];
+    const visit = (file, relative) => {
+      const stat = fs.lstatSync(file, {bigint:true});
+      rows.push([relative, stat.isDirectory() ? 'directory' : 'file', stat.mode.toString(), stat.mtimeNs.toString(),
+        stat.isFile() ? fs.readFileSync(file).toString('hex') : null]);
+      if (stat.isDirectory()) for (const name of fs.readdirSync(file).sort()) visit(path.join(file, name), path.join(relative, name));
+    };
+    visit(root, '.'); return rows;
+  }
+  it.each(cases)('%j returns %s without creating an absent home or touching an existing spine', (args, status) => {
+    for (const engine of [ENGINE, DIRECT_ENGINE]) {
+      const absent = path.join(HOME_DIR, 'absent-brain');
+      const result = spawnSync(process.execPath, [engine, ...args], {encoding:'utf8',timeout:5000,
+        env:{...process.env,RUVNET_BRAIN_HOME:absent,CLAUDE_PLUGIN_ROOT:''}});
+      expect(result.status).toBe(status); expect(fs.existsSync(absent)).toBe(false);
+      if (status === 0) expect(result.stdout).toContain('Usage: update-apply.mjs');
+      const root = fs.mkdtempSync(path.join(HOME_DIR, 'protected-spine-'));
+      for (const dir of ['versions/1.0.0/scripts','versions/2.0.0/scripts','leases']) fs.mkdirSync(path.join(root, dir), {recursive:true});
+      for (const file of ['active.json','dev.json','update-txn.json','update-receipts.jsonl','leases/owned.json','versions/1.0.0/scripts/owned.mjs','versions/2.0.0/scripts/owned.mjs']) {
+        fs.writeFileSync(path.join(root,file), JSON.stringify({fixture:file,unchanged:true}));
+      }
+      const before = snapshot(root);
+      const existing = spawnSync(process.execPath, [engine, ...args], {encoding:'utf8',timeout:5000,
+        env:{...process.env,RUVNET_BRAIN_HOME:root,CLAUDE_PLUGIN_ROOT:''}});
+      expect(existing.status).toBe(status); expect(snapshot(root)).toEqual(before);
+      expect(fs.existsSync(path.join(root,'.update.lock'))).toBe(false);
+    }
+  });
+});
