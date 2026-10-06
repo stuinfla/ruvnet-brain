@@ -1,7 +1,7 @@
 {
   "name": "ruvnet-brain",
-  "version": "4.5.11",
-  "description": "One-command installer for RuvNet Brain \u2014 a portable, source-grounded brain over rUv's RuvNet building blocks, delivered as a Claude Code plugin so Claude uses the stack instead of fighting it.",
+  "version": "4.5.14",
+  "description": "One-command installer for RuvNet Brain — a portable, source-grounded brain over rUv's RuvNet building blocks, delivered as a Claude Code plugin so Claude uses the stack instead of fighting it.",
   "type": "module",
   "bin": {
     "ruvnet-brain": "bin/install.mjs"
@@ -149,8 +149,10 @@
     "vitest": "^4.1.10"
   },
   "dependencies": {
+    "@claude-flow/aidefence": "^3.0.3",
     "@metaharness/flywheel": "^0.1.7",
     "@metaharness/router": "^0.4.0",
+    "@pacphi/agentic-kit": "next",
     "ws": "^8.22.0"
   }
 }

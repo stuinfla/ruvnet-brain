@@ -15,17 +15,42 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  candidate-preflight:
+    name: candidate-preflight
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install exact candidate dependencies
+        run: npm ci --no-audit --no-fund --ignore-scripts
+      - name: Validate changed release and grounding paths before the matrix
+        run: |
+          set -euo pipefail
+          node --check scripts/release.mjs
+          npm run version:check
+          npm run release:authority
+          node scripts/architecture-review-lock.mjs
+
   ci:
+    needs: candidate-preflight
     uses: ./.github/workflows/ci.yml
     with:
       candidate_sha: ${{ github.sha }}
 
   integration:
+    needs: candidate-preflight
     uses: ./.github/workflows/integration-linux.yml
     with:
       candidate_sha: ${{ github.sha }}
 
   ux:
+    needs: candidate-preflight
     uses: ./.github/workflows/ux-qe.yml
     with:
       candidate_sha: ${{ github.sha }}
@@ -116,7 +141,7 @@ jobs:
         if: always()
 
   aggregate:
-    needs: [ci, integration, ux, stranger, early-public-linux, early-public-macos, early-public-windows, macos-candidate-search]
+    needs: [candidate-preflight, ci, integration, ux, stranger, early-public-linux, early-public-macos, early-public-windows, macos-candidate-search]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -133,8 +158,20 @@ jobs:
           path: release-evidence
       - uses: actions/download-artifact@v4
         with:
-          name: candidate-ci-evidence-${{ github.sha }}
-          path: lane-evidence/ci
+          pattern: release-acceptance-*-${{ github.sha }}
+          path: acceptance-reports
+          merge-multiple: true
+      - name: Bind every required CI job to the candidate payload
+        env:
+          CANDIDATE_SHA: ${{ github.sha }}
+          CI_RESULT: ${{ needs.ci.result }}
+          PREFLIGHT_RESULT: ${{ needs.candidate-preflight.result }}
+          CI_RESULTS_JSON: ${{ toJson(needs.ci.outputs) }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p lane-evidence/ci
+          node scripts/candidate-ci-receipt.mjs
       - uses: actions/download-artifact@v4
         with:
           name: integration-evidence-${{ github.sha }}
@@ -165,6 +202,13 @@ jobs:
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           import path from 'node:path';
+          const { payloadIdFor } = await import('./scripts/release-payload.mjs');
+          const manifest = JSON.parse(fs.readFileSync('release-evidence/payload-manifest.json', 'utf8'));
+          if (manifest.candidateSha !== process.env.CANDIDATE_SHA || manifest.producer?.runId !== process.env.GITHUB_RUN_ID) {
+            throw new Error('early-public payload differs from candidate or producer run');
+          }
+          const npm = manifest.members.filter(member => member.role === 'npm');
+          if (npm.length !== 1) throw new Error('expected one sealed npm payload member');
           const root = 'lane-evidence/early-public';
           const files = [];
           const walk = dir => {
@@ -177,17 +221,24 @@ jobs:
           };
           walk(root);
           if (files.length !== 3) throw new Error(`expected three early-public receipts, found ${files.length}`);
+          const platforms = new Set();
           for (const file of files) {
             const receipt = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const platform = receipt.host?.split('-')[0];
             if (receipt.schema !== 'ruvnet-brain.agentic-qe.receipt'
               || receipt.contract !== 'agentic-qe-4.3'
               || receipt.lane !== 'early-public'
               || receipt.status !== 'PASS'
               || receipt.sha !== process.env.CANDIDATE_SHA
+              || receipt.runId !== process.env.GITHUB_RUN_ID
+              || !['linux', 'darwin', 'win32'].includes(platform) || platforms.has(platform)
+              || receipt.payloadId !== payloadIdFor(manifest)
+              || receipt.artifactSha256 !== npm[0].sha256
               || receipt.steps.some(step => step.status !== 'PASS'
                 || (step.tests && (step.tests.total === 0 || step.tests.skipped > 0)))) {
               throw new Error(`invalid early-public receipt: ${file}`);
             }
+            platforms.add(platform);
           }
           console.log(JSON.stringify({ status: 'PASS', receipts: files.length, sha: process.env.CANDIDATE_SHA }));
           NODE
@@ -242,6 +293,7 @@ jobs:
             --sha "$GITHUB_SHA" \
             --version "$(node -p "require('./package.json').version")" \
             --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
             --manifest release-evidence/payload-manifest.json \
             --payload-proof "$RUNNER_TEMP/payload.json" \
             --hosts release-evidence/candidate-host-evidence.json \

@@ -10,32 +10,21 @@ on:
         required: true
         type: string
 
+    outputs:
+      release-acceptance-linux:
+        value: ${{ jobs.release-acceptance-linux.outputs.conclusion }}
+      release-acceptance-windows:
+        value: ${{ jobs.release-acceptance-windows.outputs.conclusion }}
+      release-acceptance-macos:
+        value: ${{ jobs.release-acceptance-macos.outputs.conclusion }}
+      release-qe:
+        value: ${{ jobs.release-qe.outputs.conclusion }}
+
 concurrency:
   group: ruvnet-brain-ci-${{ github.event_name == 'workflow_call' && github.run_id || github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  candidate-preflight:
-    name: candidate-preflight
-    timeout-minutes: 10
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.candidate_sha || github.sha }}
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Install exact candidate dependencies
-        run: npm ci --no-audit --no-fund --ignore-scripts
-      - name: Validate changed release and grounding paths before the matrix
-        run: |
-          set -euo pipefail
-          node --check scripts/release.mjs
-          npm run version:check
-          npm run release:authority
-
   # ADR-058 D1: the source-grounding guarantee must execute on a runner that has the exact
   # candidate's Brain and every embedder its RVF sidecars require.  A REQUIRE_BRAIN token in a
   # comment is not evidence; this job downloads the resolved corpus seed, warms the same cache
@@ -45,7 +34,6 @@ jobs:
   # proof runs against the corpus the release actually ships, never the five-week-stale bootstrap.
   warm-brain:
     name: warm-brain
-    needs: candidate-preflight
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -111,7 +99,8 @@ jobs:
             tests/qe/gpt56/live-brain-search.test.mjs --reporter=dot
 
   release-acceptance-linux:
-    needs: candidate-preflight
+    outputs:
+      conclusion: ${{ steps.capture-ci-result.outputs.conclusion }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -132,9 +121,15 @@ jobs:
           name: release-acceptance-linux-${{ inputs.candidate_sha || github.sha }}
           path: release-acceptance-linux.json
           if-no-files-found: error
+      - name: Export the final individual CI outcome
+        id: capture-ci-result
+        if: always()
+        shell: bash
+        run: echo "conclusion=${{ job.status }}" >> "$GITHUB_OUTPUT"
 
   release-acceptance-windows:
-    needs: candidate-preflight
+    outputs:
+      conclusion: ${{ steps.capture-ci-result.outputs.conclusion }}
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -164,9 +159,15 @@ jobs:
           name: release-acceptance-windows-${{ inputs.candidate_sha || github.sha }}
           path: release-acceptance-windows.json
           if-no-files-found: error
+      - name: Export the final individual CI outcome
+        id: capture-ci-result
+        if: always()
+        shell: bash
+        run: echo "conclusion=${{ job.status }}" >> "$GITHUB_OUTPUT"
 
   release-acceptance-macos:
-    needs: candidate-preflight
+    outputs:
+      conclusion: ${{ steps.capture-ci-result.outputs.conclusion }}
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
@@ -187,9 +188,15 @@ jobs:
           name: release-acceptance-macos-${{ inputs.candidate_sha || github.sha }}
           path: release-acceptance-macos.json
           if-no-files-found: error
+      - name: Export the final individual CI outcome
+        id: capture-ci-result
+        if: always()
+        shell: bash
+        run: echo "conclusion=${{ job.status }}" >> "$GITHUB_OUTPUT"
 
   release-qe:
-    needs: candidate-preflight
+    outputs:
+      conclusion: ${{ steps.capture-ci-result.outputs.conclusion }}
     timeout-minutes: 40
     name: release-qe
     runs-on: ubuntu-latest
@@ -413,88 +420,8 @@ jobs:
           path: ${{ runner.temp }}/release-evidence/
           if-no-files-found: error
           retention-days: 30
-
-  candidate-ci-evidence:
-    name: candidate-ci-evidence
-    needs: [candidate-preflight, release-acceptance-linux, release-acceptance-windows, release-acceptance-macos, release-qe]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      actions: read
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.candidate_sha || github.sha }}
-          persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Restore the exact candidate payload
-        uses: actions/download-artifact@v4
-        with:
-          name: release-evidence-${{ inputs.candidate_sha || github.sha }}
-          path: release-evidence
-      - name: Restore reviewed platform acceptance reports
-        uses: actions/download-artifact@v4
-        with:
-          pattern: release-acceptance-*-${{ inputs.candidate_sha || github.sha }}
-          path: acceptance-reports
-          merge-multiple: true
-      - name: Bind every required CI job to the candidate payload
-        env:
-          CANDIDATE_SHA: ${{ inputs.candidate_sha || github.sha }}
-          NEEDS_JSON: ${{ toJson(needs) }}
+      - name: Export the final individual CI outcome
+        id: capture-ci-result
+        if: always()
         shell: bash
-        run: |
-          set -euo pipefail
-          node scripts/release-payload.mjs verify-members \
-            --manifest release-evidence/payload-manifest.json > "$RUNNER_TEMP/payload.json"
-          node --input-type=module <<'NODE'
-          import crypto from 'node:crypto';
-          import fs from 'node:fs';
-          const needs = JSON.parse(process.env.NEEDS_JSON);
-          const required = ['candidate-preflight', 'release-acceptance-linux', 'release-acceptance-windows', 'release-acceptance-macos', 'release-qe'];
-          if (required.some((name) => needs[name]?.result !== 'success')) {
-            throw new Error('candidate CI contains a non-success dependency');
-          }
-          const payload = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/payload.json', 'utf8'));
-          const manifestBytes = fs.readFileSync('release-evidence/payload-manifest.json');
-          const manifest = JSON.parse(manifestBytes);
-          const candidate = JSON.parse(fs.readFileSync('release-evidence/candidate-receipt.json', 'utf8'));
-          if (manifest.candidateSha !== process.env.CANDIDATE_SHA || candidate.sha !== process.env.CANDIDATE_SHA) {
-            throw new Error('candidate CI receipt identity differs from checked-out source');
-          }
-          const { validateQualificationReceipt } = await import('./scripts/release-qualification.mjs');
-          const acceptanceReceipts = ['linux', 'macos', 'windows'].map(platform => {
-            const bytes = fs.readFileSync(`acceptance-reports/release-acceptance-${platform}.json`);
-            const report = JSON.parse(bytes);
-            const tests = validateQualificationReceipt(report, { suite: 'source', platform, sourceSha: process.env.CANDIDATE_SHA });
-            return { platform, sourceSha: report.source.sha, passed: tests.passed,
-              receiptSha256: crypto.createHash('sha256').update(bytes).digest('hex') };
-          });
-          const receipt = {
-            acceptanceReceipts,
-            schemaVersion: 1,
-            kind: 'ruvnet-brain-candidate-ci-evidence',
-            sourceSha: process.env.CANDIDATE_SHA,
-            version: manifest.version,
-            payloadId: payload.payloadId,
-            payloadManifestSha256: crypto.createHash('sha256').update(manifestBytes).digest('hex'),
-            workflow: 'ci',
-            runId: Number(process.env.GITHUB_RUN_ID),
-            runAttempt: Number(process.env.GITHUB_RUN_ATTEMPT),
-            jobs: required.map((name) => ({ name, conclusion: needs[name].result })),
-            verdict: 'PASS',
-            skipped: 0,
-            unknown: 0,
-          };
-          fs.writeFileSync('candidate-ci-evidence.json', `${JSON.stringify(receipt, null, 2)}\n`, { flag: 'wx' });
-          NODE
-      - name: Persist the typed candidate CI receipt
-        uses: actions/upload-artifact@v4
-        with:
-          name: candidate-ci-evidence-${{ inputs.candidate_sha || github.sha }}
-          path: candidate-ci-evidence.json
-          if-no-files-found: error
-          retention-days: 90
+        run: echo "conclusion=${{ job.status }}" >> "$GITHUB_OUTPUT"
