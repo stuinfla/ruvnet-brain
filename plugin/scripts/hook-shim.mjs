@@ -185,6 +185,16 @@ const TABLE = {
 };
 
 const hookId = process.argv[2];
+// Native Claude supplies this exact registered plugin root; do not guess a host from absence.
+if (['session-snapshot', 'continuation-gate'].includes(hookId)
+    && process.env.RUVNET_HOOK_HOST === undefined && process.env.CLAUDE_PLUGIN_ROOT) {
+  try {
+    const ownPluginRoot = fs.realpathSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'));
+    if (fs.realpathSync(process.env.CLAUDE_PLUGIN_ROOT) === ownPluginRoot) process.env.RUVNET_HOOK_HOST = 'claude';
+  } catch { /* Missing or mismatched native registration remains unknown. */ }
+}
+
+
 const entry = TABLE[hookId];
 if (!entry) {
   process.stderr.write(`[hook-shim] unknown hook id: ${JSON.stringify(hookId)} — known: ${Object.keys(TABLE).join(', ')}\n`);

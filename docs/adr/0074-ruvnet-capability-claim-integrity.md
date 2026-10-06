@@ -3,10 +3,10 @@ id: ADR-074
 title: RuvNet capability claims require live evidence
 status: Accepted
 date: 2026-08-22
-updated: 2026-09-30
+updated: 2026-10-06
 updated_source: derived-from-git
 reviewed_digest: 0e03e3459a3b
-version: 1.1.1
+version: 1.1.2
 authors: [Stuart Kerr, Codex]
 tags: [architecture, truthfulness, capabilities, hosts, evidence, receipts]
 supersedes: []
@@ -162,3 +162,12 @@ result. Cross-platform, public-byte, false-positive, and aggregate obligations r
 | 2026-08-22 | Added locally packed Claude/Codex Stop-path acceptance for the installation-claim slice. | Direct shared-body tests did not prove either host registration preserved the final answer and enforcement output. |
 | 2026-08-22 | Established S-12 and implemented the first installation-claim receipt/audit slice. | A host asserted that an installed Ruflo ADR skill was absent because it searched one guessed path instead of the active inventory. |
 | 2026-08-26 | Revalidated the managed-CLI evidence path after the Windows `.cmd` shim and native worktree-path portability fixes. | `fc517c2` is the exact candidate change under review; the document now records the source movement before release gating. |
+
+
+## Completion claim checking — 4.5.15 surgical correction
+
+The existing Stop handler checks current completion claims before legacy objective terminal-state shortcuts. Arbitrary nonempty prose cannot complete an objective. FAIL and UNKNOWN evidence cannot be upgraded by mixed success language; a scoped passing statement cannot certify a broader change. Explicit native interruption or cancellation remains authoritative.
+
+Hook retirement requires the expected package definition, exact literal command, verified wrapper bytes, owned canonical namespace and safe current-user filesystem ancestry. Foreign, customized or ambiguous hooks are preserved and reported as conflicts. Only the verified Brain completion handler may be activated; other hook overrides and privacy preferences remain unchanged.
+
+This correction does not add an intake, task-contract or workflow engine. It strengthens false-completion refusal and existing scoped evidence checks; it does not prove arbitrary whole-goal acceptance. Local focused checks and a bounded Claude candidate Stop test have passed. Codex candidate execution and protected publication/installed activation are still separate required evidence.
