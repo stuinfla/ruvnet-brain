@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
   "kind": "ruvnet-brain-convergence-manifest",
-  "version": "4.5.11",
-  "sourceIdentity": "34629447cdba42b48da2f4c4b02df3ee47767519baa67013358c00a18ad9f644",
+  "version": "4.5.12",
+  "sourceIdentity": "d85d8b78afd70dbd9c8c89660568b355262dfac0290c887c5671c698f23f6652",
   "versionSurfaces": {
-    "package.json": "4.5.11",
-    "plugin/.claude-plugin/plugin.json": "4.5.11",
-    "plugin/.codex-plugin/plugin.json": "4.5.11",
-    "data/manifest.json": "4.5.11",
-    "kb/RVF-GENERATIONS.json": "4.5.11",
-    "explainer/index.html": "4.5.11",
-    "primer/ruvnet-primer.md": "4.5.11"
+    "package.json": "4.5.12",
+    "plugin/.claude-plugin/plugin.json": "4.5.12",
+    "plugin/.codex-plugin/plugin.json": "4.5.12",
+    "data/manifest.json": "4.5.12",
+    "kb/RVF-GENERATIONS.json": "4.5.12",
+    "explainer/index.html": "4.5.12",
+    "primer/ruvnet-primer.md": "4.5.12"
   },
   "adrInventory": [
     "0001-verified-bundle-not-single-file.md",
@@ -109,10 +109,11 @@
     "0100-guaranteed-agentdb-continuity.md",
     "0101-agentdb-first.md",
     "0102-completion-and-closure-ledger.md",
+    "0103-routing-architecture-review-lock.md",
     "README.md"
   ],
-  "trackedFileCount": 1924,
-  "trackedFilesSha256": "34c01dc0d947ff0a3442bbc33af43dc527460ce4c4d3967c7854036abcf8e53b",
+  "trackedFileCount": 1948,
+  "trackedFilesSha256": "a25163f9831b53d3207274cab1a21ea855e370226223c60d119b36fa883e72af",
   "ownershipChecks": [
     "version:check",
     "doc:currency",

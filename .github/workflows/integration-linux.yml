@@ -74,9 +74,45 @@ jobs:
           echo "gh:     $(gh --version 2>/dev/null | head -1 || echo MISSING)"
           node --input-type=module -e 'import fs from "node:fs"; console.log("rvf stores present:", fs.readdirSync("kb").filter(name => name.endsWith(".rvf") && fs.statSync("kb/" + name).isFile()).length)'
 
+      - name: Prepare native sandbox namespaces on the disposable hosted runner
+        if: env.QUALIFICATION_CONSUMER != 'true' && runner.environment == 'github-hosted'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          key=kernel.apparmor_restrict_unprivileged_userns
+          value=$(sysctl -n "$key")
+          test "$value" = 0 || test "$value" = 1
+          printf '%s\n' "$value" > "$RUNNER_TEMP/integration-userns-original"
+          sudo sysctl -w "$key=0"
+          test "$(sysctl -n "$key")" = 0
       - name: Reviewed release integration acceptance
         if: env.QUALIFICATION_CONSUMER != 'true'
         run: node scripts/release-qualification.mjs --suite integration --platform linux --report /tmp/integration.json
+      - name: Preserve integration acceptance diagnostics
+        if: always() && env.QUALIFICATION_CONSUMER != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-acceptance-${{ inputs.candidate_sha || github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/integration.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Restore and verify the hosted runner namespace setting
+        if: always() && env.QUALIFICATION_CONSUMER != 'true' && runner.environment == 'github-hosted'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_OS" = Linux
+          original="$RUNNER_TEMP/integration-userns-original"
+          if test -f "$original"; then
+            value=$(cat "$original")
+            test "$value" = 0 || test "$value" = 1
+            sudo sysctl -w "kernel.apparmor_restrict_unprivileged_userns=$value"
+            test "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns)" = "$value"
+            printf 'Verified restored namespace setting: %s\n' "$value"
+          fi
       - name: Run experience-level integration scenarios explicitly
         if: env.QUALIFICATION_CONSUMER != 'true'
         run: |
