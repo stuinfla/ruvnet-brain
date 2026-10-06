@@ -86,7 +86,8 @@ catch (e) { BRAIN_OFF = !(e && (e.code === 'ENOENT' || e.code === 'ENOTDIR')); }
 const TABLE = {
   'session-start':    { file: 'session-start-core.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'partial' },
   'ground-ruvnet':    { file: 'ground-ruvnet.sh',    interpreter: 'bash', mode: 'advisory', offBehavior: 'silence', stdinBytes: 32768 },
-  'capacity-aware-parallel-work': { file: 'capacity-aware-parallel-work.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'run', stdinBytes: 32768 },
+  // Capacity advice is a Brain prompt hint; OFF must not execute its resource probes or steer work.
+  'capacity-aware-parallel-work': { file: 'capacity-aware-parallel-work.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'silence', stdinBytes: 32768 },
   // ADR-063 / issue #103: `blocking` so an opt-in refusal can actually reach the host. The hook
   // still exits 0 for every user at the shipped default (managedMemoryBoundary=advise), so this
   // changes the CEILING of what it may do, not what it does.
@@ -118,7 +119,7 @@ const TABLE = {
   // own header already says: "remains reachable through hook-shim's dispatch table by explicit
   // invocation". Restored. wired-check.mjs's H6 fix does not depend on these keys existing either
   // way — it stopped trusting hook-shim.mjs as a blind generic spawner, not their presence here.
-  'learn-capture':    { file: 'learn-capture.sh',    interpreter: 'bash', mode: 'advisory', offBehavior: 'silence' },
+  'learn-capture':    { file: 'learn-capture.mjs',   interpreter: 'node', mode: 'advisory', offBehavior: 'silence', stdinBytes: 65536 },
   'learn-flush':      { file: 'learn-flush.mjs',     interpreter: 'node', mode: 'advisory', offBehavior: 'silence' },
   // 1 MiB, not 64 KiB: the Stop payload now carries `last_assistant_message`, and a long closing
   // message truncated mid-JSON would parse as `{}` and silently drop the whole capture.

@@ -44,3 +44,36 @@ export function ruvnetGate1Matches(text) {
 export const RUVNET_GATE1_TERMS = RUVNET_GATE1_PATTERN
   .split('|')
   .map((alt) => alt.replace(/\\b/g, '').replace(/s\?$/, '').toLowerCase());
+
+
+/** Prompt-trigger scope only; never used for retrieval or write safety. */
+const SCOPE_ALIASES = { rvf: 'ruvector', 'ruvector-postgres': 'ruvector', 'claude-flow': 'ruflo', swarms: 'swarm' };
+export function normalizeGroundingScope(raw) {
+  if (raw === 'all') return { ok: true, value: 'all' };
+  if (!Array.isArray(raw) || !raw.length || raw.length > RUVNET_GATE1_TERMS.length) return { ok: false, value: 'all' };
+  const terms = raw.map((x) => typeof x === 'string' ? x.toLowerCase() : '');
+  if (terms.some((x) => !RUVNET_GATE1_TERMS.includes(x) && x !== 'ruvector-postgres')) return { ok: false, value: 'all' };
+  return { ok: true, value: [...new Set(terms.map((x) => SCOPE_ALIASES[x] || x))] };
+}
+export function groundingScopeMatches(text, scope = 'all') {
+  const value = normalizeGroundingScope(scope).value;
+  if (value === 'all') return ruvnetGate1Matches(text);
+  const terms = value.flatMap((x) => x === 'ruvector' ? ['ruvector', 'rvf'] : x === 'ruflo' ? ['ruflo', 'claude-flow'] : [x]);
+  return terms.some((x) => new RegExp(`\\b${x === 'swarm' ? 'swarms?' : x}\\b`, 'i').test(String(text ?? '')));
+}
+export function groundingSubjectAllowed(subject, scope = 'all') {
+  return !ruvnetGate1Matches(subject) || groundingScopeMatches(subject, scope);
+}
+export function mergeGroundingScopes(a = 'all', b = 'all') {
+  const x = normalizeGroundingScope(a).value, y = normalizeGroundingScope(b).value;
+  return x === 'all' || y === 'all' ? 'all' : [...new Set([...x, ...y])];
+}
+// The shell body's Gate1 invokes this existing packaged module only after its full regex matches.
+if (process.argv[1]?.replaceAll('\\', '/').endsWith('/ruvnet-gate1-pattern.mjs') && process.argv[2] === '--scope-matches') setImmediate(async () => {
+  try {
+    const { loadSettings } = await import('./user-settings.mjs');
+    const { readStdinBounded } = await import('./hook-input.mjs');
+    const text = (await readStdinBounded({ maxBytes: 32768 })).toString('utf8');
+    process.stdout.write(groundingScopeMatches(text, loadSettings().values.groundingScope) ? '1' : '0');
+  } catch { process.stdout.write('1'); } // uncertain config preserves default enforcement
+});

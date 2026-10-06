@@ -124,7 +124,12 @@ export async function runWeeklyQualification({ routerDir = path.join(os.homedir(
     if (!same(candidates.map((r) => [r.host, r.role]).sort(), original.map((r) => [r.host, r.role]).sort())) throw new Error('Role/control expansion unsupported');
     const changed = candidates.filter((row) => !same(row, original.find((old) => old.host === row.host && old.role === row.role)));
     const pending = changed.filter((r) => !state.outcomes[`${r.host}/${r.role}`]?.terminal);
-    if (!pending.length) return result(changed.length ? 'unchanged' : 'unchanged', 'No pending changed allocation', { pendingRoles: [] });
+    if (!pending.length) {
+      const unchanged = result('unchanged', 'No pending changed allocation', { pendingRoles: [], checkedAt: new Date().toISOString(),
+        semanticReceiptSha256: inputs.receiptSha256, priorPolicySha256: priorSha, policyApplied: false, nativeComparisonsExecuted: false });
+      owned(routerDir, token, () => atomic(path.join(routerDir, 'qualification-last-attempt.json'), unchanged));
+      return unchanged;
+    }
     const profilePath = path.join(routerDir, 'profile.json');
     const profile = fs.existsSync(profilePath) ? JSON.parse(read(profilePath)) : {};
     if (profile.automaticModelRoutingUpdates !== true) return result('deferred', 'Authorization required: automatic model routing updates are not enabled');

@@ -25,6 +25,7 @@ import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createHash, createPublicKey, verify as verifySignature } from 'node:crypto';
+import { fetchJsonWithRetry, fetchBytesWithRetry } from './download-retry.mjs';
 import { extractZip, zipDeclaredBytes } from './zip-extract.mjs';
 import { applyBrainProfile, discoverStoreFamilies, readBrainProfile } from './brain-profile.mjs';
 import { acquireRefreshLock, releaseRefreshLock } from './refresh-run.mjs';
@@ -773,18 +774,19 @@ if (!manifestUrl && !STAGED_RELEASE_FILE) {
 }
 
 async function fetchJson(url) {
-  let res;
-  try { res = await fetch(url, { redirect: 'follow' }); }
-  catch (e) { die(`network failure fetching ${url}\n  ${e.message} — nothing changed locally.`, 2); }
-  if (!res.ok) die(`canonical manifest returned HTTP ${res.status} for ${url} — nothing changed.`, 2);
-  try { return await res.json(); } catch (e) { die(`canonical manifest was not valid JSON: ${e.message}`, 2); }
+  try { return await fetchJsonWithRetry(url); }
+  catch (error) {
+    if (error instanceof SyntaxError) die(`canonical manifest was not valid JSON: ${error.message}`, 2);
+    if (error.status) die(`canonical manifest returned HTTP ${error.status} for ${url} — nothing changed.`, 2);
+    die(`network failure fetching ${url}: ${error.message} — nothing changed locally.`, 2);
+  }
 }
 async function fetchBuffer(url, { failureCode = 2, kind = 'bundle' } = {}) {
-  let res;
-  try { res = await fetch(url, { redirect: 'follow' }); }
-  catch (e) { die(`network failure downloading ${kind} ${url}\n  ${e.message} — nothing changed locally.`, failureCode); }
-  if (!res.ok) die(`${kind} download returned HTTP ${res.status} for ${url} — nothing changed.`, failureCode);
-  return Buffer.from(await res.arrayBuffer());
+  try { return await fetchBytesWithRetry(url); }
+  catch (error) {
+    if (error.status) die(`${kind} download returned HTTP ${error.status} for ${url} — nothing changed.`, failureCode);
+    die(`network failure downloading ${kind} ${url}: ${error.message} — nothing changed locally.`, failureCode);
+  }
 }
 
 // The canonical manifest can be ONE of three shapes — handle all three:
@@ -1405,6 +1407,35 @@ export function bundleIdentity(src) {
   return parts.some(Boolean) ? parts.join('|') : null;
 }
 
+const downloadedArchiveVerifiers = new WeakSet();
+
+function archiveVerifierFromDigests(actualDigests, bytes) {
+  const verifier = Object.freeze({
+    bytes,
+    digest(algorithm = 'sha256') {
+      if (!Object.hasOwn(actualDigests, algorithm)) throw new Error(`archive algorithm ${algorithm} was not captured`);
+      return actualDigests[algorithm];
+    },
+  });
+  downloadedArchiveVerifiers.add(verifier);
+  return verifier;
+}
+
+// Capture the closed transaction algorithm inventory synchronously. Never retain mutable bytes:
+// the capability attests only to this creation-time snapshot, not a later caller-owned Buffer.
+export function createDownloadedArchiveVerifier(downloadedBuffer, expectedDigests = []) {
+  if (!Buffer.isBuffer(downloadedBuffer) || !Array.isArray(expectedDigests)) throw new TypeError('archive bytes and digest inventory required');
+  const algorithms = new Set(['sha256']);
+  for (const expected of expectedDigests) {
+    if (expected == null) continue;
+    if (typeof expected !== 'string' || !expected) throw new TypeError('invalid archive digest');
+    algorithms.add(expected.includes(':') ? expected.split(':')[0] : 'sha256');
+  }
+  const actualDigests = Object.freeze(Object.fromEntries([...algorithms].map(algorithm =>
+    [algorithm, createHash(algorithm).update(downloadedBuffer).digest('hex')])));
+  return archiveVerifierFromDigests(actualDigests, downloadedBuffer.length);
+}
+
 /**
  * Confirm the download+extraction actually changed what is on disk (issue #35 item 2, Dr. Mark
  * Allen / @mamd69).
@@ -1448,8 +1479,11 @@ export function bundleIdentity(src) {
  * @returns {{ok: boolean, reason: string|null, landed: object|null, kind: 'noop'|'damaged'|null,
  *            storeUnchanged: boolean, bundleChanged: boolean|null}}
  */
-export function verifyLanded({ kbDir, kbName, before, beforeBundle = null, expectedDigest = null, downloadedBuffer = null }) {
+export function verifyLanded({ kbDir, kbName, before, beforeBundle = null, expectedDigest = null, downloadedBuffer = null, archiveVerifier = null }) {
   const damaged = (reason, landed = null) => ({ ok: false, kind: 'damaged', reason, landed, storeUnchanged: false, bundleChanged: null });
+  if (archiveVerifier !== null && (!downloadedArchiveVerifiers.has(archiveVerifier) || downloadedBuffer !== null)) {
+    return damaged('archive verification capability is invalid or mixed with mutable archive bytes');
+  }
   const p = path.join(kbDir, 'SOURCE.json');
   if (!fs.existsSync(p)) {
     return damaged(`no SOURCE.json found at ${p} after extraction — cannot confirm what actually landed`);
@@ -1487,9 +1521,11 @@ export function verifyLanded({ kbDir, kbName, before, beforeBundle = null, expec
 
   // Bytes that do not match what the release declared are a HARD failure whatever the identities
   // say, and the copy now in place is suspect — so this is checked before anything else.
-  if (expectedDigest && downloadedBuffer) {
+  if (expectedDigest && (downloadedBuffer || archiveVerifier)) {
     const algo = expectedDigest.includes(':') ? expectedDigest.split(':')[0] : 'sha256';
-    const actual = `${algo}:${createHash(algo).update(downloadedBuffer).digest('hex')}`;
+    let actual;
+    try { actual = `${algo}:${archiveVerifier ? archiveVerifier.digest(algo) : createHash(algo).update(downloadedBuffer).digest('hex')}`; }
+    catch (error) { return damaged(`downloaded bundle digest verification failed: ${error.message}`, landed); }
     if (actual !== expectedDigest) {
       return damaged(`downloaded bundle digest ${actual} does not match the release-declared digest ${expectedDigest}`, landed);
     }
@@ -1705,7 +1741,7 @@ async function main() {
   const originLabel = resolved.origin === 'latest-release-asset' ? `live release asset "${resolved.assetName}"`
     : resolved.origin === 'live-manifest' ? 'live manifest' : 'PINNED FALLBACK (see warning above)';
   console.log(`\n[${behindStores.length} store(s)] downloading ${resolved.url}\n  (source: ${originLabel}) ...`);
-  const buf = await fetchBuffer(resolved.url);
+  let buf = await fetchBuffer(resolved.url);
   const sigBuf = await fetchBuffer(`${resolved.url}.sig`, { failureCode: 3, kind: 'signature' });
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-update-release-'));
   const zipPath = path.join(tmp, 'bundle.zip');
@@ -1718,6 +1754,14 @@ async function main() {
   const signature = verifyDownloadedBundle(zipPath, sigPath);
   if (!signature.ok) { fs.rmSync(tmp, { recursive: true, force: true }); die(`✗ SIGNATURE VERIFICATION FAILED: ${signature.reason}`, 4); }
   console.log(`  ✓ signature verified — ${signature.reason}`);
+  let archiveVerifier;
+  try { archiveVerifier = createDownloadedArchiveVerifier(buf, resolvedTargets.map(({ resolved: target }) => target.digest)); }
+  catch (error) {
+    fs.rmSync(tmp, { recursive: true, force: true });
+    die(`archive digest snapshot failed: ${error.message} — local files untouched.`, 4);
+  }
+  const bundleSha256 = archiveVerifier.digest();
+  buf = null; // Snapshot owns only immutable digest strings; release the downloaded bytes before validation.
   // DISK-SPACE PREFLIGHT, before a single byte is unpacked: the bundle unpacks in temp, then a whole
   // candidate generation is built beside the live one: the bundle, plus what prepareCandidate carries into
   // it from live — node_modules, and every private/local-ingest store file (restorePrivateFilesIntoCandidate
@@ -1801,7 +1845,7 @@ async function main() {
       for (const { local, resolved: storeResolution } of landingTargets) {
         execFileSync(process.execPath, [guard, '--dir', dir, '--name', local.kbName], { cwd: dir, stdio: 'pipe' });
         const verified = verifyLanded({ kbDir: dir, kbName: local.kbName, before: local, beforeBundle: source,
-          expectedDigest: storeResolution.digest, downloadedBuffer: buf });
+          expectedDigest: storeResolution.digest, archiveVerifier });
         if (!verified.ok && verified.kind !== 'noop') return { valid: false, failures: [verified.reason] };
         if (phase === 'live') finalVerificationByStore.set(local.kbName, verified);
       }
@@ -1872,7 +1916,6 @@ async function main() {
   fs.rmSync(tmp, { recursive: true, force: true });
   console.log(`  storage transaction: ${transaction.terminalVerdict}`);
   if (transaction.terminalVerdict === 'cleanup-pending') {
-    const bundleSha256 = createHash('sha256').update(buf).digest('hex');
     const cleanupOutcome = writeUpdateOutcome({ terminalVerdict: 'cleanup-pending', storageDelta: transaction.storageDelta,
       transactionReceipts: transaction.paths.receipts, bundleSha256,
       phaseEvidence: phaseEvidenceFor({ root: KB_DIR, terminalVerdict: 'cleanup-pending', bundleSha256,
@@ -1886,7 +1929,7 @@ async function main() {
   for (const { local, resolved: storeResolution } of landingTargets) {
     const verified = finalVerificationByStore.get(local.kbName)
       || verifyLanded({ kbDir: KB_DIR, kbName: local.kbName, before: local, beforeBundle: source,
-        expectedDigest: storeResolution.digest, downloadedBuffer: buf });
+        expectedDigest: storeResolution.digest, archiveVerifier });
     if (verified.storeUnchanged || verified.kind === 'noop') unchangedStores.push(local.kbName);
     landedByStore.set(local.kbName, { landed: verified.landed, origin: storeResolution.origin, assetName: storeResolution.assetName });
   }
@@ -1947,10 +1990,10 @@ async function main() {
     currencyVerdict: verdict.verdict, currencyReason: verdict.reason, candidateKind: candidateIdentity.kind,
     storageDelta: transaction.storageDelta,
     transactionReceipts: transaction.paths.receipts,
-    bundleSha256: createHash('sha256').update(buf).digest('hex'),
+    bundleSha256,
     coverageSha256: sha256File(path.join(KB_DIR, 'COVERAGE.json')),
     phaseEvidence: phaseEvidenceFor({ root: KB_DIR, terminalVerdict: transaction.terminalVerdict,
-      bundleSha256: createHash('sha256').update(buf).digest('hex'),
+      bundleSha256,
       transactionReceipts: transaction.paths.receipts, overlay: privateOverlay,
       storageDelta: transaction.storageDelta }) });
   if (finalOutcome?.terminalVerdict === 'recovery-required') die(finalOutcome.reason);

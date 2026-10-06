@@ -7,7 +7,45 @@ current campaign and is finalized by the lead session before the next release cu
 
 ## Unreleased
 
-4.5.5 routing and hook reliability candidate:
+4.5.7 customer repair candidate:
+
+- Managed continuity commands dispatch through the active installed generation instead of
+  stale copied handlers. Help acceptance is bound to that generation.
+- Historical progression outbox payloads are loaded lazily. An explicit, reversible owner
+  suspension pauses automatic progression while preserving memory and explicit checkpoints.
+  The permanent bounded-history frontier remains a proposal, not a shipped fix.
+- Brain OFF silences capacity advice. Owners can disable new promise capture with
+  `RUVNET_PROMISE_CAPTURE=off` while existing-item closure and integrity checks continue.
+- Footprint classification recognizes public legacy `.big` sidecars while retaining private,
+  divergent and unknown files. Broader reclaim and reconciliation remain unresolved.
+- The updater captures transaction-owned archive digests once per required algorithm while
+  retaining signature verification and candidate/live per-store integrity checks.
+- Pending continuity notices are deduplicated per session without suppressing capture,
+  retries, degraded-state warnings or integrity checks. Concurrent deduplication is best effort.
+- Refresh failures name the first required failed stage instead of optional failures or
+  cleanup skips. Historical receipts and overall failure classification remain unchanged.
+- Transcript capture rejects directories on Windows and rechecks the opened file, preserving
+  unknown handling instead of misreading a directory as an empty completed turn.
+
+4.5.6 native terminal routing and continuity (released, installation-verified):
+
+- Persistent per-user Codex and Claude terminal launchers preserve native subscription
+  authentication and user permission choices. Managed updates refresh their closed runtime.
+- Codex routes accepted turns within the same native session through the official
+  app-server proxy, including resumed conversations; startup starts the native daemon
+  idempotently and refuses unsupported inference paths rather than bypassing routing.
+- Claude's native mod selects model and effort at the inference boundary while preserving
+  conversation context. The launcher checks activation at startup; vendor hook crashes or
+  subsequent hook disabling remain a limitation, not a guarantee of continual enforcement.
+- Native transport, policy overrides, source identity, disconnects and failure boundaries
+  receive explicit release qualification. Unsupported or unauthenticated clients refuse
+  the routed path without paid API fallback.
+- Native terminal launchers support macOS and Linux. Platform qualification keeps portable
+  routing checks active on Windows and verifies safe refusal of its unsupported Unix launch path.
+- Customer continuity repairs validate duplicate history, preserve terminal failures and
+  cancellation signals, parse JSONL incrementally, and bound observation conflict handling.
+
+4.5.5 routing and hook reliability changes (released):
 
 - Native subscription routing persists per user through the installed gateways. Managed
   updates preserve explicit user overrides and refresh launcher dependencies together.

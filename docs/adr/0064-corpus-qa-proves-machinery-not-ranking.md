@@ -3,9 +3,10 @@ id: ADR-064
 title: The corpus-QA round trip proves the machinery, not the ranking
 status: Accepted
 date: 2026-08-06
-updated: 2026-09-27
+updated: 2026-10-05
 updated_source: derived-from-git
-reviewed_digest: 75418dee4ddb
+reviewed_digest: 4065daa92b17
+version: 1.0.3
 authors: [Stuart Kerr, Claude Code]
 tags: [corpus-qa, nightly, retrieval, near-duplicates, diagnosability, escalation]
 supersedes: []
@@ -17,6 +18,34 @@ governs:
   - tests/unit/corpus-qa.test.mjs
   - tests/unit/self-update-failure-reason.test.mjs
 ---
+
+
+## Current source review — 2026-10-05
+
+Reviewed candidate source `1ccc1e633772c549e4a23596a1ce3c743e797315`. The accepted
+machinery-versus-answer-quality distinction remains intact. `scripts/corpus-qa.mjs` still
+checks structure, vector/read compatibility, and bounded deterministic self-retrieval; it
+reports near-duplicate/deep-crowd observations and fails absence from the wider query window.
+`tests/unit/corpus-qa.test.mjs` remains the fixture boundary for those semantics. A passing
+round trip is not evidence that real user questions retrieve the right answer.
+
+The source formula is `min(500, max(10, floor(n/2)))`. Its lower floor means that for a tiny
+corpus of at most ten rows the requested window can cover the entire corpus; the historical
+absolute “never the whole corpus” sentence below is therefore too broad. For larger stores
+the window remains a bounded subset. Whole-corpus presence alone cannot establish ranking
+quality or eliminate the need for structural/negative controls. This document-only review
+neither changes the formula nor runs a fresh real-store retrieval campaign.
+
+`scripts/self-update.mjs` captures and re-emits the verdict-bearing streams and preserves a
+bounded failure reason; it is an author-side candidate builder whose apply path refuses an
+unsafe worktree, not an installed updater or publisher. `scripts/nightly-wrapper.sh` is likewise
+an author diagnostic. Its learning step now requests the full causal portfolio through native
+Codex rather than the historical single Haiku trap; source wiring does not prove that it is
+scheduled, ran, completed, or established current learning quality. No such model run was made
+for this review. Current corpus publishing belongs to the protected workflow described in
+CONTRIBUTING.md, and installed refresh ownership remains separate. The 2026-08 real-data A/B,
+mutation campaign, and abort/stamp observations below remain historical evidence with their
+original artifact bounds, not proof of today's store generation.
 
 # ADR-064 — The corpus-QA round trip proves the machinery, not the ranking
 
@@ -98,8 +127,10 @@ before returning any verdict:
   a mis-slotted vector, and a broken read path are absent at *any* k; nothing forgives them.
 
 `WIDE_K = 500` (~5.6% of metaharness), bounded by `wideKFor(n) = min(500, max(10, floor(n/2)))`.
-**Wide k may never reach the whole corpus** — a k that returns every row makes "present" vacuous and
-would silently retire the failure class this gate exists for.
+For corpora larger than the minimum window, wide k stays below the whole corpus. The current
+implementation's floor of 10 can cover every row of a corpus with at most 10 rows; the absolute
+historical "never whole corpus" claim was stronger than the implemented boundary. Whole-window
+presence alone does not establish ranking quality.
 
 ### The wide arm covers both shapes of miss, deliberately
 
@@ -179,6 +210,7 @@ label. Noted, not load-bearing for anything published.
   every one killed by the intended test; sources restored and re-verified byte-identical.
 
 ## Currency log
+| 2026-10-05 | Reviewed current source and recorded remaining limitations; no verification or implementation-status promotion. | reviewed_digest 4065daa92b17; inspected `scripts/corpus-qa.mjs` and all expanded governs against source 5d9ea4df. Independent review preserved incident dates, Proposed/expired states and historical evidence; notification and oldest-runtime limits are explicit. |
 | 2026-09-27 | Currency review: decision unchanged. Motion: self-update.mjs restricted Cognitum ruOS to curated capabilities -- unrelated to corpus-QA's machinery-vs-ranking distinction, which is untouched. | Reviewed `scripts/corpus-qa.mjs`, `scripts/self-update.mjs`, `scripts/nightly-wrapper.sh`, `tests/unit/corpus-qa.test.mjs`, `tests/unit/self-update-failure-reason.test.mjs` against the commits listed above; reviewed_digest 75418dee4ddb. |
 | 2026-09-11 | Currency review at commit 2eef2024: decision unchanged. Both drift commits (`7cf26dea`, `9b3e1d3f`) only reworded explanatory comment text in `scripts/nightly-wrapper.sh` describing the release-publication authority boundary ("It does NOT publish or dispatch a publisher..."); zero executable lines changed in either diff, and neither touches `scripts/corpus-qa.mjs`, `scripts/self-update.mjs`, or either test file. | Reviewed `scripts/nightly-wrapper.sh` (the only governed path that moved: `7cf26dea`, `9b3e1d3f`), `scripts/corpus-qa.mjs`, `scripts/self-update.mjs`; read both diffs in full, both comment-only. reviewed_digest 7d8b119122a9. |
 | 2026-08-31 | Reconciled the remaining #193 reader asymmetry: `learn-flush.mjs` now explicitly uses the same containment-checked `projectDirectory({ env: process.env })` fallback as the capture writer. | `plugin/scripts/learn-flush.mjs`; `plugin/scripts/learn-capture.sh`; issue #193. |

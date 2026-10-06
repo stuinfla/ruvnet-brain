@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { automaticPath } from './automatic-update.mjs';
 
 export const NIGHTLY_LABEL = 'com.ruvnet.brain-update';
 export const NIGHTLY_HOUR = 3;
@@ -101,8 +103,12 @@ export function describeFailedRefreshRun(receipt, { reasonLimit = 200 } = {}) {
   const ledger = receipt.phases.map((entry) => entry?.phase);
   if (ledger.length > declared.length || ledger.some((phase, index) => phase !== declared[index])) return null;
   if (ledger.length === 0) return `failed before its first phase (${receipt.terminalVerdict || 'unknown'})`;
-  const failing = [...receipt.phases].reverse().find((entry) => entry?.status !== 'PASS') || receipt.phases[receipt.phases.length - 1];
-  const reason = String(failing.evidence?.updateResult?.reason ?? failing.evidence?.reason ?? '').split('\n')[0].trim();
+  const failing = receipt.phases.find((entry) => entry?.required !== false && entry?.status === 'FAIL')
+    || receipt.phases.find((entry) => entry?.status === 'FAIL')
+    || [...receipt.phases].reverse().find((entry) => entry?.status !== 'PASS')
+    || receipt.phases[receipt.phases.length - 1];
+  const reason = String(failing.evidence?.updateResult?.reason ?? failing.evidence?.error
+    ?? failing.evidence?.reason ?? '').split('\n')[0].trim();
   return reason ? `failed at ${failing.phase}: ${reason.slice(0, reasonLimit)}` : `failed at ${failing.phase}`;
 }
 
@@ -134,8 +140,34 @@ function inspectRefreshOwner(owner) {
   } catch { return 'unknown'; }
 }
 
+function updateModules(directory, sourceDir = path.dirname(fileURLToPath(import.meta.url))) {
+  const files = ['automatic-update.mjs', 'user-settings.mjs', 'ruvnet-gate1-pattern.mjs'];
+  const bytes = Object.fromEntries(files.map(file => [file, fs.readFileSync(path.join(sourceDir, file))]));
+  const digest = sha256(Buffer.concat(files.flatMap(file => [Buffer.from(file), bytes[file]])));
+  const target = path.join(directory, `update-modules-${digest}`);
+  fs.mkdirSync(target, { recursive: true });
+  return Object.fromEntries(files.map(file => {
+    const dest = path.join(target, file);
+    const hash = sha256(bytes[file]);
+    if (fs.existsSync(dest) && sha256(fs.readFileSync(dest)) !== hash) throw new Error('immutable update module was changed');
+    if (!fs.existsSync(dest)) fs.writeFileSync(dest, bytes[file], { mode: 0o600 });
+    return [file, { path: dest, sha256: hash }];
+  }));
+}
+
+function verifyUpdateModules(modules) {
+  if (!modules) return; // existing schema-2 registrations remain inspectable
+  if (Object.keys(modules).sort().join(',') !== 'automatic-update.mjs,ruvnet-gate1-pattern.mjs,user-settings.mjs') throw new Error('invalid update module closure');
+  for (const [name, item] of Object.entries(modules)) {
+    if (!path.isAbsolute(item.path) || path.basename(item.path) !== name
+      || path.dirname(item.path) !== path.dirname(modules['automatic-update.mjs'].path)
+      || !fs.lstatSync(item.path).isFile()
+      || sha256(fs.readFileSync(item.path)) !== item.sha256) throw new Error('update module digest mismatch');
+  }
+}
+
 export function installNightlyRunner({ brainHome, source, nodePath = process.execPath,
-  identity = NIGHTLY_LABEL, packageTarget, bundleTarget, env = {} } = {}) {
+  identity = NIGHTLY_LABEL, packageTarget, bundleTarget, env = {}, moduleSource } = {}) {
   validateIdentity(identity);
   if (!source || !fs.existsSync(source)) throw new Error(`nightly runner source is missing: ${source || '(unset)'}`);
   const bytes = fs.readFileSync(source);
@@ -147,9 +179,10 @@ export function installNightlyRunner({ brainHome, source, nodePath = process.exe
     throw new Error(`nightly runner at ${runnerPath} does not match its content-addressed identity`);
   }
   if (!fs.existsSync(runnerPath)) fs.writeFileSync(runnerPath, bytes, { mode: 0o755 });
-  const record = { schemaVersion: 2, kind: 'ruvnet-brain-nightly-scheduler', identity,
+  const modules = updateModules(dir, moduleSource);
+  const record = { updateModules: modules, schemaVersion: 2, kind: 'ruvnet-brain-nightly-scheduler', identity,
     nodePath: path.resolve(nodePath), runnerPath, runnerSha256: digest, argv: [],
-    environment: Object.fromEntries(NIGHTLY_ENV_ALLOWLIST.filter(key => env[key] !== undefined).map(key => [key, String(env[key])])),
+    environment: Object.fromEntries(NIGHTLY_ENV_ALLOWLIST.filter(key => env[key] !== undefined).map(key => [key, key === 'PATH' ? automaticPath({ nodePath, home: homeOf(env), env }) : String(env[key])])),
     packageTarget: normalizePackageTarget(packageTarget), bundleTarget: normalizeBundleTarget(bundleTarget, identity) };
   const recordPath = path.join(dir, registrationName(identity));
   const tmp = `${recordPath}.tmp-${process.pid}`;
@@ -167,6 +200,7 @@ export function readNightlyRegistration({ brainHome, identity = NIGHTLY_LABEL,
       || !path.isAbsolute(record.nodePath) || !path.isAbsolute(record.runnerPath)
       || !Array.isArray(record.argv) || record.argv.length !== 0) throw new Error('invalid registration schema');
     if (record.environment !== undefined && (!record.environment || Array.isArray(record.environment) || Object.entries(record.environment).some(([key, value]) => !NIGHTLY_ENV_ALLOWLIST.includes(key) || typeof value !== 'string'))) throw new Error('invalid registered environment');
+    verifyUpdateModules(record.updateModules);
     const actual = sha256(fs.readFileSync(record.runnerPath));
     if (actual !== record.runnerSha256) throw new Error('runner digest mismatch');
     const packageTarget = normalizePackageTarget(record.packageTarget);
@@ -335,10 +369,7 @@ function schedulerEnvironment(record, env = {}) {
 
 export function launchdPlist(record, { kbDir, logPath, pathValue, env = {} }) {
   const home = homeOf(env);
-  const schedulerPath = [...new Set([
-    path.dirname(record.nodePath), path.join(home, '.npm-global', 'bin'), path.join(home, '.local', 'bin'),
-    ...String(pathValue || '').split(':').filter(Boolean), '/usr/bin', '/bin', '/usr/sbin', '/sbin',
-  ])].join(':');
+  const schedulerPath = automaticPath({ nodePath: record.nodePath, home, env });
   const environment = schedulerEnvironment(record, { ...env, ...record.environment, PATH: schedulerPath });
   const environmentXml = Object.entries(environment).map(([key, value]) =>
     `<key>${xmlEscape(key)}</key><string>${xmlEscape(value)}</string>`).join('');

@@ -42,6 +42,20 @@ function native(report, capture, paused = false) {
     return child;
   };
 }
+// Exclude fixture filesystem speed from the intended worker boundary, without changing production deadlines.
+function workerBoundaryClock() {
+  const realNow = performance.now.bind(performance);
+  const wall = vi.spyOn(Date, 'now').mockReturnValue(Date.now());
+  const monotonic = vi.spyOn(performance, 'now').mockReturnValue(0);
+  return {
+    launch() { const started = realNow(); monotonic.mockImplementation(() => realNow() - started); },
+    block() {
+      const until = realNow() + 180; while (realNow() < until) { /* timer cannot run during synchronous work */ }
+      monotonic.mockReturnValue(180);
+    },
+    restore() { monotonic.mockRestore(); wall.mockRestore(); },
+  };
+}
 const auth = vi.fn();
 const allowance = async () => ({ ordinaryUsageAllowed: true, checkedAt: new Date().toISOString(), reservation: false, raceSafe: false });
 afterEach(() => { for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
@@ -66,6 +80,13 @@ it('uses the real dispatch boundary, Standard argv, stdin and bounded structured
   expect(capture.args).toContain('web_search="disabled"');
   expect(result.completeToolRegistryVerifiedAbsent).toBe(false);
   expect(capture.args).toContain('read-only'); expect(capture.args).not.toContain(capture.prompt);
+  const schema = JSON.parse(fs.readFileSync(path.join(result.runDir, 'schema.json')));
+  expect(schema.properties.findings.maxItems).toBe(6);
+  expect(schema.properties.findings.items.properties.evidence.maxItems).toBe(1);
+  expect(schema.properties.summary.maxLength).toBe(320);
+  expect(schema.properties.proposedRoutes.maxItems).toBe(2);
+  expect(schema.properties.providerAnalyses.maxItems).toBe(2);
+  expect(schema.properties.gaps.maxItems).toBe(4);
   expect(capture.options.env.MODEL_ROUTER_WEEKLY_ANALYST).toBe('1');
   expect(capture.options.env.OPENROUTER_API_KEY).toBeUndefined(); expect(capture.options.env.RUVNET_SIGNING_KEY).toBeUndefined();
   expect(capture.prompt).toContain('UNTRUSTED DATA'); expect(capture.prompt).toContain('Owner instruction');
@@ -87,13 +108,31 @@ it('blocks exhausted allowance before inference and keeps last-known-good semant
 });
 it('timeout, protocol failure and concurrent input change never advance semantic timestamp', async () => {
   const f = fixture(); fs.writeFileSync(path.join(f.routerDir, 'semantic-current.json'), '{"completedAt":"old-valid"}');
-  const timed = await runWeeklyAnalyst({ routerDir: f.routerDir, now: NOW, timeoutMs: 100, nativeModels, spawnNative: native(f.report, {}, true), checkAuth: auth, checkAllowance: allowance });
+  // Hold both preparation clocks fixed; start real elapsed time only when the worker launches.
+  // The separate preparation-expiry test still covers the full production preparation budget.
+  const clock = workerBoundaryClock(); const capture = {}; let timed;
+  try {
+    timed = await runWeeklyAnalyst({ routerDir: f.routerDir, now: NOW, timeoutMs: 100, nativeModels, spawnNative: (...args) => { clock.launch(); return native(f.report, capture, true)(...args); }, checkAuth: auth, checkAllowance: allowance });
+  } finally { clock.restore(); }
+  expect(capture.child).toBeDefined(); expect(timed.status).toBe('failed');
   expect(timed.reason).toMatch(/timed out/);
+  expect(JSON.parse(fs.readFileSync(path.join(f.routerDir, 'semantic-current.json'))).completedAt).toBe('old-valid');
   const bad = structuredClone(f.report); bad.findings[0].evidence[0].sourceId = 'invented';
   expect((await runWeeklyAnalyst({ routerDir: f.routerDir, now: NOW, nativeModels, spawnNative: native(bad, {}), checkAuth: auth, checkAllowance: allowance })).status).toBe('failed');
   const changedNative = (command, args, options) => { fs.appendFileSync(path.join(f.routerDir, 'routing-policy.json'), ' '); return native(f.report, {})(command, args, options); };
   expect((await runWeeklyAnalyst({ routerDir: f.routerDir, now: NOW, nativeModels, spawnNative: changedNative, checkAuth: auth, checkAllowance: allowance })).reason).toMatch(/Inputs changed/);
   expect(JSON.parse(fs.readFileSync(path.join(f.routerDir, 'semantic-current.json'))).completedAt).toBe('old-valid');
+});
+it('preparation consuming the shared deadline refuses launch without advancing semantic timestamp', async () => {
+  const f = fixture(); fs.writeFileSync(path.join(f.routerDir, 'semantic-current.json'), '{"completedAt":"old-valid"}');
+  const start = Date.now(); const clock = vi.spyOn(Date, 'now').mockReturnValue(start); const spawnNative = vi.fn();
+  try {
+    const result = await runWeeklyAnalyst({ routerDir: f.routerDir, now: NOW, timeoutMs: 100, nativeModels, spawnNative, checkAuth: auth, checkAllowance: allowance,
+      prepareSandbox: async () => { clock.mockReturnValue(start + 101); return { home: f.routerDir, proof: { trusted: true, currentHash: `sha256:${'a'.repeat(64)}` } }; } });
+    expect(result.status).toBe('failed'); expect(result.reason).toContain('deadline expired before launch');
+    expect(spawnNative).not.toHaveBeenCalled();
+    expect(JSON.parse(fs.readFileSync(path.join(f.routerDir, 'semantic-current.json'))).completedAt).toBe('old-valid');
+  } finally { clock.mockRestore(); }
 });
 it('offline catchup deduplicates, uses semantic completion not metadata assessment, and enforces cooldown', () => {
   const f = fixture(); let launches = 0;
@@ -178,7 +217,7 @@ it('projects every relevant effort with suite provenance and explicit missing co
   const inputs = loadAnalystInputs(f.routerDir, NOW); const projected = JSON.parse(inputs.documents.at(-1).body);
   expect(JSON.stringify(inputs.packet).length).toBeLessThanOrEqual(60000);
   expect(projected.modelEvidence.map((r) => r.effort)).toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
-  expect(projected.modelEvidence[0].benchmark).toEqual({ suite: 'fixture-suite', version: '4' });
+  expect(projected.benchmarkTable[projected.modelEvidence[0].benchmark]).toEqual({ suite: 'fixture-suite', version: '4' });
   expect(projected.modelEvidence[0].benchmarks).toEqual([['terminal-fixture', 0.8, null, 42]]);
   expect(projected.codingAgents[0].components).toEqual([['coding-fixture', 'exact-v1', 0.7]]);
   expect(projected.sourceTable).toHaveLength(1); expect(projected.modelEvidence.some((r) => r.model === 'outside-paid-model')).toBe(false);
@@ -194,4 +233,70 @@ it('private native config identity normalizes Windows separators and case withou
   expect(sameNativeConfigPath('C:/Private/OTHER/config.toml', 'c:\\private\\home\\config.toml', 'win32')).toBe(false);
   expect(sameNativeConfigPath('/Private/Home/config.toml', '/private/home/config.toml', 'linux')).toBe(false);
   expect(sameNativeConfigPath(undefined, '/private/home/config.toml', 'linux')).toBe(false);
+});
+
+it('bounds analyst retirement when its owned native child ignores TERM and never exits', async () => {
+  const f = fixture(); const capture = {}; const signals = [];
+  const spawnNative = (command, args, options) => {
+    const child = native(f.report, capture, true)(command, args, options);
+    child.kill = (signal) => { signals.push(signal); return true; };
+    for (const stream of [child.stdin, child.stdout, child.stderr]) stream.destroy = vi.fn();
+    child.unref = vi.fn(); return child;
+  };
+  const clock = workerBoundaryClock(); let result;
+  try {
+    result = await runWeeklyAnalyst({ routerDir: f.routerDir, now: NOW, timeoutMs: 200, nativeModels,
+      spawnNative: (...args) => { clock.launch(); return spawnNative(...args); }, checkAuth: auth, checkAllowance: allowance });
+    expect(performance.now()).toBeLessThan(1000);
+  } finally { clock.restore(); }
+  expect(result).toMatchObject({ status: 'failed', semanticTimestampAdvanced: false, originalPolicyPreserved: true,
+    stageCleanup: { childExitObserved: false, ownedChildRetirement: 'unverified', descendantRetirement: 'unproven' } });
+  expect(signals).toEqual(['SIGTERM', 'SIGKILL']);
+  expect(capture.child.unref).toHaveBeenCalled();
+  for (const stream of [capture.child.stdin, capture.child.stdout, capture.child.stderr]) expect(stream.destroy).toHaveBeenCalled();
+  expect(fs.readFileSync(path.join(f.routerDir, 'routing-policy.json'), 'utf8')).toBe(JSON.stringify(f.policy));
+});
+
+it('interns repeated provenance losslessly without dropping models, efforts or measured values', () => {
+  const f = fixture(); const file = path.join(f.routerDir, 'currency.json'); const currency = JSON.parse(fs.readFileSync(file));
+  const source = currency.inventory.source;
+  const benchmark = { suite: 'fixture-suite', version: '4' };
+  const versions = { fixture: { min: { version: 'native-1', dateReleased: null }, max: { version: 'native-1', dateReleased: null } } };
+  currency.evaluations.records = ['low', 'medium', 'high'].map(effort => ({ model: 'gpt-6.1-sol', effort, source, benchmark, quality: { intelligenceIndex: 63.23456789012345 } }));
+  currency.agentSources = { sources: [source], records: ['low', 'medium', 'high'].map(effort => ({ model: 'gpt-6.1-sol', provider: 'openai', nativeHost: 'codex', effort, source, benchmark, versions, components: [] })) };
+  fs.writeFileSync(file, JSON.stringify(currency));
+  const projected = JSON.parse(loadAnalystInputs(f.routerDir, NOW).documents.at(-1).body);
+  expect(projected.benchmarkTable).toEqual([benchmark]); expect(projected.agentVersionTable).toEqual([versions]);
+  expect(projected.modelEvidence).toHaveLength(3); expect(projected.codingAgents).toHaveLength(3);
+  for (const row of projected.modelEvidence) { expect(projected.benchmarkTable[row.benchmark]).toEqual(benchmark); expect(row.quality.intelligenceIndex).toBe(63.23456789012345); }
+  for (const row of projected.codingAgents) expect(projected.agentVersionTable[row.versions]).toEqual(versions);
+});
+
+it.each(['output', 'exit', 'publication'])('rejects late %s when a blocked event loop delays the deadline timer', async (lateStage) => {
+  const f = fixture(); const capture = {}; const old = '{"completedAt":"old-valid"}';
+  fs.writeFileSync(path.join(f.routerDir, 'semantic-current.json'), old);
+  const clock = workerBoundaryClock(); const block = () => clock.block();
+  const publish = vi.fn(() => { block(); return { status: 'unchanged' }; });
+  const spawnNative = (...args) => {
+    const child = native(f.report, capture, true)(...args);
+    child.stdin.end = () => queueMicrotask(() => {
+      if (lateStage === 'output') block();
+      child.stdout.emit('data', events(f.report));
+      if (lateStage === 'exit') block();
+      child.emit('exit', 0, null);
+    }); return child;
+  };
+  // Freeze both clocks through preparation; advance the monotonic clock at the selected late boundary.
+  // A real synchronous block still delays the timer, so timer wakeup cannot be the refusal authority.
+  let result;
+  try {
+    result = await runWeeklyAnalyst({ routerDir: f.routerDir, now: NOW, timeoutMs: 100, nativeModels, spawnNative, checkAuth: auth, checkAllowance: allowance,
+      ...(lateStage === 'publication' ? { qualificationValidator: publish } : {}) });
+  } finally { clock.restore(); }
+  expect(capture.child).toBeDefined();
+  if (lateStage === 'publication') expect(publish).toHaveBeenCalledOnce();
+  expect(result).toMatchObject({ status: 'failed', semanticTimestampAdvanced: false, originalPolicyPreserved: true });
+  expect(result.reason).toMatch(/timed out/);
+  expect(fs.readFileSync(path.join(f.routerDir, 'semantic-current.json'), 'utf8')).toBe(old);
+  expect(fs.readFileSync(path.join(f.routerDir, 'routing-policy.json'), 'utf8')).toBe(JSON.stringify(f.policy));
 });

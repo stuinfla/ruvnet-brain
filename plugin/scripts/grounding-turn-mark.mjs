@@ -51,7 +51,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readStdinBounded, isHarnessGenerated } from './hook-input.mjs';
-import { ruvnetGate1Matches } from './ruvnet-gate1-pattern.mjs';
+import { ruvnetGate1Matches, groundingScopeMatches, groundingSubjectAllowed, normalizeGroundingScope, mergeGroundingScopes } from './ruvnet-gate1-pattern.mjs';
+import { randomUUID } from 'node:crypto';
+import { loadSettings, writeAtomic } from './user-settings.mjs';
 import { classifyPrompt, loadVocabulary } from './grounding-turn-evidence.mjs';
 
 const HOME = os.homedir();
@@ -75,41 +77,124 @@ const eligible = (hookInput) => Boolean(hookInput && hookInput.hook_event_name =
   && !isHarnessGenerated(promptOf(hookInput)));
 
 /** Exported for the unit test: pure decision, no I/O. Gate 1 (the rUv-stack search requirement). */
-export function shouldMark(hookInput) {
-  return eligible(hookInput) && ruvnetGate1Matches(promptOf(hookInput));
+export function shouldMark(hookInput, scope = 'all') {
+  return eligible(hookInput) && groundingScopeMatches(promptOf(hookInput), scope);
 }
 
 /** Both arms for one prompt, or null when neither fires. Pure apart from the vocabulary it is given. */
-export function armFor(hookInput, vocab = []) {
+export function armFor(hookInput, vocab = [], scope = 'all') {
   if (!eligible(hookInput)) return null;
+  // Silent audit arm also covers an excluded topic whose answer introduces a selected product.
   const gate1 = ruvnetGate1Matches(promptOf(hookInput));
   const c = classifyPrompt(promptOf(hookInput), vocab);
+  c.subjects = c.subjects.filter((subject) => groundingSubjectAllowed(subject, scope));
+  if (!c.subjects.length) c.assert = c.architecture = false;
   if (!gate1 && !c.assert) return null;
-  return { gate1, assert: c.assert, architecture: c.architecture, subjects: c.subjects };
+  return { gate1, assert: c.assert, architecture: c.architecture, subjects: c.subjects, groundingScope: normalizeGroundingScope(scope).value };
 }
 
 export const STALE_MS = 2 * 3600_000;
 /** A marker's JSON, or null. Old markers (no `gate1` field) were only ever written for Gate 1. */
-export function readMarker(file) {
+function exists(file) { try { return !!fs.lstatSync(file); } catch (e) { return e.code !== 'ENOENT'; } }
+function latches(file) {
+  const base = path.basename(file);
+  try { return fs.readdirSync(path.dirname(file)).filter((n) => n === `${base}.all` || n.startsWith(`${base}.all-`)).map((n) => path.join(path.dirname(file), n)); }
+  catch (e) { return e.code === 'ENOENT' ? [] : null; }
+}
+const conservativeArm = () => ({ gate1: true, assert: true, architecture: false, subjects: [], groundingScope: 'all' });
+export function readMarker(file, { locked = false } = {}) {
+  const flags = latches(file);
+  const uncertain = flags === null || flags.length > 0 || (!locked && exists(`${file}.lock`));
   try {
+    if (!fs.lstatSync(file).isFile() || fs.lstatSync(file).isSymbolicLink()) return conservativeArm();
     const m = JSON.parse(fs.readFileSync(file, 'utf8'));
-    return m && typeof m === 'object' ? { gate1: m.gate1 !== false, assert: !!m.assert, architecture: !!m.architecture,
-      subjects: Array.isArray(m.subjects) ? m.subjects.map(String) : [], at: m.at } : null;
-  } catch { return null; }
+    if (!m || typeof m !== 'object') return conservativeArm();
+    return { gate1: uncertain || m.gate1 !== false, assert: !!m.assert, architecture: !!m.architecture,
+      groundingScope: uncertain ? 'all' : normalizeGroundingScope(m.groundingScope ?? 'all').value,
+      subjects: Array.isArray(m.subjects) ? m.subjects.map(String) : [], at: m.at };
+  } catch (e) { return uncertain || e.code !== 'ENOENT' ? conservativeArm() : null; }
 }
 
-/** Merge an arm into an unconsumed marker WITHOUT moving its mtime (the turn boundary). */
+/** An exclusive-create lock, without unsafe stale takeover or unlocked writes. */
+function markerLock(file, fn) {
+  const lock = `${file}.lock`, token = randomUUID();
+  let fd;
+  try {
+    fd = fs.openSync(lock, 'wx', 0o600); fs.writeSync(fd, token);
+  } catch { if (fd !== undefined) try { fs.closeSync(fd); } catch {} return { ok: false }; }
+  const owns = () => {
+    try { const st = fs.lstatSync(lock); return st.isFile() && !st.isSymbolicLink() && fs.readFileSync(lock, 'utf8') === token; }
+    catch { return false; }
+  };
+  try { return { ok: true, value: fn(owns) }; }
+  finally {
+    try { fs.closeSync(fd); } catch {}
+    try { if (owns()) fs.unlinkSync(lock); else failSafeArm(file); }
+    catch { failSafeArm(file); }
+  }
+}
+
+/** A monotonic exclusive latch: a delayed narrow commit cannot erase an all obligation. */
+function failSafeArm(file) {
+  const arm = conservativeArm();
+  try { fs.writeFileSync(`${file}.all-${randomUUID()}`, 'all\n', { flag: 'wx', mode: 0o600 }); } catch { /* existing/unwritable => conservatively read */ }
+  // Never overwrite a held writer. If no marker exists yet, publish a conservative one exclusively.
+  try { fs.writeFileSync(file, JSON.stringify(arm) + '\n', { flag: 'wx', mode: 0o600 }); } catch {}
+  return arm;
+}
+
+/** Stat/read/merge/atomic publication/mtime belong to one exclusive owner. */
 export function writeArm(file, arm, meta = {}, now = Date.now()) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  let st = null;
-  try { st = fs.statSync(file); } catch { /* none yet */ }
-  const prev = st && now - st.mtimeMs < STALE_MS ? readMarker(file) : null;
-  const next = prev ? { ...meta, at: prev.at, gate1: prev.gate1 || arm.gate1, assert: prev.assert || arm.assert,
-    architecture: prev.architecture || arm.architecture, subjects: [...new Set([...prev.subjects, ...arm.subjects])].slice(0, 32) }
-    : { ...meta, at: new Date(now).toISOString(), ...arm };
-  fs.writeFileSync(file, JSON.stringify(next) + '\n');
-  if (prev) fs.utimesSync(file, st.atime, st.mtime);
-  return next;
+  let held;
+  try {
+    held = markerLock(file, (owns) => {
+      let st = null;
+      try { st = fs.lstatSync(file); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+      const prior = readMarker(file, { locked: true });
+      const prev = prior && (!st || now - st.mtimeMs < STALE_MS) ? prior : null;
+      const next = prev ? { ...meta, at: prev.at, gate1: prev.gate1 || arm.gate1, assert: prev.assert || arm.assert,
+        architecture: prev.architecture || arm.architecture, groundingScope: mergeGroundingScopes(prev.groundingScope, arm.groundingScope),
+        subjects: [...new Set([...prev.subjects, ...arm.subjects])].slice(0, 32) }
+        : { ...meta, at: new Date(now).toISOString(), ...arm };
+      if (!owns()) throw new Error('marker owner changed');
+      const staged = `${file}.staged-${randomUUID()}`;
+      try {
+        writeAtomic(staged, JSON.stringify(next) + '\n');
+        if (!owns()) throw new Error('marker owner changed before commit');
+        fs.renameSync(staged, file);
+      } finally { try { fs.unlinkSync(staged); } catch {} }
+      if (prev && st && owns()) fs.utimesSync(file, st.atime, st.mtime);
+      return next;
+    });
+  } catch { return failSafeArm(file); }
+  return held.ok ? readMarker(file) : failSafeArm(file);
+}
+
+/** Stop reads and consumes the same episode under the same exclusive protocol. */
+export function consumeMarker(file) {
+  // No episode directory is ordinary silence, not a lock failure or a grounding obligation.
+  try { fs.lstatSync(path.dirname(file)); } catch (e) { if (e.code === 'ENOENT') return null; }
+  let held;
+  try {
+    held = markerLock(file, (owns) => {
+      const observedLatches = latches(file);
+      if (observedLatches === null) throw new Error('marker latch read failed');
+      const marker = readMarker(file, { locked: true });
+      if (!marker) return null;
+      let markerMs = Date.now();
+      try { markerMs = fs.lstatSync(file).mtimeMs; } catch {}
+      // Suspicious sidecars remain in place; never follow or retire their targets.
+      if (observedLatches.some((flag) => fs.lstatSync(flag).isSymbolicLink())) return { marker: conservativeArm(), markerMs };
+      if (!owns()) throw new Error('marker owner changed');
+      if (exists(file)) fs.unlinkSync(file);
+      // Consume only witnessed latches; a contender publishes a new unique obligation.
+      for (const flag of observedLatches) fs.unlinkSync(flag);
+      return { marker, markerMs };
+    });
+  } catch { failSafeArm(file); return { marker: conservativeArm(), markerMs: Date.now() }; }
+  if (!held.ok) { failSafeArm(file); return { marker: conservativeArm(), markerMs: Date.now() }; }
+  return held.value;
 }
 
 async function main() {
@@ -120,7 +205,8 @@ async function main() {
   } catch { process.exit(0); }
 
   let arm = null;
-  try { arm = armFor(hookInput, loadVocabulary()); } catch { arm = shouldMark(hookInput) ? { gate1: true, assert: false, architecture: false, subjects: [] } : null; }
+  const scope = loadSettings().values.groundingScope;
+  try { arm = armFor(hookInput, loadVocabulary(), scope); } catch { arm = shouldMark(hookInput, scope) ? { gate1: true, assert: false, architecture: false, subjects: [], groundingScope: scope } : null; }
   if (!arm) process.exit(0);
 
   const file = markerPathFor(hookInput.session_id);

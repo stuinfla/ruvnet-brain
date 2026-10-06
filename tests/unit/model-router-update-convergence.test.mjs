@@ -15,6 +15,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { runtimeSnapshot } from '../../scripts/model-routing-launchers.mjs';
 import { applyManagedCatalogUpdate } from '../../scripts/model-router-catalog.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
@@ -173,8 +174,10 @@ describe('managed router default reaches the real installer update entry',()=>{
     expect(fs.readdirSync(dir).some(name=>name.includes('pre-managed-upgrade'))).toBe(false);
     const bin=path.join(dir,'bin');fs.mkdirSync(bin,{recursive:true});
     fs.mkdirSync(path.join(dir,'plugin','scripts'),{recursive:true});
-    for(const file of ['model-router-engine.mjs','route-cheap.mjs'])fs.copyFileSync(path.join(ROOT,'scripts',file),path.join(bin,file));
-    fs.copyFileSync(path.join(ROOT,'plugin','scripts','runtime-preferences.mjs'),path.join(dir,'plugin','scripts','runtime-preferences.mjs'));
+    const install=spawnSync(process.execPath,['--input-type=module','-e',
+      `import { syncManagedRouterTools } from ${JSON.stringify(INSTALLER)}; syncManagedRouterTools({routerDir:${JSON.stringify(dir)},packageRoot:${JSON.stringify(ROOT)}});`],
+      {encoding:'utf8',env:{...process.env,RUVNET_BRAIN_IMPORT_ONLY:'1'},timeout:15000});
+    expect(install.status,install.stderr).toBe(0);
     fs.writeFileSync(path.join(dir,'profile.json'),JSON.stringify({harnesses:{codex:{available:true,subscription:true}}}));
     const now=new Date().toISOString();
     fs.writeFileSync(path.join(dir,'routing-policy.json'),JSON.stringify({schemaVersion:1,reviewedAt:now,routes:{codex:{medium:{model:'sol-fixture',effort:'medium'},substantial:{model:'sol-fixture',effort:'high'}}}}));
@@ -205,4 +208,20 @@ it('ships every relative module dependency into a fresh managed router installat
       expect(fs.existsSync(path.resolve(bin, match[1])), `${file} needs ${match[1]}`).toBe(true);
     }
   }
+});
+
+ it('allows fresh installer dependencies to import without terminal-only WebSocket packages', () => {
+  const root = temporary('rnb-installer-no-terminal-dependency-');
+  for (const [file, bytes] of runtimeSnapshot(ROOT).files) {
+    if (file.startsWith('node_modules/')) continue;
+    const destination = path.join(root, file);
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.writeFileSync(destination, bytes);
+  }
+  const entry = path.join(root, 'scripts/model-terminal-launchers.mjs');
+  const run = spawnSync(process.execPath, ['--input-type=module', '-e',
+    'await import(process.argv[2]); console.log("INSTALLER_IMPORT_OK")', 'import-only', entry],
+    { encoding: 'utf8', timeout: 5000 });
+  expect(run.status, run.stderr).toBe(0);
+  expect(run.stdout.trim()).toBe('INSTALLER_IMPORT_OK');
 });

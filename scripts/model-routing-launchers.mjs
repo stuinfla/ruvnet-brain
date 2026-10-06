@@ -9,6 +9,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 const SELF = fileURLToPath(import.meta.url);
 const sha = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
@@ -81,6 +82,7 @@ function backup(file) {
 export function runtimeSnapshot(sourceRoot) {
   const root = fs.realpathSync(sourceRoot); const files = new Map();
   const visit = (relative) => {
+    relative = relative.split(path.sep).join('/');
     if (files.has(relative)) return;
     const file = regular(path.join(root, relative));
     if (!file.startsWith(`${root}${path.sep}`)) throw new Error('Runtime dependency escaped source root');
@@ -90,6 +92,57 @@ export function runtimeSnapshot(sourceRoot) {
     }
   };
   for (const relative of ['scripts/model-routing-gateway.mjs', 'scripts/model-router-engine.mjs', 'scripts/metaharness-router.mjs']) visit(relative);
+  for (const relative of ['scripts/model-terminal-gateway.mjs', 'scripts/claude-terminal-mod.mjs', 'scripts/model-terminal-launchers.mjs']) {
+    if (fs.existsSync(path.join(root, relative))) visit(relative);
+  }
+  const mod = 'config/model-router/claude-terminal-mod';
+  if (fs.existsSync(path.join(root, mod))) {
+    for (const relative of ['.claude-plugin/plugin.json', 'hooks/hooks.json', 'hooks/register.js', 'hooks/routing.js', 'hooks/runtime.js']) visit(`${mod}/${relative}`);
+  }
+  // The socket adapter must resolve its transport from the same immutable closure.
+  // Optional native accelerators are deliberately excluded; ws supports pure JS.
+  if (files.has('scripts/model-terminal-gateway.mjs')) {
+    const require = createRequire(path.join(root, 'package.json'));
+    const packageRoot = path.dirname(regular(require.resolve('ws/package.json')));
+    const packageJson = JSON.parse(fs.readFileSync(path.join(packageRoot, 'package.json')));
+    if (packageJson.name !== 'ws') throw new Error('Unexpected WebSocket dependency identity');
+    for (const relative of ['package.json', 'LICENSE', 'index.js', 'wrapper.mjs', 'browser.js',
+      ...fs.readdirSync(path.join(packageRoot, 'lib')).filter((name) => name.endsWith('.js')).map((name) => `lib/${name}`)]) {
+      const file = regular(path.join(packageRoot, relative));
+      if (!file.startsWith(`${packageRoot}${path.sep}`)) throw new Error('WebSocket dependency escaped package root');
+      files.set(`node_modules/ws/${relative}`, fs.readFileSync(file));
+    }
+  }
+  // Freeze the installed managed runner with this runtime; no global-version drift or download.
+  if (files.has('scripts/model-routing-controller.mjs')) {
+    const require = createRequire(path.join(root, 'package.json'));
+    const kitRoot = path.dirname(regular(require.resolve('@pacphi/agentic-kit/package.json')));
+    const manifest = JSON.parse(fs.readFileSync(path.join(kitRoot, 'package.json')));
+    if (manifest.name !== '@pacphi/agentic-kit') throw new Error('Unexpected managed runner identity');
+    const collect = relative => {
+      const absolute = path.join(kitRoot, relative), stat = fs.lstatSync(absolute);
+      if (stat.isSymbolicLink()) throw new Error('Managed runner dependency symlink refused');
+      if (stat.isDirectory()) {
+        for (const name of fs.readdirSync(absolute)) if (name !== 'node_modules') collect(path.join(relative, name));
+      } else if (stat.isFile()) files.set(`node_modules/@pacphi/agentic-kit/${relative.split(path.sep).join('/')}`, fs.readFileSync(absolute));
+      else throw new Error('Nonregular managed runner dependency');
+    };
+    collect('package.json'); collect('src');
+  }
+  if (files.has('scripts/model-routing-defence.mjs')) {
+    const defenceEntry = regular(fileURLToPath(import.meta.resolve('@claude-flow/aidefence')));
+    const defenceRoot = path.dirname(path.dirname(defenceEntry));
+    const manifest = JSON.parse(fs.readFileSync(path.join(defenceRoot, 'package.json')));
+    if (manifest.name !== '@claude-flow/aidefence') throw new Error('Unexpected local defence identity');
+    const collect = relative => {
+      const absolute = path.join(defenceRoot, relative), stat = fs.lstatSync(absolute);
+      if (stat.isSymbolicLink()) throw new Error('Defence dependency symlink refused');
+      if (stat.isDirectory()) { for (const name of fs.readdirSync(absolute)) collect(path.join(relative, name)); }
+      else if (stat.isFile()) files.set(`node_modules/@claude-flow/aidefence/${relative.split(path.sep).join('/')}`, fs.readFileSync(absolute));
+      else throw new Error('Nonregular defence dependency');
+    };
+    collect('package.json'); collect('dist');
+  }
   for (const name of fs.readdirSync(path.join(root, 'config/model-router'))) {
     if (/\.(?:json|mjs)$/.test(name)) visit(`config/model-router/${name}`);
   }
@@ -104,6 +157,19 @@ function stableNode() {
   return process.execPath;
 }
 
+/** Terminal routing does not require a VS Code extension installation. */
+export function installRoutingRuntime({ sourceRoot, home = os.homedir(), apply = false } = {}) {
+  const snapshot = runtimeSnapshot(sourceRoot);
+  const runtimeRoot = path.join(home, '.cache/ruvnet-brain/model-routing/versions', snapshot.digest);
+  if (apply) for (const [relative, bytes] of snapshot.files) {
+    const file = path.join(runtimeRoot, relative);
+    if (fs.existsSync(file)) {
+      if (sha(fs.readFileSync(regular(file))) !== sha(bytes)) throw new Error('Immutable runtime snapshot mismatch');
+    } else atomic(file, bytes);
+  }
+  return { apply, runtimeRoot, runtimeDigest: snapshot.digest, runtimeFiles: snapshot.identity };
+}
+
 export function installNativeLaunchers({ sourceRoot, home = os.homedir(), extensionsRoot = path.join(home, '.vscode-server/extensions'), nodeBinary = stableNode(), apply = false } = {}) {
   // VS Code spawns its executable directly. A .cmd/.sh surrogate is not a proved
   // Windows executable adapter; refuse before writing a misleading registration.
@@ -113,7 +179,7 @@ export function installNativeLaunchers({ sourceRoot, home = os.homedir(), extens
   const runtime = path.join(base, 'versions', snapshot.digest);
   const runner = path.join(base, 'model-routing-launchers.mjs');
   const configPath = path.join(base, 'launcher-config.json');
-  const config = { extensionsRoot: fs.realpathSync(extensionsRoot), nodeBinary: (regular(fs.realpathSync(nodeBinary)), nodeBinary), gatewayPath: path.join(runtime, 'scripts/model-routing-gateway.mjs'), runtimeDigest: snapshot.digest };
+  const config = { extensionsRoot: fs.realpathSync(extensionsRoot), nodeBinary: (regular(fs.realpathSync(nodeBinary)), nodeBinary), gatewayPath: path.join(runtime, 'scripts/model-routing-gateway.mjs'), terminalGatewayPath: path.join(runtime, 'scripts/model-terminal-gateway.mjs'), runtimeRoot: runtime, runtimeDigest: snapshot.digest };
   const codexBinary = discoverNativeCodex(config.extensionsRoot);
   const launchers = Object.fromEntries(Object.keys(KEYS).map((host) => [host, path.join(home, '.local/bin', `ruvnet-brain-${host === 'codex' ? 'codex' : 'claude'}-gateway`)]));
   const texts = Object.fromEntries(Object.entries(launchers).map(([host]) => [host, `#!/bin/sh\n# Managed RuvNet Brain native routing launcher\nexec ${shellQuote(config.nodeBinary)} ${shellQuote(runner)} --launch ${shellQuote(host)} --config ${shellQuote(configPath)} --launcher "$0" -- "$@"\n`]));

@@ -1,8 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createProgressionSnapshot } from './project-progression-contract.mjs';
+import { createProgressionSnapshot, digestCanonical } from './project-progression-contract.mjs';
 import { ProjectProgressionStore } from './project-progression-store.mjs';
+import { redactText } from './continuity-events.mjs';
+import os from 'node:os';
+import { resolveTurnDb } from './turn-outcome-capture.mjs';
+import { privateProgressionState, payloadReferencesExcludedResource } from './turn-capture-privacy.mjs';
 
 const HOSTS = new Set(['claude', 'codex']);
 const CAPTURE_TRIGGERS = new Set([
@@ -85,10 +89,12 @@ function boundedText(value) {
     : `${value.slice(0, OBSERVATION_TEXT_LIMIT)}...[truncated]`;
 }
 
-function toolAction(payload) {
+function toolAction(payload, { contentPathExcludes = [], projectDir } = {}) {
   const input = payload.tool_input && typeof payload.tool_input === 'object' ? payload.tool_input : {};
+  // Classify original input before bounding it; the excluded reference can occur after 4096 chars.
+  const privateSource = payloadReferencesExcludedResource(payload, contentPathExcludes, projectDir);
   const command = boundedText(input.command ?? input.cmd);
-  const filePath = boundedText(input.file_path ?? input.path);
+  const filePath = boundedText(input.file_path ?? input.notebook_path ?? input.path);
   const action = command || filePath;
   if (!action && !payload.tool_name) return null;
 
@@ -105,23 +111,27 @@ function toolAction(payload) {
   const exitCode = Number.isSafeInteger(explicitCode)
     ? explicitCode
     : textualCode ? Number(textualCode[1]) : undefined;
-  const interrupted = responseRecord?.interrupted === true || responseRecord?.signal === 'SIGINT';
+  const error = boundedText(typeof responseRecord?.error === 'string' ? redactText(responseRecord.error) : undefined);
+  const signal = boundedText(typeof responseRecord?.signal === 'string' ? redactText(responseRecord.signal) : undefined);
+  const interrupted = responseRecord?.interrupted === true || Boolean(signal);
   const explicitError = responseRecord?.isError === true || payload.is_error === true;
   const declaredOutcome = ['success', 'failure', 'interrupted', 'unknown'].includes(responseRecord?.outcome)
     ? responseRecord.outcome : null;
-  const failed = explicitError || (Number.isSafeInteger(exitCode) && exitCode !== 0);
+  const failed = explicitError || Boolean(error) || (Number.isSafeInteger(exitCode) && exitCode !== 0);
   const terminal = failed || Number.isSafeInteger(exitCode)
     || responseRecord?.success === true || responseRecord?.ok === true;
   const outcome = payload.hook_event_name === 'PostToolUse'
-    ? (interrupted ? 'interrupted' : failed ? 'failure' : declaredOutcome || (terminal ? 'success' : 'unknown'))
+    ? (error ? 'failure' : interrupted ? 'interrupted' : failed ? 'failure' : declaredOutcome || (terminal ? 'success' : 'unknown'))
     : 'pending';
   const observation = {
     trigger: payload.hook_event_name,
     tool: boundedText(payload.tool_name) || 'unknown',
     ...(command ? { command } : {}),
-    ...(filePath && !command ? { filePath } : {}),
+    ...(filePath ? { filePath } : {}),
     outcome,
-    ...(Number.isSafeInteger(exitCode) ? { exitCode } : {}),
+    ...(Number.isSafeInteger(exitCode) ? { exitCode } : responseRecord?.exit_code === null || responseRecord?.exitCode === null ? { exitCode: null } : {}),
+    ...(error ? { error } : {}),
+    ...(signal ? { signal } : {}),
     ...(interrupted ? { interrupted: true } : {}),
     ...(explicitError ? { isError: true } : {}),
   };
@@ -134,12 +144,16 @@ function toolAction(payload) {
     const text = boundedText(response);
     if (text) observation.result = text;
   }
+  if (privateSource) {
+    if (command) observation.command = '[REDACTED:excluded-resource-command]'; if (filePath) observation.filePath = '[REDACTED:excluded-path]';
+    for (const field of ['stdout', 'stderr', 'result', 'error', 'signal']) if (Object.hasOwn(observation, field)) observation[field] = '[REDACTED:excluded-resource-output]';
+  }
   return observation;
 }
 
-function enrichStateWithObservation(state, payload) {
+export function enrichStateWithObservation(state, payload, privacy) {
   requireRecord(state, 'completeProjectState');
-  const observation = toolAction(payload);
+  const observation = toolAction(payload, privacy);
   if (!observation) return state;
   const commands = Array.isArray(state.commands) ? state.commands : [];
   const failures = Array.isArray(state.failures) ? state.failures : [];
@@ -164,6 +178,9 @@ export function captureProjectTransition({
   payload,
   projectDir,
   adapterVersion = readProgressionAdapterVersion(),
+  recoverFrozen = false,
+  canCommit,
+  env = process.env,
   storeFactory = (options) => new ProjectProgressionStore(options),
 } = {}) {
   const normalizedHost = requireString(host, 'host').toLowerCase();
@@ -191,7 +208,12 @@ export function captureProjectTransition({
     aliased(progression, 'sourceIdentity', 'source_identity'),
     store.resolution.checkoutRoot, projectDir,
   );
-  const snapshot = createProgressionSnapshot({
+  const privacy = resolveTurnDb({ projectDir, brainHome: env.RUVNET_BRAIN_HOME || path.join(env.HOME || os.homedir(), '.cache', 'ruvnet-brain') });
+  if (privacy.skipped) throw new Error(`progression capture suspended: ${privacy.skipped}`);
+  const observed = enrichStateWithObservation(aliased(progression, 'completeProjectState', 'complete_project_state'), payload, { contentPathExcludes: privacy.contentPathExcludes, projectDir });
+  const protectedState = privateProgressionState(observed, privacy.contentPathExcludes, projectDir);
+  if (recoverFrozen && digestCanonical(protectedState) !== digestCanonical(observed)) throw new Error('progression capture suspended: content exclusions changed; frozen snapshot retained');
+  let snapshot = createProgressionSnapshot({
     projectIdentity: store.resolution.projectIdentity,
     sourceIdentity,
     hostIdentity: { host: normalizedHost, adapterVersion },
@@ -201,12 +223,11 @@ export function captureProjectTransition({
     trigger,
     parentEventKeys: aliased(progression, 'parentEventKeys', 'parent_event_keys'),
     dedupId: aliased(progression, 'dedupId', 'dedup_id'),
-    completeProjectState: enrichStateWithObservation(
-      aliased(progression, 'completeProjectState', 'complete_project_state'),
-      payload,
-    ),
+    completeProjectState: protectedState,
   });
-  const receipt = store.capture(snapshot);
+  let receipt;
+  if (recoverFrozen) ({ snapshot, receipt } = store.captureFrozen(snapshot, { canCommit }));
+  else receipt = store.capture(snapshot);
   verifyReceipt(snapshot, receipt);
   return { snapshot, receipt };
 }

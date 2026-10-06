@@ -35,7 +35,8 @@ import os from 'node:os';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { writeOwn as writeOwnReadiness } from '../scripts/mcp-readiness.mjs';
-import { callManagedCli, MANAGED_CLI_TOOLS } from './managed-cli-interface.mjs';
+import { MANAGED_CLI_TOOLS } from './managed-cli-interface.mjs';
+import { dispatchManagedCli } from './managed-cli-generation.mjs';
 import { unmountedNotice } from '../scripts/brain-location.mjs';
 
 const BRAIN_HOME = process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain');
@@ -362,7 +363,7 @@ async function handleClient(msg) {
     case 'tools/call': {
       if (params?.name === 'ruvnet_cli_help' || params?.name === 'ruvnet_cli_run'
         || params?.name === 'ruvnet_registry_latest') {
-        return clientOk(id, await callManagedCli(params.name, params.arguments || {}));
+        return clientOk(id, await dispatchManagedCli(params.name, params.arguments || {}));
       }
       if (params?.name !== 'search_ruvnet') return clientErr(id, -32602, `unknown tool: ${params?.name}`);
       refreshLease();

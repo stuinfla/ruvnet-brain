@@ -291,6 +291,17 @@ test('domain vocabulary alone does not escalate closed transformations or ordina
   expect(classify(extractFeatures('Summarize the payment report and repair duplicate charges after failover'))).toBe('hard');
 });
 
+test('explicit security and risk assessments have a hard floor while headings-only data is exempt',()=>{
+  for(const harness of ['codex','claude-code']) {
+    for(const prompt of ['Architecture and security review: identify the most important risk of silently bypassing a subscription-only model router. Do not use tools. Answer in one sentence and repeat ROUTER_CLAUDE_CONTEXT_91.',
+      'Assess the risk of silently bypassing the subscription router.', 'Review security boundaries of the local gateway.']) {
+      expect(classify(extractFeatures(prompt,harness,{taskType:'mechanical',scope:'routine'}))).toBe('hard');
+    }
+    expect(classify(extractFeatures('Summarize the headings in this supplied document titled Security and Risk Review; do not assess security or recommend changes.',harness))).toBe('fast');
+    expect(classify(extractFeatures('Review the architecture diagram labels for typos',harness))).toBe('medium');
+  }
+});
+
 test('coordinated implementation surfaces receive substantial effort without reopening accepted design',async()=>{
   const updated={...selection,routes:{...selection.routes,codex:{...selection.routes.codex,substantial:{model:'sol',effort:'high'}}}};
   for(const prompt of ['Add account preferences with storage, API validation, client states, and integration coverage',

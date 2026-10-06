@@ -190,5 +190,39 @@ describe('capacity-aware parallel-work hook', () => {
     const trivial = invoke('Rename one variable in this function.');
     expect(trivial.status).toBe(0);
     expect(trivial.stdout).toBe('');
+
+    fs.mkdirSync(env.RUVNET_BRAIN_STATE_DIR, { recursive: true });
+    fs.writeFileSync(path.join(env.RUVNET_BRAIN_STATE_DIR, 'brain-off'), 'off');
+    const off = invoke('Implement the cross-cutting auth change across API, CLI, docs, and tests; split independent workstreams.');
+    expect(off.status).toBe(0);
+    expect(off.stdout).toBe('');
+    expect(off.stderr).toBe('');
+    fs.unlinkSync(path.join(env.RUVNET_BRAIN_STATE_DIR, 'brain-off'));
+    expect(invoke('Implement the cross-cutting auth change across API, CLI, docs, and tests; split independent workstreams.').stdout)
+      .toContain('Capacity-aware parallel-work advisory');
+  });
+
+  it('does not execute the capacity body at all while OFF', () => {
+    const home = tempDir('capacity-off-home-');
+    const brainHome = path.join(home, 'brain');
+    const scripts = path.join(brainHome, 'versions', '9.9.9', 'scripts');
+    const stateDir = path.join(home, 'state');
+    const marker = path.join(home, 'body-executed');
+    fs.mkdirSync(scripts, { recursive: true });
+    fs.mkdirSync(stateDir);
+    fs.writeFileSync(path.join(scripts, 'capacity-aware-parallel-work.mjs'),
+      `import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(marker)}, 'executed'); console.log('BODY');`);
+    fs.writeFileSync(path.join(brainHome, 'active.json'), JSON.stringify({ generation: 1, version: '9.9.9', codeRoot: 'versions/9.9.9' }));
+    fs.writeFileSync(path.join(brainHome, '.spine-seeded'), 'yes');
+    const invoke = () => spawnSync(process.execPath, [SHIM, 'capacity-aware-parallel-work'], {
+      env: { ...process.env, HOME: home, RUVNET_BRAIN_HOME: brainHome, RUVNET_BRAIN_STATE_DIR: stateDir },
+      input: JSON.stringify({ prompt: 'Implement a large cross-cutting change across API, CLI and tests.' }),
+      encoding: 'utf8', timeout: 3000,
+    });
+    expect(invoke().stdout).toContain('BODY');
+    fs.unlinkSync(marker);
+    fs.writeFileSync(path.join(stateDir, 'brain-off'), 'off');
+    expect(invoke()).toMatchObject({ status: 0, stdout: '', stderr: '' });
+    expect(fs.existsSync(marker)).toBe(false);
   });
 });
