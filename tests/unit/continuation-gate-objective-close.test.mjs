@@ -50,12 +50,12 @@ function runStop(dir, env, sessionId = 's-cli') {
   try { out = execFileSync(process.execPath, [GATE], { input: payload, encoding: 'utf8', cwd: dir, env }); }
   catch (e) { out = e.stdout || ''; }
   let ctx = null;
-  try { ctx = JSON.parse(out).hookSpecificOutput?.additionalContext ?? null; } catch { /* no envelope */ }
+  try { ctx = JSON.parse(out).reason ?? null; } catch { /* no envelope */ }
   return { forced: ctx != null, ctx };
 }
 
-describe('--complete-objective closes an objective the real CLI opened', () => {
-  it('a committed objective forces the Stop hook, then --complete-objective silences it (RED on pre-fix code)', () => {
+describe('--complete-objective cannot close work from prose alone', () => {
+  it('a prose closure is refused and the actual Stop keeps the objective open', () => {
     const { dir, ledger } = freshDir();
     const env = envFor(dir, ledger);
     try {
@@ -65,10 +65,10 @@ describe('--complete-objective closes an objective the real CLI opened', () => {
       expect(before.ctx).toMatch(/ship the retry policy/);
 
       const complete = runCli(dir, env, ['--complete-objective', 'deployed to prod, verified via /health returning 200']);
-      expect(complete.status).toBe(0);
+      expect(complete.status).toBe(2);
 
       const after = runStop(dir, env, 's-cli-2');
-      expect(after.forced, 'a completed objective must NOT force the turn to continue').toBe(false);
+      expect(after.forced, 'prose must not suppress unfinished work').toBe(true);
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   });
 
@@ -84,9 +84,9 @@ describe('--complete-objective closes an objective the real CLI opened', () => {
       runCli(dir, env, ['--complete-objective', 'deployed to prod, verified via /health returning 200']);
 
       const led = JSON.parse(fs.readFileSync(ledger, 'utf8'));
-      expect(led.objective.state).toBe('completed');
-      expect(led.objective.completionEvidence).toBe('deployed to prod, verified via /health returning 200');
-      expect(Number.isFinite(Date.parse(led.objective.completedAt))).toBe(true);
+      expect(led.objective.state).toBe('active');
+      expect(led.objective.completionRequest).toBe('deployed to prod, verified via /health returning 200');
+      expect(Number.isFinite(Date.parse(led.objective.completionRequestedAt))).toBe(true);
       // The unrelated plain item survives untouched.
       expect(led.items.some((i) => i.text === 'unrelated item' && i.done === false)).toBe(true);
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
