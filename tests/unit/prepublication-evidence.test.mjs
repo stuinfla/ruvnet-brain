@@ -49,10 +49,10 @@ function fixture() {
   });
   const ciFile = write('ci.json', {
     schemaVersion: 1, kind: 'ruvnet-brain-candidate-ci-evidence', sourceSha: sha, version, payloadId,
-    payloadManifestSha256: digest(manifestFile), workflow: 'ci', runId, runAttempt: 1,
+    payloadManifestSha256: digest(manifestFile), producerWorkflow: 'release-candidate-preflight', producerJob: 'aggregate', summarizedWorkflow: 'ci', runId, runAttempt: 1,
     acceptanceReceipts: ['linux', 'macos', 'windows'].map(platform => ({ platform, sourceSha: sha, passed: 12, receiptSha256: 'c'.repeat(64) })),
     jobs: ['candidate-preflight', 'release-acceptance-linux', 'release-acceptance-windows', 'release-acceptance-macos', 'release-qe']
-      .map((name) => ({ name, conclusion: 'success' })),
+      .map((name) => ({ name, conclusion: 'success', workflow: name === 'candidate-preflight' ? 'release-candidate-preflight' : 'ci' })),
     verdict: 'PASS', skipped: 0, unknown: 0,
   });
   const integrationFile = write('integration.json', {
@@ -69,7 +69,7 @@ function fixture() {
     schemaVersion: 1, sha, payloadId, sourceCiRunId: String(runId), strangerRunId: String(runId),
     verdict: 'PASS', jobs: ['ubuntu', 'macos', 'windows-gitbash', 'windows-powershell', 'hostile'],
   });
-  return { sha, version, runId, manifestFile, payloadProofFile, hostFile, runtimeCensusFile, ciFile, integrationFile, uxFiles, strangerFile, planFile, coverageFile };
+  return { sha, version, runId, runAttempt: 1, manifestFile, payloadProofFile, hostFile, runtimeCensusFile, ciFile, integrationFile, uxFiles, strangerFile, planFile, coverageFile };
 }
 
 afterEach(() => { if (dir) fs.rmSync(dir, { recursive: true, force: true }); });
@@ -108,6 +108,21 @@ describe('prepublication evidence', () => {
     receipt.runId += 1;
     fs.writeFileSync(f.ciFile, JSON.stringify(receipt));
     expect(() => buildPrepublicationEvidence(f)).toThrow(/candidate CI receipt identity/);
+  });
+
+  it.each([
+    ['producer workflow', r => { r.producerWorkflow = 'ci'; }],
+    ['producer job', r => { r.producerJob = 'candidate-ci-evidence'; }],
+    ['summarized workflow', r => { r.summarizedWorkflow = 'other'; }],
+    ['attempt', r => { r.runAttempt += 1; }],
+    ['outer job origin', r => { r.jobs[0].workflow = 'ci'; }],
+    ['duplicate job', r => { r.jobs[1] = r.jobs[0]; }],
+    ['missing platform', r => { r.acceptanceReceipts.pop(); }],
+    ['duplicate platform', r => { r.acceptanceReceipts[1] = r.acceptanceReceipts[0]; }],
+  ])('rejects forged candidate CI %s', (_label, mutate) => {
+    const f = fixture(), receipt = JSON.parse(fs.readFileSync(f.ciFile));
+    mutate(receipt); fs.writeFileSync(f.ciFile, JSON.stringify(receipt));
+    expect(() => buildPrepublicationEvidence(f)).toThrow();
   });
 
   it('rejects a green integration wrapper with unaccounted tests', () => {

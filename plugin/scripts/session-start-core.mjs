@@ -39,6 +39,7 @@ import { FOOTPRINT_LINE_PREFIX } from './brain-confirmation.mjs';
 import { describeLifecycleHooks, readHookContracts } from './session-start-hook-description.mjs';
 import { createStageTracer } from './session-start-trace.mjs';
 import { sessionStartProofRecorder } from './session-start-proof.mjs';
+import { ALIAS_NOTICE, probeCodexConsoleAlias, readSessionSource } from './codex-console-alias.mjs';
 
 // Re-exported for callers/tests that import the entitlement check directly from this file's own
 // long-standing public surface (tests/unit/session-start-core-parity.test.mjs).
@@ -90,6 +91,8 @@ export async function runSessionStart({
   platform = process.platform,
   restoreContinuity = restoreWithBrief,
   runHeartbeat = true,
+  sessionSource = 'startup',
+  probeConsoleAlias = probeCodexConsoleAlias,
 } = {}) {
   const lines = [];
   // SessionStart is context plumbing, not an instruction channel. Keep factual, actionable
@@ -99,6 +102,7 @@ export async function runSessionStart({
   const isSafeStatus = (line) => {
     const s = String(line);
     return s.startsWith('🚨')
+      || s === ALIAS_NOTICE
       || s.startsWith('[RuvNet Brain — HEALTH ALARM')
       || s.startsWith('[RuvNet Brain — INSTALL ALARM')
       || s.startsWith('[RuvNet Brain — NIGHTLY FAILED')
@@ -332,7 +336,7 @@ export async function runSessionStart({
       }
     });
 
-    tracer.stage('banner', () => {
+    await tracer.stageAsync('banner', async () => {
       const bannerVersion = effectiveVersion || 'unknown';
       if (pluginRoot.startsWith(path.join(home, '.claude', 'plugins') + path.sep)) {
         if (running) write(path.join(stateDir, '.running-version'), `${running}\n`);
@@ -368,6 +372,9 @@ export async function runSessionStart({
       // correction it is delivered to everyone, worded for the user, through the same always-shown
       // alarm mechanism as HEALTH ALARM above (never gated by maintainerIssueEntitlement).
       emit(`[RuvNet Brain v${bannerVersion} — active this session${updated ? ` · updated ${updated}` : ''}]`);
+      if (env.RUVNET_HOOK_HOST === 'codex' && sessionSource === 'startup'
+        && await probeConsoleAlias({ home, codexHome: env.CODEX_HOME || path.join(home, '.codex'),
+          cwd, binary: env.CODEX_BIN || 'codex' })) emit(ALIAS_NOTICE);
       bannerEmitted = true;
       // S2 (ONE CURRENCY VERDICT): this no longer compares the KB's own SOURCE.json releaseTag to the
       // plugin version — that heuristic fires a FALSE POSITIVE for the entire (normal, expected)
@@ -430,7 +437,8 @@ function isDirectInvocation() {
 
 const direct = isDirectInvocation();
 if (direct) {
-  runSessionStart().catch((error) => {
+  const sessionSource = await readSessionSource();
+  runSessionStart({ sessionSource }).catch((error) => {
     if (process.env.RUVNET_SESSION_TRACE === '1') {
       process.stderr.write(`SESSION_TRACE native-fail-open ${error?.message || error}\n`);
     }

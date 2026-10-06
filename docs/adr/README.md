@@ -1,5 +1,5 @@
 
-Updated: 2026-10-03 16:32:20 EDT | Version 1.1.1
+Updated: 2026-10-05 17:05:19 EDT | Version 1.1.2
 Created: 2026-06-29 00:00:00 EDT
 > **Before writing or reviewing any ADR, read [`../PRINCIPLES.md`](../PRINCIPLES.md).**
 > An ADR that contradicts a principle is wrong, and the contradiction is the finding.
@@ -116,3 +116,4 @@ line), first clause only — see each ADR for the full, dated status history.
 | [0100](0100-guaranteed-agentdb-continuity.md) | Guaranteed AgentDB continuity — material events, durable outbox, come-up-to-speed brief, one writer | Accepted |
 | [0101](0101-agentdb-first.md) | Canonical AgentDB recall before every nontrivial prompt | Accepted |
 | [0102](0102-completion-and-closure-ledger.md) | ADR-102 — Completion and the closure ledger | Proposed |
+| [0103](0103-routing-architecture-review-lock.md) | Routing architecture qualification requires a current finite source review | Accepted |

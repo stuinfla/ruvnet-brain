@@ -40,6 +40,36 @@ jobs:
           node-version: '22'
       - name: Install exact candidate dependencies
         run: npm ci --no-audit --no-fund --ignore-scripts
+      - name: Restore the same-run sealed candidate payload
+        uses: actions/download-artifact@v4
+        with:
+          name: release-evidence-${{ inputs.candidate_sha }}
+          path: release-evidence
+      - name: Verify and select the sealed package
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import { verifyPayloadMembers } from './scripts/release-payload.mjs';
+          const root = path.resolve('release-evidence');
+          const manifest = JSON.parse(fs.readFileSync(path.join(root, 'payload-manifest.json'), 'utf8'));
+          if (manifest.candidateSha !== process.env.CANDIDATE_SHA
+            || manifest.producer?.runId !== process.env.GITHUB_RUN_ID) {
+            throw new Error('sealed payload differs from the candidate or producer run');
+          }
+          const { payloadId } = verifyPayloadMembers({ manifest, root });
+          const entries = JSON.parse(fs.readFileSync(path.join(root, 'npm-pack.json'), 'utf8'));
+          const npm = manifest.members.filter(member => member.role === 'npm');
+          if (entries.length !== 1 || npm.length !== 1 || entries[0].filename !== npm[0].name) {
+            throw new Error('npm pack entry differs from the sealed payload member');
+          }
+          fs.appendFileSync(process.env.GITHUB_ENV,
+            `RUVNET_SEALED_PACKAGE=${path.join(root, npm[0].name)}\nRUVNET_SEALED_PAYLOAD_ID=${payloadId}\n`);
+          NODE
       - name: Run early public-artifact Agentic-QE lane
         shell: bash
         env:
@@ -47,6 +77,7 @@ jobs:
           OPENAI_API_KEY: ''
           OPENROUTER_API_KEY: ''
           RUVNET_ALLOW_METERED_SPEND: '0'
+          RUVNET_REQUIRE_SEALED_PACKAGE: '1'
         run: node scripts/qe/agentic-qe-4.3.mjs --lane early-public
       - name: Preserve the source-bound early receipt
         if: always()

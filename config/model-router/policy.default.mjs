@@ -39,12 +39,12 @@ function assessmentText(text) {
 export function validateTaskFacts(facts) {
   if (facts === undefined) return undefined;
   if (!facts || typeof facts !== 'object' || Array.isArray(facts)) throw new Error('taskFacts must be an object');
-  const keys = new Set(['taskType','scope','uncertainty','consequentialPlanning','finalSubstantiveReview','exceptionalReason']);
+  const keys = new Set(['taskType','scope','uncertainty','consequentialPlanning','finalSubstantiveReview','exceptionalReason','verifiedTaskQualityFailure']);
   if (Object.keys(facts).some((key) => !keys.has(key))) throw new Error('Unknown taskFacts field');
   if (facts.taskType !== undefined && !['mechanical','coding','research','planning','review'].includes(facts.taskType)) throw new Error('Invalid taskFacts taskType');
   if (facts.scope !== undefined && !['routine','substantial'].includes(facts.scope)) throw new Error('Invalid taskFacts scope');
   if (facts.uncertainty !== undefined && !['none','architecture','coupled-implementation','missing-information','environment'].includes(facts.uncertainty)) throw new Error('Invalid taskFacts uncertainty');
-  for (const key of ['consequentialPlanning','finalSubstantiveReview']) {
+  for (const key of ['consequentialPlanning','finalSubstantiveReview','verifiedTaskQualityFailure']) {
     if (facts[key] !== undefined && typeof facts[key] !== 'boolean') throw new Error(`taskFacts ${key} must be boolean`);
   }
   if (facts.exceptionalReason !== undefined && !/^[a-z][a-z0-9-]{2,79}$/.test(facts.exceptionalReason)) {
@@ -68,7 +68,7 @@ export function classify(features, harness = features.harness || 'codex') {
   const facts = validateTaskFacts(features.taskFacts);
   // Partial caller metadata supplements the assessment; it cannot lower explicit high-consequence text.
   if (facts?.exceptionalReason) return harness === 'claude-code' ? 'hard' : 'exceptional';
-  if (hardText) return 'hard';
+  if (hardText || facts?.verifiedTaskQualityFailure) return 'hard';
   if (facts && (['architecture','coupled-implementation'].includes(facts.uncertainty) ||
       facts.consequentialPlanning || facts.finalSubstantiveReview ||
       ((facts.scope === 'substantial' || substantialText) && ['planning','review'].includes(facts.taskType)))) return 'hard';

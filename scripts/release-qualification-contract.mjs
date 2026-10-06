@@ -87,7 +87,9 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
         "tests/unit/qualified-candidate-check.test.mjs",
         "tests/unit/release-qualification.test.mjs",
         "tests/unit/development-push-boundary.test.mjs",
-        "tests/unit/protected-release-workflow.test.mjs"
+        "tests/unit/protected-release-workflow.test.mjs",
+        "tests/unit/agentic-qe-early-public.test.mjs",
+        "tests/unit/release-evidence-dag.test.mjs"
       ]
     },
     {
@@ -127,8 +129,9 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
     },
     {
       "id": "same-session-native-transport",
-      "reason": "Codex and Claude native JSONL preserve context, UTF-8, control progress, cancellation and deferred FIFO while binding each new turn to an approved native route",
+      "reason": "Codex and Claude preserve atomic terminal pastes, fresh manual consent, context, UTF-8, control progress, cancellation and deferred FIFO while binding each new turn to an approved native route",
       "files": [
+        "tests/unit/managed-terminal-input.test.mjs",
         "tests/unit/model-routing-gateway.test.mjs",
         "tests/unit/model-routing-gateway-boundaries.test.mjs",
         "tests/unit/claude-terminal-mod.test.mjs",
@@ -138,6 +141,21 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
         "linux": ["tests/unit/model-terminal-gateway.test.mjs", "tests/unit/model-terminal-launchers.test.mjs", "tests/unit/claude-controlled-terminal.test.mjs"],
         "macos": ["tests/unit/model-terminal-gateway.test.mjs", "tests/unit/model-terminal-launchers.test.mjs", "tests/unit/claude-controlled-terminal.test.mjs"],
         "windows": ["tests/unit/windows-terminal-boundary.test.mjs"]
+      }
+    },
+    {
+      "id": "managed-native-workflow",
+      "reason": "Automatic prompt mediation preserves parent context and canonical memory, enforces observed model and effort, bounded DAG execution, exact ownership, actual acceptance and independent review without unsafe replay",
+      "files": [
+        "tests/unit/model-routing-controller.test.mjs",
+        "tests/unit/model-routing-execution-adapters.test.mjs",
+        "tests/unit/model-managed-workflow-service.test.mjs",
+        "tests/unit/model-managed-prompt.test.mjs",
+        "tests/unit/model-routing-defence.test.mjs"
+      ],
+      "platformFiles": {
+        "linux": ["tests/unit/model-terminal-canonical-entry.test.mjs", "tests/unit/codex-managed-terminal.test.mjs", "tests/unit/grok-subscription-host.test.mjs", "tests/unit/model-managed-parent-context-posix.test.mjs"],
+        "macos": ["tests/unit/model-terminal-canonical-entry.test.mjs", "tests/unit/codex-managed-terminal.test.mjs", "tests/unit/grok-subscription-host.test.mjs", "tests/unit/model-managed-parent-context-posix.test.mjs"]
       }
     },
     {
@@ -202,7 +220,8 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       "id": "qualification-topology",
       "reason": "Release promotion consumes qualified exact-source receipts and preserves required contexts",
       "files": [
-        "tests/unit/qualify-once-workflow.test.mjs"
+        "tests/unit/qualify-once-workflow.test.mjs",
+        "tests/unit/architecture-review-lock.test.mjs"
       ]
     },
     {
@@ -251,6 +270,15 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
     }
   ],
   "integration": [
+    {
+      "id": "managed-checker-kernel-boundary",
+      "reason": "Native read-only sandbox denies acceptance-script writes outside the authorized project",
+      "files": [],
+      "platformFiles": {
+        "linux": ["tests/integration/model-managed-checker-native.test.mjs"],
+        "macos": ["tests/integration/model-managed-checker-native.test.mjs"]
+      }
+    },
     {
       "id": "canonical-learning-recovery",
       "reason": "Cross-session recovery and Console evidence agree on the same canonical scope without ratifying tool metadata as instructions",
