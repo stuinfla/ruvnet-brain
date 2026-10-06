@@ -64,15 +64,15 @@ describe('continuation gate capability truth', () => {
   });
   it('forces correction when the final answer denies an installed RuvNet skill', () => {
     const output = run('Ruflo ADR Verify is not installed.');
-    expect(output).toContain('additionalContext');
+    expect(JSON.parse(output).decision).toBe('block');
     expect(output).toContain('ruflo-adr:adr-verify');
     expect(output).toContain('contradicts the sealed');
     expect(output).not.toContain('within this authorized objective');
   });
 
-  it('never restarts user interruption or cancelled preferences for answer correction', () => {
+  it('respects user interruption while a cancelled preference cannot bypass answer truth', () => {
     expect(run('Ruflo ADR Verify is not installed.', { hookInput: { interrupted: true } })).toBe('');
-    expect(run('Ruflo ADR Verify is not installed.', { preferenceState: 'cancelled' })).toBe('');
+    expect(run('Ruflo ADR Verify is not installed.', { preferenceState: 'cancelled' })).toContain('capability claim');
   });
 
   it('stays silent when the installed capability statement matches the receipt', () => {
@@ -81,7 +81,7 @@ describe('continuation gate capability truth', () => {
 
   it('forces UNKNOWN instead of allowing an absence claim from an incomplete inventory', () => {
     const output = run('Ruflo ADR Create is not installed.', { malformed: true });
-    expect(output).toContain('additionalContext');
+    expect(JSON.parse(output).decision).toBe('block');
     expect(output).toContain('UNKNOWN');
     expect(output).toContain('inventory is incomplete');
   });
