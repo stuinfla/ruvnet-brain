@@ -119,15 +119,12 @@ scanner or test code was written; not modified after evaluation began.
   (container never materializes a corpus; not a credentials block — this candidate does not touch
   retrieval/grounding code, so this gate is not the relevant evaluator for tonight's surface
   anyway). [OBSERVATION]
-- **`npm run test:unit`** (full suite, ~3900+ tests, historically ~6 minutes per prior nights'
-  documented runs): launched and monitored through completion of the targeted/integration/claims
-  evaluators above; every failure observed while it ran was in an unrelated file (console-honesty,
-  corpus-accuracy-gate, hook-hardening, release-signature, advocacy-outcomes, hook-contract,
-  hook-contracts-doctor, user-settings — none touching or importing any of the 3 new files, grep-
-  confirmed). Still running at push time; this candidate is additive-only (no existing file
-  modified, nothing imports the new files), so by construction it cannot change any existing test's
-  outcome — the full tally is a confirmation, not a precondition, and is not fabricated here.
-  [OBSERVATION, partial + structural argument; not claimed as a completed MEASUREMENT]
+- **`npm run test:unit`** (full suite): ran to completion, 990s — **35 failed files / 93 failed
+  tests / 577 passed files / 8134 passed tests / 58 skipped / 138 todo of 8423 total**. Direct
+  `grep` of the complete log confirms neither `entrypoint-guard-sweep.test.mjs` nor any of the 3
+  new files appears anywhere in the failure output — matching exactly the additive-only structural
+  prediction made before the run finished (no existing file modified, nothing imports the new
+  files, so nothing could change any existing test's outcome). [MEASUREMENT, completed]
 
 ## Darwin
 
@@ -180,10 +177,15 @@ report; its sha256 and witness stamp are below.
 
 ## Witness
 
+RESTAMPED after `test:unit` ran to completion (the only change since the first stamp: the
+provisional/partial `test:unit` note was replaced with the final, completed tally — no other
+content changed). First stamp's values are superseded, not deleted from history: see `f5d6ecb7`'s
+commit and the PR's own first-push body for the original `8a4b74c6…`.
+
 ```
 SESSION_COMMIT = 3e0802f4a11f849e8233915d41f4e0b47b278379
-REPORT_HASH    = 9f54d17dc56c177aae6dcffff342853590246162801aedb5c92bb4633edcdbe3
-WITNESS        = 8a4b74c6195223a587ed7302200d723f0667a9a2c82c1d0032aaaacfb4e33bcd
+REPORT_HASH    = db7acf0dc55f88d20d92766eb0a740635d1d1701d8e4047e2bb055d765e24aae
+WITNESS        = 4c58349c1d76b706360f5599c3c46ef9592bc9c03555a7dddbe477f14865a4de
 ```
 
 `REPORT_HASH` is `sha256sum` of this report as it stood immediately before this Witness section
