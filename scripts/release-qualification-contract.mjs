@@ -155,8 +155,8 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
         "tests/unit/model-routing-defence.test.mjs"
       ],
       "platformFiles": {
-        "linux": ["tests/unit/model-terminal-canonical-entry.test.mjs", "tests/unit/codex-managed-terminal.test.mjs", "tests/unit/grok-subscription-host.test.mjs", "tests/unit/model-managed-parent-context-posix.test.mjs"],
-        "macos": ["tests/unit/model-terminal-canonical-entry.test.mjs", "tests/unit/codex-managed-terminal.test.mjs", "tests/unit/grok-subscription-host.test.mjs", "tests/unit/model-managed-parent-context-posix.test.mjs"]
+        "linux": ["tests/unit/model-terminal-canonical-entry.test.mjs", "tests/unit/codex-managed-terminal.test.mjs", "tests/unit/grok-subscription-host.test.mjs", "tests/unit/model-managed-parent-context-posix.test.mjs", "tests/unit/automatic-hook-retirement-posix.test.mjs"],
+        "macos": ["tests/unit/model-terminal-canonical-entry.test.mjs", "tests/unit/codex-managed-terminal.test.mjs", "tests/unit/grok-subscription-host.test.mjs", "tests/unit/model-managed-parent-context-posix.test.mjs", "tests/unit/automatic-hook-retirement-posix.test.mjs"]
       }
     },
     {
@@ -243,14 +243,25 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       ]
     },
     {
-      "id": "owner-capture-and-off-controls",
-      "reason": "Brain OFF suppresses capacity execution; promise opt-out suppresses only new capture and preserves existing closure and capability truth",
-      "files": [
-        "tests/unit/capacity-aware-parallel-work.test.mjs",
-        "tests/unit/continuation-gate-capability-truth.test.mjs",
-        "tests/unit/continuation-gate-completion-claims.test.mjs"
-      ]
-    },
+  "id": "owner-capture-and-off-controls",
+  "reason": "Brain OFF suppresses capacity execution; promise opt-out suppresses only new capture and preserves existing closure and capability truth",
+  "files": [
+    "tests/unit/capacity-aware-parallel-work.test.mjs",
+    "tests/unit/continuation-gate-capability-truth.test.mjs",
+    "tests/unit/continuation-gate-completion-claims.test.mjs",
+    "tests/unit/continuation-gate-objective-close.test.mjs",
+    "tests/unit/continuation-objective.test.mjs",
+    "tests/unit/continuation-gate.test.mjs"
+  ],
+  "platformFiles": {
+    "linux": [
+      "tests/unit/hook-shim.test.mjs"
+    ],
+    "macos": [
+      "tests/unit/hook-shim.test.mjs"
+    ]
+  }
+},
     {
       "id": "active-managed-generation",
       "reason": "Active code selection binds help authorization and execution to one immutable leased generation across promotion",

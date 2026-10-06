@@ -1,3 +1,4 @@
+import { spawnSync as hostSpawnSync } from 'node:child_process';
 // hook-shim.test.mjs — the Stable Spine's hook dispatcher (ADR-023 §3). Runs the REAL
 // plugin/scripts/hook-shim.mjs as a subprocess against a temp RUVNET_BRAIN_HOME + a fake
 // CLAUDE_PLUGIN_ROOT. Execution fixtures need bash → honest skipIf(win32), matching the
@@ -93,7 +94,7 @@ describe.skipIf(process.platform === 'win32')('hook-shim.mjs — restart-free ho
       'unprompted-speech': 'unprompted-runtime.mjs',
       'ground-ruvnet': 'ground-ruvnet.sh',
       'verify-interface': 'verify-interface.sh',
-      'learn-capture': 'learn-capture.sh',
+      'learn-capture': 'learn-capture.mjs',
     };
     const consumers = registeredIds.filter((id) => FILES[id]).map((id) => [id, FILES[id]]);
     expect(consumers.length, 'derived nothing — the registry parse is wrong and this is vacuous')
@@ -167,5 +168,27 @@ describe.skipIf(process.platform === 'win32')('hook-shim.mjs — restart-free ho
     expect(r.status).toBe(0);
     expect(r.stderr).toMatch(/unknown hook id/);
     expect(r.stderr).toMatch(/route-dispatch/); // the table is named, aiding diagnosis
+  });
+});
+
+
+describe('registered native host boundary', () => {
+  it('recognizes only the matching Claude plugin root and preserves explicit Codex', () => {
+    const root = seedSpine('1.0.0', { 'session-snapshot-hook.mjs': 'console.log(JSON.stringify({hookSpecificOutput:{hookEventName:"UserPromptSubmit",additionalContext:"host:"+(process.env.RUVNET_HOOK_HOST||"unknown")}}));\n' });
+    const invoke = (pluginRoot, explicitHost) => {
+      const env = { ...process.env, RUVNET_BRAIN_HOME: HOME_DIR };
+      delete env.RUVNET_HOOK_HOST;
+      delete env.CLAUDE_PLUGIN_ROOT;
+      if (pluginRoot !== null) env.CLAUDE_PLUGIN_ROOT = pluginRoot;
+      if (explicitHost !== null) env.RUVNET_HOOK_HOST = explicitHost;
+      return hostSpawnSync(process.execPath, [SHIM, 'session-snapshot'], { input: '{}', encoding: 'utf8', env, timeout: 10000 });
+    };
+    const matching = invoke(SOURCE_PLUGIN_ROOT, null);
+    expect(matching.status).toBe(0);
+    expect(matching.stdout).toContain('host:claude');
+    expect(invoke(null, null).stdout).toContain('host:unknown');
+    expect(invoke(root, null).stdout).toContain('host:unknown');
+    expect(invoke(SOURCE_PLUGIN_ROOT, 'codex').stdout).toContain('host:codex');
+    expect(invoke(SOURCE_PLUGIN_ROOT, 'invalid').stdout).toContain('host:invalid');
   });
 });
