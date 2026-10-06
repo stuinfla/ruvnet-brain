@@ -16,11 +16,11 @@ const previousImportOnly = process.env.RUVNET_BRAIN_IMPORT_ONLY;
 beforeAll(async () => {
   const sealed = process.env.RUVNET_SEALED_PACKAGE;
   if (sealed) {
-    const packageManifest = JSON.parse(execFileSync('tar', ['-xOf', sealed, 'package/package.json'], { encoding: 'utf8' }));
+    const packageManifest = JSON.parse(execFileSync('tar', ['-xOf', path.basename(sealed), 'package/package.json'], { cwd: path.dirname(sealed), encoding: 'utf8' }));
     packed = {
       filename: path.basename(sealed),
       version: packageManifest.version,
-      files: execFileSync('tar', ['-tzf', sealed], { encoding: 'utf8' })
+      files: execFileSync('tar', ['-tzf', path.basename(sealed)], { cwd: path.dirname(sealed), encoding: 'utf8' })
         .trim().split('\n').map((entry) => ({ path: entry.replace(/^package\//, '').replace(/\/$/, '') })),
     };
     extractTarball(sealed, temp);
