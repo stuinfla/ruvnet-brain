@@ -82,6 +82,7 @@ function backup(file) {
 export function runtimeSnapshot(sourceRoot) {
   const root = fs.realpathSync(sourceRoot); const files = new Map();
   const visit = (relative) => {
+    relative = relative.split(path.sep).join('/');
     if (files.has(relative)) return;
     const file = regular(path.join(root, relative));
     if (!file.startsWith(`${root}${path.sep}`)) throw new Error('Runtime dependency escaped source root');
@@ -111,6 +112,36 @@ export function runtimeSnapshot(sourceRoot) {
       if (!file.startsWith(`${packageRoot}${path.sep}`)) throw new Error('WebSocket dependency escaped package root');
       files.set(`node_modules/ws/${relative}`, fs.readFileSync(file));
     }
+  }
+  // Freeze the installed managed runner with this runtime; no global-version drift or download.
+  if (files.has('scripts/model-routing-controller.mjs')) {
+    const require = createRequire(path.join(root, 'package.json'));
+    const kitRoot = path.dirname(regular(require.resolve('@pacphi/agentic-kit/package.json')));
+    const manifest = JSON.parse(fs.readFileSync(path.join(kitRoot, 'package.json')));
+    if (manifest.name !== '@pacphi/agentic-kit') throw new Error('Unexpected managed runner identity');
+    const collect = relative => {
+      const absolute = path.join(kitRoot, relative), stat = fs.lstatSync(absolute);
+      if (stat.isSymbolicLink()) throw new Error('Managed runner dependency symlink refused');
+      if (stat.isDirectory()) {
+        for (const name of fs.readdirSync(absolute)) if (name !== 'node_modules') collect(path.join(relative, name));
+      } else if (stat.isFile()) files.set(`node_modules/@pacphi/agentic-kit/${relative.split(path.sep).join('/')}`, fs.readFileSync(absolute));
+      else throw new Error('Nonregular managed runner dependency');
+    };
+    collect('package.json'); collect('src');
+  }
+  if (files.has('scripts/model-routing-defence.mjs')) {
+    const defenceEntry = regular(fileURLToPath(import.meta.resolve('@claude-flow/aidefence')));
+    const defenceRoot = path.dirname(path.dirname(defenceEntry));
+    const manifest = JSON.parse(fs.readFileSync(path.join(defenceRoot, 'package.json')));
+    if (manifest.name !== '@claude-flow/aidefence') throw new Error('Unexpected local defence identity');
+    const collect = relative => {
+      const absolute = path.join(defenceRoot, relative), stat = fs.lstatSync(absolute);
+      if (stat.isSymbolicLink()) throw new Error('Defence dependency symlink refused');
+      if (stat.isDirectory()) { for (const name of fs.readdirSync(absolute)) collect(path.join(relative, name)); }
+      else if (stat.isFile()) files.set(`node_modules/@claude-flow/aidefence/${relative.split(path.sep).join('/')}`, fs.readFileSync(absolute));
+      else throw new Error('Nonregular defence dependency');
+    };
+    collect('package.json'); collect('dist');
   }
   for (const name of fs.readdirSync(path.join(root, 'config/model-router'))) {
     if (/\.(?:json|mjs)$/.test(name)) visit(`config/model-router/${name}`);
