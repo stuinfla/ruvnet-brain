@@ -32,6 +32,24 @@ function loadScope() {
 
 const row = (name, over = {}) => ({ name, desc: null, bucket: 'current', ruvChangedAt: null, brainReadAt: null, ...over });
 
+describe('snapshot coverage summary', () => {
+  const counts = (current, extra = {}) => ({ current, behind: 0, unverified: 0, notInBrain: 0, ...extra });
+  it('counts eligible repositories and gists without treating policy exclusions as gaps', () => {
+    const summary = loadScope().summarizeCounts({ counts: { repos: counts(200, { ineligible: 7 }), gists: counts(499) } });
+    expect(summary).toMatchObject({ repos: 200, gists: 499, total: 699, attention: 0, buckets: { current: 699 } });
+  });
+  it('retains distinct nonzero attention counts in the full snapshot total', () => {
+    const summary = loadScope().summarizeCounts({ counts: { repos: counts(199, { behind: 1 }),
+      gists: counts(497, { unverified: 1, notInBrain: 1 }) } });
+    expect(summary).toMatchObject({ total: 699, attention: 3,
+      buckets: { current: 696, behind: 1, unverified: 1, notInBrain: 1 } });
+  });
+  it.each([undefined, -1, NaN, '0'])('does not turn unavailable or invalid counts into a healthy zero (%s)', value => {
+    const summary = loadScope().summarizeCounts({ counts: { repos: counts(200, { behind: value }), gists: counts(499) } });
+    expect(summary.attention).toBeNull(); expect(summary.total).toBeNull(); expect(summary.buckets.behind).toBeNull();
+  });
+});
+
 describe('scope page — search matches the name AND what the repo does', () => {
   it('exposes its pure helpers for the page and for this test', () => {
     const api = loadScope();

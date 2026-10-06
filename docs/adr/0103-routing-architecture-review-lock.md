@@ -3,14 +3,22 @@ id: ADR-103
 title: Routing architecture qualification requires a current finite source review
 status: Accepted
 date: 2026-10-05
-updated: 2026-10-05
-version: 0.1.9
-reviewed_digest: 6e41d9bb1970
+updated: 2026-10-06
+version: 0.1.11
+reviewed_digest: 4a35c120cc50
 impl: built
 authors: [Stuart Kerr, Codex]
 tags: [routing, governance, review, release, traceability]
 relates: [ADR-024, ADR-069, ADR-072, ADR-100, ADR-101]
 governs:
+  - console/scope.html
+  - console/scope.css
+  - console/scope.js
+  - tests/unit/console-scope-client.test.mjs
+  - plugin/scripts/update-apply.mjs
+  - scripts/update-apply.mjs
+  - tests/unit/update-apply.test.mjs
+  - tests/unit/update-apply-posix.test.mjs
   - package-lock.json
   - scripts/model-managed-prompt.mjs
   - scripts/model-managed-workflow-service.mjs
@@ -160,6 +168,20 @@ proof from workflow enforcement, P6 by deriving current review from bytes, P7 by
 and P10 by reusing doc-currency. It trades P3's usual nudge for the owner's explicit opt-in to this
 finite release refusal. No paid provider call, model generation or system configuration is added.
 
+### Existing Console and stable-spine boundary additions
+
+The existing Console coverage display preserves authoritative snapshot totals, nonzero attention states,
+sort/search and narrow-screen access. Its presentation regression is mapped to console/scope.html,
+console/scope.css, console/scope.js and console-scope-client; rendered fixture evidence is not a claim
+about a fresh live user corpus. ADR-084 remains Proposed; this repair does not adopt a new control-surface architecture.
+
+ADR-023 (Accepted, 2026-07-18; updated 2026-08-01) governs stable-spine updates. The direct plugin
+update-apply engine and root wrapper validate supported arguments and return help before mkdir,
+lock acquisition, recovery, receipts or finally-GC. Unknown flags/missing operands fail before effects;
+no-argument, --auto and existing valid modes retain behavior. update-apply tests exercise both real CLI
+entries only against disposable absent/present homes and bind all spine bytes and metadata.
+The preexisting symlink assertion remains unchanged in its Linux/macOS-selected companion; the shared Windows core has no skipped required cases. This closes only the argument-safety portion of issue 377, not legacy USER-store adoption or recovery.
+
 ## Currency log
 
 | Date | What | Why |
@@ -172,3 +194,5 @@ finite release refusal. No paid provider call, model generation or system config
 | 2026-10-05 | Reviewed bounded history integration; reviewed_digest a7175c649296; source fc34e4b2a1b0d313b7559ffe1b1823638249959c | scripts/model-managed-prompt.mjs and scripts/model-routing-execution-adapters.mjs retain native identity, authority and existing size limits while binding streamed full-source provenance and bounded compaction context. Independent combined-source review confirms 83 resolved paths and 112 joint focused tests; authentic read-only capture and normal managed synthetic-cache resume witnesses retain their original distinct runtime identities. No full combined-native or live-user activation claim is made. |
 | 2026-10-05 | Reviewed native-home fixture correction; reviewed_digest fb295b1e3e97; source c60637ae825a3a6978b0b33b75988645bce70462 | tests/unit/model-managed-parent-context-posix.test.mjs places Codex fixtures in its native session home and retains missing, ambiguity, symlink, digest and escape refusals. Independent scoped review confirms 83 unique resolved paths and 4 focused tests; production bytes and prior component-proof limits are unchanged. The earlier source qualification remains failed; fresh exact-source qualification is required. |
 | 2026-10-05 | Reviewed native administrative doctor and platform fixture correction; reviewed_digest 6e41d9bb1970; source d6e0ddb5a18456a437c4ad497abf205df593a87e | bin/install.mjs reuses existing explicit native binary resolution for hooks/list; tests/unit/codex-fresh-host-proof.test.mjs retains overrides and bounded fallback. Six byte-identical private-history assertions moved into tests/unit/model-managed-parent-context-posix.test.mjs without changing Windows ACL/getuid refusal. Independent review confirms 84 unique paths and 100 focused checks; candidate default metadata probe registers 18 hooks with zero native model turns. The failed Windows qualification remains failed, new exact Windows qualification and installed default doctor verification remain required. |
+| 2026-10-06 | Reviewed Console and stable-spine argument safety; reviewed_digest ba3f055e09da; source 88c366662d6799e4e6f0838a3c911e8f52a8f5a2 | plugin/scripts/update-apply.mjs validates supported CLI arguments before mkdir, locks, recovery, receipts or finally-GC; tests/unit/update-apply.test.mjs executes both real entries only in disposable homes. console/scope.js and its HTML/CSS preserve snapshot eligibility/totals while fixing overlap and compacting zero attention states. Independent review confirms 91 unique resolved paths, 35 focused cases and inspected rendered fixtures. Native runtime remains exact a6a0f5764d48 with 601 files; no new inference or owner help test was performed. New exact platform/public/installed qualification remains required; broader issues 377 and 335 are not closed. |
+| 2026-10-06 | Reviewed exact POSIX test placement; reviewed_digest 4a35c120cc50; source d07f8e9fe69037d1dce5b2694cc53eaa44fa4343 | tests/unit/update-apply-posix.test.mjs preserves the preexisting symlink assertion unchanged under Linux/macOS selection. Shared update-apply and Console required suites have no skip/todo cases; actual earlier Windows1704PASS/1skip receipt remains failed. Independent review confirms92unique resolved paths and35focused cases; production helper/Console bytes and nativea6closure are unchanged. New exactWindows qualification remains required, not allWindows symlink behavior claimed. |

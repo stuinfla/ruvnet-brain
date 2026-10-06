@@ -353,7 +353,33 @@ function versionOfPayload(dir, fallback) {
 }
 
 // ── modes ───────────────────────────────────────────────────────────────────────────────────────
+function cliArgumentError(args) {
+  const booleans = new Set(['--help', '-h', '--doctor', '--dev-off', '--rollback', '--seed', '--gc', '--no-gc', '--auto']);
+  const requiredValues = new Set(['--from-dir', '--expected-version']);
+  for (let index = 0; index < args.length; index++) {
+    const flag = args[index];
+    if (booleans.has(flag)) continue;
+    if (requiredValues.has(flag)) {
+      const value = args[index + 1];
+      if (!value || value.startsWith('-')) return `${flag} requires an operand`;
+      index++; continue;
+    }
+    if (flag === '--dev') {
+      if (args[index + 1] && !args[index + 1].startsWith('-')) index++;
+      continue;
+    }
+    return `Unsupported update-apply argument: ${flag}`;
+  }
+  return null;
+}
+
 function main() {
+  const argumentError = cliArgumentError(argv);
+  if (argumentError) { console.error(argumentError); return 2; }
+  if (has('--help') || has('-h')) {
+    console.log('Usage: update-apply.mjs [--help|-h] [--doctor|--auto|--seed|--rollback|--gc|--dev [PATH]|--dev-off] [--from-dir PATH] [--expected-version VERSION] [--no-gc]');
+    return 0;
+  }
   fs.mkdirSync(BRAIN_HOME, { recursive: true });
 
   if (has('--doctor')) {

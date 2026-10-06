@@ -29,9 +29,28 @@ main.wrap { padding-block: 34px 72px; }
 .asof strong { color: var(--ink); font-weight: 600; }
 
 /* ── buckets ──────────────────────────────────────────────────────────────── */
+.coverage-summary {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px;
+  border: 1px solid var(--ridge); border-radius: var(--radius-s); background: var(--surface);
+  margin-top: 26px; padding: 22px 24px;
+}
+.summary-label { font-family: var(--mono); font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.coverage-total, .coverage-health { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.coverage-total strong { font-family: var(--display); font-size: 3rem; line-height: 1; color: var(--ink); }
+.coverage-total > span:last-child, .coverage-health > span:last-child { font-size: 13px; color: var(--ink-2); }
+.coverage-health { border-left: 1px solid var(--hair); padding-left: 24px; justify-content: center; }
+.coverage-health strong { font-size: 18px; line-height: 1.35; color: var(--ink); }
+.coverage-health.is-clear strong { color: var(--green-text); }
+.coverage-health.needs-attention strong { color: var(--amber-text); }
+.clear-checks { font-size: 12.5px; color: var(--green-text); margin: 10px 0 0; }
+.clear-checks:empty, .buckets:empty { display: none; }
+@media (max-width: 650px) {
+  .coverage-summary { grid-template-columns: minmax(0, 1fr); gap: 18px; padding: 18px; }
+  .coverage-health { border-left: 0; border-top: 1px solid var(--hair); padding-left: 0; padding-top: 16px; }
+}
 .buckets {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px;
-  margin: 26px 0 8px;
+  margin: 16px 0 8px;
 }
 .bucket {
   border: 1px solid var(--ridge); border-radius: var(--radius-s); padding: 14px 16px;
@@ -97,7 +116,7 @@ table.scope td.name .desc {
 table.scope { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 640px; }
 table.scope th, table.scope td { padding: 9px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--hair); }
 table.scope thead th {
-  position: sticky; top: 58px; z-index: 2;
+  position: static;
   background: color-mix(in srgb, var(--surface-2) 92%, var(--bg));
   font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);
   user-select: none; white-space: nowrap;
