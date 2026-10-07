@@ -328,3 +328,132 @@ it.each(['project','user'])('normal prompt recall reads exact %s observations fr
   w.env.RUVNET_LEARNING_SCOPE='off';const before=w.calls().length;await recall({prompt:'npm test',projectDir:w.proj,env:w.env});expect(w.calls().slice(before).some(c=>c.args.includes('learning-observations'))).toBe(false);
  }finally{w.cleanup();}
 });
+
+describe('explicit recall availability and phase receipt', () => {
+  it('distinguishes disabled/not-adopted/valid-empty from malformed-search unavailability', async () => {
+    const w = world();
+    try {
+      expect((await recall({ prompt: 'Fix parser', projectDir: w.proj, env: { ...w.env, RUVNET_AGENTDB_FIRST: 'off' } })).outcome).toBe('disabled');
+      fs.writeFileSync(w.env.RECALL_ROWS, '[]');
+      expect((await recall({ prompt: 'Fix parser', projectDir: w.proj, env: w.env })).outcome).toBe('ok-empty');
+      fs.writeFileSync(w.env.RUFLO_BIN, `#!${process.execPath}\nconsole.log('not valid search JSON');\n`, { mode: 0o755 });
+      expect((await recall({ prompt: 'Fix parser', projectDir: w.proj, env: w.env })).outcome).toBe('unavailable');
+      fs.unlinkSync(path.join(w.proj, '.swarm/memory.db'));
+      expect((await recall({ prompt: 'Fix parser', projectDir: w.proj, env: w.env })).outcome).toBe('not-adopted');
+    } finally { w.cleanup(); }
+  });
+  it('binds exact retrieval metadata to canonical project, request and fresh phase without persisting raw prompt', async () => {
+    const w = world();
+    try {
+      const binding = { sessionId: 'owned-session', workflowId: 'workflow', phase: 'planner', workerId: 'planner', requestDigest: 'a'.repeat(64) };
+      const r = await recall({ prompt: 'Fix parser', projectDir: w.proj, env: w.env, binding });
+      expect(r.outcome).toBe('ok-with-results');
+      expect(r.receipt.binding).toMatchObject({ ...binding, projectRoot: w.proj });
+      expect(r.receipt.records.every(row => row.namespace && row.key && /^[a-f0-9]{64}$/.test(row.valueDigest))).toBe(true);
+      expect(JSON.stringify(r.receipt)).not.toContain('Fix parser');
+    } finally { w.cleanup(); }
+  });
+  it('pre-aborted recall starts no Ruflo command and cannot report empty success', async () => {
+    const w = world();
+    try {
+      const r = await recall({ prompt: 'Fix parser', projectDir: w.proj, env: w.env, signal: AbortSignal.abort() });
+      expect(r.outcome).toBe('unavailable'); expect(fs.existsSync(w.env.RECALL_LOG)).toBe(false);
+    } finally { w.cleanup(); }
+  });
+});
+
+it('consequential recall reserves state, fourth applicable lesson and decision using exact values', async () => {
+  const w = world();
+  try {
+    const lesson = projects => JSON.stringify({ id: 'scope-lesson', statement: 'Preserve the parser invariants before code changes.', trigger: 'write-code', enforcement: 'checklist', evidence: ['observed fixture regression'], projects,
+      origin: 'user-stated', sourceClass: 'current-user', status: 'ratified', ratifiedBy: 'user', demoted: false });
+    const values = [
+      { key: 'project-state-current-1', namespace: 'proj', content: '{"status":"stale parser state"}' },
+      { key: 'project-state-current-2', namespace: 'proj', content: '{"status":"current parser state"}' },
+      ...[1,2,3].map(i => ({ key: `lesson-foreign-${i}`, namespace: 'lessons', content: lesson(['/foreign']) })),
+      { key: 'lesson-applicable-4', namespace: 'lessons', content: lesson([w.proj]) },
+      { key: 'decision-parser', namespace: 'proj', content: 'Parser decision: keep original syntax validation.' },
+    ];
+    fs.writeFileSync(w.env.RECALL_ROWS, JSON.stringify(values));
+    const enumerateKeys = async () => ({ ok: true, value: Object.fromEntries(['proj','default','lessons','continuity-events'].map(namespace => [namespace, values.filter(row => row.namespace === namespace).map(row => row.key)])) });
+    const r = await recall({ prompt: 'Fix parser', projectDir: w.proj, env: w.env, consequential: true, enumerateKeys,
+      binding: { workflowId: 'workflow', phase: 'implementation', sessionId: null } });
+    expect(r.outcome).toBe('ok-with-results');
+    expect(r.picks.map(row => row.key)).toEqual(['project-state-current-2','lesson-applicable-4','decision-parser']);
+    expect(r.block).toContain('current parser state'); expect(r.block).not.toContain('stale parser state');
+    expect(r.receipt.binding.sessionId).toBeNull(); expect(r.receipt.binding.phase).toBe('implementation');
+    expect(r.picks.every(row => row.authority === false)).toBe(true);
+    expect(w.calls().every(call => call.args[1] === 'retrieve')).toBe(true);
+  } finally { w.cleanup(); }
+});
+
+it('a structural enumeration failure stays unavailable and cannot become an empty history claim', async () => {
+  const w = world();
+  try {
+    const r = await recall({ prompt: 'Fix parser', projectDir: w.proj, env: w.env, consequential: true,
+      enumerateKeys: async () => ({ ok: false, reason: 'schema unavailable' }) });
+    expect(r.outcome).toBe('unavailable'); expect(r.categories.state).toBe('unavailable');
+    expect(fs.existsSync(w.env.RECALL_LOG)).toBe(false);
+  } finally { w.cleanup(); }
+});
+
+it.each([{ projectRoot: '/foreign' }, { superseded: true }])('rejected latest state is unavailable, not proof of absent applicable history: %j', async rejected => {
+  const w = world();
+  try {
+    fs.writeFileSync(w.env.RECALL_ROWS, JSON.stringify([
+      { key: 'project-state-current-1', namespace: 'proj', content: '{"status":"earlier applicable parser state"}' },
+      { key: 'project-state-current-2', namespace: 'proj', content: JSON.stringify({ status: 'rejected state', ...rejected }) },
+    ]));
+    const result = await recall({ prompt: 'Fix parser', projectDir: w.proj, env: w.env, consequential: true,
+      enumerateKeys: async () => ({ ok: true, value: { proj: ['project-state-current-1','project-state-current-2'], default: [], lessons: [], 'continuity-events': [] } }) });
+    expect(result.categories.state).toBe('unavailable'); expect(result.outcome).toBe('unavailable');
+    expect(result.picks).toEqual([]); expect(w.calls().every(call => call.args.includes('project-state-current-2'))).toBe(true);
+  } finally { w.cleanup(); }
+});
+
+it('rejects a foreign project binding before searching canonical memory', async () => {
+  const w = world();
+  try {
+    const r = await recall({ prompt: 'Fix parser', projectDir: w.proj, env: w.env, binding: { projectRoot: '/foreign', phase: 'repair' } });
+    expect(r.outcome).toBe('unavailable'); expect(fs.existsSync(w.env.RECALL_LOG)).toBe(false);
+  } finally { w.cleanup(); }
+});
+
+it('cancellation during exact retrieval retires owned commands without an empty-success claim', async () => {
+  const w = world(), controller = new AbortController();
+  try {
+    const pending = recall({ prompt: 'Fix parser', projectDir: w.proj, env: { ...w.env, RECALL_HANG: '1' }, signal: controller.signal });
+    setTimeout(() => controller.abort(), 60);
+    const r = await pending; expect(r.outcome).toBe('unavailable'); expect(r.picks).toEqual([]);
+    expect(r.block).toContain('unavailable');
+  } finally { w.cleanup(); }
+});
+
+it('expiry during structural enumeration refuses before launching exact retrieval', async () => {
+  const w = world();
+  try {
+    const result = await recall({ prompt: 'Fix parser', projectDir: w.proj, env: w.env, consequential: true,
+      enumerateKeys: async ({ deadline, signal }) => {
+        expect(signal).toBeUndefined(); expect(Number.isFinite(deadline)).toBe(true);
+        await new Promise(resolve => setTimeout(resolve, Math.max(1, deadline - Date.now() + 5)));
+        return { ok: true, value: {} };
+      }, deadlineMs: 250 });
+    expect(result.outcome).toBe('timed-out'); expect(fs.existsSync(w.env.RECALL_LOG)).toBe(false);
+  } finally { w.cleanup(); }
+});
+
+it('successful CLI parent cannot leave an owned pipe-free grandchild running on POSIX', async () => {
+  const w = world(); let pid;
+  try {
+    fs.writeFileSync(w.env.RUFLO_BIN, `#!${process.execPath}\nconst fs=require('fs');const {spawn}=require('child_process');
+const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});child.unref();
+fs.appendFileSync(process.env.RECALL_LOG,child.pid+'\\n');console.log(JSON.stringify({results:[]}));\n`, { mode: 0o755 });
+    const result = await recall({ prompt: 'Fix parser', projectDir: w.proj, env: w.env });
+    const pids = fs.readFileSync(w.env.RECALL_LOG,'utf8').trim().split('\n').map(Number); pid = pids;
+    expect(result.outcome).toBe('ok-empty');
+    if (process.platform !== 'win32') for (const child of pids) expect(() => process.kill(child, 0)).toThrow();
+  } finally {
+    for (const child of pid ?? []) try { process.kill(child, 'SIGKILL'); } catch { /* already retired */ }
+    w.cleanup();
+  }
+});

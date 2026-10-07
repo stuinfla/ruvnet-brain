@@ -183,7 +183,7 @@ export const CONTINUITY_EVENTS = Object.freeze({
     registration('grounding-turn-gate', '*', ['claude', 'codex']),
   ]),
   PreCompact: Object.freeze([
-    registration('session-snapshot', '*', ['claude']),
+    registration('session-snapshot', '*', ['claude', 'codex']),
   ]),
   SessionEnd: Object.freeze([
     registration('learn-flush', '*', ['claude', 'codex']),

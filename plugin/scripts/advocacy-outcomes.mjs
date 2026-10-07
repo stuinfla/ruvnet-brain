@@ -366,15 +366,25 @@ export function record(spec, { file = OUTCOMES_PATH } = {}) {
  * the brain — and it would be silent in exactly the way it is silent when everything is healthy, so
  * nobody would ever find out.
  */
-export function loadOutcomes(file = OUTCOMES_PATH) {
+export function loadOutcomes(file = OUTCOMES_PATH, { strict = false } = {}) {
   let raw;
-  try { raw = fs.readFileSync(file, 'utf8'); } catch { return []; }
+  try { raw = fs.readFileSync(file, 'utf8'); } catch (error) {
+    if (strict && error.code !== 'ENOENT') throw error;
+    return [];
+  }
   const out = [];
   for (const line of raw.split('\n')) {
     const s = line.trim();
     if (!s) continue;
     let r;
-    try { r = JSON.parse(s); } catch { continue; }   // torn or hand-mangled line: drop it, keep the rest
+    try { r = JSON.parse(s); } catch (error) { if (strict) throw error; continue; }   // torn or hand-mangled line: drop it, keep the rest
+    if (strict && (!r || typeof r !== 'object' || Array.isArray(r)
+      || (r.v !== undefined && r.v !== 1)
+      || typeof r.id !== 'string' || !r.id || !ACTION_VALUES.has(r.action)
+      || (r.scope !== undefined && r.scope !== null && r.scope !== 'forever')
+      || (r.scope === 'forever' && r.action !== ACTIONS.DISMISSED))) {
+      throw new Error('Suppression history contains an unsupported record');
+    }
     if (!r || typeof r !== 'object') continue;
     if (typeof r.id !== 'string' || !r.id) continue;
     if (!ACTION_VALUES.has(r.action)) continue;      // an action we do not understand is not counted as one we do
@@ -476,7 +486,11 @@ export function outcomesFor(id, { file = OUTCOMES_PATH, all = null, project = nu
 export function shouldStillOffer(id, {
   severity = null, stateHash = null, file = OUTCOMES_PATH, all = null,
 } = {}) {
-  const o = outcomesFor(id, { file, all });
+  let history = all;
+  if (history === null) {
+    try { history = loadOutcomes(file, { strict: true }); } catch { return false; }
+  }
+  const o = outcomesFor(id, { file, all: history });
 
   if (o.silencedForever) return false;
   if (!o.offered) return true;

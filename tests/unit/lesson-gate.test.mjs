@@ -599,6 +599,15 @@ describe('PROJECT SCOPE: isHome() must not leak across unrelated projects that m
     });
   });
 
+  test('foreign high-ranked lessons cannot crowd out the applicable project lesson', () => {
+    writeStore([
+      ...['one', 'two', 'three'].map((name) => ({ ...sentryLesson(), id: `foreign-${name}`, projects: [name], repeatCount: 99 })),
+      { ...sentryLesson(), id: 'applicable', projects: ['WhitSentry'], repeatCount: 1 },
+    ]);
+    const home = fakeProjectDir(dir, 'WhitSentry');
+    expect(classifyIn(home).inForce.map((l) => l.id)).toContain('applicable');
+  });
+
   test('an unrelated project with NO suffix relationship at all stays silent (sanity check)', () => {
     writeStore([sentryLesson()]);
     const home = fakeProjectDir(dir, 'totally-different-project');

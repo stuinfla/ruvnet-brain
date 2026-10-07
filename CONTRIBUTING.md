@@ -1,4 +1,4 @@
-Updated: 2026-10-05 01:45:00 EDT | Version 1.0.2
+Updated: 2026-10-07 02:50:00 UTC | Version 1.0.3
 Created: 2026-07-07 09:22:01 EDT
 
 # Contributing to RuvNet Brain — the one rulebook
@@ -271,6 +271,50 @@ artifact only together with its classification there, or `--doctor` will report 
   three-update footprint check is opt-in: `scripts/corpus-canary.mjs --footprint-updates`.
 
 ## Hooks (what runs automatically)
+
+### Shared development obligations
+
+These obligations apply equally to Codex and Claude. A hook registration is an event
+entry point, not proof that a rule is enforced. Use shared implementations and thin native
+adapters; place worker admission and task verification in their existing controllers.
+Never infer native execution, completion, publication or fresh knowledge from registration.
+
+The required coverage is: current project restoration; relevant recall before consequential
+decisions; ongoing useful learning; exact canonical persistence; applicable lesson delivery;
+compaction and interruption recovery; knowledge freshness; grounded decisions; architecture
+compliance; verified model routing; safe parallel work and resource admission; writer ownership;
+end-to-end acceptance; independent review; evidence-bound completion; authorized continuation;
+privacy and consent; foreign-hook preservation; cross-host semantic parity; measured improvement
+and rollback; exact-artifact publication; and clear user communication.
+
+Before execution, maintain the complete authorized task list with explicit scope, dependencies
+and acceptance checks. Track each item through definition, implementation, relevant testing,
+independent validation and source-bound closeout. A repair of one discovered defect does not
+complete an end-to-end review: finish the stated boundary inventory, including consumers,
+configuration, native adapters and affected dependencies, and list any unexamined boundary.
+
+A blocked path gets one bounded diagnostic attempt. Repeated unchanged failure triggers
+reassessment rather than another identical retry; within three minutes report the observed
+blocker, exact missing action and unaffected work that can continue. Long-running productive
+work is not a blocker, but requires observed progress and a deadline. Do not wait on an idle
+agent or report registration as execution. These are required controller/reporting behaviors;
+unimplemented enforcement remains visible in the audit inventory.
+
+For each obligation, retain its shared rule, implementation paths, native adapter differences,
+positive and negative acceptance checks, source-bound reviewer findings and actual execution
+evidence. A missing check, timeout, queued write, unavailable source or unobserved native event
+stays explicitly unresolved. No review of old bytes transfers silently to changed code.
+
+Learning observations are not ratified user instructions. Useful project facts and decisions
+must retain their source and scope; inferred lessons remain nonauthoritative until the existing
+review/ratification boundary accepts them. Context restoration does not replace fresh recall
+at a later consequential decision. Compaction recovery must preserve pending work and disclose
+incomplete capture rather than claim lossless recovery without evidence.
+
+The hook audit inventory records current coverage and gaps. This rulebook defines the obligations;
+it does not claim all of them are implemented or native-verified. Updates require the affected
+requirement, source, test and adapter mapping plus new-source review and relevant execution proof.
+
 
 Consent-eligible learning registers fixed-vocabulary PostToolUse capture and bounded recovery at
 SessionStart/SessionEnd. Project observations use the resolved project's `.swarm/memory.db` and

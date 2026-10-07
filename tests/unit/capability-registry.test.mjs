@@ -193,7 +193,7 @@ describe('unknown outranks off when a probe cannot run', () => {
       const r = CAPABILITIES.find((c) => c.key === 'cheap-model-routing').detect();
       expect(r.state).toBe(STATE.UNKNOWN);
       expect(r.state).not.toBe(STATE.OFF);
-      expect(r.evidence).toMatch(/could not be read/i);
+      expect(r.evidence).toMatch(/not inferred|does not prove|not establish|unreadable/i);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -329,5 +329,33 @@ describe('house rules', () => {
     // Empty-first: every state this registry can emit must be one a fresh machine can legitimately
     // show. 'absent' and 'unknown' are what a bare box produces, and neither is an accusation.
     for (const r of auditAll()) expect(STATES).toContain(r.state);
+  });
+});
+
+
+describe('current declaration truth', () => {
+  it('counts capture declarations from an explicitly enabled installed plugin without claiming execution', () => {
+    const home=fs.mkdtempSync(path.join(os.tmpdir(),'capture-declaration-'));
+    const plugin=path.join(home,'plugin');
+    try {
+      fs.mkdirSync(path.join(home,'.claude/plugins'),{recursive:true});fs.mkdirSync(path.join(plugin,'hooks'),{recursive:true});
+      fs.writeFileSync(path.join(home,'.claude/settings.json'),JSON.stringify({enabledPlugins:{'brain@test':true}}));
+      fs.writeFileSync(path.join(home,'.claude/plugins/installed_plugins.json'),JSON.stringify({plugins:{'brain@test':[{installPath:plugin,scope:'user'}]}}));
+      fs.writeFileSync(path.join(plugin,'hooks/hooks.json'),JSON.stringify({hooks:{PreCompact:[{hooks:[{command:'node hook-shim.mjs session-snapshot PreCompact'}]}],SessionEnd:[{hooks:[{command:'node hook-shim.mjs session-snapshot SessionEnd'}]}]}}));
+      const row=CAPABILITIES.find(c=>c.key==='session-capture').detect({home,project:home});
+      expect(row.state).toBe(STATE.ON);expect(row.evidence).toMatch(/not proof.*native activation|not proof.*capture/i);
+      fs.writeFileSync(path.join(home,'.claude/settings.json'),JSON.stringify({enabledPlugins:{'brain@test':false}}));
+      const disabled=CAPABILITIES.find(c=>c.key==='session-capture').detect({home,project:home});
+      expect(disabled.state).toBe(STATE.UNKNOWN);
+    } finally {fs.rmSync(home,{recursive:true,force:true});}
+  });
+  it('recognizes current managed routing without requiring a retired Task hook or claiming execution', () => {
+    const home=fs.mkdtempSync(path.join(os.tmpdir(),'managed-declaration-'));
+    try {
+      const directory=path.join(home,'.cache/ruvnet-brain/model-routing');fs.mkdirSync(directory,{recursive:true});
+      fs.writeFileSync(path.join(directory,'terminal-launcher-config.json'),JSON.stringify({runtimeRoot:path.join(directory,'versions/current'),runtimeDigest:'a'.repeat(64)}));
+      const row=CAPABILITIES.find(c=>c.key==='cheap-model-routing').detect({home});
+      expect(row.state).toBe(STATE.UNKNOWN);expect(row.evidence).toContain('managed native');expect(row.evidence).toContain('not a prerequisite');expect(row.evidence).toContain('does not prove');
+    }finally{fs.rmSync(home,{recursive:true,force:true});}
   });
 });
