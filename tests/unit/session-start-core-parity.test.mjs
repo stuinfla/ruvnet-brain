@@ -3,13 +3,54 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { maintainerIssueEntitlement } from '../../plugin/scripts/session-start-core.mjs';
+import { maintainerIssueEntitlement, runSessionStart } from '../../plugin/scripts/session-start-core.mjs';
 import { describeLifecycleHooks, readHookContracts } from '../../plugin/scripts/session-start-hook-description.mjs';
 import { ALIAS_NOTICE, ALIAS_MARKER, installCodexConsoleAlias } from '../../plugin/scripts/codex-console-alias.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const SOURCE_SCRIPTS = path.join(ROOT, 'plugin/scripts');
 const roots = [];
+
+describe('startup star advocacy preference gate', () => {
+  it.each([1, 2, 3, 4, 5, 'absent', 'malformed', 'future', 'unreadable', 'off', 'invalid', 'invalid-other', 'brain-off', 'override'])('permits only healthy promotion consent: %s', async variant => {
+    const f = makeFixture(); warmed(f); write(path.join(f.cache, '.grounded-once'), '');
+    fs.rmSync(path.join(f.cache, '.star-ask-shown'), { force: true });
+    const file = path.join(f.state, 'settings.json'); let selected = file;
+    if (typeof variant === 'number') write(file, { version: 1, settings: { advocacy: variant } });
+    if (variant === 'malformed') write(file, '{broken');
+    if (variant === 'future') write(file, { version: 999, settings: { advocacy: 5 } });
+    if (variant === 'unreadable') fs.mkdirSync(file, { recursive: true });
+    if (variant === 'off') write(file, { version: 1, settings: { advocacy: 5, brainEnabled: false } });
+    if (variant === 'invalid') write(file, { version: 1, settings: { advocacy: 99 } });
+    if (variant === 'invalid-other') write(file, { version: 1, settings: { advocacy: 5, brainEnabled: 'unknown' } });
+    if (variant === 'brain-off') write(file, { version: 1, settings: { advocacy: 5 } });
+    if (variant === 'override') { write(file, { version: 1, settings: { advocacy: 5 } }); selected = path.join(f.root, 'custom-settings.json'); write(selected, { version: 1, settings: { advocacy: 1 } }); }
+    let output = '';
+    await runSessionStart({ cwd: f.project, env: { ...childEnv(f), RUVNET_VERBOSE_HOOKS: '1', RUVNET_SETTINGS_FILE: selected,
+      ...(variant === 'brain-off' ? { RUVNET_BRAIN_OFF: '1' } : {}) }, runHeartbeat: false,
+      stdout: { write: chunk => { output += chunk; } }, stderr: { write() {} },
+      restoreContinuity: () => ({ status: 'empty', context: '' }) });
+    const allowed = variant === 4 || variant === 5;
+    expect(output.includes('Finding this useful? Star')).toBe(allowed);
+    expect(fs.existsSync(path.join(f.cache, '.star-ask-shown'))).toBe(allowed);
+    if (variant === 'absent') expect(fs.existsSync(file)).toBe(false);
+  });
+});
+
+it('cancels an asynchronous restore at the inherited deadline and reports UNKNOWN instead of late success', async () => {
+  const f = makeFixture(); let cancelled = false; let output = ''; let diagnostics = '';
+  const started = Date.now();
+  await runSessionStart({ env: childEnv(f), cwd: f.project, deadlineAt: started + 120, runHeartbeat: false,
+    stdout: { write: chunk => { output += chunk; } }, stderr: { write: chunk => { diagnostics += chunk; } },
+    restoreContinuity: ({ deadlineAt, signal }) => new Promise((resolve, reject) => {
+      expect(deadlineAt).toBeLessThanOrEqual(started + 120);
+      const timer = setTimeout(() => resolve({ context: '[RuvNet Brain — PROJECT CONTINUITY RESTORED]\nlate fixture' }), 1000);
+      signal.addEventListener('abort', () => { cancelled = true; clearTimeout(timer); reject(new Error('cancelled')); }, { once: true });
+    }) });
+  expect(cancelled).toBe(true); expect(Date.now() - started).toBeLessThan(800);
+  expect(output).toContain('PROJECT CONTINUITY UNKNOWN'); expect(output).not.toContain('late fixture');
+  expect(diagnostics).toContain('skipped=budget-exceeded');
+});
 
 function write(file, value) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -617,6 +658,11 @@ describe('hook-shim SessionStart authority selection', () => {
       `);
     write(path.join(scripts, 'hook-shim.mjs'), instrumented);
     fs.copyFileSync(path.join(SOURCE_SCRIPTS, 'development-maintenance.mjs'), path.join(scripts, 'development-maintenance.mjs'));
+    fs.copyFileSync(path.join(SOURCE_SCRIPTS, 'session-start-budget.mjs'), path.join(scripts, 'session-start-budget.mjs'));
+    fs.copyFileSync(path.join(SOURCE_SCRIPTS, 'hook-context-budget.mjs'), path.join(scripts, 'hook-context-budget.mjs'));
+    write(path.join(root, 'plugin/hooks/hooks.json'), JSON.stringify({ hooks: { SessionStart: [{ hooks: [
+      { command: 'node session-start', timeout: 8 },
+    ] }] } }));
     write(path.join(scripts, 'session-start-core.mjs'),
       "process.stdout.write('NATIVE_SESSION_CORE\\n');\n");
 

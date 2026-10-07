@@ -18,6 +18,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { contextBlock, contextFrame, readContextFrame, emitOwnedContext } from './hook-context-budget.mjs';
 import { fileURLToPath } from 'node:url';
 // resolveBash ONLY. `skipNoBash` is not a predicate — it is a one-time notice emitter that returns 0
 // and WRITES TO STDERR, which on this hot path is the refusal channel: calling it would have injected
@@ -240,6 +241,36 @@ export function decide(verdicts) {
   return { allow: false, refusals: refusals.map((v) => v.id), reason };
 }
 
+/** Policy advice is context, separate from the winning refusal and the speech channel. */
+export function policyContext(results, speechOutput = '') {
+  const contexts = [];
+  for (const result of results) {
+    if (result.skipped) contexts.push(`Policy ${result.id} did not obtain a verdict (${result.skipped}${result.reason ? `: ${String(result.reason).slice(0, 4096)}` : ''}).`);
+    if (result.code !== ALLOW || !result.stdout?.trim()) continue;
+    let parsed; try { parsed = JSON.parse(result.stdout); } catch {}
+    const text = typeof parsed?.hookSpecificOutput?.additionalContext === 'string'
+      ? parsed.hookSpecificOutput.additionalContext : result.stdout.trim();
+    if (text) contexts.push(text.slice(0, 4096));
+  }
+  if (process.env.RUVNET_HOOK_CONTEXT_BUDGET === '1') {
+    const speechFrame = readContextFrame(speechOutput);
+    const blocks = contexts.map((text) => contextBlock(text, { id: 'policy-diagnostic', critical: true }));
+    if (speechFrame) blocks.push(...speechFrame.blocks);
+    else if (speechOutput.trim()) { let value; try { value = JSON.parse(speechOutput); } catch {}
+      const text = value?.hookSpecificOutput?.additionalContext || speechOutput.trim();
+      blocks.push(contextBlock(text, { id: 'unframed-speech-preserved', critical: true })); }
+    if (!blocks.length) return '';
+    return emitOwnedContext(contextFrame('decision-gate', 'PreToolUse', blocks));
+  }
+  if (!contexts.length) return speechOutput;
+  let speech; try { speech = JSON.parse(speechOutput); } catch {}
+  const prior = typeof speech?.hookSpecificOutput?.additionalContext === 'string'
+    ? speech.hookSpecificOutput.additionalContext : speechOutput.trim();
+  return JSON.stringify({ ...(speech && typeof speech === 'object' && !Array.isArray(speech) ? speech : {}),
+    hookSpecificOutput: { ...(speech?.hookSpecificOutput || {}), hookEventName: 'PreToolUse',
+      additionalContext: [...new Set([prior, ...contexts].filter(Boolean))].join('\n') } });
+}
+
 const firstLine = (s) => String(s || '').trim().split('\n').map((l) => l.trim()).filter(Boolean)[0] || '';
 
 /** Payload accessors — tolerant, because a malformed payload must degrade to "no measurement". */
@@ -263,6 +294,8 @@ function speechEventFor(event) { return event === 'bash' ? 'PreToolUse-bash' : '
 if (isMain()) {
   const started = Date.now();
   const payload = normalizePayloadText(readPayload());
+  const shape = classifyPayload(payload);
+  const session = sessionOf(payload) || (shape.truncated ? shape.session : '');
   const selected = policiesFor(EVENT);
   // An unknown event is not an occasion to refuse anything. Same rule as unprompted-runtime's
   // "never speak on a guess", pointed at the other decision. 'write' is the only registered route
@@ -270,7 +303,7 @@ if (isMain()) {
   if (!selected.length && EVENT !== 'write') process.exit(ALLOW);
 
   const budgetMs = Number(process.env.RUVNET_DECISION_BUDGET_MS) || DEFAULT_BUDGET_MS;
-  const deadline = started + budgetMs;
+  const deadline = Math.min(started + budgetMs, Number(process.env.RUVNET_DECISION_DEADLINE) || Infinity);
   // Resolved ONCE. On win32 resolveBash() can shell out to `where.exe`; four bash policies meant up
   // to four of those per tool call, for an answer that cannot change mid-invocation.
   BASH = resolveBash();
@@ -302,26 +335,25 @@ if (isMain()) {
 
   const decision = decide(verdicts);
 
-  // ── OBEDIENCE MEASUREMENT (ADR-067 §outcomes) ──────────────────────────────────────────────────
-  // This gate is the ONLY thing that sees every Write/Edit/Bash, so it can close the loop with no new
-  // hook: resolve first (did this call retry something we refused?), then open a new debt if we are
-  // about to refuse. Order matters — resolving after recording would close the debt we just opened.
-  // Entirely best-effort: measurement may never affect the verdict, so it runs after `decide`.
-  // An oversize payload is cut mid-JSON (see TRANSPORT_CAP_BYTES): recover session/tool/path from its
-  // prefix so its refusals and allows are counted like any other.
-  const shape = classifyPayload(payload);
-  const session = sessionOf(payload) || (shape.truncated ? shape.session : '');
+  // Measurement follows the FINAL gate verdict; it must never delay a blocking producer.
+  const measureFinalDecision = (allowed, policies = decision.refusals) => {
+    const metricDeadline = Math.min(deadline, Date.now() + 25);
   try {
     const key = shape.truncated
       ? actionKey(shape.tool, { file_path: shape.filePath })
       : actionKey(payloadTool(payload), toolInput);
     const ts = Date.now();
     if (session && key) {
-      sweepStale({ session, ts });   // debts from dead sessions become `abandoned`, never vanish
-      resolveOutcome({ session, key, allowed: decision.allow, ts });
-      if (!decision.allow) recordRefusal({ session, key, policies: decision.refusals, ts });
+      let observed = {}; try { observed = JSON.parse(payload); } catch { /* truncated payload: adapter/process scope */ }
+      const attribution = { host: observed.host || process.env.RUVNET_HOOK_HOST || 'claude',
+        project: observed.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd() };
+      sweepStale({ session, ts, deadlineAt: metricDeadline, nonBlocking: true }); // only proven observation age expires debt; foreign sessions are not abandoned
+      resolveOutcome({ session, key, allowed: allowed, ts, ...attribution, deadlineAt: metricDeadline, nonBlocking: true });
+      if (!allowed) recordRefusal({ session, key, policies: policies, ts, ...attribution, deadlineAt: metricDeadline, nonBlocking: true });
     }
   } catch { /* a ledger must never break a tool call */ }
+
+  };
 
   reportSelfSkipped({ session, selfSkipped });
   if (decision.allow && shape.truncated) {
@@ -329,7 +361,8 @@ if (isMain()) {
     try { appendOutcome({ kind: 'payload-oversize', event: EVENT, session, bytesSeen: shape.bytes, capBytes: TRANSPORT_CAP_BYTES, tool: shape.tool, filePath: shape.filePath, ts: Date.now() }); } catch { /* a ledger must never break a tool call */ }
   }
   if (!decision.allow) {
-    reportBudget({ session, unconsulted, trace, started, budgetMs });
+    measureFinalDecision(false);
+    reportBudget({ session, unconsulted, trace, started, budgetMs, refused: true });
     process.stderr.write(`${decision.reason}\n`);
     process.exit(REFUSE);
   }
@@ -347,15 +380,21 @@ if (isMain()) {
     const speech = await runPolicy(SPEECH, payload, deadline, speechEventFor(EVENT), trace);
     if (speech.skipped === 'budget') unconsulted.push(SPEECH.id);
     if (speech.code === REFUSE) {
-      reportBudget({ session, unconsulted, trace, started, budgetMs });
+      measureFinalDecision(false, [...decision.refusals, SPEECH.id]);
+      reportBudget({ session, unconsulted, trace, started, budgetMs, refused: true });
       process.stderr.write(`${(speech.stderr || '').trim()}\n`);
       process.exit(REFUSE);
     }
     reportBudget({ session, unconsulted, trace, started, budgetMs });
-    if (speech.stdout?.trim()) process.stdout.write(speech.stdout);
+    measureFinalDecision(true);
+    const context = policyContext(results, speech.stdout || '');
+    if (context) process.stdout.write(context);
     process.exit(ALLOW);
   }
   reportBudget({ session, unconsulted, trace, started, budgetMs });
+  measureFinalDecision(true);
+  const context = policyContext([...results, ...unconsulted.filter((id) => !results.some((r) => r.id === id && r.skipped)).map((id) => ({ id, skipped: 'budget' }))]);
+  if (context) process.stdout.write(context);
   process.exit(ALLOW);
 }
 
@@ -378,7 +417,7 @@ if (isMain()) {
  *     the applicability skip, an ordinary write measures ~360ms against a 4000ms budget, so a trip
  *     there is not noise to be tolerated — it is the defect, and the suite should go red for it.
  */
-function reportBudget({ session, unconsulted, trace, started, budgetMs }) {
+function reportBudget({ session, unconsulted, trace, started, budgetMs, refused = false }) {
   const elapsed = Date.now() - started;
   if (process.env.RUVNET_DECISION_TRACE === '1') {
     process.stderr.write(`[decision-gate] ${EVENT} ${elapsed}ms budget=${budgetMs}ms ${JSON.stringify(trace)}\n`);
@@ -388,8 +427,8 @@ function reportBudget({ session, unconsulted, trace, started, budgetMs }) {
     appendOutcome({ kind: 'budget-exceeded', event: EVENT, session, unconsulted, elapsedMs: elapsed, budgetMs, ts: Date.now() });
   } catch { /* a ledger must never break a tool call */ }
   process.stderr.write(
-    `[decision-gate] ${budgetMs}ms budget exhausted after ${elapsed}ms — ALLOWED WITHOUT CONSULTING: `
-    + `${unconsulted.join(', ')}. These policies did not vote; this allow is a timeout, not a verdict.\n`,
+    `[decision-gate] ${budgetMs}ms budget exhausted after ${elapsed}ms — ${refused ? 'REFUSED; UNCONSULTED' : 'ALLOWED WITHOUT CONSULTING'}: `
+    + `${unconsulted.join(', ')}. These policies did not vote; ${refused ? 'another policy refused the action.' : 'this allow is a timeout, not a verdict.'}\n`,
   );
 }
 
@@ -397,7 +436,7 @@ function reportBudget({ session, unconsulted, trace, started, budgetMs }) {
 function reportSelfSkipped({ session, selfSkipped }) {
   for (const r of selfSkipped) {
     try { appendOutcome({ kind: 'policy-skipped', event: EVENT, session, policy: r.id, reason: r.reason, ts: Date.now() }); } catch { /* a ledger must never break a tool call */ }
-    process.stderr.write(`[decision-gate] ${r.reason || `${r.id} skipped`} — ${r.id} did not vote; this allow is not its verdict.\n`);
+    process.stderr.write(`[decision-gate] ${r.reason || `${r.id} skipped`} — ${r.id} did not vote; it supplied no authorization verdict.\n`);
   }
 }
 
@@ -434,12 +473,13 @@ function runPolicy(p, payload, deadline, extraArg, trace) {
     const finish = (r) => { if (settled) return; settled = true; clearTimeout(timer); resolve(done(r)); };
     let child;
     try {
-      child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, RUVNET_DECISION_GATE: '1', RUVNET_DECISION_DEADLINE: String(deadline) } });
+      child = spawn(cmd, args, { detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, RUVNET_DECISION_GATE: '1', RUVNET_DECISION_DEADLINE: String(deadline) } });
     } catch { return finish({ id: p.id, skipped: 'spawn' }); }
     // SIGKILL, not SIGTERM: a bash policy that has spawned its own child (jq, node, ruflo) can sit in
     // a TERM handler, and the host's own kill is what we are racing. The whole batch shares ONE
     // deadline, so a single slow policy cancels only the time it actually consumed.
-    timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* already gone */ } finish({ id: p.id, skipped: 'budget' }); }, left);
+    const retireTree = () => { try { if (process.platform !== 'win32') process.kill(-child.pid, 'SIGKILL'); else child.kill('SIGKILL'); } catch { /* already gone */ } };
+    timer = setTimeout(() => { retireTree(); finish({ id: p.id, skipped: 'budget' }); }, Math.max(1, left - 100));
     let stdout = ''; let stderr = ''; let bytes = 0;
     const MAX = 1 << 20;   // same ceiling spawnSync's maxBuffer enforced; a policy is not a data source
     child.stdout.on('data', (d) => { if (bytes < MAX) { stdout += d; bytes += d.length; } });
@@ -449,6 +489,7 @@ function runPolicy(p, payload, deadline, extraArg, trace) {
     // Unhandled, that error event would take the whole gate down and turn an allow into a hook error.
     child.stdin.on('error', () => { /* the child did not want the payload; that is not a failure */ });
     child.on('close', (code) => {
+      retireTree();
       // A spawn failure, a timeout, or any code other than 0/2 is an ERROR — and an error here must
       // never be mistaken for a refusal. That distinction is the one lesson-gate.mjs had to learn twice.
       if (code === SKIPPED_SELF) return finish({ id: p.id, skipped: 'self', reason: firstLine(stderr) });

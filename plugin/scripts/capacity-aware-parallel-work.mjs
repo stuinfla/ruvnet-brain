@@ -178,7 +178,7 @@ function collectLoadOnly() {
   return { normalizedLoad: load / cpuCount, loadAvg1: load };
 }
 
-function collectMacPressure() {
+export function collectMacPressure() {
   if (process.platform !== 'darwin') return collectLoadOnly();
   try {
     // One bounded subprocess gathers pressure, swap, and compressor bytes. Never use raw free RAM

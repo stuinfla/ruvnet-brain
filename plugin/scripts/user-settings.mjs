@@ -355,7 +355,13 @@ export function loadSettings(file = STORE_PATH) {
   const envelope = { path: file, exists: false, healthy: true, fromFuture: false, values: defaults(), errors: [], warnings: [] };
   let raw;
   try { raw = fs.readFileSync(file, 'utf8'); }
-  catch { return envelope; }   // no file yet is the NORMAL state, not a fault — empty-first, house rule 3
+  catch (error) {
+    if (error.code !== 'ENOENT') {
+      envelope.healthy = false;
+      envelope.errors.push({ key: null, reason: 'settings file unavailable — preferences unknown' });
+    }
+    return envelope; // A missing file is normal; an unreadable file is not consent.
+  }
 
   envelope.exists = true;
   let parsed;

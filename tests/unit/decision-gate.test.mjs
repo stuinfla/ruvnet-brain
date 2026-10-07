@@ -1,3 +1,4 @@
+import { policyContext } from '../../plugin/scripts/decision-gate.mjs';
 import { describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -6,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_BUDGET_MS, MIN_HEADROOM_MS, decide, policiesFor, skipReason } from '../../plugin/scripts/decision-gate.mjs';
 import { continuityRegistrations } from '../../plugin/scripts/continuity-hook-policy.mjs';
+import { actionKey } from '../../plugin/scripts/decision-outcomes.mjs';
 
 /**
  * ADR-067 — EXACTLY ONE HOOK MAY REFUSE A GIVEN TOOL CALL.
@@ -49,7 +51,8 @@ function fire(event, toolInput, toolName = 'Write', env = {}) {
   const r = spawnSync(process.execPath, [GATE, event], {
     input: payload, encoding: 'utf8', timeout: 30_000, env: { ...process.env, ...env },
   });
-  return { code: r.status, stdout: String(r.stdout || ''), stderr: String(r.stderr || ''), ms: Date.now() - t0 };
+  return { code: r.status, stdout: String(r.stdout || ''), stderr: String(r.stderr || ''), ms: Date.now() - t0,
+    session: JSON.parse(payload).session_id };
 }
 
 describe('ADR-067 — one decision, composed from many policies', () => {
@@ -128,10 +131,19 @@ const withBash = hasBash ? describe : describe.skip;
 
 withBash('ADR-067 — the real gate, fired the way the host fires it', () => {
   it('refuses a write to the user\'s protected settings, with byte-empty stdout', () => {
-    const r = fire('write', { file_path: path.join(os.homedir(), '.config', 'ruvnet-brain', 'settings.json'), content: '{}' });
-    expect(r.code, 'exit 2 is the only code the host reads as a refusal').toBe(2);
-    expect(r.stdout, 'on a refusal the host ignores stdout — emitting any is a protocol violation').toBe('');
-    expect(r.stderr).toMatch(/BLOCKED/);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'decision-session-proof-'));
+    try {
+      const ledger = path.join(dir, 'outcomes.jsonl');
+      const input = { file_path: path.join(os.homedir(), '.config', 'ruvnet-brain', 'settings.json'), content: '{}' };
+      const r = fire('write', input, 'Write', { RUVNET_DECISION_LEDGER: ledger,
+        RUVNET_DECISION_PENDING: path.join(dir, 'pending.json') });
+      expect(r.code, 'exit 2 is the only code the host reads as a refusal').toBe(2);
+      expect(r.stdout, 'on a refusal the host ignores stdout — emitting any is a protocol violation').toBe('');
+      expect(r.stderr).toMatch(/BLOCKED/);
+      const rows = fs.readFileSync(ledger, 'utf8').trim().split('\n').map(line => JSON.parse(line));
+      expect(rows).toContainEqual(expect.objectContaining({ kind: 'refused', session: r.session,
+        key: actionKey('Write', input), policies: expect.arrayContaining(['protect-state']) }));
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   }, 40_000);
 
   it('TEETH: allows an ordinary write, and never writes to stderr while doing so', () => {
@@ -203,3 +215,64 @@ function idOf(command) {
   const m = /hook-shim\.mjs"\s+([a-z-]+)/.exec(String(command || ''));
   return m ? m[1] : '';
 }
+
+
+describe('policy advice transport', () => {
+  it('preserves policy guidance and diagnostic gaps as native context without changing speech fields', () => {
+    const speech = JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: 'Existing context' } });
+    const output = JSON.parse(policyContext([{ id: 'memory', code: 0, stdout: 'Managed-memory warning' }, { id: 'adr', skipped: 'budget', reason: 'Evaluation deadline exceeded' }], speech));
+    expect(output.hookSpecificOutput.additionalContext).toContain('Managed-memory warning');
+    expect(output.hookSpecificOutput.additionalContext).toContain('Policy adr did not obtain a verdict');
+    expect(output.hookSpecificOutput.additionalContext).toContain('Evaluation deadline exceeded');
+    expect(output.hookSpecificOutput.additionalContext).toContain('Existing context');
+    expect(output.hookSpecificOutput.hookEventName).toBe('PreToolUse');
+    expect(output).not.toHaveProperty('decision');
+  });
+  it('leaves an unchanged speech envelope byte-for-byte when there is no policy context', () => {
+    const speech = '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"hello"}}';
+    expect(policyContext([], speech)).toBe(speech);
+    expect(policyContext([{ id: 'deny', code: 2, stdout: 'not advice' }])).toBe('');
+  });
+});
+
+
+
+it.each(['timeout', 'early-exit', 'outer-timeout'])('the registered decision retires evaluator and grandchild on %s', async (mode) => {
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'registered-decision-tree-'));
+  const brainHome = path.join(fixture, 'brain');
+  const runtime = path.join(brainHome, 'versions', 'fixture');
+  const scripts = path.join(runtime, 'scripts');
+  const edited = path.join(fixture, 'edited');
+  const pidFile = path.join(fixture, 'owned-descendants.json');
+  process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
+  const { serverDependencies } = await import('../../bin/install.mjs');
+  try {
+    fs.mkdirSync(scripts, {recursive:true});fs.mkdirSync(path.join(brainHome,'versions','scripts'));
+    fs.mkdirSync(path.join(edited,'docs/adr'),{recursive:true});spawnSync('git',['init','-q',edited]);
+    const entries = [GATE,path.join(ROOT,'plugin/scripts/codex-hook-adapter.mjs'),path.join(ROOT,'plugin/scripts/hook-shim.mjs'),path.join(ROOT,'plugin/scripts/codex-hook-wrapper.mjs')];
+    for (const source of entries) {
+      fs.copyFileSync(source,path.join(scripts,path.basename(source)));
+      for (const entry of serverDependencies(source)) {const target=path.resolve(scripts,entry.spec);fs.mkdirSync(path.dirname(target),{recursive:true});fs.copyFileSync(entry.from,target);}
+    }
+    fs.copyFileSync(path.join(ROOT,'plugin/scripts/adr-currency-gate.mjs'),path.join(scripts,'adr-currency-gate.mjs'));
+    for (const name of ['protect-brain-state.sh','hijack-ruvnet.sh','ground-before-write.sh']) fs.writeFileSync(path.join(scripts,name),'exit 0\n');
+    for (const name of ['duplicate-gate.mjs','unprompted-runtime.mjs']) fs.writeFileSync(path.join(scripts,name),'process.exit(0);');
+    const setup=`import {spawn} from 'node:child_process';import fs from 'node:fs';const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});fs.writeFileSync(process.env.OWNED_CHILD_PID,JSON.stringify({evaluator:process.pid,grandchild:child.pid}));`;
+    const finish=mode==='early-exit'?`child.unref();export const DEFAULT_DIRS=[];export const isGitRepo=()=>true;export const listDocs=()=>[];`:`await new Promise(()=>setInterval(()=>{},1000));`;
+    fs.writeFileSync(path.join(scripts,'doc-currency.mjs'),setup+finish);
+    fs.writeFileSync(path.join(brainHome,'active.json'),JSON.stringify({codeRoot:runtime,version:'fixture'}));
+    const outer=mode==='outer-timeout';
+    const entry=outer?path.join(scripts,'codex-hook-wrapper.mjs'):path.join(scripts,'decision-gate.mjs');
+    const args=outer?['decision-gate','write']:['write'];
+    const input=outer?{session_id:'tree-fixture',cwd:edited,hook_event_name:'PreToolUse',tool_name:'apply_patch',tool_input:'*** Begin Patch\n*** Update File: owned.mjs\n@@\n-a\n+b\n*** End Patch'}:{session_id:'tree-fixture',cwd:edited,tool_name:'Edit',tool_input:{file_path:'owned.mjs'}};
+    const run=spawnSync(process.execPath,[entry,...args],{input:JSON.stringify(input),encoding:'utf8',timeout:5000,env:{...process.env,HOME:fixture,RUVNET_BRAIN_HOME:brainHome,OWNED_CHILD_PID:pidFile,RUVNET_DECISION_BUDGET_MS:'1500',...(outer?{RUVNET_CODEX_HOOK_TIMEOUT_MS:'1800'}:{})}});
+    expect(fs.existsSync(pidFile)).toBe(true);
+    const pids=Object.values(JSON.parse(fs.readFileSync(pidFile,'utf8')));
+    for(const pid of pids){let alive=true;for(let attempt=0;attempt<30;attempt++){try{process.kill(pid,0);}catch{alive=false;break;}await new Promise(resolve=>setTimeout(resolve,20));}expect(alive,`owned descendant ${pid} must be retired`).toBe(false);}
+    expect(run.status).toBe(0);
+    if(mode!=='early-exit')expect(JSON.parse(run.stdout).hookSpecificOutput.additionalContext).toMatch(/did not obtain a verdict/);
+  } finally {
+    if(fs.existsSync(pidFile))for(const pid of Object.values(JSON.parse(fs.readFileSync(pidFile,'utf8')))){try{process.kill(pid,'SIGKILL');}catch{}}
+    fs.rmSync(fixture,{recursive:true,force:true});
+  }
+});

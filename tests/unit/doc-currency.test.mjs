@@ -866,3 +866,23 @@ describe('against the REAL repository', () => {
     expect(codes(d)).not.toContain('stamp-lags-doc');
   });
 });
+
+
+describe('single shipped evaluator compatibility', () => {
+  it('keeps the root public exports and default repository identical to the shipped implementation', async () => {
+    const wrapper = await import('../../scripts/doc-currency.mjs');
+    const owned = await import('../../plugin/scripts/doc-currency.mjs');
+    expect(Object.keys(wrapper).sort()).toEqual(Object.keys(owned).sort());
+    for (const key of Object.keys(owned)) expect(wrapper[key]).toBe(owned[key]);
+    expect(owned.REPO_ROOT).toBe(REPO_ROOT);
+  });
+  it('both direct entrypoints execute the same check against an explicit repository', () => {
+    const root = newRepo();
+    write(root,'docs/adr/0001-x.md','---\nid: ADR-001\nstatus: Accepted\ndate: 2026-07-01\n---\n\n# body\n');
+    commit(root,'add','2026-07-01T12:00:00');
+    const invoke = (file) => spawnSync(process.execPath,[path.join(REPO_ROOT,file),'--check','--root',root,'--json'],{encoding:'utf8',timeout:5000});
+    const old = invoke('scripts/doc-currency.mjs'), shipped = invoke('plugin/scripts/doc-currency.mjs');
+    expect(old.status).toBe(1);expect(shipped.status).toBe(old.status);
+    expect(JSON.parse(shipped.stdout)).toEqual(JSON.parse(old.stdout));
+  });
+});

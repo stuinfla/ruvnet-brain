@@ -1,38 +1,19 @@
 /**
- * grounding-turn-evidence.mjs — the pure half of ADR-0030 decision-point gate #1: "before asserting
- * what a tool or platform can or cannot do, did you CHECK a relevant source this turn, or are you
- * recalling?" Plus gates #2 (architecture needs >= 3 options) and #3 (relayed numbers need a
- * re-check), which run in SHADOW mode only: they are measured and logged, never delivered.
- *
- * WHY (owner, 2026-09-30): "a nudge without enforcement is worthless." The concrete incident: an
- * answer asserted "No hook can change the model of the current turn" from a WebFetch page summary
- * written by a small model, and a design was built on it. The existing grounding-turn-gate only
- * checked that SOME search_ruvnet stamp was newer than the turn marker — presence, not relevance or
- * order — armed only on rUv-stack prompts, and could not see WebFetch at all.
- *
- * DESIGN, deterministic and local (rUv ADR-G004 rejects LLM gate evaluation; no model is called):
- *   1. UserPromptSubmit (grounding-turn-mark.mjs) arms the turn only when the prompt ASKS for a
- *      capability / feasibility / architecture judgement AND names a subject (classifyPrompt). The
- *      caller replayed a naive output-only regex at 13.5% of turns and an order-aware one at 0.93%,
- *      mostly on harmless hedges; arming at prompt time is what keeps unarmed turns out of scope.
- *   2. The sources read this turn come from the host transcript (turnSources) — the ordered,
- *      complete record of every tool call and its result, including search_ruvnet's returned paths.
- *      A WebFetch body is a small model's summary of the page, so it is WEAK evidence; so is a
- *      subagent's relayed report and a WebSearch snippet list.
- *   3. At Stop, each capability claim in the final answer (capability-claim-evidence.mjs's own
- *      extractor, widened with this turn's vocabulary) needs one STRONG source whose path, URL,
- *      command or query names the claim's subject and that was read AFTER the last weak source about
- *      that subject (auditAssertions). Otherwise: one correction.
- *
- * Claims continuation-gate.mjs already audits (the RUVNET_TOOL behaviour class) are skipped here —
- * one correction per claim, never two gates arguing over the same sentence.
+ * Grounding evidence for ADR-0030: observed successful substantive results, not requested paths.
+ * Native failure/running/missing precedence is shared with continuity-events. A native non-error
+ * Read result may establish read success without inventing a process exit code. Raw command reads
+ * require terminal zero and one literal source command through the existing commandNodes parser.
+ * Weak summaries/relays remain weak. Claims still require matching returned body after weak sources;
+ * missing execution stays UNKNOWN. This verifies observed evidence, not semantic entailment.
  */
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RUVNET_GATE1_TERMS } from './ruvnet-gate1-pattern.mjs';
-import { brainAnsweredResponse } from './grounding-answer.mjs';
+import { answerOf, brainAnsweredResponse } from './grounding-answer.mjs';
+import { normalizeToolOutcome } from './continuity-events.mjs';
+import { commandNodes } from './hook-input.mjs';
 import { extractClaims } from './capability-claim-evidence.mjs';
 import { currentTurnRecords, strippedProse } from './completion-claim-evidence.mjs';
 
@@ -146,32 +127,51 @@ export function brainAnswered(r, { home = os.homedir(), notAfterMs = null } = {}
   return brainAnsweredResponse(r, { home, notAfterMs });
 }
 
-export function sourceOf(name, input = {}, result = '', { resultAtMs = null } = {}) {
-  const n = String(name || '');
-  const r = String(result || '');
+const substantive = text => {
+  if (/^(?:[A-Za-z]:[\\/]|\/)\S+$/.test(text.trim())) return false;
+  try { const value = JSON.parse(text); if (value && typeof value === 'object' && !Array.isArray(value)
+    && Object.keys(value).some(key => !['path', 'file_path', 'url', 'query', 'description', 'tool_name'].includes(key))) return true; } catch {}
+  return [...tokenSet(text)].filter(word => /[a-z]/.test(word)).length >= 3;
+};
+function directSourceCommand(command) {
+  if (/[;&|<>`$\n]/.test(command)) return false;
+  const nodes = commandNodes(command), node = nodes[0];
+  if (nodes.length !== 1 || node.dynamic || node.assigns.length || node.argv.some(word => !word)) return false;
+  const [exe, ...args] = node.argv, name = path.basename(exe);
+  return (name === 'cat' && args.length === 1 && !args[0].startsWith('-'))
+    || (name === 'sed' && args.length === 3 && args[0] === '-n' && /^\d+(?:,\d+)?p$/.test(args[1]))
+    || (['head', 'tail'].includes(name) && args.length === 3 && args[0] === '-n' && /^\d+$/.test(args[1]))
+    || (name === 'curl' && args.some(arg => ['-f', '--fail', '-fs', '-fsS'].includes(arg))
+      && args.filter(arg => /^https:\/\//.test(arg)).length === 1
+      && args.every(arg => /^https:\/\//.test(arg) || ['-f', '--fail', '-s', '--silent', '-S', '--show-error', '-fs', '-fsS'].includes(arg)))
+    || (!['echo', 'printf', 'eval', 'sh', 'bash', 'zsh'].includes(name) && args.length === 1 && args[0] === '--help');
+}
+export function sourceOf(name, input = {}, result = '', { resultAtMs = null, resultEvidence = null } = {}) {
+  const content = resultEvidence && Object.hasOwn(resultEvidence, 'content') ? resultEvidence.content : result;
+  const n = String(name || ''), r = textOf(content), body = r.replace(/^(?:Exit code\s*:?\s*-?\d+|Process exited with code\s+-?\d+|Wall time:.*)\s*$/gim, ''), outcome = normalizeToolOutcome(resultEvidence || { content });
+  const bodyText = body.trim();
+  const observed = resultEvidence?.type === 'tool_result' && typeof resultEvidence.tool_use_id === 'string';
+  const failed = ['fail', 'interrupted'].includes(outcome.outcome), pending = outcome.outcome === 'pending';
+  const nativeSuccess = observed && outcome.successfulToolResult === true;
+  const base = (kind, ref, strength, body = bodyText, extra = {}) => ({ kind, ref, strength: failed ? 'failed' : !observed || pending ? 'unknown' : strength,
+    text: ref, result: body.slice(0, 20000), terminalOutcome: outcome.outcome, ...extra });
   if (/(?:^|__)search_ruvnet$/.test(n)) {
-    const ok = brainAnswered(r, { notAfterMs: resultAtMs == null ? null : resultAtMs + 5000 });
-    const paths = [...r.matchAll(/^path : (\S+)/gm)].map((m) => m[1]).slice(0, 20);
-    return { kind: 'search_ruvnet', ref: String(input.query || ''), strength: ok ? 'strong' : 'failed', ok, text: [input.query, ...paths].join(' ') };
+    const ok = observed && !failed && !pending && !outcome.uncertain && brainAnswered(content, { notAfterMs: resultAtMs == null ? null : resultAtMs + 5000 });
+    // Only the producer's returned document sections bind subjects; global repo/query banners do not.
+    const answer = answerOf(content) || '', body = answer.split(/^={10,}\s*$/m)
+      .map(hit => hit.split(/^----- full document(?: \([^\n]*\))? -----\r?\n/m).slice(1).join('\n')).join('\n');
+    return base('search_ruvnet', String(input.query || ''), ok && outcome.successfulToolResult && substantive(body) ? 'strong' : ok ? 'unknown' : 'failed', body, { ok });
   }
-  if (n === 'WebFetch') return { kind: 'WebFetch', ref: String(input.url || ''), strength: 'weak', why: 'summarised-by-small-model', text: String(input.url || '') };
-  if (n === 'WebSearch') {
-    const urls = [...r.matchAll(/https?:\/\/[^\s)"'\]]+/g)].map((m) => m[0]).slice(0, 10);
-    return { kind: 'WebSearch', ref: String(input.query || ''), strength: 'weak', why: 'search-snippets', text: [input.query, ...urls].join(' ') };
-  }
-  if (n === 'Agent' || n === 'Task') {
-    return { kind: n, ref: String(input.description || input.subagent_type || ''), strength: 'weak', why: 'relayed-by-subagent',
-      text: `${input.description || ''} ${String(input.prompt || '').slice(0, 400)}`, result: r.slice(0, 20000) };
-  }
-  if (n === 'Read' || n === 'NotebookRead') return { kind: 'Read', ref: String(input.file_path || input.notebook_path || ''), strength: 'strong', text: String(input.file_path || input.notebook_path || ''), result: r.slice(0, 20000) };
-  if (n === 'Grep' || n === 'Glob') {
-    const ref = [input.pattern, input.path, input.glob].filter(Boolean).join(' ');
-    return { kind: n, ref, strength: 'strong', text: ref, result: r.slice(0, 20000) };
-  }
-  if (n === 'Bash') return { kind: 'Bash', ref: String(input.description || input.command || '').slice(0, 120), strength: 'strong', text: String(input.command || '').slice(0, 2000), result: r.slice(0, 20000) };
-  if (n.startsWith('mcp__') && !MCP_MUTATING.test(n)) {
-    return { kind: 'mcp', ref: n.split('__').pop(), strength: 'strong', text: `${n} ${JSON.stringify(input).slice(0, 1000)}`, result: r.slice(0, 20000) };
-  }
+  if (n === 'WebFetch') return base(n, String(input.url || ''), r ? 'weak' : 'unknown', r, { why: 'summarised-by-small-model' });
+  if (n === 'WebSearch') return base(n, String(input.query || ''), r ? 'weak' : 'unknown', r, { why: 'search-snippets' });
+  if (n === 'Agent' || n === 'Task') return base(n, String(input.description || input.subagent_type || ''), r ? 'weak' : 'unknown', r, { why: 'relayed-by-subagent' });
+  if (n === 'Read' || n === 'NotebookRead') return base('Read', String(input.file_path || input.notebook_path || ''),
+    nativeSuccess && substantive(bodyText) ? 'strong' : 'unknown', bodyText, { successEvidence: nativeSuccess ? 'native-read-success' : null });
+  if (n === 'Grep' || n === 'Glob') return base(n, [input.pattern, input.path, input.glob].filter(Boolean).join(' '),
+    n === 'Grep' && input.output_mode === 'content' && nativeSuccess && substantive(bodyText) ? 'strong' : 'unknown');
+  if (n === 'Bash') return base(n, String(input.description || input.command || '').slice(0, 120),
+    outcome.outcome === 'pass' && directSourceCommand(String(input.command || '')) && substantive(bodyText) ? 'strong' : 'unknown');
+  if (n.startsWith('mcp__') && !MCP_MUTATING.test(n)) return base('mcp', n.split('__').pop(), 'unknown');
   if (NOT_A_SOURCE.test(n)) return null;
   return null;
 }
@@ -183,7 +183,7 @@ export function turnSources(lines) {
   for (const o of recs) {
     const c = o?.message?.content;
     const at = Date.parse(o?.timestamp || '');
-    if (Array.isArray(c)) for (const r of c) if (r?.type === 'tool_result' && r.tool_use_id) results.set(r.tool_use_id, { text: textOf(r.content), at: Number.isFinite(at) ? at : null });
+    if (Array.isArray(c)) for (const r of c) if (r?.type === 'tool_result' && r.tool_use_id) results.set(r.tool_use_id, { text: textOf(r.content), evidence: r, at: Number.isFinite(at) ? at : null });
   }
   const sources = [];
   for (const o of recs) {
@@ -192,7 +192,7 @@ export function turnSources(lines) {
     for (const u of c) {
       if (u?.type !== 'tool_use') continue;
       const res = results.get(u.id) || { text: '', at: null };
-      const s = sourceOf(u.name, u.input || {}, res.text, { resultAtMs: res.at });
+      const s = sourceOf(u.name, u.input || {}, res.text, { resultAtMs: res.at, resultEvidence: res.evidence });
       if (s) sources.push({ ...s, order: sources.length });
     }
   }
@@ -382,18 +382,13 @@ export function capabilityClaims(rawMessage, tools) {
   return [...out.values()];
 }
 
-/**
- * Sources that name every word of the subject. A STRONG source may also bind through what it
- * returned (a file read, a command's output, a search's hits); a weak one only through what it
- * pointed at — a summary's own wording is exactly what is not trusted. A word of 5+ characters also
- * matches inside a longer compound (`displaylink` in `DisplayLinkUserAgent`).
- */
+/** Strong sources bind through returned content only; summaries bind through their declared target. */
 export function bindingSources(subject, sources) {
   const words = subjectWords(subject);
   if (!words.length) return [];
   const has = (tokens, w) => tokens.has(w) || (w.length >= 5 && [...tokens].some((t) => t.length > w.length && t.includes(w)));
   return sources.filter((s) => {
-    const t = tokenSet(s.strength === 'strong' ? `${s.text} ${s.ref} ${s.result || ''}` : s.text);
+    const t = tokenSet(s.strength === 'strong' ? s.result || '' : s.text);
     return words.every((w) => has(t, w));
   });
 }
@@ -431,7 +426,7 @@ export function auditAssertions({ message, subjects = [], vocab = [], sources = 
     const lastWeak = Math.max(-1, ...binding.filter((s) => s.strength === 'weak').map((s) => s.order));
     const strongAfter = binding.some((s) => s.strength === 'strong' && s.order > lastWeak);
     if (!strongAfter) {
-      findings.push({ ...claim, reason: lastWeak >= 0 ? 'the only sources about it this turn are weak (summarised or relayed)' : 'no source about it was read this turn',
+      findings.push({ ...claim, reason: lastWeak >= 0 ? 'the only verified sources about it this turn are weak (summarised or relayed)' : 'successful relevant returned source content is unproven (UNKNOWN or failed evidence)',
         read: describeSources(lastWeak >= 0 ? binding : sources) });
     }
   }
@@ -440,14 +435,14 @@ export function auditAssertions({ message, subjects = [], vocab = [], sources = 
 
 export function describeSources(sources, max = 4) {
   if (!sources.length) return ['nothing'];
-  const shown = sources.slice(-max).map((s) => `${s.kind} ${JSON.stringify(String(s.ref).slice(0, 70))}${s.strength === 'weak' ? ` [${s.why} = weak evidence]` : ''}`);
+  const shown = sources.slice(-max).map((s) => `${s.kind} ${JSON.stringify(String(s.ref).slice(0, 70))}${s.strength === 'weak' ? ` [${s.why} = weak evidence]` : ['failed', 'unknown'].includes(s.strength) ? ` [${s.strength} evidence]` : ''}`);
   return sources.length > max ? [`${sources.length - max} earlier`, ...shown] : shown;
 }
 
 export function correctionText(findings) {
   const f = findings[0];
   const lines = [
-    `You asserted "${f.text.slice(0, 200)}" about ${f.subject}; no relevant source was read this turn`
+    `You asserted "${f.text.slice(0, 200)}" about ${f.subject}; a successful relevant source read is unproven this turn`
       + ` (${f.reason}; read: ${f.read.join('; ')}).`,
     ...findings.slice(1, 3).map((x) => `Also unsourced: "${x.text.slice(0, 160)}" about ${x.subject}.`),
     'Check the real source now (read the file, run the command with --help, search_ruvnet, or fetch the',
@@ -476,7 +471,7 @@ export function relayShadow({ message, sources }) {
   const relayed = nums.filter((n) => {
     const from = agentIdx.find((a) => String(a.result || '').includes(n));
     if (!from) return false;
-    return !sources.some((s) => s.order > from.order && s.kind !== 'Agent' && s.kind !== 'Task' && String(s.result || '').includes(n));
+    return !sources.some((s) => s.order > from.order && s.strength === 'strong' && s.kind !== 'Agent' && s.kind !== 'Task' && String(s.result || '').includes(n));
   });
   return relayed.length ? { gate: 'adr-0030-3-relayed-number', numbers: relayed.slice(0, 8), wouldBlock: true } : null;
 }

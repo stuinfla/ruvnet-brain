@@ -129,3 +129,26 @@ describe.skipIf(!hasBash || process.platform === 'win32')('ground-ruvnet — onc
     expect(prompt(w, 'what is ruflo?')).toContain(FULL_GROUND);
   });
 });
+
+
+describe.skipIf(!hasBash || process.platform === 'win32')('framed whole-block admission before delivery marks', () => {
+  it('a byte-deferred once/day offer is neither marked nor injected, while mandatory grounding stays whole', () => {
+    const directory=fs.mkdtempSync(path.join(os.tmpdir(),'ground-budget-marks-'));
+    const blockDir=path.join(directory,'blocks');fs.mkdirSync(blockDir);
+    fs.writeFileSync(path.join(blockDir,'2-3-flywheel'),'optional '.repeat(2000));
+    fs.writeFileSync(path.join(blockDir,'5-0-ground'),'Mandatory grounding rule stays complete.\n');
+    const body=fs.readFileSync(HOOK,'utf8');
+    const start=body.indexOf('INJ_DEFERRED=0');const end=body.indexOf('# ── Conditional status footer',start);
+    const snippet=path.join(directory,'fixture.sh');
+    const prefix=`BLK=${JSON.stringify(blockDir)}\nINJ_DIR=\ninj_seen(){ return 1; }\ninj_mark(){ [ "$1" = flywheel ] && touch ${JSON.stringify(path.join(directory,'marked'))}; return 0; }\nclaim_flywheel_day(){ touch ${JSON.stringify(path.join(directory,'day-claimed'))}; return 0; }\n`;
+    fs.writeFileSync(snippet,prefix+body.slice(start,end));
+    fs.copyFileSync(path.join(path.dirname(HOOK),'hook-context-budget.mjs'),path.join(directory,'hook-context-budget.mjs'));
+    try {
+      const r=spawnSync('bash',[snippet],{encoding:'utf8',timeout:5000,env:{...process.env,HOME:directory,RUVNET_NODE_BIN:process.execPath,RUVNET_HOOK_CONTEXT_BUDGET:'1',RUVNET_BRAIN_METER:'0'}});
+      expect(r.status,r.stderr).toBe(0);expect(r.stdout).toContain('Mandatory grounding rule stays complete.');
+      expect(r.stdout).not.toContain('optional');expect(r.stdout).not.toContain('budget');
+      expect(fs.existsSync(path.join(directory,'day-claimed'))).toBe(false);
+      expect(fs.existsSync(path.join(directory,'marked'))).toBe(false);
+    }finally{fs.rmSync(directory,{recursive:true,force:true});}
+  });
+});

@@ -1,71 +1,27 @@
 /**
- * decision-outcomes.mjs — did the refusal TEACH, or just stop them?
+ * Decision refusal observations, not repair-success proof. An allowed PreToolUse retry is an
+ * admission; no PostToolUse completion is observed here. Historical corrected records remain
+ * untouched and are labeled as legacy admissions in the report. Fresh foreign-session debts are
+ * retained. Only explicit session closure is abandonment; old observations may expire by age.
  *
- * ─────────────────────────────────────────────────────────────────────────────────────────────────
- * THE GAP THIS CLOSES. ADR-066's own honesty boundary says it plainly: "Delivery is proven;
- * *obedience is not measured*." The brain could show a lesson, refuse an action, and never once know
- * whether either changed anything. And `lesson-stamps-prove-ceremony-not-obedience` — itself one of
- * the bridged lessons — names exactly that failure: a stamp proves the ritual ran, not that its
- * answer was obeyed.
- *
- * A system that cannot see its own outcomes cannot improve, and one that reports a number it cannot
- * source is doing the fabrication this repo has a CI gate against.
- *
- * ─────────────────────────────────────────────────────────────────────────────────────────────────
- * WHAT IS ACTUALLY OBSERVABLE, and this is the honest part.
- *
- * "Did the model obey an advisory?" is NOT observable from a hook. The advisory reaches the model's
- * context and what it does next is unconstrained prose. Claiming to measure that would be the
- * inflated-score failure mode.
- *
- * What IS observable, exactly, from the one gate that sees every Write/Edit/Bash: **what happened
- * after a REFUSAL**. Three outcomes, mutually exclusive and jointly exhaustive:
- *
- *   corrected   the same target was attempted again and was ALLOWED — the reason landed, the user
- *               or model fixed the thing and proceeded. This is the outcome the gate exists to cause.
- *   repeated    the same target was attempted again and refused again — the reason did NOT land.
- *               A guard that produces this is teaching nothing and is on its way to being switched off.
- *   abandoned   never attempted again in this session. Ambiguous ON PURPOSE and never counted as a
- *               win: it is equally "they understood and stopped" and "they gave up and worked around
- *               us", and this ledger must not pick the flattering reading.
- *
- * THE ONE WAY TO FABRICATE THIS, named so a reviewer can check for it: record only `corrected`. The
- * rate is corrected ÷ (corrected + repeated + abandoned), so a caller that forgets the other two
- * reports a perfect score. The invariant is therefore NOT "record outcomes" but **every refusal
- * produces exactly one record**, and `abandoned` is what an unresolved refusal becomes at session
- * end. Same invariant, same reasoning, as advocacy-outcomes.mjs — one pattern, not two.
- *
- * SCOPE, stated rather than implied: this measures the BLOCKING path only. Advisory lessons are
- * counted as `surfaced` for coverage and are NEVER scored, because their effect is not observable
- * here. A coverage number that hides what it cannot see is the same lie as a truncated list.
- *
- * STORAGE: ~/.config/ruvnet-brain/, user-level, deliberately OUTSIDE ~/.cache/ruvnet-brain/ which
- * `--update` replaces wholesale — an outcome destroyed by the next release never compounds.
- * Append-only JSONL, bounded, node builtins only, and every write is best-effort: a ledger that
- * could break a tool call would be worse than no ledger.
+ * The existing JSON/JSONL paths remain intact. Owned exclusive locks serialize pending snapshots
+ * and ledger appends; atomic/fsynced publication follows the repository's existing write protocol.
+ * Malformed, linked, busy or full state is unavailable, never replaced, truncated or written through.
+ * Logging remains best-effort and cannot alter the gate's verdict.
  */
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createHash, randomUUID } from 'node:crypto';
 
-export const CONFIG_ROOT = process.env.RUVNET_CONFIG_ROOT
-  || path.join(os.homedir(), '.config', 'ruvnet-brain');
-export const LEDGER = process.env.RUVNET_DECISION_LEDGER
-  || path.join(CONFIG_ROOT, 'decision-outcomes.jsonl');
-/** Pending refusals awaiting an outcome. Separate from the ledger so a resolve is one small write. */
-export const PENDING = process.env.RUVNET_DECISION_PENDING
-  || path.join(CONFIG_ROOT, 'decision-pending.json');
-
-const MAX_LEDGER_BYTES = 1 << 20;   // ~1MB, then the oldest half is dropped
+export const CONFIG_ROOT = process.env.RUVNET_CONFIG_ROOT || path.join(os.homedir(), '.config', 'ruvnet-brain');
+export const LEDGER = process.env.RUVNET_DECISION_LEDGER || path.join(CONFIG_ROOT, 'decision-outcomes.jsonl');
+export const PENDING = process.env.RUVNET_DECISION_PENDING || path.join(CONFIG_ROOT, 'decision-pending.json');
+const MAX_LEDGER_BYTES = 1 << 20;
 const MAX_PENDING = 200;
+const LOCK_WAIT_MS = 1000;
+const TERMINAL = new Set(['admitted-retry', 'corrected', 'repeated', 'abandoned', 'expired']);
 
-/**
- * The identity of "the same action being retried".
- *
- * Deliberately COARSE: tool + target, never the full input. A model that fixes a refusal usually
- * changes the content while keeping the target, and keying on content would score every correction
- * as a brand-new action and make `repeated` unreachable — a metric that can only produce good news.
- */
 export function actionKey(toolName, toolInput) {
   const t = String(toolName || '').toLowerCase();
   const i = toolInput || {};
@@ -76,156 +32,193 @@ export function actionKey(toolName, toolInput) {
   return `${t}:${String(i.file_path || i.path || '').trim()}`;
 }
 
-const readJson = (file, fallback) => {
-  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; }
-};
-const writeJson = (file, value) => {
-  try {
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, JSON.stringify(value));
-    return true;
-  } catch { return false; }
-};
 
-/** Append one outcome. Never throws; a full disk must not break a tool call. */
-export function append(record, file = LEDGER) {
+function regular(file) {
   try {
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    // Bound the file BEFORE writing, so it can never grow without limit on a long-lived machine.
-    try {
-      if (fs.statSync(file).size > MAX_LEDGER_BYTES) {
-        const lines = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean);
-        fs.writeFileSync(file, `${lines.slice(Math.floor(lines.length / 2)).join('\n')}\n`);
+    const st = fs.lstatSync(file);
+    if (!st.isFile() || st.isSymbolicLink() || st.nlink > 1
+      || (typeof process.getuid === 'function' && st.uid !== process.getuid())) throw Error('unmanaged decision state');
+    if (st.size > MAX_LEDGER_BYTES) throw Error('decision state capacity exhausted');
+    return st;
+  } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+}
+function readPending(file) {
+  if (!regular(file)) return {};
+  const value = JSON.parse(fs.readFileSync(file, 'utf8'));
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error('pending state unavailable');
+  return value;
+}
+function readLedger(file) {
+  if (!regular(file)) return [];
+  return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map(line => {
+    const row = JSON.parse(line);
+    if (row?.kind === 'refused' || TERMINAL.has(row?.kind)) {
+      if (!validDebt(row) || (row.host != null && typeof row.host !== 'string')
+        || (row.projectId != null && !/^[a-f0-9]{64}$/.test(row.projectId))) throw Error('malformed decision observation');
+      if (row.kind === 'admitted-retry' && (typeof row.refusalId !== 'string' || !row.refusalId
+        || row.evidence !== 'pretool-decision-observation' || row.repairVerified !== false)) throw Error('malformed admitted observation');
+    }
+    return row;
+  });
+}
+/** Same owned wx/token protocol as the existing grounding and continuity handlers. */
+function locked(files, work, fallback, { deadlineAt = Infinity, nonBlocking = true } = {}) {
+  const paths = [...new Set(files)].sort(), held = [], token = randomUUID();
+  const owns = () => held.every(({ file }) => {
+    try { return !fs.lstatSync(file).isSymbolicLink() && fs.readFileSync(file, 'utf8') === token; } catch { return false; }
+  });
+  try {
+    if (!(Number.isFinite(deadlineAt) || deadlineAt === Infinity) || Date.now() >= deadlineAt) return fallback;
+    const deadline = Math.min(Date.now() + LOCK_WAIT_MS, deadlineAt);
+    for (const target of paths) {
+      if (Date.now() >= deadline) return fallback;
+      fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
+      regular(target);
+      const file = target + '.lock';
+      for (;;) {
+        try {
+          const fd = fs.openSync(file, 'wx', 0o600); held.push({ file, fd }); fs.writeSync(fd, token); break;
+        } catch (error) {
+          if (error.code !== 'EEXIST' || nonBlocking || Date.now() >= deadline) return fallback;
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
+        }
       }
-    } catch { /* no file yet */ }
-    fs.appendFileSync(file, `${JSON.stringify(record)}\n`);
+    }
+    const permitted = () => Date.now() < deadline && owns();
+    if (!permitted()) return fallback;
+    return work(permitted);
+  } catch { return fallback; }
+  finally {
+    for (const { file, fd } of held.reverse()) {
+      try { fs.closeSync(fd); } catch {}
+      try { if (!fs.lstatSync(file).isSymbolicLink() && fs.readFileSync(file, 'utf8') === token) fs.unlinkSync(file); } catch {}
+    }
+  }
+}
+function writePending(file, value, owns) {
+  const previous = regular(file), temp = `${file}.tmp-${randomUUID()}`;
+  const fd = fs.openSync(temp, 'wx', previous ? previous.mode & 0o777 : 0o600);
+  try {
+    const text = JSON.stringify(value);
+    if (fs.writeSync(fd, text) !== Buffer.byteLength(text)) throw Error('incomplete pending state write');
+    fs.fsyncSync(fd);
+    if (!owns()) throw Error('decision state lock changed');
+    fs.renameSync(temp, file);
+  } finally { fs.closeSync(fd); try { fs.unlinkSync(temp); } catch {} }
+}
+function appendLocked(record, file, owns) {
+  const st = regular(file), text = JSON.stringify(record) + '\n';
+  if ((st?.size || 0) + Buffer.byteLength(text) > MAX_LEDGER_BYTES || !owns()) throw Error('decision ledger unavailable');
+  const fd = fs.openSync(file, fs.constants.O_APPEND | fs.constants.O_CREAT | fs.constants.O_WRONLY | (fs.constants.O_NOFOLLOW || 0), 0o600);
+  try {
+    if (fs.writeSync(fd, text) !== Buffer.byteLength(text)) throw Error('incomplete decision ledger write');
+    fs.fsyncSync(fd);
+  } finally { fs.closeSync(fd); }
+}
+export function append(record, file = LEDGER, budget = {}) {
+  return locked([file], owns => { appendLocked(record, file, owns); return true; }, false, budget);
+}
+const stateFiles = files => ({ pending: files.pending || PENDING, ledger: files.ledger || LEDGER });
+const debtId = debt => debt.refusalId || createHash('sha256').update(JSON.stringify([debt.session, debt.key, debt.ts, debt.host || null, debt.projectId || null])).digest('hex');
+const validDebt = value => value && typeof value.session === 'string' && typeof value.key === 'string'
+  && value.session.length > 0 && value.key.length > 0 && Number.isFinite(value.ts) && Array.isArray(value.policies)
+  && value.policies.every(policy => typeof policy === 'string');
+function scopeOf(host, project) {
+  if (host !== undefined && host !== null && typeof host !== 'string') throw Error('host scope unavailable');
+  const projectId = project ? createHash('sha256').update(fs.realpathSync(project)).digest('hex') : null;
+  return { host: host || null, projectId };
+}
+const sameScope = (left, right) => (left.host || null) === (right.host || null) && (left.projectId || null) === (right.projectId || null);
+const pendingId = debt => `${debt.session}\u0000${debt.key}${debt.host || debt.projectId ? `\u0000${debt.host || ''}\u0000${debt.projectId || ''}` : ''}`;
+const terminals = rows => new Set(rows.filter(row => TERMINAL.has(row?.kind) && validDebt(row)).map(debtId));
+function debts(pending, rows) {
+  const out = new Map(), closed = terminals(rows);
+  for (const value of Object.values(pending)) if (validDebt(value) && !closed.has(debtId(value))) out.set(debtId(value), value);
+  // Recover the crash window after a refused append was fsynced but before its pending rename.
+  for (const row of rows) if (row?.kind === 'refused' && validDebt(row) && !closed.has(debtId(row))) out.set(debtId(row), row);
+  return [...out.values()];
+}
+function transaction(files, callback, fallback, budget = {}) {
+  const f = stateFiles(files);
+  return locked([f.pending, f.ledger], owns => callback(f, readPending(f.pending), readLedger(f.ledger), owns), fallback, budget);
+}
+export function recordRefusal({ session, key, policies, ts, host, project, deadlineAt, nonBlocking }, files = {}) {
+  if (!validDebt({ session, key, policies, ts })) return false;
+  return transaction(files, (f, pending, rows, owns) => {
+    const scope = scopeOf(host, project), id = pendingId({ session, key, ...scope });
+    if (pending[id] && !validDebt(pending[id])) return false;
+    const open = debts(pending, rows);
+    const prior = open.find(value => value.session === session && value.key === key && sameScope(value, scope));
+    if (open.length >= MAX_PENDING && !prior) return false; // defer; never abandon another owner to make room
+    if (prior) appendLocked({ ...prior, kind: 'repeated', ts, refusalId: debtId(prior) }, f.ledger, owns);
+    const debt = { session, key, policies, ts, ...scope, refusalId: randomUUID() };
+    appendLocked({ ...debt, kind: 'refused' }, f.ledger, owns);
+    pending[id] = debt; writePending(f.pending, pending, owns);
     return true;
-  } catch { return false; }
+  }, false, { deadlineAt, nonBlocking });
 }
-
-/**
- * Record that a refusal happened, and open a debt that must resolve to exactly one outcome.
- * `ts` is passed in rather than read from the clock so the caller owns time and tests are hermetic.
- */
-export function recordRefusal({ session, key, policies, ts }, files = {}) {
-  const pendingFile = files.pending || PENDING;
-  const ledger = files.ledger || LEDGER;
-  append({ kind: 'refused', session, key, policies, ts }, ledger);
-  const pending = readJson(pendingFile, {});
-  pending[`${session}\u0000${key}`] = { session, key, policies, ts };
-  // Bound it: on overflow the OLDEST debts are resolved as `abandoned` rather than silently dropped,
-  // because a dropped debt is a miss that never appears in the denominator.
-  const entries = Object.entries(pending);
-  if (entries.length > MAX_PENDING) {
-    const sorted = entries.sort((a, b) => (a[1].ts || 0) - (b[1].ts || 0));
-    for (const [k, v] of sorted.slice(0, entries.length - MAX_PENDING)) {
-      append({ kind: 'abandoned', session: v.session, key: v.key, policies: v.policies, ts }, ledger);
-      delete pending[k];
+export function resolve({ session, key, allowed, ts, host, project, deadlineAt, nonBlocking }, files = {}) {
+  if (typeof allowed !== 'boolean' || typeof session !== 'string' || typeof key !== 'string' || !Number.isFinite(ts)) return null;
+  return transaction(files, (f, pending, rows, owns) => {
+    const scope = scopeOf(host, project), id = pendingId({ session, key, ...scope });
+    const debt = debts(pending, rows).find(value => value.session === session && value.key === key && sameScope(value, scope));
+    if (!debt) {
+      if (validDebt(pending[id]) && terminals(rows).has(debtId(pending[id]))) { delete pending[id]; writePending(f.pending, pending, owns); }
+      return null;
     }
-  }
-  writeJson(pendingFile, pending);
+    const kind = allowed === true ? 'admitted-retry' : 'repeated';
+    appendLocked({ kind, session, key, ...scope, policies: debt.policies, ts, refusalId: debtId(debt), afterMs: ts - debt.ts,
+      evidence: 'pretool-decision-observation', repairVerified: false }, f.ledger, owns);
+    if (validDebt(pending[id])) delete pending[id];
+    writePending(f.pending, pending, owns);
+    return kind;
+  }, null, { deadlineAt, nonBlocking });
 }
-
-/**
- * A tool call is happening. If it retries something we refused, close that debt.
- * Called by the gate BEFORE it decides, so `allowed` is the verdict it is about to return.
- */
-export function resolve({ session, key, allowed, ts }, files = {}) {
-  const pendingFile = files.pending || PENDING;
-  const ledger = files.ledger || LEDGER;
-  const pending = readJson(pendingFile, {});
-  const id = `${session}\u0000${key}`;
-  const debt = pending[id];
-  if (!debt) return null;
-  const kind = allowed ? 'corrected' : 'repeated';
-  append({ kind, session, key, policies: debt.policies, ts, afterMs: ts - (debt.ts || ts) }, ledger);
-  delete pending[id];
-  writeJson(pendingFile, pending);
-  return kind;
+function closeDebts(files, ts, predicate, kind, budget = {}) {
+  return transaction(files, (f, pending, rows, owns) => {
+    const selected = debts(pending, rows).filter(predicate);
+    for (const debt of selected) {
+      appendLocked({ kind, session: debt.session, key: debt.key, host: debt.host || null, projectId: debt.projectId || null,
+        policies: debt.policies, ts, refusalId: debtId(debt) }, f.ledger, owns);
+      const id = pendingId(debt); if (validDebt(pending[id])) delete pending[id];
+    }
+    if (selected.length) writePending(f.pending, pending, owns);
+    return selected.length;
+  }, 0, budget);
 }
-
-/**
- * Close debts that will never resolve, as `abandoned`.
- *
- * WITHOUT THIS THE METRIC IS A LIE BY OMISSION. A refusal the model simply walked away from is the
- * single most likely outcome — and an unresolved debt sits in `open`, outside the denominator, so
- * `correctedRate` would be computed only over the actions someone bothered to retry. That is the
- * "record only the wins" fabrication this file's header names, arriving through the back door.
- *
- * Swept from the gate itself rather than a SessionEnd hook: SessionEnd is not guaranteed to fire (a
- * crash, a kill, a compact all skip it), and this repo has already paid for a queue that only drained
- * on a graceful exit — ADR-027's heartbeat flush, where 1,884 events accumulated over days. Activity
- * is the trigger, not politeness.
- */
-export function sweepStale({ session, ts, maxAgeMs = 6 * 60 * 60_000 }, files = {}) {
-  const pendingFile = files.pending || PENDING;
-  const ledger = files.ledger || LEDGER;
-  const pending = readJson(pendingFile, {});
-  let closed = 0;
-  for (const [k, v] of Object.entries(pending)) {
-    // A different session is over as far as this process can tell; the current session's debts stay
-    // open until they resolve or age out, because a retry three calls later is still a real outcome.
-    const stale = v.session !== session || (ts - (v.ts || ts)) > maxAgeMs;
-    if (!stale) continue;
-    append({ kind: 'abandoned', session: v.session, key: v.key, policies: v.policies, ts }, ledger);
-    delete pending[k];
-    closed += 1;
-  }
-  if (closed) writeJson(pendingFile, pending);
-  return closed;
+/** A differing session is not evidence of abandonment; only proven observation age expires debt. */
+export function sweepStale({ session, ts, maxAgeMs = 6 * 60 * 60_000, deadlineAt, nonBlocking }, files = {}) {
+  if (!Number.isFinite(maxAgeMs) || maxAgeMs <= 0 || !Number.isFinite(ts)) return 0;
+  return closeDebts(files, ts, debt => ts - debt.ts > maxAgeMs, 'expired', { deadlineAt, nonBlocking });
 }
-
-/** Close every open debt for a session as `abandoned`. Called at SessionEnd. */
-export function abandonSession(session, ts, files = {}) {
-  const pendingFile = files.pending || PENDING;
-  const ledger = files.ledger || LEDGER;
-  const pending = readJson(pendingFile, {});
-  let closed = 0;
-  for (const [k, v] of Object.entries(pending)) {
-    if (v.session !== session) continue;
-    append({ kind: 'abandoned', session, key: v.key, policies: v.policies, ts }, ledger);
-    delete pending[k];
-    closed += 1;
-  }
-  if (closed) writeJson(pendingFile, pending);
-  return closed;
+/** Explicit session closure only affects that named session; not an automatic lifecycle delivery claim. */
+export function abandonSession(session, ts, files = {}, scopeInput = {}) {
+  if (!Number.isFinite(ts)) return 0;
+  let scope; try { scope = scopeOf(scopeInput.host, scopeInput.project); } catch { return 0; }
+  return closeDebts(files, ts, debt => debt.session === session && sameScope(debt, scope), 'abandoned', scopeInput);
 }
-
-/**
- * The report. Every refusal must appear in exactly one terminal bucket, and `open` is stated
- * separately so a half-finished session cannot inflate the rate by shrinking the denominator.
- */
 export function report(files = {}) {
-  const ledger = files.ledger || LEDGER;
-  const pendingFile = files.pending || PENDING;
-  let lines = [];
-  try { lines = fs.readFileSync(ledger, 'utf8').split('\n').filter(Boolean); } catch { /* none yet */ }
-  const rows = lines.map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
-  const count = (k) => rows.filter((r) => r.kind === k).length;
-  const refused = count('refused');
-  const corrected = count('corrected');
-  const repeated = count('repeated');
-  const abandoned = count('abandoned');
-  const resolved = corrected + repeated + abandoned;
-  const open = Object.keys(readJson(pendingFile, {})).length;
-  const byPolicy = {};
-  for (const r of rows) {
-    if (!['corrected', 'repeated', 'abandoned'].includes(r.kind)) continue;
-    for (const p of r.policies || []) {
-      byPolicy[p] = byPolicy[p] || { corrected: 0, repeated: 0, abandoned: 0 };
-      byPolicy[p][r.kind] += 1;
+  const unavailable = { available: false, metricBasis: 'pretool-admission-only', admittedRetryRate: null,
+    correctedRate: null, repairSuccessRate: null, reason: 'decision measurement busy, full or unreadable' };
+  return transaction(files, (f, pending, rows) => {
+    const count = kind => rows.filter(row => row?.kind === kind).length;
+    const legacyCorrectedRecords = count('corrected');
+    const admittedRetries = count('admitted-retry') + legacyCorrectedRecords;
+    const repeated = count('repeated'), abandoned = count('abandoned'), expired = count('expired');
+    const resolved = admittedRetries + repeated + abandoned + expired, open = debts(pending, rows).length;
+    const byPolicy = Object.create(null);
+    for (const row of rows) {
+      if (!TERMINAL.has(row?.kind)) continue;
+      const field = ['corrected', 'admitted-retry'].includes(row.kind) ? 'admittedRetries' : row.kind;
+      for (const policy of Array.isArray(row.policies) ? row.policies : []) {
+        byPolicy[policy] ||= { admittedRetries: 0, repeated: 0, abandoned: 0, expired: 0 }; byPolicy[policy][field]++;
+      }
     }
-  }
-  return {
-    refused,
-    resolved,
-    open,
-    corrected,
-    repeated,
-    abandoned,
-    // NULL, not 0, when nothing has resolved. A rate printed as 0% on an empty ledger is a claim the
-    // guards are failing; the truth is that nothing has been measured yet.
-    correctedRate: resolved ? +(corrected / resolved).toFixed(3) : null,
-    byPolicy,
-  };
+    const atCapacity = open >= MAX_PENDING || (regular(f.ledger)?.size || 0) >= MAX_LEDGER_BYTES;
+    return { available: !atCapacity, completeCoverage: false, metricBasis: 'pretool-admission-only', refused: count('refused'), resolved, open,
+      admittedRetries, legacyCorrectedRecords, repeated, abandoned, expired, byPolicy, atCapacity,
+      foreignPendingRecords: Object.values(pending).filter(value => !validDebt(value)).length,
+      admittedRetryRate: !atCapacity && resolved ? +(admittedRetries / resolved).toFixed(3) : null,
+      correctedRate: null, repairSuccessRate: null };
+  }, unavailable);
 }

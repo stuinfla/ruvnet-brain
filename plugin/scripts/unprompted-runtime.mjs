@@ -83,6 +83,7 @@
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 
 import fs from 'node:fs';
+import { contextBlock, contextFrame, emitOwnedContext, selectContextFrame, recordContextBudget } from './hook-context-budget.mjs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -169,7 +170,7 @@ const lesson = (subEvent) => ({ argv: [BASH, path.join(SCRIPTS_DIR, 'lesson-hook
 const ADVOCACY_ROUTE = { argv: [process.execPath, path.join(SCRIPTS_DIR, 'advocacy-route.mjs')], feedStdin: true, channels: ['advocacy'] };
 
 const BUILTIN_REGISTRY = {
-  'UserPromptSubmit': [ANTICIPATE, ADVOCACY_ROUTE, lesson('UserPromptSubmit')],
+  'UserPromptSubmit': [lesson('UserPromptSubmit'), ANTICIPATE, ADVOCACY_ROUTE],
   'PreToolUse-write': [lesson('PreToolUse-write')],
   'PreToolUse-bash':  [lesson('PreToolUse-bash')],
   'PreToolUse-push':  [lesson('PreToolUse-push')],
@@ -273,6 +274,12 @@ for (const p of producers) {
       timeout: remaining,
       maxBuffer: MAX_BUFFER,
     });
+    // Never forward producer diagnostics verbatim: lesson failures may include private paths.
+    // Preserve the fact that memory degraded instead of presenting it as an empty healthy store.
+    if (p.channels.includes('lesson') && (r.error || r.signal || r.status !== 0 || r.stderr?.length)) {
+      rawLines.push({ s: JSON.stringify({ channel: 'lesson', effect: 'advisory',
+        hookEventName: event, copy: 'Project lessons could not be fully loaded. Learning context is incomplete; verify relevant project decisions before consequential changes.' }), channels: ['lesson'] });
+    }
     // FAIL CLOSED (GPT-5.6-Sol): a producer that errored, exited non-zero, was signalled (a timeout kill),
     // or overflowed maxBuffer has UNTRUSTWORTHY partial output — discard it, never deliver a fragment.
     if (!r.error && r.status === 0 && !r.signal && r.stdout) out = r.stdout.toString('utf8');
@@ -296,7 +303,7 @@ for (const { s, channels } of rawLines) {
                                                               // not authorised for this channel → drop
   if (!VALID_EFFECTS.has(c.effect)) continue;                 // unknown/absent effect → drop
   if (typeof c.copy !== 'string' || !c.copy.trim()) continue; // nothing to say → drop
-  c.copy = c.copy.slice(0, MAX_COPY);                         // cap size; delivery below is synchronous
+  if (process.env.RUVNET_HOOK_CONTEXT_BUDGET !== '1') c.copy = c.copy.slice(0, MAX_COPY);                         // cap size; delivery below is synchronous
   candidates.push(c);
 }
 if (!candidates.length) silent();
@@ -338,11 +345,13 @@ async function advocacyLevel() {
   try {
     const m = await import(pathToFileURL(SETTINGS_MODULE).href);
     if (typeof m.loadSettings === 'function') {
-      const v = m.loadSettings().values?.advocacy;   // loadSettings already migrates legacy strings → 1-5
+      const settings = m.loadSettings();
+      if (!settings.healthy || settings.fromFuture || settings.errors?.length) return (_level = 1);
+      const v = settings.values?.advocacy;   // loadSettings already migrates legacy strings → 1-5
       const n = typeof v === 'number' ? v : LEGACY_LEVEL[v];
       if (Number.isInteger(n) && n >= 1 && n <= 5) _level = n;
     }
-  } catch { /* keep the safe default */ }
+  } catch { _level = 1; } // Unavailable preferences cannot authorize optional speech.
   return _level;
 }
 async function policy() { return LEVEL_POLICY[await advocacyLevel()] || LEVEL_POLICY[3]; }
@@ -363,6 +372,15 @@ async function ledger() {
 
 // ── Apply per-channel policy ───────────────────────────────────────────────────────────────────────
 const advisories = [];   // { copy, hookEventName }
+const budgetDeferredIds = [];
+const framedBlock = (a) => contextBlock(a.copy, { id: a.channel, critical: a.channel === 'alarm' });
+const hasAdvisoryRoom = (copy, channel) => {
+  if (process.env.RUVNET_HOOK_CONTEXT_BUDGET !== '1' || channel === 'alarm') return true;
+  const candidate = framedBlock({ copy, channel });
+  const selected = selectContextFrame(contextFrame('unprompted-speech', EVENT.split('-')[0], [...advisories.map(framedBlock), candidate]));
+  if (selected.frame.blocks.some((block) => block.id === candidate.id)) return true;
+  budgetDeferredIds.push(candidate.id); return false;
+};
 const blocks = [];       // reason strings
 
 for (const c of candidates) {
@@ -373,7 +391,7 @@ for (const c of candidates) {
     case 'alarm':
       // Always delivered, never gated. Alarms inform; they do not refuse — a stray block effect on an
       // alarm is treated as advisory rather than allowed to refuse the user's work.
-      advisories.push({ copy, hookEventName });
+      if (hasAdvisoryRoom(copy, c.channel)) advisories.push({ copy, hookEventName, channel: c.channel });
       break;
 
     case 'lesson':
@@ -383,7 +401,7 @@ for (const c of candidates) {
         // and never swallows one.
         blocks.push(copy);
       } else {
-        advisories.push({ copy, hookEventName });
+        if (hasAdvisoryRoom(copy, c.channel)) advisories.push({ copy, hookEventName, channel: c.channel });
       }
       break;
 
@@ -393,7 +411,7 @@ for (const c of candidates) {
       // violation → drop it.
       if (c.effect !== 'advisory') break;
       if (!(await policy()).promotion) break;   // levels 1–3 ⇒ no promotion nudges
-      advisories.push({ copy, hookEventName });
+      if (hasAdvisoryRoom(copy, c.channel)) advisories.push({ copy, hookEventName, channel: c.channel });
       break;
     }
 
@@ -414,6 +432,7 @@ for (const c of candidates) {
       let offer = true;
       try { offer = led.shouldStillOffer(findingId, { severity, stateHash }); } catch { offer = false; }
       if (!offer) break;                                     // dismissed / budget spent → drop
+      if (!hasAdvisoryRoom(copy, c.channel)) break;
       // Persist the OFFERED denominator before delivery. A recommendation whose delivery receipt was
       // not durably written cannot participate in the later applied/dismissed lifecycle; emitting it
       // anyway would create a card the next prompt cannot resolve and would make precision lie.
@@ -421,7 +440,7 @@ for (const c of candidates) {
       try { receipt = led.record({ id: findingId, action: led.ACTIONS.OFFERED, severity, stateHash }); }
       catch { receipt = null; }
       if (!receipt?.ok) break;
-      advisories.push({ copy, hookEventName });
+      advisories.push({ copy, hookEventName, channel: c.channel });
       break;
     }
 
@@ -439,7 +458,11 @@ if (blocks.length) {
   process.exit(2);
 }
 
-if (!advisories.length) silent();
+if (!advisories.length && !budgetDeferredIds.length) silent();
+if (budgetDeferredIds.length) {
+  recordContextBudget({ handler: 'unprompted-speech', event: EVENT.split('-')[0], scope: 'pre-offer-budget-deferral', deferredCount: budgetDeferredIds.length, deferredIds: budgetDeferredIds.slice(0, 8) });
+
+}
 
 // hookEventName MUST name the firing CC event or the harness discards the envelope. DERIVE it from the
 // runtime's own EVENT (GPT-5.6-Sol) rather than trusting a producer-stamped value — the runtime knows the
@@ -447,7 +470,10 @@ if (!advisories.length) silent();
 const hookEventName = EVENT ? EVENT.split('-')[0] : 'UserPromptSubmit';
 
 // SYNCHRONOUS write — the truncation fix on the byte-owner itself (see the block path above).
+if (!advisories.length) silent();
 const additionalContext = advisories.map((a) => a.copy).join('\n\n');
-try { fs.writeSync(1, JSON.stringify({ hookSpecificOutput: { hookEventName, additionalContext } })); }
+try { fs.writeSync(1, process.env.RUVNET_HOOK_CONTEXT_BUDGET === '1'
+  ? emitOwnedContext(contextFrame('unprompted-speech', hookEventName, advisories.map((a) => contextBlock(a.copy, { id: a.channel, critical: a.channel === 'alarm' }))))
+  : JSON.stringify({ hookSpecificOutput: { hookEventName, additionalContext } })); }
 catch { /* if even the final write fails, silence is the fail-safe */ }
 process.exit(0);

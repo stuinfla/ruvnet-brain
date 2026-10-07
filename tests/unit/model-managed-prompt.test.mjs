@@ -110,7 +110,7 @@ describe('automatic common managed prompt boundary', () => {
     const f = fixture(); const result = await runManagedPrompt(f.options);
     expect(f.calls.map(call => call[0])).toEqual(['planner', 'workflow', 'primary']);
     const host = f.options.planTask.mock.calls[0][0];
-    expect(host).toMatchObject({ readOnly: true, maxAttempts: 6, workflowMaxAttempts: 4, maxConcurrent: 1 });
+    expect(host).toMatchObject({ readOnly: true, maxAttempts: 6, workflowMaxAttempts: 4, maxConcurrent: 5 });
     const turn = f.options.primaryTurn.mock.calls[0][0];
     expect(turn).toMatchObject({ sessionId: parent, resume: true, readOnly: true });
     expect(turn.prompt).not.toBe(f.options.originalPrompt); expect(turn.prompt).toContain('Do not execute the original request again');
@@ -321,7 +321,7 @@ describe('common boundary with actual default workflow composition', () => {
     const createAdapters = async ({ captureObservation }) => ({ codex: { id: 'common-service-fixture',
       readiness: async () => ({ ready: true }), prepare: async ({ worker }) => ({ worker }),
       launch: async state => {
-        log.push(state.worker.id); const data = JSON.parse(state.worker.prompt.split('\n\nInternal dependency')[0]);
+        log.push(state.worker.id); const data = JSON.parse(state.worker.prompt.split('\n')[0]);
         state.observed = { completed: true, model: decision.model, effort: decision.effort, effortEvidence: 'native-turn-context',
           sessionId: state.worker.role === 'reviewer' ? children[1] : children[0], answer: state.worker.role === 'reviewer'
             ? JSON.stringify({ passed: true, artifactDigest: data.acceptance.artifactDigest, findings: [], evidence: ['exact fixture artifacts inspected'] })
@@ -335,12 +335,12 @@ describe('common boundary with actual default workflow composition', () => {
         sessionId: state.observed.sessionId, transcriptRefs: [], failure: null, usage: null }),
       summarize: () => ({ outcome: 'Done', artifacts: [], decisions: [], risks: [] }), cancel: async () => ({}), cleanup: async () => ({}),
     } });
-    f.options.planTask = host => planManagedTask(host, { route: async () => decision, recallMemory: () => { throw Error('duplicate recall'); },
+    f.options.planTask = host => planManagedTask(host, { route: async () => decision, sampleCapacity: () => ({ workers: 5, tier: 'test-measurement' }), recallMemory: () => { throw Error('duplicate recall'); },
       runPlanner: async options => {
         expect(options.request.contextRefs).toEqual(f.options.contextRefs); expect(options.prompt).toContain(f.options.originalPrompt);
         return { completed: true, model: decision.model, effort: decision.effort, sessionId: 'actual-fixture-planner', answer: JSON.stringify({ tasks: [{ id: 'work', instructions: 'Read actual supplied context', dependsOn: [], mode: 'read', worktree: f.projectRoot, paths: [], checkIds: ['output-json'] }] }) };
       } });
-    f.options.executeWorkflow = request => executeManagedWorkflow(request, { route: async () => decision, createAdapters,
+    f.options.executeWorkflow = request => executeManagedWorkflow(request, { route: async () => decision, createAdapters, sampleCapacity: () => ({ workers: 5, tier: 'test-measurement' }),
       verifyDecision: () => {}, recordReceipt: async () => ({ durable: true, agentDbCommitted: true }) });
     const result = await runManagedPrompt(f.options);
     expect(log).toEqual(['work', 'independent-review']); expect(result.managedWorkflow.executions).toHaveLength(2);

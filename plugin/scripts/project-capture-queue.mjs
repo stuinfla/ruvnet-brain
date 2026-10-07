@@ -264,38 +264,42 @@ export function replayOutboxDetached({ projectDir, token = null, spawnFn = spawn
  */
 export function runOutboxReplay({ projectDir, token = process.env.RUVNET_REPLAY_LOCK_TOKEN || null, budgetMs = DETACHED_REPLAY_BUDGET_MS,
   makeStoreFactory = boundedStoreFactory, now = Date.now, runCapture = runSessionSnapshotHook, onClaim = null,
-  captureNormalized = captureNormalizedTransition, onCaptured = null, env = process.env } = {}) {
-  const deadlineAt = now() + budgetMs;
+  captureNormalized = captureNormalizedTransition, onCaptured = null, env = process.env,
+  deadlineAt: inheritedDeadlineAt = Infinity, signal } = {}) {
+  const deadlineAt = Math.min(inheritedDeadlineAt, now() + budgetMs);
+  if (signal?.aborted || now() >= deadlineAt) return 0;
   if (developmentHooksSuspended(projectDir)) return 0;
   if (operatorProgressionSuspension(env)) { if (token) releaseReplayLock(projectDir, token); return 0; }
   const brainHome = env.RUVNET_BRAIN_HOME || path.join(env.HOME || os.homedir(), '.cache', 'ruvnet-brain');
   try {
-    const consent = resolveTurnDb({ projectDir, brainHome });
+    const consent = resolveTurnDb({ projectDir, brainHome, deadlineAt, signal });
     if (consent.skipped && !consent.skipped.startsWith('no project memory db')) return 0;
   } catch { return 0; }
+  if (signal?.aborted || now() >= deadlineAt) return 0;
   let held = token || takeReplayLock(projectDir);
   let replayed = 0;
-  for (let round = 0; held && round < 8 && now() < deadlineAt; round += 1) {
+  for (let round = 0; held && round < 8 && now() < deadlineAt && !signal?.aborted; round += 1) {
     try {
       if (!adoptReplayLock(projectDir, held)) return replayed;
       reclaimOrphans(projectDir);
-      const resolution = resolveProjectStore({ projectDir });
-      const store = makeStoreFactory(deadlineAt)({ projectDir, env, requestedStorePath: resolution.canonicalAgentDbPath });
+      const resolution = resolveProjectStore({ projectDir, deadlineAt });
+      const store = makeStoreFactory(deadlineAt)({ projectDir, env, requestedStorePath: resolution.canonicalAgentDbPath, deadlineAt, signal });
       for (const snapshot of store.outbox.pendingSnapshots()) {
         if (operatorProgressionSuspension(env)) return replayed;
-        if (now() >= deadlineAt) return replayed;
+        if (signal?.aborted || now() >= deadlineAt) return replayed;
         if (!refreshReplayLock(projectDir, held)) return replayed;
-        store.captureFrozen(snapshot, { canCommit: () => refreshReplayLock(projectDir, held) });
+        store.captureFrozen(snapshot, { canCommit: () => !signal?.aborted && now() < deadlineAt && refreshReplayLock(projectDir, held) });
         // captureFrozen commits only the verified key, retaining conflicting original history.
         replayed += 1;
       }
       for (const file of queuedCaptures(projectDir)) {
         if (operatorProgressionSuspension(env)) return replayed;
-        if (now() >= deadlineAt) return replayed;
+        if (signal?.aborted || now() >= deadlineAt) return replayed;
         if (!refreshReplayLock(projectDir, held)) return replayed;
         const claimed = claimQueued(file);
         if (!claimed) continue;
         onClaim?.(claimed);
+        if (signal?.aborted || now() >= deadlineAt) { returnClaim(claimed); return replayed; }
         if (!refreshReplayLock(projectDir, held)) {
           returnClaim(claimed);
           return replayed;
@@ -308,16 +312,17 @@ export function runOutboxReplay({ projectDir, token = process.env.RUVNET_REPLAY_
           if (job) {
             // Pre-upgrade raw queues lack origin identity and cannot be truthfully reconstructed.
             if (runCapture === runSessionSnapshotHook && (!job.originProjectDir || (!job.payload?.projectProgression && !job.payload?.normalizedTransition))) { returnClaim(claimed); return replayed; }
-            const consent = resolveTurnDb({ projectDir: job.originProjectDir || projectDir, brainHome });
+            const consent = resolveTurnDb({ projectDir: job.originProjectDir || projectDir, brainHome, deadlineAt, signal });
             if (developmentHooksSuspended(job.originProjectDir || projectDir)
               || (consent.skipped && !consent.skipped.startsWith('no project memory db'))) { returnClaim(claimed); return replayed; }
             const options = { rawInput: JSON.stringify(job.payload), host: job.host, env,
-              budgetMs: Math.max(0, deadlineAt - now()), makeStoreFactory: () => makeStoreFactory(deadlineAt), now, ordered: held, writeMetadata: false,
+              budgetMs: Math.max(0, deadlineAt - now()), deadlineAt, signal,
+              makeStoreFactory: () => makeStoreFactory(deadlineAt), now, ordered: held, writeMetadata: false,
               captureTurn: () => ({ recorded: false, skipped: 'detached replay' }),
               captureEvents: () => ({ recorded: 0, skipped: 'detached replay' }) };
             const result = job.payload?.normalizedTransition ? captureNormalized(job, options)
               : runCapture(job.originProjectDir || projectDir, job.event, options);
-            committed = result?.progressionCaptured === true && Boolean(result.receipt);
+            committed = now() < deadlineAt && !signal?.aborted && result?.progressionCaptured === true && Boolean(result.receipt);
             if (committed) onCaptured?.(result);
           }
         } catch { /* retain the queue until an exact-readback receipt exists */ }
@@ -327,7 +332,7 @@ export function runOutboxReplay({ projectDir, token = process.env.RUVNET_REPLAY_
     } catch { /* the debt stays durable; the next boundary hands it on again */ } finally {
       releaseReplayLock(projectDir, held);
     }
-    held = now() < deadlineAt && queuedWork(projectDir) ? takeReplayLock(projectDir) : null;
+    held = !signal?.aborted && now() < deadlineAt && queuedWork(projectDir) ? takeReplayLock(projectDir) : null;
   }
   if (held) releaseReplayLock(projectDir, held);
   return replayed;
@@ -338,9 +343,11 @@ export function runOutboxReplay({ projectDir, token = process.env.RUVNET_REPLAY_
 export function drainCaptureQueue({ projectDir, budgetMs = 1000, ...options } = {}) {
   if (operatorProgressionSuspension(options.env || process.env)) return { state: 'suspended', replayed: 0, pending: null };
   const startedAt = Date.now();
-  const resolution = resolveProjectStore({ projectDir, gitTimeoutMs: Math.max(1, Math.min(300, budgetMs)) });
+  const deadlineAt = Math.min(options.deadlineAt ?? Infinity, startedAt + budgetMs);
+  if (options.signal?.aborted || startedAt >= deadlineAt) return { state: 'pending', replayed: 0, pending: null, reason: 'restore deadline exceeded' };
+  const resolution = resolveProjectStore({ projectDir, gitTimeoutMs: Math.max(1, Math.min(300, budgetMs)), deadlineAt });
   const root = resolution.projectRoot;
-  const replayed = runOutboxReplay({ ...options, projectDir: root, budgetMs: Math.max(0, budgetMs - (Date.now() - startedAt)) });
+  const replayed = runOutboxReplay({ ...options, deadlineAt, projectDir: root, budgetMs: Math.max(0, deadlineAt - Date.now()) });
   let outboxPending = 0;
   try { outboxPending = new ProgressionOutbox({ projectRoot: root }).pendingSnapshots().length; } catch { return { state: 'degraded', replayed, pending: null }; }
   const pending = queuedWork(root) + outboxPending;
