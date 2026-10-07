@@ -4,8 +4,8 @@ title: Routing architecture qualification requires a current finite source revie
 status: Accepted
 date: 2026-10-05
 updated: 2026-10-06
-version: 0.1.11
-reviewed_digest: f3e9a96b6762
+version: 0.1.13
+reviewed_digest: c30a133bd5aa
 impl: built
 authors: [Stuart Kerr, Codex]
 tags: [routing, governance, review, release, traceability]
@@ -67,6 +67,7 @@ governs:
   - plugin/scripts/codex-console-alias.mjs
   - plugin/scripts/session-start-budget.mjs
   - plugin/scripts/session-start-core.mjs
+  - scripts/model-terminal-launchers.mjs
   - tests/unit/model-terminal-launchers.test.mjs
   - tests/unit/npm-tarball-codex.test.mjs
   - tests/qe/release/packed-clean-install.test.mjs
@@ -144,7 +145,7 @@ substitute for release qualification, exact-candidate receipts or published veri
 | Dispatch and owner policy | model-router-engine, model-router-dispatch, policy.default, model-router-setup, model-router-outcome | Managed service/controller tests; model-router-outcome and model-router-update-convergence tests |
 | Native subscription and catalog | subscription-hosts, native-subscription-usage, model-native-catalog, model-native-qualification, model-router-catalog | Corresponding native/catalog tests and installer convergence tests |
 | Weekly assessment and promotion | model-weekly-cycle, model-weekly-analyst, model-weekly-assessment, model-weekly-qualification, model-routing-policy-promotion, weekly-analyst-instruction | Corresponding weekly and promotion unit files |
-| Installation seam | bin/install.mjs (native administrative hooks probe uses explicit caller/CODEX_BIN or configured realCodex, leaving managed app-server refusal intact), model-routing-operation.md, codex-console-alias and SessionStart core/budget | codex-fresh-host-proof native resolution/override/fallback regression; model-router-update-convergence, session-start-core-parity, model-terminal-launchers and npm-tarball-codex; bounded routing and console-alias installation, not an all-installer review; packed-clean-install and npm-tarball-codex retain sealed archive metadata reads with basename and controlled cwd, rejecting the Windows GNU-tar remote drive-letter seam |
+| Installation seam | model-terminal-launchers.mjs returns only already-validated Claude settings source paths for restrictive inherited-plan inspection; it does not evaluate native precedence or grant authority. bin/install.mjs (native administrative hooks probe uses explicit caller/CODEX_BIN or configured realCodex, leaving managed app-server refusal intact), model-routing-operation.md, codex-console-alias and SessionStart core/budget | codex-fresh-host-proof native resolution/override/fallback regression; model-router-update-convergence, session-start-core-parity, model-terminal-launchers and npm-tarball-codex; bounded routing and console-alias installation, not an all-installer review; packed-clean-install and npm-tarball-codex retain sealed archive metadata reads with basename and controlled cwd, rejecting the Windows GNU-tar remote drive-letter seam |
 | Qualification and release guard | architecture-review-lock, doc-currency, release-qualification-contract, source-scope-receipt, release-transaction, release-transaction-provider, package-lock.json; candidate/CI/protected workflows | architecture-review-lock refusal fixtures and doc-currency-review; release-evidence-dag, protected-release-workflow and agentic-qe-early-public bind the outer candidate-preflight dependency and same-run receipts; existing release contract chooses execution evidence. release-transaction-provider-buffer executes the actual payload upload path with size-based 30s–600s per-file deadlines while metadata and small sidecars retain 30s; the separate download budget and immutable asset checks remain. The npm audit at the exact-candidate seal rejects high-severity dependency advisories; a compatible transitive development patch still requires source-bound qualification, not reuse of an old candidate's receipt. This does not prove transfer throughput or a hard process-tree retirement bound. |
 
 The exact files are enumerated in frontmatter. This mapping identifies test responsibilities; it
@@ -189,9 +190,41 @@ finite release refusal. No paid provider call, model generation or system config
 | 2026-10-05 | Reviewed bounded history integration; reviewed_digest a7175c649296; source fc34e4b2a1b0d313b7559ffe1b1823638249959c | scripts/model-managed-prompt.mjs and scripts/model-routing-execution-adapters.mjs retain native identity, authority and existing size limits while binding streamed full-source provenance and bounded compaction context. Independent combined-source review confirms 83 resolved paths and 112 joint focused tests; authentic read-only capture and normal managed synthetic-cache resume witnesses retain their original distinct runtime identities. No full combined-native or live-user activation claim is made. |
 | 2026-10-05 | Reviewed native-home fixture correction; reviewed_digest fb295b1e3e97; source c60637ae825a3a6978b0b33b75988645bce70462 | tests/unit/model-managed-parent-context-posix.test.mjs places Codex fixtures in its native session home and retains missing, ambiguity, symlink, digest and escape refusals. Independent scoped review confirms 83 unique resolved paths and 4 focused tests; production bytes and prior component-proof limits are unchanged. The earlier source qualification remains failed; fresh exact-source qualification is required. |
 | 2026-10-05 | Reviewed native administrative doctor and platform fixture correction; reviewed_digest 6e41d9bb1970; source d6e0ddb5a18456a437c4ad497abf205df593a87e | bin/install.mjs reuses existing explicit native binary resolution for hooks/list; tests/unit/codex-fresh-host-proof.test.mjs retains overrides and bounded fallback. Six byte-identical private-history assertions moved into tests/unit/model-managed-parent-context-posix.test.mjs without changing Windows ACL/getuid refusal. Independent review confirms 84 unique paths and 100 focused checks; candidate default metadata probe registers 18 hooks with zero native model turns. The failed Windows qualification remains failed, new exact Windows qualification and installed default doctor verification remain required. |
+| 2026-10-07 | Reviewed `c30a133bd5aa` against clean `09a8476516488f88842b041c97cee9765c2d307b`. | Reviewed `scripts/claude-controlled-terminal.mjs`, `scripts/model-managed-prompt.mjs` and the bounded routing/doc delta; 99 paths are a byte inventory, not a full semantic reread. Native acceptance and protected publication require their separate receipts. |
 
 
 ## Current completion safeguard scope
 
 The 4.5.15 correction uses the existing Stop path and exact hook-ownership checks. Its finite governed scope includes each changed handler, shim, installer boundary, existing regression test and the POSIX-only retirement fixture. Linux/macOS select that fixture explicitly; the shared retirement suite remains available to Windows. Source byte inventory and scoped checker evidence do not imply semantic review of an arbitrary whole task. Expanded contract/admission/service changes remain deferred and are not part of this candidate.
 
+
+## Current normal terminal routing repair
+
+The normal Codex and Claude terminal paths use the existing managed planner for requests that are
+not clearly informational. Whether a task needs execution, registered checks and independent
+review is distinct from its model difficulty; medium allocation does not itself permit bypassing
+that workflow. Original request, session context and declared ownership remain bound to execution.
+Result-frame vocabulary remains answer context; read-only summarization retains the original
+request as its routing input rather than promoting allocation from generated review/check text.
+
+Effective authority must come from the native configuration or an existing terminal approval,
+with explicit read-only and inherited Claude plan constraints preserved. Approval policy alone
+is not a write grant. Claude invocation-scoped PreToolUse admission retains native deny rules
+and restricts tools to host-declared ownership; native initialization must actually acknowledge
+that hook admission. Only transport-correlated declared-scope denials may be retained as recovered
+negative evidence; untracked denials and user/native-policy refusal remain restrictive. Checks
+and the fresh independent review must consider those observations. No owner settings, authentication, billing or personal hooks are expanded.
+
+The existing same-session-native-transport and managed-native-workflow requirements select the
+changed tests. Source/unit clearance is not native happy-path acceptance: the five-gate contract
+requires actual normal entries, model and effort observations, checks, independent review, exact
+canonical readback and protected installation proof. An absent optional Codex project layer is
+neutral, while a disabled applicable layer refuses authority; native effective sandbox and the
+most-specific configured project trust still govern. The final source-bound focused report covers the corrected modules;
+those results do not replace native happy-path and protected qualification receipts.
+This finite source inventory is not a claim that every governed file was semantically reread.
+
+Claude permission questions use the existing terminal boundary in FIFO order; EOF or cancellation
+denies unresolved requests. This serializes human decisions without adding authority, bypassing
+native refusal or changing the Codex branch. Old runtime receipts retain their exact source and
+host-branch transfer limits; they are not relabeled as the final installed runtime.
