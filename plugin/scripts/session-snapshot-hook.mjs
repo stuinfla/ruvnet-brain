@@ -129,13 +129,19 @@ export function runSessionSnapshotHook(projectDir, event, {
   spawnReplay = replayOutboxDetached,
   ordered = null,
   captureEvents = captureContinuityEvents,
+  deadlineAt: inheritedDeadlineAt = Infinity,
+  signal,
 } = {}) {
+  const deadlineAt = Math.min(inheritedDeadlineAt, now() + budgetMs);
+  const checkDeadline = () => { if (signal?.aborted || now() >= deadlineAt) throw new Error('restore deadline exceeded'); };
   const suspended = (reason) => ({ metadataWritten: false, progressionCaptured: false, receipt: null, skipped: reason,
     turn: { event, recorded: false, skipped: reason }, continuity: { event, recorded: 0, launched: false, skipped: reason } });
   // Consent is checked before metadata, transcript inspection or any durable capture queue.
   try {
+    checkDeadline();
     const consent = resolveTurnDb({ projectDir, brainHome: env.RUVNET_BRAIN_HOME || path.join(env.HOME || os.homedir(), '.cache', 'ruvnet-brain'),
-      gitTimeoutMs: Math.max(1, Math.min(500, budgetMs)) });
+      gitTimeoutMs: Math.max(1, Math.min(500, deadlineAt - now())), deadlineAt, signal });
+    checkDeadline();
     if (consent.skipped) return suspended(consent.skipped);
   } catch (error) {
     return suspended(`capture consent unavailable: ${error.message}`);
@@ -148,14 +154,14 @@ export function runSessionSnapshotHook(projectDir, event, {
   // (a project without a store requires persisted opt-in — turn-outcome-capture.mjs).
   // It only reads and spawns a detached writer, so it costs the progression budget below nothing.
   let turn;
-  try { turn = captureTurn({ projectDir, event, payload, host, env }); } catch (error) {
+  try { checkDeadline(); turn = captureTurn({ projectDir, event, payload, host, env, deadlineAt, signal }); checkDeadline(); } catch (error) {
     turn = { recorded: false, skipped: `turn capture failed: ${error.message}` };
   }
   // MATERIAL EVENTS (continuity-journal.mjs): commits, releases, gates, findings, decisions, lessons —
   // journalled to the durable outbox with one fsync and committed by a detached drainer. Like turn
   // capture it is independent of the progression lock below and costs this boundary only a read.
   let continuity;
-  try { continuity = captureEvents({ projectDir, event, payload, host, env }); } catch (error) {
+  try { checkDeadline(); continuity = captureEvents({ projectDir, event, payload, host, env, deadlineAt, signal }); checkDeadline(); } catch (error) {
     continuity = { recorded: 0, skipped: `continuity capture failed: ${error.message}` };
   }
   const idle = { metadataWritten, progressionCaptured: false, receipt: null, turn, continuity };
@@ -163,11 +169,14 @@ export function runSessionSnapshotHook(projectDir, event, {
   if (operatorSuspended) return operatorSuspended;
 
   if (hasProjectProgression(payload)) {
+    checkDeadline();
     if (payload.hook_event_name !== event) {
       throw new Error(`progression boundary mismatch: expected ${event}, received ${payload.hook_event_name}`);
     }
     const result = captureProgression({ host, payload, projectDir, env, recoverFrozen: Boolean(ordered),
-      canCommit: () => Boolean(ordered) && refreshReplayLock(resolveProjectStore({ projectDir }).projectRoot, ordered), storeFactory: (options) => makeStoreFactory(now() + budgetMs)({ ...options, env }) });
+      canCommit: () => now() < deadlineAt && !signal?.aborted && Boolean(ordered)
+        && refreshReplayLock(resolveProjectStore({ projectDir, deadlineAt }).projectRoot, ordered),
+      storeFactory: (options) => makeStoreFactory(deadlineAt)({ ...options, env, deadlineAt, signal }) });
     return { ...idle, progressionCaptured: true, receipt: result.receipt };
   }
 
@@ -178,7 +187,7 @@ export function runSessionSnapshotHook(projectDir, event, {
   }
 
   let resolution;
-  try { resolution = resolveProjectStore({ projectDir }); } catch {
+  try { checkDeadline(); resolution = resolveProjectStore({ projectDir, deadlineAt }); } catch {
     return { ...idle, skipped: 'project store could not be resolved' };
   }
   if (!fs.existsSync(path.dirname(resolution.canonicalAgentDbPath))) {
@@ -206,7 +215,7 @@ export function runSessionSnapshotHook(projectDir, event, {
   let token = ordered;
   const handOff = (why) => {
     let frozen;
-    try { frozen = produce({ resolution, projectDir, payload, host, env, trigger: event }); } catch { frozen = null; }
+    try { checkDeadline(); frozen = produce({ resolution, projectDir, payload, host, env, trigger: event, deadlineAt, signal }); checkDeadline(); } catch { frozen = null; }
     const queued = frozen?.projectProgression ? queueCapture({ projectDir: root, originProjectDir: projectDir, env, event, host,
       payload: { session_id: payload.session_id, hook_event_name: event, projectProgression: frozen.projectProgression } }) : null;
     const handed = queued ? spawnReplay({ projectDir: root, token, env }) : false;
@@ -228,8 +237,8 @@ export function runSessionSnapshotHook(projectDir, event, {
 
   let handedLock = false;
   try {
-    const deadlineAt = now() + budgetMs;
-    const storeFactory = (options) => makeStoreFactory(deadlineAt)({ ...options, env });
+    checkDeadline();
+    const storeFactory = (options) => makeStoreFactory(deadlineAt)({ ...options, env, deadlineAt, signal });
     let replayed = 0;
     if (budgetMs >= REPLAY_MIN_BUDGET_MS) {
       try {
@@ -247,7 +256,9 @@ export function runSessionSnapshotHook(projectDir, event, {
 
     let produced;
     try {
-      produced = produce({ resolution, projectDir, payload, host, env, trigger: event });
+      checkDeadline();
+      produced = produce({ resolution, projectDir, payload, host, env, trigger: event, deadlineAt, signal });
+      checkDeadline();
     } catch (error) {
       return { ...idle, replayed, skipped: `producer failed: ${error.message}` };
     }

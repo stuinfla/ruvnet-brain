@@ -141,7 +141,8 @@ export function claudeWorkflowResponse(role) {
 }
 
 export async function executeCodexWorkflowWorker({ binary, decision, prompt, cwd, readOnly, signal, timeoutMs,
-  env = process.env, sessionId, launch = spawn, observe = readCodexWorkerObservation, allowance = readCodexAllowance }) {
+  env = process.env, sessionId, approvalPolicy = 'never', launch = spawn, observe = readCodexWorkerObservation, allowance = readCodexAllowance }) {
+  if (approvalPolicy !== 'never') throw blocked('Native exec cannot preserve requested approval policy');
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || signal?.aborted) throw blocked('Native worker cancelled or deadline unavailable');
   const limit = performance.now() + timeoutMs;
   await assertModelRoutingText(prompt);
@@ -158,9 +159,9 @@ export async function executeCodexWorkflowWorker({ binary, decision, prompt, cwd
   const args = sessionId ? ['exec', 'resume', '--ignore-user-config', '--skip-git-repo-check', '--json', '--model', decision.model,
     '-c', `model_reasoning_effort=\"${decision.effort}\"`, '-c', 'model_provider=\"openai\"',
     '-c', 'service_tier=\"default\"', '-c', `sandbox_mode=\"${readOnly ? 'read-only' : 'workspace-write'}\"`,
-    '-c', 'features.fast_mode=false', '-c', 'features.multi_agent=false', '-c', 'features.multi_agent_v2=false', sessionId, '-']
+    '-c', 'features.fast_mode=false', '-c', 'approval_policy="never"', '-c', 'features.multi_agent=false', '-c', 'features.multi_agent_v2=false', sessionId, '-']
     : [...spec.args.slice(0, -1), '--skip-git-repo-check', '--json', '--sandbox', readOnly ? 'read-only' : 'workspace-write',
-      '-c', 'features.multi_agent=false', '-c', 'features.multi_agent_v2=false', '-'];
+      '-c', 'approval_policy="never"', '-c', 'features.multi_agent=false', '-c', 'features.multi_agent_v2=false', '-'];
   args.splice(args.length - 1, 0, ...codexBrainSearchArguments(clean));
   if (performance.now() >= limit || signal?.aborted) throw blocked('Native worker deadline expired before launch');
   const result = await new Promise((resolve, reject) => {
@@ -276,7 +277,7 @@ function ownedPermission(request, worker, nativeRequest) {
 }
 
 export function createGuardedWorkflowAdapters({ request, budget, env = process.env,
-  binaries = nativeWorkflowBinaries(), executeNative, verifyDecision = validateDispatchDecision, captureObservation = () => {} }) {
+  binaries = nativeWorkflowBinaries(), executeNative, approve, verifyDecision = validateDispatchDecision, captureObservation = () => {} }) {
   const adapters = {};
   for (const host of ['codex', 'claude']) {
     adapters[host] = {
@@ -320,7 +321,11 @@ export function createGuardedWorkflowAdapters({ request, budget, env = process.e
           else {
             const receipts = [];
             const turn = await runControlledClaudeTurn({ ...state, ...claudeWorkflowResponse(state.worker.role), prompt: state.worker.prompt + (state.worker.reviewContract ? '\n' + state.worker.reviewContract : ''), env,
-              decide: async () => state.decision, approve: async permission => ownedPermission(request, state.worker, permission),
+              decide: async () => state.decision, scopeTool: permission => ownedPermission(request, state.worker, permission), approve: async permission => !state.signal?.aborted && Date.now() < budget.deadline
+                && ownedPermission(request, state.worker, permission)
+                && (typeof approve !== 'function' ? !['Write', 'Edit', 'MultiEdit'].includes(permission.tool_name)
+                  : await approve(permission, { workerId: state.worker.id, ownership: state.worker.ownership }) === true)
+                && !state.signal?.aborted && Date.now() < budget.deadline,
               receipt: value => receipts.push(value) });
             if (turn.structuredOutput !== true || typeof turn.finalAnswer !== 'string' || !turn.finalAnswer.trim()) throw blocked('Native final answer unavailable');
             state.observation = { model: turn.decision?.model, effort: turn.decision?.effort,

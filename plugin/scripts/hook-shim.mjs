@@ -31,9 +31,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
+import { advisoryBudgetFor, recordContextBudget } from './hook-context-budget.mjs';
 import { fileURLToPath } from 'node:url';
 import { resolveBash, skipNoBash } from './hook-shim-bash.mjs';
 import { developmentHooksSuspended } from './development-maintenance.mjs';
+import { sessionStartDeadlineAt } from './session-start-budget.mjs';
 
 if (developmentHooksSuspended()) process.exit(0);
 
@@ -185,6 +187,16 @@ const TABLE = {
 };
 
 const hookId = process.argv[2];
+// Native Claude supplies this exact registered plugin root; do not guess a host from absence.
+if (['session-snapshot', 'continuation-gate', 'grounding-turn-mark', 'grounding-stamp', 'grounding-turn-gate'].includes(hookId)
+    && process.env.RUVNET_HOOK_HOST === undefined && process.env.CLAUDE_PLUGIN_ROOT) {
+  try {
+    const ownPluginRoot = fs.realpathSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'));
+    if (fs.realpathSync(process.env.CLAUDE_PLUGIN_ROOT) === ownPluginRoot) process.env.RUVNET_HOOK_HOST = 'claude';
+  } catch { /* Missing or mismatched native registration remains unknown. */ }
+}
+
+
 const entry = TABLE[hookId];
 if (!entry) {
   process.stderr.write(`[hook-shim] unknown hook id: ${JSON.stringify(hookId)} — known: ${Object.keys(TABLE).join(', ')}\n`);
@@ -328,13 +340,29 @@ function runHook(file, activeVersion = '') {
     // The node running THIS shim, for bash bodies that need node (grounding-stamp.sh's verdict) on a
     // machine where `node` is not on the PATH the host hands its hooks. Additive: older bodies ignore it.
     RUVNET_NODE_BIN: process.execPath,
+    ...(['unprompted-speech', 'ground-ruvnet', 'decision-gate'].includes(hookId) ? { RUVNET_HOOK_CONTEXT_BUDGET: '1' } : {}),
     ...(activeVersion ? { RUVNET_BRAIN_ACTIVE_VERSION: activeVersion } : {}),
     ...(BRAIN_OFF && entry.offBehavior === 'partial' ? { RUVNET_BRAIN_OFF: '1' } : {}),
   };
   const io = hookInput !== null
     ? { stdio: ['pipe', 'inherit', 'inherit'], input: hookInput }
     : { stdio: 'inherit' };
-  const r = spawnSync(cmd, [file, ...extraArgs], { ...io, env });
+  let sessionTimeout;
+  if (hookId === 'session-start') {
+    try {
+      const deadlineAt = sessionStartDeadlineAt({ host: env.RUVNET_HOOK_HOST || 'claude', env,
+        startedAt: performance.timeOrigin, pluginRoot: path.resolve(path.dirname(file), '..') });
+      env.RUVNET_SESSION_START_DEADLINE_AT = String(deadlineAt);
+      sessionTimeout = Math.floor(deadlineAt - Date.now());
+      if (sessionTimeout < 1) throw new Error('SessionStart deadline exhausted before restore');
+    } catch (error) {
+      process.stderr.write(`[RuvNet Brain — PROJECT CONTINUITY UNKNOWN] ${error.message}; restoration was not attempted.\n`);
+      return 0;
+    }
+  }
+  if (advisoryBudgetFor(hookId, extraArgs[0] || '') === null) recordContextBudget({ handler: hookId, event: extraArgs[0] || hookId, scope: 'unknown-unframed-context-unchanged' }, env);
+  const r = spawnSync(cmd, [file, ...extraArgs], { ...io, env,
+    ...(sessionTimeout ? { timeout: sessionTimeout, killSignal: 'SIGKILL' } : {}) });
   if (r.error) {
     process.stderr.write(`[hook-shim] ${entry.file}: ${r.error.message}\n`);
     return entry.mode === 'blocking' ? 1 : 0;

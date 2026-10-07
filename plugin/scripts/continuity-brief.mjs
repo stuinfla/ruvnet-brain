@@ -32,6 +32,7 @@ import { withProgressionReader } from './project-progression-reader.mjs';
 import { readWorkLedger } from './project-progression-sources.mjs';
 import { resolveProjectStore } from './project-store-resolver.mjs';
 import { restoreProgressionForSession } from './project-progression-session-start.mjs';
+import { STAGE_BUDGETS_MS } from './session-start-budget.mjs';
 import { projectDirectory } from './project-identity.mjs';
 import { CONTINUITY_NAMESPACE, EVENT_KINDS, makeEvent, userLevelAgentdbHooks } from './continuity-events.mjs';
 import { ContinuityJournal, drain, launchDrain, recordingLine, storeReady } from './continuity-journal.mjs';
@@ -50,8 +51,20 @@ const OWNED_DIR = 'continuity-owned';
 const MAX_STORE_EVENTS = 600;
 const SECTION_CAPS = Object.freeze({ commit: 6, release: 3, decision: 5, lesson: 6, gate: 4, finding: 3, open: 5 });
 
-function git(cwd, args) {
-  try { return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 2000 }).trim(); } catch { return ''; }
+function checkDeadline({ deadlineAt = Infinity, signal } = {}) {
+  if (signal?.aborted || Date.now() >= deadlineAt) throw new Error('restore deadline exceeded');
+}
+function git(cwd, args, options = {}) {
+  checkDeadline(options);
+  try {
+    const value = execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: Math.max(1, Math.floor(Math.min(2000, (options.deadlineAt ?? Infinity) - Date.now()))), killSignal: 'SIGKILL' }).trim();
+    checkDeadline(options); return value;
+  } catch (error) {
+    checkDeadline(options);
+    if (error.code === 'ETIMEDOUT' && Number.isFinite(options.deadlineAt)) throw new Error('restore deadline exceeded');
+    return '';
+  }
 }
 const hhmm = (iso) => String(iso || '').replace(/:\d\d\.\d+Z$|:\d\dZ$/, 'Z');
 /** Data-safe one line: no control or bidi characters, no fence tokens, whitespace collapsed, capped. */
@@ -93,35 +106,42 @@ function appendOwned(file, record) {
 }
 
 /** Every continuity event: committed rows (read-only) plus pending outbox rows, oldest first. */
-export function readEvents(journal, { maxEvents = MAX_STORE_EVENTS } = {}) {
+export function readEvents(journal, { maxEvents = MAX_STORE_EVENTS, deadlineAt = Infinity, signal } = {}) {
+  const options = { deadlineAt, signal }; checkDeadline(options);
   const byKey = new Map();
   if (storeReady(journal.db)) {
     const read = withProgressionReader(journal.db, (reader) => {
       const keys = reader.listKeys(CONTINUITY_NAMESPACE, { maxEntries: 200_000 }).slice(-maxEvents);
       return keys.map((key) => ({ key, content: reader.readContent(CONTINUITY_NAMESPACE, key) }));
-    });
+    }, options);
+    if (!read.ok && Number.isFinite(deadlineAt)) throw new Error('continuity brief store read unavailable');
     if (read.ok) {
       for (const { key, content } of read.value) {
+        checkDeadline(options);
         try { byKey.set(key, { key, event: JSON.parse(content), pending: false }); } catch { /* malformed row: not an event */ }
       }
     }
   }
-  for (const rec of journal.pending()) if (!byKey.has(rec.key)) byKey.set(rec.key, { key: rec.key, event: rec.event, pending: true });
+  checkDeadline(options);
+  for (const rec of journal.pending()) { checkDeadline(options); if (!byKey.has(rec.key)) byKey.set(rec.key, { key: rec.key, event: rec.event, pending: true }); }
   return [...byKey.values()].sort((a, b) => (a.key < b.key ? -1 : 1));
 }
 
 /** The owner's `lesson-*` keys (project namespace, default, lessons) — read only when no user hook shows them. */
-function ownerLessons(db, namespaces) {
+function ownerLessons(db, namespaces, options = {}) {
+  checkDeadline(options);
   if (!storeReady(db)) return [];
   const read = withProgressionReader(db, (reader) => {
     const out = [];
     for (const ns of namespaces) {
       for (const key of reader.listKeys(ns, { maxEntries: 200_000 })) {
+        checkDeadline(options);
         if (ns === 'lessons' || key.startsWith('lesson-')) out.push({ key, ns, content: reader.readContent(ns, key) });
       }
     }
     return out;
-  });
+  }, options);
+  if (!read.ok && Number.isFinite(options.deadlineAt)) throw new Error('continuity brief lesson read unavailable');
   return read.ok ? read.value : [];
 }
 
@@ -143,25 +163,28 @@ const tag = (row) => {
  * an adopted project (no `.swarm`), where there is nothing to come up to speed on.
  */
 export function buildBrief({ projectDir, env = process.env, home = os.homedir(), now = Date.now(), limitBytes = BRIEF_LIMIT_BYTES,
-  pluginRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'), persistState = true } = {}) {
+  pluginRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'), persistState = true,
+  deadlineAt = Infinity, signal } = {}) {
+  const options = { deadlineAt, signal }; checkDeadline(options);
   let resolution;
-  try { resolution = resolveProjectStore({ projectDir }); } catch { return { context: '' }; }
-  const journal = new ContinuityJournal({ projectRoot: resolution.projectRoot, now: () => now });
+  try { resolution = resolveProjectStore({ projectDir, deadlineAt }); }
+  catch (error) { if (Number.isFinite(deadlineAt)) throw error; return { context: '' }; }
+  const journal = new ContinuityJournal({ projectRoot: resolution.projectRoot, now: () => now, deadlineAt, signal });
   try { if (!fs.lstatSync(journal.swarm).isDirectory()) return { context: '' }; } catch { return { context: '' }; }
   const state = readState(journal);
   const since = Number(state.lastBriefAt) || now - 86_400_000;
-  const rows = readEvents(journal);
+  const rows = readEvents(journal, options);
   const status = journal.status();
   const of = (kind) => rows.filter((r) => r.event?.kind === kind);
   const user = userLevelAgentdbHooks({ home });
 
   const root = resolution.checkoutRoot;
-  const branch = git(root, ['rev-parse', '--abbrev-ref', 'HEAD']);
-  const headLine = git(root, ['log', '-1', '--format=%h %s']);
-  const latestTag = git(root, ['describe', '--tags', '--abbrev=0']);
+  const branch = git(root, ['rev-parse', '--abbrev-ref', 'HEAD'], options);
+  const headLine = git(root, ['log', '-1', '--format=%h %s'], options);
+  const latestTag = git(root, ['describe', '--tags', '--abbrev=0'], options);
   let version = '';
   try { version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version || ''; } catch { /* not a node project */ }
-  const changed = git(root, ['log', '-n20', `--since=${new Date(since).toISOString()}`, '--format=%h %s', 'HEAD']).split('\n').filter(Boolean);
+  const changed = git(root, ['log', '-n20', `--since=${new Date(since).toISOString()}`, '--format=%h %s', 'HEAD'], options).split('\n').filter(Boolean);
   const newTags = of('release').filter((r) => Date.parse(r.event.at) >= since);
 
   const ledger = readWorkLedger({ projectId: resolution.projectIdentity.id, env, home });
@@ -181,7 +204,7 @@ export function buildBrief({ projectDir, env = process.env, home = os.homedir(),
   if (user.ensure) {
     lessonNote = '(owner lesson-* keys and project-state-current are printed by your user-level agentdb-ensure hook; not repeated)';
   } else {
-    for (const l of ownerLessons(journal.db, [path.basename(resolution.projectRoot), 'default', 'lessons'])) {
+    for (const l of ownerLessons(journal.db, [path.basename(resolution.projectRoot), 'default', 'lessons'], options)) {
       storeLessonLines.push(`• ${oneLine(l.content)} [${oneLine(`${l.ns}/${l.key}`, 80)}]`);
     }
   }
@@ -190,7 +213,7 @@ export function buildBrief({ projectDir, env = process.env, home = os.homedir(),
     { name: 'STANDING RULES (you recorded these with --record on this machine)', cap: SECTION_CAPS.lesson, items: ruleLines.reverse() },
   ];
   const data = [
-    { name: 'SINCE LAST SESSION', cap: SECTION_CAPS.commit, intro: `(${new Date(since).toISOString().slice(0, 16)}Z → now; git, read live): ${changed.length}${changed.length === 20 ? '+' : ''} commit(s) on ${oneLine(branch, 80) || '?'}${newTags.length ? `; releases: ${newTags.map((r) => oneLine(r.event.detail?.tag, 60)).join(', ')}` : ''}`,
+      { name: 'SINCE LAST SESSION', cap: SECTION_CAPS.commit, intro: `(${new Date(since).toISOString().slice(0, 16)}Z → now; git, read live): ${changed.length}${changed.length === 20 ? '+' : ''} commit(s) on ${oneLine(branch, 80) || '?'}${newTags.length ? `; local tags (publication unverified): ${newTags.map((r) => oneLine(r.event.detail?.tag, 60)).join(', ')}` : ''}`,
       items: changed.map((c) => `• ${oneLine(c, 140)}`) },
     { name: 'DECISIONS', cap: SECTION_CAPS.decision, items: of('decision').reverse().map((r) => `• ${oneLine(r.event.summary)} ${tag(r)}`) },
     { name: 'LESSONS FOUND IN THE PROJECT STORE (not confirmed as yours)', cap: SECTION_CAPS.lesson, intro: lessonNote, items: storeLessonLines.reverse() },
@@ -202,7 +225,7 @@ export function buildBrief({ projectDir, env = process.env, home = os.homedir(),
   const sections = [...trusted, ...data];
 
   const head = [`${BRIEF_HEADER} — ${oneLine(path.basename(resolution.projectRoot), 80)} · AgentDB ${oneLine(journal.db, 300)}]`];
-  const now_ = `NOW: ${oneLine(branch, 80) || 'no branch'} @ ${oneLine(headLine, 160) || 'no commits'}${version ? ` · package ${oneLine(version, 40)}` : ''}${latestTag ? ` · latest tag ${oneLine(latestTag, 60)}` : ''} (git, live)`;
+  const now_ = `NOW: ${oneLine(branch, 80) || 'no branch'} @ ${oneLine(headLine, 160) || 'no commits'}${version ? ` · package ${oneLine(version, 40)}` : ''}${latestTag ? ` · local tag ${oneLine(latestTag, 60)} (publication unverified)` : ''} (git, live)`;
   const tail = [
     recordingLine(status, now),
     `MORE: ${env.RUVNET_HOOK_HOST === 'codex' ? '' : '/ruvnet-brain:rnb-brief, or '}node "${path.join(pluginRoot, 'scripts', 'continuity-brief.mjs')}" --full [--kind ${EVENT_KINDS.join('|')}] [--since 7d]`,
@@ -235,6 +258,7 @@ export function buildBrief({ projectDir, env = process.env, home = os.homedir(),
     const room = Math.max(0, Buffer.byteLength(dataText, 'utf8') - (Buffer.byteLength(context, 'utf8') - limitBytes) - 80);
     context = render(caps, `${Buffer.from(dataText).subarray(0, room).toString('utf8').replace(/�$/, '')}\n[CUT to fit — the rest is in AgentDB: run the MORE command]`);
   }
+  checkDeadline(options);
   if (persistState) writeState(journal, { lastBriefAt: now });
   return { context, status, counts: Object.fromEntries(EVENT_KINDS.map((k) => [k, of(k).length])), journal };
 }
@@ -243,13 +267,22 @@ export function buildBrief({ projectDir, env = process.env, home = os.homedir(),
  * SessionStart's continuity stage: the brief first, then the ADR-073 progression restore. A brief
  * failure never costs the restore; pending events get a detached drainer here too.
  */
-export async function restoreWithBrief({ env = process.env, cwd = process.cwd(), restore = restoreProgressionForSession, launch = launchDrain } = {}) {
-  const restored = await restore({ env, cwd });
+export async function restoreWithBrief({ env = process.env, cwd = process.cwd(), restore = restoreProgressionForSession, launch = launchDrain,
+  deadlineAt = Infinity, signal } = {}) {
+  deadlineAt = Math.min(deadlineAt, Date.now() + STAGE_BUDGETS_MS.restore);
+  const options = { deadlineAt, signal };
+  const restored = await restore({ env, cwd, ...options });
   let brief = { context: '' };
   try {
-    brief = buildBrief({ projectDir: env.CLAUDE_PROJECT_DIR || cwd, env, home: env.HOME || os.homedir() });
+    checkDeadline(options);
+    brief = buildBrief({ projectDir: env.CLAUDE_PROJECT_DIR || cwd, env, home: env.HOME || os.homedir(), ...options });
+    checkDeadline(options);
     if (brief.status?.pending && brief.status.applicable) launch({ projectRoot: brief.journal.projectRoot, env });
-  } catch { /* the restore still stands on its own */ }
+  } catch (error) {
+    const reason = /deadline|timed out/i.test(error.message) ? 'deadline-exceeded' : 'brief-read-failed';
+    return { ...(restored || {}), degraded: true, brief: { status: 'unknown', reason },
+      context: `[RuvNet Brain — PROJECT CONTINUITY UNKNOWN]\nThe startup brief is incomplete (${reason}); no complete brief restoration is claimed.\n${restored?.context || ''}` };
+  }
   if (!brief.context) return restored;
   return { ...(restored || {}), brief: brief.status, context: restored?.context ? `${brief.context}\n${restored.context}` : brief.context };
 }

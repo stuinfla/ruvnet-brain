@@ -9,7 +9,7 @@
 // The rules pinned here: the wrapper hands SessionEnd a 2200ms budget; the body plans inside the
 // handed-down budget; the NEW snapshot is captured first; replay is skipped (deferred, never dropped)
 // when the budget is under REPLAY_MIN_BUDGET_MS.
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -22,6 +22,19 @@ import {
 } from '../../plugin/scripts/session-snapshot-hook.mjs';
 import { createStore } from '../helpers/continuity-fixture.mjs';
 import { ProgressionOutbox } from '../../plugin/scripts/project-progression-outbox.mjs';
+
+it('an inherited expired deadline starts no metadata, capture, producer or replay work', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'expired-snapshot-'));
+  try {
+    const work = vi.fn(() => { throw new Error('expired work executed'); });
+    const env = { HOME: root, USERPROFILE: root, RUVNET_BRAIN_HOME: path.join(root, 'brain') };
+    const result = runSessionSnapshotHook(root, 'SessionStart', { env, deadlineAt: Date.now() - 1,
+      captureTurn: work, captureEvents: work, produce: work });
+    expect(result.metadataWritten).toBe(false); expect(result.progressionCaptured).toBe(false); expect(result.skipped).toMatch(/deadline exceeded/);
+    expect(runOutboxReplay({ projectDir: root, env, deadlineAt: Date.now() - 1, runCapture: work, makeStoreFactory: work })).toBe(0);
+    expect(work).not.toHaveBeenCalled(); expect(fs.readdirSync(root)).toEqual([]);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
 import { ProjectProgressionStore } from '../../plugin/scripts/project-progression-store.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -34,6 +47,16 @@ function project() {
   roots.push(root);
   return root;
 }
+it('cancellation after claiming a replay returns the exact original without admitting another capture', () => {
+  const dir = project(); const env = { HOME: dir, USERPROFILE: dir, RUVNET_BRAIN_HOME: path.join(dir, 'brain') };
+  const file = queueCapture({ projectDir: dir, env, event: 'Stop', host: 'codex', payload: { session_id: 'cancelled', hook_event_name: 'Stop' } });
+  expect(file).toBeTruthy(); const before = fs.readFileSync(file);
+  const controller = new AbortController(); const capture = vi.fn(() => ({ progressionCaptured: true, receipt: { eventKey: 'must-not-run' } }));
+  const fakeStore = () => () => ({ outbox: new ProgressionOutbox({ projectRoot: dir }) });
+  expect(runOutboxReplay({ projectDir: dir, env, signal: controller.signal, deadlineAt: Date.now() + 2000,
+    makeStoreFactory: fakeStore, onClaim: () => controller.abort(), runCapture: capture })).toBe(0);
+  expect(capture).not.toHaveBeenCalled(); expect(fs.readFileSync(file)).toEqual(before); expect(queuedCaptures(dir)).toContain(file);
+});
 function run(budgetMs) {
   const order = [];
   const dir = project();
@@ -466,5 +489,23 @@ describe.skipIf(process.platform === 'win32')('codex-hook-wrapper hands SessionE
     const handler = codex.SessionEnd.flatMap((g) => g.hooks).find((h) => / session-snapshot SessionEnd$/.test(h.command));
     expect(handler.timeout).toBe(3);
     expect(Number(handler.command.match(/" (\d+) session-snapshot SessionEnd$/)[1])).toBe(2500);
+  });
+});
+
+
+describe('supported Codex PreCompact snapshot boundary', () => {
+  it('runs the existing snapshot producer and capture path before returning at compaction', () => {
+    const dir = project();
+    const order = [];
+    const result = runSessionSnapshotHook(dir, 'PreCompact', {
+      rawInput: JSON.stringify({ session_id: 'compact-fixture', hook_event_name: 'PreCompact', cwd: dir }),
+      host: 'codex', budgetMs: 8_000,
+      produce: () => { order.push('produce'); return { projectProgression: { fixture: true }, provenance: {} }; },
+      captureProgression: () => { order.push('capture'); return { receipt: { eventKey: 'compact-fixture-capture' } }; },
+      makeStoreFactory: () => () => ({ replay: () => [] }),
+    });
+    expect(order).toEqual(['produce', 'capture']);
+    expect(result.progressionCaptured).toBe(true);
+    expect(result.receipt.eventKey).toBe('compact-fixture-capture');
   });
 });

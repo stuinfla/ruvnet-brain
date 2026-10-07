@@ -201,11 +201,13 @@ describe('closed world: the real hooks.json routes every unprompted producer thr
     // speech-shaped hook reappears on PreToolUse — survives by pinning the registration to exactly
     // decision-gate's known-safe write matcher, not to emptiness.
     const preToolUse = realHooks().hooks.PreToolUse;
-    expect(preToolUse, 'PreToolUse must carry only the known decision-gate write route').toHaveLength(1);
-    expect(preToolUse[0].matcher).toBe('^(Write|Edit|MultiEdit|NotebookEdit|apply_patch)$');
-    for (const hook of preToolUse[0].hooks) {
-      expect(hook.command, 'a stray speech-shaped hook must never ride in on PreToolUse')
-        .toMatch(/decision-gate/);
+    // Observational capture also runs here; it must not become a second speech writer.
+    expect(preToolUse).toHaveLength(2);
+    const writeGate = preToolUse.find((entry) => entry.matcher === '^(Write|Edit|MultiEdit|NotebookEdit|apply_patch)$');
+    expect(writeGate).toBeDefined();
+    for (const entry of preToolUse) for (const hook of entry.hooks) {
+      expect(hook.command, 'only the gate and observational capture may run here')
+        .toMatch(/hook-shim\.mjs.*(?:decision-gate write|session-snapshot PreToolUse)/);
     }
   });
 
@@ -720,5 +722,87 @@ describe('the harness cannot kill the runtime before the runtime can answer', ()
         + 'even before Node startup or per-producer spawn overhead')
         .toBeLessThan(declaredMs * TIMEOUT_MARGIN * 0.9); // 10% extra headroom for startup/spawn cost
     }
+  });
+});
+
+
+describe('unavailable preferences cannot authorize optional speech', () => {
+  for (const shape of ['malformed', 'future', 'unreadable']) {
+    it(shape, () => {
+      const settings = path.join(dir, 'unknown-settings');
+      if (shape === 'unreadable') fs.mkdirSync(settings);
+      else fs.writeFileSync(settings, shape === 'malformed' ? '{' : JSON.stringify({ version: 999, settings: { advocacy: 5 } }));
+      const r = fireRuntime('UserPromptSubmit', {
+        producers: seam('unknown-consent.sh'),
+        env: { RUVNET_SETTINGS_FILE: settings, RUVNET_ADVOCACY_OUTCOMES: path.join(dir, 'fresh-outcomes'), CANDIDATE_LINE: advocacyCandidate({ copy: 'UNAUTHORIZED OFFER', findingId: 'unknown-consent' }) },
+      });
+      expect(r.code).toBe(0);
+      expect(r.stdout).toBe('');
+    });
+  }
+});
+
+
+it('unreadable dismissal history cannot authorize another offer', () => {
+  const outcomes = path.join(dir, 'unreadable-outcomes');
+  fs.mkdirSync(outcomes);
+  const r = fireRuntime('UserPromptSubmit', {
+    producers: seam('unknown-ledger.sh'),
+    env: { RUVNET_SETTINGS_FILE: writeSettings('all'), RUVNET_ADVOCACY_OUTCOMES: outcomes, CANDIDATE_LINE: advocacyCandidate() },
+  });
+  expect(r.code).toBe(0);
+  expect(r.stdout).toBe('');
+});
+
+
+it('lesson diagnostic reports degraded context without exposing raw private bytes', () => {
+  const script = path.join(dir, 'lesson-error.sh');
+  fs.writeFileSync(script, '#!/bin/bash\nprintf "PRIVATE_RAW_SECRET_PATH" >&2\n');
+  const r = fireRuntime('UserPromptSubmit', { producers: [{ argv: ['/bin/bash', script], channels: ['lesson'] }] });
+  expect(r.code).toBe(0);
+  const context = JSON.parse(r.stdout).hookSpecificOutput.additionalContext;
+  expect(context).toContain('Learning context is incomplete');
+  expect(r.stdout + r.stderr).not.toContain('PRIVATE_RAW_SECRET_PATH');
+});
+
+
+describe('unsupported suppression records cannot authorize an offer', () => {
+  for (const row of [null, [], { id: 'fixture-vector-cache', action: 'dismissed', v: 999 }, { id: 'fixture-vector-cache', action: 'unsupported' }]) {
+    it(JSON.stringify(row), () => {
+      const outcomes = path.join(dir, 'corrupt-outcomes');
+      fs.writeFileSync(outcomes, JSON.stringify(row) + '\n');
+      const r = fireRuntime('UserPromptSubmit', { producers: seam('invalid-history.sh'),
+        env: { RUVNET_SETTINGS_FILE: writeSettings('all'), RUVNET_ADVOCACY_OUTCOMES: outcomes, CANDIDATE_LINE: advocacyCandidate() } });
+      expect(r.code).toBe(0);
+      expect(r.stdout).toBe('');
+    });
+  }
+});
+
+
+it('a malformed reset cannot erase a permanent dismissal', () => {
+  const outcomes = writeLedger([
+    { id: 'fixture-vector-cache', action: 'dismissed', scope: 'forever' },
+    { id: 'fixture-vector-cache', action: 'reset', scope: 'forever' },
+  ]);
+  const r = fireRuntime('UserPromptSubmit', { producers: seam('bad-reset.sh'),
+    env: { RUVNET_SETTINGS_FILE: writeSettings('all'), RUVNET_ADVOCACY_OUTCOMES: outcomes, CANDIDATE_LINE: advocacyCandidate() } });
+  expect(r.code).toBe(0);
+  expect(r.stdout).toBe('');
+});
+
+
+describe('typed whole-block advisory admission', () => {
+  it('an oversized deferred offer is not recorded OFFERED and emits no budget notice to the model', () => {
+    const outcomes=path.join(dir,'byte-budget-offers.jsonl');
+    const candidate=JSON.parse(advocacyCandidate());candidate.copy='完整建议'.repeat(1000);
+    const r=fireRuntime('UserPromptSubmit',{producers:seam(),env:{HOME:dir,XDG_CACHE_HOME:path.join(dir,'cache'),RUVNET_HOOK_CONTEXT_BUDGET:'1',RUVNET_BRAIN_METER:'0',CANDIDATE_LINE:JSON.stringify(candidate),RUVNET_SETTINGS_FILE:writeSettings('all'),RUVNET_ADVOCACY_OUTCOMES:outcomes}});
+    expect(r.code).toBe(0);expect(r.stdout).toBe('');expect(r.stderr).toBe('');
+    expect(ledgerRows(outcomes,'fixture-vector-cache')).toEqual([]);
+  });
+  it('an explicitly typed alarm remains whole despite the routine advisory cap', () => {
+    const copy='Mandatory safety information. '.repeat(1000);
+    const r=fireRuntime('UserPromptSubmit',{producers:seam(),env:{HOME:dir,XDG_CACHE_HOME:path.join(dir,'cache'),RUVNET_HOOK_CONTEXT_BUDGET:'1',RUVNET_BRAIN_METER:'0',CANDIDATE_LINE:JSON.stringify({channel:'alarm',effect:'advisory',copy})}});
+    expect(r.code).toBe(0);expect(JSON.parse(r.stdout).hookSpecificOutput.additionalContext).toBe(copy.trim());
   });
 });

@@ -11,7 +11,7 @@
  * So this module turns what is OBSERVABLE at a capture boundary into small typed events:
  *
  *   commit     git, by SHA (subject, files, merge flag, branch)        authoritative
- *   release    git tags, by tag + target SHA                           authoritative
+ *   release    local git tag observations, by tag + target SHA         publication unverified
  *   gate       a test / check / release command and its exit outcome   authoritative (tool result)
  *   finding    an Agent/Task completion's reported result             not authoritative (agent text)
  *   decision   a line the assistant marked as a decision, or explicit  explicit only is authoritative
@@ -34,6 +34,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { redactProgression } from './project-progression-contract.mjs';
+import { resolveProjectStore } from './project-store-resolver.mjs';
 
 export const CONTINUITY_NAMESPACE = 'continuity-events';
 export const EVENT_SCHEMA = 'ruvnet-brain.continuity-event';
@@ -191,9 +192,9 @@ export function collectReleases({ checkoutRoot, sinceMs, host, session, project,
     if (!tag || !Number.isFinite(at) || at < sinceMs) continue;
     const sha = peeled || object;
     events.push(makeEvent({
-      kind: 'release', at, host, session, project, source: 'git', authoritative: true,
-      summary: `${tag} -> ${String(sha).slice(0, 8)}`, basis: `${tag}@${sha}`,
-      detail: { tag, sha, channel: tag.startsWith('corpus-') ? 'corpus' : 'code' },
+      kind: 'release', at, host, session, project, source: 'git-tag', authoritative: false,
+      summary: `LOCAL TAG ${tag} -> ${String(sha).slice(0, 8)} (publication unverified)`, basis: `${tag}@${sha}`,
+      detail: { tag, sha, channel: tag.startsWith('corpus-') ? 'corpus' : 'code', publicationVerified: false },
     }));
     if (events.length >= max) break;
   }
@@ -236,12 +237,31 @@ export function currentTurnRecords(lines) {
   return { userMessage: start >= 0 ? textOf(recs[start].message?.content) : '', records: recs.slice(start + 1) };
 }
 
+export { exitOutcome as normalizeToolOutcome };
+
 function exitOutcome(result) {
   const text = resultText(result?.content);
-  const code = /\bExit code (\d+)/i.exec(text);
-  const failed = result?.is_error === true || (code && code[1] !== '0');
+  const response = result?.content && typeof result.content === 'object' && !Array.isArray(result.content)
+    ? result.content : result;
+  const codes = [...text.matchAll(/^(?:Exit code\s*:?|Process exited with code)\s+(-?\d+)\s*$/gim)].map(match => Number(match[1]));
+  for (const value of [result, response]) for (const key of ['exit_code', 'exitCode', 'status']) {
+    if (Number.isSafeInteger(value?.[key])) codes.push(value[key]);
+  }
+  const distinct = [...new Set(codes)], code = distinct.length === 1 ? distinct[0] : null;
+  const states = [result, response].flatMap(value => [value?.status, value?.outcome]).filter(value => typeof value === 'string').map(value => value.toLowerCase());
+  const uncertain = states.some(value => ['unknown', 'unavailable'].includes(value));
+  const failed = states.some(value => ['fail', 'failed', 'failure', 'error', 'denied'].includes(value)) || [result, response].some(value => value?.is_error === true || value?.isError === true
+    || value?.success === false || value?.ok === false || Boolean(value?.error)) || codes.some(value => value !== 0);
+  const interrupted = [result, response].some(value => value?.interrupted === true || value?.cancelled === true || value?.canceled === true || Boolean(value?.signal))
+    || states.some(value => ['cancelled', 'canceled', 'interrupted', 'aborted', 'timeout', 'timed_out'].includes(value));
+  const running = /\bProcess running with session ID\b|\bScript running with cell ID\b/i.test(text)
+    || states.some(value => ['running', 'pending', 'queued'].includes(value))
+    || [result, response].some(value => value?.completed === false);
+  const outcome = failed ? 'fail' : interrupted ? 'interrupted' : running ? 'pending' : !uncertain && code === 0 ? 'pass' : 'unknown';
   const tail = text.split('\n').map((l) => l.trim()).filter(Boolean).slice(-1)[0] || '';
-  return { outcome: failed ? 'fail' : 'pass', exitCode: code ? Number(code[1]) : (failed ? null : 0), tail: bound(tail, 200) };
+  const nativeSuccess = [result, response].some(value => value?.is_error === false || value?.isError === false || value?.success === true || value?.ok === true);
+  return { outcome, exitCode: running || interrupted ? null : code, tail: bound(tail, 200),
+    uncertain, successfulToolResult: !failed && !interrupted && !running && !uncertain && (code === 0 || nativeSuccess) };
 }
 
 /**
@@ -269,7 +289,7 @@ export function collectTurnEvents({ lines = null, lastAssistantMessage = '', hos
         if (use.name === 'Bash' && typeof input.command === 'string' && GATE_COMMAND.test(input.command)) {
           const command = bound(input.command, 200);
           const { outcome, exitCode, tail } = exitOutcome(r);
-          events.push(makeEvent({ kind: 'gate', at, host, session, project, source: 'tool-result', authoritative: true,
+          events.push(makeEvent({ kind: 'gate', at, host, session, project, source: 'tool-result', authoritative: ['pass', 'fail'].includes(outcome),
             summary: `${outcome.toUpperCase()} ${command}${tail ? ` — ${tail}` : ''}`,
             basis: `${session}\u0000${use.id}`, detail: { command, outcome, exitCode, description: bound(input.description || '', 120) } }));
         } else if (use.name === 'Agent' || use.name === 'Task') {
@@ -309,19 +329,75 @@ export function collectTurnEvents({ lines = null, lastAssistantMessage = '', hos
  * The owner's own user-level AgentDB hooks (~/.claude/settings.json). Read, never modified. Used to
  * DEFER: where one of them already records a thing, the product does not record it a second time.
  */
-export function userLevelAgentdbHooks({ home = os.homedir() } = {}) {
-  const found = { turnCapture: false, autocapture: false, ensure: false, settings: path.join(home, '.claude', 'settings.json') };
+export function userLevelAgentdbHooks({ home = os.homedir(), event, projectDir, env = process.env } = {}) {
+  const found = { turnCapture: false, autocapture: false, ensure: false, ownership: 'unknown', collisionCandidate: false,
+    settings: path.join(home, '.claude', 'settings.json') };
+  if (!['Stop', 'PreCompact', 'SessionEnd', 'SessionStart'].includes(event) || !projectDir
+    || String(env.RUVNET_HOOK_HOST || 'claude') !== 'claude') return found;
   let doc;
   try { doc = JSON.parse(fs.readFileSync(found.settings, 'utf8')); } catch { return found; }
-  for (const groups of Object.values(doc?.hooks ?? {})) {
-    for (const group of Array.isArray(groups) ? groups : []) {
-      for (const hook of Array.isArray(group?.hooks) ? group.hooks : []) {
-        const command = String(hook?.command ?? '');
-        if (/agentdb-turn-capture\.mjs/.test(command)) found.turnCapture = true;
-        if (/agentdb-autocapture\.mjs/.test(command)) found.autocapture = true;
-        if (/agentdb-ensure\.sh/.test(command)) found.ensure = true;
-      }
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc) || doc.disableAllHooks === true || doc.allowManagedHooksOnly === true) return found;
+  let target, executable;
+  try {
+    for (const file of [path.join(projectDir, '.claude', 'settings.json'), path.join(projectDir, '.claude', 'settings.local.json')]) {
+      let local;
+      try { local = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (error) { if (error.code === 'ENOENT') continue; throw error; }
+      if (!local || typeof local !== 'object' || Array.isArray(local) || local.disableAllHooks === true || local.allowManagedHooksOnly === true) return found;
     }
+    const deadlineAt = Number(env.RUVNET_SESSION_START_DEADLINE_AT) || Infinity;
+    target = resolveProjectStore({ projectDir, gitTimeoutMs: 500, deadlineAt }).canonicalAgentDbPath;
+    // Bind the direct command to the declared entry of the user's one managed GLOBAL Ruflo.
+    // Arbitrary Node handlers, filenames and source comments do not prove their actual target.
+    if (!process.getuid) return found; // Native Windows ACL ownership is not attested by POSIX uid metadata.
+    const root = path.join(home, '.npm-global', 'lib', 'node_modules', 'ruflo');
+    const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+    const declared = typeof manifest.bin === 'string' ? manifest.bin : manifest.bin?.ruflo;
+    if (manifest.name !== 'ruflo' || typeof declared !== 'string' || path.isAbsolute(declared) || declared.split(/[\\/]/).includes('..')) return found;
+    executable = fs.realpathSync.native(path.join(home, '.npm-global', 'bin', 'ruflo'));
+    const entry = fs.realpathSync.native(path.join(root, declared));
+    const relative = path.relative(fs.realpathSync.native(root), entry);
+    const stat = fs.statSync(entry);
+    if (executable !== entry || relative.startsWith('..') || path.isAbsolute(relative) || !stat.isFile() || stat.uid !== process.getuid()) return found;
+    fs.accessSync(executable, fs.constants.X_OK);
+  } catch { return found; }
+  const groups = doc?.hooks?.[event];
+  for (const group of Array.isArray(groups) ? groups : []) {
+    if (group?.enabled === false || group?.disabled === true || (group?.matcher && group.matcher !== '*')) continue;
+    for (const hook of Array.isArray(group?.hooks) ? group.hooks : []) {
+      if (hook?.type !== 'command' || hook.enabled === false || hook.disabled === true || typeof hook.command !== 'string') continue;
+      const command = hook.command.trim();
+      if (/[$`;&|<>\r\n]/.test(command)) continue;
+      const tokens = []; const words = /"([^"\\]*)"|'([^']*)'|([^\s"'\\]+)/g;
+      let match, previous = 0, valid = true;
+      while ((match = words.exec(command))) {
+        if (command.slice(previous, match.index).trim()) { valid = false; break; }
+        tokens.push(match[1] ?? match[2] ?? match[3]); previous = words.lastIndex;
+      }
+      if (!valid || command.slice(previous).trim() || tokens[1] !== 'memory') continue;
+      try { if (!path.isAbsolute(tokens[0]) || fs.realpathSync.native(tokens[0]) !== executable) continue; } catch { continue; }
+      const options = tokens[2] === 'store' ? ['--path', '-p', '--namespace', '-n', '--key', '-k', '--value']
+        : tokens[2] === 'retrieve' ? ['--path', '-p', '--namespace', '-n', '--key', '-k']
+          : tokens[2] === 'init' ? ['--path', '-p'] : [];
+      for (let i = 3; i < tokens.length; i += 2) {
+        if (!options.includes(tokens[i]) || !tokens[i + 1] || tokens[i + 1].startsWith('-')) { valid = false; break; }
+      }
+      if (!valid) continue;
+      const flag = names => {
+        const positions = tokens.flatMap((token, i) => names.includes(token) ? [i] : []);
+        return positions.length === 1 ? tokens[positions[0] + 1] : undefined;
+      };
+      const db = flag(['--path', '-p']);
+      if (!db || !path.isAbsolute(db) || db.split(/[\\/]/).includes('..') || path.resolve(db) !== target) continue;
+      const namespace = flag(['--namespace', '-n']);
+      const captureRegistration = tokens[2] === 'store' && flag(['--key', '-k']) && flag(['--value'])
+        && ((event === 'Stop' && namespace === 'turns') || (['PreCompact', 'SessionEnd'].includes(event) && namespace === 'sessions'));
+      const ensureRegistration = event === 'SessionStart' && ['init', 'retrieve'].includes(tokens[2]);
+      if (captureRegistration || ensureRegistration) found.collisionCandidate = true;
+    }
+  }
+  if (found.collisionCandidate) {
+    found.target = target; found.event = event;
+    found.reason = 'canonical registration alone does not prove capture of the current turn/session';
   }
   return found;
 }

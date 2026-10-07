@@ -40,13 +40,16 @@ function isWithin(root, candidate) {
   return relative === '' || (!path.isAbsolute(relative) && relative !== '..' && !relative.startsWith(`..${path.sep}`));
 }
 
-function gitValue(cwd, args, gitTimeoutMs) {
+function gitValue(cwd, args, gitTimeoutMs, deadlineAt) {
+  const remaining = deadlineAt - Date.now();
+  if (remaining <= 0) throw new Error('restore deadline exceeded');
   try {
     return execFileSync('git', args, {
       cwd,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
-      ...(gitTimeoutMs ? { timeout: gitTimeoutMs, killSignal: 'SIGKILL' } : {}),
+      ...(Number.isFinite(remaining) || gitTimeoutMs
+        ? { timeout: Math.max(1, Math.floor(Math.min(gitTimeoutMs || Infinity, remaining))), killSignal: 'SIGKILL' } : {}),
     }).trim();
   } catch (error) {
     // A timed-out Git identity check is not evidence for a non-git project.
@@ -55,9 +58,9 @@ function gitValue(cwd, args, gitTimeoutMs) {
   }
 }
 
-function gitProject(projectDir, gitTimeoutMs) {
-  const commonValue = gitValue(projectDir, ['rev-parse', '--path-format=absolute', '--git-common-dir'], gitTimeoutMs);
-  const checkoutValue = gitValue(projectDir, ['rev-parse', '--show-toplevel'], gitTimeoutMs);
+function gitProject(projectDir, gitTimeoutMs, deadlineAt) {
+  const commonValue = gitValue(projectDir, ['rev-parse', '--path-format=absolute', '--git-common-dir'], gitTimeoutMs, deadlineAt);
+  const checkoutValue = gitValue(projectDir, ['rev-parse', '--show-toplevel'], gitTimeoutMs, deadlineAt);
   if (!commonValue || !checkoutValue) return null;
   const gitCommonDir = canonicalDirectory(commonValue, 'Git common directory');
   const checkoutRoot = canonicalDirectory(checkoutValue, 'Git checkout root');
@@ -71,10 +74,10 @@ function gitProject(projectDir, gitTimeoutMs) {
   };
 }
 
-export function resolveProjectStore({ projectDir = process.cwd(), requestedStorePath, gitTimeoutMs } = {}) {
+export function resolveProjectStore({ projectDir = process.cwd(), requestedStorePath, gitTimeoutMs, deadlineAt = Infinity } = {}) {
   const canonicalInput = canonicalDirectory(projectDir, 'projectDir');
   if (gitTimeoutMs !== undefined && (!Number.isSafeInteger(gitTimeoutMs) || gitTimeoutMs <= 0)) throw new TypeError('gitTimeoutMs must be a positive integer');
-  const git = gitProject(canonicalInput, gitTimeoutMs);
+  const git = gitProject(canonicalInput, gitTimeoutMs, deadlineAt);
   const resolved = git ?? {
     gitCommonDir: null,
     checkoutRoot: canonicalInput,

@@ -261,3 +261,29 @@ test('host-owned Claude schemas preserve existing role envelopes and negative re
   assert.equal(review.validateStructuredOutput({ passed: true, artifactDigest: 'a'.repeat(64), findings: [], evidence: [] }), false);
   for (const role of ['unknown', 'constructor', undefined]) assert.throws(() => claudeWorkflowResponse(role), /Unknown/);
 });
+
+test('Claude native allow rules still encounter owned scope and unresolved approval cannot replace that bound', async () => {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'owned-clause-'))), calls = [];
+  const worker = { id: 'bounded', host: 'claude', role: 'worker', configuredModel: 'fixture-model',
+    decision: { harness: 'claude-code', provider: 'anthropic', model: 'fixture-model', effort: 'medium' },
+    ownership: { mode: 'write', worktree: root, paths: ['owned.mjs'] }, prompt: 'Implement the original function.' };
+  const request = { originalPrompt: worker.prompt, projectRoot: root, contextRefs: [], permissions: { write: true, apiBilling: false } };
+  const native = vi.spyOn(controlledClaude, 'runControlledClaudeTurn').mockImplementation(async options => {
+    const owned = { tool_name: 'Write', input: { file_path: path.join(root, 'owned.mjs') } }, outside = { tool_name: 'Write', input: { file_path: path.join(root, '..', 'outside.mjs') } };
+    assert.equal(await options.scopeTool(owned), true); assert.equal(await options.scopeTool(outside), false);
+    assert.equal(await options.scopeTool({ tool_name: 'Bash', input: { command: 'touch outside' } }), false);
+    assert.equal(await options.scopeTool({ tool_name: 'Agent', input: {} }), false);
+    assert.equal(await options.approve(outside), false); assert.equal(calls.length, 0);
+    assert.equal(await options.approve(owned), false); assert.equal(calls.length, 1);
+    return { decision: worker.decision, sessionId: crypto.randomUUID(), modelObserved: true, effortSettingsObserved: true,
+      structuredOutput: true, finalAnswer: '{"outcome":"fixture","artifacts":[],"decisions":[],"risks":[]}' };
+  });
+  try {
+    const adapter = createGuardedWorkflowAdapters({ request, budget: { deadline: Date.now() + 10000 }, binaries: { codex: process.execPath, claude: process.execPath }, verifyDecision: () => {},
+      approve: async (permission, scope) => { calls.push([permission, scope]); return false; } }).claude;
+    const state = await adapter.prepare({ worker, timeoutMs: 5000 }); await adapter.launch(state);
+    assert.equal(adapter.interpret(state, await adapter.observe(state)).status, 'succeeded');
+    assert.equal(calls[0][1].workerId, worker.id); assert.deepEqual(calls[0][1].ownership, worker.ownership);
+    assert.equal(fs.existsSync(path.join(root, 'owned.mjs')), false);
+  } finally { native.mockRestore(); fs.rmSync(root, { recursive: true, force: true }); }
+});

@@ -1,3 +1,8 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { owningEditedCheckout, boundedStaleGovernorsOf } from '../../plugin/scripts/adr-currency-gate.mjs';
 import { describe, expect, it } from 'vitest';
 import { refusalText, staleGovernorsOf } from '../../plugin/scripts/adr-currency-gate.mjs';
 import { blockingFindings } from '../../scripts/doc-currency.mjs';
@@ -114,5 +119,41 @@ describe('the refusal is actionable', () => {
     expect(t).toContain('Currency-log row');
     expect(t).toMatch(/doc-currency\.mjs --fix/);
     expect(t, 'the human keeps the claims a script must never make').toMatch(/no script may write it/);
+  });
+});
+
+
+describe('installed ADR gate owning repository and deadline', () => {
+  function fixture(moduleBody) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'adr-owning-checkout-'));
+    execFileSync('git', ['init', '-q', root]);
+    fs.mkdirSync(path.join(root, 'scripts'));
+    fs.mkdirSync(path.join(root, 'src'));
+    fs.writeFileSync(path.join(root, 'scripts/doc-currency.mjs'), moduleBody);
+    return root;
+  }
+  it('treats edited-checkout modules as data and resolves the owning path without executing them', async () => {
+    const root = fixture(`throw new Error('EDITED_CHECKOUT_MODULE_MUST_NOT_EXECUTE');`);
+    try {
+      fs.mkdirSync(path.join(root, 'docs/adr'), {recursive:true});fs.writeFileSync(path.join(root, 'docs/adr/fixture.md'), 'fixture');
+      const scope = owningEditedCheckout({ cwd: root, tool_input: { file_path: 'src/action.mjs' } });
+      expect(fs.realpathSync(scope.root)).toBe(fs.realpathSync(root));
+      expect(scope.rel).toBe('src/action.mjs');
+      const result = await boundedStaleGovernorsOf(scope, Date.now() + 1500);
+      expect(result.stale).toEqual([]);
+      const gate = path.resolve('plugin/scripts/adr-currency-gate.mjs');
+      const cli = spawnSync(process.execPath, [gate], { input: JSON.stringify({cwd:root,tool_input:{file_path:'src/action.mjs'}}), encoding:'utf8',timeout:3000 });
+      expect(cli.status).toBe(0);expect(cli.stderr).not.toContain('EDITED_CHECKOUT_MODULE');
+    } finally { fs.rmSync(root, {recursive:true,force:true}); }
+  });
+  it('bounds a nonreturning evaluator and skips unrelated projects without machinery', async () => {
+    const root = fixture('await new Promise(()=>setInterval(()=>{},1000));');
+    try {
+      const started=Date.now();
+      const result=await boundedStaleGovernorsOf({root,rel:'src/action.mjs'},Date.now()+150);
+      expect(result.skipped).toBe('ADR evaluation deadline exceeded');expect(Date.now()-started).toBeLessThan(1500);
+      fs.unlinkSync(path.join(root,'scripts/doc-currency.mjs'));
+      expect(owningEditedCheckout({cwd:root,tool_input:{file_path:'src/action.mjs'}})).toBeNull();
+    } finally { fs.rmSync(root,{recursive:true,force:true}); }
   });
 });

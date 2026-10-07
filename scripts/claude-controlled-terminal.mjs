@@ -9,6 +9,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { createManagedTerminal } from './managed-terminal-input.mjs';
 import { pathToFileURL } from 'node:url';
 import { StringDecoder } from 'node:string_decoder';
+import { isDeepStrictEqual } from 'node:util';
 import { decideNativeTurn, appendGatewayReceipt } from './model-routing-gateway.mjs';
 import { subscriptionEnvironment, assertSubscriptionAuth, validateDispatchDecision } from './model-router-dispatch.mjs';
 import { validateClaudeTerminalSettings } from './model-terminal-launchers.mjs';
@@ -18,6 +19,22 @@ const REFUSED = 'Controlled Claude turn refused; no fallback.';
 const uuid = value => /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(value || '');
 const cleanText = value => String(value).replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, '');
 const allocationEnv = /^(CLAUDE_CODE_EXTRA_BODY|CLAUDE_CODE_EFFORT_LEVEL|ANTHROPIC_DEFAULT_.*_MODEL|ANTHROPIC_MODEL|ANTHROPIC_SMALL_FAST_MODEL|CLAUDE_CODE_SUBAGENT_MODEL|CLAUDE_CODE_PLUGIN_(DIRS|CACHE_DIR|SEED_DIR)|CLAUDE_CODE_USE_COWORK_PLUGINS)$/;
+
+/** Conservative source scan, not native precedence: any persisted plan restricts this invocation. */
+export function claudeTerminalReadOnly({ env = process.env, cwd = process.cwd(), readOnly = false } = {}) {
+  const files = validateClaudeTerminalSettings({ env, cwd, home: env.HOME || os.homedir() });
+  for (const file of files) {
+    if (!fs.existsSync(file)) continue;
+    const stat = fs.lstatSync(file);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 1024 * 1024) throw new Error(REFUSED);
+    const settings = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (settings.permissions != null && (typeof settings.permissions !== 'object' || Array.isArray(settings.permissions))) throw new Error(REFUSED);
+    const mode = settings.permissions?.defaultMode;
+    if (mode != null && !['default', 'manual', 'auto', 'acceptEdits', 'bypassPermissions', 'plan'].includes(mode)) throw new Error('Unsupported inherited Claude permission mode');
+    if (mode === 'plan') readOnly = true;
+  }
+  return readOnly;
+}
 
 /** Classic Brain hooks/MCP/skills remain loaded; native request-rewriting modules are refused. */
 export function assertClaudeModuleBoundary(settings, { env = process.env, sessionId, read = fs.readFileSync } = {}) {
@@ -108,7 +125,7 @@ export function controlledClaudeArguments(decision, sessionId, resume = false, r
 export async function runControlledClaudeTurn({ binary, prompt, decisionPrompt = prompt, sessionId = crypto.randomUUID(), resume = false,
   cwd = process.cwd(), env = process.env, decide = decideNativeTurn, verifyDecision = validateDispatchDecision,
   checkSettings = validateClaudeTerminalSettings, checkAuth = assertSubscriptionAuth, spawnNative = spawn,
-  probe = execFileSync, approve = async () => false, output = () => {}, receipt = appendGatewayReceipt,
+  probe = execFileSync, approve = async () => false, scopeTool = permission => ['Read', 'Glob', 'Grep'].includes(permission.tool_name), output = () => {}, receipt = appendGatewayReceipt,
   checkModules = assertClaudeModuleBoundary, responseSchema, validateStructuredOutput, signal, timeoutMs = 900000, handshakeMs = 10000 } = {}) {
   if (!path.isAbsolute(binary || '') || typeof prompt !== 'string' || !prompt.trim() || prompt.length > 200000 ||
       /^\s*\//.test(prompt) || !Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 900000 ||
@@ -133,9 +150,13 @@ export async function runControlledClaudeTurn({ binary, prompt, decisionPrompt =
   if (expired()) throw new Error(REFUSED);
   const child = spawnNative(binary, args, { cwd, env: clean, shell: false, stdio: ['pipe', 'pipe', 'pipe'] });
   return new Promise((resolve, reject) => {
-    let done = false, phase = 'initialize', buffer = '', bytes = 0, result, observed = false, permissions = false;
+    let done = false, phase = 'initialize', buffer = '', bytes = 0, result, observed = false, pendingPermissions = 0;
+    let permissionTail = Promise.resolve();
     const assistantText = [];
     let structuredAnswer;
+    const scopeCallback = 'owned-scope', hookRequests = new Set(), scopeDenials = new Map();
+    const permissionRequests = new Set();
+    let hostApprovalDenied = false;
     const decoder = new StringDecoder('utf8');
     const ids = { initialize: crypto.randomUUID(), before: crypto.randomUUID(), after: crypto.randomUUID() };
     let handshake;
@@ -151,17 +172,22 @@ export async function runControlledClaudeTurn({ binary, prompt, decisionPrompt =
     const send = message => { if (done) return; if (expired()) return fail(); child.stdin.write(JSON.stringify(message) + '\n'); };
     const control = which => {
       phase = which; clearTimeout(handshake); handshake = setTimeout(fail, handshakeMs);
-      send({ type: 'control_request', request_id: ids[which], request: { subtype: which === 'initialize' ? 'initialize' : 'get_settings' } });
+      send({ type: 'control_request', request_id: ids[which], request: { subtype: which === 'initialize' ? 'initialize' : 'get_settings',
+        ...(which === 'initialize' ? { hooks: { PreToolUse: [{ hookCallbackIds: [scopeCallback] }] } } : {}) } });
     };
     const settingsMatch = value => value?.applied?.model === decision.model && value.applied.effort === decision.effort && !value.errors?.length &&
-      Array.isArray(value.sources) && !value.sources.some(source => source.source === 'policySettings' && Object.keys(source.settings || {}).length);
+      Array.isArray(value.sources) && value.sources.every(source => ['userSettings', 'projectSettings', 'localSettings', 'policySettings'].includes(source.source))
+      && !value.sources.some(source => source.source === 'policySettings' && Object.keys(source.settings || {}).length);
     const onMessage = async message => {
       if (done) return;
       if (expired()) return fail();
       if (message.type === 'control_response') {
         const response = message.response;
         if (response?.request_id !== ids[phase] || response.subtype !== 'success') return fail();
-        if (phase === 'initialize') return control('before');
+        if (phase === 'initialize') {
+          if (response.response?.hooks_applied !== true) return fail();
+          return control('before');
+        }
         if (!settingsMatch(response.response)) return fail();
         if (phase === 'before') {
           clearTimeout(handshake); phase = 'turn';
@@ -175,26 +201,67 @@ export async function runControlledClaudeTurn({ binary, prompt, decisionPrompt =
         else fail();
         return;
       }
-      if (message.type === 'control_request') {
-        if (phase !== 'turn' || permissions || message.request?.subtype !== 'can_use_tool' || typeof message.request_id !== 'string') return fail();
-        if (['Agent', 'Task'].includes(message.request.tool_name)) return fail();
-        permissions = true;
-        let allowed = false;
-        try {
-          if (message.request.tool_name === 'StructuredOutput') {
-            const value = message.request.input;
-            const serialized = JSON.stringify(value);
-            if (responseSchema && value && typeof value === 'object' && !Array.isArray(value)
-              && Buffer.byteLength(serialized) <= 1024 * 1024 && validateStructuredOutput(value) === true) {
-              await assertModelRoutingText(serialized);
-              allowed = !expired();
-            }
-          } else allowed = await approve(message.request) === true;
-        } catch { allowed = false; }
-        permissions = false;
+      if (message.type === 'control_request' && message.request?.subtype === 'hook_callback') {
+        const request = message.request, input = request.input;
+        const toolId = request.tool_use_id ?? input?.tool_use_id;
+        if (phase !== 'turn' || request.callback_id !== scopeCallback || typeof message.request_id !== 'string'
+          || hookRequests.has(message.request_id) || permissionRequests.has(message.request_id) || hookRequests.size >= 1024
+          || input?.hook_event_name !== 'PreToolUse' || input.session_id !== sessionId
+          || typeof input.tool_name !== 'string' || !input.tool_name || input.tool_name.length > 256 || typeof toolId !== 'string' || !toolId || toolId.length > 256
+          || !input.tool_input || typeof input.tool_input !== 'object' || Array.isArray(input.tool_input)
+          || Buffer.byteLength(JSON.stringify(input.tool_input)) > 1024 * 1024) return fail();
+        hookRequests.add(message.request_id);
+        const permission = { tool_name: input.tool_name, input: input.tool_input };
+        let withinScope = false;
+        if (permission.tool_name === 'StructuredOutput' && responseSchema && validateStructuredOutput(permission.input) === true
+          && Buffer.byteLength(JSON.stringify(permission.input)) <= 1024 * 1024) {
+          await assertModelRoutingText(JSON.stringify(permission.input)); withinScope = true;
+        } else if (!['Agent', 'Task'].includes(permission.tool_name)) withinScope = await scopeTool(permission) === true;
+        if (expired()) return fail();
+        if (!withinScope && scopeDenials.has(toolId)) return fail();
         send({ type: 'control_response', response: { subtype: 'success', request_id: message.request_id,
-          response: allowed ? { behavior: 'allow', updatedInput: message.request.input } :
-            { behavior: 'deny', message: 'The host did not approve this tool request.' } } });
+          response: withinScope ? {} : { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny',
+            permissionDecisionReason: 'Outside the host declared tool scope' } } } });
+        if (!withinScope && !done) {
+          const inputSha256 = crypto.createHash('sha256').update(JSON.stringify(permission.input)).digest('hex');
+          const summary = { status: 'host-scope-denied', sessionId, toolUseId: toolId, toolName: permission.tool_name, inputSha256,
+            evidence: 'invocation PreToolUse deny response' };
+          scopeDenials.set(toolId, { summary, input: structuredClone(permission.input) });
+          receipt({ ts: new Date().toISOString(), harness: 'claude-code', ...summary }, { env: clean });
+        }
+        return;
+      }
+      if (message.type === 'control_request') {
+        if (phase !== 'turn' || message.request?.subtype !== 'can_use_tool' || typeof message.request_id !== 'string' || !message.request_id
+          || permissionRequests.has(message.request_id) || hookRequests.has(message.request_id)
+          || permissionRequests.size >= 1024 || pendingPermissions >= 32) return fail();
+        if (['Agent', 'Task'].includes(message.request.tool_name)) return fail();
+        permissionRequests.add(message.request_id); pendingPermissions++;
+        const requestId = message.request_id, request = structuredClone(message.request), originalInput = structuredClone(request.input);
+        permissionTail = permissionTail.then(async () => {
+          if (done) return;
+          if (expired()) return fail();
+          let allowed = false;
+          try {
+            if (request.tool_name === 'StructuredOutput') {
+              const value = originalInput;
+              const serialized = JSON.stringify(value);
+              if (responseSchema && value && typeof value === 'object' && !Array.isArray(value)
+                && Buffer.byteLength(serialized) <= 1024 * 1024 && validateStructuredOutput(value) === true) {
+                await assertModelRoutingText(serialized);
+                allowed = !expired();
+              }
+            } else allowed = await approve(request) === true;
+          } catch { allowed = false; }
+          if (done) return;
+          if (expired()) return fail();
+          if (!allowed) hostApprovalDenied = true;
+          pendingPermissions--;
+          send({ type: 'control_response', response: { subtype: 'success', request_id: requestId,
+            response: allowed ? { behavior: 'allow', updatedInput: originalInput } :
+              { behavior: 'deny', message: 'The host did not approve this tool request.' } } });
+          if (!allowed) fail();
+        }).catch(fail);
         return;
       }
       if (message.session_id && message.session_id !== sessionId) return fail();
@@ -204,8 +271,21 @@ export async function runControlledClaudeTurn({ binary, prompt, decisionPrompt =
         for (const block of message.message.content || []) if (block.type === 'text') assistantText.push(cleanText(block.text));
       }
       if (message.type === 'result') {
-        if (phase !== 'turn' || permissions || !observed || message.session_id !== sessionId || message.subtype !== 'success' ||
-            message.is_error !== false || message.permission_denials?.length || message.errors?.length) return fail();
+        if (phase !== 'turn' || pendingPermissions !== 0 || !observed || message.session_id !== sessionId || message.subtype !== 'success' ||
+            message.is_error !== false || hostApprovalDenied || message.errors?.length) return fail();
+        if (message.permission_denials !== undefined) {
+          if (!Array.isArray(message.permission_denials)) return fail();
+          const seen = new Set();
+          for (const denial of message.permission_denials) {
+            const owned = scopeDenials.get(denial?.tool_use_id);
+            if (!denial || typeof denial !== 'object' || Array.isArray(denial) || typeof denial.tool_use_id !== 'string' || !denial.tool_use_id
+              || seen.has(denial.tool_use_id) || typeof denial.tool_name !== 'string' || !denial.tool_name
+              || !denial.tool_input || typeof denial.tool_input !== 'object' || Array.isArray(denial.tool_input)
+              || !owned || owned.summary.sessionId !== sessionId || owned.summary.toolName !== denial.tool_name
+              || !isDeepStrictEqual(owned.input, denial.tool_input)) return fail();
+            seen.add(denial.tool_use_id);
+          }
+        }
         if (responseSchema) {
           try {
             const value = message.structured_output;
@@ -243,6 +323,7 @@ export async function runControlledClaudeTurn({ binary, prompt, decisionPrompt =
           nativeSchemaRetries: responseSchema ? 'not-observed' : undefined,
           evidence: 'assistant model observed; get_settings applied effort matched before and after turn; per-request effort not exposed' }, { env: clean });
         done = true; clear(); resolve({ sessionId, decision, finalAnswer: responseSchema ? structuredAnswer : result.result, structuredOutput: Boolean(responseSchema),
+          scopeDenials: [...scopeDenials.values()].map(value => value.summary),
           nativeSchemaRetries: responseSchema ? 'not-observed' : undefined, modelObserved: true, effortSettingsObserved: true, perRequestEffortObserved: false });
       } catch { fail(); }
     });
@@ -254,14 +335,16 @@ export async function runControlledClaudeTurn({ binary, prompt, decisionPrompt =
 export async function launchControlledClaudeTerminal({ binary, args = [], input = process.stdin, output = process.stdout,
   diagnostics = process.stderr, env = process.env, cwd = process.cwd(), signalSource = process, runTurn = runControlledClaudeTurn,
   managedPrompt = runManagedPrompt } = {}) {
-  let sessionId, resume = false, initialPrompt, ownerBypass = false;
+  let sessionId, resume = false, initialPrompt, ownerBypass = false, readOnly = false, permissionMode;
   const remaining = [...args];
-  const invalid = () => new Error('Controlled Claude accepts only --resume <session UUID>, --permission-mode bypassPermissions, and a literal initial prompt.');
+  const invalid = () => new Error('Controlled Claude accepts only --resume <session UUID>, --permission-mode manual|plan|bypassPermissions, --dangerously-skip-permissions, and a literal initial prompt.');
   while (remaining[0]?.startsWith('-')) {
     if (remaining[0] === '--resume' && !resume && uuid(remaining[1])) {
       sessionId = remaining[1]; resume = true;
-    } else if (remaining[0] === '--permission-mode' && !ownerBypass && remaining[1] === 'bypassPermissions') {
-      ownerBypass = true;
+    } else if (remaining[0] === '--dangerously-skip-permissions' && !ownerBypass && permissionMode === undefined) {
+      ownerBypass = true; permissionMode = 'bypassPermissions'; remaining.shift(); continue;
+    } else if (remaining[0] === '--permission-mode' && permissionMode === undefined && ['manual', 'plan', 'bypassPermissions'].includes(remaining[1])) {
+      permissionMode = remaining[1]; ownerBypass = permissionMode === 'bypassPermissions'; readOnly = permissionMode === 'plan';
     } else throw invalid();
     remaining.splice(0, 2);
   }
@@ -274,18 +357,21 @@ export async function launchControlledClaudeTerminal({ binary, args = [], input 
   terminal.on('SIGINT', cancel);
   for (const name of ['SIGINT', 'SIGTERM', 'SIGHUP']) signalSource.on(name, cancel);
   diagnostics.write('Controlled Claude: one reviewed native allocation per prompt; tool approvals are answered here. Native Agent/Task workers are disabled; use the managed dispatcher for independent child work. /exit closes.\n');
-  if (ownerBypass) diagnostics.write('Owner permission bypass is active: native tool requests are approved by this host automatically. Agent/Task remain refused; routing and subscription guards remain active.\n');
+  if (ownerBypass) diagnostics.write('Owner permission intent is active only within guarded workflow scope; native bypass is not forwarded. Agent/Task and commands remain refused.\n');
   try {
     while (!controller.signal.aborted) {
       const prompt = initialPrompt ?? await terminal.question('Claude> ', { signal: controller.signal }); initialPrompt = undefined;
       if (prompt.trim() === '/exit') break;
       if (!prompt.trim()) continue;
+      const turnReadOnly = claudeTerminalReadOnly({ env, cwd, readOnly });
       const deadline = Date.now() + 900000;
       const turn = await managedPrompt({ binary, originalPrompt: prompt, harness: 'claude-code', projectRoot: cwd, deadline,
-        nativeContext: { sessionId, resume }, permissions: { apiBilling: false, write: ownerBypass },
+        nativeContext: { sessionId, resume }, permissions: { apiBilling: false, write: !turnReadOnly },
         primaryTurn: runTurn, cwd, env, signal: controller.signal,
-        output: text => output.write(text + '\n'), approve: async request => {
-          if (['Agent', 'Task'].includes(request.tool_name)) return false;
+        scopeTool: permission => ['Read', 'Glob', 'Grep'].includes(permission.tool_name) || /__search_ruvnet$/.test(permission.tool_name),
+        output: text => output.write(text + '\n'), approve: async (request, owned) => {
+          if (['Agent', 'Task', 'Bash'].includes(request.tool_name)) return false;
+          if (['Write', 'Edit', 'MultiEdit'].includes(request.tool_name) && (turnReadOnly || owned?.ownership?.mode !== 'write')) return false;
           const details = cleanText(JSON.stringify({ tool: request.tool_name, input: request.input, reason: request.decision_reason }));
           output.write(`Native permission request (untrusted tool text):\n${details}\n`);
           if (ownerBypass) return true;

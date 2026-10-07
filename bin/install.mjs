@@ -1750,6 +1750,42 @@ function atomicReplace(targetPath, writeTmp) {
   }
 }
 
+function legacyBrainWrapperOwnership(wrapperPath, home) {
+  const source = path.join(REPO_ROOT, 'plugin', 'scripts', 'codex-hook-wrapper.mjs');
+  try {
+    const canonicalHome = fs.realpathSync(home);
+    if (path.resolve(wrapperPath) !== path.resolve(home, '.cache', 'ruvnet-brain', 'codex-hook.mjs')) {
+      return { state: 'conflict', reason: 'bridge is outside the expected Brain namespace' };
+    }
+    for (const relative of ['.cache', path.join('.cache', 'ruvnet-brain')]) {
+      const ancestor = path.join(home, relative);
+      let parent;
+      try { parent = fs.lstatSync(ancestor); } catch (error) {
+        if (error.code === 'ENOENT') break;
+        throw error;
+      }
+      if (!parent.isDirectory() || parent.isSymbolicLink()
+        || fs.realpathSync(ancestor) !== path.join(canonicalHome, relative)
+        || (typeof process.getuid === 'function' && parent.uid !== process.getuid())) {
+        return { state: 'conflict', reason: 'bridge namespace is indirect or belongs to another owner' };
+      }
+    }
+  } catch { return { state: 'conflict', reason: 'bridge namespace could not be verified' }; }
+  let stat;
+  try { stat = fs.lstatSync(wrapperPath); } catch (error) {
+    if (error.code === 'ENOENT') return { state: 'absent' };
+    return { state: 'conflict', reason: 'existing bridge could not be inspected' };
+  }
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1
+    || (typeof process.getuid === 'function' && stat.uid !== process.getuid())) {
+    return { state: 'conflict', reason: 'existing bridge is not an unshared regular file' };
+  }
+  try {
+    if (fs.readFileSync(wrapperPath).equals(fs.readFileSync(source))) return { state: 'verified' };
+  } catch { /* Missing proof is not ownership. */ }
+  return { state: 'conflict', reason: 'existing bridge differs from the shipped Brain source' };
+}
+
 export function wireCodexHost({
   codexDir = codexHomeDir(),
   configPath = path.join(codexDir, 'config.toml'),
@@ -1762,6 +1798,14 @@ export function wireCodexHost({
   try { host = fs.existsSync(codexDir); } catch { /* unreadable — treat as absent */ }
   // No Codex on this machine is not a warning. Say nothing and change nothing.
   if (!host) return { host: false, action: 'no-host' };
+
+  // Check ownership before retiring registrations or changing any installed bytes.
+  const wrapperOwnership = legacyBrainWrapperOwnership(hookWrapperPath, path.dirname(codexDir));
+  if (wrapperOwnership.state === 'conflict') {
+    if (announce) warn(`Codex hook bridge preserved: ${wrapperOwnership.reason}`);
+    return { host: true, action: 'hook-wrapper-ownership-conflict', hookWrapperInstalled: false,
+      error: wrapperOwnership.reason };
+  }
 
   if (announce) {
     step('Wiring the Codex host', 'Codex reads MCP servers from ~/.codex/config.toml — the brain was never registered there');
@@ -1819,12 +1863,12 @@ export function wireCodexHost({
   // the versioned cache so a plugin refresh cannot leave Codex pointing at a missing executable.
   // The bridge resolves the active immutable generation on every fire and fails open on every
   // non-contract error; only the two continuity registrations use it.
-  retireManagedHookRegistrations({ home: path.dirname(codexDir), codexDir, wrapperPath: hookWrapperPath });
   const hookWrapperSource = path.join(REPO_ROOT, 'plugin', 'scripts', 'codex-hook-wrapper.mjs');
   if (!fs.existsSync(hookWrapperSource)) {
     if (announce) warn(`Codex hook bridge source missing from this bundle: ${hookWrapperSource}`);
     return { host: true, action: 'hook-wrapper-source-missing' };
   }
+  let hookRetirement;
   try {
     fs.mkdirSync(path.dirname(hookWrapperPath), { recursive: true });
     const wrapperStat = (() => { try { return fs.lstatSync(hookWrapperPath); } catch (error) {
@@ -1833,10 +1877,16 @@ export function wireCodexHost({
     if (wrapperStat?.isSymbolicLink()) {
       throw new Error('installer-owned hook bridge path is a symlink; refusing to overwrite it');
     }
+    const currentOwnership = legacyBrainWrapperOwnership(hookWrapperPath, path.dirname(codexDir));
+    if (currentOwnership.state === 'conflict') throw new Error(currentOwnership.reason);
+    hookRetirement = retireManagedHookRegistrations({ home: path.dirname(codexDir), codexDir, wrapperPath: hookWrapperPath });
     atomicReplace(hookWrapperPath, (tmp) => fs.copyFileSync(hookWrapperSource, tmp));
   } catch (error) {
     if (announce) warn(`could not install the Codex hook bridge at ${hookWrapperPath}: ${error.message}`);
     return { host: true, action: 'hook-wrapper-install-failed', error: error.message };
+  }
+  if (announce && hookRetirement.conflicts.length) {
+    warn(`Preserved ${hookRetirement.conflicts.length} customized or unverified hook entries.`);
   }
 
   let before = '';
@@ -1848,7 +1898,7 @@ export function wireCodexHost({
       info(`  to hand it to us instead, delete that ${c.bold('[mcp_servers.ruvnet-brain]')} block and re-run this installer`);
     }
     return { host: true, action, serverPath, managedCliPath, runtimePreferencesPath,
-      hookWrapperPath, hookWrapperInstalled: true };
+      hookWrapperPath, hookWrapperInstalled: true, hookOwnershipConflicts: hookRetirement.conflicts.length };
   }
   if (text !== before) {
     fs.mkdirSync(path.dirname(configPath), { recursive: true });
@@ -1860,7 +1910,8 @@ export function wireCodexHost({
     info(`  ${c.dim('only our marked block is written; every other section is byte-preserved')}`);
   }
   return { host: true, action, serverPath, managedCliPath, runtimePreferencesPath,
-    hookWrapperPath, hookWrapperInstalled: true, changed: text !== before };
+    hookWrapperPath, hookWrapperInstalled: true, hookOwnershipConflicts: hookRetirement.conflicts.length,
+    changed: text !== before };
 }
 
 const CODEX_PLUGIN_ID = 'ruvnet-brain@ruvnet-brain';
@@ -2140,7 +2191,7 @@ export function codexSessionSafety(status) {
   };
 }
 
-function codexAdministrativeProbeBinary() {
+export function codexAdministrativeProbeBinary() {
   if (process.env.CODEX_BIN) return process.env.CODEX_BIN;
   try {
     const brainHome = process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain');
@@ -2326,23 +2377,62 @@ export function codexLifecycleGuidance(status) {
   }
 }
 
-// Remove only explicit Brain ownership or the exact installer-owned durable bridge.
+// Remove only byte-verified Brain bridges with an exact shipped hook definition.
 // Foreign commands, mixed command strings, unknown shapes, and their surrounding settings survive.
 export function retireManagedHookRegistrations({ home = os.homedir(), codexDir = codexHomeDir(),
   files = [path.join(home, '.claude', 'settings.json'), path.join(home, '.claude', 'settings.local.json'),
     path.join(codexDir, 'hooks.json')], wrapperPath = codexHookWrapperPath(codexDir) } = {}) {
   let removed = 0;
   const changedFiles = [];
-  const owns = (hook) => {
-    if (hook?.pluginId === 'ruvnet-brain@ruvnet-brain') return true;
+  const conflicts = [];
+  const verifiedWrapper = legacyBrainWrapperOwnership(wrapperPath, path.dirname(codexDir)).state === 'verified';
+  const tokensOf = (command) => (command.match(/"[^"]*"|'[^']*'|[^\s]+/g) || [])
+    .map((token) => token.replace(/^["']|["']$/g, ''));
+  const registry = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'plugin', 'hooks', 'codex-hooks.json'), 'utf8'));
+  const definitions = Object.entries(registry.hooks).flatMap(([event, groups]) => groups.flatMap(group =>
+    group.hooks.flatMap(hook => {
+      const values = typeof hook.command === 'string' ? tokensOf(hook.command) : [];
+      return values[0] === 'node' && values[1] === '-e' && /^\d+$/.test(values[3] || '')
+        ? [{ event, matcher: String(group.matcher ?? '*'), hook, args: values.slice(4) }] : [];
+    })));
+  const owns = (hook, event, group) => {
     const command = hook?.command;
-    if (typeof command !== 'string' || /[;&|`\n\r]/.test(command)) return false;
-    const tokens = command.match(/"[^"]*"|'[^']*'|[^\s]+/g) || [];
-    const values = tokens.map((token) => token.replace(/^["']|["']$/g, ''));
-    return values.length >= 2 && /(?:^|[/\\])node(?:\.exe)?$/.test(values[0])
-      && values[1] === wrapperPath;
+    if (!verifiedWrapper || typeof command !== 'string' || hook.type !== 'command'
+      || (hook.pluginId != null && hook.pluginId !== 'ruvnet-brain@ruvnet-brain')
+      || Object.keys(group).some(key => !['matcher', 'hooks'].includes(key))) return false;
+    return definitions.some(definition => {
+      if (definition.event !== event || definition.matcher !== String(group.matcher ?? '*')) return false;
+      if (Object.keys(hook).some(key => !['command', 'pluginId', ...Object.keys(definition.hook)].includes(key))) return false;
+      if (Object.keys(definition.hook).some(key => key !== 'command' && hook[key] !== definition.hook[key])) return false;
+      if (Object.keys(hook).some(key => !['command', 'pluginId'].includes(key)
+        && hook[key] !== definition.hook[key])) return false;
+      if (command === definition.hook.command) return true;
+      if (/[;&|`$\n\r]/.test(command)) return false;
+      // Match literal installer forms, not a shell-like split: adjacent quoted tokens
+      // can execute a different script even when a permissive splitter looks identical.
+      if (/["']/.test(wrapperPath) || (process.platform !== 'win32' && wrapperPath.includes('\\'))
+        || (process.platform === 'win32' && /[%!^]/.test(command))
+        || definition.args.some(arg => !/^[\w-]+$/.test(arg))) return false;
+      const scripts = [`"${wrapperPath}"`];
+      if (process.platform !== 'win32') scripts.push(`'${wrapperPath}'`);
+      if (/^[\w/.:~-]+$/.test(wrapperPath)) scripts.push(wrapperPath);
+      const nodes = ['node', `"${process.execPath}"`];
+      if (process.platform !== 'win32') nodes.push(`'${process.execPath}'`);
+      if (/^[\w/.:~-]+$/.test(process.execPath)) nodes.push(process.execPath);
+      return nodes.some(node => scripts.some(script =>
+        command === `${node} ${script} ${definition.args.join(' ')}`));
+    });
   };
   for (const file of files) {
+    let stat;
+    try { stat = fs.lstatSync(file); } catch (error) {
+      if (error.code === 'ENOENT') continue;
+      throw error;
+    }
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1) {
+      conflicts.push({ file, reason: 'shared or indirect settings preserved' });
+      continue;
+    }
     let before;
     try { before = fs.readFileSync(file, 'utf8'); } catch (error) {
       if (error.code === 'ENOENT') continue;
@@ -2355,7 +2445,16 @@ export function retireManagedHookRegistrations({ home = os.homedir(), codexDir =
       if (!Array.isArray(groups)) continue;
       document.hooks[event] = groups.flatMap((group) => {
         if (!Array.isArray(group?.hooks)) return [group];
-        const hooks = group.hooks.filter((hook) => { if (!owns(hook)) return true; count++; return false; });
+        const hooks = group.hooks.filter((hook) => {
+          if (!owns(hook, event, group)) {
+            if (hook?.pluginId === 'ruvnet-brain@ruvnet-brain'
+              || (typeof hook?.command === 'string' && hook.command.includes(wrapperPath))) {
+              conflicts.push({ file, event, reason: 'unverified or customized hook preserved' });
+            }
+            return true;
+          }
+          count++; return false;
+        });
         return hooks.length || group.hooks.length === 0 ? [{ ...group, hooks }] : [];
       });
       if (groups.length && document.hooks[event].length === 0) delete document.hooks[event];
@@ -2365,7 +2464,7 @@ export function retireManagedHookRegistrations({ home = os.homedir(), codexDir =
     removed += count;
     changedFiles.push(file);
   }
-  return { removed, changedFiles };
+  return { removed, changedFiles, conflicts };
 }
 
 export function automaticHookRetirementStatus(root = REPO_ROOT, { scope = 'source' } = {}) {

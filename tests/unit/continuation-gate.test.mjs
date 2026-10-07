@@ -54,7 +54,7 @@ function runGate(items, hookInput = {}) {
   finally { fs.rmSync(dir, { recursive: true, force: true }); }
 
   let ctx = null;
-  try { ctx = JSON.parse(out).hookSpecificOutput?.additionalContext ?? null; } catch { /* no envelope */ }
+  try { ctx = JSON.parse(out).reason ?? null; } catch { /* no envelope */ }
   return { out, forced: ctx != null, ctx };
 }
 
@@ -125,7 +125,7 @@ describe('continuation-gate — forces the turn to continue while work is open',
     catch (e) { out = e.stdout || ''; }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
     let ctx = null;
-    try { ctx = JSON.parse(out).hookSpecificOutput?.additionalContext ?? null; } catch { /* no envelope */ }
+    try { ctx = JSON.parse(out).reason ?? null; } catch { /* no envelope */ }
     expect(ctx, 'a real --commit-to item must force the turn to continue').not.toBeNull();
     expect(ctx).toMatch(/ship the thing/);
   });
@@ -154,6 +154,6 @@ describe('continuation-gate — forces the turn to continue while work is open',
       },
       });
     } catch (e) { out = e.stdout || ''; } finally { fs.rmSync(dir, { recursive: true, force: true }); }
-    expect(JSON.parse(out).hookSpecificOutput.hookEventName).toBe('Stop');
+    expect(JSON.parse(out).decision).toBe('block');
   });
 });
