@@ -9,7 +9,7 @@ import { privateTransitionObservation } from './turn-capture-privacy.mjs';
 import { automaticProgressionSuspensionResult } from './project-progression-suspension.mjs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { redactText } from './continuity-events.mjs';
+import { redactText, normalizeToolOutcome } from './continuity-events.mjs';
 import { conditionNotice } from './continuity-journal.mjs';
 import { normalizeHostEvent } from './hook-input.mjs';
 import { resolveProjectStore } from './project-store-resolver.mjs';
@@ -77,20 +77,22 @@ export function normalizeTransition(payload, event, { now = () => new Date().toI
   if (!MEANINGFUL_TOOLS.test(String(input.tool_name ?? ''))) return { skipped: 'non-material tool observation' };
   const toolInput = input.tool_input ?? {};
   const response = input.tool_response && typeof input.tool_response === 'object' ? input.tool_response : {};
-  const exitCode = [response.exit_code, response.exitCode, response.status].find(Number.isSafeInteger);
+  const normalized = normalizeToolOutcome({ ...input, content: input.tool_response,
+    ...(event === 'PostToolUseFailure' ? { is_error: true } : {}) });
+  const exitCode = normalized.exitCode;
   const error = typeof response.error === 'string' && response.error ? redactText(response.error).slice(0, 4096) : undefined;
   const signal = typeof response.signal === 'string' && response.signal ? redactText(response.signal).slice(0, 100) : undefined;
-  const failure = Boolean(error) || event === 'PostToolUseFailure' || response.isError === true || input.is_error === true || (Number.isSafeInteger(exitCode) && exitCode !== 0);
-  const interrupted = response.interrupted === true || Boolean(signal);
-  const declaredOutcome = ['success', 'failure', 'interrupted', 'unknown'].includes(response.outcome) ? response.outcome : null;
   // Measured native Claude Bash PostToolUse has no exit code. Its completion envelope
   // is host-reported success, never an inferred exit-code zero. Other hosts stay unknown.
   const claudeBashCompletion = host === 'claude' && input.tool_name === 'Bash' && event === 'PostToolUse'
     && typeof response.stdout === 'string' && typeof response.stderr === 'string'
     && response.interrupted === false && typeof response.isImage === 'boolean'
     && typeof response.noOutputExpected === 'boolean';
-  const outcome = event === 'PreToolUse' ? 'pending' : error ? 'failure' : interrupted ? 'interrupted' : failure ? 'failure'
-    : declaredOutcome || (Number.isSafeInteger(exitCode) || response.success === true || response.ok === true || claudeBashCompletion ? 'success' : 'unknown');
+  const outcome = event === 'PreToolUse' ? 'pending'
+    : normalized.outcome === 'fail' ? 'failure'
+    : ['interrupted', 'pending'].includes(normalized.outcome) ? normalized.outcome
+    : normalized.outcome === 'pass' || normalized.successfulToolResult ? 'success'
+    : !normalized.uncertain && (response.outcome === 'success' || claudeBashCompletion) ? 'success' : 'unknown';
   return { ...common, kind: 'tool-observation', tool: String(input.tool_name).split('__').at(-1).slice(0, 100),
     intent: semanticIntent(toolInput.description ?? toolInput.command ?? toolInput.cmd ?? toolInput.file_path), outcome,
     ...(outcome === 'success' && claudeBashCompletion ? { outcomeEvidence: 'claude-bash-completion' } : {}),
@@ -151,18 +153,23 @@ export function observeTransitionSource(resolution, projectDir = resolution.chec
 
 /** Called only by the fenced queue drainer; current heads merge, original observations stay fixed. */
 export function captureNormalizedTransition(job, { readHistory = readTransitionHistory, capture = runSessionSnapshotHook,
-  budgetMs = 6500, makeStoreFactory, now = Date.now, env = process.env } = {}) {
+  budgetMs = 6500, makeStoreFactory, now = Date.now, env = process.env,
+  deadlineAt: inheritedDeadlineAt = Infinity, signal } = {}) {
   const suspended = automaticProgressionSuspensionResult(env);
   if (suspended) return suspended;
-  const deadlineAt = now() + budgetMs;
-  const resolution = resolveProjectStore({ projectDir: job.originProjectDir, gitTimeoutMs: Math.max(1, Math.min(500, budgetMs)) });
+  const deadlineAt = Math.min(inheritedDeadlineAt, now() + budgetMs);
+  const checkDeadline = () => { if (signal?.aborted || now() >= deadlineAt) throw new Error('restore deadline exceeded'); };
+  checkDeadline();
+  const resolution = resolveProjectStore({ projectDir: job.originProjectDir, gitTimeoutMs: Math.max(1, Math.min(500, budgetMs)), deadlineAt });
   const normalized = job.payload.normalizedTransition;
   if (!normalized || normalized.observation?.authoritative !== false || !normalized.observation?.id
     || normalized.sourceIdentity?.checkoutPath !== resolution.checkoutRoot) throw new Error('invalid normalized transition binding');
-  const policy = resolveTurnDb({ projectDir: job.originProjectDir, brainHome: env.RUVNET_BRAIN_HOME || path.join(env.HOME || os.homedir(), '.cache', 'ruvnet-brain') });
+  const policy = resolveTurnDb({ projectDir: job.originProjectDir, brainHome: env.RUVNET_BRAIN_HOME || path.join(env.HOME || os.homedir(), '.cache', 'ruvnet-brain'), deadlineAt, signal });
+  checkDeadline();
   if (policy.skipped) throw new Error(policy.skipped);
   if (digestCanonical(privateTransitionObservation(normalized.observation, policy.contentPathExcludes, job.originProjectDir)) !== digestCanonical(normalized.observation)) throw new Error('content exclusions changed; immutable transition retained');
   const snapshots = readHistory(resolution, { deadlineAt });
+  checkDeadline();
   const restored = restoreProjectProgression(snapshots, { expectedProjectIdentity: resolution.projectIdentity });
   if (snapshots.length && !restored.ok) {
     throw new Error('nonempty transition journal has no coherent ancestry');
@@ -181,7 +188,8 @@ export function captureNormalizedTransition(job, { readHistory = readTransitionH
   const progression = buildRestoredTransitionProgression({ resolution, observation: normalized.observation,
     snapshots, sessionIdentity: job.payload.session_id, host: job.host,
     sourceIdentity: normalized.sourceIdentity }, restored);
-  const result = capture(job.originProjectDir, job.event, { host: job.host, env, budgetMs: Math.max(0, deadlineAt - now()),
+  checkDeadline();
+  const result = capture(job.originProjectDir, job.event, { host: job.host, env, budgetMs: Math.max(0, deadlineAt - now()), deadlineAt, signal,
     ...(makeStoreFactory ? { makeStoreFactory } : {}), writeMetadata: false,
     rawInput: JSON.stringify({ session_id: job.payload.session_id, hook_event_name: job.event, projectProgression: progression }),
     captureTurn: () => ({ recorded: false, skipped: 'transition boundary' }),

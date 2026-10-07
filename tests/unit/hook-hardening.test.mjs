@@ -25,9 +25,93 @@ import os from 'node:os';
 import path from 'node:path';
 import { rmHome } from '../helpers/reap-detached.mjs';
 import { pathToFileURL } from 'node:url';
+import { createHash } from 'node:crypto';
+import { learningFixture } from '../helpers/learning-fixture.mjs';
+import { takeQueueLock, releaseQueueLock } from '../../plugin/scripts/learning-queue.mjs';
 
 const REPO = path.resolve(import.meta.dirname, '../..');
 const SCRIPTS = path.join(REPO, 'plugin', 'scripts');
+const detachRows = home => {
+  try { return fs.readFileSync(path.join(home, 'cache/ruvnet-brain/detached-jobs.jsonl'), 'utf8').trim().split('\n').map(JSON.parse); }
+  catch { return []; }
+};
+async function detachFixture(body, { ttl = '0.15', preload = '' } = {}) {
+  const home = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'detach-truth-')));
+  const job = path.join(home, 'job.mjs'); fs.writeFileSync(job, body);
+  const env = { ...process.env, HOME: home, USERPROFILE: home, XDG_CACHE_HOME: path.join(home, 'cache'),
+    RUVNET_DETACH_SUPERVISOR: '1', RUVNET_DETACH_PAYLOAD_B64: '' };
+  if (preload) { const file = path.join(home, 'preload.cjs'); fs.writeFileSync(file, preload); env.NODE_OPTIONS = `--require=${file}`; }
+  const child = spawn(process.execPath, [path.join(SCRIPTS, 'detach.mjs'), ttl, '-', process.execPath, job], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  let stderr = ''; child.stderr.on('data', chunk => { stderr += chunk; });
+  const started = Date.now();
+  try {
+    const code = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('finite supervisor did not return')); }, 8000);
+      child.once('close', code => { clearTimeout(timer); resolve(code); }); child.once('error', reject);
+    });
+    return { home, code, stderr, elapsedMs: Date.now() - started, rows: detachRows(home) };
+  } catch (error) { cleanupDetach(home); throw error; }
+}
+function cleanupDetach(home) {
+  if (detachRows(home).some(row => row.groupRetirementConfirmed === true || row.rootObservation?.state === 'gone')) {
+    fs.rmSync(home, { recursive: true, force: true }); return;
+  }
+  for (const row of detachRows(home).filter(row => row.state === 'started' && Number.isInteger(row.pid))) {
+    try {
+      if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(row.pid), '/T', '/F'], { timeout: 2000, stdio: 'ignore' });
+      else process.kill(-row.pid, 'SIGKILL');
+    } catch { /* only exact fixture-owned groups; already absent is normal */ }
+  }
+  fs.rmSync(home, { recursive: true, force: true });
+}
+describe('detached maintenance retirement truth', () => {
+  it.skipIf(process.platform === 'win32')('retains the finite supervisor after parent exit and observes a surviving child group retire', async () => {
+    const body = `import {spawn} from 'node:child_process';import fs from 'node:fs';
+      const leaf=spawn(process.execPath,['-e',"process.on('SIGTERM',()=>{});setInterval(()=>{},1000)"],{stdio:'ignore'});
+      fs.writeFileSync(process.env.HOME+'/leaf.pid',String(leaf.pid));setTimeout(()=>process.exit(0),80);`;
+    const f = await detachFixture(body, { ttl: '0.3' });
+    try {
+      expect(f.code, f.stderr).toBe(0); expect(f.elapsedMs).toBeLessThan(7000);
+      expect(f.rows.some(row => row.state === 'parent-exited')).toBe(true);
+      const result = f.rows.at(-1); expect(result.groupObservation?.state).toBe('gone'); expect(result.groupRetirementConfirmed).toBe(true);
+      const pid = Number(fs.readFileSync(path.join(f.home, 'leaf.pid'), 'utf8')); let kernelError;
+      try { process.kill(pid, 0); } catch (error) { kernelError = error; }
+      expect(kernelError?.code).toBe('ESRCH');
+      expect(result.scope).toBe('posix-process-group'); expect(result.retirementConfirmed).toBe(false); expect(result.retirementRequired).toBe(true);
+      expect(result.retirementState).toBe('UNKNOWN'); expect(f.rows.some(row => row.state === 'killed-at-ttl')).toBe(false);
+    } finally { cleanupDetach(f.home); }
+  }, 10000);
+  it.skipIf(process.platform === 'win32')('records kill failure and retains UNKNOWN instead of claiming a TTL kill', async () => {
+    const preload = `const kill=process.kill;process.kill=(pid,signal)=>{if(pid<0&&signal!==0){const e=new Error('fixture denied');e.code='EPERM';throw e;}return kill(pid,signal);};`;
+    const f = await detachFixture('setInterval(()=>{},1000);', { preload });
+    try {
+      const result = f.rows.at(-1); expect(result.state).toBe('retirement-unknown'); expect(result.groupObservation.state).toBe('alive');
+      expect(() => process.kill(-result.pid, 0)).not.toThrow();
+      expect(result.killErrors.map(row => row.error)).toEqual(['EPERM', 'EPERM']); expect(result.retirementRequired).toBe(true);
+      expect(result.retirementConfirmed).toBe(false); expect(f.rows.some(row => row.state === 'killed-at-ttl')).toBe(false);
+    } finally { cleanupDetach(f.home); }
+  }, 10000);
+  it.skipIf(process.platform === 'win32')('uses the Windows tree command and records its failure without negative-PID signals or a native Windows claim', async () => {
+    const preload = `const cp=require('node:child_process'),fs=require('node:fs');Object.defineProperty(process,'platform',{value:'win32'});
+      const original=cp.spawnSync;cp.spawnSync=(file,args,options)=>{if(file==='taskkill'){fs.writeFileSync(process.env.HOME+'/taskkill.json',JSON.stringify(args));return{status:1};}return original(file,args,options);};require('node:module').syncBuiltinESMExports();
+      const kill=process.kill;process.kill=(pid,signal)=>{if(pid<0)throw new Error('negative Windows pid');return kill(pid,signal);};`;
+    const f = await detachFixture('setInterval(()=>{},1000);', { preload });
+    try {
+      const result = f.rows.at(-1); expect(result.scope).toBe('windows-taskkill-tree-attempt'); expect(result.taskkill).toMatchObject({ status: 1 });
+      expect(() => process.kill(result.pid, 0)).not.toThrow();
+      expect(result.rootObservation.state).toBe('alive'); expect(result.retirementConfirmed).toBe(false); expect(result.retirementRequired).toBe(true);
+      const args = JSON.parse(fs.readFileSync(path.join(f.home, 'taskkill.json'), 'utf8')); expect(args).toContain('/T'); expect(args).toContain('/F');
+      expect(f.rows.some(row => row.state === 'killed-at-ttl')).toBe(false);
+    } finally { cleanupDetach(f.home); }
+  });
+  it.skipIf(process.platform !== 'win32')('records the actual native Windows taskkill result while leaving complete descendant proof UNKNOWN', async () => {
+    const f = await detachFixture('setInterval(()=>{},1000);');
+    try {
+      const result = f.rows.at(-1); expect(result.scope).toBe('windows-taskkill-tree-attempt'); expect(result.taskkill.status).toBe(0);
+      expect(result.rootObservation.state).toBe('gone'); expect(result.retirementConfirmed).toBe(false); expect(result.retirementRequired).toBe(true);
+    } finally { cleanupDetach(f.home); }
+  });
+});
 const PLUGIN_ROOT = path.join(REPO, 'plugin');
 const hasBash = spawnSync('bash', ['-c', 'exit 0']).status === 0;
 // `hasBash` answers 'is bash on PATH' — and GitHub's WINDOWS runner ships Git Bash, so it is TRUE
@@ -93,164 +177,74 @@ function fire(interpreter, file, input, extraEnv = {}, timeout = 60_000) {
 // regimes, killed at the 30s cap every time. Same defect, larger constant: the feed queues
 // MAX_ACTIONS × per-call cost with no reference to the budget it is spending.
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
-describe.skipIf(bashOnly)('learn-flush: SessionEnd is a 30s budget, and the feed must respect it', () => {
-  /** A HOME whose ~/.npm-global/bin/ruflo is a stub that burns `seconds` and succeeds. */
-  function stubRuflo(seconds) {
-    const bin = path.join(tmpHome, '.npm-global', 'bin');
-    fs.mkdirSync(bin, { recursive: true });
-    const p = path.join(bin, 'ruflo');
-    fs.writeFileSync(p, `#!/bin/bash\nsleep ${seconds}\nexit 0\n`);
-    fs.chmodSync(p, 0o755);
-    return p;
-  }
+const learningFixtures = [];
+const adoptedLearning = () => { const f = learningFixture('user'); learningFixtures.push(f); return f; };
+afterEach(() => learningFixtures.splice(0).forEach(f => f.cleanup()));
+const learningContextFor = f => ({ scope: 'user', home: f.home, projectDir: f.project, queueDir: f.queue });
+const captureLearning = (f, sid, command) => f.run('plugin/scripts/learn-capture.mjs', [], {}, {
+  session_id: sid, hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command }, tool_response: { success: true },
+});
+const learningFiles = f => fs.readdirSync(f.queue).filter(name => name.endsWith('.jsonl')).sort();
+const sidHash = sid => createHash('sha256').update(sid).digest('hex').slice(0, 24);
 
-  /** A queue of `n` DISTINCT captures — distinct because learn-flush dedupes before it feeds. */
-  function seedQueue(n) {
-    const q = path.join(tmp, 'queue.jsonl');
-    const lines = [];
-    for (let i = 0; i < n; i++) lines.push(JSON.stringify({ tool: 'Bash', action: `verb${i}` }));
-    fs.writeFileSync(q, lines.join('\n') + '\n');
-    return q;
-  }
-
-  it('a 147-entry queue + a 4s-per-call learner: finishes UNDER the 30s cap, remainder preserved', () => {
-    stubRuflo(4);
-    const q = seedQueue(147);
-    const t0 = Date.now();
-    const r = spawnSync(process.execPath, [path.join(SCRIPTS, 'learn-flush.mjs'), '--sync'], {
-      cwd: tmp, input: JSON.stringify({ session_id: 'deadline-sess', hook_event_name: 'SessionEnd' }),
-      encoding: 'utf8', timeout: 120_000, env: env({ LEARN_QUEUE: q }),
-    });
-    const wall = Date.now() - t0;
-
-    // MAGNITUDE, not direction: 25s is the honest headroom under a 30s cap once the harness's own
-    // spawn/teardown is counted. Today's 32s is not "a bit slow" — it is killed mid-queue, which is
-    // what makes the remainder undrainable in the first place.
-    expect(wall).toBeLessThan(25_000);
-    expect(r.status).toBe(0);
-
-    // And the work it did NOT do is still on disk. A deadline that drops the remainder is just a
-    // faster version of the truncation this queue's write-back was built to stop.
-    const left = fs.readFileSync(q, 'utf8').split('\n').filter(Boolean);
-    expect(left.length).toBeGreaterThanOrEqual(139);
-  }, 140_000);
-
-  it('TEETH: the same deadline does NOT stall a fast learner — a quick queue still drains its slice', () => {
-    stubRuflo(0);
-    const q = seedQueue(12);
-    const r = spawnSync(process.execPath, [path.join(SCRIPTS, 'learn-flush.mjs'), '--sync'], {
-      cwd: tmp, input: JSON.stringify({ session_id: 'fast-sess' }),
-      encoding: 'utf8', timeout: 60_000, env: env({ LEARN_QUEUE: q }),
-    });
-    expect(r.status).toBe(0);
-    expect(r.stdout).toMatch(/fed 8\/8/);          // the MAX_ACTIONS slice, whole — no deadline haircut
-    const left = fs.readFileSync(q, 'utf8').split('\n').filter(Boolean);
-    expect(left.length).toBe(4);                    // 12 − 8 deferred, exactly
-  }, 60_000);
+describe('learn-flush respects the finite canonical worker deadline', () => {
+  it('a slow learner stops at the actual deadline and preserves every original queued observation', () => {
+    const f = adoptedLearning(); const file = f.write('deadline-sess', (JSON.stringify({ tool: 'Bash', action: 'npm test' }) + '\n').repeat(147));
+    const before = fs.readFileSync(file); const started = Date.now();
+    const result = f.run('plugin/scripts/learn-flush.mjs', ['--sync'], { TEST_SLEEP: '4000', LEARN_FLUSH_DEADLINE_MS: '500' });
+    expect(result.status, result.stdout + result.stderr).toBe(0); expect(Date.now() - started).toBeLessThan(2500);
+    expect(f.readCalls().length).toBeGreaterThan(0); expect(f.depth()).toBe(147); expect(fs.readFileSync(file)).toEqual(before);
+  }, 10000);
+  it('TEETH: the same adopted canonical learner makes eight verified deliveries and retains four pending', () => {
+    const f = adoptedLearning(); const file = f.write('fast-sess', (JSON.stringify({ tool: 'Bash', action: 'npm test' }) + '\n').repeat(12));
+    const before = fs.readFileSync(file); const result = f.run('plugin/scripts/learn-flush.mjs', ['--sync'], { LEARN_FLUSH_DEADLINE_MS: '5000' });
+    expect(result.status, result.stdout + result.stderr).toBe(0); expect(result.stdout).toMatch(/fed 8; acknowledged 8; failed 0/);
+    expect(f.readCalls()).toHaveLength(8); expect(f.depth()).toBe(4); expect(fs.readFileSync(file)).toEqual(before);
+  }, 10000);
 });
 
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-// 2. THE SHARED QUEUE — every concurrent session on a machine appends to ONE file.
-//
-// RED, verbatim (origin/main b73176a): two payloads carrying session_id "alpha" and "beta" both
-// landed in ~/.cache/ruvnet-brain/learn/session-default.jsonl — 2 files expected, 1 found:
-//     ["session-default.jsonl"]
-// Measured live on the owner's machine the same day: one shared session-default.jsonl, 147 lines
-// deep, appended by multiple sessions at once. Same clobber class as ADR-050.
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-describe.skipIf(bashOnly)('the learning queue is PER SESSION — the id is in the payload, not the env', () => {
-  const capture = (sessionId, command) => fire('bash', path.join(SCRIPTS, 'learn-capture.sh'),
-    JSON.stringify({ session_id: sessionId, tool_name: 'Bash', tool_input: { command } }));
+describe('the learning queue is PER SESSION with private session identifiers', () => {
+  it('two payload session_ids create distinct safe files without exposing their raw IDs', () => {
+    const f = adoptedLearning(); takeQueueLock(learningContextFor(f));
+    captureLearning(f, 'alpha', 'git push'); captureLearning(f, 'beta', 'npm test'); const files = learningFiles(f);
+    expect(files).toHaveLength(2); expect(files.some(name => name.includes(sidHash('alpha')))).toBe(true); expect(files.some(name => name.includes(sidHash('beta')))).toBe(true);
+    expect(files.join(' ')).not.toMatch(/alpha|beta/);
+  });
+  it('capture and canonical flush address the same selected user queue and retain its original bytes', () => {
+    const f = adoptedLearning(); const context = learningContextFor(f); const token = takeQueueLock(context); captureLearning(f, 'gamma', 'git status');
+    const file = path.join(f.queue, learningFiles(f)[0]); const before = fs.readFileSync(file); releaseQueueLock(context, token);
+    const result = f.run('plugin/scripts/learn-flush.mjs', ['--sync']); expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/fed 1; acknowledged 1; failed 0/); expect(f.depth()).toBe(0); expect(fs.readFileSync(file)).toEqual(before);
+    expect(f.readCalls()[0].args).toContain(path.join(f.home, '.claude/global-memory/.swarm/memory.db'));
+  });
+  it('a hostile session_id remains inside the queue and never becomes a traversal filename', () => {
+    const f = adoptedLearning(); takeQueueLock(learningContextFor(f)); captureLearning(f, '../../../../etc/pwn', 'git push');
+    const files = learningFiles(f); expect(files).toHaveLength(1); expect(files[0]).not.toContain('..'); expect(files[0]).not.toContain('/');
+  });
+});
 
-  const queueFiles = () => {
-    try { return fs.readdirSync(path.join(tmpHome, '.cache/ruvnet-brain/learn')).sort(); }
-    catch { return []; }
+describe('learn-capture records a privacy-safe command VERB as parseable JSON', () => {
+  const captured = command => {
+    const f = adoptedLearning(); takeQueueLock(learningContextFor(f)); captureLearning(f, 'verb', command);
+    const raw = fs.readFileSync(path.join(f.queue, learningFiles(f)[0]), 'utf8').trim(); return { raw, parsed: JSON.parse(raw) };
   };
-
-  it('two sessions with different payload session_ids write to two DIFFERENT queue files', () => {
-    // CLAUDE_SESSION_ID deliberately unset — that is the real-world case, and it is why every
-    // session on this machine shared one file.
-    capture('alpha', 'git push');
-    capture('beta', 'npm test');
-    const files = queueFiles();
-    expect(files.length).toBe(2);
-    expect(files.some((f) => f.includes('alpha'))).toBe(true);
-    expect(files.some((f) => f.includes('beta'))).toBe(true);
-  });
-
-  it('learn-flush reads the SAME payload id — capture and flush must not disagree about the file', () => {
-    capture('gamma', 'git status');
-    const bin = path.join(tmpHome, '.npm-global', 'bin');
-    fs.mkdirSync(bin, { recursive: true });
-    fs.writeFileSync(path.join(bin, 'ruflo'), '#!/bin/bash\nexit 0\n');
-    fs.chmodSync(path.join(bin, 'ruflo'), 0o755);
-
-    const r = spawnSync(process.execPath, [path.join(SCRIPTS, 'learn-flush.mjs'), '--sync'], {
-      cwd: tmp, input: JSON.stringify({ session_id: 'gamma', hook_event_name: 'SessionEnd' }),
-      encoding: 'utf8', timeout: 60_000, env: env(),
-    });
-    expect(r.status).toBe(0);
-    expect(r.stdout).toMatch(/fed 1\/1/);           // it found gamma's queue, not "default"'s
-    expect(queueFiles()).toEqual([]);               // drained and removed
-  }, 60_000);
-
-  it('a hostile session_id cannot escape the learn directory (it is a filename component)', () => {
-    capture('../../../../etc/pwn', 'git push');
-    const files = queueFiles();
-    expect(files.length).toBe(1);
-    expect(files[0]).not.toContain('/');
-    expect(files[0]).not.toContain('..');
-    expect(fs.existsSync(path.join(tmpHome, '.cache/ruvnet-brain/learn'))).toBe(true);
+  it('a quoted argument cannot corrupt the JSON verb', () => { expect(captured('cd "/tmp/some dir"').parsed.action).toBe('cd'); });
+  it('escaped quotes keep the allowed command chain parseable', () => { expect(captured('git commit -m "fix \\"quoted\\" thing"').parsed.action).toBe('git commit'); });
+  it('TEETH: ordinary allowed commands retain their workflow vocabulary', () => { expect(captured('git push').parsed.action).toBe('git push'); });
+  it('an opaque quoted executable records only a generic action', () => { expect(captured('"/opt/my app/bin" --go').parsed.action).toBe('command'); });
+  it('secret-bearing commands keep only their allowlisted verb and contain no inline private data', () => {
+    const value = captured('export AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI && psql postgres://admin:Hunter2@db/prod');
+    expect(value.parsed.action).toBe('export'); expect(value.raw).not.toMatch(/wJalr|Hunter2|postgres|AWS_SECRET/);
   });
 });
 
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-// 3. THE CAPTURE IS MANGLED — the learner is being fed garbage.
-//
-// RED, verbatim (origin/main b73176a), for the command `cd "/tmp/some dir"`:
-//     queue line    : {"tool":"Bash","action":"cd \"}
-//     parsed action : *** JSON.parse FAILED: Unterminated string in JSON at position 31 ***
-// The bash regex `"command"…"([^"]*)"` cannot cross a JSON-escaped quote — the EXACT bug
-// hook-input.mjs was written to end — so it captured `cd \` and the trailing backslash then broke
-// the JSON line it was written into. Every such line is silently dropped by learn-flush's
-// JSON.parse, so the capture looks healthy and the learner receives nothing.
-// ══════════════════════════════════════════════════════════════════════════════════════════════════
-describe.skipIf(bashOnly)('learn-capture records the real command VERB, as parseable JSON', () => {
-  const queueOf = (sid) => path.join(tmpHome, '.cache/ruvnet-brain/learn', `session-${sid}.jsonl`);
-  function captured(command) {
-    fire('bash', path.join(SCRIPTS, 'learn-capture.sh'),
-      JSON.stringify({ session_id: 'verb', tool_name: 'Bash', tool_input: { command } }));
-    const raw = fs.readFileSync(queueOf('verb'), 'utf8').trim();
-    return { raw, parsed: JSON.parse(raw) };   // throws on the mangled line — that IS the assertion
-  }
-
-  it('a quoted argument does not corrupt the line: `cd "…"` records the verb `cd`', () => {
-    const { parsed } = captured('cd "/tmp/some dir"');
-    expect(parsed.action).toBe('cd');
-  });
-
-  it('an escaped quote mid-command still yields a clean verb chain', () => {
-    const { parsed } = captured('git commit -m "fix \\"quoted\\" thing"');
-    expect(parsed.action).toBe('git commit');
-  });
-
-  it('TEETH: the unquoted cases still record exactly what they always did', () => {
-    expect(captured('git push').parsed.action).toBe('git push');
-  });
-
-  it('a command that is nothing but a quoted path records NOTHING rather than a broken line', () => {
-    fire('bash', path.join(SCRIPTS, 'learn-capture.sh'),
-      JSON.stringify({ session_id: 'q2', tool_name: 'Bash', tool_input: { command: '"/opt/my app/bin" --go' } }));
-    // Either no queue at all, or a queue whose every line parses. Never a half-written line.
-    if (fs.existsSync(queueOf('q2'))) {
-      for (const l of fs.readFileSync(queueOf('q2'), 'utf8').split('\n').filter(Boolean)) JSON.parse(l);
-    }
-  });
-
-  it('the secret-redaction contract survives the parser change (no inline data ever recorded)', () => {
-    const { parsed } = captured('export AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI && psql postgres://admin:Hunter2@db/prod');
-    expect(parsed.action).toBe('export');
-    expect(parsed.action).not.toMatch(/wJalr|Hunter2/);
+describe('learning capture requires explicit user adoption and honors revocation', () => {
+  it.each(['missing-store', 'missing-consent', 'off'])('%s creates zero capture bytes and invokes no learner', mode => {
+    const f = adoptedLearning(); fs.rmSync(f.queue, { recursive: true });
+    if (mode === 'missing-store') fs.rmSync(path.join(f.home, '.claude/global-memory'), { recursive: true });
+    if (mode === 'missing-consent') fs.rmSync(path.join(f.home, '.config/ruvnet-brain/settings.json'));
+    if (mode === 'off') fs.writeFileSync(path.join(f.home, '.config/ruvnet-brain/settings.json'), '{"learningScope":"off"}');
+    const result = captureLearning(f, 'denied', 'npm test'); expect(result.status).toBe(0); expect(fs.existsSync(f.queue)).toBe(false); expect(f.readCalls()).toEqual([]);
   });
 });
 

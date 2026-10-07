@@ -58,12 +58,12 @@ function run(lastAssistantMessage, { malformed = false, hookInput = {}, preferen
 
 describe('continuation gate capability truth', () => {
   it('keeps capability integrity correction active while new promise capture is off', () => {
-    const output = run('Ruflo ADR Verify is not installed.', { promiseCapture: 'off' });
+    const output = run('Ruflo ADR Verify skill source files are not present.', { promiseCapture: 'off' });
     expect(output).toContain('contradicts the sealed');
     expect(output).toContain('ruflo-adr:adr-verify');
   });
-  it('forces correction when the final answer denies an installed RuvNet skill', () => {
-    const output = run('Ruflo ADR Verify is not installed.');
+  it('forces correction when the final answer denies observed RuvNet skill-source bytes', () => {
+    const output = run('Ruflo ADR Verify skill source files are not present.');
     expect(JSON.parse(output).decision).toBe('block');
     expect(output).toContain('ruflo-adr:adr-verify');
     expect(output).toContain('contradicts the sealed');
@@ -71,16 +71,23 @@ describe('continuation gate capability truth', () => {
   });
 
   it('respects user interruption while a cancelled preference cannot bypass answer truth', () => {
-    expect(run('Ruflo ADR Verify is not installed.', { hookInput: { interrupted: true } })).toBe('');
-    expect(run('Ruflo ADR Verify is not installed.', { preferenceState: 'cancelled' })).toContain('capability claim');
+    expect(run('Ruflo ADR Verify skill source files are not present.', { hookInput: { interrupted: true } })).toBe('');
+    expect(run('Ruflo ADR Verify skill source files are not present.', { preferenceState: 'cancelled' })).toContain('capability claim');
   });
 
-  it('stays silent when the installed capability statement matches the receipt', () => {
-    expect(run('Ruflo ADR Verify is installed.')).toBe('');
+  it('stays silent when the skill-source presence statement matches the source receipt', () => {
+    expect(run('Ruflo ADR Verify skill source files are present.')).toBe('');
+  });
+
+  it.each(['Ruflo ADR Verify is installed.', 'Ruflo ADR Verify is not installed.'])('skill source bytes never qualify CLI installation status: %s', claim => {
+    const output = run(claim, { promiseCapture: 'off' });
+    expect(JSON.parse(output).decision).toBe('block');
+    expect(output).toContain('capability claim');
+    expect(output).toContain('UNKNOWN');
   });
 
   it('forces UNKNOWN instead of allowing an absence claim from an incomplete inventory', () => {
-    const output = run('Ruflo ADR Create is not installed.', { malformed: true });
+    const output = run('Ruflo ADR Create skill source files are not present.', { malformed: true });
     expect(JSON.parse(output).decision).toBe('block');
     expect(output).toContain('UNKNOWN');
     expect(output).toContain('inventory is incomplete');

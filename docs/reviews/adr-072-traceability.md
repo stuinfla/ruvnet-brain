@@ -2,6 +2,8 @@
 
 > Generated from `scripts/product-integrity-contract.mjs`; do not hand-edit.
 
+> This lists declared proof boundaries. A generated trace PASS verifies contract structure and exact source bytes; semantic review and behavior execution remain unverified.
+
 ## Processes
 
 | Process | Upstream | Owns | Contributes |
@@ -38,7 +40,7 @@
 |---|---|---|---|
 | S-1.essential | tests/unit/source-coverage.test.mjs (unit)<br>tests/unit/corpus-reconcile.test.mjs (unit) | tests/unit/source-coverage.test.mjs (unit)<br>tests/unit/corpus-reconcile.test.mjs (unit) | ruvnet-brain-source-observation<br>ruvnet-brain-corpus-candidate |
 | S-2.essential | tests/integration/build-bundle-fence.test.mjs (integration)<br>tests/unit/public-inventory.test.mjs (unit) | tests/integration/build-bundle-fence.test.mjs (integration)<br>tests/unit/public-inventory.test.mjs (unit) | ruvnet-brain-release-coverage |
-| S-3.essential | tests/unit/retrieval-canary.test.mjs (unit)<br>tests/unit/packed-retrieval-canary.test.mjs (unit) | tests/unit/retrieval-canary.test.mjs (unit)<br>tests/unit/packed-retrieval-canary.test.mjs (unit) | ruvnet-brain-retrieval-canary-plan<br>ruvnet-brain-retrieval-canary-receipt |
+| S-3.essential | tests/unit/retrieval-canary.test.mjs (unit)<br>tests/unit/candidate-host-evidence.test.mjs (unit)<br>tests/unit/candidate-retrieval-matrix.test.mjs (unit)<br>tests/unit/retrieval-result-boundary.test.mjs (unit) | tests/unit/retrieval-canary.test.mjs (unit)<br>tests/unit/candidate-host-evidence.test.mjs (unit)<br>tests/unit/candidate-retrieval-matrix.test.mjs (unit)<br>tests/unit/retrieval-result-boundary.test.mjs (unit) | ruvnet-brain-retrieval-canary-plan<br>ruvnet-brain-retrieval-canary-receipt |
 | S-4.essential | tests/unit/nightly-scheduler.test.mjs (unit)<br>tests/unit/nightly-two-run-proof.test.mjs (unit) | tests/unit/nightly-scheduler.test.mjs (unit)<br>tests/unit/nightly-two-run-proof.test.mjs (unit) | ruvnet-brain-refresh-run<br>ruvnet-brain-native-two-run-nightly-proof |
 | S-5.essential | tests/unit/update-storage-transaction.test.mjs (unit)<br>tests/unit/brain-profile.test.mjs (unit) | tests/unit/update-storage-transaction.test.mjs (unit)<br>tests/unit/brain-profile.test.mjs (unit) | ruvnet-brain-update-storage-transaction<br>ruvnet-brain-installed-profile |
 | S-6.essential | tests/unit/host-registry.test.mjs (unit)<br>tests/integration/dual-host-install.test.mjs (integration) | tests/unit/host-registry.test.mjs (unit)<br>tests/integration/dual-host-install.test.mjs (integration) | ruvnet-brain-host-registry<br>ruvnet-brain-public-verification-leaf |

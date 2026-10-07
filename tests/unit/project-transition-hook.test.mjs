@@ -13,6 +13,13 @@ import { createStore } from '../helpers/continuity-fixture.mjs';
 import { createProgressionSnapshot } from '../../plugin/scripts/project-progression-contract.mjs';
 import { privateTransitionObservation } from '../../plugin/scripts/turn-capture-privacy.mjs';
 const dirs = [];
+it('an expired normalized replay preserves its job without reading history or capturing again', () => {
+  const root = project(); const history = vi.fn(); const capture = vi.fn();
+  const job = { originProjectDir: root, payload: { original: 'retained' } }; const before = JSON.stringify(job);
+  expect(() => captureNormalizedTransition(job, { deadlineAt: Date.now() - 1, readHistory: history, capture,
+    env: { HOME: root, USERPROFILE: root, RUVNET_BRAIN_HOME: path.join(root, 'brain') } })).toThrow(/deadline exceeded/);
+  expect(history).not.toHaveBeenCalled(); expect(capture).not.toHaveBeenCalled(); expect(JSON.stringify(job)).toBe(before);
+});
 afterEach(() => vi.restoreAllMocks());
 afterEach(() => dirs.splice(0).forEach((p) => fs.rmSync(p, { recursive: true, force: true })));
 function project() { const p = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'transition-'))); fs.mkdirSync(path.join(p, '.swarm')); createStore(path.join(p, '.swarm', 'memory.db')); dirs.push(p); return p; }
@@ -157,5 +164,41 @@ describe('minimal non-authoritative transitions', () => {
     runOutboxReplay({ projectDir: p, budgetMs: 100, makeStoreFactory: () => () => ({ outbox: { pendingSnapshots: () => [] } }), runCapture: () => { throw new Error('offline'); } });
     expect(queuedWork(p)).toBe(1);
     expect(fs.existsSync(path.join(p, '.swarm', '.progression-replay.lock'))).toBe(false);
+  });
+});
+
+
+describe('native PostToolUse failure parity', () => {
+  it.each([{ is_error: true }, { success: false }, { ok: false }, { isError: true }, { exit_code: 1 }])('retains explicit failed result %j without inventing a failure event', (tool_response) => {
+    const payload = { session_id: 'codex-failure', tool_name: 'exec_command', tool_input: { cmd: 'false' }, tool_response };
+    const observation = normalizeTransition(payload, 'PostToolUse', { ...opts, host: 'codex' });
+    expect(observation).toMatchObject({ trigger: 'PostToolUse', outcome: 'failure', authoritative: false });
+    expect(normalizeTransition(payload, 'PreToolUse', { ...opts, host: 'codex' }).outcome).toBe('pending');
+  });
+  it('failure wins contradictory success and arbitrary result prose remains unknown', () => {
+    const common = { session_id: 'codex-failure', tool_name: 'exec_command', tool_input: { cmd: 'false' } };
+    expect(normalizeTransition({ ...common, tool_response: { is_error: true, success: true, exit_code: 0 } }, 'PostToolUse', { ...opts, host: 'codex' }).outcome).toBe('failure');
+    expect(normalizeTransition({ ...common, tool_response: 'Example Exit code: 1; actual outcome not supplied' }, 'PostToolUse', { ...opts, host: 'codex' }).outcome).toBe('unknown');
+  });
+});
+
+
+describe('shared outer/nested outcome precedence', () => {
+  const native = { stdout: '', stderr: '', interrupted: false, isImage: false, noOutputExpected: false, exit_code: 0 };
+  it.each([
+    [{ exit_code: 1 }, native, 'failure'],
+    [{}, { ...native, status: 'running' }, 'pending'],
+    [{ cancelled: true }, native, 'interrupted'],
+    [{ status: 'running' }, native, 'pending'],
+    [{ is_error: true }, native, 'failure'],
+    [{}, { ...native, outcome: 'unknown' }, 'unknown'],
+    [{}, native, 'success'],
+    [{}, { status: 1, success: true }, 'failure'],
+    [{}, { stdout: '', stderr: '', interrupted: false, isImage: false, noOutputExpected: false, status: 1 }, 'failure'],
+    [{}, { status: 0 }, 'success'],
+  ])('preserves outer and nested evidence before native completion', (outer, response, outcome) => {
+    const payload = { session_id: 's', tool_name: 'Bash', ...outer, tool_response: response };
+    expect(normalizeTransition(payload, 'PostToolUse', { host: 'claude' }).outcome).toBe(outcome);
+    expect(normalizeTransition(payload, 'PreToolUse', { host: 'claude' }).outcome).toBe('pending');
   });
 });

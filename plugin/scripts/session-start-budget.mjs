@@ -59,3 +59,21 @@ export function sumBudgetsMs(budgets = STAGE_BUDGETS_MS) {
 // constant, not folded silently into one stage's budget, so a boot-time regression shows up as its
 // own line instead of quietly eating an unrelated stage's headroom.
 export const MEASURED_NODE_BOOT_MS = 250;
+
+/** Use the registered host envelope, including Codex's shorter outer launcher. */
+export function sessionStartDeadlineAt({ host = 'claude', env = process.env, startedAt = Date.now(),
+  pluginRoot = path.resolve(HERE, '..') } = {}) {
+  const registry = path.join(pluginRoot, 'hooks', host === 'codex' ? 'codex-hooks.json' : 'hooks.json');
+  const hooks = JSON.parse(fs.readFileSync(registry, 'utf8'))?.hooks?.SessionStart;
+  const declaration = hooks?.flatMap(entry => entry.hooks || []).find(entry => /\bsession-start\b/.test(entry.command || ''));
+  if (!Number.isFinite(declaration?.timeout) || declaration.timeout <= 0) throw new Error('SessionStart host budget unavailable');
+  let envelope = declaration.timeout * 1000;
+  if (host === 'codex') {
+    const outer = /(?:^|\s)(\d+)\s+session-start(?:\s|$)/.exec(declaration.command);
+    if (!outer) throw new Error('SessionStart Codex launcher budget unavailable');
+    envelope = Math.min(envelope, Number(outer[1]));
+  }
+  const inherited = Number(env.RUVNET_SESSION_START_DEADLINE_AT);
+  return Math.floor(Math.min(startedAt + Math.max(1, envelope - MEASURED_NODE_BOOT_MS),
+    Number.isFinite(inherited) && inherited > 0 ? inherited : Infinity));
+}

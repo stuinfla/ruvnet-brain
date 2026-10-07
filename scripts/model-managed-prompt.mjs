@@ -260,7 +260,7 @@ function completionFrame(originalPrompt, workflow) {
 /** Every prompt reaches this boundary automatically. A failed plan/workflow never falls back to original-task execution. */
 export async function runManagedPrompt({ originalPrompt, prompt = originalPrompt, harness, nativeContext = {},
   projectRoot = process.cwd(), contextRefs = [], taskFacts, permissions = { apiBilling: false, write: false },
-  allowedWorktrees, deadline = Date.now() + 900000, maxAttempts = 6, maxConcurrent = 1,
+  allowedWorktrees, deadline = Date.now() + 900000, maxAttempts = 6, maxConcurrent = 5,
   primaryTurn, planTask = defaultPlanTask, executeWorkflow = defaultExecuteWorkflow,
   recallFn = canonicalRecall, captureOutcome = captureTurnOutcome, captureContext = captureNativeParentContext,
   signal, now = Date.now, monotonic = () => performance.now(), ...primaryOptions } = {}) {
