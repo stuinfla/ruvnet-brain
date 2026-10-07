@@ -102,7 +102,7 @@ describe('end-to-end: mark then gate, real subprocesses, real filesystem', () =>
   // rUv-named prompt is silent (tests/unit/grounding-turn-false-alarm.test.mjs pins both on real Stop points).
   it('CASE 1 — RuvNet-matching prompt, no search, answer asserts a rUv capability: the gate FIRES (blocks the stop)', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'grounding-e2e-'));
-    const env = { HOME: home, RUVNET_GROUNDING_TURN_DIR: path.join(home, 'grounding-turn') };
+    const env = { HOME: home, RUVNET_HOOK_HOST: 'claude', RUVNET_GROUNDING_TURN_DIR: path.join(home, 'grounding-turn') };
 
     const markResult = runNode(MARK, {
       hook_event_name: 'UserPromptSubmit', session_id: 'sess-1', prompt: 'build a ruflo agent for me',
@@ -118,14 +118,15 @@ describe('end-to-end: mark then gate, real subprocesses, real filesystem', () =>
     const out = JSON.parse(gateResult.stdout);
     expect(out.hookSpecificOutput.hookEventName).toBe('Stop');
     expect(out.hookSpecificOutput.additionalContext).toMatch(/search_ruvnet/);
-    expect(out.hookSpecificOutput.additionalContext).toMatch(/Do NOT end the turn/);
+    expect(out.hookSpecificOutput.additionalContext).toMatch(/UNKNOWN/);
+    expect(out.hookSpecificOutput.additionalContext).toMatch(/UNVERIFIED/);
     // The marker is consumed either way.
     expect(fs.existsSync(markerPathFor('sess-1', env.RUVNET_GROUNDING_TURN_DIR))).toBe(false);
   });
 
   it('CASE 1b — same prompt, no search, but the answer is a status report: SILENT (the 4.4.0 false alarm)', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'grounding-e2e-'));
-    const env = { HOME: home, RUVNET_GROUNDING_TURN_DIR: path.join(home, 'grounding-turn') };
+    const env = { HOME: home, RUVNET_HOOK_HOST: 'claude', RUVNET_GROUNDING_TURN_DIR: path.join(home, 'grounding-turn') };
     runNode(MARK, { hook_event_name: 'UserPromptSubmit', session_id: 'sess-1b', prompt: 'build a ruflo agent for me' }, env);
     const gateResult = runNode(GATE, {
       hook_event_name: 'Stop', session_id: 'sess-1b', stop_hook_active: false,
@@ -138,7 +139,7 @@ describe('end-to-end: mark then gate, real subprocesses, real filesystem', () =>
 
   it('CASE 2 — same prompt, but a real search_ruvnet call happened after it: the gate stays SILENT', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'grounding-e2e-'));
-    const env = { HOME: home, RUVNET_GROUNDING_TURN_DIR: path.join(home, 'grounding-turn') };
+    const env = { HOME: home, RUVNET_HOOK_HOST: 'claude', RUVNET_GROUNDING_TURN_DIR: path.join(home, 'grounding-turn') };
 
     runNode(MARK, { hook_event_name: 'UserPromptSubmit', session_id: 'sess-2', prompt: 'use ruflo memory' }, env);
 
@@ -154,7 +155,7 @@ describe('end-to-end: mark then gate, real subprocesses, real filesystem', () =>
 
   it('CASE 3 — prompt never touched the rUv stack: no marker is ever written, gate is silent', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'grounding-e2e-'));
-    const env = { HOME: home, RUVNET_GROUNDING_TURN_DIR: path.join(home, 'grounding-turn') };
+    const env = { HOME: home, RUVNET_HOOK_HOST: 'claude', RUVNET_GROUNDING_TURN_DIR: path.join(home, 'grounding-turn') };
 
     const markResult = runNode(MARK, {
       hook_event_name: 'UserPromptSubmit', session_id: 'sess-3', prompt: 'write a haiku about the ocean',
@@ -169,7 +170,7 @@ describe('end-to-end: mark then gate, real subprocesses, real filesystem', () =>
 
   it('loop safety: stop_hook_active suppresses the gate exactly like continuation-gate.mjs', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'grounding-e2e-'));
-    const env = { HOME: home, RUVNET_GROUNDING_TURN_DIR: path.join(home, 'grounding-turn') };
+    const env = { HOME: home, RUVNET_HOOK_HOST: 'claude', RUVNET_GROUNDING_TURN_DIR: path.join(home, 'grounding-turn') };
     runNode(MARK, { hook_event_name: 'UserPromptSubmit', session_id: 'sess-4', prompt: 'build a ruflo agent' }, env);
     const gateResult = runNode(GATE, { hook_event_name: 'Stop', session_id: 'sess-4', stop_hook_active: true }, env);
     expect(gateResult.status).toBe(0);

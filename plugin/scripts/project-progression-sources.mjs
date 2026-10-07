@@ -26,12 +26,21 @@ const sha256 = (value) => crypto.createHash('sha256').update(value).digest('hex'
 /** A stable digest for "there is genuinely nothing to digest here", never an empty string. */
 const ABSENT_DIGEST = sha256('ruvnet-brain:absent');
 
-function git(cwd, args) {
+function checkDeadline(deadlineAt, signal) {
+  if (signal?.aborted || Date.now() >= deadlineAt) throw new Error('restore deadline exceeded');
+}
+function git(cwd, args, deadlineAt = Infinity, signal) {
+  checkDeadline(deadlineAt, signal);
   try {
     return execFileSync('git', args, {
       cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024,
+      ...(Number.isFinite(deadlineAt) ? { timeout: Math.max(1, Math.floor(deadlineAt - Date.now())), killSignal: 'SIGKILL' } : {}),
     });
-  } catch { return null; }
+  } catch (error) {
+    checkDeadline(deadlineAt, signal);
+    if (error.code === 'ETIMEDOUT' && Number.isFinite(deadlineAt)) throw new Error('restore deadline exceeded');
+    return null;
+  }
 }
 
 /**
@@ -58,7 +67,8 @@ const SOURCE_PATHSPEC = ['--', '.', ...BRAIN_STATE_PATHSPEC_EXCLUDES];
  * digests describe a tree that existed at no single instant. A capture still happens — a slightly
  * smeared snapshot is worth far more than no snapshot — but it never claims to be atomic.
  */
-export function readSourceIdentity({ checkoutRoot, kind = 'git' } = {}) {
+export function readSourceIdentity({ checkoutRoot, kind = 'git', deadlineAt = Infinity, signal } = {}) {
+  checkDeadline(deadlineAt, signal);
   const worktreeId = sha256(checkoutRoot);
   if (kind !== 'git') {
     // A non-git project has no index, no HEAD and no diff. Say that in the fields rather than
@@ -73,18 +83,22 @@ export function readSourceIdentity({ checkoutRoot, kind = 'git' } = {}) {
     };
   }
 
-  const headBefore = git(checkoutRoot, ['rev-parse', 'HEAD'])?.trim() || 'unborn';
-  const branch = git(checkoutRoot, ['rev-parse', '--abbrev-ref', 'HEAD'])?.trim() || 'detached';
-  const tracked = git(checkoutRoot, ['ls-files', '-s', ...SOURCE_PATHSPEC]);
-  const untrackedList = git(checkoutRoot, ['ls-files', '--others', '--exclude-standard', ...SOURCE_PATHSPEC]);
-  const diff = git(checkoutRoot, ['diff', 'HEAD', ...SOURCE_PATHSPEC]);
-  const headAfter = git(checkoutRoot, ['rev-parse', 'HEAD'])?.trim() || 'unborn';
+  const headBefore = git(checkoutRoot, ['rev-parse', 'HEAD'], deadlineAt, signal)?.trim() || 'unborn';
+  const branch = git(checkoutRoot, ['rev-parse', '--abbrev-ref', 'HEAD'], deadlineAt, signal)?.trim() || 'detached';
+  const tracked = git(checkoutRoot, ['ls-files', '-s', ...SOURCE_PATHSPEC], deadlineAt, signal);
+  const untrackedList = git(checkoutRoot, ['ls-files', '--others', '--exclude-standard', ...SOURCE_PATHSPEC], deadlineAt, signal);
+  const diff = git(checkoutRoot, ['diff', 'HEAD', ...SOURCE_PATHSPEC], deadlineAt, signal);
+  const headAfter = git(checkoutRoot, ['rev-parse', 'HEAD'], deadlineAt, signal)?.trim() || 'unborn';
 
   const untrackedLines = String(untrackedList ?? '').split('\n').filter(Boolean).map((relative) => {
+    checkDeadline(deadlineAt, signal);
     let content;
+    if (Number.isFinite(deadlineAt) && fs.statSync(path.join(checkoutRoot, relative)).size > 64 * 1024 * 1024) throw new Error('source identity file exceeds bounded read');
     try { content = fs.readFileSync(path.join(checkoutRoot, relative)); } catch { return `unreadable ${relative}`; }
-    return `${sha256(content)} ${relative}`;
+    const digest = sha256(content); checkDeadline(deadlineAt, signal);
+    return `${digest} ${relative}`;
   });
+  checkDeadline(deadlineAt, signal);
 
   return {
     identity: {

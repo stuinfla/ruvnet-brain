@@ -313,7 +313,7 @@ const effectiveTriggers = command === null
 const seen = new Set();
 const candidates = [];
 for (const t of effectiveTriggers) {
-  for (const l of lessonsFor(t, lessons, { limit: 3 })) {
+  for (const l of lessonsFor(t, lessons.filter((l) => isHome(l) || isUniversal(l)), { limit: 3 })) {
     if (seen.has(l.id)) continue;
     // Away from home, only a lesson with cross-project evidence may speak.
     if (!isHome(l) && !isUniversal(l)) continue;

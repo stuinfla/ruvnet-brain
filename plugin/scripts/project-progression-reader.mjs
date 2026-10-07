@@ -176,7 +176,9 @@ function requireKey(value) {
  * @returns {{ listKeys: Function, readContent: Function, close: Function }}
  * @throws {ProgressionReaderUnavailable} when the CLI must be used instead.
  */
-export function openProgressionReader(dbPath) {
+export function openProgressionReader(dbPath, { deadlineAt = Infinity, signal } = {}) {
+  const checkDeadline = () => { if (signal?.aborted || Date.now() >= deadlineAt) throw new Error('restore deadline exceeded'); };
+  checkDeadline();
   const DatabaseSync = databaseSync();
   if (typeof DatabaseSync !== 'function') throw new ProgressionReaderUnavailable('node:sqlite is unavailable');
   if (typeof dbPath !== 'string' || !dbPath) throw new ProgressionReaderUnavailable('no canonical store path');
@@ -230,8 +232,15 @@ export function openProgressionReader(dbPath) {
   return {
     /** Every active key in `namespace`, sorted, deduplicated-by-error, bounded. */
     listKeys(namespace, { maxEntries = 10_000 } = {}) {
+      checkDeadline();
       if (!Number.isSafeInteger(maxEntries) || maxEntries < 1) throw new TypeError('maxEntries must be a positive safe integer');
-      const rows = query(listStatement, [namespace]);
+      let rows = [];
+      if (Number.isFinite(deadlineAt) || signal) {
+        for (const row of listStatement.iterate(namespace)) {
+          checkDeadline(); rows.push(row);
+          if (rows.length > maxEntries) throw new Error('progression enumeration exceeds its bound');
+        }
+      } else rows = query(listStatement, [namespace]);
       if (rows.length > maxEntries) throw new Error('progression enumeration exceeds its bound');
       const keys = [];
       const seen = new Set();
@@ -246,6 +255,7 @@ export function openProgressionReader(dbPath) {
 
     /** The exact stored value for one (namespace, key), or null when that row does not exist. */
     readContent(namespace, key) {
+      checkDeadline();
       requireKey(key);
       const rows = query(readStatement, [namespace, key]);
       if (rows.length === 0) return null;
@@ -275,10 +285,10 @@ export function openProgressionReader(dbPath) {
  * Returns `{ ok: true, value }`, or `{ ok: false, reason }` when the CLI must be used instead.
  * Structural errors are NOT converted — they propagate, by design (see ProgressionReaderUnavailable).
  */
-export function withProgressionReader(dbPath, work) {
+export function withProgressionReader(dbPath, work, options = {}) {
   let reader;
   try {
-    reader = openProgressionReader(dbPath);
+    reader = openProgressionReader(dbPath, options);
   } catch (error) {
     if (error instanceof ProgressionReaderUnavailable) return { ok: false, reason: error.reason };
     throw error;

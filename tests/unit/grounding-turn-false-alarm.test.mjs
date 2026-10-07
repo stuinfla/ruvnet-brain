@@ -30,7 +30,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 const { fixtures } = JSON.parse(fs.readFileSync(path.join(ROOT, 'tests', 'fixtures', 'grounding-turn-stop-points.json'), 'utf8'));
 const FALSE_ALARM = /no successful(?:\s|\\n)+search_ruvnet call/;
 const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'gtfa-'));
-const ENV = { ...process.env, HOME, RUVNET_HOOK_HOST: '', RUVNET_ASSERTION_SHADOW_LOG: path.join(HOME, 'shadow.jsonl'), RUVNET_KB_DIR: path.join(HOME, 'no-kb') };
+const ENV = { ...process.env, HOME, RUVNET_HOOK_HOST: 'claude', RUVNET_ASSERTION_SHADOW_LOG: path.join(HOME, 'shadow.jsonl'), RUVNET_KB_DIR: path.join(HOME, 'no-kb') };
 
 function transcriptOf(f) {
   const rows = [{ type: 'user', message: { role: 'user', content: '(prompt omitted from fixture)' } }];
@@ -179,7 +179,7 @@ describe.skipIf(process.platform === 'win32')('the real Stop process', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gtfa-e2e-'));
     const dir = path.join(home, '.claude', 'projects', 'p');
     fs.mkdirSync(dir, { recursive: true });
-    return { home, transcript: path.join(dir, 's.jsonl'), env: { ...ENV, HOME: home, RUVNET_GROUNDING_TURN_DIR: path.join(home, 'gt') } };
+    return { home, transcript: path.join(dir, 's.jsonl'), env: { ...ENV, HOME: home, RUVNET_HOOK_HOST: 'claude', RUVNET_GROUNDING_TURN_DIR: path.join(home, 'gt') } };
   }
   const node = (file, w, payload) => spawnSync(process.execPath, [file], { input: JSON.stringify(payload), env: w.env, encoding: 'utf8', timeout: 15_000 });
   function stop(w, message, rows) {
@@ -206,7 +206,7 @@ describe.skipIf(process.platform === 'win32')('the real Stop process', () => {
     expect(r.stdout).toMatch(FALSE_ALARM);
     expect(JSON.parse(r.stdout).hookSpecificOutput.additionalContext).toContain('Ruflo supports cross-project memory queries');
   });
-  it('LONG turn (tail cannot see the prompt): falls back to the stamps — FIRES with none, SILENT with a fresh one (no silent pass)', () => {
+  it('LONG turn (tail cannot see the prompt): remains UNKNOWN with no bound receipt, even with fresh global stamps', () => {
     const msg = 'Ruflo supports cross-project memory queries out of the box.';
     const longRows = (m) => {
       const rows = [{ type: 'user', message: { role: 'user', content: 'what does ruflo do?' } }];
@@ -220,8 +220,8 @@ describe.skipIf(process.platform === 'win32')('the real Stop process', () => {
     const none = world();
     const r1 = stop(none, msg, longRows(msg));
     expect(fs.statSync(none.transcript).size).toBeGreaterThan(2 * 1024 * 1024);
-    expect(r1.stdout, 'a long turn with no search evidence anywhere must not pass silently').toMatch(FALSE_ALARM);
-    expect(r1.stdout).toMatch(/grounding-stamp evidence/);
+    expect(r1.stdout, 'a long turn with unobservable search history must not pass silently').toMatch(/UNKNOWN/);
+    expect(r1.stdout).not.toMatch(FALSE_ALARM);
 
     const stamped = world();
     node(MARK, stamped.env && stamped, { hook_event_name: 'UserPromptSubmit', session_id: 'e1', prompt: 'what does ruflo do?' });
@@ -230,6 +230,6 @@ describe.skipIf(process.platform === 'win32')('the real Stop process', () => {
     fs.writeFileSync(path.join(g, '.any-search'), '');
     fs.writeFileSync(stamped.transcript, longRows(msg).map((r) => JSON.stringify(r)).join('\n') + '\n');
     const r2 = node(GATE, stamped, { hook_event_name: 'Stop', session_id: 'e1', transcript_path: stamped.transcript, last_assistant_message: msg, stop_hook_active: false });
-    expect(r2.stdout).toBe('');
+    expect(r2.stdout).toMatch(/UNKNOWN/);
   });
 });

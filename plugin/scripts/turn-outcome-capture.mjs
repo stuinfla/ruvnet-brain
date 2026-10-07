@@ -162,8 +162,10 @@ const consentMap = (value) => value !== null && typeof value === 'object'
   && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype
   && Object.values(value).every((setting) => setting === 'on' || setting === 'off');
 
-export function resolveTurnDb({ projectDir, brainHome, requestedStorePath, gitTimeoutMs = 1000, unknownOriginalPath = false } = {}) {
-  const resolved = resolveProjectStore({ projectDir, requestedStorePath, gitTimeoutMs });
+export function resolveTurnDb({ projectDir, brainHome, requestedStorePath, gitTimeoutMs = 1000, unknownOriginalPath = false, deadlineAt = Infinity, signal } = {}) {
+  if (signal?.aborted || Date.now() >= deadlineAt) throw new Error('restore deadline exceeded');
+  const resolved = resolveProjectStore({ projectDir, requestedStorePath, gitTimeoutMs, deadlineAt });
+  if (signal?.aborted || Date.now() >= deadlineAt) throw new Error('restore deadline exceeded');
   const capturePath = fs.realpathSync.native(projectDir);
   let policy = {};
   const file = brainHome && turnCapturePolicyFile(brainHome);
@@ -286,9 +288,9 @@ export function captureTurnOutcome({
   // the owner's and is never edited by the product, so where it is registered the product DEFERS
   // (RUVNET_TURN_CAPTURE=force keeps both). Codex turns are not seen by that Claude-only hook.
   const deferTo = event === 'Stop' && host === 'claude' && String(env.RUVNET_TURN_CAPTURE || '').toLowerCase() !== 'force'
-    && userLevelAgentdbHooks({ home }).turnCapture;
+    && userLevelAgentdbHooks({ home, event, projectDir, env }).turnCapture;
   if (deferTo) {
-    report.skipped = 'deferred: the user-level ~/.claude/hooks/agentdb-turn-capture.mjs records this turn (one writer per turn)';
+    report.skipped = 'deferred: an enabled user-level Stop writer explicitly targets the canonical turn store; actual native delivery is unproven';
     report.deferredToUserLevel = true;
   } else if (event === 'Stop') {
     const sessionKey = String(payload.session_id || payload.transcript_path || '');
@@ -471,7 +473,7 @@ export function turnRecordingStatus({ projectDir = process.cwd(), env = process.
   let target;
   try { target = resolveTurnDb({ projectDir, brainHome }); } catch { return { state: 'unknown', line: 'turn recording unavailable: canonical store resolution failed' }; }
   if (String(env.RUVNET_TURN_CAPTURE || '').toLowerCase() === 'off' || target.skipped) return { state: 'unknown', line: `turn recording n/a — ${target.skipped || 'RUVNET_TURN_CAPTURE=off'}` };
-  const deferred = String(env.RUVNET_HOOK_HOST || 'claude') === 'claude' && String(env.RUVNET_TURN_CAPTURE || '').toLowerCase() !== 'force' && userLevelAgentdbHooks({ home }).turnCapture;
+  const deferred = String(env.RUVNET_HOOK_HOST || 'claude') === 'claude' && String(env.RUVNET_TURN_CAPTURE || '').toLowerCase() !== 'force' && userLevelAgentdbHooks({ home, event: 'Stop', projectDir, env }).turnCapture;
   const notice = noticeOnFirstUse && !deferred ? firstTurnCaptureNotice({ target, brainHome, policyFile: turnCapturePolicyFile(brainHome), env }) : null;
   const status = (value) => ({ ...value, ...(notice ? { notice } : {}) });
   let rows = [];

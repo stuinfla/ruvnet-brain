@@ -12,6 +12,8 @@ import {
 export const PRODUCT_INTEGRITY_SCHEMA_VERSION = 1;
 export const PRODUCT_INTEGRITY_TEST_CLASSES = Object.freeze(['essential', 'supporting', 'obsolete']);
 export const PRODUCT_INTEGRITY_PROOF_STRENGTH = Object.freeze(['unit', 'integration', 'packed-artifact', 'candidate-host', 'public-byte']);
+const TRACE_SCOPE = 'contract-and-source-byte-inventory';
+const TRACE_UNTESTED = Object.freeze(['semantic-review', 'behavior-execution']);
 export const PRODUCT_INTEGRITY_PROCESSES = Object.freeze([
   { id: 'SourceCoverage', upstream: [] }, { id: 'CorpusGeneration', upstream: ['SourceCoverage'] },
   { id: 'ReleaseProjection', upstream: ['CorpusGeneration'] }, { id: 'RefreshLifecycle', upstream: ['ReleaseProjection'] },
@@ -119,19 +121,23 @@ export function productIntegrityGovernedPaths(contract = validateProductIntegrit
 export function buildProductIntegrityTrace({ root = '.', sourceSha, contract = validateProductIntegrityContract(), inventory } = {}) {
   if (!/^[a-f0-9]{40}$/.test(String(sourceSha || ''))) throw new Error('product integrity trace requires an exact source SHA');
   const validated = validateProductIntegrityContract(contract);
-  const unsigned = { schemaVersion: 1, kind: 'ruvnet-brain-product-integrity-trace', sourceSha, contractSha256: digest(validated), sourceScope: buildSourceScopeReceipt({ root, sourceSha, governedPaths: productIntegrityGovernedPaths(validated), inventory }), contract: validated, verdict: 'PASS', untested: [] };
+  const unsigned = { schemaVersion: 2, kind: 'ruvnet-brain-product-integrity-trace', sourceSha, contractSha256: digest(validated), sourceScope: buildSourceScopeReceipt({ root, sourceSha, governedPaths: productIntegrityGovernedPaths(validated), inventory }), contract: validated, verdict: 'PASS',
+    evidenceScope: TRACE_SCOPE, semanticReviewVerified: false, behaviorVerified: false, untested: [...TRACE_UNTESTED] };
   return { ...unsigned, traceSha256: digest(unsigned) };
 }
 export function validateProductIntegrityTrace(trace, { root = '.', sourceSha = trace?.sourceSha, inventory } = {}) {
   const { traceSha256, ...unsigned } = trace || {};
-  if (trace?.schemaVersion !== 1 || trace?.kind !== 'ruvnet-brain-product-integrity-trace' || trace.sourceSha !== sourceSha || trace.verdict !== 'PASS' || canonicalJson(trace.untested) !== '[]' || trace.contractSha256 !== digest(trace.contract) || traceSha256 !== digest(unsigned)) throw new Error('product integrity trace identity is invalid');
+  if (trace?.schemaVersion !== 2 || trace?.kind !== 'ruvnet-brain-product-integrity-trace' || trace.sourceSha !== sourceSha || trace.verdict !== 'PASS'
+    || trace.evidenceScope !== TRACE_SCOPE || trace.semanticReviewVerified !== false || trace.behaviorVerified !== false
+    || canonicalJson(trace.untested) !== canonicalJson(TRACE_UNTESTED) || trace.contractSha256 !== digest(trace.contract) || traceSha256 !== digest(unsigned)) throw new Error('product integrity trace identity is invalid or legacy');
   validateSourceScopeReceipt(trace.sourceScope, { root, inventory });
   const rebuilt = buildProductIntegrityTrace({ root, sourceSha, contract: trace.contract, inventory });
   if (canonicalJson(rebuilt) !== canonicalJson(trace)) throw new Error('product integrity trace differs from the exact source');
   return trace;
 }
 export function renderProductIntegrityTraceMarkdown(contract = validateProductIntegrityContract()) {
-  const lines = ['# ADR-072 generated traceability', '', '> Generated from `scripts/product-integrity-contract.mjs`; do not hand-edit.', '', '## Processes', '', '| Process | Upstream | Owns | Contributes |', '|---|---|---|---|'];
+  const lines = ['# ADR-072 generated traceability', '', '> Generated from `scripts/product-integrity-contract.mjs`; do not hand-edit.', '',
+    '> This lists declared proof boundaries. A generated trace PASS verifies contract structure and exact source bytes; semantic review and behavior execution remain unverified.', '', '## Processes', '', '| Process | Upstream | Owns | Contributes |', '|---|---|---|---|'];
   for (const row of contract.processes) lines.push(`| ${row.id} | ${row.upstream.join(', ') || '—'} | ${row.owns.join(', ') || '—'} | ${row.contributes.join(', ') || '—'} |`);
   lines.push('', '## Obligations', '', '| ID | Statement | Owner | Contributors |', '|---|---|---|---|');
   for (const row of contract.obligations) lines.push(`| ${row.id} | ${row.statement} | ${row.owner} | ${row.contributors.join(', ') || '—'} |`);
@@ -170,7 +176,8 @@ export function runProductIntegrityCli(argv = process.argv.slice(2), io = { stdo
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'); const sourceSha = valueAfter(argv, '--source-sha'); const out = valueAfter(argv, '--out');
   if (argv.includes('--trace') && sourceSha && out) { fs.writeFileSync(path.resolve(out), `${canonicalJson(buildProductIntegrityTrace({ root, sourceSha }))}\n`, { flag: 'wx', mode: 0o600 }); return 0; }
   const verify = valueAfter(argv, '--verify-trace');
-  if (verify && sourceSha) { const trace = JSON.parse(fs.readFileSync(path.resolve(verify), 'utf8')); validateProductIntegrityTrace(trace, { root, sourceSha }); io.stdout.write(`${canonicalJson({ verdict: 'PASS', traceSha256: trace.traceSha256 })}\n`); return 0; }
+  if (verify && sourceSha) { const trace = JSON.parse(fs.readFileSync(path.resolve(verify), 'utf8')); validateProductIntegrityTrace(trace, { root, sourceSha }); io.stdout.write(`${canonicalJson({ verdict: 'PASS', evidenceScope: TRACE_SCOPE,
+    semanticReviewVerified: false, behaviorVerified: false, traceSha256: trace.traceSha256 })}\n`); return 0; }
   throw new Error('invalid product integrity argument combination');
 }
 if (((() => { try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })())) { try { process.exitCode = runProductIntegrityCli(); } catch (error) { console.error(`[product-integrity-contract] ${error.message}`); process.exitCode = 1; } }

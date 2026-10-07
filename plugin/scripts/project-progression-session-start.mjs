@@ -32,6 +32,7 @@ const UNKNOWN_EXPLANATIONS = Object.freeze({
   'output-bound': 'The full checkpoint and a goal/action-preserving bounded summary do not fit the host context; no checkpoint state was injected.',
   'no-coherent-state': 'No coherent progression head survived validation.',
   'restore-failed': 'The exact structural restore did not complete.',
+  'deadline-exceeded': 'The SessionStart restore deadline expired; no project restoration is claimed and durable work is retained.',
   // MEASURED, and named rather than hidden. The in-process read path costs ~15ms for six snapshots;
   // the `ruflo memory` CLI fallback costs 3634ms for the same six and does NOT fit the 2500ms
   // restore deadline. Both produce an identical result, so this is a SPEED limit, not a correctness
@@ -74,16 +75,17 @@ function unknown(reason, { rowCount = null } = {}) {
  * UNKNOWN should speak, so it never throws and never falls back to a CLI spawn: a count we cannot
  * take cheaply is reported as null ("cannot tell"), which downgrades the banner rather than the run.
  */
-function committedRowCount(canonicalAgentDbPath) {
+function committedRowCount(canonicalAgentDbPath, options) {
   try {
     const result = withProgressionReader(canonicalAgentDbPath,
-      (reader) => reader.listKeys(PROGRESSION_NAMESPACE).length);
+      (reader) => reader.listKeys(PROGRESSION_NAMESPACE).length, options);
     return result.ok ? result.value : null;
   } catch { return null; }
 }
 
 function classify(error) {
   const message = String(error?.message ?? error ?? '');
+  if (/deadline exceeded|deadline exhausted/i.test(message)) return 'deadline-exceeded';
   if (/ruflo was not found|managed global ruflo/i.test(message)) return 'managed-ruflo-unavailable';
   if (/canonical agentdb initialization failed/i.test(message)) return 'initialization-failed';
   if (/structural pagination failed/i.test(message)
@@ -187,31 +189,44 @@ export function restoreProgressionForSession({
   storeFactory,
   maxOutputBytes = SESSION_CONTINUITY_LIMIT_BYTES,
   deadlineMs = SESSION_CONTINUITY_DEADLINE_MS,
+  deadlineAt: inheritedDeadlineAt = Infinity,
+  signal,
   writable = (projectRoot) => {
     try { fs.accessSync(projectRoot, fs.constants.W_OK); return true; } catch { return false; }
   },
 } = {}) {
+  const deadlineAt = Math.min(inheritedDeadlineAt, Date.now() + deadlineMs);
+  const checkDeadline = () => { if (signal?.aborted || Date.now() >= deadlineAt) throw new Error('restore deadline exceeded'); };
+  const boundedRunner = (binary, args, options) => {
+    checkDeadline();
+    const result = spawnSync(binary, args, { ...options,
+      timeout: Math.max(1, Math.floor(Math.min(options.timeout || Infinity, deadlineAt - Date.now()))), killSignal: 'SIGKILL' });
+    if (result.error) throw new Error('restore deadline exceeded');
+    checkDeadline(); return result;
+  };
   const projectDir = env.CLAUDE_PROJECT_DIR || cwd;
   try {
+    checkDeadline();
     if (operatorProgressionSuspension(env)) {
       // Turn recording is independent: suspension must not strand ordinary AgentDB capture.
       const turns = replayTurnQueue({ projectDir, env, home: env.HOME || os.homedir(), synchronous: true,
-        deadlineMs: Date.now() + deadlineMs });
+        deadlineMs: deadlineAt, runner: boundedRunner });
       return { status: 'unavailable', reason: 'operator-suspended', severity: 'info', pendingTurns: turns.pending,
         context: '[RuvNet Brain — PROJECT CONTINUITY UNAVAILABLE]\nAutomatic progression capture, replay and restore are operator-suspended. Evidence and queues are preserved. Ordinary AgentDB memory and explicit checkpoints remain available; no project progression was restored.' };
     }
-  } catch { return unknown('restore-failed'); }
+  } catch (error) { return unknown(classify(error)); }
   let resolution;
   try {
-    resolution = resolveProjectStore({ projectDir });
-  } catch {
-    return unknown('canonical-path');
+    resolution = resolveProjectStore({ projectDir, deadlineAt });
+    checkDeadline();
+  } catch (error) {
+    return unknown(/deadline|timed out/i.test(error.message) ? 'deadline-exceeded' : 'canonical-path');
   }
 
   if (!isProject(resolution)) return unavailable('non-project');
   if (!writable(resolution.projectRoot)) return unavailable('read-only');
   const initializing = !fs.existsSync(resolution.canonicalAgentDbPath);
-  const rowCount = initializing ? 0 : committedRowCount(resolution.canonicalAgentDbPath);
+  const rowCount = initializing ? 0 : committedRowCount(resolution.canonicalAgentDbPath, { deadlineAt, signal });
   const miss = (reason) => unknown(reason, { rowCount });
 
   const prefix = `${RESTORED_HEADER}\n`;
@@ -222,14 +237,7 @@ export function restoreProgressionForSession({
 
   let store;
   try {
-    const deadlineAt = Date.now() + deadlineMs;
-    const boundedRunner = (binary, args, options) => {
-      const remaining = deadlineAt - Date.now();
-      if (remaining < 1) throw new Error('restore deadline exceeded');
-      const result = spawnSync(binary, args, { ...options, timeout: Math.min(options.timeout, remaining) });
-      if (result.error) throw new Error('restore deadline exceeded');
-      return result;
-    };
+    checkDeadline();
     const makeStore = storeFactory ?? ((options) => new ProjectProgressionStore({
       ...options,
       env,
@@ -238,9 +246,11 @@ export function restoreProgressionForSession({
     store = makeStore({
       projectDir,
       requestedStorePath: resolution.canonicalAgentDbPath,
+      deadlineAt, signal,
     });
     const home = env.HOME || env.USERPROFILE || os.homedir();
     const turns = replayTurnQueue({ projectDir, env, home, synchronous: true, runner: boundedRunner, deadlineMs: deadlineAt });
+    checkDeadline();
     if (turns.pending > 0 || turns.failed > 0) {
       const failed = miss('outbox-replay');
       return { ...failed, pendingTurns: turns.pending,
@@ -263,7 +273,8 @@ export function restoreProgressionForSession({
     }
     if (!suspended) {
       const queue = drainCaptureQueue({ projectDir, budgetMs: Math.max(0, deadlineAt - Date.now()),
-        makeStoreFactory: () => () => store });
+        deadlineAt, signal, env, makeStoreFactory: () => () => store });
+      checkDeadline();
       if (queue.state !== 'settled') {
         const failed = miss('outbox-replay');
         return { ...failed, pendingReplay: queue.pending,
@@ -275,6 +286,7 @@ export function restoreProgressionForSession({
     let restored;
     try {
       restored = store.restoreLatest({ maxOutputBytes: payloadLimit, replayPending: !suspended, projectToBound: true });
+      checkDeadline();
     } catch (error) {
       if (store.pendingReplayCount?.() > 0) {
         const failed = miss('outbox-replay');
