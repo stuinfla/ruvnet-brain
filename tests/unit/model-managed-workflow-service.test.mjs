@@ -102,6 +102,18 @@ test('writing planner receives host-derived exact-file syntax checker without ge
   } finally { f.cleanup(); }
 });
 
+test('terminal approval capability reaches adapter closures without entering planner JSON', async () => {
+  const f = fixture(); try {
+    const plan = await planManagedTask(f.input, { route: async () => decision, runPlanner: planner(f) });
+    const approve = async () => false, seen = [];
+    await executeManagedWorkflow(plan.request, { approve, route: async () => decision, verifyDecision: () => {},
+      createAdapters: async ctx => { seen.push(ctx.approve); assert.equal(await ctx.approve({ tool_name: 'Write' }), false); return executor([])(ctx); },
+      recordReceipt: async () => ({ durable: true }) });
+    assert.ok(seen.length > 0); assert.ok(seen.every(value => value === approve));
+    assert.equal(Object.hasOwn(plan.request, 'approve'), false);
+  } finally { f.cleanup(); }
+});
+
 test('readonly composition runs real AK scheduler, actual artifact gates and independent reviewer then aggregates original tasks', async () => {
   const f = fixture(); try {
     const plan = await planManagedTask(f.input, { route: async () => decision, runPlanner: planner(f) });
@@ -346,4 +358,24 @@ test('portable checker boundary fixes native readonly profile and strips startup
         queueMicrotask(() => child.emit('close', 0, null)); return child;
       } });
   assert.equal(result.passed, true);
+});
+
+test('actual planner scope-denial summary reaches canonical receipts and independent reviewer input', async () => {
+  const f = fixture(), denial = { status: 'host-scope-denied', sessionId: 'actual-planner-session', toolUseId: 'guarded-tool',
+    toolName: 'Bash', inputSha256: 'a'.repeat(64), evidence: 'invocation PreToolUse deny response', input: 'must not persist' };
+  try {
+    const plan = await planManagedTask(f.input, { route: async () => decision, runPlanner: async input => ({ ...await planner(f)(input),
+      evidence: [denial, { status: 'completed' }] }) });
+    const summary = { sessionId: denial.sessionId, toolUseId: denial.toolUseId, toolName: denial.toolName,
+      inputSha256: denial.inputSha256, evidence: denial.evidence };
+    assert.deepEqual(plan.request.planner.scopeDenials, [summary]);
+    assert.equal(JSON.stringify(plan.request.planner).includes('must not persist'), false);
+    let reviewed = false; const receipts = [];
+    const result = await executeManagedWorkflow(plan.request, { route: async () => decision, verifyDecision: () => {},
+      createAdapters: executor([], state => { if (state.worker.role === 'reviewer') {
+        assert.ok(state.worker.reviewContract.includes(JSON.stringify([summary]))); reviewed = true;
+      } }), recordReceipt: async (_request, receipt) => { receipts.push(receipt); return { durable: true }; } });
+    assert.equal(result.status, 'complete'); assert.equal(reviewed, true);
+    assert.ok(receipts.length > 0); assert.ok(receipts.every(receipt => JSON.stringify(receipt.planner.scopeDenials) === JSON.stringify([summary])));
+  } finally { f.cleanup(); }
 });

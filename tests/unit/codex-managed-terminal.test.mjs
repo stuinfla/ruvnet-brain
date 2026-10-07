@@ -2,14 +2,20 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { PassThrough } from 'node:stream';
+import { PassThrough, Writable } from 'node:stream';
 import { EventEmitter } from 'node:events';
-import { parseCodexManagedArguments, runCodexManagedPrimaryTurn, launchCodexManagedTerminal } from '../../scripts/codex-managed-terminal.mjs';
+import { parseCodexManagedArguments, runCodexManagedPrimaryTurn, launchCodexManagedTerminal as actualLaunch, readCodexTerminalConfig, codexTerminalAuthority } from '../../scripts/codex-managed-terminal.mjs';
 import { runManagedPrompt } from '../../scripts/model-managed-prompt.mjs';
 const parent = '11111111-1111-4111-8111-111111111111', other = '22222222-2222-4222-8222-222222222222';
 const decision = { model: 'native-fixture', effort: 'medium', taskClass: 'medium' };
 const dirs = [];
 afterEach(() => { for (const dir of dirs.splice(0)) fs.rmSync(dir, { force: true, recursive: true }); });
+function effectiveConfig(cwd, changes = {}) {
+  return { config: { model_provider: 'openai', openai_base_url: null, approval_policy: 'never', sandbox_mode: 'read-only', projects: { [cwd]: { trust_level: 'trusted' } }, ...changes },
+    layers: [{ name: { type: 'project', dotCodexFolder: path.join(cwd, '.codex') }, disabledReason: null }] };
+}
+const launchCodexManagedTerminal = options => actualLaunch({ readConfig: async ({ cwd }) => effectiveConfig(cwd), ...options });
+
 function native(overrides = {}) {
   return { binary: '/actual/native-codex', prompt: 'Translate yes.', cwd: process.cwd(), env: {},
     decide: vi.fn(async () => decision), verifyDecision: vi.fn(), receipt: vi.fn(), output: vi.fn(),
@@ -114,12 +120,12 @@ describe('actual Codex terminal common prompt seam', () => {
       expect(primaryTurn).not.toHaveBeenCalled(); expect(planTask).not.toHaveBeenCalled();
     } finally { t.close(); }
   });
-  it('only explicit approved owner bypass grants guarded workspace writes', async () => {
+  it('explicit owner bypass grants only managed owned writes; primary remains read-only', async () => {
     const t = terminal(); let observed;
     try {
       await expect(launchCodexManagedTerminal({ binary: '/native', args: ['--dangerously-bypass-approvals-and-sandbox', 'Translate yes.'], ...t, env: {},
         managedPrompt: async options => { observed = options; throw Error('fixture-stop'); } })).rejects.toThrow('fixture-stop');
-      expect(observed).toMatchObject({ readOnly: false, permissions: { apiBilling: false, write: true } });
+      expect(observed).toMatchObject({ readOnly: true, permissions: { apiBilling: false, write: true } });
       expect(observed.args).toBeUndefined();
     } finally { t.close(); }
   });
@@ -146,4 +152,94 @@ it.each(['SIGTERM', 'SIGHUP'])('settles an idle terminal question on %s without 
     await expect(launchCodexManagedTerminal({ binary: '/native', ...t, env: {}, signalSource, managedPrompt })).rejects.toThrow(/abort/i);
     expect(managedPrompt).not.toHaveBeenCalled(); expect(signalSource.listenerCount(name)).toBe(0);
   } finally { t.close(); }
+});
+
+describe('actual native effective Codex authority boundary', () => {
+  it('accepts documented sandbox/approval spellings without forwarding bypass or model overrides', () => {
+    const parsed = parseCodexManagedArguments(['-s', 'read-only', '-a', 'never', 'Translate yes.']);
+    expect(parsed).toMatchObject({ sandbox: 'read-only', approvalPolicy: 'never' });
+    expect(() => parseCodexManagedArguments(['--sandbox', 'unknown'])).toThrow();
+    expect(() => parseCodexManagedArguments(['--ask-for-approval', 'unknown'])).toThrow();
+  });
+  it('fresh native write configuration authorizes only managed declared edits; explicit read-only wins', () => {
+    const cwd = fs.realpathSync(process.cwd()), parsed = parseCodexManagedArguments([], cwd);
+    const effective = effectiveConfig(cwd, { sandbox_mode: 'danger-full-access' });
+    expect(codexTerminalAuthority(effective, parsed)).toMatchObject({ write: true, sandbox: 'workspace-write', approvalPolicy: 'never' });
+    expect(codexTerminalAuthority(effective, { ...parsed, sandbox: 'read-only', ownerBypass: true }).write).toBe(false);
+    expect(codexTerminalAuthority(effectiveConfig(cwd), parsed).write).toBe(false);
+  });
+  it('trusted global authority needs no project config file; missing project layer does not manufacture trust', () => {
+    const cwd = fs.realpathSync(process.cwd()), parsed = parseCodexManagedArguments([], cwd);
+    const effective = effectiveConfig(cwd, { sandbox_mode: 'workspace-write' });
+    effective.layers = [{ name: { type: 'user' }, disabledReason: null }];
+    expect(codexTerminalAuthority(effective, parsed)).toMatchObject({ write: true, sandbox: 'workspace-write' });
+    effective.layers.push({ name: { type: 'project', dotCodexFolder: path.join(path.dirname(cwd), '.codex') }, disabledReason: 'untrusted' });
+    expect(codexTerminalAuthority(effective, parsed).write).toBe(false);
+    effective.layers.pop();
+    effective.config.projects = {};
+    expect(codexTerminalAuthority(effective, parsed).write).toBe(false);
+    effective.config.projects = { [path.dirname(cwd)]: { trust_level: 'trusted' }, [cwd]: { trust_level: 'untrusted' } };
+    expect(codexTerminalAuthority(effective, parsed).write).toBe(false);
+  });
+  it('never alone, untrusted/missing/disabled project or unknown permission profiles cannot grant writes', () => {
+    const cwd = fs.realpathSync(process.cwd()), parsed = parseCodexManagedArguments([], cwd);
+    for (const changes of [{ sandbox_mode: 'read-only' }, { sandbox_mode: 'workspace-write', projects: {} },
+      { sandbox_mode: 'workspace-write', projects: { [cwd]: { trust_level: 'untrusted' } } },
+      { sandbox_mode: 'workspace-write', permissions: { unknown: true } }, { sandbox_mode: 'workspace-write', default_permissions: 'unknown' }]) {
+      expect(codexTerminalAuthority(effectiveConfig(cwd, changes), parsed).write).toBe(false);
+    }
+    const disabled = effectiveConfig(cwd, { sandbox_mode: 'workspace-write' }); disabled.layers[0].disabledReason = 'untrusted';
+    expect(codexTerminalAuthority(disabled, parsed).write).toBe(false);
+    expect(() => codexTerminalAuthority({}, parsed)).toThrow(/facts unavailable/);
+    expect(() => codexTerminalAuthority(effectiveConfig(cwd, { sandbox_mode: 'unknown' }), parsed)).toThrow(/sandbox/);
+  });
+  it('most-specific project revocation wins, and unsupported native approval cannot silently become never', () => {
+    const cwd = fs.realpathSync(process.cwd()), parsed = parseCodexManagedArguments([], cwd);
+    expect(codexTerminalAuthority(effectiveConfig(cwd, { sandbox_mode: 'workspace-write', projects: {
+      [path.dirname(cwd)]: { trust_level: 'trusted' }, [cwd]: { trust_level: 'untrusted' },
+    } }), parsed).write).toBe(false);
+    expect(() => codexTerminalAuthority(effectiveConfig(cwd, { approval_policy: 'on-request' }), parsed)).toThrow(/cannot preserve/);
+    expect(codexTerminalAuthority(effectiveConfig(cwd, { approval_policy: 'on-request' }), { ...parsed, approvalPolicy: 'never' }).approvalPolicy).toBe('never');
+    expect(() => codexTerminalAuthority(effectiveConfig(cwd), { ...parsed, approvalPolicy: 'untrusted' })).toThrow(/cannot preserve/);
+  });
+  it('re-reads exact cwd/env config every turn and captures revocation without changing parent identity', async () => {
+    const t = terminal(), observed = [], readConfig = vi.fn(async ({ cwd, env }) => {
+      expect(env.OWNER_VALUE).toBe('retained');
+      return effectiveConfig(cwd, { sandbox_mode: observed.length === 0 ? 'danger-full-access' : 'read-only' });
+    });
+    try {
+      await launchCodexManagedTerminal({ binary: '/native', args: ['Translate yes.'], ...t, env: { OWNER_VALUE: 'retained' }, readConfig,
+        managedPrompt: async options => { observed.push(options); t.input.write(observed.length === 1 ? 'Explain this function.\n' : '/exit\n'); return { sessionId: parent }; } });
+      expect(readConfig).toHaveBeenCalledTimes(2);
+      expect(observed.map(value => value.permissions.write)).toEqual([true, false]);
+      expect(observed.every(value => value.readOnly === true)).toBe(true);
+      expect(observed[1].nativeContext).toEqual({ sessionId: parent, resume: true });
+    } finally { t.close(); }
+  });
+  it('missing metadata and routing refusal launch no task or unchecked fallback', async () => {
+    const t = terminal(), managedPrompt = vi.fn();
+    try {
+      await expect(launchCodexManagedTerminal({ binary: '/native', args: ['Translate yes.'], ...t, env: {}, readConfig: async () => ({}), managedPrompt })).rejects.toThrow(/facts unavailable/);
+      expect(managedPrompt).not.toHaveBeenCalled();
+      const f = native({ decide: async () => { throw Error('routing disabled'); } });
+      await expect(runCodexManagedPrimaryTurn(f)).rejects.toThrow(/routing disabled/); expect(f.executeNative).not.toHaveBeenCalled();
+    } finally { t.close(); }
+  });
+  it('metadata protocol reads config only with unchanged native home and retires before returning', async () => {
+    const child = new EventEmitter(), sent = [], cwd = fs.realpathSync(process.cwd());
+    child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.kill = vi.fn(() => queueMicrotask(() => child.emit('close', 0)));
+    child.stdin = new Writable({ write(data, _encoding, done) {
+      const row = JSON.parse(data.toString()); sent.push(row);
+      queueMicrotask(() => { if (row.id) child.stdout.write(JSON.stringify({ id: row.id, result: row.id === 1 ? {} : effectiveConfig(cwd) }) + '\n'); }); done();
+    } });
+    const spawnHost = vi.fn(() => child), env = { HOME: '/original/home', CODEX_HOME: '/original/native', OWNER: 'unchanged', OPENAI_API_KEY: 'drop' };
+    expect(await readCodexTerminalConfig({ binary: '/native', cwd, env, spawnHost })).toEqual(effectiveConfig(cwd));
+    expect(sent.map(row => row.method)).toEqual(['initialize', 'initialized', 'config/read']);
+    expect(sent.at(-1).params).toEqual({ cwd, includeLayers: true });
+    expect(spawnHost.mock.calls[0][2].env).toEqual({ HOME: env.HOME, CODEX_HOME: env.CODEX_HOME, OWNER: 'unchanged' });
+    expect(child.kill).toHaveBeenCalledOnce();
+    const spawnDenied = vi.fn(); const signal = AbortSignal.abort();
+    await expect(readCodexTerminalConfig({ binary: '/native', cwd, signal, spawnHost: spawnDenied })).rejects.toThrow(/unavailable/);
+    expect(spawnDenied).not.toHaveBeenCalled();
+  });
 });
