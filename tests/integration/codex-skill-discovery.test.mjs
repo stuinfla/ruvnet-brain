@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -6,13 +6,10 @@ import { spawnSync } from 'node:child_process';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const PLUGIN = path.join(ROOT, 'plugin');
-const CODEX = process.env.RUVNET_CODEX_BIN || 'codex';
-let wireCodexPlugin;
-
-beforeAll(async () => {
-  process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
-  ({ wireCodexPlugin } = await import('../../bin/install.mjs'));
-});
+// Discovery is native zero-model administration, not a routed conversation.
+process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
+const { wireCodexPlugin, codexAdministrativeProbeBinary } = await import('../../bin/install.mjs');
+const CODEX = process.env.RUVNET_CODEX_BIN || codexAdministrativeProbeBinary();
 
 function run(home, args) {
   return spawnSync(CODEX, args, {

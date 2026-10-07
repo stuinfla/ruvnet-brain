@@ -58,10 +58,13 @@ export function buildSourceScopeReceipt({ root, governedPaths, sourceSha = null,
   const missing = governed.filter((relative) => !inventorySet.has(relative));
   if (missing.length) throw new Error(`governed source is outside repository inventory: ${missing.join(', ')}`);
   const byPath = new Map(files.map((row) => [row.path, row]));
-  const governedFiles = governed.map((relative) => ({ ...byPath.get(relative), readComplete: true }));
+  // Hashing reads bytes; it does not inspect meaning or execute reviewed behavior.
+  const governedFiles = governed.map((relative) => ({ ...byPath.get(relative), bytesReadComplete: true }));
   const body = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     kind: 'ruvnet-brain-source-scope-receipt',
+    evidenceScope: 'complete-repository-byte-inventory',
+    semanticReview: { status: 'UNKNOWN', performed: false },
     sourceSha,
     repository: { fileCount: files.length, inventorySha256: digest(files) },
     governed: { fileCount: governedFiles.length, files: governedFiles },
@@ -70,9 +73,11 @@ export function buildSourceScopeReceipt({ root, governedPaths, sourceSha = null,
 }
 
 export function validateSourceScopeReceipt(receipt, { root, inventory = gitInventory } = {}) {
-  if (receipt?.schemaVersion !== 1 || receipt?.kind !== 'ruvnet-brain-source-scope-receipt'
+  if (receipt?.schemaVersion !== 2 || receipt?.kind !== 'ruvnet-brain-source-scope-receipt'
+    || receipt.evidenceScope !== 'complete-repository-byte-inventory'
+    || canonicalJson(receipt.semanticReview) !== canonicalJson({ status: 'UNKNOWN', performed: false })
     || !Number.isInteger(receipt.repository?.fileCount) || !Array.isArray(receipt.governed?.files)
-    || receipt.governed.files.some((row) => row.readComplete !== true)) throw new Error('source scope receipt is malformed');
+    || receipt.governed.files.some((row) => row.bytesReadComplete !== true || Object.hasOwn(row, 'readComplete'))) throw new Error('source scope receipt is malformed or legacy; rebuild byte inventory evidence');
   if (digest(payload(receipt)) !== receipt.receiptSha256) throw new Error('source scope receipt digest mismatch');
   const rebuilt = buildSourceScopeReceipt({ root, sourceSha: receipt.sourceSha,
     governedPaths: receipt.governed.files.map(({ path: relative }) => relative), inventory });

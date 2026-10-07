@@ -33,6 +33,8 @@ function runRegistered(hookId, input) {
 function seedSpine(version, scripts) {
   const root = path.join(HOME_DIR, 'versions', version);
   fs.mkdirSync(path.join(root, 'scripts'), { recursive: true });
+  // A real immutable generation carries its declaration-derived SessionStart deadline.
+  fs.cpSync(path.join(SOURCE_PLUGIN_ROOT, 'hooks'), path.join(root, 'hooks'), { recursive: true });
   for (const [name, body] of Object.entries(scripts)) fs.writeFileSync(path.join(root, 'scripts', name), body);
   fs.writeFileSync(path.join(HOME_DIR, 'active.json'), JSON.stringify({ generation: 1, version, codeRoot: path.join('versions', version) }));
   fs.writeFileSync(path.join(HOME_DIR, '.spine-seeded'), 'yes');
@@ -190,5 +192,63 @@ describe('registered native host boundary', () => {
     expect(invoke(root, null).stdout).toContain('host:unknown');
     expect(invoke(SOURCE_PLUGIN_ROOT, 'codex').stdout).toContain('host:codex');
     expect(invoke(SOURCE_PLUGIN_ROOT, 'invalid').stdout).toContain('host:invalid');
+  });
+});
+
+
+describe.skipIf(process.platform === 'win32')('native Claude grounding identity through owned shim', () => {
+  it('records a prompt-bound nonce and same-turn search stamp without an external host variable', () => {
+    const dir = path.join(HOME_DIR, 'markers');
+    const env = { ...process.env, HOME: HOME_DIR, USERPROFILE: HOME_DIR, RUVNET_BRAIN_HOME: HOME_DIR,
+      RUVNET_GROUNDING_TURN_DIR: dir, CLAUDE_PLUGIN_ROOT: SOURCE_PLUGIN_ROOT };
+    delete env.RUVNET_HOOK_HOST;
+    const payload = { cwd: HOME_DIR, session_id: 'native-claude', prompt_id: 'native-prompt', hook_event_name: 'UserPromptSubmit', prompt: 'Explain how ruflo works' };
+    const fire = (id, input, overrides = {}) => hostSpawnSync(process.execPath, [SHIM, id], {
+      env: { ...env, ...overrides }, input: JSON.stringify(input), encoding: 'utf8', timeout: 10000 });
+    const marked = fire('grounding-turn-mark', payload);
+    expect(marked.status, marked.stderr).toBe(0);
+    const file = path.join(dir, 'claude-native-claude.json');
+    const marker = JSON.parse(fs.readFileSync(file, 'utf8'));
+    expect(marker).toMatchObject({ host: 'claude', nativeKind: 'claude-prompt-id', sessionId: payload.session_id, turnId: payload.prompt_id });
+    expect(marker.nonce).toMatch(/^[a-f0-9-]{36}$/);
+    const stamped = fire('grounding-stamp', { ...payload, hook_event_name: 'PostToolUse',
+      tool_name: 'mcp__plugin_ruvnet-brain_ruvnet-brain__search_ruvnet', tool_input: { query: 'ruflo' },
+      tool_response: 'Searched 3 RuvNet repos (ruflo).\n#1 repo=ruflo\n----- full document (200 chars) -----\nreal source' });
+    expect(stamped.status, stamped.stderr).toBe(0);
+    const evidence = JSON.parse(fs.readFileSync(file + '.search-' + marker.nonce, 'utf8'));
+    expect(evidence).toMatchObject({ host: 'claude', turnId: payload.prompt_id, sessionId: payload.session_id, nonce: marker.nonce, searchCount: 1 });
+    const gate = fire('grounding-turn-gate', { ...payload, hook_event_name: 'Stop', last_assistant_message: 'Ruflo provides orchestration.' });
+    expect(gate.status, gate.stderr).toBe(0); expect(gate.stdout).toBe('');
+    for (const overrides of [{ RUVNET_HOOK_HOST: 'invalid' }, { RUVNET_HOOK_HOST: '' }, { CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT }, { CLAUDE_PLUGIN_ROOT: '' }]) {
+      const session = 'untrusted-' + Math.random().toString(36).slice(2);
+      expect(fire('grounding-turn-mark', { ...payload, session_id: session }, overrides).status).toBe(0);
+      expect(fs.existsSync(path.join(dir, 'claude-' + session + '.json'))).toBe(false);
+    }
+    const codex = fire('grounding-turn-mark', { ...payload, session_id: 'explicit-codex', turn_id: 'codex-turn' }, { RUVNET_HOOK_HOST: 'codex' });
+    expect(codex.status).toBe(0);
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'codex-explicit-codex.json'), 'utf8'))).toMatchObject({ host: 'codex', nativeKind: 'codex-turn-id', turnId: 'codex-turn' });
+    expect(fs.existsSync(path.join(dir, 'claude-explicit-codex.json'))).toBe(false);
+    const directEnv = { ...env }; delete directEnv.CLAUDE_PLUGIN_ROOT;
+    const direct = hostSpawnSync(process.execPath, [path.join(SOURCE_PLUGIN_ROOT, 'scripts', 'grounding-turn-mark.mjs')], {
+      env: directEnv, input: JSON.stringify({ ...payload, session_id: 'direct-unknown' }), encoding: 'utf8', timeout: 10000 });
+    expect(direct.status).toBe(0); expect(fs.existsSync(path.join(dir, 'claude-direct-unknown.json'))).toBe(false);
+  });
+});
+
+
+describe.skipIf(process.platform === 'win32')('grounding registered dispatch host transport', () => {
+  it.each([['grounding-turn-mark', 'grounding-turn-mark.mjs'], ['grounding-stamp', 'grounding-stamp.sh'], ['grounding-turn-gate', 'grounding-turn-gate.mjs']])('%s receives only the trusted Claude fallback', (id, file) => {
+    seedSpine('1.0.0', { [file]: file.endsWith('.sh') ? 'echo "host:${RUVNET_HOOK_HOST:-unknown}"\n' : 'console.log("host:"+(process.env.RUVNET_HOOK_HOST||"unknown"));\n' });
+    const env = { ...process.env, RUVNET_BRAIN_HOME: HOME_DIR, CLAUDE_PLUGIN_ROOT: SOURCE_PLUGIN_ROOT,
+      RUVNET_BRAIN_STATE_DIR: path.join(HOME_DIR, 'state') }; delete env.RUVNET_HOOK_HOST;
+    const invoke = overrides => hostSpawnSync(process.execPath, [SHIM,id], { env: { ...env,...overrides }, input: '{}', encoding:'utf8', timeout:10000 });
+    expect(invoke({}).stdout).toContain('host:claude');
+    expect(invoke({ RUVNET_HOOK_HOST:'codex' }).stdout).toContain('host:codex');
+    expect(invoke({ RUVNET_HOOK_HOST:'invalid' }).stdout).toContain('host:invalid');
+    expect(invoke({ RUVNET_HOOK_HOST:'' }).stdout).toContain('host:unknown');
+    expect(invoke({ CLAUDE_PLUGIN_ROOT:PLUGIN_ROOT }).stdout).toContain('host:unknown');
+    expect(invoke({ CLAUDE_PLUGIN_ROOT:'' }).stdout).toContain('host:unknown');
+    fs.mkdirSync(env.RUVNET_BRAIN_STATE_DIR); fs.writeFileSync(path.join(env.RUVNET_BRAIN_STATE_DIR,'brain-off'),'');
+    const off = invoke({}); expect(off.status).toBe(0); expect(off.stdout).toBe('');
   });
 });

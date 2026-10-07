@@ -351,9 +351,13 @@ export class ProjectProgressionStore {
     // The read-only fast path (project-progression-reader.mjs). READS ONLY: `ruflo memory store`
     // stays the sole writer of memory.db. Pass `reader: null` to force every read through the CLI.
     reader = withProgressionReader,
+    deadlineAt = Infinity,
+    signal,
   } = {}) {
     if (!rufloBinary) throw new Error(RUFLO_MISSING);
-    this.resolution = resolveProjectStore({ projectDir, requestedStorePath });
+    this.deadlineAt = deadlineAt;
+    this.signal = signal;
+    this.resolution = resolveProjectStore({ projectDir, requestedStorePath, deadlineAt });
     // Best effort: a cleanup that cannot run must never stop a capture or a restore.
     try { this.legacyDebris = cleanLegacyRufloDebris(path.dirname(this.resolution.canonicalAgentDbPath)); }
     catch (error) { this.legacyDebris = { removed: [], refused: [{ path: null, reason: error.message }] }; }
@@ -371,8 +375,9 @@ export class ProjectProgressionStore {
    * Structural errors propagate unchanged — only "I cannot answer authoritatively" falls back.
    */
   readFast(work) {
+    if (this.signal?.aborted || Date.now() >= this.deadlineAt) throw new Error('restore deadline exceeded');
     if (!this.reader) return { ok: false, reason: 'reader disabled' };
-    return this.reader(this.resolution.canonicalAgentDbPath, work);
+    return this.reader(this.resolution.canonicalAgentDbPath, work, { deadlineAt: this.deadlineAt, signal: this.signal });
   }
 
   run(args) {

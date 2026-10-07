@@ -61,7 +61,7 @@ describe('S3a: one event seen by two sessions is one event, never a quarantine',
     expect(journal.status()).toMatchObject({ pending: 0, quarantined: [], stuck: false });
   });
 
-  it('a row the OTHER session already stored under the same key commits this one; it is not a conflict', () => {
+  it('different payload bytes from another session cannot commit this original event despite identical kind/id', () => {
     const p = adoptedProject();
     const ruflo = fakeRuflo();
     const at = Date.now() - 60_000;
@@ -69,8 +69,10 @@ describe('S3a: one event seen by two sessions is one event, never a quarantine',
     journal.appendRecords([raw(sameCommit('session-a', at))]);
     const theirs = sameCommit('session-b', at);
     spawnSync(ruflo.bin, ['memory', 'store', '--key', eventKey(theirs), '--value', JSON.stringify(theirs), '--namespace', CONTINUITY_NAMESPACE, '--path', journal.db]);
-    expect(drain(journal, { ruflo: ruflo.bin, backoff: fastBackoff, sleep: noSleep })).toMatchObject({ committed: 1, remaining: 0 });
-    expect(journal.status()).toMatchObject({ quarantined: [], stuck: false });
+    expect(drain(journal, { ruflo: ruflo.bin, backoff: fastBackoff, sleep: noSleep })).toMatchObject({ committed: 0, failed: 1, remaining: 0 });
+    expect(journal.status()).toMatchObject({ quarantined: [eventKey(theirs)], stuck: true });
+    expect(journal.scan().events.get(eventKey(theirs)).event.session).toBe('session-a');
+    expect(journal.scan().committed.size).toBe(0);
   });
 });
 
@@ -247,7 +249,7 @@ describe('S4: the outbox stays bounded', () => {
     expect(reopened.scan().failures.get(failure.key)).toMatchObject({ attempts: 6, reason: 'wal-contention' });
     expect(reopened.needsCompaction()).toBe(false);
     expect(reopened.status()).toMatchObject({ problem: 'capacity-pressure', capacityPressure: true, dropped: 0 });
-    expect(recordingLine(reopened.status())).toMatch(/soft limit 2000; no pending events discarded/);
+    expect(recordingLine(reopened.status())).toMatch(/soft limit 2000; no pending or disputed events discarded/);
     const stored = new Map(); // Exact-content store/readback seam; no owner store or raw SQL mutation.
     const consent = isolatedDrainConsent(reopened);
     const store = vi.fn(({ key, value }) => { stored.set(key, value); return { status: 0 }; });
@@ -311,7 +313,7 @@ describe.skipIf(!canChmod)('a read-only .swarm never hangs a capture boundary (r
 
   // Re-review a6 NIT: a STALE append lock that cannot be removed (read-only .swarm) was retried with no pause —
   // a CPU-bound second until the deadline. The wait must sleep, not spin.
-  it('an unremovable stale lock is waited out with backoff (little CPU), then the append proceeds', () => {
+  it('an unremovable stale lock is waited out with backoff (little CPU), then the append is deferred', () => {
     const p = adoptedProject();
     const swarm = path.join(p.dir, '.swarm');
     fs.writeFileSync(path.join(swarm, 'continuity-events-outbox.jsonl'), '', { mode: 0o600 });
@@ -324,14 +326,15 @@ describe.skipIf(!canChmod)('a read-only .swarm never hangs a capture boundary (r
         const { ContinuityJournal } = await import(${JSON.stringify(`file://${JOURNAL}`)});
         const j = new ContinuityJournal({ projectRoot: ${JSON.stringify(p.dir)}, ruflo: null });
         const cpu = process.cpuUsage(); const t = Date.now();
-        j.appendRecords([{ type: 'event', key: 'k', digest: 'd', event: {} }]);
+        let error; try { j.appendRecords([{ type: 'event', key: 'k', digest: 'd', event: {} }]); } catch (e) { error = e.code; }
         const used = process.cpuUsage(cpu);
-        console.log(JSON.stringify({ wallMs: Date.now() - t, cpuMs: (used.user + used.system) / 1000 }));`], { encoding: 'utf8', timeout: 8_000 });
+        console.log(JSON.stringify({ error, wallMs: Date.now() - t, cpuMs: (used.user + used.system) / 1000 }));`], { encoding: 'utf8', timeout: 8_000 });
       expect(r.signal).toBeNull();
-      const { wallMs, cpuMs } = JSON.parse(r.stdout.trim());
+      const { error, wallMs, cpuMs } = JSON.parse(r.stdout.trim());
+      expect(error).toBe('EAGAIN');
       expect(wallMs).toBeGreaterThanOrEqual(900);   // it did wait for the lock's deadline …
       expect(cpuMs).toBeLessThan(400);               // … asleep, not spinning (a busy loop burns ~the whole second)
-      expect(fs.readFileSync(path.join(swarm, 'continuity-events-outbox.jsonl'), 'utf8')).toContain('"key":"k"');
+      expect(fs.readFileSync(path.join(swarm, 'continuity-events-outbox.jsonl'), 'utf8')).toBe('');
     } finally { restore(p); }
   });
 
@@ -348,5 +351,76 @@ describe.skipIf(!canChmod)('a read-only .swarm never hangs a capture boundary (r
       expect(r.status).toBe(0);
       expect(Date.now() - started).toBeLessThan(5_000); // < 3 s of capture work plus process start-up
     } finally { restore(p); }
+  });
+});
+
+describe('canonical receipt and append-lock truth', () => {
+  it('cancellation after durable capture reports queued/unavailable while preserving accepted events', () => {
+    const p = adoptedProject(), controller = new AbortController();
+    commit(p.dir, p.env, 'queued.txt', 'fix: retain accepted event on cancellation');
+    const status = ContinuityJournal.prototype.status;
+    vi.spyOn(ContinuityJournal.prototype, 'status').mockImplementation(function () { controller.abort(); return status.call(this); });
+    const result = captureContinuityEvents({ projectDir: p.dir, event: 'Stop', env: {}, ruflo: null, signal: controller.signal });
+    expect(result).toMatchObject({ recorded: 1, queued: true, launched: false, skipped: 'continuity capture aborted; unavailable' });
+    expect(new ContinuityJournal({ projectRoot: p.dir, ruflo: null }).pending()).toHaveLength(1);
+  });
+  it.each(['deadline', 'aborted'])('a %s capture defers before scanning or writing the canonical journal', kind => {
+    const p = adoptedProject(), controller = new AbortController();
+    if (kind === 'aborted') controller.abort();
+    const options = kind === 'deadline' ? { deadlineAt: Date.now() - 1 } : { signal: controller.signal };
+    const journal = new ContinuityJournal({ projectRoot: p.dir, ruflo: null, ...options });
+    expect(() => journal.captureConsent()).toThrow(/deadline.*unavailable/);
+    expect(() => journal.knownIds()).toThrow(/deadline.*unavailable/);
+    expect(() => journal.record([lesson('Never claim this was captured.')])).toThrow(/deadline.*unavailable/);
+    const captured = captureContinuityEvents({ projectDir: p.dir, event: 'Stop', env: {}, ruflo: null, ...options });
+    expect(captured).toMatchObject({ recorded: 0, launched: false });
+    expect(captured.skipped).toMatch(kind === 'deadline' ? /deadline.*unavailable/ : /aborted.*unavailable/);
+    expect(fs.existsSync(journal.path)).toBe(false);
+  });
+  it('same kind/id with changed summary and detail never acknowledges the original digest', () => {
+    const p = adoptedProject(), journal = new ContinuityJournal({ projectRoot: p.dir, ruflo: 'fixture' });
+    const [rec] = journal.record([lesson('Original canonical payload.')]);
+    const changed = { ...rec.event, summary: 'Changed payload', detail: { unreviewed: true } };
+    expect(drain(journal, { store: () => ({ status: 0 }), readBack: () => ({ key: rec.key, content: JSON.stringify(changed) }) }))
+      .toMatchObject({ committed: 0, failed: 1 });
+    expect(journal.scan().committed.size).toBe(0); expect(journal.scan().events.get(rec.key).event).toEqual(rec.event);
+    expect(journal.status().quarantined).toEqual([rec.key]);
+    const later = new ContinuityJournal({ projectRoot: p.dir, ruflo: 'fixture', now: () => Date.now() + QUARANTINE_REPORT_MS + DAY });
+    later.compact(); expect(later.scan().events.get(rec.key).event).toEqual(rec.event);
+    expect(later.status()).toMatchObject({ quarantined: [], retainedQuarantined: 1 });
+    expect(recordingLine(later.status())).toMatch(/unresolved.*disputed original event.*retained/);
+  });
+  it('an exact payload read from a different key cannot acknowledge this key', () => {
+    const p = adoptedProject(), journal = new ContinuityJournal({ projectRoot: p.dir, ruflo: 'fixture' });
+    const [rec] = journal.record([lesson('One canonical key.')]);
+    expect(drain(journal, { store: () => ({ status: 0 }), readBack: () => ({ key: 'foreign-key', content: JSON.stringify(rec.event) }) }))
+      .toMatchObject({ committed: 0, failed: 1 });
+    expect(journal.scan().committed.size).toBe(0);
+  });
+  it('held append lock defers both append and compaction without changing pending bytes', () => {
+    const p = adoptedProject(), journal = new ContinuityJournal({ projectRoot: p.dir, ruflo: null });
+    journal.record([lesson('Retain during lock contention.')]); const before = fs.readFileSync(journal.path);
+    const lock = path.join(journal.swarm, '.continuity-events-outbox.lock'); fs.writeFileSync(lock, `${process.pid} ${Date.now()}\n`);
+    expect(() => journal.appendRecords([{ type: 'notice', at: new Date().toISOString() }])).toThrow(/lock.*defer|defer.*lock/i);
+    expect(() => journal.compact()).toThrow(/lock.*defer|defer.*lock/i);
+    expect(fs.readFileSync(journal.path)).toEqual(before); expect(fs.existsSync(lock)).toBe(true);
+  });
+  it('a successor lock prevents compaction rename and is not removed by the old owner', () => {
+    const p = adoptedProject(), journal = new ContinuityJournal({ projectRoot: p.dir, ruflo: null });
+    journal.record([lesson('Preserve before ownership changes.')]); const before = fs.readFileSync(journal.path);
+    const lock = path.join(journal.swarm, '.continuity-events-outbox.lock');
+    expect(journal.compact({ beforeRename: () => fs.writeFileSync(lock, 'successor owner') }))
+      .toMatchObject({ compacted: false, reason: 'outbox append lock ownership changed; compaction deferred' });
+    expect(fs.readFileSync(journal.path)).toEqual(before); expect(fs.readFileSync(lock, 'utf8')).toBe('successor owner');
+  });
+  it('disputed originals count toward capacity pressure without deletion or repeated compaction', () => {
+    const p = adoptedProject(), journal = new ContinuityJournal({ projectRoot: p.dir, ruflo: 'fixture' });
+    const records = Array.from({ length: MAX_EVENT_RECORDS + 1 }, (_, index) => raw(lesson(`Disputed original ${index}.`)));
+    const old = new Date(Date.now() - QUARANTINE_REPORT_MS - DAY).toISOString();
+    journal.appendRecords(records.flatMap(rec => [rec, { type: 'quarantine', key: rec.key, at: old }]));
+    expect(journal.status()).toMatchObject({ pending: 0, retainedQuarantined: records.length, capacityPressure: true, problem: 'capacity-pressure' });
+    expect(recordingLine(journal.status())).toMatch(/retained backlog.*no pending or disputed events discarded/);
+    expect(journal.needsCompaction()).toBe(false); journal.compact();
+    expect(journal.scan().events.size).toBe(records.length);
   });
 });

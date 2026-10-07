@@ -4,7 +4,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { policiesFor } from '../../plugin/scripts/decision-gate.mjs';
 import { CONTEXT_EVENTS as ADAPTER_CONTEXT_EVENTS, ALL_HOST_EVENTS } from '../../plugin/scripts/codex-hook-events.mjs';
 import { continuityRegistrations } from '../../plugin/scripts/continuity-hook-policy.mjs';
 
@@ -81,7 +80,7 @@ function runAdapter({ shim, payload, args = ['probe'], env = {} }) {
     return spawnSync(process.execPath, [path.join(dir, 'codex-hook-adapter.mjs'), ...args], {
       input: JSON.stringify(payload),
       encoding: 'utf8',
-      env: { ...process.env, ...env },
+      env: { ...process.env, RUVNET_BRAIN_METER: '0', ...env },
       timeout: 15_000,
     });
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
@@ -184,99 +183,9 @@ describe('decision-gate write route and grounding-stamp are registered on Codex 
 
 // Historical adapter-parity proof retained for the dormant compatibility library. It is not a
 // product acceptance gate because neither host registers these adapters automatically.
-describe.skip('retired: the Codex manifest cannot silently lose a policy the gate owns', () => {
-  it('routes PreToolUse refusal through decision-gate on BOTH hosts', () => {
-    const cc = fs.readFileSync(CLAUDE_HOOKS, 'utf8');
-    const cx = fs.readFileSync(CODEX_HOOKS, 'utf8');
-    for (const sub of ['write', 'bash']) {
-      expect(cc, `Claude Code stopped routing PreToolUse "${sub}" through decision-gate`)
-        .toContain(`decision-gate ${sub}`);
-      expect(cx, `Codex does not route PreToolUse "${sub}" through decision-gate, so every policy `
-        + 'in the gate registry is unreachable there').toContain(`decision-gate ${sub}`);
-    }
-  });
-
-  it('wires the gate for EVERY sub-event Claude Code gates, not just the ones that existed today', () => {
-    // Derived from the Claude manifest, never listed here. The first version of this test required
-    // codex-hooks.json to ENUMERATE the gate's policies, and within the hour a policy was added to
-    // the registry and the enumeration went stale — which is the very maintenance burden that made
-    // the three 2026-08-13 policies Codex-invisible in the first place. Naming things by hand is the
-    // bug; a test that demands it by hand is the bug with a green tick next to it.
-    //
-    // The right invariant is about the MECHANISM: a sub-event routed through the gate on one host is
-    // routed through it on the other. Policies then travel for free, forever.
-    // From the COMMANDS, not the file text: both manifests carry prose that mentions the gate, and
-    // matching that would assert against documentation instead of against what runs.
-    const commandsOf = (file) => Object.values(read(file).hooks ?? {})
-      .flatMap((groups) => (groups ?? []).flatMap((g) => (g.hooks ?? []).map((h) => String(h.command))));
-    const subEvents = [...new Set(commandsOf(CLAUDE_HOOKS)
-      .flatMap((c) => [...c.matchAll(/decision-gate (\w+)/g)].map((m) => m[1])))];
-    const cx = commandsOf(CODEX_HOOKS).join('\n');
-    expect(subEvents.length, 'Claude Code routes nothing through decision-gate — nothing to compare')
-      .toBeGreaterThan(1);
-    const missing = subEvents.filter((s) => !cx.includes(`decision-gate ${s}`));
-    expect(missing, 'Claude Code gates these PreToolUse sub-events and Codex does not, so every '
-      + 'policy the gate holds for them is unreachable on Codex').toEqual([]);
-
-    // And the registry must be non-empty for each, or the gate is a pass-through and the parity is
-    // real but worthless. Imported from decision-gate.mjs so it tracks the live registry.
-    for (const sub of subEvents) {
-      expect(policiesFor(sub).length, `decision-gate has no policies for "${sub}"`).toBeGreaterThan(0);
-    }
-  });
-});
-
-describe.skip('retired: every Claude Code hook is registered on Codex or declared absent with a host reason', () => {
-  it('has no undeclared divergence in either direction', () => {
-    const claude = hookIds(CLAUDE_HOOKS);
-    const codex = hookIds(CODEX_HOOKS);
-    expect(claude.size, 'no Claude hook ids parsed — the derivation is broken').toBeGreaterThan(8);
-    expect(codex.size, 'no Codex hook ids parsed — the derivation is broken').toBeGreaterThan(8);
-
-    // The declaration lives in `description`, because MEASURED on a live Codex 0.147.0 session that
-    // is the only key besides `hooks` this file may carry: an extra top-level object produced
-    // `unknown field \`hostParity\`, expected \`description\` or \`hooks\`` and Codex dropped the
-    // ENTIRE manifest — every hook off, on one warning line. So the record is prose, and this reads it.
-    const description = String(read(CODEX_HOOKS).description ?? '');
-    // decision-gate subsumes the individual refusal policies on both hosts, so a policy id is
-    // "registered" wherever the gate is.
-    const gatePolicies = new Set([...policiesFor('write'), ...policiesFor('bash')].map((p) => p.id));
-    const reachable = (ids) => new Set([...ids, ...(ids.has('decision-gate') ? gatePolicies : [])]);
-
-    const onCodex = reachable(codex);
-    const onClaude = reachable(claude);
-
-    const undeclared = [...onClaude].filter((id) => !onCodex.has(id)
-      && !new RegExp(`DECLARED ABSENT — ${id}\\b`).test(description));
-    expect(undeclared, 'these run on Claude Code and not on Codex, with nothing in '
-      + 'codex-hooks.json hostParity.declaredAbsent saying why').toEqual([]);
-  });
-
-  it('rejects a declaration that does not describe a real divergence', () => {
-    // The escape hatch must cost as much as the wiring, or it becomes the cheaper option.
-    const claude = hookIds(CLAUDE_HOOKS);
-    const codex = hookIds(CODEX_HOOKS);
-    const description = String(read(CODEX_HOOKS).description ?? '');
-    const declared = [...description.matchAll(/DECLARED ABSENT — ([a-z][a-z0-9-]+)([\s\S]*?)(?=\n\n|$)/g)];
-    expect(declared.length, 'no declaration parsed — either none exists or the format drifted and '
-      + 'this check has quietly stopped checking').toBeGreaterThan(0);
-    for (const [, hook, reason] of declared) {
-      expect(claude.has(hook), `"${hook}" is declared absent but Claude Code does not register it `
-        + 'either — the declaration describes nothing').toBe(true);
-      expect(codex.has(hook), `"${hook}" is declared absent but Codex registers it`).toBe(false);
-      expect(reason.trim().length, `"${hook}" is declared absent with no host reason`)
-        .toBeGreaterThan(60);
-    }
-  });
-
-  it('carries ONLY the two top-level keys Codex will accept', () => {
-    // MEASURED on a live Codex 0.147.0 session, and the reason this assertion exists at all: a third
-    // top-level key made Codex log `unknown field \`hostParity\`, expected \`description\` or
-    // \`hooks\`` and discard the entire manifest — all 16 hooks off, no error, no exit code, one
-    // warning line. The blast radius of the tidy-metadata habit is every hook on the host.
-    expect(Object.keys(read(CODEX_HOOKS)).sort()).toEqual(['description', 'hooks']);
-  });
-});
+// Retired pre-native-parity tests removed: their bash-route and description-only
+// assumptions conflict with current native contracts. Active contract, snapshot and
+// per-event adapter tests below/above retain the relevant protections.
 
 describe('the adapter emits output Codex will accept, per event', () => {
   /**
@@ -490,5 +399,58 @@ describe('a multi-file Codex patch is shown to the walls file by file', () => {
     expect(r.status).toBe(0);
     expect(r.stderr).toBe('');
     expect(Date.now() - started, 'the fan-out ignored its budget').toBeLessThan(3_000);
+  });
+});
+
+
+describe('supported native compaction continuity parity', () => {
+  it('registers the existing snapshot handler on both native PreCompact boundaries', () => {
+    for (const host of ['claude', 'codex']) {
+      const registrations = continuityRegistrations(host);
+      expect(registrations.some((row) => row.event === 'PreCompact' && row.id === 'session-snapshot')).toBe(true);
+      const manifest = read(host === 'claude' ? CLAUDE_HOOKS : CODEX_HOOKS);
+      const handlers = manifest.hooks.PreCompact.flatMap((group) => group.hooks);
+      expect(handlers).toHaveLength(1);
+      expect(handlers[0].command).toContain('session-snapshot PreCompact');
+      expect(handlers[0].timeout).toBe(10);
+    }
+    expect(read(CODEX_HOOKS).hooks).not.toHaveProperty('PostToolUseFailure');
+  });
+});
+
+describe('bounded whole-patch policy integrity', () => {
+  it('refuses a patch whose later path cannot be inspected within the policy budget', () => {
+    const patch = '*** Begin Patch\n*** Update File: first.mjs\n@@\n-a\n+b\n*** Update File: protected-tail.mjs\n@@\n-a\n+b\n*** End Patch';
+    const result = runAdapter({ args: ['decision-gate'],
+      payload: { hook_event_name: 'PreToolUse', cwd: os.tmpdir(), session_id: 'scope-budget', tool_name: 'apply_patch', tool_input: patch },
+      shim: 'process.stdin.resume();process.stdin.on("end",()=>{const end=Date.now()+160;while(Date.now()<end){};});',
+      env: { RUVNET_CODEX_BUDGET_MS: '200' },
+    });
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('inspection incomplete');
+    expect(result.stderr).toContain('protected-tail.mjs');
+  });
+  it('refuses an unparseable patch without presenting it as inspected', () => {
+    const result = runAdapter({ args: ['decision-gate'], shim: ECHO_PAYLOAD,
+      payload: { hook_event_name: 'PreToolUse', cwd: os.tmpdir(), tool_name: 'apply_patch', tool_input: 'unparseable patch' } });
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('inspection incomplete');
+  });
+});
+
+
+describe('typed advisory fanout context budget', () => {
+  it('enforces one UTF8 advisory allocation after merging a multi-file patch without private wire fields', () => {
+    const frame = {kind:'brain-owned-context-blocks',schemaVersion:1,handler:'decision-gate',event:'PreToolUse',blocks:[{id:'advice-fixed',text:'é'.repeat(1800),critical:false},{id:'guard-fixed',text:'permission guard preserved',critical:true}]};
+    const r=runAdapter({args:['decision-gate'],env:{RUVNET_CODEX_BUDGET_MS:'5000'},shim:`process.stdin.resume();process.stdin.on('end',()=>process.stdout.write(${JSON.stringify(JSON.stringify(frame))}));`,payload:{session_id:'frame-fanout',cwd:os.tmpdir(),hook_event_name:'PreToolUse',tool_name:'apply_patch',tool_input:'*** Begin Patch\n*** Update File: first.mjs\n@@\n-a\n+b\n*** Update File: second.mjs\n@@\n-a\n+b\n*** End Patch'}});
+    expect(r.status).toBe(0);const output=JSON.parse(r.stdout);
+    expect(output.kind).toBeUndefined();expect(output.blocks).toBeUndefined();
+    expect(output.hookSpecificOutput.additionalContext.match(/permission guard preserved/g)).toHaveLength(1);
+    expect(output.hookSpecificOutput.additionalContext.match(/é/g)).toHaveLength(1800);
+  });
+  it('preserves a native refusal without framing, truncation or extra context', () => {
+    const reason='native permission denied '+ 'é'.repeat(5000);
+    const r=runAdapter({args:['decision-gate'],shim:`process.stdin.resume();process.stdin.on('end',()=>{process.stderr.write(${JSON.stringify(reason)});process.exit(2)});`,payload:{hook_event_name:'PreToolUse',tool_name:'Edit',tool_input:{file_path:'/tmp/owned.mjs'}}});
+    expect(r.status).toBe(2);expect(r.stderr).toBe(reason);expect(r.stdout).toBe('');
   });
 });

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ProgressionReaderUnavailable,
   canonicalReaderSupported,
@@ -47,10 +47,26 @@ function fixtureStore(rows, { extraColumn = null, userVersion = null } = {}) {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
 
 describe('canonical progression reader', () => {
+  it('stops a large namespace at its shared deadline without returning a truncated success or changing bytes', () => {
+    const file = fixtureStore(Array.from({ length: 3000 }, (_, i) => ({ key: `history-${String(i).padStart(5, '0')}`, content: '{}' })));
+    const before = fs.readFileSync(file);
+    let clock = 1000;
+    const time = vi.spyOn(Date, 'now').mockImplementation(() => clock++);
+    expect(() => withProgressionReader(file, reader => reader.listKeys(NAMESPACE), { deadlineAt: 1010 })).toThrow(/deadline exceeded/);
+    expect(time.mock.calls.length).toBeLessThan(30);
+    time.mockRestore();
+    expect(fs.readFileSync(file)).toEqual(before);
+    expect(withProgressionReader(file, reader => reader.listKeys(NAMESPACE)).value).toHaveLength(3000);
+  });
+  it('refuses an already cancelled restore before opening its store', () => {
+    const controller = new AbortController(); controller.abort();
+    expect(() => withProgressionReader('/absent/store', () => 'must not run', { signal: controller.signal })).toThrow(/deadline exceeded/);
+  });
   it('is supported on this Node build', () => {
     expect(canonicalReaderSupported()).toBe(true);
   });

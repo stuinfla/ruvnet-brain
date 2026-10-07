@@ -60,8 +60,10 @@ const blockingHooks = new Set([
 const DETACHED_HOOKS = new Set(['learn-flush']);
 
 /** THE BUDGET IS DERIVED FROM WHAT THE HOOK MEASURABLY COSTS, never from what looks tidy. */
-function timeoutFor(hookId, event = '') {
+function timeoutFor(hookId, event = '', sessionBudgetMs = 0) {
   const override = Number(process.env.RUVNET_CODEX_HOOK_TIMEOUT_MS);
+  if (hookId === 'session-start') return Math.floor(Math.min(sessionBudgetMs,
+    Number.isFinite(override) && override > 0 ? override : Infinity));
   if (Number.isFinite(override) && override > 0) return override;
   // decision-gate's own internal budget is 4000ms (RUVNET_DECISION_BUDGET_MS) and it is allowed to
   // spend all of it: measured 986–4015ms across ten runs in a project this plugin does not own. A
@@ -198,17 +200,35 @@ if (DETACHED_HOOKS.has(hookId)) {
   process.exit(0);
 }
 
-const budgetMs = timeoutFor(hookId, process.argv[3] || '');
+let sessionDeadlineAt;
+if (hookId === 'session-start') {
+  try {
+    const { sessionStartDeadlineAt } = await import(path.join(root, 'scripts', 'session-start-budget.mjs'));
+    sessionDeadlineAt = sessionStartDeadlineAt({ host: 'codex', env: process.env, startedAt: performance.timeOrigin });
+  } catch {
+    process.stderr.write('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN] SessionStart host budget unavailable; restoration was not attempted.\n');
+    process.exit(0);
+  }
+}
+const budgetMs = timeoutFor(hookId, process.argv[3] || '', Math.max(0, (sessionDeadlineAt || 0) - Date.now()));
+if (hookId === 'session-start' && budgetMs < 1) {
+  process.stderr.write('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN] SessionStart deadline exhausted before restoration.\n');
+  process.exit(0);
+}
 const result = spawnSync(process.execPath, [adapter, ...process.argv.slice(2)], {
   input,
   encoding: 'utf8',
   // The adapter may fan one multi-file patch out into several body runs, and only this process knows
   // when the axe falls. Hand the budget down so it can stop and fail open instead of being killed
   // mid-loop with nothing written — a SIGKILL here is invisible to the host and to the user.
-  env: { ...process.env, RUVNET_CODEX_BUDGET_MS: String(budgetMs) },
+  env: { ...process.env, RUVNET_CODEX_BUDGET_MS: String(budgetMs),
+    ...(sessionDeadlineAt ? { RUVNET_SESSION_START_DEADLINE_AT: String(Math.min(sessionDeadlineAt, Date.now() + budgetMs)) } : {}) },
   timeout: budgetMs,
   killSignal: 'SIGKILL',
 });
+if (hookId === 'session-start' && result.status !== 0) {
+  process.stderr.write('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN] SessionStart did not complete inside its host deadline; no restoration success is claimed.\n');
+}
 
 // A broken optional Brain hook must never degrade the host. The only non-zero status that carries
 // product meaning is an intentional exit-2 refusal from a hook whose contract is blocking.

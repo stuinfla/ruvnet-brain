@@ -15,6 +15,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { digestCanonical } from './project-progression-contract.mjs';
@@ -56,7 +57,8 @@ const ms = (iso) => Date.parse(iso || '') || 0;
 
 export class ContinuityJournal {
   /** `ruflo`: the binary (string), null = not installed, undefined = resolve it. */
-  constructor({ projectRoot, projectDir = projectRoot, env = process.env, fsync = fs.fsyncSync, now = Date.now, ruflo } = {}) {
+  constructor({ projectRoot, projectDir = projectRoot, env = process.env, fsync = fs.fsyncSync, now = Date.now, ruflo,
+    deadlineAt = Infinity, signal } = {}) {
     if (typeof projectRoot !== 'string' || !projectRoot) throw new TypeError('projectRoot is required');
     this.projectRoot = projectRoot;
     this.projectDir = projectDir;
@@ -67,38 +69,63 @@ export class ContinuityJournal {
     this.fsync = fsync;
     this.now = now;
     this.ruflo = ruflo === undefined ? resolveRuflo() : ruflo;
+    this.deadlineAt = deadlineAt;
+    this.signal = signal;
+  }
+
+  requireBudget() {
+    if (!this.signal && this.deadlineAt === Infinity) return;
+    if (this.signal?.aborted || Date.now() >= this.deadlineAt) throw new Error('continuity capture deadline exceeded or aborted; unavailable');
   }
 
   /** Short exclusive section shared by every appender and the compactor (never held across a store call). */
   withAppendLock(fn) {
     const lock = path.join(this.swarm, APPEND_LOCK_NAME);
-    const deadline = Date.now() + APPEND_LOCK_WAIT_MS;
+    this.requireBudget();
+    const deadline = Math.min(Date.now() + APPEND_LOCK_WAIT_MS, this.deadlineAt);
+    const token = `${process.pid} ${Date.now()} ${randomUUID()}\n`;
+    const owns = () => {
+      try { return !fs.lstatSync(lock).isSymbolicLink() && fs.readFileSync(lock, 'utf8') === token; } catch { return false; }
+    };
     let held = false;
     // Only EEXIST is retried, and every iteration is deadline-bounded: EACCES/EROFS/ENOSPC used to spin at 100% CPU
     // forever (re-review B2). Any other error is the outbox's own failure: thrown, reported as "outbox write failed".
     for (;;) {
-      try { fs.writeFileSync(lock, `${process.pid} ${Date.now()}\n`, { flag: 'wx', mode: 0o600 }); held = true; break; } catch (error) {
+      this.requireBudget();
+      try { fs.writeFileSync(lock, token, { flag: 'wx', mode: 0o600 }); held = true; break; } catch (error) {
         if (error?.code !== 'EEXIST') throw error;
       }
       let stale = false;
-      try { stale = Date.now() - fs.statSync(lock).mtimeMs > APPEND_LOCK_STALE_MS; } catch { /* vanished: retry once more below */ }
+      try {
+        const st = fs.lstatSync(lock), body = fs.readFileSync(lock, 'utf8');
+        const pid = Number(body.trim().split(' ')[0]);
+        let dead = false;
+        if (Number.isSafeInteger(pid) && pid > 0) try { process.kill(pid, 0); } catch (error) { dead = error.code === 'ESRCH'; }
+        stale = !st.isSymbolicLink() && dead && Date.now() - st.mtimeMs > APPEND_LOCK_STALE_MS
+          && fs.readFileSync(lock, 'utf8') === body;
+      } catch { /* unavailable ownership is not permission to remove a lock */ }
       let removed = false; // a stale lock we cannot remove is waited out ASLEEP, never spun on (re-review a6 NIT)
       if (stale) { try { fs.rmSync(lock, { force: true }); removed = true; } catch { /* not ours to remove: wait it out */ } }
-      // Waited long enough: append anyway (durability first); the compactor's size re-check keeps it from being lost.
-      if (Date.now() >= deadline) break;
+      if (Date.now() >= deadline) throw Object.assign(new Error('outbox append lock unavailable; mutation deferred'), { code: 'EAGAIN' });
       if (!removed) pause(5);
     }
-    try { return fn(); } finally { if (held) fs.rmSync(lock, { force: true }); }
+    try {
+      if (!owns()) throw Object.assign(new Error('outbox append lock ownership changed; mutation deferred'), { code: 'EAGAIN' });
+      return fn(owns);
+    } finally { if (held && owns()) fs.rmSync(lock, { force: true }); }
   }
 
   /** Append records with ONE fsync. Refuses to create `.swarm` (absence = project did not adopt). */
   appendRecords(records) {
+    this.requireBudget();
     if (!records.length) return 0;
     const stat = fs.lstatSync(this.swarm);
     if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('.swarm is not a real directory');
-    return this.withAppendLock(() => {
+    return this.withAppendLock((owns) => {
       const fd = fs.openSync(this.path, fs.constants.O_APPEND | fs.constants.O_CREAT | fs.constants.O_WRONLY | (fs.constants.O_NOFOLLOW ?? 0), 0o600);
       try {
+        this.requireBudget();
+        if (!owns()) throw Object.assign(new Error('outbox append lock ownership changed; mutation deferred'), { code: 'EAGAIN' });
         fs.writeSync(fd, records.map((r) => `${JSON.stringify(r)}\n`).join(''));
         this.fsync(fd);
       } finally { fs.closeSync(fd); }
@@ -108,6 +135,7 @@ export class ContinuityJournal {
 
   /** Every line, tolerant: unparseable lines are counted, never thrown. */
   scan() {
+    this.requireBudget();
     let text = '';
     try { text = fs.readFileSync(this.path, 'utf8'); } catch { /* no outbox yet */ }
     const events = new Map();
@@ -119,6 +147,7 @@ export class ContinuityJournal {
     let corrupt = 0;
     let lines = 0;
     for (const line of text.split('\n')) {
+      this.requireBudget();
       if (!line.trim()) continue;
       lines += 1;
       let rec;
@@ -146,25 +175,35 @@ export class ContinuityJournal {
 
   /** `kind:id` of every event already journalled here or committed to the store (dedupe set). */
   knownIds(scan = this.scan()) {
+    this.requireBudget();
     const ids = new Set();
     for (const key of scan.events.keys()) { const id = eventIdOf(key); if (id) ids.add(id); }
     if (storeReady(this.db)) {
-      const listed = withProgressionReader(this.db, (reader) => reader.listKeys(CONTINUITY_NAMESPACE, { maxEntries: 200_000 }));
-      if (listed.ok) for (const key of listed.value) { const id = eventIdOf(key); if (id) ids.add(id); }
+      const listed = withProgressionReader(this.db, (reader) => reader.listKeys(CONTINUITY_NAMESPACE, { maxEntries: 200_000 }),
+        { deadlineAt: this.deadlineAt, signal: this.signal });
+      this.requireBudget();
+      if (!listed.ok) throw new Error(`continuity deduplication unavailable: ${listed.reason}`);
+      for (const key of listed.value) { this.requireBudget(); const id = eventIdOf(key); if (id) ids.add(id); }
     }
     return ids;
   }
 
   captureConsent(projectDir = this.projectDir, unknownOriginalPath = false) {
-    return resolveTurnDb({ projectDir, brainHome: this.brainHome, requestedStorePath: this.db, unknownOriginalPath });
+    this.requireBudget();
+    const result = resolveTurnDb({ projectDir, brainHome: this.brainHome, requestedStorePath: this.db, unknownOriginalPath,
+      deadlineAt: this.deadlineAt, signal: this.signal, gitTimeoutMs: Math.max(1, Math.min(1000, this.deadlineAt - Date.now())) });
+    this.requireBudget();
+    return result;
   }
 
   /** Journal the events this boundary observed that are not already known. Returns what was added. */
   record(events) {
+    this.requireBudget();
     const consent = this.captureConsent();
     if (consent.skipped) throw new Error(`event capture suspended: ${consent.skipped}`);
     const known = this.knownIds(); const fresh = [];
     for (const original of events) { const event = privateContinuityEvent(original, consent.contentPathExcludes, consent.capturePath);
+      this.requireBudget();
       const id = `${event.kind}:${event.id}`;
       if (known.has(id)) continue;
       known.add(id);
@@ -189,7 +228,7 @@ export class ContinuityJournal {
     if (failureLines > scan.failures.size) return true;
     for (const c of scan.committed.values()) if (now - ms(c.committedAt) > RETAIN_COMMITTED_MS) return true;
     if (scan.notices.some((n) => now - ms(n.at) > QUARANTINE_REPORT_MS || ms(n.at) <= scan.clearedAt)) return true;
-    if ([...scan.quarantined.values()].some((q) => now - ms(q.at) > QUARANTINE_REPORT_MS)) return true;
+    // Quarantine warnings expire in status(); disputed original bytes do not expire here.
     // An unshrinkable pending backlog must not be rewritten on every capture boundary.
     return scan.events.size > MAX_EVENT_RECORDS && [...scan.events.keys()].some((key) => scan.committed.has(key));
   }
@@ -200,17 +239,15 @@ export class ContinuityJournal {
    */
   compact({ beforeRename = null } = {}) {
     const now = this.now();
-    return this.withAppendLock(() => {
+    return this.withAppendLock((owns) => {
       let before;
       try { before = fs.statSync(this.path); } catch { return { compacted: false, reason: 'no outbox' }; }
       const scan = this.scan();
       const out = [];
-      const quarantineLive = (q) => now - ms(q.at) <= QUARANTINE_REPORT_MS;
       const keep = [...scan.events.values()].filter((rec) => {
         const c = scan.committed.get(rec.key);
         if (c) return now - ms(c.committedAt) <= RETAIN_COMMITTED_MS;
-        const q = scan.quarantined.get(rec.key);
-        return q ? quarantineLive(q) : true;
+        return true; // pending and disputed originals are both durable recovery evidence
       }).sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
       // Only read-back committed events may leave at the cap. Pending bytes are the recovery copy.
       const gone = new Set(keep.filter((r) => scan.committed.has(r.key)).slice(0, Math.max(0, keep.length - MAX_EVENT_RECORDS)));
@@ -238,6 +275,11 @@ export class ContinuityJournal {
       const fd = fs.openSync(tmp, 'w', 0o600);
       try { fs.writeSync(fd, out.map((r) => `${JSON.stringify(r)}\n`).join('')); this.fsync(fd); } finally { fs.closeSync(fd); }
       beforeRename?.();
+      this.requireBudget();
+      if (!owns()) {
+        fs.rmSync(tmp, { force: true });
+        return { compacted: false, reason: 'outbox append lock ownership changed; compaction deferred' };
+      }
       let now_;
       try { now_ = fs.statSync(this.path); } catch { now_ = null; }
       if (!now_ || now_.size !== before.size || now_.mtimeMs !== before.mtimeMs) {
@@ -266,7 +308,8 @@ export class ContinuityJournal {
     const ready = storeReady(this.db);
     const notApplicable = !ready ? 'no AgentDB store in this project (.swarm/memory.db is not initialized)'
       : !this.ruflo ? 'ruflo is not installed' : null;
-    const capacityPressure = pending.length > MAX_EVENT_RECORDS;
+    const retainedQuarantined = [...scan.quarantined.keys()].filter(key => scan.events.has(key) && !scan.committed.has(key)).length;
+    const capacityPressure = pending.length + retainedQuarantined > MAX_EVENT_RECORDS;
     const problem = quarantined.length ? 'quarantined' : corrupt ? 'corrupt' : dropped ? 'dropped'
       : !notApplicable && capacityPressure ? 'capacity-pressure' : !notApplicable && oldest !== null && now - oldest > STUCK_AFTER_MS ? 'stuck-pending' : null;
     return {
@@ -274,7 +317,7 @@ export class ContinuityJournal {
       applicable: !notApplicable, notApplicable,
       pending: pending.length, oldestPendingAt: oldest, lastCommitAt, eventsToday,
       lastFailure: lastFailure && (!lastCommitAt || ms(lastFailure.at) > lastCommitAt) ? lastFailure : null,
-      quarantined, corrupt, dropped, capacityPressure, problem, stuck: Boolean(problem),
+      quarantined, retainedQuarantined, corrupt, dropped, capacityPressure, problem, stuck: Boolean(problem),
     };
   }
 }
@@ -289,11 +332,12 @@ export function recordingLine(status, now = Date.now()) {
     const why = status.problem === 'quarantined' ? `${status.quarantined.length} quarantined (a different row holds its key; never retried — ${clears})`
       : status.problem === 'corrupt' ? `${status.corrupt} corrupt outbox line(s) removed (${clears})`
         : status.problem === 'dropped' ? `${status.dropped} uncommitted event(s) dropped at the outbox cap (${clears})`
-          : status.problem === 'capacity-pressure' ? `pending backlog exceeds soft limit ${MAX_EVENT_RECORDS}; no pending events discarded`
+          : status.problem === 'capacity-pressure' ? `retained backlog exceeds soft limit ${MAX_EVENT_RECORDS}; no pending or disputed events discarded`
           : status.lastFailure ? `last error: ${status.lastFailure.reason || status.lastFailure.error}` : 'not committing';
     return `AgentDB: recording stuck — ${status.pending} event(s) pending${status.oldestPendingAt && status.problem === 'stuck-pending' ? ` for ${ago(now - status.oldestPendingAt)}` : ''}, ${why}.`
       + ` Pending events are durable in ${status.outbox} and retry at every capture boundary.`;
   }
+  if (status.retainedQuarantined) return `AgentDB: recording unresolved — ${status.retainedQuarantined} disputed original event(s) retained, not committed; ${status.pending} event(s) pending. No disputed original is deleted automatically.`;
   if (status.notApplicable) {
     return `AgentDB: recording n/a — ${status.notApplicable}; ${status.pending} event(s) wait in the outbox (not a failure).`
       + (status.capacityPressure ? ` Capacity pressure: pending backlog exceeds soft limit ${MAX_EVENT_RECORDS}; no pending events discarded.` : '');
@@ -334,19 +378,14 @@ function defaultStore({ ruflo, db, key, value }) {
 
 function defaultReadBack({ ruflo, db, key }) {
   const fast = withProgressionReader(db, (reader) => reader.readContent(CONTINUITY_NAMESPACE, key));
-  if (fast.ok) return { content: fast.value, readPath: 'node:sqlite' };
+  if (fast.ok) return { key, content: fast.value, readPath: 'node:sqlite' };
   const cwd = rufloRunDir(db);
   try {
     const { executable, args } = rufloInvocation(ruflo, ['memory', 'retrieve', '--key', key, '--namespace', CONTINUITY_NAMESPACE, '--value-only', '--path', db]);
     const r = spawnSync(executable, args, { cwd, encoding: 'utf8', timeout: 60_000, windowsHide: true, env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' } });
-    return { content: r.status === 0 ? String(r.stdout || '') : null, readPath: `ruflo-cli (${fast.reason})` };
+    return { key, content: r.status === 0 ? String(r.stdout || '') : null, readPath: `ruflo-cli (${fast.reason})` };
   } finally { fs.rmSync(cwd, { recursive: true, force: true }); }
 }
-
-/** Is a stored row the SAME event (same kind and content id), whoever observed it? */
-const sameEvent = (content, event) => {
-  try { const row = JSON.parse(content); return row?.kind === event.kind && row?.id === event.id; } catch { return false; }
-};
 
 /**
  * Commit every pending event: store → exact read-back → commit line. A refusal is retried with
@@ -378,7 +417,7 @@ export function drain(journal, {
       attempts += 1; const result = store({ ruflo, db: journal.db, key: rec.key, value });
       const back = readBack({ ruflo, db: journal.db, key: rec.key });
       const content = typeof back.content === 'string' ? back.content.trim() : '';
-      if (content && (content === value || value === JSON.stringify(rec.event) && sameEvent(content, rec.event))) {
+      if (content === value && digestCanonical(rec.event) === rec.digest && (back.key === undefined || back.key === rec.key)) {
         journal.appendRecords([{ type: 'commit', key: rec.key, digest: rec.digest, committedAt: new Date(now()).toISOString(), readPath: back.readPath,
           alreadyStored: result.status !== 0 || content !== value, ...(attempts > 1 ? { attempts, lastError: last?.reason } : {}) }]);
         committed += 1;
@@ -443,13 +482,18 @@ export function launchDrain({ projectRoot, spawnFn = spawn, env = process.env } 
 export function captureContinuityEvents({
   projectDir, event, payload = {}, host = 'claude', env = process.env, ruflo = resolveRuflo({ env }),
   readTranscript = (file) => readSettledTranscript(file, { maxMs: 0 }), launch = launchDrain, now = Date.now,
+  deadlineAt = Infinity, signal,
 } = {}) {
   const report = { event, recorded: 0, launched: false };
   if (String(env.RUVNET_CONTINUITY_CAPTURE || '').toLowerCase() === 'off') return { ...report, skipped: 'RUVNET_CONTINUITY_CAPTURE=off' };
-  let resolution;
-  try { resolution = resolveProjectStore({ projectDir }); } catch { return { ...report, skipped: 'project store could not be resolved' }; }
-  const journal = new ContinuityJournal({ projectRoot: resolution.projectRoot, projectDir, env, now, ruflo });
   try {
+  if (signal?.aborted || Date.now() >= deadlineAt) throw new Error('continuity capture unavailable');
+  let resolution;
+  try { resolution = resolveProjectStore({ projectDir, deadlineAt, signal,
+    gitTimeoutMs: Math.max(1, Math.min(1000, deadlineAt - Date.now())) }); } catch { return { ...report, skipped: 'project store could not be resolved' }; }
+  const journal = new ContinuityJournal({ projectRoot: resolution.projectRoot, projectDir, env, now, ruflo, deadlineAt, signal });
+  try {
+    journal.requireBudget();
     const consent = journal.captureConsent();
     if (consent.skipped) return { ...report, skipped: consent.skipped.startsWith('no project memory db') ? `not applicable: ${consent.skipped}` : consent.skipped };
   } catch (error) { return { ...report, skipped: `capture consent unavailable: ${error.message}` }; }
@@ -483,6 +527,10 @@ export function captureContinuityEvents({
   // A drainer only where it can succeed: an initialized store AND a ruflo to write it (review S4).
   if (status.pending && status.applicable) report.launched = launch({ projectRoot: resolution.projectRoot, env });
   return { ...report, status, journal };
+  } catch {
+    return { ...report, queued: report.recorded > 0, skipped: signal?.aborted ? 'continuity capture aborted; unavailable'
+      : Date.now() >= deadlineAt ? 'continuity capture deadline exceeded; unavailable' : 'canonical continuity unavailable' };
+  }
 }
 
 /** The detached worker body. */

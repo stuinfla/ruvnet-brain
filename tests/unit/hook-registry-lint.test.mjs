@@ -501,7 +501,8 @@ describe('the Stop off-contract is HONOURED, not merely declared (ADR-054 §3 ap
     const { home, ledger } = scratch();
     const r = fire('continuation-gate', { off: false, ledger, home });
     expect(r.code).toBe(0);
-    expect(JSON.parse(r.stdout).hookSpecificOutput.hookEventName).toBe('Stop');
+    expect(JSON.parse(r.stdout).decision).toBe('block');
+    expect(JSON.parse(r.stdout).reason).toContain('an open commitment');
     expect(r.stdout).toContain('an open commitment');
   });
 
@@ -633,3 +634,64 @@ describe.skipIf(MACHINE_SKIP_REASON)(
     });
   },
 );
+
+describe('source-bound hook audit tracking', () => {
+  it('derives39 unique canonical IDs from the existing20contract families without semantic PASS from hashing', async () => {
+    const { buildHookAudit } = await import('../../scripts/hook-registry.mjs');
+    const audit = buildHookAudit({ repo: REPO, includeMachine: false });
+    expect(audit.entries.filter(row => row.host === 'claude')).toHaveLength(20);
+    expect(audit.entries.filter(row => row.host === 'codex')).toHaveLength(19);
+    expect(new Set(audit.entries.map(row => row.id)).size).toBe(39);
+    expect(audit.entries.every(row => row.review.state === 'UNKNOWN')).toBe(true);
+    expect(audit.entries.every(row => row.nativeExecution === 'UNKNOWN')).toBe(true);
+    const capacity = audit.entries.find(row => row.id === 'claude/UserPromptSubmit/capacity-aware-parallel-work');
+    expect(capacity.declaredMode).toBe('advisory'); expect(capacity.controlGuarantee).toBe('advisory-only');
+  });
+  it('retains unknown ownership for a user registration even when its command names an owned handler', async () => {
+    const { buildHookAudit } = await import('../../scripts/hook-registry.mjs');
+    const registry = buildRegistry({ repo: REPO, includeMachine: false });
+    registry.records.push({ ...registry.records[0], layer: 'user', role: 'user', inMesh: true, file: '/foreign/settings.json' });
+    const entry = buildHookAudit({ repo: REPO, registry }).entries.at(-1);
+    expect(entry.ownership.status).toBe('UNKNOWN'); expect(entry.ownership.mutationAuthority).toBe(false);
+  });
+  it('never upgrades a supplied PASS/readComplete flag into substantive review', async () => {
+    const { hookAuditReviewStatus } = await import('../../scripts/hook-registry.mjs');
+    expect(hookAuditReviewStatus({ fingerprint: 'a'.repeat(64), inputs: [] }, { status: 'PASS', readComplete: true }).state).toBe('UNKNOWN');
+  });
+});
+
+it('review association becomes stale for registration, body, transitive import and explicit config changes', async () => {
+  const { buildHookAudit, hookAuditReviewStatus } = await import('../../scripts/hook-registry.mjs');
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'hook-audit-change-')));
+  const write = (rel, text) => { const file = path.join(root, rel); fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };
+  const command = 'node "${CLAUDE_PLUGIN_ROOT}/scripts/hook-shim.mjs" fixture || true';
+  const registry = timeout => JSON.stringify({ hooks: { Stop: [{ matcher: '*', hooks: [{ command, timeout }] }] } });
+  try {
+    write('package.json', '{"name":"ruvnet-brain","version":"fixture"}');
+    write('plugin/hooks/hooks.json', registry(10));
+    write('plugin/hooks/hook-contracts.json', JSON.stringify({ contracts: [{ id: 'fixture', event: 'Stop', hosts: ['claude'] }], _eventOwners: [{ owner: 'fixture', event: 'Stop', hosts: ['claude'], responsibility: 'Fixture evidence only' }] }));
+    write('plugin/scripts/hook-shim.mjs', "'fixture': { file: 'entry.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'run' }\n");
+    write('plugin/scripts/entry.mjs', "import './dependency.mjs';\nexport const value = 1;\n");
+    write('plugin/scripts/dependency.mjs', 'export const value = 1;\n');
+    write('config/audit.json', '{}\n');
+    const build = () => buildHookAudit({ repo: root, includeMachine: false, configFiles: [path.join(root, 'config/audit.json')] }).entries[0];
+    const first = build();
+    expect(first.inputs.find(input => input.path === 'plugin/scripts/dependency.mjs')).toBeDefined();
+    const review = { reviewer: 'synthetic validator fixture, not actual Astra', state: 'complete', fingerprint: first.fingerprint,
+      findings: [], verificationStrength: 'source-read', contractDimensions: ['purpose', 'inputs', 'outputs', 'authority', 'scope', 'failure', 'budgets', 'dependencies', 'parity'],
+      readCoverage: first.inputs.map(input => ({ path: input.path, sha256: input.sha256, lineRanges: [[1, input.lines]], notes: 'Synthetic review admission contract' })) };
+    expect(hookAuditReviewStatus(first, review).state).toBe('REVIEW_RECORDED');
+    expect(hookAuditReviewStatus(first, { ...review, readCoverage: [] }).state).toBe('UNKNOWN');
+    for (const [file, altered, original] of [
+      ['plugin/hooks/hooks.json', registry(9), registry(10)],
+      ['plugin/scripts/entry.mjs', "import './dependency.mjs';\nexport const value = 2;\n", "import './dependency.mjs';\nexport const value = 1;\n"],
+      ['plugin/scripts/dependency.mjs', 'export const value = 2;\n', 'export const value = 1;\n'],
+      ['config/audit.json', '{"changed":true}\n', '{}\n'],
+    ]) {
+      write(file, altered); const changed = build();
+      expect(changed.id).toBe(first.id);
+      expect(hookAuditReviewStatus(changed, review).state).toBe('STALE');
+      write(file, original);
+    }
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

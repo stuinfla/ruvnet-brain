@@ -72,7 +72,7 @@ function marker(source) {
  * The owner's convention writes them into the project's own namespace and into `default`; both are
  * checked, because which one a given session used depends on whether `-n` was passed.
  */
-function ownerNoteRows(canonicalAgentDbPath, projectNamespace) {
+function ownerNoteRows(canonicalAgentDbPath, projectNamespace, options = {}) {
   const namespaces = [...new Set([projectNamespace, ...OWNER_NOTE_NAMESPACES].filter(Boolean))];
   const result = withProgressionReader(canonicalAgentDbPath, (reader) => {
     const rows = [];
@@ -84,12 +84,12 @@ function ownerNoteRows(canonicalAgentDbPath, projectNamespace) {
       }
     }
     return rows;
-  });
+  }, options);
   return result.ok ? result.value : [];
 }
 
 /** The committed heads, computed the same way a restore computes them. Empty store → no heads. */
-function committedHeads(canonicalAgentDbPath, projectIdentity) {
+function committedHeads(canonicalAgentDbPath, projectIdentity, options = {}) {
   const result = withProgressionReader(canonicalAgentDbPath, (reader) => {
     const snapshots = [];
     for (const key of reader.listKeys(PROGRESSION_NAMESPACE)) {
@@ -98,7 +98,7 @@ function committedHeads(canonicalAgentDbPath, projectIdentity) {
       try { snapshots.push(JSON.parse(content)); } catch { /* a malformed row is the restore's problem */ }
     }
     return snapshots;
-  });
+  }, options);
   if (!result.ok) {
     if (fs.existsSync(canonicalAgentDbPath)) throw new Error(`prior progression read unavailable: ${result.reason}`);
     return { heads: [], state: null, readPath: `unavailable (${result.reason})` };
@@ -130,14 +130,20 @@ export function buildProjectProgression({
   env = process.env,
   now = () => new Date().toISOString(),
   trigger = payload.hook_event_name,
+  deadlineAt = Infinity,
+  signal,
 } = {}) {
   if (!resolution || typeof resolution !== 'object') throw new TypeError('resolution must be a project store resolution');
-  const source = readSourceIdentity({ checkoutRoot: resolution.checkoutRoot, kind: resolution.kind });
+  const options = { deadlineAt, signal };
+  const checkDeadline = () => { if (signal?.aborted || Date.now() >= deadlineAt) throw new Error('restore deadline exceeded'); };
+  checkDeadline();
+  const source = readSourceIdentity({ checkoutRoot: resolution.checkoutRoot, kind: resolution.kind, ...options });
   source.identity.capturePath = fs.realpathSync.native(projectDir);
   const ledger = readWorkLedger({ projectId: resolution.projectIdentity.id, env });
-  const note = readOwnerNote(() => ownerNoteRows(resolution.canonicalAgentDbPath, path.basename(resolution.projectRoot)));
+  const note = readOwnerNote(() => ownerNoteRows(resolution.canonicalAgentDbPath, path.basename(resolution.projectRoot), options));
   const transcript = readTranscriptReference(payload.transcript_path, { host });
-  const { heads, state: priorState } = committedHeads(resolution.canonicalAgentDbPath, resolution.projectIdentity);
+  const { heads, state: priorState } = committedHeads(resolution.canonicalAgentDbPath, resolution.projectIdentity, options);
+  checkDeadline();
 
   const priorSequence = heads.reduce((highest, head) => Math.max(highest, head.sequence ?? 0), 0);
 
@@ -290,7 +296,8 @@ export function buildProjectProgression({
     projectProgression,
     provenance,
     meaningDigest: meaning,
-    ...(priorMeaning === meaning
+    // Compaction requires a fresh durable boundary even when application state is unchanged.
+    ...(trigger !== 'PreCompact' && priorMeaning === meaning
       ? { skipped: { reason: 'no-op capture: project state and source identity are identical to the current head' } }
       : {}),
   };

@@ -18,11 +18,12 @@
  * tests/unit/ruvnet-gate1-pattern.test.mjs. ground-ruvnet.sh itself is UNTOUCHED by this file — it
  * is a hot, heavily-tuned, every-prompt hook, and this feature does not need to change it.
  *
- * WHAT THIS WRITES: a marker file under ~/.cache/ruvnet-brain/grounding-turn/<session_id>, whose
- * MTIME is the signal (same idiom grounding-stamp.sh and ground-before-write.sh already use for
- * their own 24h stamps — this reuses that mtime-comparison convention rather than inventing a new
- * one). Its CONTENT is a JSON blob for a human reading the cache, but the Stop-time gate only ever
- * trusts the mtime.
+ * WHAT THIS WRITES: a per-host/session marker carrying a random episode nonce, typed native identity,
+ * and a digest of the real project path. Same-turn queued prompts merge without changing the nonce;
+ * an observed new native turn or project replaces the episode. PostToolUse records successful search
+ * receipts through this same module and lock. Receipts retain only product terms and query/answer
+ * hashes. Stop consumes the marker and its bound receipt together; shared 24h freshness is not proof
+ * that this session searched during this turn.
  *
  * 2026-09-30 — TWO ARMS, ONE MARKER (ADR-0030 decision point #1). The marker now also records, as
  * JSON content, whether the prompt ASKS for a capability / feasibility / architecture judgement about
@@ -52,9 +53,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readStdinBounded, isHarnessGenerated } from './hook-input.mjs';
 import { ruvnetGate1Matches, groundingScopeMatches, groundingSubjectAllowed, normalizeGroundingScope, mergeGroundingScopes } from './ruvnet-gate1-pattern.mjs';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { loadSettings, writeAtomic } from './user-settings.mjs';
 import { classifyPrompt, loadVocabulary } from './grounding-turn-evidence.mjs';
+import { answerOf, brainAnsweredResponse } from './grounding-answer.mjs';
+import { RUVNET_GATE1_TERMS } from './ruvnet-gate1-pattern.mjs';
 
 const HOME = os.homedir();
 export const MARKER_DIR = process.env.RUVNET_GROUNDING_TURN_DIR
@@ -63,9 +66,10 @@ export const MARKER_DIR = process.env.RUVNET_GROUNDING_TURN_DIR
 /** Filesystem-safe key for a session id — mirrors continuation-gate.mjs's own `replace(':', '-')`
  *  idiom, generalised: a session id is host-supplied and must never be trusted as a bare path
  *  segment. */
-export function markerPathFor(sessionId, dir = MARKER_DIR) {
+export function markerPathFor(sessionId, dir = MARKER_DIR, host = 'claude') {
+  if (!['claude', 'codex'].includes(host)) return null;
   const safe = String(sessionId ?? '').replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 200);
-  return safe ? path.join(dir, `${safe}.json`) : null;
+  return safe ? path.join(dir, `${host}-${safe}.json`) : null;
 }
 
 const promptOf = (hookInput) => String(hookInput?.prompt ?? hookInput?.user_prompt ?? hookInput?.input ?? '');
@@ -111,7 +115,8 @@ export function readMarker(file, { locked = false } = {}) {
     if (!m || typeof m !== 'object') return conservativeArm();
     return { gate1: uncertain || m.gate1 !== false, assert: !!m.assert, architecture: !!m.architecture,
       groundingScope: uncertain ? 'all' : normalizeGroundingScope(m.groundingScope ?? 'all').value,
-      subjects: Array.isArray(m.subjects) ? m.subjects.map(String) : [], at: m.at };
+      subjects: Array.isArray(m.subjects) ? m.subjects.map(String) : [], at: m.at,
+      host: m.host, nativeKind: m.nativeKind, sessionId: m.sessionId, turnId: m.turnId, projectId: m.projectId, nonce: uncertain ? null : m.nonce };
   } catch (e) { return uncertain || e.code !== 'ENOENT' ? conservativeArm() : null; }
 }
 
@@ -152,11 +157,16 @@ export function writeArm(file, arm, meta = {}, now = Date.now()) {
       let st = null;
       try { st = fs.lstatSync(file); } catch (e) { if (e.code !== 'ENOENT') throw e; }
       const prior = readMarker(file, { locked: true });
-      const prev = prior && (!st || now - st.mtimeMs < STALE_MS) ? prior : null;
-      const next = prev ? { ...meta, at: prev.at, gate1: prev.gate1 || arm.gate1, assert: prev.assert || arm.assert,
+      // Unknown native identity cannot inherit a proved episode or its search evidence.
+      // Pure scope-only callers may merge obligations, but carry no native identity to certify.
+      const scopeOnly = (value) => ['host', 'nativeKind', 'sessionId', 'turnId', 'projectId'].every(key => value?.[key] == null);
+      const sameEpisode = !prior || sameGroundingIdentity(prior, meta) || (scopeOnly(prior) && scopeOnly(meta));
+      const prev = prior && sameEpisode && (!st || now - st.mtimeMs < STALE_MS) ? prior : null;
+      const next = prev ? { ...meta, sessionId: prev.sessionId || meta.sessionId, turnId: prev.turnId || meta.turnId,
+        projectId: prev.projectId || meta.projectId, nonce: prev.nonce || randomUUID(), at: prev.at, gate1: prev.gate1 || arm.gate1, assert: prev.assert || arm.assert,
         architecture: prev.architecture || arm.architecture, groundingScope: mergeGroundingScopes(prev.groundingScope, arm.groundingScope),
         subjects: [...new Set([...prev.subjects, ...arm.subjects])].slice(0, 32) }
-        : { ...meta, at: new Date(now).toISOString(), ...arm };
+        : { ...meta, nonce: randomUUID(), at: new Date(now).toISOString(), ...arm };
       if (!owns()) throw new Error('marker owner changed');
       const staged = `${file}.staged-${randomUUID()}`;
       try {
@@ -165,6 +175,7 @@ export function writeArm(file, arm, meta = {}, now = Date.now()) {
         fs.renameSync(staged, file);
       } finally { try { fs.unlinkSync(staged); } catch {} }
       if (prev && st && owns()) fs.utimesSync(file, st.atime, st.mtime);
+      if (!prev && prior?.nonce) retireSearchEvidence(file, prior);
       return next;
     });
   } catch { return failSafeArm(file); }
@@ -172,7 +183,7 @@ export function writeArm(file, arm, meta = {}, now = Date.now()) {
 }
 
 /** Stop reads and consumes the same episode under the same exclusive protocol. */
-export function consumeMarker(file) {
+export function consumeMarker(file, expected = null) {
   // No episode directory is ordinary silence, not a lock failure or a grounding obligation.
   try { fs.lstatSync(path.dirname(file)); } catch (e) { if (e.code === 'ENOENT') return null; }
   let held;
@@ -182,37 +193,110 @@ export function consumeMarker(file) {
       if (observedLatches === null) throw new Error('marker latch read failed');
       const marker = readMarker(file, { locked: true });
       if (!marker) return null;
+      // An old native Stop must not retire a newer prompt's episode.
+      if (expected && ['host', 'nativeKind', 'sessionId', 'turnId', 'projectId'].some(key =>
+        marker[key] && expected[key] && marker[key] !== expected[key])) return null;
       let markerMs = Date.now();
       try { markerMs = fs.lstatSync(file).mtimeMs; } catch {}
+      // An unbound Stop cannot prove ownership of a fully typed episode. Preserve its proof,
+      // while exposing an UNKNOWN observation for this stop rather than consuming the successor.
+      if (expected && sameGroundingIdentity(marker, marker) && !sameGroundingIdentity(expected, expected)) {
+        return { marker, markerMs, ownershipUnknown: true };
+      }
       // Suspicious sidecars remain in place; never follow or retire their targets.
       if (observedLatches.some((flag) => fs.lstatSync(flag).isSymbolicLink())) return { marker: conservativeArm(), markerMs };
       if (!owns()) throw new Error('marker owner changed');
+      const searchEvidence = readSearchEvidence(file, marker);
       if (exists(file)) fs.unlinkSync(file);
+      retireSearchEvidence(file, marker);
       // Consume only witnessed latches; a contender publishes a new unique obligation.
       for (const flag of observedLatches) fs.unlinkSync(flag);
-      return { marker, markerMs };
+      return { marker, markerMs, searchEvidence };
     });
   } catch { failSafeArm(file); return { marker: conservativeArm(), markerMs: Date.now() }; }
   if (!held.ok) { failSafeArm(file); return { marker: conservativeArm(), markerMs: Date.now() }; }
   return held.value;
 }
 
+const sha256 = (value) => createHash('sha256').update(String(value)).digest('hex');
+/** Trusted adapter host selects its documented identity: Claude prompt_id, Codex turn_id.
+ * Never borrow the other field, and never copy a project path into the evidence receipt. */
+export function groundingIdentity(input, env = process.env) {
+  const host = ['claude', 'codex'].includes(env.RUVNET_HOOK_HOST) ? env.RUVNET_HOOK_HOST : null;
+  const nativeKind = host === 'claude' ? 'claude-prompt-id' : host === 'codex' ? 'codex-turn-id' : null;
+  const nativeId = host === 'claude' ? input.prompt_id : host === 'codex' ? input.turn_id : null;
+  let projectId = null;
+  try { projectId = sha256(fs.realpathSync(input.cwd || env.CLAUDE_PROJECT_DIR || process.cwd())); } catch {}
+  return { host, nativeKind, sessionId: input.session_id || null,
+    turnId: typeof nativeId === 'string' && nativeId.trim() ? nativeId : null, projectId };
+}
+function searchEvidencePath(file, marker) {
+  return /^[a-f0-9-]{36}$/.test(marker?.nonce || '') ? `${file}.search-${marker.nonce}` : null;
+}
+function retireSearchEvidence(file, marker) {
+  const receipt = searchEvidencePath(file, marker);
+  if (receipt) try { fs.unlinkSync(receipt); } catch {}
+}
+export const sameGroundingIdentity = (left, right) => ['host', 'nativeKind', 'sessionId', 'turnId', 'projectId'].every(key =>
+  typeof left?.[key] === 'string' && !!left[key] && left[key] === right?.[key]);
+/** Missing native identity is UNKNOWN; global product freshness cannot prove a turn. */
+export function readSearchEvidence(file, marker) {
+  const receipt = searchEvidencePath(file, marker);
+  if (!receipt) return null;
+  try {
+    const st = fs.lstatSync(receipt);
+    if (!st.isFile() || st.isSymbolicLink() || st.size > 32768) return null;
+    const row = JSON.parse(fs.readFileSync(receipt, 'utf8'));
+    if (row.schemaVersion !== 1 || !sameGroundingIdentity(row, marker) || row.nonce !== marker.nonce
+      || !Number.isSafeInteger(row.searchCount) || row.searchCount < 1
+      || !Array.isArray(row.terms) || !row.terms.every(term => typeof term === 'string')
+      || !Array.isArray(row.sources) || !row.sources.length
+      || !row.sources.every(source => /^[a-f0-9]{64}$/.test(source.querySha256) && /^[a-f0-9]{64}$/.test(source.answerSha256))) return null;
+    return row;
+  } catch { return null; }
+}
+/** Existing PostToolUse handler publishes only answered, native-turn-bound, redacted receipts. */
+export function recordSearchEvidence(input, env = process.env) {
+  if (!/(?:^|__)search_ruvnet$/.test(input.tool_name || '') || !brainAnsweredResponse(input.tool_response)) return false;
+  const identity = groundingIdentity(input, env), file = markerPathFor(input.session_id, MARKER_DIR, identity.host);
+  if (!file || !identity.turnId || !identity.projectId) return false;
+  const held = markerLock(file, owns => {
+    const marker = readMarker(file, { locked: true }), receipt = searchEvidencePath(file, marker);
+    if (!receipt || !sameGroundingIdentity(marker, identity)) return false;
+    const prior = readSearchEvidence(file, marker), query = String(input.tool_input?.query || '');
+    const terms = [...RUVNET_GATE1_TERMS, 'aidefence', 'agentic-qe', 'ruv-swarm']
+      .filter(term => query.toLowerCase().includes(term.toLowerCase()));
+    const row = { schemaVersion: 1, ...identity, nonce: marker.nonce, searchCount: (prior?.searchCount || 0) + 1,
+      terms: [...new Set([...(prior?.terms || []), ...terms])], sources: [...(prior?.sources || []),
+        { querySha256: sha256(query), answerSha256: sha256(answerOf(input.tool_response)) }].slice(-32) };
+    if (!owns()) return false;
+    writeAtomic(receipt, JSON.stringify(row) + '\n');
+    return true;
+  });
+  return held.ok && held.value === true;
+}
+
 async function main() {
   let hookInput;
   try {
-    const raw = (await readStdinBounded()).toString('utf8');
+    const raw = (await readStdinBounded({ maxBytes: process.argv.includes('--record-search') ? 2097152 : 65536 })).toString('utf8');
     hookInput = JSON.parse(raw || '{}');
   } catch { process.exit(0); }
+
+  if (process.argv.includes('--record-search')) {
+    try { recordSearchEvidence(hookInput); } catch {}
+    process.exit(0);
+  }
 
   let arm = null;
   const scope = loadSettings().values.groundingScope;
   try { arm = armFor(hookInput, loadVocabulary(), scope); } catch { arm = shouldMark(hookInput, scope) ? { gate1: true, assert: false, architecture: false, subjects: [], groundingScope: scope } : null; }
   if (!arm) process.exit(0);
 
-  const file = markerPathFor(hookInput.session_id);
+  const identity = groundingIdentity(hookInput), file = markerPathFor(hookInput.session_id, MARKER_DIR, identity.host);
   if (!file) process.exit(0);
   try {
-    writeArm(file, arm, { sessionId: hookInput.session_id, turnId: hookInput.turn_id || hookInput.prompt_id || null });
+    writeArm(file, arm, identity);
   } catch { /* fail-open: no marker means the Stop gate stays silent, never a false block */ }
   process.exit(0);
 }

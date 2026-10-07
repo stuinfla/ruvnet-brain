@@ -1,3 +1,6 @@
+Updated: 2026-10-07 02:49:30 EDT | Version 1.0.0
+Created: 2026-09-11 08:46:59 EDT
+
 # Changelog
 
 All notable changes to RuvNet Brain are recorded here. Format loosely follows
@@ -6,6 +9,22 @@ what shipped in a given release; the "Unreleased" section tracks work in progres
 current campaign and is finalized by the lead session before the next release cut.
 
 ## Unreleased
+
+4.5.17 hook-harness candidate:
+
+- Adds a source-bound catalog of 100 practical rules and bounded relevant guidance
+  at existing managed planning, implementation and review boundaries. Guidance
+  does not replace the independent permission, acceptance or release gates.
+- Binds grounding to Claude's native prompt ID or Codex's native turn ID, with
+  host/session/project/nonce isolation and conservative missing-ID handling.
+- Rejects failed, cancelled, interrupted and truncated retrieval evidence;
+  prevents hashes from falsely certifying a semantic source review.
+- Keeps foreign capture registrations as collision candidates rather than
+  suppressing Brain capture without proof of the current turn.
+- Bounds typed routine advisory output without dropping mandatory refusals;
+  critical, unknown, foreign and repeated-event output is outside that cap.
+- Current candidate needs exact-artifact native qualification and protected
+  publication. This is not a claim that all 100 rules are hard-enforced.
 
 4.5.7 customer repair candidate:
 
