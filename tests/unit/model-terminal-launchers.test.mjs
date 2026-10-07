@@ -188,6 +188,9 @@ describe('Claude native startup guard', () => {
     fs.writeFileSync(file, JSON.stringify({ fastMode: true })); expect(() => validateClaudeTerminalSettings({ home, cwd: home, env: {} })).toThrow(/conflict/);
     fs.writeFileSync(file, JSON.stringify({ env: { RUFLO_HARNESS_LOOP: '1' }, modelSettings: { 'claude-sonnet-5': { effortLevel: 'medium' } } }));
     expect(() => validateClaudeTerminalSettings({ home, cwd: home, env: {} })).not.toThrow();
+    const inspected = validateClaudeTerminalSettings({ home, cwd: home, env: {} });
+    expect(inspected).toContain(file);
+    expect(inspected).toContain(path.join(home, '.claude/settings.local.json'));
     fs.writeFileSync(file, JSON.stringify({ modelSettings: { 'claude-sonnet-5': { apiKeyHelper: 'refused' } } }));
     expect(() => validateClaudeTerminalSettings({ home, cwd: home, env: {} })).toThrow(/conflict/);
     fs.writeFileSync(file, '{'); expect(() => validateClaudeTerminalSettings({ home, cwd: home, env: {} })).toThrow(/malformed/);

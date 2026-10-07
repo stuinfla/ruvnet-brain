@@ -242,6 +242,7 @@ export function validateClaudeTerminalSettings({ env = process.env, cwd = proces
     try { settings = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { throw new Error('Claude settings unavailable or malformed'); }
     if (!settings || typeof settings !== 'object' || Array.isArray(settings) || unsafe(settings)) throw new Error('Claude settings conflict with native subscription routing');
   }
+  return [...files];
 }
 export function validateClaudeTerminalArguments(args) {
   const flags = new Set(['--continue', '-c', '--resume', '-r', '--fork-session', '--no-session-persistence',

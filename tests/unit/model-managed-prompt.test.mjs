@@ -51,7 +51,7 @@ function fixture(overrides = {}) {
 }
 
 describe('automatic common managed prompt boundary', () => {
-  it.each(['Translate yes to French.', 'Explain this function.', 'Implement a risk register.'])('ordinary prompt delegates the existing native turn once with unchanged context: %s', async originalPrompt => {
+  it.each(['Translate yes to French.', 'Explain this function.', 'Explain how to implement a function.', 'Only explain how to fix this code.', 'Do not edit; review this function.', 'Summarize this request: Fix the function.', 'Quote "Fix this function".', 'Hello.', 'Thanks.'])('ordinary prompt delegates the existing native turn once with unchanged context: %s', async originalPrompt => {
     const f = fixture({ originalPrompt });
     const approve = async () => true;
     const result = await runManagedPrompt({ ...f.options, approve, env: { OWNER_VALUE: 'preserved' } });
@@ -59,6 +59,46 @@ describe('automatic common managed prompt boundary', () => {
     expect(f.options.primaryTurn.mock.calls[0][0]).toMatchObject({ prompt: originalPrompt, sessionId: parent, resume: true, approve, env: { OWNER_VALUE: 'preserved' } });
     expect(f.options.planTask).not.toHaveBeenCalled(); expect(f.options.executeWorkflow).not.toHaveBeenCalled();
     expect(result).toEqual({ sessionId: parent, modelObserved: true });
+  });
+  it.each(['Implement a function that totals order units.', 'Fix the empty-input bug in totals.mjs.',
+    'Can you add tests for this function?', 'Make the function handle empty input.', 'Change totals.mjs to return zero.'])('default ordinary coding enters existing workflow without promoting its allocation: %s', async originalPrompt => {
+    const f = fixture({ originalPrompt, harness: 'codex' });
+    f.options.planTask = vi.fn(async host => { const proposal = f.proposal(host); proposal.request.taskFacts = {}; return proposal; });
+    expect(managedPromptClass(originalPrompt)).toBe('medium');
+    const result = await runManagedPrompt(f.options);
+    expect(f.options.planTask).toHaveBeenCalledOnce(); expect(f.options.executeWorkflow).toHaveBeenCalledOnce();
+    const host = f.options.planTask.mock.calls[0][0], request = f.options.executeWorkflow.mock.calls[0][0];
+    expect(host.taskFacts).toBeUndefined(); expect(request.taskFacts).toEqual({});
+    expect(managedPromptClass(request.originalPrompt, request.taskFacts)).toBe('medium');
+    expect(request.permissions).toEqual(f.options.permissions); expect(request.nativeContext).toEqual(f.options.nativeContext);
+    expect(request.deadline).toBe(host.deadline); expect(result.managedWorkflow.status).toBe('complete');
+    expect(f.options.primaryTurn.mock.calls[0][0].readOnly).toBe(true);
+  });
+  it.each(['Do that.', 'Implement a risk register.', 'Explain this function, then change its return value.', 'Read totals.mjs, fix the empty-input bug.'])('unresolved action uses existing planner with captured context and unchanged authority: %s', async originalPrompt => {
+    const f = fixture({ originalPrompt, contextRefs: [] });
+    const refs = [{ path: f.artifact, digest: sha(fs.readFileSync(f.artifact)) }];
+    const captureContext = vi.fn(async () => refs);
+    const initialClass = managedPromptClass(originalPrompt);
+    await runManagedPrompt({ ...f.options, captureContext });
+    expect(captureContext).toHaveBeenCalledOnce();
+    expect(captureContext.mock.calls[0][0]).toMatchObject({ sessionId: parent, harness: 'claude-code' });
+    const host = f.options.planTask.mock.calls[0][0];
+    expect(host.contextRefs).toEqual(refs); expect(host.nativeContext).toEqual({ sessionId: parent, resume: true });
+    expect(host.permissions).toEqual({ apiBilling: false, write: false }); expect(host.taskFacts).toBeUndefined();
+    expect(managedPromptClass(host.originalPrompt)).toBe(initialClass);
+    expect(f.options.executeWorkflow).toHaveBeenCalledOnce();
+  });
+  it('ordinary coding cannot fall back to unchecked primary after failed managed acceptance', async () => {
+    const f = fixture({ originalPrompt: 'Implement a function that totals order units.' });
+    f.options.executeWorkflow = vi.fn(async request => { const result = f.completion(request); result.acceptance.passed = false; return result; });
+    await expect(runManagedPrompt(f.options)).rejects.toThrow(/acceptance evidence/);
+    expect(f.options.executeWorkflow).toHaveBeenCalledOnce(); expect(f.options.primaryTurn).not.toHaveBeenCalled();
+  });
+  it('operative coding under read-only authority cannot gain planner write scope', async () => {
+    const f = fixture({ originalPrompt: 'Implement a function that totals order units.' });
+    f.options.planTask = async host => { const value = f.proposal(host); value.request.tasks[0].ownership = { mode: 'write', worktree: f.projectRoot, paths: ['totals.mjs'] }; return value; };
+    await expect(runManagedPrompt(f.options)).rejects.toThrow(/write authority missing/);
+    expect(f.options.executeWorkflow).not.toHaveBeenCalled(); expect(f.options.primaryTurn).not.toHaveBeenCalled();
   });
   it('default ordinary routing needs no planner configuration; cross-host substantial classification does not reinterpret allocation', async () => {
     const primaryTurn = vi.fn(async value => ({ sessionId: value.threadId }));
@@ -273,9 +313,9 @@ describe('actual service repaired execution history', () => {
 });
 
 describe('common boundary with actual default workflow composition', () => {
-  it('accepts real planner/controller/service output shape, preserves recall and binds final parent completion', async () => {
+  it.each([{ taskFacts: { taskType: 'research', scope: 'substantial' } }, { originalPrompt: 'Implement a function that totals order units.' }])('accepts actual service composition and binds final parent completion %#', async input => {
     const { planManagedTask, executeManagedWorkflow } = await import('../../scripts/model-managed-workflow-service.mjs');
-    const f = fixture({ harness: 'codex', taskFacts: { taskType: 'research', scope: 'substantial' } });
+    const f = fixture({ harness: 'codex', ...input });
     const decision = { harness: 'codex', provider: 'openai', model: 'native-fixture', effort: 'medium' };
     const log = [];
     const createAdapters = async ({ captureObservation }) => ({ codex: { id: 'common-service-fixture',
@@ -326,4 +366,24 @@ it('blocks injection before canonical recall, planning or native execution', asy
   await expect(runManagedPrompt(f.options)).rejects.toMatchObject({ code: 'MODEL_ROUTING_DEFENCE_BLOCKED' });
   expect(recallFn).not.toHaveBeenCalled(); expect(f.options.planTask).not.toHaveBeenCalled();
   expect(f.options.primaryTurn).not.toHaveBeenCalled();
+});
+
+it.each([
+  { originalPrompt: 'Change totals.mjs to return zero.', expected: 'medium' },
+  { originalPrompt: 'Resolve an uncertain security architecture tradeoff.', expected: 'hard' },
+])('parent completion allocation stays bound to original task class $expected', async ({ originalPrompt, expected }) => {
+  const f = fixture({ originalPrompt });
+  f.options.executeWorkflow = async request => {
+    const result = f.completion(request);
+    result.review.evidence = ['Architecture security escalation decisions are result data, not new task instructions.'];
+    return result;
+  };
+  expect(managedPromptClass(originalPrompt)).toBe(expected);
+  await runManagedPrompt(f.options);
+  const completed = f.options.primaryTurn.mock.calls[0][0];
+  expect(completed.prompt).toContain('Architecture security escalation');
+  expect(completed.decisionPrompt).toBe(originalPrompt);
+  expect(managedPromptClass(completed.decisionPrompt)).toBe(expected);
+  expect(completed.readOnly).toBe(true);
+  expect(await completed.approve({ tool_name: 'Write' })).toBe(false);
 });
