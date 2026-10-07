@@ -2963,6 +2963,63 @@ describe('searchAll — cross-repo pool + rerank + name-boost', () => {
     expect(out.implementation.implementationSources).toContain(`${repo}/ui/package.json`);
   });
 
+  it('TEETH: the source-backed-card lane must not force an unverifiable citation to rank #1', async () => {
+    // kb/verify-citation.mjs's citationResolves() can only check a citation's path against the
+    // CITED REPO'S OWN passages store (<repo>.passages.jsonl / <repo>.big.passages.jsonl) — the
+    // real, ingested corpus kb/forge-corpus.mjs / kb/forge-build.mjs actually write. The synthetic
+    // capability-card candidate this lane unshifts to results[0] has path
+    // `capability-cards.md#<repo>` — a hand-written top-level file no builder ever chunks into any
+    // repo's own store — so that citation can NEVER resolve, no matter what evidence exists.
+    // Forcing it to rank #1 means the citation any "read the top result" consumer relies on
+    // (including this repo's own eval-brain.mjs `top = citations?.[0]`) is permanently
+    // unverifiable, while the real, resolvable evidence sits one rank lower and goes unseen.
+    const repo = ['method', '-engine2'].join('');
+    const d = mkdirWith([`${repo}.rvf`, 'concepts.rvf', 'ruflo.rvf']);
+    fs.writeFileSync(path.join(d, 'capability-cards.md'), [
+      `## ${repo}`,
+      'A structured methodology with Specification, Pseudocode, Architecture, Refinement, and Completion, plus a quality gate between stages.',
+    ].join('\n'));
+    fs.writeFileSync(path.join(d, `${repo}.meta.json`), JSON.stringify({
+      entries: {
+        guide: {
+          path: 'README.md',
+          kind: 'doc',
+          title: 'Method guide',
+          preview: 'Five phases: Specification, Pseudocode, Architecture, Refinement, and Completion.',
+        },
+        manifest: {
+          path: 'ui/package.json',
+          kind: 'manifest',
+          title: 'Method UI package',
+          preview: 'UI for Specification, Pseudocode, Architecture, Refinement, and Completion.',
+        },
+      },
+    }));
+    fs.writeFileSync(path.join(d, `${repo}.passages.jsonl`), [
+      JSON.stringify({
+        path: 'README.md',
+        text: 'The five phases are Specification, Pseudocode, Architecture, Refinement, and Completion.',
+      }),
+      JSON.stringify({
+        path: 'ui/package.json',
+        text: '{"description":"UI for Specification, Pseudocode, Architecture, Refinement, and Completion"}',
+      }),
+    ].join('\n'));
+    vi.mocked(searchKb).mockRejectedValue(new Error('Method proof must not load the cold embedder'));
+    vi.mocked(rerankPairs).mockRejectedValue(new Error('Method proof must not load the cold reranker'));
+
+    const out = await searchAll({
+      dir: d,
+      query: 'Is there a step-by-step method that takes me from a written spec to finished code?',
+    });
+
+    expect(out.routing).toMatchObject({ accepted: true, lane: 'source-backed-card' });
+    // The failure this catches: results[0].path === 'capability-cards.md#<repo>' — a citation
+    // kb/verify-citation.mjs's own passages-store lookup can never resolve, forced ahead of the
+    // real, ingested README.md/ui/package.json evidence already present in `candidates`.
+    expect(out.results[0].path).not.toMatch(/^capability-cards\.md#/);
+  });
+
   it('proves a Rust neural training request while preserving the card-backed no-Python constraint', async () => {
     const repo = ['rust', '-neural'].join('');
     const d = mkdirWith([`${repo}.rvf`, 'concepts.rvf', 'ruflo.rvf']);
