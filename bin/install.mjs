@@ -2191,7 +2191,7 @@ export function codexSessionSafety(status) {
   };
 }
 
-function codexAdministrativeProbeBinary() {
+export function codexAdministrativeProbeBinary() {
   if (process.env.CODEX_BIN) return process.env.CODEX_BIN;
   try {
     const brainHome = process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain');

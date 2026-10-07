@@ -149,3 +149,17 @@ describe('KB entry points run when invoked through a symlink', () => {
     }
   });
 });
+
+
+it('both doc-currency compatibility and shipped entrypoints execute through a symlink', () => {
+  const root = path.resolve(KB,'..');
+  for (const relative of ['scripts/doc-currency.mjs','plugin/scripts/doc-currency.mjs']) {
+    const directory=fs.mkdtempSync(path.join(os.tmpdir(),'currency-symlink-'));
+    try {
+      const link=path.join(directory,'currency.mjs');fs.symlinkSync(path.join(root,relative),link);
+      const direct=spawnSync(process.execPath,[path.join(root,relative),'--check','--root',directory,'--json'],{encoding:'utf8',timeout:5000});
+      const viaLink=spawnSync(process.execPath,[link,'--check','--root',directory,'--json'],{encoding:'utf8',timeout:5000});
+      expect(viaLink.status).toBe(direct.status);expect(viaLink.stderr).toContain('not a git repository');expect(viaLink.stdout+viaLink.stderr).toBe(direct.stdout+direct.stderr);
+    }finally{fs.rmSync(directory,{recursive:true,force:true});}
+  }
+});

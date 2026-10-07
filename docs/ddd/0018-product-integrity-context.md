@@ -1,4 +1,4 @@
-Updated: 2026-09-05 19:08:40 EDT | Version 0.4.0
+Updated: 2026-10-07 01:20:30 EDT | Version 0.4.1
 Created: 2026-08-21 13:34:00 EDT
 
 # DDD-0018 — Whole-product integrity context
@@ -148,3 +148,13 @@ host inventory and `PublicVerification` contributing exact source/version eviden
 DDD-0020 define its supporting capability-claim context without adding a ninth product process.
 The completion boundary accepts S-12 only as a valid signed aggregate over all three operating
 systems, both supported hosts, and every typed claim class with no `UNKNOWN` or untested scope.
+
+Source-scope receipt schema 2 records a complete repository byte inventory and explicit
+`bytesReadComplete` flags for governed files. Its `semanticReview` stays `UNKNOWN` with
+`performed: false`: hashing every byte does not establish semantic inspection. Product-integrity
+trace schema 2 scopes `PASS` to contract structure and that byte inventory; semantic review and
+behavior execution are explicitly untested. Independent `ReviewReceipt` and obligation-specific
+execution evidence remain separate requirements. Legacy schema 1 receipts can be inspected as
+history, but current validation rejects them; regenerate evidence without promoting their old
+`readComplete` field into review approval. Sealed candidate, signed public verification, and all
+twelve whole-product completion gates remain unchanged.

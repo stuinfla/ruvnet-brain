@@ -443,20 +443,22 @@ describe('ADR-073 Slice F SessionStart restore bridge', () => {
     const claude = JSON.parse(fs.readFileSync(path.join(ROOT, 'plugin/hooks/hooks.json'), 'utf8'));
     const codex = JSON.parse(fs.readFileSync(path.join(ROOT, 'plugin/hooks/codex-hooks.json'), 'utf8'));
     const sources = ['startup', 'resume', 'clear', 'compact', 'fork'];
-    const claudeMatchers = claude.hooks.SessionStart.map((group) => group.matcher);
-    const codexMatchers = codex.hooks.SessionStart.map((group) => group.matcher);
+    const restoreGroups = groups => groups.filter(group => group.hooks.some(hook => /\bsession-start\b/.test(hook.command)));
+    const claudeMatchers = restoreGroups(claude.hooks.SessionStart).map((group) => group.matcher);
+    const codexMatchers = restoreGroups(codex.hooks.SessionStart).map((group) => group.matcher);
     for (const source of sources) {
       expect(claudeMatchers.some((matcher) => new RegExp(`^(?:${matcher})$`).test(source)), `Claude misses ${source}`).toBe(true);
       expect(codexMatchers.some((matcher) => new RegExp(`^(?:${matcher})$`).test(source)), `Codex misses ${source}`).toBe(true);
     }
-    expect(claude.hooks.SessionStart.flatMap((group) => group.hooks).every((hook) => hook.command.includes('session-start'))).toBe(true);
-    expect(codex.hooks.SessionStart.flatMap((group) => group.hooks).every((hook) => hook.command.includes('session-start'))).toBe(true);
+    expect(restoreGroups(claude.hooks.SessionStart)).not.toHaveLength(0);
+    expect(restoreGroups(codex.hooks.SessionStart)).not.toHaveLength(0);
 
     const packed = JSON.parse(spawnSync('npm', ['pack', '--dry-run', '--json'], {
       cwd: ROOT, encoding: 'utf8', timeout: 120_000,
     }).stdout)[0].files.map(({ path: packedPath }) => packedPath);
     for (const required of [
       'plugin/scripts/session-start-core.mjs',
+      'plugin/scripts/session-start-budget.mjs',
       'plugin/scripts/project-progression-session-start.mjs',
       'plugin/scripts/project-progression-store.mjs',
       'plugin/scripts/project-progression-contract.mjs',

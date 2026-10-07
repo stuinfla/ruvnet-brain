@@ -68,7 +68,7 @@ export function fixturesFor(reg, root = REPO) {
     return base ? [{ name: 'PreCompact-derived', _provenance: 'DERIVED from the captured SessionEnd payload + the documented PreCompact fields (trigger, custom_instructions); the host was not driven to compact', payload: { ...base.payload, hook_event_name: reg.host === 'grok' ? 'pre_compact' : 'PreCompact', trigger: 'manual', custom_instructions: '' } }] : [];
   }
   if (!/ToolUse$/.test(reg.event)) return [];
-  const re = new RegExp(reg.matcher);
+  const re = new RegExp(reg.matcher === '*' ? '.*' : reg.matcher);
   const hits = ofEvent.filter((f) => re.test(reg.host === 'grok' ? (GROK_ALIAS[f.payload.tool_name] || f.payload.tool_name) : f.payload.tool_name));
   if (hits.length) return hits;
   const probe = 'mcp__ruvnet_brain__search_ruvnet';
