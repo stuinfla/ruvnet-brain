@@ -10,12 +10,13 @@ import { automaticProgressionSuspensionResult } from './project-progression-susp
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { redactText, normalizeToolOutcome } from './continuity-events.mjs';
-import { conditionNotice } from './continuity-journal.mjs';
+import { conditionNotice, STUCK_AFTER_MS } from './continuity-journal.mjs';
 import { normalizeHostEvent } from './hook-input.mjs';
 import { resolveProjectStore } from './project-store-resolver.mjs';
 import { withProgressionReader } from './project-progression-reader.mjs';
 import { redactProgression, restoreProjectProgression, digestCanonical, validateProgressionSnapshot } from './project-progression-contract.mjs';
-import { runSessionSnapshotHook, effectiveBudgetMs, queueCapture, replayOutboxDetached, runOutboxReplay } from './session-snapshot-hook.mjs';
+import { runSessionSnapshotHook, queueCapture, replayOutboxDetached } from './session-snapshot-hook.mjs';
+import { replayLockHeld, oldestQueuedAgeMs } from './project-capture-queue.mjs';
 
 const EVENTS = new Set(['UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'SubagentStop']);
 const TOPICS = [
@@ -198,7 +199,7 @@ export function captureNormalizedTransition(job, { readHistory = readTransitionH
 }
 
 export function runProjectTransitionHook(projectDir, event, { payload = {}, host = process.env.RUVNET_HOOK_HOST || 'claude',
-  readHistory = readTransitionHistory, capture = runSessionSnapshotHook, env = process.env } = {}) {
+  env = process.env, replay = replayOutboxDetached } = {}) {
   if (developmentHooksSuspended(projectDir)) return { state: 'skipped', reason: 'development hooks suspended' };
   const suspended = automaticProgressionSuspensionResult(env, { state: 'suspended', reason: 'automatic project progression is operator-suspended' });
   if (suspended) return suspended;
@@ -218,12 +219,20 @@ export function runProjectTransitionHook(projectDir, event, { payload = {}, host
     payload: { session_id: payload.session_id, hook_event_name: transportEvent,
       normalizedTransition: { observation, sourceIdentity: observeTransitionSource(resolution, projectDir) } } });
   if (!queued) return { state: 'degraded', reason: 'normalized observation queue unwritable', eventId: observation.id };
-  let result = null;
-  runOutboxReplay({ projectDir: resolution.projectRoot, env, budgetMs: Math.min(6500, effectiveBudgetMs(env)),
-    captureNormalized: (job, options) => captureNormalizedTransition(job, { ...options, env, readHistory, capture }),
-    onCaptured: (captured) => { if (captured?.eventId === observation.id) result = captured; } });
-  if (!result?.receipt) replayOutboxDetached({ projectDir: resolution.projectRoot, env });
-  return { state: result?.progressionCaptured && result.receipt ? 'committed' : 'pending', eventId: observation.id, result };
+  // TRANSITION BOUNDARIES DO NOT COMMIT INLINE (#390). These events fire on every prompt, around
+  // every material tool call and at every child stop. An inline replay put one or more `ruflo` store
+  // writes (and, with a backlog, up to a 6.5s budget) inside the user's prompt and tool loop, and a
+  // busy machine pushed UserPromptSubmit past the host's 10s hook timeout. The observation is already
+  // fsynced to the queue above, which is the durability guarantee; the detached worker commits it in
+  // order. Nothing later in the same turn reads it back: the Stop / PreCompact / SessionEnd capture
+  // waits behind queued work (its own hand-off), and SessionStart drains the queue before restoring.
+  const root = resolution.projectRoot;
+  const handedToWorker = replay({ projectDir: root, env });
+  // Disclosure stays honest: "queued" only while a worker owns the queue AND it is moving. With no
+  // worker, or the oldest capture waiting past the journal's stuck threshold, it is still "pending".
+  const oldest = oldestQueuedAgeMs(root);
+  const draining = (handedToWorker || replayLockHeld(root)) && !(oldest > STUCK_AFTER_MS);
+  return { state: draining ? 'queued' : 'pending', eventId: observation.id, handedToWorker };
 }
 
 /** One pending-readback condition across prompt/tool boundaries and both CLI entrypoints. */

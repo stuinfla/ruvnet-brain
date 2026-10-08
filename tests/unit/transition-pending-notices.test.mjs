@@ -5,7 +5,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createStore } from '../helpers/continuity-fixture.mjs';
-import { stopNotice } from '../../plugin/scripts/continuity-journal.mjs';
+import { stopNotice, STUCK_AFTER_MS } from '../../plugin/scripts/continuity-journal.mjs';
 import { resolveProjectStore } from '../../plugin/scripts/project-store-resolver.mjs';
 const scripts = fileURLToPath(new URL('../../plugin/scripts/', import.meta.url));
 const dirs = [];
@@ -15,6 +15,10 @@ function project() {
   dirs.push(dir); fs.mkdirSync(path.join(dir, '.swarm'));
   createStore(path.join(dir, '.swarm', 'memory.db'));
   fs.writeFileSync(path.join(dir, '.swarm', '.progression-replay.lock'), `${process.pid}-${Date.now()}-fixture`);
+  // A held lock alone is a live worker draining the queue, which is "queued", not pending (#390). What
+  // makes readback genuinely pending is a queue that stopped moving: a claim older than the stuck threshold.
+  const claim = path.join(dir, '.swarm', `.progression-capture-claimed-${process.pid}-na-000000000001.json`);
+  fs.writeFileSync(claim, '{}'); const old = new Date(Date.now() - STUCK_AFTER_MS - 60_000); fs.utimesSync(claim, old, old);
   return dir;
 }
 function run(dir, script, session = 'one', event = 'UserPromptSubmit', extra = {}, raw, expected) {

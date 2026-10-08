@@ -215,6 +215,21 @@ export function takeReplayLock(projectDir, now = Date.now(), { isAlive = pidAliv
   try { return create(); } catch { return null; }
 }
 
+/** Would takeReplayLock back off right now? True while a fresh lock, or a live holder, owns the queue. Never throws. */
+export function replayLockHeld(projectDir, now = Date.now(), { isAlive = pidAlive } = {}) {
+  let seen;
+  try { seen = lockFacts(lockPath(projectDir)); } catch { return false; }
+  const age = now - seen.mtimeMs;
+  return age <= REPLAY_LOCK_STALE_MS || (age <= REPLAY_LOCK_ABANDON_MS && isAlive(holderPid(seen.content)));
+}
+
+/** Age of the oldest capture still waiting (queued or claimed), or null when nothing waits. */
+export function oldestQueuedAgeMs(projectDir, now = Date.now()) {
+  const times = swarmEntries(projectDir).filter((n) => (n.startsWith(QUEUE_PREFIX) || n.startsWith(CLAIM_PREFIX)) && n.endsWith('.json'))
+    .map((n) => mtimeOf(projectDir, n)).filter(Number.isFinite);
+  return times.length ? Math.max(0, now - Math.min(...times)) : null;
+}
+
 /** Heartbeat: refresh the lock's mtime if (and only if) this holder still owns it. */
 export function refreshReplayLock(projectDir, token) {
   if (!token || readLock(projectDir) !== token) return false;
