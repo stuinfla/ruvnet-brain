@@ -241,7 +241,11 @@ artifact only together with its classification there, or `--doctor` will report 
 - **Removal is proof-gated.** A KB copy is deleted only when `plugin/scripts/kb-copy-proof.mjs` shows nothing
   in it is unique: every private-store file (fence of live AND copy, plus `updateManaged:false`) byte-identical
   in live; every other file a public release file or installer-written. Anything else keeps the copy and is
-  named. Links are never followed; trees of an in-progress storage transaction, a foreign refresh lock, an
+  named. The one exception is operational files (top-level `update.log`, `forge-update.log`,
+  `forge-guard-injection.log`, and ruflo's `.claude-flow/` scratch, each at most 2 MiB, 16 MiB per copy):
+  they do not keep a copy, they are copied to `kb-copy-rescued/<copy>/` in the brain home and verified
+  before the copy goes (kept for the newest five released copies), and a failed rescue keeps the copy.
+  Links are never followed; trees of an in-progress storage transaction, a foreign refresh lock, an
   install that is activating (`.kb.install-activation.lock` with a live pid), and live leases are kept; plugin generations go only through `prunePluginGenerations` (lease-aware).
 - **Enforced automatically**: after install/forced reinstall (the installer releases its own preserved
   generation once the new one validates), before and after every `--update` (incl. the SessionStart

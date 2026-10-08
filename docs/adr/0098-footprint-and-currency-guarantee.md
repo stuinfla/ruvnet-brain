@@ -3,8 +3,8 @@ id: ADR-098
 title: The footprint and currency guarantee — one knowledge base, current, in use, nothing building up
 status: Accepted
 date: 2026-10-01
-updated: 2026-10-03 13:27:32 EDT
-version: 0.1.1
+updated: 2026-10-05
+version: 0.1.2
 authors: [Stuart Kerr, Claude Opus 5.5]
 tags: [footprint, install, update, data-safety, confirmation]
 supersedes: []
@@ -53,6 +53,14 @@ shouldn't be there isn't, nothing building up cruft" — confirmed positively, n
    installer-written/reinstallable; or a symlink identical in live. Anything else keeps the copy, and is
    named. The live KB must itself be present. Public bytes are not unique: they are signed and
    re-downloadable.
+   *Amended 2026-10-05 (logs pinned a copy):* a fifth kind, an operational file the Brain's own processes
+   or a ruflo hook wrote into the tree (a top-level `update.log`, `forge-update.log` or
+   `forge-guard-injection.log`, or a file under `.claude-flow/`; a regular file of at most 2 MiB, at most
+   16 MiB per copy), is not unique, but it is not dropped either: the proof lists it as `rescue` with its
+   sha256, and the sweep and the installer copy it to `<brainHome>/kb-copy-rescued/<copy>/` and verify the
+   bytes before the copy is removed. A failed rescue keeps the copy. Measured: 34,957 bytes of these files
+   kept a 1.26 GB `kb.install-preserved-*` copy. `.swarm/`, links, nested or other logs, larger files and
+   anything past the per-copy cap still keep the copy.
 3. **Enforced in the lifecycle, not on request**: after a fresh/forced install (the installer releases its
    own preserved generation the moment the new one validates), before the updater runs (so its preflight
    is never blocked by a disposable copy), after every update, at `npx ruvnet-brain --clean`, and from a
@@ -125,6 +133,8 @@ shouldn't be there isn't, nothing building up cruft" — confirmed positively, n
 - A copy KEPT because it holds data the live brain lacks is proven once and cached (stat fingerprints of
   the copy and the live brain; a stale entry can only keep), reported with what it holds and "nothing to
   run" instead of `--clean`, triggers no background sweep, and is announced at SessionStart once per change.
+  *Amended 2026-10-05:* an entry also carries the proof-rule version (`PROOF_RULE` in footprint-io.mjs); an
+  entry from an older rule is not reused, so a copy kept under that rule is proven again once.
 - **Only what the Brain itself created is ever removed.** Anything in our directories that the Brain did
   not write — in particular hand-made backups such as `X.bak-20260808`, `*.retired-*`, `*.dead-*` and
   `bootstrap-backup-*` — is classified **unowned** and only REPORTED: no age, size or "looks like a backup"
@@ -133,6 +143,8 @@ shouldn't be there isn't, nothing building up cruft" — confirmed positively, n
   logs, stale leases, ruflo scratch, older npx copies of `ruvnet-brain`), and for any KB copy only with
   the `kb-copy-proof` above (amended 2026-10-01 after review B1: an earlier rule deleted hand-made backups
   older than 7 days with no proof; `tests/unit/brain-footprint.test.mjs` "report-only guard" mutant).
+  Amended 2026-10-05: `kb-copy-rescued/<copy>` directories the Brain wrote are a bounded class
+  (`rescued-kb-logs`); the newest five are kept and older ones removed.
 - An in-progress storage transaction's trees, a refresh-lock holder's siblings, and a live lease are kept.
   So is everything beside the KB, and every npx copy, while a plain install activates (its
   `.kb.install-activation.lock` names a live pid, its stage is younger than 2 h, or a
