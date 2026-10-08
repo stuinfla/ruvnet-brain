@@ -3838,7 +3838,11 @@ export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
     results.claude = wireClaude === wirePlugin
       ? wirePlugin({ expectedVersion: PACKAGE_VERSION, requireManaged: true })
       : wireClaude({ expectedVersion: PACKAGE_VERSION, requireManaged: true });
-    if (results.claude.host && !results.claude.wired) return fail();
+    // Issue #391: every fail() names its reason; runUpdate copies `error` into the refresh receipt,
+    // and a bare fail() left `{state: null, error: null}` there, a failure nobody could explain.
+    if (results.claude.host && !results.claude.wired) {
+      return fail({ error: `Claude Code plugin wiring failed: ${results.claude.error || results.claude.action || 'not wired'}` });
+    }
     results.codexHost = detectCodexHost();
     if (results.codexHost.host) {
       if (!['added', 'rewritten', 'unchanged', 'user-owned'].includes(results.codexHost.action)) {
@@ -3846,12 +3850,13 @@ export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
       }
       results.codex = installCodexPlugin({ expectedVersion: PACKAGE_VERSION });
       if (!['unchanged', 'installed', 'updated', 'disabled'].includes(results.codex.action)) {
-        return fail();
+        const why = [results.codex.action || 'unknown action', results.codex.error].filter(Boolean).join(': ');
+        return fail({ error: `Codex plugin install failed: ${why}` });
       }
     }
   } catch (error) {
     results.codex = { action: 'failed', error: error?.message || String(error) };
-    return fail();
+    return fail({ error: `host wiring threw: ${results.codex.error}` });
   }
 
   const apply = path.join(sourceRoot, 'plugin', 'scripts', 'update-apply.mjs');

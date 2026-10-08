@@ -8,8 +8,8 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
     },
     {
       "id": "honest-currency-lesson-and-metrics-evidence",
-      "reason": "Foreign KB roots remain isolated; panel currency derives from measured completion rather than checkout time; exact lesson readback binds this shell-free write; public metrics never fabricate performance or a competing product score",
-      "files": ["tests/unit/forge-currency-selected-root.test.mjs", "tests/unit/brain-score-producer.test.mjs", "tests/unit/brain-grade-groundtruth-timestamp.test.mjs", "tests/unit/record-lesson.test.mjs", "tests/unit/lesson-presentation-budget.test.mjs", "tests/unit/metrics-truth.test.mjs", "tests/unit/issue-watch-retry.test.mjs"]
+      "reason": "Foreign KB roots remain isolated; panel currency derives from measured completion rather than checkout time; exact lesson readback binds this shell-free write; public metrics never fabricate performance or a competing product score; SessionStart reports a host-sync-only failure after a passed knowledge update separately from knowledge currency",
+      "files": ["tests/unit/forge-currency-selected-root.test.mjs", "tests/unit/brain-score-producer.test.mjs", "tests/unit/brain-grade-groundtruth-timestamp.test.mjs", "tests/unit/record-lesson.test.mjs", "tests/unit/lesson-presentation-budget.test.mjs", "tests/unit/metrics-truth.test.mjs", "tests/unit/issue-watch-retry.test.mjs", "tests/unit/session-start-knowledge-currency.test.mjs"]
     },
     {
       "id": "automatic-update-source-and-transport",
@@ -107,7 +107,7 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
     },
     {
       "id": "safe-install-update",
-      "reason": "Installation and update preserve prior and private state and reject invalid dependencies",
+      "reason": "Installation and update preserve prior and private state and reject invalid dependencies; a failed host sync rolls the Console runtime back and records its reason",
       "files": [
         "tests/unit/automatic-hook-retirement.test.mjs",
         "tests/unit/install-activation-rollback.test.mjs",
@@ -115,7 +115,8 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
         "tests/unit/forge-update-archive-digest.test.mjs",
         "tests/unit/kb-copy-proof-legacy-sidecars.test.mjs",
         "tests/unit/kb-copy-proof-unknown-content.test.mjs",
-        "tests/unit/user-model-hook-install.test.mjs"
+        "tests/unit/user-model-hook-install.test.mjs",
+        "tests/unit/console-runtime-transaction.test.mjs"
       ]
     },
     {
