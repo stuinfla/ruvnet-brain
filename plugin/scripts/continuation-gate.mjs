@@ -737,7 +737,8 @@ function claimCooldown(now, windowMs) {
     if (Number.isFinite(prev) && (now - prev) < windowMs) return false; // fresh lock: someone forced recently
     fs.unlinkSync(LOCK);                                                 // stale: clear it so we can re-claim
   } catch { /* no lock yet */ }
-  try { fs.writeFileSync(LOCK, new Date(now).toISOString(), { flag: 'wx' }); return true; }
+  // A fresh install has no work-ledgers/ folder until the first save(); ENOENT here is not a lost race.
+  try { fs.mkdirSync(path.dirname(LOCK), { recursive: true }); fs.writeFileSync(LOCK, new Date(now).toISOString(), { flag: 'wx' }); return true; }
   catch { return false; }                                               // lost the race / cannot persist → fail closed
 }
 if (!claimCooldown(nowMs, COOLDOWN_MS)) process.exit(EXIT_ALLOW);
