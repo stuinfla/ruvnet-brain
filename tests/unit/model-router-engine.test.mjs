@@ -151,7 +151,7 @@ test('installed layout with preserved legacy default cannot silently disable man
   fs.mkdirSync(path.join(home,'plugin','scripts'),{recursive:true});
   for(const file of ['model-router-engine.mjs','route-cheap.mjs']) fs.copyFileSync(path.join(ROOT,'scripts',file),path.join(bin,file));
   // Installed preferences resolve canonical project identity through their shipped dependency.
-  for(const file of ['runtime-preferences.mjs','project-identity.mjs'])
+  for(const file of ['runtime-preferences.mjs','project-identity.mjs','project-store-resolver.mjs'])
     fs.copyFileSync(path.join(ROOT,'plugin','scripts',file),path.join(home,'plugin','scripts',file));
   fs.writeFileSync(path.join(home,'policy.default.mjs'),"export function choose(){return {model:'gpt-frontier-fixture',taskClass:'medium',effort:'medium'}}");
   const custom=path.join(home,'policy.mjs');fs.writeFileSync(custom,"export function choose(){return {model:'gpt-frontier-fixture',taskClass:'medium',effort:'medium'}}");

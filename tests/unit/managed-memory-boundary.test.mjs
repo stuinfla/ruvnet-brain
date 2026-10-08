@@ -9,7 +9,7 @@ const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.ur
 const HIJACK = path.join(ROOT, 'plugin', 'scripts', 'hijack-ruvnet.sh');
 
 /**
- * ADR-063 / issue #103 — the managed-memory boundary is ENFORCEABLE, opt-in, and default-off.
+ * ADR-063 / P023 — canonical managed writes are mandatory; read restrictions remain opt-in.
  *
  * The reporter measured a long Codex session: 59 shell calls went straight at Ruflo-managed memory
  * stores, the Brain prevented NONE, and 49 did not even ask for read-only. The advisory was
@@ -17,17 +17,17 @@ const HIJACK = path.join(ROOT, 'plugin', 'scripts', 'hijack-ruvnet.sh');
  * `|| true` on the registration, the Codex adapter deleting permissionDecision, and the 1–5 dial
  * being speech-only — each sufficient on its own, so fixing any one changed nothing.
  *
- * The property that matters most here is the FIRST case: a user who changes nothing must see
- * byte-identical behaviour. This repo has already shipped three gates that could never pass; a gate
- * that merely nags is a nuisance, one that BLOCKS is an outage.
+ * Original-rule qualification supersedes the historical default-off write expectation.
+ * All probes use a private adopted Git project, never the ambient checkout's store.
  */
-let home;
+let home, project;
 const run = (boundary, command) => {
   fs.writeFileSync(
     path.join(home, '.config', 'ruvnet-brain', 'settings.json'),
     JSON.stringify({ version: 1, settings: { managedMemoryBoundary: boundary } }),
   );
   const r = spawnSync('bash', [HIJACK], {
+    cwd: project,
     input: JSON.stringify({ tool_name: 'Bash', tool_input: { command }, session_id: 't' }),
     encoding: 'utf8',
     env: { ...process.env, HOME: home, USERPROFILE: home,
@@ -39,14 +39,18 @@ const run = (boundary, command) => {
 
 beforeEach(() => {
   home = fs.mkdtempSync(path.join(os.tmpdir(), 'managed-boundary-'));
+  project = path.join(home, 'project'); fs.mkdirSync(project);
+  const git = spawnSync('git', ['init', '-q'], { cwd: project, encoding: 'utf8' });
+  if (git.status !== 0) throw new Error(git.stderr);
+  fs.mkdirSync(path.join(project, '.swarm')); fs.writeFileSync(path.join(project, '.swarm', 'memory.db'), 'private managed fixture');
   fs.mkdirSync(path.join(home, '.config', 'ruvnet-brain'), { recursive: true });
 });
 afterEach(() => fs.rmSync(home, { recursive: true, force: true }));
 
 describe('ADR-063 — managed-memory boundary', () => {
-  it('THE DEFAULT REFUSES NOTHING — a user who changes nothing is unaffected', () => {
+  it('default advise permits reads but cannot authorize canonical managed writes', () => {
     expect(run('advise', "sqlite3 .swarm/memory.db 'SELECT 1'").code, 'read at default').toBe(0);
-    expect(run('advise', "sqlite3 .swarm/memory.db 'DELETE FROM memory_entries'").code, 'even a WRITE at default').toBe(0);
+    expect(run('advise', "sqlite3 .swarm/memory.db 'DELETE FROM memory_entries'").code, 'mandatory managed WRITE refusal').toBe(2);
   });
 
   it('read-only allows reads and refuses writes', () => {
@@ -86,14 +90,16 @@ describe('ADR-063 — managed-memory boundary', () => {
     expect(run('block', "ruflo memory search 'sqlite3 memory'").code).toBe(0);
   });
 
-  it('an unreadable or absent setting degrades to advise, never to a refusal', () => {
+  it('an absent advisory setting cannot authorize a canonical managed write', () => {
     fs.rmSync(path.join(home, '.config', 'ruvnet-brain', 'settings.json'), { force: true });
     const r = spawnSync('bash', [HIJACK], {
+      cwd: project,
       input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: "sqlite3 .swarm/memory.db 'DELETE FROM x'" }, session_id: 't' }),
       encoding: 'utf8',
       env: { ...process.env, HOME: home, USERPROFILE: home,
         RUVNET_SETTINGS_FILE: path.join(home, '.config', 'ruvnet-brain', 'settings.json') },
     });
-    expect(r.status, 'a hook that cannot read a preference must never refuse because of it').toBe(0);
+    expect(r.status, 'mandatory managed write refusal remains independent of advisory settings').toBe(2);
+    expect(r.stderr).toMatch(/ruflo memory store/);
   });
 });

@@ -10,7 +10,7 @@ import { spawnSync } from 'node:child_process';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readSettledTranscript } from '../../plugin/scripts/turn-outcome-capture.mjs';
 import {
-  extractCompletionClaims, extractCommitments, auditCompletionClaims, claudeTurnEvents,
+  extractCompletionClaims, extractCommitments, auditCompletionClaims, claudeTurnEvents, postChangeVerification,
 } from '../../plugin/scripts/completion-claim-evidence.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
@@ -191,6 +191,105 @@ describe('completion claims (Piece A)', () => {
     expect(auditCompletionClaims(message, { turn }).verdict).toBe('OBSERVED_CHECK');
     expect(fire(repo, 'Hello. Five targeted tests passed; the task remains unverified.', { host: 'codex' })).toBe('');
   });
+  it.each([
+    ['contradictory error flag', 'Tests 5 passed\nExit code 0', { is_error: true }],
+    ['nonzero exit', 'Tests 5 passed\nExit code 1', {}],
+    ['running process', 'Process running with session ID 123', {}],
+    ['started execution', 'Tests queued', { status: 'started' }],
+    ['queued execution', 'Tests queued', { status: 'queued' }],
+    ['timeout', 'Tests 5 passed', { status: 'timeout' }],
+    ['cancelled', 'Tests 5 passed', { cancelled: true }],
+    ['truncated output', 'Tests 5 passed\nOutput truncated', {}],
+    ['empty output', '', {}],
+    ['exit zero alone', 'Exit code 0', {}],
+    ['no results', 'No results found\nExit code 0', {}],
+    ['failed tests with zero exit', 'Tests 5 failed\nExit code 0', {}],
+    ['mixed passing and failing tests', 'Tests 5 passed | 1 failed\nExit code 0', {}],
+    ['failed marker after passing summary', 'Tests 5 passed\nFAIL updater regression\nExit code 0', {}],
+    ['started text with zero exit', 'Started verification\nExit code 0', {}],
+    ['positive result with pending text', 'Tests 5 passed\nVerification running\nExit code 0', {}],
+    ['skipped required checks', 'Tests 5 passed | 1 skipped\nExit code 0', {}],
+    ['transport success without checker result', 'Command completed successfully\nExit code 0', {}],
+    ['arbitrary PASS JSON', '{"verdict":"PASS"}\nExit code 0', {}],
+    ['unknown terminal outcome', 'Tests 5 passed', { is_error: undefined }],
+  ])('does not promote %s to an observed passing check', (_label, content, fields) => {
+    const use = toolUse('Bash', { command: 'npx vitest run tests/unit/updater.test.mjs' });
+    const result = rec('user', [{ type: 'tool_result', tool_use_id: use.id, content, is_error: false, ...fields }]);
+    const turn = claudeTurnEvents([rec('user', 'go'), ...edit(), use.line, result]);
+    const message = 'Targeted unit tests are passing.\nVerified: vitest.\nNot verified: native hosts.';
+    expect(auditCompletionClaims(message, { turn }).verdict).toBe('UNKNOWN');
+    expect(auditCompletionClaims(message, { turn }).verification.checks).toEqual([]);
+  });
+
+  it.each(["printf 'Tests 5 passed'", "node -e \"console.log('Tests 5 passed')\""])("does not treat synthetic output from %s as a checker", command => {
+    const turn = claudeTurnEvents([rec('user', 'go'), ...bash(command, 'Tests 5 passed\nExit code 0')]);
+    expect(auditCompletionClaims('Targeted tests are passing.\nVerified: vitest.\nNot verified: hosts.', { turn }).verdict).toBe('UNKNOWN');
+  });
+
+  it('does not match a checker name printed by an unknown executable wrapper', () => {
+    const command = `python3 -c "print('npm test');print('Tests 5 passed')"`;
+    const turn = claudeTurnEvents([rec('user', 'go'), ...bash(command, 'npm test\nTests 5 passed\nExit code 0')]);
+    expect(auditCompletionClaims('Targeted tests are passing.\nVerified: python3.\nNot verified: hosts.', { turn }).verdict).toBe('UNKNOWN');
+  });
+
+  it('does not use historical checks without a genuine user turn boundary', () => {
+    const turn = claudeTurnEvents(bash('npx vitest run', 'Tests 5 passed\nExit code 0'));
+    expect(turn.boundaryFound).toBe(false);
+    expect(postChangeVerification(turn).checks).toEqual([]);
+    expect(auditCompletionClaims('Targeted tests are passing.\nVerified: vitest.\nNot verified: hosts.', { turn }).verdict).toBe('UNKNOWN');
+  });
+
+  it.each(['Tests 5 passed | 0 failed', 'Test Files 1 passed (1)\nTests 5 passed (5)', 'PASS updater regression', 'All checks passed'])('accepts explicit positive checker summary %s', content => {
+    const turn = claudeTurnEvents([rec('user', 'go'), ...bash('npx vitest run', `${content}\nExit code 0`)]);
+    expect(auditCompletionClaims('Targeted tests are passing.\nVerified: vitest.\nNot verified: hosts.', { turn }).verdict).toBe('OBSERVED_CHECK');
+  });
+
+  it('observes output from an actual executable checker while keeping whole-task completion unknown', () => {
+    const checker = path.join(dir, 'candidate-check.test.mjs');
+    fs.writeFileSync(checker, "import test from 'node:test'; import assert from 'node:assert/strict'; test('candidate behavior', () => assert.equal(2 + 2, 4));");
+    const run = spawnSync(process.execPath, ['--test', '--test-reporter=tap', checker], { encoding: 'utf8' });
+    expect(run.status).toBe(0);
+    const turn = claudeTurnEvents([rec('user', 'go'), ...bash('node --test', `${run.stdout}\nExit code ${run.status}`)]);
+    expect(auditCompletionClaims('Targeted tests are passing.\nVerified: node --test.\nNot verified: hosts.', { turn }).verdict).toBe('OBSERVED_CHECK');
+    expect(auditCompletionClaims(GOOD, { turn }).verdict).toBe('UNKNOWN');
+  });
+
+  it('a structured MCP failure overrides an outer successful tool result and exit zero', () => {
+    const use = toolUse('mcp__tests__verify', {});
+    const content = { content: [{ type: 'text', text: 'Tests 5 passed' }], isError: true, exitCode: 0 };
+    const turn = claudeTurnEvents([rec('user', 'go'), use.line,
+      rec('user', [{ type: 'tool_result', tool_use_id: use.id, content, is_error: false }])]);
+    expect(auditCompletionClaims('Targeted tests are passing.\nVerified: verify.\nNot verified: hosts.', { turn }).verdict).toBe('UNKNOWN');
+  });
+
+  it('requires the tool result after its own invocation', () => {
+    const use = toolUse('Bash', { command: 'npx vitest run' });
+    const turn = claudeTurnEvents([rec('user', 'go'), toolResult(use.id, 'Tests 5 passed'), use.line]);
+    expect(auditCompletionClaims('Targeted tests are passing.\nVerified: vitest.\nNot verified: hosts.', { turn }).verdict).toBe('UNKNOWN');
+  });
+
+  it('an exact finished check stays OBSERVED_CHECK rather than whole-task PASS', () => {
+    const use = toolUse('Bash', { command: 'npx vitest run tests/unit/updater.test.mjs' });
+    const turn = claudeTurnEvents([rec('user', 'go'), ...edit(), use.line,
+      rec('user', [{ type: 'tool_result', tool_use_id: use.id, content: 'Tests 5 passed\nExit code 0', is_error: false }])]);
+    const audit = auditCompletionClaims('Targeted tests are passing.\nVerified: vitest.\nNot verified: hosts.', { turn });
+    expect(audit.verdict).toBe('OBSERVED_CHECK');
+    expect(audit.verification.checks).toHaveLength(1);
+  });
+
+  it.each([
+    ['partial checks', () => bash('npx vitest run tests/unit/updater.test.mjs')],
+    ['old source', () => [...bash('npx vitest run'), ...edit()]],
+    ['pending execution', () => bash('npx vitest run', 'Process running with session ID 123')],
+    ['synthetic review with a configured model', () => {
+      const use = toolUse('Task', { subagent_type: 'reviewer', model: 'requested-review-model', description: 'Review source' });
+      return [use.line, toolResult(use.id, JSON.stringify({ verdict: 'PASS', model: 'requested-review-model', sourceSha: 'a'.repeat(40), artifactSha256: 'b'.repeat(64) }))];
+    }],
+  ])('keeps whole-task completion UNKNOWN with %s', (_label, evidence) => {
+    const turn = claudeTurnEvents([rec('user', 'go'), ...edit(), ...evidence()]);
+    expect(auditCompletionClaims(GOOD, { turn }).verdict).toBe('UNKNOWN');
+  });
+
   it('one observed check cannot excuse a broad completion assertion in the same sentence', () => {
     const turn = claudeTurnEvents([rec('user', 'go'), ...edit(), ...bash('npx vitest run tests/unit/updater.test.mjs')]);
     for (const assertion of ['the updater is fixed', 'it now works', 'it will now work']) {
@@ -222,10 +321,10 @@ describe('promises (Piece C)', () => {
     expect(ledger().items.filter((i) => i.kind === 'assistant-commitment')).toHaveLength(1);
   });
 
-  it('opt-out keeps existing promises forceable and closes them only with verified evidence', () => {
+  it('opt-out retains old promises without treating a summary as current task authority', () => {
     const repo = gitRepo('a');
     fire(repo, PROMISE, { transcriptPath: transcript() });
-    expect(fire(repo, 'Here is the summary.', { transcriptPath: transcript(), promiseCapture: 'off' })).toContain('you said you would');
+    expect(fire(repo, 'Here is the summary.', { transcriptPath: transcript(), promiseCapture: 'off' })).toBe('');
     const claim = 'The updater retry test is now passing.';
     expect(fire(repo, claim, { transcriptPath: transcript(edit()), promiseCapture: 'off' })).toContain('beyond the available verified scope');
     expect(ledger().items.find((i) => i.kind === 'assistant-commitment').done).toBe(false);
@@ -292,7 +391,7 @@ describe('promises (Piece C)', () => {
     const b = gitRepo('b', 'https://github.com/someone-else/unrelated.git');
     fire(a, PROMISE, { transcriptPath: transcript() });
     expect(fire(b, 'Here is the summary you asked for.', { transcriptPath: transcript() })).toBe('');
-    expect(fire(a, 'Here is the summary you asked for.', { transcriptPath: transcript() })).toContain('you said you would');
+    expect(fire(a, 'Here is the summary you asked for.', { transcriptPath: transcript() })).toBe('');
   });
 
   it('is not captured or forced on Codex, where it could never be closed', () => {

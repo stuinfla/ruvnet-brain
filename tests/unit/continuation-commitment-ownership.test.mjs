@@ -51,7 +51,7 @@ function checkedTranscript(file) {
   fs.writeFileSync(file, [
     { type: 'user', message: { role: 'user', content: 'fixture task' } },
     { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'check', name: 'Bash', input: { command: 'npm test' } }] } },
-    { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'check', content: 'PASS 4 tests' }] } },
+    { type: 'user', toolUseResult: { exitCode: 0 }, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'check', content: 'PASS 4 tests' }] } },
   ].map(JSON.stringify).join('\n'));
 }
 const verified = 'The updater retry test is now passing.\nVerified: npm test — PASS.\nNot verified: native host delivery.';
@@ -64,14 +64,14 @@ describe('registered Stop assistant commitment ownership', () => {
     const original = f.read().items;
     expect(f.stop('session-B').stdout).toBe('');
     expect(f.read().items).toEqual(original);
-    expect(f.stop('session-A').stdout).toContain('you said you would');
+    expect(f.stop('session-A').stdout).toBe('');
   });
 
   it('keeps legacy wildcard debt only for its proven capturing session, without erasing it', () => {
     const f = fixture(); f.stop('session-A', promise);
     const led = f.read(); led.items[0].sessionIds = ['*']; led.items[0].at = '2020-01-01T00:00:00Z'; f.write(led);
     expect(f.stop('session-B').stdout).toBe('');
-    expect(f.stop('session-A').stdout).toContain('you said you would');
+    expect(f.stop('session-A').stdout).toBe('');
     expect(f.read().items).toEqual(led.items);
     delete led.items[0].capturedFrom; f.write(led);
     expect(f.stop('session-A').stdout).toBe('');
@@ -120,6 +120,35 @@ describe('registered Stop assistant commitment ownership', () => {
     expect(f.read().items[0].completionEvidence).toBeUndefined();
   });
 
+  it('an unrelated current answer is not blocked by same-session unlinked history', () => {
+    const f = fixture(); f.stop('session-A', promise);
+    const prior = f.read().items;
+    expect(f.stop('session-A', 'Here is the requested CPU and memory status.').stdout).toBe('');
+    expect(f.read().items).toEqual(prior);
+    expect(f.stop('session-A', promise).stdout).toContain('add the retry test');
+  });
+  it.each(['compare the real counts tomorrow', 'check again at 10:00 before running',
+    'run the check after the deployment', 'retry if the dependency becomes available'])('retains future/conditional promise without blocking current Stop: %s', text => {
+    const f = fixture(); f.stop('session-A', promise);
+    const ledger = f.read(); ledger.items[0].text = text; ledger.items[0].at = '2020-01-01T00:00:00Z'; f.write(ledger);
+    const result = f.stop('session-A');
+    expect(result.stdout).toBe('');
+    expect(f.read().items).toEqual(ledger.items);
+  });
+  it.each(['claude', 'codex'])('emits one concise native JSON current step while retaining stale/future history on %s', host => {
+    const f = fixture(); f.stop('session-A', promise);
+    const ledger = f.read(); ledger.items[0].text = 'compare the real counts tomorrow';
+    ledger.items[0].at = '2020-01-01T00:00:00Z'; f.write(ledger);
+    expect(f.cli(['--commit-to', 'finish the currently authorized checker repair']).status).toBe(0);
+    f.env.RUVNET_HOOK_HOST = host;
+    const result = JSON.parse(f.stop('session-A').stdout);
+    expect(result.decision).toBe('block');
+    expect(result.reason).toContain('finish the currently authorized checker repair');
+    expect(result.reason).not.toMatch(/tomorrow|--set-commitment-state|☐|\n/);
+    expect(result.reason.length).toBeLessThan(400);
+    expect(f.read().items[0]).toEqual(ledger.items[0]);
+    expect(f.read().items).toHaveLength(2);
+  });
   it('exact --done still cannot invent completion', () => {
     const f = fixture(); f.stop('session-A', promise);
     expect(f.cli(['--done', f.read().items[0].text]).status).toBe(2);

@@ -4,6 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import { PassThrough } from 'node:stream';
+import { spawnSync } from 'node:child_process';
 import { runManagedPrompt, managedPromptClass, captureNativeParentContext } from '../../scripts/model-managed-prompt.mjs';
 import { launchControlledClaudeTerminal } from '../../scripts/claude-controlled-terminal.mjs';
 
@@ -58,7 +59,10 @@ describe('automatic common managed prompt boundary', () => {
     expect(f.options.primaryTurn).toHaveBeenCalledOnce();
     expect(f.options.primaryTurn.mock.calls[0][0]).toMatchObject({ prompt: originalPrompt, sessionId: parent, resume: true, approve, env: { OWNER_VALUE: 'preserved' } });
     expect(f.options.planTask).not.toHaveBeenCalled(); expect(f.options.executeWorkflow).not.toHaveBeenCalled();
-    expect(result).toEqual({ sessionId: parent, modelObserved: true });
+    expect(result).toMatchObject({ sessionId: parent, modelObserved: true,
+      nativeUserProvenance: { state: 'UNVERIFIED', source: 'managed-prompt-input', nativeSessionId: parent,
+        userInstructionDigest: sha(originalPrompt) } });
+    expect(result.nativeUserProvenance.reason).toContain('no continuation pointer is authorized');
   });
   it.each(['Implement a function that totals order units.', 'Fix the empty-input bug in totals.mjs.',
     'Can you add tests for this function?', 'Make the function handle empty input.', 'Change totals.mjs to return zero.'])('default ordinary coding enters existing workflow without promoting its allocation: %s', async originalPrompt => {
@@ -314,8 +318,12 @@ describe('actual service repaired execution history', () => {
 
 describe('common boundary with actual default workflow composition', () => {
   it.each([{ taskFacts: { taskType: 'research', scope: 'substantial' } }, { originalPrompt: 'Implement a function that totals order units.' }])('accepts actual service composition and binds final parent completion %#', async input => {
-    const { planManagedTask, executeManagedWorkflow } = await import('../../scripts/model-managed-workflow-service.mjs');
+    const { planManagedTask, executeManagedWorkflow, captureCheckerRegistry } = await import('../../scripts/model-managed-workflow-service.mjs');
     const f = fixture({ harness: 'codex', ...input });
+    fs.writeFileSync(path.join(f.projectRoot, 'package.json'), JSON.stringify({ scripts: { test: 'node --test acceptance.test.mjs' } }));
+    fs.writeFileSync(path.join(f.projectRoot, 'acceptance.test.mjs'),
+      "import fs from 'node:fs'; import assert from 'node:assert/strict'; assert.equal(fs.readFileSync(new URL('./artifact.txt', import.meta.url), 'utf8'), 'actual fixture artifact');\n");
+    const checker = captureCheckerRegistry(f.projectRoot).registry.find(check => check.script === 'node --test acceptance.test.mjs');
     const decision = { harness: 'codex', provider: 'openai', model: 'native-fixture', effort: 'medium' };
     const log = [];
     const createAdapters = async ({ captureObservation }) => ({ codex: { id: 'common-service-fixture',
@@ -324,7 +332,9 @@ describe('common boundary with actual default workflow composition', () => {
         log.push(state.worker.id); const data = JSON.parse(state.worker.prompt.split('\n')[0]);
         state.observed = { completed: true, model: decision.model, effort: decision.effort, effortEvidence: 'native-turn-context',
           sessionId: state.worker.role === 'reviewer' ? children[1] : children[0], answer: state.worker.role === 'reviewer'
-            ? JSON.stringify({ passed: true, artifactDigest: data.acceptance.artifactDigest, findings: [], evidence: ['exact fixture artifacts inspected'] })
+            ? JSON.stringify({ passed: true, artifactDigest: data.acceptance.artifactDigest, findings: [], evidence: ['exact fixture artifacts inspected'],
+              criterionCoverage: [{ taskId: 'work', criterionId: 'fixture-bytes', checkIds: [checker.id], passed: true, evidence: ['Exact fixture artifact bytes verified by declared source-bound checker'] }],
+              coverage: ['entry','caller','consumer','config','error'].map(dimension => ({ dimension, state: 'not-applicable', evidence: ['Disposable mechanical fixture only'] })), omissions: [] })
             : JSON.stringify({ outcome: 'Bounded actual controller fixture completion', artifacts: [], decisions: [], risks: [] }) };
         captureObservation(state.worker, state.observed); return state;
       }, observe: async state => state.observed,
@@ -338,9 +348,11 @@ describe('common boundary with actual default workflow composition', () => {
     f.options.planTask = host => planManagedTask(host, { route: async () => decision, sampleCapacity: () => ({ workers: 5, tier: 'test-measurement' }), recallMemory: () => { throw Error('duplicate recall'); },
       runPlanner: async options => {
         expect(options.request.contextRefs).toEqual(f.options.contextRefs); expect(options.prompt).toContain(f.options.originalPrompt);
-        return { completed: true, model: decision.model, effort: decision.effort, sessionId: 'actual-fixture-planner', answer: JSON.stringify({ tasks: [{ id: 'work', instructions: 'Read actual supplied context', dependsOn: [], mode: 'read', worktree: f.projectRoot, paths: [], checkIds: ['output-json'] }] }) };
+        return { completed: true, model: decision.model, effort: decision.effort, sessionId: 'actual-fixture-planner', answer: JSON.stringify({ unresolvedObligations: [], tasks: [{ id: 'work', instructions: 'Read actual supplied context', dependsOn: [], mode: 'read', worktree: f.projectRoot, paths: [], checkIds: [checker.id],
+          acceptanceCriteria: [{ id: 'fixture-bytes', assertion: 'Retain exact supplied fixture artifact bytes', checkIds: [checker.id] }] }] }) };
       } });
     f.options.executeWorkflow = request => executeManagedWorkflow(request, { route: async () => decision, createAdapters, sampleCapacity: () => ({ workers: 5, tier: 'test-measurement' }),
+      check: async check => { const run = spawnSync(check.command, check.args, { cwd: check.cwd, encoding: 'utf8' }); return { passed: run.status === 0, exitCode: run.status, stdoutDigest: sha(run.stdout || '') }; },
       verifyDecision: () => {}, recordReceipt: async () => ({ durable: true, agentDbCommitted: true }) });
     const result = await runManagedPrompt(f.options);
     expect(log).toEqual(['work', 'independent-review']); expect(result.managedWorkflow.executions).toHaveLength(2);

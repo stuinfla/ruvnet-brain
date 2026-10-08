@@ -26,10 +26,14 @@ function consoleProbe(f,apply=false){const r=spawnSync(process.execPath,['--inpu
 it.each(['project','user'])('Console reads %s canonical store and corresponding queue from served nested project',scope=>{
  const f=fixture({scope}),r=consoleProbe(f);expect(r.before).toMatchObject({projectDir:f.project,scope,queueKnown:true,statusKnown:true,queueDir:scope==='project'?f.projectQueue:f.userQueue,queueDepth:scope==='project'?60:1114,observations:scope==='project'?5:1312,learningDb:scope==='project'?f.projectDb:f.userDb});expect(fs.existsSync(f.calls)).toBe(false);
 });
-it.each([false,true])('Console Apply verifies separate canonical pattern progress, no-op=%s',noTraining=>{
- const f=fixture({noTraining}),r=consoleProbe(f,true);expect(r.applied.results[0].ok).toBe(!noTraining);expect(r.after.patterns).toBe(noTraining?0:1);
+it.each([false,true])('Console refuses unavailable automatic inverse; explicit manual training verifies progress, no-op=%s',noTraining=>{
+ const f=fixture({noTraining}),before=fs.readFileSync(f.projectDb),r=consoleProbe(f,true);
+ expect(r.applied.results[0]).toMatchObject({ok:false,skipped:true});expect(r.applied.results[0].log).toContain('Automatic remedy is unavailable');
+ expect(fs.readFileSync(f.projectDb)).toEqual(before);expect(fs.existsSync(f.calls)).toBe(false);expect(r.after.patterns).toBe(0);
+ const manual=f.run('scripts/health-repair.mjs',['--train-learning'],{TEST_NO_DISTILL:noTraining?'1':undefined});expect(manual.status===0).toBe(!noTraining);
+ expect(consoleProbe(f).after.patterns).toBe(noTraining?0:1);
  const calls=fs.readFileSync(f.calls,'utf8').trim().split('\n').map(JSON.parse);expect(calls.some(c=>c.args.includes('distill'))).toBe(true);expect(calls.every(c=>c.args[c.args.indexOf('--db')+1]===f.projectDb&&c.daemon==='0')).toBe(true);expect(observeLearning({env:{...f.env,RUVNET_LEARNING_SCOPE:'user'},cwd:f.project}).statusKnown).toBe(false);
- if(noTraining)expect(r.applied.results[0].log).toMatch(/without measurable pattern progress/);
+ if(noTraining)expect(manual.stdout+manual.stderr).toMatch(/without measurable pattern progress/);
 });
 it('OFF and unadopted observations neither initialize a learner nor read queues',()=>{
  const f=fixture();fs.mkdirSync(f.env.RUVNET_BRAIN_STATE_DIR);fs.writeFileSync(path.join(f.env.RUVNET_BRAIN_STATE_DIR,'brain-off'),'');expect(observeLearning({env:f.env,cwd:f.nested})).toMatchObject({enabled:false,queueDepth:0,statusKnown:false});expect(fs.existsSync(f.calls)).toBe(false);

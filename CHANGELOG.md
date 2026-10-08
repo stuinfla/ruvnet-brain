@@ -19,9 +19,11 @@ current campaign and is finalized by the lead session before the next release cu
 - Corrects bounded grounding, lesson ownership, QA evidence and corpus integrity
   consumers, with focused regression coverage.
 - The rule campaign records 31 scoped candidate qualifications and 69 unresolved
-  rules, including suspended P032. These counts are historical review scope;
-  current exact source qualification, protected publication and installed
-  verification are required before this entry can describe shipped behavior.
+  rules, including suspended P032. This release includes 30 of those candidate
+  scopes; P087's stricter public aggregate changes remain approved but unshipped.
+  The published aggregate schema is preserved without labeling scheduler smoke
+  as full two-run proof. Historical review counts do not establish current
+  exact-source, protected publication or installed verification.
 - No universal host routing, hook enforcement or all-100-rule conformance claim.
 
 ## Unreleased

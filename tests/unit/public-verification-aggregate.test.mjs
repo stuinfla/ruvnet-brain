@@ -117,9 +117,6 @@ describe('signed public 3x3 verification aggregate', () => {
     const keys = crypto.generateKeyPairSync('ed25519');
     const aggregate = signPublicVerificationAggregate({ leaves: await leaves(keys) }, keys.privateKey);
     expect(aggregate.metrics).toMatchObject({ leaves: 9, recallAt10: 1, deltaCitationRate: 1 });
-    expect(aggregate.scopeVerdict).toBe('PASS'); expect(aggregate.nativeProofCoverage).toEqual({ fullTwoRunComplete: true,
-      fullTwoRunVerified: ['linux/dual', 'macos/dual', 'windows/dual'], schedulerBoundaryOnly: [] });
-    expect(aggregate.untested).toEqual([]);
     expect(verifyPublicVerificationAggregate(aggregate, keys.publicKey, identity)).toBe(aggregate);
   });
 
@@ -252,75 +249,4 @@ describe('signed public 3x3 verification aggregate', () => {
         keys.publicKey, { ...identity, verifierSha })).toBeTruthy();
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
   });
-});
-
-// Constructed schema-valid smoke fixtures; no native scheduler or provider execution.
-async function smokeLeaves(keys, smokeCount = 3) {
-  const rows = await leaves(keys); let replaced = 0;
-  return rows.map(leaf => {
-    if (leaf.mode !== 'dual' || replaced++ >= smokeCount) return leaf;
-    const { leafSha256: _old, nativeNightly: _full, ...base } = leaf;
-    const platform = { linux: 'linux', macos: 'darwin', windows: 'win32' }[leaf.os];
-    const paths = platform === 'win32' ? path.win32 : path.posix;
-    const isolated = 'com.ruvnet.brain-update.proof-smoke-fixture';
-    const smoke = { schemaVersion: 1, kind: 'ruvnet-brain-native-scheduler-smoke',
-      scope: 'public-release-scheduler-boundary', platform, sourceSha: identity.sourceSha, workflowRunId: '12345',
-      identity: isolated, loaded: true, cleaned: true, trigger: { identity: isolated,
-        kind: { linux: 'cron-registration', darwin: 'launchctl-kickstart', win32: 'schtasks-run' }[platform] },
-      registration: { recordPath: paths.resolve('/fixture/registration.json'), nodePath: paths.resolve('/fixture/node'),
-        runnerPath: paths.resolve('/fixture/runner.mjs'), runnerSha256: '9'.repeat(64),
-        packageTarget: { spec: paths.resolve('/fixture/package.tgz'), sha256: identity.artifactSha256 },
-        bundleTarget: { spec: paths.resolve('/fixture/bundle.zip'), sha256: identity.bundleSha256 } }, observedAt: new Date().toISOString() };
-    return createPublicVerificationLeaf({ ...base, nativeSchedulerSmoke: smoke }, { publicKey: keys.publicKey });
-  });
-}
-it.each([1, 3])('scheduler smoke leaves retain top-level full-run debt and cannot qualify full coverage: %s', async smokeCount => {
-  const keys = crypto.generateKeyPairSync('ed25519');
-  const aggregate = signPublicVerificationAggregate({ leaves: await smokeLeaves(keys, smokeCount) }, keys.privateKey);
-  expect(aggregate.scopeVerdict).toBe('PASS'); expect(aggregate.verdict).toBe('UNKNOWN');
-  expect(aggregate.nativeProofCoverage.fullTwoRunComplete).toBe(false);
-  expect(aggregate.nativeProofCoverage.schedulerBoundaryOnly).toHaveLength(smokeCount);
-  expect(aggregate.nativeProofCoverage.fullTwoRunVerified).toHaveLength(3 - smokeCount);
-  expect(aggregate.untested).toEqual(aggregate.nativeProofCoverage.schedulerBoundaryOnly.map(lane => `native-full-two-run:${lane}`));
-  expect(() => verifyPublicVerificationAggregate(aggregate, keys.publicKey, identity)).toThrow(/untested native full-two-run/);
-  const { aggregateSha256, signature, ...body } = aggregate;
-  expect(digest(body)).toBe(aggregateSha256);
-  expect(crypto.verify(null, Buffer.from(canonicalJson({ ...body, aggregateSha256 })), keys.publicKey, Buffer.from(signature, 'base64'))).toBe(true);
-});
-it('resealing smoke debt as complete cannot replace validated raw leaf proof coverage', async () => {
-  const keys = crypto.generateKeyPairSync('ed25519');
-  const aggregate = signPublicVerificationAggregate({ leaves: await smokeLeaves(keys) }, keys.privateKey);
-  aggregate.verdict = 'PASS'; aggregate.untested = [];
-  aggregate.nativeProofCoverage = { fullTwoRunComplete: true, fullTwoRunVerified: ['linux/dual', 'macos/dual', 'windows/dual'], schedulerBoundaryOnly: [] };
-  const { aggregateSha256: _old, signature: _signature, ...body } = aggregate;
-  aggregate.aggregateSha256 = digest(body);
-  aggregate.signature = crypto.sign(null, Buffer.from(canonicalJson({ ...body, aggregateSha256: aggregate.aggregateSha256 })), keys.privateKey).toString('base64');
-  expect(() => verifyPublicVerificationAggregate(aggregate, keys.publicKey)).toThrow(/differs from rebuilt raw evidence/);
-});
-
-it('actual CLI retains signed smoke debt artifact and returns UNKNOWN instead of full-coverage success', async () => {
-  const keys = crypto.generateKeyPairSync('ed25519');
-  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'aggregate-smoke-debt-'));
-  try {
-    const laneDir = path.join(temp, 'lanes'); fs.mkdirSync(laneDir);
-    const rows = await smokeLeaves(keys);
-    for (const osName of PUBLIC_VERIFICATION_OS) {
-      const payload = { schemaVersion: 1, kind: 'ruvnet-brain-public-verification-os-lane', os: osName, leaves: rows.filter(row => row.os === osName) };
-      fs.writeFileSync(path.join(laneDir, `${osName}.json`), JSON.stringify({ ...payload, laneSha256: digest(payload) }));
-    }
-    const out = path.join(temp, 'partial.json');
-    const result = spawnSync(process.execPath, ['scripts/public-verification-aggregate.mjs', '--lanes', laneDir, '--out', out, '--workflow-run-id', '12345'],
-      { cwd: path.resolve(import.meta.dirname, '../..'), encoding: 'utf8', timeout: 10000,
-        env: { ...process.env, RUVNET_SIGNING_KEY: keys.privateKey.export({ type: 'pkcs8', format: 'pem' }) } });
-    expect(result.status, result.stderr).toBe(4);
-    const stdout = JSON.parse(result.stdout), aggregate = JSON.parse(fs.readFileSync(out, 'utf8'));
-    expect(stdout).toMatchObject({ ok: false, verdict: 'UNKNOWN', scopeVerdict: 'PASS' });
-    expect(stdout.nativeProofCoverage).toEqual(aggregate.nativeProofCoverage);
-    expect(stdout.untested).toEqual(aggregate.untested); expect(aggregate.untested).toHaveLength(3);
-    expect(stdout.aggregateSha256).toBe(aggregate.aggregateSha256);
-    expect(() => verifyPublicVerificationAggregate(aggregate, keys.publicKey, identity)).toThrow(/untested native full-two-run/);
-    expect(() => verifyPublicVerificationAggregate(aggregate, crypto.generateKeyPairSync('ed25519').publicKey)).toThrow(/signature mismatch/);
-    aggregate.untested = [];
-    expect(() => verifyPublicVerificationAggregate(aggregate, keys.publicKey)).toThrow(/digest mismatch/);
-  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });

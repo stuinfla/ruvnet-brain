@@ -19,7 +19,7 @@ const advisory = (overrides = {}) => block({
   enforcement: 'checklist', check: null, repeatCount: 100, ...overrides,
 });
 function seed(rows, ids = []) {
-  fs.writeFileSync(store, JSON.stringify({ version: 1, lessons: rows }));
+  fs.writeFileSync(store, JSON.stringify({ version: 1, lessons: rows.map(row => ({ ...row, projects: [home] })) }));
   fs.writeFileSync(consent, JSON.stringify({ version: 1, blocking: ids }));
 }
 function fire(extraArgs = [], extraEnv = {}) {
@@ -35,6 +35,8 @@ function fire(extraArgs = [], extraEnv = {}) {
 }
 beforeEach(() => {
   home = fs.mkdtempSync(path.join(os.tmpdir(), 'rnb-lesson-budget-'));
+  const git = spawnSync('git', ['init', '-q'], { cwd: home, encoding: 'utf8' });
+  if (git.status !== 0) throw new Error(git.stderr);
   store = path.join(home, 'lessons.json'); consent = path.join(home, 'blocking-optin.json');
 });
 afterEach(() => fs.rmSync(home, { recursive: true, force: true }));

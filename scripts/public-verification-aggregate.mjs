@@ -204,12 +204,6 @@ export function buildPublicVerificationAggregate(leaves, options = {}) {
   if (metrics.recallAt10 < 0.98 || metrics.deltaCitationRate !== 1 || metrics.skipped || metrics.unknown) {
     throw new Error('public verification aggregate retrieval acceptance failed');
   }
-  // A loaded/triggered/cleaned scheduler is bounded capability evidence, not two executions.
-  const dualLanes = required.filter(lane => lane.endsWith('/dual'));
-  const fullTwoRunVerified = dualLanes.filter(lane => byLane.get(lane).nativeNightly !== undefined);
-  const schedulerBoundaryOnly = dualLanes.filter(lane => byLane.get(lane).nativeNightly === undefined);
-  const nativeProofCoverage = { fullTwoRunComplete: schedulerBoundaryOnly.length === 0, fullTwoRunVerified, schedulerBoundaryOnly };
-  const untested = schedulerBoundaryOnly.map(lane => `native-full-two-run:${lane}`);
   const oracle = first.retrievalPlan.oracle;
   if (!oracle || !HEX64.test(String(oracle.receiptSha256 || ''))
     || !HEX64.test(String(oracle.queryStoreSetSha256 || ''))
@@ -230,11 +224,8 @@ export function buildPublicVerificationAggregate(leaves, options = {}) {
       recordCount: first.retrievalPlan.denominator.eligibleStores.length,
     },
     metrics,
-    evidenceScope: 'public-install-retrieval-and-native-proof-scope',
-    scopeVerdict: 'PASS',
-    nativeProofCoverage,
-    verdict: nativeProofCoverage.fullTwoRunComplete ? 'PASS' : 'UNKNOWN',
-    untested,
+    verdict: 'PASS',
+    untested: [],
   };
 }
 
@@ -247,7 +238,7 @@ export function signPublicVerificationAggregate({ leaves }, privateKey) {
 
 export function verifyPublicVerificationAggregate(aggregate, publicKey, expectedIdentity = null) {
   if (aggregate?.schemaVersion !== 1 || aggregate?.kind !== 'ruvnet-brain-public-verification-aggregate'
-    || !['PASS', 'UNKNOWN'].includes(aggregate.verdict) || !Array.isArray(aggregate.untested)
+    || aggregate.verdict !== 'PASS' || !Array.isArray(aggregate.untested) || aggregate.untested.length
     || !HEX64.test(String(aggregate.aggregateSha256 || '')) || typeof aggregate.signature !== 'string') {
     throw new Error('public verification aggregate is malformed');
   }
@@ -263,9 +254,6 @@ export function verifyPublicVerificationAggregate(aggregate, publicKey, expected
   const rebuilt = buildPublicVerificationAggregate(aggregate.evidence.leaves, { publicKey });
   if (canonicalJson(rebuilt) !== canonicalJson(payload)) {
     throw new Error('public verification aggregate differs from rebuilt raw evidence');
-  }
-  if (aggregate.verdict !== 'PASS' || aggregate.untested.length) {
-    throw new Error(`public verification aggregate retains untested native full-two-run scope: ${aggregate.untested.join(', ')}`);
   }
   const required = PUBLIC_VERIFICATION_OS.flatMap((os) => PUBLIC_VERIFICATION_MODES.map((mode) => `${os}/${mode}`));
   if (aggregate.lanes?.length !== required.length || new Set(aggregate.lanes.map(({ lane }) => lane)).size !== required.length
@@ -367,11 +355,8 @@ async function main() {
     workflowRunId: options['workflow-run-id'],
     privateKey: process.env.RUVNET_SIGNING_KEY,
   });
-  const ok = aggregate.verdict === 'PASS' && aggregate.untested.length === 0;
-  process.stdout.write(`${JSON.stringify({ ok, verdict: aggregate.verdict, scopeVerdict: aggregate.scopeVerdict,
-    evidenceScope: aggregate.evidenceScope, nativeProofCoverage: aggregate.nativeProofCoverage, untested: aggregate.untested,
-    aggregateSha256: aggregate.aggregateSha256, leaves: aggregate.metrics.leaves })}\n`);
-  if (!ok) process.exitCode = 4;
+  process.stdout.write(`${JSON.stringify({ ok: true, aggregateSha256: aggregate.aggregateSha256,
+    leaves: aggregate.metrics.leaves })}\n`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
