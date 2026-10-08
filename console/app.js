@@ -1570,7 +1570,7 @@ function updateRecsChip() {
   const n = renderedRecIds.size;
   if (!stateRecsSettled && !stackRecsSettled && !healthRecsSettled) { setChips('chips-recs', [chip('…', 'wait')]); return; }
   if (n === 0 && stateRecsSettled && stackRecsSettled && healthRecsSettled) {
-    setChips('chips-recs', [chip('none needed', 'green')]);
+    setChips('chips-recs', [chip('no automatic actions', 'mute')]);
   } else {
     setChips('chips-recs', [chip(`${n} proposal${n === 1 ? '' : 's'}`, n ? 'amber' : 'wait')]);
   }
@@ -1677,8 +1677,8 @@ function maybeRecsEmpty() {
     emptyBox.hidden = false;
     emptyBox.replaceChildren(el('div', { class: 'recs-empty' },
       withIllo('recs',
-        el('p', { class: 'lead' }, 'Nothing to suggest.'),
-        el('p', {}, 'Your setup looks the way you meant it to — and an advisor with nothing to say should say exactly that. If your machine changes, reload and we’ll look again.'))));
+        el('p', { class: 'lead' }, 'No automatic repair available.'),
+        el('p', {}, 'Automatic repairs require a verified inverse. Review the diagnostics and use supported settings controls or a separate manual repair.'))));
   } else {
     emptyBox.hidden = true;
   }

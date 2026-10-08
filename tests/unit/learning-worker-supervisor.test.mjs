@@ -1,8 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
-import { spawn } from 'node:child_process';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { learningFixture } from '../helpers/learning-fixture.mjs';
 import { learningContext } from '../../plugin/scripts/runtime-preferences.mjs';
 import { superviseLearning } from '../../plugin/scripts/learning-worker-supervisor.mjs';
@@ -12,8 +11,14 @@ const fixtures=[];
 afterEach(()=>fixtures.splice(0).forEach(f=>f.cleanup()));
 function setup(){const f=learningFixture();fixtures.push(f);const context=learningContext({env:f.env,cwd:f.project});const token=takeQueueLock(context);const child=new EventEmitter();child.pid=999001;child.unref=()=>{};child.connected=false;return{f,context,token,child};}
 test.each(['posix','win32'])('failed retirement cannot release the queue fence on %s',async platform=>{
- const {f,context,token,child}=setup();const original=f.write('pending','{"kind":"original"}\n');const bytes=fs.readFileSync(original);const start=Date.now();const result=await superviseLearning(context,token,Date.now()+20,{env:f.env,platform,spawnEngine:()=>child,killOwned:()=>false,groupAlive:()=>true});
- expect(Date.now()-start).toBeLessThan(1200);expect(result.retirementConfirmed).toBe(false);const lock=JSON.parse(fs.readFileSync(path.join(f.queue,'.worker-lock')));expect(lock.retirementUnconfirmed).toBe(true);expect(takeQueueLock(context,Date.now()+120000)).toBeNull();expect(fs.readFileSync(original).equals(bytes)).toBe(true);expect(fs.readdirSync(f.queue).some(name=>name.startsWith('.ack'))).toBe(false);
+ const {f,context,token,child}=setup();const original=f.write('pending','{"kind":"original"}\n');const bytes=fs.readFileSync(original);
+ // This injected child/group proof measures the timer contract, not host scheduling or native retirement.
+ vi.useFakeTimers();
+ try {
+  const start=Date.now(),pending=superviseLearning(context,token,start+20,{env:f.env,platform,spawnEngine:()=>child,killOwned:()=>false,groupAlive:()=>true});
+  await vi.advanceTimersByTimeAsync(650);const result=await pending;
+  expect(Date.now()-start).toBeLessThan(1200);expect(result.retirementConfirmed).toBe(false);const lock=JSON.parse(fs.readFileSync(path.join(f.queue,'.worker-lock')));expect(lock.retirementUnconfirmed).toBe(true);expect(takeQueueLock(context,Date.now()+120000)).toBeNull();expect(fs.readFileSync(original).equals(bytes)).toBe(true);expect(fs.readdirSync(f.queue).some(name=>name.startsWith('.ack'))).toBe(false);
+ } finally { vi.useRealTimers(); }
 });
 test('worker crash may retire its group but cannot surrender unknown tree authority',async()=>{
  const {f,context,token,child}=setup();let live=true;let killed=0;const spawnEngine=()=>{queueMicrotask(()=>child.emit('exit',1));return child;};
@@ -37,30 +42,6 @@ test('no worker launches when its durable retirement requirement cannot be saved
  const {f,context,token}=setup();let launches=0;const result=await superviseLearning(context,token,Date.now()+10,{env:f.env,spawnEngine:()=>{launches++;},persistFence:()=>{throw new Error('read-only');}});
  expect(launches).toBe(0);expect(result).toEqual({retirementConfirmed:true,fencePersisted:false,launched:false});
 });
-
-test.skipIf(process.platform==='win32')('actual POSIX grouped descendant is killed after root exit but tree authority remains UNKNOWN',async()=>{
- const f=learningFixture();fixtures.push(f);const context=learningContext({env:f.env,cwd:f.project}),token=takeQueueLock(context);
- const original=f.write('pending-real','{"kind":"original-retained"}\n'),bytes=fs.readFileSync(original),pidFile=path.join(f.root,'descendant.pid');let pid,liveAfterRootExit=false;
- const code="const fs=require('node:fs'),cp=require('node:child_process');const c=cp.spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});fs.writeFileSync(process.argv[1],String(c.pid));setTimeout(()=>process.exit(1),60);";
- try {
-  const result=await superviseLearning(context,token,Date.now()+2000,{env:f.env,spawnEngine:()=>{const child=spawn(process.execPath,['-e',code,pidFile],{detached:true,stdio:'ignore',env:f.env});pid=child.pid;return child;},killOwned:owned=>{process.kill(-owned,0);liveAfterRootExit=true;process.kill(-owned,'SIGKILL');return true;}});
-  expect(liveAfterRootExit).toBe(true);expect(result.retirementConfirmed).toBe(false);expect(result.groupRetired).toBe(true);expect(fs.existsSync(path.join(f.queue,'.worker-lock'))).toBe(true);expect(fs.readFileSync(original).equals(bytes)).toBe(true);expect(takeQueueLock(context)).toBeNull();
- }finally{if(pid)try{process.kill(-pid,'SIGKILL');}catch{}}
-});
-
-test.skipIf(process.platform==='win32')('P033 unexpected owned root exit retains UNKNOWN fence while its escaped child is still alive',async()=>{
- const f=learningFixture();fixtures.push(f);const context=learningContext({env:f.env,cwd:f.project});const token=takeQueueLock(context);
- const file=f.write('retained-escape','{"kind":"original"}\n'),bytes=fs.readFileSync(file),pidFile=path.join(f.root,'escape.pid');let rootPid,escaped;
- const code="const fs=require('node:fs'),cp=require('node:child_process');const c=cp.spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{detached:true,stdio:'ignore'});fs.writeFileSync(process.argv[1],String(c.pid));c.unref();setTimeout(()=>process.exit(1),100);";
- try{
-  const result=await superviseLearning(context,token,Date.now()+2000,{env:f.env,spawnEngine:()=>{const child=spawn(process.execPath,['-e',code,pidFile],{detached:true,stdio:'ignore',env:f.env});rootPid=child.pid;return child;}});
-  escaped=Number(fs.readFileSync(pidFile,'utf8'));expect(()=>process.kill(escaped,0)).not.toThrow();
-  expect(result.retirementConfirmed).toBe(false);expect(result.treeVerified).toBe(false);expect(result.retirementState).toBe('UNKNOWN');
-  expect(JSON.parse(fs.readFileSync(path.join(f.queue,'.worker-lock'))).retirementUnconfirmed).toBe(true);
-  expect(takeQueueLock(context,Date.now()+120000)).toBeNull();expect(fs.readFileSync(file)).toEqual(bytes);
- }finally{if(escaped)try{process.kill(escaped,'SIGKILL');}catch{}if(rootPid)try{process.kill(-rootPid,'SIGKILL');}catch{}}
-});
-
 
 test('P033 trusted completion retains bounded group-only semantics, never full tree proof',async()=>{
  const {f,context,token,child}=setup();let live=true;

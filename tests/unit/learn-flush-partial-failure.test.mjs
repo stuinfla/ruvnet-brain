@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import { learningFixture } from '../helpers/learning-fixture.mjs';
 const fixtures = [];
 afterEach(() => fixtures.splice(0).forEach(f => f.cleanup()));
-function setup(actions) {
-  const f = learningFixture(); fixtures.push(f);
+function setup(actions, options) {
+  const f = learningFixture('project', options); fixtures.push(f);
   const original = actions.map(action => ` ${JSON.stringify({ tool: 'Bash', action })} `).join('\n') + '\n\n';
   const file = f.write('old-session', original); return { ...f, file, original };
 }
@@ -39,11 +39,13 @@ test('automatic distillation stays restricted without an exact inverse while con
   expect(run.stdout).toContain('exact inverse is unverified');
 });
 
-test('bounded eight deliveries retain deferred records exactly', () => {
-  const f = setup(Array.from({ length: 10 }, () => 'npm test'));
+test('synthetic CLI bounded eight deliveries retain deferred records exactly', () => {
+  const f = setup(Array.from({ length: 10 }, () => 'npm test'), { inProcessNative: true });
   f.run(); expect(f.readCalls()).toHaveLength(8); expect(f.depth()).toBe(2);
   expect(fs.readFileSync(f.file, 'utf8')).toBe(f.original);
-  f.run(); expect(f.depth()).toBe(0);
+  f.run(); expect(f.depth()).toBe(0);expect(f.readCalls()).toHaveLength(10);
+  expect(new Set(f.readCalls().map(call => call.args[call.args.indexOf('--key')+1])).size).toBe(10);
+  expect(fs.readFileSync(f.file, 'utf8')).toBe(f.original);
 });
 
 test('failed and malformed records survive byte for byte', () => {

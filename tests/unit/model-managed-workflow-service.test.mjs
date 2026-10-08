@@ -9,6 +9,8 @@ import { PassThrough } from 'node:stream';
 import { pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
+import { npmInvocation } from '../../scripts/npm-invocation.mjs';
+import { requiredCodexBinary } from '../helpers/required-native-tools.mjs';
 import { managedRoute, planManagedTask as actualPlanManagedTask, executeManagedWorkflow as actualExecuteManagedWorkflow, captureCheckerRegistry, runRegisteredChecker,
   commitManagedReceipt, boundedPolicyAuthorization } from '../../scripts/model-managed-workflow-service.mjs';
 import { selectDecision } from '../../scripts/model-router-engine.mjs';
@@ -21,7 +23,8 @@ const phaseMemory = input => async args => ({ ...(input.recall ?? input.memoryRe
 const planManagedTask = (input, options) => actualPlanManagedTask(input, { sampleCapacity: capacity, recallMemory: phaseMemory(input), ...options });
 // Mechanical checker seam: actual fixture argv only; never launch a native model session.
 const fixtureCheck = async checker => {
-  const result = spawnSync(checker.command, checker.args, { cwd: checker.cwd, encoding: 'utf8' });
+  const call = checker.command === 'npm' ? npmInvocation(checker.args) : { executable: checker.command, args: checker.args };
+  const result = spawnSync(call.executable, call.args, { cwd: checker.cwd, encoding: 'utf8' });
   return { passed: result.status === 0, exitCode: result.status, stdoutDigest: digest(result.stdout || '') };
 };
 const executeManagedWorkflow = (input, options) => actualExecuteManagedWorkflow(input, { sampleCapacity: capacity,
@@ -485,7 +488,8 @@ test('temporary observation artifacts and exact checker inputs are redacted befo
   const f = fixture(); const secret = 'synthetic-observation-secret-025068'; const originals = new Map();
   try {
     const plan = await planManagedTask(f.input, { route: async () => decision, runPlanner: planner(f) });
-    const result = await executeManagedWorkflow(plan.request, { createAdapters: executor([], (state) => {
+    const result = await executeManagedWorkflow(plan.request, { check: checker => runRegisteredChecker(checker, { deadline: Date.now() + 15_000, sandboxBinary: actualCheckerBinary }),
+      createAdapters: executor([], (state) => {
       if (state.worker.role === 'reviewer') return;
       state.observed.answer = JSON.stringify({ outcome: `Completed source check; API_KEY=${secret}`, artifacts: [], decisions: [], risks: [] });
       state.observed.evidence = { password: secret };
@@ -608,15 +612,6 @@ test('unknown canonical store type cannot masquerade as verified absence', async
   } finally { f.cleanup(); }
 });
 
-test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('unreadable trusted Brain state blocks rather than granting a disabled exemption', async () => {
-  const f = fixture(), state = path.join(f.root, 'private-state'); let calls = 0, launches = 0;
-  try {
-    fs.mkdirSync(state); fs.chmodSync(state, 0);
-    await assert.rejects(planManagedTask(f.input, { env: { ...process.env, RUVNET_BRAIN_STATE_DIR: state }, route: async () => decision,
-      runPlanner: async () => { launches++; }, recallMemory: async () => { calls++; return { outcome: 'disabled' }; } }), /memory consent is unavailable/);
-    assert.equal(calls, 0); assert.equal(launches, 0);
-  } finally { fs.chmodSync(state, 0o700); f.cleanup(); }
-});
 
 test('readonly review and final completion reject newly unavailable phase history', async () => {
   for (const phase of ['review', 'commit-decision']) {
@@ -828,7 +823,7 @@ test('optional parent policy binding reaches existing adapter caller separately 
   }finally{f.cleanup();}
 });
 
-const actualCheckerBinary = '/Users/stuartkerr/.codex/packages/standalone/releases/0.160.1-aarch64-apple-darwin/bin/codex';
+const actualCheckerBinary = requiredCodexBinary();
 const actualVitestCheckerFixture = script => {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'managed-vitest-evidence-')));
   const home = path.join(root, 'private-home'); fs.mkdirSync(home); fs.mkdirSync(path.join(home, '.codex'));
@@ -837,7 +832,7 @@ const actualVitestCheckerFixture = script => {
   return { root, home, cleanup: () => fs.rmSync(root, { recursive: true, force: true }) };
 };
 
-test.skipIf(!fs.existsSync(actualCheckerBinary))('actual default Vitest checker refuses a successful zero-test exit', async () => {
+test('actual default Vitest checker refuses a successful zero-test exit', async () => {
   // Private task inputs only. Actual registered checker, native read-only sandbox and Vitest process; no model or injected outcome.
   const f = actualVitestCheckerFixture('vitest run --passWithNoTests');
   try {
@@ -849,7 +844,7 @@ test.skipIf(!fs.existsSync(actualCheckerBinary))('actual default Vitest checker 
   } finally { f.cleanup(); }
 }, 20000);
 
-test.skipIf(!fs.existsSync(actualCheckerBinary))('actual default Vitest checker passes executed explicit suite with frozen reporter argv and unchanged source', async () => {
+test('actual default Vitest checker passes executed explicit suite with frozen reporter argv and unchanged source', async () => {
   const f = actualVitestCheckerFixture('vitest run one.test.mjs --experimental.viteModuleRunner=false');
   try {
     const testFile = path.join(f.root, 'one.test.mjs');
@@ -869,7 +864,7 @@ test.skipIf(!fs.existsSync(actualCheckerBinary))('actual default Vitest checker 
   } finally { f.cleanup(); }
 }, 20000);
 
-test.skipIf(!fs.existsSync(actualCheckerBinary))('actual skipped-only explicit Vitest suite cannot establish behavioral acceptance', async () => {
+test('actual skipped-only explicit Vitest suite cannot establish behavioral acceptance', async () => {
   const f = actualVitestCheckerFixture('vitest run one.test.mjs --experimental.viteModuleRunner=false');
   try {
     fs.writeFileSync(path.join(f.root, 'one.test.mjs'), "import {it} from 'vitest';it.skip('not executed',()=>{});\n");

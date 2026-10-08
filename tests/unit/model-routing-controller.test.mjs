@@ -5,6 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
+import { resolveRuflo } from '../../plugin/scripts/ruflo-bin.mjs';
 import * as controlledClaude from '../../scripts/claude-controlled-terminal.mjs';
 import { createGuardedWorkflowAdapters } from '../../scripts/model-routing-execution-adapters.mjs';
 import { artifactDigest, buildWorkflowPlan, validateWorkflowRequest, validateWorkflowPlan,
@@ -88,7 +90,7 @@ test.each(['readiness-refusal', 'readiness-throw', 'prepare-throw', 'summary-thr
   class Journal extends ContinuityJournal { constructor(options) { super({ ...options, env: p.env, home: p.home }); } }
   const recordReceipt = async (req, receipt) => {
     const value = commitManagedReceipt(req, receipt, { Journal,
-      drainJournal: (journal, options) => drain(journal, { ...options, ruflo: '/Users/stuartkerr/.npm-global/bin/ruflo', backoff: [] }) });
+      drainJournal: (journal, options) => drain(journal, { ...options, ruflo: resolveRuflo(), backoff: [] }) });
     receipts.push({ receipt, canonicalReceipt: value.canonicalReceipt }); return value;
   };
   const map = { codex: { id: 'actual-local-node-no-provider',
@@ -675,7 +677,7 @@ test('ordinary managed callback reads checkpoint first, writes last and stops ex
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'routing-checkpoint-consumer-'));
   const helper=path.join(root,'scripts/model-routing-checkpoint.mjs'),controller=path.join(root,'scripts/model-routing-controller.mjs');
   let source=fs.readFileSync(path.join(root,'tests/unit/managed-frontend-intake.test.mjs'),'utf8');
-  source=source.replace(/(from\s+|import\s*\()(['"])(\.{1,2}\/[^'"]+)\2/g,(_match,prefix,quote,value)=>prefix+quote+path.resolve(root,'tests/unit',value)+quote);
+  source=source.replace(/(from\s+|import\s*\()(['"])(\.{1,2}\/[^'"]+)\2/g,(_match,prefix,quote,value)=>prefix+JSON.stringify(pathToFileURL(path.resolve(root,'tests/unit',value)).href));
   const start=source.indexOf("it('actual ordinary question callback commits"),end=source.indexOf("it('fresh ordinary resume callback",start);
   assert.ok(start>=0&&end>start,'Existing ordinary callback fixture boundary changed');
   const extra=String.raw`expect(result.status).toBe('complete');

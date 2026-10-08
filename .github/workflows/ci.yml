@@ -113,6 +113,14 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci --no-audit --no-fund
+      - name: Install required native qualification tools
+        shell: bash
+        env:
+          RUFLO_DAEMON_AUTOSTART: '0'
+        run: |
+          set -euo pipefail
+          npm install --global --prefix "$HOME/.npm-global" --ignore-scripts --no-audit --no-fund ruflo@latest @openai/codex@latest
+          node tests/helpers/required-native-tools.mjs --emit-ci-env
       - name: Reviewed release acceptance (linux)
         run: node scripts/release-qualification.mjs --platform linux --report release-acceptance-linux.json
       - uses: actions/upload-artifact@v4
@@ -151,6 +159,14 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci --no-audit --no-fund
+      - name: Install required native qualification tools
+        shell: bash
+        env:
+          RUFLO_DAEMON_AUTOSTART: '0'
+        run: |
+          set -euo pipefail
+          npm install --global --prefix "$HOME/.npm-global" --ignore-scripts --no-audit --no-fund ruflo@latest @openai/codex@latest
+          node tests/helpers/required-native-tools.mjs --emit-ci-env
       - name: Reviewed release acceptance (windows)
         run: node scripts/release-qualification.mjs --platform windows --report release-acceptance-windows.json
       - uses: actions/upload-artifact@v4
@@ -180,6 +196,14 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci --no-audit --no-fund
+      - name: Install required native qualification tools
+        shell: bash
+        env:
+          RUFLO_DAEMON_AUTOSTART: '0'
+        run: |
+          set -euo pipefail
+          npm install --global --prefix "$HOME/.npm-global" --ignore-scripts --no-audit --no-fund ruflo@latest @openai/codex@latest
+          node tests/helpers/required-native-tools.mjs --emit-ci-env
       - name: Reviewed release acceptance (macos)
         run: node scripts/release-qualification.mjs --platform macos --report release-acceptance-macos.json
       - uses: actions/upload-artifact@v4

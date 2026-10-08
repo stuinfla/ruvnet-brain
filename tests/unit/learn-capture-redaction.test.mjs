@@ -62,7 +62,10 @@ afterAll(() => {
 describe('only verified terminal success may enter the learning queue', () => {
   it('the genuine captured Write callback enters only fixed vocabulary, with outer failure still dominant', () => {
     const original = JSON.parse(fs.readFileSync(path.join(ROOT, 'tests/fixtures/hook-payloads/claude/PostToolUse-Write.json'))).payload;
-    const payload = JSON.parse(JSON.stringify(original).replaceAll('{{CWD}}', home));
+    const replaceCwd = value => typeof value === 'string' ? value.replaceAll('{{CWD}}', home)
+      : Array.isArray(value) ? value.map(replaceCwd)
+        : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, replaceCwd(item)])) : value;
+    const payload = replaceCwd(original);
     const queue = path.join(home, '.cache', 'ruvnet-brain', 'learn');
     const run = value => execFileSync(process.execPath, [HOOK], { input: JSON.stringify(value), encoding: 'utf8', env: {
       ...process.env, HOME: home, USERPROFILE: home, RUVNET_BRAIN_PROJECT_DIR: home, CLAUDE_SESSION_ID: SID,

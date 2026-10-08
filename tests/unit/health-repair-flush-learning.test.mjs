@@ -4,11 +4,11 @@ import path from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { learningFixture } from '../helpers/learning-fixture.mjs';
 const fixtures=[];
-const setup=scope=>{const f=learningFixture(scope);fixtures.push(f);fs.mkdirSync(path.join(f.project,'plugin'),{recursive:true});fs.cpSync(new URL('../../plugin/scripts/',import.meta.url),path.join(f.project,'plugin','scripts'),{recursive:true});return f;};
+const setup=(scope, options)=>{const f=learningFixture(scope, options);fixtures.push(f);fs.mkdirSync(path.join(f.project,'plugin'),{recursive:true});fs.cpSync(new URL('../../plugin/scripts/',import.meta.url),path.join(f.project,'plugin','scripts'),{recursive:true});return f;};
 afterEach(()=>fixtures.splice(0).forEach(f=>f.cleanup()));
 const row=JSON.stringify({tool:'Bash',action:'npm test'})+'\n';
-it.each(['project','user'])('repair drains every SID across bounded rounds in %s canonical scope',scope=>{
- const f=setup(scope);f.write('first-real-sid',row.repeat(12));f.write('second-real-sid',row.repeat(3));
+it.each(['project','user'])('synthetic CLI repair drains every SID across bounded rounds in %s canonical scope',scope=>{
+ const f=setup(scope, { inProcessNative: true });f.write('first-real-sid',row.repeat(12));f.write('second-real-sid',row.repeat(3));
  const r=f.run('scripts/health-repair.mjs',['--flush-learning']);
  expect(r.status,r.stdout+r.stderr).toBe(0);expect(r.stdout).toMatch(/fed 15 captured events/);expect(f.depth()).toBe(0);expect(f.readCalls()).toHaveLength(15);
  const db=scope==='project'?path.join(f.project,'.swarm','memory.db'):path.join(f.home,'.claude','global-memory','.swarm','memory.db');

@@ -236,7 +236,7 @@ describe('controlled Claude native turn boundary', () => {
       }
     });
     try {
-      await launchControlledClaudeTerminal({ binary: '/native', args: ['original request'], input, output, diagnostics,
+      await launchControlledClaudeTerminal({ binary: '/native', args: ['original request'], input, output, diagnostics, captureFrontendIntent: async () => null,
         managedPrompt: async options => {
           calls.push(options.originalPrompt);
           if (calls.length === 1) {

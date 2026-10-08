@@ -4,7 +4,7 @@ title: Routing architecture qualification requires a current finite source revie
 status: Accepted
 date: 2026-10-05
 updated: 2026-10-08
-version: 0.1.21
+version: 0.1.22
 reviewed_digest: ad4e7553d3c6
 impl: built
 authors: [Stuart Kerr, Codex]
@@ -130,6 +130,11 @@ governs:
   - tests/unit/native-workflow-policy.test.mjs
   - tests/unit/native-workflow-schema.test.mjs
   - tests/unit/model-managed-workflow-service.test.mjs
+  - tests/unit/model-managed-workflow-service-posix.test.mjs
+  - tests/unit/turn-capture-content-privacy-posix.test.mjs
+  - tests/unit/learning-worker-supervisor-posix.test.mjs
+  - tests/helpers/required-native-tools.mjs
+  - console/index.html
   - tests/unit/model-routing-controller.test.mjs
   - tests/unit/model-routing-execution-adapters.test.mjs
   - tests/unit/claude-controlled-terminal.test.mjs

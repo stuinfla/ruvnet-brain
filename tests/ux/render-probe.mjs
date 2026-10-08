@@ -227,6 +227,9 @@ export async function runRenderProbe() {
     // exercise both ordinary settings through their real HTTP handlers, reload, and prove the
     // chosen values survived. The fixture root above is disposable, so this never touches user state.
     const consolePage = await browser.newPage();
+    const posts = [];
+    const recordApply = request => { if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/apply') posts.push(request); };
+    consolePage.on('request', recordApply);
     const initialStateStartedAt = Date.now();
     const initialStateResponsePromise = consolePage.waitForResponse((response) => (
       response.request().method() === 'GET'
@@ -295,6 +298,7 @@ export async function runRenderProbe() {
       throw new Error(`provider save returned ${providerSaveResponse.status()}: ${JSON.stringify(providerSaveBody)}`);
     }
     await consolePage.locator('form:has(#field-provider) .form-note.n-ok').waitFor();
+    const settingsFile = consoleFixtureEnvironment(fixtureRoot).RUVNET_SETTINGS_FILE;
     await consolePage.locator('#field-advocacy input[value="5"]').check();
     await consolePage.locator('form:has(#field-advocacy) button[type="submit"]').click();
     await consolePage.locator('form:has(#field-advocacy) .form-note.n-ok').waitFor();
@@ -315,111 +319,51 @@ export async function runRenderProbe() {
     });
     stage('console:settings-accepted');
 
-    // The isolated fixture carries one real npx-wiring defect on every OS. Its explicit console root
-    // points to the fixture above, so a missing card is a product failure, not a platform
-    // condition the oracle may silently accept.
-    await consolePage.waitForSelector('article.rec', { state: 'attached' });
-    const recommendationFetchAndRenderMs = Date.now() - recommendationReloadStartedAt;
-    stage('console:recommendation-attached');
-    const recommendations = await consolePage.locator('article.rec').count();
-    const fixAllVisibilityStartedAt = Date.now();
-    await consolePage.locator('#card-recs').evaluate((node) => { node.open = true; });
-    const fixAllButton = consolePage.getByRole('button', { name: /^Fix all \(/ });
-    if (recommendations > 0) await fixAllButton.waitFor({ state: 'visible' });
-    const fixAllVisibilityMs = Date.now() - fixAllVisibilityStartedAt;
-    stage('console:fix-all-visible');
-    const fixAll = await fixAllButton.count();
-    acceptance.push({
-      label: 'Fix all is present whenever verified recommendations exist',
-      pass: recommendations === 0 || fixAll === 1,
-      detail: `${recommendations} recommendations; ${fixAll} Fix all button`,
-    });
-    if (recommendations > 0) {
-      const readinessStartedAt = Date.now();
-      const readiness = await nonScrollingButtonReadiness(fixAllButton);
-      const readinessMs = Date.now() - readinessStartedAt;
-      if (!readiness.visible || !readiness.enabled || readiness.scrollDeltaPx !== 0) {
-        throw new Error(`Fix all readiness is invalid: visible=${readiness.visible} enabled=${readiness.enabled} scroll=${readiness.scrollDeltaPx}px`);
-      }
-      const actualClickScrollBefore = await consolePage.evaluate(() => ({ x: window.scrollX, y: window.scrollY }));
-      const fixAllStarted = Date.now();
-      const confirmationOpenedStartedAt = Date.now();
-      await fixAllButton.click();
-      const confirmButton = consolePage.getByRole('button', { name: 'Yes, fix all verified items' });
-      await confirmButton.waitFor({ state: 'visible' });
-      const openConfirmationMs = Date.now() - confirmationOpenedStartedAt;
-      const actualClickScrollAfter = await consolePage.evaluate(() => ({ x: window.scrollX, y: window.scrollY }));
-      const actualClickScrollDeltaPx = Math.hypot(
-        actualClickScrollAfter.x - actualClickScrollBefore.x,
-        actualClickScrollAfter.y - actualClickScrollBefore.y,
-      );
-      const applyResponsePromise = consolePage.waitForResponse((response) => (
-        response.request().method() === 'POST'
-        && new URL(response.url()).pathname === '/api/apply'
-      ));
-      const applyClickStarted = Date.now();
-      await confirmButton.click();
-      const applyResponse = await applyResponsePromise;
-      const confirmationClickToResponseMs = Date.now() - applyClickStarted;
-      const endpoint = await applyResponse.json();
-      const responseReceivedAt = Date.now();
-      await consolePage.getByText(/applied; .* skipped or failed\./).waitFor();
-      const responseToRenderMs = Date.now() - responseReceivedAt;
-      const resultVerificationStartedAt = Date.now();
-      const applied = await consolePage.getByText('Applied by Fix all — and reversible.').count();
-      const undoButtons = await consolePage.getByRole('button', { name: 'Undo this change' }).count();
-      const resultVerificationMs = Date.now() - resultVerificationStartedAt;
-      const endpointTimings = endpoint?.timings;
-      const timingKeys = ['revalidationMs', 'undoJournalMs', 'childRemedyMs', 'totalMs'];
-      const hasEndpointTimings = timingKeys.every((key) => Number.isFinite(endpointTimings?.[key]) && endpointTimings[key] >= 0);
-      const fixAllMs = Date.now() - fixAllStarted;
-      const accountedFixAllMs = openConfirmationMs + confirmationClickToResponseMs + responseToRenderMs + resultVerificationMs;
-      const unattributedMs = Math.max(0, fixAllMs - accountedFixAllMs);
-      acceptance.push({
-        label: 'Fix all executes the real batch endpoint and returns per-item undo',
-        pass: applied > 0 && undoButtons === applied && hasEndpointTimings && fixAllMs < 4_000,
-        detail: hasEndpointTimings
-          ? `${applied} applied cards; ${undoButtons} undo buttons; ${fixAllMs}ms Fix all total (confirmation ${openConfirmationMs}ms, actual-click scroll ${actualClickScrollDeltaPx}px, confirm click→response ${confirmationClickToResponseMs}ms, response→render ${responseToRenderMs}ms, verification ${resultVerificationMs}ms, unattributed ${unattributedMs}ms); server ready ${readyMs}ms; initial state response/ready ${initialStateResponseMs}/${initialStateReadyMs}ms; recommendation state/render ${recommendationStateResponseMs}/${recommendationFetchAndRenderMs}ms; pre-click visible/readiness ${fixAllVisibilityMs}/${readinessMs}ms (scroll ${readiness.scrollDeltaPx}px); endpoint total ${endpointTimings.totalMs}ms (revalidation ${endpointTimings.revalidationMs}ms, undo journal ${endpointTimings.undoJournalMs}ms, child remedy ${endpointTimings.childRemedyMs}ms)`
-          : `${applied} applied cards; ${undoButtons} undo buttons; ${fixAllMs}ms total; /api/apply timing receipt missing`,
-        timings: {
-          serverReadyMs: readyMs,
-          initialState: {
-            responseMs: initialStateResponseMs,
-            readyMs: initialStateReadyMs,
-          },
-          recommendation: {
-            stateResponseMs: recommendationStateResponseMs,
-            fetchAndRenderMs: recommendationFetchAndRenderMs,
-          },
-          preClick: {
-            visibilityMs: fixAllVisibilityMs,
-            readinessMs,
-            readinessScrollDeltaPx: readiness.scrollDeltaPx,
-            visible: readiness.visible,
-            enabled: readiness.enabled,
-          },
-          fixAll: {
-            openConfirmationMs,
-            actualClickScrollDeltaPx,
-            confirmationClickToResponseMs,
-            responseToRenderMs,
-            resultVerificationMs,
-            unattributedMs,
-            totalMs: fixAllMs,
-          },
-          endpoint: endpointTimings,
-        },
-      });
-      if (undoButtons > 0) {
-        await consolePage.getByRole('button', { name: 'Undo this change' }).first().click();
-        await consolePage.getByText('Reverted').first().waitFor();
-        acceptance.push({
-          label: 'Fix all per-item undo restores the disposable fixture',
-          pass: true,
-          detail: 'first applied item reverted through /api/undo',
-        });
-      }
-    }
+    // The known wiring defect has no qualified exact automatic inverse. Its
+    // absence from automatic offers is required refusal, never proof of a clean machine.
+    await consolePage.locator('#card-recs').evaluate(node => { node.open = true; });
+    await consolePage.getByText('Automatic repairs require a verified inverse. Unsupported repairs are unavailable; use supported settings controls or a separate manual repair.', { exact: true }).waitFor();
+    const wiringFile = path.join(fixtureProject, '.claude/settings.json');
+    const wiringBefore = fs.readFileSync(wiringFile);
+    const journalFile = path.join(fixtureRoot, '.cache/ruvnet-brain/console-undo.jsonl');
+    const journalBefore = fs.existsSync(journalFile) ? fs.readFileSync(journalFile) : null;
+    const automaticApplyPosts = posts.length;
+    const cards = await consolePage.locator('article.rec').count();
+    const batchButtons = await consolePage.getByRole('button', { name: /^Fix all \(/ }).count();
+    const unavailableStartedAt = Date.now();
+    const refused = await consolePage.evaluate(async id => {
+      const response = await fetch('/api/apply', { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: window.__CONSOLE_TOKEN__, ids: [id] }) });
+      return { status: response.status, body: await response.json() };
+    }, 'reconcile:dirty-console-fixture');
+    consolePage.off('request', recordApply);
+    const refusal = refused.body.results?.[0];
+    const journalAfter = fs.existsSync(journalFile) ? fs.readFileSync(journalFile) : null;
+    acceptance.push({ label: 'Unavailable automatic remedy is refused without settings, journal or undo authority',
+      pass: cards === 0 && batchButtons === 0 && automaticApplyPosts === 0 && posts.length === 1 && refused.status === 200
+        && refusal?.ok === false && refusal?.skipped === true && !refusal?.undoToken
+        && /Automatic remedy is unavailable/.test(refusal?.log || '')
+        && fs.readFileSync(wiringFile).equals(wiringBefore)
+        && ((journalBefore === null && journalAfter === null) || journalBefore?.equals(journalAfter))
+        && Date.now() - unavailableStartedAt < 4_000,
+      detail: 'Known unsupported ID refused; no automatic offer, no fixture mutation or journal/token; the only apply POST was the explicit adversarial probe.' });
+    const settingsBeforeUndo = fs.readFileSync(settingsFile);
+    const providerFile = consoleFixtureEnvironment(fixtureRoot).RUVNET_BRAIN_CONFIG_FILE;
+    const providerBeforeUndo = fs.readFileSync(providerFile);
+    await consolePage.locator('#card-settings').evaluate(node => { node.open = true; });
+    await consolePage.locator('#field-advocacy input[value="4"]').check();
+    await consolePage.locator('form:has(#field-advocacy) button[type="submit"]').click();
+    await consolePage.locator('form:has(#field-advocacy) .form-note.n-ok').waitFor();
+    const undoStartedAt = Date.now();
+    const undoResponsePromise = consolePage.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/undo');
+    await consolePage.locator('form:has(#field-advocacy)').getByRole('button', { name: 'Undo save', exact: true }).click();
+    const undoResponse = await undoResponsePromise, undoBody = await undoResponse.json();
+    await consolePage.getByText('Settings restored from the backup. Reload to see the restored values.', { exact: true }).waitFor();
+    acceptance.push({ label: 'Existing settings undo restores exact prior private bytes',
+      pass: undoResponse.ok() && undoBody.ok === true && fs.readFileSync(settingsFile).equals(settingsBeforeUndo)
+        && fs.readFileSync(providerFile).equals(providerBeforeUndo)
+        && fs.readFileSync(wiringFile).equals(wiringBefore) && Date.now() - undoStartedAt < 4_000,
+      detail: 'Real settings /api/undo restores pre-save bytes; successful automatic Fix All/inverse is UNSHIPPED.' });
     stage('console:fix-all-accepted');
     await consolePage.close();
     stage('console:controls-accepted');

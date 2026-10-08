@@ -18,6 +18,7 @@ import { CONTINUITY_NAMESPACE, EVENT_SCHEMA, redactText } from '../plugin/script
 import { withProgressionReader } from '../plugin/scripts/project-progression-reader.mjs';
 import { recall, recallConsent, agentdbStores } from '../plugin/scripts/agentdb-recall.mjs';
 import { rufloInvocation } from '../plugin/scripts/ruflo-bin.mjs';
+import { npmInvocation } from './npm-invocation.mjs';
 import { rufloRunDir } from '../plugin/scripts/project-progression-store.mjs';
 import { resolveProjectStore } from '../plugin/scripts/project-store-resolver.mjs';
 import { resolveManagedContinuationRegistration, publishManagedContinuationReceipt } from './model-managed-prompt.mjs';
@@ -387,8 +388,10 @@ export async function runRegisteredChecker(check, { deadline, signal, env = proc
   assert(path.isAbsolute(binary ?? '') && fs.statSync(binary).isFile(), 'Verified native read-only checker sandbox unavailable');
   const clean = Object.fromEntries(Object.entries(subscriptionEnvironment(env)).filter(([name]) =>
     !/^(NODE_OPTIONS|NODE_PATH|BASH_ENV|ENV|PYTHONPATH|PYTHONSTARTUP|LD_PRELOAD|DYLD.*|NPM_CONFIG_NODE_OPTIONS|npm_config_node_options|NPM_CONFIG_USERCONFIG|npm_config_userconfig)$/i.test(name)));
+  const invocation = check.command === 'npm' ? npmInvocation(check.args, { env: clean })
+    : { executable: check.command, args: check.args };
   const result = await new Promise((resolve) => {
-    const child = launch(binary, ['sandbox', '-P', ':read-only', '-C', check.cwd, '--', check.command, ...check.args], { cwd: check.cwd, env: clean, shell: false,
+    const child = launch(binary, ['sandbox', '-P', ':read-only', '-C', check.cwd, '--', invocation.executable, ...invocation.args], { cwd: check.cwd, env: clean, shell: false,
       detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
     const decoders = { stdout: new StringDecoder('utf8'), stderr: new StringDecoder('utf8') };
     let stdout = '', stderr = '', overflow = false, retiring = false, settled = false, timer, killTimer, retirementTimer;
@@ -419,7 +422,9 @@ export async function runRegisteredChecker(check, { deadline, signal, env = proc
         }
       }
       resolve({ ...value, ...(testEvidence ? { testEvidence } : {}), execution: { sandboxBinary: binary,
-        sandboxProfile: ':read-only', command: check.command, args: [...check.args], ...(check.script ? { script: check.script } : {}) }, stdoutDigest, stderrDigest, output: redactText(`${stdout}\n${stderr}`).slice(-8000) });
+        sandboxProfile: ':read-only', command: check.command, args: [...check.args],
+        invocation: { executable: invocation.executable, args: [...invocation.args] },
+        ...(check.script ? { script: check.script } : {}) }, stdoutDigest, stderrDigest, output: redactText(`${stdout}\n${stderr}`).slice(-8000) });
     };
     const cancel = () => {
       if (retiring || settled) return; retiring = true; safeKill('SIGTERM');

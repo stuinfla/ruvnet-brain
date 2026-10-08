@@ -5,6 +5,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { PassThrough } from 'node:stream';
 import { spawnSync } from 'node:child_process';
+import { npmInvocation } from '../../scripts/npm-invocation.mjs';
 import { runManagedPrompt, managedPromptClass, captureNativeParentContext } from '../../scripts/model-managed-prompt.mjs';
 import { launchControlledClaudeTerminal } from '../../scripts/claude-controlled-terminal.mjs';
 
@@ -204,7 +205,7 @@ describe('actual Claude read-loop integration seam', () => {
     output.on('data', chunk => { if (chunk.toString().includes('Claude> ')) setImmediate(() => input.write(prompts.shift() + '\n')); });
     const managedPrompt = async options => { calls.push(options); return runManagedPrompt({ ...options, recallFn: async () => ({ block: '' }) }); };
     try {
-      await launchControlledClaudeTerminal({ args: ['Translate yes.'], input, output, diagnostics, managedPrompt,
+      await launchControlledClaudeTerminal({ args: ['Translate yes.'], input, output, diagnostics, managedPrompt, captureFrontendIntent: async () => null,
         runTurn: async options => { native.push(options); return { sessionId: parent, modelObserved: true }; } });
       expect(calls.map(value => value.originalPrompt)).toEqual(['Translate yes.', 'Explain this function.']);
       expect(calls.every(value => value.harness === 'claude-code' && value.primaryTurn)).toBe(true);
@@ -352,7 +353,7 @@ describe('common boundary with actual default workflow composition', () => {
           acceptanceCriteria: [{ id: 'fixture-bytes', assertion: 'Retain exact supplied fixture artifact bytes', checkIds: [checker.id] }] }] }) };
       } });
     f.options.executeWorkflow = request => executeManagedWorkflow(request, { route: async () => decision, createAdapters, sampleCapacity: () => ({ workers: 5, tier: 'test-measurement' }),
-      check: async check => { const run = spawnSync(check.command, check.args, { cwd: check.cwd, encoding: 'utf8' }); return { passed: run.status === 0, exitCode: run.status, stdoutDigest: sha(run.stdout || '') }; },
+      check: async check => { const call = check.command === 'npm' ? npmInvocation(check.args) : { executable: check.command, args: check.args }; const run = spawnSync(call.executable, call.args, { cwd: check.cwd, encoding: 'utf8' }); return { passed: run.status === 0, exitCode: run.status, stdoutDigest: sha(run.stdout || '') }; },
       verifyDecision: () => {}, recordReceipt: async () => ({ durable: true, agentDbCommitted: true }) });
     const result = await runManagedPrompt(f.options);
     expect(log).toEqual(['work', 'independent-review']); expect(result.managedWorkflow.executions).toHaveLength(2);

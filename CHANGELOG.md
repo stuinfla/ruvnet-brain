@@ -24,6 +24,9 @@ current campaign and is finalized by the lead session before the next release cu
   The published aggregate schema is preserved without labeling scheduler smoke
   as full two-run proof. Historical review counts do not establish current
   exact-source, protected publication or installed verification.
+- Automatic Fix All/remedy inverses remain unavailable; the console discloses
+  that restriction. Existing settings save, persistence and exact undo remain
+  separately qualified. No successful automatic remedy/undo capability is claimed.
 - No universal host routing, hook enforcement or all-100-rule conformance claim.
 
 ## Unreleased

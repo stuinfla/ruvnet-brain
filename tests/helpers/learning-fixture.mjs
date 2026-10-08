@@ -7,7 +7,7 @@ import { loadNodeSqlite } from '../../plugin/scripts/node-sqlite.mjs';
 import { learningQueueDepth } from '../../plugin/scripts/learning-observation.mjs';
 
 export const repository = fileURLToPath(new URL('../../', import.meta.url));
-export function learningFixture(scope = 'project') {
+export function learningFixture(scope = 'project', { inProcessNative = false } = {}) {
   const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'learning-377-')));
   const home = path.join(root, 'home'); const project = path.join(root, 'project');
   fs.mkdirSync(home); fs.mkdirSync(project); fs.mkdirSync(path.join(project, '.swarm'));
@@ -38,12 +38,25 @@ db.close();`);
   const preload = path.join(root, 'preload.cjs');
   fs.writeFileSync(preload, `const fs=require('node:fs'),cp=require('node:child_process'),original=cp.spawnSync;
 const originalOpen=fs.opendirSync;fs.opendirSync=(dir,...args)=>{if(process.env.TEST_STALL_SCAN&&String(dir).includes('ruvnet-brain-learn'))Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,10000);return originalOpen(dir,...args);};
-cp.spawnSync=(file,args,options)=>original(file,['hooks','memory'].includes(args?.[0])?[process.env.TEST_NATIVE,...args]:args,options);
+cp.spawnSync=(file,args,options)=>{
+ if(process.env.TEST_IN_PROCESS_NATIVE==='1'&&args?.[0]==='memory') {
+  // Count-contract fixtures use the same synthetic CLI and real SQLite, without measuring
+  // repeated Windows Node startup. Actual owned worker/supervisor deadlines stay unchanged.
+  let stdout='',stderr='',status=0;const exit={};
+  const childProcess={argv:[file,process.env.TEST_NATIVE,...args],env:options?.env||process.env,cwd:()=>options?.cwd||process.cwd(),
+   exit:code=>{status=code;throw exit;},stdout:{write:value=>{stdout+=String(value);}}};
+  try{require('node:vm').runInNewContext(fs.readFileSync(process.env.TEST_NATIVE,'utf8'),{require,process:childProcess,
+   console:{log:value=>{stdout+=String(value)+'\\n';},error:value=>{stderr+=String(value)+'\\n';}},Atomics,Int32Array,SharedArrayBuffer});}
+  catch(error){if(error!==exit){status=1;stderr+=error.stack||String(error);}}
+  return{status,stdout,stderr};
+ }
+ return original(file,['hooks','memory'].includes(args?.[0])?[process.env.TEST_NATIVE,...args]:args,options);
+};
 require('node:module').syncBuiltinESMExports();`);
   const env = { ...process.env, HOME: home, USERPROFILE: home, RUVNET_LEARNING_SCOPE: scope,
     RUVNET_BRAIN_PROJECT_DIR: project, RUVNET_BRAIN_HOME: path.join(home, 'brain'),
     RUVNET_BRAIN_STATE_DIR: path.join(home, 'state'), RUFLO_BIN: process.execPath,
-    NODE_OPTIONS: `--require=${preload}`, TEST_NATIVE: native, TEST_CALLS: calls,
+    NODE_OPTIONS: `--require=${preload}`, TEST_NATIVE: native, TEST_CALLS: calls, TEST_IN_PROCESS_NATIVE: inProcessNative ? '1' : '0',
     RUVNET_TURN_CAPTURE: 'off', RUVNET_CONTINUITY_CAPTURE: 'off' };
   if (scope === 'user') {
     const { DatabaseSync } = loadNodeSqlite(); const globalDir = path.join(home, '.claude', 'global-memory', '.swarm');

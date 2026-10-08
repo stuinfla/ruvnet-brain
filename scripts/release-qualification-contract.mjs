@@ -53,7 +53,11 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
         "tests/unit/learner-scope-agreement.test.mjs",
         "tests/unit/health-repair-flush-learning.test.mjs",
         "tests/unit/learning-worker-supervisor.test.mjs"
-      ]
+      ],
+      "platformFiles": {
+        "linux": ["tests/unit/learning-worker-supervisor-posix.test.mjs"],
+        "macos": ["tests/unit/learning-worker-supervisor-posix.test.mjs"]
+      }
     },
     {
       "id": "fresh-owned-host-proof",
@@ -155,8 +159,8 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
         "tests/unit/model-routing-defence.test.mjs"
       ],
       "platformFiles": {
-        "linux": ["tests/unit/model-terminal-canonical-entry.test.mjs", "tests/unit/codex-managed-terminal.test.mjs", "tests/unit/grok-subscription-host.test.mjs", "tests/unit/model-managed-parent-context-posix.test.mjs", "tests/unit/automatic-hook-retirement-posix.test.mjs"],
-        "macos": ["tests/unit/model-terminal-canonical-entry.test.mjs", "tests/unit/codex-managed-terminal.test.mjs", "tests/unit/grok-subscription-host.test.mjs", "tests/unit/model-managed-parent-context-posix.test.mjs", "tests/unit/automatic-hook-retirement-posix.test.mjs"]
+        "linux": ["tests/unit/model-terminal-canonical-entry.test.mjs", "tests/unit/codex-managed-terminal.test.mjs", "tests/unit/grok-subscription-host.test.mjs", "tests/unit/model-managed-parent-context-posix.test.mjs", "tests/unit/automatic-hook-retirement-posix.test.mjs", "tests/unit/model-managed-workflow-service-posix.test.mjs"],
+        "macos": ["tests/unit/model-terminal-canonical-entry.test.mjs", "tests/unit/codex-managed-terminal.test.mjs", "tests/unit/grok-subscription-host.test.mjs", "tests/unit/model-managed-parent-context-posix.test.mjs", "tests/unit/automatic-hook-retirement-posix.test.mjs", "tests/unit/model-managed-workflow-service-posix.test.mjs"]
       }
     },
     {
@@ -200,7 +204,11 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
         "tests/integration/project-progression-hook.test.mjs",
         "tests/unit/turn-journal-platform.test.mjs",
         "tests/unit/project-store-resolver.test.mjs"
-      ]
+      ],
+      "platformFiles": {
+        "linux": ["tests/unit/turn-capture-content-privacy-posix.test.mjs"],
+        "macos": ["tests/unit/turn-capture-content-privacy-posix.test.mjs"]
+      }
     },
     {
       "id": "lossless-lifecycle-retention",

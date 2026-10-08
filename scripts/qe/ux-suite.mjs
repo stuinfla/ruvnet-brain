@@ -36,8 +36,8 @@ import { automaticHookRetirementStatus } from '../../bin/install.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const RENDER_PROBE = path.resolve(HERE, '../../tests/ux/render-probe.mjs');
-// The child now performs seven acceptance assertions, two real settings writes + reload, one real
-// batch remedy and one real undo in addition to paint timings. Its total wall clock is test-runtime,
+// The child verifies real settings writes, reload and exact settings undo, plus refusal of
+// unavailable automatic remedies without mutation or an undo token, in addition to paint timings. Its total wall clock is test-runtime,
 // not user-visible latency; each user action has its own hard 4s assertion inside the probe.
 const RENDER_PROBE_TIMEOUT_MS = 60_000;
 
