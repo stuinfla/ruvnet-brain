@@ -34,6 +34,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { CONTEXT_EVENTS } from './codex-hook-events.mjs';
 import { developmentHooksSuspended } from './development-maintenance.mjs';
+import { snapshotDeadlineAt } from './session-snapshot-budget.mjs';
 
 if (developmentHooksSuspended()) process.exit(0);
 
@@ -132,9 +133,12 @@ const env = {
 let shimCwd = process.cwd();
 try { if (fs.statSync(projectDir).isDirectory()) shimCwd = projectDir; } catch { /* keep the default */ }
 
+const snapshotDeadline = hookId === 'session-snapshot' ? snapshotDeadlineAt(env, performance.timeOrigin) : Infinity;
+if (Number.isFinite(snapshotDeadline)) env.RUVNET_SESSION_SNAPSHOT_DEADLINE_AT = String(snapshotDeadline);
 const runShim = (payload) => spawnSync(process.execPath, [shim, hookId, ...process.argv.slice(3)], {
-  input: payload, encoding: 'utf8', env: { ...env, ...(BUDGET_MS ? { RUVNET_DECISION_DEADLINE: String(Date.now() + Math.max(1, BUDGET_MS - spent() - 350)) } : {}) }, cwd: shimCwd,
-  ...(BUDGET_MS ? { timeout: Math.max(1, BUDGET_MS - spent() - 100), killSignal: 'SIGKILL' } : {}),
+  input: payload, encoding: 'utf8', env: { ...env, ...(BUDGET_MS ? { RUVNET_DECISION_DEADLINE: String(Math.min(Number(env.RUVNET_DECISION_DEADLINE) || Infinity, Date.now() + Math.max(1, BUDGET_MS - spent() - 350))) } : {}) }, cwd: shimCwd,
+  ...((BUDGET_MS || Number.isFinite(snapshotDeadline)) ? { timeout: Math.max(1, Math.floor(Math.min(
+    BUDGET_MS ? BUDGET_MS - spent() - 100 : Infinity, snapshotDeadline - Date.now() + 100))), killSignal: 'SIGKILL' } : {}),
 });
 
 /**
@@ -183,6 +187,15 @@ if (patchTool && hookId === 'md-stamp') {
 }
 
 const stdouts = [];
+let managedWrite = false;
+if (hookId === 'decision-gate' && process.argv[3] === 'managed-store') {
+  try {
+    const { knownRawStoreWrites } = await import('./hook-input.mjs');
+    const { canonicalStoreWriteScope } = await import('./project-store-resolver.mjs');
+    managedWrite = canonicalStoreWriteScope({ projectDir, targets: knownRawStoreWrites(input.tool_input?.command || '',
+      { cwd: projectDir, home: process.env.HOME || os.homedir() }) });
+  } catch { /* Only a positive canonical witness changes legacy error behavior. */ }
+}
 const guardedPatch = patchTool && hookId === 'decision-gate' && event === 'PreToolUse';
 // Materialize every path before consulting any policy; a move checks both ends.
 const patchScope = files.map((file) => path.resolve(projectDir, file));
@@ -192,12 +205,26 @@ const refuseUnchecked = (index) => {
 };
 if (guardedPatch && !patchScope.length) refuseUnchecked(0);
 for (const [index, payload] of payloads.entries()) {
+  if (hookId === 'session-snapshot' && Date.now() >= snapshotDeadline) {
+    process.stderr.write('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN] Snapshot fanout deadline exhausted; capture is unverified.\n');
+    break;
+  }
   if (guardedPatch && BUDGET_MS && BUDGET_MS - spent() <= 100) refuseUnchecked(index);
   const r = runShim(payload);
+  if (managedWrite && (r.error || r.signal || r.status !== 2)) {
+    process.stderr.write('Raw writes to the canonical Ruflo-managed store are refused: Codex policy body unavailable.\n'); process.exit(2);
+  }
+  if (hookId === 'session-snapshot') {
+    if (r.stderr) process.stderr.write(r.stderr);
+    if (r.error || r.signal || r.status === null) {
+      process.stderr.write('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN] Snapshot child did not complete inside its inherited deadline; capture is unverified.\n');
+      break;
+    }
+  }
   // A refusal (or any error) from ANY file is the decision for the whole patch, forwarded verbatim
   // and immediately — there is nothing to compose once one wall has said no.
   if (guardedPatch && (r.error || r.signal || r.status === null)) refuseUnchecked(index);
-  if (r.status && r.stderr) process.stderr.write(r.stderr);
+  if (r.status && r.stderr && hookId !== 'session-snapshot') process.stderr.write(r.stderr);
   if (r.status) process.exit(r.status);
   if (r.stdout) stdouts.push(r.stdout);
   if (BUDGET_MS && spent() > BUDGET_MS * 0.75 && index + 1 < payloads.length) {
@@ -266,13 +293,18 @@ function validPostToolUseOutput(value) {
 }
 
 if (event === 'Stop') {
-  const reason = parsed?.hookSpecificOutput?.additionalContext
-    || parsed?.reason
-    || parsed?.stopReason;
-  // `stop.command.output` has no hookSpecificOutput; `decision: "block"` REQUIRES a non-empty
-  // `reason` ("Stop hook returned decision:block without a non-empty reason"). No reason ⇒ say
-  // nothing at all, which is the allow.
-  if (reason) process.stdout.write(JSON.stringify({ decision: 'block', reason }));
+  // Native Stop has no hookSpecificOutput. Only an explicit denial may hold the turn open;
+  // incidental context is advice, while supported native control fields retain their meaning.
+  const output = {};
+  for (const key of ['continue', 'suppressOutput']) if (typeof parsed?.[key] === 'boolean') output[key] = parsed[key];
+  for (const key of ['stopReason', 'systemMessage']) if (typeof parsed?.[key] === 'string') output[key] = parsed[key];
+  const block = parsed?.decision === 'block' && typeof parsed.reason === 'string' && parsed.reason.trim();
+  if (block) { output.decision = 'block'; output.reason = parsed.reason; }
+  const advice = [!parsed ? stdout.trim() : '',
+    typeof parsed?.hookSpecificOutput?.additionalContext === 'string' ? parsed.hookSpecificOutput.additionalContext : '',
+    !block && typeof parsed?.reason === 'string' ? parsed.reason : ''].filter(text => text.trim());
+  if (advice.length) output.systemMessage = [...new Set([output.systemMessage, ...advice].filter(Boolean))].join('\n');
+  if (Object.keys(output).length) process.stdout.write(JSON.stringify(output));
   process.exit(0);
 }
 

@@ -11,6 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { projectDirectory } from './project-identity.mjs';
+import { resolveProjectStore } from './project-store-resolver.mjs';
 
 const DEFAULT_HOME = os.homedir();
 const PROJECT_FILE = '.swarm/ruvnet-brain-settings.json';
@@ -331,12 +332,16 @@ export function learningContext(options = {}) {
   const requestedHome = options.home ?? env.HOME ?? os.homedir();
   let home; try { home = fs.realpathSync.native(requestedHome); } catch { home = path.resolve(requestedHome); }
   const projectDir = projectDirectory({ env, cwd: options.cwd ?? env.RUVNET_BRAIN_PROJECT_DIR ?? process.cwd() });
+  let projectStore = null;
+  try { projectStore = resolveProjectStore({ projectDir, gitTimeoutMs: 1000 }); } catch { /* unknown canonical store cannot adopt */ }
   const scope = learningScope({ ...options, env, cwd: projectDir });
   const learner = scope === 'user' ? home : projectDir;
   let persistedOff = false;
   let consentUnknown = !!env.RUVNET_LEARNING_SCOPE && !['off', 'project', 'user'].includes(env.RUVNET_LEARNING_SCOPE);
-  for (const file of Object.values(preferencePaths({ ...options, env, cwd: projectDir })).slice(0, 2)
-    .concat(preferencePaths({ ...options, env, cwd: projectDir }).project)) {
+  const consentFiles = Object.values(preferencePaths({ ...options, env, cwd: projectDir })).slice(0, 2)
+    .concat(preferencePaths({ ...options, env, cwd: projectDir }).project,
+      projectStore ? path.join(projectStore.projectRoot, PROJECT_FILE) : []);
+  for (const file of new Set(consentFiles)) {
     try {
       const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) consentUnknown = true;
@@ -354,10 +359,10 @@ export function learningContext(options = {}) {
   let brainOff = env.RUVNET_BRAIN_OFF === '1';
   try { fs.statSync(path.join(state, 'brain-off')); brainOff = true; }
   catch (error) { if (!['ENOENT', 'ENOTDIR'].includes(error.code)) brainOff = true; }
-  let adopted = scope === 'user' || env.RUVNET_LEARNING_SCOPE === 'project';
+  let adopted = scope === 'user';
   try {
-    const swarm = path.join(projectDir, '.swarm');
-    adopted ||= fs.lstatSync(swarm).isDirectory() && fs.realpathSync.native(swarm) === swarm;
+    const db = projectStore?.canonicalAgentDbPath;
+    adopted ||= !!db && fs.lstatSync(db).isFile() && fs.realpathSync.native(db) === db;
   } catch { /* No implicit adoption or directory creation. */ }
   return {
     scope, projectDir, home, learnerCwd: learner, adopted, enabled: scope !== 'off' && !brainOff && !consentUnknown && !persistedOff && adopted,

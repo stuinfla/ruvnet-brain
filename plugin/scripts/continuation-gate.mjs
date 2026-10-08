@@ -47,9 +47,9 @@ import {
   buildCapabilityInventoryReceipt,
 } from './capability-inventory-receipt.mjs';
 import { auditCurrentCapabilityEvidence } from './capability-claim-evidence.mjs';
-import { continuationProjectIdentity, authorizedContinuationObjective, authorizedPromiseItems, assistantCommitmentOwned, setAssistantCommitmentState } from './continuation-objective.mjs';
+import { continuationProjectIdentity, continuationLedgerPath, authorizedContinuationObjective, authorizedPromiseItems, assistantCommitmentOwned, setAssistantCommitmentState, readContinuationLedger, mutateContinuationLedger, readManagedContinuationTask, verifiedAssistantCommitmentCompletion } from './continuation-objective.mjs';
 import {
-  auditCompletionClaims, readClaudeTurn, extractCommitments, claimClosesPromise,
+  auditCompletionClaims, readClaudeTurn, extractCommitments,
   PROMISE_KIND, PROMISE_CAP_OPEN,
 } from './completion-claim-evidence.mjs';
 
@@ -66,12 +66,7 @@ const EXIT_ALLOW = 0;
  * back to cwd), stored centrally under ~/.config so it survives `--update`, but partitioned per
  * project so the three never see each other's work.
  */
-function projectKey() {
-  return continuationProjectIdentity(process.cwd())?.projectId.replace(':', '-') || 'unknown-project';
-}
-
-let LEDGER = process.env.RUVNET_WORK_LEDGER
-  || path.join(HOME, '.config', 'ruvnet-brain', 'work-ledgers', `${projectKey()}.json`);
+let LEDGER = continuationLedgerPath({ projectDir: process.cwd(), home: HOME });
 
 /**
  * THE SAME PARTITION, APPLIED TO THE DERIVED SOURCES — added 2026-08-14 after this file was caught
@@ -169,26 +164,21 @@ const arg = (f) => { const i = argv.indexOf(f); return i >= 0 && argv[i + 1] ? a
 const has = (f) => argv.includes(f);
 
 function load() {
-  try {
-    const j = JSON.parse(fs.readFileSync(LEDGER, 'utf8'));
-    return Array.isArray(j.items) ? j : { items: [] };
-  } catch { return { items: [] }; }
+  try { return readContinuationLedger(LEDGER); }
+  catch (error) { console.error(`continuation ledger unavailable: ${error.message}`); return { items: [] }; }
 }
-function save(led) {
-  try {
-    fs.mkdirSync(path.dirname(LEDGER), { recursive: true });
-    fs.writeFileSync(LEDGER, JSON.stringify({ ...led, updated: new Date().toISOString() }, null, 2) + '\n');
-    return true;
-  } catch { return false; /* the ledger is advisory — never break a turn over it */ }
+function changeLedger(mutate) {
+  try { return mutateContinuationLedger(LEDGER, mutate).value; }
+  catch (error) { console.error(`refused: continuation ledger mutation unavailable: ${error.message}`); process.exit(2); }
 }
 
 // ── commands ─────────────────────────────────────────────────────────────────────────────────────
 if (has('--commit-to')) {
   // Record work the model AGREED to do. The agreement is the thing that makes stopping a defect —
   // without it, ending a turn is simply finishing, and this gate must stay silent.
-  const led = load();
   const text = arg('--commit-to');
   const at = new Date().toISOString();
+  changeLedger(led => {
   if (text && !led.items.some((i) => i.text === text && !i.done)) {
     led.items.push({ text, done: false, at });
   }
@@ -213,7 +203,7 @@ if (has('--commit-to')) {
       authorization: { kind: 'user', reference: 'commit-to-cli' },
     };
   }
-  save(led);
+  });
   console.log(`committed: ${text}`);
   process.exit(0);
 }
@@ -223,31 +213,31 @@ if (has('--set-commitment-state')) {
     const sessionId = arg('--session-id');
     const nativeSession = process.env.RUVNET_BRAIN_SESSION_ID || process.env.RUVNET_HOOK_SESSION_ID;
     if (nativeSession && nativeSession !== sessionId) throw new Error('supplied session id differs from native session context');
-    const led = load();
+    changeLedger(led => {
     setAssistantCommitmentState(led, { itemText: arg('--item'), state: arg('--set-commitment-state'),
       sessionId, reason: arg('--reason'), replacementReference: arg('--replacement'),
       identity: continuationProjectIdentity(process.cwd()) });
-    if (!save(led)) throw new Error('assistant commitment state could not be recorded');
+    });
     console.log('assistant commitment state recorded; user objective unchanged'); process.exit(0);
   } catch (error) { console.error(`refused: ${error.message}`); process.exit(2); }
 }
 
 if (has('--done')) {
-  const led = load();
   const needle = arg('--done');
+  const count = changeLedger(led => {
   // EXACT text match only (GPT-5.6-Sol review). The earlier "unambiguous substring" fallback could still
   // clear a SINGLETON open item via a fragment — a fake-completion valve under a gate that now applies real
   // continuation pressure. Marking done requires the item's exact text (copy it from the ledger line).
   // A captured PROMISE never closes by being declared done — only a later answer whose completion
   // claim passed the post-change verification rule closes it (see promiseBookkeeping below).
   if (led.items.some((i) => !i.done && i.text === needle && i.kind === PROMISE_KIND)) {
-    console.error('refused: a captured promise closes only with verification evidence at Stop (a completion claim with a check run after the last change), never by --done');
-    process.exit(2);
+    throw new Error('a captured promise closes only with verification evidence at Stop (a completion claim with a check run after the last change), never by --done');
   }
   const targets = led.items.filter((i) => !i.done && i.text === needle);
   for (const i of targets) { i.done = true; i.doneAt = new Date().toISOString(); }
-  save(led);
-  console.log(`marked done: ${targets.length}`);
+  return targets.length;
+  });
+  console.log(`marked done: ${count}`);
   process.exit(0);
 }
 
@@ -270,17 +260,20 @@ if (has('--complete-objective')) {
     console.error('--complete-objective requires evidence: --complete-objective "<what proves it is done>"');
     process.exit(2);
   }
-  const led = load();
+  const requested = changeLedger(led => {
   if (led.objective) {
     // Prose is a request, never verified completion or authority to suppress truth audits.
     led.objective.completionRequestedAt = new Date().toISOString();
     led.objective.completionRequest = evidence.trim();
-    save(led);
+    return true;
+  }
+  return false;
+  });
+  if (requested) {
     console.error('completion unverified: prose cannot complete this objective; retain unfinished work');
     process.exit(2);
   }
-  save(led);
-  console.log(led.objective ? `objective completed: ${evidence}` : 'no objective to complete');
+  console.log('no objective to complete');
   process.exit(0);
 }
 
@@ -290,14 +283,15 @@ if (has('--cancel-objective')) {
     console.error('--cancel-objective requires a reason: --cancel-objective "<why this objective no longer applies>"');
     process.exit(2);
   }
-  const led = load();
+  const cancelled = changeLedger(led => {
   if (led.objective) {
     led.objective.state = 'cancelled';
     led.objective.cancelledAt = new Date().toISOString();
     led.objective.cancellationReason = reason;
   }
-  save(led);
-  console.log(led.objective ? `objective cancelled: ${reason}` : 'no objective to cancel');
+  return Boolean(led.objective);
+  });
+  console.log(cancelled ? `objective cancelled: ${reason}` : 'no objective to cancel');
   process.exit(0);
 }
 
@@ -316,12 +310,18 @@ if (has('--help') || has('-h')) {
     '                                      untouched',
     '  --cancel-objective "<reason>"      close the current objective as state: cancelled, with the',
     '                                      reason recorded — leaves other ledger items untouched',
-    '  --clear                            wipe the ENTIRE ledger: every item AND the objective',
+    '  --clear                            clear advisory items/objective; retain registered tasks',
   ].join('\n'));
   process.exit(0);
 }
 
-if (has('--clear')) { save({ items: [] }); console.log('ledger cleared'); process.exit(0); }
+if (has('--clear')) {
+  changeLedger(led => {
+    led.items = []; delete led.objective;
+    // Advisory clearing never erases canonical managed-task pointers or unresolved accounting.
+  });
+  console.log('advisory ledger cleared; registered task pointers retained'); process.exit(0);
+}
 
 // ── the Stop hook itself (default action) ────────────────────────────────────────────────────────
 /**
@@ -347,8 +347,7 @@ if (hookInput.__source !== 'stdin') process.exit(EXIT_ALLOW);
 if (hookInput.hook_event_name !== 'Stop' || hookInput.interrupted || hookInput.cancelled) process.exit(EXIT_ALLOW);
 const projectIdentity = continuationProjectIdentity(hookInput.cwd);
 if (!projectIdentity) process.exit(EXIT_ALLOW);
-LEDGER = process.env.RUVNET_WORK_LEDGER
-  || path.join(HOME, '.config', 'ruvnet-brain', 'work-ledgers', `${projectIdentity.projectId.replace(':', '-')}.json`);
+LEDGER = continuationLedgerPath({ projectDir: hookInput.cwd, home: HOME, identity: projectIdentity });
 const led = load();
 const nowMs = Date.now();
 const HOST = process.env.RUVNET_HOOK_HOST === 'codex' ? 'codex' : 'claude';
@@ -382,47 +381,119 @@ const completion = (() => {
  * normalized text; project + worktree scoped exactly like --commit-to's objective. Fails open.
  */
 function promiseBookkeeping() {
-  if (HOST !== 'claude' || !hookInput.session_id || hookInput.session_id === '*') return;
+  if (!hookInput.session_id || hookInput.session_id === '*') return;
   try {
+    const changed = mutateContinuationLedger(LEDGER, led => {
     const pid = projectIdentity.projectId;
     const at = new Date(nowMs).toISOString();
     let changed = false;
-    if (completion.verdict === 'PASS') {
-      for (const item of led.items) {
-        if (!assistantCommitmentOwned(item, hookInput.session_id, projectIdentity)) continue;
-        const claim = completion.claims.find((c) => claimClosesPromise(c.text, item.text));
-        if (!claim) continue;
-        Object.assign(item, { done: true, state: 'completed', doneAt: at, completionEvidence: { claim: claim.text,
-          checks: completion.verification.checks.slice(-5).map((c) => c.what),
-          transcript: String(hookInput.transcript_path || ''), sessionId: hookInput.session_id } });
-        changed = true;
-      }
+    for (const item of led.items) {
+      if (!assistantCommitmentOwned(item, hookInput.session_id, projectIdentity)) continue;
+      const evidence = verifiedAssistantCommitmentCompletion(item, led.managedTasks, { projectDir: projectIdentity.root,
+        host: HOST, nativeSessionId: hookInput.session_id, deadlineAt: Date.now() + 200 });
+      if (!evidence) continue;
+      Object.assign(item, { done: true, state: 'completed', doneAt: at, completionEvidence: evidence });
+      changed = true;
     }
     const owned = led.items.filter((i) => assistantCommitmentOwned(i, hookInput.session_id, projectIdentity));
     const openKeys = new Set(owned.map((i) => i.key));
     let activeCount = owned.filter((i) => i.state === undefined || i.state === 'active').length;
     // Owner preference suppresses only new capture; verified closure above and integrity audits stay active.
-    const newPromises = process.env.RUVNET_PROMISE_CAPTURE === 'off' ? [] : extractCommitments(hookInput.last_assistant_message);
+    const newPromises = HOST !== 'claude' || process.env.RUVNET_PROMISE_CAPTURE === 'off' ? [] : extractCommitments(hookInput.last_assistant_message);
     for (const promise of newPromises) {
       if (openKeys.has(promise.key) || activeCount >= PROMISE_CAP_OPEN) continue;
       openKeys.add(promise.key);
       activeCount += 1;
       led.items.push({ schemaVersion: 1, kind: PROMISE_KIND, text: promise.text, key: promise.key, done: false, state: 'active', at,
         projectId: pid, worktreeIds: [projectIdentity.worktreeId], sessionIds: [hookInput.session_id],
-        capturedFrom: { sessionId: hookInput.session_id },
+        capturedFrom: { sessionId: hookInput.session_id, ...(hookInput.turn_id ? { turnId: hookInput.turn_id } : {}) },
         authorization: { kind: 'owner-mandate', reference: 'i-will-is-a-contract-2026-09-15' } });
       changed = true;
     }
-    if (changed) save(led);
+    return changed;
+    });
+    Object.assign(led, changed.ledger);
   } catch { /* the ledger is advisory — never break a turn over it */ }
 }
 promiseBookkeeping();
+// Re-entry may record verified facts, but never request another force or spend an attempt.
+if (hookInput.stop_hook_active) process.exit(EXIT_ALLOW);
 
 /**
  * LOOP-SAFETY 2 (moved below the bookkeeping above, unchanged in effect): no request is ever
  * emitted on a stop that is already a continuation.
  */
-if (hookInput.stop_hook_active) process.exit(EXIT_ALLOW);
+function registeredTaskContinuation() {
+  if (!Array.isArray(led.managedTasks) || !projectIdentity || !hookInput.session_id
+    || hookInput.interrupted || hookInput.cancelled) return;
+  const tasks = led.managedTasks.filter(pointer => pointer?.binding?.host === HOST
+    && (pointer.binding.schemaVersion===2?pointer.observedNativeSessionId === hookInput.session_id:pointer.binding.nativeSessionId === hookInput.session_id)
+    && pointer.binding.projectId === projectIdentity.projectId && pointer.binding.worktreeId === projectIdentity.worktreeId);
+  if (!tasks.length) return;
+  const unresolved = (reason, pointer = null) => {
+    const bounded = (value, limit) => String(value ?? '').replace(/\s+/g, ' ').slice(0, limit);
+    const taskId = bounded(pointer?.binding?.taskId, 80) || 'in the current bounded index';
+    const reference = pointer?.receipt;
+    const expectedReceipt = reference?.namespace === 'continuity-events' && typeof reference.key === 'string'
+      && /^[a-f0-9]{64}$/.test(reference.valueSha256) ? reference : null;
+    const target = expectedReceipt ? `expected canonical receipt ${expectedReceipt.valueSha256.slice(0, 12)}` : 'current canonical task index';
+    const message = `Registered task ${taskId} remains unfinished (BLOCKED/UNKNOWN): ${bounded(reason, 240)}. Missing action: verify the ${target} and retained blocker evidence before resuming. Independent work: none verified safe from this receipt. This is not completion or permission to replay a writer.`;
+    console.error(JSON.stringify({ kind: 'continuation-blocked-handoff', authority: false,
+      taskId: pointer?.binding?.taskId ?? null, receipt: expectedReceipt, reason: bounded(reason, 240) }));
+    process.stdout.write(JSON.stringify({ systemMessage: message }));
+    process.exit(EXIT_ALLOW);
+  };
+  if (tasks.length > 8) unresolved('registered task index exceeds this bounded Stop read');
+  const deadlineAt = Date.now() + 500;
+  for (const pointer of tasks) {
+    const task = readManagedContinuationTask(pointer, { projectDir: projectIdentity.root, host: HOST,
+      nativeSessionId: hookInput.session_id, deadlineAt });
+    if (['complete', 'paused', 'cancelled'].includes(task.state)) continue;
+    if (task.state === 'unknown') unresolved(task.reason, pointer);
+    if (task.state === 'blocked') unresolved(task.reason, pointer);
+    const nativeEpisodeId = HOST === 'codex' ? hookInput.turn_id : hookInput.prompt_id;
+    if (typeof nativeEpisodeId !== 'string' || !nativeEpisodeId.trim() || nativeEpisodeId.length > 4000) {
+      unresolved('current native Stop episode identity is unavailable', pointer);
+    }
+    const episodeId = crypto.createHash('sha256').update(JSON.stringify(task.binding)).digest('hex');
+    const stopEpisode = crypto.createHash('sha256').update(JSON.stringify([HOST, projectIdentity.projectId,
+      projectIdentity.worktreeId, hookInput.session_id, nativeEpisodeId])).digest('hex');
+    let episode;
+    try {
+      episode = mutateContinuationLedger(LEDGER, fresh => {
+        const current = fresh.managedTasks?.find(item => item.binding?.taskId === task.binding.taskId
+          && item.binding?.workflowId === task.binding.workflowId && item.binding?.nativeSessionId === task.binding.nativeSessionId
+          && item.binding?.host === task.binding.host && item.binding?.projectId === task.binding.projectId
+          && item.binding?.worktreeId === task.binding.worktreeId);
+        if (!current || JSON.stringify(current.receipt) !== JSON.stringify(pointer.receipt)) {
+          throw new Error('canonical task pointer advanced during Stop read');
+        }
+        if (fresh.managedTaskEpisodes !== undefined && (!fresh.managedTaskEpisodes || typeof fresh.managedTaskEpisodes !== 'object'
+          || Array.isArray(fresh.managedTaskEpisodes))) throw new Error('task episode accounting is malformed');
+        const episodes = fresh.managedTaskEpisodes ?? {};
+        const previous = episodes[episodeId];
+        if (previous?.lastStopEpisode === stopEpisode) return false;
+        // Only verified checklist/check/context/artifact changes reset this finite counter.
+        // User status questions, assistant prose, timestamps and stop_hook_active do not.
+        const attempts = previous?.progressDigest === task.progressDigest ? previous.attempts : 0;
+        if (!Number.isInteger(attempts) || attempts < 0) throw new Error('task episode attempt accounting is malformed');
+        const blocked = Date.now() >= task.receipt.deadline || attempts >= 3;
+        const next = { authoritative: false, state: blocked ? 'blocked' : 'active', progressDigest: task.progressDigest,
+          attempts: blocked ? attempts : attempts + 1, lastStopEpisode: stopEpisode, receiptSha256: pointer.receipt.valueSha256,
+          ...(blocked ? { reason: Date.now() >= task.receipt.deadline ? 'registered workflow deadline exhausted' : 'unchanged verified task progress exhausted bounded continuation attempts' } : {}) };
+        episodes[episodeId] = next; fresh.managedTaskEpisodes = episodes; return next;
+      }, { deadlineAt }).value;
+    } catch (error) { unresolved(error.message, pointer); }
+    if (episode === false) process.exit(EXIT_ALLOW);
+    if (episode.state === 'blocked') unresolved(episode.reason, pointer);
+    process.stdout.write(JSON.stringify({ decision: 'block', reason: [
+      `Registered authorized task ${task.binding.taskId.slice(0, 80)} is unfinished. A status answer does not pause, cancel or complete it.`,
+      String(task.nextSafeStep).slice(0, 240),
+    ].join(' ') }));
+    process.exit(EXIT_ALLOW);
+  }
+}
+registeredTaskContinuation();
 // A terminal preference suppresses only its own nudge, never independent truth audits.
 const objective = authorizedContinuationObjective(led.objective, hookInput, projectIdentity);
 
@@ -743,8 +814,8 @@ function claimCooldown(now, windowMs) {
 if (!claimCooldown(nowMs, COOLDOWN_MS)) process.exit(EXIT_ALLOW);
 
 /**
- * DELIVERY. `additionalContext` in a Stop envelope forces the continuation (same protection as
- * decision:block). Directive copy — continue, do not look for an exit.
+ * DELIVERY. Explicit decision:block requests one continuation; incidental Stop context is advice.
+ * Directive copy — continue within the current authorization, not from retained history.
  */
 /**
  * SAY WHAT THESE ACTUALLY ARE (2026-08-14). One header served both halves and it said "You have
@@ -755,82 +826,15 @@ if (!claimCooldown(nowMs, COOLDOWN_MS)) process.exit(EXIT_ALLOW);
  *
  * So the two kinds are named separately and never merged into one claim.
  */
-const committed = forceable.filter((i) => !i.derived);
-const observed = forceable.filter((i) => i.derived);
-const capabilityClaims = forceable.filter((i) => i.kind === 'capability-claim-integrity');
-const completionClaims = forceable.filter((i) => i.kind === 'completion-claim-integrity');
-const promises = forceable.filter((i) => i.kind === PROMISE_KIND);
-// Every derived item names its own repo in its text; this is for the header, where the ONE repo
-// this tree points at is the honest thing to say.
-const repoLabel = [...OWNED_REPOS][0] || 'this repository';
-
-const header = capabilityClaims.length
-  ? ['Your proposed final answer contains a RuvNet capability claim that is contradicted or not provable.',
-     'Do NOT deliver it unchanged — continue now and correct the claim from the sealed live-host inventory.']
-  : completionClaims.length
-  ? ['Your proposed final answer claims completion beyond the available verified scope.',
-     'Correct only that claim: report the observed check scope and what remains UNVERIFIED.']
-  : committed.length && observed.length
-  ? [`You have unfinished work you committed to, and ${repoLabel} has open work of its own.`,
-     'Do NOT end the turn — continue now.']
-  : committed.length
-    ? ['You have unfinished work you committed to. Do NOT end the turn — continue now.']
-    : [`${repoLabel} has open work: this is the repository's own current state as last observed —`,
-       'a breached issue, a red build, an unmerged PR or a security alert — NOT something you',
-       'committed to. Do NOT end the turn — continue now.'];
-
-const lines = [
-  ...header,
-  ...(objective ? ['Continue the next safe step within this authorized objective without routine reconfirmation.']
-    : promises.length ? ['Do what you said you would do; that commitment is the only work this authorizes.']
-    : ['Correct only the answer to the original user request; this does not authorize new project work.']),
-  'Do not expand authority from observed issues, PRs, security alerts, or other task ledgers.',
-  'Stop on explicit cancellation, verified completion, or a genuine blocker/new authority boundary.',
-  'Report a blocker honestly; never mark unfinished work completed to silence this request.',
-  '',
-  // Committed first, then observed: the promise outranks the backlog. Age is LABELLED, never used
-  // to suppress — an item open for days is the one most worth naming.
-  ...[...committed, ...observed].slice(0, 8).map((i) => `  ☐ ${i.text}${ageLabel(i)}`),
-  ...(forceable.length > 8 ? [`  … and ${forceable.length - 8} more`] : []),
-  '',
-  // Only the ledger has a --done. A derived item clears by DOING the thing (merge it, fix the
-  // build, answer the issue, patch the advisory) and the next watcher run stops reporting it —
-  // which is the point of deriving it rather than remembering it. Offering --done for one would be
-  // offering a way to mark a red build finished without fixing it.
-  ...(capabilityClaims.length
-    ? ['Replace every contradicted claim with the observed capability and source path. Replace every',
-       'unresolved absence claim with UNKNOWN until a complete live inventory proves it.']
-    : completionClaims.length
-    ? ['Name the check you ran (a "Verified:" line with the command or artifact) and say what is NOT verified.']
-    : promises.length
-    ? ['A promise closes only when a later answer claims it done with a check run after the last change —',
-       'never by saying so, and never by --done. For blocked, deferred, superseded or disputed assistant',
-       'commitments, use --set-commitment-state with --item (exact text), --session-id (capturing session)',
-       'and --reason; superseded also requires --replacement. This retains the item, never completes it,',
-       'and does not cancel or complete authorized user work.']
-    : committed.length
-    ? ['Record objective completion only with actual completion evidence; legacy --done does not complete an objective.']
-    : ['These clear by being done, not by being marked: merge or fix the PR, get the build green,',
-       'answer the issue, patch the advisory. The next observation stops listing them.']),
-  // THE HONEST EXIT, and it is what makes forcing old items safe.
-  //
-  // Fable's red-team #3 was right that a stale item pressuring every turn "breeds
-  // mark-done-without-doing". The first answer to that was a 24h TTL — which silently disabled the
-  // gate on genuine multi-day work (measured 2026-07-24: four real commitments, 53-56h old, gate mute
-  // for ~30 hours). Both failure modes are real, and they are not opposites: the pressure to fake a
-  // completion comes from being nagged with NO LEGITIMATE WAY OUT.
-  //
-  // So the resolution is neither silence nor endless nagging: keep forcing, and name the honest
-  // disposal out loud. An item that is genuinely dead gets cleared — a deliberate, recorded act —
-  // instead of expiring on a timer nobody sees, or being falsely marked done to stop the noise.
-  // COMMITTED items only. A derived item is at most 6h old by construction (the freshness window),
-  // and "clear it, that is a legitimate answer" is advice about a promise — you cannot clear a red
-  // build by declaring it no longer real.
-  ...(committed.some((i) => i.kind !== PROMISE_KIND && (nowMs - Date.parse(i.at)) > 24 * 3_600_000)
-    ? ['', 'Some of these are days old. If one is genuinely no longer real, say so and CLEAR it —',
-       'that is a legitimate answer and the right one. What is never acceptable is marking it done',
-       'without doing it, or letting it age quietly out of view.']
-    : []),
-];
-
-process.stdout.write(JSON.stringify({ decision: 'block', reason: lines.join('\n') }));
+// One current next step; retained assistant history is never a product-facing backlog dump.
+const capabilityClaim = forceable.find(item => item.kind === 'capability-claim-integrity');
+const completionClaim = forceable.find(item => item.kind === 'completion-claim-integrity');
+const promise = forceable.find(item => item.kind === PROMISE_KIND);
+const reason = capabilityClaim
+  ? `Your proposed final answer contains a RuvNet capability claim that is contradicted or not provable. ${capabilityClaim.text.slice(0, 300)}`
+  : completionClaim
+  ? `Your proposed final answer claims completion beyond the available verified scope. ${completionClaim.text.slice(0, 300)}`
+  : objective
+  ? `Do NOT end the turn. Continue the next safe step within this authorized objective without routine reconfirmation: ${objective.text.slice(0, 240)}${ageLabel(objective)}.`
+  : `Continue the current assistant commitment: ${promise.text.slice(0, 240)}. Retain unresolved evidence; stop for an explicit cancellation or concrete blocker.`;
+process.stdout.write(JSON.stringify({ decision: 'block', reason }));

@@ -1,4 +1,4 @@
-Updated: 2026-10-07 01:20:30 EDT | Version 0.4.1
+Updated: 2026-10-08 04:22:42 EDT | Version 0.4.2
 Created: 2026-08-21 13:34:00 EDT
 
 # DDD-0018 — Whole-product integrity context
@@ -102,6 +102,29 @@ the convenient document at runtime.
 Coverage is complete only when every essential behavior and every total-state-machine transition has
 both success and failure evidence. Line coverage is diagnostic. A test that asserts a generated fact,
 superseded state, duplicate implementation, or non-user path cannot close an obligation.
+
+### Registered shared Vitest lane evidence
+
+The shared QA runner implements the zero/unknown execution boundary for its registered Vitest
+lanes by reusing `scripts/release-qualification.mjs::assessTestReport`. `qa-lanes.mjs` declares the
+selected test targets; `qa-contract.mjs` expands the exact `.test.mjs` file inventory and validates
+complete JSON results; `qa-runner.mjs` joins that evidence to actual process exit and current
+source-byte stability. Missing, zero, pending, skipped, todo, failed or incomplete required
+execution cannot qualify as PASS. A passing process that changes source bytes leaves aggregate
+qualification UNKNOWN. The receipt records the exact report digest and source identity.
+
+The selection projection lists every omitted registered lane as NOT_RUN with a reason. Partial
+selected-lane PASS does not certify the full registered inventory; list-only full selection
+remains NOT_RUN. `tests/unit/qa-runner-concurrency.test.mjs` binds version-only and full-selection
+CLI projections without executing additional QA lanes. This is not classification of all retained
+tests or workflows.
+
+`tests/unit/qa-vitest-evidence.test.mjs` exercises real Vitest execution in a private source
+fixture, skipped-only exit 0, source movement, malformed/incomplete reports, and removal of the
+execution-evidence guard reproducing the old false PASS. These bounded checks do not classify
+all retained tests/workflows or prove other QA producers, native hosts, whole-product completion,
+or independent semantic review of the final combined source. Accepted status and proof-gated
+implementation remain unchanged; historical receipts and review identities are not upgraded.
 
 ### Evidence strength
 

@@ -191,7 +191,7 @@ export class ContinuityJournal {
   captureConsent(projectDir = this.projectDir, unknownOriginalPath = false) {
     this.requireBudget();
     const result = resolveTurnDb({ projectDir, brainHome: this.brainHome, requestedStorePath: this.db, unknownOriginalPath,
-      deadlineAt: this.deadlineAt, signal: this.signal, gitTimeoutMs: Math.max(1, Math.min(1000, this.deadlineAt - Date.now())) });
+      deadlineAt: this.deadlineAt, signal: this.signal, gitTimeoutMs: Math.max(1, Math.floor(Math.min(1000, this.deadlineAt - Date.now()))) });
     this.requireBudget();
     return result;
   }
@@ -481,8 +481,8 @@ export function launchDrain({ projectRoot, spawnFn = spawn, env = process.env } 
  */
 export function captureContinuityEvents({
   projectDir, event, payload = {}, host = 'claude', env = process.env, ruflo = resolveRuflo({ env }),
-  readTranscript = (file) => readSettledTranscript(file, { maxMs: 0 }), launch = launchDrain, now = Date.now,
-  deadlineAt = Infinity, signal,
+  readTranscript = readSettledTranscript, launch = launchDrain, now = Date.now,
+  deadlineAt = Infinity, signal, runGit,
 } = {}) {
   const report = { event, recorded: 0, launched: false };
   if (String(env.RUVNET_CONTINUITY_CAPTURE || '').toLowerCase() === 'off') return { ...report, skipped: 'RUVNET_CONTINUITY_CAPTURE=off' };
@@ -490,7 +490,8 @@ export function captureContinuityEvents({
   if (signal?.aborted || Date.now() >= deadlineAt) throw new Error('continuity capture unavailable');
   let resolution;
   try { resolution = resolveProjectStore({ projectDir, deadlineAt, signal,
-    gitTimeoutMs: Math.max(1, Math.min(1000, deadlineAt - Date.now())) }); } catch { return { ...report, skipped: 'project store could not be resolved' }; }
+    gitTimeoutMs: Math.max(1, Math.floor(Math.min(1000, deadlineAt - Date.now()))) }); }
+  catch (error) { if (signal?.aborted || Date.now() >= deadlineAt) throw error; return { ...report, skipped: 'project store could not be resolved' }; }
   const journal = new ContinuityJournal({ projectRoot: resolution.projectRoot, projectDir, env, now, ruflo, deadlineAt, signal });
   try {
     journal.requireBudget();
@@ -510,13 +511,14 @@ export function captureContinuityEvents({
   const sinceMs = lastBoundary ? Math.min(lastBoundary - 86_400_000, now() - 3_600_000) : now() - INITIAL_LOOKBACK_MS;
   const events = [];
   if (resolution.kind === 'git') {
-    events.push(...collectCommits({ checkoutRoot: resolution.checkoutRoot, sinceMs, host, session, project }));
-    events.push(...collectReleases({ checkoutRoot: resolution.checkoutRoot, sinceMs, host, session, project }));
+    events.push(...collectCommits({ checkoutRoot: resolution.checkoutRoot, sinceMs, host, session, project, deadlineAt, signal, run: runGit }));
+    events.push(...collectReleases({ checkoutRoot: resolution.checkoutRoot, sinceMs, host, session, project, deadlineAt, signal, run: runGit }));
   }
   if (event === 'Stop') {
     let lines = null;
     if (host === 'claude' && typeof payload.transcript_path === 'string' && payload.transcript_path) {
-      try { lines = readTranscript(payload.transcript_path); } catch { /* unreadable transcript: git events still count */ }
+      try { journal.requireBudget(); lines = readTranscript(payload.transcript_path, { maxMs: 0, deadlineAt, signal }); journal.requireBudget(); }
+      catch (error) { journal.requireBudget(); if (/capture (?:deadline exceeded|aborted)/.test(error.message)) throw error; report.transcriptUnavailable = error.message; }
     }
     const last = typeof payload.last_assistant_message === 'string' ? payload.last_assistant_message : ''; const policy = journal.captureConsent();
     if (!policy.skipped && !(lines && turnReferencesExcludedResource(claudeTurn(lines), policy.contentPathExcludes, projectDir))) events.push(...collectTurnEvents({ lines, lastAssistantMessage: last, host, session, project, env, at: now() }));
@@ -527,9 +529,9 @@ export function captureContinuityEvents({
   // A drainer only where it can succeed: an initialized store AND a ruflo to write it (review S4).
   if (status.pending && status.applicable) report.launched = launch({ projectRoot: resolution.projectRoot, env });
   return { ...report, status, journal };
-  } catch {
+  } catch (error) {
     return { ...report, queued: report.recorded > 0, skipped: signal?.aborted ? 'continuity capture aborted; unavailable'
-      : Date.now() >= deadlineAt ? 'continuity capture deadline exceeded; unavailable' : 'canonical continuity unavailable' };
+      : Date.now() >= deadlineAt ? 'continuity capture deadline exceeded; unavailable' : /Git capture/.test(error.message) ? error.message : 'canonical continuity unavailable' };
   }
 }
 

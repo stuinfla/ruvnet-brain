@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { EventEmitter } from 'node:events';
+import { spawn } from 'node:child_process';
 import { PassThrough, Writable } from 'node:stream';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -187,7 +188,7 @@ describe('controlled Claude native turn boundary', () => {
     const child = new EventEmitter(), signals = [];
     child.stdin = new PassThrough(); child.stdout = new PassThrough(); child.stderr = new PassThrough();
     child.kill = signal => { signals.push(signal); }; child.unref = () => { child.unreferenced = true; };
-    await retireControlledClaudeChild(child, { graceMs: 5, killMs: 5 });
+    await expect(retireControlledClaudeChild(child, { graceMs: 5, killMs: 5 })).rejects.toMatchObject({ retirementUnconfirmed: true, retirementEvidence: { closeObserved: false, treeVerified: false } });
     expect(signals).toEqual(['SIGTERM', 'SIGKILL']); expect(child.unreferenced).toBe(true);
     expect([child.stdin, child.stdout, child.stderr].every(s => s.destroyed)).toBe(true);
     expect(child.listenerCount('close')).toBe(0);
@@ -582,4 +583,18 @@ describe('bounded FIFO native approval handling', () => {
     const rejected = expect(pending).rejects.toThrow(/refused/); await tick(); controller.abort(); await rejected; release(true); await tick();
     expect(calls).toHaveLength(1); expect(f.sent.some(row => row.type === 'control_response')).toBe(false);
   });
+});
+
+
+it('confirms retirement only after a genuine directly owned Node child closes', async () => {
+  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: ['pipe', 'pipe', 'pipe'] });
+  await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
+  const proof = await retireControlledClaudeChild(child, { graceMs: 100, killMs: 300 });
+  expect(proof).toMatchObject({ retired: true, closeObserved: true, scope: 'owned-direct-child-only', treeVerified: false });
+});
+
+it('native protocol timeout propagates unconfirmed retirement instead of dropping the fence signal', async () => {
+  const f = fixture(); f.child.stdin = new PassThrough(); f.child.kill = () => false;
+  await expect(runControlledClaudeTurn({ ...f.options, handshakeMs: 5 })).rejects.toMatchObject({ retirementUnconfirmed: true });
+  expect(f.receipts).toEqual([]);
 });

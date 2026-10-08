@@ -18,7 +18,7 @@ import { describe, expect, it } from 'vitest';
 import { projectSourceStore, writeRvfGeneration, readRvfGenerations, RVF_GENERATIONS_FILE } from '../../scripts/rvf-generation.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const WRITERS = ['kb/forge-build.mjs', 'kb/forge-refresh.mjs', 'scripts/corpus-reconcile.mjs', 'scripts/private-overlay.mjs'];
+const WRITERS = ['kb/forge-build.mjs', 'kb/forge-refresh.mjs', 'scripts/corpus-reconcile.mjs', 'scripts/private-overlay.mjs', 'scripts/build-bundle.mjs'];
 
 describe('S4/S5 — no second SOURCE.json writer', () => {
   it('every direct SOURCE.json writer projects its store entry via the one shared projectSourceStore', () => {
@@ -48,20 +48,25 @@ describe('S4/S5 — no second SOURCE.json writer', () => {
     expect(found).toEqual(['scripts/rvf-generation.mjs']);
   });
 
-  it('none of the four writers independently constructs a sourceRepo/sourceDescribe object-literal key outside a call to writeRvfGeneration/projectSourceStore', () => {
-    // A legitimate occurrence is an ARGUMENT passed INTO writeRvfGeneration (the ledger writer) or
-    // projectSourceStore's own `updater` adapter (e.g. private-overlay's sourceRepo:'private'
-    // fallback, since the ledger never carries a private store's repo). What must never reappear is
+  it('none of the source writers independently constructs a sourceRepo/sourceDescribe object-literal key outside a call to writeRvfGeneration/projectSourceStore', () => {
+    // Legitimate identity fields enter the ledger through writeRvfGeneration or private-overlay's
+    // exact generation-row producer. An updater adapter may not substitute provenance missing from
+    // the ledger. What must never reappear is
     // a full store-entry literal (kbName + sourceRepo/sourceCommit/sourceDescribe + builtUtc all
     // together) built by hand. Cheap, precise proxy: every sourceRepo:/sourceDescribe: occurrence in
-    // these four files must appear on a line that ALSO mentions writeRvfGeneration, projectSourceStore,
+    // these source writers must appear on a line that ALSO mentions writeRvfGeneration, projectSourceStore,
     // or is itself inside one of those calls (checked by requiring the immediately preceding
     // non-blank content within 3 lines to reference one of the two).
     for (const relative of WRITERS) {
       const lines = fs.readFileSync(path.join(ROOT, relative), 'utf8').split('\n');
       lines.forEach((line, index) => {
         if (!/\bsourceRepo\s*:|\bsourceDescribe\s*:/.test(line)) return;
+        // This literal is the private ledger row itself, verified against persisted SOURCE below.
+        if (relative === 'scripts/private-overlay.mjs' && /\bconst generation = \{/.test(line)
+          && /\bsourceRepo: 'private'/.test(line)) return;
         const window = lines.slice(Math.max(0, index - 8), index + 1).join('\n');
+        if (relative === 'scripts/build-bundle.mjs' && /ledgerStores\[name\]\s*=\s*\{/.test(window)
+          && /source(?:Repo|Describe): generation\.source(?:Repo|Describe) \?\? null/.test(line)) return;
         expect(window, `${relative}:${index + 1} constructs sourceRepo/sourceDescribe outside writeRvfGeneration/projectSourceStore:\n${line}`)
           .toMatch(/writeRvfGeneration\s*\(|projectSourceStore\s*\(/);
       });
@@ -70,6 +75,16 @@ describe('S4/S5 — no second SOURCE.json writer', () => {
 });
 
 describe('S4/S5 — SOURCE.json regenerated equals projection of ledger', () => {
+  it.each([{}, { sourceRepo: null, sourceDescribe: null }])('never substitutes updater provenance for absent or null ledger values', (identity) => {
+    const generation = { ...identity, sourceCommit: null, builtUtc: '2026-10-08T00:00:00.000Z' };
+    const before = structuredClone(generation);
+    const updater = { sourceRepo: 'https://example.invalid/stale-updater', sourceDescribe: 'stale-updater-tag',
+      sourceCommit: 'a'.repeat(40), builtUtc: '2020-01-01T00:00:00.000Z', canonicalManifestUrl: 'https://example.invalid/manifest' };
+    expect(projectSourceStore('store', generation, updater)).toMatchObject({ sourceRepo: null, sourceDescribe: null,
+      sourceCommit: null, builtUtc: generation.builtUtc, canonicalManifestUrl: updater.canonicalManifestUrl });
+    expect(generation).toEqual(before);
+  });
+
   it('every identity field in a projected SOURCE.json store entry equals the ledger row it was projected from', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'one-source-projection-'));
     fs.writeFileSync(path.join(dir, 'alpha.big.rvf'), 'alpha-bytes');
@@ -81,7 +96,8 @@ describe('S4/S5 — SOURCE.json regenerated equals projection of ledger', () => 
     const ledger = readRvfGenerations(dir);
     const stores = {};
     for (const [name, generation] of Object.entries(ledger.stores)) {
-      stores[name] = projectSourceStore(name, generation, { canonicalManifestUrl: 'https://example.invalid/manifest.json' });
+      stores[name] = projectSourceStore(name, generation, { canonicalManifestUrl: 'https://example.invalid/manifest.json',
+        sourceRepo: 'https://example.invalid/stale-adapter', sourceDescribe: 'stale-adapter-tag' });
     }
     const sourceFile = path.join(dir, 'SOURCE.json');
     fs.writeFileSync(sourceFile, `${JSON.stringify({ builder: 'rvf-kb-forge', stores }, null, 2)}\n`);

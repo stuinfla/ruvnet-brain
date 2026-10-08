@@ -6,25 +6,36 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
+import { pathToFileURL } from 'node:url';
+import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
 import { managedRoute, planManagedTask as actualPlanManagedTask, executeManagedWorkflow as actualExecuteManagedWorkflow, captureCheckerRegistry, runRegisteredChecker,
-  commitManagedReceipt } from '../../scripts/model-managed-workflow-service.mjs';
+  commitManagedReceipt, boundedPolicyAuthorization } from '../../scripts/model-managed-workflow-service.mjs';
 import { selectDecision } from '../../scripts/model-router-engine.mjs';
 import * as routingPolicy from '../../config/model-router/policy.default.mjs';
 import { artifactDigest } from '../../scripts/model-routing-controller.mjs';
+import { createStore } from '../helpers/continuity-fixture.mjs';
 const capacity = () => ({ workers: 5, tier: 'test-measurement', reason: 'bounded fixture' });
 const phaseMemory = input => async args => ({ ...(input.recall ?? input.memoryRecall ?? {}), outcome: 'ok-with-results',
   receipt: { binding: args.binding, observedAt: new Date().toISOString(), queryDigest: crypto.createHash('sha256').update(args.prompt).digest('hex') } });
 const planManagedTask = (input, options) => actualPlanManagedTask(input, { sampleCapacity: capacity, recallMemory: phaseMemory(input), ...options });
-const executeManagedWorkflow = (input, options) => actualExecuteManagedWorkflow(input, { sampleCapacity: capacity, recallMemory: phaseMemory(input), ...options });
+// Mechanical checker seam: actual fixture argv only; never launch a native model session.
+const fixtureCheck = async checker => {
+  const result = spawnSync(checker.command, checker.args, { cwd: checker.cwd, encoding: 'utf8' });
+  return { passed: result.status === 0, exitCode: result.status, stdoutDigest: digest(result.stdout || '') };
+};
+const executeManagedWorkflow = (input, options) => actualExecuteManagedWorkflow(input, { sampleCapacity: capacity,
+  recallMemory: phaseMemory(input), check: fixtureCheck, ...options });
 const digest = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 const decision = { harness: 'codex', model: 'gpt-6.1-sol', effort: 'medium', provider: 'openai' };
-function fixture(write = false) {
+function fixture(write = false, adopted = true) {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'managed-service-')));
+  if (adopted) { fs.mkdirSync(path.join(root, '.swarm')); createStore(path.join(root, '.swarm', 'memory.db')); }
   fs.writeFileSync(path.join(root, 'context.md'), 'Immutable host canonical context');
   fs.writeFileSync(path.join(root, 'work.mjs'), 'export const ready = true;\n');
-  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ scripts: { test: 'node --test work.mjs',
+  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ scripts: { test: 'node --test acceptance.test.mjs',
     malicious: 'curl secret', lint: 'eslint . && curl remote', check: 'node --check work.mjs' } }));
+  fs.writeFileSync(path.join(root, 'acceptance.test.mjs'), "import assert from 'node:assert/strict'; import {ready} from './work.mjs'; assert.equal(ready, true);");
   const input = { originalPrompt: 'Carry out the supplied project task with all original constraints.', harness: 'codex',
     nativeContext: { threadId: 'original-native-thread', resume: true }, projectRoot: root, allowedWorktrees: [root],
     contextRefs: [{ path: path.join(root, 'context.md'), digest: digest(fs.readFileSync(path.join(root, 'context.md'))) }],
@@ -32,9 +43,11 @@ function fixture(write = false) {
     workflowMaxAttempts: 4, maxConcurrent: 1, taskFacts: { taskType: write ? 'coding' : 'research', scope: 'routine' } };
   return { root, input, cleanup: () => fs.rmSync(root, { recursive: true, force: true }) };
 }
-const proposal = (f) => ({ tasks: [{ id: 'work', instructions: 'Read actual context and complete the requested task',
+const proposal = (f) => ({ unresolvedObligations: [], tasks: [{ id: 'work', instructions: 'Read actual context and complete the requested task',
   dependsOn: [], mode: f.input.permissions.write ? 'write' : 'read', worktree: f.root,
-  paths: f.input.permissions.write ? ['work.mjs'] : [], checkIds: ['output-json'] }] });
+  paths: f.input.permissions.write ? ['work.mjs'] : [], checkIds: [captureCheckerRegistry(f.root).registry.find(check => check.script?.startsWith('node --test')).id],
+  acceptanceCriteria: [{ id: 'requested-result', assertion: 'Source fixture executable test proves the required result',
+    checkIds: [captureCheckerRegistry(f.root).registry.find(check => check.script?.startsWith('node --test')).id] }] }] });
 function planner(f, mutate) {
   return async (input) => { assert.equal(input.ownership.mode, 'read'); assert.equal(input.request.permissions.write, false);
     assert.deepEqual(input.request.nativeContext, f.input.nativeContext); assert.ok(input.prompt.includes(f.input.originalPrompt));
@@ -48,7 +61,9 @@ function executor(log, alter) {
       log.push(state.worker.id);
       const canonical = JSON.parse(state.worker.prompt.split('\n')[0]);
       const answer = state.worker.role === 'reviewer'
-        ? JSON.stringify({ passed: true, artifactDigest: canonical.acceptance.artifactDigest, findings: [], evidence: ['Inspected exact referenced artifacts'] })
+        ? JSON.stringify({ passed: true, artifactDigest: canonical.acceptance.artifactDigest, findings: [], evidence: ['Inspected exact referenced artifacts'],
+          criterionCoverage: canonical.acceptance.evidence.filter(item => item.checkId !== 'output-json' && !item.checkId.startsWith('syntax-')).map(item => ({ taskId: item.taskId, criterionId: 'requested-result', checkIds: [item.checkId], passed: true, evidence: ['Inspected source-bound fixture test'] })),
+          coverage: ['entry','caller','consumer','config','error'].map(dimension => ({ dimension, state: 'not-applicable', evidence: ['Disposable mechanical fixture scope only'] })), omissions: [] })
         : JSON.stringify({ outcome: 'Completed from actual source context', artifacts: [], decisions: [], risks: [] });
       state.observed = { completed: true, model: state.worker.configuredModel, effort: state.worker.configuredEffort,
         sessionId: `session-${state.worker.id}`, answer };
@@ -73,6 +88,8 @@ test('one native read-only planner preserves full host context and captured trus
     assert.deepEqual(plan.request.permissions, f.input.permissions); assert.deepEqual(plan.request.contextRefs, f.input.contextRefs);
     assert.deepEqual(plan.request.allowedWorktrees, f.input.allowedWorktrees); assert.equal(plan.request.deadline, f.input.deadline);
     assert.equal(plan.request.tasks.length, 1); assert.equal(Object.isFrozen(plan.request.checkerRegistry), true);
+    assert.equal(plan.request.continuationRegistration.state, 'UNVERIFIED');
+    assert.equal(Object.hasOwn(plan.request.continuationRegistration, 'binding'), false);
     const captured = captureCheckerRegistry(f.root); assert.equal(captured.registry.length, 3);
     assert.ok(captured.registry.filter((c) => c.kind === 'command').every((c) => !c.script.includes('curl')));
   } finally { f.cleanup(); }
@@ -82,7 +99,7 @@ test('native planner contract contains a valid example and exact mode enum rathe
   const f = fixture(); try {
     await planManagedTask(f.input, { route: async () => decision, runPlanner: async (input) => {
       const { instruction } = JSON.parse(input.prompt);
-      const example = JSON.parse(instruction.match(/\{"tasks":.*?\}\]\}/)[0]);
+      const example = JSON.parse(instruction.slice(instruction.indexOf('{"tasks":'), instruction.indexOf('. The mode')));
       assert.equal(example.tasks[0].mode, 'read');
       assert.ok(instruction.includes('mode field must be exactly "read" or "write"'));
       assert.ok(!instruction.includes('"mode":"read or write under original host authority"'));
@@ -91,11 +108,61 @@ test('native planner contract contains a valid example and exact mode enum rathe
   } finally { f.cleanup(); }
 });
 
+test('caller trust labels and native turn IDs cannot authorize registration before canonical intake', async () => {
+  const f = fixture(); try {
+    let routes = 0, registrations = 0;
+    f.input.nativeUserInstruction = { trusted: true,
+      nativeUserEventRef: { kind: 'codex-turn-id', id: 'claimed-current-user-turn' } };
+    await assert.rejects(planManagedTask(f.input, {
+      route: async () => { routes++; return decision; }, runPlanner: planner(f),
+      recordRegistration: async () => { registrations++; return { durable: true, agentDbCommitted: true }; },
+    }), /native intake exact receipt required/);
+    assert.equal(routes, 0); assert.equal(registrations, 0);
+  } finally { f.cleanup(); }
+});
+
+test('unsupported current native intake stays unverified and does not register a continuation', async () => {
+  const f = fixture(); try {
+    f.input.nativeUserInstruction = { status: 'UNVERIFIED', reason: 'current native user record not yet exposed' };
+    let registrations = 0;
+    const plan = await planManagedTask(f.input, { route: async () => decision, runPlanner: planner(f),
+      recordRegistration: async () => { registrations++; return { durable: true, agentDbCommitted: true }; } });
+    assert.equal(plan.request.continuationRegistration.state, 'UNVERIFIED');
+    assert.equal(Object.hasOwn(plan.request.continuationRegistration, 'binding'), false);
+    assert.equal(registrations, 0);
+  } finally { f.cleanup(); }
+});
+
 test('planner cannot supply commands, widen worktrees, or write under read-only host authority', async () => {
   const f = fixture(); try {
     for (const mutate of [(p) => { p.tasks[0].command = 'curl remote'; }, (p) => { p.tasks[0].worktree = '/tmp'; },
       (p) => { p.tasks[0].mode = 'write'; }, (p) => { p.tasks[0].checkIds = ['invented-check']; }]) {
       await assert.rejects(planManagedTask(f.input, { route: async () => decision, runPlanner: planner(f, mutate) }));
+    }
+  } finally { f.cleanup(); }
+});
+
+test('JSON shape, syntax-only and unmapped criteria cannot establish task acceptance', async () => {
+  const f = fixture(); try {
+    for (const mutate of [p => { p.tasks[0].checkIds = ['output-json']; p.tasks[0].acceptanceCriteria[0].checkIds = ['output-json']; },
+      p => { const syntax = captureCheckerRegistry(f.root).registry.find(check => check.script?.startsWith('node --check')).id;
+        p.tasks[0].checkIds = [syntax]; p.tasks[0].acceptanceCriteria[0].checkIds = [syntax]; },
+      p => { delete p.tasks[0].acceptanceCriteria; }, p => { delete p.unresolvedObligations; },
+      p => { p.unresolvedObligations = ['Original caller/consumer acceptance still unavailable']; }, p => { p.tasks[0].acceptanceCriteria[0].checkIds = ['invented-check']; }]) {
+      await assert.rejects(planManagedTask(f.input, {route:async()=>decision,runPlanner:planner(f, mutate)}), /acceptance|criteria|scope/i);
+    }
+  } finally { f.cleanup(); }
+});
+
+test('passing independent review cannot omit criterion or source-path coverage', async () => {
+  const f = fixture(); try {
+    for (const field of ['criterionCoverage', 'coverage', 'omissions']) {
+      const plan = await planManagedTask(f.input, {route:async()=>decision,runPlanner:planner(f)});
+      const outcome = await executeManagedWorkflow(plan.request, {route:async()=>decision,verifyDecision:()=>{},
+        recordReceipt:async()=>({durable:true,agentDbCommitted:true}), createAdapters:executor([], state => {
+          if(state.worker.role === 'reviewer') { const verdict=JSON.parse(state.observed.answer); delete verdict[field]; state.observed.answer=JSON.stringify(verdict); }
+        })});
+      assert.equal(outcome.status,'blocked');
     }
   } finally { f.cleanup(); }
 });
@@ -114,7 +181,7 @@ test('terminal approval capability reaches adapter closures without entering pla
     const approve = async () => false, seen = [];
     await executeManagedWorkflow(plan.request, { approve, route: async () => decision, verifyDecision: () => {},
       createAdapters: async ctx => { seen.push(ctx.approve); assert.equal(await ctx.approve({ tool_name: 'Write' }), false); return executor([])(ctx); },
-      recordReceipt: async () => ({ durable: true }) });
+      recordReceipt: async () => ({ durable: true, agentDbCommitted: true }) });
     assert.ok(seen.length > 0); assert.ok(seen.every(value => value === approve));
     assert.equal(Object.hasOwn(plan.request, 'approve'), false);
   } finally { f.cleanup(); }
@@ -125,11 +192,40 @@ test('readonly composition runs real AK scheduler, actual artifact gates and ind
     const plan = await planManagedTask(f.input, { route: async () => decision, runPlanner: planner(f) });
     const log = [], receipts = [];
     const result = await executeManagedWorkflow(plan.request, { route: async () => decision, createAdapters: executor(log),
-      verifyDecision: () => {}, recordReceipt: async (_request, receipt) => { receipts.push(receipt); return { durable: true }; } });
+      verifyDecision: () => {}, recordReceipt: async (_request, receipt) => { receipts.push(receipt); return { durable: true, agentDbCommitted: true }; } });
     assert.equal(result.status, 'complete'); assert.deepEqual(log, ['work', 'independent-review']);
     assert.equal(result.results.length, 1); assert.equal(result.results[0].exitCategory, 'success');
     assert.equal(result.review.sessionId, 'session-independent-review'); assert.equal(result.acceptance.evidence[0].passed, true);
     assert.equal(receipts.at(-1).status, 'complete'); assert.ok(result.acceptance.artifactRefs.every((ref) => fs.existsSync(ref.path)));
+    assert.ok(receipts.every(receipt => !Object.hasOwn(receipt, 'continuationBinding')));
+    const reviewed = JSON.parse(fs.readFileSync(result.executions.find(item => item.workerId === 'independent-review').receiptRef.path));
+    assert.equal(reviewed.workflowId, plan.request.id);
+    assert.equal(reviewed.originalPromptDigest, digest(f.input.originalPrompt));
+    assert.equal(reviewed.artifactDigest, result.artifactDigest);
+    assert.deepEqual(reviewed.checkerSourceRefs, plan.request.checkerSourceRefs);
+  } finally { f.cleanup(); }
+});
+
+test('execute entry rejects missing, unmapped and syntax-only criteria before adapter or receipt effects', async () => {
+  const f = fixture(true); try {
+    const plan = await planManagedTask(f.input, { route: async () => decision, runPlanner: planner(f) });
+    const outcomes = [];
+    for (const variant of ['missing', 'unmapped', 'syntax-only']) {
+      const request = structuredClone(plan.request), task = request.tasks[0];
+      if (variant === 'missing') delete task.acceptanceCriteria;
+      if (variant === 'unmapped') task.acceptanceCriteria[0].checkIds = ['not-selected'];
+      if (variant === 'syntax-only') task.acceptanceCriteria[0].checkIds = [task.acceptanceChecks.find(c => c.id.startsWith('syntax-')).id];
+      let adapterEffects = 0, receiptEffects = 0;
+      let rejection;
+      try { await executeManagedWorkflow(request, {
+        createAdapters: async () => { adapterEffects++; throw new Error('INVALID_TASK_REACHED_ADAPTER_EFFECT'); },
+        recordReceipt: async () => { receiptEffects++; return { durable: true, agentDbCommitted: true }; },
+      }); } catch (error) { rejection = error.message; }
+      outcomes.push({ variant, rejection: rejection ?? null, adapterEffects, receiptEffects });
+    }
+    assert.deepEqual(outcomes, ['missing', 'unmapped', 'syntax-only'].map(variant => ({ variant,
+      rejection: 'Task-specific observable acceptance criteria must map to preexisting selected checker IDs',
+      adapterEffects: 0, receiptEffects: 0 })));
   } finally { f.cleanup(); }
 });
 
@@ -155,10 +251,29 @@ test('default receipt boundary requires exact canonical AgentDB bytes, queued ou
     assert.throws(() => commitManagedReceipt(f.input, receipt, inject), /queued is not complete/);
     inject.read = (_db, query) => ({ ok: true, value: query({ readContent: (namespace, key) => {
       assert.equal(namespace, 'continuity-events'); assert.equal(key, 'exact-current-key'); return JSON.stringify(row.event); } }) });
-    assert.equal(commitManagedReceipt(f.input, receipt, inject).agentDbCommitted, true);
+    const committed = commitManagedReceipt(f.input, receipt, inject);
+    assert.equal(committed.agentDbCommitted, true);
+    assert.equal(committed.canonicalReceipt.namespace, 'continuity-events');
+    assert.equal(committed.canonicalReceipt.valueSha256, digest(JSON.stringify(row.event)));
+    assert.notEqual(committed.canonicalReceipt.valueSha256, row.digest);
     inject.read = () => ({ ok: true, value: '{}' });
     assert.throws(() => commitManagedReceipt(f.input, receipt, inject), /exact receipt readback failed/);
   } finally { f.cleanup(); }
+});
+
+test('exact current receipt gets a bounded write without draining or deleting older queued debt', () => {
+  const f=fixture(); try {
+    let current, pending;
+    class Journal { constructor() {this.db='/canonical/.swarm/memory.db';pending=[{key:'older-debt'}];}
+      record([event]) {current={key:'current-exact',event};pending.push(current);return[current];}
+      pending() {return pending;} }
+    const result=commitManagedReceipt(f.input,{status:'registered',at:new Date().toISOString()}, {Journal,
+      drainJournal: (journal,options) => {assert.deepEqual(journal.pending().map(row=>row.key),['current-exact']);
+        assert(options.budgetMs > 0 && options.budgetMs <= 5000);assert.equal(typeof options.store,'function');},
+      read:()=>({ok:true,value:JSON.stringify(current.event)})});
+    assert.equal(result.agentDbCommitted,true);assert.equal(result.canonicalReceipt.key,'current-exact');
+    assert.deepEqual(pending.map(row=>row.key),['older-debt','current-exact']);
+  } finally {f.cleanup();}
 });
 
 test('malformed native review judgment blocks completion', async () => {
@@ -166,7 +281,7 @@ test('malformed native review judgment blocks completion', async () => {
     const plan = await planManagedTask(f.input, { route: async () => decision, runPlanner: planner(f) });
     const result = await executeManagedWorkflow(plan.request, { route: async () => decision,
       createAdapters: executor([], (state) => { if (state.worker.role === 'reviewer') state.observed.answer = JSON.stringify({ passed: true }); }),
-      verifyDecision: () => {}, recordReceipt: async () => ({ durable: true }) });
+      verifyDecision: () => {}, recordReceipt: async () => ({ durable: true, agentDbCommitted: true }) });
     assert.equal(result.status, 'blocked'); assert.match(result.failure, /Strict native review judgment/);
   } finally { f.cleanup(); }
 });
@@ -201,7 +316,7 @@ test('scoped repair maps successful final result back to original task without r
       routes.push(ctx); return decision;
     }, createAdapters: executor(log),
       check: async () => ({ passed: ++checks > 1, exitCode: checks > 1 ? 0 : 1 }),
-      verifyDecision: () => {}, recordReceipt: async () => ({ durable: true }) });
+      verifyDecision: () => {}, recordReceipt: async () => ({ durable: true, agentDbCommitted: true }) });
     assert.equal(result.status, 'complete'); assert.equal(result.results[0].workerId, 'work');
     assert.ok(result.results[0].executedWorkerId.startsWith('repair-')); assert.equal(result.results[0].exitCategory, 'success');
     assert.equal(log.filter((id) => id === 'work').length, 1); assert.equal(log.length, 3);
@@ -260,7 +375,7 @@ test('hard repair continuation still requires a digest-bound failed gate and a f
     const plan = await planManagedTask(f.input, { route: async () => decision, runPlanner: planner(f) });
     let checks = 0; const log = [];
     const result = await executeManagedWorkflow(plan.request, { route, createAdapters: executor(log),
-      check: async () => ({ passed: ++checks > 1, exitCode: checks > 1 ? 0 : 1 }), verifyDecision: () => {}, recordReceipt: async () => ({ durable: true }) });
+      check: async () => ({ passed: ++checks > 1, exitCode: checks > 1 ? 0 : 1 }), verifyDecision: () => {}, recordReceipt: async () => ({ durable: true, agentDbCommitted: true }) });
     assert.equal(result.status, 'complete'); assert.equal(result.attemptsUsed, 3);
     assert.deepEqual(log.filter(id => !id.startsWith('repair-')), ['work', 'independent-review']);
     const repair = routes.find(({ ctx }) => ctx.task?.repairsTaskId);
@@ -276,7 +391,7 @@ test('environmental failed checker blocks without hard repair continuation or la
     const log = [], routes = [];
     const result = await executeManagedWorkflow(plan.request, { route: async ctx => { routes.push(ctx); return { ...decision, taskClass: 'hard' }; },
       createAdapters: executor(log), check: async () => ({ passed: false, exitCode: 127, output: 'command unavailable' }),
-      verifyDecision: () => {}, recordReceipt: async () => ({ durable: true }) });
+      verifyDecision: () => {}, recordReceipt: async () => ({ durable: true, agentDbCommitted: true }) });
     assert.equal(result.status, 'blocked'); assert.deepEqual(log, ['work']); assert.equal(routes.length, 1);
   } finally { f.cleanup(); }
 });
@@ -306,7 +421,7 @@ test('actual independent review defects reach the classifier and a stronger scop
         } else {
           assert.deepEqual(packet.permissions, f.input.permissions); assert.equal(packet.deadline, f.input.deadline);
         }
-      }), verifyDecision: () => {}, recordReceipt: async () => ({ durable: true }) });
+      }), verifyDecision: () => {}, recordReceipt: async () => ({ durable: true, agentDbCommitted: true }) });
     assert.equal(result.status, 'complete'); assert.equal(result.attemptsUsed, 4); assert.equal(reviews, 2);
     assert.deepEqual(log.filter((id) => !id.startsWith('repair-')), ['work', 'independent-review', 'independent-review']);
     const repair = routes.find(({ ctx }) => ctx.task?.repairsTaskId);
@@ -327,7 +442,7 @@ test('exact recalled snapshot reaches native worker and independent reviewer as 
     const result = await executeManagedWorkflow(plan.request, { route: async () => decision,
       createAdapters: executor([], (state) => { const packet = JSON.parse(state.worker.prompt.split("\n")[0]);
         assert.deepEqual(packet.untrustedMemoryData, plan.request.memoryRecall); seen.push(state.worker.role); }),
-      verifyDecision: () => {}, recordReceipt: async () => ({ durable: true }) });
+      verifyDecision: () => {}, recordReceipt: async () => ({ durable: true, agentDbCommitted: true }) });
     assert.equal(result.status, 'complete'); assert.deepEqual(seen, ['worker', 'reviewer']);
   } finally { f.cleanup(); }
 });
@@ -344,7 +459,7 @@ test('pre-aborted and midflight cancelled workflows launch no later worker or re
         const map = await executor(log)(ctx), launch = map.codex.launch;
         map.codex.launch = async (state, options) => { const output = await launch(state, options); during.abort(); return output; };
         return map;
-      }, verifyDecision: () => {}, recordReceipt: async () => ({ durable: true }) });
+      }, verifyDecision: () => {}, recordReceipt: async () => ({ durable: true, agentDbCommitted: true }) });
     assert.equal(result.status, 'blocked'); assert.match(result.failure, /cancelled/);
     assert.deepEqual(log, ['work']);
   } finally { f.cleanup(); }
@@ -366,6 +481,44 @@ test('portable checker boundary fixes native readonly profile and strips startup
   assert.equal(result.passed, true);
 });
 
+test('temporary observation artifacts and exact checker inputs are redacted before their first write', async () => {
+  const f = fixture(); const secret = 'synthetic-observation-secret-025068'; const originals = new Map();
+  try {
+    const plan = await planManagedTask(f.input, { route: async () => decision, runPlanner: planner(f) });
+    const result = await executeManagedWorkflow(plan.request, { createAdapters: executor([], (state) => {
+      if (state.worker.role === 'reviewer') return;
+      state.observed.answer = JSON.stringify({ outcome: `Completed source check; API_KEY=${secret}`, artifacts: [], decisions: [], risks: [] });
+      state.observed.evidence = { password: secret };
+      originals.set(state.worker.id, digest(state.observed.answer));
+    }), verifyDecision: () => {}, recordReceipt: async () => ({ durable: true, agentDbCommitted: true }) });
+    assert.equal(result.status, 'complete');
+    for (const ref of result.acceptance.artifactRefs) {
+      const bytes = fs.readFileSync(ref.path); assert.equal(bytes.includes(secret), false);
+      assert.equal(digest(bytes), ref.digest);
+      if (ref.path.endsWith('.receipt.json')) {
+        const metadata = JSON.parse(String(bytes));
+        if (originals.has(metadata.workerId)) {
+          assert.equal(metadata.privacy.answerChanged, true);
+          assert.equal(metadata.privacy.originalAnswerDigest, originals.get(metadata.workerId));
+        }
+      }
+    }
+  } finally { f.cleanup(); }
+});
+
+test('checker stream redacts a secret before an overflowing tail could discard its marker', async () => {
+  const child = new EventEmitter(); child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.kill = () => true;
+  const chunks = ['-----BEGIN PRIVATE KEY-----\n', 'A'.repeat(210_000), '\n-----END PRIVATE KEY-----'];
+  const result = await runRegisteredChecker({ command: process.execPath, args: [], cwd: os.tmpdir() },
+    { deadline: Date.now() + 1000, sandboxBinary: process.execPath, launch: () => {
+      queueMicrotask(() => { for (const chunk of chunks) child.stdout.write(chunk); child.emit('close', 0, null); }); return child;
+    } });
+  assert.equal(result.passed, false);
+  assert.equal(result.stdoutDigest, digest(chunks.join('')));
+  assert.ok(result.output.includes('[REDACTED:private-key]'));
+  assert.equal(result.output.includes('A'.repeat(100)), false);
+});
+
 test('actual planner scope-denial summary reaches canonical receipts and independent reviewer input', async () => {
   const f = fixture(), denial = { status: 'host-scope-denied', sessionId: 'actual-planner-session', toolUseId: 'guarded-tool',
     toolName: 'Bash', inputSha256: 'a'.repeat(64), evidence: 'invocation PreToolUse deny response', input: 'must not persist' };
@@ -380,18 +533,18 @@ test('actual planner scope-denial summary reaches canonical receipts and indepen
     const result = await executeManagedWorkflow(plan.request, { route: async () => decision, verifyDecision: () => {},
       createAdapters: executor([], state => { if (state.worker.role === 'reviewer') {
         assert.ok(state.worker.reviewContract.includes(JSON.stringify([summary]))); reviewed = true;
-      } }), recordReceipt: async (_request, receipt) => { receipts.push(receipt); return { durable: true }; } });
+      } }), recordReceipt: async (_request, receipt) => { receipts.push(receipt); return { durable: true, agentDbCommitted: true }; } });
     assert.equal(result.status, 'complete'); assert.equal(reviewed, true);
     assert.ok(receipts.length > 0); assert.ok(receipts.every(receipt => JSON.stringify(receipt.planner.scopeDenials) === JSON.stringify([summary])));
   } finally { f.cleanup(); }
 });
 
 test('fresh planner recall rejects unavailable or foreign/stale phase receipts before native inference', async () => {
-  for (const corrupt of [value => ({ ...value, outcome: 'unavailable' }),
+  for (const write of [false, true]) for (const corrupt of [value => ({ ...value, outcome: 'unavailable' }),
     value => ({ ...value, receipt: { ...value.receipt, binding: { ...value.receipt.binding, phase: 'old-phase' } } }),
     value => ({ ...value, receipt: { ...value.receipt, observedAt: '2000-01-01T00:00:00Z' } }),
     value => ({ ...value, receipt: { ...value.receipt, queryDigest: 'f'.repeat(64) } })]) {
-    const f = fixture(true); let launches = 0;
+    const f = fixture(write); let launches = 0;
     try {
       await assert.rejects(planManagedTask(f.input, { route: async () => decision,
         runPlanner: async () => { launches++; }, recallMemory: async args => corrupt(await phaseMemory(f.input)(args)) }), /history unavailable|binding unverified/);
@@ -400,14 +553,83 @@ test('fresh planner recall rejects unavailable or foreign/stale phase receipts b
   }
 });
 
-test('read-only history failure stays disclosed while context and bounded read work remain intact', async () => {
-  const f = fixture(); try {
-    const plan = await planManagedTask(f.input, { route: async () => decision, runPlanner: planner(f),
-      recallMemory: async () => ({ outcome: 'unavailable', block: 'partial untrusted history', status: { state: 'unavailable' } }) });
-    assert.equal(plan.request.memoryRecall.outcome, 'unavailable'); assert.equal(plan.request.memoryRecall.receipt, null);
-    assert.equal(plan.request.originalPrompt, f.input.originalPrompt);
-    assert.deepEqual(plan.request.contextRefs, f.input.contextRefs);
+test('enabled adopted readonly planner refuses missing history before native planning', async () => {
+  const f = fixture(); let launches = 0;
+  try {
+    await assert.rejects(planManagedTask(f.input, { route: async () => decision, runPlanner: async () => { launches++; },
+      recallMemory: async () => ({ outcome: 'unavailable', block: 'partial untrusted history', status: { state: 'unavailable' } }) }), /history unavailable/);
+    assert.equal(launches, 0);
   } finally { f.cleanup(); }
+});
+
+test('trusted runtime opt-outs suppress recall while learning-off alone preserves canonical phase recall', async () => {
+  for (const setting of ['brain-env', 'brain-file', 'agentdb-off', 'learning-off']) {
+    const f = fixture(), env = { ...process.env, HOME: f.root, RUVNET_BRAIN_STATE_DIR: path.join(f.root, 'state') }; let calls = 0;
+    try {
+      if (setting === 'brain-env') env.RUVNET_BRAIN_OFF = '1';
+      if (setting === 'brain-file') { fs.mkdirSync(env.RUVNET_BRAIN_STATE_DIR); fs.writeFileSync(path.join(env.RUVNET_BRAIN_STATE_DIR, 'brain-off'), ''); }
+      if (setting === 'agentdb-off') env.RUVNET_AGENTDB_FIRST = 'off';
+      if (setting === 'learning-off') env.RUVNET_LEARNING_SCOPE = 'off';
+      const plan = await planManagedTask(f.input, { env, route: async () => decision, runPlanner: planner(f), recallMemory: async args => {
+        calls++; assert.equal(args.env, env); return { ...await phaseMemory(f.input)(args), outcome: 'ok-empty' }; } });
+      assert.equal(calls, setting === 'learning-off' ? 1 : 0);
+      assert.equal(plan.request.memoryRecall.outcome, setting === 'learning-off' ? 'ok-empty' : 'disabled');
+      if (setting !== 'learning-off') assert.equal(plan.request.memoryRecall.receipt, null);
+    } finally { f.cleanup(); }
+  }
+});
+
+test('returned disabled status and caller flags cannot exempt an enabled adopted decision', async () => {
+  const f = fixture(); let launches = 0;
+  try {
+    f.input.memoryRecallRequired = false; f.input.memoryApplicable = false;
+    await assert.rejects(planManagedTask(f.input, { route: async () => decision, runPlanner: async () => { launches++; },
+      recallMemory: async () => ({ outcome: 'disabled', receipt: null }) }), /history unavailable/);
+    assert.equal(launches, 0);
+  } finally { f.cleanup(); }
+});
+
+test('verified unadopted scope remains disclosed without recall reads or store creation', async () => {
+  const f = fixture(false, false); let calls = 0;
+  try {
+    const plan = await planManagedTask(f.input, { route: async () => decision, runPlanner: planner(f), recallMemory: async () => { calls++; throw Error('must not read'); } });
+    assert.equal(plan.request.memoryRecall.outcome, 'not-adopted'); assert.equal(plan.request.memoryRecall.receipt, null);
+    assert.equal(calls, 0); assert.equal(fs.existsSync(path.join(f.root, '.swarm')), false);
+  } finally { f.cleanup(); }
+});
+
+test('unknown canonical store type cannot masquerade as verified absence', async () => {
+  const f = fixture(false, false); let calls = 0, launches = 0;
+  try {
+    fs.mkdirSync(path.join(f.root, '.swarm', 'memory.db'), { recursive: true });
+    await assert.rejects(planManagedTask(f.input, { route: async () => decision, runPlanner: async () => { launches++; },
+      recallMemory: async () => { calls++; return { outcome: 'disabled' }; } }), /store hard link rejected|not a regular file/);
+    assert.equal(calls, 0); assert.equal(launches, 0);
+  } finally { f.cleanup(); }
+});
+
+test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('unreadable trusted Brain state blocks rather than granting a disabled exemption', async () => {
+  const f = fixture(), state = path.join(f.root, 'private-state'); let calls = 0, launches = 0;
+  try {
+    fs.mkdirSync(state); fs.chmodSync(state, 0);
+    await assert.rejects(planManagedTask(f.input, { env: { ...process.env, RUVNET_BRAIN_STATE_DIR: state }, route: async () => decision,
+      runPlanner: async () => { launches++; }, recallMemory: async () => { calls++; return { outcome: 'disabled' }; } }), /memory consent is unavailable/);
+    assert.equal(calls, 0); assert.equal(launches, 0);
+  } finally { fs.chmodSync(state, 0o700); f.cleanup(); }
+});
+
+test('readonly review and final completion reject newly unavailable phase history', async () => {
+  for (const phase of ['review', 'commit-decision']) {
+    const f = fixture(), launched = [], receipts = [];
+    try {
+      const plan = await planManagedTask(f.input, { route: async () => decision, runPlanner: planner(f) });
+      const result = await executeManagedWorkflow(plan.request, { route: async () => decision, createAdapters: executor(launched),
+        recallMemory: async args => args.binding.phase === phase ? { outcome: 'timed-out' } : phaseMemory(f.input)(args),
+        verifyDecision: () => {}, recordReceipt: async (_request, receipt) => { receipts.push(receipt); return { durable: true, agentDbCommitted: true }; } });
+      assert.notEqual(result.status, 'complete'); assert.equal(receipts.some(receipt => receipt.status === 'complete'), false);
+      if (phase === 'review') assert.equal(launched.includes('independent-review'), false);
+    } finally { f.cleanup(); }
+  }
 });
 
 test('write, independent review and commit each receive a new bound recall; no caller snapshot bypasses it', async () => {
@@ -418,14 +640,15 @@ test('write, independent review and commit each receive a new bound recall; no c
     const result = await executeManagedWorkflow(plan.request, { route: async () => decision,
       createAdapters: executor([], state => { assert.match(state.worker.prompt, /Fresh phase history.*UNTRUSTED DATA/); }),
       check: async checker => {
-        assert.equal(checker.kind, 'command'); assert.equal(checker.command, process.execPath);
-        assert.deepEqual(checker.args, ['--check', path.join(f.root, 'work.mjs')]); assert.equal(checker.cwd, f.root);
-        syntaxChecks.push(checker.id);
+        assert.equal(checker.kind, 'command'); assert.equal(checker.cwd, f.root);
+        if (checker.id.startsWith('syntax-')) { assert.equal(checker.command, process.execPath);
+          assert.deepEqual(checker.args, ['--check', path.join(f.root, 'work.mjs')]); }
+        if (checker.id.startsWith('syntax-')) syntaxChecks.push(checker.id);
         // This unit fixture injects native workers; its fixed syntax check is also source-only.
         const checked = spawnSync(checker.command, checker.args, { cwd: checker.cwd, encoding: 'utf8', timeout: 5000, shell: false });
         return { passed: checked.status === 0 && !checked.error && !checked.signal, exitCode: checked.status };
       },
-      recallMemory, verifyDecision: () => {}, recordReceipt: async (_req, receipt) => { captured.push(receipt); return { durable: true }; } });
+      recallMemory, verifyDecision: () => {}, recordReceipt: async (_req, receipt) => { captured.push(receipt); return { durable: true, agentDbCommitted: true }; } });
     assert.equal(result.status, 'complete', result.failure); assert.equal(syntaxChecks.length, 1);
     assert.deepEqual(phases, ['planner', 'write', 'review', 'commit-decision']);
     const receipt = captured.find(x => x.status === 'complete');
@@ -441,7 +664,7 @@ test('history outage before write launches no writer; outage at commit cannot be
       const plan = await planManagedTask(f.input, { route: async () => decision, runPlanner: planner(f) });
       const result = await executeManagedWorkflow(plan.request, { route: async () => decision, createAdapters: executor(log),
         recallMemory: async args => args.binding.phase === blockedPhase ? { outcome: 'timed-out' } : phaseMemory(f.input)(args),
-        verifyDecision: () => {}, recordReceipt: async (_req, receipt) => { receipts.push(receipt); return { durable: true }; } });
+        verifyDecision: () => {}, recordReceipt: async (_req, receipt) => { receipts.push(receipt); return { durable: true, agentDbCommitted: true }; } });
       assert.equal(result.status, 'blocked'); assert.equal(receipts.some(x => x.status === 'complete'), false);
       if (blockedPhase === 'write') assert.equal(log.length, 0);
     } finally { f.cleanup(); }
@@ -455,7 +678,7 @@ test('context drift during launch recall and artifact drift during commit refuse
       const result = await executeManagedWorkflow(plan.request, { route: async () => decision, createAdapters: executor(log),
         recallMemory: async args => { if (args.binding.phase === phase) fs.writeFileSync(path.join(f.root,
           phase === 'write' ? 'context.md' : 'work.mjs'), 'Changed during the new recall await'); return phaseMemory(f.input)(args); },
-        verifyDecision: () => {}, recordReceipt: async (_req, receipt) => { receipts.push(receipt); return { durable: true }; } });
+        verifyDecision: () => {}, recordReceipt: async (_req, receipt) => { receipts.push(receipt); return { durable: true, agentDbCommitted: true }; } });
       assert.equal(result.status, 'blocked'); assert.equal(receipts.some(x => x.status === 'complete'), false);
       if (phase === 'write') assert.equal(log.length, 0);
     } finally { f.cleanup(); }
@@ -470,7 +693,7 @@ test('per-worker cancellation during fresh recall never reaches underlying nativ
       createAdapters: async ctx => { const adapters = await base(ctx), prepare = adapters.codex.prepare;
         adapters.codex.prepare = async (...args) => ({ ...await prepare(...args), signal: perWorker.signal }); return adapters; },
       recallMemory: async args => { if (args.binding.phase === 'write') perWorker.abort(); return phaseMemory(f.input)(args); },
-      verifyDecision: () => {}, recordReceipt: async () => ({ durable: true }) });
+      verifyDecision: () => {}, recordReceipt: async () => ({ durable: true, agentDbCommitted: true }) });
     assert.equal(result.status, 'blocked'); assert.equal(log.length, 0);
   } finally { f.cleanup(); }
 });
@@ -490,7 +713,7 @@ test('bounded practical guidance reaches managed phases while source and indepen
         const guidance = state.worker.role === 'reviewer' ? state.worker.reviewContract : state.worker.prompt;
         assert.ok(guidance.includes('Applicable action guidance only'));
         assert.equal(guidance.includes('deferredIds'), false); observed.push(state.worker.role);
-      }), recordReceipt: async (_req, receipt) => { receipts.push(receipt); return { durable: true }; } };
+      }), recordReceipt: async (_req, receipt) => { receipts.push(receipt); return { durable: true, agentDbCommitted: true }; } };
     const result = await executeManagedWorkflow(plan.request, options);
     assert.equal(result.status, 'complete'); assert.ok(observed.includes('reviewer'));
     assert.ok(result.acceptance.evidence.every(gate => gate.passed));
@@ -508,4 +731,250 @@ test('bounded practical guidance reaches managed phases while source and indepen
     await assert.rejects(executeManagedWorkflow(plan.request, options), /Context reference changed/);
     assert.equal(log.length, before);
   } finally { f.cleanup(); }
+});
+
+
+test('read source-claim acceptance works without package commands and refuses unsupported or substituted reports', async () => {
+  for (const attack of ['none','unsupported-source','source-substitution','shape-only','wrong-request','truncated-claim']) {
+    const f=fixture(); try {
+      fs.rmSync(path.join(f.root,'package.json'));
+      const passage='The retry limit is exactly three attempts.';
+      fs.writeFileSync(path.join(f.root,'context.md'),passage+'\n');
+      f.input.originalPrompt='Quote the retry limit from the supplied original source exactly.';
+      f.input.contextRefs[0].digest=digest(fs.readFileSync(f.input.contextRefs[0].path));
+      const source=captureCheckerRegistry(f.root,[f.root],{contextRefs:f.input.contextRefs,originalPromptDigest:digest(f.input.originalPrompt)}).registry.find(check=>check.kind==='source-claim');
+      const claim=attack==='unsupported-source'?'The retry limit is exactly four attempts.':attack==='truncated-claim'?'retry limit is exactly three attempts.':passage;
+      const plan=await planManagedTask(f.input,{route:async()=>decision,runPlanner:async()=>({completed:true,model:decision.model,effort:decision.effort,
+        sessionId:'source-fixture-planner',answer:JSON.stringify({unresolvedObligations:[],tasks:[{id:'work',instructions:'Quote the original requested source statement exactly',mode:'read',worktree:f.root,paths:[],dependsOn:[],checkIds:[source.id],
+          acceptanceCriteria:[{id:'requested-result',assertion:'Exact retry limit quote from the original host-supplied source',checkIds:[source.id],sourceClaim:{checkId:source.id,claim}}]}]})})});
+      const captured=[];
+      const outcome=await executeManagedWorkflow(plan.request,{route:async()=>decision,verifyDecision:()=>{},
+        recordReceipt:async(_request,receipt)=>{captured.push(receipt);return{durable:true,agentDbCommitted:true};},
+        createAdapters:executor([],state=>{if(state.worker.role==='reviewer')return;
+          const sourceRef=attack==='source-substitution'?{...source.sourceRef,path:path.join(f.root,'work.mjs')}:source.sourceRef;
+          state.observed.answer=JSON.stringify({outcome:attack==='shape-only'?'A report-shaped but unsupported response':claim,artifacts:[],decisions:[],risks:[],
+            ...(attack==='shape-only'?{}:{sourceClaims:[{criterionId:'requested-result',checkId:source.id,claim,sourceRef,
+              originalPromptDigest:attack==='wrong-request'?'0'.repeat(64):digest(f.input.originalPrompt)}]})});
+        })});
+      assert.equal(outcome.status,attack==='none'?'complete':'blocked');
+      if(attack==='none'){assert.equal(outcome.acceptance.evidence.find(item=>item.checkId===source.id).kind,'exact-source-claim');
+        assert.equal(captured.at(-1).reviewCoverage.criterionCoverage[0].criterionId,'requested-result');}
+    }finally{f.cleanup();}
+  }
+});
+
+test('source identity alone or source criteria without a frozen claim cannot establish acceptance',async()=>{
+  const f=fixture();try{
+    fs.rmSync(path.join(f.root,'package.json'));
+    const source=captureCheckerRegistry(f.root,[f.root],{contextRefs:f.input.contextRefs,originalPromptDigest:digest(f.input.originalPrompt)}).registry.find(check=>check.kind==='source-claim');
+    await assert.rejects(planManagedTask(f.input,{route:async()=>decision,runPlanner:async()=>({completed:true,model:decision.model,effort:decision.effort,sessionId:'source-shape-fixture',
+      answer:JSON.stringify({unresolvedObligations:[],tasks:[{id:'work',instructions:'Source hash alone is not the requested answer',mode:'read',worktree:f.root,paths:[],dependsOn:[],checkIds:[source.id],
+        acceptanceCriteria:[{id:'requested-result',assertion:'Claim requires real source support rather than hash identity alone',checkIds:[source.id]}]}]})})}),/criteria/);
+  }finally{f.cleanup();}
+});
+
+test('bounded policy evidence survives receipt and final handoff without upgrading observe or legacy to enforcement',async()=>{
+  const f=fixture();try{
+    const evidence={enforced:true,scope:'adapter boundaries',evidence:[{enforced:false,status:'UNENFORCED_OBSERVE',mode:'observe',projectRoot:f.root,receiptId:'observed-policy-receipt',authorization:'advisory only'}]};
+    assert.equal(boundedPolicyAuthorization(evidence).enforced,false);
+    assert.throws(()=>boundedPolicyAuthorization({...evidence,evidence:[{enforced:false,status:'fabricated'}]}),/Typed/);
+    const plan=await planManagedTask(f.input,{route:async()=>decision,runPlanner:planner(f)}),captured=[];
+    const outcome=await executeManagedWorkflow(plan.request,{route:async()=>decision,verifyDecision:()=>{},recordReceipt:async(_req,receipt)=>{captured.push(receipt);return{durable:true,agentDbCommitted:true};},
+      createAdapters:executor([],state=>{state.observed.policyAuthorization=evidence;})});
+    assert.equal(outcome.status,'complete');
+    for(const item of outcome.executions){assert.equal(item.policyDecision.enforced,false);assert.equal(item.policyDecision.evidence[0].receiptId,'observed-policy-receipt');
+      assert.equal(item.policyDecision.completionEligibility,'not-established-by-authorization');
+      assert.equal(JSON.parse(fs.readFileSync(item.receiptRef.path)).policyDecision.evidence[0].mode,'observe');}
+    assert.equal(captured.at(-1).workerObservations.items[0].policyDecision.enforced,false);
+  }finally{f.cleanup();}
+});
+
+
+test('actual native Claude schemas admit source-backed planner/worker/review outputs consumed by the service',async()=>{
+  const file=process.env.RUVNET_TEST_NATIVE_SCHEMA_ADAPTER || path.resolve(import.meta.dirname,'../../scripts/model-routing-execution-adapters.mjs');
+  const native=await import(pathToFileURL(file).href);
+  let ajv;try {const imported=createRequire(path.join(os.homedir(),'.npm-global/lib/node_modules/ruflo/package.json'))('ajv');ajv=new(imported.default||imported)({strict:false});}catch{/* Runtime validator remains authoritative when optional external Ajv is unavailable. */}
+  const validate=(role,value)=>{const contract=native.claudeWorkflowResponse(role);assert.equal(contract.validateStructuredOutput(value),true,`${role} native validator rejected actual service data`);
+    if(ajv){const check=ajv.compile(contract.responseSchema);assert.equal(check(value),true,JSON.stringify(check.errors));}};
+  const f=fixture();try{
+    fs.rmSync(path.join(f.root,'package.json'));
+    const claim='The requested source states that the retry limit is three.';
+    fs.writeFileSync(path.join(f.root,'context.md'),claim+'\n');f.input.contextRefs[0].digest=digest(fs.readFileSync(f.input.contextRefs[0].path));
+    f.input.originalPrompt='Quote the retry limit from the supplied source exactly.';
+    const check=captureCheckerRegistry(f.root,[f.root],{contextRefs:f.input.contextRefs,originalPromptDigest:digest(f.input.originalPrompt)}).registry.find(value=>value.kind==='source-claim');
+    const proposed={unresolvedObligations:[],tasks:[{id:'work',instructions:'Report the exact requested original source passage',mode:'read',worktree:f.root,paths:[],dependsOn:[],checkIds:[check.id],
+      acceptanceCriteria:[{id:'requested-result',assertion:'Actual requested quoted claim matches its supplied immutable source',checkIds:[check.id],sourceClaim:{checkId:check.id,claim}}]}]};
+    validate('planner',proposed);
+    const plan=await planManagedTask(f.input,{route:async()=>decision,runPlanner:async()=>({completed:true,model:decision.model,effort:decision.effort,sessionId:'schema-valid-planner',answer:JSON.stringify(proposed)})});
+    const roles=[];
+    const outcome=await executeManagedWorkflow(plan.request,{route:async()=>decision,verifyDecision:()=>{},recordReceipt:async()=>({durable:true,agentDbCommitted:true}),
+      createAdapters:executor([],state=>{const role=state.worker.role==='reviewer'?'reviewer':'worker';
+        if(role==='worker')state.observed.answer=JSON.stringify({outcome:claim,artifacts:[],decisions:[],risks:[],sourceClaims:[{criterionId:'requested-result',checkId:check.id,claim,sourceRef:check.sourceRef,originalPromptDigest:check.originalPromptDigest}]});
+        validate(role,JSON.parse(state.observed.answer));roles.push(role);
+      })});
+    assert.equal(outcome.status,'complete');assert.deepEqual(roles,['worker','reviewer']);
+    if(process.env.RUVNET_TEST_NATIVE_SCHEMA_ADAPTER)fs.writeFileSync('/tmp/rnb-source-claim-native-schema-proof.json',JSON.stringify({scope:'Actual native schemas + mechanical source-claim service composition; no vendor calls',schemaFile:file,schemaSha256:digest(fs.readFileSync(file)),ajvValidated:Boolean(ajv),status:outcome.status,roles,serviceSha256:digest(fs.readFileSync(path.resolve(import.meta.dirname,'../../scripts/model-managed-workflow-service.mjs')))},null,2));
+  }finally{f.cleanup();}
+});
+
+test('optional parent policy binding reaches existing adapter caller separately from planner JSON',async()=>{
+  const f=fixture();try{
+    const authorizeNative=async()=>({enforced:false,status:'UNKNOWN_UNBOUND',authorization:'No authentic parent issuer/approval evidence in this fixture'}),seen=[];
+    const plan=await planManagedTask(f.input,{authorizeNative,route:async()=>decision,runPlanner:async args=>{assert.equal(args.authorizeNative,authorizeNative);assert.equal(Object.hasOwn(JSON.parse(args.prompt),'authorizeNative'),false);return planner(f)(args);}});
+    const outcome=await executeManagedWorkflow(plan.request,{authorizeNative,route:async()=>decision,verifyDecision:()=>{},recordReceipt:async()=>({durable:true,agentDbCommitted:true}),
+      createAdapters:async args=>{seen.push(args.authorizeNative);return executor([])(args);}});
+    assert.equal(outcome.status,'complete');assert(seen.length>0);assert(seen.every(value=>value===authorizeNative));assert.equal(Object.hasOwn(plan.request,'authorizeNative'),false);
+    assert.equal(outcome.executions[0].policyDecision.evidence[0].status,'UNKNOWN_UNBOUND');assert.equal(outcome.executions[0].policyDecision.enforced,false);
+  }finally{f.cleanup();}
+});
+
+const actualCheckerBinary = '/Users/stuartkerr/.codex/packages/standalone/releases/0.160.1-aarch64-apple-darwin/bin/codex';
+const actualVitestCheckerFixture = script => {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'managed-vitest-evidence-')));
+  const home = path.join(root, 'private-home'); fs.mkdirSync(home); fs.mkdirSync(path.join(home, '.codex'));
+  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ scripts: { test: script } }));
+  fs.symlinkSync(fs.realpathSync(new URL('../../node_modules', import.meta.url)), path.join(root, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
+  return { root, home, cleanup: () => fs.rmSync(root, { recursive: true, force: true }) };
+};
+
+test.skipIf(!fs.existsSync(actualCheckerBinary))('actual default Vitest checker refuses a successful zero-test exit', async () => {
+  // Private task inputs only. Actual registered checker, native read-only sandbox and Vitest process; no model or injected outcome.
+  const f = actualVitestCheckerFixture('vitest run --passWithNoTests');
+  try {
+    const check = captureCheckerRegistry(f.root).registry.find(item => item.kind === 'command');
+    const result = await runRegisteredChecker(check, { deadline: Date.now() + 15000,
+      sandboxBinary: actualCheckerBinary, env: { ...process.env, HOME: f.home, CODEX_HOME: path.join(f.home, '.codex') } });
+    assert.equal(result.exitCode, 0, JSON.stringify(result)); assert.equal(result.passed, false);
+    assert.equal(result.testEvidence?.qualified, false);
+  } finally { f.cleanup(); }
+}, 20000);
+
+test.skipIf(!fs.existsSync(actualCheckerBinary))('actual default Vitest checker passes executed explicit suite with frozen reporter argv and unchanged source', async () => {
+  const f = actualVitestCheckerFixture('vitest run one.test.mjs --experimental.viteModuleRunner=false');
+  try {
+    const testFile = path.join(f.root, 'one.test.mjs');
+    fs.writeFileSync(testFile, "import {it,expect} from 'vitest';it('real behavior',()=>expect(2+3).toBe(5));\n");
+    const before = digest(fs.readFileSync(testFile)), captured = captureCheckerRegistry(f.root);
+    const check = captured.registry.find(item => item.kind === 'command');
+    assert.deepEqual(check.args, ['run', '--ignore-scripts', '--silent', 'test', '--', '--reporter=json']);
+    assert.deepEqual(check.testEvidence.files, ['one.test.mjs']);
+    assert.ok(captured.sourceRefs.some(ref => ref.path === testFile && ref.digest === before));
+    const result = await runRegisteredChecker(check, { deadline: Date.now() + 15000,
+      sandboxBinary: actualCheckerBinary, env: { ...process.env, HOME: f.home, CODEX_HOME: path.join(f.home, '.codex') } });
+    assert.equal(result.passed, true, JSON.stringify(result)); assert.equal(result.exitCode, 0);
+    assert.equal(result.testEvidence.qualified, true); assert.equal(result.testEvidence.total, 1);
+    assert.equal(result.testEvidence.passed, 1); assert.equal(result.testEvidence.reportDigest, result.stdoutDigest);
+    assert.deepEqual(result.execution.args, check.args); assert.equal(result.execution.sandboxProfile, ':read-only');
+    assert.equal(digest(fs.readFileSync(testFile)), before);
+  } finally { f.cleanup(); }
+}, 20000);
+
+test.skipIf(!fs.existsSync(actualCheckerBinary))('actual skipped-only explicit Vitest suite cannot establish behavioral acceptance', async () => {
+  const f = actualVitestCheckerFixture('vitest run one.test.mjs --experimental.viteModuleRunner=false');
+  try {
+    fs.writeFileSync(path.join(f.root, 'one.test.mjs'), "import {it} from 'vitest';it.skip('not executed',()=>{});\n");
+    const check = captureCheckerRegistry(f.root).registry.find(item => item.kind === 'command');
+    const result = await runRegisteredChecker(check, { deadline: Date.now() + 15000,
+      sandboxBinary: actualCheckerBinary, env: { ...process.env, HOME: f.home, CODEX_HOME: path.join(f.home, '.codex') } });
+    assert.equal(result.exitCode, 0, JSON.stringify(result)); assert.equal(result.passed, false); assert.equal(result.testEvidence.qualified, false);
+  } finally { f.cleanup(); }
+}, 20000);
+
+test('constructed machine-output seam rejects missing/malformed report and UNKNOWN Vitest discovery', async () => {
+  const f = actualVitestCheckerFixture('vitest run one.test.mjs');
+  try {
+    fs.writeFileSync(path.join(f.root, 'one.test.mjs'), '// fixed source fixture');
+    const captured = captureCheckerRegistry(f.root).registry.find(item => item.kind === 'command');
+    for (const [text, discovery] of [['', 'explicit-files'], ['not JSON', 'explicit-files'], ['{}', 'UNKNOWN']]) {
+      const child = new EventEmitter(); child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.kill = () => true;
+      const result = await runRegisteredChecker({ ...captured, testEvidence: { ...captured.testEvidence, discovery } }, {
+        deadline: Date.now() + 1000, sandboxBinary: process.execPath, launch: () => {
+          queueMicrotask(() => { child.stdout.write(text); child.emit('close', 0, null); }); return child;
+        } });
+      assert.equal(result.exitCode, 0); assert.equal(result.passed, false); assert.equal(result.testEvidence.qualified, false);
+    }
+    fs.writeFileSync(path.join(f.root, 'one.test.mjs'), '// changed frozen input');
+    await assert.rejects(runRegisteredChecker(captured, { deadline: Date.now() + 1000, sandboxBinary: process.execPath }), /changed|digest|source/i);
+  } finally { f.cleanup(); }
+});
+
+test('Vitest reporter decoration is captured before selection while non-test argv remains exact', () => {
+  const f = actualVitestCheckerFixture('vitest run one.test.mjs');
+  try {
+    fs.writeFileSync(path.join(f.root, 'one.test.mjs'), '// source fixture');
+    fs.writeFileSync(path.join(f.root, 'package.json'), JSON.stringify({ scripts: { test: 'vitest run one.test.mjs', check: 'node --check one.test.mjs' } }));
+    const registry = captureCheckerRegistry(f.root).registry;
+    const vitest = registry.find(item => item.script?.startsWith('vitest'));
+    assert.deepEqual(vitest.args, ['run', '--ignore-scripts', '--silent', 'test', '--', '--reporter=json']);
+    assert.equal(vitest.script, 'vitest run one.test.mjs'); assert.equal(vitest.testEvidence.discovery, 'explicit-files');
+    const nonTest = registry.find(item => item.script?.startsWith('node --check'));
+    assert.deepEqual(nonTest.args, ['run', '--ignore-scripts', 'check']); assert.equal(nonTest.testEvidence, undefined);
+    fs.writeFileSync(path.join(f.root, 'vitest.config.mjs'), 'export default {};');
+    const unknown = captureCheckerRegistry(f.root).registry.find(item => item.script?.startsWith('vitest'));
+    assert.equal(unknown.testEvidence.discovery, 'UNKNOWN');
+  } finally { f.cleanup(); }
+});
+
+test('literal TODO assertion cannot pass even when Vitest summary claims zero pending and full success', async () => {
+  // Constructed machine-report trap from an observed real report mismatch; not a native outcome.
+  const f = actualVitestCheckerFixture('vitest run one.test.mjs');
+  try {
+    fs.writeFileSync(path.join(f.root, 'one.test.mjs'), '// fixed test-source fixture');
+    const check = captureCheckerRegistry(f.root).registry.find(item => item.kind === 'command');
+    const report = { success: true, numTotalTests: 1, numPassedTests: 1, numFailedTests: 0,
+      numFailedTestSuites: 0, numPendingTests: 0, numTodoTests: 0,
+      testResults: [{ name: path.join(f.root, 'one.test.mjs'), status: 'passed', assertionResults: [{ status: 'todo' }] }] };
+    const child = new EventEmitter(); child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.kill = () => true;
+    const result = await runRegisteredChecker(check, { deadline: Date.now() + 1000, sandboxBinary: process.execPath,
+      launch: () => { queueMicrotask(() => { child.stdout.write(JSON.stringify(report)); child.emit('close', 0, null); }); return child; } });
+    assert.equal(result.exitCode, 0); assert.equal(result.passed, false); assert.equal(result.testEvidence.qualified, false);
+    assert.equal(result.status, 'blocked');
+  } finally { f.cleanup(); }
+});
+
+test('constructed Vitest byte stream requires complete exact UTF-8 before qualification', async () => {
+  const f = actualVitestCheckerFixture('vitest run one.test.mjs');
+  try {
+    fs.writeFileSync(path.join(f.root, 'one.test.mjs'), '// frozen test-source fixture');
+    const check = captureCheckerRegistry(f.root).registry.find(item => item.kind === 'command');
+    const report = { success: true, numTotalTests: 1, numPassedTests: 1, numFailedTests: 0,
+      numFailedTestSuites: 0, numPendingTests: 0, numTodoTests: 0,
+      testResults: [{ name: path.join(f.root, 'one.test.mjs'), status: 'passed', assertionResults: [{ status: 'passed', title: 'literal �' }] }] };
+    const valid = Buffer.from(JSON.stringify(report));
+    const invalidMiddle = Buffer.from(valid); invalidMiddle[invalidMiddle.indexOf(Buffer.from('�'))] = 0xff;
+    const replacementOffset = valid.indexOf(Buffer.from('�', 'utf8'));
+    assert.ok(replacementOffset > 0);
+    for (const [bytes, expected, split] of [[Buffer.concat([valid, Buffer.from([0xe2, 0x82])]), false, valid.length],
+      [invalidMiddle, false, replacementOffset + 1], [valid, true, replacementOffset + 1], [valid, true, replacementOffset + 2]]) {
+      const child = new EventEmitter(); child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.kill = () => true;
+      const result = await runRegisteredChecker(check, { deadline: Date.now() + 1000, sandboxBinary: process.execPath,
+        launch: () => { queueMicrotask(() => {
+          child.stdout.write(bytes.subarray(0, split)); child.stdout.write(bytes.subarray(split));
+          child.stderr.write(Buffer.from([0xe2, 0x82])); child.emit('close', 0, null);
+        }); return child; } });
+      assert.equal(result.exitCode, 0); assert.equal(result.passed, expected); assert.equal(result.testEvidence.qualified, expected);
+      assert.equal(result.stdoutDigest, digest(bytes));
+      assert.equal(result.stderrDigest, digest(Buffer.from([0xe2, 0x82])));
+      assert.ok(result.output.endsWith('\n�'), 'stderr decoder must flush its incomplete suffix');
+      if (expected) assert.equal(result.testEvidence.reportDigest, result.stdoutDigest);
+    }
+  } finally { f.cleanup(); }
+});
+
+test('acceptance checks retain correlated planner and worker denials in exact reviewer input',async()=>{
+ const f=fixture(),log=[],receipts=[];let seen,checked;
+ const row=sessionId=>({status:'host-scope-denied',sessionId,toolUseId:'guarded-tool',toolName:'Bash',inputSha256:'a'.repeat(64),evidence:'invocation PreToolUse deny response'});
+ try{
+ const plan=await planManagedTask(f.input,{route:async()=>decision,runPlanner:async input=>({...await planner(f)(input),evidence:[row('actual-planner-session')]})});
+ const outcome=await executeManagedWorkflow(plan.request,{verifyDecision:()=>{},route:async()=>decision,check:async(checker,options)=>{checked=structuredClone(options.scopeDenials);return fixtureCheck(checker);},createAdapters:executor(log,state=>{if(state.worker.role==='reviewer')seen=JSON.parse(state.worker.prompt.split('\n')[0]).acceptance.scopeDenials;else state.observed.evidence=[row(state.observed.sessionId)];}),recordReceipt:async(_request,receipt)=>{receipts.push(receipt);return{durable:true,agentDbCommitted:true};}});
+ assert.equal(outcome.status,'complete',JSON.stringify({status:outcome.status,reason:outcome.reason,failure:outcome.failure}));assert.ok(Array.isArray(outcome.acceptance.scopeDenials));assert.equal(outcome.acceptance.scopeDenials.length,2);assert.deepEqual(seen,outcome.acceptance.scopeDenials);assert.deepEqual(checked,outcome.acceptance.scopeDenials);assert.ok(receipts.at(-1).acceptanceEvidence.some(item=>item.scopeDenials?.length===2));
+ }finally{f.cleanup();}
+});
+test.each(['session','digest','tool','planner'])('invalid recovered denial %s blocks before independent reviewer',async fault=>{
+ const f=fixture(),log=[];try{
+ const plan=await planManagedTask(f.input,{route:async()=>decision,runPlanner:planner(f)});
+ const request=structuredClone(plan.request);if(fault==='planner')request.planner.scopeDenials=[{sessionId:'untracked'}];
+ const outcome=await executeManagedWorkflow(request,{verifyDecision:()=>{},route:async()=>decision,createAdapters:executor(log,state=>{if(state.worker.role!=='reviewer')state.observed.evidence=[{status:'host-scope-denied',sessionId:fault==='session'?'untracked':state.observed.sessionId,toolUseId:'guarded-tool',toolName:fault==='tool'?'':'Bash',inputSha256:fault==='digest'?'invalid':'a'.repeat(64),evidence:'invocation PreToolUse deny response'}];}),recordReceipt:async()=>({durable:true,agentDbCommitted:true})});
+ assert.equal(outcome.status,'blocked',JSON.stringify({status:outcome.status,reason:outcome.reason,failure:outcome.failure}));assert.equal(log.includes('independent-review'),false);
+ }finally{f.cleanup();}
 });

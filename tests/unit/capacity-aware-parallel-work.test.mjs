@@ -9,11 +9,36 @@ import {
   formatAdvisory,
   hardwareAgentCeiling,
   isSubstantialParallelWork,
+  managedParallelismPlan,
   parseMacPressureOutput,
   pressureRecommendation,
   runCapacityHook,
   UNKNOWN_RUNTIME_TOTAL_AGENT_CEILING,
 } from '../../plugin/scripts/capacity-aware-parallel-work.mjs';
+
+it.each(['Update 3 files.', 'Use a swarm.', 'Change architecture boundaries.', 'Fix QA behavior.', 'Change release publication behavior.', 'Implement independent workstreams for backend and frontend.'])('accepted classifier joins existing parallel choice: %s', originalPrompt => {
+  const tasks=['a','b'].map(id=>({id,dependsOn:[],ownership:{mode:'read'}}));
+  const plan=managedParallelismPlan(tasks,2,undefined,originalPrompt);
+  expect(plan.classifierRequired).toBe(true);expect(plan.plannedChoice).toBe('parallel');expect(plan.serialReason).toBeNull();
+  const serial=managedParallelismPlan(tasks,1,undefined,originalPrompt);
+  expect(serial.plannedChoice).toBe('serial');expect(serial.serialReason).toContain('Configured child ceiling');
+});
+
+it.each(['Explain how to update 3 files.', 'Do not use a swarm; fix 3 files.', 'Fix a typo in README.md.'])('nonforcing classification stays silent: %s', originalPrompt => {
+  const plan=managedParallelismPlan([{id:'a',dependsOn:[],ownership:{mode:'read'}}],2,undefined,originalPrompt);
+  expect(plan.classifierRequired).toBe(false);
+});
+
+it('records real DAG eligibility and concrete serial constraints without claiming execution', () => {
+  const task = (id, dependsOn = [], mode = 'read') => ({ id, dependsOn, ownership: { mode } });
+  const independent = managedParallelismPlan([task('a'), task('b'), task('writer', ['a', 'b'], 'write')], 3);
+  expect(independent.plannedIndependentReadPairs).toBe(1); expect(independent.serialReason).toBeNull();
+  expect(independent.evidenceScope).toContain('plan only');
+  const chain = managedParallelismPlan([task('a'), task('b', ['a']), task('c', ['b'])], 3);
+  expect(chain.plannedIndependentReadPairs).toBe(0); expect(chain.serialReason).toContain('Dependency ordering');
+  expect(managedParallelismPlan([task('a'), task('b')], 1).serialReason).toContain('Configured child ceiling');
+  expect(() => managedParallelismPlan([task('a')], 3, 'serial')).toThrow('Concrete bounded serial reason');
+});
 import { continuityRegistrations } from '../../plugin/scripts/continuity-hook-policy.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
@@ -53,6 +78,14 @@ describe('capacity-aware parallel-work hook', () => {
     expect(runCapacityHook('not json', healthy)).toBe('');
   });
 
+  it.each(['Implement changes across 3 files.','Use a swarm to fix this tiny bug.','Use a swarm.','Refactor the release behavior.','Change the architecture contract.','Update the QA gate behavior.','Implement changes across three files.','Use parallel agents for this tiny fix.','Fix a tiny bug in release behavior.'])('routes clear required parallel-work intent upward: %s',prompt=>{
+    expect(isSubstantialParallelWork(prompt)).toBe(true);
+    expect(runCapacityHook(JSON.stringify({prompt}),healthy)).toContain('no workers were started');
+  });
+  it.each(['Can you explain how to implement changes across 3 files?','Explain how a swarm fixes tiny bugs.','Define the architecture contract.','Review release notes for a tiny typo.','Do not use a swarm to implement changes across 3 files.','Fix the release behavior without delegation.','Fix this tiny bug without a swarm.','Rename one variable in this function.','Fix a tiny typo in QA documentation.','Fix a tiny typo in the architecture docs.','Do not use parallel agents to change release behavior.','Fix the release behavior without delegating.','Implement changes across 2 files.'])('preserves informational, nondelegated and genuine trivial intent: %s',prompt=>{
+    expect(isSubstantialParallelWork(prompt)).toBe(false);
+    expect(runCapacityHook(JSON.stringify({prompt}),healthy)).toBe('');
+  });
   it('uses memory pressure, swap, compression, and normalized load rather than raw free RAM', () => {
     expect(pressureRecommendation(healthy)).toMatchObject({ tier: 'available', totalAgents: null });
     expect(pressureRecommendation({ ...healthy, freePct: 64, compressorBytes: 30.7 * GIB, normalizedLoad: 0.52 }))
@@ -187,6 +220,13 @@ describe('capacity-aware parallel-work hook', () => {
     expect(large.status).toBe(0);
     expect(large.stdout).toContain('Capacity-aware parallel-work advisory');
     expect(large.stdout).toContain('no workers were started');
+    for(const prompt of ['Implement changes across 3 files.','Use a swarm to fix this tiny bug.','Refactor the release behavior.']){
+      const result=invoke(prompt);expect(result.status).toBe(0);expect(result.stdout).toContain('Capacity-aware parallel-work advisory');
+      expect(result.stdout).toContain('no workers were started');expect(result.stdout).toContain('no dispatch or progress authority');
+    }
+    for(const prompt of ['Can you explain how to implement changes across 3 files?','Do not use a swarm to fix this tiny bug.','Review release notes for a tiny typo.']){
+      const result=invoke(prompt);expect(result.status).toBe(0);expect(result.stdout).toBe('');
+    }
     const trivial = invoke('Rename one variable in this function.');
     expect(trivial.status).toBe(0);
     expect(trivial.stdout).toBe('');

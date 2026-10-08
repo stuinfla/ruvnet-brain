@@ -116,10 +116,10 @@ describe('end-to-end: mark then gate, real subprocesses, real filesystem', () =>
     }, env);
     expect(gateResult.status).toBe(0); // advisory — never a hard failure exit
     const out = JSON.parse(gateResult.stdout);
-    expect(out.hookSpecificOutput.hookEventName).toBe('Stop');
-    expect(out.hookSpecificOutput.additionalContext).toMatch(/search_ruvnet/);
-    expect(out.hookSpecificOutput.additionalContext).toMatch(/UNKNOWN/);
-    expect(out.hookSpecificOutput.additionalContext).toMatch(/UNVERIFIED/);
+    expect(out.decision).toBe('block');
+    expect(out.reason).toMatch(/search_ruvnet/);
+    expect(out.reason).toMatch(/UNKNOWN/);
+    expect(out.reason).toMatch(/UNVERIFIED/);
     // The marker is consumed either way.
     expect(fs.existsSync(markerPathFor('sess-1', env.RUVNET_GROUNDING_TURN_DIR))).toBe(false);
   });

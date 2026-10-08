@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "ruvnet-brain-convergence-manifest",
   "version": "4.5.18",
-  "sourceIdentity": "8b699d23d242d97a2016daee164f4ab715aa169f6dc312002a8b21198b069e8a",
+  "sourceIdentity": "8a28bdeb8540018d07e1875891b7efa7334b860c596e096acd053d11c0a31e53",
   "versionSurfaces": {
     "package.json": "4.5.18",
     "plugin/.claude-plugin/plugin.json": "4.5.18",
@@ -112,8 +112,8 @@
     "0103-routing-architecture-review-lock.md",
     "README.md"
   ],
-  "trackedFileCount": 1956,
-  "trackedFilesSha256": "1ff08ba43aa289f9b872a8dd88af577f09f0aff4afb9406028feb5cb2a8498e1",
+  "trackedFileCount": 1973,
+  "trackedFilesSha256": "564a04fdf5e23da255fca7ca0dcd5ff29eca33b8632c27a44adddb156be397a8",
   "ownershipChecks": [
     "version:check",
     "doc:currency",

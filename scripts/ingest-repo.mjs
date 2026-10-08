@@ -118,6 +118,7 @@ const carded = (() => {
 //
 // The stores themselves cannot be committed. The FACT that they were ingested can, so a wipe
 // becomes detectable and replayable instead of silent and permanent. This record is the recipe.
+let ownershipFailure = null;
 if (ok) {
   let rest = [];
   try {
@@ -154,7 +155,9 @@ if (ok) {
     return [`${name}.big.rvf`, `${name}.big.rvf.embed.json`, `${name}.big.rvf.idmap.json`, `${name}.meta.json`, `${name}.passages.jsonl`]
       .every((file) => fs.existsSync(path.join(KB, file)));
   });
-  if (toStamp.length) {
+  if (!toStamp.includes(kb)) {
+    ownershipFailure = 'canonical sidecars incomplete or existing public-store ownership cannot be relabeled';
+  } else if (toStamp.length) {
     try {
       const fenceFile = path.join(KB, 'PRIVATE-STORES.json');
       const fence = fs.existsSync(fenceFile) ? JSON.parse(fs.readFileSync(fenceFile, 'utf8')) : { privateStores: [] };
@@ -165,12 +168,24 @@ if (ok) {
         fs.writeFileSync(fenceFile, `${JSON.stringify(fence, null, 2)}\n`);
       }
       const receipt = applyPrivateOverlay({ root: KB, from: KB, stores: toStamp, origin: 'local-ingest' });
+      const owned = JSON.parse(fs.readFileSync(sourceFile, 'utf8')).stores?.[kb];
+      const verifiedFence = JSON.parse(fs.readFileSync(fenceFile, 'utf8')).privateStores;
+      if (owned?.updateManaged !== false || owned.origin !== 'local-ingest'
+        || !Array.isArray(verifiedFence) || !verifiedFence.some(name => String(name).toLowerCase() === kb)) {
+        throw new Error('local ownership readback unconfirmed');
+      }
       const stamped = receipt.stores.filter((entry) => entry.changes.includes('SOURCE.json')).map((entry) => entry.name);
       if (stamped.length) console.log(`[local-ownership] marked updateManaged:false (origin: local-ingest) — ${stamped.join(', ')}`);
     } catch (e) {
+      ownershipFailure = e.message;
       console.log(`[local-ownership] could not stamp local ownership (${e.message}); the next forge-update.mjs --apply may remove ${toStamp.join(', ')} if they are absent from the incoming bundle`);
     }
   }
+}
+
+if (ownershipFailure) {
+  console.log(`[UNKNOWN] ${NAME}: local ownership unconfirmed (${ownershipFailure}); built bytes and recipe retained, ingestion incomplete.`);
+  process.exit(1);
 }
 
 console.log(!ok

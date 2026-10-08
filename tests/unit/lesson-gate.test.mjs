@@ -20,6 +20,7 @@
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import { makeLesson, ratify } from '../../plugin/scripts/lesson-store.mjs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -43,7 +44,7 @@ const blockLesson = (over = {}) => ({
   status: 'ratified',
   check: 'a verification command ran against the real path',
   evidence: [{ observed: 'you said: the success check used a read-only connection' }],
-  projects: ['alpha', 'beta', 'gamma'],
+  projects: [ROOT],
   repeatCount: 25,
   ...over,
 });
@@ -511,16 +512,16 @@ describe('PROJECT SCOPE: isHome() must not leak across unrelated projects that m
    * — "I've got other repos that are using this thing, and they're breaking" — reintroduced by the
    * escape hatch meant to make that fix tolerant of naming variance.
    */
-  const sentryLesson = () => blockLesson({
+  const sentryLesson = () => ratify('T09-unrelated-sentry-lesson',[makeLesson(blockLesson({
     id: 'T09-unrelated-sentry-lesson',
     trigger: 'write-code',
     enforcement: 'inject',
     check: null,
-    status: 'ratified',
+    status: 'candidate',
     origin: 'model-inferred',
     statement: 'This lesson belongs to a project named "Sentry" and nothing else.',
     projects: ['Sentry'],
-  });
+  }))],{by:'user'})[0];
 
   function classifyIn(cwd) {
     const { stdout, code } = runGate(['--trigger', 'write-code', '--json'], {}, cwd);
@@ -537,26 +538,37 @@ describe('PROJECT SCOPE: isHome() must not leak across unrelated projects that m
   });
 
   describe('the fix must not silence the legitimate case it was added for', () => {
-    test('a lesson scoped to "brain" still fires inside "ruvnet-brain" — a delimiter-bounded suffix', () => {
+    test('a basename suffix is not project identity evidence', () => {
       writeStore([{ ...sentryLesson(), id: 'T10-brain-lesson', projects: ['brain'] }]);
       const home = fakeProjectDir(dir, 'ruvnet-brain');
-      expect(classifyIn(home).inForce.map((l) => l.id)).toContain('T10-brain-lesson');
+      expect(classifyIn(home).inForce.map((l) => l.id)).not.toContain('T10-brain-lesson');
     });
 
-    test('an EXACT project match always fires, regardless of the boundary rule', () => {
-      writeStore([{ ...sentryLesson(), id: 'T11-exact', projects: ['WhitSentry'] }]);
+    test('an exact canonical project path remains applicable', () => {
       const home = fakeProjectDir(dir, 'WhitSentry');
+      writeStore([{ ...sentryLesson(), id: 'T11-exact', projects: [home] }]);
       expect(classifyIn(home).inForce.map((l) => l.id)).toContain('T11-exact');
     });
   });
 
   test('foreign high-ranked lessons cannot crowd out the applicable project lesson', () => {
+    const home = fakeProjectDir(dir, 'WhitSentry');
     writeStore([
       ...['one', 'two', 'three'].map((name) => ({ ...sentryLesson(), id: `foreign-${name}`, projects: [name], repeatCount: 99 })),
-      { ...sentryLesson(), id: 'applicable', projects: ['WhitSentry'], repeatCount: 1 },
+      { ...sentryLesson(), id: 'applicable', projects: [home], repeatCount: 1 },
     ]);
-    const home = fakeProjectDir(dir, 'WhitSentry');
     expect(classifyIn(home).inForce.map((l) => l.id)).toContain('applicable');
+  });
+  test('identical basenames and two unverified labels do not confer another project authority', () => {
+    const first = fakeProjectDir(path.join(dir, 'first'), 'shared');
+    const second = fakeProjectDir(path.join(dir, 'second'), 'shared');
+    writeStore([{ ...sentryLesson(), id: 'canonical-first', projects: [first] },
+      { ...sentryLesson(), id: 'two-labels', projects: ['alpha', 'beta'] },
+      { ...sentryLesson(), id: 'unscoped', projects: [] }]);
+    const stored = fs.readFileSync(storePath);
+    expect(classifyIn(second).inForce).toEqual([]);
+    expect(classifyIn(first).inForce.map(lesson => lesson.id)).toEqual(['canonical-first']);
+    expect(fs.readFileSync(storePath)).toEqual(stored);
   });
 
   test('an unrelated project with NO suffix relationship at all stays silent (sanity check)', () => {
@@ -884,4 +896,38 @@ describe('the two ship definitions agree', () => {
       expect(viaBash(cmd), `lesson-hooks.sh: ${cmd}`).toBe(wantShip);
     }
   }, 120_000);
+});
+
+describe('P035 reviewed admission before bounded applicability selection', () => {
+  test.each(['active','ratified'])('a status-only inferred %s row cannot become an in-force instruction', status => {
+    writeStore([blockLesson({id:'p035-unreviewed',origin:'model-inferred',status,enforcement:'inject',check:null,ratifiedBy:null,repeatCount:999})]);
+    const result=runGate(['--trigger','claim-done','--json']);
+    expect(result.code).toBe(0);expect(JSON.parse(result.stdout).inForce).toEqual([]);
+  });
+  test('missing or unknown triggers are refused; reviewed applicable content survives unreviewed crowding', async () => {
+    const {makeLesson,ratify}=await import('../../plugin/scripts/lesson-store.mjs');
+    expect(()=>makeLesson({...blockLesson(),trigger:null})).toThrow(/trigger/);
+    expect(()=>makeLesson({...blockLesson(),trigger:'undefined-phase'})).toThrow(/trigger/);
+    const candidate=makeLesson(blockLesson({id:'p035-reviewed',origin:'model-inferred',status:'candidate',enforcement:'checklist',check:null,ratifiedBy:null,repeatCount:1}));
+    const reviewed=ratify(candidate.id,[candidate],{by:'user'})[0];
+    writeStore([...Array.from({length:6},(_,i)=>blockLesson({id:'p035-unreviewed-'+i,origin:'model-inferred',status:'active',enforcement:'checklist',check:null,ratifiedBy:null,repeatCount:999})),reviewed]);
+    const result=runGate(['--trigger','claim-done','--json']);
+    expect(JSON.parse(result.stdout).inForce.map(l=>l.id)).toEqual(['p035-reviewed']);
+  });
+});
+
+
+test.each(['imported-owner','demonstration'])('P035 %s cannot self-declare an in-force review record', sourceClass => {
+  writeStore([blockLesson({id:'p035-unadopted-source',origin:'imported',sourceClass,status:'active',enforcement:'inject',check:null,ratifiedBy:'self-declared'} )]);
+  expect(JSON.parse(runGate(['--trigger','claim-done','--json']).stdout).inForce).toEqual([]);
+});
+
+test.each(['', '   ', false, 42])('P035 an invalid inferred review record %j is not admission proof', ratifiedBy => {
+  writeStore([blockLesson({id:'p035-invalid-record',origin:'model-inferred',status:'active',enforcement:'inject',check:null,ratifiedBy})]);
+  expect(JSON.parse(runGate(['--trigger','claim-done','--json']).stdout).inForce).toEqual([]);
+});
+
+test('P035 inferred provenance cannot use a contradictory user-origin shorthand without review', () => {
+  writeStore([blockLesson({id:'p035-contradictory',sourceClass:'model-inferred',origin:'user-stated',status:'active',enforcement:'inject',check:null,ratifiedBy:null})]);
+  expect(JSON.parse(runGate(['--trigger','claim-done','--json']).stdout).inForce).toEqual([]);
 });

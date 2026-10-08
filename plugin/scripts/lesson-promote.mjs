@@ -38,6 +38,8 @@
  *   node scripts/lesson-promote.mjs --min-projects 3
  */
 import fs from 'node:fs';
+import { THEMES } from './lesson-theme-identity.mjs';
+import { loadLessons, STORE_PATH } from './lesson-store.mjs';
 import path from 'node:path';
 import os from 'node:os';
 // Read the global store through the bridge's own reader, and the moment vocabulary through the
@@ -69,22 +71,7 @@ const MIN_PROJECTS = Math.max(2, parseInt(arg('--min-projects', '2'), 10) || 2);
  * user cannot audit, and this writes to the file that governs every project he owns. He must be able
  * to read the rule that decided, disagree with it, and edit it. Legibility beats cleverness here.
  */
-const THEMES = [
-  { key: 'release-discipline', label: 'Versioning and release discipline',
-    match: /version|semver|bump|release|ship|deploy|publish|rollback/i },
-  { key: 'proof-before-done', label: 'Prove it works before calling it done',
-    match: /test|verify|prove|validat|\bqa\b|gate|green|passes/i },
-  { key: 'honesty', label: 'Never fabricate, never assume, never inflate',
-    match: /honest|lie|fabricat|assum|guess|placeholder|inflat|real data|made up/i },
-  { key: 'docs-upkeep', label: 'Keep docs and README current with the code',
-    match: /readme|document|changelog|\bdocs?\b|narrative/i },
-  { key: 'people', label: 'How to communicate with people',
-    match: /thank|contributor|personal|tone|nudge|deferential|communicat/i },
-  { key: 'tooling-discipline', label: 'Use the real tool; never hand-roll a substitute',
-    match: /hand-roll|impersonat|substitut|reinvent|use the tool|existing tool|ruvnet wins/i },
-  { key: 'cost-routing', label: 'Route work to the cheapest capable model',
-    match: /cheap|cost|route|routing|model selection|budget|spend/i },
-];
+
 
 /** Every lesson file on this machine, with its project, type, and text. */
 export function collectLessons(root = PROJECTS) {
@@ -137,16 +124,8 @@ export function collectLessons(root = PROJECTS) {
  * because it could not read an optional file is worse than one that proposes a rejected theme.
  */
 function demotedThemeKeys() {
-  try {
-    const file = process.env.RUVNET_LESSON_STORE
-      || path.join(os.homedir(), '.config', 'ruvnet-brain', 'lessons.json');
-    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
-    return new Set(
-      (raw.lessons || [])
-        .filter((l) => l && l.demoted === true && typeof l.themeKey === 'string')
-        .map((l) => l.themeKey),
-    );
-  } catch { return new Set(); }
+  return new Set(loadLessons(process.env.RUVNET_LESSON_STORE || STORE_PATH).filter(l => l.demoted)
+    .flatMap(l => [...(l.themeKeys || []), ...(l.themeKey ? [l.themeKey] : [])]));
 }
 
 export function analyze(lessons, { minProjects = MIN_PROJECTS, rejected = null } = {}) {

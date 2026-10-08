@@ -177,9 +177,19 @@ try { projectCwd = JSON.parse(input.toString('utf8')).cwd; } catch { /* malforme
 if (typeof projectCwd === 'string' && developmentHooksSuspended(projectCwd)) process.exit(0);
 const root = activeRoot();
 const adapter = root && path.join(root, 'scripts', 'codex-hook-adapter.mjs');
-if (!adapter || !fs.existsSync(adapter)) process.exit(0);
-
 const hookId = process.argv[2] || '';
+let managedWrite = false;
+if (root && hookId === 'decision-gate' && process.argv[3] === 'managed-store') {
+  try {
+    const { knownRawStoreWrites } = await import(path.join(root, 'scripts', 'hook-input.mjs'));
+    const { canonicalStoreWriteScope } = await import(path.join(root, 'scripts', 'project-store-resolver.mjs'));
+    const event = JSON.parse(input.toString()), command = event.tool_input?.command ?? event.tool_input?.cmd ?? '';
+    managedWrite = canonicalStoreWriteScope({ projectDir: event.cwd,
+      targets: knownRawStoreWrites(command, { cwd: event.cwd, home: process.env.HOME || os.homedir() }) });
+  } catch { /* No positive scope witness; preserve unrelated legacy behavior. */ }
+}
+const refuseManaged = () => { process.stderr.write('Raw writes to the canonical Ruflo-managed store are refused: Codex policy dispatch unavailable.\n'); process.exit(2); };
+if (!adapter || !fs.existsSync(adapter)) { if (managedWrite) refuseManaged(); process.exit(0); }
 
 if (DETACHED_HOOKS.has(hookId)) {
   // stdio ignored on purpose: a detached child outlives this process, so anything it wrote would
@@ -211,6 +221,25 @@ if (hookId === 'session-start') {
   }
 }
 const budgetMs = timeoutFor(hookId, process.argv[3] || '', Math.max(0, (sessionDeadlineAt || 0) - Date.now()));
+const managedDeadline = hookId === 'decision-gate' && process.argv[3] === 'managed-store'
+  ? Math.min(Number(process.env.RUVNET_DECISION_DEADLINE) || Infinity, performance.timeOrigin + budgetMs) : Infinity;
+let snapshotDeadline;
+let adapterTimeout = Math.floor(Math.min(budgetMs, managedDeadline - Date.now()));
+if (adapterTimeout < 1) { if (managedWrite) refuseManaged(); process.exit(0); }
+if (hookId === 'session-snapshot') {
+  let snapshotDeadlineAt;
+  try { ({ snapshotDeadlineAt } = await import(path.join(root, 'scripts', 'session-snapshot-budget.mjs'))); }
+  catch {
+    process.stderr.write('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN] Snapshot shared budget unavailable; capture was not attempted.\n');
+    process.exit(0);
+  }
+  snapshotDeadline = snapshotDeadlineAt({ ...process.env, RUVNET_CODEX_BUDGET_MS: String(budgetMs) }, performance.timeOrigin);
+  adapterTimeout = Math.floor(Math.min(performance.timeOrigin + budgetMs, snapshotDeadline + 100) - Date.now());
+  if (adapterTimeout < 1) {
+    process.stderr.write('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN] Snapshot deadline exhausted before adapter dispatch; capture is unverified.\n');
+    process.exit(0);
+  }
+}
 if (hookId === 'session-start' && budgetMs < 1) {
   process.stderr.write('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN] SessionStart deadline exhausted before restoration.\n');
   process.exit(0);
@@ -222,12 +251,19 @@ const result = spawnSync(process.execPath, [adapter, ...process.argv.slice(2)], 
   // when the axe falls. Hand the budget down so it can stop and fail open instead of being killed
   // mid-loop with nothing written — a SIGKILL here is invisible to the host and to the user.
   env: { ...process.env, RUVNET_CODEX_BUDGET_MS: String(budgetMs),
+    ...(Number.isFinite(managedDeadline) ? { RUVNET_DECISION_DEADLINE: String(managedDeadline) } : {}),
+    ...(snapshotDeadline ? { RUVNET_SESSION_SNAPSHOT_DEADLINE_AT: String(snapshotDeadline) } : {}),
     ...(sessionDeadlineAt ? { RUVNET_SESSION_START_DEADLINE_AT: String(Math.min(sessionDeadlineAt, Date.now() + budgetMs)) } : {}) },
-  timeout: budgetMs,
+  timeout: adapterTimeout,
   killSignal: 'SIGKILL',
 });
+if (managedWrite && result.status !== 2) refuseManaged();
 if (hookId === 'session-start' && result.status !== 0) {
   process.stderr.write('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN] SessionStart did not complete inside its host deadline; no restoration success is claimed.\n');
+}
+if (hookId === 'session-snapshot' && result.status !== 0) {
+  if (result.stderr) process.stderr.write(result.stderr);
+  process.stderr.write('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN] Snapshot did not complete inside its inherited deadline; capture is unverified.\n');
 }
 
 // A broken optional Brain hook must never degrade the host. The only non-zero status that carries

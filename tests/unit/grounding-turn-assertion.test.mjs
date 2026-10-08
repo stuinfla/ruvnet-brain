@@ -28,13 +28,18 @@ const run = (file, payload, env) => spawnSync(process.execPath, [file], { input:
 const stamp = (home, term) => { const d = path.join(home, '.cache', 'ruvnet-brain', 'grounded'); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, term), ''); };
 
 /** A Claude JSONL transcript: prompt, then [name, input, result] tool calls, then the final answer. */
-function transcript(dir, prompt, calls, answer) {
+function transcript(dir, prompt, calls, answer, identity = null) {
   const rows = [{ type: 'user', message: { role: 'user', content: prompt } }];
   calls.forEach(([name, input, result, evidence = { is_error: false }], i) => {
     rows.push({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: `t${i}`, name, input }] } });
     rows.push({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `t${i}`, content: result, ...evidence }] } });
   });
   rows.push({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: answer }] } });
+  // Optional identity belongs to this constructed transcript fixture, never a retained capture.
+  if (identity) {
+    for (const row of rows) Object.assign(row, { sessionId: identity.session_id, promptId: identity.prompt_id, cwd: identity.cwd });
+    rows[0].uuid = 'constructed-current-user-record';
+  }
   const file = path.join(dir, 'session.jsonl');
   fs.writeFileSync(file, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
   return file;
@@ -85,10 +90,11 @@ describe('the false alarm, reproduced (grounding-turn-gate said "no search" afte
   // 4.4.0: Gate 1 fires only when the answer ASSERTS a rUv capability (tests/unit/grounding-turn-false-alarm.test.mjs).
   it('with no search in the transcript it still fires on a rUv capability claim, and says what WAS read', () => {
     const { home, env } = sandbox();
-    const tp = transcript(home, 'use ruflo memory', [['Read', { file_path: '/repo/README.md' }, 'text']], 'Ruflo stores memory in AgentDB.');
-    run(MARK, { hook_event_name: 'UserPromptSubmit', session_id: 's3', prompt: 'use ruflo memory' }, env);
-    const gate = run(GATE, { hook_event_name: 'Stop', session_id: 's3', transcript_path: tp, last_assistant_message: 'Ruflo stores memory in AgentDB.' }, env);
-    const ctx = JSON.parse(gate.stdout).hookSpecificOutput.additionalContext;
+    const identity = { session_id: 's3', prompt_id: 'constructed-s3', cwd: home };
+    const tp = transcript(home, 'use ruflo memory', [['Read', { file_path: '/repo/README.md' }, 'text']], 'Ruflo stores memory in AgentDB.', identity);
+    run(MARK, { hook_event_name: 'UserPromptSubmit', ...identity, prompt: 'use ruflo memory' }, env);
+    const gate = run(GATE, { hook_event_name: 'Stop', ...identity, transcript_path: tp, last_assistant_message: 'Ruflo stores memory in AgentDB.' }, env);
+    const ctx = JSON.parse(gate.stdout).reason;
     expect(ctx).toMatch(/search_ruvnet/);
     expect(ctx).toMatch(/Read "\/repo\/README\.md"/);
   });
@@ -102,13 +108,14 @@ describe('the false alarm, reproduced (grounding-turn-gate said "no search" afte
 describe('ADR-0030 #1 — capability claims need a relevant, strong source read this turn', () => {
   it('REPLAY OF THE INCIDENT: a claim from a WebFetch summary is blocked, once, naming the claim and the weak source', () => {
     const { home, env } = sandbox();
-    const tp = transcript(home, INCIDENT_PROMPT, INCIDENT_CALLS, INCIDENT_ANSWER);
-    const mark = run(MARK, { hook_event_name: 'UserPromptSubmit', session_id: 'inc', prompt: INCIDENT_PROMPT }, env);
+    const identity = { session_id: 'inc', prompt_id: 'constructed-incident', cwd: home };
+    const tp = transcript(home, INCIDENT_PROMPT, INCIDENT_CALLS, INCIDENT_ANSWER, identity);
+    const mark = run(MARK, { hook_event_name: 'UserPromptSubmit', ...identity, prompt: INCIDENT_PROMPT }, env);
     expect(mark.status).toBe(0);
     expect(readMarker(markerPathFor('inc', env.RUVNET_GROUNDING_TURN_DIR))).toMatchObject({ assert: true });
-    const payload = { hook_event_name: 'Stop', session_id: 'inc', transcript_path: tp, last_assistant_message: INCIDENT_ANSWER };
+    const payload = { hook_event_name: 'Stop', ...identity, transcript_path: tp, last_assistant_message: INCIDENT_ANSWER };
     const gate = run(GATE, payload, env);
-    const ctx = JSON.parse(gate.stdout).hookSpecificOutput.additionalContext;
+    const ctx = JSON.parse(gate.stdout).reason;
     expect(ctx).toMatch(/You asserted "No hook can change the model of the current turn\." about hook/);
     expect(ctx).toMatch(/WebFetch "https:\/\/code\.claude\.com\/docs\/en\/hooks" \[summarised-by-small-model = weak evidence\]/);
     expect(ctx).toMatch(/restate each claim as UNVERIFIED/);
@@ -288,4 +295,28 @@ it('the classifier uses the actual native returned body rather than an inconsist
   const source = sourceOf('Read', { file_path: '/docs/hooks.md' }, 'Hooks support lifecycle handlers and prompt blocking.',
     { resultEvidence: { type: 'tool_result', tool_use_id: 'actual', is_error: false, content } });
   expect(bindingSources('hook', [source])).toEqual([]); expect(source.result).toBe(content);
+});
+
+it('an unsupported native identity cannot silently certify a generic capability assertion', () => {
+  const { home, env } = sandbox();
+  const tp = transcript(home, INCIDENT_PROMPT, INCIDENT_CALLS, INCIDENT_ANSWER);
+  run(MARK, { hook_event_name: 'UserPromptSubmit', session_id: 'untyped-incident', prompt: INCIDENT_PROMPT }, env);
+  const result = run(GATE, { hook_event_name: 'Stop', session_id: 'untyped-incident', transcript_path: tp, last_assistant_message: INCIDENT_ANSWER }, env);
+  expect(result.status).toBe(0); expect(result.stdout).toMatch(/UNKNOWN/);
+  expect(result.stdout).toMatch(/UNVERIFIED/);
+});
+
+it.each(['claude', 'codex'])('unsupported generic assertion receives one UNKNOWN correction on %s', host => {
+  const { home, env } = sandbox(); env.RUVNET_HOOK_HOST = host;
+  const identity = { session_id: 'generic-unknown', cwd: home,
+    [host === 'claude' ? 'prompt_id' : 'turn_id']: 'constructed-current-turn' };
+  run(MARK, { hook_event_name: 'UserPromptSubmit', ...identity, prompt: INCIDENT_PROMPT }, env);
+  const payload = { hook_event_name: 'Stop', ...identity, last_assistant_message: INCIDENT_ANSWER };
+  const first = run(GATE, payload, env);
+  expect(first.status).toBe(0); expect(JSON.parse(first.stdout).decision).toBe('block');
+  expect(first.stdout).toMatch(/UNKNOWN/); expect(first.stdout).toMatch(/UNVERIFIED/);
+  expect(run(GATE, payload, env).stdout).toBe('');
+  expect(run(GATE, { ...payload, stop_hook_active: true }, env).stdout).toBe('');
+  run(MARK, { hook_event_name: 'UserPromptSubmit', ...identity, prompt: INCIDENT_PROMPT }, env);
+  expect(run(GATE, { ...payload, last_assistant_message: 'I checked the requested files.' }, env).stdout).toBe('');
 });

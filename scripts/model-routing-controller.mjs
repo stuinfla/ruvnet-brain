@@ -8,32 +8,34 @@ import { pathToFileURL } from 'node:url';
 import { performance } from 'node:perf_hooks';
 import { validateDispatchDecision } from './model-router-dispatch.mjs';
 import { ContinuityJournal, drain } from '../plugin/scripts/continuity-journal.mjs';
-import { EVENT_SCHEMA } from '../plugin/scripts/continuity-events.mjs';
-import { collectMacPressure, effectiveAgentRecommendation } from '../plugin/scripts/capacity-aware-parallel-work.mjs';
-
+import { EVENT_SCHEMA, CONTINUITY_NAMESPACE } from '../plugin/scripts/continuity-events.mjs';
+import { withProgressionReader } from '../plugin/scripts/project-progression-reader.mjs';
+import { collectMacPressure, effectiveAgentRecommendation, managedParallelismPlan } from '../plugin/scripts/capacity-aware-parallel-work.mjs';
+import { createRoutingCheckpoint } from './model-routing-checkpoint.mjs';
 const HASH = /^[a-f0-9]{64}$/;
 const ID = /^[a-z][a-z0-9-]{0,79}$/;
+const ADMISSION_STALL = Symbol('owned-capacity-admission-stall');
 const STOP = /permission|consent|auth|quota|allowance|policy|orphan|uncertain|unknown|cancel/i;
 const sha = (value) => crypto.createHash('sha256').update(value).digest('hex');
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-
 // Controller-local child ceiling, not an observed provider allowance or a resource lease.
 export function sampleManagedCapacity(maxConcurrent) {
   const recommendation = effectiveAgentRecommendation(collectMacPressure(), {
-    configuredMaxChildren: maxConcurrent, runtimeTotalAgentCap: maxConcurrent + 1, cores: os.cpus().length,
+    configuredMaxChildren: maxConcurrent, cores: os.cpus().length,
   });
   return { ...recommendation, workers: recommendation.tier === 'unknown' ? 1 : recommendation.workers,
     reason: recommendation.tier === 'unknown' ? 'capacity unknown; serial child fallback' : recommendation.reason };
 }
-
 export async function waitForManagedCapacity({ maxConcurrent, deadline, signal,
   sampleCapacity = sampleManagedCapacity, accept = workers => workers > 0, progress = () => false, maxStallMs = 180000 }) {
   requireValue(Number.isInteger(maxConcurrent) && maxConcurrent >= 1 && maxConcurrent <= 8, 'Managed concurrent child ceiling exceeded');
   const end = performance.now() + (deadline - Date.now());
-  let lastProgress = performance.now();
+  let lastProgress = performance.now(), observedSequence = 0;
   for (;;) {
-    if (progress()) lastProgress = performance.now();
-    requireValue(performance.now() - lastProgress < Math.min(180000, maxStallMs), 'Capacity admission stalled: no active work or available child slot');
+    const observed = progress();
+    if (Number.isSafeInteger(observed?.sequence) && observed.sequence > observedSequence && Number.isFinite(observed.observedAt)
+      && observed.observedAt <= performance.now()) { observedSequence = observed.sequence; lastProgress = Math.max(lastProgress, observed.observedAt); }
+    requireValue(performance.now() - lastProgress < Math.min(180000, maxStallMs), 'Capacity admission stalled: observed progress or an available child slot is unverified');
     requireValue(!signal?.aborted, 'Workflow cancelled');
     requireValue(Date.now() < deadline && performance.now() < end, 'Capacity admission deadline exceeded');
     let timer;
@@ -44,7 +46,8 @@ export async function waitForManagedCapacity({ maxConcurrent, deadline, signal,
     const workers = Number.isInteger(measured?.workers) && measured.workers >= 0
       ? Math.min(maxConcurrent, measured.workers) : 1;
     if (accept(workers)) return { workers, tier: measured?.tier ?? 'unknown',
-      reason: measured?.reason ?? 'capacity unknown; serial child fallback', controllerLocalLaunchCeiling: maxConcurrent };
+      reason: measured?.reason ?? 'capacity unknown; serial child fallback', controllerLocalLaunchCeiling: maxConcurrent,
+      ...(workers < 2 ? { serialReason: measured?.reason ?? 'capacity unknown; one child admitted conservatively' } : {}) };
     await new Promise(resolve => setTimeout(resolve, Math.min(100, Math.max(1, deadline - Date.now()))));
   }
 }
@@ -59,22 +62,18 @@ const immutable = (value) => {
   return value;
 };
 const canonical = (file) => typeof file === 'string' && path.isAbsolute(file) && fs.realpathSync(file) === file;
-
-/** Resolve the installed global runner, never an npm download or a stock adapter. */
-export async function loadManagedRunner({ globalRoot = path.join(os.homedir(), '.npm-global', 'lib', 'node_modules') } = {}) {
+export async function loadManagedRunner({ globalRoot = path.join(os.homedir(), '.npm-global', 'lib', 'node_modules'), contract = 'runner' } = {}) {
   let entry;
   try { entry = createRequire(import.meta.url).resolve('@pacphi/agentic-kit/package.json'); }
   catch (error) {
     if (error.code !== 'MODULE_NOT_FOUND') throw error;
-    // Older installations may supply only the global package. Never download a runner.
     entry = createRequire(path.join(globalRoot, '_routing_resolver.cjs')).resolve('@pacphi/agentic-kit/package.json');
   }
   requireValue(JSON.parse(fs.readFileSync(entry, 'utf8')).name === '@pacphi/agentic-kit', 'Managed runner package mismatch');
-  const runner = await import(pathToFileURL(path.join(path.dirname(entry), 'src/lib/execution/runner.mjs')).href);
-  requireValue(typeof runner.executeRunPlan === 'function', 'Managed executeRunPlan unavailable');
-  return runner.executeRunPlan;
+  const [file, name] = contract === 'handoff' ? ['handoff.mjs', 'normalizeHandoff'] : contract === 'renderer' ? ['handoff.mjs', 'renderDependencyHandoffs'] : contract === 'result' ? ['schema.mjs', 'validateWorkerResult'] : ['runner.mjs', 'executeRunPlan'];
+  const loaded = await import(pathToFileURL(path.join(path.dirname(entry), 'src/lib/execution', file)).href);
+  requireValue(typeof loaded[name] === 'function', `Managed ${name} unavailable`); return loaded[name];
 }
-
 export function verifyContextRefs(refs) {
   requireValue(Array.isArray(refs), 'Canonical context references required');
   for (const ref of refs) {
@@ -82,7 +81,6 @@ export function verifyContextRefs(refs) {
     requireValue(sha(fs.readFileSync(ref.path)) === ref.digest, 'Context reference changed');
   }
 }
-
 /** Bind gate and review receipts to actual immutable artifact bytes. */
 export function artifactDigest(refs) {
   requireValue(Array.isArray(refs) && refs.length > 0, 'Actual artifact references required');
@@ -90,12 +88,10 @@ export function artifactDigest(refs) {
   requireValue(new Set(refs.map((ref) => ref.path)).size === refs.length, 'Duplicate artifact reference');
   return sha(JSON.stringify([...refs].sort((a, b) => a.path.localeCompare(b.path))));
 }
-
 function tasksFor(request) {
   return request.tasks ?? [{ id: 'work', instructions: request.originalPrompt, dependsOn: [],
     ownership: { mode: 'read', worktree: request.projectRoot, paths: [] }, acceptanceChecks: request.acceptanceChecks }];
 }
-
 export function validateWorkflowRequest(request, now = Date.now()) {
   requireValue(request && ID.test(request.id), 'Workflow ID required');
   requireValue(typeof request.originalPrompt === 'string' && request.originalPrompt.trim(), 'Original request required');
@@ -132,14 +128,12 @@ export function validateWorkflowRequest(request, now = Date.now()) {
     'Only one writer is supported without proven resource claims');
   return request;
 }
-
 function workerPrompt(request, task, feedback) {
   return JSON.stringify({ originalPrompt: request.originalPrompt, contextRefs: request.contextRefs,
     taskFacts: request.taskFacts, permissions: request.permissions, deadline: request.deadline,
     untrustedMemoryData: request.memoryRecall,
     task, ...(feedback ? { repairEvidence: feedback } : {}) });
 }
-
 export async function buildWorkflowPlan(request, { route, feedback, now = Date.now } = {}) {
   validateWorkflowRequest(request, now()); requireValue(typeof route === 'function', 'Managed route resolver required');
   const workers = [];
@@ -155,7 +149,6 @@ export async function buildWorkflowPlan(request, { route, feedback, now = Date.n
   }
   return { workers };
 }
-
 /** Validate generated plans before adapter factories, receipts, or worker effects. */
 export function validateWorkflowPlan(request, plan, { verifyDecision = validateDispatchDecision, feedback, now = Date.now } = {}) {
   validateWorkflowRequest(request, now());
@@ -173,22 +166,21 @@ export function validateWorkflowPlan(request, plan, { verifyDecision = validateD
   }
   return plan;
 }
-
 function blockedResult(result) {
   return result.status !== 'succeeded'
     || STOP.test(`${result.exitCategory} ${result.failure?.reason ?? ''}`)
     || result.exitCategory !== 'success';
 }
-
 function blockedEvidence(value) {
-  return value?.status === 'blocked' || value?.uncertainEffects === true
+  return value?.status === 'blocked' || value?.uncertainEffects === true || value?.uncertainUsage === true
+    || value?.retirementUnconfirmed === true || value?.retirementConfirmed === false || value?.retirementRequired === true && !(value?.launched === false && !value?.workerPid && !value?.pid && !value?.nativeLaunchEvidence?.pid && !value?.nativeRetirementEvidence?.pid && !value?.retirementEvidence?.pid && (value?.nativeLaunched === false || value?.nativeLaunched === undefined))
+      && (value?.retirementConfirmed !== true || value?.treeVerified !== true || value?.retirementState === 'GROUP_ONLY' || value?.retirementState === 'UNKNOWN' || (value?.retirementScope ?? value?.scope) !== 'owned-process-tree')
     || value?.exitCode === 126 || value?.exitCode === 127 || value?.timedOut === true || !!value?.signal
     || STOP.test(`${value?.exitCategory ?? ''} ${value?.reason ?? ''}`)
     || value?.passed === false && (/environment|unavailable|not.found|missing.executable|enoent|spawn.error|timeout/i.test(`${value?.exitCategory ?? ''} ${value?.reason ?? ''}`)
       || /ERR_MODULE_NOT_FOUND|Cannot find (?:module|package)|command not found|No such file or directory|permission denied|authentication required|quota exhausted|ECONNREFUSED|EAI_AGAIN|ENOTFOUND/i.test(value?.output ?? ''))
     || [...(value?.evidence ?? []), ...(value?.findings ?? [])].some((item) => item && typeof item === 'object' && blockedEvidence(item));
 }
-
 /** A repair is a new, explicitly scoped task; the original writing DAG is never replayed. */
 export function validateRepairPlan(request, repair, now = Date.now()) {
   requireValue(repair && repair.baseArtifactDigest === artifactDigest(repair.artifactRefs), 'Repair must bind existing artifact bytes');
@@ -213,20 +205,18 @@ export function validateRepairPlan(request, repair, now = Date.now()) {
   validateWorkflowRequest(executionRequest, now);
   return executionRequest;
 }
-
-/** Per-launch caps are shared across all DAG branches, repairs, and independent review. */
-function guardAdapters(adapters, request, budget, now, admission) {
+function guardAdapters(adapters, request, budget, now, admission, normalizeHandoff, validateResult, renderHandoffs, plan) {
   requireValue(adapters && typeof adapters === 'object', 'Explicit guarded adapters required; stock adapters forbidden');
-  const abort = budget.abort;
-  const preparedRefs = new WeakMap();
-  const preparedWorkers = new WeakMap(), grants = new WeakMap();
+  const abort = budget.abort, preparedRefs = new WeakMap(), preparedWorkers = new WeakMap(), grants = new WeakMap(), summaries = new Map();
+  const fail = error => { budget.blocked = true; if (!error?.[ADMISSION_STALL] && !abort.signal.aborted) abort.abort(error); throw error; };
+  const synchronous = operation => (...args) => { try { return operation(...args); } catch (error) { return fail(error); } };
   const entries = adapters instanceof Map ? [...adapters] : Object.entries(adapters);
   return Object.fromEntries(entries.map(([host, adapter]) => {
     const check = () => {
       requireValue(!budget.blocked, 'Workflow policy blocked'); budget.assertTime();
       verifyContextRefs(request.contextRefs);
     };
-    const phase = (name) => async (...args) => {
+    const phase = (name) => (...args) => (async () => {
       check();
       const refs = args[0]?.worker?.repairArtifacts ?? preparedRefs.get(args[0]) ?? [];
       if (['readiness', 'prepare', 'launch'].includes(name) && refs.length) verifyContextRefs(refs);
@@ -246,40 +236,57 @@ function guardAdapters(adapters, request, budget, now, admission) {
         if (refs.length) verifyContextRefs(refs);
       }
       const result = await adapter[name](...args);
+      if (name === 'readiness') requireValue(result?.ready === true, 'Required worker readiness refused or unverified');
+      if (['launch', 'observe'].includes(name)) admission.observed(grants.get(args[0]), name, result);
       if (name === 'prepare' && result && typeof result === 'object') {
         preparedRefs.set(result, refs); preparedWorkers.set(result, args[0].worker);
       }
-      if (name === 'launch' && result && typeof result === 'object') grants.set(result, grants.get(args[0]));
+      if (name === 'launch' && result && typeof result === 'object') { grants.set(result, grants.get(args[0])); preparedWorkers.set(result, preparedWorkers.get(args[0])); }
       budget.assertTime(); return result;
-    };
+    })().catch(fail);
     return [host, { id: adapter.id, readiness: phase('readiness'), prepare: phase('prepare'),
-      launch: phase('launch'), observe: phase('observe'), summarize: (...args) => adapter.summarize(...args),
+      launch: phase('launch'), observe: phase('observe'), summarize: synchronous((...args) => {
+        const value = adapter.summarize(...args); requireValue(!value?.then, 'Required worker handoff must be synchronous');
+        const worker = preparedWorkers.get(args[0]); requireValue(worker, 'Prepared summary ownership required');
+        summaries.set(worker.id, normalizeHandoff(value));
+        for (const consumer of plan.workers.filter(item => item.dependsOn?.includes(worker.id))) {
+          if (consumer.dependsOn.every(id => summaries.has(id))) renderHandoffs(consumer.dependsOn.map(id => ({ id, handoff: summaries.get(id) })));
+        }
+        return value;
+      }),
       cancel: (...args) => adapter.cancel(...args), cleanup: async (...args) => {
         const result = await adapter.cleanup(...args);
-        admission.release(grants.get(args[0])); return result;
+        if (result?.orphaned !== true) admission.release(grants.get(args[0]), result); return result;
       },
-      ...(adapter.handoffRequestFor ? { handoffRequestFor: (...args) => adapter.handoffRequestFor(...args) } : {}),
-      interpret: (...args) => {
-        const result = adapter.interpret(...args);
+      ...(adapter.handoffRequestFor ? { handoffRequestFor: synchronous((...args) => {
+        const value = adapter.handoffRequestFor(...args); requireValue(typeof value === 'string' && value.trim(), 'Required worker handoff instruction missing'); return value;
+      }) } : {}),
+      interpret: synchronous((...args) => {
+        const result = validateResult(adapter.interpret(...args));
         if (blockedResult(result)) {
           budget.blocked = true;
-          // A safely retired native failure still yields its receipt; later launches are refused.
           if (result.failure?.retrySafe !== true || STOP.test(`${result.exitCategory} ${result.failure?.reason ?? ''}`)) abort.abort();
         }
         return result;
-      } }];
+      }) }];
   }));
 }
-
-export function durableWorkflowReceipt(request, receipt) {
-  const journal = new ContinuityJournal({ projectRoot: request.projectRoot });
+export function durableWorkflowReceipt(request, receipt, { Journal = ContinuityJournal, drainJournal = drain,
+  read = withProgressionReader } = {}) {
+  const journal = new Journal({ projectRoot: request.projectRoot, projectDir: request.projectRoot });
   const event = { schema: EVENT_SCHEMA, kind: 'decision', id: sha(JSON.stringify(receipt)),
     at: receipt.at, source: 'model-routing-controller', authoritative: true,
     summary: `Routing workflow ${request.id}: ${receipt.status}`, detail: receipt };
-  journal.record([event]);
+  const [row] = journal.record([event]);
+  requireValue(row, 'Workflow receipt was not durably enqueued');
   // Existing outbox is durable before the existing exact-readback AgentDB drainer runs.
-  const status = drain(journal, { budgetMs: Math.max(0, Math.min(1000, request.deadline - Date.now())), backoff: [] });
-  return { durable: true, agentDbCommitted: status.remaining === 0, ...status };
+  const status = drainJournal(journal, { budgetMs: Math.max(0, Math.min(1000, request.deadline - Date.now())), backoff: [] });
+  const value = JSON.stringify(row.event);
+  const back = read(journal.db, reader => reader.readContent(CONTINUITY_NAMESPACE, row.key),
+    { deadlineAt: request.deadline });
+  requireValue(back.ok && back.value === value, 'Canonical workflow receipt exact readback failed');
+  return { ...status, durable: true, agentDbCommitted: true,
+    canonicalReceipt: { namespace: CONTINUITY_NAMESPACE, key: row.key, valueSha256: sha(value) } };
 }
 
 function validateAcceptance(request, acceptance) {
@@ -306,11 +313,11 @@ async function bounded(budget, operation) {
   } finally { clearTimeout(timer); budget.abort.signal.removeEventListener('abort', onAbort); }
 }
 
-/** No automatic transport/settings mutation. Every completed result has real gates and independent review. */
 export async function runRoutingWorkflow(input, { route, createAdapters, executePlan, checkAcceptance, review, planRepair,
   recordReceipt = durableWorkflowReceipt, verifyDecision = validateDispatchDecision, now = Date.now, signal,
-  sampleCapacity = sampleManagedCapacity } = {}) {
+  sampleCapacity = sampleManagedCapacity, maxAdmissionStallMs = 180000 } = {}) {
   const request = immutable(structuredClone(input)); validateWorkflowRequest(request, now());
+  const checkpoint=['VERIFIED_NATIVE_INTAKE','VERIFIED_MANAGED_FRONTEND'].includes(request.continuationRegistration?.state)?createRoutingCheckpoint(request):null;let lastCheckpoint;
   for (const [name, fn] of Object.entries({ route, createAdapters, checkAcceptance, review, recordReceipt })) requireValue(typeof fn === 'function', `${name} boundary required`);
   const budget = { deadline: request.deadline, maxAttempts: request.maxAttempts, attemptsUsed: 0, blocked: false, abort: new AbortController() };
   const taskChecklist = tasksFor(request).map(task => ({ id: task.id, instructionDigest: sha(task.instructions),
@@ -324,28 +331,48 @@ export async function runRoutingWorkflow(input, { route, createAdapters, execute
   signal?.addEventListener('abort', onAbort, { once: true }); if (signal?.aborted) onAbort();
   budget.remainingMs = () => Math.max(0, Math.min(request.deadline - now(), monotonicDeadline - performance.now()));
   budget.assertTime = () => { requireValue(!signal?.aborted, 'Workflow cancelled'); requireValue(budget.remainingMs() > 0, 'Absolute workflow deadline exceeded'); };
-  const active = new Set(), capacityAdmissions = [];
+  const active = new Set(), capacityAdmissions = [], admissionStalls = [], startedWorkerIds = new Set(), retiredWorkerIds = new Set(); let progressSequence = 0, observedAt = performance.now();
+  const adapterReturnedWorkerIds = new Set(), observedWorkerIds = new Set(), releasedWorkerIds = new Set(), unverifiedLaunchWorkerIds = new Set(), unverifiedRetirementWorkerIds = new Set(), launchEvidence = new Map();
+  requireValue(Number.isFinite(maxAdmissionStallMs) && maxAdmissionStallMs > 0 && maxAdmissionStallMs <= 180000, 'Bounded admission stall required');
+  const parallelismPlan = managedParallelismPlan(tasksFor(request), request.maxConcurrent, request.serialReason, request.originalPrompt);
   const available = (worker, workers) => active.size < workers
     && (worker.ownership.mode === 'write' ? active.size === 0 : ![...active].some(item => item.mode === 'write'));
   const admission = {
     acquire: async worker => {
       for (;;) {
-        const measured = await waitForManagedCapacity({ maxConcurrent: request.maxConcurrent, deadline: request.deadline,
-          signal: budget.abort.signal, sampleCapacity, accept: workers => available(worker, workers), progress: () => active.size > 0 });
+        let measured;
+        try { measured = await waitForManagedCapacity({ maxConcurrent: request.maxConcurrent, deadline: request.deadline,
+          signal: budget.abort.signal, sampleCapacity, accept: workers => available(worker, workers), progress: () => ({ sequence: progressSequence, observedAt }), maxStallMs: maxAdmissionStallMs }); }
+        catch (error) { if (/Capacity admission stalled/.test(error.message)) { Object.defineProperty(error, ADMISSION_STALL, { value: true }); admissionStalls.push({ workerId: worker.id, observedProgressSequence: progressSequence,
+          reason: 'Queued admission blocked; active progress is unobservable, not proof of worker failure' }); } throw error; }
         budget.assertTime();
         // Recheck and reserve synchronously: concurrent waiters may have observed the same free slot.
         if (!available(worker, measured.workers)) continue;
-        const grant = { workerId: worker.id, mode: worker.ownership.mode }; active.add(grant);
+        const grant = { workerId: worker.id, mode: worker.ownership.mode, worktree: worker.ownership.worktree }; active.add(grant);
         capacityAdmissions.push({ workerId: worker.id, activeChildren: active.size, ...measured });
         return grant;
       }
-    }, release: grant => { if (grant) active.delete(grant); }, started: async worker => {
+    }, observed: (grant, phase, result) => { if (grant) {
+      const id = grant.workerId; progressSequence++; observedAt = performance.now();
+      if (phase === 'observe' && result != null) observedWorkerIds.add(id);
+      if (phase === 'launch') { adapterReturnedWorkerIds.add(id); const evidence = result?.nativeLaunchEvidence;
+        if (result?.nativeLaunched === true && evidence?.evidence === 'child-process-spawn-event' && Number.isInteger(evidence.pid) && evidence.pid > 0
+          && path.isAbsolute(evidence.binary || '') && evidence.cwd === grant.worktree) { startedWorkerIds.add(id); retiredWorkerIds.delete(id); launchEvidence.set(id, evidence); }
+        else if (result?.nativeLaunched !== false) unverifiedLaunchWorkerIds.add(id);
+      }
+    } },
+    release: (grant, result) => { if (grant) { const id = grant.workerId; active.delete(grant); releasedWorkerIds.add(id);
+      if (startedWorkerIds.has(id)) { const evidence = result?.nativeRetirementEvidence;
+        if (result?.nativeRetired === true && evidence?.evidence === 'child-process-close-event' && evidence.pid === launchEvidence.get(id)?.pid) retiredWorkerIds.add(id);
+        else unverifiedRetirementWorkerIds.add(id); }
+      progressSequence++; observedAt = performance.now(); } }, started: async worker => {
       const originalId = JSON.parse(worker.prompt.split('\n')[0]).task?.repairsTaskId ?? worker.id;
       const task = taskChecklist.find(item => item.id === originalId);
       if (task) { task.state = 'running'; task.attempted = true; await persist('task-dispatch'); }
     },
   };
-  const runner = executePlan ?? await loadManagedRunner(); let results = [], acceptance, feedback, revision = 0;
+  const runner = executePlan ?? await loadManagedRunner(), normalizeHandoff = await loadManagedRunner({ contract: 'handoff' }), validateResult = await loadManagedRunner({ contract: 'result' }), renderHandoffs = await loadManagedRunner({ contract: 'renderer' });
+  let results = [], acceptance, feedback, revision = 0;
   let executionRequest = request, repairArtifactRefs = null, writerExecuted = false, previousFailureSignature = null;
   const executionReceipts = [];
   const persist = async (status, extra = {}) => {
@@ -353,6 +380,10 @@ export async function runRoutingWorkflow(input, { route, createAdapters, execute
     const receipt = { workflowId: request.id, status, at: new Date(now()).toISOString(),
       originalPromptDigest: sha(request.originalPrompt), contextDigest: sha(JSON.stringify(request.contextRefs)),
       attemptsUsed: budget.attemptsUsed, deadline: request.deadline, capacityAdmissions: [...capacityAdmissions],
+      parallelismPlan, admissionStalls: [...admissionStalls], startedWorkerIds: [...startedWorkerIds], retiredWorkerIds: [...retiredWorkerIds],
+      adapterReturnedWorkerIds: [...adapterReturnedWorkerIds], observedWorkerIds: [...observedWorkerIds], releasedWorkerIds: [...releasedWorkerIds],
+      unverifiedLaunchWorkerIds: [...unverifiedLaunchWorkerIds], unverifiedRetirementWorkerIds: [...unverifiedRetirementWorkerIds],
+      workerLifecycleEvidence: 'Affirmative spawn and matching close evidence only; adapter returns and slot release are separate. IDs describe latest observed worker attempt, not a global lease or model proof.',
       taskChecklist: structuredClone(taskChecklist), resumeHandoff: { originalPromptDigest: sha(request.originalPrompt),
         lockedWriterIds: taskChecklist.filter(task => task.ownership.mode === 'write' && task.attempted).map(task => task.id),
         nextStep: status === 'complete' ? 'All bound tasks verified and locked; STOP. No replay or new work.'
@@ -360,18 +391,25 @@ export async function runRoutingWorkflow(input, { route, createAdapters, execute
     if (status === 'complete') budget.assertTime();
     const recorded = status === 'blocked' ? await recordReceipt(request, receipt)
       : await bounded(budget, (signal) => recordReceipt(request, receipt, { signal }));
-    requireValue(recorded?.durable === true, 'Workflow receipt durability not proven'); return receipt;
+    requireValue(recorded?.durable === true && recorded?.agentDbCommitted === true,
+      'Workflow receipt canonical commit not proven');
+    lastCheckpoint={receipt,head:recorded.canonicalReceipt};
+    if(checkpoint&&['queued','blocked','complete'].includes(status))checkpoint.writeLast(receipt,recorded.canonicalReceipt);
+    return receipt;
   };
   const execute = async (plan) => {
     requireValue(!budget.blocked && budget.attemptsUsed < budget.maxAttempts, 'Global execution budget blocked'); budget.assertTime();
-    const adapters = guardAdapters(await bounded(budget, () => createAdapters({ request, plan, budget })), request, budget, now, admission);
+    const adapters = guardAdapters(await bounded(budget, () => createAdapters({ request, plan, budget })), request, budget, now, admission, normalizeHandoff, validateResult, renderHandoffs, plan);
     const results = await bounded(budget, () => runner(plan, { adapters, cwd: request.projectRoot, maxConcurrent: request.maxConcurrent,
       timeoutMs: Math.max(1, budget.remainingMs()), escalate: false }));
     try { budget.assertTime(); } catch (error) { error.executionResults = results; throw error; } return results;
   };
   try {
+    let retained;try{retained=checkpoint?.readFirst();}catch(error){return{workflowId:request.id,status:'checkpoint-stop',reason:String(error.message)};}
+    if(retained&&retained.code!==0)return{workflowId:request.id,status:'checkpoint-stop',checkpoint:retained,reason:retained.verdict};
     await persist('queued'); // The validated IDs/checksets are durable before any task child executes.
     for (;;) {
+      const stop=checkpoint?.readFirst();requireValue(!stop||stop.code===0,stop?.verdict);
       if (repairArtifactRefs) verifyContextRefs(repairArtifactRefs);
       const plan = immutable(await bounded(budget, () => buildWorkflowPlan(executionRequest, { route, feedback, now })));
       validateWorkflowPlan(executionRequest, plan, { verifyDecision, feedback, now });
@@ -448,8 +486,10 @@ export async function runRoutingWorkflow(input, { route, createAdapters, execute
       if (budget.blocked || budget.remainingMs() <= 0 || budget.attemptsUsed + tasksFor(executionRequest).length + 1 > budget.maxAttempts) {
         return { ...await persist('blocked', { reason: 'budget-or-gates-unresolved' }), results, acceptance };
       }
+      checkpoint?.writeLast(lastCheckpoint.receipt,lastCheckpoint.head,'Resolve frozen failed criteria '+failureSignature);
     }
   } catch (error) {
+    if(error.code==='CHECKPOINT_RECONCILIATION_REQUIRED')return{workflowId:request.id,status:'checkpoint-stop',reason:String(error.message)};
     budget.blocked = true; budget.abort.abort();
     transition('blocked');
     const lateResults = error.executionResults ?? [];

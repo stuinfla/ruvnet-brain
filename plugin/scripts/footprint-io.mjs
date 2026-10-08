@@ -130,13 +130,23 @@ export function treeBytes(target) {
 /** Atomic rename-rotation: <name> -> <name>.1 (replacing the previous .1). Appenders reopen by path. */
 export function rotate(file) { fs.renameSync(file, `${file}.1`); }
 export function truncateToTail(file, keep) {
-  const size = fs.statSync(file).size;
-  const fd = fs.openSync(file, 'r');
+  const initial = fs.lstatSync(file);
+  if (!initial.isFile() || initial.isSymbolicLink() || initial.nlink !== 1) throw new Error('log is not an exclusive regular file');
+  const size = initial.size;
+  const fd = fs.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0));
   const buf = Buffer.alloc(Math.min(keep, size));
-  try { fs.readSync(fd, buf, 0, buf.length, size - buf.length); } finally { fs.closeSync(fd); }
+  try {
+    const opened = fs.fstatSync(fd);
+    if (opened.dev !== initial.dev || opened.ino !== initial.ino || opened.nlink !== 1) throw new Error('log changed before tail read');
+    fs.readSync(fd, buf, 0, buf.length, size - buf.length);
+  } finally { fs.closeSync(fd); }
   const nl = buf.indexOf(10);
   const tmp = `${file}.tmp-${process.pid}`;
-  fs.writeFileSync(tmp, nl >= 0 ? buf.subarray(nl + 1) : buf);
+  fs.writeFileSync(tmp, nl >= 0 ? buf.subarray(nl + 1) : buf, { flag: 'wx' });
+  const current = fs.lstatSync(file);
+  if (!current.isFile() || current.isSymbolicLink() || current.dev !== initial.dev || current.ino !== initial.ino || current.nlink !== 1) {
+    throw new Error('log changed before tail replacement; retained original and staged bytes');
+  }
   fs.renameSync(tmp, file);
 }
 

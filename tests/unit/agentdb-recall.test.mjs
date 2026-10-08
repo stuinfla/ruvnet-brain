@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect,vi } from 'vitest';
 import { getVersion } from '../../scripts/version.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -47,6 +47,29 @@ else {
 }
 
 describe('canonical prompt-time AgentDB recall', () => {
+  it('direct recall honors Brain OFF separately from learning preferences before any store or child use', async () => {
+    const w=world();try{
+      const state=path.join(w.dir,'brain-state');fs.mkdirSync(state);fs.writeFileSync(path.join(state,'brain-off'),'');
+      for(const env of [{...w.env,RUVNET_BRAIN_OFF:'1',RUVNET_AGENTDB_FIRST:'on',RUVNET_TURN_CAPTURE_FORCE:'1'},
+        {...w.env,RUVNET_BRAIN_STATE_DIR:state,RUVNET_AGENTDB_FIRST:'on',RUVNET_LEARNING_SCOPE:'off',RUVNET_TURN_CAPTURE_FORCE:'1'}]){
+        const result=await recall({prompt:'Fix the parser',projectDir:w.proj,env});
+        expect(result.outcome).toBe('disabled');expect(result.reason).toBe('brain-off');expect(result.picks).toEqual([]);
+      }
+      expect(fs.existsSync(w.env.RECALL_LOG)).toBe(false);
+    }finally{w.cleanup();}
+  });
+  it('canonical identity probes inherit the exhausted absolute recall deadline',()=>{
+    const w=world();try{expect(()=>agentdbStores(w.proj,100,Date.now()-1)).toThrow(/deadline exceeded/);}finally{w.cleanup();}
+  });
+  it('unreadable Brain state refuses recall and learning-off alone does not masquerade as Brain OFF',async()=>{
+    const w=world(),state=path.join(w.dir,'state'),stat=fs.statSync.bind(fs);try{
+      vi.spyOn(fs,'statSync').mockImplementation((file,...args)=>{if(file===path.join(state,'brain-off'))throw Object.assign(Error('denied'),{code:'EACCES'});return stat(file,...args);});
+      const denied=await recall({prompt:'Fix parser',projectDir:w.proj,env:{...w.env,RUVNET_BRAIN_STATE_DIR:state,RUVNET_TURN_CAPTURE_FORCE:'1'}});
+      expect(denied).toMatchObject({outcome:'unavailable',reason:'brain-state-unavailable',picks:[]});expect(fs.existsSync(w.env.RECALL_LOG)).toBe(false);
+      vi.restoreAllMocks();const ordinary=await recall({prompt:'Fix parser',projectDir:w.proj,env:{...w.env,RUVNET_LEARNING_SCOPE:'off'}});
+      expect(ordinary.outcome).not.toBe('disabled');expect(ordinary.reason).not.toBe('brain-off');
+    }finally{vi.restoreAllMocks();w.cleanup();}
+  });
   it('recalls ordinary requirements, edits and releases, while skipping empty and harness messages', () => {
     for (const p of ['I require the hooks to read memory every time.', 'Fix the parser.', 'Dispatch protected release.', 'Where are we at?', 'git status', 'Why?', 'thanks!', 'Okay.', 'Yes', 'No']) expect(recallTrigger(p), p).not.toBeNull();
     for (const p of ['', '<task-notification>fix parser</task-notification>']) expect(recallTrigger(p), p).toBeNull();

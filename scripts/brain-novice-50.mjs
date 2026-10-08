@@ -75,14 +75,14 @@ export function grade(spec, text, elapsedMs, transportOk) {
     .some((match) => match[1].toLowerCase() === spec.repo.toLowerCase());
   const cited = /^#\d+\s+repo=[a-z0-9._-]+/im.test(text);
   const abstained = !top || (top[2] !== undefined && Number(top[2]) < 0);
-  // This regex is retained as a visible keyword signal only. It is not semantic accuracy and it
+  // This required heuristic keyword signal is not semantic accuracy and it
   // cannot make a row effective without a citation from the independently expected owner.
   const keywordSignal = spec.required.test(text);
   const unsupportedAbsence = /\b(?:does not exist|must be built|you need to build it)\b/i.test(text);
   const evidenceQualified = /EVIDENCE:\s*THIN|NOT PROVEN|PROPOSED|curated-capability-card|THIS QUERY found nothing/i.test(text);
   const honest = !unsupportedAbsence || evidenceQualified;
   const latencyPoints = elapsedMs <= 4000 ? 10 : elapsedMs <= 8000 ? 5 : 0;
-  const effective = transportOk && cited && expectedRepoCited && honest && !abstained && elapsedMs <= 4000;
+  const effective = transportOk && cited && expectedRepoCited && keywordSignal && honest && !abstained && elapsedMs <= 4000;
   return { cited, expectedRepoCited, keywordSignal, honest, abstained, effective, latencyPoints };
 }
 
@@ -173,7 +173,7 @@ async function main() {
     p95Ms: percentile(times, 0.95),
     longestMs: Math.max(...times),
     stderr: stderr.trim(),
-    gradingScope: 'Operational eligibility only: transport, citation presence, expected-owner citation, honest uncertainty, and latency. keywordSignal is diagnostic only; this report does not measure semantic answer accuracy.',
+    gradingScope: 'Operational eligibility only: transport, citation presence, expected-owner citation, required heuristic keyword signal, honest uncertainty, and latency; this report does not measure semantic answer accuracy.',
     results,
   };
   const output = path.join(ROOT, 'data/novice-50-report.json');

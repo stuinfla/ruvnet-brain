@@ -87,8 +87,7 @@
       "owner": "decision-gate",
       "class": "consequential-action authorization",
       "hosts": [
-        "claude",
-        "codex"
+        "claude"
       ],
       "responsibility": "The ONE process that may refuse a Write/Edit/MultiEdit/NotebookEdit/apply_patch (ADR-067): composes protect-state, hijack-ruvnet, ground-before-write (ADR-0012), adr-currency and duplicate-code (2026-09-30: a new code file or large new export duplicating existing code in this checkout, refused at most once per path per session) into one decision with one reason. Fails open on its own errors. apply_patch is Codex's raw write-tool name, added to the shared matcher 2026-09-12 after a real apply_patch call was measured to fire PreToolUse live (codex-cli 0.154.0); codex-hook-adapter.mjs normalizes it to the same Edit shape decision-gate.mjs's policies already read on Claude."
     },
@@ -200,6 +199,33 @@
         "codex"
       ],
       "responsibility": "Fixed vocabulary capture or finite selected-scope orphan recovery; no cross-scope legacy drain; registration alone does not prove native delivery."
+    },
+    {
+      "event": "PreToolUse",
+      "owner": "decision-gate",
+      "class": "consequential-action authorization",
+      "hosts": [
+        "codex"
+      ],
+      "responsibility": "The ONE process that may refuse a Write/Edit/MultiEdit/NotebookEdit/apply_patch (ADR-067): composes protect-state, hijack-ruvnet, ground-before-write (ADR-0012), adr-currency and duplicate-code (2026-09-30: a new code file or large new export duplicating existing code in this checkout, refused at most once per path per session) into one decision with one reason. Fails open on its own errors. apply_patch is Codex's raw write-tool name, added to the shared matcher 2026-09-12 after a real apply_patch call was measured to fire PreToolUse live (codex-cli 0.154.0); codex-hook-adapter.mjs normalizes it to the same Edit shape decision-gate.mjs's policies already read on Claude."
+    },
+    {
+      "event": "PreToolUse",
+      "owner": "decision-gate",
+      "class": "consequential-action authorization",
+      "hosts": [
+        "claude"
+      ],
+      "responsibility": "Mandatory known canonical-store raw-write refusal for Bash through managed-store route; Brain OFF silences this isolated policy."
+    },
+    {
+      "event": "PreToolUse",
+      "owner": "decision-gate",
+      "class": "consequential-action authorization",
+      "hosts": [
+        "codex"
+      ],
+      "responsibility": "Mandatory known canonical-store raw-write refusal for declared exec_command aliases through existing adapter/managed-store route; native delivery separately unqualified."
     }
   ],
   "_notInThisPlane": [
@@ -344,8 +370,7 @@
       "id": "decision-gate",
       "event": "PreToolUse",
       "hosts": [
-        "claude",
-        "codex"
+        "claude"
       ],
       "mode": "blocking",
       "offBehavior": "run",
@@ -482,6 +507,39 @@
       "offBehavior": "silence",
       "matcher": "startup|resume|clear|compact|fork",
       "timeout": 3
+    },
+    {
+      "id": "decision-gate",
+      "event": "PreToolUse",
+      "hosts": [
+        "codex"
+      ],
+      "mode": "blocking",
+      "offBehavior": "run",
+      "matcher": "^(Write|Edit|MultiEdit|NotebookEdit|apply_patch|functions\\.apply_patch|functions__apply_patch)$",
+      "timeout": 8
+    },
+    {
+      "id": "decision-gate",
+      "event": "PreToolUse",
+      "hosts": [
+        "claude"
+      ],
+      "mode": "blocking",
+      "offBehavior": "run",
+      "matcher": "^Bash$",
+      "timeout": 5
+    },
+    {
+      "id": "decision-gate",
+      "event": "PreToolUse",
+      "hosts": [
+        "codex"
+      ],
+      "mode": "blocking",
+      "offBehavior": "run",
+      "matcher": "^(Bash|exec_command|functions\\.exec_command|functions__exec_command)$",
+      "timeout": 8
     }
   ],
   "matcherAllowlist": [
@@ -593,7 +651,7 @@
     {
       "layer": "codex",
       "event": "PreToolUse",
-      "matcher": "^(Write|Edit|MultiEdit|NotebookEdit|apply_patch)$",
+      "matcher": "^(Write|Edit|MultiEdit|NotebookEdit|apply_patch|functions\\.apply_patch|functions__apply_patch)$",
       "reason": "Explicit supported Codex lifecycle registration, corresponding to the host-filtered continuity policy; its enforcing handler and live registration are checked independently.",
       "retiredBy": "not retired - canonical continuity host parity"
     },
@@ -645,6 +703,20 @@
       "matcher": "*",
       "reason": "PreCompact is a lifecycle event; wildcard is the host contract.",
       "retiredBy": "continuity-only lifecycle plane"
+    },
+    {
+      "layer": "plugin",
+      "event": "PreToolUse",
+      "matcher": "^Bash$",
+      "reason": "Exact disjoint mandatory known canonical-store raw-write shell route; other Bash policies remain retired.",
+      "retiredBy": "not retired - P023 managed-store write boundary"
+    },
+    {
+      "layer": "codex",
+      "event": "PreToolUse",
+      "matcher": "^(Bash|exec_command|functions\\.exec_command|functions__exec_command)$",
+      "reason": "Exact disjoint mandatory known canonical-store raw-write shell route; other Bash policies remain retired.",
+      "retiredBy": "not retired - P023 managed-store write boundary"
     }
   ]
 }

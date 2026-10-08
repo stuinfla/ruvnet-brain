@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import {
   BRIDGE_PREFIX, idFor, lessonFromRow, mergeBridged, parseTags, readGlobalRows, statementOf,
 } from '../../plugin/scripts/lesson-bridge.mjs';
-import { ENFORCEMENT, ORIGIN, STATUS, lessonsFor, makeLesson } from '../../plugin/scripts/lesson-store.mjs';
+import { ENFORCEMENT, ORIGIN, STATUS, lessonsFor, makeLesson, ratify, demote, restore, saveLessons, loadLessons } from '../../plugin/scripts/lesson-store.mjs';
 
 /**
  * THE GAP THIS CLOSES, measured 2026-08-10 on the owner's machine: two stores of "what we learned",
@@ -41,6 +43,7 @@ const sqlite = await (async () => {
 const withDb = sqlite ? describe : describe.skip;
 
 const temps = [];
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const mktemp = () => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'lesson-bridge-')); temps.push(d); return d; };
 const cleanup = () => temps.splice(0).forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
 
@@ -121,7 +124,7 @@ describe('lesson-bridge — machine-wide lessons reach the gate that already fir
     // be trading the valuable store for the cheap one.
     const native = [{ id: 'L05-version-is-the-update-signal' }, { id: 'L13-finish-do-not-report' }];
     const older = [...native, { id: `${BRIDGE_PREFIX}gone` }];
-    const merged = mergeBridged(older, [{ id: `${BRIDGE_PREFIX}fresh` }]);
+    const merged = mergeBridged(older, [{ id: `${BRIDGE_PREFIX}fresh` }], { prune: true });
     expect(merged.map((l) => l.id)).toEqual([...native.map((l) => l.id), `${BRIDGE_PREFIX}fresh`]);
   });
 
@@ -137,11 +140,11 @@ describe('lesson-bridge — machine-wide lessons reach the gate that already fir
     // Found by measurement, not by review: bridging put five lessons on `write-code` against a limit
     // of 3, and the severity:high one — the very lesson issue #122 violated — lost to array order.
     // A crowded-out lesson is silently absent, and the feature still looks like it works.
-    const at = (id, severity) => makeLesson({
+    const at = (id, severity) => ratify(id,[makeLesson({
       id, statement: `A lesson that must say what to DO, ${id}`, trigger: 'write-code',
-      enforcement: ENFORCEMENT.INJECT, evidence: ['measured'], status: STATUS.RATIFIED,
-      origin: ORIGIN.IMPORTED, severity,
-    });
+      enforcement: ENFORCEMENT.INJECT, evidence: ['measured'], status: STATUS.CANDIDATE,
+      origin: ORIGIN.MODEL_INFERRED, severity,
+    })],{by:'user'})[0];
     const pool = [at('G-a', 'normal'), at('G-b', 'normal'), at('G-c', 'normal'), at('G-critical', 'high')];
     const chosen = lessonsFor('write-code', pool, { limit: 3 }).map((l) => l.id);
     expect(chosen, 'severity must break the tie before load order does').toContain('G-critical');
@@ -153,21 +156,21 @@ describe('lesson-bridge — machine-wide lessons reach the gate that already fir
     // resource, so severity now sits above enforcement class: what matters more must not lose a slot
     // to what merely acts more forcefully.
     const withChecklist = lessonsFor('write-code', [
-      ...pool, makeLesson({
+      ...pool, ratify('L-native',[makeLesson({
         id: 'L-native', statement: 'A native checklist lesson that says what to do', trigger: 'write-code',
-        enforcement: ENFORCEMENT.CHECKLIST, evidence: ['measured'], status: STATUS.RATIFIED, origin: ORIGIN.IMPORTED,
-      }),
+        enforcement: ENFORCEMENT.CHECKLIST, evidence: ['measured'], status: STATUS.CANDIDATE, origin: ORIGIN.MODEL_INFERRED,
+      })],{by:'user'})[0],
     ], { limit: 3 }).map((l) => l.id);
     expect(withChecklist[0], 'high severity outranks a normal-severity checklist').toBe('G-critical');
 
     // …but enforcement still decides between lessons of EQUAL severity, or the class would be inert.
     const equalSeverity = lessonsFor('write-code', [
       at('G-inject-normal', 'normal'),
-      makeLesson({
+      ratify('L-checklist-normal',[makeLesson({
         id: 'L-checklist-normal', statement: 'A native checklist lesson that says what to do',
         trigger: 'write-code', enforcement: ENFORCEMENT.CHECKLIST, evidence: ['measured'],
-        status: STATUS.RATIFIED, origin: ORIGIN.IMPORTED,
-      }),
+        status: STATUS.CANDIDATE, origin: ORIGIN.MODEL_INFERRED,
+      })],{by:'user'})[0],
     ], { limit: 3 }).map((l) => l.id);
     expect(equalSeverity[0], 'at equal severity, the stronger enforcement leads').toBe('L-checklist-normal');
   });
@@ -189,6 +192,27 @@ describe('lesson-bridge — machine-wide lessons reach the gate that already fir
  * loudly rather than silently: a skip you cannot see reads as a pass.
  */
 withDb('lesson-bridge — reading a real AgentDB store (needs a sqlite backend)', () => {
+  it('the actual project bridge remains applicable at home and does not leak to an identical foreign basename', () => {
+    const home = path.join(mktemp(), 'shared'), foreign = path.join(mktemp(), 'shared');
+    fs.mkdirSync(path.join(home, '.swarm'), { recursive: true }); fs.mkdirSync(foreign, { recursive: true });
+    fs.copyFileSync(makeStore([{ key: 'lesson-canonical-project', content: LESSON, tags: 'trigger:write-code,enforce:inject', provenance: 'user_claim' }], 'project'), path.join(home, '.swarm', 'memory.db'));
+    const store = path.join(mktemp(), 'lessons.json');
+    const historical = { id: 'G-historical-label', statement: LESSON, trigger: 'write-code', enforcement: 'inject',
+      evidence: [{ observed: 'historical record' }], projects: ['ambiguous-label'], origin: 'imported', status: 'candidate' };
+    fs.writeFileSync(store, JSON.stringify({ version: 1, lessons: [historical] }));
+    const env = { ...process.env, RUVNET_GLOBAL_MEMORY_DB: path.join(home, 'absent.db'), RUVNET_LESSON_STORE: store,
+      RUVNET_LESSON_GATE_STATE: path.join(home, 'gate-state.json') };
+    const bridge = spawnSync(process.execPath, [path.join(ROOT, 'plugin/scripts/lesson-bridge.mjs'), '--apply'], { cwd: home, env, encoding: 'utf8' });
+    expect(bridge.status, bridge.stderr).toBe(0);
+    const persisted = JSON.parse(fs.readFileSync(store)).lessons;
+    expect(persisted.some(lesson => lesson.id === historical.id)).toBe(true);
+    const local = persisted.find(lesson => lesson.id !== historical.id); expect(local.projects).toEqual([fs.realpathSync(home)]);
+    const gate = cwd => { const result = spawnSync(process.execPath, [path.join(ROOT, 'scripts/lesson-gate.mjs'), '--trigger', 'write-code', '--json'], { cwd, env, encoding: 'utf8' });
+      expect(result.status, result.stderr).toBe(0); return JSON.parse(result.stdout); };
+    expect(gate(home).inForce.map(lesson => lesson.id)).toContain(local.id);
+    expect(gate(foreign).inForce.map(lesson => lesson.id)).not.toContain(local.id);
+    cleanup();
+  });
   it('reads a real AgentDB store and bridges a tagged row', () => {
     const db = makeStore([{ key: 'lesson-tests-that-cannot-fail-on-broken-code', content: LESSON, tags: 'trigger:write-code,enforce:inject' }]);
     const rows = readGlobalRows(db, 'global');
@@ -283,4 +307,23 @@ describe('readGlobalRows — the sqlite3 CLI fallback must not be able to hang t
     expect(elapsed, 'must be bounded by the CLI timeout (default 5s), not the fake process\'s 100s sleep')
       .toBeLessThan(15_000);
   }, 20_000);
+});
+
+
+it('P037 reapplying an ordinary bridge cannot clear an explicit persisted demotion', () => {
+  const root=mktemp();const file=path.join(root,'lessons.json');
+  const row={key:'lesson-sticky-correction',content:'Always verify and prove it works before claiming done.',
+    tags:'trigger:claim-done,enforce:checklist',provenance:'user_claim'};
+  const first=lessonFromRow(row).lesson;
+  expect(first.themeKeys).toContain('proof-before-done');
+  saveLessons(demote(first.id,[first]),file);
+  const prior=loadLessons(file);
+  const rerun=mergeBridged(prior,[lessonFromRow(row).lesson]);
+  saveLessons(rerun,file);
+  expect(loadLessons(file)[0].demoted).toBe(true);
+  expect(loadLessons(file)[0].themeKeys).toContain('proof-before-done');
+  saveLessons(restore(first.id,loadLessons(file)),file);
+  saveLessons(mergeBridged(loadLessons(file),[lessonFromRow(row).lesson]),file);
+  expect(loadLessons(file)[0].demoted).toBe(false);
+  cleanup();
 });

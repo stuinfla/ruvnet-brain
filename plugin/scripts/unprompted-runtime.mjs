@@ -363,8 +363,8 @@ async function ledger() {
   _ledgerTried = true;
   try {
     const m = await import(pathToFileURL(ADVOCACY_MODULE).href);
-    if (typeof m.shouldStillOffer === 'function' && typeof m.record === 'function' && m.ACTIONS) {
-      _ledger = { shouldStillOffer: m.shouldStillOffer, record: m.record, ACTIONS: m.ACTIONS };
+    if (typeof m.shouldStillOffer === 'function' && typeof m.record === 'function' && typeof m.claimOffer === 'function' && typeof m.releaseClaim === 'function' && m.ACTIONS) {
+      _ledger = { shouldStillOffer: m.shouldStillOffer, record: m.record, claimOffer: m.claimOffer, releaseClaim: m.releaseClaim, ACTIONS: m.ACTIONS };
     }
   } catch { _ledger = null; }
   return _ledger;
@@ -433,14 +433,19 @@ for (const c of candidates) {
       try { offer = led.shouldStillOffer(findingId, { severity, stateHash }); } catch { offer = false; }
       if (!offer) break;                                     // dismissed / budget spent → drop
       if (!hasAdvisoryRoom(copy, c.channel)) break;
-      // Persist the OFFERED denominator before delivery. A recommendation whose delivery receipt was
-      // not durably written cannot participate in the later applied/dismissed lifecycle; emitting it
-      // anyway would create a card the next prompt cannot resolve and would make precision lie.
-      let receipt;
-      try { receipt = led.record({ id: findingId, action: led.ACTIONS.OFFERED, severity, stateHash }); }
-      catch { receipt = null; }
-      if (!receipt?.ok) break;
-      advisories.push({ copy, hookEventName, channel: c.channel });
+      // Existing atomic claim owns delivery; recheck after ownership to close the
+      // read/record race between concurrent sessions. Unknown ownership stays silent.
+      let claimed = false;
+      try { claimed = led.claimOffer?.(findingId, { strict: true, ownership: true }); } catch { /* silent */ }
+      if (!claimed) break;
+      try {
+        if (!led.shouldStillOffer(findingId, { severity, stateHash })) break;
+        const receipt = led.record({ id: findingId, action: led.ACTIONS.OFFERED, severity, stateHash }, { ownership: claimed });
+        if (!receipt?.ok) break;
+        advisories.push({ copy, hookEventName, channel: c.channel });
+      } catch { /* unverified delivery stays silent */ }
+      finally { try { led.releaseClaim?.(findingId, { ownership: claimed }); } catch { /* unknown cleanup retains silence */ } }
+
       break;
     }
 

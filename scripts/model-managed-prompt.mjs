@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
+import {claimManagedFrontendIntent,managedFrontendRecoveryState} from './managed-frontend-intake.mjs';
 import { performance } from 'node:perf_hooks';
 import { classify, validateTaskFacts } from '../config/model-router/policy.default.mjs';
 import { recall as canonicalRecall } from '../plugin/scripts/agentdb-recall.mjs';
@@ -128,10 +129,10 @@ async function service() {
   try { return await import('./model-managed-workflow-service.mjs'); }
   catch { throw new Error('Managed prompt blocked: reviewed workflow service unavailable'); }
 }
-async function defaultPlanTask(input) {
+async function defaultPlanTask(input, options) {
   const loaded = await service();
   requireValue(typeof loaded.planManagedTask === 'function', 'reviewed planner unavailable');
-  return loaded.planManagedTask(input);
+  return loaded.planManagedTask(input, options);
 }
 async function defaultExecuteWorkflow(request, options) {
   const loaded = await service();
@@ -260,7 +261,7 @@ function completionFrame(originalPrompt, workflow) {
 /** Every prompt reaches this boundary automatically. A failed plan/workflow never falls back to original-task execution. */
 export async function runManagedPrompt({ originalPrompt, prompt = originalPrompt, harness, nativeContext = {},
   projectRoot = process.cwd(), contextRefs = [], taskFacts, permissions = { apiBilling: false, write: false },
-  allowedWorktrees, deadline = Date.now() + 900000, maxAttempts = 6, maxConcurrent = 5,
+  nativeUserInstruction, frontendIntake, inputKind='delegated', authorizeNative, allowedWorktrees, deadline = Date.now() + 900000, maxAttempts = 6, maxConcurrent = 5,
   primaryTurn, planTask = defaultPlanTask, executeWorkflow = defaultExecuteWorkflow,
   recallFn = canonicalRecall, captureOutcome = captureTurnOutcome, captureContext = captureNativeParentContext,
   signal, now = Date.now, monotonic = () => performance.now(), ...primaryOptions } = {}) {
@@ -312,11 +313,11 @@ export async function runManagedPrompt({ originalPrompt, prompt = originalPrompt
     const taskClass = managedPromptClass(original, taskFacts);
     if (['fast', 'medium'].includes(taskClass) && !needsManagedWorkflow(original, taskFacts)) {
       const primary = await callPrimary(originalWithRecall);
-      if (harness !== 'codex' || primary?.completed !== true || primary.modelObserved !== true) return primary;
+      if (harness !== 'codex' || primary?.completed !== true || primary.modelObserved !== true) return { ...primary, nativeUserProvenance: pendingNativeUserProvenance({ originalPrompt: original, harness, nativeContext: retainedContext, projectRoot }) };
       const report = await bounded(() => captureOutcome({ projectDir: projectRoot, host: 'codex', event: 'Stop',
         env: primaryOptions.env ?? process.env, home: primaryOptions.env?.HOME || os.homedir(),
         payload: { session_id: primary.sessionId, last_assistant_message: primary.answer ?? '' } }));
-      return { ...primary, turnCapture: { queued: report?.queued === true, recorded: report?.recorded === true, skipped: report?.skipped } };
+      return { ...primary, nativeUserProvenance: pendingNativeUserProvenance({ originalPrompt: original, harness, nativeContext: retainedContext, projectRoot }), turnCapture: { queued: report?.queued === true, recorded: report?.recorded === true, skipped: report?.skipped } };
     }
     if (!contextRefs.length && (retainedContext.sessionId || retainedContext.threadId)) {
       contextRefs = await bounded(() => captureContext({ harness, sessionId: retainedContext.sessionId ?? retainedContext.threadId,
@@ -331,15 +332,87 @@ export async function runManagedPrompt({ originalPrompt, prompt = originalPrompt
     requireValue(Array.isArray(worktrees) && worktrees.length > 0 && worktrees.every(file => path.isAbsolute(file) && fs.realpathSync(file) === file), 'canonical allowed worktrees required');
     verifyRefs(contextRefs);
     const host = structuredClone({ originalPrompt: original, harness, nativeContext: retainedContext, projectRoot: canonicalProject,
-      contextRefs, recall: memoryRecall, taskFacts, permissions, allowedWorktrees: worktrees, deadline, maxAttempts, maxConcurrent });
+      contextRefs, recall: memoryRecall, taskFacts, permissions, allowedWorktrees: worktrees, deadline, maxAttempts, maxConcurrent, nativeUserInstruction });
     const proposal = await bounded(() => planTask({ ...structuredClone(host), signal: combined,
-      timeoutMs: Math.max(1, Math.floor(remaining())), readOnly: true, workflowMaxAttempts: maxAttempts - 2 }));
+      timeoutMs: Math.max(1, Math.floor(remaining())), readOnly: true, workflowMaxAttempts: maxAttempts - 2 }, {authorizeNative,frontendIntake,env:primaryOptions.env??process.env}));
     const request = immutable(structuredClone(validateProposal(proposal, host)));
     verifyRefs(request.contextRefs);
-    const workflow = validateCompletion(await bounded(() => executeWorkflow(request, { signal: combined, approve: primaryOptions.approve,
+    const workflow = validateCompletion(await bounded(() => executeWorkflow(request, { signal: combined, approve: primaryOptions.approve, authorizeNative,
       timeoutMs: Math.max(1, Math.floor(remaining())) })), request);
     const primary = await callPrimary(completionFrame(original, workflow), true);
-    return { ...primary, managedWorkflow: { workflowId: workflow.workflowId, artifactDigest: workflow.artifactDigest,
+    if(frontendIntake&&request.continuationRegistration?.state==='VERIFIED_MANAGED_FRONTEND'
+      &&primary.modelObserved===true&&primary.effortSettingsObserved===true){
+      const loaded=await service(),binding=request.continuationRegistration.binding;
+      const nativeSessionId=primary.sessionId??primary.threadId;
+      requireValue(/^[a-f0-9-]{36}$/i.test(nativeSessionId||''),'Observed native parent UUID required');
+      const linked=await loaded.commitManagedReceipt(request,{workflowId:request.id,status:'parent-observed',at:new Date().toISOString(),
+        originalPromptDigest:sha(original),continuationBinding:binding,nativeSessionId,modelObserved:true,effortSettingsObserved:true});
+      const {attachObservedFrontendParent}=await import('../plugin/scripts/continuation-objective.mjs');
+      attachObservedFrontendParent({ledgerFile:request.continuationRegistration.ledgerFile,projectDir:request.projectRoot,binding,
+        receipt:linked.canonicalReceipt,deadlineAt:Math.min(deadline,Date.now()+1900)});
+    }
+    return { ...primary, nativeUserProvenance: request.continuationRegistration ?? pendingNativeUserProvenance({ originalPrompt: original, harness, nativeContext: retainedContext, projectRoot }), managedWorkflow: { workflowId: workflow.workflowId, artifactDigest: workflow.artifactDigest,
       status: 'complete', parentCompletionReadOnly: true, executions: workflow.executions } };
   } catch (error) { controller.abort(); throw error; }
+}
+
+/** Pending transport metadata is never a native authority receipt or a task-completion claim. */
+export function pendingNativeUserProvenance({ originalPrompt, harness, nativeContext = {}, projectRoot }) {
+  return { schemaVersion: 1, state: 'UNVERIFIED', source: 'managed-prompt-input',
+    host: harness === 'claude-code' ? 'claude' : harness === 'codex' ? 'codex' : null,
+    nativeSessionId: nativeContext.sessionId ?? nativeContext.threadId ?? null,
+    projectRoot: fs.realpathSync(projectRoot), userInstructionDigest: sha(originalPrompt),
+    reason: 'Current native USER-boundary canonical receipt is not observed; no continuation pointer is authorized.' };
+}
+
+/** Resolve a current native intake row; a supplied label, SID or trusted:true flag is insufficient. */
+export async function resolveManagedContinuationRegistration(request, nativeUserInstruction, { env = process.env,frontendIntake } = {}) {
+  const pending = pendingNativeUserProvenance(request);
+  if(frontendIntake){
+    const {detail,receipt,recovery}=claimManagedFrontendIntent(frontendIntake,request);
+    const consumer=await import('../plugin/scripts/continuation-objective.mjs');
+    const identity=consumer.continuationProjectIdentity(request.projectRoot);
+    requireValue(identity&&identity.projectId===detail.projectId&&identity.worktreeId===detail.worktreeId,'Frontend project/worktree changed');
+    return {schemaVersion:2,state:'VERIFIED_MANAGED_FRONTEND',...(detail.scopeContractRequired?{scopeContractRequired:detail.scopeContractRequired}:{}),...(detail.ownerInventory?{ownerInventory:detail.ownerInventory}:{}),binding:{schemaVersion:2,taskId:request.id,workflowId:request.id,
+      host:detail.host,projectId:detail.projectId,worktreeId:detail.worktreeId,userInstructionRef:receipt.key,userInstructionDigest:detail.userInstructionDigest,
+      intakeOrigin:'managed-frontend',frontendInstanceId:detail.frontendInstanceId,submissionSequence:detail.submissionSequence,parentPermissionDigest:detail.parentPermissionRef.digest},
+      ...(recovery?{recovery}:{}),userInstructionReceipt:receipt,ledgerFile:consumer.continuationLedgerPath({projectDir:request.projectRoot,env,identity})};
+  }
+  if (!nativeUserInstruction || nativeUserInstruction.status === 'UNVERIFIED') return pending;
+  const { receipt, nativeUserEventRef } = nativeUserInstruction;
+  const { withProgressionReader } = await import('../plugin/scripts/project-progression-reader.mjs');
+  const { resolveProjectStore } = await import('../plugin/scripts/project-store-resolver.mjs');
+  const consumer = await import('../plugin/scripts/continuation-objective.mjs');
+  const deadlineAt = Math.min(request.deadline, Date.now() + 1900);
+  const identity = consumer.continuationProjectIdentity(request.projectRoot, { deadlineAt });
+  requireValue(identity && pending.nativeSessionId && receipt?.namespace === 'continuity-events' &&
+    typeof receipt.key === 'string' && HASH.test(receipt.valueSha256 || ''), 'native intake exact receipt required');
+  const resolution = resolveProjectStore({ projectDir: request.projectRoot, deadlineAt });
+  const row = withProgressionReader(resolution.canonicalAgentDbPath, reader => reader.readContent(receipt.namespace, receipt.key), { deadlineAt });
+  requireValue(row.ok && typeof row.value === 'string' && Buffer.byteLength(row.value) <= 65536 && sha(row.value) === receipt.valueSha256, 'native intake canonical bytes unverified');
+  const event = JSON.parse(row.value), intake = event.detail;
+  requireValue(event.source === 'nativeUserPromptSubmit' && event.kind === 'decision' && event.authoritative === false &&
+    intake?.schemaVersion === 1 && intake.kind === 'native-user-intake' && intake.status === 'native-user-intake' && intake.host === pending.host &&
+    intake.nativeSessionId === pending.nativeSessionId && intake.projectId === identity.projectId && intake.worktreeId === identity.worktreeId &&
+    intake.userInstructionDigest === pending.userInstructionDigest && same(intake.nativeUserEventRef, nativeUserEventRef) &&
+    nativeUserEventRef?.kind === (pending.host === 'claude' ? 'claude-prompt-id' : 'codex-turn-id') &&
+    typeof nativeUserEventRef.id === 'string' && nativeUserEventRef.id.length > 0 && nativeUserEventRef.id.length <= 400 && Date.now() < deadlineAt,
+  'current native user authorization binding unverified');
+  return { schemaVersion: 1, state: 'VERIFIED_NATIVE_INTAKE',
+    binding: { schemaVersion: 1, taskId: request.id, workflowId: request.id, host: pending.host,
+      nativeSessionId: pending.nativeSessionId, projectId: identity.projectId, worktreeId: identity.worktreeId,
+      userInstructionRef: receipt.key, userInstructionDigest: pending.userInstructionDigest },
+    userInstructionReceipt: structuredClone(receipt),
+    ledgerFile: consumer.continuationLedgerPath({ projectDir: request.projectRoot, env, identity }) };
+}
+
+export async function publishManagedContinuationReceipt(request, committed, { reviewReceipt,definitionReceipt } = {}) {
+  const registration = request.continuationRegistration;
+  if (!['VERIFIED_NATIVE_INTAKE','VERIFIED_MANAGED_FRONTEND'].includes(registration?.state)) return null;
+  requireValue(committed?.durable === true && committed.agentDbCommitted === true && committed.canonicalReceipt,
+    'continuation pointer requires exact canonical receipt readback');
+  const { registerManagedContinuationTask } = await import('../plugin/scripts/continuation-objective.mjs');
+  return registerManagedContinuationTask({ ledgerFile: registration.ledgerFile, projectDir: request.projectRoot,
+    binding: registration.binding, receipt: committed.canonicalReceipt, reviewReceipt,definitionReceipt,
+    deadlineAt: Math.min(request.deadline, Date.now() + 1900) });
 }

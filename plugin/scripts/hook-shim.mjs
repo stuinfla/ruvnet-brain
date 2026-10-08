@@ -36,6 +36,7 @@ import { fileURLToPath } from 'node:url';
 import { resolveBash, skipNoBash } from './hook-shim-bash.mjs';
 import { developmentHooksSuspended } from './development-maintenance.mjs';
 import { sessionStartDeadlineAt } from './session-start-budget.mjs';
+import { snapshotDeadlineAt } from './session-snapshot-budget.mjs';
 
 if (developmentHooksSuspended()) process.exit(0);
 
@@ -187,13 +188,47 @@ const TABLE = {
 };
 
 const hookId = process.argv[2];
+const nativeGrokEnvironment = ['GROK_HOOK_EVENT', 'GROK_SESSION_ID', 'GROK_PLUGIN_ROOT', 'GROK_WORKSPACE_ROOT']
+  .some((key) => process.env[key] !== undefined);
 // Native Claude supplies this exact registered plugin root; do not guess a host from absence.
 if (['session-snapshot', 'continuation-gate', 'grounding-turn-mark', 'grounding-stamp', 'grounding-turn-gate'].includes(hookId)
-    && process.env.RUVNET_HOOK_HOST === undefined && process.env.CLAUDE_PLUGIN_ROOT) {
+    && !nativeGrokEnvironment && process.env.RUVNET_HOOK_HOST === undefined && process.env.CLAUDE_PLUGIN_ROOT) {
   try {
     const ownPluginRoot = fs.realpathSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'));
     if (fs.realpathSync(process.env.CLAUDE_PLUGIN_ROOT) === ownPluginRoot) process.env.RUVNET_HOOK_HOST = 'claude';
   } catch { /* Missing or mismatched native registration remains unknown. */ }
+}
+
+// Grok 1.0.50 also sets CLAUDE_PLUGIN_ROOT. Its reserved native runner fields, correlated
+// with the actual envelope, must win over that compatibility alias. This is attribution,
+// never authority, and does not make SessionStart/UserPromptSubmit stdout deliverable.
+function attributeNativeGrok(input) {
+  let payload;
+  try { payload = JSON.parse(input.toString('utf8')); } catch { /* unavailable envelope */ }
+  const grokPayload = typeof payload?.hookEventName === 'string';
+  if (!nativeGrokEnvironment && !grokPayload) return;
+  const canonicalEvent = (value) => String(value ?? '').split('_').filter(Boolean)
+    .map((word) => word[0].toUpperCase() + word.slice(1)).join('');
+  let verified = false;
+  try {
+    const env = process.env;
+    const ownRoot = fs.realpathSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'));
+    const workspace = fs.realpathSync(env.GROK_WORKSPACE_ROOT);
+    const cwd = fs.realpathSync(payload?.cwd);
+    verified = Boolean(env.GROK_SESSION_ID && env.GROK_HOOK_EVENT && env.GROK_WORKSPACE_ROOT && env.GROK_PLUGIN_ROOT
+      && grokPayload && payload.sessionId === env.GROK_SESSION_ID
+      && (payload.session_id === undefined || payload.session_id === env.GROK_SESSION_ID)
+      && payload.hookEventName === env.GROK_HOOK_EVENT
+      && (payload.hook_event_name === undefined || canonicalEvent(payload.hook_event_name) === canonicalEvent(env.GROK_HOOK_EVENT))
+      && (payload.prompt_id === undefined || payload.promptId === undefined || payload.prompt_id === payload.promptId)
+      && (cwd === workspace || cwd.startsWith(workspace + path.sep))
+      && fs.realpathSync(payload.workspaceRoot) === workspace
+      && (!env.CLAUDE_PROJECT_DIR || fs.realpathSync(env.CLAUDE_PROJECT_DIR) === workspace)
+      && fs.realpathSync(env.GROK_PLUGIN_ROOT) === ownRoot
+      && (!env.CLAUDE_PLUGIN_ROOT || fs.realpathSync(env.CLAUDE_PLUGIN_ROOT) === ownRoot)
+      && (!env.RUVNET_HOOK_HOST || env.RUVNET_HOOK_HOST === 'grok'));
+  } catch { /* Missing or conflicting provenance stays unknown, never Claude by alias. */ }
+  process.env.RUVNET_HOOK_HOST = verified ? 'grok' : 'unknown';
 }
 
 
@@ -219,10 +254,12 @@ function readHookInput(limit) {
     let bytes = 0;
     let settled = false;
     let idle;
+    let absolute;
     const finish = () => {
       if (settled) return;
       settled = true;
       clearTimeout(idle);
+      clearTimeout(absolute);
       process.stdin.pause();
       resolve(Buffer.concat(chunks));
     };
@@ -239,11 +276,17 @@ function readHookInput(limit) {
         chunks.push(kept);
         bytes += kept.length;
       }
+      if (bytes >= limit) { finish(); return; }
+      try { JSON.parse(Buffer.concat(chunks).toString('utf8')); finish(); return; } catch { /* incomplete input */ }
       armIdle();
     });
     process.stdin.once('end', finish);
     process.stdin.once('error', finish);
     armIdle();
+    if (hookId === 'session-snapshot') {
+      absolute = setTimeout(finish, Math.max(1, snapshotDeadlineAt(process.env, performance.timeOrigin) - Date.now()));
+      absolute.unref?.();
+    }
     process.stdin.resume();
   });
 }
@@ -360,6 +403,17 @@ function runHook(file, activeVersion = '') {
       return 0;
     }
   }
+  if (hookId === 'session-snapshot') {
+    const deadlineAt = snapshotDeadlineAt(env, performance.timeOrigin);
+    env.RUVNET_SESSION_SNAPSHOT_DEADLINE_AT = String(deadlineAt);
+    const remaining = Math.floor(deadlineAt - Date.now());
+    if (remaining < 1) {
+      process.stderr.write('[hook-shim] Snapshot capture deadline exhausted before dispatch; capture is unverified.\n');
+      return 0;
+    }
+    // Leave a bounded exit grace inside the existing host deadline after the work budget.
+    sessionTimeout = remaining + 100;
+  }
   if (advisoryBudgetFor(hookId, extraArgs[0] || '') === null) recordContextBudget({ handler: hookId, event: extraArgs[0] || hookId, scope: 'unknown-unframed-context-unchanged' }, env);
   const r = spawnSync(cmd, [file, ...extraArgs], { ...io, env,
     ...(sessionTimeout ? { timeout: sessionTimeout, killSignal: 'SIGKILL' } : {}) });
@@ -404,14 +458,17 @@ function dispatchHook() {
   return runHook(fallbackFile);
 }
 
-if (entry.stdinBytes) {
-  readHookInput(entry.stdinBytes).then((input) => {
+if (entry.stdinBytes || nativeGrokEnvironment
+  || ['continuation-gate', 'grounding-turn-mark', 'grounding-stamp', 'grounding-turn-gate'].includes(hookId)) {
+  readHookInput(entry.stdinBytes || 1048576).then((input) => {
     hookInput = input;
+    attributeNativeGrok(input);
     // The body resolves canonical project memory before its quiet return. A cwd-only
     // preflight here would hide eligible memory in nested directories and worktrees.
     process.exit(dispatchHook());
   }).catch(() => {
     hookInput = Buffer.alloc(0);
+    attributeNativeGrok(hookInput);
     process.exit(dispatchHook());
   });
 } else {

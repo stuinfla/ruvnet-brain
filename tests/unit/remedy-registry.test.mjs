@@ -25,13 +25,17 @@ import { HANDLED_UNDO_KINDS } from '../../scripts/onboarding-console.mjs';
  * builder — that is the whole point. If a builder grows a new recommendation and this fixture is not
  * extended, the new id simply will not appear here, so keep the inputs maximal rather than minimal.
  */
-function allOfferableIds() {
+function allOfferableIds(forceKnownAvailability = false) {
+  const originals = REMEDIES.map(remedy => [remedy, remedy.inverse]);
+  if (forceKnownAvailability) for (const [remedy,inverse] of originals) remedy.inverse = params => ({...inverse(params),available:true});
+  try {
   const ids = [];
 
   // Health: corruption + a full queue + a stale learner + a fleet of distillable stores.
   ids.push(...buildHealthRecommendations({
     memory: { dimensions: [{ key: 'liveness', status: 'fail', detail: 'store is corrupt (integrity_check: wrong # of entries in index)' }] },
     learning: {
+      enabled: true, scope: 'project', queueKnown: true, statusKnown: true, observations: 1884, legacyUserKnown: true, legacyUserDepth: 2,
       queueDepth: 1884,
       lastTrainSeconds: 60 * 60 * 24 * 6,
       trajectories: 5,
@@ -76,13 +80,15 @@ function allOfferableIds() {
   }).map((r) => r.id));
 
   return ids;
+  } finally { for (const [remedy,inverse] of originals) remedy.inverse = inverse; }
 }
 
 test('every offerable recommendation id resolves to exactly one remedy with a real undo', () => {
-  const ids = allOfferableIds();
+  // Force flags only for pure builder census; this does not authorize or execute remedies.
+  const ids = allOfferableIds(true);
   // Guard the guard: if the fixture stops producing ids, the closure check below would pass
   // vacuously and prove nothing. That is a failure mode this test must not have.
-  expect(ids.length >= 7, `fixture produced only ${ids.length} ids — it is no longer exercising every builder branch`).toBeTruthy();
+  expect(ids.sort()).toEqual(['repair:memory-index','learning:flush','learning:flush-legacy-user','learning:train','learning:distill-fleet','sync:ruflo','repair:agentdb','purge:shadows','reconcile:demo-project'].sort());
 
   const { orphanIds, ambiguousIds, unhandledUndoKinds, deadKinds } = assertRegistryClosure(ids, HANDLED_UNDO_KINDS);
 
@@ -92,14 +98,16 @@ test('every offerable recommendation id resolves to exactly one remedy with a re
   expect(deadKinds, `registry declares undo kinds undo() does not implement: ${deadKinds.join(', ')}`).toEqual([]);
 });
 
-test('the North Star recommendation is runnable — it was not, and that was the whole bug', () => {
+test('fleet distillation remains manual but is not offered with an unavailable inverse', () => {
   const ids = allOfferableIds();
-  expect(ids.includes('learning:distill-fleet'), 'the distill-fleet recommendation was not constructed at all').toBeTruthy();
+  expect(ids.includes('learning:distill-fleet'), 'unavailable inverse cannot be offered').toBe(false);
   const plan = planFor('learning:distill-fleet');
   expect(plan, 'learning:distill-fleet has no remedy — this is the exact regression that shipped').toBeTruthy();
   expect(plan.exec.script).toBe('scripts/health-repair.mjs');
   expect(plan.exec.args.includes('--distill-fleet')).toBeTruthy();
   expect(plan.undo.kind).toBe(UNDO_KINDS.RESTORE_STORE_BACKUPS);
+  expect(plan.undo.available).toBe(false);
+  expect(plan.autoEligible).toBe(false);
   expect(plan.exec.needsReceipt, 'a fleet-wide change must record WHICH stores it touched, or its undo is a guess').toBeTruthy();
 });
 
@@ -125,6 +133,8 @@ test('repair:memory-index routes to the database repair, never to a package sync
   expect(plan.key).toBe('memory-index');
   expect(plan.exec.script).toBe('scripts/health-repair.mjs');
   expect(plan.undo.kind).toBe(UNDO_KINDS.RESTORE_MEMORY_BACKUP);
+  expect(plan.undo.available).toBe(false);expect(plan.autoEligible).toBe(false);
+  expect(allOfferableIds().includes('repair:memory-index')).toBe(false);
 
   // And a genuine package repair still works, without the reserved id leaking into it.
   const pkg = planFor('repair:agentdb');
@@ -146,7 +156,7 @@ test('an ambiguous id throws rather than picking a winner', () => {
 
 test('every remedy in the registry is itself reachable and complete', () => {
   for (const r of REMEDIES) {
-    const id = sampleIdFor(r);
+    const id = r.key === 'learning-legacy-user-flush' ? 'learning:flush-legacy-user' : sampleIdFor(r);
     expect(!id.startsWith('__unknown:'), `remedy "${r.key}" has no sample id — closure cannot check it`).toBeTruthy();
     const plan = planFor(id);
     expect(plan, `remedy "${r.key}" does not match its own sample id ${id}`).toBeTruthy();
@@ -158,4 +168,13 @@ test('every remedy in the registry is itself reachable and complete', () => {
       expect(plan.undo.human && plan.undo.human.length > 20, `remedy "${r.key}" declares undo "none" without explaining why — say what a user would do instead`).toBeTruthy();
     }
   }
+});
+
+test.each(['sync:ruflo','repair:agentdb','reconcile:example'])('unsupported inverse for %s is unavailable and not offered',id=>{
+ const plan=planFor(id);expect(plan.undo.available).toBe(false);expect(plan.autoEligible).toBe(false);expect(allOfferableIds().includes(id.replace('example','demo-project'))).toBe(false);
+});
+
+test('all current live mutation candidates with unavailable inverse are excluded by shared builders',()=>{
+ expect(allOfferableIds()).toEqual([]);
+ for(const id of allOfferableIds(true)){const plan=planFor(id);expect(plan.undo.available,id).toBe(false);expect(plan.autoEligible,id).toBe(false);expect(typeof plan.exec.script).toBe('string');}
 });

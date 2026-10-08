@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import {
   CAPTURE_BUDGET_MS, REPLAY_MIN_BUDGET_MS, effectiveBudgetMs, queueCapture, queuedCaptures, refreshReplayLock, releaseReplayLock, REPLAY_LOCK_STALE_MS,
   replayOutboxDetached, runOutboxReplay, runSessionSnapshotHook, takeReplayLock, queuedWork, REPLAY_LOCK_ABANDON_MS,
-  processStart, reclaimOrphans, adoptReplayLock,
+  processStart, reclaimOrphans, adoptReplayLock, drainCaptureQueue,
 } from '../../plugin/scripts/session-snapshot-hook.mjs';
 import { createStore } from '../helpers/continuity-fixture.mjs';
 import { ProgressionOutbox } from '../../plugin/scripts/project-progression-outbox.mjs';
@@ -47,6 +47,15 @@ function project() {
   roots.push(root);
   return root;
 }
+it.each([['actual', false, 'Stop', 1], ['replay', true, 'Stop', 0], ['mismatched', false, 'SessionEnd', 0]])('native intake runs only at the %s Stop boundary', (_name, ordered, hookEvent, calls) => {
+  const dir = project(), env = { HOME: dir, RUVNET_BRAIN_HOME: path.join(dir, 'brain') };
+  const captureNativeIntake = vi.fn(() => ({ status: 'UNVERIFIED', reason: 'no current native USER record' }));
+  runSessionSnapshotHook(dir, 'Stop', { env, ordered, rawInput: JSON.stringify({ session_id: 's', hook_event_name: hookEvent }),
+    captureNativeIntake, captureTurn: () => ({ recorded: false }), captureEvents: () => ({ recorded: 0 }),
+    produce: () => { throw new Error('bounded fixture leaves progression pending'); }, spawnReplay: () => false });
+  expect(captureNativeIntake).toHaveBeenCalledTimes(calls);
+  if (calls) expect(captureNativeIntake.mock.calls[0][1]).toMatchObject({ host: 'claude', env, payload: { hook_event_name: 'Stop' } });
+});
 it('cancellation after claiming a replay returns the exact original without admitting another capture', () => {
   const dir = project(); const env = { HOME: dir, USERPROFILE: dir, RUVNET_BRAIN_HOME: path.join(dir, 'brain') };
   const file = queueCapture({ projectDir: dir, env, event: 'Stop', host: 'codex', payload: { session_id: 'cancelled', hook_event_name: 'Stop' } });
@@ -56,6 +65,29 @@ it('cancellation after claiming a replay returns the exact original without admi
   expect(runOutboxReplay({ projectDir: dir, env, signal: controller.signal, deadlineAt: Date.now() + 2000,
     makeStoreFactory: fakeStore, onClaim: () => controller.abort(), runCapture: capture })).toBe(0);
   expect(capture).not.toHaveBeenCalled(); expect(fs.readFileSync(file)).toEqual(before); expect(queuedCaptures(dir)).toContain(file);
+});
+
+it('fractional subsecond deadline admits and fsyncs the exact queued observation', () => {
+  const dir = project(); const env = { HOME: dir, USERPROFILE: dir, RUVNET_BRAIN_HOME: path.join(dir, 'brain') };
+  const payload = { session_id: 'fractional-capture', hook_event_name: 'Stop',
+    normalizedTransition: { observation: { id: 'fractional-exact-observation', outcome: 'unknown' }, sourceIdentity: { head: 'fixture-head' } } };
+  const file = queueCapture({ projectDir: dir, env, event: 'Stop', host: 'codex', payload, deadlineAt: Date.now() + 750.25 });
+  expect(file).toBeTruthy();
+  const queued = JSON.parse(fs.readFileSync(file, 'utf8'));
+  expect(queued.payload).toEqual(payload);
+  expect(queuedCaptures(dir)).toContain(file);
+});
+
+it('fractional startup drain budget keeps the exact queued bytes when capture remains unverified', () => {
+  const dir = project(); const env = { HOME: dir, USERPROFILE: dir, RUVNET_BRAIN_HOME: path.join(dir, 'brain') };
+  const file = queueCapture({ projectDir: dir, env, event: 'Stop', host: 'codex', payload: { session_id: 'fractional-drain',
+    normalizedTransition: { observation: { id: 'unverified-fractional-drain', outcome: 'unknown' }, sourceIdentity: { head: 'fixture-head' } } } });
+  expect(file).toBeTruthy(); const before = fs.readFileSync(file);
+  const result = drainCaptureQueue({ projectDir: dir, env, budgetMs: 299.75,
+    makeStoreFactory: () => () => ({ outbox: new ProgressionOutbox({ projectRoot: dir }) }),
+    captureNormalized: () => { throw new Error('fixture canonical readback unavailable'); } });
+  expect(result).toMatchObject({ state: 'pending', replayed: 0, pending: 1 });
+  expect(queuedCaptures(dir)).toContain(file); expect(fs.readFileSync(file)).toEqual(before);
 });
 function run(budgetMs) {
   const order = [];
@@ -465,6 +497,30 @@ describe('ordering under a live worker, stranded queues, and lock ownership', ()
 });
 
 describe.skipIf(process.platform === 'win32')('codex-hook-wrapper hands SessionEnd a budget inside the 2500ms launcher', () => {
+  it('snapshot fanout retains one absolute deadline and forwards advisory stderr at status zero', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'snapshot-chain-')); roots.push(home);
+    const brain = path.join(home, 'brain'); const scripts = path.join(brain, 'versions', '1', 'scripts');
+    fs.cpSync(path.join(ROOT, 'plugin', 'scripts'), scripts, { recursive: true });
+    const log = path.join(home, 'fanout.jsonl');
+    fs.writeFileSync(path.join(scripts, 'hook-shim.mjs'), `import fs from 'node:fs';
+const p=JSON.parse(fs.readFileSync(0,'utf8'));fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({deadline:Number(process.env.RUVNET_SESSION_SNAPSHOT_DEADLINE_AT),path:p.tool_input.file_path})+'\\n');
+process.stderr.write('snapshot-advisory-fixture\\n');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,300);
+process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:'PreToolUse',additionalContext:'snapshot-fixture'}}));`);
+    fs.writeFileSync(path.join(brain, 'active.json'), JSON.stringify({ codeRoot: 'versions/1' }));
+    const deadline = Date.now() + 650.25;
+    const result = spawnSync(process.execPath, [path.join(ROOT, 'plugin', 'scripts', 'codex-hook-wrapper.mjs'), 'session-snapshot', 'PreToolUse'], {
+      input: JSON.stringify({ hook_event_name: 'PreToolUse', session_id: 's', cwd: home, tool_name: 'apply_patch',
+        tool_input: '*** Begin Patch\n*** Update File: a.mjs\n*** Update File: b.mjs\n*** Update File: c.mjs\n*** End Patch' }),
+      encoding: 'utf8', timeout: 3000, env: { ...process.env, HOME: home, RUVNET_BRAIN_HOME: brain,
+        RUVNET_SESSION_SNAPSHOT_DEADLINE_AT: String(deadline) },
+    });
+    expect(result.status).toBe(0); expect(result.stderr).toContain('snapshot-advisory-fixture');
+    expect(result.stderr).toContain('PROJECT CONTINUITY UNKNOWN');
+    const calls = fs.readFileSync(log, 'utf8').trim().split('\n').map(JSON.parse);
+    expect(calls.length).toBeGreaterThan(0); expect(calls.length).toBeLessThan(3);
+    expect(calls.every(call => call.deadline === Math.floor(deadline))).toBe(true);
+    if (result.stdout) expect(() => JSON.parse(result.stdout)).not.toThrow();
+  });
   // The REAL wrapper, against a fake brain home whose adapter prints the budget it was handed.
   function budgetFor(args) {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'wrap-budget-'));
@@ -473,6 +529,7 @@ describe.skipIf(process.platform === 'win32')('codex-hook-wrapper hands SessionE
     const scripts = path.join(brain, 'versions', '1', 'scripts');
     fs.mkdirSync(scripts, { recursive: true });
     fs.writeFileSync(path.join(scripts, 'codex-hook-adapter.mjs'), 'process.stdout.write(String(process.env.RUVNET_CODEX_BUDGET_MS));\n');
+    fs.copyFileSync(path.join(ROOT, 'plugin', 'scripts', 'session-snapshot-budget.mjs'), path.join(scripts, 'session-snapshot-budget.mjs'));
     fs.writeFileSync(path.join(brain, 'active.json'), JSON.stringify({ codeRoot: 'versions/1' }));
     const env = { ...process.env, HOME: home, RUVNET_BRAIN_HOME: brain, CODEX_HOME: path.join(home, '.codex') };
     delete env.RUVNET_CODEX_HOOK_TIMEOUT_MS;
@@ -508,4 +565,107 @@ describe('supported Codex PreCompact snapshot boundary', () => {
     expect(result.progressionCaptured).toBe(true);
     expect(result.receipt.eventKey).toBe('compact-fixture-capture');
   });
+});
+
+it('native entry deadline includes startup and can only shorten the existing budget', async () => {
+  const { snapshotEntryDeadlineAt } = await import('../../plugin/scripts/session-snapshot-hook.mjs');
+  expect(snapshotEntryDeadlineAt({}, 1000)).toBe(9000);
+  expect(snapshotEntryDeadlineAt({ RUVNET_CODEX_BUDGET_MS: '2200', RUVNET_SESSION_SNAPSHOT_DEADLINE_AT: '99999' }, 1000)).toBe(2900);
+  expect(snapshotEntryDeadlineAt({ RUVNET_SESSION_SNAPSHOT_DEADLINE_AT: '1200' }, 1000)).toBe(1200);
+  expect(snapshotEntryDeadlineAt({ RUVNET_SESSION_SNAPSHOT_DEADLINE_AT: 'invalid' }, 1000)).toBe(9000);
+});
+
+it('expired native prompt entry returns degraded before consent, queue or replay writes', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'expired-native-prompt-'));
+  try {
+    const started = Date.now();
+    const result = spawnSync(process.execPath, [path.join(ROOT, 'plugin/scripts/session-snapshot-hook.mjs'), 'UserPromptSubmit'], {
+      cwd: dir, input: JSON.stringify({ session_id: 'expired-prompt', prompt: 'Fix fixture', cwd: dir }), encoding: 'utf8',
+      timeout: 3000, killSignal: 'SIGKILL', env: { ...process.env, RUVNET_SESSION_SNAPSHOT_DEADLINE_AT: String(started - 1), RUVNET_BRAIN_HOME: path.join(dir, 'brain') },
+    });
+    expect(result.status, result.stderr).toBe(0); expect(Date.now() - started).toBeLessThan(2500);
+    expect(JSON.parse(result.stdout).systemMessage).toMatch(/degraded/);
+    expect(fs.readdirSync(dir)).toEqual([]);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+it.skipIf(process.platform === 'win32')('slow queue consent obeys remaining absolute time rather than its old one-second timeout', () => {
+  const dir = project(), bin = path.join(dir, 'bin'); fs.mkdirSync(bin);
+  fs.writeFileSync(path.join(bin, 'git'), `#!${process.execPath}\nAtomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,2000);process.exit(1);\n`, { mode: 0o700 });
+  const source = `import {queueCapture} from ${JSON.stringify(new URL('../../plugin/scripts/project-capture-queue.mjs', import.meta.url).href)};
+    const began=Date.now();const result=queueCapture({projectDir:process.cwd(),event:'Stop',host:'codex',payload:{session_id:'slow-consent'},deadlineAt:began+200});
+    console.log(JSON.stringify({elapsedMs:Date.now()-began,result}));`;
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', source], { cwd: dir, encoding: 'utf8', timeout: 3000, killSignal: 'SIGKILL',
+    env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}`, RUVNET_BRAIN_HOME: path.join(dir, 'brain') } });
+  expect(result.status, result.stderr).toBe(0); const measured = JSON.parse(result.stdout);
+  expect(measured.result).toBeNull(); expect(measured.elapsedMs).toBeLessThan(750);
+  expect(queuedCaptures(dir)).toEqual([]);
+});
+
+it('deadline-expired queued capture is byte-identical and later reaches exact canonical readback', async () => {
+  const { adoptedProject, fakeRuflo, rows, cleanup } = await import('../helpers/continuity-fixture.mjs');
+  const { resolveProjectStore } = await import('../../plugin/scripts/project-store-resolver.mjs');
+  const { buildProjectProgression } = await import('../../plugin/scripts/project-progression-producer.mjs');
+  const f = adoptedProject(), cli = fakeRuflo();
+  const env = { ...f.env, RUVNET_BRAIN_HOME: path.join(f.home, 'brain'), RUVNET_RUFLO_CWD_ROOT: path.join(f.home, 'scratch') };
+  try {
+    const original = buildProjectProgression({ resolution: resolveProjectStore({ projectDir: f.dir }), projectDir: f.dir,
+      payload: { session_id: 'deadline-original' }, host: 'codex', trigger: 'Stop', env });
+    const file = queueCapture({ projectDir: f.dir, event: 'Stop', host: 'codex', env, deadlineAt: Date.now() + 2000,
+      payload: { session_id: 'deadline-original', hook_event_name: 'Stop', projectProgression: original.projectProgression } });
+    expect(file).toBeTruthy(); const bytes = fs.readFileSync(file);
+    expect(runOutboxReplay({ projectDir: f.dir, env, deadlineAt: Date.now() - 1 })).toBe(0);
+    expect(fs.readFileSync(file)).toEqual(bytes);
+    const captured = [];
+    expect(runOutboxReplay({ projectDir: f.dir, env, budgetMs: 5000, deadlineAt: Date.now() + 5000,
+      makeStoreFactory: () => options => new ProjectProgressionStore({ ...options, rufloBinary: cli.bin }), onCaptured: result => captured.push(result) })).toBe(0);
+    // Return count covers replayed outbox snapshots; queued captures publish their receipt callback.
+    expect(captured).toHaveLength(1);
+    const stored = rows(path.join(f.dir, '.swarm/memory.db'), 'project-progression').map(row => JSON.parse(row.content));
+    expect(stored).toHaveLength(1); expect(stored[0].sessionIdentity).toBe('deadline-original');
+    expect(stored[0].sourceIdentity).toEqual(original.projectProgression.sourceIdentity);
+    expect(captured[0].receipt.readbackDigest).toBe(stored[0].payloadDigest);
+    expect(queuedCaptures(f.dir)).toEqual([]);
+  } finally { cleanup(); }
+});
+
+it('detached replay drops only the foreground deadline while preserving its own fenced token', () => {
+  const dir = project(), launches = [];
+  const result = replayOutboxDetached({ projectDir: dir, deadlineAt: Date.now() + 1000,
+    env: { ...process.env, RUVNET_SESSION_SNAPSHOT_DEADLINE_AT: String(Date.now() + 1000), FIXTURE_CONTEXT: 'retained' },
+    spawnFn: (_binary, _args, options) => { launches.push(options); return { unref() {} }; } });
+  expect(result).toBe(true); expect(launches[0].env.RUVNET_SESSION_SNAPSHOT_DEADLINE_AT).toBeUndefined();
+  expect(launches[0].env.FIXTURE_CONTEXT).toBe('retained'); expect(launches[0].env.RUVNET_REPLAY_LOCK_TOKEN).toBeTruthy();
+  releaseReplayLock(dir, launches[0].env.RUVNET_REPLAY_LOCK_TOKEN);
+});
+
+it('slow older replay spends the work slice once, leaving the new frozen boundary durably queued', async () => {
+  const { buildProjectProgression } = await import('../../plugin/scripts/project-progression-producer.mjs');
+  const { resolveProjectStore } = await import('../../plugin/scripts/project-store-resolver.mjs');
+  const dir = project(), env = { ...process.env, RUVNET_BRAIN_HOME: path.join(dir, 'brain') };
+  const payload = { session_id: 'slow-replay-boundary', hook_event_name: 'Stop', cwd: dir };
+  const frozen = buildProjectProgression({ resolution: resolveProjectStore({ projectDir: dir }), projectDir: dir, payload, host: 'codex', env });
+  const capture = vi.fn(), spawned = []; const began = Date.now(), deadlineAt = began + 4000;
+  const result = runSessionSnapshotHook(dir, 'Stop', { env, rawInput: JSON.stringify(payload), host: 'codex', budgetMs: 4000, deadlineAt,
+    captureTurn: () => ({ recorded: false }), captureEvents: () => ({ recorded: 0 }), produce: () => frozen,
+    captureProgression: capture,
+    makeStoreFactory: () => () => ({ replay: () => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 3600); return []; } }),
+    spawnReplay: options => { spawned.push(options); return false; } });
+  expect(Date.now() - began).toBeLessThan(4500);
+  expect(result).toMatchObject({ progressionCaptured: false, deferredToReplayer: true }); expect(capture).not.toHaveBeenCalled();
+  expect(spawned[0].deadlineAt).toBe(deadlineAt);
+  const files = queuedCaptures(dir); expect(files).toHaveLength(1);
+  const queued = JSON.parse(fs.readFileSync(files[0], 'utf8'));
+  expect(queued.payload.session_id).toBe(payload.session_id);
+  expect(queued.payload.projectProgression).toEqual(frozen.projectProgression);
+});
+
+it('cancellation during exact-capture callback cannot return a fresh completion claim', () => {
+  const dir = project(), controller = new AbortController();
+  const result = runSessionSnapshotHook(dir, 'Stop', { signal: controller.signal, budgetMs: 2000,
+    rawInput: JSON.stringify({ session_id: 'cancel-final', hook_event_name: 'Stop' }),
+    produce: () => ({ projectProgression: { fixture: true }, provenance: {} }),
+    captureProgression: () => { controller.abort(); return { receipt: { eventKey: 'late-fixture' } }; },
+    makeStoreFactory: () => () => ({ replay: () => [] }), spawnReplay: () => false });
+  expect(result.progressionCaptured).toBe(false); expect(result.skipped).toMatch(/deadline exhausted after readback/);
 });

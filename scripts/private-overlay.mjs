@@ -131,10 +131,10 @@ function planStore({ root, from, name, force, aliases, cardFile, origin }) {
   }
   const rvf = path.join(from, `${name}.big.rvf`);
   const card = cardFor({ from, name, meta, cardFile });
-  const generation = { file: `${name}.big.rvf`, sha256: sha256File(rvf), bytes: fs.statSync(rvf).size, model: embed.model, dimensions: embed.dimensions, sourceCommit: null, builtUtc };
+  const generation = { file: `${name}.big.rvf`, sha256: sha256File(rvf), bytes: fs.statSync(rvf).size, model: embed.model, dimensions: embed.dimensions, sourceRepo: 'private', sourceCommit: null, builtUtc };
   return {
     name, files, copies, card, aliases, generation,
-    // S4 (ONE PROVENANCE RECORD): source.sourceCommit/builtUtc are projected from `generation`
+    // S4 (ONE PROVENANCE RECORD): source.sourceRepo/sourceCommit/builtUtc are projected from `generation`
     // above (projectSourceStore, scripts/rvf-generation.mjs) rather than a second, independent
     // copy of the same facts. A private store has no selfUpdate/canonicalBundleUrl/builder —
     // those are public-bundle-only fields, so they are simply never passed in the updater here.
@@ -144,7 +144,7 @@ function planStore({ root, from, name, force, aliases, cardFile, origin }) {
     // so a store this brain pulled in on demand is distinguishable, in SOURCE.json itself, from one
     // that arrived as a genuinely private pre-built sidecar (a bare "private" sourceRepo alone conflated
     // the two before this).
-    source: projectSourceStore(name, generation, { updateManaged: false, sourceRepo: 'private',
+    source: projectSourceStore(name, generation, { updateManaged: false,
       canonicalManifestUrl: null, ...(origin ? { origin } : {}) }),
   };
 }

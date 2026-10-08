@@ -72,7 +72,12 @@ export function learningStoreStatus(db) {
 
 /** Existing $0 structural distiller, with a verified native WAL-safe snapshot before mutation. */
 export function distillLearning(binary, context, options = {}) {
-  const db = learningTarget(context, options); const before = learningStoreStatus(db);
+  const db = learningTarget(context, options);
+  const warning = 'Exact inverse is unverified; a retained snapshot is recovery evidence, not automatic rollback.';
+  if (options.automatic === true) return { db, completed: false, capability: 'restricted', inverseState: 'UNVERIFIED',
+    deferred: 'automatic distillation restricted: exact inverse is unverified', warning, patternDelta: 0, ratifiedLessons: 0 };
+  process.stderr.write(`[learning] Manual distillation: ${warning}\n`);
+  const before = learningStoreStatus(db);
   if (!before.known) throw new Error('distillation baseline unavailable');
   if (options.automatic && before.lastDistillAt !== null && Date.now() - before.lastDistillAt < 3600_000) {
     return { db, completed: false, deferred: 'automatic cadence: at most hourly', patternDelta: 0, ratifiedLessons: 0 };
@@ -101,5 +106,5 @@ export function distillLearning(binary, context, options = {}) {
   const after = learningStoreStatus(db);
   return { db, before, after, completed: !distilled.error && distilled.status === 0,
     patternDelta: before.known && after.known ? after.patterns - before.patterns : null,
-    snapshot: image, ratifiedLessons: 0 };
+    snapshot: image, inverseState: 'UNVERIFIED', warning, ratifiedLessons: 0 };
 }

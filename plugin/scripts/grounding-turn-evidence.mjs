@@ -177,8 +177,17 @@ export function sourceOf(name, input = {}, result = '', { resultAtMs = null, res
 }
 
 /** Every source read this turn, in order, from a Claude JSONL transcript's lines. */
-export function turnSources(lines) {
+export function turnSources(lines, nativeIdentity = null) {
   const { boundaryFound, prompt, recs } = currentTurnRecords(lines);
+  if (nativeIdentity) for (const record of recs) {
+    const content = record?.message?.content;
+    if (!Array.isArray(content) || !content.some(part => ['tool_use', 'tool_result'].includes(part?.type))) continue;
+    if (record.sessionId !== nativeIdentity.sessionId || !record.cwd
+      || fs.realpathSync(record.cwd) !== fs.realpathSync(nativeIdentity.projectDir)
+      || (record.promptId !== undefined && record.promptId !== nativeIdentity.turnId)) {
+      throw new Error('current native grounding source row identity unavailable or mismatched');
+    }
+  }
   const results = new Map();
   for (const o of recs) {
     const c = o?.message?.content;

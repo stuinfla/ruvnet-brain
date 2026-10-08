@@ -2,7 +2,7 @@
 // Tests for the pure console engine. The point of these is the SAFETY invariants: a recommendation
 // that could become an irreversible or unexplained machine change must be impossible to construct.
 import assert from 'node:assert/strict';
-import { makeRecommendation, buildStackRecommendations, buildWiringRecommendations, buildCapabilityRecommendations, scoreMemoryHealth, summarizeWiring } from './console-engine.mjs';
+import { makeRecommendation, buildHealthRecommendations, buildStackRecommendations, buildWiringRecommendations, buildCapabilityRecommendations, scoreMemoryHealth, summarizeWiring } from './console-engine.mjs';
 
 let pass = 0;
 const t = (name, fn) => { fn(); pass++; console.log(`  ok  ${name}`); };
@@ -27,29 +27,24 @@ t('accepts touchesMachine:true WITH a real plainImpact', () => {
   assert.equal(r.touchesMachine, true);
 });
 
-t('BEHIND package → one sync rec that touches the machine and explains itself', () => {
+t('BEHIND package is not offered while full batch inverse is unavailable', () => {
   const recs = buildStackRecommendations({ rows: [{ name: 'ruflo', installed: '3.29.0', target: '3.30.2', tag: 'alpha', state: 'BEHIND' }], stale: [] });
-  assert.equal(recs.length, 1);
-  assert.equal(recs[0].touchesMachine, true);
-  assert.ok(recs[0].plainImpact.length > 40);
-  assert.ok(recs[0].undo.human.includes('3.29.0'));            // inverse names the version we came from
+  assert.equal(recs.length, 0);
 });
 t('AHEAD package → NO recommendation (AHEAD is a legal state, never "fix" it)', () => {
   const recs = buildStackRecommendations({ rows: [{ name: 'ruflo', installed: '3.31.0', target: '3.30.2', tag: 'alpha', state: 'AHEAD' }], stale: [] });
   assert.equal(recs.length, 0);
 });
-t('stale shadows → one purge rec with per-shadow evidence', () => {
+t('cache purge is not offered when its bulk executor has no full-action inverse', () => {
   const recs = buildStackRecommendations({ rows: [], stale: [{ name: '@ruvector/rvf', version: '0.1.9', global: '0.2.3', dir: '/x' }] });
-  assert.equal(recs.length, 1);
-  assert.ok(recs[0].evidence.length >= 1);
+  assert.equal(recs.length, 0);
 });
 t('npx wiring sites → a per-project de-npx rec; global-only projects → none', () => {
   const recs = buildWiringRecommendations({ sites: [
     { project: 'a', mechanism: 'NPX', file: '.mcp.json', event: 'MCP', spec: 'npx ruflo mcp start' },
     { project: 'b', mechanism: 'GLOBAL_BINARY', file: '.claude/settings.json', event: 'PreToolUse', spec: 'node handler' },
   ] });
-  assert.equal(recs.length, 1);
-  assert.equal(recs[0].id, 'reconcile:a');
+  assert.equal(recs.length, 0);
 });
 
 t('memory score: all ok → 100', () => {
@@ -123,4 +118,16 @@ t('summarizeWiring counts by mechanism and unique npx projects', () => {
   assert.equal(s.npx, 2); assert.equal(s.projectsWithNpx, 1); assert.equal(s.global, 1); assert.equal(s.mcp, 1);
 });
 
+
+t('fleet diagnosis does not offer mutation while automatic inverse is unavailable',()=>{
+ const recs=buildHealthRecommendations({learning:{fleet:[1,2,3].map(id=>({name:String(id),total:5000,coverPct:99,patterns:0,learns:false}))}});
+ assert.equal(recs.some(rec=>rec.id==='learning:distill-fleet'),false);
+});
+
+
+
+t('memory index diagnosis does not offer an unavailable inverse',()=>{
+ const recs=buildHealthRecommendations({memory:{dimensions:[{key:'liveness',status:'fail',detail:'store is corrupt (integrity_check: wrong # of entries in index)'}]}});
+ assert.equal(recs.some(rec=>rec.id==='repair:memory-index'),false);
+});
 console.log(`\n  ${pass} passed\n`);

@@ -3,8 +3,8 @@ id: ADR-103
 title: Routing architecture qualification requires a current finite source review
 status: Accepted
 date: 2026-10-05
-updated: 2026-10-07
-version: 0.1.18
+updated: 2026-10-08
+version: 0.1.20
 reviewed_digest: 7ba26e9903fa
 impl: built
 authors: [Stuart Kerr, Codex]
@@ -46,7 +46,9 @@ governs:
   - plugin/scripts/project-progression-store.mjs
   - plugin/scripts/project-store-resolver.mjs
   - plugin/scripts/project-transition-hook.mjs
+  - plugin/scripts/native-user-intake.mjs
   - plugin/scripts/session-snapshot-hook.mjs
+  - plugin/scripts/session-snapshot-budget.mjs
   - plugin/scripts/session-start-trace.mjs
   - plugin/scripts/turn-outcome-capture.mjs
   - plugin/scripts/unprompted-runtime.mjs
@@ -89,6 +91,7 @@ governs:
   - tests/unit/project-progression-producer.test.mjs
   - tests/unit/project-progression-reader.test.mjs
   - tests/unit/project-transition-hook.test.mjs
+  - tests/unit/native-user-intake.test.mjs
   - tests/unit/session-snapshot-budget.test.mjs
   - tests/unit/session-start-budget.test.mjs
   - tests/unit/session-start-trace.test.mjs
@@ -109,6 +112,9 @@ governs:
   - docs/adr/0074-ruvnet-capability-claim-integrity.md
   - package-lock.json
   - scripts/model-managed-prompt.mjs
+  - scripts/managed-frontend-intake.mjs
+  - scripts/model-managed-acceptance.mjs
+  - scripts/native-workflow-policy.mjs
   - scripts/model-managed-workflow-service.mjs
   - scripts/model-routing-controller.mjs
   - scripts/model-routing-execution-adapters.mjs
@@ -119,6 +125,10 @@ governs:
   - scripts/model-routing-defence.mjs
   - config/model-router/policy.default.mjs
   - tests/unit/model-managed-prompt.test.mjs
+  - tests/unit/managed-frontend-intake.test.mjs
+  - tests/unit/managed-frontend-recovery.test.mjs
+  - tests/unit/native-workflow-policy.test.mjs
+  - tests/unit/native-workflow-schema.test.mjs
   - tests/unit/model-managed-workflow-service.test.mjs
   - tests/unit/model-routing-controller.test.mjs
   - tests/unit/model-routing-execution-adapters.test.mjs
@@ -235,6 +245,7 @@ substitute for release qualification, exact-candidate receipts or published veri
 | Native grounding identity and outcome truth | grounding marker/evidence/gate/answer, continuity-events and project-transition-hook share failure/incomplete precedence; Claude prompt_id differs from Codex turn_id | grounding-session-isolation, grounding-success-shapes, grounding-turn-assertion, continuity-events and project-transition-hook; missing IDs remain UNKNOWN |
 | Relevant rules and advisory context | practical-rule-catalog/selector, existing managed phase caller, hook-context-budget, owned producers and final Codex merge | practical-rule-selector, model-managed-workflow-service, injection-budget, hook-context-budget and unprompted-speech-registry; selection is advisory, typed quotas exclude critical/unknown/foreign output |
 | Canonical recall and recovery | project store resolver, AgentDB recall, continuity journal and progression reader/producer/session-start | agentdb-recall, project-progression-reader/producer, continuity-journal-bounds and session-start-budget; source checks do not imply all-history or all-host recovery |
+| Durable intake, acceptance and capture deadlines | native-user-intake binds current owned native USER records; managed-frontend-intake binds the ordinary callback separately; model-managed-acceptance, native-workflow-policy and session-snapshot-budget retain their existing scoped checks | native-user-intake, managed-frontend-intake, native-workflow-policy, native-workflow-schema, managed service and session-snapshot-budget tests. Exact canonical readback is required; a prompt digest alone cannot recover original scope after a frontend crash. Native parent association, actual model execution, universal policy enforcement and all-host recovery remain separately qualified. |
 
 The exact files are enumerated in frontmatter. This mapping identifies test responsibilities; it
 claims neither that every listed test passed on this candidate nor that any reviewer read all files.
@@ -263,7 +274,23 @@ proof from workflow enforcement, P6 by deriving current review from bytes, P7 by
 and P10 by reusing doc-currency. It trades P3's usual nudge for the owner's explicit opt-in to this
 finite release refusal. No paid provider call, model generation or system configuration is added.
 
+## Source-identity reconciliation — 2026-10-08
+
+The governed progression source reader now consumes NUL-delimited exact Git filenames and
+unambiguous JSON content-digest/path records. Unavailable or unreadable source cannot mint an
+exact identity; the existing bounds and Brain operational-state exclusions remain intact.
+`tests/unit/project-progression-producer.test.mjs` maps real Git Unicode/newline byte mutations at
+unchanged HEAD, unreadability, newline-record aliasing, and actual producer no-op/canonical
+readback. The prior Codex reference-only branch is byte-preserved. This is the finite P013 source
+identity boundary, not native/provider, complete recovery, or whole architecture qualification.
+
+The opaque digest recipe applies to new captures without retroactively changing snapshots. These
+changed governed bytes expire the prior review. The existing `reviewed_digest` is historical;
+final independent review and the architecture/test mapping must precede a replacement stamp.
+Accepted decision and proof-gated implementation status remain unchanged.
+
 ## Currency log
+| 2026-10-08 | Source-identity implementation/test mapping reconciled: exact NUL filenames and unambiguous digest records, unreadable refusal, preserved bounds/exclusions, and same-HEAD/no-op negative cases. This row does not renew final-source review or any native/whole-architecture claim. | `plugin/scripts/project-progression-sources.mjs`, `plugin/scripts/project-progression-producer.mjs`, `tests/unit/project-progression-producer.test.mjs`; new independent review must precede a new reviewed digest. |
 
 
 | Date | What | Why |

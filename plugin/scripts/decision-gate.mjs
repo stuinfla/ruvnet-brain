@@ -1,35 +1,21 @@
 #!/usr/bin/env node
 /**
- * decision-gate.mjs — ONE PreToolUse decision, from N policies, with ONE reason.
- *
- * WHY: four independent processes could each refuse the same Write, with no precedence and no shared
- * context, so the user got one arbitrary reason and no hint a second wall stood behind it. The
- * measurement and the full rationale are in docs/adr/0067 — not repeated here.
- *
- * This is ADR-040's speech-chokepoint invariant applied to REFUSAL. One pattern used twice, not two.
- *
- * THE POLICIES ARE UNCHANGED. Each already speaks `exit 0` = allow, `exit 2` + stderr = refuse — a
- * verdict function that was only ever missing a caller. The gate runs each as a CAPTURED child and
- * composes one decision, naming every policy that refused, in declared precedence order.
- *
- * FAIL-OPEN, deliberately: any failure of the GATE ITSELF allows. A gate that blocks because it
- * cannot read a file is one users switch off, and a disabled gate protects nothing.
+ * One PreToolUse verdict composes existing policy refusals (ADR-040, ADR-067).
+ * Capture exit 0 (allow) / exit 2 + stderr (refuse) in declared precedence.
+ * Gate infrastructure errors fail open by design; policy refusals remain intact.
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { contextBlock, contextFrame, readContextFrame, emitOwnedContext } from './hook-context-budget.mjs';
 import { fileURLToPath } from 'node:url';
-// resolveBash ONLY. `skipNoBash` is not a predicate — it is a one-time notice emitter that returns 0
-// and WRITES TO STDERR, which on this hot path is the refusal channel: calling it would have injected
-// an install hint into the middle of a refusal reason, or manufactured stderr on an allow. Read the
-// signature, do not infer it from the name.
+// Use resolveBash only: skipNoBash emits notices into the stderr refusal channel.
 import { resolveBash } from './hook-shim-bash.mjs';
 import { append as appendOutcome, actionKey, recordRefusal, resolve as resolveOutcome, sweepStale } from './decision-outcomes.mjs';
-// Grok sends its own tool names (`write`) and a snake_case event; every policy below reads Claude's
-// shape. Normalised ONCE here, so the policies (four of them bash, matching tool_name textually) never
-// see a host-native spelling — the 4.4 measurement was a Grok write silently allowed. hook-input.mjs.
-import { normalizePayloadText } from './hook-input.mjs';
+// Normalize Grok tool/event spellings once for Claude-shaped policies (hook-input.mjs).
+import { normalizePayloadText, commandOf, knownRawStoreWrites } from './hook-input.mjs';
+import { resolveProjectStoreGuard } from './project-store-resolver.mjs';
 
 const SCRIPTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const EVENT = process.argv[2] || '';
@@ -89,20 +75,16 @@ export const MIN_HEADROOM_MS = 3000;
 /**
  * ── THE TWO FAIL-OPEN CASES, STATED AS POLICY (4.5) ──────────────────────────────────────────────
  *
- * 1. ALLOW ON TIMEOUT. A policy still running at the budget is killed and the write is ALLOWED — a gate
- *    that blocks because it is slow is one users switch off. Never silent: the outcome ledger records
- *    `budget-exceeded` with the policies that did not vote, and ONE stderr line says the allow was a
- *    timeout, not a verdict (reportBudget below).
+ * 1. Legacy write-policy timeout allows, recording `budget-exceeded` and a diagnostic.
+ *    The isolated mandatory shell route differs: a positively known canonical raw WRITE
+ *    refuses unavailable policy or exhausted budget before an effect.
  *
- * 2. OVERSIZE: ONLY THE FIRST 64 KiB IS CHECKED. The host hands this gate the payload through
- *    hook-shim.mjs, which reads at most TRANSPORT_CAP_BYTES (its TABLE entry), and the bash policies cap
- *    their own read at the same number. A bigger Write arrives cut mid-JSON. The policies still run on
- *    that prefix and a refusal found there STANDS (measured 2026-10-01: an ungrounded rUv import at the
- *    top of a 100 KB file, and a 100 KB write to the protected settings file, are both refused). What
- *    the prefix cannot show — a rUv import after the first 64 KiB — is ALLOWED. Measured before 4.5 that
- *    allow left no trace at all; it is now recorded as `payload-oversize` (with the session, tool and path
- *    recovered from the prefix, so refusals of oversize writes are counted too). No stderr on that allow:
- *    a large file is ordinary work, and stderr is what a host renders as a hook error.
+ * 2. Legacy Write payloads are checked only through the 64 KiB shim/policy cap.
+ *    A refusal found in the prefix stands; unseen content beyond it remains unchecked.
+ *    The 2026-10-01 probes refused an early ungrounded import and protected settings
+ *    write in 100 KB payloads. Prefix-only allows record `payload-oversize` with
+ *    recovered session/tool/path, without stderr noise. This is not full-file proof
+ *    and does not classify a malformed shell payload as a known canonical WRITE.
  * tests/unit/write-gate-policy.test.mjs holds both, through the real registered command.
  */
 export const TRANSPORT_CAP_BYTES = 65536;
@@ -140,23 +122,9 @@ export function classifyPayload(raw) {
  *                       goes, ahead of anything about process.
  *   ground-before-write don't write RuvNet-product code ungrounded (ADR-0012).
  *
- * `unprompted-speech` is LAST and is not really a peer: it is the speech chokepoint, which refuses
- * only for a lesson the user personally opted into blocking. It is included so that Write/Edit have
- * exactly ONE process that can refuse them — which is the entire invariant — and its allow-path
- * stdout envelope is forwarded untouched.
- *
- * H5 (this repo's own dead-code audit): a 'bash' route used to sit alongside 'write' here, gating
- * identifier-preflight, spend-guard, degradation-watch, hijack-ruvnet (a SECOND use, alongside its
- * 'write' one) and design-wall on a PreToolUse-Bash event. It was never registered in
- * plugin/hooks/hooks.json or codex-hooks.json — continuity-hook-policy.mjs's own header names this
- * explicitly: "decision-gate's BASH route ... remains reachable through hook-shim's dispatch table
- * by explicit invocation" only, never wired into the automatic plane. Removed as dead routing, not
- * as a verdict on the four now-orphaned policies' worth: identifier-preflight.mjs, spend-guard.mjs,
- * degradation-watch.mjs and design-wall.sh all remain in the tree with their own passing tests
- * (each exports/exposes pure, independently-tested logic — `check`/`identifierIn`, `dependentEvent`,
- * etc. — used elsewhere, e.g. tests/unit/lesson-gate.test.mjs imports degradation-watch.mjs's
- * `dependentEvent` directly to cross-check lesson-hooks.sh's own pattern). Only their SELECTION by
- * this gate's dead 'bash' route is removed here.
+ * Write/Edit speech runs last, preserving its opt-in refusal and exact allow envelope.
+ * The mandatory shell route shares this process but has disjoint tool matchers and no
+ * speech invocation. It never selects the retired Bash policy bundle.
  */
 const POLICY = (id, file, interpreter = 'bash') => ({ id, file, interpreter });
 const REFUSAL_POLICIES = [
@@ -194,11 +162,8 @@ export function policiesFor(event, registry = REGISTRY, all = REFUSAL_POLICIES) 
 /**
  * ── APPLICABILITY: THE CHEAPEST POLICY IS THE ONE NEVER SPAWNED ──────────────────────────────────
  *
- * H5: this table's one entry (degradation-watch, applicable only to the now-removed 'bash' route)
- * was removed along with that route — see the REGISTRY comment above. The mechanism itself stays:
- * an empty table costs nothing (skipReason below returns null immediately for every policy, so every
- * currently-registered policy is consulted exactly as if this file did not exist), and it is the
- * correct extension point for a future policy that only applies to SOME invocations of its event.
+ * Write-policy applicability stays unchanged; the isolated managed-store route uses
+ * exact canonical ownership before consulting its mandatory policy.
  */
 /**
  * Resolved once per invocation by the runtime block below; null means no bash on this host.
@@ -296,10 +261,30 @@ if (isMain()) {
   const payload = normalizePayloadText(readPayload());
   const shape = classifyPayload(payload);
   const session = sessionOf(payload) || (shape.truncated ? shape.session : '');
+  if (EVENT === 'managed-store') {
+    const state = process.env.RUVNET_BRAIN_STATE_DIR || path.join(os.homedir(), '.config', 'ruvnet-brain');
+    if (process.env.RUVNET_BRAIN_OFF === '1') process.exit(ALLOW);
+    try { fs.statSync(path.join(state, 'brain-off')); process.exit(ALLOW); }
+    catch (error) { if (!['ENOENT', 'ENOTDIR'].includes(error.code)) process.exit(ALLOW); }
+    const deadlineAt = Math.min(started + (Number(process.env.RUVNET_DECISION_BUDGET_MS) || DEFAULT_BUDGET_MS), Number(process.env.RUVNET_DECISION_DEADLINE) || Infinity);
+    const event = parsed(payload), cwd = event.cwd || process.cwd();
+    const targets = knownRawStoreWrites(commandOf(event), { cwd, home: process.env.HOME || os.homedir() });
+    if (!targets.length) process.exit(ALLOW);
+    let known = false;
+    try { const store = resolveProjectStoreGuard({ projectDir: cwd }).canonicalAgentDbPath;
+      known = targets.some(file => fs.realpathSync(file) === fs.realpathSync(store)); }
+    catch { try { known = targets.includes(path.join(cwd, '.swarm/memory.db')) && fs.lstatSync(path.join(cwd, '.swarm/memory.db')).isFile(); } catch {} }
+    if (!known) process.exit(ALLOW);
+    let result;
+    try { const policy = await Promise.race([import('./managed-store-write-policy.mjs'),
+      new Promise((_, reject) => setTimeout(() => reject(Error('policy deadline')), Math.max(1, deadlineAt - Date.now())))]);
+      result = policy.evaluateManagedStoreWrite(event, { deadlineAt }); }
+    catch { result = { decision: 'deny', reason: 'Raw writes to the canonical Ruflo-managed store are refused: managed-write policy unavailable.' }; }
+    if (result.decision === 'deny') { process.stderr.write(result.reason + '\n'); process.exit(REFUSE); }
+    process.exit(ALLOW);
+  }
   const selected = policiesFor(EVENT);
-  // An unknown event is not an occasion to refuse anything. Same rule as unprompted-runtime's
-  // "never speak on a guess", pointed at the other decision. 'write' is the only registered route
-  // (H5 removed the dead 'bash' one — see the REGISTRY comment above), so it is the only exception.
+  // Unknown routes are not policy decisions. The mandatory shell route returned above.
   if (!selected.length && EVENT !== 'write') process.exit(ALLOW);
 
   const budgetMs = Number(process.env.RUVNET_DECISION_BUDGET_MS) || DEFAULT_BUDGET_MS;

@@ -16,7 +16,7 @@
 //                 stated reason, never a number that reads like a measurement
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -26,7 +26,7 @@ import {
   PRECISION_TARGET, MIN_PRECISION_SAMPLES,
   MAX_ID, MAX_PROJECT, MAX_SEVERITY, MAX_HASH, MAX_RECORD_BYTES,
   record, loadOutcomes, outcomesFor, shouldStillOffer, precision, summarize,
-  stateHashOf, weightClass,
+  stateHashOf, weightClass, claimOffer, releaseClaim,
 } from '../../scripts/advocacy-outcomes.mjs';
 
 const MODULE = fileURLToPath(new URL('../../scripts/advocacy-outcomes.mjs', import.meta.url));
@@ -93,8 +93,8 @@ describe('low/numeric — dismissal suppresses re-offering, and the budget is ex
     // Asserted against the exported constants so the test cannot drift away from the policy it
     // documents — if someone retunes the budget, this reads the new number and still checks the edge.
     const id = 'repair:memory-index';
-    const budget = DISMISSAL_BUDGET.high;
-    expect(budget).toBe(3);                       // and the number itself is pinned, deliberately
+    const budget = Math.min(DISMISSAL_BUDGET.high, HARD_DISMISSAL_CAP);
+    expect(budget).toBe(2);                       // and the number itself is pinned, deliberately
     for (let i = 1; i < budget; i++) {
       put(id, ACTIONS.DISMISSED, 1, { severity: 'IMPORTANT' });
       expect(shouldStillOffer(id, { file, severity: 'IMPORTANT' }),
@@ -160,7 +160,8 @@ describe('numeric — THE ASYMMETRY: a dismissal is evidence about FIT, not abou
     const after = stateHashOf([{ observed: 'integrity_check: 4 corrupt indexes' }]);
     expect(before).not.toBe(after);
 
-    put(grave, ACTIONS.DISMISSED, DISMISSAL_BUDGET.high, { severity: 'IMPORTANT', stateHash: before });
+    put(grave, ACTIONS.DISMISSED, 1, { severity: 'IMPORTANT', stateHash: before });
+    put(grave, ACTIONS.IGNORED, 10, { severity: 'IMPORTANT', stateHash: before });
     put(nag, ACTIONS.DISMISSED, DISMISSAL_BUDGET.normal, { severity: 'SUGGESTED', stateHash: before });
 
     expect(shouldStillOffer(grave, { file, severity: 'IMPORTANT', stateHash: before }),
@@ -181,13 +182,13 @@ describe('numeric — THE ASYMMETRY: a dismissal is evidence about FIT, not abou
     expect(shouldStillOffer(id, { file, severity: 'IMPORTANT', stateHash: null })).toBe(false);
   });
 
-  it('the hard cap outranks severity: after five refusals, nothing re-fires on any evidence', () => {
+  it('the hard cap outranks severity: after two refusals, nothing re-fires on any evidence', () => {
     const id = 'repair:memory-index';
     for (let i = 0; i < HARD_DISMISSAL_CAP; i++) {
       put(id, ACTIONS.DISMISSED, 1, { severity: 'IMPORTANT', stateHash: `state-${i}` });
     }
     expect(shouldStillOffer(id, { file, severity: 'IMPORTANT', stateHash: 'state-brand-new' }),
-      'at five explicit refusals we are wrong about the user, not about the machine').toBe(false);
+      'at two explicit refusals we are wrong about the user, not about the machine').toBe(false);
   });
 
   it('a permanent silence is honoured in one action, at every severity, with no override', () => {
@@ -524,4 +525,86 @@ describe('high — concurrent writers lose nothing', () => {
     const got = JSON.parse(fs.readFileSync(arrayFile, 'utf8'));
     expect(got.length, 'the unlocked read-modify-write shape MUST lose records here — if it does not, this harness is blind and the test above proves nothing').toBeLessThan(8);
   }, 60_000);
+});
+
+
+describe('P037/P075 durable two-decline boundary', () => {
+  it('two explicit declines override severity, changed state and prior applied credit', () => {
+    expect(HARD_DISMISSAL_CAP).toBe(2);
+    put('repair:two-declines', ACTIONS.OFFERED, 1, { severity: 'IMPORTANT', stateHash: 'old' });
+    put('repair:two-declines', ACTIONS.APPLIED, 5, { severity: 'IMPORTANT' });
+    put('repair:two-declines', ACTIONS.DISMISSED, 2, { severity: 'IMPORTANT', stateHash: 'old' });
+    for (const stateHash of ['old', 'changed']) {
+      expect(shouldStillOffer('repair:two-declines', { file, severity: 'IMPORTANT', stateHash })).toBe(false);
+    }
+    const restart = spawnSync(process.execPath, ['--input-type=module', '-e',
+      `import {shouldStillOffer} from ${JSON.stringify(MODULE)};console.log(shouldStillOffer('repair:two-declines',{file:process.argv[1],severity:'IMPORTANT',stateHash:'changed'}));`, file], { encoding: 'utf8' });
+    expect(restart.status).toBe(0);
+    expect(restart.stdout.trim()).toBe('false');
+    put('repair:two-declines', ACTIONS.RESET);
+    expect(shouldStillOffer('repair:two-declines', { file, severity: 'IMPORTANT', stateHash: 'changed' })).toBe(true);
+  });
+});
+
+
+describe('P037 suggestions require a new observed state', () => {
+  it('durably suppresses delivered unchanged or unknown state across restart and honors explicit reset', () => {
+    const id = 'recommend:state-probe';
+    put(id, ACTIONS.OFFERED, 1, { stateHash: 'observed-A' });
+    expect(shouldStillOffer(id, { file, stateHash: 'observed-A' })).toBe(false);
+    expect(shouldStillOffer(id, { file, stateHash: null })).toBe(false);
+    expect(shouldStillOffer(id, { file, stateHash: 'observed-B' })).toBe(true);
+    const restart = spawnSync(process.execPath, ['--input-type=module', '-e',
+      `import {shouldStillOffer} from ${JSON.stringify(MODULE)};console.log(shouldStillOffer('recommend:state-probe',{file:process.argv[1],stateHash:'observed-A'}));`, file], { encoding: 'utf8' });
+    expect(restart.status).toBe(0);
+    expect(restart.stdout.trim()).toBe('false');
+    put(id, ACTIONS.RESET);
+    expect(shouldStillOffer(id, { file, stateHash: 'observed-A' })).toBe(true);
+  });
+});
+
+
+describe('P037 strict delivery claims', () => {
+  it('fails silent on unavailable storage and expired unknown ownership until explicit recovery', () => {
+    const blocked = path.join(tmp, 'not-a-directory'); fs.writeFileSync(blocked, 'blocked');
+    expect(claimOffer('strict-probe', { dir: path.join(blocked, 'claims'), strict: true })).toBe(false);
+    const claims = path.join(tmp, 'strict-claims');
+    const owned=claimOffer('strict-probe', { dir: claims, now: 1000, strict: true, ownership: true });
+    expect(owned.ownerToken).toBeTypeOf('string');
+    expect(claimOffer('strict-probe', { dir: claims, now: 100000, ttlMs: 1, strict: true })).toBe(false);
+    expect(releaseClaim('strict-probe', { dir: claims, ownership: owned })).toBe(true);
+    expect(claimOffer('strict-probe', { dir: claims, strict: true })).toBe(true);
+  });
+});
+
+
+it('P037 explicit RESET recovers an unknown claim but fences its old ownership receipt', () => {
+  const dir = path.join(path.dirname(file), 'offer-claims');
+  const stale=claimOffer('reset-delivery', { dir, strict: true, ownership: true });
+  const claimFile=fs.readdirSync(dir).find(f=>f.endsWith('.claim'));
+  fs.writeFileSync(path.join(dir,claimFile),'{unknown');
+  expect(record({id:'reset-delivery',action:ACTIONS.RESET},{file}).ok).toBe(true);
+  const successor=claimOffer('reset-delivery', { dir, strict: true, ownership: true });
+  expect(successor.ownerToken).toBeTypeOf('string');
+  expect(releaseClaim('reset-delivery', {dir,ownership:stale})).toBe(false);
+  expect(record({id:'reset-delivery',action:ACTIONS.OFFERED},{file,ownership:stale}).ok).toBe(false);
+  expect(releaseClaim('reset-delivery', {dir,ownership:successor})).toBe(true);
+});
+
+it('P037 RESET refuses a live owner without recording a false reset or removing its claim', () => {
+  const dir=path.join(path.dirname(file),'offer-claims');
+  const owned=claimOffer('live-reset',{dir,strict:true,ownership:true});
+  const result=record({id:'live-reset',action:ACTIONS.RESET},{file,resetWaitMs:0});
+  expect(result.ok).toBe(false);expect(result.reason).toBe('RESET_BUSY_UNCOMMITTED');
+  expect(loadOutcomes(file).some(r=>r.action===ACTIONS.RESET)).toBe(false);
+  expect(releaseClaim('live-reset',{dir,ownership:owned})).toBe(true);
+  expect(record({id:'live-reset',action:ACTIONS.RESET},{file}).ok).toBe(true);
+});
+
+it('P037 explicit RESET recovers a genuinely terminated owned process claim', () => {
+  const child=spawnSync(process.execPath,['--input-type=module','-e',
+    `import {claimOffer} from ${JSON.stringify(MODULE)};console.log(JSON.stringify(claimOffer('dead-reset',{dir:process.argv[1],strict:true,ownership:true})));`,
+    path.join(path.dirname(file),'offer-claims')],{encoding:'utf8'});
+  expect(child.status).toBe(0);expect(JSON.parse(child.stdout).ownerToken).toBeTypeOf('string');
+  expect(record({id:'dead-reset',action:ACTIONS.RESET},{file}).ok).toBe(true);
 });

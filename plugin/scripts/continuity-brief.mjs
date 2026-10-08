@@ -79,17 +79,66 @@ export const oneLine = (s, n = 180) => {
   return v.length > n ? `${v.slice(0, n - 1)}…` : v;
 };
 
-/** Where this machine records the explicit events its owner made (outside the repo, so a clone cannot forge it). */
-export function ownedLedgerFile({ projectRoot, env = process.env, home = os.homedir() }) {
-  let real = projectRoot;
-  try { real = fs.realpathSync.native(projectRoot); } catch { /* absent: hash the spelling */ }
-  const brainHome = env.RUVNET_BRAIN_HOME || path.join(home, '.cache', 'ruvnet-brain');
-  return path.join(brainHome, OWNED_DIR, `${crypto.createHash('sha256').update(real).digest('hex').slice(0, 16)}.jsonl`);
+/** Ownership needs confirmed non-repository classification, never a swallowed Git error. */
+function ledgerOutsideGit(directory, options) {
+  checkDeadline(options);
+  try {
+    // Git can report "not a repository" for corrupt .git metadata too. That is
+    // UNKNOWN ownership, not an outside-directory positive.
+    for (let at = directory;; at = path.dirname(at)) {
+      try { fs.lstatSync(path.join(at, '.git')); return false; }
+      catch (e) { if (e.code !== 'ENOENT') return false; }
+      if (['HEAD', 'objects', 'refs'].every(name => fs.existsSync(path.join(at, name)))) return false;
+      if (path.dirname(at) === at) break;
+    }
+    execFileSync('git', ['rev-parse', '--is-inside-work-tree'], {
+      cwd: directory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, LC_ALL: 'C', LANG: 'C' },
+      timeout: Math.max(1, Math.floor(Math.min(2000, (options.deadlineAt ?? Infinity) - Date.now()))), killSignal: 'SIGKILL',
+    }).trim();
+    checkDeadline(options);
+    // Success can mean Git resolved an external GIT_DIR/working tree. Neither
+    // true nor false establishes the ordinary non-repository ownership case.
+    return false;
+  } catch (error) {
+    checkDeadline(options);
+    return error.status === 128 && !error.signal
+      && /^fatal: not a git repository \(or any of the parent directories\): \.git\s*$/.test(String(error.stderr || ''));
+  }
 }
+
+/** Where this machine records the explicit events its owner made (outside the repo, so a clone cannot forge it). */
+export function ownedLedgerFile({ projectRoot, checkoutRoot = projectRoot, env = process.env, home = os.homedir(), deadlineAt = Infinity, signal }) {
+  try {
+    const primary = fs.realpathSync.native(projectRoot);
+    const checkout = fs.realpathSync.native(checkoutRoot);
+    const brainHome = env.RUVNET_BRAIN_HOME || path.join(home, '.cache', 'ruvnet-brain');
+    const candidate = path.join(brainHome, OWNED_DIR, `${crypto.createHash('sha256').update(primary).digest('hex').slice(0, 16)}.jsonl`);
+    let ancestor = candidate; const tail = [];
+    for (;;) {
+      try { fs.lstatSync(ancestor); break; }
+      catch (e) { if (e.code !== 'ENOENT') return null; tail.unshift(path.basename(ancestor)); ancestor = path.dirname(ancestor); }
+    }
+    const resolved = path.join(fs.realpathSync.native(ancestor), ...tail);
+    const within = root => { const relative = path.relative(root, resolved); return relative === '' || (!relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative)); };
+    if (within(primary) || within(checkout)) return null;
+    // A configured/symlinked ledger in another actual checkout is still project-controlled.
+    const parent = fs.statSync(ancestor).isDirectory() ? fs.realpathSync.native(ancestor) : path.dirname(resolved);
+    if (!ledgerOutsideGit(parent, { deadlineAt, signal })) return null;
+    if (!tail.length) { const st = fs.lstatSync(candidate); if (!st.isFile() || st.isSymbolicLink() || st.nlink !== 1) return null; }
+    return resolved;
+  } catch (error) { checkDeadline({ deadlineAt, signal }); return null; }
+}
+
 function readOwned(file) {
   const owned = new Map();
   let text = '';
-  try { text = fs.readFileSync(file, 'utf8'); } catch { return owned; }
+  try {
+    const st = fs.lstatSync(file);
+    if (!st.isFile() || st.isSymbolicLink() || st.nlink !== 1 || typeof process.getuid !== 'function'
+      || st.uid !== process.getuid() || (st.mode & 0o077) !== 0) return owned;
+    text = fs.readFileSync(file, 'utf8');
+  } catch { return owned; }
   for (const line of text.split('\n')) {
     try { const r = JSON.parse(line); if (typeof r?.key === 'string' && typeof r?.digest === 'string') owned.set(r.key, r.digest); } catch { /* torn line */ }
   }
@@ -194,7 +243,7 @@ export function buildBrief({ projectDir, env = process.env, home = os.homedir(),
   ];
   // A lesson is the OWNER'S RULE only when this machine's ownership ledger (outside the repo) holds its key
   // AND the digest of the exact bytes now in the store. Everything else is project data, fenced below.
-  const owned = readOwned(ownedLedgerFile({ projectRoot: resolution.projectRoot, env, home }));
+  const owned = readOwned(ownedLedgerFile({ projectRoot: resolution.projectRoot, checkoutRoot: resolution.checkoutRoot, env, home, ...options }));
   const isOwned = (r) => r.event?.source === 'explicit' && owned.get(r.key) === digestCanonical(r.event);
   const lessons = of('lesson');
   const ruleLines = lessons.filter(isOwned).map((r) => `• ${oneLine(r.event.summary)} ${tag(r)}`);
@@ -312,7 +361,7 @@ export function recordExplicit({ projectDir, kind, text, owner, env = process.en
   const fresh = journal.record([event]);
   // The owner made this one on this machine: record its key and exact digest OUTSIDE the repo, so the brief
   // can tell it from a row a cloned repository shipped in its own .swarm/memory.db.
-  if (fresh[0]) appendOwned(ownedLedgerFile({ projectRoot: resolution.projectRoot, env, home }), { key: fresh[0].key, digest: fresh[0].digest, kind });
+  if (fresh[0]) appendOwned(ownedLedgerFile({ projectRoot: resolution.projectRoot, checkoutRoot: resolution.checkoutRoot, env, home }), { key: fresh[0].key, digest: fresh[0].digest, kind });
   const drained = drain(journal, { budgetMs: 45_000, ...drainOptions });
   const key = fresh[0]?.key ?? null;
   const scan = journal.scan();

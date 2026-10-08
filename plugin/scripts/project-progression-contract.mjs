@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { artifactConflicts } from './project-progression-artifact-conflicts.mjs';
 
 export const PROJECT_PROGRESSION_SCHEMA = 'ruvnet-brain.project-progression';
 export const PROJECT_PROGRESSION_VERSION = 1;
@@ -362,7 +363,7 @@ function mergeHeads(heads) {
     });
   }
 
-  const conflicts = [];
+  const conflicts = artifactConflicts(heads);
   const state = {};
   for (const field of STATE_ARRAY_FIELDS.filter((field) => !['plan', 'resumeConflicts'].includes(field))) {
     state[field] = uniqueSorted(heads.flatMap((head) => head.completeProjectState[field]));

@@ -112,7 +112,7 @@ const OFFER_ACTIONS = new Set([ACTIONS.APPLIED, ACTIONS.DISMISSED, ACTIONS.IGNOR
  * is the single strongest evidence of fit we can observe, and a wanted card that fires again when
  * the state recurs is not a nag.
  *
- * HARD_DISMISSAL_CAP is the ceiling above severity: after five explicit refusals nothing re-fires,
+ * HARD_DISMISSAL_CAP is the ceiling above severity: after two explicit refusals nothing re-fires,
  * ever, at any severity, whatever the evidence says. At that point we are wrong about the user, not
  * about the machine — and ADR-028's own anti-goal list puts "interruption without an off switch"
  * beside nagging.
@@ -120,7 +120,7 @@ const OFFER_ACTIONS = new Set([ACTIONS.APPLIED, ACTIONS.DISMISSED, ACTIONS.IGNOR
 export const DISMISSAL_BUDGET = Object.freeze({ normal: 1, high: 3 });
 export const IGNORE_WEIGHT = 0.2;
 export const APPLIED_CREDIT = 1;
-export const HARD_DISMISSAL_CAP = 5;
+export const HARD_DISMISSAL_CAP = 2;
 
 /** ADR-028's stated target and the sample floor below which reporting against it would be noise. */
 export const PRECISION_TARGET = 0.60;
@@ -309,7 +309,7 @@ function appendLine(file, row) {
  */
 const UNDER_TEST = !!(process.env.VITEST || process.env.VITEST_WORKER_ID);
 
-export function record(spec, { file = OUTCOMES_PATH } = {}) {
+export function record(spec, { file = OUTCOMES_PATH, ownership = null, resetWaitMs = 2000 } = {}) {
   if (UNDER_TEST && file === OUTCOMES_PATH && !process.env.RUVNET_ADVOCACY_OUTCOMES) {
     throw new Error(
       'advocacy-outcomes.record() refused: a test tried to write to the REAL user ledger at '
@@ -345,7 +345,11 @@ export function record(spec, { file = OUTCOMES_PATH } = {}) {
     scope: scope ?? null,
   };
 
+  let resetOwnership;
+  const claimDir = path.join(path.dirname(file), 'offer-claims');
   try {
+    if (action === ACTIONS.RESET) resetOwnership = acquireResetOwnership(id, claimDir, resetWaitMs);
+    if (action === ACTIONS.OFFERED && ownership && !ownsClaim(id, ownership, claimDir)) throw new Error('delivery ownership lost');
     appendLine(file, row);
     return { ok: true, file, row };
   } catch (e) {
@@ -353,6 +357,11 @@ export function record(spec, { file = OUTCOMES_PATH } = {}) {
     // ENOSPC/EACCES/EROFS is the environment. Both arrive here as a receipt so the caller can decide
     // how loud to be, and the reason is preserved rather than flattened to a boolean.
     return { ok: false, reason: e.code || e.message, row };
+  } finally {
+    if (resetOwnership) {
+      releaseClaim(id, { dir: claimDir, ownership: resetOwnership.claim });
+      releaseClaim(`reset:${id}`, { dir: claimDir, ownership: resetOwnership.guard });
+    }
   }
 }
 
@@ -456,6 +465,7 @@ export function outcomesFor(id, { file = OUTCOMES_PATH, all = null, project = nu
     lastAt: last?.at ?? null,
     lastSeverity: [...offers].reverse().find((r) => r.severity)?.severity ?? null,
     lastDismissal: dismissals.length ? dismissals[dismissals.length - 1] : null,
+    lastOffered: [...recs].reverse().find((r) => r.action === ACTIONS.OFFERED) ?? null,
   };
 }
 
@@ -476,7 +486,7 @@ export function outcomesFor(id, { file = OUTCOMES_PATH, all = null, project = nu
  *      important enough to argue past an explicit permanent mute does not exist; that argument is
  *      what turns a notification system into spam.
  *   3. Budget by severity class → the asymmetry. A nag dies on one dismissal; a high-severity
- *      finding needs three, so a distracted click cannot bury a corrupt database.
+ *      finding has a larger weighted budget, bounded by two explicit declines.
  *   4. State-change reprieve, HIGH SEVERITY ONLY. New evidence re-opens a high-severity question,
  *      because the underlying risk genuinely changed. It does NOT re-open a suggestion: for a nag, a
  *      changed number is not new information worth interrupting a person for, and granting it a
@@ -492,7 +502,10 @@ export function shouldStillOffer(id, {
   }
   const o = outcomesFor(id, { file, all: history });
 
-  if (o.silencedForever) return false;
+  if (o.silencedForever || o.dismissed >= HARD_DISMISSAL_CAP) return false;
+  // Delivered suggestions require affirmative new observation evidence. liveRecords
+  // already applies explicit RESET, so resetting also permits a fresh first offer.
+  if (o.lastOffered && (!stateHash || !o.lastOffered.stateHash || stateHash === o.lastOffered.stateHash)) return false;
   if (!o.offered) return true;
 
   // Severity is DERIVED per offer from evidence measured on this machine (ADR-028: "Severity is
@@ -507,7 +520,6 @@ export function shouldStillOffer(id, {
   const spend = Math.max(0, o.dismissed + (IGNORE_WEIGHT * o.ignored) - (APPLIED_CREDIT * o.applied));
   if (spend < budget) return true;
 
-  if (o.dismissed >= HARD_DISMISSAL_CAP) return false;
   if (cls === 'high' && stateHash && o.lastDismissal?.stateHash && stateHash !== o.lastDismissal.stateHash) {
     return true;
   }
@@ -539,13 +551,13 @@ export function shouldStillOffer(id, {
  *
  * Returns true if THIS caller owns the right to offer. The caller then record()s the `offered` row.
  */
-export function claimOffer(id, { dir = null, ttlMs = 60_000, now = Date.now() } = {}) {
+export function claimOffer(id, { dir = null, ttlMs = 60_000, now = Date.now(), strict = false, ownership = false } = {}) {
   if (!id || typeof id !== 'string') return false;
   const base = dir || path.join(path.dirname(OUTCOMES_PATH), 'offer-claims');
   const key = crypto.createHash('sha256').update(id).digest('hex').slice(0, 24);
   const file = path.join(base, `${key}.claim`);
 
-  try { fs.mkdirSync(base, { recursive: true }); } catch { return true; }   // cannot claim ⇒ fail toward speaking
+  try { fs.mkdirSync(base, { recursive: true }); } catch { return !strict; }   // cannot claim ⇒ fail toward speaking
 
   // WRITE-THEN-LINK, and the reason is a bug this file's own concurrency test caught.
   //
@@ -559,25 +571,31 @@ export function claimOffer(id, { dir = null, ttlMs = 60_000, now = Date.now() } 
   // claim name becomes visible it is already complete and parseable. link() itself fails with EEXIST
   // when the target exists, giving the same atomic exactly-one-winner guarantee — with no torn state
   // for the losers to misread.
+  const owner = { id, pid: process.pid, ownerToken: crypto.randomUUID(), strict };
   const take = () => {
-    const tmp = `${file}.${process.pid}.${Math.abs(now % 1e9)}.tmp`;
+    const tmp = `${file}.${process.pid}.${owner.ownerToken}.tmp`;
     try {
-      fs.writeFileSync(tmp, JSON.stringify({ id, at: new Date(now).toISOString(), pid: process.pid }));
+      fs.writeFileSync(tmp, JSON.stringify({ ...owner, at: new Date(now).toISOString() }));
       try {
         fs.linkSync(tmp, file);   // ATOMIC create-if-absent, content already durable
-        return true;
+        return ownership ? owner : true;
       } catch (e) {
-        if (e.code !== 'EEXIST') return true;   // an unexpected FS error must not silence us
+        if (e.code !== 'EEXIST') return !strict;   // an unexpected FS error must not silence us
         return null;                            // genuinely held — staleness decided below
       } finally {
         try { fs.unlinkSync(tmp); } catch { /* best effort */ }
       }
-    } catch { return true; }   // cannot even stage a claim ⇒ fail toward speaking
+    } catch { return !strict; }   // cannot even stage a claim ⇒ fail toward speaking
   };
 
   const first = take();
   if (first !== null) return first;
 
+  // Strict delivery cannot assert ownership from stale/unknown claims.
+  if (strict) return false;
+  try { if (JSON.parse(fs.readFileSync(file, 'utf8')).strict) return false; } catch { /* legacy unknown */ }
+
+  // Legacy caller recovery only; this takeover is not strict ownership proof.
   // Someone holds it. Stale?
   let heldAt = 0;
   try { heldAt = Date.parse(JSON.parse(fs.readFileSync(file, 'utf8')).at) || 0; } catch { heldAt = 0; }
@@ -596,11 +614,53 @@ export function claimOffer(id, { dir = null, ttlMs = 60_000, now = Date.now() } 
 }
 
 /** Release a claim once the offer is resolved (applied/dismissed), so a later dormancy can re-offer. */
-export function releaseClaim(id, { dir = null } = {}) {
-  if (!id || typeof id !== 'string') return false;
+function claimPath(id, dir) {
   const base = dir || path.join(path.dirname(OUTCOMES_PATH), 'offer-claims');
   const key = crypto.createHash('sha256').update(id).digest('hex').slice(0, 24);
-  try { fs.unlinkSync(path.join(base, `${key}.claim`)); return true; } catch { return false; }
+  return path.join(base, `${key}.claim`);
+}
+function ownsClaim(id, ownership, dir) {
+  try {
+    const held = JSON.parse(fs.readFileSync(claimPath(id, dir), 'utf8'));
+    return !!ownership && held.id === id && ownership.id === id && held.pid === ownership.pid
+      && typeof ownership.ownerToken === 'string' && held.ownerToken === ownership.ownerToken;
+  } catch { return false; }
+}
+export function releaseClaim(id, { dir = null, ownership = null } = {}) {
+  if (!id || typeof id !== 'string') return false;
+  const file = claimPath(id, dir);
+  try {
+    if (ownership) { if (!ownsClaim(id, ownership, dir)) return false; }
+    else {
+      const held = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (held.strict || held.pid !== process.pid) return false;
+    }
+    fs.unlinkSync(file); return true;
+  } catch { return false; }
+}
+/** Explicit RESET serializes with delivery; only its own claims are released. */
+function acquireResetOwnership(id, dir, waitMs) {
+  const guard = claimOffer(`reset:${id}`, { dir, strict: true, ownership: true });
+  if (!guard) throw new Error('RESET_BUSY_UNCOMMITTED');
+  const deadline = Date.now() + Math.max(0, Math.min(2000, Number(waitMs) || 0));
+  try {
+    for (;;) {
+      const claim = claimOffer(id, { dir, strict: true, ownership: true });
+      if (claim) return { guard, claim };
+      // The reset guard serializes explicit recovery. Never unlink a live owner.
+      let recoverable = false;
+      try {
+        const held = JSON.parse(fs.readFileSync(claimPath(id, dir), 'utf8'));
+        if (!Number.isInteger(held.pid) || held.pid <= 0) recoverable = true;
+        else { try { process.kill(held.pid, 0); } catch (e) { recoverable = e.code === 'ESRCH'; } }
+      } catch (e) { recoverable = e instanceof SyntaxError; }
+      if (recoverable) { try { fs.unlinkSync(claimPath(id, dir)); } catch { /* retry bounded */ } }
+      if (Date.now() >= deadline) throw new Error('RESET_BUSY_UNCOMMITTED');
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
+    }
+  } catch (e) {
+    releaseClaim(`reset:${id}`, { dir, ownership: guard }); throw e;
+  }
 }
 
 /**

@@ -15,13 +15,14 @@
 // below the 1,024-vector HNSW threshold, so the index audit PASSes). NO NETWORK: assembleBundle is
 // offline by construction (orgRepoCount is called with a disabled live probe — proven below), and
 // the only subprocess is the real local `zip`/`unzip` this repo's own build already depends on.
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { assembleBundle } from '../../scripts/build-bundle.mjs';
-import { SELECTION_FILE, validateSelectionReceipt } from '../../scripts/public-inputs.mjs';
+import { assembleBundle, projectStoreViews } from '../../scripts/build-bundle.mjs';
+import { SELECTION_FILE, validateSelectionReceipt, materializePublicInputs } from '../../scripts/public-inputs.mjs';
 import { validateCoverageDirectory } from '../../plugin/scripts/coverage-integrity.mjs';
+import { brainCensus } from '../../scripts/claims-verify.mjs';
 import { extractZip } from '../../kb/zip-extract.mjs';
 import {
   SEED_IDENTITY, buildCorpus, buildRuntimeRoot, commitFor, readJson, sha256File, tempDir, treeIdentity,
@@ -55,6 +56,111 @@ async function writeStandaloneKb(runtimeRoot, stores) {
   return kb;
 }
 
+describe('P095 — public artifact provenance derives exclusively from selected ledger rows', () => {
+  it.each([{}, { sourceRepo: 'https://github.com/ruvnet/alpha', sourceDescribe: 'ledger-tag' }])('retains ledger provenance and ignores updater substitutions', (provenance) => {
+    const generation = { file: 'alpha.big.rvf', sha256: 'a'.repeat(64), bytes: 12, model: 'fixture-model', dimensions: 3,
+      sourceCommit: commitFor('alpha'), builtUtc: '2026-09-13T00:00:00.000Z', ...provenance };
+    const result = projectStoreViews({ selectedResults: [{ name: 'alpha', kind: 'repository', generation }], identity: IDENTITY,
+      updaterConfig: { stores: { alpha: { sourceRepo: 'https://example.invalid/forged-updater', sourceDescribe: 'forged-tag' } } } });
+    for (const field of ['sourceRepo', 'sourceDescribe']) {
+      expect(result.ledger.stores.alpha[field]).toBe(generation[field] ?? null);
+      expect(result.source.stores.alpha[field]).toBe(generation[field] ?? null);
+    }
+  });
+
+  it.each(['read', 'copy', 'archive'])('refuses a controlled idmap change at the %s seam instead of publishing mixed census bytes', async (seam) => {
+    const runtimeRoot = buildRuntimeRoot(dirs); const corpusDir = await buildCorpus(dirs, { runtimeRoot, stores: ['alpha'] });
+    const idmap = path.join(corpusDir, 'alpha.big.rvf.idmap.json'); const outDir = outDirFor();
+    const originalRead = fs.readFileSync.bind(fs); const originalCopy = fs.copyFileSync.bind(fs); const originalWrite = fs.writeFileSync.bind(fs);
+    const changed = JSON.parse(originalRead(idmap, 'utf8'));
+    const dropped = Object.keys(changed.idToLabel).at(-1); const label = changed.idToLabel[dropped];
+    delete changed.idToLabel[dropped]; delete changed.labelToId[label];
+    const changedBytes = JSON.stringify(changed); let interleaved = false;
+    const hook = seam === 'read' ? vi.spyOn(fs, 'readFileSync').mockImplementation((file, ...args) => {
+      const bytes = originalRead(file, ...args);
+      if (String(file) === idmap && !interleaved) { interleaved = true; fs.writeFileSync(idmap, changedBytes); }
+      return bytes;
+    }) : seam === 'copy' ? vi.spyOn(fs, 'copyFileSync').mockImplementation((from, to, ...args) => {
+      if (String(from) === idmap && !interleaved) { interleaved = true; fs.writeFileSync(idmap, changedBytes); }
+      return originalCopy(from, to, ...args);
+    }) : vi.spyOn(fs, 'writeFileSync').mockImplementation((file, ...args) => {
+      const result = originalWrite(file, ...args);
+      if (String(file) === path.join(outDir, 'README.md') && !interleaved) {
+        interleaved = true; originalWrite(path.join(outDir, path.basename(idmap)), changedBytes);
+      }
+      return result;
+    });
+    try {
+      await expect(assembleBundle({ corpusDir, runtimeRoot, outDir, identity: IDENTITY })).rejects.toThrow(/census idmap.*changed/i);
+      expect(interleaved).toBe(true);
+      expect(fs.existsSync(path.join(path.dirname(outDir), 'ruvnet-brain.zip'))).toBe(false);
+    } finally { hook.mockRestore(); }
+  });
+
+  it.each(['missing', 'unreadable', 'invalid'])('refuses %s canonical census idmap before producing a bundle', async (kind) => {
+    const runtimeRoot = buildRuntimeRoot(dirs); const corpusDir = await buildCorpus(dirs, { runtimeRoot, stores: ['alpha'], seal: false });
+    const file = path.join(corpusDir, 'alpha.big.rvf.idmap.json');
+    if (kind === 'missing') fs.rmSync(file); else fs.writeFileSync(file, kind === 'unreadable' ? '{' : JSON.stringify({ idToLabel: null }));
+    materializePublicInputs({ builderRoot: runtimeRoot, outDir: corpusDir });
+    const outDir = outDirFor();
+    await expect(assembleBundle({ corpusDir, runtimeRoot, outDir, identity: IDENTITY })).rejects.toThrow(/idmap/i);
+    if (kind === 'missing') expect(fs.existsSync(file)).toBe(false); // A refusal must not repair its input via RVF open.
+    expect(fs.existsSync(path.join(path.dirname(outDir), 'ruvnet-brain.zip'))).toBe(false);
+  });
+
+  it('extracts the actual private candidate archive and binds provenance and census to those exact bytes', async () => {
+    const runtimeRoot = buildRuntimeRoot(dirs);
+    const corpusDir = await buildCorpus(dirs, { runtimeRoot, stores: ['alpha', 'beta'], seal: false });
+    const ledgerFile = path.join(corpusDir, 'RVF-GENERATIONS.json'); const sourceFile = path.join(corpusDir, 'SOURCE.json');
+    const ledger = readJson(ledgerFile); const source = readJson(sourceFile);
+    for (const name of ['alpha', 'beta']) {
+      ledger.stores[name].sourceRepo = source.stores[name].sourceRepo;
+      ledger.stores[name].sourceDescribe = source.stores[name].sourceDescribe;
+      source.stores[name].sourceRepo = 'https://example.invalid/forged-updater'; source.stores[name].sourceDescribe = 'forged-tag';
+    }
+    fs.writeFileSync(ledgerFile, JSON.stringify(ledger)); fs.writeFileSync(sourceFile, JSON.stringify(source));
+    materializePublicInputs({ builderRoot: runtimeRoot, outDir: corpusDir });
+    const coverage = writeCoverage(runtimeRoot, corpusDir);
+    const result = await assembleBundle({ corpusDir, runtimeRoot, outDir: outDirFor(), identity: IDENTITY, seedIdentity: SEED_IDENTITY });
+    const extracted = tempDir(dirs, 'p095-extracted'); await extractZip(result.zipFile, extracted);
+    const actualSource = readJson(path.join(extracted, 'SOURCE.json'));
+    const actualLedger = readJson(path.join(extracted, 'RVF-GENERATIONS.json'));
+    const publicLedger = readJson(path.join(extracted, 'PUBLIC-RVF-GENERATIONS.json'));
+    const manifest = readJson(path.join(extracted, 'manifest.json'));
+    const actualCoverage = readJson(path.join(extracted, 'CORPUS-COVERAGE.json'));
+    const names = Object.keys(ledger.stores).sort();
+    expect(Object.keys(actualLedger.stores).sort()).toEqual(names);
+    expect(Object.keys(publicLedger.stores).sort()).toEqual(names);
+    expect(manifest.builtRepos.map(row => row.name).sort()).toEqual(names);
+    expect(manifest.coverage.built).toBe(names.length);
+    const artifactCensus = brainCensus(extracted, path.join(extracted, 'PRIVATE-STORES.json'));
+    expect(artifactCensus.publicStores).toBe(names.length);
+    expect(artifactCensus.builtStores).toBe(names.length);
+    expect(artifactCensus.chunks).toBe(manifest.builtRepos.reduce((sum, row) => sum + row.chunks, 0));
+    const readme = fs.readFileSync(path.join(extracted, 'README.md'), 'utf8');
+    expect(readme).toContain(`## Built repos (${names.length}/${manifest.coverage.catalogued})`);
+    for (const name of names) expect(readme).toContain(`- **${name}**`);
+    expect(actualCoverage.rows).toEqual(coverage.rows); expect(actualCoverage.totals).toEqual(coverage.totals);
+    for (const name of names) {
+      for (const field of ['sourceRepo', 'sourceDescribe', 'sourceCommit', 'builtUtc']) {
+        expect(actualLedger.stores[name][field]).toBe(ledger.stores[name][field] ?? null);
+        expect(actualSource.stores[name][field]).toBe(actualLedger.stores[name][field]);
+      }
+      expect(publicLedger.stores[name]).toEqual(actualLedger.stores[name]);
+      expect(sha256File(path.join(extracted, actualLedger.stores[name].file))).toBe(actualLedger.stores[name].sha256);
+      expect(manifest.builtRepos.find(row => row.name === name).builtFromSha).toBe(actualLedger.stores[name].sourceCommit);
+    }
+    expect(validateCoverageDirectory(extracted, { expectedVersion: IDENTITY.version, expectedSourceSnapshot: IDENTITY.sourceSnapshot }).valid).toBe(true);
+    if (process.env.RUVNET_P095_PROOF_DIR) {
+      const proof = process.env.RUVNET_P095_PROOF_DIR; fs.mkdirSync(proof, { recursive: true });
+      fs.copyFileSync(result.zipFile, path.join(proof, 'candidate.zip'));
+      for (const file of ['SOURCE.json', 'RVF-GENERATIONS.json', 'PUBLIC-RVF-GENERATIONS.json', 'CORPUS-COVERAGE.json', 'COVERAGE.json', 'manifest.json', 'ARCHIVE-MANIFEST.json', 'README.md']) fs.copyFileSync(path.join(extracted, file), path.join(proof, file));
+      fs.writeFileSync(path.join(proof, 'receipt.json'), JSON.stringify({ archiveSha256: sha256File(result.zipFile), selectedNames: names,
+        expectedGenerations: ledger.stores, census: manifest.coverage, artifactCensus, scope: 'private fixture candidate; not a published corpus' }, null, 2));
+    }
+  });
+});
+
 describe('assembleBundle — required proof 1: supplied corpus bytes win EXCLUSIVELY', () => {
   it('never falls back to a poisoned checkout copy of SOURCE.json, capability-cards.md, a primer, ruv-gists.sources.json, or concepts.sources.json', async () => {
     const runtimeRoot = buildRuntimeRoot(dirs, { prose: PROSE });
@@ -81,7 +187,7 @@ describe('assembleBundle — required proof 1: supplied corpus bytes win EXCLUSI
     const source = readJson(path.join(outDir, 'SOURCE.json'));
     expect(source.builder).toBe('rvf-kb-forge');
     expect(source.canonicalManifestUrl).toBe('https://example.invalid/manifest.json');
-    expect(source.stores.alpha.sourceRepo).toBe('https://github.com/ruvnet/alpha');
+    expect(source.stores.alpha.sourceRepo).toBeNull(); // Missing ledger provenance stays unknown despite an updater URL.
     expect(source.stores.alpha.sourceCommit).toBe(commitFor('alpha'));
     expect(JSON.stringify(source)).not.toMatch(/POISON/i);
     for (const [file, sealed] of [['capability-cards.md', PROSE.cards], ['alpha-primer.md', PROSE.primers.alpha]]) {

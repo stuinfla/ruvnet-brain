@@ -25,13 +25,16 @@
  *   raw bytes / invalid candidate on the advisory path → silently dropped (nothing reaches the user)
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { resolveProjectStore } from '../../plugin/scripts/project-store-resolver.mjs';
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const FIXTURE_PROJECT = resolveProjectStore({ projectDir: ROOT }).projectRoot;
 const RUNTIME = path.join(ROOT, 'plugin', 'scripts', 'unprompted-runtime.mjs');
 const LESSON_HOOKS = path.join(ROOT, 'plugin', 'scripts', 'lesson-hooks.sh');
 const HOOKS_JSON = path.join(ROOT, 'plugin', 'hooks', 'hooks.json');
@@ -286,10 +289,9 @@ describe('advocacy channel: the dial is enforced centrally on the candidate', ()
 // 3. DISMISSAL LEDGER — a dismissed finding is silent; a worse observation re-opens it.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════
 describe('advocacy channel: the DismissalLedger is enforced centrally, with the state-change reprieve', () => {
-  // A high-severity finding spends a budget of 3. Three dismissals against observation hashA → spent.
+  // Two explicit declines are an absolute durable answer, regardless of severity/state.
   const spent = () => writeLedger([
     { id: 'fixture-vector-cache', action: 'offered', severity: 'high', stateHash: 'hashA' },
-    { id: 'fixture-vector-cache', action: 'dismissed', severity: 'high', stateHash: 'hashA' },
     { id: 'fixture-vector-cache', action: 'dismissed', severity: 'high', stateHash: 'hashA' },
     { id: 'fixture-vector-cache', action: 'dismissed', severity: 'high', stateHash: 'hashA' },
   ]);
@@ -307,7 +309,7 @@ describe('advocacy channel: the DismissalLedger is enforced centrally, with the 
     expect(r.stdout).toBe('');
   });
 
-  it('TEETH: the SAME finding with a WORSE (changed) observationHash → re-offered (the reprieve fires)', () => {
+  it('TEETH: two declines stay silent even when the observation changes)', () => {
     const r = fireRuntime('UserPromptSubmit', {
       producers: seam(),
       env: {
@@ -317,8 +319,21 @@ describe('advocacy channel: the DismissalLedger is enforced centrally, with the 
       },
     });
     expect(r.code).toBe(0);
-    const parsed = JSON.parse(r.stdout);
-    expect(parsed.hookSpecificOutput.additionalContext).toContain('Vector Cache');
+    expect(r.stdout).toBe('');
+  });
+
+  it('before the two-decline cap, changed evidence may reopen an exhausted weighted budget', () => {
+    const history = writeLedger([
+      { id: 'fixture-vector-cache', action: 'offered', severity: 'high', stateHash: 'hashA' },
+      { id: 'fixture-vector-cache', action: 'dismissed', severity: 'high', stateHash: 'hashA' },
+      ...Array.from({ length: 10 }, () => ({ id: 'fixture-vector-cache', action: 'ignored', severity: 'high', stateHash: 'hashA' })),
+    ]);
+    const r = fireRuntime('UserPromptSubmit', { producers: seam(), env: {
+      CANDIDATE_LINE: advocacyCandidate({ observationHash: 'hashB' }),
+      RUVNET_SETTINGS_FILE: writeSettings('all'), RUVNET_ADVOCACY_OUTCOMES: history,
+    } });
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.stdout).hookSpecificOutput.additionalContext).toContain('Vector Cache');
   });
 
   it('an advocacy candidate with NO findingId is dropped (malformed → cannot be ledgered → silence)', () => {
@@ -342,14 +357,13 @@ describe('advocacy channel: the DismissalLedger is enforced centrally, with the 
 describe('lesson channel: the advocacy dial does NOT govern it (a ratified lesson is the user\'s own words)', () => {
   const realLessonProducer = [{ argv: ['/bin/bash', LESSON_HOOKS, 'UserPromptSubmit'], feedStdin: true }];
 
-  // A pure ADVISORY lesson (enforcement 'inject', not opted-in), universal (>=2 projects) so it speaks
-  // anywhere, at a UserPromptSubmit trigger.
+  // A pure ADVISORY lesson scoped to this exact canonical project identity.
   const advisoryLesson = {
     id: 'ADV-report-status-honestly',
     statement: 'Report status derived from a verifiable artifact, never asserted.',
     trigger: 'report-status', enforcement: 'inject', origin: 'user-stated', status: 'ratified',
     evidence: [{ observed: 'you said: prove it, do not claim it' }],
-    projects: ['alpha', 'beta', 'gamma'], repeatCount: 12,
+    projects: [FIXTURE_PROJECT], repeatCount: 12,
   };
   // A BLOCK lesson: user-stated, ratified, carries a check — and the opt-in file names its id.
   const blockLesson = {
@@ -358,7 +372,7 @@ describe('lesson channel: the advocacy dial does NOT govern it (a ratified lesso
     trigger: 'report-status', enforcement: 'block', origin: 'user-stated', status: 'ratified',
     check: 'a verification command ran against the real path',
     evidence: [{ observed: 'you said: the success check used a read-only connection' }],
-    projects: ['alpha', 'beta', 'gamma'], repeatCount: 25,
+    projects: [FIXTURE_PROJECT], repeatCount: 25,
   };
 
   function lessonEnv(lessons, { optIn = [], maxShows, gateState } = {}) {
@@ -430,7 +444,7 @@ describe('closed world, functionally: the built-in registry reaches the real pro
         statement: 'The built-in registry wires the real lesson producer, not a fixture.',
         trigger: 'report-status', enforcement: 'inject', origin: 'user-stated', status: 'ratified',
         evidence: [{ observed: 'you said: prove the wiring end to end' }],
-        projects: ['alpha', 'beta', 'gamma'], repeatCount: 9,
+        projects: [FIXTURE_PROJECT], repeatCount: 9,
       }],
     }));
     const r = fireRuntime('UserPromptSubmit', {
@@ -542,7 +556,7 @@ describe('closed world, functionally: the built-in registry reaches the real pro
         statement: 'Pass a memory-search query with its required query flag, not through help discovery.',
         trigger: 'assert-fact', enforcement: 'checklist', origin: 'user-stated', status: 'ratified',
         evidence: [{ observed: 'the corrected command form was independently learned twice' }],
-        projects: ['alpha', 'beta'], repeatCount: 4,
+        projects: [FIXTURE_PROJECT], repeatCount: 4,
       }],
     }));
 
@@ -806,3 +820,85 @@ describe('typed whole-block advisory admission', () => {
     expect(r.code).toBe(0);expect(JSON.parse(r.stdout).hookSpecificOutput.additionalContext).toBe(copy.trim());
   });
 });
+
+
+describe('P037 concurrent actual delivery ownership', () => {
+  it('concurrent sessions that all initially observe eligible state emit and record exactly once', async () => {
+    const count = 6;
+    const barrier = path.join(dir,'ready'); fs.mkdirSync(barrier);
+    const ledgerPath = path.join(dir,'concurrent-outcomes.jsonl');
+    const wrapper = path.join(dir,'observed-ledger.mjs');
+    const actual = new URL('../../plugin/scripts/advocacy-outcomes.mjs', import.meta.url).href;
+    fs.writeFileSync(wrapper, `export * from ${JSON.stringify(actual)};
+      import {shouldStillOffer as actualCheck} from ${JSON.stringify(actual)};
+      import fs from 'node:fs';import path from 'node:path';
+      let first=true;export function shouldStillOffer(...args){
+        const verdict=actualCheck(...args);
+        if(first){first=false;fs.writeFileSync(path.join(process.env.P037_BARRIER,String(process.pid)),'ready');
+          const deadline=Date.now()+10000;while(fs.readdirSync(process.env.P037_BARRIER).length<Number(process.env.P037_CHILDREN)){
+            if(Date.now()>deadline)throw new Error('concurrency barrier not reached');
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,5);}}
+        return verdict;}`);
+    const producers = seam('concurrent-emitter.sh');
+    const env = { ...process.env, RUVNET_UNPROMPTED_PRODUCERS: JSON.stringify(producers),
+      RUVNET_UNPROMPTED_TIMEOUT_MS:'20000', RUVNET_UNPROMPTED_ALLOW_TEST_TIMEOUT_OVERRIDE:'1',
+      RUVNET_SETTINGS_FILE:writeSettings('all'), RUVNET_ADVOCACY_OUTCOMES:ledgerPath,
+      RUVNET_ADVOCACY_OUTCOMES_MODULE:wrapper, CANDIDATE_LINE:advocacyCandidate({observationHash:'same-state'}),
+      P037_BARRIER:barrier, P037_CHILDREN:String(count) };
+    const results = await Promise.all(Array.from({length:count},(_,i)=>new Promise((resolve,reject)=>{
+      const child=spawn(process.execPath,[RUNTIME,'UserPromptSubmit'],{env});let stdout='',stderr='';
+      const timer=setTimeout(()=>{child.kill('SIGKILL');reject(new Error('runtime deadline'));},25000);
+      child.stdout.on('data',b=>stdout+=b);child.stderr.on('data',b=>stderr+=b);
+      child.on('error',reject);child.on('close',code=>{clearTimeout(timer);resolve({code,stdout,stderr});});
+      child.stdin.end(JSON.stringify({prompt:'a real concurrent prompt with sufficient task detail',session_id:'concurrent-'+i}));
+    })));
+    expect(fs.readdirSync(barrier)).toHaveLength(count);
+    expect(results.every(r=>r.code===0)).toBe(true);
+    expect(results.filter(r=>r.stdout.trim())).toHaveLength(1);
+    const rows=fs.readFileSync(ledgerPath,'utf8').trim().split('\n').map(JSON.parse);
+    expect(rows.filter(r=>r.action==='offered')).toHaveLength(1);
+  },30000);
+});
+
+it('P037 RESET serializes with a paused delivery and stale owner cleanup cannot remove its successor', async () => {
+  const actual = new URL('../../plugin/scripts/advocacy-outcomes.mjs', import.meta.url).href;
+  const ledgerPath=path.join(dir,'reset-overlap.jsonl');const wrapper=path.join(dir,'pause-owner.mjs');
+  fs.writeFileSync(wrapper,`export * from ${JSON.stringify(actual)};
+    import {shouldStillOffer as check,claimOffer as claim} from ${JSON.stringify(actual)};
+    import fs from 'node:fs';let calls=0;
+    export function claimOffer(...args){const owned=claim(...args);fs.writeFileSync(process.env.TOKEN_FILE,JSON.stringify(owned));return owned;}
+    export function shouldStillOffer(...args){const result=check(...args);if(++calls===2){
+      fs.writeFileSync(process.env.READY_FILE,'ready');const until=Date.now()+10000;
+      while(!fs.existsSync(process.env.GO_FILE)){if(Date.now()>until)throw Error('paused owner deadline');Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,5);}}return result;}`);
+  const producers=seam('reset-overlap-emitter.sh');const env={...process.env,RUVNET_UNPROMPTED_PRODUCERS:JSON.stringify(producers),
+    RUVNET_UNPROMPTED_TIMEOUT_MS:'25000',RUVNET_SETTINGS_FILE:writeSettings('all'),RUVNET_ADVOCACY_OUTCOMES:ledgerPath,
+    RUVNET_ADVOCACY_OUTCOMES_MODULE:wrapper,CANDIDATE_LINE:advocacyCandidate({observationHash:'unchanged-reset-state'})};
+  const children=[];
+  const start=(label,bin=process.execPath,args=[RUNTIME,'UserPromptSubmit'],extra={})=>{
+    const child=spawn(bin,args,{env:{...env,READY_FILE:path.join(dir,label+'.ready'),GO_FILE:path.join(dir,label+'.go'),TOKEN_FILE:path.join(dir,label+'.token'),...extra}});children.push(child);
+    let stdout='',stderr='';child.stdout.on('data',b=>stdout+=b);child.stderr.on('data',b=>stderr+=b);
+    const done=new Promise((resolve,reject)=>{child.on('error',reject);child.on('close',code=>resolve({code,stdout,stderr}));});
+    child.stdin.end(JSON.stringify({prompt:'review this legitimate detailed goal',session_id:label}));return {child,done};};
+  const wait=async file=>{const end=Date.now()+10000;while(!fs.existsSync(file)){if(Date.now()>end)throw Error('barrier absent '+file);await new Promise(r=>setTimeout(r,5));}};
+  try {
+    const a=start('owner-A');await wait(path.join(dir,'owner-A.ready'));
+    const resetScript=`import fs from 'node:fs';import {record,ACTIONS} from ${JSON.stringify(actual)};fs.writeFileSync(process.env.RESET_STARTED,'started');console.log(JSON.stringify(record({id:'fixture-vector-cache',action:ACTIONS.RESET},{file:process.env.RUVNET_ADVOCACY_OUTCOMES})));`;
+    const reset=start('reset',process.execPath,['--input-type=module','-e',resetScript],{RESET_STARTED:path.join(dir,'reset.started')});
+    await wait(path.join(dir,'reset.started'));const b=start('contender-B');
+    await new Promise(r=>setTimeout(r,150));fs.writeFileSync(path.join(dir,'owner-A.go'),'go');
+    const first=await a.done;const resetResult=await reset.done;expect(first.code).toBe(0);expect(JSON.parse(resetResult.stdout).ok).toBe(true);
+    fs.writeFileSync(path.join(dir,'contender-B.go'),'go');await b.done;
+    const beforeSuccessor=fs.readFileSync(ledgerPath,'utf8').trim().split('\n').map(JSON.parse);
+    const resetIndex=beforeSuccessor.findLastIndex(r=>r.action==='reset');
+    expect(beforeSuccessor.slice(resetIndex+1).filter(r=>r.action==='offered').length).toBeLessThanOrEqual(1);
+    const c=start('post-reset-C');await wait(path.join(dir,'post-reset-C.ready'));
+    const stale=JSON.parse(fs.readFileSync(path.join(dir,'owner-A.token'),'utf8'));
+    const ao=await import('../../plugin/scripts/advocacy-outcomes.mjs');
+    expect(ao.releaseClaim('fixture-vector-cache',{dir:path.join(dir,'offer-claims'),ownership:stale})).toBe(false);
+    expect(fs.readdirSync(path.join(dir,'offer-claims')).filter(f=>f.endsWith('.claim'))).toHaveLength(1);
+    fs.writeFileSync(path.join(dir,'post-reset-C.go'),'go');const successor=await c.done;expect(successor.code).toBe(0);
+    const rows=fs.readFileSync(ledgerPath,'utf8').trim().split('\n').map(JSON.parse);const lastReset=rows.findLastIndex(r=>r.action==='reset');
+    expect(lastReset).toBeGreaterThanOrEqual(0);expect(rows.slice(lastReset+1).filter(r=>r.action==='offered')).toHaveLength(1);
+    expect(fs.readdirSync(path.join(dir,'offer-claims')).filter(f=>f.endsWith('.claim'))).toHaveLength(0);
+  } finally {for(const child of children)if(child.exitCode===null)child.kill('SIGKILL');}
+},30000);

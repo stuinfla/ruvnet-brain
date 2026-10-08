@@ -141,6 +141,16 @@ describe('anticipate.sh — it delivers', () => {
     expect(stdout.trim().split('\n')).toHaveLength(1);
   });
 
+  it('P075 presents the existing OFF choice, who it fits and its tradeoff without treating it as a fault', () => {
+    const result = run({ event: { session_id: 'choice', prompt: PROMPT }, registry: writeRegistry([DORMANT_ROW]), matcher: writeMatcher('remember', [GOOD_MATCH]) });
+    expect(result.status).toBe(0); expect(result.stdout).toContain(GOOD_MATCH.why);
+    expect(result.stdout).toContain('Alternative: leave it OFF and continue the current workflow');
+    expect(result.stdout).toContain('suits deliberate or manual control');
+    expect(result.stdout).toContain("without this capability's benefit");
+    expect(result.stdout).not.toMatch(/misconfigured|must enable/i);
+    expect(result.stdout.trim().split('\n')).toHaveLength(1);
+  });
+
   it('never prints the payoff twice, and caps a verbose matcher', () => {
     /**
      * Both defects here were invisible to fixtures and only appeared on the first real end-to-end
@@ -246,34 +256,24 @@ describe('anticipate.sh — the dismissal budget is severity-weighted (the singl
     expect(run({ event: { session_id: 'n2', prompt: PROMPT }, registry, matcher }).stdout.trim()).toBe('');
   });
 
-  it('a HIGH-severity finding survives one and two dismissals, and only the third silences it', () => {
-    const HIGH_ROW = {
-      ...DORMANT_ROW, key: 'repair-memory-index', label: 'Repair memory index', severity: 'high',
-      turnOn: { cmd: 'ruflo memory repair' }, evidence: 'integrity_check: 1 corrupt index',
-    };
-    const HIGH_MATCH = { capability: HIGH_ROW.key, why: 'your memory index looks corrupt', confidence: 0.9 };
+  it('a HIGH-severity finding may return for changed evidence before the absolute two-decline cap; RESET is explicit', () => {
+    const HIGH_ROW = { ...DORMANT_ROW, key: 'repair-memory-index', label: 'Repair memory index', severity: 'high', turnOn: { cmd: 'ruflo memory repair' }, evidence: 'integrity_check: 1 corrupt index' };
     const registry = writeRegistry([HIGH_ROW]);
-    const matcher = writeMatcher('remember', [HIGH_MATCH]);
-
-    expect(run({ event: { session_id: 'h1', prompt: PROMPT }, registry, matcher }).stdout)
-      .toContain(HIGH_ROW.label);
-
+    const matcher = writeMatcher('remember', [{ capability: HIGH_ROW.key, why: 'your memory index looks corrupt', confidence: 0.9 }]);
+    const suggest = session_id => run({ event: { session_id, prompt: PROMPT }, registry, matcher });
+    expect(suggest('h1').stdout).toContain(HIGH_ROW.label);
     const d1 = run({ args: ['--dismiss', HIGH_ROW.key], registry, matcher });
-    expect(d1.stdout, 'the first dismissal must know it is high-severity, not fall back to normal')
-      .toMatch(/1\/3 for a high-severity finding/);
-    expect(run({ event: { session_id: 'h2', prompt: PROMPT }, registry, matcher }).stdout,
-      'dismissal 1 of 3 must not yet suppress a high-severity finding').toContain(HIGH_ROW.label);
-
+    expect(d1.status).toBe(0); expect(suggest('same-evidence').stdout).toBe('');
+    writeRegistry([{ ...HIGH_ROW, evidence: 'integrity_check: 2 corrupt indexes' }]);
+    expect(suggest('changed-before-cap').stdout).toContain(HIGH_ROW.label);
     const d2 = run({ args: ['--dismiss', HIGH_ROW.key], registry, matcher });
-    expect(d2.stdout).toMatch(/2\/3 for a high-severity finding/);
-    expect(run({ event: { session_id: 'h3', prompt: PROMPT }, registry, matcher }).stdout,
-      'dismissal 2 of 3 must not yet suppress a high-severity finding').toContain(HIGH_ROW.label);
-
-    const d3 = run({ args: ['--dismiss', HIGH_ROW.key], registry, matcher });
-    expect(d3.stdout, 'the third dismissal spends the high-severity budget').toMatch(/will not be raised again/);
-    expect(run({ event: { session_id: 'h4', prompt: PROMPT }, registry, matcher }).stdout).toBe('');
-
-    expect(ledgerRows(HIGH_ROW.key).filter((r) => r.action === 'dismissed')).toHaveLength(3);
+    expect(d2.status).toBe(0); expect(d2.stdout).toMatch(/will not be raised again/);
+    writeRegistry([{ ...HIGH_ROW, evidence: 'integrity_check: 3 corrupt indexes' }]);
+    expect(suggest('changed-after-cap').stdout).toBe('');
+    expect(ledgerRows(HIGH_ROW.key).filter(r => r.action === 'dismissed')).toHaveLength(2);
+    expect(run({ args: ['--undismiss', HIGH_ROW.key], registry, matcher }).status).toBe(0);
+    expect(suggest('explicit-reset').stdout).toContain(HIGH_ROW.label);
+    expect(ledgerRows(HIGH_ROW.key).some(r => r.action === 'reset')).toBe(true);
   });
 
   it('a missing advocacy-outcomes module is silence for `suggest`, and an honest failure for the CLI modes', () => {
@@ -318,10 +318,11 @@ describe('anticipate.sh — it shuts up (the half that keeps it installed)', () 
     expect(run({ event, registry, matcher }).stdout).toBe('');
     expect(run({ event, registry, matcher }).stdout).toBe('');
 
-    // ...but a genuinely new session may hear it once. "Once per session", not "once ever" —
-    // otherwise dismissal and exhaustion become the same thing and the user loses the distinction.
+    // A new session is not an observed state change; unchanged evidence stays silent.
     const next = run({ event: { session_id: 'a-different-session', prompt: PROMPT }, registry, matcher });
-    expect(next.stdout).toContain(DORMANT_ROW.label);
+    expect(next.stdout).toBe('');
+    expect(run({ args: ['--undismiss', DORMANT_ROW.key], registry, matcher }).status).toBe(0);
+    expect(run({ event: { session_id: 'after-explicit-reset', prompt: PROMPT }, registry, matcher }).stdout).toContain(DORMANT_ROW.label);
   });
 
   it('NEVER speaks for a capability whose state is unknown', () => {

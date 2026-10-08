@@ -59,37 +59,41 @@ const RESERVED = new Set(['repair:memory-index', 'purge:shadows']);
 export const REMEDIES = [
   {
     key: 'memory-index',
-    autoEligible: true,
-    summary: 'REINDEX a corrupt AgentDB store',
+    autoEligible: false,
+    summary: 'manual REINDEX requires an explicit database target; automatic inverse unavailable',
     match: (id) => (id === 'repair:memory-index' ? {} : null),
     plan: () => ({ script: 'scripts/health-repair.mjs', args: ['--repair-memory'] }),
     // health-repair.mjs takes an sqlite `.backup` of the store immediately before REINDEX (never a
     // cp — that silently truncates a live WAL database, a standing lesson proven by experiment).
-    // The inverse is restoring it. This is the branch whose absence made the promise a lie.
-    inverse: () => ({ kind: K.RESTORE_MEMORY_BACKUP }),
+    // No verified exact-snapshot live restore is available; retain it for coordinated offline recovery.
+    inverse: () => ({ kind: K.RESTORE_MEMORY_BACKUP, available: false,
+      human: 'automatic WAL-safe undo is unavailable; retain the exact snapshot for coordinated offline recovery' }),
   },
   {
     key: 'learning-flush',
+    autoEligible: false,
     summary: 'drain the capture queue into the learner',
     match: (id) => (id === 'learning:flush' ? {} : null),
     plan: () => ({ script: 'scripts/health-repair.mjs', args: ['--flush-learning'] }),
     // Genuinely additive: it moves already-captured local events into the learner. Declared NONE on
     // purpose, and the human string says what a user would actually do instead.
-    inverse: () => ({ kind: K.NONE, human: 'nothing to reverse — this only adds observations the learner already had queued; learned state can be reset separately' }),
+    inverse: () => ({ kind: K.NONE, available: false, human: 'automatic exact undo of materialized observations is unavailable; original queue bytes remain retained' }),
   },
   {
     key: 'learning-legacy-user-flush',
+    autoEligible: false,
     summary: 'drain retained legacy user history into its original home learner',
     match: (id) => (id === 'learning:flush-legacy-user' ? {} : null),
     plan: () => ({ script: 'scripts/health-repair.mjs', args: ['--flush-legacy-user-learning'] }),
-    inverse: () => ({ kind: K.NONE, human: 'original queue bytes stay retained; learned observations can be reset separately' }),
+    inverse: () => ({ kind: K.NONE, available: false, human: 'automatic exact undo of legacy materialized observations is unavailable; original queue bytes remain retained' }),
   },
   {
     key: 'learning-train',
+    autoEligible: false,
     summary: 'distill canonical observations into structural patterns',
     match: (id) => (id === 'learning:train' ? {} : null),
     plan: () => ({ script: 'scripts/health-repair.mjs', args: ['--train-learning'] }),
-    inverse: () => ({ kind: K.NONE, human: 'a verified snapshot is retained; automatic exact restore is unavailable and no ratified lessons are claimed' }),
+    inverse: () => ({ kind: K.NONE, available: false, human: 'a verified snapshot is retained; automatic exact restore is unavailable and no ratified lessons are claimed' }),
   },
   {
     // THE ONE THAT HAD NO EXECUTOR. See ADR-027's North Star case: stores full of memories that
@@ -97,17 +101,18 @@ export const REMEDIES = [
     // since the day it was written ("embedded but never distilled — run: ruflo memory distill run"),
     // and the console simply never said it out loud. This wires that sentence to a button.
     key: 'distill-fleet',
-    summary: 'distill embedded-but-never-distilled stores into reusable patterns',
+    autoEligible: false,
+    summary: 'distill embedded-but-never-distilled stores (automatic undo unavailable)',
     match: (id) => (id === 'learning:distill-fleet' ? {} : null),
     // needsReceipt: this remedy touches a SET of stores discovered at run time, so the inverse
     // cannot be described up front. The executor writes down exactly which stores it snapshotted
     // and where; the inverse reads that receipt. Without it, "restore the backups" would be a hope
     // rather than an instruction — and a hope is what made the memory-index undo a lie.
     plan: () => ({ script: 'scripts/health-repair.mjs', args: ['--distill-fleet'], needsReceipt: true }),
-    // Distillation WRITES (reasoning_patterns, episodes, causal_edges), so it needs a real inverse.
-    // health-repair snapshots each store with `ruflo memory backup` (rUv's own WAL-safe, rotated
-    // snapshotter) before distilling it; the inverse restores those snapshots.
-    inverse: () => ({ kind: K.RESTORE_STORE_BACKUPS }),
+    // Snapshot retention does not establish an available live SQLite/WAL inverse.
+    // Explicit manual distillation retains exact snapshots for coordinated offline recovery;
+    inverse: () => ({ kind: K.RESTORE_STORE_BACKUPS, available: false,
+      human: 'automatic WAL-safe undo is unavailable; retain exact snapshots for coordinated offline recovery' }),
   },
   {
     // Retained for explicit execution and existing receipts, not offered as reversible.
@@ -126,7 +131,8 @@ export const REMEDIES = [
   },
   {
     key: 'stack-sync',
-    summary: 'install/repair a global package to its target version',
+    autoEligible: false,
+    summary: 'manual stack-wide install/purge; automatic full-action inverse unavailable',
     match: (id) => {
       if (RESERVED.has(id)) return null; // `repair:memory-index` is NOT a package repair
       const m = /^(?:sync|repair):(.+)$/.exec(id);
@@ -136,25 +142,28 @@ export const REMEDIES = [
     // The inverse of a version bump is the version that was on disk a moment ago — which only the
     // caller can read, so it is filled in at journal time. Declaring it here is what makes the
     // closure test able to check that undo() can honour it.
-    inverse: ({ pkg }) => ({ kind: K.REINSTALL_VERSION, pkg }),
+    inverse: ({ pkg }) => ({ kind: K.REINSTALL_VERSION, pkg, available: false,
+      human: 'automatic full-stack undo is unavailable; a single package reinstall does not reverse the batch/purge action' }),
   },
   {
     key: 'purge-shadows',
+    autoEligible: false,
     summary: 'delete stale duplicate copies from the npx cache',
     match: (id) => (id === 'purge:shadows' ? {} : null),
     plan: () => ({ script: 'scripts/stack-sync.mjs', args: ['--sync'] }),
-    inverse: () => ({ kind: K.AUTO_REBUILD, human: 'the temporary cache re-fills itself on next use; no manual step needed' }),
+    inverse: () => ({ kind: K.AUTO_REBUILD, available: false, human: 'automatic undo is unavailable: the bulk executor may install packages as well as purge caches' }),
   },
   {
     key: 'reconcile-project',
-    autoEligible: true,
-    summary: 'rewire a project from npx to the global binary',
+    autoEligible: false,
+    summary: 'manual project rewiring; automatic exact prior-settings inverse unavailable',
     match: (id) => {
       const m = /^reconcile:(.+)$/.exec(id);
       return m ? { project: m[1] } : null;
     },
     plan: ({ project }) => ({ script: 'scripts/reconcile-project.mjs', args: ['--apply', '--project', project], resolveProject: true }),
-    inverse: ({ project }) => ({ kind: K.RESTORE_BACKUP, project }),
+    inverse: ({ project }) => ({ kind: K.RESTORE_BACKUP, project, available: false,
+      human: 'automatic exact settings undo is unavailable; retained latest backups are not an action-bound inverse' }),
   },
 ];
 

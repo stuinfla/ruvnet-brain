@@ -47,6 +47,10 @@ if [ -z "$NODE_BIN" ]; then
   exit 0
 fi
 HOOK_INPUT="$(dirname "$0")/hook-input.mjs"
+# One shared mandatory owned-store write policy; unrelated advice remains below.
+printf '%s' "$INPUT" | "$NODE_BIN" "$(dirname "$0")/managed-store-write-policy.mjs"
+_managed_status=$?
+[ "$_managed_status" = "2" ] && exit 2
 PAYLOAD=$(printf '%s' "$INPUT" | "$NODE_BIN" "$HOOK_INPUT" payload 2>/dev/null)
 [ -z "$PAYLOAD" ] && exit 0
 

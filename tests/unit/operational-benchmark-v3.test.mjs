@@ -220,3 +220,45 @@ describe('operational benchmark v3 frozen facts and preflight', () => {
     expect(report.qualificationPass).toBe(false);
   });
 });
+
+
+describe('P090 fresh preflight identity on repeated evaluations', () => {
+  it.each(['SOURCE.json', 'rvfguide.passages.jsonl'])('refuses changed %s before any retrieval after unchanged repeated runs', async (changedFile) => {
+    const kb = corpus({ rvfguide: [{ path: 'README.md', text: FACT_A }, { path: 'alt.md', text: FACT_B }] });
+    for (const name of ['forge-ask-all.mjs', 'verify-citation.mjs']) fs.writeFileSync(path.join(kb, name), '// private test boundary');
+    const catalog = makeCatalog(kb, [QUERY]);
+    let calls = 0;
+    const options = { fixtures: [QUERY], kb, catalog,
+      runQuery: async () => { calls++; return { stdout: 'unchanged raw output' }; },
+      verify: async () => ({ grounded: true, citations: [
+        { repo: 'rvfguide', docPath: 'README.md', returnedText: FACT_A, ce: 1 },
+        { repo: 'rvfguide', docPath: 'alt.md', returnedText: FACT_B, ce: 1 },
+      ] }),
+    };
+    const first = await runOperationalBenchmarkV3(options);
+    const repeated = await runOperationalBenchmarkV3(options);
+    expect(first.qualificationPass).toBe(true); expect(repeated.qualificationPass).toBe(true);
+    expect(calls).toBe(2); expect(repeated.receipts[0].rawOutput).toBe('unchanged raw output');
+    if (changedFile === 'SOURCE.json') fs.writeFileSync(path.join(kb, changedFile), '{"kind":"changed-source"}\n');
+    else fs.writeFileSync(path.join(kb, changedFile), JSON.stringify({ path: 'README.md', text: 'Changed expectations cannot inherit the frozen span.' }) + '\n');
+    const changed = await runOperationalBenchmarkV3(options);
+    expect(calls).toBe(2); expect(changed.qualificationPass).toBe(false);
+    expect(changed.total).toBe(1); expect(changed.measured).toBe(0);
+    expect(changed.receipts[0].preflight.status).toBe(changedFile === 'SOURCE.json' ? 'CORPUS_GAP' : 'INVALID_ORACLE');
+  });
+});
+
+
+describe('P090 frozen oracle and abstention boundaries', () => {
+  it('retains the independently documented v3 catalog identity rather than rebasing expected spans', () => {
+    const bytes = fs.readFileSync(new URL('../../evals/oracles/operational-source-oracles.v3.json', import.meta.url));
+    expect(hash(bytes)).toBe('8426dfb0fe3cbe9f98a882dc9a08039fb80987394eb7e1e75064084a53724c67');
+  });
+  it('credits anchored negative abstention only with no positive or unknown-score citation', () => {
+    const refusal = '⚠ EVIDENCE: INSUFFICIENT_EVIDENCE (top score -1.2) — no source supports the claim';
+    const grade = (output, citations) => gradeOperationalFixtureV3(NEGATIVE, { processOk: true, preflightStatus: 'PASS', output, verification: { citations } });
+    expect(grade(refusal, [{ ce: -1.2 }]).pass).toBe(true);
+    for (const ce of [null, undefined, 0, 1]) expect(grade(refusal, [{ ce }]).pass).toBe(false);
+    expect(grade('#1 repo=fixture ce=-1.2\npath : README.md\n' + refusal, [{ ce: -1.2 }]).pass).toBe(false);
+  });
+});

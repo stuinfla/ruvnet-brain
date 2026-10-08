@@ -21,8 +21,16 @@ const GIB = 1024 ** 3;
 
 const ACTION = /\b(?:build|implement|refactor|migrate|investigate|audit|review|design|fix|add|remove|optimi[sz]e|plan|execute|ship)\b/i;
 const EXPLICIT_FANOUT = /\b(?:parallel(?:ize|ise)?|swarm|delegate|spawn (?:real )?agents?|independent workstreams?|separate owners?)\b/i;
+// Clear requests classify work only; admission and effect authority remain in the existing controller.
+const INFORMATIONAL = /^(?:what\b|why\b|how\b|explain\b|describe\b|define\b|tell me\b|can you (?:explain|describe|define)\b)/i;
+const NO_FANOUT = /\b(?:do not|don't|never)\s+(?:(?:use|run|start|launch|create|spawn)\s+(?:(?:a|any|the|real)\s+)?(?:swarm|(?:parallel\s+)?agents?|parallel work)|delegate|parallelize|parallelise)\b|\b(?:without|avoid|no)\s+(?:a\s+)?(?:swarm|agents?|delegat(?:ion|ing)|parallel(?:ism| work)?)\b|\b(?:keep|remain|stay|work)\s+(?:this\s+|the task\s+)?(?:serial|single[- ]agent)\b/i;
+const AFFIRMATIVE_FANOUT = /\b(?:use|run|start|launch|create|spawn)\s+(?:(?:a|the|real)\s+)?(?:swarm|(?:parallel\s+)?agents?|agent team)\b|\b(?:parallelize|parallelise|delegate)\b/i;
+const THREE_PLUS_FILES = /\b(?:[3-9]|[1-9]\d+|three|four|five|six|seven|eight|nine|ten)\s+(?:source\s+)?files?\b/i;
+const CHANGE_ACTION = /\b(?:build|implement|refactor|migrate|design|fix|add|remove|change|update|modify|rework|revise)\b/i;
+const CONSEQUENTIAL_SCOPE = /\b(?:architecture|architectural|qa|quality[- ]assurance)\b|\brelease\s+(?:(?:publication|publishing)\s+)?(?:behavior|behaviour|contract|policy|pipeline|gates?|process)\b/i;
 const BROAD_SCOPE = /\b(?:cross[- ]cutting|end[- ]to[- ]end|multi[- ]step|large[- ]scale|whole (?:repo|repository|codebase|system)|entire (?:repo|repository|codebase|system)|full (?:repo|repository|codebase|system)|across (?:the )?(?:repo|repository|codebase|system)|multiple (?:modules|files|packages|components|services)|several (?:modules|files|packages|components|services|workstreams))\b/i;
 const TRIVIAL_SCOPE = /\b(?:tiny|trivial|simple|single[- ]line|one[- ]line|small typo|rename (?:one|a|single) variable|format one file|just (?:a )?quick fix)\b/i;
+const TRIVIAL_TEXT_EDIT = /\b(?:typos?|spelling|formatting)\b|\bformat one file\b|\brename (?:one|a|single) variable\b/i;
 const COMPONENTS = [
   /\bapi\b/i, /\bcli\b/i, /\bui\b|\bfront[- ]end\b|\binterface\b/i,
   /\btests?\b|\bqa\b/i, /\bdocs?\b|\bdocumentation\b/i,
@@ -40,7 +48,12 @@ function estimateWorkUnitCount(prompt) {
 
 export function isSubstantialParallelWork(prompt) {
   const text = typeof prompt === 'string' ? prompt.trim() : '';
-  if (!text || TRIVIAL_SCOPE.test(text) || !ACTION.test(text)) return false;
+  if (!text || INFORMATIONAL.test(text) || NO_FANOUT.test(text)) return false;
+  if (AFFIRMATIVE_FANOUT.test(text)) return true;
+  if (CHANGE_ACTION.test(text) && THREE_PLUS_FILES.test(text)) return true;
+  if (TRIVIAL_SCOPE.test(text) && TRIVIAL_TEXT_EDIT.test(text)) return false;
+  if (CHANGE_ACTION.test(text) && CONSEQUENTIAL_SCOPE.test(text)) return true;
+  if (TRIVIAL_SCOPE.test(text) || !ACTION.test(text)) return false;
   if (EXPLICIT_FANOUT.test(text)) return true;
   const breadth = BROAD_SCOPE.test(text);
   const componentCount = COMPONENTS.reduce((n, re) => n + Number(re.test(text)), 0);
@@ -154,6 +167,23 @@ export function effectiveAgentRecommendation(sample, {
   };
 }
 
+/** Plan evidence only; the existing AK controller performs admission and execution. */
+export function managedParallelismPlan(tasks, maxConcurrent, serialReason, originalPrompt) {
+  if (serialReason !== undefined && (typeof serialReason !== 'string' || serialReason.trim().length < 12 || serialReason.length > 500)) throw new TypeError('Concrete bounded serial reason required');
+  const precedes = (id, target) => tasks.find(task => task.id === id).dependsOn?.some(dep => dep === target || precedes(dep, target)) || false;
+  const readers = tasks.filter(task => task.ownership.mode === 'read'); let pairs = 0;
+  for (const [index, task] of readers.entries()) for (const other of readers.slice(index + 1)) if (!precedes(task.id, other.id) && !precedes(other.id, task.id)) pairs++;
+  const classifierRequired=typeof originalPrompt==='string'?isSubstantialParallelWork(originalPrompt):null;
+  const plannedChoice=maxConcurrent>1&&pairs>0?'parallel':'serial';
+  const reason=serialReason?.trim() ?? (maxConcurrent === 1 ? 'Configured child ceiling permits one worker' : pairs ? null
+    : tasks.length === 1 ? 'One scoped task; no independent branch in the validated DAG' : 'Dependency ordering or exclusive writer prevents independent read overlap');
+  if(classifierRequired&&plannedChoice==='serial'&&!(typeof reason==='string'&&reason.length>=12))throw new TypeError('Classifier-required serial work needs a concrete reason');
+  return { taskDag: tasks.map(task => ({ id: task.id, dependsOn: task.dependsOn ?? [], mode: task.ownership.mode })),
+    classifierRequired,plannedChoice,
+    plannedIndependentReadPairs: pairs, configuredChildCeiling: maxConcurrent, evidenceScope: 'plan only; admission is controller-local, not a global resource lease',
+    serialReason: reason };
+}
+
 function readInput() {
   const chunks = [];
   const buffer = Buffer.alloc(4096);
@@ -227,6 +257,7 @@ export function formatAdvisory(recommendation, measured = null) {
     `This prompt appears to contain independent work. Resource tier: ${recommendation.tier}; recommend no more than ${n} total agent${n === 1 ? '' : 's'} including the coordinator (${workerPlan}).`,
     `${runtime} Treat configured concurrency as a ceiling only; never infer that configured slots are available.`,
     'If a real agent-spawn/task tool is available and slots remain, launch actual workers now with non-overlapping deliverables and collect their results. If tools or slots are unavailable, continue serially and do not claim parallel workers exist.',
+    'Require an explicit task DAG with useful independent branches, or a concrete serial reason. The managed AK controller enforces admission; this native hook has no dispatch or progress authority.',
   ].join('\n');
 }
 

@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { redactText, normalizeToolOutcome } from './continuity-events.mjs';
 import { conditionNotice } from './continuity-journal.mjs';
 import { normalizeHostEvent } from './hook-input.mjs';
+import { runNativeUserIntake } from './native-user-intake.mjs';
 import { resolveProjectStore } from './project-store-resolver.mjs';
 import { withProgressionReader } from './project-progression-reader.mjs';
 import { redactProgression, restoreProjectProgression, digestCanonical, validateProgressionSnapshot } from './project-progression-contract.mjs';
@@ -101,15 +102,16 @@ export function normalizeTransition(payload, event, { now = () => new Date().toI
     ...(event !== 'PreToolUse' && signal ? { signal } : {}) };
 }
 
-export function readTransitionHistory(resolution, { deadlineAt = Infinity } = {}) {
-  const remaining = () => { if (Date.now() >= deadlineAt) throw new Error('transition history deadline exceeded'); };
+export function readTransitionHistory(resolution, { deadlineAt = Infinity, signal } = {}) {
+  const remaining = () => { if (signal?.aborted || Date.now() >= deadlineAt) throw new Error('transition history deadline exceeded or aborted'); };
   remaining();
   const result = withProgressionReader(resolution.canonicalAgentDbPath, (reader) => {
     const keys = reader.listKeys('project-progression');
     // Complete ancestry under the shared deadline; never a lifetime row cap or latest-N window.
     remaining();
     return keys.map((key) => { remaining(); return JSON.parse(reader.readContent('project-progression', key)); });
-  });
+  }, { deadlineAt, signal });
+  remaining();
   if (!result.ok) throw new Error('canonical transition history unavailable');
   return result.value;
 }
@@ -143,9 +145,11 @@ function buildRestoredTransitionProgression({ resolution, observation, snapshots
     parentEventKeys: restored.heads, dedupId: `${host}:${sessionIdentity}:${observation.id}`, completeProjectState: state }).value;
 }
 
-export function observeTransitionSource(resolution, projectDir = resolution.checkoutRoot) {
+export function observeTransitionSource(resolution, projectDir = resolution.checkoutRoot, { deadlineAt = Infinity, signal } = {}) {
+  const check = () => { if (signal?.aborted || Date.now() >= deadlineAt) throw new Error('transition source deadline exceeded or aborted'); }; check();
   let head = 'unmeasured';
-  try { head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: resolution.checkoutRoot, encoding: 'utf8', timeout: 300, stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { /* explicitly unmeasured */ }
+  try { head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: resolution.checkoutRoot, encoding: 'utf8', timeout: Math.max(1, Math.floor(Math.min(300, deadlineAt - Date.now()))), killSignal: 'SIGKILL', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { check(); /* explicitly unmeasured */ }
+  check();
   return { checkoutPath: resolution.checkoutRoot, capturePath: fs.realpathSync.native(projectDir),
     worktreeId: crypto.createHash('sha256').update(resolution.checkoutRoot).digest('hex'), branch: 'unmeasured', head,
     trackedDigest: 'unmeasured-at-transition', untrackedDigest: 'unmeasured-at-transition', dirtyTreeDigest: 'unmeasured-at-transition' };
@@ -160,7 +164,7 @@ export function captureNormalizedTransition(job, { readHistory = readTransitionH
   const deadlineAt = Math.min(inheritedDeadlineAt, now() + budgetMs);
   const checkDeadline = () => { if (signal?.aborted || now() >= deadlineAt) throw new Error('restore deadline exceeded'); };
   checkDeadline();
-  const resolution = resolveProjectStore({ projectDir: job.originProjectDir, gitTimeoutMs: Math.max(1, Math.min(500, budgetMs)), deadlineAt });
+  const resolution = resolveProjectStore({ projectDir: job.originProjectDir, gitTimeoutMs: Math.max(1, Math.floor(Math.min(500, budgetMs, deadlineAt - now()))), deadlineAt });
   const normalized = job.payload.normalizedTransition;
   if (!normalized || normalized.observation?.authoritative !== false || !normalized.observation?.id
     || normalized.sourceIdentity?.checkoutPath !== resolution.checkoutRoot) throw new Error('invalid normalized transition binding');
@@ -168,7 +172,7 @@ export function captureNormalizedTransition(job, { readHistory = readTransitionH
   checkDeadline();
   if (policy.skipped) throw new Error(policy.skipped);
   if (digestCanonical(privateTransitionObservation(normalized.observation, policy.contentPathExcludes, job.originProjectDir)) !== digestCanonical(normalized.observation)) throw new Error('content exclusions changed; immutable transition retained');
-  const snapshots = readHistory(resolution, { deadlineAt });
+  const snapshots = readHistory(resolution, { deadlineAt, signal });
   checkDeadline();
   const restored = restoreProjectProgression(snapshots, { expectedProjectIdentity: resolution.projectIdentity });
   if (snapshots.length && !restored.ok) {
@@ -198,37 +202,51 @@ export function captureNormalizedTransition(job, { readHistory = readTransitionH
 }
 
 export function runProjectTransitionHook(projectDir, event, { payload = {}, host = process.env.RUVNET_HOOK_HOST || 'claude',
-  readHistory = readTransitionHistory, capture = runSessionSnapshotHook, env = process.env } = {}) {
+  readHistory = readTransitionHistory, capture = runSessionSnapshotHook, captureNativeIntake = runNativeUserIntake, env = process.env,
+  deadlineAt: inheritedDeadlineAt = Infinity, signal } = {}) {
+  const deadlineAt = Number.isFinite(inheritedDeadlineAt) ? inheritedDeadlineAt : Date.now() + Math.min(6500, effectiveBudgetMs(env));
+  const check = () => { if (signal?.aborted || Date.now() >= deadlineAt) throw new Error('transition capture deadline exceeded or aborted; unavailable'); }; check();
   if (developmentHooksSuspended(projectDir)) return { state: 'skipped', reason: 'development hooks suspended' };
   const suspended = automaticProgressionSuspensionResult(env, { state: 'suspended', reason: 'automatic project progression is operator-suspended' });
   if (suspended) return suspended;
   payload = normalizeHostEvent(payload);
   let observation = normalizeTransition(payload, event, { host });
-  if (observation.skipped) return { state: 'skipped', reason: observation.skipped };
+  const nativeBoundary = ['UserPromptSubmit', 'PreToolUse'].includes(event) && payload.hook_event_name === event;
+  if (observation.skipped && !nativeBoundary) return { state: 'skipped', reason: observation.skipped };
   const brainHome = env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain');
-  const consent = resolveTurnDb({ projectDir, brainHome, gitTimeoutMs: 500 });
+  const consent = resolveTurnDb({ projectDir, brainHome, gitTimeoutMs: Math.max(1, Math.floor(Math.min(500, deadlineAt - Date.now()))), deadlineAt, signal });
+  check();
   if (consent.skipped) return { state: 'skipped', reason: consent.skipped };
-  observation = privateTransitionObservation(observation, consent.contentPathExcludes, projectDir, payload);
-  const resolution = resolveProjectStore({ projectDir, gitTimeoutMs: 500 });
+  const resolution = resolveProjectStore({ projectDir, gitTimeoutMs: Math.max(1, Math.floor(Math.min(500, deadlineAt - Date.now()))), deadlineAt });
+  check();
   if (!fs.existsSync(resolution.canonicalAgentDbPath)) return { state: 'skipped', reason: 'no adopted canonical store' };
+  const nativeIntake = () => nativeBoundary ? captureNativeIntake(projectDir, { payload, host, env, deadlineAt, signal }) : undefined;
+  if (observation.skipped) return { state: 'skipped', reason: observation.skipped, nativeUserIntake: nativeIntake() };
+  observation = privateTransitionObservation(observation, consent.contentPathExcludes, projectDir, payload);
   const transportEvent = event === 'PostToolUseFailure' ? 'PostToolUse' : event;
   // Fsync the selected observation BEFORE any history enumeration/merge. A deadline, corruption,
   // or long-lived project must leave it pending rather than erase it or fabricate root ancestry.
-  const queued = queueCapture({ projectDir: resolution.projectRoot, originProjectDir: projectDir, env, event: transportEvent, host,
+  const queued = queueCapture({ projectDir: resolution.projectRoot, originProjectDir: projectDir, env, event: transportEvent, host, deadlineAt, signal,
     payload: { session_id: payload.session_id, hook_event_name: transportEvent,
-      normalizedTransition: { observation, sourceIdentity: observeTransitionSource(resolution, projectDir) } } });
+      normalizedTransition: { observation, sourceIdentity: observeTransitionSource(resolution, projectDir, { deadlineAt, signal }) } } });
   if (!queued) return { state: 'degraded', reason: 'normalized observation queue unwritable', eventId: observation.id };
+  // Preserve the selected observation before a canonical intake writer can exhaust its budget.
+  const nativeUserIntake = nativeIntake();
+  if (signal?.aborted || Date.now() >= deadlineAt) return { state: 'pending', eventId: observation.id, nativeUserIntake, reason: 'durable observation retained; capture deadline exceeded or aborted' };
   let result = null;
-  runOutboxReplay({ projectDir: resolution.projectRoot, env, budgetMs: Math.min(6500, effectiveBudgetMs(env)),
+  runOutboxReplay({ projectDir: resolution.projectRoot, env, deadlineAt: deadlineAt - 500, signal,
+    budgetMs: Math.max(0, Math.min(6500, deadlineAt - 500 - Date.now())),
     captureNormalized: (job, options) => captureNormalizedTransition(job, { ...options, env, readHistory, capture }),
     onCaptured: (captured) => { if (captured?.eventId === observation.id) result = captured; } });
-  if (!result?.receipt) replayOutboxDetached({ projectDir: resolution.projectRoot, env });
-  return { state: result?.progressionCaptured && result.receipt ? 'committed' : 'pending', eventId: observation.id, result };
+  if (!result?.receipt && !signal?.aborted && Date.now() < deadlineAt) replayOutboxDetached({ projectDir: resolution.projectRoot, env, deadlineAt, signal });
+  return { state: result?.progressionCaptured && result.receipt ? 'committed' : 'pending', eventId: observation.id, result, nativeUserIntake };
 }
 
 /** One pending-readback condition across prompt/tool boundaries and both CLI entrypoints. */
-export function transitionPendingNotice(projectDir, payload, message) {
-  const { projectRoot } = resolveProjectStore({ projectDir, gitTimeoutMs: 500 });
+export function transitionPendingNotice(projectDir, payload, message, { deadlineAt = Infinity, signal } = {}) {
+  if (signal?.aborted || Date.now() >= deadlineAt) throw new Error('transition notice deadline exceeded or aborted');
+  const { projectRoot } = resolveProjectStore({ projectDir, gitTimeoutMs: Math.max(1, Math.floor(Math.min(500, deadlineAt - Date.now()))), deadlineAt });
+  if (signal?.aborted || Date.now() >= deadlineAt) throw new Error('transition notice deadline exceeded or aborted');
   return conditionNotice({ swarm: path.join(projectRoot, '.swarm'),
     session: normalizeHostEvent(payload)?.session_id, condition: 'project-transition-pending-readback', message });
 }
@@ -237,9 +255,12 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   try {
     const payload = JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
     const projectDir = payload.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
-    const result = runProjectTransitionHook(projectDir, process.argv[2], { payload });
+    const supplied = Number(process.env.RUVNET_SESSION_SNAPSHOT_DEADLINE_AT);
+    const deadlineAt = Math.min(performance.timeOrigin + Math.min(6500, effectiveBudgetMs()), Number.isFinite(supplied) ? supplied : Infinity);
+    const result = runProjectTransitionHook(projectDir, process.argv[2], { payload, deadlineAt });
+    if (result.state === 'degraded') process.stdout.write(JSON.stringify({ systemMessage: 'Project memory transition capture degraded; the new observation was not durably queued or exact-readback verified.' }));
     if (result.state === 'pending') {
-      const message = transitionPendingNotice(projectDir, payload, 'Project memory transition is pending; exact AgentDB readback was not verified at this boundary.');
+      const message = transitionPendingNotice(projectDir, payload, 'Project memory transition is pending; exact AgentDB readback was not verified at this boundary.', { deadlineAt });
       if (message) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: process.argv[2], additionalContext: message } }));
     }
   } catch { process.stdout.write(JSON.stringify({ systemMessage: 'Project memory transition capture degraded; exact readback was not verified.' })); }

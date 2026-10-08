@@ -402,10 +402,13 @@ export class ProjectProgressionStore {
   }
 
   requireCaptureConsent(snapshot) {
+    if (this.signal?.aborted || Date.now() >= this.deadlineAt) throw new Error('capture deadline exceeded or aborted');
     const capturePath = snapshot.sourceIdentity.capturePath;
     const target = resolveTurnDb({ projectDir: capturePath ?? snapshot.sourceIdentity.checkoutPath,
       brainHome: this.brainHome, requestedStorePath: this.resolution.canonicalAgentDbPath,
-      unknownOriginalPath: !capturePath });
+      unknownOriginalPath: !capturePath, deadlineAt: this.deadlineAt, signal: this.signal,
+      gitTimeoutMs: Math.max(1, Math.floor(Math.min(1000, this.deadlineAt - Date.now()))) });
+    if (this.signal?.aborted || Date.now() >= this.deadlineAt) throw new Error('capture deadline exceeded or aborted');
     if (target.skipped) throw new Error(`progression capture suspended: ${target.skipped}`);
     if (digestCanonical(privateProgressionState(snapshot.completeProjectState, target.contentPathExcludes, capturePath ?? snapshot.sourceIdentity.checkoutPath))
       !== digestCanonical(snapshot.completeProjectState)) throw new Error('progression capture suspended: content exclusions changed; frozen snapshot retained');

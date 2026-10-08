@@ -24,6 +24,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { makeLesson, updateLessons, loadLessons, ENFORCEMENT, ORIGIN, STATUS, TRIGGERS } from './lesson-store.mjs';
 import { loadNodeSqlite } from './node-sqlite.mjs';
+import { resolveProjectStore } from './project-store-resolver.mjs';
 
 /** Every bridged lesson id starts with this. It is how a merge knows which rows it owns. */
 export const BRIDGE_PREFIX = 'G-';
@@ -37,19 +38,15 @@ const GLOBAL_DB = process.env.RUVNET_GLOBAL_MEMORY_DB
 const GLOBAL_NS = process.env.RUVNET_GLOBAL_MEMORY_NS || 'global';
 
 /**
- * THE PROJECT TIER (ADR-067). Global memory holds lessons that already won twice; a project's own
- * `.swarm/memory.db` holds the ones learned HERE. Both are knowledge with no way to speak, and the
- * bridge was reading only one of them.
+ * THE PROJECT TIER (ADR-067). Global memory retains cross-project observations; its namespace alone
+ * is not verified universal authority. The canonical project store holds local observations.
  *
- * The difference that matters is SCOPE, and lesson-gate already enforces it: a lesson carrying
- * `projects: [name]` speaks only in that project, while an unscoped one speaks anywhere. So a global
- * row bridges unscoped and a project row bridges scoped to its own directory — no new mechanism, the
- * existing `isHome` check does the work. Without that, a ruvnet-brain lesson would interrupt someone
- * working in a different repo, which is precisely the breakage recorded in lesson-gate.mjs on
- * 2026-07-22: "I've got other repos that are using this thing, and they're breaking."
+ * Project rows carry canonical repository paths consumed by lesson-gate's identity check.
+ * Unscoped historical global rows remain stored without acquiring cross-project policy authority.
  */
-const PROJECT_DB = process.env.RUVNET_PROJECT_MEMORY_DB
-  || path.join(process.cwd(), '.swarm', 'memory.db');
+let projectResolution;
+try { projectResolution = resolveProjectStore({ projectDir: process.cwd(), gitTimeoutMs: 500 }); } catch { /* unknown scope cannot gain authority */ }
+const PROJECT_DB = process.env.RUVNET_PROJECT_MEMORY_DB || projectResolution?.canonicalAgentDbPath || path.join(process.cwd(), '.swarm', 'memory.db');
 
 const TRIGGER_KEYS = new Set(Object.values(TRIGGERS).map((t) => t.key));
 const ENFORCEMENTS = new Set(Object.values(ENFORCEMENT));
@@ -224,11 +221,14 @@ export function lessonFromRow(row, { projects = [], idPrefix = BRIDGE_PREFIX, so
 // ── Merge ────────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * Replace every bridged row with the current set; leave every other row byte-identical.
+ * Replace matching bridged rows; retain other historical rows unless pruning is explicit.
  * Pure, so the test can assert the merge without touching a real store.
  */
-export function mergeBridged(existing, bridged) {
-  return [...existing.filter((l) => !isBridged(l.id)), ...bridged];
+export function mergeBridged(existing, bridged, { prune = false } = {}) {
+  const replaced = new Set(bridged.map(lesson => lesson.id));
+  const sticky = bridged.map(lesson => existing.some(prior => prior.id === lesson.id && prior.demoted)
+    ? makeLesson({ ...lesson, demoted: true }) : lesson);
+  return [...existing.filter(lesson => !replaced.has(lesson.id) && (!prune || !isBridged(lesson.id))), ...sticky];
 }
 
 // ── CLI ──────────────────────────────────────────────────────────────────────────────────────────
@@ -259,11 +259,14 @@ if (isMain()) {
   const prune = argv.includes('--prune');
   const json = argv.includes('--json');
 
-  const here = path.basename(process.cwd());
+  const here = projectResolution?.projectRoot;
+  const projectSourceBound = here && PROJECT_DB === projectResolution.canonicalAgentDbPath;
   const sources = [
+    // Canonical repository identity scopes project lessons, including linked worktrees. Labels
+    // and global storage alone cannot supply verified universal authority.
+    { name: `project:${here ?? 'unknown'}`, rows: projectSourceBound ? readProjectRows() : [], opts: { projects: here ? [here] : [],
+      idPrefix: `${PROJECT_PREFIX}${projectResolution?.projectIdentity.id.replace(/[^a-z0-9]/gi, '-') ?? 'unknown'}-`, source: `project:${here ?? 'unknown'}` } },
     { name: 'global', rows: readGlobalRows(), opts: { projects: [], idPrefix: BRIDGE_PREFIX, source: 'global' } },
-    // Scoped to THIS project by name, so lesson-gate's isHome() keeps it from speaking elsewhere.
-    { name: `project:${here}`, rows: readProjectRows(), opts: { projects: [here], idPrefix: PROJECT_PREFIX, source: `project:${here}` } },
   ];
   const bridged = [];
   const skipped = [];
@@ -272,9 +275,7 @@ if (isMain()) {
     for (const row of src.rows) {
       const r = lessonFromRow(row, src.opts);
       if (!r.lesson) { skipped.push({ key: `${src.name}/${row.key}`, why: r.skip }); continue; }
-      // A lesson promoted from a project to global exists in BOTH stores. The global copy wins: it
-      // is the one that earned the right to travel, and surfacing the same correction twice teaches
-      // the reader to skim (lesson-gate's own dedupe reasoning, applied across sources).
+      // Prefer the canonically scoped local source; a global copy is not universal authority.
       const slug = String(row.key).replace(/^lesson-/, '');
       if (seen.has(slug)) { skipped.push({ key: `${src.name}/${row.key}`, why: 'already bridged from a higher tier' }); continue; }
       seen.add(slug);
@@ -341,7 +342,7 @@ if (isMain()) {
     process.exit(1);
   }
   const before = loadLessons().length;
-  updateLessons((current) => mergeBridged(current, bridged));
+  updateLessons((current) => mergeBridged(current, bridged, { prune }));
   const after = loadLessons().length;
   console.log(`\n  applied: store ${before} → ${after} lesson(s) (${bridged.length} bridged, ${after - bridged.length} native)\n`);
 }

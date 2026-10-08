@@ -9,11 +9,13 @@
  *
  * THE RULE, deterministic, read from the host transcript of THIS turn (everything after the last
  * genuine user message):
- *   A positive completion assertion ("fixed", "done", "shipped", "it will now…") PASSES only when
+ *   A narrowly scoped passing-check assertion is OBSERVED_CHECK only when
  *   (1) at least one verification command EXECUTED after the last state-changing action, with its
  *       result present and not an error, AND
  *   (2) the answer names the check (a "Verified:"-style line, or the executed command's own name), AND
  *   (3) the answer discloses what is NOT verified.
+ *   Whole-task assertions remain UNKNOWN: this path has no trusted task/source/artifact-bound
+ *   positive final-acceptance producer. Observed checks never close the owner's whole task.
  *   Anything else is one correction request. No claim recognised → no verdict about the prose.
  *
  * HOSTS. Claude Code transcripts (`transcript_path`, JSONL) are parsed. Codex's Stop payload also
@@ -23,6 +25,7 @@
  * correction text, never silently treated as proven.
  */
 import { readSettledTranscript } from './turn-outcome-capture.mjs';
+import { GATE_COMMAND, normalizeToolOutcome } from './continuity-events.mjs';
 
 const MAX_SENTENCE = 400;
 export const PROMISE_KIND = 'assistant-commitment';
@@ -105,7 +108,9 @@ function segmentMutates(segment) {
   return /(?:^|[^0-9&>])>{1,2}\s*(?!&|\/dev\/null)(['"]?)([^\s'"]+)/.test(segment)
     && !TMP_PATH.test((/>{1,2}\s*['"]?([^\s'"]+)/.exec(segment) || [])[1] || '');
 }
-const segmentChecks = (segment) => !TRIVIAL.test(segment) && !segmentMutates(segment);
+const CHECK_COMMAND = new RegExp(`^${GATE_COMMAND.source}`, GATE_COMMAND.flags);
+const segmentChecks = (segment) => !TRIVIAL.test(segment) && !segmentMutates(segment)
+  && (CHECK_COMMAND.test(segment) || /^node\s+--test\b/.test(segment));
 function checkName(segment) {
   const words = segment.replace(/^(?:[A-Z_][A-Z0-9_]*=\S+\s+)+/, '').split(/\s+/);
   const run = words.findIndex((w) => w === 'run');
@@ -135,28 +140,49 @@ export function currentTurnRecords(lines) {
   return { boundaryFound: start >= 0, prompt: start >= 0 ? textOf(recs[start].message?.content) : '', recs: recs.slice(start + 1) };
 }
 
+// Native terminal flags are necessary but do not turn an empty, partial, or pending result into
+// verification. Only known checker summaries are positive; unfamiliar output stays UNKNOWN.
+// This is an observed check only; no returned PASS JSON establishes task acceptance.
+function checkResult(result, metadata = {}) {
+  const execution = normalizeToolOutcome({ ...metadata, ...result });
+  const native = normalizeToolOutcome(metadata);
+  const content = result.content;
+  const output = [textOf(content), textOf(content?.content), metadata.stdout].filter(Boolean).join('\n');
+  const body = output.replace(/\u001b\[[0-9;]*m/g, '').replace(/^(?:Exit code\s*:?\s*-?\d+|Process exited with code\s+-?\d+|Wall time:.*)\s*$/gim, '').trim();
+  const positive = /^\s*(?:(?:Tests?|Test Files|Test Suites|Suites|Checks?)\s+[1-9]\d*\s+passed\b|(?:All\s+)?(?:tests?|checks?)\s+passed\b|PASS(?:\s|$)|#\s*pass\s+[1-9]\d*\s*$)/im.test(body);
+  const failed = /^\s*(?:FAIL(?:ED)?|ERROR)(?:\s|:|$)|\b[1-9]\d*\s+failed\b|^#\s*fail\s+[1-9]\d*\s*$/im.test(body);
+  const incomplete = /\b(?:output (?:is )?truncated|truncated output|no results(?: found)?|no tests? (?:found|ran)|Process running with session ID|Script running with cell ID|[1-9]\d*\s+(?:skipped|pending|todo))\b|^\s*(?:started\s+(?:verification|checks?|tests?)|(?:verification|checks?|tests?)\s+(?:started|queued|running))\b/im.test(body)
+    || [result, content, metadata].some(value => value?.truncated === true
+      || ['started', 'submitted'].includes(String(value?.status || value?.outcome || '').toLowerCase()));
+  const error = failed || ['fail', 'interrupted'].includes(execution.outcome)
+    || ['fail', 'interrupted'].includes(native.outcome);
+  return { present: body.length > 0, error, successful: positive && !incomplete && !error
+    && native.outcome !== 'pending' && execution.successfulToolResult === true,
+    terminalOutcome: execution.outcome };
+}
+
 /** Ordered events for the current turn of a Claude JSONL transcript. */
 export function claudeTurnEvents(lines) {
   const { boundaryFound, recs: turnRecs } = currentTurnRecords(lines);
   const results = new Map();
-  for (const o of turnRecs) {
+  for (const [index, o] of turnRecs.entries()) {
     const c = o?.message?.content;
     if (!Array.isArray(c)) continue;
     for (const r of c) {
       if (r?.type === 'tool_result' && r.tool_use_id) {
-        results.set(r.tool_use_id, { error: r.is_error === true || o.toolUseResult?.interrupted === true,
-          present: textOf(r.content).trim().length > 0 || String(o.toolUseResult?.stdout || '').trim().length > 0 });
+        results.set(r.tool_use_id, { ...checkResult(r, o.toolUseResult), resultIndex: index });
       }
     }
   }
   const events = [];
-  for (const o of turnRecs) {
+  for (const [index, o] of turnRecs.entries()) {
     const c = o?.message?.content;
     if (o?.type !== 'assistant' || !Array.isArray(c)) continue;
     for (const u of c) {
       if (u?.type !== 'tool_use') continue;
       const input = u.input || {};
-      const result = results.get(u.id) || { present: false, error: false };
+      const observed = results.get(u.id);
+      const result = observed?.resultIndex > index ? observed : { present: false, error: false, successful: false };
       if (['Edit', 'Write', 'MultiEdit', 'NotebookEdit'].includes(u.name)) {
         events.push({ kind: 'change', what: `${u.name} ${input.file_path || input.notebook_path || ''}`.trim() });
       } else if (u.name === 'Bash') {
@@ -177,10 +203,10 @@ export function claudeTurnEvents(lines) {
 
 /** Verification that ran AFTER the last state change this turn, with a present, non-error result. */
 export function postChangeVerification(turn) {
-  const events = turn?.events || [];
+  const events = turn?.boundaryFound === true ? turn.events || [] : [];
   let lastChange = -1;
   events.forEach((e, i) => { if (e.kind === 'change') lastChange = i; });
-  const checks = events.slice(lastChange + 1).filter((e) => e.kind === 'check' && e.present && !e.error);
+  const checks = events.slice(lastChange + 1).filter((e) => e.kind === 'check' && e.present && !e.error && e.successful === true);
   return { lastChange: lastChange >= 0 ? events[lastChange].what : null, checks,
     staleChecks: events.slice(0, Math.max(0, lastChange)).filter((e) => e.kind === 'check').length };
 }

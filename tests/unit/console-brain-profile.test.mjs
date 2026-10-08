@@ -77,7 +77,7 @@ describe('Complete Brain / RuVector Only console control', () => {
     expect(profile.choices.ruvector.bytes).toBeGreaterThan(0);
   });
 
-  it('switches the physical files to RuVector Only before persisting the mirror', () => {
+  it('refuses irreversible physical profile change instead of persisting a false mirror', () => {
     const result = runJSON(`${IMPORT}
       const saved = m.saveBrainProfile({ brainProfile: 'ruvector' });
       process.stdout.write(JSON.stringify({
@@ -86,15 +86,15 @@ describe('Complete Brain / RuVector Only console control', () => {
         files: (await import('node:fs')).readdirSync(${JSON.stringify(installed)}),
       }));
     `);
-    expect(result.saved.ok).toBe(true);
-    expect(result.saved.profile).toBe('ruvector');
-    expect(result.profile.values.brainProfile).toBe('ruvector');
+    expect(result.saved.ok).toBe(false);
+    expect(result.saved.log).toMatch(/inverse.*unavailable/);
+    expect(result.profile.values.brainProfile).toBe('complete');
     expect(result.files).toContain('ruvector.big.rvf');
-    expect(result.files).not.toContain('ruflo.big.rvf');
-    expect(JSON.parse(fs.readFileSync(settings, 'utf8')).settings.brainProfile).toBe('ruvector');
+    expect(result.files).toContain('ruflo.big.rvf');
+    expect(fs.existsSync(settings)).toBe(false);
   });
 
-  it('restores Complete Brain from the full release source', () => {
+  it('Complete Brain stays measured after alternate refusal and selecting it is a no-op', () => {
     const result = runJSON(`${IMPORT}
       m.saveBrainProfile({ brainProfile: 'ruvector' });
       const saved = m.saveBrainProfile({ brainProfile: 'complete' });
@@ -105,7 +105,7 @@ describe('Complete Brain / RuVector Only console control', () => {
     expect(result.profile.installed.stores).toEqual(['ruflo', 'ruvector']);
   });
 
-  it('falls back to one forced signed-updater restore when no full local source remains', () => {
+  it('same measured Complete selection cannot invoke updater even when local source is absent', () => {
     runJSON(`${IMPORT} process.stdout.write(JSON.stringify(m.saveBrainProfile({ brainProfile: 'ruvector' })));`);
     fs.rmSync(source, { recursive: true, force: true });
     fs.writeFileSync(path.join(installed, 'forge-update.mjs'), `
@@ -123,6 +123,9 @@ describe('Complete Brain / RuVector Only console control', () => {
     expect(result.saved.ok).toBe(true);
     expect(result.profile.values.brainProfile).toBe('complete');
     expect(result.profile.installed.stores).toEqual(['ruflo', 'ruvector']);
+    expect(result.saved.noop).toBe(true);
+    expect(fs.statSync(path.join(installed,'ruflo.rvf')).size).toBe(64);
+    expect(fs.existsSync(settings)).toBe(false);
   });
 
   it('renders exactly the two approved choices and posts to the real endpoint', () => {
@@ -132,4 +135,20 @@ describe('Complete Brain / RuVector Only console control', () => {
     expect(app).toContain("postJSON('/api/save-brain-profile'");
     expect(app).not.toContain('measured — shipping as smart-scope');
   });
+});
+
+describe('profile mutation inverse availability',()=>{
+ it('alternate profile refuses before any managed/public/private bytes or mirror change',()=>{
+  const before=fs.readdirSync(installed).map(name=>[name,fs.readFileSync(path.join(installed,name))]);const result=runJSON(`${IMPORT} process.stdout.write(JSON.stringify(m.saveBrainProfile({brainProfile:'ruvector'})));`);expect(result.ok).toBe(false);expect(result.log).toMatch(/inverse.*unavailable|unavailable.*inverse/i);expect(fs.existsSync(settings)).toBe(false);expect(fs.readdirSync(installed).sort()).toEqual(before.map(([name])=>name).sort());for(const [name,bytes]of before)expect(fs.readFileSync(path.join(installed,name)).equals(bytes)).toBe(true);
+ });
+ it('same measured profile is a verified no-op without physical or mirror writes',()=>{
+  const before=fs.readdirSync(installed).map(name=>[name,fs.readFileSync(path.join(installed,name))]);const result=runJSON(`${IMPORT} process.stdout.write(JSON.stringify(m.saveBrainProfile({brainProfile:'complete'})));`);expect(result.ok,result.log).toBe(true);expect(result.noop).toBe(true);expect(fs.existsSync(settings)).toBe(false);for(const [name,bytes]of before)expect(fs.readFileSync(path.join(installed,name)).equals(bytes)).toBe(true);
+ });
+ it('alternate UI choice is disabled with inverse reason while current measured choice stays visible',()=>{
+  const result=runJSON(`${IMPORT} process.stdout.write(JSON.stringify(m.gatherBrainProfile()));`);expect(result.choices.complete.available).toBe(true);expect(result.choices.ruvector.available).toBe(false);expect(result.choices.ruvector.inverseUnavailableReason).toMatch(/inverse|prior/i);
+ });
+});
+
+it('unknown measured profile exposes no active available choice and refuses before writes',()=>{
+ fs.unlinkSync(path.join(installed,'ruvector.rvf'));fs.unlinkSync(path.join(installed,'ruvector.big.rvf'));const before=fs.readdirSync(installed).map(name=>[name,fs.readFileSync(path.join(installed,name))]);const result=runJSON(`${IMPORT} process.stdout.write(JSON.stringify({state:m.gatherBrainProfile(),saved:m.saveBrainProfile({brainProfile:'complete'})}));`);expect(result.state.values.brainProfile).toBe(null);expect(result.state.choices.complete.available).toBe(false);expect(result.state.choices.ruvector.available).toBe(false);expect(result.saved.ok).toBe(false);expect(fs.existsSync(settings)).toBe(false);for(const[name,bytes]of before)expect(fs.readFileSync(path.join(installed,name)).equals(bytes)).toBe(true);
 });

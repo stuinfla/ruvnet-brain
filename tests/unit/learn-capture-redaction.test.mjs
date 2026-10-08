@@ -28,7 +28,7 @@ const queuePath = () => { const dir = path.join(home, '.cache', 'ruvnet-brain', 
 
 /** Run the hook against an explicit user-scope fake HOME so nothing touches the real queue. */
 function capture(command) {
-  const payload = JSON.stringify({ tool_name: 'Bash', tool_input: { command } });
+  const payload = JSON.stringify({ tool_name: 'Bash', tool_input: { command }, tool_response: { success: true } });
   execFileSync(process.execPath, [HOOK], {
     input: payload,
     env: {
@@ -57,6 +57,33 @@ beforeAll(() => {
 });
 afterAll(() => {
   try { fs.rmSync(home, { recursive: true, force: true }); } catch { /* best effort */ }
+});
+
+describe('only verified terminal success may enter the learning queue', () => {
+  it('the genuine captured Write callback enters only fixed vocabulary, with outer failure still dominant', () => {
+    const original = JSON.parse(fs.readFileSync(path.join(ROOT, 'tests/fixtures/hook-payloads/claude/PostToolUse-Write.json'))).payload;
+    const payload = JSON.parse(JSON.stringify(original).replaceAll('{{CWD}}', home));
+    const queue = path.join(home, '.cache', 'ruvnet-brain', 'learn');
+    const run = value => execFileSync(process.execPath, [HOOK], { input: JSON.stringify(value), encoding: 'utf8', env: {
+      ...process.env, HOME: home, USERPROFILE: home, RUVNET_BRAIN_PROJECT_DIR: home, CLAUDE_SESSION_ID: SID,
+      RUFLO_BIN: path.join(home, 'missing-ruflo'), RUVNET_LEARNING_SCOPE: 'user' } });
+    const files = () => fs.existsSync(queue) ? fs.readdirSync(queue).filter(name => name.endsWith('.jsonl')) : [];
+    const before = files(); run(payload); const added = files().filter(file => !before.includes(file));
+    expect(added).toHaveLength(1); expect(JSON.parse(fs.readFileSync(path.join(queue, added[0])))).toEqual({ tool: 'Write', action: 'edit file' });
+    const accepted = files().sort(); run({ ...payload, success: false });
+    expect(files().sort()).toEqual(accepted);
+  });
+  it.each([{ success: false }, { ok: false }, { cancelled: true }, { canceled: true }, { status: 'failure' }, { outcome: 'unknown' },
+    { tool_response: { completed: false, success: true } }, { tool_response: { status: 'pending', success: true } }])('rejects failure, cancellation or unfinished native outcome %j', outcome => {
+    const queue = path.join(home, '.cache', 'ruvnet-brain', 'learn');
+    const before = fs.existsSync(queue) ? fs.readdirSync(queue).filter(file => file.endsWith('.jsonl')).sort() : [];
+    execFileSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'PostToolUse', tool_name: 'Bash',
+      tool_input: { command: 'npm test' }, tool_response: { success: true }, ...outcome }), encoding: 'utf8',
+      env: { ...process.env, HOME: home, USERPROFILE: home, RUVNET_BRAIN_PROJECT_DIR: home, CLAUDE_SESSION_ID: SID,
+        RUFLO_BIN: path.join(home, 'missing-ruflo'), RUVNET_LEARNING_SCOPE: 'user' } });
+    const after = fs.existsSync(queue) ? fs.readdirSync(queue).filter(file => file.endsWith('.jsonl')).sort() : [];
+    expect(after).toEqual(before);
+  });
 });
 
 describe('learn-capture.sh records intent, never data', () => {

@@ -160,3 +160,31 @@ it('unknown or absent trusted adapter host cannot mint a typed native identity',
     expect(markerPathFor('A', '/tmp', host || null)).toBeNull();
   }
 });
+
+// Constructed adversarial transcript through actual hook CLIs; not a native provider observation.
+it.each(['matching', 'foreign session', 'foreign project', 'foreign prompt', 'spliced session', 'spliced project', 'spliced prompt', 'untyped USER'])('Claude transcript grounding binds current native USER and tool rows: %s', kind => {
+  const f = fixture('claude'), id = f.identity();
+  const user = { type: 'user', uuid: 'current-user-record', promptId: id.prompt_id, sessionId: id.session_id, cwd: id.cwd,
+    message: { role: 'user', content: 'What does Ruflo support?' } };
+  const source = { sessionId: id.session_id, cwd: id.cwd, promptId: id.prompt_id };
+  if (kind === 'foreign session') user.sessionId = 'foreign-session';
+  if (kind === 'foreign project') user.cwd = f.home;
+  if (kind === 'foreign prompt') user.promptId = 'foreign-prompt';
+  if (kind === 'untyped USER') delete user.promptId;
+  if (kind === 'spliced session') source.sessionId = 'foreign-session';
+  if (kind === 'spliced project') source.cwd = f.home;
+  if (kind === 'spliced prompt') source.promptId = 'foreign-prompt';
+  const transcript = path.join(f.home, 'grounding-source.jsonl');
+  fs.writeFileSync(transcript, [user, { ...source, type: 'assistant', message: { role: 'assistant',
+    content: [{ type: 'tool_use', id: 'search-one', name: 'mcp__brain__search_ruvnet', input: { query: 'ruflo' } }] } },
+    { ...source, type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'search-one', is_error: false, content: response }] } }]
+    .map(row => JSON.stringify(row)).join('\n') + '\n');
+  f.mark(); const result = f.stop(id, { transcript_path: transcript });
+  if (kind === 'matching') expect(result).toBe(''); else expect(result).toMatch(/UNKNOWN|UNVERIFIED/);
+});
+
+it('a bound unrelated product receipt cannot certify an unsupported generic assertion', () => {
+  const f = fixture('claude');
+  f.mark(f.identity(), 'Can a hook change the model? Check ruflo.'); f.search();
+  expect(f.stop(f.identity(), { last_assistant_message: 'No hook can change the model of the current turn.' })).toMatch(/UNKNOWN|UNVERIFIED/);
+});

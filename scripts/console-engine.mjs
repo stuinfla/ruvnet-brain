@@ -13,6 +13,7 @@
 // by the type factory rather than by a code review that can be forgotten.
 
 import { cmpVersion } from './stack-sync.mjs';
+import { planFor } from './remedy-registry.mjs';
 
 // ── Recommendation factory — the schema gate ─────────────────────────────────────────────────────
 // Throws, loudly, on any recommendation that could become an irreversible or unexplained mutation.
@@ -20,6 +21,14 @@ import { cmpVersion } from './stack-sync.mjs';
 // Blast-radius of a recommendation, mirroring capability-registry.mjs's SCOPE (kept as literals here
 // to avoid importing that whole module into the engine). `null` is the honest "scope not stated" —
 // the console groups those into their own bucket rather than guessing which side they fall on.
+// Offer availability is separate from authorization; known missing inverses stay manual only.
+function availableRecommendations(recommendations) {
+  return recommendations.filter(rec => {
+    const plan = planFor(rec.id);
+    return !!plan && plan.undo.available !== false;
+  });
+}
+
 const REC_SCOPES = new Set(['project', 'user', 'machine']);
 
 export function makeRecommendation(spec) {
@@ -217,7 +226,7 @@ export function buildHealthRecommendations({ memory = null, learning = null } = 
     }));
   }
 
-  return recs;
+  return availableRecommendations(recs);
 }
 
 // ── Capability recommendations — the capability-registry ⇄ "What we'd suggest" bridge ─────────────
@@ -267,7 +276,7 @@ export function buildCapabilityRecommendations({ capabilities = [] } = {}) {
       undo: spec.undo,
     }));
   }
-  return recs;
+  return availableRecommendations(recs);
 }
 
 // ── Stack recommendations ────────────────────────────────────────────────────────────────────────
@@ -334,7 +343,7 @@ export function buildStackRecommendations({ rows = [], stale = [] } = {}) {
       undo: { kind: 'auto-rebuild', human: 'the temporary cache re-fills itself on next use; no manual step needed' },
     }));
   }
-  return recs;
+  return availableRecommendations(recs);
 }
 
 // ── Wiring recommendations ───────────────────────────────────────────────────────────────────────
@@ -366,7 +375,7 @@ export function buildWiringRecommendations({ sites = [] } = {}) {
       undo: { kind: 'restore-backup', human: `restore the .bak-reconcile-* settings files written before the change` },
     }));
   }
-  return recs;
+  return availableRecommendations(recs);
 }
 
 // ── Memory-health scoring ────────────────────────────────────────────────────────────────────────

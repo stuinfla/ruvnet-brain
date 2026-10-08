@@ -636,12 +636,12 @@ describe.skipIf(MACHINE_SKIP_REASON)(
 );
 
 describe('source-bound hook audit tracking', () => {
-  it('derives39 unique canonical IDs from the existing20contract families without semantic PASS from hashing', async () => {
+  it('derives41 unique canonical IDs including two disjoint shell routes without semantic PASS from hashing', async () => {
     const { buildHookAudit } = await import('../../scripts/hook-registry.mjs');
     const audit = buildHookAudit({ repo: REPO, includeMachine: false });
-    expect(audit.entries.filter(row => row.host === 'claude')).toHaveLength(20);
-    expect(audit.entries.filter(row => row.host === 'codex')).toHaveLength(19);
-    expect(new Set(audit.entries.map(row => row.id)).size).toBe(39);
+    expect(audit.entries.filter(row => row.host === 'claude')).toHaveLength(21);
+    expect(audit.entries.filter(row => row.host === 'codex')).toHaveLength(20);
+    expect(new Set(audit.entries.map(row => row.id)).size).toBe(41);
     expect(audit.entries.every(row => row.review.state === 'UNKNOWN')).toBe(true);
     expect(audit.entries.every(row => row.nativeExecution === 'UNKNOWN')).toBe(true);
     const capacity = audit.entries.find(row => row.id === 'claude/UserPromptSubmit/capacity-aware-parallel-work');

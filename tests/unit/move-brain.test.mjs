@@ -13,6 +13,9 @@ import { runStorageTransaction, treeIdentity } from '../../kb/update-storage-tra
 import { acquireRefreshLock, refreshLockPath, releaseRefreshLock } from '../../kb/refresh-run.mjs';
 import { sweepStale } from '../../kb/recommend-endpoint.mjs';
 import { health } from '../../plugin/scripts/session-start-health.mjs';
+import { completeBrain } from '../helpers/doctor-brain-fixture.mjs';
+import { DatabaseSync } from 'node:sqlite';
+import { journalTurn } from '../../plugin/scripts/turn-transport-journal.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const temps = [];
@@ -35,6 +38,109 @@ function installedBrain(base) {
   fs.writeFileSync(path.join(brain, 'active.json'), '{"version":"9.9.1"}');
   return { home, brain, kb };
 }
+
+describe('P097 adopted turn-warning remediation', () => {
+  it.each(['unsafe-queue', 'failed-write', 'failed-readback', 'opt-out', 'kb-only-readback'])('actual doctor retains %s evidence and names a safe remedy only when warning', (state) => {
+    const b = completeBrain({ modelsReady: true });
+    try {
+      const bin = path.join(b.parent, 'only-node'); fs.mkdirSync(bin); fs.symlinkSync(process.execPath, path.join(bin, 'node'));
+      const swarm = path.join(b.project, '.swarm'); fs.mkdirSync(swarm); const dbFile = path.join(swarm, 'memory.db');
+      const db = new DatabaseSync(dbFile); db.exec('CREATE TABLE memory_entries (key TEXT, namespace TEXT, content TEXT)'); db.close();
+      const receiptRoot = state === 'kb-only-readback' ? path.join(b.home, '.cache', 'ruvnet-brain') : b.brainHome;
+      const policyDir = path.join(receiptRoot, 'turn-capture'); fs.mkdirSync(policyDir, { recursive: true });
+      fs.writeFileSync(path.join(policyDir, 'policy.json'), JSON.stringify({ schemaVersion: 1, projects: { [b.project]: state === 'opt-out' ? 'off' : 'on' } }));
+      const queue = path.join(swarm, 'turn-outbox'); const key = 'turn-doctor-remedy'; const stat = fs.statSync(b.project);
+      const entry = journalTurn({ kind: 'store', projectRoot: b.project, projectDir: b.project, rootIdentity: `${stat.dev}:${stat.ino}`,
+        args: ['memory', 'store', '--key', key, '--value', 'private pending fixture turn', '--namespace', 'turns', '--path', dbFile] }, dbFile, key);
+      let preserved = entry;
+      if (state === 'unsafe-queue') {
+        const retained = path.join(b.parent, 'retained-private-turns'); fs.renameSync(queue, retained); fs.symlinkSync(retained, queue);
+        preserved = path.join(retained, path.basename(entry));
+      }
+      const receipts = path.join(policyDir, 'receipts.jsonl');
+      fs.writeFileSync(receipts, JSON.stringify({ kind: 'store', db: dbFile, key, at: new Date().toISOString(),
+        status: state === 'failed-write' ? 1 : 0, verified: false, error: state === 'failed-write' ? 'bounded fixture write refused' : 'no exact readback evidence' }) + '\n');
+      const queueBefore = fs.readFileSync(preserved); const receiptsBefore = fs.readFileSync(receipts); const dbBefore = fs.readFileSync(dbFile);
+      const networkLog = path.join(b.parent, 'blocked-fetch.jsonl'); const preload = path.join(b.parent, 'block-fetch.cjs');
+      fs.writeFileSync(preload, `const fs = require('node:fs');globalThis.fetch = async (url, options) => { fs.appendFileSync(${JSON.stringify(networkLog)}, JSON.stringify({url:String(url),method:options?.method||'GET',blocked:true})+'\\n'); throw new Error('fixture blocked fetch before network'); };`);
+      const extraEnv = { PATH: bin, NODE_OPTIONS: `--require ${preload}`, ...(state === 'kb-only-readback' ? { RUVNET_BRAIN_HOME: '' } : {}) };
+      const text = b.doctor([], { extraEnv }); const jsonRun = b.doctor(['--json'], { extraEnv }); const verdict = JSON.parse(jsonRun.stdout);
+      const line = verdict.lines.find(row => row.id === 'turn-recording');
+      expect([text.status, jsonRun.status, verdict.exitCode]).toEqual([0, 0, 0]);
+      if (state === 'opt-out') {
+        expect(line.state).toBe('unknown'); expect(line.detail).toMatch(/persisted turn capture opt-out/); expect(line.fix).toBeNull();
+        expect(line.detail).not.toMatch(/misconfigured|failing/);
+      } else {
+        expect(line.state).toBe('warn'); expect(line.detail).toMatch(state === 'unsafe-queue' ? /queue unsafe or unreadable/ : /failing 1\/1/);
+        expect(typeof line.fix).toBe('string'); expect(line.fix).toMatch(/preserve|keep/i); expect(line.fix).toMatch(/inspect/i);
+        expect(line.fix).not.toMatch(/--clear|rm\s|delete|miswired|misconfigured/i);
+        expect(text.text).toContain(line.fix);
+        if (state !== 'unsafe-queue') expect(line.fix).toContain(receipts);
+        if (state === 'kb-only-readback') expect(line.fix).not.toContain(path.join(path.dirname(b.kbDir), 'turn-capture', 'receipts.jsonl'));
+      }
+      expect(fs.readFileSync(preserved)).toEqual(queueBefore); expect(fs.readFileSync(receipts)).toEqual(receiptsBefore); expect(fs.readFileSync(dbFile)).toEqual(dbBefore);
+      if (state === 'unsafe-queue') expect(fs.lstatSync(queue).isSymbolicLink()).toBe(true);
+      const attempts = fs.readFileSync(networkLog, 'utf8').trim().split('\n').map(JSON.parse);
+      expect(attempts).toEqual([0, 1].map(() => ({ url: 'https://huggingface.co', method: 'HEAD', blocked: true })));
+    } finally { b.cleanup(); }
+  }, 60_000);
+});
+
+describe('P097 actual doctor consumer matrix with fixture reader', () => {
+  it.each(['current', 'stale', 'missing-signature', 'changed-coverage', 'unreadable-signature', 'unreadable-source', ...(process.platform !== 'win32' && process.getuid?.() > 0 ? ['permission-source'] : []), 'moved'])
+    ('text, JSON and exit agree for %s state with honest evidence and remedies', (state) => {
+      const b = completeBrain({ modelsReady: true });
+      try {
+        const bin = path.join(b.parent, 'only-node'); fs.mkdirSync(bin); fs.symlinkSync(process.execPath, path.join(bin, 'node'));
+        const extraEnv = { PATH: bin }; // No Ruflo/host CLI; registry is pinned. Hugging Face HEAD may be attempted.
+        if (state === 'stale') {
+          const source = JSON.parse(fs.readFileSync(path.join(b.kbDir, 'SOURCE.json')));
+          source.builtUtc = new Date(Date.now() - 72 * 3_600_000).toISOString();
+          fs.writeFileSync(path.join(b.kbDir, 'SOURCE.json'), JSON.stringify(source));
+        } else if (state === 'missing-signature') fs.rmSync(path.join(b.brainHome, 'knowledge-signature.json'));
+        else if (state === 'changed-coverage') fs.appendFileSync(path.join(b.kbDir, 'COVERAGE.json'), '\n ');
+        else if (state === 'unreadable-signature') fs.writeFileSync(path.join(b.brainHome, 'knowledge-signature.json'), '{');
+        else if (state === 'unreadable-source') fs.writeFileSync(path.join(b.kbDir, 'SOURCE.json'), '{');
+        else if (state === 'permission-source') {
+          const source = path.join(b.kbDir, 'SOURCE.json'); fs.chmodSync(source, 0);
+          expect(() => fs.readFileSync(source)).toThrow(expect.objectContaining({ code: 'EACCES' }));
+        }
+        else if (state === 'moved') {
+          const disk = path.join(b.parent, 'mounted-disk', 'brain'); fs.mkdirSync(disk, { recursive: true });
+          fs.renameSync(b.kbDir, path.join(disk, 'kb'));
+          fs.copyFileSync(path.join(b.brainHome, 'knowledge-signature.json'), path.join(disk, 'knowledge-signature.json'));
+          fs.mkdirSync(path.join(b.home, '.cache')); const link = path.join(b.home, '.cache', 'ruvnet-brain'); fs.symlinkSync(disk, link);
+          extraEnv.RUVNET_BRAIN_HOME = link; extraEnv.RUVNET_BRAIN_KB = path.join(link, 'kb');
+        }
+        const text = b.doctor([], { extraEnv }); const jsonRun = b.doctor(['--json'], { extraEnv });
+        const verdict = JSON.parse(jsonRun.stdout);
+        expect(text.error || jsonRun.error).toBeUndefined();
+        expect([text.status, jsonRun.status]).toEqual([verdict.exitCode, verdict.exitCode]);
+        expect(verdict.ok).toBe(verdict.exitCode === 0);
+        expect(jsonRun.stdout).not.toContain('\u001b');
+        for (const line of verdict.lines) {
+          expect(text.text).toContain(`${{ok:'✓',fail:'✗',warn:'!',unknown:'○'}[line.state]} ${line.label}`);
+          if (line.state === 'fail' || line.state === 'warn') {
+            expect(typeof line.fix).toBe('string'); expect(line.fix.length).toBeGreaterThan(0);
+            expect(text.text).toContain(line.fix);
+          }
+        }
+        const knowledge = verdict.lines.find(row => row.id === 'knowledge');
+        if (['current', 'moved'].includes(state)) { expect(verdict.exitCode).toBe(0); expect(knowledge.state).toBe('ok'); }
+        if (['stale', 'missing-signature'].includes(state)) { expect(verdict.exitCode).toBe(0); expect(knowledge.state).toBe('warn'); }
+        if (state === 'missing-signature') expect(knowledge.detail).not.toMatch(/signature verified|install record matches/);
+        if (['changed-coverage', 'unreadable-signature'].includes(state)) { expect(verdict.exitCode).toBe(1); expect(knowledge.state).toBe('fail'); }
+        if (['unreadable-source', 'permission-source'].includes(state)) {
+          expect(verdict.exitCode).toBe(1); expect(verdict.lines.find(row => row.id === 'identity').state).toBe('fail');
+          expect(knowledge.detail).toMatch(/unknown time/);
+        }
+        if (state === 'moved') {
+          const link = path.join(b.home, '.cache', 'ruvnet-brain'); expect(fs.lstatSync(link).isSymbolicLink()).toBe(true);
+          expect(fs.readdirSync(path.dirname(link))).toEqual(['ruvnet-brain']);
+        }
+      } finally { b.cleanup(); }
+    }, 60_000);
+});
 
 describe('--move-brain', () => {
   it('moves the whole Brain to another disk, leaves a link at the default path, and verifies every byte', () => {
@@ -439,6 +545,24 @@ describe('the Brain\'s disk is unplugged (dangling link)', () => {
     expect(health(home, false).problem.replace("Do NOT reinstall.", "")).not.toMatch(/reinstall/i);
     expect(volumeOf('/Volumes/SanDisk/ruvnet-brain')).toBe('/Volumes/SanDisk');
     expect(volumeOf('/media/stuart/SanDisk/ruvnet-brain')).toBe('/media/stuart/SanDisk');
+  });
+
+  it.skipIf(process.platform === 'win32')('unmounted doctor emits one shared failed verdict in text/JSON with a mount-only remedy', () => {
+    const { home, brain } = unplug();
+    const outputs = [false, true].map(json => spawnSync(process.execPath,
+      [path.join(ROOT, 'bin', 'install.mjs'), '--doctor', ...(json ? ['--json'] : [])], { encoding: 'utf8', timeout: 30_000,
+        env: { ...process.env, HOME: home, USERPROFILE: home, RUVNET_BRAIN_HOME: '', RUVNET_BRAIN_KB: '', RUVNET_BRAIN_TEST: '1' } }));
+    const verdict = JSON.parse(outputs[1].stdout);
+    expect([outputs[0].status, outputs[1].status, verdict.exitCode]).toEqual([1, 1, 1]);
+    expect(verdict).toMatchObject({ kind: 'ruvnet-brain-doctor', ok: false, failing: ['knowledge'] });
+    const line = verdict.lines.find(row => row.id === 'knowledge');
+    expect(line).toMatchObject({ state: 'fail', detail: expect.stringMatching(/disk .* is not mounted/), fix: expect.stringMatching(/^mount /) });
+    expect(line.fix).not.toMatch(/install|update|clean/i);
+    expect(outputs[0].stdout).toContain(line.detail);
+    expect(outputs[0].stdout).toContain(line.fix);
+    expect(outputs[1].stdout).not.toContain('\u001b');
+    expect(fs.lstatSync(brain).isSymbolicLink()).toBe(true);
+    expect(fs.readdirSync(path.dirname(brain))).toEqual(['ruvnet-brain']);
   });
 
   it.skipIf(process.platform === 'win32')('install and --update refuse in one line and never re-create a brain over the link', () => {

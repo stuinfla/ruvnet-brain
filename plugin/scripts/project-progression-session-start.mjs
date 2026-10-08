@@ -1,12 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { ProjectProgressionStore } from './project-progression-store.mjs';
 import { resolveProjectStore } from './project-store-resolver.mjs';
 import { withProgressionReader } from './project-progression-reader.mjs';
 import { drainCaptureQueue, queuedWork } from './session-snapshot-hook.mjs';
-import { replayTurnQueue } from './turn-outcome-capture.mjs';
+import { replayTurnQueue, resolveTurnDb } from './turn-outcome-capture.mjs';
 import { STAGE_BUDGETS_MS } from './session-start-budget.mjs';
 import { operatorProgressionSuspension } from './project-progression-suspension.mjs';
 
@@ -170,13 +171,60 @@ function isProject(resolution) {
  * absence of the question. Distinct from `unknown`, which means the question was asked and missed.
  */
 function unavailable(reason) {
+  const explanation = reason === 'not-enrolled' ? 'This directory has no verified Brain activation, owned project enrollment, or persisted capture opt-in.'
+    : reason === 'brain-disabled' ? 'Brain is disabled; a new project memory store was not enrolled.'
+      : reason === 'capture-suspended' ? 'Capture consent is off or unverifiable; new-store enrollment is suspended.'
+        : 'This working directory is not a writable adopted project.';
   return {
     status: 'unavailable',
     reason,
     severity: 'info',
     context: '[RuvNet Brain — PROJECT CONTINUITY UNAVAILABLE]\n'
-      + 'This working directory is not a writable adopted project. No AgentDB store was created and no project state was restored.',
+      + `${explanation} No AgentDB store was created and no project state was restored.`,
   };
+}
+
+/** Revalidate the registered shim's actual generation against the executing module. */
+function verifiedBrainActivation(env, brainHome) {
+  if (!env.RUVNET_BRAIN_ACTIVE_VERSION) return false;
+  try {
+    const ownRoot = fs.realpathSync.native(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'));
+    const manifest = JSON.parse(fs.readFileSync(path.join(ownRoot, '.claude-plugin', 'plugin.json'), 'utf8'));
+    if (manifest.version !== env.RUVNET_BRAIN_ACTIVE_VERSION) return false;
+    for (const name of ['dev.json', 'active.json']) {
+      try {
+        const file = path.join(brainHome, name), stat = fs.lstatSync(file);
+        if (!stat.isFile() || stat.isSymbolicLink() || (typeof process.getuid === 'function' && stat.uid !== process.getuid())) continue;
+        const binding = JSON.parse(fs.readFileSync(file, 'utf8'));
+        if (typeof binding.codeRoot !== 'string' || binding.version !== manifest.version) continue;
+        const root = fs.realpathSync.native(path.isAbsolute(binding.codeRoot) ? binding.codeRoot : path.join(brainHome, binding.codeRoot));
+        // Same pointer semantics as the registered shim: explicit dev binding, otherwise
+        // containment in the immutable version store. The executing module must be that root.
+        if (root !== ownRoot || (name === 'active.json' && !root.startsWith(fs.realpathSync.native(path.join(brainHome, 'versions')) + path.sep))) continue;
+        return true;
+      } catch { /* Missing or conflicting generation binding cannot enroll a project. */ }
+    }
+  } catch { /* An arbitrary claimed version or plugin root is insufficient. */ }
+  return false;
+}
+
+function initializationEnrollment(resolution, projectDir, env, { deadlineAt, signal }) {
+  const home = env.HOME || env.USERPROFILE || os.homedir();
+  const state = env.RUVNET_BRAIN_STATE_DIR || path.join(home, '.config', 'ruvnet-brain');
+  if (env.RUVNET_BRAIN_OFF === '1' || fs.existsSync(path.join(state, 'brain-off'))) return 'brain-disabled';
+  const brainHome = env.RUVNET_BRAIN_HOME || path.join(home, '.cache', 'ruvnet-brain');
+  const consent = resolveTurnDb({ projectDir, brainHome, deadlineAt, signal });
+  if (consent.skipped && consent.skipped !== 'no project memory db; persisted opt-in required') return 'capture-suspended';
+  if (consent.optedIn) return null;
+  if (verifiedBrainActivation(env, brainHome)) return null;
+  const swarm = path.join(resolution.projectRoot, '.swarm');
+  try {
+    const stat = fs.lstatSync(swarm);
+    if (stat.isDirectory() && !stat.isSymbolicLink() && fs.realpathSync.native(swarm) === swarm
+      && path.dirname(swarm) === resolution.projectRoot
+      && (typeof process.getuid !== 'function' || stat.uid === process.getuid())) return null;
+  } catch { /* No enrollment is created by checking for it. */ }
+  return 'not-enrolled';
 }
 
 /**
@@ -226,6 +274,12 @@ export function restoreProgressionForSession({
   if (!isProject(resolution)) return unavailable('non-project');
   if (!writable(resolution.projectRoot)) return unavailable('read-only');
   const initializing = !fs.existsSync(resolution.canonicalAgentDbPath);
+  if (initializing) {
+    try {
+      const denied = initializationEnrollment(resolution, projectDir, env, { deadlineAt, signal });
+      if (denied) return unavailable(denied);
+    } catch (error) { return unknown(classify(error)); }
+  }
   const rowCount = initializing ? 0 : committedRowCount(resolution.canonicalAgentDbPath, { deadlineAt, signal });
   const miss = (reason) => unknown(reason, { rowCount });
 
@@ -268,6 +322,9 @@ export function restoreProgressionForSession({
       return { ...failed, context: `${failed.context} Replay is suspended by capture consent; no older checkpoint was injected.` };
     }
     if (initializing) {
+      checkDeadline();
+      const denied = initializationEnrollment(resolution, projectDir, env, { deadlineAt, signal });
+      if (denied) return unavailable(denied);
       fs.mkdirSync(path.dirname(resolution.canonicalAgentDbPath), { recursive: true, mode: 0o700 });
       initializeCanonicalStore(store, resolution);
     }

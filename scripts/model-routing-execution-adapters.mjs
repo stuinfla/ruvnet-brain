@@ -9,6 +9,7 @@ import { runControlledClaudeTurn } from './claude-controlled-terminal.mjs';
 import { validateDispatchDecision, assertSubscriptionAuth, buildLaunch, subscriptionEnvironment } from './model-router-dispatch.mjs';
 import { subscriptionOnlyEnv } from './subscription-hosts.mjs';
 import { readCodexAllowance } from './native-subscription-usage.mjs';
+import { unboundNativePolicyEvidence } from './native-workflow-policy.mjs';
 
 const digest = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const blocked = reason => Object.assign(new Error(reason), { safetyBlocked: true });
@@ -117,31 +118,92 @@ export function codexBrainSearchArguments(env = process.env) {
   return ['-c', table];
 }
 
-const CLAUDE_WORKFLOW_SCHEMAS = {"planner":{"type":"object","properties":{"tasks":{"type":"array","minItems":1,"items":{"type":"object","additionalProperties":false,"properties":{"id":{"type":"string","pattern":"^[a-z][a-z0-9-]{0,79}$"},"instructions":{"type":"string","minLength":1},"dependsOn":{"type":"array","items":{"type":"string"}},"mode":{"type":"string","enum":["read","write"]},"worktree":{"type":"string"},"paths":{"type":"array","items":{"type":"string"}},"checkIds":{"type":"array","items":{"type":"string"}}},"required":["id","instructions","mode","checkIds"]}}},"required":["tasks"]},"worker":{"type":"object","properties":{"outcome":{"type":"string","minLength":1},"artifacts":{"type":"array","items":{}},"decisions":{"type":"array","items":{}},"risks":{"type":"array","items":{}}},"required":["outcome","artifacts","decisions","risks"]},"reviewer":{"type":"object","properties":{"passed":{"type":"boolean"},"artifactDigest":{"type":"string","pattern":"^[a-f0-9]{64}$"},"findings":{"type":"array","items":{}},"evidence":{"type":"array","items":{},"minItems":1}},"required":["passed","artifactDigest","findings","evidence"]}};
+const idSchema = { type: 'string', pattern: '^[a-z][a-z0-9-]{0,79}$' };
+const idsSchema = { type: 'array', minItems: 1, uniqueItems: true, items: idSchema };
+const claimSchema = { type: 'string', minLength: 12, maxLength: 2000, pattern: '\\S' };
+const digestSchema = { type: 'string', pattern: '^[a-f0-9]{64}$' };
+const sourceRefSchema = { type: 'object', additionalProperties: false,
+  properties: { path: { type: 'string', minLength: 1, pattern: '\\S' }, digest: digestSchema }, required: ['path', 'digest'] };
+const criterionSchema = { type: 'object', additionalProperties: false,
+  properties: { id: idSchema, assertion: claimSchema, checkIds: idsSchema,
+    sourceClaim: { type: 'object', additionalProperties: false,
+      properties: { checkId: idSchema, claim: claimSchema }, required: ['checkId', 'claim'] } },
+  required: ['id', 'assertion', 'checkIds'] };
+export const CLAUDE_WORKFLOW_SCHEMAS = {
+  planner: { type: 'object', additionalProperties: false, properties: {
+    tasks: { type: 'array', minItems: 1, items: { type: 'object', additionalProperties: false, properties: {
+      id: idSchema, instructions: { type: 'string', minLength: 1, pattern: '\\S' },
+      dependsOn: { type: 'array', items: { type: 'string' } }, mode: { type: 'string', enum: ['read', 'write'] },
+      worktree: { type: 'string' }, paths: { type: 'array', items: { type: 'string' } },
+      checkIds: { type: 'array', items: { type: 'string' } }, acceptanceCriteria: { type: 'array', minItems: 1, items: criterionSchema },
+    }, required: ['id', 'instructions', 'mode', 'checkIds', 'acceptanceCriteria'] } },
+    unresolvedObligations: { type: 'array', items: {} },
+    obligations: {type:'array',minItems:1,maxItems:128,items:{type:'object',properties:{id:{type:'string'},statement:{type:'string'},disposition:{enum:['in-scope','pending']},
+      originalLocator:{type:'object',properties:{start:{type:'integer'},end:{type:'integer'},quote:{type:'string'}},required:['start','end','quote'],additionalProperties:false},inferenceRationale:{type:'string'},
+      taskMappings:{type:'array',items:{type:'object',properties:{taskId:idSchema,criterionIds:idsSchema,checkIds:idsSchema},required:['taskId','criterionIds','checkIds'],additionalProperties:false}}},
+      required:['id','statement','disposition','taskMappings'],additionalProperties:false}},
+    sourceBoundaries:{type:'array',minItems:8,maxItems:32,items:{type:'object',properties:{id:{type:'string'},dimension:{enum:['entry','caller','consumer','config','native-host','state-transition','crash-recovery','error']},
+      requirementIds:{type:'array',items:{type:'string'}},state:{enum:['read','not-applicable']},reason:{type:'string'},sourceRef:sourceRefSchema,
+      ranges:{type:'array',minItems:1,maxItems:32,items:{type:'object',properties:{startLine:{type:'integer'},endLine:{type:'integer'}},required:['startLine','endLine'],additionalProperties:false}}},
+      required:['id','dimension','requirementIds','state','sourceRef','ranges'],additionalProperties:false}},
+  }, required: ['tasks', 'unresolvedObligations'] },
+  worker: { type: 'object', properties: { outcome: { type: 'string', minLength: 1, pattern: '\\S' },
+    artifacts: { type: 'array', items: {} }, decisions: { type: 'array', items: {} }, risks: { type: 'array', items: {} },
+    sourceClaims: { type: 'array', items: { type: 'object', additionalProperties: false,
+      properties: { criterionId: idSchema, checkId: idSchema, claim: claimSchema,
+        sourceRef: sourceRefSchema, originalPromptDigest: digestSchema },
+      required: ['criterionId', 'checkId', 'claim', 'sourceRef', 'originalPromptDigest'] } },
+  }, required: ['outcome', 'artifacts', 'decisions', 'risks'] },
+  reviewer: { type: 'object', properties: { passed: { type: 'boolean' }, artifactDigest: digestSchema,
+    findings: { type: 'array', items: {} }, evidence: { type: 'array', minItems: 1, items: {} },
+    criterionCoverage: { type: 'array', minItems: 1, items: { type: 'object', additionalProperties: false,
+      properties: { taskId: idSchema, criterionId: idSchema, checkIds: idsSchema, passed: { type: 'boolean' },
+        evidence: { type: 'array', minItems: 1, items: {} } }, required: ['taskId', 'criterionId', 'checkIds', 'passed', 'evidence'] } },
+    coverage: { type: 'array', minItems: 5, maxItems: 5, items: { type: 'object', additionalProperties: false,
+      properties: { dimension: { type: 'string', enum: ['entry', 'caller', 'consumer', 'config', 'error'] },
+        state: { type: 'string', enum: ['covered', 'not-applicable'] }, evidence: { type: 'array', minItems: 1, items: {} } },
+      required: ['dimension', 'state', 'evidence'] } },
+    omissions: { type: 'array', items: { type: 'object', additionalProperties: false,
+      properties: { relevant: { type: 'boolean' }, sourceRef: sourceRefSchema, reason: { type: 'string', minLength: 1 } },
+      required: ['relevant', 'sourceRef', 'reason'] } },
+  }, required: ['passed', 'artifactDigest', 'findings', 'evidence'],
+    if: { properties: { passed: { const: true } }, required: ['passed'] },
+    then: { required: ['criterionCoverage', 'coverage', 'omissions'] } },
+};
 const plainObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
-export function claudeWorkflowResponse(role) {
+// Same bounded JSON-schema contract is used by native --json-schema and final-answer validation.
+function matchesWorkflowSchema(value, schema) {
+  const objectSchema = schema.type === 'object' || schema.properties || schema.required;
+  if (objectSchema && (!plainObject(value) || (schema.required || []).some(k => !Object.hasOwn(value, k)))) return false;
+  if (objectSchema) {
+    if (schema.additionalProperties === false && Object.keys(value).some(k => !Object.hasOwn(schema.properties || {}, k))) return false;
+    if (Object.entries(schema.properties || {}).some(([k, child]) => Object.hasOwn(value, k) && !matchesWorkflowSchema(value[k], child))) return false;
+  }
+  if (schema.type === 'array' && (!Array.isArray(value) || value.length < (schema.minItems || 0)
+    || value.length > (schema.maxItems ?? Infinity) || value.some(v => !matchesWorkflowSchema(v, schema.items || {})))) return false;
+  if (schema.uniqueItems && new Set(value.map(v => JSON.stringify(v))).size !== value.length) return false;
+  if (schema.type === 'string' && (typeof value !== 'string' || [...value].length < (schema.minLength || 0)
+    || [...value].length > (schema.maxLength ?? Infinity) || (schema.pattern && !new RegExp(schema.pattern).test(value)))) return false;
+  if (schema.type === 'boolean' && typeof value !== 'boolean') return false;
+  if (schema.enum && !schema.enum.includes(value)) return false;
+  if (Object.hasOwn(schema, 'const') && value !== schema.const) return false;
+  if (schema.if && matchesWorkflowSchema(value, schema.if) && !matchesWorkflowSchema(value, schema.then || {})) return false;
+  return true;
+}
+export const SCOPE_PREFLIGHT_RESPONSE_SCHEMA={type:'object',additionalProperties:false,properties:{schemaVersion:{const:1},kind:{const:'scope-preflight'},passed:{type:'boolean'},
+  originalPromptDigest:digestSchema,inventoryDigest:digestSchema,tasksDigest:digestSchema,packetDigest:digestSchema,
+  requirementIds:{type:'array',items:{type:'string'}},boundaryIds:{type:'array',items:{type:'string'}},criterionCoverage:{type:'array',items:{type:'object',additionalProperties:false,
+    properties:{taskId:idSchema,criterionId:idSchema,checkIds:idsSchema,passed:{type:'boolean'}},required:['taskId','criterionId','checkIds','passed']}},
+  findings:{type:'array',items:{}},omissions:{type:'array',items:{}}},required:['schemaVersion','kind','passed','originalPromptDigest','inventoryDigest','tasksDigest','packetDigest','requirementIds','boundaryIds','criterionCoverage','findings','omissions']};
+export function claudeWorkflowResponse(role,responseContract) {
   const kind = role === 'developer' ? 'worker' : role;
   if (!Object.hasOwn(CLAUDE_WORKFLOW_SCHEMAS, kind)) throw blocked('Unknown native Claude workflow role');
-  const schema = CLAUDE_WORKFLOW_SCHEMAS[kind];
-  if (!schema) throw blocked('Unknown native Claude workflow role');
-  const nonblank = value => typeof value === 'string' && value.trim().length > 0;
-  const strings = value => Array.isArray(value) && value.every(item => typeof item === 'string');
-  const validate = value => {
-    if (!plainObject(value)) return false;
-    if (kind === 'planner') return Array.isArray(value.tasks) && value.tasks.length > 0 && value.tasks.every(task =>
-      plainObject(task) && Object.keys(task).every(key => ['id', 'instructions', 'dependsOn', 'mode', 'worktree', 'paths', 'checkIds'].includes(key))
-      && /^[a-z][a-z0-9-]{0,79}$/.test(task.id || '') && nonblank(task.instructions) && ['read', 'write'].includes(task.mode)
-      && strings(task.checkIds) && (task.dependsOn === undefined || strings(task.dependsOn))
-      && (task.paths === undefined || strings(task.paths)) && (task.worktree === undefined || typeof task.worktree === 'string'));
-    if (kind === 'worker') return nonblank(value.outcome) && ['artifacts', 'decisions', 'risks'].every(key => Array.isArray(value[key]));
-    return typeof value.passed === 'boolean' && /^[a-f0-9]{64}$/.test(value.artifactDigest || '')
-      && Array.isArray(value.findings) && Array.isArray(value.evidence) && value.evidence.length > 0;
-  };
-  return { responseSchema: structuredClone(schema), validateStructuredOutput: validate };
+  const schema = responseContract==='scope-preflight-v1'&&role==='reviewer'?SCOPE_PREFLIGHT_RESPONSE_SCHEMA:CLAUDE_WORKFLOW_SCHEMAS[kind];
+  return { responseSchema: structuredClone(schema), validateStructuredOutput: value => matchesWorkflowSchema(value, schema) };
 }
 
 export async function executeCodexWorkflowWorker({ binary, decision, prompt, cwd, readOnly, signal, timeoutMs,
-  env = process.env, sessionId, approvalPolicy = 'never', launch = spawn, observe = readCodexWorkerObservation, allowance = readCodexAllowance }) {
+  env = process.env, sessionId, approvalPolicy = 'never', launch = spawn, observe = readCodexWorkerObservation, allowance = readCodexAllowance, onNativeLaunch = () => {}, onNativeClose = () => {} }) {
   if (approvalPolicy !== 'never') throw blocked('Native exec cannot preserve requested approval policy');
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || signal?.aborted) throw blocked('Native worker cancelled or deadline unavailable');
   const limit = performance.now() + timeoutMs;
@@ -166,6 +228,7 @@ export async function executeCodexWorkflowWorker({ binary, decision, prompt, cwd
   if (performance.now() >= limit || signal?.aborted) throw blocked('Native worker deadline expired before launch');
   const result = await new Promise((resolve, reject) => {
     const child = launch(binary, args, { cwd, env: clean, shell: false, stdio: ['pipe', 'pipe', 'pipe'] });
+    child.once('spawn', () => onNativeLaunch({ host: 'codex', pid: child.pid, binary, cwd, evidence: 'child-process-spawn-event' }));
     let stdout = '', stderr = '', finished = false, timer, killTimer, cancelled = false, cancelReason;
     const finish = (error, value) => {
       if (finished) return; finished = true; clearTimeout(timer); clearTimeout(killTimer);
@@ -185,6 +248,7 @@ export async function executeCodexWorkflowWorker({ binary, decision, prompt, cwd
     child.on('error', () => cancel('Native worker process error; retirement required'));
     child.stdin.once('error', () => cancel('Native worker input delivery failed'));
     child.once('close', (code, nativeSignal) => {
+      onNativeClose({ evidence: 'child-process-close-event', scope: 'owned-direct-child-only', closeObserved: true, retired: true, treeVerified: false, pid: child.pid ?? null, code, signal: nativeSignal });
       if (cancelled || signal?.aborted || nativeSignal) return finish(blocked('Native worker interrupted; effects require inspection'));
       if (code !== 0) return finish(blocked(`Native worker failed (exit ${code}); inspect effects before retry`));
       finish(null, { stdout, stderr });
@@ -277,7 +341,7 @@ function ownedPermission(request, worker, nativeRequest) {
 }
 
 export function createGuardedWorkflowAdapters({ request, budget, env = process.env,
-  binaries = nativeWorkflowBinaries(), executeNative, approve, verifyDecision = validateDispatchDecision, captureObservation = () => {} }) {
+  binaries = nativeWorkflowBinaries(), executeNative, approve, verifyDecision = validateDispatchDecision, captureObservation = () => {}, authorizeNative }) {
   const adapters = {};
   for (const host of ['codex', 'claude']) {
     adapters[host] = {
@@ -305,38 +369,67 @@ export function createGuardedWorkflowAdapters({ request, budget, env = process.e
         }
         const controller = new AbortController();
         return { worker, decision, binary, cwd, controller, signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal,
-          timeoutMs: Math.min(timeoutMs, budget.deadline - Date.now()), startedAt: new Date().toISOString(), finished: false };
+          policyEvidence: [], nativeLaunched: false, nativeLaunchEvidence: null, nativeRetired: false, nativeRetirementEvidence: null, timeoutMs: Math.min(timeoutMs, budget.deadline - Date.now()), startedAt: new Date().toISOString(), finished: false };
       },
       launch: async state => {
         try {
           if (host === 'claude') state.timeoutMs = Math.floor(Math.min(state.timeoutMs, budget.deadline - Date.now()));
           if (state.timeoutMs <= 0) throw blocked('Shared workflow deadline exhausted');
-          if (executeNative) state.observation = await executeNative({ ...state, prompt: state.worker.prompt + (state.worker.reviewContract ? '\n' + state.worker.reviewContract : ''), env });
+          state.policyEvidence.push(typeof authorizeNative === 'function'
+            ? await authorizeNative({ stage: 'launch', state }) : unboundNativePolicyEvidence());
+          if (state.signal?.aborted || Date.now() >= budget.deadline) throw blocked('Policy wait cancelled or expired before native launch');
+          state.timeoutMs = Math.floor(Math.min(state.timeoutMs, budget.deadline - Date.now()));
+          if (executeNative) { state.nativeLaunched = null; state.nativeRetired = null; state.observation = await executeNative({ ...state, prompt: state.worker.prompt + (state.worker.reviewContract ? '\n' + state.worker.reviewContract : ''), env }); }
           else if (host === 'codex') {
             const write = state.worker.ownership?.mode === 'write';
             const contract = write ? '\nExecution contract: native execution is read-only. Return ONLY JSON with outcome, artifacts, decisions, risks, and edits:[{path,oldSha256,content}]. Read each existing file first and use its actual SHA256; new files use oldSha256:null. Paths must exactly match ownership.paths. Do not write files or run mutating commands.' : '';
-            state.observation = await executeCodexWorkflowWorker({ ...state, prompt: state.worker.prompt + contract + (state.worker.reviewContract ? '\n' + state.worker.reviewContract : ''), readOnly: true, env });
-            if (write) state.observation.appliedArtifacts = applyOwnedCodexEdits(state.worker, state.observation.answer, { signal: state.signal, deadline: budget.deadline });
+            state.observation = await executeCodexWorkflowWorker({ ...state, prompt: state.worker.prompt + contract + (state.worker.reviewContract ? '\n' + state.worker.reviewContract : ''), readOnly: true, env, onNativeLaunch: evidence => { state.nativeLaunched = true; state.nativeLaunchEvidence = evidence; }, onNativeClose: evidence => { state.nativeRetired = true; state.nativeRetirementEvidence = evidence; } });
+            if (write) {
+              state.policyEvidence.push(typeof authorizeNative === 'function'
+                ? await authorizeNative({ stage: 'apply', state }) : unboundNativePolicyEvidence());
+              state.observation.appliedArtifacts = applyOwnedCodexEdits(state.worker, state.observation.answer, { signal: state.signal, deadline: budget.deadline });
+            }
           }
           else {
             const receipts = [];
-            const turn = await runControlledClaudeTurn({ ...state, ...claudeWorkflowResponse(state.worker.role), prompt: state.worker.prompt + (state.worker.reviewContract ? '\n' + state.worker.reviewContract : ''), env,
-              decide: async () => state.decision, scopeTool: permission => ownedPermission(request, state.worker, permission), approve: async permission => !state.signal?.aborted && Date.now() < budget.deadline
-                && ownedPermission(request, state.worker, permission)
-                && (typeof approve !== 'function' ? !['Write', 'Edit', 'MultiEdit'].includes(permission.tool_name)
-                  : await approve(permission, { workerId: state.worker.id, ownership: state.worker.ownership }) === true)
-                && !state.signal?.aborted && Date.now() < budget.deadline,
-              receipt: value => receipts.push(value) });
+            const turn = await runControlledClaudeTurn({ ...state, ...claudeWorkflowResponse(state.worker.role,state.worker.responseContract), prompt: state.worker.prompt + (state.worker.reviewContract ? '\n' + state.worker.reviewContract : ''), env,
+              decide: async () => state.decision, scopeTool: permission => ownedPermission(request, state.worker, permission), approve: async permission => {
+                if (state.signal?.aborted || Date.now() >= budget.deadline || !ownedPermission(request, state.worker, permission)) return false;
+                const approved = typeof approve !== 'function' ? !['Write', 'Edit', 'MultiEdit'].includes(permission.tool_name)
+                  : await approve(permission, { workerId: state.worker.id, ownership: state.worker.ownership }) === true;
+                if (!approved || state.signal?.aborted || Date.now() >= budget.deadline) return false;
+                if (['Write', 'Edit', 'MultiEdit'].includes(permission.tool_name)) {
+                  state.policyEvidence.push(typeof authorizeNative === 'function'
+                    ? await authorizeNative({ stage: 'apply', state }) : unboundNativePolicyEvidence());
+                }
+                return !state.signal?.aborted && Date.now() < budget.deadline;
+              },
+              receipt: value => receipts.push(value), spawnNative: (binary, args, options) => {
+                const child = spawn(binary, args, options);
+                child.once('spawn', () => { state.nativeLaunched = true; state.nativeLaunchEvidence = {
+                  host: 'claude', pid: child.pid, binary, cwd: state.cwd, evidence: 'child-process-spawn-event' }; });
+                child.once('close', (code, signal) => { state.nativeRetired = true; state.nativeRetirementEvidence = {
+                  evidence: 'child-process-close-event', scope: 'owned-direct-child-only', closeObserved: true, retired: true, treeVerified: false, pid: child.pid ?? null, code, signal }; });
+                return child;
+              } });
             if (turn.structuredOutput !== true || typeof turn.finalAnswer !== 'string' || !turn.finalAnswer.trim()) throw blocked('Native final answer unavailable');
+            let nativeOutput;
+            try { nativeOutput = JSON.parse(turn.finalAnswer); } catch { throw blocked('Native final answer schema invalid'); }
+            if (!claudeWorkflowResponse(state.worker.role,state.worker.responseContract).validateStructuredOutput(nativeOutput)) throw blocked('Native final answer schema invalid');
             state.observation = { model: turn.decision?.model, effort: turn.decision?.effort,
               sessionId: turn.sessionId, completed: turn.modelObserved === true && turn.effortSettingsObserved === true, answer: turn.finalAnswer,
               evidence: receipts, responseFormat: 'json-schema', nativeSchemaRetries: 'not-observed', effortEvidence: 'Native settings observed before and after; per-request effort not exposed' };
           }
+          if (state.observation) state.observation = { ...state.observation, policyAuthorization: {
+            enforced: state.policyEvidence.length > 0 && state.policyEvidence.every(e => e?.enforced === true)
+              && (state.worker.ownership?.mode !== 'write' || state.policyEvidence.some(e => e?.actionType === 'native.worker.apply')),
+            scope: 'observed adapter launch/apply boundaries only; injected executor internals not covered',
+            evidence: state.policyEvidence, completionEligibility: 'not-established-by-authorization' } };
           if (state.observation?.completed && state.observation.model === state.decision.model && state.observation.effort === state.decision.effort) {
             captureObservation(state.worker, state.observation);
           }
-        } catch (error) { state.error = error; if (error.retirementUnconfirmed) state.retirementUnconfirmed = true; }
-        finally { state.finished = true; }
+        } catch (error) { state.error = error; if (error.policyAuthorization) state.policyEvidence.push(error.policyAuthorization); if (error.retirementEvidence && !state.nativeRetirementEvidence) state.nativeRetirementEvidence = error.retirementEvidence; if (error.retirementUnconfirmed) state.retirementUnconfirmed = true; }
+        finally { state.finished = state.retirementUnconfirmed !== true; }
         return state;
       },
       observe: async state => state.observation,
@@ -348,6 +441,9 @@ export function createGuardedWorkflowAdapters({ request, budget, env = process.e
           status: valid ? 'succeeded' : 'blocked', exitCategory: valid ? 'success' : 'protocol_error',
           startedAt: state.startedAt, endedAt, durationMs: Math.max(0, Date.parse(endedAt) - Date.parse(state.startedAt)),
           provider: valid ? state.decision.provider : null, providerProvenance: valid ? 'configured' : 'unknown',
+          nativeLaunched: state.nativeLaunched, nativeLaunchEvidence: state.nativeLaunchEvidence,
+          nativeRetired: state.nativeRetired, nativeRetirementEvidence: state.nativeRetirementEvidence,
+          policyAuthorization: observation?.policyAuthorization || { enforced: false, evidence: state.policyEvidence, completionEligibility: 'not-established-by-authorization' },
           configuredModel: state.decision.model, observedModel: valid ? observation.model : null,
           configuredEffort: state.decision.effort, observedEffort: valid ? observation.effort : null,
           effortEvidence: valid ? observation.effortEvidence || 'native-turn-context' : null,
@@ -360,8 +456,9 @@ export function createGuardedWorkflowAdapters({ request, budget, env = process.e
       },
       cancel: async state => { state?.controller.abort(); return { type: state?.finished ? 'cancelled' : 'orphaned' }; },
       cleanup: async state => {
-        if (state && (!state.finished || state.retirementUnconfirmed)) throw blocked('Native worker cleanup is not confirmed');
-        return { cleaned: true };
+        if (state?.nativeLaunched === null) { state.retirementUnconfirmed = true; state.finished = false; }
+        if (!state || (state && (!state.finished || state.retirementUnconfirmed || (state.nativeLaunched === true && state.nativeRetired !== true)))) throw blocked('Native worker cleanup is not confirmed');
+        return { cleaned: true, scope: 'adapter-owned-direct-child-only', nativeRetired: state.nativeRetired, nativeRetirementEvidence: state.nativeRetirementEvidence, treeVerified: false };
       },
     };
   }
@@ -369,12 +466,12 @@ export function createGuardedWorkflowAdapters({ request, budget, env = process.e
 }
 
 export async function runObservedWorkflowWorker({ request, decision, prompt, ownership, role = 'worker',
-  id = `worker-${crypto.randomUUID()}`, env = process.env, signal, timeoutMs = 120000 }) {
+  id = `worker-${crypto.randomUUID()}`, env = process.env, signal, timeoutMs = 120000, authorizeNative,responseContract }) {
   const host = decision.harness === 'claude-code' ? 'claude' : decision.harness;
-  const adapters = createGuardedWorkflowAdapters({ request, env, budget: { deadline: request.deadline || Date.now() + timeoutMs } });
+  const adapters = createGuardedWorkflowAdapters({ request, env, authorizeNative, budget: { deadline: request.deadline || Date.now() + timeoutMs } });
   if (!adapters[host]) throw blocked('Native workflow host unavailable');
   const worker = { id, host, activity: role === 'reviewer' ? 'review' : 'implementation', role, decision,
-    configuredModel: decision.model, configuredEffort: decision.effort, ownership, prompt };
+    configuredModel: decision.model, configuredEffort: decision.effort, ownership, prompt,...(responseContract?{responseContract}: {}) };
   const state = await adapters[host].prepare({ worker, signal, timeoutMs });
   await adapters[host].launch(state);
   const result = adapters[host].interpret(state, await adapters[host].observe(state));

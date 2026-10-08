@@ -232,6 +232,10 @@ describe('behind the flag, through advocacy-route and unprompted-runtime', () =>
     expect(c).toMatchObject({ channel: 'advocacy', effect: 'advisory', findingId: 'recommend:pkg:@ruvector/typesafe', package: '@ruvector/typesafe', capability: 'typesafe' });
     expect(c.copy).toContain('ruvector/npm/packages/typesafe/package.json');
     expect(c.copy.split('\n')).toHaveLength(1);
+    expect(c.copy).toContain('Alternative: keep the current manual workflow without adding a package');
+    expect(c.copy).toContain('suits small or one-off tasks and deliberate dependency control');
+    expect(c.copy).toContain('but keeps the manual effort instead of the proposed automation');
+    expect(c.copy.length).toBeLessThan(2000);
   });
 
   it('ON: the closed catalogue keeps precedence for its measured intents', () => {
@@ -244,6 +248,8 @@ describe('behind the flag, through advocacy-route and unprompted-runtime', () =>
     expect(r.status).toBe(0);
     const env1 = JSON.parse(r.stdout);
     expect(env1.hookSpecificOutput.additionalContext).toContain('@ruvector/typesafe');
+    expect(env1.hookSpecificOutput.additionalContext).toContain('Alternative: keep the current manual workflow without adding a package');
+    expect(env1.hookSpecificOutput.additionalContext).toContain('deliberate dependency control');
     const ledger = fs.readFileSync(path.join(dir, 'outcomes.jsonl'), 'utf8');
     expect(ledger).toContain('recommend:pkg:@ruvector/typesafe');
     // Same session, a different matching need: MAX_PER_SESSION = 1 holds across both lanes.

@@ -87,6 +87,7 @@ try {
 } catch { result.failed++; }
 finally { if (!process.send) releaseQueueLock(initial, token); }
 if (process.argv.includes('--report')) console.log(`learn-flush: fed ${result.fed}; acknowledged ${result.acknowledged}; failed ${result.failed}; malformed ${result.malformed}; original queue is KEPT for retry/history`);
+if (process.argv.includes('--report') && result.distillation?.capability === 'restricted') console.log(`learn-flush: ${result.distillation.deferred}; consented observations remain recorded.`);
 
 // Keep the owned root alive until its supervisor terminates and confirms the whole tree.
 // A lost supervisor cannot keep this worker alive beyond its inherited deadline.

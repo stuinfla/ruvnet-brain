@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadNodeSqlite } from '../../plugin/scripts/node-sqlite.mjs';
 import { resolveBash } from '../../plugin/scripts/hook-shim-bash.mjs';
 
 /**
@@ -36,7 +37,12 @@ const originalCwd = process.cwd();
 const mktemp = () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-root-'));
   temps.push(d);
-  return fs.realpathSync.native(d);
+  const root = fs.realpathSync.native(d);
+  // Portable synthetic canonical-store presence; real managed adoption is proved separately.
+  fs.mkdirSync(path.join(root, '.swarm'));
+  const { DatabaseSync } = loadNodeSqlite();
+  new DatabaseSync(path.join(root, '.swarm', 'memory.db')).close();
+  return root;
 };
 const cleanup = async () => {
   process.chdir(originalCwd);

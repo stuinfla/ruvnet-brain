@@ -1,5 +1,8 @@
 // Controlled native exec/resume frontend. This is deliberately not the native Codex TUI.
 import fs from 'node:fs';
+import crypto from 'node:crypto';
+import {fileURLToPath} from 'node:url';
+import {recordManagedFrontendIntent,managedFrontendOriginalRequest,managedFrontendRecoveryState} from './managed-frontend-intake.mjs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
@@ -10,6 +13,10 @@ import { validateDispatchDecision, subscriptionEnvironment } from './model-route
 import { classifyTerminalArguments } from './model-terminal-gateway.mjs';
 import { executeCodexWorkflowWorker } from './model-routing-execution-adapters.mjs';
 
+const frontendWitnesses=new WeakMap();
+const sourceFile=fs.realpathSync(fileURLToPath(import.meta.url));
+const sourceIdentity={path:sourceFile,digest:crypto.createHash('sha256').update(fs.readFileSync(sourceFile)).digest('hex')};
+export const readManagedFrontendWitness=witness=>{const value=frontendWitnesses.get(witness);return value?structuredClone(value):null;};
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const BYPASS = '--dangerously-bypass-approvals-and-sandbox';
 const invalid = () => new Error('Controlled Codex accepts a literal prompt, resume <UUID>, -C/--cd <directory>, and explicit owner permission bypass. Unsupported flags are refused.');
@@ -142,7 +149,7 @@ async function administrative(binary, args, env, cwd, signalSource, spawnNative)
 
 export async function launchCodexManagedTerminal({ binary, args = [], input = process.stdin, output = process.stdout,
   diagnostics = process.stderr, cwd = process.cwd(), env = process.env, signalSource = process,
-  primaryTurn = runCodexManagedPrimaryTurn, managedPrompt = runManagedPrompt, readConfig = readCodexTerminalConfig, spawnNative = spawn } = {}) {
+  primaryTurn = runCodexManagedPrimaryTurn, managedPrompt = runManagedPrompt, readConfig = readCodexTerminalConfig, spawnNative = spawn, captureFrontendIntent = recordManagedFrontendIntent } = {}) {
   if (env.RNB_TERMINAL_LAUNCH_ACTIVE) throw new Error('Controlled Codex recursive terminal invocation refused');
   if (!path.isAbsolute(binary || '')) throw new Error('Absolute native Codex binary required');
   const parsed = parseCodexManagedArguments(args, cwd);
@@ -150,6 +157,7 @@ export async function launchCodexManagedTerminal({ binary, args = [], input = pr
   if (!input.isTTY || !output.isTTY) throw new Error('Controlled Codex requires a person at a terminal');
   let sessionId = parsed.sessionId, resume = Boolean(sessionId), initialPrompt = parsed.initialPrompt;
   const terminal = createManagedTerminal({ input, output }), controller = new AbortController();
+  const frontendInstanceId=crypto.randomUUID();let submissionSequence=0;
   const cancel = () => controller.abort();
   terminal.on('SIGINT', cancel);
   for (const name of ['SIGINT', 'SIGTERM', 'SIGHUP']) signalSource.on(name, cancel);
@@ -157,13 +165,29 @@ export async function launchCodexManagedTerminal({ binary, args = [], input = pr
   if (parsed.ownerBypass) diagnostics.write('Explicit owner bypass authorizes guarded workspace writes; unrestricted native sandbox bypass is not forwarded.\n');
   try {
     while (!controller.signal.aborted) {
-      const prompt = initialPrompt ?? await terminal.question('Codex> ', { signal: controller.signal }); initialPrompt = undefined;
-      if (prompt.trim() === '/exit') break;
-      if (!prompt.trim()) continue;
-      const effective = await readConfig({ binary, cwd: parsed.cwd, env, signal: controller.signal });
-      const authority = codexTerminalAuthority(effective, parsed);
-      const turn = await managedPrompt({ binary, originalPrompt: prompt, harness: 'codex', projectRoot: parsed.cwd,
-        nativeContext: { sessionId, resume }, permissions: { apiBilling: false, write: authority.write },
+      const before=await readConfig({binary,cwd:parsed.cwd,env,signal:controller.signal});
+      const beforeAuthority=codexTerminalAuthority(before,parsed);
+      let prompt,frontendIntake,deadline=Date.now()+900000,authority=beforeAuthority;
+      if(initialPrompt!==undefined){prompt=initialPrompt;initialPrompt=undefined;}
+      else await terminal.question('Codex> ',{signal:controller.signal}).then(async value=>{
+        prompt=value;if(!value.trim()||value.trim()==='/exit')return;deadline=Date.now()+900000;
+        const after=await readConfig({binary,cwd:parsed.cwd,env,signal:controller.signal}),fresh=codexTerminalAuthority(after,parsed);
+        authority={...fresh,write:beforeAuthority.write&&fresh.write,sandbox:beforeAuthority.write&&fresh.write?'workspace-write':'read-only'};
+        const witness=Object.freeze({});
+        frontendWitnesses.set(witness,Object.freeze({host:'codex',inputKind:'interactive',frontendInstanceId,submissionSequence:++submissionSequence,
+          projectDir:parsed.cwd,originalPromptDigest:crypto.createHash('sha256').update(value).digest('hex'),permissions:{apiBilling:false,write:authority.write},sourceIdentity,
+          scopeLimits:{allowedWorktrees:[parsed.cwd],maxConcurrent:5,maxAttempts:6,deadline,
+            parentContextDigest:crypto.createHash('sha256').update(JSON.stringify({sessionId,resume})).digest('hex')},
+          parentPermissionRef:{kind:'actual-codex-config-read',digest:crypto.createHash('sha256').update(JSON.stringify({before,after,authority})).digest('hex')}}));
+        frontendIntake=await captureFrontendIntent({witness,host:'codex',originalPrompt:value,projectDir:parsed.cwd,env,signal:controller.signal});
+        if(/^\/resume-frontend /.test(value)&&frontendIntake)prompt=managedFrontendOriginalRequest(frontendIntake);
+      });
+      if(prompt.trim()==='/exit')break;if(!prompt.trim())continue;
+      const recoveryState=managedFrontendRecoveryState(frontendIntake),recoveredScope=recoveryState?.effectiveScope;
+      if(recoveredScope){deadline=Math.min(deadline,recoveredScope.deadline);authority={...authority,write:authority.write&&recoveredScope.permissions.write};}
+      const turn = await managedPrompt({ binary, originalPrompt: prompt, harness: 'codex', projectRoot: parsed.cwd,deadline,
+        ...(recoveredScope?{allowedWorktrees:recoveredScope.allowedWorktrees,maxAttempts:Math.min(6,recoveryState.originalScope.maxAttempts),maxConcurrent:recoveredScope.maxConcurrent}:{}),
+        frontendIntake, inputKind:frontendIntake?'interactive':'argv', nativeContext: { sessionId, resume }, permissions: { apiBilling: false, write: authority.write },
         primaryTurn, readOnly: true, approvalPolicy: authority.approvalPolicy, cwd: parsed.cwd, env, signal: controller.signal,
         output: text => output.write(String(text).replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, '') + '\n') });
       if (!UUID.test(turn?.sessionId || '')) throw new Error('Controlled Codex parent session unproven');

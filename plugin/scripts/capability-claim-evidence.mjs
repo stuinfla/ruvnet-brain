@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { redactText } from './continuity-events.mjs';
+import { redactText, normalizeToolOutcome } from './continuity-events.mjs';
 
 const HEX40 = /^[a-f0-9]{40}$/;
 const HEX64 = /^[a-f0-9]{64}$/;
@@ -159,10 +159,24 @@ export function recordManagedCliObservation({ toolName, executable, argv, execut
   try {
     const output = [execution?.stdout, execution?.stderr].filter(Boolean).join('\n');
     const contradictoryFailure = /(?:^|\n)\s*(?:❌|\[ERROR\])|invalid pragma command|key not found/i.test(output);
-    const reachable = execution?.code === 0 && !execution?.error && !execution?.signal && !contradictoryFailure;
-    const outcome = execution?.error ? 'failure' : execution?.signal ? 'interrupted' : contradictoryFailure ? 'failure'
-      : Number.isSafeInteger(execution?.code) ? execution.code === 0 ? 'success' : 'failure' : 'unknown';
-    const terminal = { outcome, exitCode: Number.isSafeInteger(execution?.code) ? execution.code : null,
+    let response = execution?.content ?? output;
+    let malformed = false;
+    // Managed CLIs may serialize their full result envelope. Parse only the bounded whole object;
+    // never extract a PASS fragment from ordinary output or overlook its structured error flag.
+    if (typeof response === 'string' && response.trim().startsWith('{')) {
+      try { if (response.length > 64 * 1024) throw new Error('oversize result'); response = JSON.parse(response); }
+      catch { malformed = true; }
+    }
+    const normalized = normalizeToolOutcome({ ...execution, exitCode: execution?.code, content: response });
+    const incomplete = malformed || !output.trim() || execution?.truncated === true || response?.truncated === true
+      || /\b(?:output (?:is )?truncated|truncated output|no results(?: found)?|empty (?:result|output))\b/i.test(output)
+      || [execution, response].some(value => ['started', 'submitted'].includes(String(value?.status || value?.outcome || '').toLowerCase()));
+    const outcome = contradictoryFailure || normalized.outcome === 'fail' ? 'failure'
+      : normalized.outcome === 'interrupted' ? 'interrupted'
+        : incomplete || normalized.outcome === 'pending' ? 'pending'
+          : normalized.outcome === 'pass' ? 'success' : 'unknown';
+    const reachable = outcome === 'success' ? true : ['failure', 'interrupted'].includes(outcome) ? false : null;
+    const terminal = { outcome, exitCode: ['success', 'failure'].includes(outcome) ? normalized.exitCode : null,
       error: typeof execution?.error === 'string' ? redactText(execution.error).slice(0, 4096) : null,
       signal: typeof execution?.signal === 'string' ? redactText(execution.signal).slice(0, 100) : null };
     const version = VERSION.exec(output)?.[1] || null;
@@ -350,8 +364,8 @@ export function auditEvidenceBoundCapabilityClaims(message, {
         : observed.healthVerdict === 'FAIL' ? 'FAIL' : 'UNKNOWN';
       else if (observed && claim.state === 'unhealthy') state = observed.healthVerdict === 'FAIL' ? 'PASS'
         : observed.healthVerdict === 'PASS' ? 'FAIL' : 'UNKNOWN';
-      else if (observed && ['reachable', 'available'].includes(claim.state)) state = observed.reachable === true ? 'PASS' : 'FAIL';
-      else if (observed && ['unreachable', 'down'].includes(claim.state)) state = observed.reachable === false ? 'PASS' : 'FAIL';
+      else if (observed && ['reachable', 'available'].includes(claim.state)) state = observed.reachable === true ? 'PASS' : observed.reachable === false ? 'FAIL' : 'UNKNOWN';
+      else if (observed && ['unreachable', 'down'].includes(claim.state)) state = observed.reachable === false ? 'PASS' : observed.reachable === true ? 'FAIL' : 'UNKNOWN';
       if (state === 'PASS') passed.push({ ...claim, evidence: observed.receiptSha256 });
       else if (state === 'FAIL') contradictions.push({ ...claim, evidence: observed.receiptSha256,
         reason: 'fresh live health receipt contradicts the claim' });

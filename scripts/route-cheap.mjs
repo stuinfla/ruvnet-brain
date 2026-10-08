@@ -16,7 +16,7 @@
 //
 // Usage:
 //   node scripts/route-cheap.mjs --task "summarize X" [--model deepseek/deepseek-chat]
-//                                [--agent researcher] [--class research]
+//                                [--agent researcher] [--class research] --allow-metered-spend
 //
 // Scope guard: read-only text work ONLY (research / summarize / classify / transform). This path
 // has no file-write capability and no native tool calling — code edits stay on Claude Code.
@@ -133,7 +133,8 @@ function parseArgs(argv) {
   const args = { model: 'deepseek/deepseek-chat', agent: 'researcher', class: 'research' };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];
-    if (k === '--task' || k === '--model' || k === '--agent' || k === '--class') args[k.slice(2)] = argv[++i];
+    if (k === '--allow-metered-spend') args.allowMeteredSpend = true;
+    else if (k === '--task' || k === '--model' || k === '--agent' || k === '--class') args[k.slice(2)] = argv[++i];
   }
   return args;
 }
@@ -141,7 +142,7 @@ function parseArgs(argv) {
 function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.task) {
-    console.error('Usage: node scripts/route-cheap.mjs --task "<text>" [--model deepseek/deepseek-chat] [--agent researcher] [--class research]');
+    console.error('Usage: node scripts/route-cheap.mjs --task "<text>" [--model deepseek/deepseek-chat] [--agent researcher] [--class research] --allow-metered-spend');
     process.exit(2);
   }
   if (!PRICING[args.model]) {
@@ -153,6 +154,15 @@ function main() {
     console.error(policy.values.routing === 'off'
       ? 'Token-smart routing is off in RuvNet Brain Console — nothing was dispatched.'
       : 'Token-smart routing has not been enabled in RuvNet Brain Console — nothing was dispatched.');
+    process.exit(1);
+  }
+  // subscriptionOnlyEnv() sets this inherited boundary; invocation consent cannot widen it.
+  if (process.env.RUVNET_SUBSCRIPTION_ONLY === '1') {
+    console.error('Native subscription-only policy forbids metered dispatch — nothing was dispatched.');
+    process.exit(1);
+  }
+  if (args.allowMeteredSpend !== true) {
+    console.error('Explicit metered-spend authorization is required for this invocation: --allow-metered-spend. Nothing was dispatched.');
     process.exit(1);
   }
   const childEnv = runtimeChildEnv();

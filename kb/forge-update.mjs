@@ -29,7 +29,7 @@ import { fetchJsonWithRetry, fetchBytesWithRetry } from './download-retry.mjs';
 import { extractZip, zipDeclaredBytes } from './zip-extract.mjs';
 import { applyBrainProfile, discoverStoreFamilies, readBrainProfile } from './brain-profile.mjs';
 import { acquireRefreshLock, releaseRefreshLock } from './refresh-run.mjs';
-import { runStorageTransaction, treeIdentity, managedStorageInventory, storageDelta, checkDiskSpace, directoryBytes } from './update-storage-transaction.mjs';
+import { runStorageTransaction, treeIdentity, managedStorageInventory, storageDelta, checkDiskSpace, directoryBytes, availableBytes } from './update-storage-transaction.mjs';
 import { pruneLifecycleEvidence } from './lifecycle-evidence-retention.mjs';
 import {
   isCorpusReleaseTag, assertCorpusReleaseCompatible, readInstalledRuntime,
@@ -363,6 +363,29 @@ export async function applyVerifiedStagedRelease({
   if (stageReceipt.bundleSha256 !== actualBundleSha256) {
     throw new Error('staged recovery directory is not bound to the signed bundle');
   }
+  const liveSource = JSON.parse(fs.readFileSync(path.join(live, 'SOURCE.json'), 'utf8'));
+  const liveStores = Array.isArray(liveSource.stores)
+    ? liveSource.stores
+    : Object.entries(liveSource.stores || {}).map(([kbName, value]) => ({ kbName, ...value }));
+  const overlay = capturePrivateOverlayState({ kbDir: live, allStores: liveStores });
+  let recoverySpace;
+  try {
+    const unpacked = zipDeclaredBytes(path.resolve(bundlePath));
+    const privateBytes = Object.values(overlay.files || {}).reduce((sum, file) => sum + (Number(file?.bytes) || 0), 0);
+    recoverySpace = checkDiskSpace([
+      { dir: os.tmpdir(), bytes: unpacked, purpose: 'authenticated proof extraction', brain: false },
+      { dir: path.dirname(live), bytes: treeIdentity(staged).bytes + directoryBytes(path.join(live, 'node_modules')),
+        purpose: 'recovery generation' },
+      ...(privateBytes ? [{ dir: path.dirname(live), bytes: privateBytes, purpose: 'private stores carried into it' }] : []),
+    ], { available: (dir) => {
+      const free = availableBytes(dir);
+      if (!Number.isFinite(free) || free < 0) throw new Error('free disk space measurement is invalid');
+      return free;
+    } });
+  } catch (error) {
+    recoverySpace = { ok: false, message: `cannot measure required recovery disk space: ${error.message}. Restore access to the disk and retry. Nothing was changed.` };
+  }
+  if (!recoverySpace.ok) throw Object.assign(new Error(recoverySpace.message), { exitCode: 6 });
   // The receipt is diagnostic only: bind the candidate cryptographically by independently
   // extracting the authenticated archive and comparing the complete staged tree identity.
   const proofRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-staged-proof-'));
@@ -400,11 +423,6 @@ export async function applyVerifiedStagedRelease({
   const validator = validateCoverageDirectory || await loadTrustedCoverageValidator();
   const stagedCoverage = validateReleaseCoverageTree(staged, validator, expectedRuntimeVersion);
   if (!stagedCoverage.valid) throw new Error(`staged ReleaseCoverage failed integrity: ${stagedCoverage.failures.join('; ')}`);
-  const liveSource = JSON.parse(fs.readFileSync(path.join(live, 'SOURCE.json'), 'utf8'));
-  const liveStores = Array.isArray(liveSource.stores)
-    ? liveSource.stores
-    : Object.entries(liveSource.stores || {}).map(([kbName, value]) => ({ kbName, ...value }));
-  const overlay = capturePrivateOverlayState({ kbDir: live, allStores: liveStores });
   const prepareCandidate = ({ candidateDir, liveDir }) => {
     for (const name of ['coverage-integrity.mjs']) {
       const trusted = fs.existsSync(path.join(KB_DIR, name)) ? path.join(KB_DIR, name)
@@ -891,14 +909,18 @@ export function candidateCurrencyIdentity(canon) {
  */
 export function currencyVerdict(installed, candidate) {
   if (candidate.kind === 'code') {
-    if (candidate.tag && candidate.tag === installed.releaseTag) {
-      return { verdict: 'CURRENT', reason: `code release ${candidate.tag} is already installed` };
+    const parts = (tag) => /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(tag || '')?.slice(1).map(BigInt);
+    const offered = parts(candidate.tag);
+    if (!offered) return { verdict: 'REFUSED', reason: 'candidate code release has an invalid plain semver identity' };
+    const current = parts(installed.releaseTag);
+    if (!current) return { verdict: 'UNKNOWN', reason: 'installed code release identity is missing or invalid; cannot prove code update direction' };
+    for (let i = 0; i < offered.length; i++) {
+      if (offered[i] < current[i]) return { verdict: 'REFUSED',
+        reason: `candidate code release ${candidate.tag} predates installed code ${installed.releaseTag} — refusing to move backward` };
+      if (offered[i] > current[i]) return { verdict: 'UPDATE_AVAILABLE',
+        reason: `code release ${candidate.tag} supersedes ${installed.releaseTag}` };
     }
-    // A code release supersedes whatever is installed, corpus or code — its bundle IS the corpus
-    // (recordCorpusTransportIdentity's own rationale). Code tags are owner-sequenced semver, not a
-    // content address, so there is no "candidate is older" ambiguity to protect against here.
-    return { verdict: 'UPDATE_AVAILABLE',
-      reason: `code release ${candidate.tag || '(unknown)'} supersedes ${installed.releaseTag || '(none)'}` };
+    return { verdict: 'CURRENT', reason: `code release ${candidate.tag} is already installed` };
   }
   if (candidate.kind === 'corpus') {
     if (candidate.tag && candidate.tag === installed.corpusReleaseTag) {
@@ -926,6 +948,7 @@ export function currencyVerdict(installed, candidate) {
     return { verdict: 'UPDATE_AVAILABLE',
       reason: `corpus generation ${candidate.corpusGeneration} supersedes installed ${installed.corpusGeneration}` };
   }
+  if (candidate.tag) return { verdict: 'REFUSED', reason: `candidate release ${candidate.tag} has an invalid release identity` };
   // No recognizable release identity at all — never fall back to a locally-observed builtUtc/
   // sourceCommit timestamp (the exact bug this function replaces).
   return { verdict: 'UNKNOWN', reason: 'candidate carries no recognizable release identity (neither a code tag nor a corpus tag)' };
@@ -1647,13 +1670,15 @@ async function main() {
   // the mixed-generation refusal a few lines below enforces that the resolved download target agrees).
   const installedIdentity = installedCurrencyIdentity(source);
   const candidateIdentity = candidateCurrencyIdentity(canon);
-  const verdict = RESTORE_COMPLETE
+  const currency = currencyVerdict(installedIdentity, candidateIdentity);
+  const verdict = RESTORE_COMPLETE && currency.verdict !== 'REFUSED'
+    && !(candidateIdentity.kind === 'code' && currency.verdict === 'UNKNOWN')
     ? { verdict: 'UPDATE_AVAILABLE', reason: '--restore-complete forces a full profile restore' }
-    : currencyVerdict(installedIdentity, candidateIdentity);
+    : currency;
   console.log(`currency verdict:   ${verdict.verdict} — ${verdict.reason}\n`);
 
-  // REFUSED is rollback protection: the candidate is a corpus generation strictly OLDER than what is
-  // installed. Nothing is downloaded, the live tree is untouched, and this is a clean success (exit
+  // REFUSED is rollback protection: the candidate is older than installed, or its release identity
+  // is invalid. Nothing is downloaded, the live tree is untouched, and this is a clean success (exit
   // 0) in BOTH modes — never exit 10, which would invite --apply into refusing again.
   if (verdict.verdict === 'REFUSED') {
     console.log(`REFUSED — ${verdict.reason}`);
@@ -1666,6 +1691,10 @@ async function main() {
         candidateKind: candidateIdentity.kind, candidateTag: candidateIdentity.tag, storeCount: targets.length });
     if (refusedOutcome?.terminalVerdict === 'recovery-required') die(refusedOutcome.reason);
     process.exit(0);
+  }
+
+  if (candidateIdentity.kind === 'code' && verdict.verdict === 'UNKNOWN') {
+    die(`UNKNOWN — ${verdict.reason}. Re-establish the installed runtime identity before updating. Nothing was downloaded; the live brain is untouched.`, 5);
   }
 
   let anyBehind = false; const behindStores = [];
@@ -1775,8 +1804,12 @@ async function main() {
       { dir: extractDir, bytes: unpacked, purpose: 'unpacked bundle', brain: false },
       { dir: path.dirname(KB_DIR), bytes: unpacked + directoryBytes(path.join(KB_DIR, 'node_modules')), purpose: 'new generation' },
       ...(privateBytes ? [{ dir: path.dirname(KB_DIR), bytes: privateBytes, purpose: 'private stores carried into it' }] : []),
-    ]);
-  } catch (error) { space = { ok: true, skipped: error.message }; } // unmeasurable: extraction's own limits still apply
+    ], { available: (dir) => {
+      const bytes = availableBytes(dir);
+      if (!Number.isFinite(bytes) || bytes < 0) throw new Error('free disk space measurement is invalid');
+      return bytes;
+    } });
+  } catch (error) { space = { ok: false, message: `cannot measure required update disk space: ${error.message}. Restore access to the disk and retry. Nothing was changed.` }; }
   if (!space.ok) { fs.rmSync(tmp, { recursive: true, force: true }); die(space.message, 6); }
   try { await extractZip(zipPath, extractDir); }
   catch (error) { fs.rmSync(tmp, { recursive: true, force: true }); die(`extraction failed: ${error.message} — local files untouched.`); }
@@ -2011,5 +2044,5 @@ if (invokedDirectly && STAGED_RELEASE_FILE) {
     const input = JSON.parse(fs.readFileSync(STAGED_RELEASE_FILE, 'utf8'));
     const result = await applyVerifiedStagedRelease(input);
     console.log(JSON.stringify({ schemaVersion: 1, kind: 'ruvnet-brain-staged-recovery', ...result }));
-  })().catch((e) => die(`staged recovery failed: ${e.message}`));
+  })().catch((e) => die(`staged recovery failed: ${e.message}`, e.exitCode || 1));
 } else if (invokedDirectly) main().catch((e) => die(`unexpected: ${e.message}`));

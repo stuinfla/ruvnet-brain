@@ -72,6 +72,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { createRequire, isBuiltin } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { commandNodes } from './hook-input.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -496,7 +497,10 @@ const auditDigest = value => crypto.createHash('sha256').update(typeof value ===
 export function canonicalHookAuditId(record) {
   const host = record.layer === 'codex' ? 'codex' : 'claude';
   const id = record.shimId ?? record.codexHookId;
-  return ['plugin', 'codex'].includes(record.layer) && id ? `${host}/${record.event}/${id}`
+  const route = id === 'decision-gate' && commandNodes(record.command).some(node => {
+    const at = node.argv.indexOf('decision-gate'); return at >= 0 && node.argv[at + 1] === 'managed-store';
+  }) ? '/managed-store' : '';
+  return ['plugin', 'codex'].includes(record.layer) && id ? `${host}/${record.event}/${id}${route}`
     : `foreign/${host}/${auditDigest([record.layer, record.file, record.event, record.command]).slice(0, 24)}`;
 }
 

@@ -25,7 +25,7 @@ test('adapter conforms to actual runner lifecycle and requires native observatio
   const result = validateWorkerResult(adapter.interpret(state, observation));
   assert.equal(result.status, 'succeeded'); assert.equal(result.observedModel, 'fixture-model');
   assert.equal(result.providerProvenance, 'configured');
-  assert.equal(adapter.summarize(state).outcome, 'done'); assert.deepEqual(await adapter.cleanup(state), { cleaned: true });
+  assert.equal(adapter.summarize(state).outcome, 'done'); await assert.rejects(adapter.cleanup(state), /not confirmed/); // Injected executor returned no owned-child close proof.
 });
 test('Claude workflow uses only the bound native final JSON after commentary', async () => {
   const { worker, claude: adapter } = fixture({ executeNative: undefined });
@@ -57,7 +57,8 @@ test('Claude workflow uses only the bound native final JSON after commentary', a
     native.mockResolvedValueOnce({ ...turn, finalAnswer: 'malformed final JSON' });
     const malformed = await adapter.prepare({ worker, timeoutMs: 5000 });
     await adapter.launch(malformed);
-    assert.throws(() => adapter.summarize(malformed), /missing or malformed/);
+    assert.equal(adapter.interpret(malformed, await adapter.observe(malformed)).status, 'blocked');
+    assert.match(malformed.error.message, /schema invalid/);
   } finally { native.mockRestore(); }
 });
 
@@ -248,7 +249,7 @@ test('Claude adapter floors fractional remaining time and never extends the abso
 
 test('host-owned Claude schemas preserve existing role envelopes and negative reviews', () => {
   const planner = claudeWorkflowResponse('planner');
-  assert.equal(planner.validateStructuredOutput({ tasks: [{ id: 'work', instructions: 'Read context', mode: 'read', checkIds: [] }] }), true);
+  assert.equal(planner.validateStructuredOutput({ tasks: [{ id: 'work', instructions: 'Read context', mode: 'read', checkIds: ['inspect'], acceptanceCriteria: [{ id: 'scope', assertion: 'Inspect bounded source context', checkIds: ['inspect'] }] }], unresolvedObligations: [] }), true);
   assert.equal(planner.validateStructuredOutput({ tasks: [{ id: 'work', instructions: 'Read context', mode: 'execute', checkIds: [] }] }), false);
   assert.equal(planner.validateStructuredOutput({ tasks: [{ id: 'work', instructions: 'Read context', mode: 'read', checkIds: [], command: 'unsafe' }] }), false);
   for (const role of ['worker', 'developer']) {
@@ -286,4 +287,38 @@ test('Claude native allow rules still encounter owned scope and unresolved appro
     assert.equal(calls[0][1].workerId, worker.id); assert.deepEqual(calls[0][1].ownership, worker.ownership);
     assert.equal(fs.existsSync(path.join(root, 'owned.mjs')), false);
   } finally { native.mockRestore(); fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('unconfirmed owned process retirement holds adapter cleanup fence after launch settles', async () => {
+  const { worker, adapter } = fixture({ executeNative: async () => { throw Object.assign(new Error('owned close not observed'), {
+    retirementUnconfirmed: true, retirementEvidence: { scope: 'owned-direct-child-only', retired: false, closeObserved: false, treeVerified: false },
+  }); } });
+  const state = await adapter.prepare({ worker, timeoutMs: 5000 }); await adapter.launch(state);
+  assert.equal(state.finished, false); assert.equal(state.retirementUnconfirmed, true);
+  assert.equal(adapter.interpret(state, await adapter.observe(state)).exitCategory, 'orphaned');
+  await assert.rejects(adapter.cleanup(state), /not confirmed/);
+});
+
+
+test('P067 coordination lease cannot supply missing original write permission', async () => {
+  let executions = 0;
+  const { request, worker, adapter } = fixture({ executeNative: async () => { executions++; } });
+  request.lease = { granted: true, mode: 'write', tools: ['Write'], network: true, apiBilling: true };
+  worker.lease = request.lease;
+  worker.ownership = { mode: 'write', worktree: fs.realpathSync(process.cwd()), paths: ['owned.mjs'] };
+  await assert.rejects(adapter.prepare({ worker, timeoutMs: 5000 }), /write authority unavailable/);
+  assert.equal(executions, 0);
+});
+
+test('P067 explicit read success with unbound policy remains unqualified policy evidence', async () => {
+  const { request, worker, adapter } = fixture();
+  request.lease = { granted: true, policyAuthorized: true, receiptId: 'coordination-only' };
+  worker.lease = request.lease;
+  const state = await adapter.prepare({ worker, timeoutMs: 5000 }); await adapter.launch(state);
+  const result = adapter.interpret(state, await adapter.observe(state));
+  assert.equal(result.status, 'succeeded'); // Domain mock result, not native/provider completion.
+  assert.equal(result.policyAuthorization.enforced, false);
+  assert.equal(result.policyAuthorization.evidence[0].status, 'UNKNOWN_UNBOUND');
+  assert.equal(result.policyAuthorization.completionEligibility, 'not-established-by-authorization');
+  assert.notEqual(result.nativeLaunched, true);
 });

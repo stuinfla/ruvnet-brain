@@ -23,6 +23,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { groundingIdentity } from '../../plugin/scripts/grounding-turn-mark.mjs';
 import { decide } from '../../plugin/scripts/grounding-turn-gate.mjs';
 import { ruvCapabilityClaims } from '../../plugin/scripts/grounding-turn-evidence.mjs';
 
@@ -42,11 +43,19 @@ function transcriptOf(f) {
   rows.push({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 't0', name, input }] } });
   rows.push({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't0', content: result }] } });
   rows.push({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: f.message }] } });
+  // Corpus messages retain their original labels; this wrapper is explicitly constructed.
+  for (const row of rows) Object.assign(row, { sessionId: 's', promptId: 'constructed-corpus-turn', cwd: HOME });
+  rows[0].uuid = 'constructed-corpus-user-record';
   return rows.map((r) => JSON.stringify(r));
 }
 const gate1 = { gate1: true, assert: false, architecture: false, subjects: [] };
-const fires = (f) => FALSE_ALARM.test(decide({ hookInput: { session_id: 's', transcript_path: '/fixture/t.jsonl', last_assistant_message: f.message },
-  marker: gate1, markerMs: Date.now(), env: ENV, read: () => transcriptOf(f) }) || '');
+const fires = (f) => {
+  const transcript = path.join(HOME, 'constructed-corpus.jsonl');
+  fs.writeFileSync(transcript, transcriptOf(f).join('\n') + '\n');
+  const input = { hook_event_name: 'Stop', session_id: 's', prompt_id: 'constructed-corpus-turn', cwd: HOME, transcript_path: transcript, last_assistant_message: f.message };
+  return FALSE_ALARM.test(decide({ hookInput: input, marker: { ...gate1, ...groundingIdentity(input, ENV),
+    nonce: '00000000-0000-4000-8000-000000000001' }, markerMs: Date.now(), env: ENV }) || '');
+};
 
 describe('Gate 1 on real Stop points: demand a search only for a rUv capability assertion', () => {
   it('the fixture is what it claims to be (labelled real Stop points, every category present)', () => {
@@ -183,9 +192,12 @@ describe.skipIf(process.platform === 'win32')('the real Stop process', () => {
   }
   const node = (file, w, payload) => spawnSync(process.execPath, [file], { input: JSON.stringify(payload), env: w.env, encoding: 'utf8', timeout: 15_000 });
   function stop(w, message, rows) {
-    node(MARK, w, { hook_event_name: 'UserPromptSubmit', session_id: 'e1', prompt: 'ship ruvnet-brain 4.4.0 and check CI' });
+    const identity = { session_id: 'e1', prompt_id: 'constructed-e1', cwd: w.home };
+    node(MARK, w, { hook_event_name: 'UserPromptSubmit', ...identity, prompt: 'ship ruvnet-brain 4.4.0 and check CI' });
+    for (const row of rows) Object.assign(row, { sessionId: identity.session_id, promptId: identity.prompt_id, cwd: identity.cwd });
+    rows[0].uuid = 'constructed-e1-user-record';
     fs.writeFileSync(w.transcript, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
-    return node(GATE, w, { hook_event_name: 'Stop', session_id: 'e1', transcript_path: w.transcript, last_assistant_message: message, stop_hook_active: false });
+    return node(GATE, w, { hook_event_name: 'Stop', ...identity, transcript_path: w.transcript, last_assistant_message: message, stop_hook_active: false });
   }
   const bashTurn = (message) => [
     { type: 'user', message: { role: 'user', content: 'ship ruvnet-brain 4.4.0 and check CI' } },
@@ -204,7 +216,7 @@ describe.skipIf(process.platform === 'win32')('the real Stop process', () => {
     const msg = 'Preflight is green. Ruflo supports cross-project memory queries out of the box.';
     const r = stop(w, msg, bashTurn(msg));
     expect(r.stdout).toMatch(FALSE_ALARM);
-    expect(JSON.parse(r.stdout).hookSpecificOutput.additionalContext).toContain('Ruflo supports cross-project memory queries');
+    expect(JSON.parse(r.stdout).reason).toContain('Ruflo supports cross-project memory queries');
   });
   it('LONG turn (tail cannot see the prompt): remains UNKNOWN with no bound receipt, even with fresh global stamps', () => {
     const msg = 'Ruflo supports cross-project memory queries out of the box.';

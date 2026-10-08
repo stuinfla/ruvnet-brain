@@ -3193,6 +3193,8 @@ function bpProfileControl(profile) {
   };
   // The restore mechanism, named — the same branch order saveBrainProfile() takes on Apply.
   const restoreFor = (choice) => {
+    if (current === 'complete') return { warn: false, text: 'This is the measured current profile. Selecting it makes no change.' };
+    if (choice.inverseUnavailableReason) return { warn: true, text: choice.inverseUnavailableReason };
     const where = choice.restoreBundle?.path || 'the release bundle path';
     if (choice.restoreVia === 'local-bundle') return { warn: false, text: `Apply restores from the signed local bundle at ${where}.` };
     if (choice.restoreVia === 'signed-download') return { warn: false, text: `No local bundle on this machine (${where}) — Apply downloads the signed complete release with forge-update and verifies it before anything lands. Size is measured after it does.` };
@@ -3204,7 +3206,7 @@ function bpProfileControl(profile) {
       type: 'radio',
       name: 'brain-profile',
       value: option.value,
-      disabled: choice.available === false || null,
+      disabled: choice.available !== true || null,
       onchange: () => { apply.disabled = bpProfileBusy || input.value === current; },
     });
     input.checked = option.value === current;
@@ -3219,13 +3221,14 @@ function bpProfileControl(profile) {
         option.value === 'complete'
           ? (() => { const r = restoreFor(choice); return el('span', { class: `bp-profile-desc${r.warn ? ' bp-warn' : ''}` }, r.text); })()
           : (choice.available === false
-            ? el('span', { class: 'bp-profile-desc bp-warn' }, 'No RuVector store exists on this machine or in a local bundle; run the Brain update first.')
+            ? el('span', { class: 'bp-profile-desc bp-warn' }, choice.inverseUnavailableReason || 'No RuVector store exists on this machine or in a local bundle; run the Brain update first.')
             : null)));
   });
 
   apply.onclick = async () => {
     const selected = radios.find((radio) => radio.checked)?.value;
     if (!selected || selected === current || bpProfileBusy) return;
+    if (profile.choices?.[selected]?.available !== true) { result.replaceChildren(el('p', { class: 'form-note n-err' }, profile.choices?.[selected]?.inverseUnavailableReason || 'Profile change is unavailable; no usable inverse is established.')); return; }
     if (selected === 'ruvector' && !window.confirm(
       'Switch to RuVector Only? This removes the other public repository RVFs from this machine. You can restore them from the complete signed bundle later.',
     )) return;
@@ -4281,6 +4284,7 @@ async function setLessonCall(id, action) {
 }
 
 async function lessonOn(row) {
+  if (!row.ratified) return { ok: false, log: row.ratificationUnavailableReason || 'Automatic ratification inverse is unavailable; no request was sent.' };
   let last = null;
   if (row.demoted) {
     last = await setLessonCall(row.id, 'restore');
@@ -4331,11 +4335,12 @@ function renderLessons(data) {
     const box = el('input', {
       type: 'checkbox', class: 'lesson-switch', id: `lsw-${r.id}`,
       'aria-label': `${isOn ? 'Turn off' : 'Turn on'}: ${r.statement.slice(0, 60)}`,
-      disabled: r.quarantined || null,
+      disabled: r.quarantined || !r.ratified || null,
     });
     box.checked = isOn;
 
     const note = el('span', { class: 'form-note', role: 'status' });
+    if (!r.ratified && r.ratificationUnavailableReason) note.textContent = r.ratificationUnavailableReason;
 
     box.addEventListener('change', async () => {
       const want = box.checked;
@@ -4389,7 +4394,7 @@ function renderLessons(data) {
               : 'This came from imported maintainer history and was ratified, so it is in force here. You can switch it off; it cannot be raised to "Stops me".')
             : 'I inferred this from what happened. A lesson I inferred can never be raised to "Stops me", however often it fires — the model does not get to ratify its own rules.'),
       r.taughtCount ? chip(`taught ${r.taughtCount}×`, 'grey') : null,
-      r.awaitingYou ? chip('awaiting your decision', 'amber', 'Recorded, but you have not agreed to it yet.') : null,
+      r.awaitingYou ? chip('activation unavailable', 'grey', r.ratificationUnavailableReason) : null,
     ].filter(Boolean);
 
     const why = el('details', { class: 'cap-why' },
@@ -4413,7 +4418,8 @@ function renderLessons(data) {
           ? el('p', null, el('strong', null, 'Learned in: '), r.projects.join(', ')) : null,
         el('p', { class: 'muted' }, r.quarantined
           ? 'This imported record is quarantined for audit. It cannot be switched on or ratified as your policy.'
-          : 'Turning this off hides the rule without deleting the record of where you taught it — you can switch it back on here at any time.')));
+          : r.ratified ? 'Turning this off hides the rule without deleting the record of where you taught it — you can switch it back on here at any time.'
+          : 'This unratified record is visible for review. Turning it on is unavailable until its prior state can be restored safely.')));
 
     list.append(el('div', { class: `cap-row lesson-row${r.demoted ? ' is-off' : ''}` },
       // NO `for=` here. The label WRAPS its checkbox, which is already an implicit association; a
@@ -4466,10 +4472,9 @@ function partitionLessons(list, rows) {
   const out = [];
   if (asks.length) {
     out.push(el('p', { class: 'lessons-ask-h' },
-      `${asks.length} ${asks.length === 1 ? 'rule needs' : 'rules need'} your decision`),
+      `${asks.length} unratified ${asks.length === 1 ? 'record' : 'records'} — read-only review`),
       el('p', { class: 'muted lessons-ask-b' },
-        'I noticed these myself, so they are not in force and cannot stop me until you agree. ',
-        'Leaving them off is a perfectly good answer.'),
+        'These records are not in force. Turning a new rule on is unavailable until its prior state can be restored safely.'),
       el('div', { class: 'cap-list' }, ...asks));
   }
   if (inForce.length) {

@@ -102,9 +102,14 @@ export function validateProductIntegrityContract(input = {}) {
     if (!Array.isArray(row.architecture) || row.architecture.some((id) => !architectureIds.has(id))) throw new Error(`${row.id} has missing architecture`);
     if (!Array.isArray(row.implementation) || !row.implementation.length || row.implementation.some((file) => !safePath(file))) throw new Error(`${row.id} has no implementation`);
     if (!Array.isArray(row.behaviors) || !row.behaviors.length) throw new Error(`${row.id} has no behaviors`);
+    if (!row.behaviors.some(behavior => behavior.class === 'essential')) throw new Error(`${row.id} has no active essential behavior`);
     for (const behavior of row.behaviors) {
       if (!behavior.id || behaviorIds.has(behavior.id)) throw new Error(`${row.id} has duplicate behavior identity`); behaviorIds.add(behavior.id);
       if (!PRODUCT_INTEGRITY_TEST_CLASSES.includes(behavior.class)) throw new Error(`${behavior.id} has invalid test class`);
+      if (behavior.class === 'obsolete' && (typeof behavior.replacementBehaviorId !== 'string'
+        || !row.behaviors.some(candidate => candidate.id === behavior.replacementBehaviorId && candidate.class === 'essential'))) {
+        throw new Error(`${behavior.id} has no active essential replacement in ${row.id}`);
+      }
       if (behavior.class === 'essential') {
         for (const field of ['commands', 'positive', 'adversarial', 'receiptKinds']) if (!Array.isArray(behavior[field]) || !behavior[field].length) throw new Error(`${behavior.id} has no ${field}`);
         for (const proof of [...behavior.positive, ...behavior.adversarial]) if (!safePath(proof.file) || !PRODUCT_INTEGRITY_PROOF_STRENGTH.includes(proof.strength)) throw new Error(`${behavior.id} has invalid proof`);

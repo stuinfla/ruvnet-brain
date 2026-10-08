@@ -18,30 +18,12 @@ import { resolveProjectStore } from './project-store-resolver.mjs';
 import { resolveTurnDb, captureTurnOutcome } from './turn-outcome-capture.mjs';
 import { captureContinuityEvents, stopNotice } from './continuity-journal.mjs';
 import { automaticProgressionSuspensionResult } from './project-progression-suspension.mjs';
+import { runNativeUserIntake } from './native-user-intake.mjs';
 
-/**
- * The capture boundary's whole budget. hooks.json declares 10s; this keeps the internal work well
- * inside it so the host never has to kill us, and so a slow store degrades to "no snapshot this
- * time" rather than to a hung turn. Capture is advisory: it fails open, always.
- */
-export const CAPTURE_BUDGET_MS = 8_000;
-
-/**
- * Replaying an interrupted session's outbox costs one `ruflo` write per pending snapshot, each ~3s
- * cold (project-progression-store.mjs). Under this budget there is room for the NEW snapshot or the
- * old ones, not both — and the new one is the one nothing else will ever write.
- */
+import { CAPTURE_BUDGET_MS, effectiveBudgetMs, snapshotDeadlineAt as snapshotEntryDeadlineAt } from './session-snapshot-budget.mjs';
+export { CAPTURE_BUDGET_MS, effectiveBudgetMs, snapshotEntryDeadlineAt };
 export const REPLAY_MIN_BUDGET_MS = 4_000;
-
-/**
- * The budget this invocation really has. The Codex wrapper hands its own kill deadline down as
- * RUVNET_CODEX_BUDGET_MS (2200ms at SessionEnd, which Codex caps at 3s); planning for 8s there meant
- * being SIGKILLed mid-write with nothing reported. 300ms is left for the adapter → shim → body spawns.
- */
-export function effectiveBudgetMs(env = process.env) {
-  const handed = Number(env.RUVNET_CODEX_BUDGET_MS);
-  return Number.isFinite(handed) && handed > 0 ? Math.max(0, Math.min(CAPTURE_BUDGET_MS, handed - 300)) : CAPTURE_BUDGET_MS;
-}
+export const HANDOFF_RESERVE_MS = 500;
 
 function regularOrAbsent(file) {
   try {
@@ -91,7 +73,8 @@ export function boundedStoreFactory(deadlineAt) {
       if (remaining < 1) throw new Error('capture budget exceeded');
       const result = spawnSync(binary, args, {
         ...runOptions,
-        timeout: Math.min(runOptions.timeout ?? remaining, remaining),
+        timeout: Math.max(1, Math.floor(Math.min(runOptions.timeout ?? remaining, remaining))),
+        killSignal: 'SIGKILL',
         shell: false,
       });
       if (result.error) throw new Error(`capture budget exceeded: ${result.error.message}`);
@@ -129,10 +112,14 @@ export function runSessionSnapshotHook(projectDir, event, {
   spawnReplay = replayOutboxDetached,
   ordered = null,
   captureEvents = captureContinuityEvents,
+  captureNativeIntake = runNativeUserIntake,
   deadlineAt: inheritedDeadlineAt = Infinity,
   signal,
 } = {}) {
-  const deadlineAt = Math.min(inheritedDeadlineAt, now() + budgetMs);
+  const suppliedDeadline = Number(env.RUVNET_SESSION_SNAPSHOT_DEADLINE_AT);
+  const fullDeadlineAt = Math.min(inheritedDeadlineAt, now() + budgetMs, Number.isFinite(suppliedDeadline) && suppliedDeadline > 0 ? suppliedDeadline : Infinity);
+  const reserve = ordered ? 0 : Math.min(HANDOFF_RESERVE_MS, Math.max(0, (fullDeadlineAt - now()) / 4));
+  const deadlineAt = fullDeadlineAt - reserve;
   const checkDeadline = () => { if (signal?.aborted || now() >= deadlineAt) throw new Error('restore deadline exceeded'); };
   const suspended = (reason) => ({ metadataWritten: false, progressionCaptured: false, receipt: null, skipped: reason,
     turn: { event, recorded: false, skipped: reason }, continuity: { event, recorded: 0, launched: false, skipped: reason } });
@@ -140,7 +127,7 @@ export function runSessionSnapshotHook(projectDir, event, {
   try {
     checkDeadline();
     const consent = resolveTurnDb({ projectDir, brainHome: env.RUVNET_BRAIN_HOME || path.join(env.HOME || os.homedir(), '.cache', 'ruvnet-brain'),
-      gitTimeoutMs: Math.max(1, Math.min(500, deadlineAt - now())), deadlineAt, signal });
+      gitTimeoutMs: Math.max(1, Math.floor(Math.min(500, deadlineAt - now()))), deadlineAt, signal });
     checkDeadline();
     if (consent.skipped) return suspended(consent.skipped);
   } catch (error) {
@@ -150,6 +137,9 @@ export function runSessionSnapshotHook(projectDir, event, {
   const metadataWritten = writeMetadata ? writeSessionSnapshot(projectDir, event) : false;
   let payload;
   try { payload = rawInput ? JSON.parse(rawInput) : {}; } catch { payload = {}; }
+  const nativeUserIntake = !ordered && event === 'Stop' && payload.hook_event_name === event
+    && !automaticProgressionSuspensionResult(env, {})
+    ? captureNativeIntake(projectDir, { payload, host, env, deadlineAt: Math.min(deadlineAt, now() + HANDOFF_RESERVE_MS), signal }) : undefined;
   // TURN OUTCOMES FIRST: consent and canonical store availability govern whether a turn is queued
   // (a project without a store requires persisted opt-in — turn-outcome-capture.mjs).
   // It only reads and spawns a detached writer, so it costs the progression budget below nothing.
@@ -164,7 +154,7 @@ export function runSessionSnapshotHook(projectDir, event, {
   try { checkDeadline(); continuity = captureEvents({ projectDir, event, payload, host, env, deadlineAt, signal }); checkDeadline(); } catch (error) {
     continuity = { recorded: 0, skipped: `continuity capture failed: ${error.message}` };
   }
-  const idle = { metadataWritten, progressionCaptured: false, receipt: null, turn, continuity };
+  const idle = { metadataWritten, progressionCaptured: false, receipt: null, turn, continuity, nativeUserIntake };
   const operatorSuspended = automaticProgressionSuspensionResult(env, idle);
   if (operatorSuspended) return operatorSuspended;
 
@@ -173,10 +163,11 @@ export function runSessionSnapshotHook(projectDir, event, {
     if (payload.hook_event_name !== event) {
       throw new Error(`progression boundary mismatch: expected ${event}, received ${payload.hook_event_name}`);
     }
-    const result = captureProgression({ host, payload, projectDir, env, recoverFrozen: Boolean(ordered),
+    const result = captureProgression({ host, payload, projectDir, env, deadlineAt, signal, recoverFrozen: Boolean(ordered),
       canCommit: () => now() < deadlineAt && !signal?.aborted && Boolean(ordered)
         && refreshReplayLock(resolveProjectStore({ projectDir, deadlineAt }).projectRoot, ordered),
       storeFactory: (options) => makeStoreFactory(deadlineAt)({ ...options, env, deadlineAt, signal }) });
+    checkDeadline();
     return { ...idle, progressionCaptured: true, receipt: result.receipt };
   }
 
@@ -215,10 +206,12 @@ export function runSessionSnapshotHook(projectDir, event, {
   let token = ordered;
   const handOff = (why) => {
     let frozen;
-    try { checkDeadline(); frozen = produce({ resolution, projectDir, payload, host, env, trigger: event, deadlineAt, signal }); checkDeadline(); } catch { frozen = null; }
+    try { if (signal?.aborted || now() >= fullDeadlineAt) throw new Error('capture deadline exceeded');
+      frozen = produce({ resolution, projectDir, payload, host, env, trigger: event, deadlineAt: fullDeadlineAt, signal });
+    } catch { frozen = null; }
     const queued = frozen?.projectProgression ? queueCapture({ projectDir: root, originProjectDir: projectDir, env, event, host,
-      payload: { session_id: payload.session_id, hook_event_name: event, projectProgression: frozen.projectProgression } }) : null;
-    const handed = queued ? spawnReplay({ projectDir: root, token, env }) : false;
+      payload: { session_id: payload.session_id, hook_event_name: event, projectProgression: frozen.projectProgression }, deadlineAt: fullDeadlineAt, signal }) : null;
+    const handed = queued ? spawnReplay({ projectDir: root, token, env, deadlineAt: fullDeadlineAt, signal }) : false;
     if (!handed && token && token !== ordered) releaseReplayLock(root, token);
     return { ...idle, replayed: 0, progressionCaptured: false, deferredToReplayer: Boolean(queued),
       replaySkipped: `${why}; this capture ${queued ? 'queued behind it' : 'NOT queued (queue unwritable)'}`
@@ -254,6 +247,9 @@ export function runSessionSnapshotHook(projectDir, event, {
       return handOff('the lock was taken over before this capture committed');
     }
 
+    if (now() >= deadlineAt && !ordered) {
+      const deferred = handOff('capture work deadline exhausted'); handedLock = deferred.deferredToReplayer; return deferred;
+    }
     let produced;
     try {
       checkDeadline();
@@ -271,13 +267,16 @@ export function runSessionSnapshotHook(projectDir, event, {
         payload: { ...payload, hook_event_name: event, projectProgression: produced.projectProgression },
         projectDir,
         env,
+        deadlineAt,
+        signal,
         storeFactory,
       });
+      if (signal?.aborted || now() >= fullDeadlineAt) throw new Error('capture deadline exhausted after readback');
     } catch (error) {
       // NOT LOST — DEFERRED. capture() fsyncs the snapshot to the durable outbox BEFORE it writes to
       // the store, so a budget overrun leaves the evidence on disk. On a short budget nothing later in
       // this process can settle it, so the lock goes straight to a detached worker.
-      handedLock = !ordered && budgetMs < REPLAY_MIN_BUDGET_MS && pendingCount() > 0 && spawnReplay({ projectDir: root, token, env });
+      handedLock = !ordered && budgetMs < REPLAY_MIN_BUDGET_MS && pendingCount() > 0 && spawnReplay({ projectDir: root, token, env, deadlineAt: fullDeadlineAt, signal });
       return { ...idle, replayed, skipped: `capture deferred: ${error.message}`,
         ...(handedLock ? { replaySkipped: 'deferred capture handed to a detached worker' } : {}) };
     }
@@ -289,6 +288,7 @@ export function runSessionSnapshotHook(projectDir, event, {
       replayed,
       receipt: result.receipt,
       provenance: produced.provenance,
+      nativeUserIntake,
     };
   } finally {
     // A boundary that fired while this one held the lock queued itself and could not start a worker
@@ -296,9 +296,9 @@ export function runSessionSnapshotHook(projectDir, event, {
     // simultaneous SessionEnds lost the second one's final state (4.4.1). So: queued work → hand THIS
     // lock to a worker; and re-check after releasing, for a boundary that queued in between.
     if (!ordered && !handedLock) {
-      if (!(queuedWork(root) && spawnReplay({ projectDir: root, token, env }))) {
+      if (!(queuedWork(root) && spawnReplay({ projectDir: root, token, env, deadlineAt: fullDeadlineAt, signal }))) {
         releaseReplayLock(root, token);
-        if (queuedWork(root)) spawnReplay({ projectDir: root, env });
+        if (queuedWork(root)) spawnReplay({ projectDir: root, env, deadlineAt: fullDeadlineAt, signal });
       }
     }
   }
@@ -312,12 +312,15 @@ if (process.argv[1] && path.resolve(process.argv[1]).endsWith('session-snapshot-
   // Finish evaluating this module before importing its transition consumer.
   void (async () => {
   try {
+    const deadlineAt = snapshotEntryDeadlineAt();
+    if (Date.now() >= deadlineAt) throw new Error('capture deadline exhausted before transition');
     const { runProjectTransitionHook, transitionPendingNotice } = await import('./project-transition-hook.mjs');
     const payload = JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
     const projectDir = payload.cwd || projectDirectory();
-    const result = runProjectTransitionHook(projectDir, process.argv[2], { payload });
+    const result = runProjectTransitionHook(projectDir, process.argv[2], { payload, deadlineAt });
+    if (result.state === 'degraded') process.stdout.write(JSON.stringify({ systemMessage: 'Project memory transition capture degraded; the new observation was not durably queued or exact-readback verified.' }));
     if (result.state === 'pending') {
-      const message = transitionPendingNotice(projectDir, payload, 'Project memory transition remains pending; exact readback was not verified.');
+      const message = transitionPendingNotice(projectDir, payload, 'Project memory transition remains pending; exact readback was not verified.', { deadlineAt });
       if (message) process.stdout.write(JSON.stringify({ systemMessage: message }));
     }
   } catch { process.stdout.write(JSON.stringify({ systemMessage: 'Project memory transition capture degraded; exact readback was not verified.' })); }
@@ -332,15 +335,15 @@ if (process.argv[1] && path.resolve(process.argv[1]).endsWith('session-snapshot-
       const cwd = JSON.parse(rawInput || '{}').cwd;
       if (typeof cwd === 'string' && path.isAbsolute(cwd)) originProjectDir = cwd;
     } catch { /* malformed input keeps the host's project fallback */ }
-    const result = runSessionSnapshotHook(originProjectDir, process.argv[2] || 'SessionEnd', { rawInput });
+    const result = runSessionSnapshotHook(originProjectDir, process.argv[2] || 'SessionEnd', { rawInput, deadlineAt: snapshotEntryDeadlineAt() });
     // FAIL LOUDLY, NEVER SILENTLY — AND ONCE. When recording is stuck (events pending past STUCK_AFTER_MS,
-    // a quarantined conflict, a corrupt outbox line, a cap drop) Claude Code shows this systemMessage, at
+    // a quarantined conflict, a corrupt outbox line, a cap drop) supported hosts show this systemMessage, at
     // most once per session per condition (stopNotice; it used to repeat at every turn). "Not applicable"
-    // (no store, no ruflo) is never stuck. Codex is excluded on purpose: its Stop schema turns any `reason`
-    // into a BLOCK (codex-hook-adapter.mjs), and a recording problem must never hold a turn open.
+    // (no store, no ruflo) is never stuck. The current Codex adapter preserves systemMessage as advice;
+    // no decision, reason or forced continuation is added, so recording debt never holds a turn open.
     const host = process.env.RUVNET_HOOK_HOST || 'claude';
     const { status, journal } = result?.continuity || {};
-    if (host === 'claude' && status?.stuck && journal) {
+    if (['claude','codex'].includes(host) && status?.stuck && journal) {
       let session = null;
       try { session = JSON.parse(rawInput || '{}').session_id || null; } catch { /* no session: still once per 'unknown' */ }
       const message = stopNotice({ journal, status, session });

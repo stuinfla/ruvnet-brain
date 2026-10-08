@@ -9,6 +9,7 @@ import {
   validateProgressionSnapshot,
 } from '../../plugin/scripts/project-progression-contract.mjs';
 import { getVersion } from '../../scripts/version.mjs';
+import { ProjectProgressionStore } from '../../plugin/scripts/project-progression-store.mjs';
 
 const PROJECT = Object.freeze({
   id: 'stuinfla/ruvnet-brain',
@@ -59,6 +60,40 @@ function input(overrides = {}) {
     ...overrides,
   };
 }
+
+describe('artifact ambiguity at the existing resume consumer', () => {
+  const artifact = (digest) => ({ path: 'output.json', digest });
+  const head = (session, digest, parents = []) => createProgressionSnapshot(input({
+    sessionIdentity: session, sequence: parents.length ? 8 : 7, dedupId: 'artifact-' + session,
+    parentEventKeys: parents, completeProjectState: { ...STATE, proofArtifacts: [artifact(digest)] },
+  }));
+  function resume(snapshots) {
+    const store = Object.assign(Object.create(ProjectProgressionStore.prototype), {
+      resolution: { projectIdentity: PROJECT }, lastReadPath: 'controlled-exact-snapshot-fixture',
+      pendingReplayCount: () => 0, listSnapshotKeys: () => snapshots.map(row => row.eventKey),
+      retrieveSnapshots: () => ({ snapshots, rejected: [] }),
+    });
+    return store.restoreLatest({ replayPending: false }).payload;
+  }
+  it('reports concurrent same-path different-digest artifacts without discarding either history', () => {
+    const a = head('a', 'a'.repeat(64)), b = head('b', 'b'.repeat(64));
+    const before = JSON.stringify([a, b]), restored = resume([a, b]);
+    expect(restored.state.proofArtifacts).toHaveLength(2);
+    const ambiguity = restored.state.resumeConflicts.find(row => row.field === 'proofArtifacts.output.json');
+    expect(ambiguity?.values.map(row => row.head).sort()).toEqual([a.eventKey, b.eventKey].sort());
+    expect(ambiguity?.values.flatMap(row => row.value).map(row => row.digest).sort()).toEqual(['a'.repeat(64), 'b'.repeat(64)]);
+    expect(resume([b, a])).toEqual(restored);
+    expect(JSON.stringify([a, b])).toBe(before);
+  });
+  it('does not confuse a causal successor or identical concurrent digests with a conflict', () => {
+    const old = head('same', 'a'.repeat(64)), next = head('same', 'b'.repeat(64), [old.eventKey]);
+    const successor = resume([old, next]);
+    expect(successor.heads).toEqual([next.eventKey]);
+    expect(successor.state.proofArtifacts).toEqual([artifact('b'.repeat(64))]);
+    expect(successor.state.resumeConflicts).toEqual([]);
+    expect(resume([head('a', 'a'.repeat(64)), head('b', 'a'.repeat(64))]).state.resumeConflicts).toEqual([]);
+  });
+});
 
 describe('ADR-073 ProjectProgression snapshot identity', () => {
   it('creates the canonical versioned snapshot and preserves supplied source identity', () => {

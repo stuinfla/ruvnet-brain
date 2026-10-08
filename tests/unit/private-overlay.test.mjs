@@ -75,6 +75,27 @@ function sidecarDir({ omit = [], primer = true, meta = { name: STORE, generated:
 }
 
 describe('private-overlay writer', () => {
+  it('writes relocated private provenance into the ledger and projects exactly those persisted values', () => {
+    const root = liveShapedRoot(); const from = sidecarDir(); const home = tmp('private-overlay-home-'); const disk = tmp('private-overlay-disk-');
+    try {
+      const brain = path.join(disk, 'brain'); fs.mkdirSync(brain); const relocated = path.join(brain, 'kb'); fs.renameSync(root, relocated);
+      fs.mkdirSync(path.join(home, '.cache')); const link = path.join(home, '.cache', 'ruvnet-brain'); fs.symlinkSync(brain, link);
+      const sourceBefore = readJson(path.join(relocated, 'SOURCE.json')).stores['public-store'];
+      applyPrivateOverlay({ root: fs.realpathSync(path.join(link, 'kb')), from, stores: [STORE], origin: 'local-ingest' });
+      const ledger = readJson(path.join(relocated, 'RVF-GENERATIONS.json')).stores[STORE];
+      const source = readJson(path.join(relocated, 'SOURCE.json')).stores[STORE];
+      expect(ledger.sourceRepo).toBe('private');
+      for (const key of ['sourceRepo', 'sourceCommit', 'sourceDescribe']) expect(source[key]).toBe(ledger[key] ?? null);
+      expect(source.builtUtc).toBe(ledger.builtUtc);
+      expect(source.origin).toBe('local-ingest');
+      expect(readJson(path.join(relocated, 'SOURCE.json')).stores['public-store']).toEqual(sourceBefore);
+      expect(fs.readFileSync(path.join(relocated, `${STORE}.big.rvf`))).toEqual(fs.readFileSync(path.join(from, `${STORE}.big.rvf`)));
+      expect(fs.realpathSync(link)).toBe(fs.realpathSync(brain));
+    } finally {
+      for (const dir of [root, from, home, disk]) fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('stamps updateManaged:false into SOURCE.json and preserves every existing key and entry', () => {
     const root = liveShapedRoot(); const from = sidecarDir();
     const before = readJson(path.join(root, 'SOURCE.json'));
@@ -129,7 +150,7 @@ describe('private-overlay writer', () => {
     const after = readJson(path.join(root, 'RVF-GENERATIONS.json'));
     expect(after.stores[STORE]).toEqual({
       file: `${STORE}.big.rvf`, sha256: sha('private-rvf-bytes'), bytes: 17, model: 'fixture-model', dimensions: 8,
-      sourceCommit: null, builtUtc: '2026-07-31T15:15:56.164Z',
+      sourceRepo: 'private', sourceCommit: null, builtUtc: '2026-07-31T15:15:56.164Z',
     });
     const { stores: _a, ...afterTop } = after; const { stores: _b, ...beforeTop } = before;
     expect(afterTop).toEqual(beforeTop);

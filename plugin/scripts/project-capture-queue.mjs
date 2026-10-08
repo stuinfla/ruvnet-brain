@@ -48,17 +48,19 @@ const mtimeOf = (projectDir, name) => { try { return fs.statSync(path.join(proje
  * ORDER OF EXCLUSIVE CREATION: the name is the next sequence number after every queued or claimed one,
  * created with O_EXCL and retried on collision — never a clock, which can step backwards or wrap.
  */
-export function queueCapture({ projectDir, originProjectDir = projectDir, event, host, payload, env = process.env }) {
+export function queueCapture({ projectDir, originProjectDir = projectDir, event, host, payload, env = process.env, deadlineAt = Infinity, signal }) {
+  const expired = () => signal?.aborted || Date.now() >= deadlineAt;
   try {
-    if (operatorProgressionSuspension(env)) return null;
+    if (expired() || operatorProgressionSuspension(env)) return null;
     const consent = resolveTurnDb({ projectDir: originProjectDir, requestedStorePath: path.join(projectDir, '.swarm', 'memory.db'),
-      brainHome: env.RUVNET_BRAIN_HOME || path.join(env.HOME || os.homedir(), '.cache', 'ruvnet-brain') });
-    if (consent.skipped) return null;
+      brainHome: env.RUVNET_BRAIN_HOME || path.join(env.HOME || os.homedir(), '.cache', 'ruvnet-brain'),
+      gitTimeoutMs: Math.max(1, Math.floor(Math.min(1000, deadlineAt - Date.now()))), deadlineAt, signal });
+    if (expired() || consent.skipped) return null;
   } catch { return null; }
   // Freeze legacy callers at the original boundary too, before dropping host payload.
   let progression = payload?.projectProgression;
   if (!progression && !payload?.normalizedTransition) {
-    try { progression = buildProjectProgression({ resolution: resolveProjectStore({ projectDir: originProjectDir }), projectDir: originProjectDir, payload, host, trigger: event }).projectProgression; } catch { return null; }
+    try { progression = buildProjectProgression({ resolution: resolveProjectStore({ projectDir: originProjectDir, deadlineAt }), projectDir: originProjectDir, payload, host, trigger: event, deadlineAt, signal }).projectProgression; } catch { return null; }
   }
   // Freeze the bounded native observation before discarding raw host input. Replay receives no
   // tool fields, so the native writer cannot append it twice.
@@ -71,6 +73,7 @@ export function queueCapture({ projectDir, originProjectDir = projectDir, event,
   const body = JSON.stringify(redactProgression({ event, host, originProjectDir,
     queuedAt: new Date().toISOString(), payload: minimized }).value);
   for (let attempt = 0; attempt < 64; attempt += 1) {
+    if (expired()) return null;
     const seq = Math.max(0, ...swarmEntries(projectDir).filter((n) => n.startsWith(QUEUE_PREFIX) || n.startsWith(CLAIM_PREFIX)).map(seqOf)) + 1;
     const file = path.join(projectDir, '.swarm', `${QUEUE_PREFIX}${String(seq).padStart(12, '0')}.json`);
     try {
@@ -109,28 +112,29 @@ export function queuedWork(projectDir) {
  * A process's START TIME, as a filename-safe token, or null where it cannot be read (no `ps`, e.g.
  * Windows). With the pid it identifies the process: a reused pid has a different start time.
  */
-export function processStart(pid) {
+export function processStart(pid, { deadlineAt = Infinity, signal } = {}) {
+  if (signal?.aborted || Date.now() >= deadlineAt) return null;
   try {
     // TZ and locale PINNED: `lstart` prints local time in the locale's format, so two workers with
     // different settings would record the same live process differently and read it as pid reuse.
-    const r = spawnSync('ps', ['-o', 'lstart=', '-p', String(pid)], { encoding: 'utf8', timeout: 2000, windowsHide: true,
+    const r = spawnSync('ps', ['-o', 'lstart=', '-p', String(pid)], { encoding: 'utf8', timeout: Math.max(1, Math.floor(Math.min(2000, deadlineAt - Date.now()))), killSignal: 'SIGKILL', windowsHide: true,
       env: { ...process.env, TZ: 'UTC', LC_ALL: 'C', LANG: 'C' } });
     const s = String(r.stdout || '').replace(/[^A-Za-z0-9]/g, '');
     return r.status === 0 && s ? s : null;
   } catch { return null; }
 }
 let selfStart;
-const ownStart = () => (selfStart === undefined ? (selfStart = processStart(process.pid)) : selfStart);
+const ownStart = options => { if (selfStart === undefined) { const value = processStart(process.pid, options); if (value) selfStart = value; return value; } return selfStart; };
 
 /**
  * Claim a queued capture by atomic rename; null if taken. The claim's name records pid, start time and
  * the queue file's ORIGINAL mtime (its creation order, which the mixed upgrade window sorts by); the
  * claim file's own mtime is then set to the claim time, from which the orphan ceiling counts.
  */
-function claimQueued(file) {
+function claimQueued(file, options = {}) {
   let queuedAt = 0;
   try { queuedAt = Math.floor(fs.statSync(file).mtimeMs); } catch { return null; }
-  const claimed = path.join(path.dirname(file), `${CLAIM_PREFIX}${process.pid}-${ownStart() || 'na'}-${queuedAt}-${path.basename(file).slice(QUEUE_PREFIX.length)}`);
+  const claimed = path.join(path.dirname(file), `${CLAIM_PREFIX}${process.pid}-${ownStart(options) || 'na'}-${queuedAt}-${path.basename(file).slice(QUEUE_PREFIX.length)}`);
   try { fs.renameSync(file, claimed); } catch { return null; }
   try { const t = new Date(); fs.utimesSync(claimed, t, t); } catch { /* the ceiling then counts from queue time: earlier, never later */ }
   return claimed;
@@ -151,16 +155,17 @@ const returnClaim = (claimed) => {
  * whatever the pid says (a reused pid where no start time can be read, a wedged worker). Without the
  * last two a reused pid stranded a claim forever and every Stop spawned a worker that could not run it.
  */
-export function reclaimOrphans(projectDir, { isAlive = pidAlive, startOf = processStart, now = Date.now() } = {}) {
+export function reclaimOrphans(projectDir, { isAlive = pidAlive, startOf = processStart, now = Date.now(), deadlineAt = Infinity, signal } = {}) {
   let n = 0;
   for (const name of swarmEntries(projectDir).filter((x) => x.startsWith(CLAIM_PREFIX))) {
+    if (signal?.aborted || Date.now() >= deadlineAt) break;
     const [pidText, start] = name.slice(CLAIM_PREFIX.length).split('-');
     const pid = Number(pidText);
     const claimed = path.join(projectDir, '.swarm', name);
     const abandoned = now - mtimeOf(projectDir, name) > REPLAY_LOCK_ABANDON_MS;
     let gone = abandoned || !isAlive(pid);
     if (!gone && start && start !== 'na') {
-      const current = startOf(pid);
+      const current = startOf(pid, { deadlineAt, signal });
       gone = Boolean(current) && current !== start;
     }
     if (gone && returnClaim(claimed)) n += 1;
@@ -234,16 +239,19 @@ export function releaseReplayLock(projectDir, token) {
 }
 
 /** Hand the lock (or take it, if free) to a detached worker. Returns whether one was started. Never throws. */
-export function replayOutboxDetached({ projectDir, token = null, spawnFn = spawn, env = process.env } = {}) {
+export function replayOutboxDetached({ projectDir, token = null, spawnFn = spawn, env = process.env, deadlineAt = Infinity, signal } = {}) {
   try {
-    if (operatorProgressionSuspension(env)) { if (token) releaseReplayLock(projectDir, token); return false; }
+    if (signal?.aborted || Date.now() >= deadlineAt || operatorProgressionSuspension(env)) { if (token) releaseReplayLock(projectDir, token); return false; }
   } catch { if (token) releaseReplayLock(projectDir, token); return false; }
   const held = token || takeReplayLock(projectDir);
   if (!held) return false;
   try {
+    if (signal?.aborted || Date.now() >= deadlineAt) { releaseReplayLock(projectDir, held); return false; }
+    const detachedEnv = { ...env, RUVNET_REPLAY_LOCK_TOKEN: held };
+    delete detachedEnv.RUVNET_SESSION_SNAPSHOT_DEADLINE_AT;
     const child = spawnFn(process.execPath, [path.join(path.dirname(fileURLToPath(import.meta.url)), 'session-snapshot-hook.mjs'), '--replay-outbox'], {
       cwd: projectDir, detached: true, stdio: 'ignore', windowsHide: true,
-      env: { ...env, RUVNET_REPLAY_LOCK_TOKEN: held },
+      env: detachedEnv,
     });
     child.unref?.();
     return true;
@@ -281,7 +289,7 @@ export function runOutboxReplay({ projectDir, token = process.env.RUVNET_REPLAY_
   for (let round = 0; held && round < 8 && now() < deadlineAt && !signal?.aborted; round += 1) {
     try {
       if (!adoptReplayLock(projectDir, held)) return replayed;
-      reclaimOrphans(projectDir);
+      reclaimOrphans(projectDir, { deadlineAt, signal });
       const resolution = resolveProjectStore({ projectDir, deadlineAt });
       const store = makeStoreFactory(deadlineAt)({ projectDir, env, requestedStorePath: resolution.canonicalAgentDbPath, deadlineAt, signal });
       for (const snapshot of store.outbox.pendingSnapshots()) {
@@ -296,7 +304,7 @@ export function runOutboxReplay({ projectDir, token = process.env.RUVNET_REPLAY_
         if (operatorProgressionSuspension(env)) return replayed;
         if (signal?.aborted || now() >= deadlineAt) return replayed;
         if (!refreshReplayLock(projectDir, held)) return replayed;
-        const claimed = claimQueued(file);
+        const claimed = claimQueued(file, { deadlineAt, signal });
         if (!claimed) continue;
         onClaim?.(claimed);
         if (signal?.aborted || now() >= deadlineAt) { returnClaim(claimed); return replayed; }
@@ -345,7 +353,7 @@ export function drainCaptureQueue({ projectDir, budgetMs = 1000, ...options } = 
   const startedAt = Date.now();
   const deadlineAt = Math.min(options.deadlineAt ?? Infinity, startedAt + budgetMs);
   if (options.signal?.aborted || startedAt >= deadlineAt) return { state: 'pending', replayed: 0, pending: null, reason: 'restore deadline exceeded' };
-  const resolution = resolveProjectStore({ projectDir, gitTimeoutMs: Math.max(1, Math.min(300, budgetMs)), deadlineAt });
+  const resolution = resolveProjectStore({ projectDir, gitTimeoutMs: Math.max(1, Math.floor(Math.min(300, budgetMs))), deadlineAt });
   const root = resolution.projectRoot;
   const replayed = runOutboxReplay({ ...options, deadlineAt, projectDir: root, budgetMs: Math.max(0, deadlineAt - Date.now()) });
   let outboxPending = 0;

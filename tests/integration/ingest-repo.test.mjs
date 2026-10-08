@@ -207,5 +207,49 @@ onPosix('ingest-repo.mjs — final store-existence check', () => {
     expect(r.stdout).toMatch(/\[FAIL\] zzz-fixture: expected stores missing after build\./);
   });
 
-  it.todo('exits 0 and reports success when <name>.big.rvf plus canonical sidecars exist after refresh (covered by the real tiny-repo refresh proof)');
+  function privateBuiltStore() {
+    const kb = path.join(tmp, 'private-built'); fs.mkdirSync(kb);
+    fs.writeFileSync(path.join(kb, 'zzz-fixture.big.rvf'), 'private-fixture-bytes');
+    fs.writeFileSync(path.join(kb, 'zzz-fixture.big.rvf.embed.json'), JSON.stringify({ model: 'fixture-model', dimensions: 8 }));
+    fs.writeFileSync(path.join(kb, 'zzz-fixture.big.rvf.idmap.json'), '{}');
+    fs.writeFileSync(path.join(kb, 'zzz-fixture.meta.json'), JSON.stringify({ description: 'A private fixture for the local ingestion ownership path.', chunks: 1, builtUtc: '2026-10-08T00:00:00Z' }));
+    fs.writeFileSync(path.join(kb, 'zzz-fixture.passages.jsonl'), '{}\n');
+    fs.writeFileSync(path.join(kb, 'SOURCE.json'), JSON.stringify({ stores: {} }));
+    fs.writeFileSync(path.join(kb, 'RVF-GENERATIONS.json'), JSON.stringify({ schemaVersion: 2, kind: 'ruvnet-brain-runtime-generation-ledger', brainVersion: 'fixture', releaseTag: 'vfixture', sourceSnapshot: 'a'.repeat(40), stores: {} }));
+    return kb;
+  }
+
+  it('exits 0 only when all canonical sidecars and actual private ownership are established', () => {
+    const kb = privateBuiltStore(); const bytes = fs.readFileSync(path.join(kb, 'zzz-fixture.big.rvf'));
+    const r = runIngest(['--name', 'zzz-fixture'], { KB_DIR: kb });
+    expect(r.code).toBe(0); expect(r.stdout).toContain('[done]');
+    expect(JSON.parse(fs.readFileSync(path.join(kb, 'SOURCE.json'))).stores['zzz-fixture']).toMatchObject({ updateManaged: false, origin: 'local-ingest' });
+    expect(JSON.parse(fs.readFileSync(path.join(kb, 'PRIVATE-STORES.json'))).privateStores).toContain('zzz-fixture');
+    expect(fs.readFileSync(path.join(kb, 'zzz-fixture.big.rvf'))).toEqual(bytes);
+    expect(JSON.parse(fs.readFileSync(path.join(tmp, 'kb', 'local-ingests.json'))).ingests[0].store).toBe('zzz-fixture');
+  });
+
+  it('refuses a three-file build with missing canonical sidecars instead of reporting Done', () => {
+    const kb = privateBuiltStore(); fs.unlinkSync(path.join(kb, 'zzz-fixture.big.rvf.embed.json')); fs.unlinkSync(path.join(kb, 'zzz-fixture.big.rvf.idmap.json'));
+    const bytes = fs.readFileSync(path.join(kb, 'zzz-fixture.big.rvf'));
+    const r = runIngest(['--name', 'zzz-fixture'], { KB_DIR: kb });
+    expect(r.code).not.toBe(0); expect(r.stdout).not.toContain('[done]'); expect(r.stdout).toContain('ownership');
+    expect(fs.readFileSync(path.join(kb, 'zzz-fixture.big.rvf'))).toEqual(bytes);
+  });
+
+  it('propagates private ownership stamp failure without positive completion or consuming built bytes', () => {
+    const kb = privateBuiltStore(); fs.writeFileSync(path.join(kb, 'PRIVATE-STORES.json'), '{malformed');
+    const bytes = fs.readFileSync(path.join(kb, 'zzz-fixture.big.rvf'));
+    const r = runIngest(['--name', 'zzz-fixture'], { KB_DIR: kb });
+    expect(r.code).not.toBe(0); expect(r.stdout).not.toContain('[done]'); expect(r.stdout).toContain('ownership');
+    expect(fs.readFileSync(path.join(kb, 'zzz-fixture.big.rvf'))).toEqual(bytes);
+  });
+
+  it('refuses to relabel an existing public managed store as local ownership', () => {
+    const kb = privateBuiltStore(); const source = JSON.stringify({ stores: { 'zzz-fixture': { updateManaged: true, sourceRepo: 'https://example.invalid/public' } } });
+    fs.writeFileSync(path.join(kb, 'SOURCE.json'), source);
+    const r = runIngest(['--name', 'zzz-fixture'], { KB_DIR: kb });
+    expect(r.code).not.toBe(0); expect(r.stdout).not.toContain('[done]');
+    expect(fs.readFileSync(path.join(kb, 'SOURCE.json'), 'utf8')).toBe(source);
+  });
 });

@@ -11,6 +11,10 @@ export function learningFixture(scope = 'project') {
   const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'learning-377-')));
   const home = path.join(root, 'home'); const project = path.join(root, 'project');
   fs.mkdirSync(home); fs.mkdirSync(project); fs.mkdirSync(path.join(project, '.swarm'));
+  // Portable synthetic presence fixture; managed adoption is qualified separately
+  // through installed Ruflo SDK initialization and exact native CLI readback.
+  const { DatabaseSync: FixtureDatabase } = loadNodeSqlite();
+  new FixtureDatabase(path.join(project, '.swarm', 'memory.db')).close();
   const queue = scope === 'user' ? path.join(home, '.cache', 'ruvnet-brain', 'learn') : path.join(project, '.swarm', 'ruvnet-brain-learn');
   fs.mkdirSync(queue, { recursive: true, mode: 0o700 });
   const calls = path.join(root, 'calls.jsonl');
@@ -24,10 +28,11 @@ const source=arg('--path')||arg('--db');fs.mkdirSync(path.dirname(source),{recur
 const db=new DatabaseSync(source);
 db.exec('CREATE TABLE IF NOT EXISTS memory_entries(id TEXT PRIMARY KEY,key TEXT,namespace TEXT,content TEXT,type TEXT,embedding TEXT,embedding_model TEXT,embedding_dimensions INTEGER,tags TEXT,metadata TEXT,owner_id TEXT,created_at INTEGER,updated_at INTEGER,expires_at INTEGER,last_accessed_at INTEGER,access_count INTEGER,status TEXT,provenance_type TEXT,UNIQUE(namespace,key))');
 if(args[1]==='store') {
+ if(process.env.TEST_SKIP_WRITE){db.close();process.exit(0);}
  const value=arg('--value');if(value.includes(process.env.TEST_FAIL_ACTION||'__no_failure__'))process.exit(1);
  db.prepare('INSERT OR IGNORE INTO memory_entries(id,key,namespace,content,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)').run(crypto.randomUUID(),arg('--key'),arg('--namespace'),value,'active',Date.now(),Date.now());
-} else if(args[1]==='retrieve') { const r=db.prepare('SELECT content FROM memory_entries WHERE key=? AND namespace=?').get(arg('--key'),arg('--namespace'));if(r)console.log(r.content);else process.exit(1);
-} else if(args[1]==='backup') { const dir=arg('--dir');fs.mkdirSync(dir,{recursive:true});db.exec("VACUUM INTO '"+path.join(dir,'snapshot-'+Date.now()+'.db').replaceAll("'","''")+"'");const copies=fs.readdirSync(dir).filter(n=>n.endsWith('.db')).sort();while(copies.length>Number(arg('--keep')||3))fs.rmSync(path.join(dir,copies.shift()));console.log(process.env.TEST_BACKUP_COPY?'memory DB backed up (byte-copy, encrypted-at-rest) → snapshot':'memory DB backed up → snapshot');
+} else if(args[1]==='retrieve') { if(process.env.TEST_FAKE_RETRIEVE){console.log(process.env.TEST_FAKE_RETRIEVE);db.close();process.exit(0);}const r=db.prepare('SELECT content FROM memory_entries WHERE key=? AND namespace=?').get(arg('--key'),arg('--namespace'));if(r)console.log(r.content);else process.exit(1);
+} else if(args[1]==='backup') { const dir=arg('--dir');fs.mkdirSync(dir,{recursive:true});db.exec("VACUUM INTO '"+path.join(dir,'snapshot-'+Date.now()+'.db').replaceAll("'","''")+"'");if(process.env.TEST_SNAPSHOT_ROW_MISMATCH){const image=new DatabaseSync(path.join(dir,fs.readdirSync(dir).find(n=>n.endsWith('.db'))));image.prepare('DELETE FROM memory_entries WHERE namespace=?').run('learning-observations');image.close();}const copies=fs.readdirSync(dir).filter(n=>n.endsWith('.db')).sort();while(copies.length>Number(arg('--keep')||3))fs.rmSync(path.join(dir,copies.shift()));console.log(process.env.TEST_BACKUP_COPY?'memory DB backed up (byte-copy, encrypted-at-rest) → snapshot':'memory DB backed up → snapshot');
 } else if(args[1]==='distill') { if(process.env.TEST_NO_DISTILL)process.exit(0);db.exec('CREATE TABLE IF NOT EXISTS reasoning_patterns(id INTEGER PRIMARY KEY,metadata TEXT); CREATE TABLE IF NOT EXISTS distill_state(namespace TEXT PRIMARY KEY,last_rowid INTEGER,last_run_at INTEGER)');db.prepare('INSERT INTO reasoning_patterns(metadata)VALUES(?)').run(JSON.stringify({namespace:'learning-observations'}));db.prepare('INSERT OR REPLACE INTO distill_state VALUES(?,?,?)').run('learning-observations',1,Date.now()); }
 db.close();`);
   const preload = path.join(root, 'preload.cjs');

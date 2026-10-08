@@ -15,6 +15,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { verifyNativeUserRecord } from './native-user-intake.mjs';
 
 /** The transcript-derived bound. Deliberately far below the hook's 4096-byte observation limit. */
 export const DERIVED_TEXT_LIMIT = 240;
@@ -58,7 +59,7 @@ const SOURCE_PATHSPEC = ['--', '.', ...BRAIN_STATE_PATHSPEC_EXCLUDES];
  * The source identity, with each digest defined EXACTLY (each one EXCLUDING the Brain's own state,
  * BRAIN_STATE_PATHSPEC_EXCLUDES above):
  *   trackedDigest   sha256 of `git ls-files -s` (mode + blob oid + stage + path for every tracked file)
- *   untrackedDigest sha256 of one `<content-sha256> <path>` line per untracked, non-ignored file —
+ *   untrackedDigest sha256 of one JSON `[content-sha256, exact-path]` record per untracked, non-ignored file, joined by NUL —
  *                   the NAMES alone would call two different working trees identical
  *   dirtyTreeDigest sha256 of `git diff HEAD` (staged AND unstaged, against the commit)
  *
@@ -86,17 +87,22 @@ export function readSourceIdentity({ checkoutRoot, kind = 'git', deadlineAt = In
   const headBefore = git(checkoutRoot, ['rev-parse', 'HEAD'], deadlineAt, signal)?.trim() || 'unborn';
   const branch = git(checkoutRoot, ['rev-parse', '--abbrev-ref', 'HEAD'], deadlineAt, signal)?.trim() || 'detached';
   const tracked = git(checkoutRoot, ['ls-files', '-s', ...SOURCE_PATHSPEC], deadlineAt, signal);
-  const untrackedList = git(checkoutRoot, ['ls-files', '--others', '--exclude-standard', ...SOURCE_PATHSPEC], deadlineAt, signal);
+  const untrackedList = git(checkoutRoot, ['ls-files', '--others', '--exclude-standard', '-z', ...SOURCE_PATHSPEC], deadlineAt, signal);
   const diff = git(checkoutRoot, ['diff', 'HEAD', ...SOURCE_PATHSPEC], deadlineAt, signal);
   const headAfter = git(checkoutRoot, ['rev-parse', 'HEAD'], deadlineAt, signal)?.trim() || 'unborn';
 
-  const untrackedLines = String(untrackedList ?? '').split('\n').filter(Boolean).map((relative) => {
+  if (untrackedList === null) throw new Error('untracked source inventory unavailable');
+  const untrackedLines = untrackedList.split('\0').filter(Boolean).map((relative) => {
     checkDeadline(deadlineAt, signal);
     let content;
-    if (Number.isFinite(deadlineAt) && fs.statSync(path.join(checkoutRoot, relative)).size > 64 * 1024 * 1024) throw new Error('source identity file exceeds bounded read');
-    try { content = fs.readFileSync(path.join(checkoutRoot, relative)); } catch { return `unreadable ${relative}`; }
+    try {
+      const file = path.join(checkoutRoot, relative), stat = fs.statSync(file);
+      if (!stat.isFile()) throw new Error('not a readable regular file');
+      if (Number.isFinite(deadlineAt) && stat.size > 64 * 1024 * 1024) throw new Error('source identity file exceeds bounded read');
+      content = fs.readFileSync(file);
+    } catch { throw new Error('source identity untracked file unreadable or outside bounded read'); }
     const digest = sha256(content); checkDeadline(deadlineAt, signal);
-    return `${digest} ${relative}`;
+    return JSON.stringify([digest, relative]);
   });
   checkDeadline(deadlineAt, signal);
 
@@ -107,7 +113,7 @@ export function readSourceIdentity({ checkoutRoot, kind = 'git', deadlineAt = In
       branch,
       head: headBefore,
       trackedDigest: tracked === null ? ABSENT_DIGEST : sha256(tracked),
-      untrackedDigest: untrackedList === null ? ABSENT_DIGEST : sha256(untrackedLines.join('\n')),
+      untrackedDigest: untrackedList === null ? ABSENT_DIGEST : sha256(untrackedLines.join('\0')),
       dirtyTreeDigest: diff === null ? ABSENT_DIGEST : sha256(diff),
     },
     headStable: headBefore === headAfter,
@@ -201,9 +207,24 @@ function textOf(message) {
  * Unknown or unreadable formats return `skipped` with a reason. A host whose transcript we cannot
  * parse must cost the capture nothing at all.
  */
-export function readTranscriptReference(transcriptPath, { host = 'claude', tailBytes = TRANSCRIPT_TAIL_BYTES } = {}) {
+export function readTranscriptReference(transcriptPath, { host = 'claude', tailBytes = TRANSCRIPT_TAIL_BYTES,
+  payload, projectDir, deadlineAt = Infinity, signal } = {}) {
   if (typeof transcriptPath !== 'string' || !transcriptPath) {
     return { skipped: 'no transcript path supplied' };
+  }
+  if (host === 'codex') {
+    // Actual callback identity is mandatory; never infer it from the latest historical row.
+    if (!projectDir || !payload?.session_id || !payload?.turn_id || payload.transcript_path !== transcriptPath) {
+      return { skipped: 'current native Codex callback identity unavailable' };
+    }
+    try {
+      const observed = verifyNativeUserRecord(projectDir, { host, payload, deadlineAt, signal, parentRead: false });
+      if (observed.status !== 'verified') return { skipped: observed.reason };
+      return { reference: { format: 'codex-jsonl', authoritative: false,
+        nativeSessionId: observed.nativeSessionId, nativeUserEventRef: observed.nativeUserEventRef,
+        userInstructionDigest: observed.userInstructionDigest },
+      derivedGoal: '', derivedNextAction: '' };
+    } catch { return { skipped: 'current native Codex transcript provenance unavailable' }; }
   }
   if (host !== 'claude') return { skipped: `transcript format unknown for host ${host}` };
   let stat;

@@ -548,7 +548,7 @@ const payoff = buys && !why.includes(buys) ? ` It buys them: ${buys}` : '';
 
 // The one line this hook has decided to speak, built once. In legacy mode it is printed verbatim; in
 // candidate mode it becomes the `copy` of the advocacy candidate. Byte-identical either way.
-const COPY = `[RuvNet Brain — anticipating] "${best.row.label}" is installed here and switched OFF, and it serves this turn: ${why}${payoff} Offer it ONCE, in one plain sentence (${cmd}), then drop it and get on with the actual work. If they decline: ${SELF} --dismiss ${best.row.key} (each decline moves it toward silence, faster for a routine finding than a serious one)`;
+const COPY = `[RuvNet Brain — anticipating] "${best.row.label}" is installed here and switched OFF, and it serves this turn: ${why}${payoff} Alternative: leave it OFF and continue the current workflow; this suits deliberate or manual control, without this capability's benefit. Offer it ONCE, in one plain sentence (${cmd}), then drop it and get on with the actual work. If they decline: ${SELF} --dismiss ${best.row.key} (each decline moves it toward silence, faster for a routine finding than a serious one)`;
 
 if (EMIT_CANDIDATES) {
   // CANDIDATE MODE: emit ONE advocacy candidate, no prose. The runtime honours the dial + the

@@ -293,6 +293,8 @@ export function shortName(card) {
   return String(card?.id || '').replace(/^@[^/]+\//, '');
 }
 
+const EXISTING_MANUAL_CHOICE = 'Alternative: keep the current manual workflow without adding a package; this suits small or one-off tasks and deliberate dependency control, but keeps the manual effort instead of the proposed automation';
+
 /**
  * The advocacy candidate for one picked card: ONE line naming the package, its manifest description
  * and its source path. Same channel and aggregate shape as advocacy-route's catalogue candidate, so
@@ -311,7 +313,7 @@ export function buildPackageCandidate({ prompt, pick, findingPrefix = 'recommend
     severity: 'normal',
     observationHash: stateHashOf([`package:${card.id}`]),
     copy: `[RuvNet Brain — rUv already ships this] If it genuinely fits this request, tell the user in ONE `
-      + `sentence: "rUv ships ${card.id} — ${description} (source: ${card.source}). Say 'use ${name}' to proceed, or ignore this." `
+      + `sentence: "rUv ships ${card.id} — ${description} (source: ${card.source}). ${EXISTING_MANUAL_CHOICE}. Say 'use ${name}' to proceed, or ignore this." `
       + 'Install state unknown from here; confirm with search_ruvnet before building, say it once, then carry on.',
     capability: name,
     package: card.id,
@@ -341,7 +343,7 @@ export function semanticFloor(env = process.env) {
   return Number.isFinite(v) && v >= 0 && v <= 1 ? v : SEMANTIC_MIN_SIMILARITY;
 }
 
-/** The advocacy candidate carrying a candidate SET, phrased exactly as the measured instruction. */
+/** Candidate SET retains the one-mention limit and offers an existing manual choice. */
 export function buildCandidateSetCandidate({ prompt, picks, findingPrefix = 'recommend:pkg:' }) {
   const cards = (picks || []).map((p) => p.card).filter((c) => c && typeof c.id === 'string' && typeof c.source === 'string');
   if (!cards.length) return null;
@@ -356,7 +358,7 @@ export function buildCandidateSetCandidate({ prompt, picks, findingPrefix = 'rec
     observationHash: stateHashOf([`package:${top.id}`]),
     copy: `[RuvNet Brain — rUv may already ship this] Candidate rUv packages for this request (from the Brain's package cards): ${list}. `
       + 'If, and only if, ONE of them would materially help with exactly what the user is asking for, tell the user in one sentence: '
-      + "'rUv ships <id> — <why it fits> (source: <source>)'. If none clearly fits, say nothing about them. Never mention more than one.",
+      + `'rUv ships <id> — <why it fits> (source: <source>); ${EXISTING_MANUAL_CHOICE}'. If none clearly fits, say nothing about them. Never mention more than one.`,
     capability: shortName(top),
     package: top.id,
     candidates: cards.map((c) => c.id),

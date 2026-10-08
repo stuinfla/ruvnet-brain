@@ -26,6 +26,8 @@ const { serverDependencies } = await import(new URL('../../bin/install.mjs', imp
 function installGeneration(brain, version, shimSource) {
   const scripts = path.join(brain, 'versions', version, 'scripts');
   fs.mkdirSync(scripts, { recursive: true });
+  fs.cpSync(path.join(ROOT, 'plugin', 'hooks'), path.join(path.dirname(scripts), 'hooks'), { recursive: true });
+  for (const name of ['session-start-budget.mjs', 'session-snapshot-budget.mjs']) fs.copyFileSync(path.join(ROOT, 'plugin', 'scripts', name), path.join(scripts, name));
   // Same rule as every other isolated-copy fixture: carry the adapter's REAL imports, derived.
   fs.copyFileSync(ADAPTER, path.join(scripts, 'codex-hook-adapter.mjs'));
   for (const dep of serverDependencies(ADAPTER)) {
@@ -48,6 +50,9 @@ function installGroundingGeneration(brain, version) {
     'codex-hook-adapter.mjs',
     'codex-hook-events.mjs',
     'development-maintenance.mjs',
+    'hook-context-budget.mjs',
+    'session-snapshot-budget.mjs',
+    'session-start-budget.mjs',
     'hook-shim.mjs',
     'hook-shim-bash.mjs',
     'ground-before-write.sh',
@@ -70,6 +75,9 @@ function installInterfaceGeneration(brain, version) {
     'codex-hook-adapter.mjs',
     'codex-hook-events.mjs',
     'development-maintenance.mjs',
+    'hook-context-budget.mjs',
+    'session-snapshot-budget.mjs',
+    'session-start-budget.mjs',
     'hook-shim.mjs',
     'hook-shim-bash.mjs',
     'verify-interface.sh',
@@ -453,23 +461,29 @@ describe('continuity-only Codex lifecycle packaging', () => {
 });
 
 describe('Codex lifecycle adapter', () => {
-  it('fails open and silent when an advisory adapter crashes', () => {
+  it('fails open with UNKNOWN rather than success when the SessionStart adapter crashes', () => {
     const { home, brain } = fixture();
     const scripts = path.join(brain, 'versions', 'v1', 'scripts');
     fs.mkdirSync(scripts, { recursive: true });
+    fs.copyFileSync(path.join(ROOT, 'plugin', 'scripts', 'session-start-budget.mjs'), path.join(scripts, 'session-start-budget.mjs'));
+    fs.cpSync(path.join(ROOT, 'plugin', 'hooks'), path.join(path.dirname(scripts), 'hooks'), { recursive: true });
     fs.writeFileSync(path.join(scripts, 'codex-hook-adapter.mjs'), 'process.stderr.write("adapter exploded"); process.exit(1);');
     fs.writeFileSync(path.join(brain, 'active.json'), JSON.stringify({ version: 'v1', codeRoot: 'versions/v1' }));
 
     const result = fire(home, 'session-start', { hook_event_name: 'SessionStart', cwd: ROOT });
     expect(result.status).toBe(0);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toBe('');
+    expect(result.stderr).toContain('PROJECT CONTINUITY UNKNOWN');
+    expect(result.stderr).toContain('did not complete');
+    expect(result.stderr).not.toContain('host budget unavailable');
   });
 
-  it('times out a hung advisory adapter inside the host deadline and fails open silently', () => {
+  it('times out a hung SessionStart adapter inside the host deadline and reports UNKNOWN', () => {
     const { home, brain } = fixture();
     const scripts = path.join(brain, 'versions', 'v1', 'scripts');
     fs.mkdirSync(scripts, { recursive: true });
+    fs.copyFileSync(path.join(ROOT, 'plugin', 'scripts', 'session-start-budget.mjs'), path.join(scripts, 'session-start-budget.mjs'));
+    fs.cpSync(path.join(ROOT, 'plugin', 'hooks'), path.join(path.dirname(scripts), 'hooks'), { recursive: true });
     fs.writeFileSync(path.join(scripts, 'codex-hook-adapter.mjs'), 'setInterval(() => {}, 1000);');
     fs.writeFileSync(path.join(brain, 'active.json'), JSON.stringify({ version: 'v1', codeRoot: 'versions/v1' }));
     const started = Date.now();
@@ -480,7 +494,9 @@ describe('Codex lifecycle adapter', () => {
     expect(Date.now() - started).toBeLessThan(1_000);
     expect(result.status).toBe(0);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toBe('');
+    expect(result.stderr).toContain('PROJECT CONTINUITY UNKNOWN');
+    expect(result.stderr).toContain('did not complete');
+    expect(result.stderr).not.toContain('host budget unavailable');
   });
 
   it('preserves an intentional blocking exit 2 while failing other wrapper errors open', () => {
@@ -495,7 +511,8 @@ describe('Codex lifecycle adapter', () => {
     const advisory = fire(home, 'session-start', { hook_event_name: 'SessionStart', cwd: ROOT });
     expect(advisory.status).toBe(0);
     expect(advisory.stdout).toBe('');
-    expect(advisory.stderr).toBe('');
+    expect(advisory.stderr).toContain('PROJECT CONTINUITY UNKNOWN');
+    expect(advisory.stderr).not.toContain('policy refusal');
   });
 
   it('wraps bracket-prefixed SessionStart text in the exact Codex context envelope', () => {
@@ -544,12 +561,12 @@ describe('Codex lifecycle adapter', () => {
     });
   });
 
-  it('translates the Claude Stop continuation envelope into Codex block plus reason', () => {
+  it('preserves explicit shared Stop denial as Codex block plus reason', () => {
     const { home, brain } = fixture();
     installGeneration(
       brain,
       'v1',
-      'process.stdin.resume(); process.stdin.on("end",()=>process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:"Stop",additionalContext:"Finish the open work."}})));',
+      'process.stdin.resume(); process.stdin.on("end",()=>process.stdout.write(JSON.stringify({decision:"block",reason:"Finish the open work."})));',
     );
 
     const result = fire(home, 'continuation-gate', {
@@ -567,6 +584,22 @@ describe('Codex lifecycle adapter', () => {
       decision: 'block',
       reason: 'Finish the open work.',
     });
+  });
+
+  it.each([
+    [{hookSpecificOutput:{hookEventName:'Stop',additionalContext:'Recording is unavailable.'}}, {systemMessage:'Recording is unavailable.'}],
+    [{reason:'Unfinished handoff.'}, {systemMessage:'Unfinished handoff.'}],
+    [{systemMessage:'Known blocker.'}, {systemMessage:'Known blocker.'}],
+    [{continue:false,stopReason:'Owner stopped.',suppressOutput:true,systemMessage:'Retained.'}, {continue:false,stopReason:'Owner stopped.',suppressOutput:true,systemMessage:'Retained.'}],
+    [{decision:'block',reason:'Continue current work.',continue:true,suppressOutput:false,systemMessage:'Extra diagnostic.'}, {decision:'block',reason:'Continue current work.',continue:true,suppressOutput:false,systemMessage:'Extra diagnostic.'}],
+    [{decision:'block',reason:'',systemMessage:'Malformed denial.'}, {systemMessage:'Malformed denial.'}],
+    [{foreignField:'not native schema',systemMessage:'Preserve supported field.'}, {systemMessage:'Preserve supported field.'}],
+  ])('preserves native Stop fields and keeps incidental context nonforcing: %j', (body, expected) => {
+    const {home,brain}=fixture();
+    installGeneration(brain,'v1',`process.stdin.resume(); process.stdin.on('end',()=>process.stdout.write(JSON.stringify(${JSON.stringify(body)})));`);
+    const result=fire(home,'continuation-gate',{session_id:'codex-typed-stop',turn_id:'current-turn',hook_event_name:'Stop',stop_hook_active:false,cwd:ROOT});
+    expect(result.status).toBe(0);expect(JSON.parse(result.stdout)).toEqual(expected);
+    if(body.decision!=='block'||!body.reason)expect(JSON.parse(result.stdout).decision).toBeUndefined();
   });
 
   it('wraps bracket-prefixed UserPromptSubmit text as valid Codex JSON', () => {
@@ -590,7 +623,7 @@ describe('Codex lifecycle adapter', () => {
     });
   });
 
-  it('normalizes apply_patch into the shared Edit contract without losing patch bytes', () => {
+  it.each(['apply_patch', 'functions.apply_patch', 'functions__apply_patch'])('normalizes %s into the shared Edit contract without losing patch bytes', (toolName) => {
     const { home, brain } = fixture();
     installGeneration(
       brain,
@@ -603,7 +636,7 @@ describe('Codex lifecycle adapter', () => {
       session_id: 'codex-patch',
       turn_id: 'turn-patch',
       hook_event_name: 'PreToolUse',
-      tool_name: 'apply_patch',
+      tool_name: toolName,
       tool_input: { command: patch },
       cwd: '/tmp/project',
     });

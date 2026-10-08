@@ -129,11 +129,13 @@ function readTail(file, bytes = TRANSCRIPT_TAIL_BYTES) {
 }
 
 /** Wait (bounded) until the transcript stops growing, then return its tail lines. */
-export function readSettledTranscript(file, { stableMs = 400, maxMs = 2000, sleep } = {}) {
+export function readSettledTranscript(file, { stableMs = 400, maxMs = 2000, sleep, deadlineAt = Infinity, signal } = {}) {
   const pause = sleep || ((ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms));
-  const deadline = Date.now() + Math.max(0, maxMs);
+  const check = () => { if (signal?.aborted || Date.now() >= deadlineAt) throw new Error(signal?.aborted ? 'transcript capture aborted' : 'transcript capture deadline exceeded'); };
+  const deadline = Math.min(deadlineAt, Date.now() + Math.max(0, maxMs));
   let size = -1;
   for (;;) {
+    check();
     const stat = fs.statSync(file);
     if (!stat.isFile()) throw new Error('Transcript must be a regular file');
     const now = stat.size;
@@ -141,9 +143,8 @@ export function readSettledTranscript(file, { stableMs = 400, maxMs = 2000, slee
     size = now;
     pause(Math.min(stableMs, Math.max(0, deadline - Date.now())));
   }
-  return readTail(file);
+  check(); const lines = readTail(file); check(); return lines;
 }
-
 export function buildTurnRecord({ turn, project, host, session, at = new Date() }) {
   const parts = [`[turn ${at.toISOString()} project=${project} host=${host}]`,
     `OUTCOME: ${redactText(turn.finalText).replace(/\s+/g, ' ').slice(0, 2500)}`];
@@ -169,13 +170,13 @@ export function resolveTurnDb({ projectDir, brainHome, requestedStorePath, gitTi
   const capturePath = fs.realpathSync.native(projectDir);
   let policy = {};
   const file = brainHome && turnCapturePolicyFile(brainHome);
-  if (file && fs.existsSync(file)) {
+  if (file) {
     try {
       policy = JSON.parse(fs.readFileSync(file, 'utf8'));
       if (policy?.schemaVersion !== 1 || !consentMap(policy.projects)
         || (Object.hasOwn(policy, 'paths') && !consentMap(policy.paths))) throw new Error('invalid policy');
       contentPathExcludes(policy.contentPathExcludes);
-    } catch { return { skipped: 'turn capture policy unreadable or invalid', projectRoot: resolved.projectRoot }; }
+    } catch (error) { if (!['ENOENT', 'ENOTDIR'].includes(error.code)) return { skipped: 'turn capture policy unreadable or invalid', projectRoot: resolved.projectRoot }; }
   }
   // A path rule wins over a project rule, allowing a linked checkout/subdirectory to opt out.
   const setting = policy.paths?.[capturePath] ?? policy.projects?.[resolved.projectRoot];
@@ -250,11 +251,7 @@ function markTurnQueued(stateFile, sessionKey, fingerprint, key) {
   } catch { /* dedupe is best effort; a duplicate record beats a lost one */ }
 }
 
-/**
- * Capture this turn's outcome (Stop) and/or queue distillation (SessionEnd, PreCompact).
- * Returns a plain report; `queued` means a worker request, never proof the store committed.
- * `skipped` / `distill.skipped` carry the reason whenever nothing is requested.
- */
+/** Stop outcomes / boundary distillation: queued debt or requests are never recording proof. */
 export function captureTurnOutcome({
   projectDir, event, payload = {}, host = 'claude',
   env = process.env, home = os.homedir(),
@@ -264,14 +261,21 @@ export function captureTurnOutcome({
   readTranscript = readSettledTranscript,
   settleMs = 2000,
   now = () => new Date(),
+  deadlineAt = Infinity, signal,
 } = {}) {
   const report = { event, host, queued: false, recorded: false, distill: { queued: false } };
+  const check = () => { if (signal?.aborted || Date.now() >= deadlineAt) throw new Error(signal?.aborted ? 'turn capture aborted' : 'turn capture deadline exceeded'); };
+  const unavailable = (error) => ({ ...report, queued: Boolean(report.durability?.fileFsync === 'completed'), recorded: false,
+    distill: { queued: Boolean(report.launch?.launched && report.distill.queued) }, skipped: `${redactText(error.message)}; unavailable` });
+  try { check(); } catch (error) { return unavailable(error); }
   if (String(env.RUVNET_TURN_CAPTURE || '').toLowerCase() === 'off') {
     return { ...report, skipped: 'RUVNET_TURN_CAPTURE=off', distill: { queued: false, skipped: 'RUVNET_TURN_CAPTURE=off' } };
   }
   if (!ruflo) return { ...report, skipped: 'ruflo not found', distill: { queued: false, skipped: 'ruflo not found' } };
   let target;
-  try { target = resolveTurnDb({ projectDir, brainHome }); } catch (error) { return { ...report, skipped: `store resolution failed: ${redactText(error.message)}` }; }
+  try { target = resolveTurnDb({ projectDir, brainHome, deadlineAt, signal,
+    gitTimeoutMs: Math.max(1, Math.floor(Math.min(1000, deadlineAt - Date.now()))) }); check(); }
+  catch (error) { return unavailable(new Error(`store resolution unavailable: ${redactText(error.message)}`)); }
   const { db, scope, projectRoot } = target;
   Object.assign(report, { db, scope });
   if (target.skipped) return { ...report, skipped: target.skipped, distill: { queued: false, skipped: target.skipped } };
@@ -281,14 +285,11 @@ export function captureTurnOutcome({
   let dedupe;
   const project = projectName(projectRoot);
   const receipts = path.join(brainHome, 'turn-capture', 'receipts.jsonl');
-
-  // ONE WRITER PER TURN (ADR-100 §3). Measured 2026-10-01 on this repo's real store: 624 `turns` rows
-  // in five days for 323 distinct outcomes — this writer (host-tagged) and the owner's user-level
-  // ~/.claude/hooks/agentdb-turn-capture.mjs both recorded every Claude turn. The user-level hook is
-  // the owner's and is never edited by the product, so where it is registered the product DEFERS
-  // (RUVNET_TURN_CAPTURE=force keeps both). Codex turns are not seen by that Claude-only hook.
+  // ADR-100: defer to the owner's proved canonical Claude Stop writer; never edit it.
+  // Explicit force keeps both; Codex is not recorded by that Claude-only writer.
   const deferTo = event === 'Stop' && host === 'claude' && String(env.RUVNET_TURN_CAPTURE || '').toLowerCase() !== 'force'
-    && userLevelAgentdbHooks({ home, event, projectDir, env }).turnCapture;
+    && userLevelAgentdbHooks({ home, event, projectDir, env, deadlineAt, signal }).turnCapture;
+  try { check(); } catch (error) { return unavailable(error); }
   if (deferTo) {
     report.skipped = 'deferred: an enabled user-level Stop writer explicitly targets the canonical turn store; actual native delivery is unproven';
     report.deferredToUserLevel = true;
@@ -297,9 +298,10 @@ export function captureTurnOutcome({
     const message = typeof payload.last_assistant_message === 'string' ? payload.last_assistant_message.trim() : '';
     let turn = { finalText: '', files: [], actions: [] };
     if (host === 'claude' && typeof payload.transcript_path === 'string' && payload.transcript_path) {
-      // With the closing message in hand, the transcript is read immediately (tool calls are already
-      // flushed); without it, wait for the closing message to land, bounded.
-      try { turn = claudeTurn(readTranscript(payload.transcript_path, { maxMs: message ? 0 : settleMs })); } catch { /* unreadable */ }
+      // A supplied closing message avoids settling; otherwise wait within the caller deadline.
+      try { turn = claudeTurn(readTranscript(payload.transcript_path, { maxMs: message ? 0 : settleMs, deadlineAt, signal })); }
+      catch (error) { if (signal?.aborted || Date.now() >= deadlineAt || /capture (?:deadline exceeded|aborted)/.test(error.message)) return unavailable(error); report.transcriptUnavailable = redactText(error.message); }
+      try { check(); } catch (error) { return unavailable(error); }
     }
     if (message && (message.length >= MIN_OUTCOME_CHARS || message.length >= turn.finalText.length)) turn.finalText = message;
     turn = privateTurn(turn, target.contentPathExcludes, target.capturePath);
@@ -316,7 +318,6 @@ export function captureTurnOutcome({
         const key = `turn-${project}-${digest(`${identity}:${fingerprint}`).slice(0, 40)}`;
         dedupe = { stateFile, identity, fingerprint, key };
         let value = buildTurnRecord({ turn, project, host, session: payload.session_id, at });
-        // Retry uses the original durable content (including its timestamp), never a new value.
         const pendingFile = path.join(path.dirname(db), 'turn-outbox', `${digest(key)}.json`);
         if (fs.existsSync(pendingFile)) {
           try { const pending = readJournal(pendingFile, db); value = pending.value; }
@@ -324,12 +325,10 @@ export function captureTurnOutcome({
         }
         steps.push({ ...binding, kind: 'store', ruflo, args: ['memory', 'store', '-k', key, '--value', value, '-n', TURN_NAMESPACE,
           '--path', db, '--no-upsert', '--tags', `project=${project},host=${host}`, '--provenance', 'agent_output'] });
-        // This synchronous boundary proves only queuing; the worker's exact receipt proves recording.
         Object.assign(report, { queued: true, key, value });
       }
     }
   } else report.skipped = `turn outcomes are recorded at Stop, not ${event}`;
-
   if (event === 'SessionEnd' || event === 'PreCompact') {
     if (!fs.existsSync(db)) report.distill = { queued: false, skipped: 'no memory db to distill yet' };
     else {
@@ -338,19 +337,19 @@ export function captureTurnOutcome({
     }
   }
   if (!steps.length) return report;
-
-  try {
-    // Only explicit persisted consent permits creating a project store directory.
+  try { check();
     if (target.optedIn) fs.mkdirSync(path.dirname(db), { recursive: true, mode: 0o700 });
     if (report.queued) {
       const step = steps.find((item) => item.kind === 'store');
       step.journalFile = journalTurn(step, db, report.key, { onDurability: (evidence) => { report.durability = evidence; } });
+      check();
       fs.appendFileSync(path.join(path.dirname(db), 'agentdb-turns.jsonl'),
         `${JSON.stringify({ ts: Date.now(), key: report.key, hash: crypto.createHash('sha256').update(report.value).digest('hex'), len: report.value.length })}\n`, { mode: 0o600 });
     }
-    report.launch = launch(steps, { receipts, brainHome, projectDir: binding.projectDir, env });
+    check(); report.launch = launch(steps, { receipts, brainHome, projectDir: binding.projectDir, env }); check();
     if (dedupe) markTurnQueued(dedupe.stateFile, dedupe.identity, dedupe.fingerprint, dedupe.key);
   } catch (error) {
+    if (signal?.aborted || Date.now() >= deadlineAt) return unavailable(error);
     return { ...report, queued: false, recorded: false, distill: { queued: false, skipped: `launch failed: ${redactText(error.message)}` }, skipped: `launch failed: ${redactText(error.message)}` };
   }
   return report;

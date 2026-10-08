@@ -75,3 +75,25 @@ describe('ADR-072 completion boundary', () => {
     expect(evaluateCompletion(f).ok).toBe(false);
   });
 });
+
+
+describe('P091 recall evidence must be a finite numeric acceptance metric', () => {
+  it.each([
+    ['missing', undefined], ['null', null], ['numeric string', '0.98'],
+    ['NaN string', 'NaN'], ['above one', 1.01], ['below threshold', 0.979],
+    ['infinite JSON number', '1e999'], ['negative infinite JSON number', '-1e999'], ['invalid NaN token', 'NaN-token'],
+  ])('refuses %s without crediting unknown recall', (_name, value) => {
+    const f = fixture(); const receipt = JSON.parse(fs.readFileSync(f.receiptFile));
+    if (value === undefined) delete receipt.retrieval.recallAt10;
+    else receipt.retrieval.recallAt10 = ['1e999', '-1e999', 'NaN-token'].includes(value) ? 123456 : value;
+    let bytes = JSON.stringify(receipt);
+    if (['1e999', '-1e999', 'NaN-token'].includes(value)) bytes = bytes.replace('"recallAt10":123456', '"recallAt10":' + (value === 'NaN-token' ? 'NaN' : value));
+    fs.writeFileSync(f.receiptFile, bytes);
+    expect(evaluateCompletion(f).ok).toBe(false);
+  });
+  it.each([0.98, 1])('preserves eligible finite recall %s', recallAt10 => {
+    const f = fixture(); const receipt = JSON.parse(fs.readFileSync(f.receiptFile));
+    receipt.retrieval.recallAt10 = recallAt10; fs.writeFileSync(f.receiptFile, JSON.stringify(receipt));
+    expect(evaluateCompletion(f).ok).toBe(true);
+  });
+});

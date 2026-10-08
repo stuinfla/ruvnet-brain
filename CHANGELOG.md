@@ -1,4 +1,4 @@
-Updated: 2026-10-07 02:49:30 EDT | Version 1.0.0
+Updated: 2026-10-08 11:23:54 EDT | Version 1.0.1
 Created: 2026-09-11 08:46:59 EDT
 
 # Changelog
@@ -7,6 +7,22 @@ All notable changes to RuvNet Brain are recorded here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/). Entries below "Unreleased" are facts about
 what shipped in a given release; the "Unreleased" section tracks work in progress across the
 current campaign and is finalized by the lead session before the next release cut.
+
+## 4.5.18 candidate — 2026-10-08
+
+- Tightens managed task dependency cancellation, acceptance evidence and explicit
+  scope handling (`scripts/model-routing-controller.mjs`,
+  `scripts/model-managed-workflow-service.mjs`).
+- Preserves canonical project memory selection, consent and durable checkpoint
+  evidence (`plugin/scripts/project-store-resolver.mjs`,
+  `plugin/scripts/project-progression-producer.mjs`).
+- Corrects bounded grounding, lesson ownership, QA evidence and corpus integrity
+  consumers, with focused regression coverage.
+- The rule campaign records 31 scoped candidate qualifications and 69 unresolved
+  rules, including suspended P032. These counts are historical review scope;
+  current exact source qualification, protected publication and installed
+  verification are required before this entry can describe shipped behavior.
+- No universal host routing, hook enforcement or all-100-rule conformance claim.
 
 ## Unreleased
 

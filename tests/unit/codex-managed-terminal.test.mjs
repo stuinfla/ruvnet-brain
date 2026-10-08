@@ -14,7 +14,7 @@ function effectiveConfig(cwd, changes = {}) {
   return { config: { model_provider: 'openai', openai_base_url: null, approval_policy: 'never', sandbox_mode: 'read-only', projects: { [cwd]: { trust_level: 'trusted' } }, ...changes },
     layers: [{ name: { type: 'project', dotCodexFolder: path.join(cwd, '.codex') }, disabledReason: null }] };
 }
-const launchCodexManagedTerminal = options => actualLaunch({ readConfig: async ({ cwd }) => effectiveConfig(cwd), ...options });
+const launchCodexManagedTerminal = options => actualLaunch({ captureFrontendIntent:async()=>undefined, readConfig: async ({ cwd }) => effectiveConfig(cwd), ...options });
 
 function native(overrides = {}) {
   return { binary: '/actual/native-codex', prompt: 'Translate yes.', cwd: process.cwd(), env: {},
@@ -210,7 +210,7 @@ describe('actual native effective Codex authority boundary', () => {
     try {
       await launchCodexManagedTerminal({ binary: '/native', args: ['Translate yes.'], ...t, env: { OWNER_VALUE: 'retained' }, readConfig,
         managedPrompt: async options => { observed.push(options); t.input.write(observed.length === 1 ? 'Explain this function.\n' : '/exit\n'); return { sessionId: parent }; } });
-      expect(readConfig).toHaveBeenCalledTimes(2);
+      expect(readConfig).toHaveBeenCalledTimes(4);
       expect(observed.map(value => value.permissions.write)).toEqual([true, false]);
       expect(observed.every(value => value.readOnly === true)).toBe(true);
       expect(observed[1].nativeContext).toEqual({ sessionId: parent, resume: true });

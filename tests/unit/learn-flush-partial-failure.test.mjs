@@ -26,6 +26,19 @@ test('successful drain retains original history with no pending work', () => {
   expect(f.readCalls()).toHaveLength(2);
 });
 
+test('automatic distillation stays restricted without an exact inverse while consented observations are committed', () => {
+  const f = setup(['npm test']); const before = fs.readFileSync(f.file);
+  const run = f.run(); expect(run.status, run.stderr).toBe(0); expect(f.depth()).toBe(0);
+  expect(fs.readFileSync(f.file)).toEqual(before); expect(f.readCalls()).toHaveLength(1);
+  const calls = fs.readFileSync(f.calls, 'utf8').trim().split('\n').map(JSON.parse);
+  expect(calls.some(call => ['backup', 'distill'].includes(call.args[1]))).toBe(false);
+  const receipt = fs.readdirSync(f.queue).find(name => name.startsWith('.run-'));
+  const report = JSON.parse(fs.readFileSync(f.queue + '/' + receipt));
+  expect(report.recorded[0].independentRow).toBe(true);
+  expect(report.distillation).toMatchObject({ completed: false, capability: 'restricted', inverseState: 'UNVERIFIED', ratifiedLessons: 0 });
+  expect(run.stdout).toContain('exact inverse is unverified');
+});
+
 test('bounded eight deliveries retain deferred records exactly', () => {
   const f = setup(Array.from({ length: 10 }, () => 'npm test'));
   f.run(); expect(f.readCalls()).toHaveLength(8); expect(f.depth()).toBe(2);

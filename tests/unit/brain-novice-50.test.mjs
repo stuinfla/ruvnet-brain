@@ -37,3 +37,17 @@ describe('novice 50-question acceptance corpus', () => {
     expect(result.effective).toBe(false);
   });
 });
+
+
+describe('P090 original Novice-50 keyword eligibility boundary', () => {
+  it('requires the existing keyword signal alongside every other eligibility condition', () => {
+    const spec = NOVICE_QUESTIONS.find(item => item.query === 'How do I find code that has weak test coverage?');
+    const missing = grade(spec, '#1 repo=agentic-qe ce=1.2\npath : README.md\nAn unrelated banana description.', 100, true);
+    expect(missing).toMatchObject({ cited: true, expectedRepoCited: true, keywordSignal: false, honest: true, abstained: false, effective: false });
+    const positive = '#1 repo=agentic-qe ce=1.2\npath : README.md\nFind coverage gaps and prioritize risk.';
+    expect(grade(spec, positive, 100, true)).toMatchObject({ keywordSignal: true, effective: true });
+    expect(grade(spec, positive.replace('repo=agentic-qe', 'repo=other'), 100, true).effective).toBe(false);
+    expect(grade(spec, positive, 4001, true).effective).toBe(false);
+    expect(grade(spec, positive, 100, false).effective).toBe(false);
+  });
+});

@@ -16,6 +16,47 @@ const clone = () => ({ processes: structuredClone(PRODUCT_INTEGRITY_PROCESSES),
   obligations: structuredClone(PRODUCT_INTEGRITY_OBLIGATIONS) });
 
 describe('ADR-072 executable product-integrity contract', () => {
+  it('a required obligation cannot retire its only proof by relabeling it obsolete', () => {
+    const input = clone(), behavior = input.obligations[0].behaviors[0];
+    Object.assign(behavior, { class: 'obsolete', commands: [], positive: [], adversarial: [], receiptKinds: [] });
+    expect(() => validateProductIntegrityContract(input)).toThrow(/no active essential behavior/);
+  });
+
+  const retirement = () => {
+    const input = clone(), row = input.obligations[0], active = row.behaviors[0];
+    row.behaviors.push({ id: `${row.id}.legacy`, class: 'obsolete', commands: [], positive: [], adversarial: [],
+      receiptKinds: [], replacementBehaviorId: active.id });
+    return input;
+  };
+
+  it('permits explicit same-obligation active essential replacement and optional support', () => {
+    const input = retirement(), row = input.obligations[0];
+    row.behaviors.push({ id: `${row.id}.optional`, class: 'supporting', commands: [], positive: [], adversarial: [], receiptKinds: [] });
+    const contract = validateProductIntegrityContract(input);
+    expect(contract.obligations[0].behaviors.at(-2).replacementBehaviorId).toBe(row.behaviors[0].id);
+    expect(contract.obligations[0].behaviors.at(-1).class).toBe('supporting');
+  });
+
+  it.each(['missing', 'stale', 'foreign', 'self', 'supporting'])('rejects %s replacement instead of silently losing essential proof', kind => {
+    const input = retirement(), row = input.obligations[0], retired = row.behaviors.at(-1);
+    if (kind === 'missing') delete retired.replacementBehaviorId;
+    if (kind === 'stale') retired.replacementBehaviorId = 'removed-behavior';
+    if (kind === 'foreign') retired.replacementBehaviorId = input.obligations[1].behaviors[0].id;
+    if (kind === 'self') retired.replacementBehaviorId = retired.id;
+    if (kind === 'supporting') {
+      row.behaviors.push({ id: 'support-only', class: 'supporting', commands: [], positive: [], adversarial: [], receiptKinds: [] });
+      retired.replacementBehaviorId = 'support-only';
+    }
+    expect(() => validateProductIntegrityContract(input)).toThrow(/no active essential replacement/);
+  });
+
+  it('a replacement must retain the existing actual positive/adversarial proof requirements', () => {
+    for (const field of ['commands', 'positive', 'adversarial', 'receiptKinds']) {
+      const input = retirement(); input.obligations[0].behaviors[0][field] = [];
+      expect(() => validateProductIntegrityContract(input)).toThrow(new RegExp(`no ${field}`));
+    }
+  });
+
   it('defines the exact eight-process graph and S-1 through S-12 with derived ownership', () => {
     const contract = validateProductIntegrityContract();
     expect(contract.processes).toHaveLength(8);
@@ -92,7 +133,25 @@ describe('ADR-072 executable product-integrity contract', () => {
     fs.rmSync(root, { recursive: true, force: true });
   });
 
-  it('renders the generated Markdown deterministically', () => {
+  it('replacement migration trace remains source-only and rejects resealed retirement of its active target', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'product-retirement-trace-'));
+    try {
+      const contract = validateProductIntegrityContract(retirement());
+      const governed = [...new Set([...contract.architecture.map(row => row.path), ...contract.obligations.flatMap(row => [
+        ...row.implementation, ...row.behaviors.flatMap(behavior => [...behavior.positive, ...behavior.adversarial].map(proof => proof.file)),
+      ])])];
+      for (const file of governed) { fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true }); fs.writeFileSync(path.join(root, file), file); }
+      const inventory = () => [...governed].sort(), sourceSha = 'a'.repeat(40);
+      const trace = buildProductIntegrityTrace({ root, sourceSha, contract, inventory });
+      expect(validateProductIntegrityTrace(trace, { root, sourceSha, inventory })).toBe(trace);
+      expect(trace).toMatchObject({ evidenceScope: 'contract-and-source-byte-inventory', semanticReviewVerified: false, behaviorVerified: false });
+      const forged = structuredClone(trace); forged.contract.obligations[0].behaviors[0].class = 'supporting';
+      forged.contractSha256 = digest(forged.contract); const { traceSha256, ...body } = forged; forged.traceSha256 = digest(body);
+      expect(() => validateProductIntegrityTrace(forged, { root, sourceSha, inventory })).toThrow(/no active essential behavior/);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it('renders the generated Markdown deterministically' , () => {
     expect(renderProductIntegrityTraceMarkdown()).toBe(renderProductIntegrityTraceMarkdown());
     expect(renderProductIntegrityTraceMarkdown()).toContain('| ProductIntegrityCase |');
   });

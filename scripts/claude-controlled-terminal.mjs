@@ -13,10 +13,15 @@ import { isDeepStrictEqual } from 'node:util';
 import { decideNativeTurn, appendGatewayReceipt } from './model-routing-gateway.mjs';
 import { subscriptionEnvironment, assertSubscriptionAuth, validateDispatchDecision } from './model-router-dispatch.mjs';
 import { validateClaudeTerminalSettings } from './model-terminal-launchers.mjs';
+import {recordManagedFrontendIntent,managedFrontendOriginalRequest,managedFrontendRecoveryState} from './managed-frontend-intake.mjs';
 import { runManagedPrompt } from './model-managed-prompt.mjs';
 
 const REFUSED = 'Controlled Claude turn refused; no fallback.';
 const uuid = value => /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(value || '');
+const frontendWitnesses=new WeakMap();
+const frontendSource=fs.realpathSync(new URL(import.meta.url));
+const frontendSourceIdentity={path:frontendSource,digest:crypto.createHash('sha256').update(fs.readFileSync(frontendSource)).digest('hex')};
+export const readManagedFrontendWitness=witness=>{const value=frontendWitnesses.get(witness);return value?structuredClone(value):null;};
 const cleanText = value => String(value).replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, '');
 const allocationEnv = /^(CLAUDE_CODE_EXTRA_BODY|CLAUDE_CODE_EFFORT_LEVEL|ANTHROPIC_DEFAULT_.*_MODEL|ANTHROPIC_MODEL|ANTHROPIC_SMALL_FAST_MODEL|CLAUDE_CODE_SUBAGENT_MODEL|CLAUDE_CODE_PLUGIN_(DIRS|CACHE_DIR|SEED_DIR)|CLAUDE_CODE_USE_COWORK_PLUGINS)$/;
 
@@ -91,22 +96,28 @@ export function assertClaudeModuleBoundary(settings, { env = process.env, sessio
 }
 
 /** Retire only the directly owned process; never infer descendant cleanup from its exit. */
-export function retireControlledClaudeChild(child, { graceMs = 200, killMs = 200 } = {}) {
-  return new Promise(resolve => {
+export function retireControlledClaudeChild(child, { graceMs = 200, killMs = 200, closeObserved = false } = {}) {
+  return new Promise((resolve, reject) => {
     let finished = false, escalation, deadline;
-    const finish = () => {
+    const settle = confirmed => {
       if (finished) return;
       finished = true; clearTimeout(escalation); clearTimeout(deadline);
       child.removeListener('close', finish);
       for (const stream of [child.stdin, child.stdout, child.stderr]) { stream?.removeAllListeners('data'); stream?.destroy(); }
-      child.unref?.(); resolve();
+      child.unref?.();
+      const retirementEvidence = { scope: 'owned-direct-child-only', closeObserved: confirmed, retired: confirmed,
+        treeVerified: false, pid: child.pid ?? null };
+      if (confirmed) resolve(retirementEvidence);
+      else reject(Object.assign(new Error(REFUSED + ' Native process retirement not confirmed.'),
+        { retirementUnconfirmed: true, retirementEvidence }));
     };
+    const finish = () => settle(true);
     child.once('close', finish);
-    const kill = signal => { try { child.kill(signal); } catch { /* bounded cleanup still proceeds */ } };
+    if (closeObserved) return finish();
+    const kill = signal => { try { child.kill(signal); } catch { /* close remains required */ } };
     escalation = setTimeout(() => kill('SIGKILL'), graceMs);
-    deadline = setTimeout(finish, graceMs + killMs);
+    deadline = setTimeout(() => settle(false), graceMs + killMs);
     kill('SIGTERM');
-    if (child.exitCode != null || child.signalCode != null) finish();
   });
 }
 
@@ -150,7 +161,7 @@ export async function runControlledClaudeTurn({ binary, prompt, decisionPrompt =
   if (expired()) throw new Error(REFUSED);
   const child = spawnNative(binary, args, { cwd, env: clean, shell: false, stdio: ['pipe', 'pipe', 'pipe'] });
   return new Promise((resolve, reject) => {
-    let done = false, phase = 'initialize', buffer = '', bytes = 0, result, observed = false, pendingPermissions = 0;
+    let childClosed = false, done = false, phase = 'initialize', buffer = '', bytes = 0, result, observed = false, pendingPermissions = 0;
     let permissionTail = Promise.resolve();
     const assistantText = [];
     let structuredAnswer;
@@ -167,7 +178,8 @@ export async function runControlledClaudeTurn({ binary, prompt, decisionPrompt =
     const fail = () => {
       if (done) return;
       done = true; clear();
-      void retireControlledClaudeChild(child).then(() => reject(new Error(REFUSED)));
+      void retireControlledClaudeChild(child, { closeObserved: childClosed }).then(
+        retirementEvidence => reject(Object.assign(new Error(REFUSED), { retirementEvidence })), reject);
     };
     const send = message => { if (done) return; if (expired()) return fail(); child.stdin.write(JSON.stringify(message) + '\n'); };
     const control = which => {
@@ -310,6 +322,7 @@ export async function runControlledClaudeTurn({ binary, prompt, decisionPrompt =
     child.stderr.on('data', () => {}); // Native diagnostics may contain credentials or prompt text.
     child.stdin.on('error', fail); child.once('error', fail);
     child.once('close', async code => {
+      childClosed = true;
       if (done) return;
       if (code !== 0 || phase !== 'exit' || !result || buffer.trim() || decoder.end()) return fail();
       try {
@@ -322,7 +335,7 @@ export async function runControlledClaudeTurn({ binary, prompt, decisionPrompt =
           effort: decision.effort, taskClass: decision.taskClass, modelObserved: true, outputFormat: responseSchema ? 'json-schema' : 'text',
           nativeSchemaRetries: responseSchema ? 'not-observed' : undefined,
           evidence: 'assistant model observed; get_settings applied effort matched before and after turn; per-request effort not exposed' }, { env: clean });
-        done = true; clear(); resolve({ sessionId, decision, finalAnswer: responseSchema ? structuredAnswer : result.result, structuredOutput: Boolean(responseSchema),
+        done = true; clear(); resolve({ retirementEvidence: { scope: 'owned-direct-child-only', closeObserved: true, retired: true, treeVerified: false, pid: child.pid ?? null }, sessionId, decision, finalAnswer: responseSchema ? structuredAnswer : result.result, structuredOutput: Boolean(responseSchema),
           scopeDenials: [...scopeDenials.values()].map(value => value.summary),
           nativeSchemaRetries: responseSchema ? 'not-observed' : undefined, modelObserved: true, effortSettingsObserved: true, perRequestEffortObserved: false });
       } catch { fail(); }
@@ -334,7 +347,7 @@ export async function runControlledClaudeTurn({ binary, prompt, decisionPrompt =
 /** Native tool approvals are presented by this host; --print supplies no terminal dialogs. */
 export async function launchControlledClaudeTerminal({ binary, args = [], input = process.stdin, output = process.stdout,
   diagnostics = process.stderr, env = process.env, cwd = process.cwd(), signalSource = process, runTurn = runControlledClaudeTurn,
-  managedPrompt = runManagedPrompt } = {}) {
+  managedPrompt = runManagedPrompt, captureFrontendIntent = recordManagedFrontendIntent } = {}) {
   let sessionId, resume = false, initialPrompt, ownerBypass = false, readOnly = false, permissionMode;
   const remaining = [...args];
   const invalid = () => new Error('Controlled Claude accepts only --resume <session UUID>, --permission-mode manual|plan|bypassPermissions, --dangerously-skip-permissions, and a literal initial prompt.');
@@ -352,6 +365,7 @@ export async function launchControlledClaudeTerminal({ binary, args = [], input 
   if (remaining.length) initialPrompt = remaining.join(' ');
   if (!input.isTTY || !output.isTTY) throw new Error('Controlled Claude requires a person at a terminal for prompts and approvals.');
   const terminal = createManagedTerminal({ input, output });
+  const frontendInstanceId=crypto.randomUUID();let submissionSequence=0;
   const controller = new AbortController();
   const cancel = () => controller.abort();
   terminal.on('SIGINT', cancel);
@@ -360,13 +374,29 @@ export async function launchControlledClaudeTerminal({ binary, args = [], input 
   if (ownerBypass) diagnostics.write('Owner permission intent is active only within guarded workflow scope; native bypass is not forwarded. Agent/Task and commands remain refused.\n');
   try {
     while (!controller.signal.aborted) {
-      const prompt = initialPrompt ?? await terminal.question('Claude> ', { signal: controller.signal }); initialPrompt = undefined;
-      if (prompt.trim() === '/exit') break;
-      if (!prompt.trim()) continue;
-      const turnReadOnly = claudeTerminalReadOnly({ env, cwd, readOnly });
-      const deadline = Date.now() + 900000;
+      const before=claudeTerminalReadOnly({env,cwd,readOnly});
+      let prompt,frontendIntake,deadline=Date.now()+900000,turnReadOnly=before;
+      if(initialPrompt!==undefined){prompt=initialPrompt;initialPrompt=undefined;}
+      else await terminal.question('Claude> ',{signal:controller.signal}).then(async value=>{
+        prompt=value;if(!value.trim()||value.trim()==='/exit')return;deadline=Date.now()+900000;
+        turnReadOnly=before||claudeTerminalReadOnly({env,cwd,readOnly});
+        const files=validateClaudeTerminalSettings({env,cwd,home:env.HOME||os.homedir()}).filter(file=>fs.existsSync(file))
+          .map(file=>({path:fs.realpathSync(file),digest:crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')}));
+        const witness=Object.freeze({});
+        frontendWitnesses.set(witness,Object.freeze({host:'claude',inputKind:'interactive',frontendInstanceId,submissionSequence:++submissionSequence,
+          projectDir:fs.realpathSync(cwd),originalPromptDigest:crypto.createHash('sha256').update(value).digest('hex'),permissions:{apiBilling:false,write:!turnReadOnly},sourceIdentity:frontendSourceIdentity,
+          scopeLimits:{allowedWorktrees:[fs.realpathSync(cwd)],maxConcurrent:5,maxAttempts:6,deadline,
+            parentContextDigest:crypto.createHash('sha256').update(JSON.stringify({sessionId,resume})).digest('hex')},
+          parentPermissionRef:{kind:'actual-claude-settings-manual-scope',digest:crypto.createHash('sha256').update(JSON.stringify({files,turnReadOnly,ownerBypass,permissionMode:permissionMode||'manual'})).digest('hex')}}));
+        frontendIntake=await captureFrontendIntent({witness,host:'claude',originalPrompt:value,projectDir:cwd,env,signal:controller.signal});
+        if(/^\/resume-frontend /.test(value)&&frontendIntake)prompt=managedFrontendOriginalRequest(frontendIntake);
+      });
+      if(prompt.trim()==='/exit')break;if(!prompt.trim())continue;
+      const recoveryState=managedFrontendRecoveryState(frontendIntake),recoveredScope=recoveryState?.effectiveScope;
+      if(recoveredScope){deadline=Math.min(deadline,recoveredScope.deadline);turnReadOnly=turnReadOnly||!recoveredScope.permissions.write;}
       const turn = await managedPrompt({ binary, originalPrompt: prompt, harness: 'claude-code', projectRoot: cwd, deadline,
-        nativeContext: { sessionId, resume }, permissions: { apiBilling: false, write: !turnReadOnly },
+        ...(recoveredScope?{allowedWorktrees:recoveredScope.allowedWorktrees,maxAttempts:Math.min(6,recoveryState.originalScope.maxAttempts),maxConcurrent:recoveredScope.maxConcurrent}:{}),
+        frontendIntake,inputKind:frontendIntake?'interactive':'argv', nativeContext: { sessionId, resume }, permissions: { apiBilling: false, write: !turnReadOnly },
         primaryTurn: runTurn, cwd, env, signal: controller.signal,
         scopeTool: permission => ['Read', 'Glob', 'Grep'].includes(permission.tool_name) || /__search_ruvnet$/.test(permission.tool_name),
         output: text => output.write(text + '\n'), approve: async (request, owned) => {

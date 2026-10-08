@@ -25,7 +25,7 @@ import { applyBrainProfile, readBrainProfile } from '../kb/brain-profile.mjs';
 import { acquireRefreshLock, finishRefreshReceipt, openRefreshReceipt, physicalPath, recordRefreshAdvisory,
   recordRefreshPhase, settleRefreshRun, UPDATE_REFRESH_PHASES } from '../kb/refresh-run.mjs';
 import { assessLifecycleEvidence, pruneLifecycleEvidence } from '../kb/lifecycle-evidence-retention.mjs';
-import { checkDiskSpace, recoverIncompleteStorageTransactions } from '../kb/update-storage-transaction.mjs';
+import { checkDiskSpace, recoverIncompleteStorageTransactions, availableBytes, treeIdentity } from '../kb/update-storage-transaction.mjs';
 import { saveUpdateSource, stableNode } from '../plugin/scripts/automatic-update.mjs';
 import { footprintRoots, inventoryFootprint, sweepFootprint } from '../plugin/scripts/brain-footprint.mjs';
 import { kbCopyProof } from '../plugin/scripts/kb-copy-proof.mjs';
@@ -87,7 +87,7 @@ import { installNativeLaunchers, installRoutingRuntime, runtimeSnapshot } from '
 import { installTerminalLaunchers } from '../scripts/model-terminal-launchers.mjs';
 import { readConsoleReceipts, replaceStaleConsoles } from '../scripts/console-instances.mjs';
 import { moveBrain, MoveRefused } from '../scripts/move-brain.mjs';
-import { brainLocation } from '../plugin/scripts/brain-location.mjs';
+import { brainLocation, defaultBrainHome } from '../plugin/scripts/brain-location.mjs';
 import { cleanLegacyRufloDebris } from '../plugin/scripts/project-progression-store.mjs';
 import { resolveProjectStore } from '../plugin/scripts/project-store-resolver.mjs';
 import { runHostCli, waitForHostCli } from '../scripts/host-cli.mjs';
@@ -581,6 +581,22 @@ export function placeTrustedCoverageValidator(kbDir, { source = TRUSTED_VALIDATO
 /** `--update` preflight: place the validator only where an updater exists to consume it. */
 export function ensureUpdaterPrerequisites(kbDir) {
   if (!fs.existsSync(path.join(kbDir, 'forge-update.mjs'))) return { updater: false, validator: null };
+  // This bootstrap copies executable bytes into the KB destination, independently of the later
+  // knowledge-generation preflight. Its refusal must not prevent independent host synchronization.
+  let space;
+  try {
+    const bytes = [...UPDATER_FILES.map(name => path.join(REPO_ROOT, 'kb', name)), TRUSTED_VALIDATOR_SOURCE]
+      .reduce((sum, file) => sum + fs.statSync(file).size, 0);
+    space = checkDiskSpace([{ dir: kbDir, bytes, purpose: 'runtime prerequisites' }],
+      { what: 'place runtime prerequisites', available: (dir) => {
+        const free = availableBytes(dir);
+        if (!Number.isFinite(free) || free < 0) throw new Error('free disk space measurement is invalid');
+        return free;
+      } });
+  } catch (error) {
+    throw Object.assign(new Error(`cannot measure required runtime prerequisite disk space: ${error.message}. Nothing was changed.`), { exitCode: 6 });
+  }
+  if (!space.ok) throw Object.assign(new Error(space.message), { exitCode: 6 });
   return { updater: true, files: placeUpdater(kbDir), validator: placeTrustedCoverageValidator(kbDir) };
 }
 
@@ -590,19 +606,25 @@ export async function unzipInto(zipPath, cacheDir, sourceDir = null, { releaseTa
     'so the plugin finds forge-mcp-all.mjs and the vector stores right where it looks',
   );
 
+  const location = brainLocation({ brainHome: path.dirname(cacheDir) });
+  if (location.state === 'unmounted') die(location.message);
   fs.mkdirSync(path.dirname(cacheDir), { recursive: true });
-  // DISK-SPACE PREFLIGHT before staging: the whole unpacked bundle lands beside the brain (the prior
-  // generation is renamed, never copied). Refuse cleanly with the exact shortfall rather than ENOSPC
-  // half-way through an extraction.
-  if (zipPath && !sourceDir) {
-    let space;
-    try {
-      const { zipDeclaredBytes } = await import(new URL('../kb/zip-extract.mjs', import.meta.url).href);
-      space = checkDiskSpace([{ dir: path.dirname(cacheDir), bytes: zipDeclaredBytes(zipPath), purpose: 'unpacked brain' }],
-        { what: 'install the brain' });
-    } catch { space = { ok: true }; } // unmeasurable: extraction's own limits still apply
-    if (!space.ok) die(space.message.split('\n')[0], 'Nothing was installed and nothing was changed.');
+  // The downloaded archive and a local sealed directory both need room for their staged copy.
+  // Measure before creating the stage, and keep unknown measurements a refusal.
+  let space;
+  try {
+    const { zipDeclaredBytes } = await import(new URL('../kb/zip-extract.mjs', import.meta.url).href);
+    const bytes = sourceDir ? treeIdentity(fs.realpathSync(sourceDir)).bytes : zipDeclaredBytes(zipPath);
+    space = checkDiskSpace([{ dir: path.dirname(cacheDir), bytes, purpose: 'unpacked brain' }],
+      { what: 'install the brain', available: (dir) => {
+        const free = availableBytes(dir);
+        if (!Number.isFinite(free) || free < 0) throw new Error('free disk space measurement is invalid');
+        return free;
+      } });
+  } catch (error) {
+    space = { ok: false, message: `cannot measure required install disk space: ${error.message}. Restore access to the disk and retry.` };
   }
+  if (!space.ok) die(space.message.split('\n')[0], 'Nothing was installed and nothing was changed.');
   const stageDir = fs.mkdtempSync(path.join(path.dirname(cacheDir), `.${path.basename(cacheDir)}.install-stage-`));
   const localCopy = async () => `local directory copy — ${copyLocalBundleInto(sourceDir, stageDir)} top-level entries`;
   const nodeExtract = async () => {
@@ -1173,6 +1195,24 @@ export function beginConsoleRuntimeTransaction(cacheDir, sourceRoot = REPO_ROOT)
   const runtime = path.join(cacheDir, '.console-runtime');
   const staged = `${runtime}.tmp-${process.pid}`;
   const prior = `${runtime}.prior-${process.pid}`;
+  const bytes = CONSOLE_RUNTIME_SURFACE.reduce((sum, relative) => {
+    const source = path.join(sourceRoot, relative);
+    if (!fs.existsSync(source)) throw new Error(`console runtime is incomplete: missing ${relative}`);
+    const stat = fs.statSync(source);
+    return sum + (stat.isDirectory() ? treeIdentity(fs.realpathSync(source)).bytes : stat.size);
+  }, 0);
+  let space;
+  try {
+    space = checkDiskSpace([{ dir: cacheDir, bytes, purpose: 'Console runtime' }],
+      { what: 'stage the Console runtime', available: (dir) => {
+        const free = availableBytes(dir);
+        if (!Number.isFinite(free) || free < 0) throw new Error('free disk space measurement is invalid');
+        return free;
+      } });
+  } catch (error) {
+    throw Object.assign(new Error(`cannot measure required Console runtime disk space: ${error.message}. Nothing was changed.`), { exitCode: 6 });
+  }
+  if (!space.ok) throw Object.assign(new Error(space.message), { exitCode: 6 });
   fs.rmSync(staged, { recursive: true, force: true });
   fs.rmSync(prior, { recursive: true, force: true });
   fs.mkdirSync(staged, { recursive: true, mode: 0o700 });
@@ -3309,10 +3349,12 @@ async function doctorRun({ json }) {
   // ONE VERDICT (re-review S2: it used to be narration only, so --json never saw it): advisory '!' when
   // stuck — recording is the project's opt-in memory, not the Brain's health — ✓ when proven, ○ otherwise.
   let agentdbLine = null;
+  let recordingProjectRoot = process.cwd();
   try {
     const { ContinuityJournal, recordingLine } = await import('../plugin/scripts/continuity-journal.mjs');
     const { resolveProjectStore } = await import('../plugin/scripts/project-store-resolver.mjs');
-    const journal = new ContinuityJournal({ projectRoot: resolveProjectStore({ projectDir: process.cwd() }).projectRoot });
+    recordingProjectRoot = resolveProjectStore({ projectDir: process.cwd() }).projectRoot;
+    const journal = new ContinuityJournal({ projectRoot: recordingProjectRoot });
     if (fs.existsSync(journal.swarm)) {
       const status = journal.status();
       const detail = recordingLine(status).replace(/^AgentDB: /, '');
@@ -3326,7 +3368,13 @@ async function doctorRun({ json }) {
 
   const { turnRecordingStatus } = await import('../plugin/scripts/turn-outcome-capture.mjs');
   const turnStatus = turnRecordingStatus({ projectDir: process.cwd() });
-  const turnLine = { id: 'turn-recording', label: 'Turn recording', state: turnStatus.state, detail: turnStatus.line, fix: null };
+  const turnQueue = path.join(recordingProjectRoot, '.swarm', 'turn-outbox');
+  const turnStore = path.join(recordingProjectRoot, '.swarm', 'memory.db');
+  const turnReceiptHome = process.env.RUVNET_BRAIN_HOME || defaultBrainHome(os.homedir());
+  const turnFix = turnStatus.state !== 'warn' ? null : turnStatus.line.includes('durable queue')
+    ? `Inspect ${turnQueue} ownership, links and permissions without following links; preserve all pending bytes and restore a safe owned regular queue before retrying capture with the same consent.`
+    : `Inspect ${path.join(turnReceiptHome, 'turn-capture', 'receipts.jsonl')} and ${turnQueue}; preserve pending bytes, resolve the reported write/readback refusal, then retry capture with the same consent and verify the exact key and content in ${turnStore}.`;
+  const turnLine = { id: 'turn-recording', label: 'Turn recording', state: turnStatus.state, detail: turnStatus.line, fix: turnFix };
 
   // ── THE MECHANICAL VERDICT ────────────────────────────────────────────────────────────────────
   // `--hooks` is retained as a compatibility alias for a read-only zero-registration proof. It must
@@ -4166,6 +4214,12 @@ async function runUpdate() {
       info(c.dim(`trusted coverage validator ${prerequisites.validator.action} beside the updater`));
     }
   } catch (error) {
+    if (error.exitCode === 6) {
+      warn(`knowledge update refused before updater launch: ${error.message}`);
+      recordRefreshPhase(refreshReceipt, 'source-enumeration', 'FAIL', { reason: error.message, updaterLaunched: false });
+      settleRefresh(6, { reason: error.message, terminalVerdict: 'refused-disk-space', updaterLaunched: false });
+      return;
+    }
     warn(`could not place the trusted coverage validator (${error.message}); the updater will report what it finds`);
   }
   // ADR-0098: release every KB copy that is PROVEN disposable before the updater looks. Its preflight
@@ -6299,7 +6353,16 @@ the installer reports that boot-level declarations changed.
   {
     const where = brainLocation();
     if (where.state === 'unmounted' && !FLAG_MOVE_BRAIN) {
-      if (FLAG_DOCTOR) { printBanner('doctor'); warn(where.message); console.log(`\n  ${c.red('✗ BRAIN DISK NOT MOUNTED')} — nothing was checked or changed; this is not a health verdict.`); process.exitCode = 1; return; }
+      if (FLAG_DOCTOR) {
+        const verdict = doctorVerdict({ schemaVersion: 1, location: where, lines: [
+          { id: 'knowledge', label: 'Knowledge', state: 'fail', detail: where.message,
+            fix: `mount ${where.volume}, then: npx ruvnet-brain --doctor` },
+        ] });
+        if (FLAG_JSON) process.stdout.write(`${JSON.stringify(verdict, null, 2)}\n`);
+        else { printBanner('doctor'); console.log(`\n${formatConfirmation(verdict, { color: c, summary: false })}`); }
+        process.exitCode = verdict.exitCode;
+        return;
+      }
       die(where.message, 'Plug the disk in (or mount it), then run the same command again.');
     }
   }

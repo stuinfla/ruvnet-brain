@@ -149,21 +149,26 @@ export const eventIdOf = (key) => {
   return match ? `${match[1]}:${match[2]}` : null;
 };
 
-function git(cwd, args) {
+function git(cwd, args, { deadlineAt = Infinity, signal, run = execFileSync } = {}) {
+  const check = () => { if (signal?.aborted || Date.now() >= deadlineAt) throw new Error(signal?.aborted ? 'continuity Git capture aborted; unavailable' : 'continuity Git capture deadline exceeded; unavailable'); };
+  check();
   try {
-    return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000, maxBuffer: 16 * 1024 * 1024 });
-  } catch { return null; }
+    const out = run('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: Math.max(1, Math.floor(Math.min(3000, deadlineAt - Date.now()))), killSignal: 'SIGKILL', maxBuffer: 16 * 1024 * 1024 });
+    check(); return out;
+  } catch (error) { check(); if (error.code === 'ETIMEDOUT') throw new Error('continuity Git capture timed out; unavailable'); return null; }
 }
 
 /**
  * Commits on the current branch since `sinceMs`, newest first, bounded. Reads git only: a commit made
  * outside any session (a terminal, CI fast-forward pulled later) is still recorded at the next boundary.
  */
-export function collectCommits({ checkoutRoot, sinceMs, host, session, project, max = MAX_COMMITS_PER_BOUNDARY }) {
+export function collectCommits({ checkoutRoot, sinceMs, host, session, project, max = MAX_COMMITS_PER_BOUNDARY, deadlineAt = Infinity, signal, run }) {
+  const options = { deadlineAt, signal, run };
   const out = git(checkoutRoot, ['log', `-n${max}`, `--since=${new Date(sinceMs).toISOString()}`,
-    '--format=%x1e%H%x1f%P%x1f%cI%x1f%an%x1f%s', '--name-only', 'HEAD']);
+    '--format=%x1e%H%x1f%P%x1f%cI%x1f%an%x1f%s', '--name-only', 'HEAD'], options);
   if (!out) return [];
-  const branch = (git(checkoutRoot, ['rev-parse', '--abbrev-ref', 'HEAD']) || '').trim() || 'detached';
+  const branch = (git(checkoutRoot, ['rev-parse', '--abbrev-ref', 'HEAD'], options) || '').trim() || 'detached';
   const events = [];
   for (const record of out.split('\x1e').map((r) => r.trim()).filter(Boolean)) {
     const [header, ...fileLines] = record.split('\n');
@@ -181,9 +186,9 @@ export function collectCommits({ checkoutRoot, sinceMs, host, session, project, 
 }
 
 /** Tags created since `sinceMs` (code releases `v*` and corpus releases), bounded. */
-export function collectReleases({ checkoutRoot, sinceMs, host, session, project, max = MAX_TAGS_PER_BOUNDARY }) {
+export function collectReleases({ checkoutRoot, sinceMs, host, session, project, max = MAX_TAGS_PER_BOUNDARY, deadlineAt = Infinity, signal, run }) {
   const out = git(checkoutRoot, ['for-each-ref', 'refs/tags', '--sort=-creatordate', `--count=${max * 4}`,
-    '--format=%(refname:short)%1f%(objectname)%1f%(*objectname)%1f%(creatordate:iso-strict)']);
+    '--format=%(refname:short)%1f%(objectname)%1f%(*objectname)%1f%(creatordate:iso-strict)'], { deadlineAt, signal, run });
   if (!out) return [];
   const events = [];
   for (const line of out.split('\n').filter(Boolean)) {
@@ -257,9 +262,16 @@ function exitOutcome(result) {
   const running = /\bProcess running with session ID\b|\bScript running with cell ID\b/i.test(text)
     || states.some(value => ['running', 'pending', 'queued'].includes(value))
     || [result, response].some(value => value?.completed === false);
-  const outcome = failed ? 'fail' : interrupted ? 'interrupted' : running ? 'pending' : !uncertain && code === 0 ? 'pass' : 'unknown';
+  // Captured Claude Write/create terminal: correlate the exact request and response, not just
+  // the hook name. Failure, cancellation, unfinished and unknown evidence still dominate below.
+  const capturedWrite = result?.hook_event_name === 'PostToolUse' && result?.tool_name === 'Write'
+    && typeof result.tool_use_id === 'string' && result.tool_use_id.length > 0 && response?.type === 'create'
+    && typeof result.tool_input?.file_path === 'string' && result.tool_input.file_path.length > 0 && result.tool_input.file_path === response.filePath
+    && typeof result.tool_input?.content === 'string' && result.tool_input.content === response.content
+    && Array.isArray(response.structuredPatch) && response.structuredPatch.length === 0 && response.originalFile === null && response.userModified === false;
+  const outcome = failed ? 'fail' : interrupted ? 'interrupted' : running ? 'pending' : !uncertain && (code === 0 || capturedWrite) ? 'pass' : 'unknown';
   const tail = text.split('\n').map((l) => l.trim()).filter(Boolean).slice(-1)[0] || '';
-  const nativeSuccess = [result, response].some(value => value?.is_error === false || value?.isError === false || value?.success === true || value?.ok === true);
+  const nativeSuccess = capturedWrite || [result, response].some(value => value?.is_error === false || value?.isError === false || value?.success === true || value?.ok === true);
   return { outcome, exitCode: running || interrupted ? null : code, tail: bound(tail, 200),
     uncertain, successfulToolResult: !failed && !interrupted && !running && !uncertain && (code === 0 || nativeSuccess) };
 }
@@ -329,7 +341,7 @@ export function collectTurnEvents({ lines = null, lastAssistantMessage = '', hos
  * The owner's own user-level AgentDB hooks (~/.claude/settings.json). Read, never modified. Used to
  * DEFER: where one of them already records a thing, the product does not record it a second time.
  */
-export function userLevelAgentdbHooks({ home = os.homedir(), event, projectDir, env = process.env } = {}) {
+export function userLevelAgentdbHooks({ home = os.homedir(), event, projectDir, env = process.env, deadlineAt = Infinity, signal } = {}) {
   const found = { turnCapture: false, autocapture: false, ensure: false, ownership: 'unknown', collisionCandidate: false,
     settings: path.join(home, '.claude', 'settings.json') };
   if (!['Stop', 'PreCompact', 'SessionEnd', 'SessionStart'].includes(event) || !projectDir
@@ -344,8 +356,10 @@ export function userLevelAgentdbHooks({ home = os.homedir(), event, projectDir, 
       try { local = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (error) { if (error.code === 'ENOENT') continue; throw error; }
       if (!local || typeof local !== 'object' || Array.isArray(local) || local.disableAllHooks === true || local.allowManagedHooksOnly === true) return found;
     }
-    const deadlineAt = Number(env.RUVNET_SESSION_START_DEADLINE_AT) || Infinity;
-    target = resolveProjectStore({ projectDir, gitTimeoutMs: 500, deadlineAt }).canonicalAgentDbPath;
+    deadlineAt = Math.min(deadlineAt, Number(env.RUVNET_SESSION_START_DEADLINE_AT) || Infinity);
+    if (signal?.aborted || Date.now() >= deadlineAt) return found;
+    target = resolveProjectStore({ projectDir, gitTimeoutMs: Math.max(1, Math.floor(Math.min(500, deadlineAt - Date.now()))), deadlineAt }).canonicalAgentDbPath;
+    if (signal?.aborted || Date.now() >= deadlineAt) return found;
     // Bind the direct command to the declared entry of the user's one managed GLOBAL Ruflo.
     // Arbitrary Node handlers, filenames and source comments do not prove their actual target.
     if (!process.getuid) return found; // Native Windows ACL ownership is not attested by POSIX uid metadata.

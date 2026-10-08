@@ -1,4 +1,4 @@
-// One finite owner retires its separate worker tree before surrendering the queue fence.
+// One finite owner attempts bounded group cleanup; unexpected retirement retains the queue fence.
 import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -36,7 +36,7 @@ export async function superviseLearning(context, token, deadline, { report = fal
     env: { ...env, RUVNET_LEARN_WORKER_TOKEN: token, RUVNET_LEARN_WORKER_EXPIRES: String(deadline), RUFLO_DAEMON_AUTOSTART: '0' },
   });
   return await new Promise(resolve => {
-    let retiring = false; let exited = false;
+    let retiring = false; let exited = false; let completionReported = false;
     const timer = setTimeout(() => void retire(true), Math.max(1, deadline - Date.now()));
     const retire = async failed => {
       if (retiring) return; retiring = true; clearTimeout(timer);
@@ -47,6 +47,11 @@ export async function superviseLearning(context, token, deadline, { report = fal
         try { confirmed = platform === 'win32' ? killed && exited : !groupAlive(child.pid); } catch { confirmed = false; }
         if (!confirmed) await new Promise(r => setTimeout(r, 25));
       }
+      const groupRetired = confirmed;
+      // Group absence after an unexpected root exit is not escaped-descendant proof.
+      confirmed = confirmed && (!child.pid || (!failed && completionReported));
+      const retirementScope = platform === 'win32' ? 'windows-taskkill-tree-attempt' : 'owned-process-group';
+      const retirementState = confirmed ? 'GROUP_ONLY' : 'UNKNOWN';
       // Mandatory fencing is independent of optional diagnostics (including ENOSPC).
       let fencePersisted = confirmed;
       if (!confirmed) {
@@ -62,17 +67,21 @@ export async function superviseLearning(context, token, deadline, { report = fal
         const current = learningContext({ env, cwd: context.projectDir });
         if (current.enabled && current.queueDir === context.queueDir) {
           if (failed || !confirmed) writeDiagnostic(path.join(context.queueDir, `.run-${Date.now()}-${process.pid}.json`), JSON.stringify({
-            schemaVersion: 1, failed: 1, fed: 0, acknowledged: 0, workerPid: child.pid, retirementConfirmed: confirmed, fencePersisted,
-            reason: confirmed ? 'owned worker exceeded deadline or crashed; retired; originals retained' : fencePersisted
-              ? 'owned tree retirement unconfirmed; queue fenced; originals retained'
-              : 'owned tree retirement unconfirmed; fence persistence failed; manual recovery required; originals retained',
+            schemaVersion: 1, failed: 1, fed: 0, acknowledged: 0, workerPid: child.pid, retirementRequired: true, retirementConfirmed: confirmed, fencePersisted, groupRetired, retirementScope, retirementState, treeVerified: false,
+            reason: confirmed ? 'owned process group cleanup confirmed; full tree proof unavailable; originals retained' : fencePersisted
+              ? 'deadline or crash; owned tree retirement unconfirmed; queue fenced; originals retained'
+              : 'deadline or crash; owned tree retirement unconfirmed; fence persistence failed; manual recovery required; originals retained',
           }));
         }
       } catch { /* Diagnostic failure never consumes original evidence. */ }
       if (confirmed) releaseQueueLock(context, token);
-      if (child.connected) child.disconnect(); child.unref?.(); resolve({ retirementConfirmed: confirmed, fencePersisted });
+      if (child.connected) child.disconnect(); child.unref?.(); resolve({ retirementRequired: true, retirementConfirmed: confirmed, fencePersisted, groupRetired, retirementScope, retirementState, treeVerified: false });
     };
-    child.once('message', message => { if (message?.type === 'learning-worker-complete') void retire(false); });
+    child.once('message', message => {
+      if (message?.type !== 'learning-worker-complete' || retiring) return;
+      if (Date.now() >= deadline) { void retire(true); return; }
+      completionReported = true; void retire(false);
+    });
     child.once('error', () => void retire(true));
     child.once('exit', () => { exited = true; if (!retiring) void retire(true); });
   });

@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createProgressionSnapshot, digestCanonical } from './project-progression-contract.mjs';
 import { ProjectProgressionStore } from './project-progression-store.mjs';
-import { redactText } from './continuity-events.mjs';
+import { redactText, normalizeToolOutcome } from './continuity-events.mjs';
 import os from 'node:os';
 import { resolveTurnDb } from './turn-outcome-capture.mjs';
 import { privateProgressionState, payloadReferencesExcludedResource } from './turn-capture-privacy.mjs';
@@ -102,26 +102,17 @@ function toolAction(payload, { contentPathExcludes = [], projectDir } = {}) {
   const responseRecord = response && typeof response === 'object' && !Array.isArray(response)
     ? response
     : null;
-  const explicitCode = responseRecord && [responseRecord.exit_code, responseRecord.exitCode, responseRecord.status]
-    .find((value) => Number.isSafeInteger(value));
-  const responseText = typeof response === 'string' ? response : '';
-  // Native host terminal envelopes may serialize an exact `Exit code: N` line. Do not
-  // scan arbitrary prose: tool output often quotes logs or examples containing `status: 0`.
-  const textualCode = responseText.match(/^\s*Exit code:\s*(-?\d+)\s*$/i);
-  const exitCode = Number.isSafeInteger(explicitCode)
-    ? explicitCode
-    : textualCode ? Number(textualCode[1]) : undefined;
+  const normalized = normalizeToolOutcome({ ...payload, content: response });
+  const exitCode = normalized.exitCode;
   const error = boundedText(typeof responseRecord?.error === 'string' ? redactText(responseRecord.error) : undefined);
   const signal = boundedText(typeof responseRecord?.signal === 'string' ? redactText(responseRecord.signal) : undefined);
-  const interrupted = responseRecord?.interrupted === true || Boolean(signal);
+  const interrupted = normalized.outcome === 'interrupted';
   const explicitError = responseRecord?.isError === true || payload.is_error === true;
-  const declaredOutcome = ['success', 'failure', 'interrupted', 'unknown'].includes(responseRecord?.outcome)
-    ? responseRecord.outcome : null;
-  const failed = explicitError || Boolean(error) || (Number.isSafeInteger(exitCode) && exitCode !== 0);
-  const terminal = failed || Number.isSafeInteger(exitCode)
-    || responseRecord?.success === true || responseRecord?.ok === true;
   const outcome = payload.hook_event_name === 'PostToolUse'
-    ? (error ? 'failure' : interrupted ? 'interrupted' : failed ? 'failure' : declaredOutcome || (terminal ? 'success' : 'unknown'))
+    ? (normalized.outcome === 'fail' ? 'failure'
+      : ['interrupted', 'pending'].includes(normalized.outcome) ? normalized.outcome
+      : normalized.outcome === 'pass' || normalized.successfulToolResult ? 'success'
+      : !normalized.uncertain && responseRecord?.outcome === 'success' ? 'success' : 'unknown')
     : 'pending';
   const observation = {
     trigger: payload.hook_event_name,
@@ -181,6 +172,8 @@ export function captureProjectTransition({
   recoverFrozen = false,
   canCommit,
   env = process.env,
+  deadlineAt = Infinity,
+  signal,
   storeFactory = (options) => new ProjectProgressionStore(options),
 } = {}) {
   const normalizedHost = requireString(host, 'host').toLowerCase();
@@ -198,7 +191,9 @@ export function captureProjectTransition({
     'canonicalAgentDbPath',
   );
   if (!path.isAbsolute(requestedStorePath)) throw new Error('canonicalAgentDbPath must be absolute');
-  const store = storeFactory({ projectDir, requestedStorePath });
+  const checkDeadline = () => { if (signal?.aborted || Date.now() >= deadlineAt) throw new Error('capture deadline exceeded or aborted'); };
+  checkDeadline();
+  const store = storeFactory({ projectDir, requestedStorePath, ...(Number.isFinite(deadlineAt) ? { deadlineAt } : {}), ...(signal ? { signal } : {}) });
   requireRecord(store?.resolution, 'progression store resolution');
   if (path.resolve(requestedStorePath) !== store.resolution.canonicalAgentDbPath) {
     throw new Error('foreign store root rejected');
@@ -208,7 +203,10 @@ export function captureProjectTransition({
     aliased(progression, 'sourceIdentity', 'source_identity'),
     store.resolution.checkoutRoot, projectDir,
   );
-  const privacy = resolveTurnDb({ projectDir, brainHome: env.RUVNET_BRAIN_HOME || path.join(env.HOME || os.homedir(), '.cache', 'ruvnet-brain') });
+  checkDeadline();
+  const privacy = resolveTurnDb({ projectDir, brainHome: env.RUVNET_BRAIN_HOME || path.join(env.HOME || os.homedir(), '.cache', 'ruvnet-brain'),
+    deadlineAt, signal, gitTimeoutMs: Math.max(1, Math.floor(Math.min(1000, deadlineAt - Date.now()))) });
+  checkDeadline();
   if (privacy.skipped) throw new Error(`progression capture suspended: ${privacy.skipped}`);
   const observed = enrichStateWithObservation(aliased(progression, 'completeProjectState', 'complete_project_state'), payload, { contentPathExcludes: privacy.contentPathExcludes, projectDir });
   const protectedState = privateProgressionState(observed, privacy.contentPathExcludes, projectDir);
@@ -226,6 +224,7 @@ export function captureProjectTransition({
     completeProjectState: protectedState,
   });
   let receipt;
+  checkDeadline();
   if (recoverFrozen) ({ snapshot, receipt } = store.captureFrozen(snapshot, { canCommit }));
   else receipt = store.capture(snapshot);
   verifyReceipt(snapshot, receipt);

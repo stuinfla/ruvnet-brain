@@ -35,14 +35,10 @@
  *     stamps remain write-gate freshness data and cannot certify a current turn. Unobservable native
  *     identity or absent relevant receipts is UNKNOWN, with one correction to check or qualify the
  *     claim; it is not a claim that no search happened.
- *   - The Stop block/continue contract: `{"hookSpecificOutput":{"hookEventName":"Stop",
- *     "additionalContext":"..."}}` on stdout, exit 0. This is not a new discovery — it is the exact
- *     contract continuation-gate.mjs already uses and this repo's own tests already prove works on
- *     BOTH hosts (tests/unit/codex-lifecycle-hooks.test.mjs, "translates the Claude Stop
- *     continuation envelope into Codex block plus reason" — codex-hook-adapter.mjs's Stop branch
- *     converts this exact envelope into Codex's `{decision:"block",reason}` wire shape). Blocking a
- *     Stop is genuinely supported here; this file exercises the already-proven path rather than
- *     asking a new question of the host.
+ *   - Deliberate Stop correction uses explicit `{decision:"block",reason:"..."}`, exit 0.
+ *     Both shared producers and the Codex adapter retain this typed denial. Incidental
+ *     additionalContext remains advice, not a request to hold the turn open. Source/schema and
+ *     subprocess tests qualify this wire shape; actual native cancellation remains separate.
  *
  * LOOP SAFETY: identical checks to continuation-gate.mjs (same reasons, same file) — only an
  * affirmatively-parsed `stdin` payload with a real `session_id` may force, `stop_hook_active` means
@@ -84,6 +80,8 @@ import { groundingSubjectAllowed } from './ruvnet-gate1-pattern.mjs';
 import { readStopHookInput } from './hook-input.mjs';
 import { MARKER_DIR, markerPathFor, consumeMarker, groundingIdentity, sameGroundingIdentity } from './grounding-turn-mark.mjs';
 import { readSettledTranscript } from './turn-outcome-capture.mjs';
+import { verifyNativeUserRecord } from './native-user-intake.mjs';
+import { createHash } from 'node:crypto';
 import {
   architectureShadow, auditAssertions, correctionText, describeSources, loadVocabulary, logShadow,
   relayShadow, ruvCapabilityClaims, searchedThisTurn, turnSources,
@@ -145,7 +143,18 @@ export function decide({ hookInput, marker, markerMs, searchEvidence = null, own
     const tp = hookInput.transcript_path;
     let turn = null;
     if (!ownershipUnknown && host === 'claude' && typeof tp === 'string' && /\.jsonl$/i.test(tp)) {
-      try { turn = turnSources(read(tp, { maxMs: 0 })); } catch { turn = null; }
+      try {
+        const identity = groundingIdentity(hookInput, env);
+        if (sameGroundingIdentity(marker, identity) && /^[a-f0-9-]{36}$/.test(marker.nonce || '')) {
+          const before = verifyNativeUserRecord(hookInput.cwd, { payload: hookInput, host });
+          if (before.status === 'verified') {
+            const observed = turnSources(read(tp, { maxMs: 0 }), { ...identity, projectDir: hookInput.cwd });
+            const after = verifyNativeUserRecord(hookInput.cwd, { payload: hookInput, host });
+            if (after.status === 'verified' && before.nativeUserEventRef.recordSha256 === after.nativeUserEventRef.recordSha256
+              && createHash('sha256').update(observed.prompt).digest('hex') === before.userInstructionDigest) turn = observed;
+          }
+        }
+      } catch { turn = null; }
     }
     // The transcript is read as a bounded TAIL. When the turn's opening prompt is not inside it
     // (a long turn), the tail is a suffix of the turn and cannot prove a search did NOT happen
@@ -158,13 +167,14 @@ export function decide({ hookInput, marker, markerMs, searchEvidence = null, own
       && sameGroundingIdentity(searchEvidence, marker) && searchEvidence.nonce === marker.nonce;
     const terms = bound ? searchEvidence.terms : [];
 
-    let assertion = null;
+    let assertion = null, unknownAssertion = false;
     if (marker.assert && message) {
       const vocab = loadVocabulary({ env });
       const audit = auditAssertions({ message, subjects: marker.subjects, vocab, sources,
         stampTerms: sources ? [] : terms,
         subjectAllowed: (subject) => groundingSubjectAllowed(subject, marker.groundingScope) });
       if (audit.findings.length) assertion = audit.findings;
+      unknownAssertion = audit.unknown.length > 0;
       const shadow = [architectureShadow({ architecture: marker.architecture, message }), relayShadow({ message, sources })].filter(Boolean);
       for (const row of shadow) logShadow({ ...row, at: new Date().toISOString(), session: hookInput.session_id, host });
     }
@@ -172,9 +182,9 @@ export function decide({ hookInput, marker, markerMs, searchEvidence = null, own
     // Gate 1 demands a search only when the answer ASSERTS what a rUv product does (the directive's
     // own words). A status report, git/CI check or memory write on a rUv-named repo asserts nothing.
     const ruvClaims = marker.gate1 === false ? [] : ruvCapabilityClaims(message).filter((claim) => groundingSubjectAllowed(claim.subject, marker.groundingScope));
-    if (!sources && (ruvClaims.length || assertion)) {
+    if (!sources && (ruvClaims.length || assertion || unknownAssertion)) {
       const queried = ruvClaims.every(claim => terms.includes(claim.subject));
-      if (!bound || !queried) return [
+      if (!bound || !queried || unknownAssertion) return [
         'Grounding evidence for this session and turn is UNKNOWN; shared product freshness is not same-turn proof.',
         'Check the relevant product source with `search_ruvnet` in this native turn, or restate the capability as UNVERIFIED.',
         'This is one bounded correction; missing host evidence does not prove that no search occurred.',
@@ -222,12 +232,7 @@ async function main() {
     searchEvidence: episode.searchEvidence, ownershipUnknown: episode.ownershipUnknown });
   if (!text) process.exit(EXIT_ALLOW);
 
-  process.stdout.write(JSON.stringify({
-    hookSpecificOutput: {
-      hookEventName: 'Stop',
-      additionalContext: text,
-    },
-  }));
+  process.stdout.write(JSON.stringify({ decision: 'block', reason: text }));
   process.exit(EXIT_ALLOW);
 }
 

@@ -265,6 +265,19 @@ describe('findInvocations — the name must be the EXECUTABLE, and the right bin
 const FIX = (host, f) => JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '../fixtures/hook-payloads', host, `${f}.json`), 'utf8')).payload;
 
 describe('hook-input — Grok payloads read as Claude\'s shape (4.5)', () => {
+  it('normalizes the genuine captured native prompt ID without inventing one', () => {
+    const raw = FIX('grok', 'UserPromptSubmit');
+    expect(normalizeHostEvent(raw).prompt_id).toBe(raw.promptId);
+    const absent = { ...raw }; delete absent.promptId; delete absent.prompt_id;
+    expect(normalizeHostEvent(absent).prompt_id).toBeUndefined();
+  });
+  it.each([
+    { session_id: 'conflicting-session' }, { prompt_id: 'conflicting-prompt' },
+    { hook_event_name: 'PreToolUse' },
+  ])('keeps conflicting Grok envelope identity unknown: %j', (collision) => {
+    const raw = FIX('grok', 'UserPromptSubmit');
+    expect(normalizeHostEvent({ ...raw, ...collision }).host).toBe('unknown');
+  });
   it('a Grok PreToolUse write becomes Claude\'s Write, with the native spelling kept', () => {
     const ev = parseHookEvent(JSON.stringify(FIX('grok', 'PreToolUse-write')));
     expect(ev.hook_event_name).toBe('PreToolUse');

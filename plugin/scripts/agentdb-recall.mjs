@@ -6,6 +6,7 @@
  * <=2s deadline. ground-ruvnet.sh delivers <=600 bytes on each eligible prompt.
  */
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -57,11 +58,27 @@ export function agentdbFirstEnabled(env = process.env) {
   return !/^(?:off|0|false|no|disabled?)$/i.test(String(env.RUVNET_AGENTDB_FIRST || '').trim());
 }
 
-export function agentdbStores(projectDir = process.cwd(), gitTimeoutMs) {
+/** Trusted runtime consent only; learning preferences do not disable canonical history. */
+export function recallConsent(env = process.env) {
+  if (!agentdbFirstEnabled(env)) return { enabled: false, outcome: 'disabled', reason: 'agentdb-first-off' };
+  if (env.RUVNET_BRAIN_OFF === '1') return { enabled: false, outcome: 'disabled', reason: 'brain-off' };
+  try {
+    fs.statSync(path.join(env.RUVNET_BRAIN_STATE_DIR || path.join(env.HOME || os.homedir(), '.config', 'ruvnet-brain'), 'brain-off'));
+    return { enabled: false, outcome: 'disabled', reason: 'brain-off' };
+  } catch (error) {
+    if (!['ENOENT', 'ENOTDIR'].includes(error.code)) return { enabled: false, outcome: 'unavailable', reason: 'brain-state-unavailable' };
+  }
+  return { enabled: true };
+}
+
+export function agentdbStores(projectDir = process.cwd(), gitTimeoutMs, deadlineAt = Infinity) {
   // Never recover from a resolver denial by opening a different/local store.
-  const resolved = resolveProjectStore({ projectDir, gitTimeoutMs });
+  const resolved = resolveProjectStore({ projectDir, gitTimeoutMs,deadlineAt });
   const stores = [];
-  try { if (fs.statSync(resolved.canonicalAgentDbPath).isFile()) stores.push({ name: 'memory.db', path: resolved.canonicalAgentDbPath }); } catch { /* absent */ }
+  try {
+    if (!fs.statSync(resolved.canonicalAgentDbPath).isFile()) throw new Error('canonical AgentDB store is not a regular file');
+    stores.push({ name: 'memory.db', path: resolved.canonicalAgentDbPath });
+  } catch (error) { if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw error; }
   return { root: resolved.projectRoot, stores };
 }
 
@@ -359,13 +376,14 @@ export async function recall({ prompt, projectDir = process.cwd(), env = process
   const empty = { block: '', picks: [], stores: [], status: {} };
   try {
     if (signal?.aborted) return { ...empty, outcome: 'unavailable', reason: 'cancelled' };
-    if (!agentdbFirstEnabled(env)) return { ...empty, outcome: 'disabled' };
+    const consent = recallConsent(env);
+    if (!consent.enabled) return { ...empty, outcome: consent.outcome, reason: consent.reason };
     if (!recallTrigger(prompt)) return { ...empty, outcome: 'ok-empty', reason: 'no human request' };
     const requested = Number(deadlineMs ?? env.RUVNET_AGENTDB_RECALL_MS ?? DEFAULT_DEADLINE_MS);
     const budget = Number.isFinite(requested) && requested > 0 ? Math.min(requested, 1900) : DEFAULT_DEADLINE_MS;
     const deadline = Math.min(started + budget, absoluteDeadline ?? Infinity);
     if (deadline <= started) return { ...empty, outcome: 'timed-out' };
-    const { root, stores } = agentdbStores(projectDir, Math.max(1, Math.min(100, Math.floor(budget / 4))));
+    const { root, stores } = agentdbStores(projectDir, Math.max(1, Math.min(100, Math.floor(budget / 4))),deadline);
     recallBinding({ binding, projectRoot: root, storePath: stores[0]?.path ?? null, prompt });
     let learningStore;
     try {
@@ -446,7 +464,8 @@ async function main() {
   const prompt = ev?.prompt ?? ev?.user_prompt ?? ev?.input ?? '';
   if (typeof prompt !== 'string' || !recallTrigger(prompt)) return;
   const projectDir = typeof ev.cwd === 'string' && ev.cwd ? ev.cwd : process.cwd();
-  const r = await recall({ prompt, projectDir, deadlineMs: Math.max(1, DEFAULT_DEADLINE_MS - (Date.now() - started)) });
+  const r = await recall({ prompt, projectDir, absoluteDeadline:started+DEFAULT_DEADLINE_MS,
+    deadlineMs: Math.max(1, DEFAULT_DEADLINE_MS - (Date.now() - started)) });
   if (!r.block) return;
   const hash = crypto.createHash('sha256').update(r.block).digest('hex').slice(0, 12);
   // Hash only, never raw memory values, enters the per-session dedupe markers.

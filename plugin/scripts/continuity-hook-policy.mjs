@@ -145,7 +145,10 @@ export const CONTINUITY_EVENTS = Object.freeze({
   // ground-before-write, adr-currency all then see tool_name:"Edit" exactly as on Claude).
   PreToolUse: Object.freeze([
     registration('session-snapshot', '*', ['claude', 'codex']),
-    registration('decision-gate', '^(Write|Edit|MultiEdit|NotebookEdit|apply_patch)$', ['claude', 'codex']),
+    registration('decision-gate', '^(Write|Edit|MultiEdit|NotebookEdit|apply_patch)$', ['claude']),
+    registration('decision-gate', '^(Write|Edit|MultiEdit|NotebookEdit|apply_patch|functions\\.apply_patch|functions__apply_patch)$', ['codex']),
+    registration('decision-gate', '^Bash$', ['claude']),
+    registration('decision-gate', '^(Bash|exec_command|functions\\.exec_command|functions__exec_command)$', ['codex']),
   ]),
   // Extended to Codex 2026-09-12: a real MCP `search_ruvnet` call was measured to fire PostToolUse
   // on codex-cli 0.154.0 with tool_name "mcp__ruvnet_brain__search_ruvnet" — the matcher below

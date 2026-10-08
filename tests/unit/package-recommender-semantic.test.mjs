@@ -188,6 +188,10 @@ describe('the semantic lane turns candidates into one hint', () => {
     expect(c.candidates).toHaveLength(rec.SEMANTIC_K);
     expect(c.copy).toContain('ruvector/npm/packages/typesafe/package.json');
     expect(c.copy).toContain('Never mention more than one');
+    expect(c.copy).toContain('Alternative: keep the current manual workflow without adding a package');
+    expect(c.copy).toContain('suits small or one-off tasks and deliberate dependency control');
+    expect(c.copy).toContain('but keeps the manual effort instead of the proposed automation');
+    expect(c.copy.length).toBeLessThan(2000);
     expect(lane.cap).toBe(rec.SEMANTIC_MAX_PER_SESSION);
   });
 
@@ -231,6 +235,9 @@ describe('the real hook producer, warm and cold', () => {
     expect(code).toBe(0);
     expect(cand.candidates).toEqual(['@ruvector/typesafe', 'ruvector-hybrid']);
     expect(cand.copy).toContain('Never mention more than one');
+    expect(cand.copy).toContain('Alternative: keep the current manual workflow without adding a package');
+    expect(cand.copy).toContain('deliberate dependency control');
+    expect(cand.copy).toContain('manual effort');
   });
 
   it('cold: no worker → the lexical lane answers alone (never a wait)', async () => {

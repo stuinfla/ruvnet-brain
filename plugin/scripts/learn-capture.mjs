@@ -8,6 +8,7 @@ import { readStdinBounded } from './hook-input.mjs';
 import { learningContext } from './runtime-preferences.mjs';
 import { learningTarget } from './learning-store.mjs';
 import { safeQueue, safeAction, writeExclusive, takeQueueLock, releaseQueueLock } from './learning-queue.mjs';
+import { normalizeToolOutcome } from './continuity-events.mjs';
 
 try {
   const context = learningContext();
@@ -15,14 +16,7 @@ try {
   const raw = await readStdinBounded({ maxBytes: 65536, emptyMs: 150 });
   const input = JSON.parse(raw.toString());
   if (input.hook_event_name && input.hook_event_name !== 'PostToolUse') process.exit(0);
-  const response = input.tool_response;
-  if (typeof response === 'string') {
-    const exit = /^Process exited with code (-?\d+)\s*$/m.exec(response);
-    if ((exit && Number(exit[1]) !== 0) || /Process running with session ID/.test(response)) process.exit(0);
-  }
-  if (input.error || input.is_error === true || response?.error || response?.interrupted === true || response?.signal
-    || response?.success === false || response?.is_error === true || response?.isError === true
-    || [response?.exit_code, response?.exitCode, response?.status].some(value => Number.isInteger(value) && value !== 0)) process.exit(0);
+  if (!normalizeToolOutcome({ ...input, content: input.tool_response }).successfulToolResult) process.exit(0);
   const tool = input.tool_name;
   if (!['Bash', 'Write', 'Edit', 'MultiEdit'].includes(tool)) process.exit(0);
   const action = safeAction(tool, tool === 'Bash' ? input.tool_input?.command : 'edit file');

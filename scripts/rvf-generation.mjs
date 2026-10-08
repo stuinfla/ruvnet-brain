@@ -137,9 +137,9 @@ export function projectSourceStore(name, generation, updater = {}) {
   return {
     ...updater,
     kbName: updater.kbName || name,
-    sourceRepo: generation.sourceRepo ?? updater.sourceRepo ?? null,
+    sourceRepo: generation.sourceRepo ?? null,
     sourceCommit: generation.sourceCommit ?? null,
-    sourceDescribe: generation.sourceDescribe ?? updater.sourceDescribe ?? null,
+    sourceDescribe: generation.sourceDescribe ?? null,
     builtUtc: generation.builtUtc,
   };
 }

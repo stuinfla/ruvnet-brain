@@ -29,6 +29,17 @@ const SAFE = 'The synthetic project task finished with a verified local check. T
 const VAULT = '/Users/SyntheticOwner/Vaults/private';
 const FILE = `${VAULT}/client-title.md`;
 
+it.skipIf(process.platform==='win32'||process.getuid?.()===0)('inaccessible persisted OFF policy parent refuses actual capture rather than treating policy as absent',()=>{
+  const h=fixture();h.write({projects:{[h.projectDir]:'off'}});const file=path.join(h.brainHome,'turn-capture','policy.json'),parent=path.dirname(file);let launches=0;
+  try{
+    fs.chmodSync(parent,0o000);expect(()=>fs.statSync(file)).toThrow();
+    expect(resolveTurnDb({projectDir:h.projectDir,brainHome:h.brainHome}).skipped).toBe('turn capture policy unreadable or invalid');
+    const result=captureTurnOutcome({projectDir:h.projectDir,event:'Stop',payload:{last_assistant_message:'Controlled denial fixture only, never a claimed native observation. '.repeat(3)},
+      env:{...process.env,RUVNET_TURN_CAPTURE:'force'},home:h.home,brainHome:h.brainHome,launch:()=>{launches++;return{};}});
+    expect(result.queued).toBe(false);expect(result.skipped).toBe('turn capture policy unreadable or invalid');expect(launches).toBe(0);
+  }finally{fs.chmodSync(parent,0o700);}
+});
+
 describe('content exclusions separate from capture-origin consent', () => {
   it.each([
     [VAULT, FILE, true], [VAULT, `${VAULT}-public/note.md`, false],
@@ -220,7 +231,8 @@ describe('bounded failure reasons and first-use disclosure', () => {
   it('refuses delivery of a frozen progression when live exclusions changed, retaining original bytes', () => {
     const h = fixture(); h.write({});
     const snapshot = { sourceIdentity: { capturePath: h.projectDir, checkoutPath: h.projectDir }, completeProjectState: { currentGoal: `Inspect "${FILE}"` } };
-    const original = JSON.stringify(snapshot); const context = { brainHome: h.brainHome, resolution: { canonicalAgentDbPath: path.join(h.projectDir, '.swarm', 'memory.db') } };
+    const original = JSON.stringify(snapshot); const context = { brainHome: h.brainHome, deadlineAt: Infinity, signal: undefined,
+      resolution: { canonicalAgentDbPath: path.join(h.projectDir, '.swarm', 'memory.db') } };
     expect(() => ProjectProgressionStore.prototype.requireCaptureConsent.call(context, snapshot)).not.toThrow();
     h.write({ contentPathExcludes: [VAULT] });
     expect(() => ProjectProgressionStore.prototype.requireCaptureConsent.call(context, snapshot)).toThrow('frozen snapshot retained');

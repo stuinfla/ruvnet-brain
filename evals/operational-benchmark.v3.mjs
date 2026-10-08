@@ -92,16 +92,11 @@ export function isVerbatimSourceProjection(returnedText, sourceRowsByStore = [])
   return false;
 }
 
-const storeHashes = new Map();
+// Repeated runs must verify current bytes, never a prior run's path-only digest.
 async function hashFile(file) {
-  if (!storeHashes.has(file)) {
-    storeHashes.set(file, (async () => {
-      const hash = crypto.createHash('sha256');
-      for await (const chunk of fs.createReadStream(file)) hash.update(chunk);
-      return hash.digest('hex');
-    })());
-  }
-  return storeHashes.get(file);
+  const hash = crypto.createHash('sha256');
+  for await (const chunk of fs.createReadStream(file)) hash.update(chunk);
+  return hash.digest('hex');
 }
 
 /** Validate catalog shape and its claims against the actual source corpus before any retrieval. */

@@ -982,7 +982,8 @@ function gatherBrainProfile() {
     installed,
     choices: {
       complete: {
-        available: restoreVia !== null,
+        available: actual === PROFILE_COMPLETE,
+        inverseUnavailableReason: actual === PROFILE_COMPLETE ? null : 'Automatic profile inverse is unavailable; a current bundle is not the action-bound prior bytes.',
         // From the INSTALLED brain when complete is what is installed; from the local bundle when one
         // exists to restore from; otherwise null — never a 0 that nothing measured.
         storeCount: completeInstalled ? installed.storeCount : bundlePresent ? source.storeCount : null,
@@ -998,8 +999,8 @@ function gatherBrainProfile() {
         restoreVia,
       },
       ruvector: {
-        available: installed.stores.includes(PROFILE_RUVECTOR)
-          || source.stores.includes(PROFILE_RUVECTOR),
+        available: actual === PROFILE_RUVECTOR,
+        inverseUnavailableReason: actual === PROFILE_RUVECTOR ? null : 'Automatic profile inverse is unavailable; removing managed stores has no action-bound restore.',
         storeCount: 1,
         bytes: installed.byStore.ruvector ?? source.byStore.ruvector ?? null,
       },
@@ -1044,66 +1045,13 @@ function saveBrainProfile(values) {
     return { ok: false, rejected: [{ key: 'brainProfile', reason }], log: `nothing was changed — ${reason}` };
   }
   const before = measureBrainProfile(INSTALLED_KB);
-  if (!before.stores.includes(PROFILE_RUVECTOR)) {
-    return { ok: false, log: `nothing was changed — no RuVector RVF store exists in ${INSTALLED_KB}` };
-  }
+  const current = !before.stores.includes(PROFILE_RUVECTOR) ? null
+    : before.stores.length === 1 ? PROFILE_RUVECTOR : PROFILE_COMPLETE;
+  if (current === null) return { ok: false, log: 'Profile is not measured; no active choice or usable inverse is established. Nothing was changed.' };
+  if (profile !== current) return { ok: false, log: 'Automatic profile inverse is unavailable: the prior managed bytes are not bound to an exact restore. Nothing was pruned, copied, downloaded or saved.' };
+  return { ok: true, noop: true, profile: current, values: { brainProfile: current }, stores: before.stores,
+    log: 'The measured profile is already selected; no physical files or settings were changed.' };
 
-  let changed;
-  try {
-    if (profile === PROFILE_RUVECTOR) {
-      changed = applyBrainProfile(INSTALLED_KB, profile);
-    } else {
-      const localComplete = measureBrainProfile(COMPLETE_BRAIN_SOURCE);
-      if (localComplete.storeCount > 1) {
-        changed = restoreCompleteProfile(INSTALLED_KB, COMPLETE_BRAIN_SOURCE);
-      } else {
-        const updater = path.join(INSTALLED_KB, 'forge-update.mjs');
-        if (!fs.existsSync(updater)) {
-          throw new Error('the complete release is not cached here and forge-update.mjs is unavailable');
-        }
-        const restored = spawnSync(process.execPath, [
-          updater,
-          '--apply',
-          '--restore-complete',
-          PROFILE_RUVECTOR,
-        ], {
-          cwd: INSTALLED_KB,
-          env: process.env,
-          encoding: 'utf8',
-          timeout: 30 * 60 * 1000,
-          maxBuffer: 10 * 1024 * 1024,
-        });
-        if (restored.status !== 0) {
-          const detail = String(restored.stderr || restored.stdout || `exit ${restored.status}`).trim().slice(-1200);
-          throw new Error(`signed complete-bundle restore failed: ${detail}`);
-        }
-        changed = { profile: PROFILE_COMPLETE, stores: discoverStoreFamilies(INSTALLED_KB) };
-        if (changed.stores.length < 2) {
-          throw new Error('the signed updater completed but the complete repository stores did not land');
-        }
-      }
-    }
-  } catch (error) {
-    return { ok: false, log: `nothing was changed — ${error.message}` };
-  }
-
-  const mirrored = saveSettings({ brainProfile: profile });
-  publishBrainPowerToCache();
-  return {
-    ok: true,
-    profile,
-    values: { brainProfile: profile },
-    stores: changed.stores,
-    removed: changed.removed || [],
-    bytesFreed: changed.bytesFreed || 0,
-    mirrored: mirrored.ok,
-    backup: mirrored.backup ? mirrored.backup.replace(CONSOLE_ROOT, '~') : null,
-    log: mirrored.ok
-      ? (profile === PROFILE_RUVECTOR
-        ? `RuVector Only is active — ${changed.removed.length} unselected artifact(s) removed`
-        : `Complete Brain is active — ${changed.stores.length} repository stores available`)
-      : `${profile === PROFILE_RUVECTOR ? 'RuVector Only' : 'Complete Brain'} is active on disk, but the settings mirror could not be updated (${mirrored.log})`,
-  };
 }
 
 /**
@@ -1251,7 +1199,7 @@ function gatherLessons() {
     // switched on" behind a checked, disabled box while the gate enforced every one of them. A rule in
     // force must be reported in force and must keep a working off switch.
     const importedClass = l.sourceClass === SOURCE_CLASS.IMPORTED_OWNER || l.sourceClass === SOURCE_CLASS.DEMONSTRATION;
-    const quarantined = importedClass && l.status !== STATUS.RATIFIED && l.status !== STATUS.ACTIVE;
+    const quarantined = importedClass; // P035: imported history never becomes personal gate authority.
     const origin = l.sourceClass === SOURCE_CLASS.CURRENT_USER
       ? 'you taught me this'
       : l.sourceClass === SOURCE_CLASS.IMPORTED_OWNER
@@ -1286,7 +1234,8 @@ function gatherLessons() {
       // Honest ceiling: ratifying a model-inferred lesson can NOT raise it to block
       // (lesson-store.mjs:380). Say so before they click, not after.
       canReachBlock: userStated,
-      canRatify: !importedClass,
+      canRatify: false,
+      ratificationUnavailableReason: l.status === STATUS.CANDIDATE ? 'Turning on a new rule is unavailable until its prior state can be restored safely.' : null,
       intendedEnforcement: l.intendedEnforcement || null,
     };
   });
@@ -1307,11 +1256,11 @@ function gatherLessons() {
     lessons,
     counts: {
       total: lessons.length,
-      active: lessons.filter((l) => l.ratified && !l.demoted).length,
+      active: lessons.filter((l) => l.ratified && !l.demoted && !l.quarantined).length,
       awaitingYou: lessons.filter((l) => l.awaitingYou).length,
       off: lessons.filter((l) => l.demoted).length,
       quarantined: lessons.filter((l) => l.quarantined).length,
-      blocking: lessons.filter((l) => l.enforcement === 'block' && l.ratified && !l.demoted).length,
+      blocking: lessons.filter((l) => l.enforcement === 'block' && l.ratified && !l.demoted && !l.quarantined).length,
     },
     // TASK 2: this endpoint bypasses serveCached entirely and had NO timestamp of any kind. It is
     // never cached — loadLessons() reads the live file on every call — so this is always fresh, but
@@ -1339,8 +1288,10 @@ function setLesson(body) {
   if (!spec) {
     return { ok: false, log: `nothing changed — action must be one of ${Object.keys(LESSON_ACTIONS).join(', ')}, got ${JSON.stringify(action)}` };
   }
+  if (action === 'ratify') return { ok: false, log: 'Automatic ratification inverse is unavailable. No lesson was changed.' };
   const before = loadLessons().find((l) => l.id === id);
   if (!before) return { ok: false, log: `nothing changed — no lesson with id ${id}` };
+  if (before.sourceClass === SOURCE_CLASS.IMPORTED_OWNER || before.sourceClass === SOURCE_CLASS.DEMONSTRATION) return { ok: false, log: 'Imported history is read-only audit data; no lesson was changed.' };
   if (action === 'ratify' && (before.sourceClass === SOURCE_CLASS.IMPORTED_OWNER || before.sourceClass === SOURCE_CLASS.DEMONSTRATION)) {
     return { ok: false, log: 'nothing changed — imported or demonstration history cannot become personal policy' };
   }
@@ -2548,6 +2499,17 @@ function apply(ids) {
   const phaseMs = { revalidationMs: 0, undoJournalMs: 0, childRemedyMs: 0 };
   const results = [];
   for (const id of ids) {
+    let plan;
+    try { plan = planFor(id); } catch (error) { results.push({ id, ok: false, log: error.message }); continue; }
+    if (!plan) { results.push({ id, ok: false, log: `Unknown recommendation id: ${id}` }); continue; }
+    if (plan.undo.available === false) {
+      results.push({ id, ok: false, skipped: true, log: 'Automatic remedy is unavailable: ' + plan.undo.human + '. No revalidation, journal or child was created; the separate manual rail is not offered as reversible.' });
+      continue;
+    }
+    if (id === 'repair:memory-index' && !plan.exec.args.includes('--db')) {
+      results.push({ id, ok: false, skipped: true, log: 'Automatic memory-index repair is unavailable: an exact database target is not established. No revalidation, journal or child was created.' });
+      continue;
+    }
     // Re-read immediately before EACH fix. A batch can change the validity of the next item; one
     // pre-flight snapshot for the whole list would let item 2 run against the world item 1 changed.
     const revalidationStartedAt = performance.now();
@@ -2562,11 +2524,6 @@ function apply(ids) {
     // into a global npm sync. Now the id→executor→inverse binding is a value, an ambiguous id
     // THROWS instead of picking a winner, and remedy-registry.test.mjs proves every offerable id
     // resolves to exactly one runnable remedy with a real undo behind it.
-    let plan;
-    try { plan = planFor(id); }
-    catch (e) { results.push({ id, ok: false, log: e.message }); continue; } // ambiguous — a bug, said out loud
-    if (!plan) { results.push({ id, ok: false, log: `Unknown recommendation id: ${id}` }); continue; }
-
     // Record the inverse BEFORE the change, and fill in the parts only this moment knows.
     const undoSpec = { ...plan.undo, id };
     if (undoSpec.kind === 'reinstall-version') {
@@ -2718,6 +2675,10 @@ function saveConfig(values) {
   const requestedSecret = clean.openrouterKey;
   delete clean.openrouterKey;
   const requestedNightly = clean.nightly;
+  const nightlyPrior = requestedNightly === undefined ? null : nightlyStatus();
+  if (nightlyPrior && !['on', 'off'].includes(nightlyPrior.state)) {
+    return { ok: false, rejected, log: 'Nightly save is unavailable: its prior owner state is unknown or degraded, so a usable inverse is not established. No credential or scheduler action was taken.' };
+  }
   let credentialChange = null;
   let nightlyChange = null;
   const rollbackCredential = () => {
@@ -2739,7 +2700,7 @@ function saveConfig(values) {
   // satisfies rewrote the plist and re-registered the runner on every unrelated save (RNBC review
   // 2026-10-01). Only a request that differs from the measured scheduler state is a scheduler change; a
   // degraded or unknown state still goes to the installer, which is how it gets repaired.
-  if (requestedNightly !== undefined && nightlyStatus().state !== (requestedNightly ? 'on' : 'off')) {
+  if (requestedNightly !== undefined && nightlyPrior.state !== (requestedNightly ? 'on' : 'off')) {
     nightlyChange = applyNightlyChoice(requestedNightly);
     if (!nightlyChange.ok) {
       rollbackCredential();
@@ -2822,6 +2783,10 @@ function markUndoConsumed(token) {
 function restoreConfigEffects(entry) {
   const failures = [];
   if (entry.secretPath) {
+    if (entry.secretExisted === true && (!entry.secretBackup || !fs.existsSync(entry.secretBackup))) {
+      failures.push('encrypted credential backup missing; nothing restored');
+      return failures;
+    }
     try {
       if (entry.secretBackup && fs.existsSync(entry.secretBackup)) fs.copyFileSync(entry.secretBackup, entry.secretPath);
       else if (entry.secretExisted === false) fs.rmSync(entry.secretPath, { force: true });
@@ -2855,6 +2820,14 @@ function undo(undoToken) {
   }
 
   if (entry.kind === 'restore-config') {
+    // Missing inverse artifacts must refuse before any settings, credential or token mutation.
+    if (entry.secretPath && entry.secretExisted === true && (!entry.secretBackup || !fs.existsSync(entry.secretBackup))) {
+      return { ok: false, log: 'Encrypted credential backup is missing — the inverse is unavailable. No settings, credential or undo token was changed.' };
+    }
+    if (entry.nightlyBefore && !['on', 'off'].includes(entry.nightlyBefore)) {
+      return { ok: false, log: 'Nightly prior state is unqualified — the inverse is unavailable. No settings, scheduler or undo token was changed.' };
+    }
+
     // A LATER SAVE MAKES THIS UNDO WRONG, and this was the worst defect on the page. MEASURED: save A,
     // save B, then click A's undo — the console reported "restored your previous settings" and B's
     // choices were silently gone, because A's backup predates B entirely. Reachable in a single
@@ -2921,40 +2894,19 @@ function undo(undoToken) {
   // restore-config branch above: these all copy a saved snapshot over a live file, so replaying one
   // re-applies an old state over whatever the user has done since. The replay guard at the top of
   // this function covers all kinds; these calls are what arm it.
-  if (entry.kind === 'reinstall-version' && entry.pkg && entry.prevVersion) {
-    const r = spawnSync('npm', ['install', '-g', '--prefix', NPM_PREFIX, `${entry.pkg}@${entry.prevVersion}`], { encoding: 'utf8', timeout: 15 * 60 * 1000 });
-    if (r.status === 0) markUndoConsumed(undoToken);
-    return { ok: r.status === 0, log: r.status === 0 ? `reinstalled ${entry.pkg}@${entry.prevVersion}` : (r.stderr || '').slice(-800) };
+  if (entry.kind === 'reinstall-version') {
+    return { ok: false, log: 'Automatic package undo is unavailable: a single version reinstall does not invert the full stack update/purge action. No npm child was launched and no token was consumed.' };
   }
-  if (entry.kind === 'restore-backup' && entry.project) {
-    const dir = resolveProjectDir(entry.project);
-    let restored = 0;
-    for (const f of ['.claude/settings.json', '.claude/settings.local.json', '.mcp.json']) {
-      const target = path.join(dir, f);
-      const baks = (() => { try { return fs.readdirSync(path.dirname(target)).filter((n) => n.startsWith(path.basename(target) + '.bak-reconcile-')); } catch { return []; } })();
-      if (!baks.length) continue;
-      baks.sort();
-      fs.copyFileSync(path.join(path.dirname(target), baks[baks.length - 1]), target); restored++;
-    }
-    if (restored > 0) markUndoConsumed(undoToken);
-    return { ok: restored > 0, log: restored ? `restored ${restored} settings file(s) from backup` : 'no reconcile backups found to restore' };
+  if (entry.kind === 'restore-backup') {
+    return { ok: false, log: 'Automatic reconcile undo is unavailable: exact action-bound prior settings and newer user changes are not verified. No settings or backups were copied and no token was consumed.' };
   }
   // THE BRANCH THAT DID NOT EXIST. `repair:memory-index` journalled kind 'restore-memory-backup'
   // and nothing here handled it, so it fell to the default arm below and answered "nothing to undo
   // (the change reverses itself automatically)" — while the recommendation had promised to restore
-  // the pre-repair backup. health-repair.mjs writes that backup as `<db>.rescue-<iso>`; this finds
-  // the newest one and puts it back.
-  if (entry.kind === 'restore-memory-backup' && entry.db) {
-    const dir = path.dirname(entry.db);
-    const base = `${path.basename(entry.db)}.rescue-`;
-    let baks = [];
-    try { baks = fs.readdirSync(dir).filter((n) => n.startsWith(base)).sort(); } catch { /* dir gone */ }
-    if (!baks.length) return { ok: false, log: `no pre-repair backup found next to ${entry.db.replace(CONSOLE_ROOT, '~')} — nothing was restored` };
-    const from = path.join(dir, baks[baks.length - 1]);
-    try { fs.copyFileSync(from, entry.db); }
-    catch (e) { return { ok: false, log: `could not restore ${from.replace(CONSOLE_ROOT, '~')}: ${e.message}` }; }
-    markUndoConsumed(undoToken);
-    return { ok: true, log: `restored your memory store from the snapshot taken before the repair (${baks[baks.length - 1]})` };
+  // the pre-repair backup. A retained `<db>.rescue-<iso>` does not establish a usable live WAL inverse;
+  // preserve it and refuse automatic replacement rather than guessing the newest file.
+  if (entry.kind === 'restore-memory-backup') {
+    return { ok: false, log: 'Automatic WAL-safe memory restore is unavailable. No DB, WAL, SHM or rescue snapshot bytes were changed. Retain the exact pre-repair snapshot and coordinate offline recovery with all database users stopped.' };
   }
   // `enable:memory-distillation`'s inverse. Deliberately handed BACK to distill-project.mjs's own
   // `--restore` rather than re-derived here: it already knows where its snapshots live (that
@@ -2974,26 +2926,34 @@ function undo(undoToken) {
   // say so instead of guessing — restoring the wrong snapshot over a live store is worse than
   // restoring nothing.
   if (entry.kind === 'restore-store-backups') {
-    const rec = entry.receipt && fs.existsSync(entry.receipt) ? readJSON(entry.receipt) : null;
-    const stores = Array.isArray(rec?.stores) ? rec.stores : [];
-    if (!stores.length) return { ok: false, log: 'no receipt of which stores were distilled — nothing was restored. Each store\'s own snapshot is still in its .swarm/backups folder.' };
-    let restored = 0; const failures = [];
-    for (const s of stores) {
-      let snaps = [];
-      try { snaps = fs.readdirSync(s.backupDir).filter((n) => n.endsWith('.db') || n.includes('memory')).sort(); } catch { /* dir gone */ }
-      if (!snaps.length) { failures.push(`${s.name}: no snapshot found`); continue; }
-      try { fs.copyFileSync(path.join(s.backupDir, snaps[snaps.length - 1]), s.db); restored++; }
-      catch (e) { failures.push(`${s.name}: ${e.message}`); }
+    // The existing distill-project restore rail is unavailable with live SQLite/WAL users.
+    // Validate and retain only the receipt's exact snapshots; never choose newer files or copy.
+    const regular = file => typeof file === 'string' && path.isAbsolute(file)
+      && fs.lstatSync(file).isFile() && fs.lstatSync(file).nlink === 1
+      && fs.realpathSync(file) === path.resolve(file);
+    try {
+      const receiptDir = path.join(CONSOLE_ROOT, '.cache', 'ruvnet-brain', 'undo');
+      if (entry.id !== 'learning:distill-fleet' || path.dirname(entry.receipt || '') !== receiptDir
+        || !path.basename(entry.receipt).startsWith('distill-fleet-') || !regular(entry.receipt)) throw new Error('untracked fleet receipt');
+      const rec = readJSON(entry.receipt), stores = rec?.stores;
+      if (!Array.isArray(stores) || !stores.length || new Set(stores.map(store => store.db)).size !== stores.length) throw new Error('missing or ambiguous stores');
+      for (const store of stores) {
+        if (!regular(store.db) || path.basename(store.db) !== 'memory.db' || path.basename(path.dirname(store.db)) !== '.swarm'
+          || store.backupDir !== path.join(path.dirname(store.db), 'backups')
+          || path.dirname(store.snapshot || '') !== store.backupDir || !regular(store.snapshot)) throw new Error('missing or untracked exact snapshot');
+      }
+      return { ok: false, log: 'Automatic WAL-safe fleet restore is unavailable. No DB, WAL, SHM or snapshot bytes were changed. Retain the exact recorded snapshots for coordinated offline recovery: '
+        + stores.map(store => store.snapshot).join(', ') };
+    } catch {
+      return { ok: false, log: 'Missing, ambiguous or untracked fleet receipt/snapshot — nothing was restored or changed; retain the original evidence for offline recovery.' };
     }
-    return {
-      ok: restored > 0,
-      log: `${restored} of ${stores.length} store(s) restored from their pre-distill snapshots`
-        + (failures.length ? ` — could not restore: ${failures.join('; ')}` : ''),
-    };
   }
   // Only kinds that genuinely reverse themselves reach here. Anything else arriving at this arm is
   // a registry/undo drift, and remedy-registry.test.mjs fails the build before it can reach a user.
   if (entry.kind === 'none' || entry.kind === 'auto-rebuild') {
+    let plan;
+    try { plan = typeof entry.id === 'string' ? planFor(entry.id) : null; } catch { return { ok: false, log: 'Ambiguous undo responsibility — nothing was changed.' }; }
+    if (plan?.undo.available === false) return { ok: false, log: 'Automatic undo is unavailable: ' + plan.undo.human + '. Original evidence and the token remain retained.' };
     return { ok: true, log: entry.human || 'nothing to undo (the change reverses itself automatically)' };
   }
   return { ok: false, log: `no undo is implemented for "${entry.kind}" — nothing was changed back. Please report this.` };

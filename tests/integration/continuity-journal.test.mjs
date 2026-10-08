@@ -4,12 +4,14 @@
 //     and committed only after an exact read-back. Budget exhausted → still pending, never lost, and
 //     the next boundary's drain commits it.
 //  2. NEVER SILENT: an event stuck past STUCK_AFTER_MS turns the status line red, and the Claude Stop
-//     boundary prints a visible systemMessage (Codex prints nothing: its Stop `reason` would BLOCK).
+//     boundary prints a visible, nonblocking systemMessage through each supported host adapter.
 //  3. TWO SESSIONS: session 1's commits, decision, lesson and gate are in session 2's SessionStart brief.
 //  4. CODEX BUDGET: SessionEnd capture stays far inside Codex's 3s cap and runs no ruflo inline.
 //  5. ONE WRITER: where the owner's user-level turn hook is registered, the product defers.
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
+const ownershipLedgerName=root=>createHash('sha256').update(fs.realpathSync.native(root)).digest('hex').slice(0,16)+'.jsonl';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +19,7 @@ import {
   ContinuityJournal, STUCK_AFTER_MS, captureContinuityEvents, drain, recordingLine, runDrain,
 } from '../../plugin/scripts/continuity-journal.mjs';
 import { CONTINUITY_NAMESPACE, makeEvent } from '../../plugin/scripts/continuity-events.mjs';
-import { buildBrief, recordExplicit, restoreWithBrief, BRIEF_HEADER, FENCE_CLOSE, FENCE_OPEN } from '../../plugin/scripts/continuity-brief.mjs';
+import { buildBrief, recordExplicit, restoreWithBrief, ownedLedgerFile, BRIEF_HEADER, FENCE_CLOSE, FENCE_OPEN } from '../../plugin/scripts/continuity-brief.mjs';
 import { runSessionSnapshotHook } from '../../plugin/scripts/session-snapshot-hook.mjs';
 import { captureTurnOutcome } from '../../plugin/scripts/turn-outcome-capture.mjs';
 import { resolveRuflo } from '../../plugin/scripts/ruflo-bin.mjs';
@@ -75,6 +77,20 @@ afterEach(async () => {
 const lesson = (text, at = Date.now()) => makeEvent({ kind: 'lesson', at, source: 'explicit', authoritative: true, summary: text });
 
 describe('1. contention → outbox → eventual commit', () => {
+  it('the shared snapshot boundary forwards cancellation into both real capture receivers', () => {
+    const p = adoptedProject(), controller = new AbortController(), deadlineAt = Date.now() + 1000;
+    const launchTurn = vi.fn(), launchEvents = vi.fn();
+    const result = runSessionSnapshotHook(p.dir, 'Stop', { deadlineAt, signal: controller.signal, budgetMs: 1000, host: 'claude',
+      env: { ...p.env, RUVNET_BRAIN_HOME: p.home },
+      rawInput: JSON.stringify({ cwd: p.dir, hook_event_name: 'Stop', session_id: 'bounded-stop', transcript_path: '/fixture/turn', last_assistant_message: 'A substantive observed outcome that must not be stored after its caller cancels capture.' }),
+      captureTurn: options => captureTurnOutcome({ ...options, home: p.home, env: { ...p.env, RUVNET_TURN_CAPTURE: 'force' }, ruflo: '/fake/ruflo', launch: launchTurn,
+        readTranscript: (_file, received) => { expect(received.deadlineAt).toBeLessThanOrEqual(deadlineAt); expect(received.signal).toBe(controller.signal); controller.abort(); return []; } }),
+      captureEvents: options => captureContinuityEvents({ ...options, env: { ...p.env, RUVNET_BRAIN_HOME: p.home, RUVNET_CONTINUITY_CAPTURE: 'on' }, ruflo: '/fake/ruflo', launch: launchEvents }) });
+    expect(result.turn).toMatchObject({ recorded: false }); expect(result.continuity).toMatchObject({ recorded: 0 });
+    expect(launchTurn).not.toHaveBeenCalled(); expect(launchEvents).not.toHaveBeenCalled();
+    expect(fs.existsSync(path.join(p.dir, '.swarm', 'turn-outbox'))).toBe(false);
+    expect(fs.existsSync(path.join(p.dir, '.swarm', 'continuity-events-outbox.jsonl'))).toBe(false);
+  });
   it('a WAL refusal is retried and the event commits only after an exact read-back', () => {
     const p = adoptedProject();
     const ruflo = fakeRuflo({ refusals: 2 });
@@ -172,14 +188,14 @@ describe('2. never silent', () => {
     expect(recordingLine(journal.status())).toMatch(/^AgentDB: recording ✓ \(last write \d+s ago, 1 event\(s\) today, outbox 0 pending\)$/);
   });
 
-  it('stuck past STUCK_AFTER_MS → red line; the Claude Stop boundary shows it, Codex stays silent', async () => {
+  it('stuck past STUCK_AFTER_MS → supported Claude and Codex Stop advice is visible without blocking', async () => {
     const p = adoptedProject();
     const old = Date.now() - STUCK_AFTER_MS - 60_000;
     const ruflo = fakeRuflo();
     const journal = new ContinuityJournal({ projectRoot: p.dir, now: () => old, ruflo: ruflo.bin });
     // Exercise the registered shim/body path, with unrelated progression explicitly suspended.
     // A healthy learner lets this status test await completion instead of leaving 32s of retries.
-    const fire = (host) => spawnSync(process.execPath, [path.join(ROOT, 'plugin/scripts/hook-shim.mjs'), 'session-snapshot', 'Stop'], {
+    const fire = (host) => spawnSync(process.execPath, [path.join(ROOT, host==='codex'?'plugin/scripts/codex-hook-adapter.mjs':'plugin/scripts/hook-shim.mjs'), 'session-snapshot', 'Stop'], {
       cwd: p.dir,
       input: JSON.stringify({ session_id: `s-${host}`, hook_event_name: 'Stop', cwd: p.dir }), encoding: 'utf8', timeout: 20_000,
       env: { ...p.env, CLAUDE_PROJECT_DIR: p.dir, RUVNET_HOOK_HOST: host, RUFLO_BIN: ruflo.bin, RUVNET_BRAIN_HOME: tmp('cont-brain-'),
@@ -189,7 +205,7 @@ describe('2. never silent', () => {
     for (const [host, summary, notice] of [
       ['claude', 'First stuck Claude event.', true],
       ['claude', 'Same-session stuck Claude event.', false],
-      ['codex', 'Fresh stuck Codex event.', false],
+      ['codex', 'Fresh stuck Codex event.', true],
     ]) {
       const [rec] = journal.record([lesson(summary, old)]);
       const status = new ContinuityJournal({ projectRoot: p.dir, ruflo: ruflo.bin }).status();
@@ -198,8 +214,9 @@ describe('2. never silent', () => {
       stopDrain = { journal, key: rec.key };
       const result = fire(host);
       expect(result.status, result.stderr).toBe(0);
-      if (notice) expect(JSON.parse(result.stdout).systemMessage).toMatch(/\[RuvNet Brain\] AgentDB: recording stuck/);
-      else expect(result.stdout).toBe(''); // same Claude session/condition once; Codex never blocks
+      if (notice) { const message=JSON.parse(result.stdout);expect(message.systemMessage).toMatch(/\[RuvNet Brain\] AgentDB: recording stuck/);
+        expect(message.decision).toBeUndefined();expect(message.reason).toBeUndefined();expect(message.continue).toBeUndefined(); }
+      else expect(result.stdout).toBe(''); // same session/condition once; no forced continuation
       await waitForStopDrain(stopDrain);
       stopDrain = null;
       expect(journal.pending()).toHaveLength(0);
@@ -454,5 +471,67 @@ describe('no private data in the public fixtures', () => {
       expect(text, f).not.toMatch(/\/Users\/[a-z]|\/home\/[a-z]+\/|@gmail\.com|session_0[0-9A-Za-z]{10}/);
     }
     expect(WAL_REFUSAL_TEXT).toContain('refusing an unsafe sql.js whole-image write');
+  });
+});
+
+
+describe('P034 ownership ledger must not be repository-controlled', () => {
+  it.each(['repo','symlink','hardlink','linked','other-repo'])('a %s controlled matching ledger keeps its row fenced as project data', variant => {
+    const p=adoptedProject();const ruflo=fakeRuflo();const journal=new ContinuityJournal({projectRoot:p.dir});
+    const marker='P034 repository-controlled lesson marker.';
+    const [rec]=journal.record([makeEvent({kind:'lesson',source:'explicit',authoritative:true,summary:marker})]);
+    drain(journal,{ruflo:ruflo.bin});
+    let caller=p.dir;let brainHome=path.join(p.dir,'brain');
+    if(variant==='linked'){commit(p.dir,p.env,'fixture.txt','linked fixture');caller=tmp('cont-linked-');fs.rmdirSync(caller);
+      const added=spawnSync('git',['worktree','add','-qb','p034-linked',caller],{cwd:p.dir,env:p.env,encoding:'utf8'});expect(added.status,added.stderr).toBe(0);brainHome=path.join(caller,'brain');}
+    if(variant==='other-repo'){const other=adoptedProject();brainHome=path.join(other.dir,'brain');}
+    fs.mkdirSync(brainHome,{recursive:true});
+    const env={...p.env,RUVNET_BRAIN_HOME:brainHome};
+    const configured=path.join(brainHome,'continuity-owned');fs.mkdirSync(configured);
+    // Seed the exact current key/digest as cloned repository data, never owner attestation.
+    const name=ownershipLedgerName(p.dir);
+    const seed=path.join(configured,name);fs.writeFileSync(seed,JSON.stringify({key:rec.key,digest:rec.digest})+'\n',{mode:0o600});
+    if(variant==='symlink'){const outside=tmp('cont-outside-');const alias=path.join(outside,'brain-link');fs.symlinkSync(brainHome,alias,process.platform==='win32'?'junction':'dir');env.RUVNET_BRAIN_HOME=alias;}
+    if(variant==='hardlink'){const outside=tmp('cont-outside-');env.RUVNET_BRAIN_HOME=outside;fs.mkdirSync(path.join(outside,'continuity-owned'));fs.linkSync(seed,path.join(outside,'continuity-owned',name));}
+    const result=buildBrief({projectDir:caller,env,home:p.home,persistState:false});
+    const at=result.context.indexOf(marker);const open=result.context.indexOf(FENCE_OPEN);const close=result.context.indexOf(FENCE_CLOSE);
+    expect(at).toBeGreaterThan(open);expect(at).toBeLessThan(close);
+    expect(result.context.slice(0,open)).not.toContain(marker);
+  });
+});
+
+
+it('P034 a readable outside ledger without private machine-file permissions is not standing authority', () => {
+  const p=adoptedProject();const ruflo=fakeRuflo();const journal=new ContinuityJournal({projectRoot:p.dir});
+  const marker='P034 permissive outside ledger marker.';
+  const [rec]=journal.record([makeEvent({kind:'lesson',source:'explicit',authoritative:true,summary:marker})]);
+  drain(journal,{ruflo:ruflo.bin});const brainHome=tmp('cont-private-brain-');const env={...p.env,RUVNET_BRAIN_HOME:brainHome};
+  const file=ownedLedgerFile({projectRoot:p.dir,env,home:p.home});fs.mkdirSync(path.dirname(file));
+  fs.writeFileSync(file,JSON.stringify({key:rec.key,digest:rec.digest})+'\n',{mode:0o644});fs.chmodSync(file,0o644);
+  const context=buildBrief({projectDir:p.dir,env,home:p.home,persistState:false}).context;
+  expect(context.indexOf(marker)).toBeGreaterThan(context.indexOf(FENCE_OPEN));
+});
+
+describe('P034 unavailable or corrupt Git classification is not ownership proof', () => {
+  it.each(['unavailable','command-error','corrupt-metadata'])('an outside matching ledger remains fenced when Git is %s', variant => {
+    const p=adoptedProject();const ruflo=fakeRuflo();const journal=new ContinuityJournal({projectRoot:p.dir});
+    const marker='P034 Git UNKNOWN matching ledger marker.';
+    const [rec]=journal.record([makeEvent({kind:'lesson',source:'explicit',authoritative:true,summary:marker})]);
+    drain(journal,{ruflo:ruflo.bin});const brainHome=tmp('cont-git-unknown-');const env={...p.env,RUVNET_BRAIN_HOME:brainHome};
+    const file=path.join(brainHome,'continuity-owned',ownershipLedgerName(p.dir));fs.mkdirSync(path.dirname(file));
+    fs.writeFileSync(file,JSON.stringify({key:rec.key,digest:rec.digest})+'\n',{mode:0o600});
+    const prior=process.env.PATH;
+    try {
+      if(variant==='unavailable')process.env.PATH=tmp('cont-no-git-');
+      if(variant==='corrupt-metadata')fs.mkdirSync(path.join(brainHome,'.git'));
+      if(variant==='command-error'){
+        const bin=tmp('cont-bad-git-');const executable=path.join(bin,'git');
+        fs.writeFileSync(executable,`#!${process.execPath}\nprocess.stderr.write('fatal: bad config line in repository metadata\\n');process.exit(128);`,{mode:0o700});
+        process.env.PATH=bin;
+      }
+      const context=buildBrief({projectDir:p.dir,env,home:p.home,persistState:false}).context;
+      expect(context.indexOf(marker)).toBeGreaterThan(context.indexOf(FENCE_OPEN));
+      expect(context.slice(0,context.indexOf(FENCE_OPEN))).not.toContain(marker);
+    } finally {process.env.PATH=prior;}
   });
 });

@@ -4,8 +4,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { qaLanes, selectLanes } from './qa-lanes.mjs';
-import { runLanes, verdictOf, sourceIdentity } from './qa-contract.mjs';
+import { qaLanes, selectLanes, laneSelectionInventory } from './qa-lanes.mjs';
+import { runLanes, verdictOf, sourceIdentity, vitestLaneFiles, qualifyVitestLane, claimsReceiptStream, qualifyClaimsLane } from './qa-contract.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const release = process.argv.includes('--release');
@@ -18,8 +18,13 @@ const runtimeCensusArgs = ['--candidate-kb', '--candidate-sha', '--candidate-ver
   if (!value || value.startsWith('--')) throw new Error(`${name} requires a value`);
   return [name, value];
 });
-const lanes = selectLanes(qaLanes({ release, runtimeCensusArgs, base: argument('--base') || process.env.QA_BASE_SHA }), requested);
-if (process.argv.includes('--list')) {
+const registered = qaLanes({ release, runtimeCensusArgs, base: argument('--base') || process.env.QA_BASE_SHA });
+const lanes = selectLanes(registered, requested);
+const inventory = laneSelectionInventory(registered, lanes);
+if (process.argv.includes('--list-inventory')) {
+  console.log(JSON.stringify({ ...inventory, source: sourceIdentity(root),
+    evidenceScope: 'registered-lane-selection-only', status: 'NOT_RUN', allRegisteredLanesPassed: false }, null, 2));
+} else if (process.argv.includes('--list')) {
   console.log(JSON.stringify(lanes, null, 2));
 } else {
   const timeoutMs = Number(process.env.QA_TIMEOUT_MS || (release ? 15 * 60_000 : 8 * 60_000));
@@ -30,10 +35,15 @@ if (process.argv.includes('--list')) {
   const run = (lane) => new Promise((resolve) => {
     const begin = Date.now();
     const evidenceFile = lane.report ? path.join(receiptDir, lane.name + '-evidence.json') : null;
-    const args = evidenceFile ? [...lane.args, '--report', evidenceFile] : lane.args;
+    let files;
+    try { if (lane.report === 'vitest') files = vitestLaneFiles(lane, root); }
+    catch (error) { return resolve({ name: lane.name, status: 'UNKNOWN', testEvidenceRequired: true, reason: error.message }); }
+    const args = lane.report === 'vitest' ? [...lane.args, '--reporter=json', '--outputFile', evidenceFile]
+      : evidenceFile ? [...lane.args, '--report', evidenceFile] : lane.args;
     const child = spawn(lane.command, args, { cwd: root, env: process.env, stdio: ['ignore', 'pipe', 'pipe'], shell: false, detached: process.platform !== 'win32' });
+    const claimsStream = lane.report === 'claims' ? claimsReceiptStream() : null;
     let stdout = '', stderr = '', timedOut = false, spawnError = null, escalation = null;
-    child.stdout.on('data', (chunk) => { stdout = (stdout + chunk).slice(-4000); process.stdout.write(chunk); });
+    child.stdout.on('data', (chunk) => { claimsStream?.write(chunk); stdout = (stdout + chunk).slice(-4000); process.stdout.write(chunk); });
     child.stderr.on('data', (chunk) => { stderr = (stderr + chunk).slice(-4000); process.stderr.write(chunk); });
     child.on('error', (error) => { spawnError = error.message; });
     const kill = (signal) => {
@@ -47,16 +57,19 @@ if (process.argv.includes('--list')) {
     child.on('close', (code, signal) => {
       clearTimeout(timer);
       clearTimeout(escalation);
-      resolve({ name: lane.name, command: [lane.command, ...args], evidenceFile, status: timedOut ? 'TIMEOUT' : spawnError ? 'FAIL' : code === 0 ? 'PASS' : code === 4 ? 'UNKNOWN' : 'FAIL', exitCode: code, signal, spawnError, elapsedMs: Date.now() - begin, stdoutTail: stdout, stderrTail: stderr });
+      const result = { name: lane.name, command: [lane.command, ...args], evidenceFile, status: timedOut ? 'TIMEOUT' : spawnError ? 'FAIL' : code === 0 ? 'PASS' : code === 4 ? 'UNKNOWN' : 'FAIL', exitCode: code, signal, spawnError, elapsedMs: Date.now() - begin, stdoutTail: stdout, stderrTail: stderr };
+      if (lane.report === 'claims') return resolve(qualifyClaimsLane(result, { evidenceFile,
+        scope: lane.args[lane.args.indexOf('--scope') + 1], reported: claimsStream.result() }));
+      resolve(lane.report === 'vitest' ? qualifyVitestLane(result, { root, evidenceFile, files }) : result);
     });
   });
   const results = await runLanes(lanes, run, 2);
   const after = sourceIdentity(root);
   const stable = after.digest === source.digest;
   const status = stable ? verdictOf(results) : 'UNKNOWN';
-  const receipt = { schema: 'ruvnet-brain.qa.aggregate', contract: release ? 'release' : 'pr', selection: requested.length ? 'partial' : 'complete', source, sourceAfter: after, sourceStable: stable, started, ended: new Date().toISOString(), status, requiredLanes: lanes.map(({ name }) => name), results };
+  const receipt = { ...inventory, allRegisteredLanesPassed: inventory.selectionComplete && status === 'PASS', schema: 'ruvnet-brain.qa.aggregate', contract: release ? 'release' : 'pr', selection: requested.length ? 'partial' : 'complete', source, sourceAfter: after, sourceStable: stable, started, ended: new Date().toISOString(), status, requiredLanes: lanes.map(({ name }) => name), results };
   for (const result of results) fs.writeFileSync(path.join(receiptDir, result.name + '.json'), JSON.stringify({ schema: 'ruvnet-brain.qa.lane', source, ...result }, null, 2), { flag: 'wx' });
   fs.writeFileSync(path.join(receiptDir, 'aggregate.json'), JSON.stringify(receipt, null, 2), { flag: 'wx' });
-  console.log(JSON.stringify({ status, receiptDir, source, sourceStable: stable, lanes: results.map(({ name, status }) => ({ name, status })) }));
+  console.log(JSON.stringify({ status, receiptDir, source, sourceStable: stable, ...inventory, allRegisteredLanesPassed: receipt.allRegisteredLanesPassed, lanes: results.map(({ name, status }) => ({ name, status })) }));
   process.exitCode = status === 'PASS' ? 0 : status === 'UNKNOWN' ? 4 : 1;
 }

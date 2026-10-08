@@ -15,7 +15,7 @@ export function selectLanes(lanes, requested) {
 
 export function qaLanes({ release = false, base = null, runtimeCensusArgs = [] } = {}) {
   const node = (name, script, args = [], extra = {}) => ({ name, command: process.execPath, args: [script, ...args], resource: 'static', ...extra });
-  const test = (name, args) => node(name, 'node_modules/vitest/vitest.mjs', ['run', ...args], { resource: 'tests' });
+  const test = (name, args) => node(name, 'node_modules/vitest/vitest.mjs', ['run', ...args], { resource: 'tests', report: 'vitest', testTargets: args.filter((arg) => !arg.startsWith('-')) });
   return [
     node('version', 'scripts/sync-version.mjs', ['--check']),
     node('convergence', 'scripts/convergence-manifest.mjs'),
@@ -37,4 +37,14 @@ export function qaLanes({ release = false, base = null, runtimeCensusArgs = [] }
       node('claims-runtime', 'scripts/claims-verify.mjs', ['--strict', '--scope', 'runtime', ...runtimeCensusArgs], { report: 'claims' }),
     ] : []),
   ];
+}
+
+// Selection is a projection, not proof that unselected registered work ran.
+export function laneSelectionInventory(registered, selected) {
+  const selectedNames = new Set(selected.map(({ name }) => name));
+  const omittedLanes = registered.filter(({ name }) => !selectedNames.has(name))
+    .map(({ name }) => ({ name, status: 'NOT_RUN', reason: 'not selected for this QA invocation' }));
+  return { registeredLanes: registered.map(({ name }) => name),
+    selectedLanes: selected.map(({ name }) => name), omittedLanes,
+    selectionComplete: omittedLanes.length === 0 };
 }

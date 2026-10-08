@@ -27,6 +27,7 @@
 // (empty string, exit 0) is the invariant. The gate decides policy from the (possibly empty) value.
 
 import fs from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // ── GROK CLI PAYLOADS (4.5) ──────────────────────────────────────────────────────────────────────
@@ -81,6 +82,7 @@ export function normalizeHostEvent(ev) {
   const set = (snake, camel) => { if (out[snake] === undefined && ev[camel] !== undefined) out[snake] = ev[camel]; };
   out.hook_event_name = pascalEvent(ev.hook_event_name || ev.hookEventName || '');
   set('session_id', 'sessionId');
+  set('prompt_id', 'promptId');
   set('transcript_path', 'transcriptPath');
   set('permission_mode', 'permissionMode');
   set('tool_input', 'toolInput');
@@ -93,7 +95,11 @@ export function normalizeHostEvent(ev) {
     out.tool_name = canonicalToolName(native);
     if (out.tool_name !== native) out.host_tool_name = native;
   }
-  out.host = 'grok';
+  const conflictingIdentity = [['session_id', 'sessionId'], ['prompt_id', 'promptId']]
+    .some(([snake, camel]) => ev[snake] !== undefined && ev[camel] !== undefined && ev[snake] !== ev[camel]);
+  const conflictingEvent = ev.hook_event_name !== undefined && ev.hookEventName !== undefined
+    && pascalEvent(ev.hook_event_name) !== pascalEvent(ev.hookEventName);
+  out.host = conflictingIdentity || conflictingEvent ? 'unknown' : 'grok';
   return out;
 }
 
@@ -351,11 +357,11 @@ const MAX_NODES = 256;  // and must not produce unbounded output
 function baseName(p) { const i = p.lastIndexOf('/'); return i === -1 ? p : p.slice(i + 1); }
 
 /** Skip a double-quoted region; `i` is the index just past the opening quote. Returns the index past its close. */
-function skipDouble(src, i) {
+function skipDouble(src, i, quote = '"') {
   while (i < src.length) {
     const c = src[i];
     if (c === '\\' && i + 1 < src.length) { i += 2; continue; }
-    if (c === '"') return i + 1;
+    if (c === quote) return i + 1;
     if (c === '`') { i = readBacktick(src, i).next; continue; }
     if (c === '$' && src[i + 1] === '(') { i = readParen(src, i + 2).next; continue; }
     i++;
@@ -648,6 +654,68 @@ export function findInvocations(cmd, tools) {
     out.push({ tool: name, args: node.argv.slice(idx + 1) });
   }
   return out;
+}
+
+const WRITE_SQL = /(?:^|[;\s])(?:insert|update|delete|drop|alter|create|replace|vacuum|reindex|attach|detach)\b|\bpragma\s+[\w.]+\s*=|^\s*\.(?:import|restore|load)\b/i;
+const SQL_TOOLS = ['sqlite', 'sqlite3'];
+const PROGRAM_TOOLS = ['node', 'nodejs', 'python', 'python3'];
+// Reuse the bounded quote scanner; this is literal-call recognition, not a language AST.
+function visibleProgram(code, python) {
+  const chars = code.split('');
+  for (let i = 0; i < code.length; i++) {
+    let end;
+    if (["'", '"', '`'].includes(code[i])) end = skipDouble(code, i + 1, code[i]);
+    else if ((python && code[i] === '#') || (!python && code.startsWith('//', i))) {
+      const newline = code.indexOf('\n', i); end = newline < 0 ? code.length : newline;
+    } else if (!python && code.startsWith('/*', i)) {
+      const close = code.indexOf('*/', i + 2); end = close < 0 ? code.length : close + 2;
+    } else continue;
+    chars.fill(' ', i, end); i = end - 1;
+  }
+  return chars.join('');
+}
+function invocationTargets(invocations) {
+  const writes = [];
+  for (const invocation of invocations.filter(value => SQL_TOOLS.includes(value.tool))) {
+    const args = invocation.args.slice(), optionSql = []; let target;
+    while (args.length) {
+      const arg = args.shift();
+      if (arg === '-cmd') { optionSql.push(args.shift() || ''); continue; }
+      if (['-separator', '-newline', '-nullvalue'].includes(arg)) { args.shift(); continue; }
+      if (arg.startsWith('-')) continue;
+      target = arg; break;
+    }
+    if (target && [...optionSql, ...args].some(sql => WRITE_SQL.test(sql))) writes.push(target);
+  }
+  for (const { tool, args } of invocations.filter(value => PROGRAM_TOOLS.includes(value.tool))) {
+    const index = args.findIndex(arg => ['-c', '-e', '--eval'].includes(arg));
+    const code = index >= 0 ? args[index + 1] : '';
+    if (!code) continue;
+    const python = tool.startsWith('python');
+    const visible = visibleProgram(code, python);
+    if (python ? !/\bsqlite3\b/.test(code) : !/(?:node:sqlite|better-sqlite3|sqlite3)/.test(code)) continue;
+    const open = python ? /\bsqlite3\.connect\(\s*(['"])([^'"\n]+)\1/g
+      : /(?:new\s+(?:DatabaseSync|Database)|(?:require\(['"]better-sqlite3['"]\)))\(\s*(['"])([^'"\n]+)\1/g;
+    const queries = [...code.matchAll(/\.(?:execute|executemany|executescript|exec|run|prepare)\(\s*(['"])([^'"\n]+)\1/g)]
+      .filter(match => visible[match.index] !== ' ');
+    if (queries.some(match => WRITE_SQL.test(match[2]))) for (const match of code.matchAll(open))
+      if (visible[match.index] !== ' ') writes.push(match[2]);
+  }
+  return writes;
+}
+/** Finite literal write targets from the existing AST; no ownership or permission inference. */
+export function knownRawStoreWrites(command, { cwd, home }) {
+  const paths = []; let executionCwd = cwd;
+  for (const node of commandNodes(command)) {
+    if (!node.dynamic && path.basename(node.exe) === 'cd' && node.argv.length === 2)
+      executionCwd = path.resolve(executionCwd, node.argv[1]);
+    const quoted = node.argv.map(word => "'" + word.replaceAll("'", "'\\''") + "'").join(' ');
+    for (let target of invocationTargets(findInvocations(quoted, [...SQL_TOOLS, ...PROGRAM_TOOLS]))) {
+      if (target.startsWith('~/')) target = path.join(home, target.slice(2));
+      paths.push(path.resolve(executionCwd, target));
+    }
+  }
+  return paths;
 }
 
 /** The findInvocations answer as TAB-separated lines (`tool<TAB>arg…`), one per invocation. */

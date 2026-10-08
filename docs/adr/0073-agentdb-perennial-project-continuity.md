@@ -3,9 +3,9 @@ id: ADR-073
 title: AgentDB is the complete perennial project continuity record
 status: Accepted
 date: 2026-08-22
-updated: 2026-10-03
-updated_source: derived-from-git
-reviewed_digest: c05f9c6169e4
+updated: 2026-10-08
+updated_source: source-reconciliation
+reviewed_digest: 1a4f7e2594bd
 authors: [Stuart Kerr, Codex]
 tags: [architecture, agentdb, continuity, hosts, recovery, durability]
 supersedes: []
@@ -13,13 +13,17 @@ relates: [ADR-051, ADR-070, ADR-072]
 governs:
   - docs/ddd/0019-project-continuity-context.md
   - plugin/scripts/project-progression-contract.mjs
+  - plugin/scripts/project-progression-artifact-conflicts.mjs
+  - plugin/scripts/project-progression-sources.mjs
+  - plugin/scripts/project-progression-producer.mjs
+  - tests/unit/project-progression-producer.test.mjs
   - plugin/scripts/project-progression-hook.mjs
   - plugin/hooks/hooks.json
   - plugin/hooks/codex-hooks.json
   - tests/unit/project-progression-contract.test.mjs
   - tests/integration/project-progression-hook.test.mjs
   - tests/acceptance/cross-host-project-resume.test.mjs
-version: 1.0.1
+version: 1.0.2
 ---
 
 # ADR-073 — AgentDB is the complete perennial project continuity record
@@ -61,6 +65,21 @@ If any clause fails, perennial project continuity is **not working**. A fallback
 line, or an unrelated successful AgentDB row does not make the product conformant.
 
 ### 2. Complete project progression
+
+The untracked-source reader uses Git's NUL-delimited exact filenames and hashes unambiguous
+JSON `[content-sha256, exact-path]` records joined by NUL. Default-quoted Unicode and newline
+filenames must not be opened as display text or reduced to a stable unreadable marker. An
+unavailable inventory, unreadable/non-regular source file, or a file outside the existing bounded
+read prevents an exact source identity. The existing deadline and operational-state exclusions
+remain in force. The actual producer must capture changed bytes even at the same HEAD after an
+unchanged no-op.
+
+This changes the opaque untracked-digest recipe for new captures. Existing snapshots remain
+historical records of their prior recipe; they are not rewritten or upgraded to new proof. A first
+new capture can differ once because of the recipe, while later unchanged captures still deduplicate.
+These source-identity checks do not establish complete project recovery, native host qualification,
+or independent semantic review. Existing review digests remain historical pending final-source
+review; this reconciliation is not approval.
 
 The durable record is an append-only journal of full aggregate snapshots. Each snapshot preserves:
 
@@ -179,7 +198,22 @@ discretion, manual resume step, alternate store, or unverified readback is a rel
 `Accepted, not yet proven.` The recovered checkpoint was written after the continuity failure. It is
 recovery evidence, not proof of continuous capture or cross-host automatic restoration.
 
+## Bounded reducer reconciliation (2026-10-08)
+
+The candidate reducer records same-path, different-digest artifact disagreement across concurrent
+maximal heads in `resumeConflicts`, preserving both immutable artifact references and their head
+keys. The small pure `project-progression-artifact-conflicts.mjs` helper participates in this existing
+contract; it introduces no store or authority. Causally superseded ancestor snapshots and identical
+concurrent digest sets do not gain an invented conflict. Unknown artifact identities remain data.
+Local reducer/resume consumer checks and actual global Ruflo exact-row/causal-head proofs qualify
+this bounded correction only; no native session, deployment or full cross-host continuity claim
+follows. Status remains Accepted, not yet proven. Final source-bound review/digest belongs to the
+integration owner after the new helper, reducer and tests are examined.
+
 ## Currency log
+
+| 2026-10-08 | Reviewed exact governed source and normative requirements; reviewed_digest 1a4f7e2594bd. Accepted, not yet proven; P026 artifact conflict-label gap remains open and the proposed repair is not approved as implemented. | Examined `plugin/scripts/project-progression-contract.mjs`, `plugin/scripts/project-progression-producer.mjs`, `plugin/scripts/project-progression-sources.mjs`, all eleven governed identities and bounded caller/test coverage recorded in /tmp/rnb-100-rule-closeout/adr073-bounded-semantic-review.json. Packed adapters are not native sessions; fail-open capture, schema-pinned SQLite restoration and full native recovery limitations remain explicit. |
+| 2026-10-08 | Reconciled §2 exact source identity after the quoted-filename defect: NUL exact-name inventory, JSON digest/name records and unreadable-source refusal; same-HEAD Unicode/newline byte changes must escape no-op suppression. Operational-state exclusions and accepted decision unchanged. Prior snapshots retain their original opaque digest recipe. | `plugin/scripts/project-progression-sources.mjs`, `plugin/scripts/project-progression-producer.mjs`, and `tests/unit/project-progression-producer.test.mjs`; real Git and producer/readback fixtures, not native-model or whole-continuity qualification. Current final-source independent review is not stamped by this row. |
 | 2026-09-27 | Currency review: decision unchanged. Motion: continuity-binding fixes (trusted host context, managed capture identity, refresh-race closure) and a new terminal-outcome contradiction test. These are the continuity mechanism being hardened, consistent with the ADR, not a redesign. | Reviewed `docs/ddd/0019-project-continuity-context.md`, `plugin/scripts/project-progression-contract.mjs`, `plugin/scripts/project-progression-hook.mjs`, `plugin/hooks/hooks.json`, `plugin/hooks/codex-hooks.json`, `tests/unit/project-progression-contract.test.mjs` against the commits listed above; reviewed_digest c05f9c6169e4. |
 
 | Date | What changed | Why |

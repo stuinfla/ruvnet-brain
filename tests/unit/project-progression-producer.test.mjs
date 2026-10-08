@@ -2,6 +2,7 @@
  * The producer's two contracts: every field is TRACEABLE, and nothing private is PERSISTED.
  */
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -14,8 +15,38 @@ import {
   readWorkLedger,
 } from '../../plugin/scripts/project-progression-sources.mjs';
 import { PROVENANCE_SOURCES, buildProjectProgression } from '../../plugin/scripts/project-progression-producer.mjs';
+import { createProgressionSnapshot } from '../../plugin/scripts/project-progression-contract.mjs';
+import { resolveProjectStore } from '../../plugin/scripts/project-store-resolver.mjs';
+import { resolveRuflo, rufloInvocation } from '../../plugin/scripts/ruflo-bin.mjs';
+import { withProgressionReader } from '../../plugin/scripts/project-progression-reader.mjs';
 
 const roots = [];
+it.each(['alias', 'exact'])('joins the actual canonical %s key before deriving prior goal/action', (mode) => {
+  const root = temporaryRoot('prior-key-'), resolution = resolveProjectStore({ projectDir: root });
+  const env = { ...process.env, HOME: root, USERPROFILE: root, RUFLO_DAEMON_AUTOSTART: '0', RUVNET_WORK_LEDGER: path.join(root, 'absent-ledger') };
+  const binary = resolveRuflo(); expect(binary).toBeTruthy();
+  const run = (args) => { const invocation = rufloInvocation(binary, args);
+    const result = spawnSync(invocation.executable, invocation.args, { cwd: root, env, encoding: 'utf8', timeout: 15000 });
+    expect(result.status, result.stderr).toBe(0); };
+  fs.mkdirSync(path.dirname(resolution.canonicalAgentDbPath));
+  run(['memory', 'init', '--backend', 'agentdb', '--no-verify', '--path', resolution.canonicalAgentDbPath]);
+  const state = { ...Object.fromEntries(['plan', 'completed', 'inProgress', 'blockers', 'failures', 'decisions', 'changedFiles', 'commands', 'proofArtifacts', 'untested', 'resumeConflicts'].map(key => [key, []])),
+    currentGoal: 'Controlled canonical prior goal', nextAction: 'Controlled next action', acceptanceContract: null, activeProcess: null, activeStep: null };
+  const snapshot = createProgressionSnapshot({ projectIdentity: resolution.projectIdentity,
+    sourceIdentity: readSourceIdentity({ checkoutRoot: root, kind: resolution.kind }).identity,
+    hostIdentity: { host: 'controlled-offline', adapterVersion: 'prior-key-proof' }, sessionIdentity: 'controlled-prior',
+    sequence: 1, occurredAt: new Date().toISOString(), trigger: 'controlled-proof', parentEventKeys: [], dedupId: 'controlled-prior', completeProjectState: state });
+  const key = mode === 'alias' ? 'controlled-alias-key' : snapshot.eventKey, value = JSON.stringify(snapshot);
+  run(['memory', 'store', '--key', key, '--value', value, '--namespace', 'project-progression', '--no-upsert', '--path', resolution.canonicalAgentDbPath]);
+  const produce = () => buildProjectProgression({ resolution, projectDir: root, host: 'codex', env,
+    payload: { hook_event_name: 'Stop', session_id: 'controlled-later' } });
+  if (mode === 'alias') expect(produce).toThrow(/exact key\/payload identity mismatch/);
+  else { const produced = produce(); expect(produced.projectProgression.completeProjectState.currentGoal).toBe(state.currentGoal);
+    expect(produced.projectProgression.parentEventKeys).toEqual([snapshot.eventKey]); }
+  const exact = withProgressionReader(resolution.canonicalAgentDbPath, reader => ({ keys: reader.listKeys('project-progression'), value: reader.readContent('project-progression', key) }));
+  expect(exact.ok).toBe(true); expect(exact.value.keys).toEqual([key]); expect(exact.value.value).toBe(value);
+}, 30000);
+
 it('an expired or cancelled producer cannot forge a source identity from an unread checkout', () => {
   const controller = new AbortController(); controller.abort();
   expect(() => readSourceIdentity({ checkoutRoot: '/unread-checkout', deadlineAt: Date.now() - 1 })).toThrow(/deadline exceeded/);
@@ -107,7 +138,7 @@ describe('progression sources', () => {
     expect(readTranscriptReference(undefined).skipped).toMatch(/no transcript path/);
     expect(readTranscriptReference('/nonexistent/path.jsonl').skipped).toMatch(/unreadable/);
     expect(readTranscriptReference(transcriptFixture(), { host: 'codex' }).skipped)
-      .toMatch(/transcript format unknown for host codex/);
+      .toMatch(/current native Codex callback identity unavailable/);
     const notJsonl = path.join(temporaryRoot('plain-'), 'session.txt');
     fs.writeFileSync(notJsonl, 'plain text transcript');
     expect(readTranscriptReference(notJsonl).skipped).toMatch(/not a JSONL transcript/);
@@ -289,5 +320,75 @@ it('PreCompact records a fresh canonical lifecycle boundary after identical Stop
     expect(cli.calls().some(call => call.argv.includes('store') && call.key === compact.receipt.eventKey)).toBe(true);
     expect(run('SessionEnd').skipped).toMatch(/no-op capture/);
     expect(rows(db, 'project-progression')).toHaveLength(2);
+  } finally { cleanup(); }
+});
+
+it.skipIf(process.platform === 'win32')('exact NUL Git names detect Unicode and newline untracked byte changes at the same HEAD', () => {
+  const root = temporaryRoot('source-exactnames-');
+  const run = (...args) => execFileSync('git', ['-c', 'user.name=fixture', '-c', 'user.email=fixture@invalid', ...args], { cwd: root, encoding: 'utf8' });
+  run('init', '-q'); run('config', 'core.quotePath', 'true');
+  fs.writeFileSync(path.join(root, 'tracked.mjs'), 'export const value=1;\n');
+  run('add', '-A'); run('commit', '-qm', 'private fixture');
+  const names = ['café-☃.mjs', 'line\nbreak.mjs'];
+  names.forEach(name => fs.writeFileSync(path.join(root, name), 'first bytes'));
+  expect(run('ls-files', '--others', '--exclude-standard')).toContain('"');
+  const before = readSourceIdentity({ checkoutRoot: root, deadlineAt: Date.now() + 5000 });
+  for (const name of names) {
+    const previous = readSourceIdentity({ checkoutRoot: root });
+    fs.writeFileSync(path.join(root, name), 'changed exact bytes');
+    const current = readSourceIdentity({ checkoutRoot: root, deadlineAt: Date.now() + 5000 });
+    expect(current.identity.head).toBe(before.identity.head);
+    expect(current.identity.trackedDigest).toBe(before.identity.trackedDigest);
+    expect(current.identity.untrackedDigest).not.toBe(previous.identity.untrackedDigest);
+  }
+});
+
+it.skipIf(process.platform === 'win32')('an actually unreadable untracked name cannot mint an exact source identity', () => {
+  const root = temporaryRoot('source-unreadable-');
+  execFileSync('git', ['init', '-q'], { cwd: root });
+  fs.symlinkSync('absent-target', path.join(root, 'unreadable.mjs'));
+  expect(() => readSourceIdentity({ checkoutRoot: root })).toThrow(/untracked file unreadable/);
+  expect(() => readSourceIdentity({ checkoutRoot: root, deadlineAt: Date.now() + 5000 })).toThrow(/untracked file unreadable/);
+});
+
+it.skipIf(process.platform === 'win32')('untracked newline names cannot alias two separate content/path records', () => {
+  const root = temporaryRoot('source-name-alias-'); execFileSync('git', ['init', '-q'], { cwd: root });
+  // A raw newline-joined digest/path serialization could confuse this single name with two records.
+  const secondDigest = crypto.createHash('sha256').update('second bytes').digest('hex');
+  const crafted = `first\n${secondDigest} second`;
+  fs.writeFileSync(path.join(root, crafted), 'first bytes');
+  const one = readSourceIdentity({ checkoutRoot: root });
+  fs.unlinkSync(path.join(root, crafted));
+  fs.writeFileSync(path.join(root, 'first'), 'first bytes'); fs.writeFileSync(path.join(root, 'second'), 'second bytes');
+  const two = readSourceIdentity({ checkoutRoot: root });
+  expect(two.identity.untrackedDigest).not.toBe(one.identity.untrackedDigest);
+});
+
+it.skipIf(process.platform === 'win32')('actual progression producer captures changed Unicode/newline bytes after an unchanged no-op', async () => {
+  // The SQLite/Ruflo fixture is a disclosed persistence seam; Git and the producer/hook are real.
+  const { adoptedProject, fakeRuflo, rows, cleanup } = await import('../helpers/continuity-fixture.mjs');
+  const { runSessionSnapshotHook } = await import('../../plugin/scripts/session-snapshot-hook.mjs');
+  const { ProjectProgressionStore } = await import('../../plugin/scripts/project-progression-store.mjs');
+  const f = adoptedProject(), cli = fakeRuflo(f.home);
+  const git = (...args) => execFileSync('git', ['-c', 'user.name=fixture', '-c', 'user.email=fixture@invalid', ...args], { cwd: f.dir });
+  try {
+    git('init', '-q'); git('config', 'core.quotePath', 'true');
+    fs.writeFileSync(path.join(f.dir, 'tracked.mjs'), 'export const value=1;\n'); git('add', 'tracked.mjs'); git('commit', '-qm', 'private fixture');
+    const names = ['café-☃.mjs', 'line\nbreak.mjs']; names.forEach(name => fs.writeFileSync(path.join(f.dir, name), 'first bytes'));
+    const env = { ...f.env, RUVNET_BRAIN_HOME: path.join(f.home, 'brain'), RUVNET_RUFLO_CWD_ROOT: path.join(f.home, 'scratch') };
+    const run = () => runSessionSnapshotHook(f.dir, 'Stop', { env, host: 'codex', budgetMs: 8000,
+      rawInput: JSON.stringify({ session_id: 'fixture-only-source-identity', hook_event_name: 'Stop', cwd: f.dir }),
+      makeStoreFactory: () => options => new ProjectProgressionStore({ ...options, rufloBinary: cli.bin }) });
+    expect(run().progressionCaptured).toBe(true);
+    expect(run().skipped).toMatch(/no-op capture/);
+    for (const [index, name] of names.entries()) {
+      const before = JSON.parse(rows(path.join(f.dir, '.swarm/memory.db'), 'project-progression').at(-1).content);
+      fs.writeFileSync(path.join(f.dir, name), `changed bytes ${index}`);
+      const changed = run(); expect(changed.progressionCaptured, JSON.stringify(changed)).toBe(true);
+      const snapshots = rows(path.join(f.dir, '.swarm/memory.db'), 'project-progression').map(row => JSON.parse(row.content));
+      const after = snapshots.at(-1); expect(after.sourceIdentity.head).toBe(before.sourceIdentity.head);
+      expect(after.sourceIdentity.untrackedDigest).not.toBe(before.sourceIdentity.untrackedDigest);
+      expect(changed.receipt.readbackDigest).toBe(after.payloadDigest);
+    }
   } finally { cleanup(); }
 });

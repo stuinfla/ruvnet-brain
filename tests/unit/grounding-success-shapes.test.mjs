@@ -79,6 +79,9 @@ function writeTranscript(w, result) {
     { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: result }] } },
     { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Ruflo ships AgentDB-backed memory.' }] } },
   ];
+  // These transcript rows are constructed native-schema fixtures; the callback envelope is captured.
+  for (const row of rows) Object.assign(row, { sessionId: 'sess-1', cwd: w.cwd, promptId: 'p1' });
+  rows[0].uuid = 'constructed-current-user-record';
   fs.writeFileSync(w.transcript, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
 }
 /** UserPromptSubmit marker, then the REAL Stop payload shape, through the real gate. */

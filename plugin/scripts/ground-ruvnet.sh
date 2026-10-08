@@ -429,7 +429,14 @@ if [ -s "$VCACHE" ]; then
     # refresh, and npx @latest already pulled it), stay silent — never advise a downgrade.
     [ -n "$INST" ] && [ -n "$LATEST" ] && ver_lt "$INST" "$LATEST" && OUTDATED="$OUTDATED $PKG(${INST} -> ${LATEST})"
   done < "$VCACHE"
-  if [ -n "$OUTDATED" ]; then
+  # Project membership alone is not a request to discuss stack maintenance.
+  STACK_CURRENCY_REQUEST=0
+  if printf '%s' "$TEXT" | grep -qiE '\b(ruflo|claude-flow|ruvnet|ruvector|rvf|stack)\b' \
+    && printf '%s' "$TEXT" | grep -qiE '\b(updat(e|es|ing)|upgrad(e|es|ing)|versions?|outdated|currency)\b|up[- ]to[- ]date|\bcheck[[:space:]]+(my[[:space:]]+|our[[:space:]]+|the[[:space:]]+)?(ruflo|stack)[[:space:]]*([?!.]|$)' \
+    && ! printf '%s' "$TEXT" | grep -qiE '\b(reply|respond|answer|output|return)\b.{0,80}\b(exact(ly)?|only|literal(ly)?)\b|\b(exact(ly)?|only|literal(ly)?)\b.{0,80}\b(reply|respond|answer|output|return)\b'; then
+    STACK_CURRENCY_REQUEST=1
+  fi
+  if [ -n "$OUTDATED" ] && [ "$STACK_CURRENCY_REQUEST" -eq 1 ]; then
     { echo "[RuvNet Brain — stack updates available:$OUTDATED]"
       echo "Mention this ONCE per session, briefly and helpfully (\"your ruflo is a version behind — want me to update it?\"); if already mentioned this session, stay silent."
     } | out_to 4-2-stack

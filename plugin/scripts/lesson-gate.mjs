@@ -86,6 +86,7 @@ import {
   TRIGGERS,
 } from './lesson-store.mjs';
 import { looksLikeOutsideRepoMutation } from './lesson-command-scope.mjs';
+import { resolveProjectStore } from './project-store-resolver.mjs';
 import { buildLessonPresentation } from './lesson-presentation.mjs';
 export { looksLikeOutsideRepoMutation } from './lesson-command-scope.mjs';
 
@@ -255,9 +256,9 @@ const gateState = event ? readGateState() : {};
  * ruvnet-brain's stop-and-report habit on every prompt. The owner's report was blunt: "I've got
  * other repos that are using this thing, and they're breaking."
  *
- * The rule is ADR-029's own promotion bar applied at read time: cross-project rediscovery is what
- * makes a lesson universal. Taught in ONE project, it is local knowledge — real, worth keeping, and
- * not entitled to speak elsewhere. Taught in two or more, it has earned the right to travel.
+ * Labels and rediscovery counts are observations, not universal authority. Apply only to a
+ * canonically identified project. Historical ambiguous rows remain stored, without cross-project
+ * policy promotion; this gate has no verified universal-authority receipt consumer.
  *
  * This is P3 (nudge, never force) and P4 (the user is the arbiter) applied to OUR OWN footprint:
  * the fastest way to make someone uninstall a nudge is to nudge them about something that has
@@ -271,34 +272,23 @@ const HERE = (() => {
     if (up === d) { d = process.cwd(); break; }
     d = up;
   }
-  return path.basename(d);
+  return d;
 })();
-/**
- * A "suffix match" for project names, bounded so it cannot fire on a bare shared tail. `a` matches
- * `b` when `b` is a whole path/name SEGMENT suffix of `a` — the character immediately before it must
- * be a separator, never a mid-word letter. Without this, "Sentry" matched inside "WhitSentry" and any
- * project name that merely happens to end another's, which is the exact cross-project leak the
- * 2026-07-22 project-scope fix (this same function, below) was written to close.
- */
-const segmentSuffixMatch = (a, b) => {
-  if (a === b) return true;
-  if (a.length <= b.length || !a.endsWith(b)) return false;
-  return /[-_/]/.test(a[a.length - b.length - 1]);
+const projectIdentities = new Map();
+const projectIdentity = directory => {
+  if (typeof directory !== 'string' || !path.isAbsolute(directory)) return null;
+  if (!projectIdentities.has(directory)) {
+    try { projectIdentities.set(directory, resolveProjectStore({ projectDir: directory, gitTimeoutMs: 100, deadlineAt: Date.now() + 300 }).projectIdentity.id); }
+    catch { projectIdentities.set(directory, null); }
+  }
+  return projectIdentities.get(directory);
 };
-
-/** Does this lesson belong to the project we are standing in? Match is loose on purpose — stored
- *  names carry prefixes like `Code-` that the directory name does not — but bounded to a real
- *  delimiter so it cannot match a bare, accidental shared suffix between unrelated projects. */
+const hereIdentity = projectIdentity(HERE);
+/** Canonical paths resolve repository identity, including linked worktrees; labels do not. */
 const isHome = (l) => {
   const ps = Array.isArray(l.projects) ? l.projects : [];
-  if (!ps.length) return true;                       // unscoped: applies anywhere, by declaration
-  return ps.some((p) => {
-    const n = String(p).replace(/^Code-/, '');
-    return n === HERE || String(p) === HERE
-      || segmentSuffixMatch(HERE, n) || segmentSuffixMatch(n, HERE);
-  });
+  return Boolean(hereIdentity && ps.some(p => projectIdentity(p) === hereIdentity));
 };
-const isUniversal = (l) => Array.isArray(l.projects) && l.projects.length >= 2;
 
 // Apply the mutate-machine predicate defined above. `mutate-machine` is requested for EVERY Bash
 // call (plugin/scripts/lesson-hooks.sh:98) — it is the ONLY trigger the dispatcher fires unconditionally
@@ -313,10 +303,8 @@ const effectiveTriggers = command === null
 const seen = new Set();
 const candidates = [];
 for (const t of effectiveTriggers) {
-  for (const l of lessonsFor(t, lessons.filter((l) => isHome(l) || isUniversal(l)), { limit: 3 })) {
+  for (const l of lessonsFor(t, lessons.filter(isHome), { limit: 3 })) {
     if (seen.has(l.id)) continue;
-    // Away from home, only a lesson with cross-project evidence may speak.
-    if (!isHome(l) && !isUniversal(l)) continue;
     seen.add(l.id); candidates.push(l);
   }
 }

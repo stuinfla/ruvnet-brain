@@ -175,7 +175,7 @@ describe('ADR-067 — the structural invariant, read from hooks.json', () => {
     expect(blockingIds.size, 'a parse failure here would make the invariant vacuous').toBeGreaterThan(0);
   });
 
-  it('exactly one active blocking PreToolUse registration composes the mandatory policies', () => {
+  it('exactly one active blocking PreToolUse registration matches each protected tool', () => {
     const refusers = (HOOKS.hooks.PreToolUse || [])
       .flatMap((entry) => entry.hooks.map((h) => ({ matcher: entry.matcher, id: idOf(h.command) })))
       .filter((h) => blockingIds.has(h.id));
@@ -191,8 +191,11 @@ describe('ADR-067 — the structural invariant, read from hooks.json', () => {
     // each other — a literal here is what kept this file red across a plane change.
     const declared = continuityRegistrations('claude')
       .filter((r) => r.event === 'PreToolUse' && blockingIds.has(r.id)).map((r) => r.id).sort();
-    expect(declared, 'passive captures cannot substitute for the mandatory decision gate').toHaveLength(1);
-    expect(refusers, 'the active plane must retain exactly one blocking registration').toHaveLength(1);
+    expect(declared, 'write and shell routes require their disjoint decision-gate bindings').toHaveLength(2);
+    expect(refusers, 'the active plane must retain both disjoint blocking registrations').toHaveLength(2);
+    for (const tool of ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'apply_patch', 'Bash'])
+      expect(refusers.filter(row => new RegExp(row.matcher).test(tool)), tool).toHaveLength(1);
+    expect(refusers.filter(row => new RegExp(row.matcher).test('search_ruvnet'))).toHaveLength(0);
     expect(refusers.map((r) => r.id).sort(), 'the refusers registered in hooks.json must be exactly the PreToolUse handlers the plane declares')
       .toEqual(declared);
   });

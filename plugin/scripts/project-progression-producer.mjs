@@ -95,7 +95,10 @@ function committedHeads(canonicalAgentDbPath, projectIdentity, options = {}) {
     for (const key of reader.listKeys(PROGRESSION_NAMESPACE)) {
       const content = reader.readContent(PROGRESSION_NAMESPACE, key);
       if (typeof content !== 'string') continue;
-      try { snapshots.push(JSON.parse(content)); } catch { /* a malformed row is the restore's problem */ }
+      let snapshot;
+      try { snapshot = JSON.parse(content); } catch { /* malformed JSON is not a verified prior */ continue; }
+      if (snapshot?.eventKey !== key) throw new Error('prior progression exact key/payload identity mismatch');
+      snapshots.push(snapshot);
     }
     return snapshots;
   }, options);
@@ -141,7 +144,7 @@ export function buildProjectProgression({
   source.identity.capturePath = fs.realpathSync.native(projectDir);
   const ledger = readWorkLedger({ projectId: resolution.projectIdentity.id, env });
   const note = readOwnerNote(() => ownerNoteRows(resolution.canonicalAgentDbPath, path.basename(resolution.projectRoot), options));
-  const transcript = readTranscriptReference(payload.transcript_path, { host });
+  const transcript = readTranscriptReference(payload.transcript_path, { host, payload, projectDir, deadlineAt, signal });
   const { heads, state: priorState } = committedHeads(resolution.canonicalAgentDbPath, resolution.projectIdentity, options);
   checkDeadline();
 
@@ -242,7 +245,10 @@ export function buildProjectProgression({
     },
   };
 
-  const privacy = resolveTurnDb({ projectDir, brainHome: env.RUVNET_BRAIN_HOME || path.join(env.HOME || os.homedir(), '.cache', 'ruvnet-brain') });
+  checkDeadline();
+  const privacy = resolveTurnDb({ projectDir, brainHome: env.RUVNET_BRAIN_HOME || path.join(env.HOME || os.homedir(), '.cache', 'ruvnet-brain'),
+    deadlineAt, signal, gitTimeoutMs: Math.max(1, Math.floor(Math.min(1000, deadlineAt - Date.now()))) });
+  checkDeadline();
   // Pure derivation may run before adoption; the capture boundary still refuses an absent store.
   if (privacy.skipped && !privacy.skipped.startsWith('no project memory db')) return { skipped: { reason: privacy.skipped } };
   if ([...ledger.open, ...ledger.done].some((text) => maskExcludedPaths(text, privacy.contentPathExcludes, projectDir) !== text)) throw new Error('content exclusion conflicts with immutable work-ledger plan binding');

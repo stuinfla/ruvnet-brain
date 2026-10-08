@@ -45,16 +45,18 @@ beforeAll(async () => {
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
 describe('lessons card states what the gate enforces', () => {
-  it('precondition: the gate really delivers a ratified imported-owner rule', () => {
+  it('precondition: current user policy is delivered and imported history stays quarantined', () => {
     const delivered = storeMod.lessonsFor('assert-fact', storeMod.loadLessons(store), { limit: 10 }).map((l) => l.id);
-    expect(delivered).toContain('IMP-ON');
+    expect(delivered).toContain('U1');
+    expect(delivered).not.toContain('IMP-ON');
     expect(delivered).not.toContain('IMP-CAND');
   });
 
-  it('a ratified imported rule is reported in force and switchable, not quarantined', () => {
+  it('ratified imported history stays visible and quarantined rather than counted as gate policy', () => {
     const out = consoleMod.gatherLessons();
     const byId = new Map(out.lessons.map((l) => [l.id, l]));
-    expect(byId.get('IMP-ON').quarantined).toBe(false);
+    expect(byId.get('IMP-ON').quarantined).toBe(true);
+    const prior=fs.readFileSync(store);expect(consoleMod.setLesson({id:'IMP-ON',action:'demote'}).ok).toBe(false);expect(fs.readFileSync(store).equals(prior)).toBe(true);
     expect(byId.get('IMP-ON').ratified).toBe(true);
     // An unratified import is still quarantined: it cannot be ratified and the gate ignores it.
     expect(byId.get('IMP-CAND').quarantined).toBe(true);
@@ -65,20 +67,27 @@ describe('lessons card states what the gate enforces', () => {
     const out = consoleMod.gatherLessons();
     const inForceListed = out.lessons.filter((l) => l.ratified && !l.demoted && !l.quarantined).length;
     expect(out.counts.active).toBe(inForceListed);
-    expect(out.counts.active).toBe(2);
-    expect(out.counts.quarantined).toBe(1);
+    expect(out.counts.active).toBe(1);
+    expect(out.counts.quarantined).toBe(2);
   });
 
-  it('switching the in-force imported rule off really stops the gate delivering it, and on restores it', () => {
+  it('current-user ratified policy demote and restore are an actual operational inverse', () => {
     const delivered = () => storeMod.lessonsFor('assert-fact', storeMod.loadLessons(store), { limit: 10 }).map((l) => l.id);
     // The exact verb the card's switch posts to /api/set-lesson.
-    const off = consoleMod.setLesson({ id: 'IMP-ON', action: 'demote' });
+    const off = consoleMod.setLesson({ id: 'U1', action: 'demote' });
     expect(off.ok, off.log).toBe(true);
-    expect(delivered()).not.toContain('IMP-ON');
-    const on = consoleMod.setLesson({ id: 'IMP-ON', action: 'restore' });
+    expect(delivered()).not.toContain('U1');
+    const on = consoleMod.setLesson({ id: 'U1', action: 'restore' });
     expect(on.ok, on.log).toBe(true);
-    expect(delivered()).toContain('IMP-ON');
+    expect(delivered()).toContain('U1');
+    expect(delivered()).not.toContain('IMP-ON');
     // and ratification stays refused for imported history
     expect(consoleMod.setLesson({ id: 'IMP-CAND', action: 'ratify' }).ok).toBe(false);
   });
+});
+
+it('candidate ratification refuses before lesson bytes change and is not an offered UI action',()=>{
+ const before=fs.readFileSync(store),out=consoleMod.gatherLessons();
+ // Add a current-user candidate through the fixture document, not runtime policy.
+ const data=JSON.parse(before);data.lessons.push(row('PRIVATE-CAND','current-user','candidate'));fs.writeFileSync(store,JSON.stringify(data));const prior=fs.readFileSync(store);const result=consoleMod.setLesson({id:'PRIVATE-CAND',action:'ratify'});expect(result.ok).toBe(false);expect(result.log).toMatch(/inverse.*unavailable|unavailable.*inverse/i);expect(fs.readFileSync(store).equals(prior)).toBe(true);const visible=consoleMod.gatherLessons().lessons.find(lesson=>lesson.id==='PRIVATE-CAND');expect(visible.canRatify).toBe(false);expect(visible.ratificationUnavailableReason).toMatch(/inverse|prior/i);
 });

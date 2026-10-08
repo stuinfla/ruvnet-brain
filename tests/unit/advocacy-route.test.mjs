@@ -218,26 +218,44 @@ describe('lifecycle: every transition is observed at a boundary that is actually
     expect(s.minSamples).toBe(10);
   });
 
-  it('TEETH: past the floor, precision is a real number computed from the ledger', async () => {
-    // Ten delivered offers across ten sessions: the first seven accepted, the rest declined.
-    const prompts = FIXTURE.filter(([, , e]) => e !== null).map(([, p]) => p);
-    let applied = 0;
-    let resolved = 0;
-    for (let i = 0; resolved < 10 && i < 40; i++) {
-      const prompt = prompts[i % prompts.length];
-      const sid = `s${i}`;
-      const d = await offer(prompt, sid);
-      if (!d.candidate) continue;
-      const accept = applied < 7;
-      const word = accept ? `use ${d.candidate.capability}` : `no, skip ${d.candidate.capability}`;
-      const res = route.resolvePriorOffers(word, sid, { file: ledger() });
-      if (res.applied.length || res.dismissed.length) { resolved += 1; if (accept) applied += 1; }
+  it('TEETH: ten independently changed observed states meet the unchanged precision floor', async () => {
+    const ao = await import('../../scripts/advocacy-outcomes.mjs');
+    const observation = path.join(dir, 'observed-source.json');
+    const id = 'recommend:agentic-qe';
+    for (let i = 0; i < 10; i++) {
+      // Actual source fixture revisions, not repeated unchanged offers or edited counts.
+      fs.writeFileSync(observation, JSON.stringify({ sourceRevision: i, observedTests: i + 1 }));
+      const stateHash = ao.stateHashOf([fs.readFileSync(observation, 'utf8')]);
+      expect(ao.shouldStillOffer(id, { file: ledger(), stateHash })).toBe(true);
+      ao.record({ id, action: ao.ACTIONS.OFFERED, severity: 'normal', stateHash }, { file: ledger() });
+      expect(ao.shouldStillOffer(id, { file: ledger(), stateHash })).toBe(false);
+      const sid = `observed-${i}`;
+      const state = { sessions: { [sid]: { offers: [{ id, capability: 'agentic-qe', at: new Date().toISOString(), severity: 'normal' }] } } };
+      const accept = i < 8;
+      const res = route.resolvePriorOffers(accept ? 'use agentic-qe' : 'no, skip agentic-qe', sid, { file: ledger(), state });
+      expect(accept ? res.applied : res.dismissed).toEqual([id]);
     }
-    const s = route.summary({ file: ledger() });
-    expect(s.resolved).toBeGreaterThanOrEqual(10);
-    expect(s.sufficient).toBe(true);
-    expect(s.precision).toBeGreaterThan(0);
-    expect(s.precision).toBeLessThanOrEqual(1);
+    const summary = route.summary({ file: ledger() });
+    expect(summary.minSamples).toBe(10);
+    expect(summary.resolved).toBe(10);
+    expect(summary.sufficient).toBe(true);
+    expect(summary.precision).toBe(0.8);
+  });
+
+  it('unchanged delivered suggestions cannot manufacture adequate precision samples across sessions', async () => {
+    const first = await offer(P5, 'original');
+    expect(first.candidate).not.toBeNull();
+    expect(route.resolvePriorOffers('use agentic-qe', 'original', { file: ledger() }).applied).toEqual(['recommend:agentic-qe']);
+    for (let i = 0; i < 12; i++) {
+      const duplicate = await offer(P5, `duplicate-${i}`);
+      expect(duplicate.candidate).toBeNull();
+      expect(duplicate.reason).toBe('suppressed');
+    }
+    const summary = route.summary({ file: ledger() });
+    expect(summary.minSamples).toBe(10);
+    expect(summary.resolved).toBe(1);
+    expect(summary.sufficient).toBe(false);
+    expect(summary.precision).toBeNull();
   });
 });
 
@@ -303,5 +321,16 @@ describe('fail-open: a broken environment produces silence, never an exception a
       delete process.env.RUVNET_ADVOCACY_ROUTE_ROOTS;
       expect(a).toBe('installed');
     });
+  });
+});
+
+
+describe('P075 existing alternatives are usable choices with fit and tradeoffs', () => {
+  it.each(['ruvector', 'agentdb', 'ruflo', 'aidefence', 'agentic-qe', 'agentic-flow', 'rulake'])('names a concrete alternative to %s without imposing installation', capability => {
+    const candidate = route.buildCandidate({ prompt: 'private fixture task', match: { capability, intent: { id: 'fixture', fit: 'fixture' }, cues: [] }, availability: 'installed' });
+    expect(candidate.copy).toContain('Alternative:'); expect(candidate.copy).toMatch(/suits /);
+    expect(candidate.copy).toMatch(/but |without |delays /);
+    expect(candidate.copy).toContain(`Say 'use ${capability}' to proceed, or ignore this`);
+    expect(candidate.copy.split('\n')).toHaveLength(2); expect(candidate.copy.length).toBeLessThan(1500);
   });
 });

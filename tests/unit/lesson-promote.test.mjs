@@ -18,13 +18,19 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { makeLesson, demote, restore, saveLessons, loadLessons } from '../../plugin/scripts/lesson-store.mjs';
 import { collectLessons, analyze, renderBlock, applyPromotion } from '../../scripts/lesson-promote.mjs';
 
 let tmp;
-beforeEach(() => { tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'lesson-promote-'))); });
-afterEach(() => { fs.rmSync(tmp, { recursive: true, force: true }); });
+let priorStore;
+beforeEach(() => { tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'lesson-promote-')));
+  priorStore = process.env.RUVNET_LESSON_STORE; process.env.RUVNET_LESSON_STORE = path.join(tmp, 'isolated-lessons.json'); });
+afterEach(() => { fs.rmSync(tmp, { recursive: true, force: true });
+  if (priorStore === undefined) delete process.env.RUVNET_LESSON_STORE; else process.env.RUVNET_LESSON_STORE = priorStore; });
 
 /** Build a fake ~/.claude/projects tree. */
 function seed(projects) {
@@ -233,4 +239,73 @@ describe('demotion is sticky — a rejected theme is never re-proposed', () => {
     expect(analyze(lessons, { rejected: new Set() }).promotable.length)
       .toBe(analyze(lessons).promotable.length);
   });
+});
+
+
+describe('P037 durable schema-to-miner demotion', () => {
+  it('default mining honors make/demote/save/load without an injected rejection set and explicit restore reverses it', () => {
+    const file = path.join(tmp, 'lesson-store.json');
+    const prior = process.env.RUVNET_LESSON_STORE;
+    process.env.RUVNET_LESSON_STORE = file;
+    try {
+      const rows = [{ type: 'feedback', text: 'always verify and prove it works', project: 'a' },
+        { type: 'feedback', text: 'always verify and prove it works', project: 'b' }];
+      const lesson = makeLesson({ id: 'p037-theme', statement: 'Always verify and prove it works before claiming done.',
+        trigger: 'claim-done', enforcement: 'checklist', origin: 'model-inferred', status: 'candidate',
+        evidence: [{ observed: 'Fixture observed an unsupported completion assertion.' }],
+        projects: ['a', 'b'], themeKey: 'proof-before-done' });
+      expect(analyze(rows).promotable.some(t => t.key === lesson.themeKey)).toBe(true);
+      saveLessons(demote(lesson.id, [lesson]), file);
+      const read = loadLessons(file);
+      expect(read[0].demoted).toBe(true);
+      expect(read[0].themeKey).toBe('proof-before-done');
+      expect(analyze(rows).promotable.some(t => t.key === lesson.themeKey)).toBe(false);
+      saveLessons(restore(lesson.id, read), file);
+      expect(analyze(rows).promotable.some(t => t.key === lesson.themeKey)).toBe(true);
+      expect(() => makeLesson({ ...lesson, themeKey: '../foreign-theme' })).toThrow(/themeKey/);
+    } finally {
+      if (prior === undefined) delete process.env.RUVNET_LESSON_STORE;
+      else process.env.RUVNET_LESSON_STORE = prior;
+    }
+  });
+});
+
+
+describe('P037 ordinary producer and supported config-root miner', () => {
+  it('a real bridged correction needs no injected themeKey or lesson-store override to keep demotion sticky', () => {
+    const config = path.join(tmp, 'supported-config');
+    const script = `import {lessonFromRow} from ${JSON.stringify(new URL('../../plugin/scripts/lesson-bridge.mjs', import.meta.url).href)};
+      import {demote,saveLessons,loadLessons} from ${JSON.stringify(new URL('../../plugin/scripts/lesson-store.mjs', import.meta.url).href)};
+      import {analyze} from ${JSON.stringify(new URL('../../plugin/scripts/lesson-promote.mjs', import.meta.url).href)};
+      const l=lessonFromRow({key:'lesson-real-correction',content:'Always verify and prove it works before claiming done.',tags:'trigger:claim-done,enforce:checklist',provenance:'user_claim'}).lesson;
+      saveLessons(demote(l.id,[l]));
+      const hits=[{type:'feedback',text:'always verify and prove it works',project:'a'},{type:'feedback',text:'always verify and prove it works',project:'b'}];
+      console.log(JSON.stringify({stored:loadLessons()[0],reoffered:analyze(hits).promotable.some(t=>t.key==='proof-before-done')}));`;
+    const env = { ...process.env, RUVNET_CONFIG_ROOT: config, HOME: tmp };
+    delete env.RUVNET_LESSON_STORE;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], { env, encoding: 'utf8' });
+    expect(result.status, result.stderr).toBe(0);
+    const proof = JSON.parse(result.stdout);
+    expect(proof.stored.demoted).toBe(true);
+    expect(proof.stored.themeKeys).toContain('proof-before-done');
+    expect(proof.reoffered).toBe(false);
+    expect(fs.existsSync(path.join(config,'lessons.json'))).toBe(true);
+    expect(fs.existsSync(path.join(tmp,'.config','ruvnet-brain','lessons.json'))).toBe(false);
+  });
+});
+
+
+it('P037 actual migration producer derives canonical theme identity without injected theme metadata', () => {
+  const config=path.join(tmp,'migration-config');const fake=path.join(tmp,'fixture-ruflo.cjs');
+  fs.writeFileSync(fake, `#!/usr/bin/env node
+const a=process.argv.slice(2);const db=a[a.indexOf('--path')+1];
+const row={key:'lesson-verify-by-mechanism-not-instance',namespace:'ruvnet-brain',content:'Verify by the mechanism and user-visible effect.',updatedAt:1};
+console.log(JSON.stringify(a[1]==='retrieve'?row:db.endsWith('project.db')?[row]:[]));`);fs.chmodSync(fake,0o755);
+  const env={...process.env,HOME:tmp,RUVNET_CONFIG_ROOT:config,RUFLO_BIN:fake,
+    RUVNET_GLOBAL_MEMORY_DB:path.join(tmp,'global.db'),RUVNET_PROJECT_MEMORY_DB:path.join(tmp,'project.db')};
+  delete env.RUVNET_LESSON_STORE;
+  const run=spawnSync(process.execPath,[fileURLToPath(new URL('../../scripts/lesson-migrate-agentdb.mjs',import.meta.url)),'--apply'],{env,encoding:'utf8',timeout:10000});
+  expect(run.status,run.stderr).toBe(0);
+  const stored=JSON.parse(fs.readFileSync(path.join(config,'lessons.json'),'utf8')).lessons.find(l=>l.id==='L32');
+  expect(stored.themeKeys).toContain('proof-before-done');
 });

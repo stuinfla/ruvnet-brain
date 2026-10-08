@@ -55,7 +55,8 @@ export function evaluateCompletion({ root = ROOT, run = command,
       || receipt.coverage?.gistCurrent !== receipt.coverage?.gistTotal) {
       throw new Error('installed public corpus is incomplete');
     }
-    if (receipt.retrieval?.deltaCitationRate !== 1 || receipt.retrieval?.recallAt10 < 0.98
+    if (receipt.retrieval?.deltaCitationRate !== 1 || !Number.isFinite(receipt.retrieval?.recallAt10)
+      || receipt.retrieval.recallAt10 < 0.98 || receipt.retrieval.recallAt10 > 1
       || receipt.retrieval?.skipped !== 0 || receipt.retrieval?.unknown !== 0) {
       throw new Error('retrieval acceptance is incomplete');
     }

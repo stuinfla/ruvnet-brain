@@ -57,7 +57,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { getVersionTag, stripTag } from './version.mjs';
 import { auditRvfIndexes } from './rvf-index-audit.mjs';
-import { readRvfGenerations, validateSelectedRvfGenerations } from './rvf-generation.mjs';
+import { readRvfGenerations, validateSelectedRvfGenerations, projectSourceStore, sha256File } from './rvf-generation.mjs';
 import { validatePublicInventory } from './public-inventory.mjs';
 import { bindAssembledReleaseProjection, createReleaseProjection } from './release-projection.mjs';
 import { materializePublicInputs, SELECTION_FILE, validateSelectionReceipt } from './public-inputs.mjs';
@@ -318,8 +318,8 @@ function resolveModuleGraph(kbDir) {
  * one explicit list of selected records and the explicit release identity (algorithm step 6) — never
  * three independently-derived copies. `updaterConfig` is the finalized corpus's OWN SOURCE.json
  * (produced fresh by reconciliation), read as an explicit configuration ADAPTER: only its non-identity
- * updater fields (canonicalManifestUrl/canonicalBundleUrl/selfUpdate/sourceRepo/sourceDescribe/kbName)
- * are borrowed per store; `sourceCommit`/`builtUtc` are always bound from that store's own selected
+ * updater fields (canonicalManifestUrl/canonicalBundleUrl/selfUpdate/kbName)
+ * are borrowed per store; all four provenance fields are always bound from that store's own selected
  * generation record, never independently trusted from `updaterConfig`'s own copy (algorithm step 5:
  * an adapter, never a checkout-`SOURCE.stores` copy). Every `manifestEntries[i].builtFromSha` is
  * likewise derived directly from the selected generation (algorithm step 7) — there is no external
@@ -350,7 +350,9 @@ export function projectStoreViews({ selectedResults, identity, updaterConfig }) 
       bytes: generation.bytes,
       model: generation.model,
       dimensions: generation.dimensions,
+      sourceRepo: generation.sourceRepo ?? null,
       sourceCommit: generation.sourceCommit ?? null,
+      sourceDescribe: generation.sourceDescribe ?? null,
       builtUtc: generation.builtUtc,
     };
     if (kind !== 'repository') continue; // SOURCE.json and manifest rows are repository-only, exactly as forge-refresh.mjs's own SOURCE.json has always been.
@@ -358,18 +360,13 @@ export function projectStoreViews({ selectedResults, identity, updaterConfig }) 
     // Spread the corpus's own updater entry FIRST so every field kb/forge-update.mjs may read
     // (updateManaged, a per-store releaseTag, anything added later) survives; then bind the
     // identity fields from the selected generation, which always win.
-    sourceStores[name] = {
+    sourceStores[name] = projectSourceStore(name, ledgerStores[name], {
       ...updater,
-      kbName: updater.kbName || name,
-      sourceRepo: updater.sourceRepo || null,
-      sourceCommit: generation.sourceCommit ?? null,
-      sourceDescribe: updater.sourceDescribe || null,
-      builtUtc: generation.builtUtc,
       builder: updater.builder || config.builder || 'rvf-kb-forge',
       canonicalManifestUrl: updater.canonicalManifestUrl || null,
       canonicalBundleUrl: updater.canonicalBundleUrl || null,
       selfUpdate: updater.selfUpdate || `node forge-update.mjs ${name}`,
-    };
+    });
     manifestEntries.push({
       name, tier: result.tier, stars: result.stars,
       chunks: result.chunks, baseModel: result.baseModel, baseDims: result.baseDims,
@@ -631,7 +628,25 @@ async function assembleBundleImpl({ corpusDir, runtimeRoot, outDir, identity = {
   if (generationValidation.failures.length) {
     fail(`RVF generation ledger does not exactly bind selected roots:\n${generationValidation.failures.map((f) => `  ${f}`).join('\n')}`);
   }
-  const rvfIndexAudit = await auditRvfIndexes(discovered.map((name) => path.join(corpus, `${name}.big.rvf`)));
+  // The same canonical idmap bytes drive manifest/README and the public census. Observe them
+  // before opening RVFs: a runtime may create a missing idmap, which is not supplied corpus proof.
+  const chunkEvidence = new Map(discovered.map((name) => {
+    const file = path.join(corpus, `${name}.big.rvf.idmap.json`);
+    let map, bytes;
+    try { bytes = fs.readFileSync(file); map = JSON.parse(bytes.toString('utf8')); }
+    catch (error) {
+      // Preserve partial selection diagnostics, but do not let the SDK manufacture missing input.
+      // makeCopier's required-file gate below refuses the archive while this count stays unknown.
+      if (error.code === 'ENOENT') return [name, { chunks: null, sha256: null }];
+      fail(`${name}: canonical census idmap is unreadable (${error.message})`);
+    }
+    if (!map.idToLabel || typeof map.idToLabel !== 'object' || Array.isArray(map.idToLabel)) {
+      fail(`${name}: canonical census idmap has no valid idToLabel object`);
+    }
+    return [name, { chunks: Object.keys(map.idToLabel).length, sha256: crypto.createHash('sha256').update(bytes).digest('hex') }];
+  }));
+  const rvfIndexAudit = await auditRvfIndexes(discovered.filter(name => chunkEvidence.get(name).sha256 !== null)
+    .map((name) => path.join(corpus, `${name}.big.rvf`)));
   const missingIndexes = rvfIndexAudit.filter(({ state }) => state !== 'PASS');
   if (missingIndexes.length) {
     fail(`eligible RVFs lack persisted HNSW indexes:\n${missingIndexes.map((r) => `  ${path.basename(r.path)} vectors=${r.totalVectors}`).join('\n')}\nRepair with: node scripts/rvf-index-audit.mjs --repair`);
@@ -758,10 +773,16 @@ async function assembleBundleImpl({ corpusDir, runtimeRoot, outDir, identity = {
     const generation = ledgerIn.stores?.[name]
       || Object.entries(ledgerIn.stores || {}).find(([key]) => key.toLowerCase() === folded)?.[1];
     if (!generation) fail(`${name}: no generation record in the finalized corpus ledger`);
-    let chunks = null, model = null, dims = null;
+    const census = chunkEvidence.get(name);
+    const mapFile = path.join(corpus, `${name}.big.rvf.idmap.json`);
+    if (census.sha256 === null ? fs.existsSync(mapFile) : sha256File(mapFile) !== census.sha256) {
+      fail(`${name}: canonical census idmap changed after observation`);
+    }
+    const chunks = census.chunks;
+    let model = null, dims = null;
     try {
       const m = JSON.parse(fs.readFileSync(path.join(corpus, `${name}.meta.json`), 'utf8'));
-      chunks = m.entries ? Object.keys(m.entries).length : null; model = m.model; dims = m.dimensions;
+      model = m.model; dims = m.dimensions;
     } catch { /* meta.json missing is reported later, as a missing required bundle file */ }
     const hasSymbols = fs.existsSync(path.join(corpus, `${name}.symbols.json`));
     // The primer that actually SHIPS is the one the verified selection sealed, so this reports the
@@ -807,6 +828,10 @@ async function assembleBundleImpl({ corpusDir, runtimeRoot, outDir, identity = {
     const { name } = result;
     cp(`${name}.big.rvf`, out, { required: true, from: corpus });
     cp(`${name}.big.rvf.idmap.json`, out, { required: true, from: corpus });
+    const census = chunkEvidence.get(name);
+    if (census.sha256 !== null && sha256File(path.join(out, `${name}.big.rvf.idmap.json`)) !== census.sha256) {
+      fail(`${name}: canonical census idmap changed while copying into the candidate`);
+    }
     cp(`${name}.big.rvf.embed.json`, out, { required: true, from: corpus });
     cp(`${name}.passages.jsonl`, out, { required: true, from: corpus });
     cp(`${name}.meta.json`, out, { required: true, from: corpus });
@@ -1071,6 +1096,26 @@ node forge-ask.mjs --dir . --name ruvector --variant big --q "what is the RVF co
   try {
     const { extractZip } = await import('../kb/zip-extract.mjs');
     await extractZip(ZIP, extracted);
+    const packagedManifest = JSON.parse(fs.readFileSync(path.join(extracted, 'manifest.json'), 'utf8'));
+    const packagedReadme = fs.readFileSync(path.join(extracted, 'README.md'), 'utf8');
+    for (const result of selectedResults) {
+      const bytes = fs.readFileSync(path.join(extracted, `${result.name}.big.rvf.idmap.json`));
+      const census = chunkEvidence.get(result.name);
+      if (crypto.createHash('sha256').update(bytes).digest('hex') !== census.sha256
+        || Object.keys(JSON.parse(bytes.toString('utf8')).idToLabel).length !== census.chunks) {
+        fs.rmSync(ZIP, { force: true });
+        fail(`${result.name}: canonical census idmap changed in the exact archive`);
+      }
+      if (result.kind === 'repository') {
+        const entry = manifestEntries.find(row => row.name === result.name);
+        const packaged = packagedManifest.builtRepos.find(row => row.name === result.name);
+        if (packaged?.chunks !== census.chunks
+          || !packagedReadme.includes(`- **${result.name}** (${entry.tier}) — ${census.chunks} chunks`)) {
+          fs.rmSync(ZIP, { force: true });
+          fail(`${result.name}: exact archive census differs from its manifest or README`);
+        }
+      }
+    }
     const packagedRvfs = fs.readdirSync(extracted)
       .filter((name) => name.endsWith('.rvf')).sort().map((name) => path.join(extracted, name));
     const packagedAudit = await auditRvfIndexes(packagedRvfs);
