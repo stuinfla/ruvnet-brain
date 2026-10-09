@@ -38,7 +38,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { ensureStamp, hasStamp, stampInsertionPoint } from '../plugin/scripts/md-stamp.mjs';
+import { ensureStamp, hasStamp, stampInsertionPoint, atomicWriteSync } from '../plugin/scripts/md-stamp.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(HERE, '..');
@@ -118,7 +118,7 @@ function main() {
     const c = r.created && r.created !== r.updated ? `, created ${r.created}` : '';
     console.log(`  ${apply ? '[stamped] ' : '[would stamp]'} ${r.rel} — updated ${r.updated}${c} (derived-from-git, ${r.placement})`);
     if (apply) {
-      try { fs.writeFileSync(path.join(REPO_ROOT, r.rel), r.next); }
+      try { atomicWriteSync(path.join(REPO_ROOT, r.rel), r.next); }
       catch (e) { console.log(`  [failed]  ${r.rel}: ${e.message}`); }
     }
   }
