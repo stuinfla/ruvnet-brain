@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -80,6 +80,34 @@ describe('managed Markdown stamping through the actual hook body', () => {
     fs.writeFileSync(file, '# Concurrent edit\n');
     expect(writeStampIfUnchanged(file, original, stamped, observed)).toBe(false);
     expect(fs.readFileSync(file, 'utf8')).toBe('# Concurrent edit\n');
+  });
+  it('is ATOMIC: a write never lands via truncate-in-place — it never touches the real path directly', () => {
+    const file = write('atomic.md', '# Original\n');
+    const original = fs.readFileSync(file, 'utf8');
+    const observed = fs.statSync(file);
+    const stamped = computeManagedStamp(original, { updated: observed.mtime.toISOString() });
+    const writeFileSync = vi.spyOn(fs, 'writeFileSync');
+    let outcome;
+    try { outcome = writeStampIfUnchanged(file, original, stamped, observed); }
+    finally {
+      expect(writeFileSync).not.toHaveBeenCalled(); // assert BEFORE mockRestore(), which clears call history
+      writeFileSync.mockRestore();
+    }
+    expect(outcome).toBe(true);
+    expect(fs.readFileSync(file, 'utf8')).toBe(stamped);
+    expect(fs.readdirSync(path.dirname(file))).toEqual(['atomic.md']); // no stray temp sibling
+  });
+  it('ROUND-TRIP PROOF: a kill between the temp write and the rename leaves the original byte-for-byte intact', () => {
+    const file = write('torn.md', '# Original\n');
+    const original = fs.readFileSync(file, 'utf8');
+    const observed = fs.statSync(file);
+    const stamped = computeManagedStamp(original, { updated: observed.mtime.toISOString() });
+    const rename = vi.spyOn(fs, 'renameSync').mockImplementation(() => { throw new Error('injected rename failure — simulated kill'); });
+    try {
+      expect(() => writeStampIfUnchanged(file, original, stamped, observed)).toThrow('injected rename failure');
+    } finally { rename.mockRestore(); }
+    expect(fs.readFileSync(file, 'utf8')).toBe(original); // never torn, never truncated
+    expect(fs.readdirSync(path.dirname(file))).toEqual(['torn.md']); // the dangling temp file was cleaned up
   });
   it('does not need timestamp restoration to remain idempotent after its own write', () => {
     const file = write('mtime.md', '# Timestamp\n');

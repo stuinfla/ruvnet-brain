@@ -250,6 +250,27 @@ export function computeManagedStamp(content, { updated, created = null } = {}) {
   return out;
 }
 
+/**
+ * Write `content` to `file` as: a sibling temp file, fsynced, then `renameSync`d over the real
+ * path (POSIX atomic within one directory) — never a truncate-in-place `fs.writeFileSync(file, …)`.
+ * Any failure before the rename leaves the original at `file` byte-for-byte untouched; a kill,
+ * ENOSPC, or EIO mid-write can never leave it torn or zero-length. Shared by every caller in this
+ * repo that refreshes a document it does not own (a host project's own `.md` file, here and in
+ * `scripts/stamp-sweep.mjs`) — a swallowing `catch` around the write is only safe to swallow
+ * because of this guarantee.
+ */
+export function atomicWriteSync(file, content) {
+  const tmp = `${file}.ruvnet-md-stamp-tmp-${process.pid}`;
+  const fd = fs.openSync(tmp, 'w', 0o600);
+  try { fs.writeSync(fd, content); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+  try {
+    fs.renameSync(tmp, file);
+  } catch (e) {
+    try { fs.unlinkSync(tmp); } catch { /* best effort — the real file is untouched either way */ }
+    throw e;
+  }
+}
+
 /** Avoid overwriting a file changed since the hook's read. Session leases still govern writers. */
 export function writeStampIfUnchanged(file, original, stamped, observed) {
   if (stamped === original) return false;
@@ -257,7 +278,7 @@ export function writeStampIfUnchanged(file, original, stamped, observed) {
   if (current.dev !== observed.dev || current.ino !== observed.ino
     || current.mtimeMs !== observed.mtimeMs || current.ctimeMs !== observed.ctimeMs
     || fs.readFileSync(file, 'utf8') !== original) return false;
-  fs.writeFileSync(file, stamped);
+  atomicWriteSync(file, stamped);
   return true;
 }
 
