@@ -109,6 +109,27 @@ describe('managed Markdown stamping through the actual hook body', () => {
     expect(fs.readFileSync(file, 'utf8')).toBe(original); // never torn, never truncated
     expect(fs.readdirSync(path.dirname(file))).toEqual(['torn.md']); // the dangling temp file was cleaned up
   });
+  it('MANAGED-BOUNDARY: preserves the host file\'s existing permission mode across a stamp refresh', () => {
+    const file = write('mode.md', '# Original\n');
+    fs.chmodSync(file, 0o640);
+    const original = fs.readFileSync(file, 'utf8');
+    const observed = fs.statSync(file);
+    const stamped = computeManagedStamp(original, { updated: observed.mtime.toISOString() });
+    expect(writeStampIfUnchanged(file, original, stamped, observed)).toBe(true);
+    expect(fs.statSync(file).mode & 0o777).toBe(0o640); // not reset to the temp file's own default mode
+  });
+  it('MANAGED-BOUNDARY: stamps through a symlink without detaching it from its target', () => {
+    const real = write('real-target.md', '# Original\n');
+    const link = path.join(root, 'link.md');
+    fs.symlinkSync(real, link);
+    const original = fs.readFileSync(link, 'utf8');
+    const observed = fs.statSync(link); // follows the link, like the hook's own main() does
+    const stamped = computeManagedStamp(original, { updated: observed.mtime.toISOString() });
+    expect(writeStampIfUnchanged(link, original, stamped, observed)).toBe(true);
+    expect(fs.lstatSync(link).isSymbolicLink()).toBe(true); // the link itself survives
+    expect(fs.readFileSync(real, 'utf8')).toBe(stamped); // the real target received the stamp
+    expect(fs.readFileSync(link, 'utf8')).toBe(stamped); // read through the link agrees
+  });
   it('does not need timestamp restoration to remain idempotent after its own write', () => {
     const file = write('mtime.md', '# Timestamp\n');
     const prior = fs.statSync(file).mtimeMs;

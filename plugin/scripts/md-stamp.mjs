@@ -253,18 +253,32 @@ export function computeManagedStamp(content, { updated, created = null } = {}) {
 /**
  * Write `content` to `file` as: a sibling temp file, fsynced, then `renameSync`d over the real
  * path (POSIX atomic within one directory) — never a truncate-in-place `fs.writeFileSync(file, …)`.
- * Any failure before the rename leaves the original at `file` byte-for-byte untouched; a kill,
- * ENOSPC, or EIO mid-write can never leave it torn or zero-length. Shared by every caller in this
- * repo that refreshes a document it does not own (a host project's own `.md` file, here and in
+ * Any failure before the rename leaves the original byte-for-byte untouched; a kill, ENOSPC, or
+ * EIO mid-write can never leave it torn or zero-length. Shared by every caller in this repo that
+ * refreshes a document it does not own (a host project's own `.md` file, here and in
  * `scripts/stamp-sweep.mjs`) — a swallowing `catch` around the write is only safe to swallow
  * because of this guarantee.
+ *
+ * TWO THINGS A NAIVE temp-then-rename GETS WRONG, both handled here:
+ *  - `fs.renameSync` does NOT follow a symlink at `file` — it replaces the symlink entry itself,
+ *    silently detaching it from its target (which `writeFileSync` never did: it always followed
+ *    the link and edited the target in place, exactly like this function's own caller already
+ *    reads/stats through the link). Resolving to `fs.realpathSync(file)` first and renaming onto
+ *    THAT path keeps the symlink intact and stamps the same file the hook actually observed.
+ *  - the new temp file is a NEW inode with its own (umask-shaped) mode, and rename does not copy
+ *    permission bits from the old inode — left alone, every stamp refresh would silently reset an
+ *    arbitrary host file's mode. `fchmodSync` to the original mode before the rename preserves it.
  */
 export function atomicWriteSync(file, content) {
-  const tmp = `${file}.ruvnet-md-stamp-tmp-${process.pid}`;
-  const fd = fs.openSync(tmp, 'w', 0o600);
-  try { fs.writeSync(fd, content); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+  let target = file;
+  try { target = fs.realpathSync(file); } catch { /* nothing to resolve yet — write at the given path */ }
+  let mode = 0o600;
+  try { mode = fs.statSync(target).mode & 0o777; } catch { /* no existing file — default mode is fine */ }
+  const tmp = path.join(path.dirname(target), `${path.basename(target)}.ruvnet-md-stamp-tmp-${process.pid}`);
+  const fd = fs.openSync(tmp, 'w', mode);
+  try { fs.fchmodSync(fd, mode); fs.writeSync(fd, content); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
   try {
-    fs.renameSync(tmp, file);
+    fs.renameSync(tmp, target);
   } catch (e) {
     try { fs.unlinkSync(tmp); } catch { /* best effort — the real file is untouched either way */ }
     throw e;
