@@ -3,7 +3,7 @@ id: ADR-068
 title: The Dream Machine runs this repo's nights — evaluation is not promotion
 status: Accepted
 date: 2026-08-19
-updated: 2026-09-04
+updated: 2026-10-09
 authors: [Stuart Kerr, Claude Code]
 tags: [automation, evaluation, nightly, self-improvement, promotion-gate]
 supersedes: []
@@ -135,6 +135,8 @@ bootstrap prompt (recommended over a frozen prompt, so the schedule can never dr
 committed config).
 
 ## Currency log
+
+| 2026-10-09 (SLOT 4) | Night ran deep `memory-durability`, scans `managed-boundary` + `round-trip-proof`, and filed candidate PR `dream/2026-10-09-memory-durability-md-stamp-atomicity` (no issue — a verified local fix, per the ISSUE DISPOSITION OVERRIDE). Finding: `plugin/scripts/md-stamp.mjs`'s live `PostToolUse` hook wrote a refreshed stamp into a host project's own `.md` file with a bare in-place `fs.writeFileSync`, risking a torn/corrupted host file on a kill/`ENOSPC`/`EIO`, silently (an advisory `catch` hid any failure). Fixed via a shared `atomicWriteSync()` (temp file + fsync + rename), also adopted by `scripts/stamp-sweep.mjs`. An independent adversarial critic then found two real regressions in the first version of that fix — a destination symlink got detached from its target, and the new temp file's mode replaced the host file's original permission bits — both reproduced as failing tests and fixed in a second commit before the PR opened; a second independent review pass re-audited the fix and returned CLEAR. Re-checked prior nights' fates via GitHub MCP, not assumed: exactly 5 `dream/*` PRs have ever merged (#143, #148, #150, #178, #215), the last on 2026-08-31 — 40 days, 90 opened all-time, 49 still open as of tonight. Already flagged in open issue #410 (2026-10-06, no human action in the 3 days since); this session did not duplicate that issue. `autoMerge: false` held; draft PR awaiting human review. |
 
 | 2026-08-30 | Reviewed against release candidate 4.3.3: the nightly ledger status vocabulary was corrected to the engine's yes/no/blocked contract; auto-merge remains disabled. | 1beedaa |
 
