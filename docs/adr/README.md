@@ -1,5 +1,5 @@
 
-Updated: 2026-10-05 17:05:19 EDT | Version 1.1.2
+Updated: 2026-10-10 05:05:00 EDT | Version 1.1.3
 Created: 2026-06-29 00:00:00 EDT
 > **Before writing or reviewing any ADR, read [`../PRINCIPLES.md`](../PRINCIPLES.md).**
 > An ADR that contradicts a principle is wrong, and the contradiction is the finding.
@@ -117,3 +117,4 @@ line), first clause only — see each ADR for the full, dated status history.
 | [0101](0101-agentdb-first.md) | Canonical AgentDB recall before every nontrivial prompt | Accepted |
 | [0102](0102-completion-and-closure-ledger.md) | ADR-102 — Completion and the closure ledger | Proposed |
 | [0103](0103-routing-architecture-review-lock.md) | Routing architecture qualification requires a current finite source review | Accepted |
+| [0104](0104-unified-developer-update-owner.md) | One installed-owner update coordinator | Accepted |

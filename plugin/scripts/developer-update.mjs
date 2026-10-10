@@ -293,6 +293,10 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
   }
 }
 export async function developerUpdateCli(args = process.argv.slice(2)) {
+  if (args.includes('--help') || args.includes('-h')) {
+    console.log('Usage: ruvnet-brain-update [--check|--apply] [--channel latest|alpha] [--scope ruvnet|all]');
+    return;
+  }
   let mode = 'apply'; const override = readDeveloperUpdateConfig();
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--check' || args[i] === '--dry-run') mode = 'check';
