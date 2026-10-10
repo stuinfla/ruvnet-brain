@@ -9,6 +9,7 @@ import { pathToFileURL } from 'node:url';
 import { cmpVersion as compare, selectTag, FAMILY, PLUGIN_MARKETPLACES, REVIEWED_INSTALL_SCRIPTS } from './developer-update-policy.mjs';
 import { acquireDeveloperLock, sharedLockStatus } from './developer-update-lock.mjs';
 import { maintenance } from './developer-update-maintenance.mjs';
+import { cleanupNpxDuplicates } from './developer-update-cleanup.mjs';
 export { compare, selectTag, sharedLockStatus };
 const HOME = os.homedir();
 const PREFIX = path.join(HOME, '.npm-global');
@@ -270,7 +271,6 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
     if (exists(path.join(paths.brainHome, 'kb/forge-update.mjs'))) receipt.knowledge = knowledge(run, mode === 'check', receipt.runId, { brainHome: paths.brainHome, root, node: process.execPath });
     else receipt.notes.push('Brain corpus absent; fresh knowledge install excluded');
     receipt.maintenance = await maintenance(config, run, mode === 'check', { home, brainHome: paths.brainHome, locate, node: process.execPath, progress: result => { receipt.maintenance = result; atomic(paths.receipt, receipt); } });
-    const { cleanupNpxDuplicates } = await import('./developer-update-cleanup.mjs');
     receipt.cleanup = cleanupNpxDuplicates({ home, globalRoot: root, enabled: config.cleanup && mode === 'apply', run });
     receipt.after = discover(root, prefix, config.scope);
     receipt.state = mode === 'check' ? 'checked' : 'completed'; receipt.ok = true;
