@@ -5,6 +5,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
+import { EXECUTION_MODULES } from '../plugin/scripts/developer-update-policy.mjs';
 import { applyNightlyChoice, nightlyStatus, NIGHTLY_LABEL } from './nightly-controller.mjs';
 import { readDeveloperUpdateConfig, readDeveloperUpdateReceipt,
   writeDeveloperUpdateConfig, sharedLockStatus, atomic } from '../plugin/scripts/developer-update.mjs';
@@ -17,10 +18,7 @@ const alive = pid => {
 };
 export function coordinatorSourceIdentity(runner) {
   const directory = path.dirname(runner);
-  return { sourceSha256: hash(runner), sourceSnapshot: Object.fromEntries([
-    'developer-update.mjs', 'developer-update-policy.mjs', 'developer-update-lock.mjs',
-    'developer-update-maintenance.mjs', 'developer-update-cleanup.mjs',
-  ].map(name => [name, hash(name === 'developer-update.mjs' ? runner : path.join(directory, name))])) };
+  return { sourceSha256: hash(runner), sourceSnapshot: Object.fromEntries(EXECUTION_MODULES.map(name => [name, hash(name === 'developer-update.mjs' ? runner : path.join(directory, name))])) };
 }
 export function validUpdateChannel(channel) { return channel === 'latest' || channel === 'alpha'; }
 export function createSuiteUpdater({ home = os.homedir(), brainHome = path.join(home, '.cache/ruvnet-brain'),

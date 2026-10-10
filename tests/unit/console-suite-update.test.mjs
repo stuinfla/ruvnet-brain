@@ -11,6 +11,7 @@ beforeEach(() => {
   home = fs.mkdtempSync(path.join(os.tmpdir(), 'rnbc-coordinator-')); brainHome = path.join(home, '.cache/ruvnet-brain');
   runner = path.join(home, 'developer-update.mjs'); fs.writeFileSync(runner, '// fake runner never executed');
   for (const name of ['policy', 'lock', 'maintenance', 'cleanup']) fs.writeFileSync(path.join(home, `developer-update-${name}.mjs`), `// fake ${name}`);
+  fs.writeFileSync(path.join(home, 'plugin-artifact-proof.mjs'), '// fake artifact verifier');
   configFile = path.join(brainHome, 'developer-update-config.json'); receiptFile = path.join(brainHome, 'nightly-suite-update.json');
   write(configFile, { channel: 'latest', scope: 'ruvnet', cleanup: false, homebrew: false, managedCallback: 'preserved' });
   count = 0; enrolled = 0; mirrored = 0; events = []; enrollmentOk = true; lockState = 'idle'; child = new EventEmitter(); child.pid = 999999; child.unref = () => {};
@@ -82,6 +83,14 @@ describe('RNBC coordinated update adapter', () => {
   it('refuses a helper-module mismatch even when the top-level source and PID match', () => {
     adapter.start('latest'); const result = receipt(); result.sourceSnapshot['developer-update-policy.mjs'] = 'changed-helper';
     write(receiptFile, result); child.emit('exit', 0); expect(adapter.state().status).toBe('failed');
+  });
+  it('rejects a changed artifact-verifier digest in a successful child receipt', () => {
+    adapter.start('latest'); const result = receipt(); result.sourceSnapshot['plugin-artifact-proof.mjs'] = 'changed-verifier';
+    write(receiptFile, result); child.emit('exit', 0); expect(adapter.state().status).toBe('failed');
+  });
+  it('does not launch when the artifact-verifier module is absent', () => {
+    fs.unlinkSync(path.join(home, 'plugin-artifact-proof.mjs'));
+    expect(adapter.start('latest').status).toBe(500); expect(count).toBe(0);
   });
   it('records failed spawn without claiming the scheduled policy completed', () => {
     adapter.start('latest'); child.emit('error', Error('launch refused'));
