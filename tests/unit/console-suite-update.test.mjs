@@ -66,6 +66,10 @@ describe('RNBC coordinated update adapter', () => {
     write(receiptFile, receipt({ state: 'failed', ok: false, error: 'Tool verification failed' })); expect(adapter.state().status).toBe('failed');
     write(receiptFile, receipt({ state: 'running', ok: false, finishedAt: null })); expect(adapter.state().status).toBe('interrupted');
   });
+  it('keeps plugin scope results and unverifiable checks visible in activity', () => {
+    write(receiptFile, receipt({ plugins: { steps: [{ id: 'opaque@market', scope: 'user', state: 'UNSUPPORTED' }] }, coverage: { unverified: ['Opaque target has no version evidence'] } }));
+    expect(adapter.state()).toMatchObject({ steps: [{ name: 'opaque@market (user)', state: 'UNSUPPORTED' }], unverified: ['Opaque target has no version evidence'] });
+  });
   it('does not attach an old failed receipt to a different active shared updater', () => {
     write(receiptFile, receipt({ pid: 888888, state: 'failed', ok: false, error: 'Previous run failed', steps: [{ name: 'Old tool', state: 'failed' }] }));
     lockState = 'running';

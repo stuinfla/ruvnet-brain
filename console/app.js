@@ -2974,7 +2974,8 @@ function suiteUpdateSummary(state) {
   const labels = { running: 'Update in progress', succeeded: 'Last update completed successfully',
     failed: 'Last update failed', interrupted: 'Last update has no completed result',
     checked: 'Last run checked for updates; it did not apply them', 'never-run': 'No update run has been recorded' };
-  return `${labels[state.status] || 'Update status unknown'}${state.finishedAt ? ` · ${fmtDate(state.finishedAt)}` : ''}${state.error ? ` · ${state.error}` : ''}`;
+  const label = state.status === 'succeeded' && state.unverified?.length ? 'Update finished; some checks remain unverified' : labels[state.status];
+  return `${label || 'Update status unknown'}${state.finishedAt ? ` · ${fmtDate(state.finishedAt)}` : ''}${state.error ? ` · ${state.error}` : ''}`;
 }
 function renderSuiteUpdate(state) {
   if (!state) return;
@@ -3031,6 +3032,8 @@ function renderSuiteUpdate(state) {
     el('p', { role: 'status' }, suiteUpdateSummary(state)),
     state.startedAt ? el('p', { class: 'fineprint' }, `Started ${fmtDate(state.startedAt)} · ${state.mode === 'check' ? 'check only' : 'apply'}`) : '',
     state.steps?.length ? el('ul', {}, state.steps.map(step => el('li', {}, `${step.name}: ${step.state}`))) : '',
+    state.unverified?.length ? el('details', { class: 'sub' }, el('summary', {}, 'Checks not verified'),
+      el('ul', {}, state.unverified.map(note => el('li', {}, note)))) : '',
     state.exclusions?.length ? el('details', { class: 'sub' }, el('summary', {}, `${state.exclusions.length} tools preserved`),
       el('ul', {}, state.exclusions.map(item => el('li', {}, `${item.name}: ${item.reason}`)))) : '',
     state.sourceSha256 ? el('details', { class: 'sub' }, el('summary', {}, 'Update receipt'), el('p', { class: 'fineprint' }, `Updater source: ${state.sourceSha256.slice(0, 16)}`)) : '');

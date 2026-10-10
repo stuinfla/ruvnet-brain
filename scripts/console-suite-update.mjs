@@ -60,11 +60,13 @@ export function createSuiteUpdater({ home = os.homedir(), brainHome = path.join(
       error: active ? null : view?.error ?? null, mode: view?.mode ?? null, sourceSha256: view?.sourceSha256 ?? null,
       steps: [
         ...(Array.isArray(visibleRun?.steps) ? visibleRun.steps : []).map(s => ({ name: String(s.name || 'Tool'), state: String(s.state || 'unknown') })),
+        ...(Array.isArray(visibleRun?.plugins?.steps) ? visibleRun.plugins.steps : []).map(s => ({ name: `${String(s.id || 'Plugin')} (${String(s.scope || 'unknown')})`, state: String(s.state || 'unknown') })),
         ...(Array.isArray(visibleRun?.maintenance?.stages) ? visibleRun.maintenance.stages : []).map(s => ({
           name: path.isAbsolute(String(s.owner || '')) ? path.basename(s.owner) : String(s.owner || 'Provider'),
           state: run?.mode === 'check' ? 'checked' : 'completed' })),
         ...(visibleRun?.knowledge?.state ? [{ name: 'Brain knowledge', state: String(visibleRun.knowledge.state) }] : []),
       ],
+      unverified: Array.isArray(visibleRun?.coverage?.unverified) ? visibleRun.coverage.unverified.map(String) : [],
       exclusions: (Array.isArray(visibleRun?.coverage?.excluded) ? visibleRun.coverage.excluded : []).map(s => ({ name: String(s.name || 'Tool'), reason: String(s.reason || 'preserved') })) };
   }
   function start(channel) {
