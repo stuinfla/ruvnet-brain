@@ -180,3 +180,13 @@ test('ambiguous or malformed npm registry records cannot pick a release', () => 
     assert.throws(()=>normalizeNpmDistTags(value),/npm dist-tags/);
   }
 });
+
+test('ready canonical owner bypasses corrupt legacy source settings; unowned legacy still validates', () => {
+  const home=tmp(),brainHome=path.join(home,'.cache/ruvnet-brain');
+  const source=new URL('../../bin/nightly-refresh.mjs',import.meta.url).pathname;
+  const record=installNightlyRunner({brainHome,source,nodePath:process.execPath});
+  const settings=path.join(home,'.config/ruvnet-brain/settings.json');fs.mkdirSync(path.dirname(settings),{recursive:true});fs.writeFileSync(settings,'corrupt legacy json');
+  const invocation=automaticInvocation(['--update'],{home});assert.equal(invocation.source,'developer-suite');assert.equal(invocation.args[0],record.updateModules['developer-update.mjs'].path);
+  const legacy=tmp(),legacySettings=path.join(legacy,'.config/ruvnet-brain/settings.json');fs.mkdirSync(path.dirname(legacySettings),{recursive:true});fs.writeFileSync(legacySettings,'corrupt legacy json');
+  assert.throws(()=>automaticInvocation(['--update'],{home:legacy}),/owner update settings/);
+});

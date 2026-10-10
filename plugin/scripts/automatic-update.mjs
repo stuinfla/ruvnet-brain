@@ -92,7 +92,7 @@ export function installedUpdater({ home = os.homedir(), platform = process.platf
   return { entry, version: manifest.version, sha256 };
 }
 
-export function automaticInvocation(args, { source = updateSource(), home = os.homedir(), nodePath = process.execPath,
+export function automaticInvocation(args, { source, home = os.homedir(), nodePath = process.execPath,
   packageTarget = 'ruvnet-brain@latest' } = {}) {
   if (packageTarget === 'ruvnet-brain@latest') {
     const coordinator = developerCoordinatorOwner({ home });
@@ -101,6 +101,7 @@ export function automaticInvocation(args, { source = updateSource(), home = os.h
       return { executable: nodePath, args: [coordinator.entry, '--apply'], source: 'developer-suite', coordinator };
     }
   }
+  source ??= updateSource({ home });
   if (source === 'installed') {
     if (packageTarget !== 'ruvnet-brain@latest') throw new Error('installed mode cannot select a proof tarball');
     const installed = installedUpdater({ home });
