@@ -36,6 +36,32 @@ function invoke(command, args, { cwd = HOME, timeout = 600_000, allowed = [0], e
   return { stdout: (r.stdout || '').trim(), stderr: (r.stderr || '').trim(), exitCode: r.status, error: r.error?.message || null };
 }
 const invokeText = (command, args, options) => invoke(command, args, options).stdout;
+export function claudeProviderCommand(command, { prefix, run = invokeText, platform = process.platform, arch = process.arch } = {}) {
+  const root = prefix && (exists(path.join(prefix, 'lib/node_modules')) ? path.join(prefix, 'lib/node_modules') : path.join(prefix, 'node_modules'));
+  const owner = root && path.join(root, '@anthropic-ai/claude-code');
+  if (!command || !owner) return { command };
+  let ownerStat;
+  try { ownerStat = fs.lstatSync(owner); } catch (error) { if (error.code === 'ENOENT') return { command }; throw error; }
+  if (!ownerStat.isDirectory() || fs.realpathSync(owner) !== owner) throw Error('Claude npm package owner is aliased or unverified');
+  const manifest = read(path.join(owner, 'package.json'));
+  if (manifest.name !== '@anthropic-ai/claude-code' || manifest.bin?.claude !== 'bin/claude.exe') return { command };
+  const canonicalEntry = path.join(owner, 'bin/claude.exe'), stat = fs.lstatSync(canonicalEntry);
+  if (stat.size > 4096) return { command };
+  const owned = !stat.isSymbolicLink() && stat.isFile() && fs.realpathSync(owner) === owner && fs.realpathSync(canonicalEntry) === canonicalEntry && fs.realpathSync(command) === canonicalEntry;
+  const placeholderSha256 = owned && hash(fs.readFileSync(canonicalEntry));
+  if (placeholderSha256 !== '6d7abae055d3b598281300a6c835086dec81bf3048f8a2294c5d3e50c8830d7b') throw Error('Claude canonical entry is an unrecognized or unowned placeholder');
+  const name = `@anthropic-ai/claude-code-${platform}-${arch}`, nativeOwner = path.join(owner, 'node_modules', name);
+  if (!fs.lstatSync(nativeOwner).isDirectory() || fs.realpathSync(nativeOwner) !== nativeOwner) throw Error('Claude existing native package owner mismatch');
+  const native = read(path.join(nativeOwner, 'package.json'));
+  if (manifest.optionalDependencies?.[name] !== manifest.version || native.name !== name || native.version !== manifest.version || !Array.isArray(native.os) || !native.os.includes(platform) || !Array.isArray(native.cpu) || !native.cpu.includes(arch) || fs.realpathSync(nativeOwner) !== nativeOwner) throw Error('Claude existing native owner/version mismatch');
+  const nativePath = path.join(nativeOwner, platform === 'win32' ? 'claude.exe' : 'claude'), nativeStat = fs.lstatSync(nativePath);
+  if (!nativeStat.isFile() || nativeStat.isSymbolicLink() || fs.realpathSync(nativePath) !== nativePath) throw Error('Claude existing native executable owner mismatch');
+  fs.accessSync(nativePath, fs.constants.X_OK);
+  const versionOutput = run(nativePath, ['--version'], { timeout: 30_000 }).trim();
+  if (versionOutput !== `${manifest.version} (Claude Code)`) throw Error('Claude existing native version probe mismatch');
+  return { command: nativePath, canonicalEntry, nativePath, version: manifest.version,
+    reason: 'stock canonical placeholder; verified existing native binary in the same npm owner', proof: { placeholderSha256, nativeOwner, versionOutput } };
+}
 export function identity(location, prefix = PREFIX, { platform = process.platform } = {}) {
   const root = exists(path.join(prefix, 'lib/node_modules')) ? path.join(prefix, 'lib/node_modules') : path.join(prefix, 'node_modules');
   // Linked source checkouts may be unavailable to an unattended host. Never open their target.
@@ -208,7 +234,8 @@ export async function synchronizePlugins(run, dryRun, notes, { home, prefix, sco
   const inventoryOptions = { unattended };
   const all = pluginScopes(installed, inventoryOptions), before = all.filter(p => scope === 'all' || PLUGIN_MARKETPLACES.has(p.id.split('@').at(-1)));
   const writable = before.filter(p => p.scope !== 'managed' && !(unattended && ['project', 'local'].includes(p.scope))), flags = pluginFlags(writable, home);
-  const claude = locate('claude');
+  const provider = writable.length ? claudeProviderCommand(locate('claude'), { prefix, run }) : { command: locate('claude') };
+  const claude = provider.command;
   if (writable.length && !claude) throw Error('installed Claude plugins have no existing Claude command');
   const steps = [], artifactCache = new Map();
   const markets = [...new Set(writable.map(p => p.id.split('@').at(-1)))];
@@ -257,7 +284,7 @@ export async function synchronizePlugins(run, dryRun, notes, { home, prefix, sco
     notes.push('Codex has no plugin update command; configured Git catalogues refreshed, installed generations preserved');
   }
   if (JSON.stringify(flags) !== JSON.stringify(pluginFlags(writable, home))) throw Error('Codex plugin enablement changed');
-  return { before, after, steps };
+  return { before, after, steps, provider };
 }
 function knowledge(run, dryRun, runId, { brainHome, root, node }) {
   const kb = path.join(brainHome, 'kb'), updater = path.join(kb, 'forge-update.mjs');

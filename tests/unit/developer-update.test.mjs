@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { compare, selectTag, discover, identity, upgradePackage, pluginScopes, scopeKey, runDeveloperUpdate, locateExecutable, resolvePluginTarget, pluginUpdateDecision, synchronizePlugins, marketplaceRemoteCommit, atomic } from '../../plugin/scripts/developer-update.mjs';
+import { compare, selectTag, discover, identity, upgradePackage, pluginScopes, scopeKey, runDeveloperUpdate, locateExecutable, resolvePluginTarget, pluginUpdateDecision, synchronizePlugins, marketplaceRemoteCommit, atomic, claudeProviderCommand } from '../../plugin/scripts/developer-update.mjs';
 import { acquireDeveloperLock, sharedLockStatus } from '../../plugin/scripts/developer-update-lock.mjs';
 import { automaticInvocation, automaticPath } from '../../plugin/scripts/automatic-update.mjs';
 import { installNightlyRunner, developerRunHealth } from '../../plugin/scripts/nightly-scheduler.mjs';
@@ -13,6 +13,42 @@ import { normalizeNpmDistTags } from '../../plugin/scripts/developer-update-poli
 import { cleanupNpxDuplicates } from '../../plugin/scripts/developer-update-cleanup.mjs';
 import { cargoInventory, uvInventory, maintenance, verifyMaintenanceStage, nativeOwnerPreserved } from '../../plugin/scripts/developer-update-maintenance.mjs';
 const tmp = () => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'nightly-suite-test-')));
+const claudePlaceholder = `echo "Error: claude native binary not installed." >&2
+echo "" >&2
+echo "Either postinstall did not run (--ignore-scripts, some pnpm configs)" >&2
+echo "or the platform-native optional dependency was not downloaded" >&2
+echo "(--omit=optional)." >&2
+echo "" >&2
+echo "Run the postinstall manually (adjust path for local vs global install):" >&2
+echo "  node node_modules/@anthropic-ai/claude-code/install.cjs" >&2
+echo "" >&2
+echo "Or reinstall without --ignore-scripts / --omit=optional." >&2
+exit 1
+`;
+test('stock Claude placeholder selects only verified existing same-owner native command', async () => {
+  const nativeName=`@anthropic-ai/claude-code-${process.platform}-${process.arch}`;
+  const prefix=tmp(),owner=path.join(prefix,'lib/node_modules/@anthropic-ai/claude-code'),nativeOwner=path.join(owner,'node_modules',nativeName),canonical=path.join(owner,'bin/claude.exe'),nativePath=path.join(nativeOwner,process.platform==='win32'?'claude.exe':'claude'),command=path.join(prefix,'bin/claude');
+  fs.mkdirSync(path.dirname(canonical),{recursive:true});fs.mkdirSync(nativeOwner,{recursive:true});fs.mkdirSync(path.dirname(command));
+  const top={name:'@anthropic-ai/claude-code',version:'2.1.296',bin:{claude:'bin/claude.exe'},optionalDependencies:{[nativeName]:'2.1.296'}};
+  const native={name:nativeName,version:'2.1.296',os:[process.platform],cpu:[process.arch]};
+  atomic(path.join(owner,'package.json'),top);atomic(path.join(nativeOwner,'package.json'),native);fs.writeFileSync(canonical,claudePlaceholder,{mode:0o755});fs.writeFileSync(nativePath,'existing binary',{mode:0o755});fs.symlinkSync(canonical,command);
+  let probes=0;const resolve=version=>claudeProviderCommand(command,{prefix,platform:process.platform,arch:process.arch,run:(file,args,options)=>{assert.equal(file,nativePath);assert.deepEqual(args,['--version']);assert.equal(options.timeout,30000);probes++;return version;}});
+  try{
+    const proof=resolve('2.1.296 (Claude Code)');assert.equal(proof.command,nativePath);assert.equal(proof.canonicalEntry,canonical);assert.equal(proof.proof.nativeOwner,nativeOwner);assert.equal(probes,1);
+    const f=pluginFixture({source:'./',version:'1.0.0'});atomic(path.join(f.home,'.claude/plugins/installed_plugins.json'),{plugins:{'sample@market':[{scope:'user',version:'1.0.0',installPath:f.home}]}});
+    const calls=[];const receipt=await synchronizePlugins((file,args)=>{assert.equal(file,nativePath);calls.push(args);return args[0]==='--version'?'2.1.296 (Claude Code)':'{}';},false,[],{home:f.home,prefix,scope:'all',locate:name=>name==='claude'?command:null});
+    assert.deepEqual(calls[0],['--version']);assert.equal(receipt.provider.command,nativePath);assert.equal(receipt.provider.canonicalEntry,canonical);assert.equal(receipt.steps[0].state,'CURRENT');fs.rmSync(f.home,{recursive:true,force:true});
+    assert.throws(()=>resolve('2.1.295 (Claude Code)'),/version probe mismatch/);
+    atomic(path.join(nativeOwner,'package.json'),{...native,version:'2.1.295'});assert.throws(()=>resolve('2.1.296 (Claude Code)'),/owner\/version mismatch/);atomic(path.join(nativeOwner,'package.json'),native);
+    atomic(path.join(owner,'package.json'),{...top,optionalDependencies:{}});assert.throws(()=>resolve('2.1.296 (Claude Code)'),/owner\/version mismatch/);atomic(path.join(owner,'package.json'),top);
+    const external=path.join(prefix,'outside');fs.writeFileSync(external,'external binary',{mode:0o755});fs.unlinkSync(nativePath);fs.symlinkSync(external,nativePath);assert.throws(()=>resolve('2.1.296 (Claude Code)'),/executable owner mismatch/);fs.unlinkSync(nativePath);fs.writeFileSync(nativePath,'existing binary',{mode:0o755});
+    const externalOwner=path.join(prefix,'external-owner');fs.mkdirSync(externalOwner);atomic(path.join(externalOwner,'package.json'),native);fs.rmSync(nativeOwner,{recursive:true});fs.symlinkSync(externalOwner,nativeOwner);assert.throws(()=>resolve('2.1.296 (Claude Code)'),/package owner mismatch/);fs.unlinkSync(nativeOwner);fs.mkdirSync(nativeOwner);atomic(path.join(nativeOwner,'package.json'),native);fs.writeFileSync(nativePath,'existing binary',{mode:0o755});
+    fs.writeFileSync(canonical,claudePlaceholder+'# changed');assert.throws(()=>resolve('2.1.296 (Claude Code)'),/unrecognized/);
+    fs.writeFileSync(canonical,'normal binary'.repeat(500));assert.deepEqual(resolve('ignored'),{command});
+    assert.deepEqual(claudeProviderCommand('/fixture/claude',{prefix:path.join(prefix,'absent')}),{command:'/fixture/claude'});
+    fs.renameSync(owner,owner+'-baseline');fs.symlinkSync(externalOwner,owner);assert.throws(()=>resolve('2.1.296 (Claude Code)'),/npm package owner is aliased/);fs.unlinkSync(owner);fs.renameSync(owner+'-baseline',owner);
+  }finally{fs.rmSync(prefix,{recursive:true,force:true});}
+});
 function fixture(name = 'example-cli', version = '1.0.0') {
   const prefix = tmp(), location = path.join(prefix, 'lib/node_modules', name);
   fs.mkdirSync(location, { recursive: true }); fs.mkdirSync(path.join(prefix, 'bin'));
