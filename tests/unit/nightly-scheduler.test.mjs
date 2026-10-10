@@ -79,7 +79,7 @@ function fixture() {
   const source = path.join(root, 'nightly-refresh.mjs');
   fs.mkdirSync(kbDir, { recursive: true });
   fs.writeFileSync(source, '#!/usr/bin/env node\nprocess.exitCode = 0;\n');
-  const record = installNightlyRunner({ brainHome, source, nodePath: '/absolute/node' });
+  const record = installNightlyRunner({ brainHome, source, nodePath: '/absolute/node', developerSuite: false });
   return { root, home, brainHome, kbDir, source, record, env: { HOME: home } };
 }
 

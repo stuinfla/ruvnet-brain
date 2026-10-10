@@ -27,6 +27,7 @@ import { acquireRefreshLock, finishRefreshReceipt, openRefreshReceipt, physicalP
 import { assessLifecycleEvidence, pruneLifecycleEvidence } from '../kb/lifecycle-evidence-retention.mjs';
 import { checkDiskSpace, recoverIncompleteStorageTransactions } from '../kb/update-storage-transaction.mjs';
 import { saveUpdateSource, stableNode } from '../plugin/scripts/automatic-update.mjs';
+import { acquireDeveloperLock } from '../plugin/scripts/developer-update-lock.mjs';
 import { footprintRoots, inventoryFootprint, sweepFootprint } from '../plugin/scripts/brain-footprint.mjs';
 import { kbCopyProof } from '../plugin/scripts/kb-copy-proof.mjs';
 import { assessMoveLeftovers, isVolumeMetadata } from '../plugin/scripts/footprint-io.mjs';
@@ -4435,7 +4436,7 @@ function enableNightly() {
       testMode: TEST_MODE });
     if (status.state !== 'on') throw new Error(status.evidence);
     ok(`nightly updates enabled — ${status.evidence}`);
-    info(c.dim(`identity ${NIGHTLY_LABEL}; immutable runner ${registration.runnerSha256.slice(0, 16)}…; 03:47 local`));
+    info(c.dim(`identity ${NIGHTLY_LABEL}; immutable runner ${registration.runnerSha256.slice(0, 16)}…; 03:30 local`));
     if (TEST_MODE) warn('RUVNET_BRAIN_TEST=1 — scheduler registration was written but OS activation was safely simulated');
   } catch (error) {
     console.error(`\n${c.red('✗ nightly updates were NOT enabled:')} ${error.message}`);
@@ -6331,7 +6332,18 @@ the installer reports that boot-level declarations changed.
   }
   if (FLAG_DEMO) return runDemo();
   if (FLAG_FEEDBACK) return runFeedback();
-  if (FLAG_UPDATE) return refuseOverSetAsideBrain() || runUpdate();
+  if (FLAG_UPDATE) {
+    if (refuseOverSetAsideBrain()) return;
+    const developerLock = acquireDeveloperLock({ brainHome: process.env.RUVNET_BRAIN_HOME || path.dirname(resolvedKbDir()) });
+    const previousToken = process.env.RUVNET_DEVELOPER_UPDATE_TOKEN;
+    process.env.RUVNET_DEVELOPER_UPDATE_TOKEN = developerLock.token;
+    try { return await runUpdate(); }
+    finally {
+      if (previousToken === undefined) delete process.env.RUVNET_DEVELOPER_UPDATE_TOKEN;
+      else process.env.RUVNET_DEVELOPER_UPDATE_TOKEN = previousToken;
+      developerLock.release();
+    }
+  }
   if (FLAG_ENABLE_NIGHTLY) return enableNightly();
   if (FLAG_DISABLE_NIGHTLY) return disableNightly();
   // Standalone, like the nightly pair above. Without these, the flags existed only as a way to

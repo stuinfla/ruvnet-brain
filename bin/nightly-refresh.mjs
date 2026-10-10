@@ -61,12 +61,23 @@ Object.assign(process.env, registration.environment || {});
 let invocation;
 try {
   const modules = registration.updateModules;
-  if (!modules || Object.keys(modules).sort().join(',') !== 'automatic-update.mjs,ruvnet-gate1-pattern.mjs,user-settings.mjs') throw new Error('registered update module closure is missing');
+  const legacy = ['automatic-update.mjs', 'ruvnet-gate1-pattern.mjs', 'user-settings.mjs'];
+  const bridged = [...legacy, 'developer-update-owner.mjs'];
+  const suite = [...bridged, 'developer-update.mjs', 'developer-update-maintenance.mjs', 'developer-update-lock.mjs', 'developer-update-policy.mjs', 'developer-update-cleanup.mjs'];
+  const expected = registration.mode === 'developer-suite' ? [suite] : [legacy, bridged];
+  if (!modules || !expected.some(names => Object.keys(modules).sort().join(',') === names.sort().join(','))) throw new Error('registered update module closure is missing');
   for (const [name, item] of Object.entries(modules)) {
     if (!path.isAbsolute(item.path) || path.basename(item.path) !== name
       || path.dirname(item.path) !== path.dirname(modules['automatic-update.mjs'].path)
       || !fs.lstatSync(item.path).isFile()
       || crypto.createHash('sha256').update(fs.readFileSync(item.path)).digest('hex') !== item.sha256) throw new Error('update module digest mismatch');
+  }
+  if (registration.mode === 'developer-suite') {
+    const coordinator = await import(pathToFileURL(modules['developer-update.mjs'].path).href);
+    const receipt = await coordinator.runDeveloperUpdate({ mode: 'apply', env: { ...process.env,
+      RUVNET_NIGHTLY_IDENTITY: registration.identity, RUVNET_NIGHTLY: '1' } });
+    console.log(JSON.stringify(receipt));
+    process.exit(0);
   }
   const policy = await import(pathToFileURL(modules['automatic-update.mjs'].path).href);
   process.env.PATH = policy.automaticPath({ nodePath: registration.nodePath });

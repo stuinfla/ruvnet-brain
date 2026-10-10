@@ -36,6 +36,9 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { runDeveloperUpdate, readDeveloperUpdateConfig } from '../plugin/scripts/developer-update.mjs';
+import { FAMILY, PLUGIN_MARKETPLACES, cmpVersion, pickTargetTag } from '../plugin/scripts/developer-update-policy.mjs';
+export { FAMILY, PLUGIN_MARKETPLACES, cmpVersion, pickTargetTag } from '../plugin/scripts/developer-update-policy.mjs';
 
 const HOME = os.homedir();
 
@@ -78,9 +81,9 @@ const RECEIPT = path.join(HOME, '.cache/ruvnet-brain/stack-sync-receipt.json');
 const PLUGINS_DIR = path.join(HOME, '.claude', 'plugins');
 
 // The tag policy. ONE table — the single source of truth for "what SHOULD be installed".
-// The orchestration core tracks alpha (rUv ships fast: 3.26 -> 3.28 inside one 18-hour window).
-// Everything else tracks latest. Unlisted packages get DEFAULT_TAG.
-export const TAG_POLICY = { ruflo: 'alpha', '@claude-flow/cli': 'alpha' };
+// The recommended default is latest. The canonical owner config can explicitly select alpha.
+// Unlisted packages still get DEFAULT_TAG; installed Kit retains next/latest ordering.
+export const TAG_POLICY = { ruflo: 'latest', '@claude-flow/cli': 'latest' };
 export const DEFAULT_TAG = 'latest';
 
 // Resolve a package's TARGET version to the NEWEST of its candidate tags — the policy tag AND latest —
@@ -91,19 +94,10 @@ export const DEFAULT_TAG = 'latest';
 // 3.32.0 @alpha target, so it correctly refused to downgrade and never chased 3.32.7). Considering both
 // tags and taking the higher version fixes that in EITHER direction: alpha-leads → track alpha;
 // latest-leads → track latest. You are never left behind the newest thing rUv actually published.
-export function pickTargetTag(tags, want, defaultTag = DEFAULT_TAG) {
-  if (!tags) return { tag: null, target: null };
-  const candidates = [...new Set([want, defaultTag])].filter((t) => tags[t]);
-  let tag = null, target = null;
-  for (const t of candidates) {
-    if (target === null || cmpVersion(tags[t], target) > 0) { tag = t; target = tags[t]; }
-  }
-  return { tag, target };
-}
 
 // What counts as "the stack": an explicit allow-list pattern, not a loose scope match, so a stray
 // package can never be swept into a global install by accident.
-export const FAMILY = /^(ruflo|ruvector|ruvector-extensions|ruvi|ruvbot|qudag|flow-nexus|agent-browser|agent-browser-mcp|agentic-flow|agentic-qe|agentic-robotics|agentic-payments|ruv-swarm|@ruvector\/|@claude-flow\/|@metaharness\/|@agentic-robotics\/)/;
+
 
 // The plugin side of the same allow-list intent (ISSUE #22). Plugin identifiers are marketplace
 // names (`ruflo-core`, `ruvnet-brain`, `cog-beehive-monitor`), NOT npm package names, so FAMILY
@@ -114,7 +108,7 @@ export const FAMILY = /^(ruflo|ruvector|ruvector-extensions|ruvi|ruvbot|qudag|fl
 // stray third-party plugin can never be swept into the RuvNet stack by accident. FAMILY is still
 // applied as a secondary matcher, so a future rUv plugin shipped through a different marketplace is
 // still counted.
-export const PLUGIN_MARKETPLACES = new Set(['ruflo', 'ruview', 'ruvnet-brain', 'cognitum']);
+
 
 const log = (m) => console.log(m);
 const die = (m) => { console.error(`\n  FAILED: ${m}`); process.exit(1); };
@@ -123,30 +117,7 @@ const die = (m) => { console.error(`\n  FAILED: ${m}`); process.exit(1); };
 // Prerelease-aware per semver: a prerelease sorts BEFORE its release (3.28.0-alpha.1 < 3.28.0),
 // and numeric identifiers compare numerically — alpha.9 < alpha.10, which a string compare gets
 // backwards, and a string compare is precisely the bug this whole file exists to kill.
-export function cmpVersion(a, b) {
-  const split = (v) => {
-    const [core, pre] = String(v).split('-');
-    return [core.split('.').map((n) => parseInt(n, 10) || 0), pre ? pre.split('.') : null];
-  };
-  const [ac, ap] = split(a);
-  const [bc, bp] = split(b);
-  for (let i = 0; i < 3; i++) {
-    const d = (ac[i] || 0) - (bc[i] || 0);
-    if (d !== 0) return d < 0 ? -1 : 1;
-  }
-  if (!ap && !bp) return 0;
-  if (ap && !bp) return -1;
-  if (!ap && bp) return 1;
-  for (let i = 0; i < Math.max(ap.length, bp.length); i++) {
-    const x = ap[i], y = bp[i];
-    if (x === undefined) return -1;
-    if (y === undefined) return 1;
-    const nx = /^\d+$/.test(x), ny = /^\d+$/.test(y);
-    if (nx && ny) { const d = parseInt(x, 10) - parseInt(y, 10); if (d) return d < 0 ? -1 : 1; }
-    else if (x !== y) return x < y ? -1 : 1;
-  }
-  return 0;
-}
+
 export const isBehind = (installed, target) => cmpVersion(installed, target) < 0;
 
 export function installedVersion(pkg, lib = GLOBAL_LIB) {
@@ -251,13 +222,13 @@ export function findShadows(npxCache = NPX_CACHE, lib = GLOBAL_LIB) {
 // isBehind — this function assigns a state label, it does not compare versions itself except through
 // the single comparator. Extracted so audit() (CLI, may exit) and auditModel() (embedders, never
 // exits) share ONE classification, never two that can drift.
-export function classify(pkgs) {
+export function classify(pkgs, { channel = readDeveloperUpdateConfig().channel } = {}) {
   return pkgs.map((p) => {
     // Installed records prove presence, not marketplace currency.
     if (p.source === 'plugin') {
       return { ...p, tag: 'plugin', target: null, state: p.installed ? 'INSTALLED_UNVERIFIED' : 'BROKEN', evidence: 'local install record only; marketplace revision not checked' };
     }
-    const want = TAG_POLICY[p.name] || DEFAULT_TAG;
+    const want = p.name === '@pacphi/agentic-kit' ? 'next' : channel === 'alpha' && FAMILY.test(p.name) ? 'alpha' : DEFAULT_TAG;
     const tags = registryTags(p.name);
     // Newest of {policy tag, latest} — see pickTargetTag: "track @alpha" alone pinned the core behind
     // @latest on 2026-07-18. A package with no alpha tag falls through to latest.
@@ -348,95 +319,11 @@ function report({ rows, shadows, stale }) {
   return { behind: rows.filter((r) => r.state === 'BEHIND'), broken: rows.filter((r) => r.state === 'BROKEN'), stale };
 }
 
-function writeReceipt(a, installed, purged) {
-  fs.mkdirSync(path.dirname(RECEIPT), { recursive: true });
-  fs.writeFileSync(RECEIPT, JSON.stringify({
-    at: new Date().toISOString(), installed, purged,
-    packages: a.rows.map((r) => ({ name: r.name, version: r.installed, state: r.state })),
-  }, null, 2));
-}
-
-// EXCLUSIVE LOCK. (Adversarial review, 2026-07-14.) Nothing stopped the nightly job and a manual
-// run (or two Claude Code windows) from both running `npm install -g` on the same package at the
-// same instant. Two concurrent installs interleaving in one node_modules dir is how you get a
-// half-written package — which is almost certainly how @ruvector/edge-net ended up present-but-
-// versionless with an orphaned `sharp` inside it. O_EXCL is atomic; a stale lock from a crashed
-// run is reclaimed after 20 minutes (longer than the npm timeout).
-const LOCK = path.join(HOME, '.cache/ruvnet-brain/stack-sync.lock');
-function acquireLock() {
-  fs.mkdirSync(path.dirname(LOCK), { recursive: true });
-  try {
-    fs.writeFileSync(LOCK, JSON.stringify({ pid: process.pid, at: Date.now() }), { flag: 'wx' });
-  } catch (e) {
-    if (e.code !== 'EEXIST') throw e;
-    let held = {};
-    try { held = JSON.parse(fs.readFileSync(LOCK, 'utf8')); } catch { /* unparseable = stale */ }
-    const ageMin = (Date.now() - (held.at ?? 0)) / 60000;
-    if (ageMin < 20) {
-      die(`another stack-sync is running (pid ${held.pid}, started ${ageMin.toFixed(1)}m ago).\n` +
-          `   Refusing to run two installers at once — that is how packages get half-written.`);
-    }
-    fs.writeFileSync(LOCK, JSON.stringify({ pid: process.pid, at: Date.now() }));
-  }
-  const release = () => { try { fs.unlinkSync(LOCK); } catch { /* already gone */ } };
-  process.on('exit', release);
-  process.on('SIGINT', () => { release(); process.exit(130); });
-  process.on('SIGTERM', () => { release(); process.exit(143); });
-}
-
-function sync({ dryRun = false } = {}) {
-  if (!dryRun) acquireLock();
-  const a = audit();
-  const { behind, broken, stale } = report(a);
-  const toInstall = [...behind, ...broken.filter((r) => r.target)].map((r) => `${r.name}@${r.target}`);
-
-  if (!toInstall.length && !stale.length) {
-    log(`  No npm repair selected. Audit: ${JSON.stringify(summarizeAudit(a))}`);
-    if (!dryRun) writeReceipt(a, [], []);
-    process.exitCode = summarizeAudit(a).exitCode;
-    return;
-  }
-  if (dryRun) {
-    if (toInstall.length) log(`  would install: ${toInstall.join(' ')}`);
-    if (stale.length) log(`  would purge ${stale.length} stale npx shadow(s)`);
-    return;
-  }
-
-  // INSTALL FIRST, PURGE SECOND. (Adversarial review, 2026-07-14.) The first version purged the
-  // shadows before installing — so a failed install left the user with their shadows gone AND the
-  // global not yet fixed: strictly WORSE than when they started, with no way back. A repair step
-  // that can leave you worse off than not running it is not a repair.
-  if (toInstall.length) {
-    log(`  installing: ${toInstall.join(' ')}`);
-    const r = spawnSync('npm', ['install', '-g', '--prefix', PREFIX, ...toInstall],
-      { stdio: 'inherit', timeout: 15 * 60 * 1000 });
-    if (r.status !== 0) die(`npm install -g exited ${r.status}; the stack is NOT synced. Shadows left untouched.`);
-  }
-
-  const purged = [];
-  for (const s of stale) {
-    // Purge the whole npx dir: it is a disposable resolution cache (npm re-creates it on demand),
-    // and a mixed-version dir is exactly how a stale transitive copy survives a targeted delete.
-    try { fs.rmSync(s.dir, { recursive: true, force: true }); purged.push(`${s.name}@${s.version}`); } catch { /* best effort */ }
-  }
-  if (purged.length) log(`  purged ${purged.length} stale shadow(s): ${purged.join(', ')}`);
-
-  // VERIFY AGAINST THE DISK. An installer that trusts its own exit code is a hope, not a guarantee:
-  // the old nightly printed "auto-update finished cleanly" from npm's status alone, which is exactly
-  // how a stack rots while every log line insists it is healthy.
-  const wrong = [];
-  for (const r of [...behind, ...broken]) {
-    if (!r.target) continue;
-    const now = installedVersion(r.name);
-    if (now !== r.target) wrong.push(`${r.name}: expected ${r.target}, disk says ${now ?? 'MISSING'}`);
-  }
-  if (wrong.length) die(`npm reported success but THE DISK DISAGREES:\n   - ${wrong.join('\n   - ')}`);
-
-  const after = audit();
-  writeReceipt(after, toInstall, purged);
-  process.exitCode = summarizeAudit(after).exitCode;
-  log(`  Remaining audit: ${JSON.stringify(summarizeAudit(after))}`);
-  log(`\n  synced ${toInstall.length} package(s); purged ${purged.length} shadow(s); verified against disk.`);
+async function sync({ dryRun = false } = {}) {
+  const config = readDeveloperUpdateConfig();
+  const receipt = await runDeveloperUpdate({ mode: dryRun ? 'check' : 'apply', config });
+  log(`Coordinated update ${receipt.state}; ${receipt.steps.length} installed package owners checked.`);
+  if (receipt.coverage.notes.length) log(`Excluded or preserved: ${receipt.coverage.notes.join('; ')}`);
 }
 
 // Importable as a module by the tests; only acts when run as a CLI.
@@ -451,13 +338,13 @@ if (process.argv[1] && path.resolve(process.argv[1]).endsWith('stack-sync.mjs'))
     if (summary.shadows) log('  Cached copies are present; inspect invocation paths before removing any cache. No copies removed by audit.');
     process.exitCode = summary.exitCode;
   } else if (args.includes('--sync')) {
-    sync({ dryRun: args.includes('--dry-run') });
+    sync({ dryRun: args.includes('--dry-run') }).catch(error => { console.error(error.message); process.exitCode = 1; });
   } else {
     log(`
   stack-sync — one global copy of the RuvNet stack. Correct. Provable.
 
     --audit     report drift; exit 1 if anything is behind, broken, or shadowed
-    --sync      install what is BEHIND (never downgrades), purge npx shadows, verify against disk
+    --sync      update existing owners through the shared coordinator; cleanup is explicit
     --dry-run   with --sync: say what it would do, change nothing
 
   Tag policy: ${JSON.stringify(TAG_POLICY)}; everything else @${DEFAULT_TAG}

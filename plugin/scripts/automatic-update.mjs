@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { developerCoordinatorOwner } from './developer-update-owner.mjs';
 import { SETTINGS_VERSION, validate, saveSettings } from './user-settings.mjs';
 
 export const ownerSettingsPath = (home = os.homedir()) => path.join(home, '.config', 'ruvnet-brain', 'settings.json');
@@ -93,6 +94,13 @@ export function installedUpdater({ home = os.homedir(), platform = process.platf
 
 export function automaticInvocation(args, { source = updateSource(), home = os.homedir(), nodePath = process.execPath,
   packageTarget = 'ruvnet-brain@latest' } = {}) {
+  if (packageTarget === 'ruvnet-brain@latest') {
+    const coordinator = developerCoordinatorOwner({ home });
+    if (coordinator.active) {
+      if (!coordinator.ready) throw new Error(`coordinated updater is not ready: ${coordinator.reason}`);
+      return { executable: nodePath, args: [coordinator.entry, '--apply'], source: 'developer-suite', coordinator };
+    }
+  }
   if (source === 'installed') {
     if (packageTarget !== 'ruvnet-brain@latest') throw new Error('installed mode cannot select a proof tarball');
     const installed = installedUpdater({ home });

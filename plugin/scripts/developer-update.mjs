@@ -1,0 +1,306 @@
+#!/usr/bin/env node
+// One existing-install owner. Does not install schedulers or remove plugin generations.
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import crypto from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
+import { cmpVersion as compare, selectTag, FAMILY, PLUGIN_MARKETPLACES, REVIEWED_INSTALL_SCRIPTS } from './developer-update-policy.mjs';
+import { acquireDeveloperLock, sharedLockStatus } from './developer-update-lock.mjs';
+import { maintenance } from './developer-update-maintenance.mjs';
+export { compare, selectTag, sharedLockStatus };
+const HOME = os.homedir();
+const PREFIX = path.join(HOME, '.npm-global');
+const ROOT = path.join(PREFIX, 'lib/node_modules');
+const NODE = process.execPath;
+const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const CACHE = path.join(HOME, '.cache/ruvnet-brain');
+const hash = value => crypto.createHash('sha256').update(value).digest('hex');
+const read = file => JSON.parse(fs.readFileSync(file, 'utf8'));
+const exists = file => fs.existsSync(file);
+const inside = (parent, child) => child.startsWith(`${parent}${path.sep}`);
+export function atomic(file, value) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.tmp-${process.pid}-${crypto.randomUUID()}`;
+  fs.writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
+  fs.renameSync(tmp, file);
+}
+function invoke(command, args, { cwd = HOME, timeout = 600_000, allowed = [0], env = process.env } = {}) {
+  const r = spawnSync(command, args, { cwd, encoding: 'utf8', timeout, maxBuffer: 16 * 1024 * 1024,
+    env: { ...env, PATH: [...new Set([path.dirname(NODE), path.join(env.npm_config_prefix || PREFIX, process.platform === 'win32' ? '' : 'bin'), ...(env.PATH || '').split(path.delimiter)])].join(path.delimiter),
+      CI: '1', GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'Never', GH_PROMPT_DISABLED: '1', HOMEBREW_NO_INSTALL_CLEANUP: '1', HOMEBREW_NO_AUTO_UPDATE: '1', RUVNET_BRAIN_HOME: env.RUVNET_BRAIN_HOME || CACHE } });
+  if (r.error || !allowed.includes(r.status)) throw Error(`${path.basename(command)} ${args[0]}: ${r.error?.message || `exit ${r.status}`}: ${(r.stderr || r.stdout || '').trim().slice(-600)}`);
+  return r.stdout.trim();
+}
+export function identity(location, prefix = PREFIX, { platform = process.platform } = {}) {
+  const manifestFile = path.join(location, 'package.json');
+  const manifest = read(manifestFile);
+  const root = exists(path.join(prefix, 'lib/node_modules')) ? path.join(prefix, 'lib/node_modules') : path.join(prefix, 'node_modules');
+  if (!/^(?:@[\w.-]+\/)?[\w.-]+$/.test(manifest.name) || location !== path.join(root, manifest.name)) throw Error(`invalid global identity: ${location}`);
+  const realLocation = fs.realpathSync(location);
+  const localSource = realLocation !== location;
+  const bins = typeof manifest.bin === 'string' ? { [manifest.name.split('/').at(-1)]: manifest.bin } : manifest.bin || {};
+  const launchers = Object.entries(bins).map(([name, target]) => {
+    if ((!/^[^/\\\0]+$/.test(name) || ['.', '..'].includes(name)) || typeof target !== 'string') throw Error(`invalid bin identity: ${manifest.name}`);
+    const launcher = platform === 'win32' ? path.join(prefix, `${name}.cmd`) : path.join(prefix, 'bin', name);
+    let real = null;
+    try { real = fs.realpathSync(launcher); } catch { /* absent executable is unverified */ }
+    const expected = path.resolve(location, target);
+    if (!inside(location, expected)) throw Error(`escaping executable: ${manifest.name}`);
+    return { name, launcher, real, expected, owned: real !== null && (inside(location, real) || (platform === 'win32' && fs.readFileSync(launcher, 'utf8').replaceAll('\\', '/').includes(path.relative(prefix, expected).replaceAll('\\', '/')))) };
+  });
+  return { name: manifest.name, version: manifest.version, location, prefix,
+    manifestSha256: hash(fs.readFileSync(manifestFile)), realLocation, localSource, launchers };
+}
+export function discover(root = ROOT, prefix = PREFIX, scope = 'all') {
+  if (![path.join(prefix, 'lib/node_modules'), path.join(prefix, 'node_modules')].includes(root)) throw Error('new prefix/root refused');
+  const locations = [];
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    if (entry.name.startsWith('.')) continue;
+    if (entry.name.startsWith('@') && entry.isDirectory()) {
+      for (const child of fs.readdirSync(path.join(root, entry.name))) locations.push(path.join(root, entry.name, child));
+    } else locations.push(path.join(root, entry.name));
+  }
+  return locations.filter(p => exists(path.join(p, 'package.json'))).map(p => identity(p, prefix))
+    .filter(p => FAMILY.test(p.name) || scope === 'all' && p.launchers.length)
+    .sort((a, b) => a.name === '@pacphi/agentic-kit' ? 1 : b.name === '@pacphi/agentic-kit' ? -1 : a.name.localeCompare(b.name));
+}
+function verifyPackage(before, expected, run) {
+  const after = identity(before.location, before.prefix);
+  if (after.name !== before.name || after.version !== expected || compare(after.version, before.version) < 0) throw Error(`installed identity/version not verified: ${before.name}`);
+  for (const launcher of after.launchers) {
+    if (!launcher.owned) throw Error(`launcher ownership lost: ${before.name}/${launcher.name}`);
+    // MCP-only launchers may block on --version; they are verified through manifest/owned executable, not started.
+    fs.accessSync(launcher.real, process.platform === 'win32' ? fs.constants.R_OK : fs.constants.X_OK);
+  }
+  if (['ruflo', '@pacphi/agentic-kit', '@openai/codex', '@anthropic-ai/claude-code', 'agent-browser'].includes(after.name)) {
+    const main = after.launchers[0];
+    if (!main) throw Error(`missing primary launcher: ${after.name}`);
+    const versionOutput = process.platform === 'win32' && /\.(?:[cm]?js)$/.test(main.expected)
+      ? run(process.execPath, [main.expected, '--version'], { timeout: 30_000 }) : run(main.launcher, ['--version'], { timeout: 30_000 });
+    if (!versionOutput.includes(expected)) throw Error(`primary executable version unverified: ${after.name}`);
+  }
+  return after;
+}
+export function upgradePackage(before, tags, scripts = REVIEWED_INSTALL_SCRIPTS, { run = invoke, dryRun = false, channel = 'latest', npm = NPM, preservePackages = [] } = {}) {
+  // Snapshot identity must still exist and own the original paths before any installer runs.
+  const live = identity(before.location, before.prefix);
+  if (live.name !== before.name || live.manifestSha256 !== before.manifestSha256) throw Error(`source changed before install: ${before.name}`);
+  if (live.localSource) return { name: before.name, state: 'local-source-preserved', before, after: live };
+  if (live.launchers.some(b => !b.real)) throw Error(`absent launcher: ${before.name}`);
+  if (live.launchers.some(b => !b.owned)) return { name: before.name, state: 'shadowed-preserved', before, after: live };
+  const target = selectTag(before.name, before.version, tags, channel);
+  if (preservePackages.includes(before.name)) return { name: before.name, state: 'local-modification-preserved', reason: 'preservedLocalModification', target, before, after: live };
+  if (!target.upgrade || dryRun) return { name: before.name, state: target.upgrade ? 'update-available' : target.ahead ? 'ahead-preserved' : 'current', target, before, after: live };
+  const spec = `${before.name}@${target.tag}`;
+  run(npm, ['install', '-g', '--prefix', before.prefix, `--allow-scripts=${scripts.join(',')}`, spec]);
+  return { name: before.name, state: 'updated', target, before, after: verifyPackage(before, target.version, run) };
+}
+export function pluginScopes(file) {
+  if (!exists(file)) return [];
+  return Object.entries(read(file).plugins || {}).flatMap(([id, entries]) => entries.map(p => {
+    if (!['user', 'project', 'local', 'managed'].includes(p.scope)) throw Error(`unknown plugin scope: ${id}`);
+    if (['project', 'local'].includes(p.scope) && (!p.projectPath || !path.isAbsolute(p.projectPath) || !exists(p.projectPath))) throw Error(`missing plugin project: ${id}`);
+    return { id, scope: p.scope, projectPath: p.projectPath || null, installPath: p.installPath, version: p.version };
+  }));
+}
+export function scopeKey(p) { return `${p.id}\0${p.scope}\0${p.projectPath || ''}`; }
+function pluginFlags(scopes = [], home = HOME) {
+  const files = [path.join(home, '.claude/settings.json'), path.join(home, '.claude/settings.local.json'), path.join(home, '.codex/config.toml')];
+  for (const project of new Set(scopes.map(p => p.projectPath).filter(Boolean))) {
+    files.push(path.join(project, '.claude/settings.json'), path.join(project, '.claude/settings.local.json'));
+  }
+  const values = {};
+  for (const file of [...new Set(files)].filter(exists)) {
+    const text = fs.readFileSync(file, 'utf8');
+    values[file] = file.endsWith('.json') ? read(file).enabledPlugins || {} : text.split('\n').filter(l => /\[plugins\.|enabled\s*=/.test(l)).join('\n');
+  }
+  return values;
+}
+export function pluginTarget(plugin, home = HOME) {
+  try {
+    const marketplace = plugin.id.split('@').at(-1), name = plugin.id.slice(0, plugin.id.lastIndexOf('@'));
+    const directory = read(path.join(home, '.claude/plugins/known_marketplaces.json'))[marketplace]?.installLocation;
+    if (!directory || !path.isAbsolute(directory)) return null;
+    const entry = read(path.join(directory, '.claude-plugin/marketplace.json')).plugins.find(p => p.name === name);
+    if (typeof entry?.version === 'string') return entry.version;
+    if (typeof entry?.source !== 'string' || !entry.source.startsWith('./')) return null;
+    const source = path.resolve(directory, entry.source);
+    if (!inside(directory, source)) return null;
+    return read(path.join(source, '.claude-plugin/plugin.json')).version || null;
+  } catch { return null; }
+}
+function plugins(run, dryRun, notes, { home, prefix, scope, locate }) {
+  const installed = path.join(home, '.claude/plugins/installed_plugins.json');
+  const all = pluginScopes(installed), before = all.filter(p => scope === 'all' || PLUGIN_MARKETPLACES.has(p.id.split('@').at(-1))), flags = pluginFlags(all, home);
+  const claude = locate('claude');
+  if (before.length && !claude) throw Error('installed Claude plugins have no existing Claude command');
+  if (!dryRun) {
+    const markets = [...new Set(before.map(p => p.id.split('@').at(-1)))];
+    for (const name of markets) run(claude, ['plugin', 'marketplace', 'update', name]);
+    for (const p of before) {
+      if (p.scope === 'managed') { notes.push(`managed plugin preserved: ${p.id}`); continue; }
+      const target = pluginTarget(p, home);
+      if (!target) { notes.push(`plugin target unverified; preserved: ${p.id}`); continue; }
+      if (target === p.version) continue;
+      let newer;
+      try { newer = compare(target, p.version) > 0; }
+      catch { notes.push(`plugin version ordering unverified; preserved: ${p.id}`); continue; }
+      if (!newer) { notes.push(`ahead plugin preserved: ${p.id}`); continue; }
+      run(claude, ['plugin', 'update', p.id, '--scope', p.scope, '--json'], { cwd: p.projectPath || home });
+      const live = pluginScopes(installed).find(item => scopeKey(item) === scopeKey(p));
+      if (!live || live.version !== target) throw Error(`plugin target not verified: ${p.id}`);
+    }
+  }
+  const after = pluginScopes(installed).filter(p => before.some(b => scopeKey(b) === scopeKey(p)));
+  if (JSON.stringify(all.map(scopeKey).sort()) !== JSON.stringify(pluginScopes(installed).map(scopeKey).sort())) throw Error('plugin install set changed');
+  if (JSON.stringify(before.map(scopeKey).sort()) !== JSON.stringify(after.map(scopeKey).sort())) throw Error('plugin install scopes changed');
+  if (JSON.stringify(flags) !== JSON.stringify(pluginFlags(all, home))) throw Error('plugin enablement changed');
+  for (const p of after) if (!exists(p.installPath)) throw Error(`plugin artifact missing: ${p.id}`);
+  const codex = locate('codex');
+  if (codex) {
+    const result = JSON.parse(run(codex, ['plugin', 'marketplace', 'list', '--json'], { timeout: 30_000 }));
+    const git = (result.marketplaces || []).filter(m => m.marketplaceSource?.sourceType === 'git' && (scope === 'all' || PLUGIN_MARKETPLACES.has(m.name)));
+    if (!dryRun) for (const m of git) run(codex, ['plugin', 'marketplace', 'upgrade', m.name, '--json']);
+    const help = run(codex, ['plugin', '--help'], { timeout: 30_000 });
+    if (/^\s+update\s/m.test(help)) throw Error('Codex plugin update now exists; review scope-aware policy before enabling');
+    notes.push('Codex has no plugin update command; configured Git catalogues refreshed, installed generations preserved');
+  }
+  if (JSON.stringify(flags) !== JSON.stringify(pluginFlags(all, home))) throw Error('Codex plugin enablement changed');
+  return { before, after };
+}
+function knowledge(run, dryRun, runId, { brainHome, root, node }) {
+  const kb = path.join(brainHome, 'kb'), updater = path.join(kb, 'forge-update.mjs');
+  if (!exists(updater)) throw Error('existing Brain KB updater absent; fresh install refused');
+  const file = path.join(brainHome, `nightly-suite-corpus-${runId}.json`);
+  function check() {
+    const started = Date.now();
+    run(node, [updater, '--check', '--result-file', file], { timeout: 180_000, allowed: [0, 10] });
+    const receipt = read(file);
+    if (receipt.kind !== 'ruvnet-brain-check-result' || Date.parse(receipt.recordedAt) < started - 1000) throw Error('fresh corpus check receipt absent');
+    return receipt;
+  }
+  const before = check();
+  if (before.currencyVerdict === 'CURRENT' || before.currencyVerdict === 'REFUSED') return { before, after: before, state: before.currencyVerdict === 'CURRENT' ? 'current' : 'ahead-preserved' };
+  if (before.currencyVerdict !== 'UPDATE_AVAILABLE') throw Error(`corpus currency unverified: ${before.currencyVerdict}`);
+  if (dryRun) return { before, state: 'update-available' };
+  const installer = path.join(root, 'ruvnet-brain/bin/install.mjs');
+  if (!exists(installer)) throw Error('existing Brain installer absent');
+  run(node, [installer, '--update', '--no-nightly-prompt', '--no-stack'], { timeout: 1_800_000 });
+  const after = check();
+  if (!['CURRENT', 'REFUSED'].includes(after.currencyVerdict)) throw Error('corpus update failed to converge');
+  return { before, after, state: 'updated' };
+}
+export function developerUpdatePaths({ home = os.homedir(), brainHome = process.env.RUVNET_BRAIN_HOME || path.join(home, '.cache/ruvnet-brain') } = {}) {
+  return { home, brainHome, config: path.join(brainHome, 'developer-update-config.json'),
+    receipt: path.join(brainHome, 'nightly-suite-update.json'), lock: path.join(brainHome, 'developer-update.lock') };
+}
+export function validateDeveloperUpdateConfig(value = {}) {
+  const defaults = { schemaVersion: 1, channel: 'latest', scope: 'ruvnet', homebrew: false, uv: false, cargo: false, native: false, managedCallback: null, cleanup: false, preservePackages: [] };
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(k => !Object.hasOwn(defaults, k))) throw Error('unknown developer update configuration');
+  const config = { ...defaults, ...value };
+  if (config.schemaVersion !== 1 || !['latest', 'alpha'].includes(config.channel) || !['ruvnet', 'all'].includes(config.scope)) throw Error('invalid developer update channel/scope');
+  for (const key of ['homebrew', 'uv', 'cargo', 'native', 'cleanup']) if (typeof config[key] !== 'boolean') throw Error(`invalid ${key} flag`);
+  if (!Array.isArray(config.preservePackages) || config.preservePackages.some(name => typeof name !== 'string' || !/^(?:@[\w.-]+\/)?[\w.-]+$/.test(name))) throw Error('invalid preservePackages');
+  if (config.managedCallback !== null && (typeof config.managedCallback !== 'string' || !path.isAbsolute(config.managedCallback))) throw Error('invalid maintenance callback');
+  return config;
+}
+export function readDeveloperUpdateConfig(options = {}) {
+  const paths = developerUpdatePaths(options);
+  return validateDeveloperUpdateConfig(exists(paths.config) ? read(paths.config) : {});
+}
+export function writeDeveloperUpdateConfig(config, options = {}) {
+  const value = validateDeveloperUpdateConfig(config);
+  atomic(developerUpdatePaths(options).config, value);
+  return value;
+}
+export function readDeveloperUpdateReceipt(options = {}) {
+  const file = developerUpdatePaths(options).receipt;
+  if (!exists(file)) return null;
+  const value = read(file);
+  if (value.schemaVersion !== 1 || value.kind !== 'nightly-suite-update') throw Error('invalid developer update receipt');
+  return value;
+}
+export function locateExecutable(name, { env = process.env, platform = process.platform } = {}) {
+  const suffixes = platform === 'win32' ? ['', '.exe', '.cmd'] : [''];
+  for (const directory of (env.PATH || '').split(path.delimiter).filter(Boolean)) for (const suffix of suffixes) {
+    const file = path.resolve(directory, name + suffix);
+    try { fs.accessSync(file, fs.constants.X_OK); if (fs.statSync(file).isFile()) return file; } catch { /* another installed owner */ }
+  }
+  return null;
+}
+export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), brainHome, config: override, runner = invoke, env = process.env } = {}) {
+  if (!['check', 'apply'].includes(mode)) throw Error('mode must be check or apply');
+  const paths = developerUpdatePaths({ home, brainHome });
+  const config = validateDeveloperUpdateConfig(override || readDeveloperUpdateConfig(paths));
+  const lock = acquireDeveloperLock({ brainHome: paths.brainHome, token: env.RUVNET_DEVELOPER_UPDATE_TOKEN });
+  const childEnv = { ...env, HOME: home, USERPROFILE: home, RUVNET_BRAIN_HOME: paths.brainHome,
+    RUVNET_DEVELOPER_UPDATE_TOKEN: lock.token, HOMEBREW_NO_INSTALL_CLEANUP: '1', HOMEBREW_NO_AUTO_UPDATE: '1' };
+  const run = (command, args, options = {}) => {
+    if (process.platform === 'win32' && /npm\.cmd$/i.test(command)) {
+      const cli = path.join(path.dirname(command), 'node_modules/npm/bin/npm-cli.js');
+      if (!exists(cli)) throw Error('Windows npm CLI identity absent');
+      return runner(process.execPath, [cli, ...args], { cwd: home, ...options, env: childEnv });
+    }
+    return runner(command, args, { cwd: home, ...options, env: childEnv });
+  };
+  const locate = name => locateExecutable(name, { env: childEnv });
+  const receipt = { schemaVersion: 1, kind: 'nightly-suite-update', runId: crypto.randomUUID(), pid: process.pid,
+    startedAt: new Date().toISOString(), mode, state: 'running', ok: false, config, steps: [], notes: [],
+    sourceSha256: hash(fs.readFileSync(new URL(import.meta.url))), ownerToken: lock.token, ownerPid: lock.ownerPid, schedulerIdentity: env.RUVNET_NIGHTLY_IDENTITY || null };
+  try {
+    atomic(paths.receipt, receipt);
+    const npm = locate('npm');
+    if (!npm) throw Error('existing npm owner absent; fresh install refused');
+    const prefix = run(npm, ['prefix', '-g'], { timeout: 30_000 }).trim();
+    const root = run(npm, ['root', '-g'], { timeout: 30_000 }).trim();
+    if (!path.isAbsolute(prefix) || !path.isAbsolute(root)) throw Error('npm global identity unverified');
+    // Bind every subsequent install to this exact prefix instead of inherited npm config.
+    childEnv.npm_config_prefix = prefix;
+    receipt.npmIdentity = { npm, prefix, root, node: process.execPath };
+    receipt.before = discover(root, prefix, config.scope);
+    atomic(paths.receipt, receipt);
+    for (const before of receipt.before) {
+      const tags = before.localSource ? {} : JSON.parse(run(npm, ['view', before.name, 'dist-tags', '--json'], { timeout: 90_000 }));
+      receipt.steps.push(upgradePackage(before, tags, REVIEWED_INSTALL_SCRIPTS, { run, dryRun: mode === 'check', channel: config.channel, npm, preservePackages: config.preservePackages }));
+      atomic(paths.receipt, receipt);
+    }
+    receipt.plugins = plugins(run, mode === 'check', receipt.notes, { home, prefix, scope: config.scope, locate });
+    if (exists(path.join(paths.brainHome, 'kb/forge-update.mjs'))) receipt.knowledge = knowledge(run, mode === 'check', receipt.runId, { brainHome: paths.brainHome, root, node: process.execPath });
+    else receipt.notes.push('Brain corpus absent; fresh knowledge install excluded');
+    receipt.maintenance = await maintenance(config, run, mode === 'check', { home, brainHome: paths.brainHome, locate, node: process.execPath, progress: result => { receipt.maintenance = result; atomic(paths.receipt, receipt); } });
+    const { cleanupNpxDuplicates } = await import('./developer-update-cleanup.mjs');
+    receipt.cleanup = cleanupNpxDuplicates({ home, globalRoot: root, enabled: config.cleanup && mode === 'apply', run });
+    receipt.after = discover(root, prefix, config.scope);
+    receipt.state = mode === 'check' ? 'checked' : 'completed'; receipt.ok = true;
+    receipt.coverage = { scope: config.scope, excluded: receipt.steps.filter(s => /preserved$/.test(s.state)).map(s => ({ name: s.name, reason: s.state })),
+      ahead: receipt.steps.filter(s => s.state === 'ahead-preserved').map(s => s.name),
+      preservedLocalModification: receipt.steps.filter(s => s.reason === 'preservedLocalModification').map(s => s.name),
+      unverified: receipt.notes.filter(note => /unverified|no plugin update command/.test(note)), notes: [...receipt.notes, ...(receipt.maintenance?.exclusions || [])] };
+    return receipt;
+  } catch (error) {
+    receipt.state = 'failed'; receipt.error = error.message;
+    for (const stage of receipt.maintenance?.stages || []) if (stage.state === 'running') { stage.state = 'failed'; stage.error = error.message; }
+    receipt.coverage = { scope: config.scope, unverified: [error.message], notes: receipt.notes };
+    try { if (receipt.npmIdentity) receipt.after = discover(receipt.npmIdentity.root, receipt.npmIdentity.prefix, config.scope); } catch (e) { receipt.snapshotError = e.message; }
+    throw error;
+  } finally {
+    receipt.finishedAt = new Date().toISOString();
+    try { atomic(paths.receipt, receipt); } finally { lock.release(); }
+  }
+}
+export async function developerUpdateCli(args = process.argv.slice(2)) {
+  let mode = 'apply'; const override = readDeveloperUpdateConfig();
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--check' || args[i] === '--dry-run') mode = 'check';
+    else if (args[i] === '--apply') mode = 'apply';
+    else if (args[i] === '--channel') override.channel = args[++i];
+    else if (args[i] === '--scope') override.scope = args[++i];
+    else throw Error(`unsupported developer update argument: ${args[i]}`);
+  }
+  const result = await runDeveloperUpdate({ mode, config: override });
+  console.log(JSON.stringify(result));
+  return result;
+}
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) developerUpdateCli().catch(error => { console.error(error.message); process.exitCode = 1; });

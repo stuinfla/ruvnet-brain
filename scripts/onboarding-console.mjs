@@ -28,6 +28,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync, execFileSync, spawn } from 'node:child_process';
 
 import { auditModel, installedVersion } from './stack-sync.mjs';
+import { acquireDeveloperLock } from '../plugin/scripts/developer-update-lock.mjs';
 import { candidateRoots, findStores, findProjects, diagnose } from './memory-doctor.mjs';
 import { buildStackRecommendations, buildWiringRecommendations, summarizeWiring, scoreMemoryHealth, buildHealthRecommendations, buildCapabilityRecommendations } from './console-engine.mjs';
 import { planFor } from './remedy-registry.mjs';
@@ -2923,9 +2924,15 @@ function undo(undoToken) {
   // re-applies an old state over whatever the user has done since. The replay guard at the top of
   // this function covers all kinds; these calls are what arm it.
   if (entry.kind === 'reinstall-version' && entry.pkg && entry.prevVersion) {
-    const r = spawnSync('npm', ['install', '-g', '--prefix', NPM_PREFIX, `${entry.pkg}@${entry.prevVersion}`], { encoding: 'utf8', timeout: 15 * 60 * 1000 });
-    if (r.status === 0) markUndoConsumed(undoToken);
-    return { ok: r.status === 0, log: r.status === 0 ? `reinstalled ${entry.pkg}@${entry.prevVersion}` : (r.stderr || '').slice(-800) };
+    let lock;
+    try {
+      lock = acquireDeveloperLock();
+      const r = spawnSync('npm', ['install', '-g', '--prefix', NPM_PREFIX, `${entry.pkg}@${entry.prevVersion}`], { encoding: 'utf8', timeout: 15 * 60 * 1000,
+        env: { ...process.env, RUVNET_DEVELOPER_UPDATE_TOKEN: lock.token } });
+      if (r.status === 0) markUndoConsumed(undoToken);
+      return { ok: r.status === 0, log: r.status === 0 ? `reinstalled ${entry.pkg}@${entry.prevVersion}` : (r.stderr || '').slice(-800) };
+    } catch (error) { return { ok: false, log: error.message }; }
+    finally { lock?.release(); }
   }
   if (entry.kind === 'restore-backup' && entry.project) {
     const dir = resolveProjectDir(entry.project);

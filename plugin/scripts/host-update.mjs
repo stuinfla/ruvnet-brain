@@ -12,7 +12,7 @@ const CHILD_ENV_KEYS = new Set([
   'CODEX_HOME', 'CLAUDE_CONFIG_DIR',
   'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy',
   'RUVNET_BRAIN_HOME', 'RUVNET_BRAIN_KB', 'RUVNET_BRAIN_MODEL_CACHE',
-  'RUVNET_BRAIN_NO_UPDATE_FALLBACK', 'RUVNET_BRAIN_TEST',
+  'RUVNET_BRAIN_NO_UPDATE_FALLBACK', 'RUVNET_BRAIN_TEST', 'RUVNET_DEVELOPER_UPDATE_TOKEN',
 ]);
 
 export function childEnvironment(source = process.env) {
