@@ -25,6 +25,7 @@ let preStateHash = null;          // echoed on /api/apply so the server can refu
 let lastMemory = null;            // last rendered memory card, so the late fleet scan can merge into it
 const renderedRecIds = new Set();
 const renderedRecommendations = new Map();
+const recommendationSources = new Map();
 let stateRecsSettled = false;
 let stackRecsSettled = false;
 // Health advocacy (ADR-027) hydrates from /api/memory, the slowest source. Until it has answered,
@@ -1374,7 +1375,7 @@ async function loadCapabilities(attempt = 0) {
     const r = await fetchCapabilities();
     if (r.status === 404) { capsMissingEndpoint(); return; }
     if (!r.ok) throw new Error(`/api/capabilities answered HTTP ${r.status}`);
-    if (r.data && r.data.warming) {
+    if (r.data && (r.data.warming || r.data.stale === true)) {
       // "Not measured yet" is NOT "off" — this card's entire reason for existing. Rendering a
       // warming answer would produce an empty row list, which on this surface says "you own
       // nothing", the single most damaging thing this page could get wrong.
@@ -1720,14 +1721,26 @@ function addRecommendations(recs, source) {
       'Ordered by what you’re working on — machine-wide updates first (they affect every project), then your most recently active projects.'));
   }
   let dropped = 0;
-  const nodes = [];
+  const next = new Map();
   for (const rec of Array.isArray(recs) ? recs : []) {
-    if (!rec || rec.id == null || renderedRecIds.has(rec.id)) continue;
-    // The DDD invariant, honored in the UI too: no evidence/cost/undo → not rendered.
+    if (!rec || rec.id == null) continue;
+    // A fresh audit replaces this source, including an empty result after an update.
     if (!Array.isArray(rec.evidence) || !rec.evidence.length || !rec.cost || !rec.undo) { dropped += 1; continue; }
-    renderedRecIds.add(rec.id);
-    renderedRecommendations.set(rec.id, rec);
-    nodes.push(buildRecCard(rec));
+    next.set(rec.id, rec);
+  }
+  const previous = recommendationSources.get(source) || new Map();
+  recommendationSources.set(source, next);
+  const nodes = [];
+  for (const id of new Set([...previous.keys(), ...next.keys()])) {
+    const rec = next.get(id) || [...recommendationSources.values()].map(rows => rows.get(id)).find(Boolean);
+    const existing = document.getElementById(`rec-${id}`);
+    if (!rec) {
+      existing?.remove(); renderedRecIds.delete(id); renderedRecommendations.delete(id);
+      continue;
+    }
+    renderedRecIds.add(id); renderedRecommendations.set(id, rec);
+    const card = buildRecCard(rec);
+    if (existing) existing.replaceWith(card); else nodes.push(card);
   }
   // Ordering is by BLAST RADIUS, not arrival time — the slow sources arrive last and matter most.
   //
@@ -2954,6 +2967,80 @@ function nightlyFactsLine(f) {
     f.agree === false ? ' — these disagree, so the toggle above shows no single state until they do.' : '');
 }
 
+let suiteUpdateTimer = null;
+let suiteUpdateBusy = false;
+let suiteUpdateWasActive = false;
+function suiteUpdateSummary(state) {
+  const labels = { running: 'Update in progress', succeeded: 'Last update completed successfully',
+    failed: 'Last update failed', interrupted: 'Last update has no completed result',
+    checked: 'Last run checked for updates; it did not apply them', 'never-run': 'No update run has been recorded' };
+  return `${labels[state.status] || 'Update status unknown'}${state.finishedAt ? ` · ${fmtDate(state.finishedAt)}` : ''}${state.error ? ` · ${state.error}` : ''}`;
+}
+function renderSuiteUpdate(state) {
+  if (!state) return;
+  const updateFinished = suiteUpdateWasActive && !state.active && ['succeeded', 'failed'].includes(state.status);
+  suiteUpdateWasActive = !!state.active;
+  if (updateFinished) void recheckMachine(); // Measure the changed machine once, including partial failures.
+  let card = document.getElementById('card-suite-update');
+  if (!card) {
+    card = el('section', { class: 'card sub-card rail-act', id: 'card-suite-update', 'aria-labelledby': 'suite-update-heading' },
+      el('div', { class: 'body' },
+        el('h2', { id: 'suite-update-heading' }, 'Keep all tools updated'),
+        chip('recommended', 'cyan'),
+        el('p', { class: 'fineprint' }, 'One coordinated update for your installed developer tools, plugins and Brain knowledge. Nightly updates use this same coordinator when enabled in Settings.'),
+        el('label', { for: 'suite-update-channel' }, 'Release policy '),
+        el('select', { id: 'suite-update-channel' },
+          el('option', { value: '', disabled: true }, 'Policy not measured'),
+          el('option', { value: 'latest' }, 'Latest (recommended)'),
+          el('option', { value: 'alpha' }, 'Alpha')),
+        el('p', { class: 'fineprint' }, 'Alpha uses published alpha releases for supported Ruv tools, with Latest as the fallback. Other providers keep their own release channels; installed newer versions are preserved.'),
+        el('button', { class: 'btn btn-apply', id: 'suite-update-run', type: 'button', onclick: async () => {
+          if (suiteUpdateBusy) return;
+          const button = document.getElementById('suite-update-run');
+          const channel = document.getElementById('suite-update-channel').value;
+          suiteUpdateBusy = true; button.disabled = true;
+          try {
+            const result = await postJSON('/api/suite-update', { channel });
+            if (!result.ok || !result.data.ok) throw new Error(result.status === 403 ? TOKEN_MSG : result.data.error || 'The update could not start.');
+            renderSuiteUpdate(result.data.state);
+          } catch (error) { document.getElementById('suite-update-result').textContent = String(error.message || error); }
+          finally { suiteUpdateBusy = false; void pollSuiteUpdate(); }
+        } }, 'Keep all tools updated'),
+        el('p', { id: 'suite-update-result', role: 'status', 'aria-live': 'polite' }),
+        el('p', { id: 'suite-update-nightly', class: 'fineprint' })));
+    document.getElementById('card-settings')?.before(card);
+  }
+  const select = document.getElementById('suite-update-channel');
+  // Preserve an unsaved policy choice during receipt polling.
+  if (!select.dataset.initialized) {
+    select.value = state.channel || '';
+    select.dataset.initialized = '1';
+  }
+  select.disabled = !!state.active;
+  const button = document.getElementById('suite-update-run');
+  button.disabled = suiteUpdateBusy || !!state.active || !state.available || state.lockState !== 'idle';
+  button.textContent = state.active ? 'Updating…' : 'Keep all tools updated';
+  document.getElementById('suite-update-result').textContent = state.available ? suiteUpdateSummary(state) : state.policyError || 'The coordinated updater is unavailable.';
+  document.getElementById('suite-update-nightly').textContent = `Saved scope: ${state.scope === 'all' ? 'all installed tools' : state.scope === 'ruvnet' ? 'Ruv tools' : 'not measured'}. Clicking this button includes existing npm, Homebrew, uv, Cargo and native tools. It does not install missing tools or change project dependencies.`;
+  let activity = document.getElementById('suite-update-activity');
+  if (!activity) {
+    activity = el('section', { class: 'body', id: 'suite-update-activity', 'aria-label': 'Tool update activity' });
+    document.getElementById('card-activity')?.append(activity);
+  }
+  activity.replaceChildren(el('h3', {}, 'Tool update activity'),
+    el('p', { role: 'status' }, suiteUpdateSummary(state)),
+    state.startedAt ? el('p', { class: 'fineprint' }, `Started ${fmtDate(state.startedAt)} · ${state.mode === 'check' ? 'check only' : 'apply'}`) : '',
+    state.steps?.length ? el('ul', {}, state.steps.map(step => el('li', {}, `${step.name}: ${step.state}`))) : '',
+    state.exclusions?.length ? el('details', { class: 'sub' }, el('summary', {}, `${state.exclusions.length} tools preserved`),
+      el('ul', {}, state.exclusions.map(item => el('li', {}, `${item.name}: ${item.reason}`)))) : '',
+    state.sourceSha256 ? el('details', { class: 'sub' }, el('summary', {}, 'Update receipt'), el('p', { class: 'fineprint' }, `Updater source: ${state.sourceSha256.slice(0, 16)}`)) : '');
+}
+async function pollSuiteUpdate() {
+  try { renderSuiteUpdate(await getJSON('/api/suite-update')); }
+  catch { const result = document.getElementById('suite-update-result'); if (result) result.textContent = 'Update status could not be measured. Reload to reconnect.'; }
+  if (!suiteUpdateTimer) suiteUpdateTimer = setInterval(() => { if (!document.hidden) void pollSuiteUpdate(); }, 3000);
+}
+
 function renderSettings(cfg, us, bp) {
   const body = $('#body-settings');
   // UNSAVED CHOICES SURVIVE A REPAINT. RNBC QA 2026-10-01: a background measurement landing while
@@ -3350,7 +3437,7 @@ function bpParts(bp) {
       'Version updates and the health alarm keep running even when the brain is off — an off machine ',
       'has to be able to receive the fix for an off-state bug. The nightly refresh is the part of that ',
       'you can pause: it is the ',
-      el('button', { class: 'btn btn-ghost btn-sm', type: 'button', onclick: () => jumpToSetting('nightly') }, 'Nightly brain refresh'),
+      el('button', { class: 'btn btn-ghost btn-sm', type: 'button', onclick: () => jumpToSetting('nightly') }, 'Nightly coordinated updates'),
       ' switch in Settings.'),
 
     part('Installed knowledge',
@@ -3683,14 +3770,14 @@ function renderFreshness(state, { polling = false, justLanded = false } = {}) {
   }
   const at = state && (state.measuredAt || state.cachedAt || state.generatedAt);
   if (at) FRESH_BASE = at;
-  if (justLanded) {
-    pill.className = 'chip tone-green';
-    pill.textContent = 'measured just now';
-    return;
-  }
   if (!at || stampWithdrawn(at)) {
     pill.className = polling ? 'chip tone-cyan' : 'chip tone-warn';
     pill.textContent = polling ? 're-measuring your machine…' : 'this reading was cleared — click to measure again';
+    return;
+  }
+  if (justLanded) {
+    pill.className = 'chip tone-green';
+    pill.textContent = `machine reading updated · as of ${fmtAge(at)}`;
     return;
   }
   pill.className = polling ? 'chip tone-cyan' : (state && state.stale ? 'chip tone-warn' : 'chip tone-grey');
@@ -3738,7 +3825,7 @@ function startFreshnessPolling() {
         // ONE painter — the same loadState() the first paint uses, so a polled repaint can never
         // drift from an initial one. It also refreshes preStateHash and the recommendations, which a
         // sections-only repaint silently left pointing at the pre-measurement machine.
-        await loadState({ landed: true });
+        await loadState({ landed: true, snapshot: st });
         // The other cards measure on their own clocks (stack, capabilities, fleet). Re-ask them here
         // rather than letting the page claim page-wide freshness on the strength of state alone.
         void loadStack();
@@ -3790,10 +3877,12 @@ async function doManualRefresh() {
    that painted the same bytes twice and cost a round-trip on every open. There is now one call, and
    the "live" reading arrives the only way it can without freezing the server — from the detached
    child, via the freshness poller. */
-async function loadState({ landed = false } = {}) {
+async function loadState({ landed = false, snapshot = null } = {}) {
   try {
-    const state = await getJSON('/api/state');
+    const state = snapshot || await getJSON('/api/state');
     $('#global-error').hidden = true;
+    renderSuiteUpdate(state.suiteUpdate);
+    void pollSuiteUpdate();
 
     // WARMING: NOTHING HAS BEEN MEASURED FOR THIS PROJECT YET. Paint NOTHING. Every render* below
     // would turn a missing section into a positive claim — renderWiring(undefined) prints "No wiring
@@ -3968,7 +4057,7 @@ const WARM_RETRY_MAX = 60;
 async function loadMemoryFleet(attempt = 0) {
   try {
     const m = await getJSON('/api/memory');
-    if (m && m.warming) {
+    if (m && (m.warming || m.stale === true)) {
       // The fleet scan is the slowest thing the console does. Until it lands, the memory card keeps
       // whatever /api/state already gave it and simply does not claim a fleet — it must never render
       // "0 projects", which on this card would read as "nothing on your machine learns anything".
@@ -3999,8 +4088,8 @@ async function loadMemoryFleet(attempt = 0) {
 async function loadStack(attempt = 0) {
   try {
     const stack = await getJSON('/api/stack');
-    if (stack && stack.warming) {
-      setChips('chips-stack', [chip('auditing your stack…', 'wait')]);
+    if (stack && (stack.warming || stack.stale === true)) {
+      setChips('chips-stack', [chip(stack.warming ? 'auditing your stack…' : 're-measuring your stack…', 'wait')]);
       if (attempt < WARM_RETRY_MAX) setTimeout(() => { void loadStack(attempt + 1); }, WARM_RETRY_MS);
       else { setChips('chips-stack', [chip('audit is taking unusually long', 'warn')]); recsSettled('stack', false); }
       return;   // skeleton stays: an empty package list would read as "nothing is installed"
@@ -4076,7 +4165,7 @@ const MOCK_STATE = {
       values: { openrouterKey: true, nightly: true, routing: 'auto', qeFleet: false },
       schema: [
         { key: 'openrouterKey', label: 'OpenRouter API key', type: 'secret', help: 'Unlocks cheap-model routing + the self-improvement loop', secret: true },
-        { key: 'nightly', label: 'Nightly brain refresh', type: 'bool', help: 'Rebuild the KB from pinned SHAs overnight' },
+        { key: 'nightly', label: 'Nightly coordinated updates', type: 'bool', help: 'Rebuild the KB from pinned SHAs overnight' },
         { key: 'routing', label: 'Token-smart routing', type: 'enum', options: ['auto', 'off'], help: 'Route cheap tasks to smaller models' },
         { key: 'qeFleet', label: 'On-demand QE fleet', type: 'bool', help: 'Agentic-QE test fleet, spun up on request' },
       ],

@@ -19,6 +19,7 @@
 //   • Bind 127.0.0.1 only; mint a random per-launch token; every mutating POST must echo it (else 403).
 
 import http from 'node:http';
+import { createSuiteUpdater } from './console-suite-update.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -659,7 +660,7 @@ function gatherSavings({ repo = REPO } = {}) {
 const CONFIG_SCHEMA = [
   { key: 'openrouterKey', label: 'OpenRouter API key', type: 'secret', secret: true, help: 'Unlocks cheap-model routing and the self-improvement loop. Stored only in your user folder.' },
   { key: 'provider', label: 'Your model house', type: 'enum', options: ['auto', 'anthropic', 'openai', 'codex', 'google', 'xai'], help: 'Which stack is yours? Sets your frontier model + savings baseline — Claude → Fable 5, ChatGPT → GPT-5.6 Sol, Codex → Sol, Gemini → 3.1 Pro, Grok → 4.5. “auto” detects from your keys.' },
-  { key: 'nightly', label: 'Nightly brain refresh', type: 'bool', help: 'Rebuild the knowledge base from pinned versions overnight so answers stay current.' },
+  { key: 'nightly', label: 'Nightly coordinated updates', type: 'bool', help: 'Run the same update coordinator overnight using your saved release policy and tool scope.' },
   { key: 'routing', label: 'Token-smart routing', type: 'enum', options: ['auto', 'off'], help: 'Send cheap, mechanical tasks to smaller, cheaper models automatically.' },
   { key: 'qeFleet', label: 'On-demand QE test fleet', type: 'bool', help: 'Let RuvNet Brain spin up an Agentic-QE test fleet when you ask it to.' },
 ];
@@ -805,7 +806,7 @@ function gatherConfig() {
   if (!schedule.artifact.supported) {
     unavailable.push({
       key: 'nightly',
-      label: 'Nightly brain refresh',
+      label: 'Nightly coordinated updates',
       reason: schedule.evidence,
     });
   }
@@ -3068,6 +3069,7 @@ function openBrowser(url) {
   }
 }
 function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = false, cwd = process.cwd() } = {}) {
+  const suiteUpdater = createSuiteUpdater({ home: CONSOLE_ROOT, brainHome: process.env.RUVNET_BRAIN_HOME || path.join(CONSOLE_ROOT, '.cache/ruvnet-brain') });
   const controlToken = crypto.randomBytes(24).toString('hex');
   let activeRuntime = null;
   let receiptFile = null;
@@ -3100,7 +3102,7 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
       if (req.method === 'GET' && url === '/api/state') {
         // project-scoped: never serve another project's cached state. The measuring lives in the
         // --refresh-cache child; this handler only ever reads a file and stamps the token on it.
-        return serveCached(res, STATE_CACHE, (d) => ({ ...d, token: TOKEN }), cwd);
+        return serveCached(res, STATE_CACHE, (d) => ({ ...d, token: TOKEN, suiteUpdate: suiteUpdater.state() }), cwd);
       }
       // ── /api/capabilities — "what do I own, and is it on?" ──────────────────────────────────────
       //
@@ -3142,7 +3144,8 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
         // the request path before the instant-open fix.
         return serveCached(res, STACK_CACHE);
       }
-      if (req.method === 'GET' && url === '/api/activity') return sendJSON(res, 200, gatherActivity(cwd));
+      if (req.method === 'GET' && url === '/api/suite-update') return sendJSON(res, 200, suiteUpdater.state());
+      if (req.method === 'GET' && url === '/api/activity') return sendJSON(res, 200, { ...gatherActivity(cwd), suiteUpdate: suiteUpdater.state() });
       if (req.method === 'GET' && url === '/api/lessons') return sendJSON(res, 200, gatherLessons());
       if (req.method === 'GET' && url === '/api/trust') return sendJSON(res, 200, await gatherTrust());
       if (req.method === 'GET' && url === '/tips') { req.url = '/tips.html'; return serveStatic(req, res); }
@@ -3153,6 +3156,12 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
       if (req.method === 'POST') {
         const body = await readBody(req);
         if (body.token !== TOKEN) return sendJSON(res, 403, { error: 'bad or missing token' });
+        if (url === '/api/suite-update') {
+          const origin = req.headers.origin;
+          if (origin && origin !== `http://${req.headers.host}`) return sendJSON(res, 403, { error: 'forbidden origin' });
+          const result = suiteUpdater.start(body.channel);
+          return sendJSON(res, result.status || (result.ok ? 202 : 500), result);
+        }
         if (url === '/api/apply') return sendJSON(res, 200, apply(Array.isArray(body.ids) ? body.ids : []));
         if (url === '/api/save-config') return sendJSON(res, 200, saveConfig(body.values || {}));
         if (url === '/api/save-advocacy') return sendJSON(res, 200, saveAdvocacy(body.values || {}));

@@ -1,7 +1,7 @@
-# Onboarding Console — API + data contract (v1)
-
-Updated: 2026-07-17
+Updated: 2026-10-10 04:37:54 EDT | Version 1.1.0
 Created: 2026-07-15
+
+# Onboarding Console — API + data contract (v1)
 
 The single source of truth both the backend (`scripts/onboarding-console.mjs`) and the
 frontend (`console/index.html` + `app.js` + `style.css`) build against. Implements ADR-0013
@@ -12,6 +12,44 @@ must echo the token. The page receives the token inlined at render time (`window
 A GET with a wrong/absent token still serves read-only state; a POST with a wrong token is `403`.
 
 ---
+
+## Coordinated developer updates
+
+`GET /api/suite-update` reads the installed coordinator's canonical policy, latest receipt,
+and shared ownership lock on every request. It never starts an update or writes a policy.
+The same live `suiteUpdate` field decorates `/api/state` and `/api/activity`; it is not persisted
+inside their heavier measurement caches.
+
+The response distinguishes `never-run`, `running`, `succeeded`, `failed`, `interrupted`,
+`checked`, and `unavailable`. A scheduled job or a saved setting cannot prove a completed run.
+A check-only receipt cannot prove an apply. The public card shows the saved release policy and
+scope; Latest is recommended, Alpha uses published Ruv alpha tags with Latest fallback, and
+other providers retain their release policies. Newer installed versions remain preserved.
+
+`POST /api/suite-update` requires the existing per-launch token and rejects a supplied Origin
+that differs from this loopback server. The body contains only `channel: "latest" | "alpha"`.
+An explicit **Keep all tools updated** click saves that channel and opts existing installations
+into scope `all`, including supported Homebrew, uv, Cargo, and native inventories. It preserves
+cleanup and managed-callback preferences, never installs a missing provider, and never changes
+project dependencies. An invalid channel or non-idle shared lock returns a refusal before
+policy mutation or child execution.
+
+The server starts the shipped coordinator with its own Node interpreter, a fixed user-home
+working directory and explicit Brain home. The coordinator acquires the shared lock. The adapter
+records an asynchronous launch receipt and accepts success only from a completed apply receipt
+matching the child's PID and exact coordinator source hash. Activity polls this live read model;
+launch failure, interrupted execution, and a failed provider are distinct from success.
+
+The nightly Settings control uses the same coordinator through the installer's existing scheduler
+adapter. Schedule enforcement and the last completed receipt remain separate measured facts.
+
+## Refresh settlement
+
+A fresh state response is painted directly from the snapshot that satisfied the freshness poller;
+no second fetch can substitute an older or withdrawn state. Stack, capability, and memory cards
+keep waiting when their own cache is warming or stale. Each fresh recommendation source replaces
+its previous source snapshot, so resolved proposals disappear and changed evidence is repainted.
+The header describes the machine reading's age, without claiming all independent cards finished.
 
 ## GET `/api/state` — fast sections (no network)
 
