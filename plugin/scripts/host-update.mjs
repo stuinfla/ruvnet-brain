@@ -3,6 +3,7 @@
 // Code and Codex, so lifecycle updates cannot drift into host-specific shell pipelines again.
 import { spawnSync } from 'node:child_process';
 import { automaticInvocation, automaticPath, updateSource } from './automatic-update.mjs';
+import { developerCoordinatorOwner } from './developer-update-owner.mjs';
 
 const CHILD_ENV_KEYS = new Set([
   'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL',
@@ -57,7 +58,9 @@ if (knowledgeAt >= 0) {
     } catch { /* the next session reports a launch with no outcome as a failure */ }
   };
   try {
-    const source = updateSource();
+    const coordinator = developerCoordinatorOwner();
+    if (coordinator.active && !coordinator.ready) throw new Error(`coordinated updater is not ready: ${coordinator.reason}`);
+    const source = coordinator.active ? 'developer-suite' : updateSource();
     // --if-newer <kbDir> <checkFile> <resultFile>: the newer-published identity check (2026-10-02). Run the
     // INSTALLED updater's --check (bounded transient GET retries of the canonical releases/latest pointer, no download) and only a
     // newer identity proceeds to the update below. Exit codes are forge-update.mjs's own: 0 current (or
@@ -114,7 +117,7 @@ if (knowledgeAt >= 0) {
       fs.renameSync(tmp, attemptFile);
     }
     const probe = process.env.RUVNET_AUTO_UPDATE_PROBE_URL || 'https://registry.npmjs.org/ruvnet-brain/latest';
-    let online = source === 'installed';
+    let online = source === 'installed' || source === 'developer-suite';
     if (!online) try { online = (await fetch(probe, { signal: AbortSignal.timeout(5_000) })).ok; } catch { /* offline */ }
     if (!online) {
       record({ outcome: 'offline', code: null, reason: `registry unreachable (${probe})` });

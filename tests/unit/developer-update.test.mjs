@@ -190,3 +190,16 @@ test('ready canonical owner bypasses corrupt legacy source settings; unowned leg
   const legacy=tmp(),legacySettings=path.join(legacy,'.config/ruvnet-brain/settings.json');fs.mkdirSync(path.dirname(legacySettings),{recursive:true});fs.writeFileSync(legacySettings,'corrupt legacy json');
   assert.throws(()=>automaticInvocation(['--update'],{home:legacy}),/owner update settings/);
 });
+
+test('real knowledge worker chooses ready canonical owner before corrupt legacy settings', () => {
+  const home=tmp(),brainHome=path.join(home,'.cache/ruvnet-brain'),kb=path.join(brainHome,'kb');
+  const source=new URL('../../bin/nightly-refresh.mjs',import.meta.url).pathname;
+  installNightlyRunner({brainHome,source,nodePath:process.execPath});
+  const settings=path.join(home,'.config/ruvnet-brain/settings.json');fs.mkdirSync(path.dirname(settings),{recursive:true});fs.writeFileSync(settings,'corrupt legacy json');
+  fs.mkdirSync(kb,{recursive:true});fs.writeFileSync(path.join(kb,'forge-update.mjs'),`import fs from 'node:fs';const file=process.argv[process.argv.indexOf('--result-file')+1];fs.writeFileSync(file,JSON.stringify({kind:'ruvnet-brain-check-result',recordedAt:new Date().toISOString(),currencyVerdict:'CURRENT'}));`);
+  const attempt=path.join(brainHome,'attempt.json'),lock=path.join(brainHome,'knowledge.lock'),check=path.join(brainHome,'check.json'),result=path.join(brainHome,'result.json');
+  atomic(attempt,{outcome:'launched'});fs.writeFileSync(lock,'fixture');
+  const worker=new URL('../../plugin/scripts/host-update.mjs',import.meta.url).pathname;
+  const child=spawnSync(process.execPath,[worker,'--knowledge',attempt,lock,'--if-newer',kb,check,result],{env:{...process.env,HOME:home,USERPROFILE:home,RUVNET_BRAIN_HOME:brainHome},encoding:'utf8',timeout:10_000});
+  assert.equal(child.status,0,child.stderr);assert.equal(JSON.parse(fs.readFileSync(check)).outcome,'current');assert.equal(JSON.parse(fs.readFileSync(attempt)).outcome,'launched');assert.equal(fs.existsSync(lock),false);
+});
