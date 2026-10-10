@@ -1,4 +1,4 @@
-Updated: 2026-10-10 04:37:54 EDT | Version 1.1.0
+Updated: 2026-10-10 04:37:54 EDT | Version 1.1.1
 Created: 2026-07-15
 
 # Onboarding Console — API + data contract (v1)
@@ -29,7 +29,9 @@ other providers retain their release policies. Newer installed versions remain p
 `POST /api/suite-update` requires the existing per-launch token and rejects a supplied Origin
 that differs from this loopback server. The body contains only `channel: "latest" | "alpha"`.
 An explicit **Keep all tools updated** click saves that channel and opts existing installations
-into scope `all`, including supported Homebrew, uv, Cargo, and native inventories. It preserves
+into scope `all`, including supported Homebrew, uv, Cargo, and native inventories. It enables the
+existing canonical nightly job through the same installer scheduler adapter, verifies enforcement,
+mirrors the nightly choice, and then runs one immediate update. Reads never enroll a scheduler. It preserves
 cleanup and managed-callback preferences, never installs a missing provider, and never changes
 project dependencies. An invalid channel or non-idle shared lock returns a refusal before
 policy mutation or child execution.
@@ -37,7 +39,7 @@ policy mutation or child execution.
 The server starts the shipped coordinator with its own Node interpreter, a fixed user-home
 working directory and explicit Brain home. The coordinator acquires the shared lock. The adapter
 records an asynchronous launch receipt and accepts success only from a completed apply receipt
-matching the child's PID and exact coordinator source hash. Activity polls this live read model;
+matching the child's PID, exact coordinator source hash, and complete five-module execution snapshot. Activity polls this live read model;
 launch failure, interrupted execution, and a failed provider are distinct from success.
 
 The nightly Settings control uses the same coordinator through the installer's existing scheduler

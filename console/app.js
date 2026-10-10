@@ -2987,7 +2987,7 @@ function renderSuiteUpdate(state) {
       el('div', { class: 'body' },
         el('h2', { id: 'suite-update-heading' }, 'Keep all tools updated'),
         chip('recommended', 'cyan'),
-        el('p', { class: 'fineprint' }, 'One coordinated update for your installed developer tools, plugins and Brain knowledge. Nightly updates use this same coordinator when enabled in Settings.'),
+        el('p', { class: 'fineprint' }, 'One coordinated update for your installed developer tools, plugins and Brain knowledge. Enable nightly updates and run the same coordinator now.'),
         el('label', { for: 'suite-update-channel' }, 'Release policy '),
         el('select', { id: 'suite-update-channel' },
           el('option', { value: '', disabled: true }, 'Policy not measured'),
@@ -3021,7 +3021,7 @@ function renderSuiteUpdate(state) {
   button.disabled = suiteUpdateBusy || !!state.active || !state.available || state.lockState !== 'idle';
   button.textContent = state.active ? 'Updating…' : 'Keep all tools updated';
   document.getElementById('suite-update-result').textContent = state.available ? suiteUpdateSummary(state) : state.policyError || 'The coordinated updater is unavailable.';
-  document.getElementById('suite-update-nightly').textContent = `Saved scope: ${state.scope === 'all' ? 'all installed tools' : state.scope === 'ruvnet' ? 'Ruv tools' : 'not measured'}. Clicking this button includes existing npm, Homebrew, uv, Cargo and native tools. It does not install missing tools or change project dependencies.`;
+  document.getElementById('suite-update-nightly').textContent = `Nightly updates: ${state.nightlyState === 'on' ? 'enabled' : state.nightlyState === 'off' ? 'not scheduled' : 'not verified'}. Saved scope: ${state.scope === 'all' ? 'all installed tools' : state.scope === 'ruvnet' ? 'Ruv tools' : 'not measured'}. Clicking this button includes existing npm, Homebrew, uv, Cargo and native tools. It does not install missing tools or change project dependencies.`;
   let activity = document.getElementById('suite-update-activity');
   if (!activity) {
     activity = el('section', { class: 'body', id: 'suite-update-activity', 'aria-label': 'Tool update activity' });

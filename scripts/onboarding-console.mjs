@@ -3076,7 +3076,7 @@ function openBrowser(url) {
   }
 }
 function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = false, cwd = process.cwd() } = {}) {
-  const suiteUpdater = createSuiteUpdater({ home: CONSOLE_ROOT, brainHome: process.env.RUVNET_BRAIN_HOME || path.join(CONSOLE_ROOT, '.cache/ruvnet-brain') });
+  const suiteUpdater = createSuiteUpdater({ home: CONSOLE_ROOT, brainHome: process.env.RUVNET_BRAIN_HOME || path.join(CONSOLE_ROOT, '.cache/ruvnet-brain'), markNightly: () => saveConfig({ nightly: true }) });
   const controlToken = crypto.randomBytes(24).toString('hex');
   let activeRuntime = null;
   let receiptFile = null;

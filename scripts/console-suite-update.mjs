@@ -5,6 +5,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
+import { applyNightlyChoice, nightlyStatus, NIGHTLY_LABEL } from './nightly-controller.mjs';
 import { readDeveloperUpdateConfig, readDeveloperUpdateReceipt,
   writeDeveloperUpdateConfig, sharedLockStatus, atomic } from '../plugin/scripts/developer-update.mjs';
 const RUNNER = fileURLToPath(new URL('../plugin/scripts/developer-update.mjs', import.meta.url));
@@ -14,11 +15,21 @@ const alive = pid => {
   if (!Number.isSafeInteger(pid) || pid < 1) return false;
   try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
 };
+export function coordinatorSourceIdentity(runner) {
+  const directory = path.dirname(runner);
+  return { sourceSha256: hash(runner), sourceSnapshot: Object.fromEntries([
+    'developer-update.mjs', 'developer-update-policy.mjs', 'developer-update-lock.mjs',
+    'developer-update-maintenance.mjs', 'developer-update-cleanup.mjs',
+  ].map(name => [name, hash(name === 'developer-update.mjs' ? runner : path.join(directory, name))])) };
+}
 export function validUpdateChannel(channel) { return channel === 'latest' || channel === 'alpha'; }
 export function createSuiteUpdater({ home = os.homedir(), brainHome = path.join(home, '.cache/ruvnet-brain'),
   runner = RUNNER, node = process.execPath, spawnChild = spawn, processAlive = alive,
+  nightly = { status: nightlyStatus, enable: applyNightlyChoice }, markNightly = () => ({ ok: true }),
   policy = { readDeveloperUpdateConfig, readDeveloperUpdateReceipt, writeDeveloperUpdateConfig, sharedLockStatus, atomic } } = {}) {
   const options = { home, brainHome };
+  const schedulerOptions = { identity: NIGHTLY_LABEL, brainHome, kbDir: path.join(brainHome, 'kb'), cwd: home,
+    env: { ...process.env, HOME: home, USERPROFILE: home, RUVNET_BRAIN_HOME: brainHome } };
   const jobFile = path.join(brainHome, 'console-suite-update-job.json');
   let pending = null;
   const lock = () => policy.sharedLockStatus({ brainHome, alive: processAlive });
@@ -28,6 +39,8 @@ export function createSuiteUpdater({ home = os.homedir(), brainHome = path.join(
     catch (error) { policyError = error.message; }
     if (run?.kind !== 'nightly-suite-update' || !Number.isFinite(Date.parse(run.startedAt))) run = null;
     const job = pending || read(jobFile), shared = lock();
+    let schedule;
+    try { schedule = nightly.status(schedulerOptions); } catch { schedule = { state: 'unknown' }; }
     const active = !!pending || shared.state === 'running' || (run?.state === 'running' && processAlive(run.pid));
     const newerJob = job && (!run || Date.parse(job.startedAt) > Date.parse(run.startedAt));
     const completedJob = job?.pid === run?.pid && job?.finishedAt && Date.parse(job.finishedAt) >= Date.parse(run?.finishedAt || 0);
@@ -41,6 +54,7 @@ export function createSuiteUpdater({ home = os.homedir(), brainHome = path.join(
       : source?.ok === true && source?.finishedAt && source?.mode === 'apply' ? 'succeeded'
         : source?.mode === 'check' && source?.finishedAt ? 'checked' : source ? 'interrupted' : 'never-run';
     return { channel: validUpdateChannel(config?.channel) ? config.channel : null, scope: config?.scope ?? null,
+      nightly: schedule.state === 'on', nightlyState: schedule.state,
       available: !policyError && fs.existsSync(node) && fs.existsSync(runner), policyError,
       status, active, lockState: shared.state, startedAt: view?.startedAt ?? null, finishedAt: active ? null : view?.finishedAt ?? null,
       error: active ? null : view?.error ?? null, mode: view?.mode ?? null, sourceSha256: view?.sourceSha256 ?? null,
@@ -64,8 +78,13 @@ export function createSuiteUpdater({ home = os.homedir(), brainHome = path.join(
       // remain exclusions when absent. Cleanup and managed-callback preferences are preserved.
       const config = policy.readDeveloperUpdateConfig(options);
       policy.writeDeveloperUpdateConfig({ ...config, channel, scope: 'all', homebrew: true, uv: true, cargo: true, native: true }, options);
+      const enrollment = nightly.enable(true, schedulerOptions);
+      if (!enrollment.ok || enrollment.after?.state !== 'on') return { ok: false, error: enrollment.log || 'Nightly updates could not be enabled.', status: 503 };
+      const mirrored = markNightly();
+      if (!mirrored?.ok) return { ok: false, error: mirrored?.log || 'The nightly choice could not be saved.', status: 503 };
+      if (lock().state !== 'idle') return { ok: false, error: 'Nightly updates are enabled; an update is already running.', status: 409 };
       pending = { kind: 'console-suite-update-job', startedAt: new Date().toISOString(), mode: 'apply', state: 'running', ok: false,
-        sourceSha256: hash(runner), adapterSha256: hash(new URL(import.meta.url)) };
+        ...coordinatorSourceIdentity(runner), adapterSha256: hash(new URL(import.meta.url)) };
       policy.atomic(jobFile, pending);
       const env = { ...process.env, HOME: home, USERPROFILE: home, RUVNET_BRAIN_HOME: brainHome };
       delete env.RUVNET_DEVELOPER_UPDATE_TOKEN; // The runner acquires its own owner; RNBC holds none.
@@ -77,6 +96,8 @@ export function createSuiteUpdater({ home = os.homedir(), brainHome = path.join(
         try { receipt = policy.readDeveloperUpdateReceipt(options); } catch (failure) { error ||= failure.message; }
         const matched = receipt?.kind === 'nightly-suite-update' && receipt?.pid === child.pid && receipt?.mode === 'apply'
           && receipt?.sourceSha256 === pending.sourceSha256 && !!receipt?.finishedAt
+          && Object.keys(receipt.sourceSnapshot || {}).length === Object.keys(pending.sourceSnapshot).length
+          && Object.entries(pending.sourceSnapshot).every(([name, digest]) => receipt.sourceSnapshot?.[name] === digest)
           && ['completed', 'succeeded', 'failed'].includes(receipt?.state)
           && Date.parse(receipt.startedAt) >= Date.parse(pending.startedAt) - 1000;
         const ok = !error && matched && receipt.ok === true;
