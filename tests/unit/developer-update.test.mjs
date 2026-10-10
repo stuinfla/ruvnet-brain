@@ -281,6 +281,25 @@ test('plugin updater cannot accept success without exact target identity', async
   atomic(path.join(f.home,'.claude/plugins/installed_plugins.json'),{plugins:{'sample@market':[{scope:'user',installPath:artifact,version:'unknown',gitCommitSha:'2'.repeat(40)}]}});
   await assert.rejects(synchronizePlugins(()=>'{"ok":true}',false,[],{home:f.home,scope:'all',locate:()=>'/fixture/claude',artifactProvider:async()=>({repo:'example/plugin',commit:sha,manifest:{},entries:[]})}),/target not verified/);
 });
+test('unattended excluded scopes never access protected projects; user scope still verifies stock target', async () => {
+  const f=pluginFixture({source:'./',version:'2.0.0'}),protectedRoot=path.join(f.home,'protected-unavailable'),artifact=path.join(f.home,'artifact');fs.mkdirSync(artifact);
+  const excluded=['project','local','managed'].map(scope=>({scope,projectPath:path.join(protectedRoot,scope),installPath:path.join(protectedRoot,scope,'cache'),version:'unverified',gitCommitSha:'b'.repeat(40)}));
+  const installed=path.join(f.home,'.claude/plugins/installed_plugins.json'),user={scope:'user',installPath:artifact,version:'1.0.0'};
+  atomic(installed,{plugins:{'sample@market':[user,...excluded]}});atomic(path.join(f.home,'.claude/settings.json'),{enabledPlugins:{'sample@market':false}});
+  const readOriginal=fs.readFileSync,existsOriginal=fs.existsSync;
+  const forbid=file=>assert.equal(String(file).startsWith(protectedRoot),false,'protected project must never be touched');
+  const readSpy=vi.spyOn(fs,'readFileSync').mockImplementation((file,...args)=>{forbid(file);return readOriginal(file,...args);});
+  const existsSpy=vi.spyOn(fs,'existsSync').mockImplementation((file,...args)=>{forbid(file);return existsOriginal(file,...args);});
+  const calls=[],runner=(_command,args,options)=>{calls.push({args,options});if(options?.cwd)forbid(options.cwd);if(args[0]==='plugin'&&args[1]==='update')atomic(installed,{plugins:{'sample@market':[{...user,version:'2.0.0'},...excluded]}});return '{}';};
+  try{
+    const notes=[],receipt=await synchronizePlugins(runner,false,notes,{home:f.home,scope:'all',unattended:true,locate:name=>name==='claude'?'/fixture/claude':null});
+    assert.equal(receipt.steps.find(p=>p.scope==='user').state,'UPDATED');
+    for(const scope of ['project','local','managed']){const step=receipt.steps.find(p=>p.scope===scope);assert.equal(step.state,'UNSUPPORTED');assert.equal(step.target,undefined);assert.equal(step.artifactProof,undefined);assert.match(step.reason,/unverified|administrator/);}
+    assert.deepEqual(receipt.after.filter(p=>p.scope!=='user').map(p=>p.version),['unverified','unverified','unverified']);
+    assert.equal(calls.filter(c=>c.args[0]==='plugin'&&c.args[1]==='update').length,1);assert.equal(calls.find(c=>c.args[1]==='update').args[4],'user');
+    assert.equal(JSON.parse(readOriginal(path.join(f.home,'.claude/settings.json'))).enabledPlugins['sample@market'],false);
+  }finally{readSpy.mockRestore();existsSpy.mockRestore();fs.rmSync(f.home,{recursive:true,force:true});}
+});
 
 test('native Rust channels precede Cargo installs and uv self-update precedes uv tool upgrades', async () => {
   const home=tmp(),cargoRoot=path.join(home,'.cargo'),uv=path.join(home,'.local/bin/uv'),rustup=path.join(cargoRoot,'bin/rustup'),cargo=path.join(cargoRoot,'bin/cargo');

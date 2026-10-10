@@ -114,11 +114,11 @@ export function upgradePackage(before, tags, scripts = REVIEWED_INSTALL_SCRIPTS,
   run(npm, ['install', '-g', '--prefix', before.prefix, `--allow-scripts=${scripts.join(',')}`, spec]);
   return { name: before.name, state: 'updated', target, before, after: verifyPackage(before, target.version, run) };
 }
-export function pluginScopes(file) {
+export function pluginScopes(file, { unattended = false } = {}) {
   if (!exists(file)) return [];
   return Object.entries(read(file).plugins || {}).flatMap(([id, entries]) => entries.map(p => {
     if (!['user', 'project', 'local', 'managed'].includes(p.scope)) throw Error(`unknown plugin scope: ${id}`);
-    if (['project', 'local'].includes(p.scope) && (!p.projectPath || !path.isAbsolute(p.projectPath) || !exists(p.projectPath))) throw Error(`missing plugin project: ${id}`);
+    if (['project', 'local'].includes(p.scope) && (!p.projectPath || !path.isAbsolute(p.projectPath) || !unattended && !exists(p.projectPath))) throw Error(`missing plugin project: ${id}`);
     return { id, scope: p.scope, projectPath: p.projectPath || null, installPath: p.installPath, version: p.version, gitCommitSha: p.gitCommitSha || null };
   }));
 }
@@ -203,15 +203,23 @@ export function pluginUpdateDecision(plugin, target) {
   return { state: target.version === plugin.version ? 'CURRENT' : 'UPDATE_AVAILABLE', proof: target.proof,
     sourceCommitMatched: target.catalogCommit ? plugin.gitCommitSha?.toLowerCase() === target.catalogCommit : null };
 }
-export async function synchronizePlugins(run, dryRun, notes, { home, prefix, scope, locate, artifactProvider = pinnedClaudeTarget }) {
+export async function synchronizePlugins(run, dryRun, notes, { home, prefix, scope, locate, unattended = false, artifactProvider = pinnedClaudeTarget }) {
   const installed = path.join(home, '.claude/plugins/installed_plugins.json');
-  const all = pluginScopes(installed), before = all.filter(p => scope === 'all' || PLUGIN_MARKETPLACES.has(p.id.split('@').at(-1))), flags = pluginFlags(all, home);
+  const inventoryOptions = { unattended };
+  const all = pluginScopes(installed, inventoryOptions), before = all.filter(p => scope === 'all' || PLUGIN_MARKETPLACES.has(p.id.split('@').at(-1)));
+  const writable = before.filter(p => p.scope !== 'managed' && !(unattended && ['project', 'local'].includes(p.scope))), flags = pluginFlags(writable, home);
   const claude = locate('claude');
-  if (before.length && !claude) throw Error('installed Claude plugins have no existing Claude command');
+  if (writable.length && !claude) throw Error('installed Claude plugins have no existing Claude command');
   const steps = [], artifactCache = new Map();
-  const markets = [...new Set(before.map(p => p.id.split('@').at(-1)))];
+  const markets = [...new Set(writable.map(p => p.id.split('@').at(-1)))];
   if (!dryRun) for (const name of markets) run(claude, ['plugin', 'marketplace', 'update', name]);
   for (const p of before) {
+    if (!writable.includes(p)) {
+      const reason = p.scope === 'managed' ? 'managed scope belongs to its administrator' : 'unattended project settings unverified; original scope preserved';
+      steps.push({ id: p.id, scope: p.scope, projectPath: p.projectPath, before: p, after: p, state: 'UNSUPPORTED', reason });
+      notes.push(`plugin target unsupported; preserved: ${p.id} (${p.scope}): ${reason}`);
+      continue;
+    }
     const target = resolvePluginTarget(p, { home, run });
     let artifactTarget = null, artifactProof = null;
     if (target.supported && target.authority === 'commit' && target.proof === 'catalog-pinned-commit' && p.gitCommitSha?.toLowerCase() !== target.commit) {
@@ -226,18 +234,19 @@ export async function synchronizePlugins(run, dryRun, notes, { home, prefix, sco
     if (decision.state === 'AHEAD') { notes.push(`ahead plugin preserved: ${p.id}`); continue; }
     if (dryRun || decision.state === 'CURRENT') { step.after = p; continue; }
     run(claude, ['plugin', 'update', p.id, '--scope', p.scope, '--json'], { cwd: p.projectPath || home });
-    const live = pluginScopes(installed).find(item => scopeKey(item) === scopeKey(p));
+    const live = pluginScopes(installed, inventoryOptions).find(item => scopeKey(item) === scopeKey(p));
     if (artifactTarget && live) { artifactProof = verifyClaudeArtifact(artifactTarget, live.installPath); step.artifactProof = artifactProof; }
     const exactCommit = target.commit && live?.gitCommitSha?.toLowerCase() === target.commit;
     if (!live || (target.commit ? !exactCommit && !artifactProof?.ok : live.version !== target.version)) throw Error(`plugin target not verified: ${p.id}`);
     if (target.commit && !exactCommit) Object.assign(step, { sourceCommitMatched: false, actualClaudeSourceMatched: true, providerMetadataDiscrepancy: { recordedCommit: live.gitCommitSha, pinnedCommit: target.commit } });
     Object.assign(step, { state: 'UPDATED', after: live });
   }
-  const after = pluginScopes(installed).filter(p => before.some(b => scopeKey(b) === scopeKey(p)));
-  if (JSON.stringify(all.map(scopeKey).sort()) !== JSON.stringify(pluginScopes(installed).map(scopeKey).sort())) throw Error('plugin install set changed');
+  const after = pluginScopes(installed, inventoryOptions).filter(p => before.some(b => scopeKey(b) === scopeKey(p)));
+  if (JSON.stringify(all.map(scopeKey).sort()) !== JSON.stringify(pluginScopes(installed, inventoryOptions).map(scopeKey).sort())) throw Error('plugin install set changed');
   if (JSON.stringify(before.map(scopeKey).sort()) !== JSON.stringify(after.map(scopeKey).sort())) throw Error('plugin install scopes changed');
-  if (JSON.stringify(flags) !== JSON.stringify(pluginFlags(all, home))) throw Error('plugin enablement changed');
-  for (const p of after) if (!exists(p.installPath)) throw Error(`plugin artifact missing: ${p.id}`);
+  for (const p of before.filter(p => !writable.includes(p))) if (JSON.stringify(p) !== JSON.stringify(after.find(a => scopeKey(a) === scopeKey(p)))) throw Error(`preserved plugin record changed: ${p.id}`);
+  if (JSON.stringify(flags) !== JSON.stringify(pluginFlags(writable, home))) throw Error('plugin enablement changed');
+  for (const p of after.filter(p => writable.some(b => scopeKey(b) === scopeKey(p)))) if (!exists(p.installPath)) throw Error(`plugin artifact missing: ${p.id}`);
   const codex = locate('codex');
   if (codex) {
     const result = JSON.parse(run(codex, ['plugin', 'marketplace', 'list', '--json'], { timeout: 30_000 }));
@@ -247,7 +256,7 @@ export async function synchronizePlugins(run, dryRun, notes, { home, prefix, sco
     if (/^\s+update\s/m.test(help)) throw Error('Codex plugin update now exists; review scope-aware policy before enabling');
     notes.push('Codex has no plugin update command; configured Git catalogues refreshed, installed generations preserved');
   }
-  if (JSON.stringify(flags) !== JSON.stringify(pluginFlags(all, home))) throw Error('Codex plugin enablement changed');
+  if (JSON.stringify(flags) !== JSON.stringify(pluginFlags(writable, home))) throw Error('Codex plugin enablement changed');
   return { before, after, steps };
 }
 function knowledge(run, dryRun, runId, { brainHome, root, node }) {
@@ -356,7 +365,7 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
       receipt.steps.push(upgradePackage(before, tags, REVIEWED_INSTALL_SCRIPTS, { run, dryRun: mode === 'check', channel: config.channel, npm, preservePackages: config.preservePackages }));
       atomic(paths.receipt, receipt);
     }
-    receipt.plugins = await synchronizePlugins(run, mode === 'check', receipt.notes, { home, prefix, scope: config.scope, locate });
+    receipt.plugins = await synchronizePlugins(run, mode === 'check', receipt.notes, { home, prefix, scope: config.scope, locate, unattended: !!env.RUVNET_NIGHTLY_IDENTITY });
     if (exists(path.join(paths.brainHome, 'kb/forge-update.mjs'))) receipt.knowledge = knowledge(run, mode === 'check', receipt.runId, { brainHome: paths.brainHome, root, node: process.execPath });
     else receipt.notes.push('Brain corpus absent; fresh knowledge install excluded');
     receipt.maintenance = await maintenance(config, run, mode === 'check', { home, brainHome: paths.brainHome, locate, node: process.execPath, progress: result => { receipt.maintenance = result; atomic(paths.receipt, receipt); } });
