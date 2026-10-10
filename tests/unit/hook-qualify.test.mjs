@@ -23,7 +23,7 @@ const ok = { status: 0, signal: null, stdout: B(), stderr: B(), ms: 50, timedOut
 const reg = (over = {}) => ({ host: 'claude', event: 'Stop', mode: 'advisory', timeoutSec: 10, effectiveSec: 10, label: 'x', ...over });
 
 describe('the matrix is DERIVED from the registries, never hand-listed', () => {
-  it('enumerates every registration of hooks.json and codex-hooks.json, each with a known mode and a captured payload', () => {
+  it('enumerates every registration of hooks.json and codex-hooks.json, each with a known mode and a captured or labelled derived payload', () => {
     for (const host of HOSTS) {
       const file = host === 'codex' ? 'codex-hooks.json' : 'hooks.json';
       const doc = JSON.parse(fs.readFileSync(path.join(ROOT, 'plugin', 'hooks', file), 'utf8')).hooks;
@@ -36,6 +36,43 @@ describe('the matrix is DERIVED from the registries, never hand-listed', () => {
         expect(fixturesFor(r, ROOT).length, `${r.label}: no payload fixture`).toBeGreaterThan(0);
       }
     }
+  });
+  it('derives Claude child completion explicitly without inventing native delivery or another host event', () => {
+    const [fixture] = fixturesFor({ host: 'claude', event: 'SubagentStop' }, ROOT);
+    expect(fixture._provenance).toMatch(/^DERIVED from the captured Claude Stop payload/);
+    expect(fixture._provenance).toContain('https://code.claude.com/docs/en/hooks#subagentstop');
+    expect(fixture._provenance).toContain('no native SubagentStop capture was observed');
+    expect(fixture.payload).toMatchObject({ hook_event_name: 'SubagentStop', agent_id: 'qual-child', agent_type: 'Explore',
+      agent_transcript_path: '{{TRANSCRIPT_DIR}}/subagents/agent-qual-child.jsonl', stop_hook_active: false });
+    expect(typeof fixture.payload.last_assistant_message).toBe('string');
+    expect(fixture.payload.transcript_path).toBe('{{TRANSCRIPT}}');
+    expect(fixturesFor({ host: 'codex', event: 'PostToolUseFailure' }, ROOT)).toEqual([]);
+    expect(fixturesFor({ host: 'claude', event: 'UnknownFutureEvent' }, ROOT)).toEqual([]);
+  });
+  it('marks unobserved Codex/Grok envelopes as consumer-only adapter derivations, never native captures', () => {
+    for (const [host, event] of [['codex', 'SubagentStop'], ['grok', 'SubagentStop'], ['grok', 'PostToolUseFailure']]) {
+      const [fixture] = fixturesFor({ host, event }, ROOT);
+      expect(fixture).toMatchObject({ nativeSchemaObserved: false, nativeDeliveryObserved: false });
+      expect(fixture._provenance).toMatch(/^DERIVED adapter-contract envelope/);
+      expect(fixture._provenance).toContain('consumer-only');
+      expect(fixture._provenance).toContain('native schema and delivery NOT observed');
+      expect(fixture._provenance).toContain('producer completeness NOT verified');
+      expect(fixture.payload.hook_event_name).toBe(host === 'grok' ? event.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase() : event);
+      expect(fixture.payload).not.toHaveProperty('agent_id');
+      expect(fixture.payload).not.toHaveProperty('agent_transcript_path');
+      expect(fixture.payload).not.toHaveProperty('error');
+      expect(fixturesFor({ host, event: 'UnknownFutureEvent' }, ROOT)).toEqual([]);
+    }
+  });
+  it('derives Claude tool failure with explicit error fields and no successful response or capture claim', () => {
+    const [fixture] = fixturesFor({ host: 'claude', event: 'PostToolUseFailure' }, ROOT);
+    expect(fixture._provenance).toMatch(/^DERIVED from the captured Claude PreToolUse payload/);
+    expect(fixture._provenance).toContain('https://code.claude.com/docs/en/hooks#posttoolusefailure');
+    expect(fixture._provenance).toContain('no native PostToolUseFailure capture was observed');
+    expect(fixture.payload).toMatchObject({ hook_event_name: 'PostToolUseFailure', error: 'Fixture tool failed', is_interrupt: false, duration_ms: 1 });
+    expect(fixture.payload.tool_name).toBeTruthy();
+    expect(fixture.payload.tool_input).toBeTruthy();
+    expect(fixture.payload).not.toHaveProperty('tool_response');
   });
   it('every fixture records provenance, carries no machine-specific path, and DERIVED ones say so', () => {
     for (const host of ['claude', 'codex', 'grok']) {
@@ -124,6 +161,32 @@ describe.skipIf(process.platform === 'win32')('process boundary: a faulty hook b
       expect(res.findings, `${host}: ${JSON.stringify(res.findings)} stderr=${res.stderr}`).toEqual([]);
     }
   }, 60_000);
+
+  it('the registered Claude child-completion handler is clean on its labelled derived protocol payload', async () => {
+    const { dir } = fakeRoot();
+    const r = find(dir, 'claude', 'SubagentStop', 'session-snapshot');
+    expect(r, 'the shipped child-completion registration is missing').toBeTruthy();
+    const res = await run(dir, r);
+    expect(res.findings, JSON.stringify(res.findings)).toEqual([]);
+  }, 60_000);
+  it('the registered Claude tool-failure handler is clean on its labelled derived failure payload', async () => {
+    const { dir } = fakeRoot();
+    const r = find(dir, 'claude', 'PostToolUseFailure', 'session-snapshot');
+    expect(r, 'the shipped tool-failure registration is missing').toBeTruthy();
+    const res = await run(dir, r);
+    expect(res.findings, JSON.stringify(res.findings)).toEqual([]);
+  }, 60_000);
+  for (const [host, event] of [['codex', 'SubagentStop'], ['grok', 'SubagentStop'], ['grok', 'PostToolUseFailure']]) {
+    it(`${host} ${event}: the consumer accepts its labelled adapter envelope without claiming native delivery`, async () => {
+      const { dir } = fakeRoot();
+      const r = find(dir, host, event, 'session-snapshot');
+      expect(r, 'the registered observation consumer is missing').toBeTruthy();
+      const fixture = fixturesFor(r, dir)[0];
+      expect(fixture.nativeDeliveryObserved).toBe(false);
+      const res = await run(dir, r);
+      expect(res.findings, JSON.stringify(res.findings)).toEqual([]);
+    }, 60_000);
+  }
 
   it('stderr: a hook that writes to stderr is red on Claude; the Codex adapter swallows an exit-0 stderr, so it stays green there', async () => {
     const { dir, breakBody } = fakeRoot();
@@ -298,8 +361,11 @@ describe.skipIf(process.platform === 'win32' || !BASH)('shell hooks stay silent 
     return /^\s*set -[a-z]*u/m.test(src) && /read -r -t \d+ /.test(src);
   });
   it('discovers every set -u + timed-read hook (the list cannot silently shrink)', () => {
-    expect(TIMED_READ_HOOKS).toEqual(expect.arrayContaining(['grounding-stamp.sh', 'ground-before-write.sh', 'design-wall.sh',
-      'protect-brain-state.sh', 'learn-capture.sh', 'kling-preflight.sh', 'route-dispatch.sh']));
+    // learn-capture moved to the bounded Node body; verify-interface still uses timed shell input.
+    // Pin the whole inventory so additions, removals and predicate drift require review.
+    expect(TIMED_READ_HOOKS.slice().sort()).toEqual(['design-wall.sh', 'ground-before-write.sh', 'grounding-stamp.sh',
+      'kling-preflight.sh', 'protect-brain-state.sh', 'route-dispatch.sh', 'verify-interface.sh']);
+    expect(fs.readFileSync(SH('learn-capture.sh'), 'utf8')).toMatch(/exec node .*learn-capture\.mjs/);
   });
   for (const f of TIMED_READ_HOOKS) {
     it(`${f}: stdin opened and never written is silent (no "unbound variable")`, async () => {
