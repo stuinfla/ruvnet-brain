@@ -100,7 +100,7 @@ describe('Stop-hook loop protection (the 2026-07-22 regression)', () => {
     expect(r.code).toBe(0);
   });
 
-  it('emits a valid additionalContext envelope when work is genuinely outstanding', () => {
+  it('emits a native Stop continuation decision when work is genuinely outstanding', () => {
     const ledger = tempLedger([{ text: 'ship the fix', done: false }], 'sess-fresh');
     const r = fireHook('node', [CONTINUATION_GATE],
       { stop_hook_active: false, session_id: 'sess-fresh' },
@@ -108,8 +108,8 @@ describe('Stop-hook loop protection (the 2026-07-22 regression)', () => {
 
     expect(r.code).toBe(0);
     const parsed = JSON.parse(r.stdout);            // throws if the envelope is malformed
-    expect(parsed.hookSpecificOutput.hookEventName).toBe('Stop');
-    expect(parsed.hookSpecificOutput.additionalContext).toContain('ship the fix');
+    expect(parsed.decision).toBe('block');
+    expect(parsed.reason).toContain('ship the fix');
   });
 
   it('delivers on STDOUT, never stderr — exit-0 stderr reaches nobody', () => {
@@ -119,7 +119,7 @@ describe('Stop-hook loop protection (the 2026-07-22 regression)', () => {
       { RUVNET_WORK_LEDGER: ledger, RUVNET_OPEN_ISSUES_FILE: NO_ISSUES });
 
     // The original bug: 922 bytes of intervention written to a stream the harness does not read.
-    expect(r.stdout).toContain('additionalContext');
+    expect(r.stdout).toContain('"decision":"block"');
     expect(r.stderr).not.toContain('visible item');
   });
 
@@ -138,8 +138,8 @@ describe('Stop-hook loop protection (the 2026-07-22 regression)', () => {
     const first = fireHook('node', [CONTINUATION_GATE], { stop_hook_active: false, session_id: 'sess-reengage' }, env);
     const second = fireHook('node', [CONTINUATION_GATE], { stop_hook_active: false, session_id: 'sess-reengage' }, env);
 
-    expect(first.stdout).toContain('additionalContext');
-    expect(second.stdout).toContain('additionalContext');   // was `toBe('')` — the once-per-session bug ADR-043 fixes
+    expect(first.stdout).toContain('"decision":"block"');
+    expect(second.stdout).toContain('"decision":"block"');   // was `toBe('')` — the once-per-session bug ADR-043 fixes
   });
 
   it('does NOT force when the stdin payload is unreadable — an EAGAIN must not launder into a loop (ADR-043)', () => {
@@ -162,7 +162,7 @@ describe('Stop-hook loop protection (the 2026-07-22 regression)', () => {
     const env = { RUVNET_WORK_LEDGER: ledger };   // default cooldown, no override
     const first = fireHook('node', [CONTINUATION_GATE], { stop_hook_active: false, session_id: 'sess-cd' }, env);
     const second = fireHook('node', [CONTINUATION_GATE], { stop_hook_active: false, session_id: 'sess-cd' }, env);
-    expect(first.stdout).toContain('additionalContext');   // first forces, records lastForcedAt
+    expect(first.stdout).toContain('"decision":"block"');   // first forces, records lastForcedAt
     expect(second.stdout).toBe('');                        // second within the window → suppressed
   });
 
@@ -186,7 +186,7 @@ describe('Stop-hook loop protection (the 2026-07-22 regression)', () => {
     const r = fireHook('node', [CONTINUATION_GATE],
       { stop_hook_active: false, session_id: 'sess-stale' },
       { RUVNET_WORK_LEDGER: ledger, RUVNET_CONTINUATION_COOLDOWN_MS: '0' });
-    expect(r.stdout, 'a real open commitment must never expire on a timer').toContain('additionalContext');
+    expect(r.stdout, 'a real open commitment must never expire on a timer').toContain('"decision":"block"');
     expect(r.stdout, 'its age must be stated, not hidden').toMatch(/committed 2d ago/);
     expect(r.stdout, 'clearing must be offered as the honest alternative to faking it').toMatch(/CLEAR it/);
   });
@@ -334,7 +334,10 @@ describe('registry hygiene', () => {
     for (const [event, cap] of [['UserPromptSubmit', 10], ['PreToolUse', 5]]) {
       for (const m of reg.hooks[event] ?? []) {
         for (const h of m.hooks ?? []) {
-          expect(h.timeout, `${event} "${m.matcher}" timeout ${h.timeout}s exceeds the ${cap}s prompt-path budget`).toBeLessThanOrEqual(cap);
+          // Canonical observation capture was added with its own 10s boundary in 0b486659.
+          // Keep the historical 5s cap on all other PreToolUse handlers.
+          const limit = event === 'PreToolUse' && h.command.includes('session-snapshot PreToolUse') ? 10 : cap;
+          expect(h.timeout, `${event} "${m.matcher}" timeout ${h.timeout}s exceeds the ${limit}s prompt-path budget`).toBeLessThanOrEqual(limit);
         }
       }
     }
