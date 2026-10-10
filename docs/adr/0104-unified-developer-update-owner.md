@@ -3,8 +3,8 @@ id: ADR-104
 title: One source-bound coordinator for installed developer updates
 status: Accepted
 date: 2026-10-10
-updated: 2026-10-10 12:34:24 EDT
-version: 1.0.5
+updated: 2026-10-10 13:11:57 EDT
+version: 1.0.6
 authors: [Stuart Kerr, Codex]
 tags: [updates, install-identity, scheduler, receipts, footprint]
 amends: [ADR-098]
@@ -56,3 +56,12 @@ fields to the coordinator. This corrects the missing registration, Node, runner 
 digest fields while retaining the existing identity verifier and scheduler contract.
 Fixture acceptance does not establish a completed scheduled customer update; integration
 must collect actual installed registration and execution evidence on the published build.
+
+The latest-operation receipt continues to describe checks and manual runs. A separate
+constant-space `scheduler/last-suite-attempt.json` records the last scheduled apply
+attempt, including running and failed outcomes. Newer scheduled latest evidence takes
+precedence over an older retained success. Under the existing lock, a check or manual
+run must first preserve any newer scheduled evidence; retention failure refuses the
+latest overwrite. Health retains exact registration/source and live-owner checks,
+rejects stale/future evidence, and uses a valid legacy latest scheduled apply only when
+appropriate. No previous proof is copied back into the latest-operation file.

@@ -4,8 +4,8 @@ title: Routing architecture qualification requires a current finite source revie
 status: Accepted
 date: 2026-10-05
 updated: 2026-10-10
-version: 0.1.25
-reviewed_digest: 6c905535ed9c
+version: 0.1.26
+reviewed_digest: 5b6649f102ca
 impl: built
 authors: [Stuart Kerr, Codex]
 tags: [routing, governance, review, release, traceability]
@@ -196,6 +196,9 @@ governs:
   - tests/unit/developer-update-codex-launcher.test.mjs
   - bin/nightly-refresh.mjs
   - tests/unit/nightly-scheduler.test.mjs
+  - plugin/scripts/developer-update.mjs
+  - plugin/scripts/nightly-scheduler.mjs
+  - tests/unit/developer-update-scheduled-receipt.test.mjs
 ---
 
 # ADR-103 — Routing architecture review lock
@@ -274,6 +277,15 @@ SHA-256 it has already verified. Caller-supplied conflicting identity values do 
 replace that registration. Native wrapper tests are POSIX qualification; portable
 policy and scheduler identity qualification remain selected on Windows.
 
+A separate constant-space scheduled-attempt receipt retains running, failed and completed
+scheduled applies independently of the latest currency check or manual operation. The
+health reader chooses the newer scheduled attempt from current and retained evidence,
+validates registration/source bindings, rejects future or stale proof, and requires the
+matching live owner for running state. Before replacing latest evidence with a check or
+manual run, the writer reconciles newer scheduled evidence under the existing lock;
+failure to preserve it refuses that overwrite. This does not copy an old receipt back
+into the latest-operation slot or manufacture a successful scheduled run.
+
 ## Assurance limits and consequences
 
 The machine guard enforces byte-bound review currency and evidence structure. It cannot establish
@@ -290,6 +302,8 @@ and P10 by reusing doc-currency. It trades P3's usual nudge for the owner's expl
 finite release refusal. No paid provider call, model generation or system configuration is added.
 
 ## Currency log
+
+| 2026-10-10 | Reviewed `5b6649f102ca` against receipt-repair worker source `8f852170`, integration `56eb2f2d`, and the final 4.6.2 finite mapping. | Root independently reviewed `plugin/scripts/developer-update.mjs`, `plugin/scripts/nightly-scheduler.mjs` and the nine scheduled-receipt regressions; all nine independently executed cases passed. The two-slot constant-space intent preserves newer running/failed scheduled attempts, reconciles evidence before manual/check overwrite, refuses retention failure, and retains source/registration/time/live-owner validation plus legacy compatibility. Integration passed 118 combined focused cases. Earlier native-wrapper and four-field runner review remains scoped to its recorded source. This is not whole-set reread, public installation, actual scheduled customer execution, corpus refresh or SDK hot-reload evidence. The completed `55cf952a` preflight remains bound to its earlier bytes and is not reused. |
 
 | 2026-10-10 | Reviewed `6c905535ed9c` against worker source `4a6e3a71`, integration source `3fc97cc5` and the final finite 4.6.2 mapping. | Root independently reviewed `plugin/scripts/developer-update-maintenance.mjs`, its focused tests, `bin/nightly-refresh.mjs`, `tests/unit/nightly-scheduler.test.mjs`, the POSIX qualification additions and ADR-103/104 normative mapping. Eleven independent wrapper cases passed. Integration reproduced missing scheduled registration identity against the actual content-addressed runner, then passed all 24 scheduler cases and 96 combined focused cases. The controlled existing-runtime launcher restoration matched its 605-file digest, preserved shared config, Claude and shell bytes, and returned native Codex 0.162.1. This bounded review does not assert rereading all 185 governed paths, protected publication, completed customer maintenance, corpus freshness or SDK hot reload. Vendor files are not rolled back on provider failure. |
 
