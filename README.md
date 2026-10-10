@@ -1,4 +1,4 @@
-Updated: 2026-10-10 04:39:18 EDT | Version 4.6.0
+Updated: 2026-10-10 05:06:39 EDT | Version 4.6.0
 Created: 2026-06-29 22:36:38 EDT
 
 <div align="center">
@@ -52,6 +52,7 @@ version alone does not establish publication, all-tool freshness or a new produc
 > - **`installer (npm)`** (badge above) — the setup script's published version, read live from the [npm registry](https://www.npmjs.com/package/ruvnet-brain). It is a release surface of the same product, not an independent version track.
 > - **Brain Release** — [`releases/latest`](https://github.com/stuinfla/ruvnet-brain/releases/latest) exposes the published knowledge bundle. It must agree with that release's npm, plugin, and signed artifact identities. A moving source badge does not establish publication.
 > - **Update an existing Brain installation:** invoke its existing `ruvnet-brain --update` command. For an explicit developer checkout, use `node bin/install.mjs --update`. Initial installation may use `npx ruvnet-brain@latest`; routine updates preserve the installed owner instead of creating a second tool installation.
+> - **Check installed tools:** `ruvnet-brain-update --check`. Apply the saved policy with `ruvnet-brain-update --apply`; inspect the receipt for exclusions and failures.
 > - **Coordinate installed tools:** open RNBC and use **Keep all tools updated**. Choose **Latest (recommended)** or **Alpha**, and explicitly choose wider tool maintenance when wanted. The schedule runs at **03:30 in the user's local time** through the same coordinator as a manual run.
 > - **Disable scheduled updates:** use the existing `ruvnet-brain --disable-nightly` command. Registration and run health are reported separately.
 > - **Publication, local activation, and loaded session version are distinct observations.** An unchanged release does not by itself prove local health, freshness, or a successful update.

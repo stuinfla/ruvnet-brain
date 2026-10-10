@@ -1,4 +1,4 @@
-Updated: 2026-10-10 04:40:48 EDT | Version 1.1.0
+Updated: 2026-10-10 05:06:23 EDT | Version 1.1.1
 Created: 2026-10-05 06:18:56 EDT
 
 # Automatic update source — legacy lifecycle and coordinated schedule
@@ -8,18 +8,23 @@ Latest/Alpha policy. It updates the discovered existing package owner and does n
 legacy `latest` source's npx invocation. Its canonical operating policy lives in
 `CONTRIBUTING.md` under "Coordinated developer updates (4.6.0)".
 
-The `updateSource` preference below remains a separate legacy setting for existing lifecycle
-hooks and older registrations/proof paths. Enrolling the coordinated schedule does not rewrite
-that preference. Its default `latest` source runs the current npm package through npx; to make
-those legacy paths use the installed coordinator instead, explicitly run:
+Automatic lifecycle invocation also joins the immutable canonical coordinator when configured
+or registered. Its nested child inherits the shared owner token. An active but unready canonical
+owner refuses work instead of creating a fallback copy.
+
+Canonical automatic invocation selects its owner without reading legacy `updateSource`
+settings. The preference below is resolved only for unconfigured legacy and older proof paths.
+Enrolling the coordinated schedule does not rewrite the preference.
+Its default `latest` source runs the current npm package through npx; to make those remaining
+legacy paths use the installed coordinator instead, explicitly run:
 
 ```sh
 ruvnet-brain --update-source installed
 ```
 
 This saves only the canonical per-user `updateSource` setting under
-`~/.config/ruvnet-brain/settings.json`, preserving other owner preferences. Legacy nightly paths, SessionStart
-maintenance and the MCP corpus timer read that user choice; a project cannot override it. Missing
+`~/.config/ruvnet-brain/settings.json`, preserving other owner preferences. Unconfigured legacy nightly and lifecycle paths
+read that user choice; a project cannot override it. Missing
 or malformed installed packages and unreadable, corrupt or future settings refuse automatic work
 instead of falling back to npx. Restore the default with `ruvnet-brain --update-source latest`.
 

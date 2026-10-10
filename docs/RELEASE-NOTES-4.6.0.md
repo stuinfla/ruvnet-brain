@@ -1,9 +1,12 @@
-Updated: 2026-10-10 04:39:18 EDT | Version 1.0.0
+Updated: 2026-10-10 05:06:39 EDT | Version 1.0.1
 Created: 2026-10-10 04:39:18 EDT
 
 # RuvNet Brain 4.6.0 — coordinated installed-tool updates
 
-Manual and overnight updates use one coordinator, saved policy and shared owner lock. RNBC
+Manual and overnight updates use one coordinator, saved policy and shared owner lock. The
+installed `ruvnet-brain-update --check` and `--apply` commands expose that coordinator. Configured
+automatic lifecycle paths join its immutable registered closure; unconfigured legacy/proof paths
+retain their compatibility setting. RNBC
 presents **Keep all tools updated** with **Latest (recommended)** or **Alpha**, and reports the
 saved choice, native scheduler state and actual run evidence separately. The scheduled run is
 03:30 in the user's local time. The public default covers installed RuvNet-suite tools; broader

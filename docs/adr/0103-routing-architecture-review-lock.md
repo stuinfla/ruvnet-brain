@@ -3,9 +3,9 @@ id: ADR-103
 title: Routing architecture qualification requires a current finite source review
 status: Accepted
 date: 2026-10-05
-updated: 2026-10-07
-version: 0.1.18
-reviewed_digest: 7ba26e9903fa
+updated: 2026-10-10
+version: 0.1.20
+reviewed_digest: cf0271a2e0d1
 impl: built
 authors: [Stuart Kerr, Codex]
 tags: [routing, governance, review, release, traceability]
@@ -229,6 +229,8 @@ substitute for release qualification, exact-candidate receipts or published veri
 | Native subscription and catalog | subscription-hosts, native-subscription-usage, model-native-catalog, model-native-qualification, model-router-catalog | Corresponding native/catalog tests and installer convergence tests |
 | Weekly assessment and promotion | model-weekly-cycle, model-weekly-analyst, model-weekly-assessment, model-weekly-qualification, model-routing-policy-promotion, weekly-analyst-instruction | Corresponding weekly and promotion unit files |
 | Installation seam | model-terminal-launchers.mjs returns only already-validated Claude settings source paths for restrictive inherited-plan inspection; it does not evaluate native precedence or grant authority. bin/install.mjs (native administrative hooks probe uses explicit caller/CODEX_BIN or configured realCodex, leaving managed app-server refusal intact), model-routing-operation.md, codex-console-alias and SessionStart core/budget | codex-fresh-host-proof native resolution/override/fallback regression; model-router-update-convergence, session-start-core-parity, model-terminal-launchers and npm-tarball-codex; bounded routing and console-alias installation, not an all-installer review; packed-clean-install and npm-tarball-codex retain sealed archive metadata reads with basename and controlled cwd, rejecting the Windows GNU-tar remote drive-letter seam |
+| Decision gate source ceiling | plugin/scripts/decision-gate.mjs removes only 16 blank lines to meet the existing 500-line source gate; source tokens and behavior are unchanged. | Independent blank-line-insensitive diff is empty; the existing lesson-gate checks retain the architecture source-size requirement. Source formatting clearance does not establish runtime or release acceptance. |
+| Coordinated update admission | bin/install.mjs acquires the shared developer-update owner lock before the existing update, propagates its token for owned nested work, restores the previous environment and releases in finally. The coordinator and immutable module closure are governed separately by ADR-104. CONTRIBUTING.md records explicit channel/scope/manager choices, the shipped updater launcher, configured automatic-owner admission and proof boundaries. package-lock.json changes product version and declares the shipped update launcher without changing dependency versions. | developer-update lock inheritance/refusal/release and canonical source tests; architecture-review-lock and doc-currency-review refusal fixtures. Focused checks establish source behavior only; actual scheduled execution, provider currency and public installation need their own exact receipts. |
 | Qualification and release guard | architecture-review-lock, doc-currency, release-qualification-contract, source-scope-receipt, release-transaction, release-transaction-provider, package-lock.json; candidate/CI/protected workflows | architecture-review-lock refusal fixtures and doc-currency-review; release-evidence-dag, protected-release-workflow and agentic-qe-early-public bind the outer candidate-preflight dependency and same-run receipts; existing release contract chooses execution evidence. release-transaction-provider-buffer executes the actual payload upload path with size-based 30s–600s per-file deadlines while metadata and small sidecars retain 30s; the separate download budget and immutable asset checks remain. The npm audit at the exact-candidate seal rejects high-severity dependency advisories; a compatible transitive development patch still requires source-bound qualification, not reuse of an old candidate's receipt. This does not prove transfer throughput or a hard process-tree retirement bound. |
 
 | Shared hook intent and ownership | hook-contracts, continuity-hook-policy, hook-registry, shim and native adapters; foreign capture registrations are collision candidates, not current-turn proof | hook-registry-lint, codex-claude-hook-parity, continuity-journal and hook-hardening; native event delivery is separately qualified |
@@ -264,6 +266,12 @@ and P10 by reusing doc-currency. It trades P3's usual nudge for the owner's expl
 finite release refusal. No paid provider call, model generation or system configuration is added.
 
 ## Currency log
+
+| 2026-10-10 | Reviewed `cf0271a2e0d1` against governed source `dc2301a1` and the final CONTRIBUTING/mapping bytes. | Independent read-only updater_audit review covers the bounded `bin/install.mjs`, `package-lock.json`, `CONTRIBUTING.md` deltas and the 16 blank-line-only removals in `plugin/scripts/decision-gate.mjs`; the blank-line-insensitive source diff is empty. Final bridge documentation was independently checked against canonical-first automatic invocation 05cfa286 and knowledge caller a2351888, including corrupt-legacy negative fixtures. No findings remain in this scope. 115 focused developer-update, lesson-gate, architecture-review-lock and doc-currency-review tests passed; the independent final developer-update run passed 27 cases. Prior governed review scopes remain bounded: no whole-set reread, native scheduled-run, provider freshness or protected public-installation claim is made. |
+
+
+| 2026-10-10 | Reviewed `034691457343` against source `8237f6d7` and this final mapping. | Independent read-only updater_audit review examined the exact 9cf8fe19-to-8237f6d7 deltas in `CONTRIBUTING.md`, `bin/install.mjs` and `package-lock.json`, the ADR mapping and the canonical coordinator/lock/nightly consumers; no blocking findings. Installer lock/token inheritance and finally-release, metadata-only launcher/version changes and explicit update policy remain scoped. 45 focused developer-update, architecture-review-lock and doc-currency-review checks passed. The other governed bytes retain their prior bounded review chain; no full governed-set reread, native schedule, provider freshness or protected public installation claim is made. |
+
 
 
 | Date | What | Why |

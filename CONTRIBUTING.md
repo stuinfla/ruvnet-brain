@@ -1,4 +1,4 @@
-Updated: 2026-10-10 04:39:18 EDT | Version 1.1.0
+Updated: 2026-10-10 05:06:23 EDT | Version 1.1.1
 Created: 2026-07-07 09:22:01 EDT
 
 # Contributing to RuvNet Brain — the one rulebook
@@ -183,7 +183,8 @@ recorded verdict rather than each re-deriving their own comparison.
 ### Coordinated developer updates (4.6.0)
 
 RNBC's **Keep all tools updated** control uses `plugin/scripts/developer-update.mjs`, also
-exposed by `bin/developer-update.mjs` for explicit developer checkouts. Manual checks, applies
+exposed by the installed `ruvnet-brain-update` command (`bin/developer-update.mjs` in an explicit
+developer checkout). Manual checks, applies
 and the native Brain scheduler use that coordinator. The scheduler runs at **03:30 user-local
 time**, with one `com.ruvnet.brain-update` owner on macOS; native platform adapters retain their
 own registration semantics. `--host-sync-only` repairs host wiring and does not update knowledge.
@@ -196,8 +197,8 @@ scope and extra managers require explicit opt-in; one machine's wider private co
 not the public default. Run-local CLI overrides do not silently rewrite the saved choice:
 
 ```bash
-node bin/developer-update.mjs --check --channel latest --scope ruvnet
-node bin/developer-update.mjs --apply --channel alpha --scope all
+ruvnet-brain-update --check --channel latest --scope ruvnet
+ruvnet-brain-update --apply --channel alpha --scope all
 ```
 
 The coordinator discovers existing npm prefix/root and command ownership, then updates in
@@ -237,8 +238,11 @@ the MCP server's 15-min timer — launches the one detached updater worker in ch
 stops and `REFUSED` (published corpus older) never downgrades. The worker respawns on the new knowledge at
 the next search. Exact limits: nothing runs on a machine with no open session; a running session gains the
 timer only after its next restart (`server.mjs` is boot-frozen); `RUVNET_AUTO_UPDATE=off`, a recorded "no", or
-agentic-kit ownership proven within 36h turn it off. Those legacy triggers still read `updateSource`;
-the developer-suite scheduler instead reads its canonical channel/scope configuration. See
+agentic-kit ownership proven within 36h turn it off. When the canonical coordinator is configured
+or registered, automatic invocation joins that owner using its channel/scope and shared token; an
+active but unready coordinator refuses work. Canonical invocation selects its owner without
+reading legacy `updateSource` settings. Only unconfigured legacy and proof paths resolve that
+preference for target selection. See
 `docs/AUTOMATIC-UPDATE-SOURCE.md` for that compatibility boundary. Proof: `tests/integration/corpus-auto-update-e2e.test.mjs`.
 
 **Putting the Brain on another disk.** `npx ruvnet-brain --move-brain <dir>` (for example
