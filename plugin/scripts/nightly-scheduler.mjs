@@ -253,9 +253,10 @@ export function developerRunHealth({ brainHome, registration, now = Date.now(), 
   let receipt;
   try { receipt = JSON.parse(fs.readFileSync(file, 'utf8')); }
   catch (error) { return { state: 'failed', evidence: `Coordinated update receipt unreadable: ${error.message}`, receipt: null }; }
-  const bound = receipt.kind === 'nightly-suite-update' && receipt.schemaVersion === 1
+  const validDigest = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+  const bound = validDigest(receipt.sourceSha256) && receipt.kind === 'nightly-suite-update' && receipt.schemaVersion === 1
     && receipt.sourceSha256 === registration.updateModules?.['developer-update.mjs']?.sha256
-    && ['developer-update.mjs', 'developer-update-policy.mjs', 'developer-update-lock.mjs', 'developer-update-maintenance.mjs', 'developer-update-cleanup.mjs'].every(name => receipt.sourceSnapshot?.[name] === registration.updateModules?.[name]?.sha256);
+    && ['developer-update.mjs', 'developer-update-policy.mjs', 'developer-update-lock.mjs', 'developer-update-maintenance.mjs', 'developer-update-cleanup.mjs'].every(name => validDigest(receipt.sourceSnapshot?.[name]) && receipt.sourceSnapshot[name] === registration.updateModules?.[name]?.sha256);
   const ageHours = (now - Date.parse(receipt.finishedAt || receipt.startedAt || '')) / 3_600_000;
   if (!bound || !Number.isFinite(ageHours)) return { state: 'failed', evidence: 'Coordinated update receipt is not bound to registered source.', receipt };
   if (receipt.state === 'running') {
@@ -267,7 +268,8 @@ export function developerRunHealth({ brainHome, registration, now = Date.now(), 
   if (receipt.mode !== 'apply' || receipt.schedulerIdentity !== registration.identity) return { state: 'never-ran', ageHours, receipt, evidence: 'Latest receipt is manual or a currency check; nightly execution remains unproven.' };
   if (receipt.state !== 'completed') return { state: 'failed', ageHours, receipt, evidence: 'Coordinated update terminal state is unverified.' };
   if (ageHours > maxAgeHours) return { state: 'stale', ageHours, receipt, evidence: `Last coordinated update is ${ageHours.toFixed(1)}h old.` };
-  return { state: 'ok', ageHours, receipt, evidence: `Coordinated updates completed ${ageHours.toFixed(1)}h ago; ${receipt.config?.scope || 'unknown'} scope.` };
+  const verification = { ok: bound && receipt.mode === 'apply' && receipt.schedulerIdentity === registration.identity && receipt.state === 'completed' && receipt.ok === true && ageHours >= 0 && ageHours <= maxAgeHours };
+  return { state: verification.ok ? 'ok' : 'failed', verification, ageHours, receipt, evidence: verification.ok ? `Coordinated updates completed ${ageHours.toFixed(1)}h ago; ${receipt.config?.scope || 'unknown'} scope.` : 'Coordinated update timestamp or terminal evidence is invalid.' };
 }
 
 export function refreshRunHealth({ brainHome, identity = NIGHTLY_LABEL, now = Date.now(), maxAgeHours = 30,

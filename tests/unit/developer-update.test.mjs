@@ -11,7 +11,7 @@ import { installNightlyRunner, developerRunHealth } from '../../plugin/scripts/n
 import { developerCoordinatorOwner } from '../../plugin/scripts/developer-update-owner.mjs';
 import { normalizeNpmDistTags } from '../../plugin/scripts/developer-update-policy.mjs';
 import { cleanupNpxDuplicates } from '../../plugin/scripts/developer-update-cleanup.mjs';
-import { cargoInventory, uvInventory, maintenance } from '../../plugin/scripts/developer-update-maintenance.mjs';
+import { cargoInventory, uvInventory, maintenance, verifyMaintenanceStage } from '../../plugin/scripts/developer-update-maintenance.mjs';
 const tmp = () => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'nightly-suite-test-')));
 function fixture(name = 'example-cli', version = '1.0.0') {
   const prefix = tmp(), location = path.join(prefix, 'lib/node_modules', name);
@@ -268,7 +268,7 @@ test('native Rust channels precede Cargo installs and uv self-update precedes uv
   for(const file of [uv,rustup,cargo,path.join(cargoRoot,'bin/cargo-audit')]) {fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,'fixture',{mode:0o755});}
   const toolRoot=path.join(home,'.local/share/uv/tools/sample');fs.mkdirSync(toolRoot,{recursive:true});fs.writeFileSync(path.join(toolRoot,'uv-receipt.toml'),'[tool]\nrequirements = [{ name = "sample" }]\n');
   const crates=path.join(cargoRoot,'.crates2.json');atomic(crates,{installs:{'cargo-audit 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)':{bins:['cargo-audit'],version_req:null}}});
-  const calls=[],runner=(command,args)=>{calls.push({command,args});if(args[0]==='--version')return command===uv?'uv 0.13.0':'rustup 1.29.1';if(args[0]==='toolchain')return 'stable-aarch64-apple-darwin (default)\n1.89.0-aarch64-apple-darwin\nnightly-aarch64-apple-darwin';if(command===cargo&&args[0]==='install')atomic(crates,{installs:{'cargo-audit 2.0.0 (registry+https://github.com/rust-lang/crates.io-index)':{bins:['cargo-audit'],version_req:null}}});return '';};
+  const calls=[],runner=(command,args)=>{calls.push({command,args});let stdout='';if(args[0]==='--version')stdout=command===uv?'uv 0.13.0':'rustup 1.29.1';if(args[0]==='toolchain')stdout='stable-aarch64-apple-darwin (default)\n1.89.0-aarch64-apple-darwin\nnightly-aarch64-apple-darwin';if(command===cargo&&args[0]==='install')atomic(crates,{installs:{'cargo-audit 2.0.0 (registry+https://github.com/rust-lang/crates.io-index)':{bins:['cargo-audit'],version_req:null}}});return {exitCode:0,stdout};};
   const request=vi.spyOn(globalThis,'fetch').mockResolvedValue({ok:true,json:async()=>({crate:{max_stable_version:'2.0.0'}})});
   try {
     const receipt=await maintenance({native:true,uv:true,cargo:true},runner,false,{home,locate:name=>({uv,cargo})[name]||null});
@@ -278,4 +278,62 @@ test('native Rust channels precede Cargo installs and uv self-update precedes uv
     assert.ok(!calls.some(c=>c.command===rustup&&c.args[0]==='update'&&c.args[1].startsWith('1.89.0')));
     assert.equal(receipt.stages.find(s=>s.owner==='cargo-registry-tools').after[0].version,'2.0.0');
   } finally { request.mockRestore(); }
+});
+
+test('derived provider verdict rejects failed exits and absent postconditions', () => {
+  assert.equal(verifyMaintenanceStage([{exitCode:7}],{ownerPreserved:true}).ok,false);
+  assert.equal(verifyMaintenanceStage([{exitCode:0}],{ownerPreserved:false}).ok,false);
+  assert.equal(verifyMaintenanceStage([{exitCode:0}],{ownerPreserved:true}).ok,true);
+});
+test('native provider failed exit cannot write a completed coordinator receipt', async () => {
+  const home=tmp(),prefix=path.join(home,'.npm-global'),root=path.join(prefix,'lib/node_modules'),uv=path.join(home,'.local/bin/uv');
+  for(const dir of [root,path.join(prefix,'bin'),path.dirname(uv)])fs.mkdirSync(dir,{recursive:true});
+  fs.writeFileSync(path.join(prefix,'bin/npm'),'fixture',{mode:0o755});fs.writeFileSync(uv,'fixture',{mode:0o755});
+  const runner=(command,args)=>{if(args[0]==='prefix')return prefix;if(args[0]==='root')return root;return {exitCode:args[0]==='self'?7:0,stdout:args[0]==='--version'?'uv 1.0.0':'',stderr:'fixture provider failure'};};
+  await assert.rejects(runDeveloperUpdate({mode:'apply',home,config:{native:true},env:{PATH:path.join(prefix,'bin')},runner}),/exit 7/);
+  const receipt=JSON.parse(fs.readFileSync(path.join(home,'.cache/ruvnet-brain/nightly-suite-update.json')));assert.equal(receipt.ok,false);assert.equal(receipt.state,'failed');
+  const stage=receipt.maintenance.stages[0];assert.equal(stage.state,'failed');assert.equal(stage.commands.at(-1).exitCode,7);
+});
+test('zero native command exits cannot hide a measured version downgrade', async () => {
+  const home=tmp(),uv=path.join(home,'.local/bin/uv');fs.mkdirSync(path.dirname(uv),{recursive:true});fs.writeFileSync(uv,'fixture',{mode:0o755});
+  let versions=0,observed;const runner=(_command,args)=>({exitCode:0,stdout:args[0]==='--version'?(versions++?'uv 1.0.0':'uv 2.0.0'):''});
+  await assert.rejects(maintenance({native:true},runner,false,{home,progress:value=>observed=value}),/postconditions failed/);
+  assert.equal(observed.stages[0].state,'failed');assert.equal(observed.stages[0].verification.postconditions.versionVerified,false);
+});
+test('known uv and Cargo inventories require their existing manager; absent inventory causes no installs', async () => {
+  const home=tmp(),tool=path.join(home,'.local/share/uv/tools/sample');fs.mkdirSync(tool,{recursive:true});fs.writeFileSync(path.join(tool,'uv-receipt.toml'),'[tool]\nrequirements = [{ name = "sample" }]');
+  await assert.rejects(maintenance({uv:true},()=>assert.fail(),true,{home}),/no existing uv manager/);
+  atomic(path.join(home,'.cargo/.crates2.json'),{installs:{'sample 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)':{bins:['sample']}}});
+  await assert.rejects(maintenance({cargo:true},()=>assert.fail(),true,{home}),/no existing Cargo manager/);
+  assert.equal((await maintenance({uv:true,cargo:true},()=>assert.fail(),true,{home:tmp()})).stages.length,0);
+});
+test('zero Homebrew exits still require the measured installed owner set', async () => {
+  const home=tmp(),brew=path.join(home,'brew');fs.writeFileSync(brew,'fixture',{mode:0o755});let info=0,observed;
+  const runner=(_command,args)=>({exitCode:0,stdout:args[0]==='info'?JSON.stringify({formulae:info++?[]:[{full_name:'owned'}]}):''});
+  await assert.rejects(maintenance({homebrew:true},runner,false,{home,locate:name=>name==='brew'?brew:null,progress:value=>observed=value}),/postconditions failed/);
+  assert.equal(observed.stages[0].state,'failed');assert.equal(observed.stages[0].verification.postconditions.formulaOwnersPreserved,false);
+});
+test('unknown command exit evidence never counts as provider completion', async () => {
+  const home=tmp(),uv=path.join(home,'.local/bin/uv');fs.mkdirSync(path.dirname(uv),{recursive:true});fs.writeFileSync(uv,'fixture',{mode:0o755});
+  await assert.rejects(maintenance({native:true},()=> 'uv 1.0.0',false,{home}),/exit evidence absent/);
+});
+test('nightly success requires all actual digests, nonfuture freshness and applied terminal evidence', () => {
+  const home=tmp(),brainHome=path.join(home,'.cache/ruvnet-brain'),source=new URL('../../bin/nightly-refresh.mjs',import.meta.url).pathname;
+  const record=installNightlyRunner({brainHome,source,nodePath:process.execPath}),sourceSnapshot=Object.fromEntries(Object.entries(record.updateModules).map(([name,item])=>[name,item.sha256]));
+  const now=Date.now(),base={schemaVersion:1,kind:'nightly-suite-update',sourceSha256:record.updateModules['developer-update.mjs'].sha256,sourceSnapshot,mode:'apply',schedulerIdentity:record.identity,state:'completed',ok:true,finishedAt:new Date(now).toISOString()};
+  const check=value=>{atomic(path.join(brainHome,'nightly-suite-update.json'),value);return developerRunHealth({brainHome,registration:record,now})};
+  assert.equal(check(base).verification.ok,true);
+  assert.equal(check({...base,sourceSnapshot:{}}).state,'failed');
+  assert.equal(check({...base,finishedAt:new Date(now+3_600_000).toISOString()}).state,'failed');
+  assert.equal(check({...base,ok:false}).state,'failed');
+  assert.equal(check({...base,mode:'check'}).state,'never-ran');
+  assert.equal(check({...base,schedulerIdentity:'other-owner'}).state,'never-ran');
+});
+test('unsupported plugin steps appear in coordinator coverage independently of note capitalization', async () => {
+  const home=tmp(),prefix=path.join(home,'.npm-global'),root=path.join(prefix,'lib/node_modules'),bin=path.join(prefix,'bin'),artifact=path.join(home,'artifact');
+  for(const dir of [root,bin,artifact])fs.mkdirSync(dir,{recursive:true});for(const name of ['npm','claude'])fs.writeFileSync(path.join(bin,name),'fixture',{mode:0o755});
+  atomic(path.join(home,'.claude/plugins/installed_plugins.json'),{plugins:{'opaque@unknown-market':[{scope:'user',installPath:artifact,version:'unknown'}]}});
+  const runner=(_command,args)=>{if(args[0]==='prefix')return prefix;if(args[0]==='root')return root;throw Error('unexpected mutation')};
+  const receipt=await runDeveloperUpdate({mode:'check',home,config:{scope:'all'},env:{PATH:bin},runner});
+  assert.equal(receipt.plugins.steps[0].state,'UNSUPPORTED');assert.ok(receipt.coverage.unverified.some(note=>note.includes('opaque@unknown-market')));
 });

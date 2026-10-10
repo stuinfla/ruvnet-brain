@@ -27,13 +27,14 @@ export function atomic(file, value) {
   fs.writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
   fs.renameSync(tmp, file);
 }
-function invoke(command, args, { cwd = HOME, timeout = 600_000, allowed = [0], env = process.env } = {}) {
+function invoke(command, args, { cwd = HOME, timeout = 600_000, allowed = [0], env = process.env, capture = false } = {}) {
   const r = spawnSync(command, args, { cwd, encoding: 'utf8', timeout, maxBuffer: 16 * 1024 * 1024,
     env: { ...env, PATH: [...new Set([path.dirname(NODE), path.join(env.npm_config_prefix || PREFIX, process.platform === 'win32' ? '' : 'bin'), ...(env.PATH || '').split(path.delimiter)])].join(path.delimiter),
       CI: '1', GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'Never', GH_PROMPT_DISABLED: '1', HOMEBREW_NO_INSTALL_CLEANUP: '1', HOMEBREW_NO_AUTO_UPDATE: '1', RUVNET_BRAIN_HOME: env.RUVNET_BRAIN_HOME || CACHE } });
-  if (r.error || !allowed.includes(r.status)) throw Error(`${path.basename(command)} ${args[0]}: ${r.error?.message || `exit ${r.status}`}: ${(r.stderr || r.stdout || '').trim().slice(-600)}`);
-  return r.stdout.trim();
+  if (!capture && (r.error || !allowed.includes(r.status))) throw Error(`${path.basename(command)} ${args[0]}: ${r.error?.message || `exit ${r.status}`}: ${(r.stderr || r.stdout || '').trim().slice(-600)}`);
+  return { stdout: (r.stdout || '').trim(), stderr: (r.stderr || '').trim(), exitCode: r.status, error: r.error?.message || null };
 }
+const invokeText = (command, args, options) => invoke(command, args, options).stdout;
 export function identity(location, prefix = PREFIX, { platform = process.platform } = {}) {
   const manifestFile = path.join(location, 'package.json');
   const manifest = read(manifestFile);
@@ -84,7 +85,7 @@ function verifyPackage(before, expected, run) {
   }
   return after;
 }
-export function upgradePackage(before, tags, scripts = REVIEWED_INSTALL_SCRIPTS, { run = invoke, dryRun = false, channel = 'latest', npm = NPM, preservePackages = [] } = {}) {
+export function upgradePackage(before, tags, scripts = REVIEWED_INSTALL_SCRIPTS, { run = invokeText, dryRun = false, channel = 'latest', npm = NPM, preservePackages = [] } = {}) {
   // Snapshot identity must still exist and own the original paths before any installer runs.
   const live = identity(before.location, before.prefix);
   if (live.name !== before.name || live.manifestSha256 !== before.manifestSha256) throw Error(`source changed before install: ${before.name}`);
@@ -119,7 +120,7 @@ function pluginFlags(scopes = [], home = HOME) {
   }
   return values;
 }
-export function resolvePluginTarget(plugin, { home = HOME, run = invoke } = {}) {
+export function resolvePluginTarget(plugin, { home = HOME, run = invokeText } = {}) {
   try {
     const marketplace = plugin.id.split('@').at(-1), name = plugin.id.slice(0, plugin.id.lastIndexOf('@'));
     const location = read(path.join(home, '.claude/plugins/known_marketplaces.json'))[marketplace]?.installLocation;
@@ -267,7 +268,7 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
   const lock = acquireDeveloperLock({ brainHome: paths.brainHome, token: env.RUVNET_DEVELOPER_UPDATE_TOKEN });
   const childEnv = { ...env, HOME: home, USERPROFILE: home, RUVNET_BRAIN_HOME: paths.brainHome,
     RUVNET_DEVELOPER_UPDATE_TOKEN: lock.token, HOMEBREW_NO_INSTALL_CLEANUP: '1', HOMEBREW_NO_AUTO_UPDATE: '1' };
-  const run = (command, args, options = {}) => {
+  const dispatch = (command, args, options = {}) => {
     if (process.platform === 'win32' && /npm\.cmd$/i.test(command)) {
       const cli = path.join(path.dirname(command), 'node_modules/npm/bin/npm-cli.js');
       if (!exists(cli)) throw Error('Windows npm CLI identity absent');
@@ -275,6 +276,14 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
     }
     return runner(command, args, { cwd: home, ...options, env: childEnv });
   };
+  const run = (command, args, options = {}) => {
+    const result = dispatch(command, args, options);
+    if (typeof result === 'string') return result; // existing read-only test adapters
+    const exitCode = result?.exitCode ?? result?.status ?? result?.code;
+    if (result?.error || !(options.allowed || [0]).includes(exitCode) || typeof result?.stdout !== 'string') throw Error(`command result unverified: ${command}`);
+    return result.stdout;
+  };
+  run.receipt = (command, args, options = {}) => dispatch(command, args, { ...options, capture: true });
   const locate = name => locateExecutable(name, { env: childEnv });
   const receipt = { schemaVersion: 1, kind: 'nightly-suite-update', runId: crypto.randomUUID(), pid: process.pid,
     startedAt: new Date().toISOString(), mode, state: 'running', ok: false, config, steps: [], notes: [],
@@ -308,7 +317,7 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
     receipt.coverage = { scope: config.scope, excluded: receipt.steps.filter(s => /preserved$/.test(s.state)).map(s => ({ name: s.name, reason: s.state })),
       ahead: receipt.steps.filter(s => s.state === 'ahead-preserved').map(s => s.name),
       preservedLocalModification: receipt.steps.filter(s => s.reason === 'preservedLocalModification').map(s => s.name),
-      unverified: receipt.notes.filter(note => /unverified|unsupported|no plugin update command/.test(note)), notes: [...receipt.notes, ...(receipt.maintenance?.exclusions || [])] };
+      unverified: [...new Set([...receipt.notes.filter(note => /unverified|unsupported|no plugin update command/i.test(note)), ...(receipt.plugins?.steps || []).filter(step => step.state === 'UNSUPPORTED').map(step => `${step.id} (${step.scope}): ${step.reason}`)])], notes: [...receipt.notes, ...(receipt.maintenance?.exclusions || [])] };
     return receipt;
   } catch (error) {
     receipt.state = 'failed'; receipt.error = error.message;
