@@ -1,12 +1,12 @@
-import { it as test } from 'vitest';
+import { it as test, vi } from 'vitest';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { compare, selectTag, discover, identity, upgradePackage, pluginScopes, scopeKey, runDeveloperUpdate, atomic } from '../../plugin/scripts/developer-update.mjs';
+import { compare, selectTag, discover, identity, upgradePackage, pluginScopes, scopeKey, runDeveloperUpdate, locateExecutable, atomic } from '../../plugin/scripts/developer-update.mjs';
 import { acquireDeveloperLock, sharedLockStatus } from '../../plugin/scripts/developer-update-lock.mjs';
-import { automaticInvocation } from '../../plugin/scripts/automatic-update.mjs';
+import { automaticInvocation, automaticPath } from '../../plugin/scripts/automatic-update.mjs';
 import { installNightlyRunner, developerRunHealth } from '../../plugin/scripts/nightly-scheduler.mjs';
 import { developerCoordinatorOwner } from '../../plugin/scripts/developer-update-owner.mjs';
 import { normalizeNpmDistTags } from '../../plugin/scripts/developer-update-policy.mjs';
@@ -202,4 +202,21 @@ test('real knowledge worker chooses ready canonical owner before corrupt legacy 
   const worker=new URL('../../plugin/scripts/host-update.mjs',import.meta.url).pathname;
   const child=spawnSync(process.execPath,[worker,'--knowledge',attempt,lock,'--if-newer',kb,check,result],{env:{...process.env,HOME:home,USERPROFILE:home,RUVNET_BRAIN_HOME:brainHome},encoding:'utf8',timeout:10_000});
   assert.equal(child.status,0,child.stderr);assert.equal(JSON.parse(fs.readFileSync(check)).outcome,'current');assert.equal(JSON.parse(fs.readFileSync(attempt)).outcome,'launched');assert.equal(fs.existsSync(lock),false);
+});
+
+test('minimal scheduler PATH discovers native owner roots and prefers existing global npm', async () => {
+  const home=tmp(),prefix=path.join(home,'.npm-global'),root=path.join(prefix,'lib/node_modules'),bin=path.join(prefix,'bin'),cargoRoot=path.join(home,'.cargo');
+  for(const dir of [root,bin,path.join(cargoRoot,'bin'),path.join(home,'.bun/bin'),path.join(home,'stable/bin')]) fs.mkdirSync(dir,{recursive:true});
+  for(const file of [path.join(bin,'npm'),path.join(home,'stable/bin/npm'),path.join(cargoRoot,'bin/cargo'),path.join(cargoRoot,'bin/cargo-audit')]) fs.writeFileSync(file,'fixture',{mode:0o755});
+  atomic(path.join(cargoRoot,'.crates2.json'),{installs:{'cargo-audit 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)':{bins:['cargo-audit'],version_req:null}}});
+  const minimal={PATH:'/usr/bin:/bin'};assert.equal(locateExecutable('cargo',{env:minimal}),null);
+  const PATH=automaticPath({home,nodePath:path.join(home,'stable/bin/node'),env:minimal});
+  assert.equal(locateExecutable('npm',{env:{PATH}}),path.join(bin,'npm'));assert.equal(locateExecutable('cargo',{env:{PATH}}),path.join(cargoRoot,'bin/cargo'));assert.ok(PATH.includes(path.join(home,'.bun/bin')));
+  const calls=[];const runner=(command,args)=>{calls.push({command,args});if(args[0]==='prefix')return prefix;if(args[0]==='root')return root;throw Error(`unexpected owner call: ${command} ${args}`)};
+  const request=vi.spyOn(globalThis,'fetch').mockResolvedValue({ok:true,json:async()=>({crate:{max_stable_version:'1.0.0'}})});
+  try {
+    const receipt=await runDeveloperUpdate({mode:'check',home,config:{cargo:true},env:{PATH},runner});
+    const stage=receipt.maintenance.stages.find(s=>s.owner==='cargo-registry-tools');assert.ok(stage);assert.equal(stage.before[0].name,'cargo-audit');assert.equal(stage.after[0].version,'1.0.0');assert.equal(stage.state,'completed');assert.equal(request.mock.calls.length,1);
+    assert.ok(!receipt.maintenance.exclusions.some(note=>note.startsWith('cargo has no existing')));assert.ok(!calls.some(c=>c.args[0]==='install'));
+  } finally { request.mockRestore(); }
 });

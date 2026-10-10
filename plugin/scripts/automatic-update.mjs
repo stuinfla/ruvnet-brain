@@ -45,7 +45,7 @@ export function saveUpdateSource(source, { home = os.homedir() } = {}) {
 }
 
 export function automaticPath({ nodePath = process.execPath, home = os.homedir(), platform = process.platform, env = process.env } = {}) {
-  const paths = [path.dirname(nodePath), path.join(home, '.npm-global', 'bin'), path.join(home, '.local', 'bin')];
+  const paths = [path.join(home, '.npm-global', 'bin'), path.dirname(nodePath), path.join(home, '.local', 'bin'), path.join(home, '.cargo', 'bin'), path.join(home, '.bun', 'bin')];
   if (platform === 'win32') {
     const system = env.SystemRoot || env.SYSTEMROOT;
     if (system && path.win32.isAbsolute(system)) paths.push(system, path.join(system, 'System32'));
