@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { cmpVersion } from '../../scripts/stack-sync.mjs';
+import { classifyHostConvergence, reconcileFreshCodexDeclarations } from '../../bin/install.mjs';
 
 /**
  * ISSUE #123 — an install that is AHEAD of the published release is not a broken install.
@@ -30,6 +31,8 @@ import { cmpVersion } from '../../scripts/stack-sync.mjs';
  */
 const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const SOURCE = fs.readFileSync(path.join(ROOT, 'bin', 'install.mjs'), 'utf8');
+const CONVERGENCE = SOURCE.slice(SOURCE.indexOf('export function classifyHostConvergence('),
+  SOURCE.indexOf('export function hostSynchronizationFailureMessage('));
 
 /** The predicate exactly as bin/install.mjs defines it (ordering delegated to the one comparator). */
 const versionSatisfies = (installed, expected) => {
@@ -64,11 +67,25 @@ describe('issue #123 — convergence means NOT BEHIND, not exactly-equal', () =>
   it('no strict version equality survives in the convergence path', () => {
     // The whole defect was `!==` where an ordering test belonged. If one comes back, this fails —
     // a comment cannot hold that line, but a test can.
-    expect(SOURCE, 'host version equality must go through versionSatisfies')
+    expect(CONVERGENCE, 'host version equality must go through versionSatisfies')
       .not.toMatch(/\.version !== expectedVersion/);
-    expect(SOURCE, 'receipt version equality must go through versionSatisfies')
+    expect(CONVERGENCE, 'receipt version equality must go through versionSatisfies')
       .not.toMatch(/desiredVersion !== expectedVersion/);
     expect(SOURCE, 'the predicate must be defined, not inlined ad hoc').toContain('const versionSatisfies');
+  });
+
+  it('the actual convergence classifier accepts ahead hosts while fresh-declaration proof stays exactly bound', () => {
+    const receipt = { desiredVersion: '9.9.9', hosts: { codex: { state: 'ready', version: '9.9.9' } },
+      consoleRuntime: { state: 'ready' } };
+    expect(classifyHostConvergence(receipt, '9.9.8').healthy).toBe(true);
+    expect(classifyHostConvergence({ ...receipt, hosts: { codex: { state: 'ready', version: '9.9.7' } } }, '9.9.8').healthy).toBe(false);
+    const recorded = { ...receipt, hosts: { codex: { state: 'ready', version: '9.9.9', restartRequired: true,
+      restartScope: 'unproven', sessionSafetyReason: 'boot-level declarations changed: hooks/codex-hooks.json' } } };
+    const proof = { ok: true, state: 'fresh-declarations-ready', expectedVersion: '9.9.9' };
+    expect(reconcileFreshCodexDeclarations(recorded, proof, '9.9.9').healthy).toBe(true);
+    expect(reconcileFreshCodexDeclarations(recorded, { ...proof, expectedVersion: '9.9.8' }, '9.9.9').healthy).toBe(false);
+    expect(reconcileFreshCodexDeclarations({ ...recorded, desiredVersion: '9.9.8' }, proof, '9.9.9').healthy).toBe(false);
+    expect(reconcileFreshCodexDeclarations({ ...recorded, hosts: { codex: { ...recorded.hosts.codex, version: '9.9.8' } } }, proof, '9.9.9').healthy).toBe(false);
   });
 
   it('ordering is delegated, never re-implemented', () => {

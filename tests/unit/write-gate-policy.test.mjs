@@ -61,10 +61,13 @@ describe.skipIf(process.platform === 'win32' || !BASH)('through the real registe
     expect(r.rows.map((x) => x.kind)).toContain('refused');
   }, 60_000);
 
-  it('OVERSIZE: what only the rest could show is ALLOWED, with no stderr, and recorded as payload-oversize', async () => {
+  it('OVERSIZE: what only the rest could show is ALLOWED, with the unavailable ADR verdict disclosed and recorded', async () => {
     const r = await fire((w) => ({ file_path: path.join(w.cwd, 'src', 'b.js'), content: `// ${pad(70_000)}\nimport x from '${term}';\n` }));
     expect(r.status).toBe(0);
-    expect(r.stderr).toBe('');
+    // The cut-off prefix is not JSON. ADR inspection cannot vote on it; allowing the prefix
+    // must preserve that diagnostic rather than claim every policy obtained a verdict.
+    expect(r.stderr).toBe('[decision-gate] ADR owning-checkout inspection unavailable; no currency verdict was obtained. — adr-currency did not vote; it supplied no authorization verdict.\n');
+    expect(r.rows.find((x) => x.kind === 'policy-skipped' && x.policy === 'adr-currency')).toBeTruthy();
     const row = r.rows.find((x) => x.kind === 'payload-oversize');
     expect(row).toMatchObject({ session: 'wgp-1', tool: 'Write', bytesSeen: TRANSPORT_CAP_BYTES, capBytes: TRANSPORT_CAP_BYTES });
     expect(row.filePath).toMatch(/b\.js$/);
