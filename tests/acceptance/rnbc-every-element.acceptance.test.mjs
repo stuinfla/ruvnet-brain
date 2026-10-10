@@ -17,7 +17,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { buildRnbcFixture, startRnbc, cleanupRnbc, REPO, schedulerEntry, schedulerState, registeredRunner } from './helpers/rnbc-fixture.mjs';
-import { isolateDeveloperUpdateOwners } from './helpers/rnbc-updater-fixture.mjs';
+import { isolateDeveloperUpdateOwners, coordinatorExecutionFiles } from './helpers/rnbc-updater-fixture.mjs';
 import { inventoryInPage, writeLedger } from './helpers/rnbc-inventory.mjs';
 import { chromeExecutable } from './helpers/packed-console-fixture.mjs';
 
@@ -912,19 +912,32 @@ describe('RNBC — every element on every page, on an isolated console', () => {
       }
       const before = posts.length;
       await uc(page, q(page, 'btn:suite-update'));
-      await page.waitForFunction(() => /Last update completed successfully/.test(document.querySelector('#suite-update-result')?.textContent || ''), null, { timeout: STATE_WAIT_MS });
+      await page.waitForFunction(() => /Last update completed successfully|Last update failed/.test(document.querySelector('#suite-update-result')?.textContent || ''), null, { timeout: STATE_WAIT_MS });
       const policy = readJSON(owner.policy), receipt = readJSON(owner.receipt);
+      expect(receipt?.ok, JSON.stringify({state:receipt?.state,error:receipt?.error})).toBe(true);
+      if (owner.brew) {
+        const brewCalls = fs.readFileSync(owner.brewLog, 'utf8').trim().split('\n').map(line => JSON.parse(line));
+        expect(brewCalls.map(call => call.args)).toEqual([
+          ['info', '--json=v2', '--installed'], ['update'], ['upgrade', '--formula'], ['info', '--json=v2', '--installed'],
+        ]);
+        const stage = receipt.maintenance.stages.find(stage => stage.owner === 'homebrew-formulas');
+        expect(stage.verification.ok).toBe(true);
+        expect(stage.commands).toHaveLength(4);
+        expect(stage.commands.every(command => command.command === owner.brew && command.exitCode === 0 && !command.error)).toBe(true);
+      }
       const registration = readJSON(path.join(local.brainHome, 'scheduler/registration.json'));
       const status = schedulerState(local);
       const activity = await page.locator('#suite-update-activity').innerText();
       const body = JSON.parse(postsSince(before).find(post => post.url === '/api/suite-update')?.body || '{}');
       const calls = fs.readFileSync(local.nightlyCallLog, 'utf8').split('\n').filter(line => /--enable-nightly/.test(line));
+      const executionFiles = coordinatorExecutionFiles(local);
+      expect(Object.keys(receipt.sourceSnapshot || {}).sort()).toEqual(executionFiles);
       const sameClosure = receipt?.sourceSnapshot && Object.entries(receipt.sourceSnapshot).every(([name, digest]) => registration.updateModules?.[name]?.sha256 === digest);
       record('index.html', 'btn:suite-update', { claim: 'Keep all tools updated (recommended)', action: 'click once; real authenticated POST, scheduler enrollment, coordinator completion',
-        observed: `POST channel=${body.channel}; scope=${policy?.scope}; job=${registration?.identity}; mode=${registration?.mode}; enable calls=${calls.length}; scheduler=${status.state}; apply=${receipt?.mode}/${receipt?.state}; empty private prefix=${receipt?.npmIdentity?.prefix === owner.prefix}; five module digests match=${sameClosure}; Activity=${activity.includes('completed successfully')}`,
+        observed: `POST channel=${body.channel}; scope=${policy?.scope}; job=${registration?.identity}; mode=${registration?.mode}; enable calls=${calls.length}; scheduler=${status.state}; apply=${receipt?.mode}/${receipt?.state}; empty private prefix=${receipt?.npmIdentity?.prefix === owner.prefix}; ${executionFiles.length} module digests match=${sameClosure}; Activity=${activity.includes('completed successfully')}`,
         ok: body.channel === 'alpha' && policy?.channel === 'alpha' && policy?.scope === 'all' && registration?.identity === 'com.ruvnet.brain-update' && registration?.mode === 'developer-suite'
           && calls.length === 1 && status.state === 'on' && receipt?.ok === true && receipt?.mode === 'apply' && receipt?.finishedAt && receipt?.npmIdentity?.prefix === owner.prefix
-          && Object.keys(receipt.sourceSnapshot || {}).length === 5 && sameClosure && activity.includes('completed successfully') });
+          && Object.keys(receipt.sourceSnapshot || {}).length === executionFiles.length && sameClosure && activity.includes('completed successfully') });
       const inv = await inventory(page, 'index.html');
       for (const entry of inv.filter(entry => entry.key.startsWith('summary:card-activity:') && /update-receipt|tools-preserved/.test(entry.key))) await checkSummary(page, 'index.html', entry.key);
       expect(rows.get('index.html|select:suite-update-channel')?.verdict).toBe('PASS');
