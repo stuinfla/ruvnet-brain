@@ -28,7 +28,9 @@ describe('publication receipt wiring', () => {
     // registry-sized timeout — 4.3.25's first run published successfully and left no diagnostic.
     expect(provider).toContain("command('npm', ['publish', packagePath, '--tag', `candidate-v${identity.version}`], PUBLISH_COMMAND_OPTIONS)");
     expect(provider).toContain("const PUBLISH_COMMAND_OPTIONS = Object.freeze({ stdio: ['ignore', 'pipe', 'inherit'], timeout: 600_000 })");
-    expect(provider).toContain("command('gh', ['release', 'upload', draft.tag, file, '--repo', REPO])");
+    expect(provider.match(/command\('npm', \['publish', packagePath,/g)).toHaveLength(1);
+    expect(provider).toContain("command('gh', ['release', 'upload', draft.tag, file, '--repo', REPO], {");
+    expect(provider).toContain("timeout: assetUploadTimeoutMs(fs.statSync(file).size)");
   });
 
   it('keeps channel convergence nonterminal and moves public proof into the protected finalizer path', () => {
