@@ -392,7 +392,8 @@ function promiseBookkeeping() {
         if (!assistantCommitmentOwned(item, hookInput.session_id, projectIdentity)) continue;
         const claim = completion.claims.find((c) => claimClosesPromise(c.text, item.text));
         if (!claim) continue;
-        Object.assign(item, { done: true, state: 'completed', doneAt: at, completionEvidence: { claim: claim.text,
+        const verifiedCompletion = completion.verdict === 'PASS' && Boolean(claim);
+        Object.assign(item, { done: verifiedCompletion, state: verifiedCompletion ? 'completed' : item.state, doneAt: at, completionEvidence: { claim: claim.text,
           checks: completion.verification.checks.slice(-5).map((c) => c.what),
           transcript: String(hookInput.transcript_path || ''), sessionId: hookInput.session_id } });
         changed = true;

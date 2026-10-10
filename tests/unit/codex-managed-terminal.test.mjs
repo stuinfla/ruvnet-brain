@@ -61,6 +61,18 @@ describe('native Codex allocation and resume evidence', () => {
     expect(f.decide).toHaveBeenCalledWith('Translate yes.', 'codex', { env: {} });
     expect(f.executeNative.mock.calls[0][0]).toMatchObject({ sessionId: parent, readOnly: true, env: { RNB_TERMINAL_LAUNCH_ACTIVE: '1' } });
     expect(result.sessionId).toBe(parent); expect(f.receipt).toHaveBeenCalledOnce(); expect(f.output).toHaveBeenCalledWith('Oui.');
+    expect(f.receipt.mock.calls[0][0]).toMatchObject({ status: 'completed', model: decision.model, effort: decision.effort });
+  });
+  it('writes no completion receipt while native evidence is pending, then refuses failed completion', async () => {
+    let settle; const pending = new Promise(resolve => { settle = resolve; });
+    const f = native({ sessionId: parent, executeNative: vi.fn(() => pending) });
+    const turn = runCodexManagedPrimaryTurn(f);
+    await new Promise(resolve => setImmediate(resolve));
+    expect(f.executeNative).toHaveBeenCalledOnce(); expect(f.receipt).not.toHaveBeenCalled();
+    settle({ completed: false, sessionId: parent, modelObserved: true, effortSettingsObserved: true,
+      model: decision.model, effort: decision.effort, answer: 'Unverified.' });
+    await expect(turn).rejects.toThrow(/unproven/);
+    expect(f.receipt).not.toHaveBeenCalled(); expect(f.output).not.toHaveBeenCalled();
   });
   it.each([
     value => { value.completed = false; }, value => { value.modelObserved = false; }, value => { value.effortSettingsObserved = false; },

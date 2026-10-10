@@ -124,7 +124,7 @@ export async function runCodexManagedPrimaryTurn({ binary, prompt, decisionPromp
     result.model !== decision.model || result.effort !== decision.effort || !UUID.test(result.sessionId || '') ||
     id !== undefined && result.sessionId !== id) throw new Error('Controlled Codex native model, effort or parent session unproven');
   verifyDecision(decision); live();
-  receipt({ ts: new Date().toISOString(), harness: 'codex', status: 'completed', model: result.model, effort: result.effort,
+  receipt({ ts: new Date().toISOString(), harness: 'codex', status: result.completed === true ? 'completed' : 'failed', model: result.model, effort: result.effort,
     taskClass: decision.taskClass, modelObserved: true, serviceMode: 'standard',
     evidence: 'native turn_context model/effort and exact parent session observed; recursive native agents disabled' }, { env: clean });
   if (result.answer) output(result.answer);
