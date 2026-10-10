@@ -1,46 +1,24 @@
 {
   "version": "1.0.0",
-  "lastSync": "2026-06-29T20:47:09.576Z",
+  "lastSync": "2026-10-10T14:40:43.522304Z",
   "diagrams": [
     {
-      "id": "drift-before-after",
+      "id": "brain-architecture",
       "sourceFile": "README.md",
-      "sourceLine": 15,
-      "svgFile": "assets/diagrams/drift-before-after.svg",
-      "asciiHash": "sha256:bbd2646e7b23ab18dc25182011fb11fd610d337d731e2ebfabdd5cd42261f186",
-      "lastConverted": "2026-06-29T20:47:09.575Z"
+      "sourceLine": 134,
+      "svgFile": "assets/diagrams/brain-architecture.svg",
+      "asciiHash": "sha256:1a7bc2eb8eb84de75fbd4be58f7e5aaa8e2d40e085e8774cc8fc373c69bc3660",
+      "lastConverted": "2026-10-10T14:40:43.522304Z",
+      "svgHash": "sha256:3eddf214aaf12d486505cbb2304e290c9eb0354010a086cb3d6a158c8087ad55"
     },
     {
-      "id": "install-and-use",
+      "id": "brain-workflow",
       "sourceFile": "README.md",
-      "sourceLine": 72,
-      "svgFile": "assets/diagrams/install-and-use.svg",
-      "asciiHash": "sha256:e8229ac4b1a3110639b3b0ec0b622bb529f84b2098abd153d68223a256c43cc4",
-      "lastConverted": "2026-06-29T20:47:09.576Z"
-    },
-    {
-      "id": "architecture-pipeline",
-      "sourceFile": "README.md",
-      "sourceLine": 105,
-      "svgFile": "assets/diagrams/architecture-pipeline.svg",
-      "asciiHash": "sha256:708aabb4603287e7d7aed3e3467a3c073dbeeaf25d7585dc606a220d846f6b4e",
-      "lastConverted": "2026-06-29T20:47:09.576Z"
-    },
-    {
-      "id": "grounding-flow",
-      "sourceFile": "README.md",
-      "sourceLine": 155,
-      "svgFile": "assets/diagrams/grounding-flow.svg",
-      "asciiHash": "sha256:d3b3f3da8795a9f576b44b06a37595626e857bbb7b8c1de9dc4e6de16788c3ad",
-      "lastConverted": "2026-06-29T20:47:09.576Z"
-    },
-    {
-      "id": "capability-routing",
-      "sourceFile": "README.md",
-      "sourceLine": 184,
-      "svgFile": "assets/diagrams/capability-routing.svg",
-      "asciiHash": "sha256:ad5d2994ae67b0c374ec7fb5c16deeea677638c776926a021eac9d2e5289ecf0",
-      "lastConverted": "2026-06-29T20:47:09.576Z"
+      "sourceLine": 215,
+      "svgFile": "assets/diagrams/brain-workflow.svg",
+      "asciiHash": "sha256:62f606d37616a1dd58b06269567d5f4fd74e2ee92067213c40b8edb2c1c9a417",
+      "lastConverted": "2026-10-10T14:40:43.522304Z",
+      "svgHash": "sha256:9f1e6dc99a4727f8fc3a3d0d4e0150728ed494d0c4c0b4ddea06fe90b5c95186"
     }
   ]
 }

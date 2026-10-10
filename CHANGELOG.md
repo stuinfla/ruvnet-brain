@@ -10,6 +10,16 @@ current campaign and is finalized by the lead session before the next release cu
 
 ## Unreleased
 
+## 4.6.1 — 2026-10-10
+
+- Restores an inviting README with rendered architecture and workflow diagrams,
+  installation paths, practical examples and explicit evidence limits.
+- Corrects the public admin status to resolve the latest code release separately
+  from corpus generation, show the complete open engineering queue, and preserve
+  unknown or failed probes without implying every item waits on the owner.
+- Code publication does not claim a refreshed upstream corpus.
+
+
 4.5.17 hook-harness candidate:
 
 - Adds a source-bound catalog of 100 practical rules and bounded relevant guidance

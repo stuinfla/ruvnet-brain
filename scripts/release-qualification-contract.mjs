@@ -2,6 +2,11 @@
 export const RELEASE_REQUIREMENTS = Object.freeze({
   "source": [
     {
+      "id": "public-admin-release-and-engineering-status",
+      "reason": "Latest code release stays separate from corpus identity; issue and pull-request pagination preserves the complete engineering queue and failed probes remain unknown without inventing owner action",
+      "files": ["tests/unit/explainer-api.test.mjs", "tests/unit/admin-render.test.mjs"]
+    },
+    {
       "id": "source-bound-installed-update-coordinator",
       "reason": "Allowed channels and immutable Claude artifact paths reject downgrades, ambiguous registry records, changed bytes, extra active resources and escape paths; Console success requires the exact launched source closure. POSIX owner fixtures additionally enforce original-prefix installs, existing-tool-only policy, shared locks and source-bound scheduler receipts",
       "files": ["tests/unit/developer-update-policy-portable.test.mjs", "tests/unit/plugin-artifact-proof.test.mjs", "tests/unit/console-suite-update.test.mjs"],
