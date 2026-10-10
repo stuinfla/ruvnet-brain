@@ -1,4 +1,4 @@
-Updated: 2026-09-11 08:00:00 EDT | Version 4.3.21
+Updated: 2026-10-10 04:39:18 EDT | Version 4.6.0
 Created: 2026-06-29 22:36:38 EDT
 
 <div align="center">
@@ -13,19 +13,17 @@ Created: 2026-06-29 22:36:38 EDT
 
 </div>
 
-## Recovery milestone and proof boundaries
+## 4.6.0 coordinated updates and proof boundaries
 
-The 4.3.10 candidate is an incremental reliability repair, not a completed North Star or a new
-95-point certification. Publication is established by the protected release transaction and
-public installation receipt, not this source version. Historical release narratives and dated
-scores below are not measurements of the current candidate.
+The 4.6.0 source introduces one coordinated updater for installed tools, host plugins and the
+Brain's signed knowledge bundle. RNBC presents **Keep all tools updated** with **Latest
+(recommended)** or **Alpha**. The public default covers the RuvNet suite; wider developer-tool
+maintenance requires an explicit choice. See the update policy in `CONTRIBUTING.md` and the
+4.6.0 release notes in `docs/RELEASE-NOTES-4.6.0.md`.
 
-The recovery covers shared QA producers, explicit continuation objectives, safer private-data
-handling, and exact-artifact release verification. Full native nightly two-run proof, complete
-codebase review, and all twelve whole-product obligations remain separate work. An unavailable
-safe inverse must not be advertised as a one-click undo. See the
-[QA execution contract](docs/qa-execution-contract.md) and
-[ADR-072 stabilization boundary](docs/adr/0072-whole-product-integrity-conformance.md).
+A saved choice or registered schedule proves configuration. Completed runs, installed versions
+and the protected release's public installation receipt prove different things. This source
+version alone does not establish publication, all-tool freshness or a new product score.
 
 > ## 🧭 North Star
 >
@@ -53,12 +51,9 @@ safe inverse must not be advertised as a one-click undo. See the
 > - **`plugin`** (badge above) — the Claude Code plugin itself: SKILL.md, the grounding hooks, the MCP server. Read live from [`plugin/.claude-plugin/plugin.json`](plugin/.claude-plugin/plugin.json). Updates often — this is where behavior fixes land.
 > - **`installer (npm)`** (badge above) — the setup script's published version, read live from the [npm registry](https://www.npmjs.com/package/ruvnet-brain). It is a release surface of the same product, not an independent version track.
 > - **Brain Release** — [`releases/latest`](https://github.com/stuinfla/ruvnet-brain/releases/latest) exposes the published knowledge bundle. It must agree with that release's npm, plugin, and signed artifact identities. A moving source badge does not establish publication.
-> - **Request a verified update, with optional scheduled updates:**
->   ```
->   npx ruvnet-brain@latest --update --auto
->   ```
->   `--update` requests the published plugin and knowledge. Adding `--auto` requests **Evergreen** scheduling; successful registration alone is not proof a scheduled run completed. Drop `--auto` for a one-time update: `npx ruvnet-brain@latest --update`.
-> - **Disable scheduled updates:** `npx ruvnet-brain --disable-nightly`. Platform behavior is owned by the native scheduler adapter, not a hand-maintained cron recipe.
+> - **Update an existing Brain installation:** invoke its existing `ruvnet-brain --update` command. For an explicit developer checkout, use `node bin/install.mjs --update`. Initial installation may use `npx ruvnet-brain@latest`; routine updates preserve the installed owner instead of creating a second tool installation.
+> - **Coordinate installed tools:** open RNBC and use **Keep all tools updated**. Choose **Latest (recommended)** or **Alpha**, and explicitly choose wider tool maintenance when wanted. The schedule runs at **03:30 in the user's local time** through the same coordinator as a manual run.
+> - **Disable scheduled updates:** use the existing `ruvnet-brain --disable-nightly` command. Registration and run health are reported separately.
 > - **Publication, local activation, and loaded session version are distinct observations.** An unchanged release does not by itself prove local health, freshness, or a successful update.
 
 <sub>Built by **[Stuart Kerr](https://isovision.ai)** at [Isovision.ai](https://isovision.ai) · free & fair use, to help everyone leverage the high end of agentic coding.</sub>

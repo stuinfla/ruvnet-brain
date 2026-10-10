@@ -1,18 +1,24 @@
-Updated: 2026-10-05 06:18:56 EDT | Version 1.0.0
+Updated: 2026-10-10 04:40:48 EDT | Version 1.1.0
 Created: 2026-10-05 06:18:56 EDT
 
-# Automatic update source
+# Automatic update source — legacy lifecycle and coordinated schedule
 
-Automatic corpus updates remain enabled according to the existing nightly and lifecycle controls.
-The default `latest` source runs the current npm package through npx. To keep using your installed
-coordinator without unattended npx, explicitly run:
+The 4.6.0 production nightly registration uses the developer-suite coordinator and its saved
+Latest/Alpha policy. It updates the discovered existing package owner and does not use the
+legacy `latest` source's npx invocation. Its canonical operating policy lives in
+`CONTRIBUTING.md` under "Coordinated developer updates (4.6.0)".
+
+The `updateSource` preference below remains a separate legacy setting for existing lifecycle
+hooks and older registrations/proof paths. Enrolling the coordinated schedule does not rewrite
+that preference. Its default `latest` source runs the current npm package through npx; to make
+those legacy paths use the installed coordinator instead, explicitly run:
 
 ```sh
 ruvnet-brain --update-source installed
 ```
 
 This saves only the canonical per-user `updateSource` setting under
-`~/.config/ruvnet-brain/settings.json`, preserving other owner preferences. Nightly, SessionStart
+`~/.config/ruvnet-brain/settings.json`, preserving other owner preferences. Legacy nightly paths, SessionStart
 maintenance and the MCP corpus timer read that user choice; a project cannot override it. Missing
 or malformed installed packages and unreadable, corrupt or future settings refuse automatic work
 instead of falling back to npx. Restore the default with `ruvnet-brain --update-source latest`.
@@ -24,7 +30,7 @@ corpus is refused; update your global Brain package manually before retrying. Th
 unattended npx, not every possible network request or every existing dependency installation. It
 does not switch the updater to notifications only and does not install a second global CLI.
 
-Nightly enrollment resolves Homebrew's active `opt` Node alias from the running installer, rather
+Native schedule enrollment resolves Homebrew's active `opt` Node alias from the running installer, rather
 than recording a versioned Cellar executable. A stable alias must resolve to that interpreter and
 report a supported Node version. For another installation use:
 
