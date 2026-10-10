@@ -1,4 +1,4 @@
-Updated: 2026-10-10 04:37:54 EDT | Version 1.1.1
+Updated: 2026-10-10 04:37:54 EDT | Version 1.1.2
 Created: 2026-07-15
 
 # Onboarding Console — API + data contract (v1)
@@ -52,6 +52,10 @@ no second fetch can substitute an older or withdrawn state. Stack, capability, a
 keep waiting when their own cache is warming or stale. Each fresh recommendation source replaces
 its previous source snapshot, so resolved proposals disappear and changed evidence is repainted.
 The header describes the machine reading's age, without claiming all independent cards finished.
+A forced refresh during an active measurement queues one follow-up in the same project scope.
+While it waits, caches from the earlier writer remain stale. When that writer exits, its late
+snapshots are withdrawn before the follow-up begins, so a pre-mutation scan cannot settle a
+post-mutation request. Repeated requests coalesce into that one follow-up.
 
 ## GET `/api/state` — fast sections (no network)
 

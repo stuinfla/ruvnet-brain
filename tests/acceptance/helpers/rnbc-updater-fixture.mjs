@@ -1,18 +1,20 @@
 // A real coordinator over an explicitly empty private prefix: no user tool can be selected.
 import fs from 'node:fs';
 import path from 'node:path';
+import { getVersion } from '../../../scripts/version.mjs';
 export function isolateDeveloperUpdateOwners(fixture) {
   const prefix = path.join(fixture.home, '.npm-global');
   const root = path.join(prefix, 'lib/node_modules');
   const bin = path.join(fixture.root, 'update-owner-bin');
   fs.mkdirSync(root, { recursive: true }); fs.mkdirSync(bin, { recursive: true });
+  const version = getVersion();
   const script = path.join(bin, 'npm-owner.mjs');
   fs.writeFileSync(script, `const args = process.argv.slice(2);
 const prefix = ${JSON.stringify(prefix)}, root = ${JSON.stringify(root)};
 if (args[0] === 'prefix') console.log(prefix);
 else if (args[0] === 'root') console.log(root);
 else if (args[0] === '--version') console.log('11.0.0');
-else if (args[0] === 'view') console.log(args.includes('--json') ? JSON.stringify({latest:'4.6.0'}) : '4.6.0');
+else if (args[0] === 'view') console.log(args.includes('--json') ? JSON.stringify({latest:${JSON.stringify(version)}}) : ${JSON.stringify(version)});
 else { console.error('fixture refuses mutation: '+args.join(' ')); process.exitCode=1; }
 `);
   const quote = value => `'${String(value).replace(/'/g, `'\\''`)}'`;

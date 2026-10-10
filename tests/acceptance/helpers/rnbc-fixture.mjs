@@ -177,6 +177,12 @@ export function buildRnbcFixture() {
   const gitConfig = path.join(root, 'empty.gitconfig');
   fs.writeFileSync(gitConfig, '');
   Object.assign(env, { GIT_CONFIG_GLOBAL: gitConfig, GIT_CONFIG_NOSYSTEM: '1' });
+  // The runtime deliberately has no model-identity fallback. This fixture needs the same
+  // current catalog asset a configured customer owns; do not depend on the developer's HOME.
+  const routerCatalog = path.join(home, '.claude', 'model-router', 'catalog.json');
+  fs.mkdirSync(path.dirname(routerCatalog), { recursive: true });
+  fs.copyFileSync(path.join(REPO, 'config', 'model-router', 'catalog.template.json'), routerCatalog);
+  env.MODEL_ROUTER_CATALOG = routerCatalog;
   const runtime = installPackedRuntime(root, brainHome, env);
   // Every installer run that changes the scheduler — from the console server or any child — appends
   // its argv here, so a test can prove a save did NOT re-run it.

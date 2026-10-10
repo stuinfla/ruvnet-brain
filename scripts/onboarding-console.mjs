@@ -1598,15 +1598,17 @@ export function settleRefreshState({ currentRunId, runId, code = 0, signal = nul
   if (code !== 0 || signal) return classifyRefreshState({ failed: signal ? `signal ${signal}` : `exit ${code}`, runId });
   return Object.freeze({ status: 'settled', runId, error: null });
 }
-function kickRefreshDetailed({ force = false } = {}) {
+let FOLLOW_UP_REFRESH = null;
+export function kickRefreshDetailed({ force = false, followUp = false, cwd = process.cwd(), spawnRefresh = spawn } = {}) {
   if (process.env.RUVNET_CONSOLE_DISABLE_BACKGROUND_REFRESH === '1') {
     REFRESH_STATE = classifyRefreshState({ disabled: true });
     return REFRESH_STATE;
   }
   const now = Date.now();
   if (REFRESH_CHILD && now - LAST_REFRESH_KICK < REFRESH_WEDGED_MS) {
+    if (followUp) FOLLOW_UP_REFRESH = { cwd, spawnRefresh };
     REFRESH_STATE = classifyRefreshState({ running: true, runId: REFRESH_STATE.runId });
-    return REFRESH_STATE;
+    return FOLLOW_UP_REFRESH ? { ...REFRESH_STATE, queued: true } : REFRESH_STATE;
   }
   if (!force && now - LAST_REFRESH_KICK < 15000) {
     REFRESH_STATE = classifyRefreshState({ debounced: true, runId: REFRESH_STATE.runId });
@@ -1624,10 +1626,19 @@ function kickRefreshDetailed({ force = false } = {}) {
     // inherit it. Machine-level caches (stack/activity/trust) don't depend on cwd, so this is safe
     // for them; it only fixes the project-scoped ones. NOT a change to the withhold-vs-recompute
     // contract (the 2026-07-17 outage) — only to which project the background compute is about.
-    const child = spawn(process.execPath, [SELF, '--refresh-cache'], { detached: true, stdio: 'ignore', cwd: process.cwd() });
+    const child = spawnRefresh(process.execPath, [SELF, '--refresh-cache'], { detached: true, stdio: 'ignore', cwd });
     REFRESH_CHILD = child;
     const runId = `${process.pid}-${now}`;
     REFRESH_STATE = classifyRefreshState({ runId });
+    const drainFollowUp = () => {
+      const queued = FOLLOW_UP_REFRESH;
+      FOLLOW_UP_REFRESH = null; // Any number of forced mutations coalesce into one scan.
+      if (!queued) return;
+      // The old child may have published after the mutation withdrew its earlier snapshot.
+      // Withdraw again only after that writer has exited, before the post-mutation child starts.
+      expireCachesEmbedding([STATE_CACHE, STACK_CACHE, MEMORY_CACHE, CAPABILITY_CACHE]);
+      kickRefreshDetailed({ ...queued, force: true });
+    };
     // unref() only releases the event-loop hold; these listeners still fire while the server lives.
     child.on('exit', (code, signal) => {
       // An older child can exit after a newer run has started. It may only settle its own run.
@@ -1635,12 +1646,14 @@ function kickRefreshDetailed({ force = false } = {}) {
       if (!settled) return;
       REFRESH_CHILD = null;
       REFRESH_STATE = settled;
+      drainFollowUp();
     });
     child.on('error', (error) => {
       const settled = settleRefreshState({ currentRunId: REFRESH_STATE.runId, runId, code: 1, signal: error?.message || error });
       if (!settled) return;
       REFRESH_CHILD = null;
       REFRESH_STATE = settled;
+      drainFollowUp();
     });
     child.unref();   // let it outlive this request; it writes the caches and exits on its own
     return REFRESH_STATE;
@@ -1815,7 +1828,7 @@ function serveCached(res, file, decorate = (d) => d, scopeKey = null) {
 
   // WARM — including over-ceiling. Never compute inline here; hand back what we measured, say when,
   // and let the detached child produce the next one.
-  const fresh = freshnessOf(c.at);
+  const fresh = { ...freshnessOf(c.at), ...(FOLLOW_UP_REFRESH ? { stale: true, refreshQueued: true } : {}) };
   kickRefresh();
   return sendJSON(res, 200, {
     ...decorate(c.data),
@@ -3194,7 +3207,7 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
           //     refresh that did not start must not report that it did, so `started` is the child's
           //     real answer, not a constant.
           expireCachesEmbedding([STATE_CACHE, STACK_CACHE, MEMORY_CACHE, CAPABILITY_CACHE]);
-          const refresh = kickRefreshDetailed({ force: true });
+          const refresh = kickRefreshDetailed({ force: true, followUp: true, cwd });
           return sendJSON(res, 200, { ok: refresh.status !== 'failed', started: refresh.status === 'started', refreshing: refresh.status === 'started' || refresh.status === 'already-running', refresh });
         }
         if (url === '/api/undo') return sendJSON(res, 200, undo(body.undoToken));
