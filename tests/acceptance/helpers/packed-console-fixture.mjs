@@ -75,6 +75,12 @@ export async function installPackedConsole({ prefix, catalog = null, profile = n
   const tarball = path.join(packDir, JSON.parse(packed.stdout)[0].filename);
   checked('tar', ['-xzf', tarball, '-C', packDir]);
   const payload = path.join(packDir, 'package');
+  // npm pack omits node_modules. Install the manifest's real production graph before the
+  // installer snapshots routing launchers and their declared package exports, as customers do.
+  checked('npm', ['install', '--ignore-scripts', '--omit=dev', '--package-lock=false', '--no-audit', '--no-fund'], {
+    cwd: payload, env: { ...process.env, HOME: home, USERPROFILE: home },
+  });
+
 
   const routerDir = path.join(home, '.claude', 'model-router');
   if (catalog || profile) fs.mkdirSync(routerDir, { recursive: true });
