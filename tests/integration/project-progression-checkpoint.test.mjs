@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { afterEach, describe, expect, it } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { readCheckpointState, runCheckpoint } from '../../plugin/scripts/project-progression-checkpoint.mjs';
 import { resolveProjectStore } from '../../plugin/scripts/project-store-resolver.mjs';
 import { restoreProgressionForSession } from '../../plugin/scripts/project-progression-session-start.mjs';
@@ -24,6 +24,10 @@ function temporaryProject() {
   fs.writeFileSync(path.join(root, 'package.json'), '{"name":"checkpoint"}\n');
   const resolution = resolveProjectStore({ projectDir: root });
   fs.mkdirSync(path.dirname(resolution.canonicalAgentDbPath), { recursive: true });
+  // A real initialized canonical store is adopted; its parent directory alone grants no consent.
+  execFileSync(ruflo, ['memory', 'init', '--no-verify', '--path', resolution.canonicalAgentDbPath], {
+    cwd: root, timeout: 30_000, stdio: 'ignore', env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' },
+  });
   return root;
 }
 
@@ -35,7 +39,16 @@ const STATE = {
   untested: ['a real Codex Stop delivery'],
 };
 
+beforeEach(() => {
+  const home = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'checkpoint-home-')));
+  roots.push(home);
+  vi.stubEnv('HOME', home); vi.stubEnv('USERPROFILE', home);
+  vi.stubEnv('RUVNET_BRAIN_HOME', path.join(home, '.cache/ruvnet-brain'));
+  vi.stubEnv('RUVNET_BRAIN_STATE_DIR', path.join(home, '.config/ruvnet-brain'));
+  vi.stubEnv('RUFLO_DAEMON_AUTOSTART', '0');
+});
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
 
@@ -120,5 +133,13 @@ describe('explicit project checkpoint', () => {
     expect(refused.status).toBe(1);
     expect(refused.stderr).toMatch(/has not adopted the canonical store/);
     expect(fs.existsSync(path.join(unadopted, '.swarm'))).toBe(false);
+
+    // A directory is not an adopted store or persisted consent either.
+    fs.mkdirSync(path.join(unadopted, '.swarm'));
+    const directoryOnly = spawnSync(process.execPath, [CHECKPOINT, '--json', JSON.stringify(STATE), '--project-dir', unadopted],
+      { encoding: 'utf8', cwd: unadopted, timeout: 120_000, env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' } });
+    expect(directoryOnly.status).toBe(1);
+    expect(directoryOnly.stderr).toMatch(/persisted opt-in required/);
+    expect(fs.existsSync(path.join(unadopted, '.swarm', 'memory.db'))).toBe(false);
   }, 300_000);
 });
