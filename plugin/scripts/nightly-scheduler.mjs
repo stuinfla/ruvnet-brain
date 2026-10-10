@@ -364,9 +364,12 @@ export function refreshHistory({ brainHome }) {
     failuresSinceSuccess: sinceSuccess.filter(({ receipt }) => receipt.status === 'FAILED').length };
 }
 
-/** agentic-kit owns this machine's Brain updates (`ak sync`), so the Brain's own scheduler is off on purpose. */
+/** Kit retains the legacy update owner unless this machine explicitly assigns it to Brain. */
 export function updateOwnedByAgenticKit(home = os.homedir()) {
-  try { return JSON.parse(fs.readFileSync(path.join(home, '.config', 'agentic-kit', 'kit.json'), 'utf8')).ruvnetBrain === true; }
+  try {
+    const config = JSON.parse(fs.readFileSync(path.join(home, '.config', 'agentic-kit', 'kit.json'), 'utf8'));
+    return config.ruvnetBrain === true && config.ruvnetBrainUpdateOwner !== 'brain';
+  }
   catch { return false; }
 }
 

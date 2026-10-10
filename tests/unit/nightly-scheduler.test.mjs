@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   NIGHTLY_LABEL,
+  updateOwnedByAgenticKit,
   NIGHTLY_ENV_ALLOWLIST,
   cronLine,
   installNightlyRunner,
@@ -321,4 +322,16 @@ it.each(['darwin', 'win32'])('rejects wrong registration and extra arguments on 
     : original.replace('</Arguments>', ' --unexpected</Arguments>');
   fs.writeFileSync(file, extra);
   expect(schedulerStatus(options).state).toBe('degraded');
+});
+
+describe('explicit Brain nightly ownership', () => {
+  it('preserves Kit integration while assigning the updater to Brain', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'brain-owner-')); roots.push(home);
+    const directory = path.join(home, '.config/agentic-kit'); fs.mkdirSync(directory, { recursive: true });
+    const file = path.join(directory, 'kit.json');
+    fs.writeFileSync(file, JSON.stringify({ ruvnetBrain: true }));
+    expect(updateOwnedByAgenticKit(home)).toBe(true);
+    fs.writeFileSync(file, JSON.stringify({ ruvnetBrain: true, ruvnetBrainUpdateOwner: 'brain' }));
+    expect(updateOwnedByAgenticKit(home)).toBe(false);
+  });
 });
