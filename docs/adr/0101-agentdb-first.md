@@ -3,8 +3,8 @@ id: ADR-101
 title: Canonical AgentDB recall before every nontrivial prompt
 status: Accepted
 date: 2026-10-02
-updated: 2026-10-03
-version: 1.1.1
+updated: 2026-10-10 06:00:22 EDT
+version: 1.1.2
 authors: [Stuart Kerr]
 tags: [agentdb, hooks, recall, continuity]
 supersedes: []
@@ -13,7 +13,7 @@ relates: [ADR-100, ADR-098, ADR-0030, ADR-054]
 
 # ADR-101 — Canonical AgentDB recall before every nontrivial prompt
 
-**Status**: Accepted (2026-10-03 owner mandate and implementation authorization).
+**Status**: Accepted (2026-10-03 owner mandate and implementation authorization)
 Acceptance records the decision; it does not claim publication or installation verification.
 2026-10-03 amendment: the 4.5.4 candidate checks acknowledgement prompts, resolves nested
 checkouts canonically, prioritizes substantive lessons and delivers useful evidence on repeated prompts.

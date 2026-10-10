@@ -3,8 +3,8 @@ id: ADR-104
 title: One source-bound coordinator for installed developer updates
 status: Accepted
 date: 2026-10-10
-updated: 2026-10-10 04:45:00 EDT
-version: 1.0.0
+updated: 2026-10-10 06:00:22 EDT
+version: 1.0.1
 authors: [Stuart Kerr, Codex]
 tags: [updates, install-identity, scheduler, receipts, footprint]
 amends: [ADR-098]
@@ -12,7 +12,11 @@ amends: [ADR-098]
 
 # ADR-104 — One installed-owner update coordinator
 
-Updated: 2026-10-10 04:45:00 EDT | Version 1.0.0
+**Status**: Accepted (design and implementation authorization)
+
+Acceptance records the coordination decision; native execution and public release verification remain separate gates.
+
+Updated: 2026-10-10 06:00:22 EDT | Version 1.0.1
 Created: 2026-10-10 04:45:00 EDT
 
 The owner requested one nightly update job, one copy of each installed tool, preserved package/plugin ownership, and an explicit latest/alpha choice. Independent Brain, Kit, native-CLI and package-manager jobs could race, downgrade each other's channels, or report success for an unused copy. This decision adds a coordination boundary; it grants no deployment, inference-spend or fresh-install authority.

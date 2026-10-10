@@ -3,17 +3,19 @@ id: ADR-100
 title: Guaranteed AgentDB continuity — material events, durable outbox, come-up-to-speed brief, one writer
 status: Accepted
 date: 2026-10-01
-updated: 2026-10-03
+updated: 2026-10-10 06:00:22 EDT
 authors: [Stuart Kerr, Claude Opus 5.5]
 tags: [agentdb, continuity, hooks, durability, memory]
 supersedes: []
 relates: [ADR-073, ADR-076]
-version: 1.1.0
+version: 1.1.1
 ---
 
 # ADR-100 — Guaranteed AgentDB continuity
 
-**Status**: Accepted requirements (owner reaffirmed automatic canonical memory on 2026-10-03); implementation acceptance remains incomplete.
+**Status**: Accepted (requirements reaffirmed by the owner on 2026-10-03)
+
+Implementation acceptance remains incomplete.
 
 ## Owner requirement
 
