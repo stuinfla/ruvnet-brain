@@ -191,7 +191,7 @@ describe('SessionStart restore semantics', () => {
    * cost of losing it is invisible: the journal simply gets bigger, and nothing fails until a
    * restore is slow or a store is huge.
    */
-  it('writes nothing at a boundary where nothing changed, and writes again when something does', () => {
+  it('deduplicates unchanged ordinary boundaries, preserves a fresh compaction boundary, and captures source changes', () => {
     expect(ruflo, 'global Ruflo is required; this integration must not vacuously skip').toBeTruthy();
     const project = temporaryProject();
     const resolution = resolveProjectStore({ projectDir: project });
@@ -201,17 +201,25 @@ describe('SessionStart restore semantics', () => {
     const first = runSessionSnapshotHook(project, 'Stop', { rawInput: payload('Stop'), host: 'claude' });
     expect(first.progressionCaptured).toBe(true);
 
-    // Same tree, same ledger, same everything — a different trigger is not a different project state.
-    const second = runSessionSnapshotHook(project, 'PreCompact', { rawInput: payload('PreCompact'), host: 'claude' });
+    // Ordinary unchanged boundaries write nothing; compaction has its own durable boundary contract.
+    const second = runSessionSnapshotHook(project, 'SessionEnd', { rawInput: payload('SessionEnd'), host: 'claude' });
     expect(second.progressionCaptured).toBe(false);
     expect(second.skipped).toMatch(/^no-op capture/);
-    expect(new ProjectProgressionStore({ projectDir: project }).listSnapshotKeys()).toHaveLength(1);
+    const beforeCompaction = new ProjectProgressionStore({ projectDir: project }).listSnapshotKeys();
+    expect(beforeCompaction).toHaveLength(1);
+    const compaction = runSessionSnapshotHook(project, 'PreCompact', { rawInput: payload('PreCompact'), host: 'claude' });
+    expect(compaction.progressionCaptured, compaction.skipped).toBe(true);
+    const afterCompaction = new ProjectProgressionStore({ projectDir: project }).listSnapshotKeys();
+    expect(afterCompaction).toHaveLength(2);
+    expect(afterCompaction).toEqual(expect.arrayContaining(beforeCompaction));
 
     // Change the working tree, and the very next boundary captures again.
     fs.writeFileSync(path.join(project, 'new-file.txt'), 'the tree moved\n');
     const third = runSessionSnapshotHook(project, 'SessionEnd', { rawInput: payload('SessionEnd'), host: 'claude' });
     expect(third.progressionCaptured, third.skipped).toBe(true);
-    expect(new ProjectProgressionStore({ projectDir: project }).listSnapshotKeys()).toHaveLength(2);
+    const afterSourceChange = new ProjectProgressionStore({ projectDir: project }).listSnapshotKeys();
+    expect(afterSourceChange).toHaveLength(3);
+    expect(afterSourceChange).toEqual(expect.arrayContaining(afterCompaction));
   }, 600_000);
 
   it('reports UNAVAILABLE — not UNKNOWN — where there is no continuity question to ask', () => {
