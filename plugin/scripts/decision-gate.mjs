@@ -289,8 +289,6 @@ function payloadInput(payload) { return parsed(payload).tool_input || {}; }
 function speechEventFor(event) { return event === 'bash' ? 'PreToolUse-bash' : 'PreToolUse-write'; }
 
 // ── Runtime ──────────────────────────────────────────────────────────────────────────────────────
-
-
 if (isMain()) {
   const started = Date.now();
   const payload = normalizePayloadText(readPayload());
@@ -301,13 +299,11 @@ if (isMain()) {
   // "never speak on a guess", pointed at the other decision. 'write' is the only registered route
   // (H5 removed the dead 'bash' one — see the REGISTRY comment above), so it is the only exception.
   if (!selected.length && EVENT !== 'write') process.exit(ALLOW);
-
   const budgetMs = Number(process.env.RUVNET_DECISION_BUDGET_MS) || DEFAULT_BUDGET_MS;
   const deadline = Math.min(started + budgetMs, Number(process.env.RUVNET_DECISION_DEADLINE) || Infinity);
   // Resolved ONCE. On win32 resolveBash() can shell out to `where.exe`; four bash policies meant up
   // to four of those per tool call, for an answer that cannot change mid-invocation.
   BASH = resolveBash();
-
   const trace = [];            // one row per policy — surfaced by RUVNET_DECISION_TRACE=1
   const unconsulted = [];      // policies the budget cost us. NEVER silent; see reportBudget().
   const toolInput = payloadInput(payload);
@@ -317,7 +313,6 @@ if (isMain()) {
     if (why) trace.push({ id: p.id, ms: 0, skipped: why });
     else consulted.push(p);
   }
-
   // ── PARALLEL, and the reason is arithmetic ─────────────────────────────────────────────────────
   // Sequentially the gate's wall time was SUM(policies); run together it is MAX(policies). Measured
   // on a `git push` payload by the 2026-08-13 audit: 182 + 345 + 2145..3990 + 629 + 743 ≈ 4.0-5.9s
@@ -332,9 +327,7 @@ if (isMain()) {
   // A policy that exits SKIPPED (3) did not vote and said why (duplicate-gate under overload). Same
   // two channels as a blown budget, below — never silence standing in for a verdict.
   const selfSkipped = results.filter((r) => r.skipped === 'self');
-
   const decision = decide(verdicts);
-
   // Measurement follows the FINAL gate verdict; it must never delay a blocking producer.
   const measureFinalDecision = (allowed, policies = decision.refusals) => {
     const metricDeadline = Math.min(deadline, Date.now() + 25);
@@ -352,9 +345,7 @@ if (isMain()) {
       if (!allowed) recordRefusal({ session, key, policies: policies, ts, ...attribution, deadlineAt: metricDeadline, nonBlocking: true });
     }
   } catch { /* a ledger must never break a tool call */ }
-
   };
-
   reportSelfSkipped({ session, selfSkipped });
   if (decision.allow && shape.truncated) {
     // OVERSIZE POLICY (header): allowed on a check of the first TRANSPORT_CAP_BYTES only. Recorded, never silent.
@@ -366,7 +357,6 @@ if (isMain()) {
     process.stderr.write(`${decision.reason}\n`);
     process.exit(REFUSE);
   }
-
   // Nothing refused: run the speech chokepoint and forward its envelope verbatim. It owns its own
   // per-channel policy; this gate does not inspect or re-decide anything it says.
   //
@@ -397,7 +387,6 @@ if (isMain()) {
   if (context) process.stdout.write(context);
   process.exit(ALLOW);
 }
-
 /**
  * ── A BUDGET THAT CAN BE EXCEEDED SILENTLY FAILS OPEN WITHOUT SAYING SO ──────────────────────────
  *
@@ -431,7 +420,6 @@ function reportBudget({ session, unconsulted, trace, started, budgetMs, refused 
     + `${unconsulted.join(', ')}. These policies did not vote; ${refused ? 'another policy refused the action.' : 'this allow is a timeout, not a verdict.'}\n`,
   );
 }
-
 /** Record and print each policy that skipped itself (exit 3), with its own one-line reason. */
 function reportSelfSkipped({ session, selfSkipped }) {
   for (const r of selfSkipped) {
@@ -439,7 +427,6 @@ function reportSelfSkipped({ session, selfSkipped }) {
     process.stderr.write(`[decision-gate] ${r.reason || `${r.id} skipped`} — ${r.id} did not vote; it supplied no authorization verdict.\n`);
   }
 }
-
 /**
  * Run one policy as a CAPTURED child. Never lets its bytes touch the real streams.
  *
@@ -466,7 +453,6 @@ function runPolicy(p, payload, deadline, extraArg, trace) {
   if (extraArg) args.push(extraArg);
   const left = deadline - Date.now();
   if (left <= 0) return Promise.resolve(done({ id: p.id, skipped: 'budget' }));
-
   return new Promise((resolve) => {
     let settled = false;
     let timer = null;
@@ -499,12 +485,10 @@ function runPolicy(p, payload, deadline, extraArg, trace) {
     try { child.stdin.end(payload); } catch { /* handled by the stdin error listener above */ }
   });
 }
-
 function readPayload() {
   if (process.stdin.isTTY) return '';
   try { return fs.readFileSync(0, 'utf8'); } catch { return ''; }
 }
-
 /** Never able to crash a caller that merely imported this (see tests/unit/entrypoint-guard-safety). */
 function isMain() {
   try {
