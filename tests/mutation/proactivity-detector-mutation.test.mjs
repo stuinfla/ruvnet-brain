@@ -37,20 +37,21 @@ afterEach(() => { try { fs.rmSync(MUTANT, { force: true }); } catch { /* best ef
 describe('ADR-041 mutation — the harness must fall on a broken detector', () => {
   it('baseline: the TRUE detector scores recall 1.00, false-alarm 0', () => {
     const m = measure();
+    expect(m.dormantSeen['session-capture']).toBe('unknown');
     expect(m.recall).toBe(1);
     expect(m.falseAlarmCount).toBe(0);
   });
 
-  // capability-registry.mjs:571 — the no-hook branch that reports a dormant session-capture as OFF.
-  it('FALSE-NEGATIVE mutant (session-capture OFF -> UNKNOWN) drops recall below the 0.80 bar', () => {
+  // Workflow IDLE is observable from counters and age; unchecked capture absence is UNKNOWN.
+  it('FALSE-NEGATIVE mutant (workflow learning IDLE -> UNKNOWN) drops recall below the 0.80 bar', () => {
     withMutant(
-      (s) => s.replace(
-        "return row(STATE.OFF, 'no hook that saves session state is registered at either boundary",
-        "return row(STATE.UNKNOWN, 'no hook that saves session state is registered at either boundary"),
+      (s) => s.replace('return row(STATE.IDLE, `${traj} work sessions and ${pat} patterns were recorded',
+        'return row(STATE.UNKNOWN, `${traj} work sessions and ${pat} patterns were recorded'),
       () => {
         const m = measure({ registryPath: MUTANT });
-        expect(m.dormantSeen['session-capture']).not.toBe('off');   // detector now blind to this dormancy
-        expect(m.recall).toBeLessThan(0.80);                        // 1/2 = 0.50 — acceptance test would REJECT
+        expect(m.dormantSeen['workflow-pattern-learning']).toBe('unknown');
+        expect(m.dormantSeen['session-capture']).toBe('unknown');
+        expect(m.recall).toBeLessThan(0.80); // one of two known dormant capabilities is missed
       });
   });
 

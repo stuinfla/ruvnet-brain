@@ -17,9 +17,9 @@
 //    or {known:false, why}. Unknown renders as "—" plus the reason, never as 0 and never as
 //    "no change". This is the same class of bug as the detector that read a CLI's human-readable
 //    table, failed to parse it, and reported "26 hooks off" while the learner held 457
-//    trajectories. Here it is a live hazard, not a hypothetical: GET /stargazers answers 401
-//    without a GITHUB_TOKEN, so people.stargazers arrives as [] on an unauthenticated deploy. An
-//    empty list rendered as "0 people starred this" would be a flat lie — the repo has 20 stars.
+//    trajectories. Here it is a live hazard, not a hypothetical: A failed stargazer request
+//    can omit the list, so people.stargazers may arrive as []. An
+//    empty list rendered as "0 people starred this" would be a flat lie — the metadata can still report stars.
 //
 // 2. NEVER DIFF A ROLLING WINDOW. The payload mixes two incompatible kinds of counter:
 //      cumulative  — repo.stars, repo.forks, totalAssetDownloads, telemetry.totals.*  (monotonic;
@@ -191,19 +191,10 @@
     });
     people.sort(function (a, b) { return String(b.last || '').localeCompare(String(a.last || '')); });
 
-    var openItems = [];
-    contributors.forEach(function (c) {
-      (c.items || []).forEach(function (it) {
-        if (it.state === 'open') openItems.push({ login: c.login, number: it.number, title: it.title, url: it.url, at: it.at, isPR: it.isPR });
-      });
-    });
-    openItems.sort(function (a, b) { return String(a.at || '').localeCompare(String(b.at || '')); }); // oldest first
+    var queue = d.openWork || { available: false, note: 'Open-work source unavailable.' };
+    var openItems = queue.available && Array.isArray(queue.items) ? queue.items : [];
 
-    // Total external threads — needed to tell "all closed" apart from "none ever existed". Those
-    // are opposite facts and must never share a message.
-    var threadCount = contributors.reduce(function (n, c) { return n + (c.items || []).length; }, 0);
-
-    return { people: people, events: events, openItems: openItems, botItems: botItems, forks: forks, threadCount: threadCount };
+    return { people: people, events: events, openItems: openItems, queue: queue, botItems: botItems, forks: forks };
   }
 
   // ── baseline (the "since you last looked" memory) ─────────────────────────────────────────────
@@ -219,7 +210,6 @@
       people: s.people.map(function (p) { return p.login; }),
       stars: d.repo ? d.repo.stars : null,
       forks: d.repo ? d.repo.forks : null,
-      downloads: d.totalAssetDownloads == null ? null : d.totalAssetDownloads,
       tel: (d.telemetry && d.telemetry.configured && d.telemetry.totals) || null
     };
   }
@@ -286,8 +276,6 @@
         d.repo ? num(d.repo.stars) + ' total' : ''),
       dcell('forks', cumDelta(d.repo && d.repo.forks, base && base.forks, 'repo metadata unavailable', firstVisit),
         d.repo ? num(d.repo.forks) + ' total' : ''),
-      dcell('release bundle downloads', cumDelta(d.totalAssetDownloads, base && base.downloads, 'no release data returned', firstVisit),
-        d.totalAssetDownloads == null ? '' : num(d.totalAssetDownloads) + ' lifetime'),
       dcell('opted-in installs', cumDelta(telTotals && telTotals.install, base && base.tel && base.tel.install, telWhy, firstVisit)),
       dcell('opted-in searches', cumDelta(telTotals && telTotals.search, base && base.tel && base.tel.search, telWhy, firstVisit)),
       dcell('opted-in sessions', cumDelta(telTotals && telTotals.session, base && base.tel && base.tel.session, telWhy, firstVisit)),
@@ -306,15 +294,12 @@
 
   function renderTodo(s) {
     var host = $('[data-todo]');
+    if (!s.queue.available) {
+      host.innerHTML = '<div class="inbox-zero">' + esc(s.queue.note) + '</div>';
+      return;
+    }
     if (!s.openItems.length) {
-      // Empty-first: "all closed" and "none ever existed" are opposite facts. Rendering the
-      // congratulatory inbox-zero copy on a machine that has never received a single issue would
-      // claim a cleared queue that never had anything in it.
-      host.innerHTML = s.threadCount
-        ? '<div class="inbox-zero"><b>Nothing open from anyone outside you.</b> All ' + s.threadCount
-          + ' external threads are closed. That is a real state, read from the live issue list — not a placeholder.</div>'
-        : '<div class="inbox-zero" style="border-color:var(--ridge)">No one outside you has opened an issue or PR yet, so there is nothing waiting. '
-          + 'Not a cleared queue — an empty one.</div>';
+      host.innerHTML = '<div class="inbox-zero">No open engineering issues or PRs in the current GitHub inventory.</div>';
       return;
     }
     host.innerHTML = '<div class="todo">' + s.openItems.map(function (it) {
@@ -430,11 +415,9 @@
     var telTotals = (telCfg && d.telemetry.totals) || null;
     var telWhy = telCfg ? 'no opt-in install pings recorded yet' : 'opt-in counter store not linked';
 
-    // Newest release = the best available read on the ACTIVE installed base: every machine that
-    // refreshes pulls the current bundle, so a fresh release accumulates roughly one download per
-    // live machine. Labelled as the estimate it is, with its own arithmetic shown.
-    var rels = Array.isArray(d.releases) ? d.releases : [];
-    var newest = rels.filter(function (r) { return r.assets && r.assets.length; })[0] || null;
+    // GitHub releases/latest is authoritative; release list ordering is not publication order.
+    // Download counts cannot identify active installations.
+    var newest = d.latestRelease || null;
     var newestDl = newest ? newest.assets.reduce(function (n, a) { return n + (a.downloads || 0); }, 0) : null;
 
     $('[data-reach]').innerHTML = [
@@ -446,16 +429,16 @@
         caveat: 'The only tile here that counts PEOPLE. GitHub de-duplicates by visitor, so this is humans who opened the repo page — not machines, not CI.'
       }),
       rcell({
-        label: 'bundle downloads',
-        window: 'lifetime, all releases',
+        label: 'release asset downloads',
+        window: 'fetched window · up to 20 most recent releases',
         value: metric(d.totalAssetDownloads, 'no release data returned'),
-        caveat: 'Downloads, NOT people — GitHub exposes no unique-downloader field for release assets. Each nightly refresh re-downloads, so one machine counts many times.'
+        caveat: 'Asset totals cover the fetched release window, not lifetime downloads. Downloads, NOT people — GitHub exposes no unique-downloader field for release assets. Each nightly refresh re-downloads, so one machine counts many times.'
       }),
       rcell({
         label: newest ? 'pulled ' + newest.tag : 'newest release pulls',
         window: newest ? 'since ' + String(newest.publishedAt || '').slice(0, 10) : 'no published release found',
         value: metric(newestDl, 'no assets on the newest release'),
-        caveat: 'The closest read on the ACTIVE installed base: every live machine pulls the current bundle once. An estimate of machines, and it is the number to watch.'
+        caveat: 'Asset downloads on GitHub’s current latest release. Includes repeated downloads and verification assets; this does not measure active machines or users.'
       }),
       rcell({
         label: 'opted-in installs',
@@ -471,7 +454,7 @@
       : 'repo metadata unavailable';
 
     $('[data-reach-note]').textContent = 'No counter here is a headcount, and the gap between them is the point: '
-      + 'visitors are people, bundle pulls are machines, opted-in installs are consenting machines. '
+      + 'visitors are GitHub uniques, bundle pulls are downloads, opted-in installs are consenting machines. '
       + 'npm downloads are deliberately excluded from this row — mirrors and the nightly refresh dominate them, '
       + 'so they measure traffic volume and never population. They remain in Momentum below, as shape only.';
   }
@@ -549,17 +532,13 @@
       out.push(['config', 'Opt-in install / search / session counters are dark.',
         (tel.note || 'No KV/Upstash store is linked to the Vercel project.') + ' The counters read "—", never 0.']);
     }
-    if (d.repo && d.repo.stars > 0 && !((d.people && d.people.stargazers) || []).length) {
-      out.push(['config', 'The ' + num(d.repo.stars) + ' stargazers are counted but unnamed.',
-        'GET /stargazers answers 401 without a token. The count is public; the list is not.']);
-    }
 
     out.push(['code', 'The actual words people wrote — the positive feedback you are hearing about.',
-      'This is the big one, and it is the direct answer to "why can\'t I see any of it here?". The threads linked above carry real conversations (one runs to 21 comments), but api/admin-stats.mjs maps each item to {number, title, state, isPR, url, at} and drops comments, reactions, closed_at, and the body. So this page can prove a conversation happened and take you straight to it — it cannot quote or score the sentiment, and deliberately does not try. Adding comments + reactions to that one items.push() call would light this up.']);
+      'This is the big one, and it is the direct answer to "why can\'t I see any of it here?". The threads linked above carry real conversations, but api/admin-stats.mjs maps each item to {number, title, state, isPR, url, at} and drops comments, reactions, closed_at, and the body. So this page can prove a conversation happened and take you straight to it — it cannot quote or score the sentiment, and deliberately does not try. Adding comments + reactions to that one items.push() call would light this up.']);
     out.push(['code', 'GitHub Discussions activity.',
       'The payload links to Discussions but never reads it — the Discussions API is GraphQL-only, and admin-stats.mjs speaks REST.']);
     out.push(['code', 'People who only commented, and never opened an issue or PR.',
-      'Contributors are grouped from the issues endpoint by AUTHOR, so a person whose entire contribution is a helpful comment on someone else\'s thread is invisible here. On a repo where the busiest thread has 21 comments, that is likely to be several real people.']);
+      'Contributors are grouped from the issues endpoint by AUTHOR, so a person whose entire contribution is a helpful comment on someone else\'s thread is invisible here. Comment-only participants are outside this inventory.']);
     out.push(['code', 'When each star happened.',
       'Stars have no date in the payload (the stargazers call omits the star+json Accept header that carries starred_at), so they cannot be placed on the timeline. Forks can, and are.']);
     out.push(['code', 'Explainer page traffic — visitors to this site, as opposed to the repo.',
@@ -569,7 +548,7 @@
     out.push(['design', 'What people actually search for. Deliberate, and staying that way.',
       'search_ruvnet runs entirely on the user\'s machine and never phones home. The opt-in counter records that a search happened, never what it was. This gap is the product working as designed — not a hole to plug.']);
 
-    var TAG = { config: 'fixable now', code: 'not built yet', design: 'by design' };
+    var TAG = { config: 'engineering setup', code: 'engineering backlog', design: 'by design' };
     $('[data-gaps]').innerHTML = out.map(function (g) {
       return '<li><span class="tag ' + g[0] + '">' + TAG[g[0]] + '</span>'
         + '<b>' + esc(g[1]) + '</b><span class="fix">' + esc(g[2]) + '</span></li>';

@@ -249,11 +249,12 @@ describe('wireCodexHost — the filesystem round trip', () => {
 
     const wrapper = path.join(home, '.cache', 'ruvnet-brain', 'codex-hook.mjs');
     fs.mkdirSync(path.dirname(wrapper), { recursive: true });
-    fs.writeFileSync(wrapper, 'legacy hook bridge');
     const r = wireCodexHost({ codexDir, serverDir, announce: false });
 
     expect(r.hookWrapperInstalled).toBe(true);
-    expect(fs.readFileSync(wrapper, 'utf8')).toContain('codex-hook-adapter');
+    expect(r.hookWrapperPath).toBe(wrapper);
+    expect(fs.readFileSync(wrapper, 'utf8'))
+      .toBe(fs.readFileSync(path.join(ROOT, 'plugin/scripts/codex-hook-wrapper.mjs'), 'utf8'));
   });
 
   it('refuses to overwrite a user-owned wrapper symlink', (ctx) => {
@@ -268,7 +269,10 @@ describe('wireCodexHost — the filesystem round trip', () => {
 
     const result = wireCodexHost({ codexDir, hookWrapperPath: wrapper, serverDir: path.join(home, 'srv'), announce: false });
 
-    expect(result.action).toBe('hook-wrapper-install-failed');
+    expect(result.action).toBe('hook-wrapper-ownership-conflict');
+    expect(result.hookWrapperInstalled).toBe(false);
+    expect(fs.existsSync(path.join(home, 'srv'))).toBe(false);
+    expect(fs.existsSync(path.join(codexDir, 'config.toml'))).toBe(false);
     expect(fs.readFileSync(wrapper, 'utf8')).toBe('preserve me');
     expect(fs.readFileSync(target, 'utf8')).toBe('preserve me');
   });
@@ -282,8 +286,36 @@ describe('wireCodexHost — the filesystem round trip', () => {
 
     const result = wireCodexHost({ codexDir, hookWrapperPath: wrapper, serverDir: path.join(home, 'srv'), announce: false });
 
-    expect(result.action).toBe('hook-wrapper-install-failed');
+    expect(result.action).toBe('hook-wrapper-ownership-conflict');
+    expect(result.hookWrapperInstalled).toBe(false);
+    expect(fs.existsSync(path.join(home, 'srv'))).toBe(false);
+    expect(fs.existsSync(path.join(codexDir, 'config.toml'))).toBe(false);
     expect(fs.statSync(wrapper).isDirectory()).toBe(true);
+  });
+
+  it('preserves a customized regular wrapper before any host wiring', () => {
+    const home = tmpdir(), codexDir = path.join(home, '.codex');
+    const wrapper = path.join(home, '.cache', 'ruvnet-brain', 'codex-hook.mjs');
+    fs.mkdirSync(codexDir, { recursive: true });
+    fs.mkdirSync(path.dirname(wrapper), { recursive: true });
+    fs.writeFileSync(wrapper, 'legacy hook bridge'); // Unknown bytes do not establish installer ownership.
+    const result = wireCodexHost({ codexDir, serverDir: path.join(home, 'srv'), announce: false });
+    expect(result.action).toBe('hook-wrapper-ownership-conflict');
+    expect(fs.readFileSync(wrapper, 'utf8')).toBe('legacy hook bridge');
+    expect(fs.existsSync(path.join(home, 'srv'))).toBe(false);
+    expect(fs.existsSync(path.join(codexDir, 'config.toml'))).toBe(false);
+  });
+
+  it('refuses a wrapper target outside the supplied home without changing its bytes', () => {
+    const home = tmpdir(), outside = tmpdir(), codexDir = path.join(home, '.codex');
+    const wrapper = path.join(outside, 'user-hook.mjs');
+    fs.mkdirSync(codexDir, { recursive: true });
+    fs.writeFileSync(wrapper, 'outside home owner');
+    const result = wireCodexHost({ codexDir, hookWrapperPath: wrapper, serverDir: path.join(home, 'srv'), announce: false });
+    expect(result.action).toBe('hook-wrapper-ownership-conflict');
+    expect(fs.readFileSync(wrapper, 'utf8')).toBe('outside home owner');
+    expect(fs.existsSync(path.join(home, 'srv'))).toBe(false);
+    expect(fs.existsSync(path.join(codexDir, 'config.toml'))).toBe(false);
   });
 
   it('creates config.toml when the host exists but has none yet', () => {

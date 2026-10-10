@@ -210,6 +210,21 @@ describe('completion claims (Piece A)', () => {
 describe('promises (Piece C)', () => {
   const PROMISE = 'Next I\'ll add the retry test to the updater.';
 
+  it('a FAIL completion verdict preserves the promise without completion evidence', () => {
+    const repo = gitRepo('failed-completion');
+    fire(repo, PROMISE, { transcriptPath: transcript() });
+    const message = 'The updater retry test is fixed.';
+    const t = transcript(edit(), bash('npx vitest run tests/unit/updater.test.mjs', 'FAIL 1', true));
+    const turn = claudeTurnEvents(readSettledTranscript(t, { maxMs: 0 }));
+    expect(auditCompletionClaims(message, { turn }).verdict).toBe('FAIL');
+    const original = ledger().items.find((i) => i.kind === 'assistant-commitment');
+    fire(repo, message, { transcriptPath: t, stopHookActive: true });
+    const item = ledger().items.find((i) => i.kind === 'assistant-commitment');
+    expect(item).toEqual(original);
+    expect(item).toMatchObject({ done: false, state: 'active' });
+    expect(item.completionEvidence).toBeUndefined();
+  });
+
   it('owner opt-out stops new capture, including continued stops, and toggles back on', () => {
     const repo = gitRepo('a');
     for (const stopHookActive of [false, true]) {

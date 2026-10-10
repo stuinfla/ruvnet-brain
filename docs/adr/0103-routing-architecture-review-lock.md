@@ -3,9 +3,9 @@ id: ADR-103
 title: Routing architecture qualification requires a current finite source review
 status: Accepted
 date: 2026-10-05
-updated: 2026-10-07
-version: 0.1.18
-reviewed_digest: 7ba26e9903fa
+updated: 2026-10-10
+version: 0.1.26
+reviewed_digest: 5b6649f102ca
 impl: built
 authors: [Stuart Kerr, Codex]
 tags: [routing, governance, review, release, traceability]
@@ -192,9 +192,18 @@ governs:
   - .github/workflows/release-candidate-preflight.yml
   - .github/workflows/protected-release.yml
   - .github/workflows/early-public.yml
+  - plugin/scripts/developer-update-maintenance.mjs
+  - tests/unit/developer-update-codex-launcher.test.mjs
+  - bin/nightly-refresh.mjs
+  - tests/unit/nightly-scheduler.test.mjs
+  - plugin/scripts/developer-update.mjs
+  - plugin/scripts/nightly-scheduler.mjs
+  - tests/unit/developer-update-scheduled-receipt.test.mjs
 ---
 
 # ADR-103 — Routing architecture review lock
+
+**Status**: Accepted
 
 **Decision status:** Accepted: the owner requested an architecture review freeze and a future-change gate.
 **Implementation status:** Source-reviewed, awaiting native and release qualification. The
@@ -229,7 +238,11 @@ substitute for release qualification, exact-candidate receipts or published veri
 | Native subscription and catalog | subscription-hosts, native-subscription-usage, model-native-catalog, model-native-qualification, model-router-catalog | Corresponding native/catalog tests and installer convergence tests |
 | Weekly assessment and promotion | model-weekly-cycle, model-weekly-analyst, model-weekly-assessment, model-weekly-qualification, model-routing-policy-promotion, weekly-analyst-instruction | Corresponding weekly and promotion unit files |
 | Installation seam | model-terminal-launchers.mjs returns only already-validated Claude settings source paths for restrictive inherited-plan inspection; it does not evaluate native precedence or grant authority. bin/install.mjs (native administrative hooks probe uses explicit caller/CODEX_BIN or configured realCodex, leaving managed app-server refusal intact), model-routing-operation.md, codex-console-alias and SessionStart core/budget | codex-fresh-host-proof native resolution/override/fallback regression; model-router-update-convergence, session-start-core-parity, model-terminal-launchers and npm-tarball-codex; bounded routing and console-alias installation, not an all-installer review; packed-clean-install and npm-tarball-codex retain sealed archive metadata reads with basename and controlled cwd, rejecting the Windows GNU-tar remote drive-letter seam |
-| Qualification and release guard | architecture-review-lock, doc-currency, release-qualification-contract, source-scope-receipt, release-transaction, release-transaction-provider, package-lock.json; candidate/CI/protected workflows | architecture-review-lock refusal fixtures and doc-currency-review; release-evidence-dag, protected-release-workflow and agentic-qe-early-public bind the outer candidate-preflight dependency and same-run receipts; existing release contract chooses execution evidence. release-transaction-provider-buffer executes the actual payload upload path with size-based 30s–600s per-file deadlines while metadata and small sidecars retain 30s; the separate download budget and immutable asset checks remain. The npm audit at the exact-candidate seal rejects high-severity dependency advisories; a compatible transitive development patch still requires source-bound qualification, not reuse of an old candidate's receipt. This does not prove transfer throughput or a hard process-tree retirement bound. |
+| Decision gate source ceiling | plugin/scripts/decision-gate.mjs removes only 16 blank lines to meet the existing 500-line source gate; source tokens and behavior are unchanged. | Independent blank-line-insensitive diff is empty; the existing lesson-gate checks retain the architecture source-size requirement. Source formatting clearance does not establish runtime or release acceptance. |
+| Observed completion and literal fixture annotations | scripts/codex-managed-terminal.mjs derives receipt status from the actual native completion result only after existing model/effort/session/decision/deadline checks. continuation-gate.mjs derives done/state from the existing PASS verdict and matched owned promise claim; no new PASS producer or authority is introduced. | Codex pending/failed-native regression writes no completion receipt/output; continuation FAIL regression leaves the original active commitment and evidence unchanged. agentdb-recall, model-terminal-launchers and model-weekly-analyst add only exact-literal fixture annotations, retaining every assertion. Source-level derived assignments do not prove new native delivery or public qualification. |
+| Hook consumer protocol coverage and fixture closure | scripts/hook-qualify-core.mjs derives only named SubagentStop/PostToolUseFailure envelopes from existing captured base events. Claude-derived shapes cite documented fields; Codex/Grok mappings are consumer-only and explicitly set nativeSchemaObserved:false/nativeDeliveryObserved:false. No generic unknown-event fallback is added. | hook-qualify regression fixtures retain strict missing-event refusal; native producer schema and delivery require independent host evidence. project-progression-session-start copies the adapter's required budget helper; model-weekly-qualification copies the actual transitive import closure using the existing installer dependency scanner. Their output/refusal assertions remain unchanged and do not establish real native execution. |
+| Coordinated update admission | bin/install.mjs acquires the shared developer-update owner lock before the existing update, propagates its token for owned nested work, restores the previous environment and releases in finally. The coordinator and immutable module closure are governed separately by ADR-104. CONTRIBUTING.md records explicit channel/scope/manager choices, the shipped updater launcher, configured automatic-owner admission and proof boundaries. package-lock.json changes product version and declares the shipped update launcher without changing dependency versions. | developer-update lock inheritance/refusal/release and canonical source tests; architecture-review-lock and doc-currency-review refusal fixtures. Focused checks establish source behavior only; actual scheduled execution, provider currency and public installation need their own exact receipts. |
+| Qualification and release guard | architecture-review-lock, doc-currency, release-qualification-contract, source-scope-receipt, release-transaction, release-transaction-provider, package-lock.json; candidate/CI/protected workflows | architecture-review-lock refusal fixtures and doc-currency-review; release-evidence-dag, protected-release-workflow and agentic-qe-early-public bind the outer candidate-preflight dependency and same-run receipts; existing release contract chooses execution evidence. The installed-update requirement adds portable channel/version policy, immutable Claude artifact negatives and complete coordinator-module receipt checks on every platform; original-prefix, existing-owner and shared-lock shell fixtures run on POSIX. The integration contract retains the real authenticated Console endpoint refusal and read-only cases. Local 173-case focused execution and independent baseline-plus-delta review support these selected boundaries; exact-source candidate qualification and actual Windows execution remain required. release-transaction-provider-buffer executes the actual payload upload path with size-based 30s–600s per-file deadlines while metadata and small sidecars retain 30s; the separate download budget and immutable asset checks remain. The npm audit at the exact-candidate seal rejects high-severity dependency advisories; a compatible transitive development patch still requires source-bound qualification, not reuse of an old candidate's receipt. This does not prove transfer throughput or a hard process-tree retirement bound. |
 
 | Shared hook intent and ownership | hook-contracts, continuity-hook-policy, hook-registry, shim and native adapters; foreign capture registrations are collision candidates, not current-turn proof | hook-registry-lint, codex-claude-hook-parity, continuity-journal and hook-hardening; native event delivery is separately qualified |
 | Native grounding identity and outcome truth | grounding marker/evidence/gate/answer, continuity-events and project-transition-hook share failure/incomplete precedence; Claude prompt_id differs from Codex turn_id | grounding-session-isolation, grounding-success-shapes, grounding-turn-assertion, continuity-events and project-transition-hook; missing IDs remain UNKNOWN |
@@ -248,6 +261,31 @@ actual normal managed UUID-resume witness on an owned synthetic native-cache fix
 synthetic-context acceptance, not proof the live user conversation resumed or the owner activated a
 new release. Its native full-history source and projected context have distinct digests and provenance.
 
+## Native update and nightly identity repair (4.6.2)
+
+The finite scope includes the native maintenance adapter and its trusted-launcher
+regressions, plus the immutable nightly runner and scheduler execution tests. Native
+Codex maintenance validates the registered user-owned configuration, exact wrapper
+bytes, complete runtime digest and standalone native owner before updating. The
+existing terminal installer restores the registered wrapper without changing shell
+configuration or adopting unknown replacements. Shared Claude configuration remains
+preserved. Failed commands or restoration cannot complete the provider; vendor native
+files are not rolled back by this adapter.
+
+The developer-suite runner forwards the registration, Node path, runner path and runner
+SHA-256 it has already verified. Caller-supplied conflicting identity values do not
+replace that registration. Native wrapper tests are POSIX qualification; portable
+policy and scheduler identity qualification remain selected on Windows.
+
+A separate constant-space scheduled-attempt receipt retains running, failed and completed
+scheduled applies independently of the latest currency check or manual operation. The
+health reader chooses the newer scheduled attempt from current and retained evidence,
+validates registration/source bindings, rejects future or stale proof, and requires the
+matching live owner for running state. Before replacing latest evidence with a check or
+manual run, the writer reconciles newer scheduled evidence under the existing lock;
+failure to preserve it refuses that overwrite. This does not copy an old receipt back
+into the latest-operation slot or manufacture a successful scheduled run.
+
 ## Assurance limits and consequences
 
 The machine guard enforces byte-bound review currency and evidence structure. It cannot establish
@@ -264,6 +302,26 @@ and P10 by reusing doc-currency. It trades P3's usual nudge for the owner's expl
 finite release refusal. No paid provider call, model generation or system configuration is added.
 
 ## Currency log
+
+| 2026-10-10 | Reviewed `5b6649f102ca` against receipt-repair worker source `8f852170`, integration `56eb2f2d`, and the final 4.6.2 finite mapping. | Root independently reviewed `plugin/scripts/developer-update.mjs`, `plugin/scripts/nightly-scheduler.mjs` and the nine scheduled-receipt regressions; all nine independently executed cases passed. The two-slot constant-space intent preserves newer running/failed scheduled attempts, reconciles evidence before manual/check overwrite, refuses retention failure, and retains source/registration/time/live-owner validation plus legacy compatibility. Integration passed 118 combined focused cases. Earlier native-wrapper and four-field runner review remains scoped to its recorded source. This is not whole-set reread, public installation, actual scheduled customer execution, corpus refresh or SDK hot-reload evidence. The completed `55cf952a` preflight remains bound to its earlier bytes and is not reused. |
+
+| 2026-10-10 | Reviewed `6c905535ed9c` against worker source `4a6e3a71`, integration source `3fc97cc5` and the final finite 4.6.2 mapping. | Root independently reviewed `plugin/scripts/developer-update-maintenance.mjs`, its focused tests, `bin/nightly-refresh.mjs`, `tests/unit/nightly-scheduler.test.mjs`, the POSIX qualification additions and ADR-103/104 normative mapping. Eleven independent wrapper cases passed. Integration reproduced missing scheduled registration identity against the actual content-addressed runner, then passed all 24 scheduler cases and 96 combined focused cases. The controlled existing-runtime launcher restoration matched its 605-file digest, preserved shared config, Claude and shell bytes, and returned native Codex 0.162.1. This bounded review does not assert rereading all 185 governed paths, protected publication, completed customer maintenance, corpus freshness or SDK hot reload. Vendor files are not rolled back on provider failure. |
+
+| 2026-10-10 | Reviewed `fe3bd67a609b` against source `1caa967158560562795e1e6ebae44e2c2cd386f5` and governed paths `package-lock.json` and `scripts/release-qualification-contract.mjs`. | Root independently read `package-lock.json` and `scripts/release-qualification-contract.mjs` in the baseline-plus-delta diff against `db36152f274043d423eb61ef1cf0a85fb9ff49a7`: two root version literals advance 4.6.0 to 4.6.1 without dependency changes; one source requirement adds the two changed admin suites while retaining the prior inventory. Independent candidate execution passed 16 API/DOM fixture cases without skips; root also inspected the local rendered README and admin surface. No hook or routing implementation changed. These scoped checks do not establish full source qualification, remote preflight, production deployment, public installation or upstream corpus freshness; the previous failed preflight remains failed. |
+
+| 2026-10-10 | Reviewed `54844be550d7` against governed source `scripts/release-qualification-contract.mjs` and the final normative mapping. | Independent read-only baseline-plus-delta review of `scripts/release-qualification-contract.mjs` retained all existing requirements and approved the updater qualification additions: portable channel/version policy and immutable artifact negatives, complete coordinator-source receipt controls, POSIX original-prefix/existing-owner/shared-lock fixtures, and the actual authenticated Console endpoint. The integrated 173-case focused report passed without skips. This review does not establish native Windows execution, arbitrary runtime closure, whole-repository plugin equality, or candidate/publication acceptance; those remain separate machine gates. |
+
+| 2026-10-10 | Reviewed `1786179157c9` against governed source `9371e164` and the final status/mapping bytes. | The finite 776e38e4-to-9371e164 delta adds guarded result-derived assignments in `scripts/codex-managed-terminal.mjs` and `plugin/scripts/continuation-gate.mjs`, their pending/FAIL regressions, and comment-only exact-literal annotations in `tests/unit/agentdb-recall.test.mjs`, model-terminal-launchers and model-weekly-analyst. Root independently reviewed both production assignments and the final mapping row: existing native identity/model/effort/deadline and PASS/matched-owned-claim guards remain, with no new producer authority. updater_docs reviewed all seven changed governed paths and retained negative assertions. The parseable Accepted body status repairs document format without granting runtime acceptance. All 537 checks passed across ADR format and the five related fixture suites. The preceding three-file hook/closure review remains scoped; no whole-set reread, native producer/delivery, scheduled-run or protected installation proof is claimed. |
+
+
+| 2026-10-10 | Reviewed `619f5346336e` against final governed source `776e38e4` and this mapping. | Bounded review covers the exact d79602b8-to-776e38e4 deltas in `scripts/hook-qualify-core.mjs`, `tests/integration/project-progression-session-start.test.mjs` and `tests/unit/model-weekly-qualification.test.mjs`. Root independently reviewed the named consumer-only derived envelopes; updater_docs reviewed fixture dependency closure and retained assertions; updater_audit independently approved the final mapping and source scope. Missing future events still refuse, and Codex/Grok native schema/delivery observations remain false. 98 focused checks passed across the three relevant suites. No whole-governed-set reread, native producer/delivery, scheduled-run or protected installation proof is claimed; earlier review and failed receipt limits remain. |
+
+
+| 2026-10-10 | Reviewed `cf0271a2e0d1` against governed source `dc2301a1` and the final CONTRIBUTING/mapping bytes. | Independent read-only updater_audit review covers the bounded `bin/install.mjs`, `package-lock.json`, `CONTRIBUTING.md` deltas and the 16 blank-line-only removals in `plugin/scripts/decision-gate.mjs`; the blank-line-insensitive source diff is empty. Final bridge documentation was independently checked against canonical-first automatic invocation 05cfa286 and knowledge caller a2351888, including corrupt-legacy negative fixtures. No findings remain in this scope. 115 focused developer-update, lesson-gate, architecture-review-lock and doc-currency-review tests passed; the independent final developer-update run passed 27 cases. Prior governed review scopes remain bounded: no whole-set reread, native scheduled-run, provider freshness or protected public-installation claim is made. |
+
+
+| 2026-10-10 | Reviewed `034691457343` against source `8237f6d7` and this final mapping. | Independent read-only updater_audit review examined the exact 9cf8fe19-to-8237f6d7 deltas in `CONTRIBUTING.md`, `bin/install.mjs` and `package-lock.json`, the ADR mapping and the canonical coordinator/lock/nightly consumers; no blocking findings. Installer lock/token inheritance and finally-release, metadata-only launcher/version changes and explicit update policy remain scoped. 45 focused developer-update, architecture-review-lock and doc-currency-review checks passed. The other governed bytes retain their prior bounded review chain; no full governed-set reread, native schedule, provider freshness or protected public installation claim is made. |
+
 
 
 | Date | What | Why |

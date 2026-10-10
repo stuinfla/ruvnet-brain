@@ -67,6 +67,35 @@ export function fixturesFor(reg, root = REPO) {
     const base = all.find((f) => eventOf(reg.host, f.payload) === 'SessionEnd');
     return base ? [{ name: 'PreCompact-derived', _provenance: 'DERIVED from the captured SessionEnd payload + the documented PreCompact fields (trigger, custom_instructions); the host was not driven to compact', payload: { ...base.payload, hook_event_name: reg.host === 'grok' ? 'pre_compact' : 'PreCompact', trigger: 'manual', custom_instructions: '' } }] : [];
   }
+  if (reg.host === 'claude' && reg.event === 'SubagentStop') {
+    const base = all.find((f) => eventOf(reg.host, f.payload) === 'Stop');
+    // Claude's documented child-stop shape shares Stop's common/stop fields. This is
+    // synthetic protocol coverage, never evidence of native child-event delivery.
+    // Source checked 2026-10-10: https://code.claude.com/docs/en/hooks#subagentstop
+    return base ? [{ name: 'SubagentStop-derived',
+      _provenance: 'DERIVED from the captured Claude Stop payload + documented SubagentStop fields (https://code.claude.com/docs/en/hooks#subagentstop); no native SubagentStop capture was observed',
+      payload: { ...base.payload, hook_event_name: 'SubagentStop', agent_id: 'qual-child', agent_type: 'Explore',
+        agent_transcript_path: '{{TRANSCRIPT_DIR}}/subagents/agent-qual-child.jsonl' } }] : [];
+  }
+  if (reg.host === 'claude' && reg.event === 'PostToolUseFailure') {
+    const base = all.find((f) => eventOf(reg.host, f.payload) === 'PreToolUse');
+    return base ? [{ name: 'PostToolUseFailure-derived',
+      _provenance: 'DERIVED from the captured Claude PreToolUse payload + documented PostToolUseFailure error/is_interrupt/duration_ms fields (https://code.claude.com/docs/en/hooks#posttoolusefailure); no native PostToolUseFailure capture was observed',
+      payload: { ...base.payload, hook_event_name: 'PostToolUseFailure', error: 'Fixture tool failed', is_interrupt: false, duration_ms: 1 } }] : [];
+  }
+  if ((reg.host === 'codex' && reg.event === 'SubagentStop')
+    || (reg.host === 'grok' && ['SubagentStop', 'PostToolUseFailure'].includes(reg.event))) {
+    const baseEvent = reg.event === 'SubagentStop' ? 'Stop' : 'PreToolUse';
+    const base = all.find((f) => eventOf(reg.host, f.payload) === baseEvent);
+    const event = reg.host === 'grok' ? reg.event.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase() : reg.event;
+    // Consumer-only Layer 1 coverage: hook-input.mjs accepts the common host envelope;
+    // project-transition-hook.mjs dispatches child/failure observations by event name.
+    // No unobserved producer-specific child/error fields are invented. Layer 2/public
+    // host verification must establish native schema and delivery independently.
+    return base ? [{ name: `${reg.event}-adapter-contract-derived`, nativeSchemaObserved: false, nativeDeliveryObserved: false,
+      _provenance: `DERIVED adapter-contract envelope from captured ${reg.host} ${baseEvent}; consumer-only mapping in plugin/scripts/hook-input.mjs and project-transition-hook.mjs; native schema and delivery NOT observed; producer completeness NOT verified`,
+      payload: { ...base.payload, hook_event_name: event, ...(reg.host === 'grok' ? { hookEventName: event } : {}) } }] : [];
+  }
   if (!/ToolUse$/.test(reg.event)) return [];
   const re = new RegExp(reg.matcher === '*' ? '.*' : reg.matcher);
   const hits = ofEvent.filter((f) => re.test(reg.host === 'grok' ? (GROK_ALIAS[f.payload.tool_name] || f.payload.tool_name) : f.payload.tool_name));

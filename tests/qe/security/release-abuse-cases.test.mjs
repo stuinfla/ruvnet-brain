@@ -143,7 +143,8 @@ describe('provenance, secrets, and foreign hooks', () => {
   it.skipIf(process.platform === 'win32')('does not forward API keys or cloud credentials to downloaded updater code', () => {
     const dir = temporary('rvb-qe-env-');
     const capture = path.join(dir, 'captured.json');
-    const npx = path.join(dir, 'npx');
+    const npx = path.join(dir, '.npm-global', 'bin', 'npx');
+    fs.mkdirSync(path.dirname(npx), { recursive: true });
     fs.writeFileSync(npx, `#!${process.execPath}\nrequire('fs').writeFileSync(${JSON.stringify(capture)}, JSON.stringify(process.env));\n`);
     fs.chmodSync(npx, 0o755);
     const r = spawnSync(process.execPath, [HOST_UPDATE], {
@@ -154,7 +155,8 @@ describe('provenance, secrets, and foreign hooks', () => {
         OPENROUTER_API_KEY: 'must-not-leak',
         GITHUB_TOKEN: 'must-not-leak',
         AWS_SECRET_ACCESS_KEY: 'must-not-leak',
-        RUVNET_BRAIN_HOME: '/safe/brain-home',
+        HOME: dir, USERPROFILE: dir, CODEX_HOME: path.join(dir, '.codex'),
+        RUVNET_BRAIN_HOME: path.join(dir, 'safe', 'brain-home'),
       },
     });
     expect(r.status).toBe(0);
@@ -162,7 +164,8 @@ describe('provenance, secrets, and foreign hooks', () => {
     expect(seen.OPENROUTER_API_KEY).toBeUndefined();
     expect(seen.GITHUB_TOKEN).toBeUndefined();
     expect(seen.AWS_SECRET_ACCESS_KEY).toBeUndefined();
-    expect(seen.RUVNET_BRAIN_HOME).toBe('/safe/brain-home');
+    expect(seen.RUVNET_BRAIN_HOME).toBe(path.join(dir, 'safe', 'brain-home'));
+    expect(seen.HOME).toBe(dir);
   });
 
   it('enumerates hostile foreign hooks as data and never executes them', async () => {

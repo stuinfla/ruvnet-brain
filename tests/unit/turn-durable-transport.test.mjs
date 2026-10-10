@@ -43,7 +43,7 @@ runSteps(${JSON.stringify({ steps: requests })}, {projectDir:${JSON.stringify(f.
       expect(freshReplay(f)).toMatchObject({ failed: 0, verified: 1, pending: 0 });
       expect(f.retrieve(report.key)).toBe(report.value);
       const count = f.command('sqlite3', [db, `SELECT COUNT(*) FROM memory_entries WHERE namespace='turns' AND key='${report.key.replaceAll("'", "''")}';`]).stdout.trim();
-      expect(count).toBe('1');
+      expect(count).toBe('1'); // sync-version-ignore: the exact SQL row count is a fixture invariant proving no duplicate delivery
       expect(freshReplay(f)).toMatchObject({ count: 0 });
       const stores = fs.readFileSync(f.argvLog, 'utf8').trim().split('\n').map(JSON.parse)
         .filter((args) => args[1] === 'store' && args.includes(report.key));

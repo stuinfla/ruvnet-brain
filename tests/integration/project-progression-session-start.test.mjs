@@ -424,6 +424,10 @@ describe('ADR-073 Slice F SessionStart restore bridge', () => {
       path.join(ROOT, 'plugin/scripts/development-maintenance.mjs'),
       path.join(dir, 'development-maintenance.mjs'),
     );
+    fs.copyFileSync(
+      path.join(ROOT, 'plugin/scripts/hook-context-budget.mjs'),
+      path.join(dir, 'hook-context-budget.mjs'),
+    );
     fs.writeFileSync(path.join(dir, 'hook-shim.mjs'), `process.stdin.resume();process.stdin.on('end',()=>process.stdout.write(${JSON.stringify(context)}));`);
 
     const codex = spawnSync(process.execPath, [path.join(dir, 'codex-hook-adapter.mjs'), 'session-start'], {

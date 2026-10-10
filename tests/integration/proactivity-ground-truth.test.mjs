@@ -15,6 +15,8 @@ import { measure } from '../../scripts/proactivity-metrics.mjs';
 describe('ADR-041 ground-truth fixture machine — detector-layer recall + false-alarm', () => {
   it('RECALL = 1.00 (>= 0.80): the real detector calls every dormant cohort capability off', () => {
     const m = measure();
+    expect(m.dormantSeen['session-capture']).toBe('unknown'); // uninspected runtime is never inferred absent
+    expect(Object.entries(m.dormantSeen).filter(([,state])=>['off','idle'].includes(state))).toHaveLength(2);
     expect(m.missedDormant).toEqual([]);          // nothing dormant went unseen
     expect(m.recall).toBeGreaterThanOrEqual(0.80); // ADR-028 acceptance bar
     expect(m.recall).toBe(1);                      // and in fact all of them, on this cohort

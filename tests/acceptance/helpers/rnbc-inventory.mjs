@@ -37,6 +37,9 @@ export function inventoryInPage(pageName) {
     if (tag === 'a' && href === '#' && id) return `link:${id}`;
     if (tag === 'a' && href && href.startsWith('#')) return `anchor:${href}`;
     if (tag === 'a' && href) return `link:${c}:${href.split('?')[0]}:${slug(t)}`;
+    if (id === 'suite-update-run') return 'btn:suite-update';
+    if (id === 'suite-update-channel') return 'select:suite-update-channel';
+    if (tag === 'label' && el.htmlFor === 'suite-update-channel') return 'label:suite-update-channel';
     if (id === 'brain-update') return 'btn:update-gong';
     if (id === 'freshness-pill') return 'btn:freshness';
     if (id === 'recheck-btn') return 'btn:recheck';

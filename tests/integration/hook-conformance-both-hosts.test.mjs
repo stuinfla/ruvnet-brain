@@ -85,19 +85,21 @@ describe('automatic Brain continuity hooks are constrained on both hosts', () =>
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.mkdirSync(codexDir, { recursive: true });
       fs.mkdirSync(path.dirname(wrapper), { recursive: true });
-      fs.writeFileSync(wrapper, '// old bridge');
+      fs.copyFileSync(path.join(ROOT, 'plugin/scripts/codex-hook-wrapper.mjs'), wrapper);
       const foreign = { type: 'command', command: 'node /foreign/codex-hook.mjs' };
       const mixed = { type: 'command', command: `node "${wrapper}"; node /foreign/task.mjs` };
+      const unknown = { pluginId: 'ruvnet-brain@ruvnet-brain', type: 'command', command: 'old callback' };
+      const registered = JSON.parse(fs.readFileSync(path.join(ROOT, 'plugin/hooks/codex-hooks.json'), 'utf8')).hooks.Stop[0];
+      const owned = registered.hooks[0];
       fs.writeFileSync(file, JSON.stringify({ permissions: { allow: ['Read'] }, hooks: {
-        Stop: [{ matcher: '*', hooks: [foreign, mixed,
-          { type: 'command', command: `node "${wrapper}"` },
-          { pluginId: 'ruvnet-brain@ruvnet-brain', type: 'command', command: 'old callback' }] }] } }));
+        Stop: [{ matcher: registered.matcher, hooks: [foreign, mixed, unknown, owned,
+          { ...owned, pluginId: 'ruvnet-brain@ruvnet-brain' }] }] } }));
       const installed = wireCodexHost({ codexDir, serverDir: path.join(home, 'mcp'), announce: false });
       expect(installed.action).toBe('added');
       expect(installed.hookWrapperInstalled).toBe(true);
       const after = fs.readFileSync(file, 'utf8');
       expect(JSON.parse(after)).toEqual({ permissions: { allow: ['Read'] }, hooks: {
-        Stop: [{ matcher: '*', hooks: [foreign, mixed] }] } });
+        Stop: [{ matcher: registered.matcher, hooks: [foreign, mixed, unknown] }] } });
       expect(retireManagedHookRegistrations({ home, codexDir }).removed).toBe(0);
       expect(fs.readFileSync(file, 'utf8')).toBe(after);
       expect(fs.existsSync(installed.serverPath)).toBe(true);
@@ -113,7 +115,7 @@ describe('automatic Brain continuity hooks are constrained on both hosts', () =>
       fs.mkdirSync(path.dirname(wrapper), { recursive: true });
       fs.mkdirSync(codexDir, { recursive: true });
       fs.writeFileSync(configPath, 'model = "user-choice"\n');
-      fs.writeFileSync(wrapper, 'legacy bridge');
+      fs.copyFileSync(path.join(ROOT, 'plugin/scripts/codex-hook-wrapper.mjs'), wrapper);
 
       const first = wireCodexHost({
         codexDir,
@@ -134,6 +136,7 @@ describe('automatic Brain continuity hooks are constrained on both hosts', () =>
       expect(first.hookWrapperInstalled).toBe(true);
       expect(second.hookWrapperInstalled).toBe(true);
       expect(fs.existsSync(wrapper)).toBe(true);
+      expect(fs.readFileSync(wrapper)).toEqual(fs.readFileSync(path.join(ROOT, 'plugin/scripts/codex-hook-wrapper.mjs')));
       expect(afterFirst).toContain('model = "user-choice"');
       expect(fs.readFileSync(configPath, 'utf8')).toBe(afterFirst);
     } finally {

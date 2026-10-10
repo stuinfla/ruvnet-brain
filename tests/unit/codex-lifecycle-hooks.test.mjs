@@ -23,9 +23,25 @@ function fixture() {
 process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
 const { serverDependencies } = await import(new URL('../../bin/install.mjs', import.meta.url).href);
 
+function installSessionBudget(scripts) {
+  fs.copyFileSync(path.join(ROOT, 'plugin/scripts/session-start-budget.mjs'), path.join(scripts, 'session-start-budget.mjs'));
+  const hooks = path.join(scripts, '..', 'hooks'); fs.mkdirSync(hooks, { recursive: true });
+  fs.copyFileSync(CLAUDE_HOOKS, path.join(hooks, 'hooks.json'));
+  fs.copyFileSync(HOOKS, path.join(hooks, 'codex-hooks.json'));
+}
+
+function installShimDependencies(scripts) {
+  for (const dep of serverDependencies(path.join(ROOT, 'plugin/scripts/hook-shim.mjs'))) {
+    const target = path.resolve(scripts, dep.spec);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.copyFileSync(dep.from, target);
+  }
+}
+
 function installGeneration(brain, version, shimSource) {
   const scripts = path.join(brain, 'versions', version, 'scripts');
   fs.mkdirSync(scripts, { recursive: true });
+  installSessionBudget(scripts);
   // Same rule as every other isolated-copy fixture: carry the adapter's REAL imports, derived.
   fs.copyFileSync(ADAPTER, path.join(scripts, 'codex-hook-adapter.mjs'));
   for (const dep of serverDependencies(ADAPTER)) {
@@ -44,6 +60,7 @@ function installGeneration(brain, version, shimSource) {
 function installGroundingGeneration(brain, version) {
   const scripts = path.join(brain, 'versions', version, 'scripts');
   fs.mkdirSync(scripts, { recursive: true });
+  installSessionBudget(scripts);
   for (const file of [
     'codex-hook-adapter.mjs',
     'codex-hook-events.mjs',
@@ -56,6 +73,7 @@ function installGroundingGeneration(brain, version) {
   ]) {
     fs.copyFileSync(path.join(ROOT, 'plugin', 'scripts', file), path.join(scripts, file));
   }
+  installShimDependencies(scripts);
   fs.writeFileSync(path.join(brain, 'active.json'), JSON.stringify({
     generation: version,
     version,
@@ -66,6 +84,7 @@ function installGroundingGeneration(brain, version) {
 function installInterfaceGeneration(brain, version) {
   const scripts = path.join(brain, 'versions', version, 'scripts');
   fs.mkdirSync(scripts, { recursive: true });
+  installSessionBudget(scripts);
   for (const file of [
     'codex-hook-adapter.mjs',
     'codex-hook-events.mjs',
@@ -78,6 +97,7 @@ function installInterfaceGeneration(brain, version) {
   ]) {
     fs.copyFileSync(path.join(ROOT, 'plugin', 'scripts', file), path.join(scripts, file));
   }
+  installShimDependencies(scripts);
   fs.writeFileSync(path.join(brain, 'active.json'), JSON.stringify({
     generation: version,
     version,
@@ -453,23 +473,26 @@ describe('continuity-only Codex lifecycle packaging', () => {
 });
 
 describe('Codex lifecycle adapter', () => {
-  it('fails open and silent when an advisory adapter crashes', () => {
+  it('fails open and reports restoration unknown when a SessionStart adapter crashes', () => {
     const { home, brain } = fixture();
     const scripts = path.join(brain, 'versions', 'v1', 'scripts');
     fs.mkdirSync(scripts, { recursive: true });
+    installSessionBudget(scripts);
     fs.writeFileSync(path.join(scripts, 'codex-hook-adapter.mjs'), 'process.stderr.write("adapter exploded"); process.exit(1);');
     fs.writeFileSync(path.join(brain, 'active.json'), JSON.stringify({ version: 'v1', codeRoot: 'versions/v1' }));
 
     const result = fire(home, 'session-start', { hook_event_name: 'SessionStart', cwd: ROOT });
     expect(result.status).toBe(0);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toBe('');
+    expect(result.stderr).toContain('SessionStart did not complete inside its host deadline');
+    expect(result.stderr).toContain('no restoration success is claimed');
   });
 
-  it('times out a hung advisory adapter inside the host deadline and fails open silently', () => {
+  it('times out a hung SessionStart adapter inside the host deadline and reports restoration unknown', () => {
     const { home, brain } = fixture();
     const scripts = path.join(brain, 'versions', 'v1', 'scripts');
     fs.mkdirSync(scripts, { recursive: true });
+    installSessionBudget(scripts);
     fs.writeFileSync(path.join(scripts, 'codex-hook-adapter.mjs'), 'setInterval(() => {}, 1000);');
     fs.writeFileSync(path.join(brain, 'active.json'), JSON.stringify({ version: 'v1', codeRoot: 'versions/v1' }));
     const started = Date.now();
@@ -480,7 +503,8 @@ describe('Codex lifecycle adapter', () => {
     expect(Date.now() - started).toBeLessThan(1_000);
     expect(result.status).toBe(0);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toBe('');
+    expect(result.stderr).toContain('SessionStart did not complete inside its host deadline');
+    expect(result.stderr).toContain('no restoration success is claimed');
   });
 
   it('preserves an intentional blocking exit 2 while failing other wrapper errors open', () => {
@@ -492,7 +516,7 @@ describe('Codex lifecycle adapter', () => {
     expect(blocked.stdout).toBe('');
     expect(blocked.stderr).toBe('policy refusal');
 
-    const advisory = fire(home, 'session-start', { hook_event_name: 'SessionStart', cwd: ROOT });
+    const advisory = fire(home, 'verify-interface', { hook_event_name: 'PreToolUse', cwd: ROOT });
     expect(advisory.status).toBe(0);
     expect(advisory.stdout).toBe('');
     expect(advisory.stderr).toBe('');

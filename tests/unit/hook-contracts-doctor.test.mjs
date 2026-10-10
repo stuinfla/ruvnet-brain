@@ -70,9 +70,19 @@ describe('--doctor derives its hook judgments from the contracts', () => {
     ...(overrides[spec.event] || {}),
   }));
   it('reports a registered hook Codex will not run (modified / untrusted) as PENDING TRUST, with the exact fix', () => {
-    const status = classifyCodexLifecycle(plugin, listed(registered({ SessionEnd: { trustStatus: 'modified' }, SessionStart: { trustStatus: 'untrusted' } })));
+    const hooks = registered();
+    // An event may declare several handlers. Hold back exactly one at each boundary;
+    // the remaining trusted handlers must not be counted as pending merely by event.
+    const end = hooks.find((hook) => hook.event === 'SessionEnd');
+    const start = hooks.find((hook) => hook.event === 'SessionStart');
+    expect(end).toBeTruthy();
+    expect(start).toBeTruthy();
+    end.trustStatus = 'modified';
+    start.trustStatus = 'untrusted';
+    const status = classifyCodexLifecycle(plugin, listed(hooks));
     expect(status.state).toBe('pending-trust');
     expect(status.pending.map((h) => h.event).sort()).toEqual(['SessionEnd', 'SessionStart']);
+    expect(status.pending.map((h) => h.command).sort()).toEqual([end.command, start.command].sort());
     const guidance = codexLifecycleGuidance(status);
     expect(guidance.healthy).toBe(false);
     expect(guidance.intentional).toBe(false);

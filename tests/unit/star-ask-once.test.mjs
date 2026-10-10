@@ -9,39 +9,51 @@
 // Runs the real script with HOME pointed at a temp dir; the heartbeat's network check is skipped
 // by pre-seeding .last-update-check with "now" (the script's own 15-min rate limit).
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { rmHome } from '../helpers/reap-detached.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const SCRIPT = path.join(ROOT, 'plugin', 'scripts', 'session-start.sh');
 const STAR_LINE = 'Finding this useful? Star github.com/stuinfla/ruvnet-brain';
 
-let home, stateDir;
+let home, stateDir, project, settingsFile;
 beforeEach(() => {
   home = fs.mkdtempSync(path.join(os.tmpdir(), 'rb-star-home-'));
   stateDir = path.join(home, '.cache', 'ruvnet-brain');
   fs.mkdirSync(stateDir, { recursive: true });
+  project = path.join(home, 'project'); fs.mkdirSync(project);
+  settingsFile = path.join(home, '.config/ruvnet-brain/settings.json');
+  fs.mkdirSync(path.dirname(settingsFile), { recursive: true });
+  // Promotion is explicitly opted in at level 4; the default Balanced dial does not ask for stars.
+  fs.writeFileSync(settingsFile, JSON.stringify({ version: 1, settings: { advocacy: 4 } }));
   // Keep the run hermetic: auto-update pref answered (so no setup question / KB check),
   // heartbeat stamped "just checked" (so no curl), meter off (plain stdout).
   fs.writeFileSync(path.join(stateDir, '.auto-update-pref'), 'no\n');
   fs.writeFileSync(path.join(stateDir, '.last-update-check'), String(Math.floor(Date.now() / 1000)));
+  fs.writeFileSync(path.join(stateDir, '.seed-attempted'), String(Math.floor(Date.now() / 1000)));
 });
+afterEach(() => rmHome(home));
 
 function run() {
   // 'bash' via PATH, not /bin/bash: Windows runners resolve this to Git Bash — the same shell
   // Claude Code uses for hooks on real Windows machines, so the test matches production there.
   const r = spawnSync('bash', [SCRIPT], {
+    cwd: project, input: '{}',
     // USERPROFILE as well as HOME (25cda46's class, measured here). The hook's node half resolves
     // ~/.cache/ruvnet-brain from os.homedir(), which reads USERPROFILE on Windows and ignores HOME.
     // MEASURED under Windows homedir semantics before this line: the suite stayed GREEN while
     // writing 81 files — a staged version tree plus an update transaction and lock — into the
     // runner's real profile. Green is the dangerous half: the fixture below seeds `.grounded-once`
     // and the star stamp, so on Windows the assertions were reading a profile nobody seeded.
-    env: { ...process.env, HOME: home, USERPROFILE: home, CLAUDE_PLUGIN_ROOT: path.join(ROOT, 'plugin'), RUVNET_BRAIN_METER: '0' },
+    env: { ...process.env, HOME: home, USERPROFILE: home, CLAUDE_PROJECT_DIR: project,
+      XDG_CACHE_HOME: path.join(home, '.cache'), RUVNET_BRAIN_HOME: stateDir,
+      RUVNET_BRAIN_STATE_DIR: path.join(home, '.config/ruvnet-brain'), RUVNET_SETTINGS_FILE: settingsFile,
+      RUVNET_HOOK_HOST: 'claude', CLAUDE_PLUGIN_ROOT: path.join(ROOT, 'plugin'), RUVNET_BRAIN_METER: '0' },
     encoding: 'utf8',
     timeout: 15000,
   });
@@ -50,6 +62,12 @@ function run() {
 }
 
 describe('once-ever star/feedback line', () => {
+  it('Balanced advocacy does not consume the offer even after successful grounding', () => {
+    fs.writeFileSync(settingsFile, JSON.stringify({ version: 1, settings: { advocacy: 3 } }));
+    fs.writeFileSync(path.join(stateDir, '.grounded-once'), new Date().toISOString());
+    expect(run()).not.toContain(STAR_LINE);
+    expect(fs.existsSync(path.join(stateDir, '.star-ask-shown'))).toBe(false);
+  });
   it('never shows on a machine where the brain has not grounded anything', () => {
     const out = run();
     expect(out).not.toContain(STAR_LINE);

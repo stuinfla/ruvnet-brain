@@ -38,12 +38,17 @@
  * Every case is measured at the PROCESS boundary with a real HOME on disk, because the defect is a
  * filesystem-layout assumption and an in-process stub of `os.homedir()` cannot express it.
  */
+// The current learner requires canonical observations plus independent AgentDB rows.
+// These resolver cases therefore use the same verified SQLite CLI fixture as replay tests,
+// retain original captures, and measure acknowledgements/receipts rather than exit-zero alone.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { resolveRuflo } from '../../plugin/scripts/ruflo-bin.mjs';
+import { learningFixture } from '../helpers/learning-fixture.mjs';
+import { loadNodeSqlite } from '../../plugin/scripts/node-sqlite.mjs';
 
 const REPO = path.resolve(import.meta.dirname, '../..');
 const DISTILL = path.join(REPO, 'scripts', 'distill-project.mjs');
@@ -55,6 +60,7 @@ const isWindows = process.platform === 'win32';
 
 let tmp;      // a throwaway project cwd
 let tmpHome;  // an isolated HOME — crucially, one with NO .npm-global at all
+const learningSources = [];
 let binDir;   // a directory on PATH, standing in for /opt/homebrew/bin or an nvm shim dir
 
 beforeEach(() => {
@@ -64,6 +70,7 @@ beforeEach(() => {
   fs.mkdirSync(binDir, { recursive: true });
 });
 afterEach(() => {
+  for (const f of learningSources.splice(0)) f.cleanup();
   for (const d of [tmp, tmpHome]) {
     try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 3 }); } catch { /* best effort */ }
   }
@@ -188,11 +195,29 @@ describe.skipIf(isWindows)('#99 · distill-project on a non-npm-global prefix', 
 describe.skipIf(isWindows)('#105 · learn-flush on a non-npm-global prefix, and its swallowed errors', () => {
   /** A queue of `n` DISTINCT captures — distinct because learn-flush dedupes before it feeds. */
   function seedQueue(n) {
-    const q = path.join(tmp, 'queue.jsonl');
+    const dir = path.join(tmp, '.swarm', 'ruvnet-brain-learn');
+    fs.mkdirSync(dir, { recursive: true });
+    const q = path.join(dir, 'session-ruflo-bin-sess.jsonl');
     const lines = [];
     for (let i = 0; i < n; i++) lines.push(JSON.stringify({ tool: 'Bash', action: `verb${i}` }));
     fs.writeFileSync(q, lines.join('\n') + '\n');
     return q;
+  }
+
+  function canonicalRuflo(dir) {
+    const fixture = learningFixture(); learningSources.push(fixture);
+    const native = path.join(tmp, 'canonical-learner.cjs');
+    fs.copyFileSync(fixture.env.TEST_NATIVE, native);
+    return stubRuflo(dir, `#!/bin/sh\nexec '${process.execPath}' '${native}' "$@"\n`);
+  }
+  function receipt(q) {
+    const dir = path.dirname(q), name = fs.readdirSync(dir).filter(n => n.startsWith('.run-') && n.endsWith('.json')).sort().at(-1);
+    return JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8'));
+  }
+  function observations() {
+    const db = new (loadNodeSqlite().DatabaseSync)(path.join(tmp, '.swarm/memory.db'), { readOnly: true });
+    try { return db.prepare('SELECT count(*) AS n FROM memory_entries WHERE namespace=?').get('learning-observations').n; }
+    finally { db.close(); }
   }
 
   const flush = (q, extraEnv = {}) => spawnSync(process.execPath, [LEARN_FLUSH, '--sync'], {
@@ -200,22 +225,26 @@ describe.skipIf(isWindows)('#105 · learn-flush on a non-npm-global prefix, and 
     input: JSON.stringify({ session_id: 'ruflo-bin-sess', hook_event_name: 'SessionEnd' }),
     encoding: 'utf8',
     timeout: 60_000,
-    env: env({ LEARN_QUEUE: q, RUVNET_LEARNING_SCOPE: 'project', ...extraEnv }),
+    env: env({ RUVNET_LEARNING_SCOPE: 'project', RUVNET_BRAIN_PROJECT_DIR: tmp, RUVNET_BRAIN_STATE_DIR: path.join(tmpHome, 'state'), RUVNET_BRAIN_HOME: path.join(tmpHome, 'brain'), TEST_CALLS: path.join(tmp, 'canonical-calls.jsonl'), ...extraEnv }),
   });
 
   it('feeds the learner when ruflo is on PATH but not under ~/.npm-global', () => {
-    stubRuflo(binDir, '#!/bin/sh\nexit 0\n');
+    canonicalRuflo(binDir);
     const q = seedQueue(3);
+    const original = fs.readFileSync(q);
 
     const r = flush(q);
 
     expect(r.status).toBe(0);
-    expect(r.stdout).toMatch(/fed 3\/3/);
-    // DERIVED, not asserted: the queue is only destroyed when its contents were actually fed.
-    expect(fs.existsSync(q), 'a fully fed queue must be removed').toBe(false);
+    expect(r.stdout).toMatch(/fed 3; acknowledged 3; failed 0/);
+    expect(observations()).toBe(3);
+    // Canonical replay keeps the source bytes and acknowledges only independent-row commits.
+    expect(fs.readFileSync(q)).toEqual(original);
+    expect(Object.keys(JSON.parse(fs.readFileSync(q + '.ack.json', 'utf8')))).toHaveLength(3);
+    expect(receipt(q)).toMatchObject({ fed: 3, acknowledged: 3, failed: 0 });
   });
 
-  it('a FAILING feed is OBSERVABLE — the error reaches stderr instead of `catch {}`', () => {
+  it('a FAILING feed is observable in the explicit drain summary and retained receipt', () => {
     // The stub goes AT ~/.npm-global/bin/ruflo on purpose: the old code resolved that path
     // perfectly well, so the only defect this case can go red on is the swallowed error.
     stubRuflo(path.join(tmpHome, '.npm-global', 'bin'), '#!/bin/sh\necho "boom: learner refused" >&2\nexit 7\n');
@@ -223,9 +252,9 @@ describe.skipIf(isWindows)('#105 · learn-flush on a non-npm-global prefix, and 
 
     const r = flush(q);
 
-    expect(r.stderr).toMatch(/learn-flush:.*FAILED/);
-    expect(r.stderr).toMatch(/3\/3 feed call\(s\) FAILED/);
-    expect(r.stderr).toMatch(/queue is KEPT for retry/);
+    expect(r.stdout).toMatch(/fed 0; acknowledged 0; failed 3/);
+    expect(r.stdout).toContain('original queue is KEPT');
+    expect(receipt(q)).toMatchObject({ fed: 0, acknowledged: 0, failed: 3 });
   });
 
   it('…and still exits 0 with the queue intact — observable, but never crashes SessionEnd', () => {
@@ -244,22 +273,22 @@ describe.skipIf(isWindows)('#105 · learn-flush on a non-npm-global prefix, and 
     const r = flush(q, { PATH: binDir });
 
     expect(r.status).toBe(0);
-    expect(r.stderr).toMatch(/learn-flush: 0\/3 fed/);
-    expect(r.stderr).toMatch(/\.npm-global/);
-    expect(r.stderr).toMatch(/PATH/);
+    expect(r.stdout).toMatch(/learn-flush: fed 0; acknowledged 0; failed 1/);
+    expect(receipt(q)).toMatchObject({ fed: 0, acknowledged: 0, failed: 1 });
     // Bounded: one line about the failure, not one per action.
-    const lines = r.stderr.split('\n').filter((l) => l.startsWith('learn-flush:'));
+    const lines = r.stdout.split('\n').filter((l) => l.startsWith('learn-flush:'));
     expect(lines.length).toBe(1);
     expect(fs.readFileSync(q, 'utf8').split('\n').filter(Boolean).length).toBe(3);
   });
 
   it('TEETH: a healthy learner produces NO failure noise — the report is not always-on', () => {
-    stubRuflo(binDir, '#!/bin/sh\nexit 0\n');
+    canonicalRuflo(binDir);
     const q = seedQueue(3);
 
     const r = flush(q);
 
     expect(r.stderr).not.toMatch(/FAILED/);
-    expect(r.stdout).toMatch(/fed 3\/3/);
+    expect(r.stdout).toMatch(/fed 3; acknowledged 3; failed 0/);
+    expect(observations()).toBe(3);
   });
 });

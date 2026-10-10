@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
+import { npmInvocation } from '../../helpers/npm-invocation.mjs';
 
 export const REPO = path.resolve(import.meta.dirname, '../../..');
 
@@ -70,11 +71,21 @@ export async function installPackedConsole({ prefix, catalog = null, profile = n
   const packDir = path.join(root, 'pack');
   for (const directory of [home, project, packDir]) fs.mkdirSync(directory, { recursive: true });
 
+  const npmEnv = { ...process.env, HOME: home, USERPROFILE: home };
+  for (const key of Object.keys(npmEnv)) if (/^npm_config_/i.test(key)) delete npmEnv[key];
+  const userConfig = path.join(home, '.npmrc'); fs.writeFileSync(userConfig, '');
+  npmEnv.npm_config_userconfig = userConfig;
   const packageRoot = process.env.RUVNET_ACCEPTANCE_PACKAGE_ROOT || REPO;
-  const packed = checked('npm', ['pack', '--json', '--pack-destination', packDir], { cwd: packageRoot });
+  const pack = npmInvocation(['pack', '--json', '--pack-destination', packDir], { env: npmEnv });
+  const packed = checked(pack.executable, pack.args, { cwd: packageRoot, env: npmEnv });
   const tarball = path.join(packDir, JSON.parse(packed.stdout)[0].filename);
   checked('tar', ['-xzf', tarball, '-C', packDir]);
   const payload = path.join(packDir, 'package');
+  // npm pack omits node_modules. Install the manifest's real production graph before the
+  // installer snapshots routing launchers and their declared package exports, as customers do.
+  const install = npmInvocation(['install', '--ignore-scripts', '--omit=dev', '--package-lock=false', '--no-audit', '--no-fund'], { env: npmEnv });
+  checked(install.executable, install.args, { cwd: payload, env: npmEnv });
+
 
   const routerDir = path.join(home, '.claude', 'model-router');
   if (catalog || profile) fs.mkdirSync(routerDir, { recursive: true });
@@ -98,14 +109,21 @@ export async function installPackedConsole({ prefix, catalog = null, profile = n
   ].join('');
   checked(process.execPath, ['--input-type=module', '-e', installScript, payload, cache, catalog ? '1' : '0'], {
     cwd: project,
-    env: { ...process.env, HOME: home, USERPROFILE: home },
+    env: npmEnv,
   });
 
   const entry = path.join(cache, '.console-runtime', 'scripts', 'onboarding-console.mjs');
   const children = new Set();
   let output = '';
   const baseEnv = {
-    ...process.env,
+    ...npmEnv,
+    CODEX_HOME: path.join(home, '.codex'),
+    CLAUDE_CONFIG_DIR: path.join(home, '.claude'),
+    RUVNET_BRAIN_HOME: cache,
+    MODEL_ROUTER_CONFIG_DIR: routerDir,
+    MODEL_ROUTER_CATALOG: path.join(routerDir, 'catalog.json'),
+    MODEL_ROUTER_PROFILE: path.join(routerDir, 'profile.json'),
+    MODEL_ROUTER_DECISIONS: path.join(home, '.claude', 'metaharness', 'routing-decisions.jsonl'),
     HOME: home,
     USERPROFILE: home,
     // RUVNET_CONSOLE_ROOT isolates nightly-scheduler mutations to this fixture's own home

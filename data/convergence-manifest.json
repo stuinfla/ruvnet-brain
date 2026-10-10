@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
   "kind": "ruvnet-brain-convergence-manifest",
-  "version": "4.5.17",
-  "sourceIdentity": "bccc0b0d4f396af362288be2bbc4cd3c6a84c42aa414e89907c0303d9618ac09",
+  "version": "4.6.2",
+  "sourceIdentity": "547af000feb537ffaf00863385b7262475f36f3dfcc1713599f13c5e1dbc08d6",
   "versionSurfaces": {
-    "package.json": "4.5.17",
-    "plugin/.claude-plugin/plugin.json": "4.5.17",
-    "plugin/.codex-plugin/plugin.json": "4.5.17",
-    "data/manifest.json": "4.5.17",
-    "kb/RVF-GENERATIONS.json": "4.5.17",
-    "explainer/index.html": "4.5.17",
-    "primer/ruvnet-primer.md": "4.5.17"
+    "package.json": "4.6.2",
+    "plugin/.claude-plugin/plugin.json": "4.6.2",
+    "plugin/.codex-plugin/plugin.json": "4.6.2",
+    "data/manifest.json": "4.6.2",
+    "kb/RVF-GENERATIONS.json": "4.6.2",
+    "explainer/index.html": "4.6.2",
+    "primer/ruvnet-primer.md": "4.6.2"
   },
   "adrInventory": [
     "0001-verified-bundle-not-single-file.md",
@@ -110,10 +110,11 @@
     "0101-agentdb-first.md",
     "0102-completion-and-closure-ledger.md",
     "0103-routing-architecture-review-lock.md",
+    "0104-unified-developer-update-owner.md",
     "README.md"
   ],
-  "trackedFileCount": 1955,
-  "trackedFilesSha256": "7b9c1fb8362c1d4d9746c173ec337a4227f9fd95cb123fbbdb2ac5be9afaf2d1",
+  "trackedFileCount": 1976,
+  "trackedFilesSha256": "201b0f47a3c409f08fc39072aab9d95503ab26ced4d32565e7d9beb2f27154e1",
   "ownershipChecks": [
     "version:check",
     "doc:currency",

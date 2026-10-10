@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { learnings } from '../../scripts/learnings.mjs';
 
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-'));
+const TMP = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'learn-')));
 const STATS = path.join(TMP, 'stats.json');
 const QDIR = path.join(TMP, 'q');
 fs.mkdirSync(QDIR);

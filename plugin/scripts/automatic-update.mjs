@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { developerCoordinatorOwner } from './developer-update-owner.mjs';
 import { SETTINGS_VERSION, validate, saveSettings } from './user-settings.mjs';
 
 export const ownerSettingsPath = (home = os.homedir()) => path.join(home, '.config', 'ruvnet-brain', 'settings.json');
@@ -44,7 +45,7 @@ export function saveUpdateSource(source, { home = os.homedir() } = {}) {
 }
 
 export function automaticPath({ nodePath = process.execPath, home = os.homedir(), platform = process.platform, env = process.env } = {}) {
-  const paths = [path.dirname(nodePath), path.join(home, '.npm-global', 'bin'), path.join(home, '.local', 'bin')];
+  const paths = [path.join(home, '.npm-global', 'bin'), path.dirname(nodePath), path.join(home, '.local', 'bin'), path.join(home, '.cargo', 'bin'), path.join(home, '.bun', 'bin')];
   if (platform === 'win32') {
     const system = env.SystemRoot || env.SYSTEMROOT;
     if (system && path.win32.isAbsolute(system)) paths.push(system, path.join(system, 'System32'));
@@ -91,8 +92,16 @@ export function installedUpdater({ home = os.homedir(), platform = process.platf
   return { entry, version: manifest.version, sha256 };
 }
 
-export function automaticInvocation(args, { source = updateSource(), home = os.homedir(), nodePath = process.execPath,
+export function automaticInvocation(args, { source, home = os.homedir(), nodePath = process.execPath,
   packageTarget = 'ruvnet-brain@latest' } = {}) {
+  if (packageTarget === 'ruvnet-brain@latest') {
+    const coordinator = developerCoordinatorOwner({ home });
+    if (coordinator.active) {
+      if (!coordinator.ready) throw new Error(`coordinated updater is not ready: ${coordinator.reason}`);
+      return { executable: nodePath, args: [coordinator.entry, '--apply'], source: 'developer-suite', coordinator };
+    }
+  }
+  source ??= updateSource({ home });
   if (source === 'installed') {
     if (packageTarget !== 'ruvnet-brain@latest') throw new Error('installed mode cannot select a proof tarball');
     const installed = installedUpdater({ home });

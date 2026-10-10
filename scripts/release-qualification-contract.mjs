@@ -2,6 +2,20 @@
 export const RELEASE_REQUIREMENTS = Object.freeze({
   "source": [
     {
+      "id": "public-admin-release-and-engineering-status",
+      "reason": "Latest code release stays separate from corpus identity; issue and pull-request pagination preserves the complete engineering queue and failed probes remain unknown without inventing owner action",
+      "files": ["tests/unit/explainer-api.test.mjs", "tests/unit/admin-render.test.mjs"]
+    },
+    {
+      "id": "source-bound-installed-update-coordinator",
+      "reason": "Allowed channels and immutable Claude artifact paths reject downgrades, ambiguous registry records, changed bytes, extra active resources and escape paths; Console success requires the exact launched source closure. POSIX owner fixtures additionally enforce original-prefix installs, existing-tool-only policy, shared locks and source-bound scheduler receipts",
+      "files": ["tests/unit/developer-update-policy-portable.test.mjs", "tests/unit/plugin-artifact-proof.test.mjs", "tests/unit/console-suite-update.test.mjs", "tests/unit/developer-update-scheduled-receipt.test.mjs"],
+      "platformFiles": {
+        "linux": ["tests/unit/developer-update.test.mjs", "tests/unit/developer-update-codex-launcher.test.mjs"],
+        "macos": ["tests/unit/developer-update.test.mjs", "tests/unit/developer-update-codex-launcher.test.mjs"]
+      }
+    },
+    {
       "id": "installer-release-argument-safety",
       "reason": "Incomplete named releases refuse before network or settings writes; valid named releases and installer help retain their contracts",
       "files": ["tests/unit/install-release-fallback.test.mjs"]
@@ -282,6 +296,11 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
     }
   ],
   "integration": [
+    {
+      "id": "authenticated-update-coordinator-interface",
+      "reason": "The actual Console server reports unrun status without policy writes, rejects absent tokens, cross-origin requests and invalid policies, and refuses a second updater while the shared lock is owned",
+      "files": ["tests/integration/console-suite-update-endpoint.test.mjs"]
+    },
     {
       "id": "managed-checker-kernel-boundary",
       "reason": "Native read-only sandbox denies acceptance-script writes outside the authorized project",

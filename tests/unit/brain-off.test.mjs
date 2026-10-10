@@ -129,8 +129,9 @@ const IMPORT_STATE = `const S = await import(${JSON.stringify(pathToFileURL(BRAI
 const IMPORT_SETTINGS = `const U = await import(${JSON.stringify(pathToFileURL(path.join(REPO, 'scripts/user-settings.mjs')).href)});`;
 
 /** Fire a bash hook the way Claude Code does: subprocess, JSON on stdin, streams kept apart. */
-function fireBash(script, payload, extraEnv = {}) {
+function fireBash(script, payload, extraEnv = {}, cwd = REPO) {
   const r = spawnSync('bash', [script], {
+    cwd,
     input: typeof payload === 'string' ? payload : JSON.stringify(payload),
     env: childEnv(extraEnv), encoding: 'utf8', timeout: 30_000,
   });
@@ -398,8 +399,19 @@ describe.skipIf(bashOnly)('ADR-054 gate 4 — session-start goes quiet without g
   ];
 
   function session(extraEnv = {}) {
-    fs.mkdirSync(path.join(tmp, '.cache/ruvnet-brain'), { recursive: true });
-    return fireBash(SESSION, '', { RUVNET_BRAIN_METER: '0', CLAUDE_PLUGIN_ROOT: path.join(REPO, 'plugin'), ...extraEnv });
+    const brainHome = path.join(tmp, '.cache/ruvnet-brain');
+    const project = path.join(tmp, 'project');
+    fs.mkdirSync(brainHome, { recursive: true });
+    fs.mkdirSync(project, { recursive: true });
+    // SessionStart restores the current project's store before its Brain-off split. HOME alone
+    // does not isolate that restore: an inherited checkout cwd reaches the owner's project.
+    const result = fireBash(SESSION, '', {
+      RUVNET_BRAIN_METER: '0', RUVNET_BRAIN_HOME: brainHome,
+      XDG_CACHE_HOME: path.join(tmp, '.cache'), CLAUDE_PROJECT_DIR: project,
+      CLAUDE_PLUGIN_ROOT: path.join(REPO, 'plugin'), ...extraEnv,
+    }, project);
+    expect(result.status, `SessionStart failed: ${result.stderr}`).toBe(0);
+    return result;
   }
 
   it('ON: the advertising is there (the control — otherwise "zero bytes" proves nothing)', () => {

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
+import { learningFixture } from '../helpers/learning-fixture.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -81,7 +83,15 @@ function codeOnly(source) {
 
 describe('windows fixture isolation: HOME without USERPROFILE isolates nothing', () => {
   it.each(MEASURED_AT_RISK)('%s redirects USERPROFILE everywhere it redirects HOME', (rel) => {
-    const source = codeOnly(fs.readFileSync(path.join(ROOT, rel), 'utf8'));
+    let text = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+    // The measured repair suite delegates its environment to one shared fixture now. Keep the
+    // measurement attached to that exact producer, rather than dropping the affected suite.
+    if (rel === 'tests/unit/health-repair-flush-learning.test.mjs') {
+      expect(text).toContain("import { learningFixture } from '../helpers/learning-fixture.mjs'");
+      expect(codeOnly(text)).toMatch(/learningFixture\(scope\)/);
+      text = fs.readFileSync(path.join(ROOT, 'tests/helpers/learning-fixture.mjs'), 'utf8');
+    }
+    const source = codeOnly(text);
     const bound = [...source.matchAll(HOME_BINDING)].map((m) => m[1]);
 
     // A suite that stopped setting HOME entirely has been restructured; the measurement above no
@@ -102,5 +112,18 @@ describe('windows fixture isolation: HOME without USERPROFILE isolates nothing',
         + 'run reads (and writes) the real user profile',
       ).toBeGreaterThanOrEqual(homes);
     }
+  });
+
+  it('the shared repair fixture isolates an executed child when homedir follows Windows USERPROFILE semantics', () => {
+    const f = learningFixture('user');
+    try {
+      const probe = spawnSync(process.execPath, ['--input-type=module', '-e',
+        "import os from 'node:os'; os.homedir = () => process.env.USERPROFILE; console.log(os.homedir());"],
+      { cwd: f.project, env: { ...f.env, HOME: path.join(f.root, 'wrong-home') }, encoding: 'utf8', timeout: 5000 });
+      expect(probe.status, probe.stderr).toBe(0);
+      expect(probe.stdout.trim()).toBe(f.home);
+      expect(f.env.HOME).toBe(f.home);
+      expect(f.env.USERPROFILE).toBe(f.home);
+    } finally { f.cleanup(); }
   });
 });

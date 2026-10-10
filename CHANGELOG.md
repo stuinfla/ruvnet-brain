@@ -10,6 +10,27 @@ current campaign and is finalized by the lead session before the next release cu
 
 ## Unreleased
 
+## 4.6.2 — 2026-10-10
+
+- Native Codex updates preserve the exact registered Brain launcher after verifying
+  owned configuration, complete runtime and standalone executable identity.
+- Developer-suite scheduled runs forward the registration and executable identity
+  required by the installed update verifier.
+- Currency checks retain their latest-operation result independently of the last
+  scheduled attempt, preserving failures and refusing stale success. Corpus freshness
+  is unchanged.
+
+
+## 4.6.1 — 2026-10-10
+
+- Restores an inviting README with rendered architecture and workflow diagrams,
+  installation paths, practical examples and explicit evidence limits.
+- Corrects the public admin status to resolve the latest code release separately
+  from corpus generation, show the complete open engineering queue, and preserve
+  unknown or failed probes without implying every item waits on the owner.
+- Code publication does not claim a refreshed upstream corpus.
+
+
 4.5.17 hook-harness candidate:
 
 - Adds a source-bound catalog of 100 practical rules and bounded relevant guidance

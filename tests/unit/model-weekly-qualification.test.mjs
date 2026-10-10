@@ -1,11 +1,17 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { sha256, candidateSha256 } from '../../scripts/model-routing-policy-promotion.mjs';
 import { runWeeklyQualification } from '../../scripts/model-weekly-qualification.mjs';
+
+const priorImportOnly = process.env.RUVNET_BRAIN_IMPORT_ONLY;
+process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
+const { serverDependencies } = await import('../../bin/install.mjs');
+if (priorImportOnly === undefined) delete process.env.RUVNET_BRAIN_IMPORT_ONLY;
+else process.env.RUVNET_BRAIN_IMPORT_ONLY = priorImportOnly;
 
 const dirs = []; afterEach(() => dirs.splice(0).forEach((dir) => fs.rmSync(dir, { recursive: true, force: true })));
 function setup({ two = false, sameReviewer = false, coupled = false, claudeOnly = false } = {}) {
@@ -144,8 +150,13 @@ describe('bounded weekly native qualification (synthetic inference only)', () =>
   });
   it('loads installed CLI contract from router root, without requiring repository config layout', () => {
     const f = setup(); const bin = path.join(f.routerDir, 'bin'); fs.mkdirSync(bin);
-    fs.copyFileSync(new URL('../../scripts/model-weekly-qualification.mjs', import.meta.url), path.join(bin, 'model-weekly-qualification.mjs'));
-    fs.copyFileSync(new URL('../../scripts/model-routing-policy-promotion.mjs', import.meta.url), path.join(bin, 'model-routing-policy-promotion.mjs'));
+    const source = fileURLToPath(new URL('../../scripts/model-weekly-qualification.mjs', import.meta.url));
+    fs.copyFileSync(source, path.join(bin, path.basename(source)));
+    for (const dep of serverDependencies(source)) {
+      const target = path.resolve(bin, dep.spec);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.copyFileSync(dep.from, target);
+    }
     fs.copyFileSync(f.contractPath, path.join(f.routerDir, 'qualification-contract.json'));
     fs.writeFileSync(path.join(bin, 'model-native-qualification.mjs'), 'export async function runNativeQualification(){return {completed:false};}');
     const child = spawnSync(process.execPath, [path.join(bin, 'model-weekly-qualification.mjs'), '--router-dir', f.routerDir,

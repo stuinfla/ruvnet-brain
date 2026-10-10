@@ -1,10 +1,7 @@
-Updated: 2026-10-07 02:50:00 UTC | Version 1.0.3
+Updated: 2026-10-10 05:06:23 EDT | Version 1.1.1
 Created: 2026-07-07 09:22:01 EDT
 
 # Contributing to RuvNet Brain — the one rulebook
-
-Updated: 2026-10-03
-Created: 2026-07-07
 
 This file is the **only** place that says how to version, release, update the knowledge corpus,
 and what the hooks do. `CLAUDE.md`, `AGENTS.md`, skills and memory point here instead of restating
@@ -20,7 +17,7 @@ instructions. `npm run single-source:check` fails CI if a second, conflicting in
 | Release code | Preflight → fast-forward `main` → dispatch `protected-release.yml mode=code` → the workflow's machine gates carry it across `Production – ruvnet-brain` (no human approval step) | Terminal receipt `install-verified` on Linux, macOS, Windows; npm `latest` = GitHub `releases/latest` = `main` |
 | Build the customer corpus | CI only: `corpus-seed.yml` → `scripts/corpus-reconcile.mjs` | Sealed candidate + receipt artifact |
 | Publish the corpus | `protected-release.yml mode=corpus` (nightly dispatcher), armed unless repository variable `CORPUS_NIGHTLY` is `off` (the owner's kill switch) **and** the newest code release is `install-verified` (resolved at run time, `scripts/approved-runtime.mjs --resolve`; never a committed file, never a fallback to an older release); the corpus is built at that release's source commit, and `main` being ahead of it does not matter; a night with no upstream change publishes nothing | `corpus-sha256-*` release promoted to `releases/latest` |
-| Update a user's machine | One owner per machine: the Brain's scheduler (`npx ruvnet-brain --enable-nightly`) **or** agentic-kit (`ak sync`) — never both | `SOURCE.json` `releaseTag` equals the plugin version; latest `~/.cache/ruvnet-brain/refresh-runs/*.json` is PASS |
+| Update a user's machine | One coordinator and shared lock; the Brain schedule invokes it at 03:30 local time, and existing managed ownership remains explicit | `SOURCE.json` `releaseTag` equals the plugin version; latest `~/.cache/ruvnet-brain/refresh-runs/*.json` is PASS |
 
 Nothing else publishes. `scripts/release-authority.mjs` fails CI if any file other than
 `scripts/release.mjs` / `scripts/release-transaction-provider.mjs` contains a publish operation, and
@@ -169,7 +166,7 @@ installed the same way: `npm run private-overlay -- --root <kbDir> --from <dir> 
 `scripts/self-update.mjs` / `scripts/nightly-wrapper.sh` are manual author diagnostics in a clean
 linked worktree; they never publish.
 
-**How a user's machine updates.** `npx ruvnet-brain --update` runs the signed updater
+**How a user's machine updates.** The existing `ruvnet-brain --update` command runs the signed updater
 (`kb/forge-update.mjs --apply`): it verifies the bundle signature and preserves private/local-ingest
 stores through `restorePrivateFilesIntoCandidate` — the ONE place production code copies a private
 overlay onto a candidate tree, shared by the normal update path and the authenticated staged-recovery
@@ -181,23 +178,72 @@ key — apply is allowed, never blocked, never claimed current; today's pre-gene
 read this way), or REFUSED (rollback protection — the offered corpus generation is strictly OLDER
 than the one installed; no download, live untouched, clean exit). `--check`, `--apply`,
 `bin/install.mjs`'s update path, and the SessionStart banner's install-alarm all read this SAME
-recorded verdict rather than each re-deriving their own comparison. Schedule it with
-`npx ruvnet-brain --enable-nightly` (launchd, cron or Task Scheduler — the same command on every OS).
-Machines managed by agentic-kit are updated by `ak sync` instead, which disables the Brain's own
-scheduler on purpose; do not run both. That ownership (`kit.json` `ruvnetBrain:true`) is honoured only
-while an update is proven within 36h (a successful refresh receipt or a CURRENT `--check` verdict); past
-that, the SessionStart self-heal runs the Brain's own update anyway, so no machine exceeds 48h. `--host-sync-only` repairs host wiring and **never** updates
-knowledge — do not use it as an update command.
+recorded verdict rather than each re-deriving their own comparison.
+
+### Coordinated developer updates (4.6.0)
+
+RNBC's **Keep all tools updated** control uses `plugin/scripts/developer-update.mjs`, also
+exposed by the installed `ruvnet-brain-update` command (`bin/developer-update.mjs` in an explicit
+developer checkout). Manual checks, applies
+and the native Brain scheduler use that coordinator. The scheduler runs at **03:30 user-local
+time**, with one `com.ruvnet.brain-update` owner on macOS; native platform adapters retain their
+own registration semantics. `--host-sync-only` repairs host wiring and does not update knowledge.
+
+The canonical user choice is `~/.cache/ruvnet-brain/developer-update-config.json`:
+`schemaVersion:1`, `channel` (`latest` or `alpha`), `scope` (`ruvnet` or `all`), optional boolean
+`homebrew`, `uv`, `cargo`, `native`, `cleanup`, and an optional existing `managedCallback`.
+Public defaults are Latest and the RuvNet suite, with optional maintenance disabled. All-tools
+scope and extra managers require explicit opt-in; one machine's wider private configuration is
+not the public default. Run-local CLI overrides do not silently rewrite the saved choice:
+
+```bash
+ruvnet-brain-update --check --channel latest --scope ruvnet
+ruvnet-brain-update --apply --channel alpha --scope all
+```
+
+The coordinator discovers existing npm prefix/root and command ownership, then updates in
+place. It does not install absent tools, move a tool to another manager, alter host plugin
+scopes, or replace local development sources. Latest/Alpha selection never downgrades an
+installed version; Alpha falls back to Latest when appropriate. Agentic Kit retains its
+existing next/latest contract. Legitimate project dependencies, active leased runtime versions,
+signed applications' embedded runtimes, pinned compiler toolchains and local Python wheels are
+preserved. Hosted MCP server software remains provider-owned: a reachable connection is not
+proof of the provider's software version.
+
+Enabled maintenance stages use the existing Homebrew formula, uv registry-tool, Cargo
+registry-tool and supported native owners. Homebrew casks need their application owner; a
+managed callback must return success with before/after snapshots. Disabled stages, source/pin
+exclusions, unknown targets and failures remain visible. Cleanup is separately enabled and
+limited to proven inactive installer-cache copies; it is not a general duplicate deletion rule.
+
+`~/.cache/ruvnet-brain/developer-update.lock/owner.json` records the live PID and token shared by
+cooperating updater paths. The source-bound run receipt is
+`~/.cache/ruvnet-brain/nightly-suite-update.json`: mode, source digest, owner token, before/after
+snapshots, stage results, exclusions and failure details. `checked` is a check; `completed` is
+an apply. Neither implies every possible tool or remote provider is current. RNBC Activity
+reads this receipt instead of presenting a static success recommendation.
+
+Managed installs keep their current owner. An older Agentic Kit release may still have a
+competing updater or stale ownership comment; this Brain release does not claim to fix that
+upstream release. Integration must share the coordinator's policy and lock, and prove its
+actual run. Existing session-triggered signed knowledge checks remain separate triggers for
+the same Brain knowledge contract; an open session and its next restart still bound when a
+new server timer becomes active.
 
 **What makes a newly published corpus reach every install (ADR-098 §5).** Not age: identity. With no
 scheduler, at most once per 60 min per machine, SessionStart — and, inside a session left open for days,
 the MCP server's 15-min timer — launches the one detached updater worker in check mode
 (`host-update.mjs --knowledge … --if-newer`): the installed `kb/forge-update.mjs --check` reads
-`releases/latest` and only `UPDATE_AVAILABLE`/`UNKNOWN` runs `npx ruvnet-brain@latest --update`; `CURRENT`
+`releases/latest` and only `UPDATE_AVAILABLE`/`UNKNOWN` requests an update through its recorded automatic source; `CURRENT`
 stops and `REFUSED` (published corpus older) never downgrades. The worker respawns on the new knowledge at
 the next search. Exact limits: nothing runs on a machine with no open session; a running session gains the
 timer only after its next restart (`server.mjs` is boot-frozen); `RUVNET_AUTO_UPDATE=off`, a recorded "no", or
-agentic-kit ownership proven within 36h turn it off. Proof: `tests/integration/corpus-auto-update-e2e.test.mjs`.
+agentic-kit ownership proven within 36h turn it off. When the canonical coordinator is configured
+or registered, automatic invocation joins that owner using its channel/scope and shared token; an
+active but unready coordinator refuses work. Canonical invocation selects its owner without
+reading legacy `updateSource` settings. Only unconfigured legacy and proof paths resolve that
+preference for target selection. See
+`docs/AUTOMATIC-UPDATE-SOURCE.md` for that compatibility boundary. Proof: `tests/integration/corpus-auto-update-e2e.test.mjs`.
 
 **Putting the Brain on another disk.** `npx ruvnet-brain --move-brain <dir>` (for example
 `/Volumes/SanDisk/ruvnet-brain`) checks the target has room, copies the whole Brain there, proves the copy

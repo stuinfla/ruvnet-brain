@@ -27,7 +27,7 @@ describe('independent currency evidence', () => {
     expect(result.records).toHaveLength(2);
     expect(result.records.map((r) => r.effort)).toEqual(['max', 'high']);
     expect(result.records[0].model).toBe('gpt-6.1-sol');
-    expect(result.records[0].benchmark.version).toBe('4.3.2');
+    expect(result.records[0].benchmark.version).toBe('4.3.2'); // sync-version-ignore: the literal is the captured evidence fixture version under parser test
     expect(result.records[0].benchmarks.find((b) => b.suite === 'terminalbench-4-0').timeSeconds).toBeGreaterThan(0);
     expect(parseArtificialAnalysis(html, source).records.every((r) => r.model === null)).toBe(true);
   });
@@ -147,7 +147,7 @@ describe('independent currency evidence', () => {
     expect(sol.model).toBe('gpt-6.1-sol'); expect(sol.effort).toBe('high');
     expect(sol.benchmark).toEqual({ suite: 'artificial-analysis-coding-agent-index', version: '1.5' });
     expect(sol.codingAgentIndexFraction).toBeCloseTo(0.6014923716179784);
-    expect(sol.versions['terminal-bench-v4'].min.version).toBe('0.154.0');
+    expect(sol.versions['terminal-bench-v4'].min.version).toBe('0.154.0'); // sync-version-ignore: the literal is the captured evidence fixture version under parser test
     expect(sol.components.find((c) => c.suite === 'terminal-bench-v4').score).toBe(0.5);
     const mixed = parsed.records.find((r) => r.harness.includes('Devin'));
     expect(mixed.nativeHost).toBeNull(); expect(mixed.model).toBeNull(); expect(mixed.effort).toBeNull();
