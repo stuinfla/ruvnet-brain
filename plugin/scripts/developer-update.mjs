@@ -31,7 +31,7 @@ export function atomic(file, value) {
 function invoke(command, args, { cwd = HOME, timeout = 600_000, allowed = [0], env = process.env, capture = false } = {}) {
   const r = spawnSync(command, args, { cwd, encoding: 'utf8', timeout, maxBuffer: 16 * 1024 * 1024,
     env: { ...env, PATH: [...new Set([path.dirname(NODE), path.join(env.npm_config_prefix || PREFIX, process.platform === 'win32' ? '' : 'bin'), ...(env.PATH || '').split(path.delimiter)])].join(path.delimiter),
-      CI: '1', GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'Never', GH_PROMPT_DISABLED: '1', HOMEBREW_NO_INSTALL_CLEANUP: '1', HOMEBREW_NO_AUTO_UPDATE: '1', RUVNET_BRAIN_HOME: env.RUVNET_BRAIN_HOME || CACHE } });
+      CI: '1', DISABLE_AUTOUPDATER: '1', GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'Never', GH_PROMPT_DISABLED: '1', HOMEBREW_NO_INSTALL_CLEANUP: '1', HOMEBREW_NO_AUTO_UPDATE: '1', RUVNET_BRAIN_HOME: env.RUVNET_BRAIN_HOME || CACHE } });
   if (!capture && (r.error || !allowed.includes(r.status))) throw Error(`${path.basename(command)} ${args[0]}: ${r.error?.message || `exit ${r.status}`}: ${(r.stderr || r.stdout || '').trim().slice(-600)}`);
   return { stdout: (r.stdout || '').trim(), stderr: (r.stderr || '').trim(), exitCode: r.status, error: r.error?.message || null };
 }
@@ -352,7 +352,7 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
   const config = validateDeveloperUpdateConfig(override || readDeveloperUpdateConfig(paths));
   const lock = acquireDeveloperLock({ brainHome: paths.brainHome, token: env.RUVNET_DEVELOPER_UPDATE_TOKEN });
   const childEnv = { ...env, HOME: home, USERPROFILE: home, RUVNET_BRAIN_HOME: paths.brainHome,
-    RUVNET_DEVELOPER_UPDATE_TOKEN: lock.token, HOMEBREW_NO_INSTALL_CLEANUP: '1', HOMEBREW_NO_AUTO_UPDATE: '1' };
+    RUVNET_DEVELOPER_UPDATE_TOKEN: lock.token, DISABLE_AUTOUPDATER: '1', HOMEBREW_NO_INSTALL_CLEANUP: '1', HOMEBREW_NO_AUTO_UPDATE: '1' };
   const dispatch = (command, args, options = {}) => {
     if (process.platform === 'win32' && /npm\.cmd$/i.test(command)) {
       const cli = path.join(path.dirname(command), 'node_modules/npm/bin/npm-cli.js');

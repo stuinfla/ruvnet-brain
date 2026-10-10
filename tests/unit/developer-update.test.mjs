@@ -172,6 +172,7 @@ test('canonical apply needs no Kit, binds actual npm prefix and shares child tok
   const before=fixture('ruflo'),home=tmp(),bin=path.join(home,'bin');fs.mkdirSync(bin);fs.writeFileSync(path.join(bin,'npm'),'fake',{mode:0o755});
   const calls=[];
   const runner=(command,args,options)=>{
+    assert.equal(options.env.DISABLE_AUTOUPDATER,'1');
     calls.push({command,args,token:options.env.RUVNET_DEVELOPER_UPDATE_TOKEN,prefix:options.env.npm_config_prefix});
     if(args[0]==='prefix')return before.prefix;
     if(args[0]==='root')return path.join(before.prefix,'lib/node_modules');
