@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
+import { EXECUTION_MODULES } from './developer-update-policy.mjs';
 const hash = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 export function developerCoordinatorOwner({ home = os.homedir(), brainHome = process.env.RUVNET_BRAIN_HOME || path.join(home, '.cache/ruvnet-brain') } = {}) {
   const config = path.join(brainHome, 'developer-update-config.json'), registration = path.join(brainHome, 'scheduler/registration.json');
@@ -14,6 +15,9 @@ export function developerCoordinatorOwner({ home = os.homedir(), brainHome = pro
   try {
     if (record?.mode !== 'developer-suite' || !path.isAbsolute(entry?.path || '') || !/^[a-f0-9]{64}$/.test(entry?.sha256 || '')
       || hash(entry.path) !== entry.sha256 || hash(record.runnerPath) !== record.runnerSha256) throw Error('registered source is absent or changed');
+    if (!record.updateModules?.['plugin-artifact-proof.mjs'] && fs.readFileSync(entry.path, 'utf8').includes('./plugin-artifact-proof.mjs')) throw Error('new coordinator artifact closure is incomplete');
+    const generation = EXECUTION_MODULES.filter(name => name !== 'plugin-artifact-proof.mjs' || record.updateModules?.[name]);
+    if (generation.some(name => !record.updateModules?.[name])) throw Error('coordinator execution closure is incomplete');
     for (const module of Object.values(record.updateModules)) if (hash(module.path) !== module.sha256) throw Error('registered module closure changed');
     return { active: true, ready: true, entry: entry.path, node: record.nodePath, registration, sourceSha256: entry.sha256 };
   } catch (error) { return { active: true, ready: false, reason: error.message }; }

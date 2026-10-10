@@ -1,3 +1,4 @@
+export const EXECUTION_MODULES = Object.freeze(['developer-update.mjs', 'developer-update-policy.mjs', 'developer-update-lock.mjs', 'developer-update-maintenance.mjs', 'developer-update-cleanup.mjs', 'plugin-artifact-proof.mjs']);
 // Shared stack classification and ordering: installations are selected, never manufactured.
 export const FAMILY = /^(ruflo|ruvnet-brain|ruvector|ruvector-extensions|ruvi|ruvbot|qudag|flow-nexus|agent-browser|agent-browser-mcp|agentic-flow|agentic-qe|agentic-robotics|agentic-payments|agentdb|ruv-swarm|@pacphi\/agentic-kit$|@ruvector\/|@claude-flow\/|@metaharness\/|@agentic-robotics\/)/;
 export const PLUGIN_MARKETPLACES = new Set(['ruflo', 'ruview', 'ruvnet-brain', 'cognitum']);

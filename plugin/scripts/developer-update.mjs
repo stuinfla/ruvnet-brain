@@ -6,10 +6,11 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { cmpVersion as compare, selectTag, FAMILY, PLUGIN_MARKETPLACES, REVIEWED_INSTALL_SCRIPTS } from './developer-update-policy.mjs';
+import { cmpVersion as compare, selectTag, FAMILY, PLUGIN_MARKETPLACES, REVIEWED_INSTALL_SCRIPTS, EXECUTION_MODULES } from './developer-update-policy.mjs';
 import { acquireDeveloperLock, sharedLockStatus } from './developer-update-lock.mjs';
 import { maintenance } from './developer-update-maintenance.mjs';
 import { cleanupNpxDuplicates } from './developer-update-cleanup.mjs';
+import { pinnedClaudeTarget, verifyClaudeArtifact } from './plugin-artifact-proof.mjs';
 export { compare, selectTag, sharedLockStatus };
 const HOME = os.homedir();
 const PREFIX = path.join(HOME, '.npm-global');
@@ -172,7 +173,7 @@ export function resolvePluginTarget(plugin, { home = HOME, run = invokeText } = 
     } else throw Error('unsupported plugin source shape');
     if (!version && !commit) throw Error('opaque or unpinned plugin target');
     if (hash(fs.readFileSync(catalog)) !== catalogSha256) throw Error('marketplace catalogue changed during identity resolution');
-    return { supported: true, version, commit, catalogCommit, authority, proof, remote, catalog, catalogSha256 };
+    return { supported: true, version, commit, catalogCommit, authority, proof, remote, catalog, catalogSha256, source: entry.source };
   } catch (error) { return { supported: false, reason: error.message }; }
 }
 export function pluginTarget(plugin, home = HOME) { return resolvePluginTarget(plugin, { home }).version || null; }
@@ -188,24 +189,34 @@ export function pluginUpdateDecision(plugin, target) {
   return { state: target.version === plugin.version ? 'CURRENT' : 'UPDATE_AVAILABLE', proof: target.proof,
     sourceCommitMatched: target.catalogCommit ? plugin.gitCommitSha?.toLowerCase() === target.catalogCommit : null };
 }
-export function synchronizePlugins(run, dryRun, notes, { home, prefix, scope, locate }) {
+export async function synchronizePlugins(run, dryRun, notes, { home, prefix, scope, locate, artifactProvider = pinnedClaudeTarget }) {
   const installed = path.join(home, '.claude/plugins/installed_plugins.json');
   const all = pluginScopes(installed), before = all.filter(p => scope === 'all' || PLUGIN_MARKETPLACES.has(p.id.split('@').at(-1))), flags = pluginFlags(all, home);
   const claude = locate('claude');
   if (before.length && !claude) throw Error('installed Claude plugins have no existing Claude command');
-  const steps = [];
+  const steps = [], artifactCache = new Map();
   const markets = [...new Set(before.map(p => p.id.split('@').at(-1)))];
   if (!dryRun) for (const name of markets) run(claude, ['plugin', 'marketplace', 'update', name]);
   for (const p of before) {
     const target = resolvePluginTarget(p, { home, run });
-    const decision = p.scope === 'managed' ? { state: 'UNSUPPORTED', reason: 'managed scope belongs to its administrator' } : pluginUpdateDecision(p, target);
-    const step = { id: p.id, scope: p.scope, projectPath: p.projectPath, before: p, target, ...decision }; steps.push(step);
+    let artifactTarget = null, artifactProof = null;
+    if (target.supported && target.authority === 'commit' && target.proof === 'catalog-pinned-commit' && p.gitCommitSha?.toLowerCase() !== target.commit) {
+      artifactTarget = await artifactProvider(target.source, target.commit, { cache: artifactCache });
+      artifactProof = verifyClaudeArtifact(artifactTarget, p.installPath);
+      target.version = artifactTarget.manifest.version || null;
+    }
+    let decision = p.scope === 'managed' ? { state: 'UNSUPPORTED', reason: 'managed scope belongs to its administrator' } : pluginUpdateDecision(artifactProof?.actualVersion ? { ...p, version: artifactProof.actualVersion } : p, target);
+    if (artifactProof?.ok && decision.state !== 'AHEAD') decision = { state: 'CURRENT', proof: 'pinned-claude-artifact', sourceCommitMatched: false, actualClaudeSourceMatched: true, providerMetadataDiscrepancy: { recordedCommit: p.gitCommitSha, pinnedCommit: target.commit } };
+    const step = { artifactProof, id: p.id, scope: p.scope, projectPath: p.projectPath, before: p, target, ...decision }; steps.push(step);
     if (decision.state === 'UNSUPPORTED') { notes.push(`plugin target unsupported; preserved: ${p.id}: ${decision.reason}`); continue; }
     if (decision.state === 'AHEAD') { notes.push(`ahead plugin preserved: ${p.id}`); continue; }
     if (dryRun || decision.state === 'CURRENT') { step.after = p; continue; }
     run(claude, ['plugin', 'update', p.id, '--scope', p.scope, '--json'], { cwd: p.projectPath || home });
     const live = pluginScopes(installed).find(item => scopeKey(item) === scopeKey(p));
-    if (!live || (target.commit ? live.gitCommitSha?.toLowerCase() !== target.commit : live.version !== target.version)) throw Error(`plugin target not verified: ${p.id}`);
+    if (artifactTarget && live) { artifactProof = verifyClaudeArtifact(artifactTarget, live.installPath); step.artifactProof = artifactProof; }
+    const exactCommit = target.commit && live?.gitCommitSha?.toLowerCase() === target.commit;
+    if (!live || (target.commit ? !exactCommit && !artifactProof?.ok : live.version !== target.version)) throw Error(`plugin target not verified: ${p.id}`);
+    if (target.commit && !exactCommit) Object.assign(step, { sourceCommitMatched: false, actualClaudeSourceMatched: true, providerMetadataDiscrepancy: { recordedCommit: live.gitCommitSha, pinnedCommit: target.commit } });
     Object.assign(step, { state: 'UPDATED', after: live });
   }
   const after = pluginScopes(installed).filter(p => before.some(b => scopeKey(b) === scopeKey(p)));
@@ -314,7 +325,7 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
     sourceSha256: null, ownerToken: lock.token, ownerPid: lock.ownerPid, schedulerIdentity: env.RUVNET_NIGHTLY_IDENTITY || null };
   try {
     receipt.sourceSha256 = hash(fs.readFileSync(new URL(import.meta.url)));
-    receipt.sourceSnapshot = Object.fromEntries(['developer-update.mjs', 'developer-update-policy.mjs', 'developer-update-lock.mjs', 'developer-update-maintenance.mjs', 'developer-update-cleanup.mjs'].map(name => [name, hash(fs.readFileSync(new URL(name, import.meta.url)))]));
+    receipt.sourceSnapshot = Object.fromEntries(EXECUTION_MODULES.map(name => [name, hash(fs.readFileSync(new URL(name, import.meta.url)))]));
     atomic(paths.receipt, receipt);
     const npm = locate('npm');
     if (!npm) throw Error('existing npm owner absent; fresh install refused');
@@ -331,7 +342,7 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
       receipt.steps.push(upgradePackage(before, tags, REVIEWED_INSTALL_SCRIPTS, { run, dryRun: mode === 'check', channel: config.channel, npm, preservePackages: config.preservePackages }));
       atomic(paths.receipt, receipt);
     }
-    receipt.plugins = synchronizePlugins(run, mode === 'check', receipt.notes, { home, prefix, scope: config.scope, locate });
+    receipt.plugins = await synchronizePlugins(run, mode === 'check', receipt.notes, { home, prefix, scope: config.scope, locate });
     if (exists(path.join(paths.brainHome, 'kb/forge-update.mjs'))) receipt.knowledge = knowledge(run, mode === 'check', receipt.runId, { brainHome: paths.brainHome, root, node: process.execPath });
     else receipt.notes.push('Brain corpus absent; fresh knowledge install excluded');
     receipt.maintenance = await maintenance(config, run, mode === 'check', { home, brainHome: paths.brainHome, locate, node: process.execPath, progress: result => { receipt.maintenance = result; atomic(paths.receipt, receipt); } });

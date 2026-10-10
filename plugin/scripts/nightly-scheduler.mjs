@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { automaticPath } from './automatic-update.mjs';
 import { sharedLockStatus } from './developer-update-lock.mjs';
+import { EXECUTION_MODULES } from './developer-update-policy.mjs';
 
 export const NIGHTLY_LABEL = 'com.ruvnet.brain-update';
 export const NIGHTLY_HOUR = 3;
@@ -142,8 +143,10 @@ function inspectRefreshOwner(owner) {
 }
 
 const HISTORICAL_UPDATE_MODULES = ['automatic-update.mjs', 'user-settings.mjs', 'ruvnet-gate1-pattern.mjs'];
-const LEGACY_UPDATE_MODULES = [...HISTORICAL_UPDATE_MODULES, 'developer-update-owner.mjs'];
-const DEVELOPER_UPDATE_MODULES = [...LEGACY_UPDATE_MODULES, 'developer-update.mjs', 'developer-update-maintenance.mjs', 'developer-update-lock.mjs', 'developer-update-policy.mjs', 'developer-update-cleanup.mjs'];
+const BRIDGED_UPDATE_MODULES = [...HISTORICAL_UPDATE_MODULES, 'developer-update-owner.mjs'];
+const LEGACY_UPDATE_MODULES = [...BRIDGED_UPDATE_MODULES, 'developer-update-policy.mjs'];
+const PREVIOUS_DEVELOPER_MODULES = [...BRIDGED_UPDATE_MODULES, ...EXECUTION_MODULES.filter(name => name !== 'plugin-artifact-proof.mjs')];
+const DEVELOPER_UPDATE_MODULES = [...new Set([...LEGACY_UPDATE_MODULES, ...EXECUTION_MODULES])];
 function updateModules(directory, sourceDir = path.dirname(fileURLToPath(import.meta.url)), developerSuite = true) {
   const files = developerSuite ? DEVELOPER_UPDATE_MODULES : LEGACY_UPDATE_MODULES;
   const bytes = Object.fromEntries(files.map(file => [file, fs.readFileSync(path.join(sourceDir, file))]));
@@ -161,7 +164,8 @@ function updateModules(directory, sourceDir = path.dirname(fileURLToPath(import.
 
 function verifyUpdateModules(modules) {
   if (!modules) return; // existing schema-2 registrations remain inspectable
-  if (![HISTORICAL_UPDATE_MODULES, LEGACY_UPDATE_MODULES, DEVELOPER_UPDATE_MODULES].some(names => [...names].sort().join(',') === Object.keys(modules).sort().join(','))) throw new Error('invalid update module closure');
+  if (![HISTORICAL_UPDATE_MODULES, BRIDGED_UPDATE_MODULES, LEGACY_UPDATE_MODULES, PREVIOUS_DEVELOPER_MODULES, DEVELOPER_UPDATE_MODULES].some(names => [...names].sort().join(',') === Object.keys(modules).sort().join(','))) throw new Error('invalid update module closure');
+  if (modules['developer-update.mjs'] && !modules['plugin-artifact-proof.mjs'] && fs.readFileSync(modules['developer-update.mjs'].path, 'utf8').includes('./plugin-artifact-proof.mjs')) throw new Error('new coordinator artifact closure is incomplete');
   for (const [name, item] of Object.entries(modules)) {
     if (!path.isAbsolute(item.path) || path.basename(item.path) !== name
       || path.dirname(item.path) !== path.dirname(modules['automatic-update.mjs'].path)
@@ -256,7 +260,7 @@ export function developerRunHealth({ brainHome, registration, now = Date.now(), 
   const validDigest = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
   const bound = validDigest(receipt.sourceSha256) && receipt.kind === 'nightly-suite-update' && receipt.schemaVersion === 1
     && receipt.sourceSha256 === registration.updateModules?.['developer-update.mjs']?.sha256
-    && ['developer-update.mjs', 'developer-update-policy.mjs', 'developer-update-lock.mjs', 'developer-update-maintenance.mjs', 'developer-update-cleanup.mjs'].every(name => validDigest(receipt.sourceSnapshot?.[name]) && receipt.sourceSnapshot[name] === registration.updateModules?.[name]?.sha256);
+    && EXECUTION_MODULES.filter(name => name !== 'plugin-artifact-proof.mjs' || registration.updateModules?.[name]).every(name => validDigest(receipt.sourceSnapshot?.[name]) && receipt.sourceSnapshot[name] === registration.updateModules?.[name]?.sha256);
   const ageHours = (now - Date.parse(receipt.finishedAt || receipt.startedAt || '')) / 3_600_000;
   if (!bound || !Number.isFinite(ageHours)) return { state: 'failed', evidence: 'Coordinated update receipt is not bound to registered source.', receipt };
   if (receipt.state === 'running') {

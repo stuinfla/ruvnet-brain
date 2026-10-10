@@ -249,18 +249,18 @@ test('escape and opaque/unpinned refs cannot authorize plugin update', () => {
   const opaque=pluginFixture({source:{source:'url',url:'https://github.com/example/plugin.git'}});assert.equal(resolvePluginTarget(opaque.plugin,{home:opaque.home}).supported,false);
   assert.equal(pluginUpdateDecision({version:'2.0.0'},{supported:true,version:'1.0.0',commit:'d'.repeat(40)}).state,'AHEAD');
 });
-test('stock plugin update preserves original scope/cwd and verifies exact pinned commit', () => {
+test('stock plugin update preserves original scope/cwd and verifies exact pinned commit', async () => {
   const sha='e'.repeat(40),f=pluginFixture({source:{source:'url',url:'https://github.com/example/plugin.git',sha}}),project=path.join(f.home,'project'),artifact=path.join(f.home,'artifact');fs.mkdirSync(project);fs.mkdirSync(artifact);
   const installed=path.join(f.home,'.claude/plugins/installed_plugins.json');atomic(installed,{plugins:{'sample@market':[{scope:'local',projectPath:project,installPath:artifact,version:'unknown',gitCommitSha:'f'.repeat(40)}]}});
   atomic(path.join(project,'.claude/settings.local.json'),{enabledPlugins:{'sample@market':false}});
   const calls=[],runner=(command,args,options)=>{calls.push({command,args,options});if(args[1]==='update')atomic(installed,{plugins:{'sample@market':[{scope:'local',projectPath:project,installPath:artifact,version:sha.slice(0,12),gitCommitSha:sha}]}});return '{}';};
-  const notes=[],receipt=synchronizePlugins(runner,false,notes,{home:f.home,prefix:path.join(f.home,'prefix'),scope:'all',locate:name=>name==='claude'?'/fixture/claude':null});
+  const notes=[],receipt=await synchronizePlugins(runner,false,notes,{home:f.home,prefix:path.join(f.home,'prefix'),scope:'all',locate:name=>name==='claude'?'/fixture/claude':null,artifactProvider:async()=>({repo:'example/plugin',commit:sha,manifest:{},entries:[]})});
   const update=calls.find(c=>c.args[1]==='update');assert.deepEqual(update.args,['plugin','update','sample@market','--scope','local','--json']);assert.equal(update.options.cwd,project);assert.equal(receipt.steps[0].state,'UPDATED');assert.equal(receipt.after[0].gitCommitSha,sha);assert.equal(JSON.parse(fs.readFileSync(path.join(project,'.claude/settings.local.json'))).enabledPlugins['sample@market'],false);
 });
-test('plugin updater cannot accept success without exact target identity', () => {
+test('plugin updater cannot accept success without exact target identity', async () => {
   const sha='1'.repeat(40),f=pluginFixture({source:{source:'github',repo:'example/plugin',sha}}),artifact=path.join(f.home,'artifact');fs.mkdirSync(artifact);
   atomic(path.join(f.home,'.claude/plugins/installed_plugins.json'),{plugins:{'sample@market':[{scope:'user',installPath:artifact,version:'unknown',gitCommitSha:'2'.repeat(40)}]}});
-  assert.throws(()=>synchronizePlugins(()=>'{"ok":true}',false,[],{home:f.home,scope:'all',locate:()=>'/fixture/claude'}),/target not verified/);
+  await assert.rejects(synchronizePlugins(()=>'{"ok":true}',false,[],{home:f.home,scope:'all',locate:()=>'/fixture/claude',artifactProvider:async()=>({repo:'example/plugin',commit:sha,manifest:{},entries:[]})}),/target not verified/);
 });
 
 test('native Rust channels precede Cargo installs and uv self-update precedes uv tool upgrades', async () => {
@@ -364,11 +364,11 @@ test('remote marketplace owner/ref and returned identities reject ambiguity or g
   assert.equal(marketplaceRemoteCommit(owner,()=>sha+'\trefs/heads/main').commit,sha);
   for(const output of ['',sha+'\tHEAD',sha+'\trefs/heads/main\n'+sha+'\trefs/heads/other','malformed\trefs/heads/main'])assert.throws(()=>marketplaceRemoteCommit(owner,()=>output),/ambiguous|unverified/);
 });
-test('equal published semantic versions never force stock updates for unrelated unpinned repo commits', () => {
+test('equal published semantic versions never force stock updates for unrelated unpinned repo commits', async () => {
   const f=pluginFixture({version:'1.1.0'}),newHead='d'.repeat(40),oldHead='e'.repeat(40),artifact=path.join(f.home,'artifact');fs.mkdirSync(artifact);
   atomic(path.join(f.home,'.claude/plugins/installed_plugins.json'),{plugins:{'sample@market':[{scope:'user',installPath:artifact,version:'1.1.0',gitCommitSha:oldHead}]}});
   const calls=[],run=(_command,args)=>{calls.push(args);return args[0]==='-C'?newHead:'{}';};
-  const result=synchronizePlugins(run,false,[],{home:f.home,scope:'all',locate:name=>name==='claude'?'/fixture/claude':null});
+  const result=await synchronizePlugins(run,false,[],{home:f.home,scope:'all',locate:name=>name==='claude'?'/fixture/claude':null});
   assert.equal(result.steps[0].state,'CURRENT');assert.equal(result.steps[0].proof,'published-plugin-version');assert.equal(result.steps[0].sourceCommitMatched,false);assert.ok(!calls.some(args=>args[0]==='plugin'&&args[1]==='update'));
   assert.equal(pluginUpdateDecision({version:'1.1.0',gitCommitSha:oldHead},{supported:true,authority:'commit',version:'1.1.0',commit:newHead}).state,'UPDATE_AVAILABLE');
 });
@@ -377,4 +377,18 @@ test('Homebrew execution completion exposes currency only when manager markers a
   const run=(_cmd,args)=>({exitCode:0,stdout:args[0]==='info'?JSON.stringify({formulae:[{full_name:'owned'}]}):''});
   const result=await maintenance({homebrew:true},run,true,{home,locate:()=>brew});const stage=result.stages[0];
   assert.equal(stage.verification.ok,true);assert.equal(stage.currencyChecked,false);assert.equal(stage.currency,'unverified');assert.ok(result.exclusions.some(note=>note.includes('currency markers unavailable')));
+});
+test('new artifact helper is bound across source identity, owner and scheduler health', () => {
+  const home=tmp(),brainHome=path.join(home,'.cache/ruvnet-brain'),source=new URL('../../bin/nightly-refresh.mjs',import.meta.url).pathname;
+  const record=installNightlyRunner({brainHome,source,nodePath:process.execPath});
+  const sourceSnapshot=Object.fromEntries(Object.entries(record.updateModules).map(([name,item])=>[name,item.sha256]));
+  const receipt={schemaVersion:1,kind:'nightly-suite-update',sourceSha256:sourceSnapshot['developer-update.mjs'],sourceSnapshot,mode:'apply',schedulerIdentity:record.identity,state:'completed',ok:true,finishedAt:new Date().toISOString()};
+  atomic(path.join(brainHome,'nightly-suite-update.json'),receipt);assert.equal(developerRunHealth({brainHome,registration:record}).state,'ok');
+  receipt.sourceSnapshot['plugin-artifact-proof.mjs']='0'.repeat(64);atomic(path.join(brainHome,'nightly-suite-update.json'),receipt);assert.equal(developerRunHealth({brainHome,registration:record}).state,'failed');
+  fs.appendFileSync(record.updateModules['plugin-artifact-proof.mjs'].path,'\n//tamper');assert.equal(developerCoordinatorOwner({home,brainHome}).ready,false);
+});
+test('new coordinator cannot enroll under an incomplete older five-module execution shape', () => {
+  const home=tmp(),brainHome=path.join(home,'.cache/ruvnet-brain'),source=new URL('../../bin/nightly-refresh.mjs',import.meta.url).pathname;
+  const record=installNightlyRunner({brainHome,source,nodePath:process.execPath});delete record.updateModules['plugin-artifact-proof.mjs'];atomic(record.recordPath,record);
+  assert.equal(developerCoordinatorOwner({home,brainHome}).ready,false);
 });

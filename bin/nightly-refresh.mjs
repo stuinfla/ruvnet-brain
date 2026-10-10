@@ -63,8 +63,13 @@ try {
   const modules = registration.updateModules;
   const legacy = ['automatic-update.mjs', 'ruvnet-gate1-pattern.mjs', 'user-settings.mjs'];
   const bridged = [...legacy, 'developer-update-owner.mjs'];
-  const suite = [...bridged, 'developer-update.mjs', 'developer-update-maintenance.mjs', 'developer-update-lock.mjs', 'developer-update-policy.mjs', 'developer-update-cleanup.mjs'];
-  const expected = registration.mode === 'developer-suite' ? [suite] : [legacy, bridged];
+  const currentLegacy = [...bridged, 'developer-update-policy.mjs'];
+  if (!modules?.['developer-update-policy.mjs'] && registration.mode === 'developer-suite') throw new Error('suite policy closure is missing');
+  if (registration.mode === 'developer-suite' && (!path.isAbsolute(modules['developer-update-policy.mjs'].path) || path.basename(modules['developer-update-policy.mjs'].path) !== 'developer-update-policy.mjs' || path.dirname(modules['developer-update-policy.mjs'].path) !== path.dirname(modules['automatic-update.mjs'].path) || !fs.lstatSync(modules['developer-update-policy.mjs'].path).isFile())) throw new Error('suite policy path identity mismatch');
+  if (registration.mode === 'developer-suite' && crypto.createHash('sha256').update(fs.readFileSync(modules['developer-update-policy.mjs'].path)).digest('hex') !== modules['developer-update-policy.mjs'].sha256) throw new Error('suite policy digest mismatch');
+  const executionPolicy = registration.mode === 'developer-suite' ? await import(pathToFileURL(modules['developer-update-policy.mjs'].path).href) : null;
+  const suite = executionPolicy ? [...new Set([...currentLegacy, ...executionPolicy.EXECUTION_MODULES])] : [];
+  const expected = registration.mode === 'developer-suite' ? [suite] : [legacy, bridged, currentLegacy];
   if (!modules || !expected.some(names => Object.keys(modules).sort().join(',') === names.sort().join(','))) throw new Error('registered update module closure is missing');
   for (const [name, item] of Object.entries(modules)) {
     if (!path.isAbsolute(item.path) || path.basename(item.path) !== name
