@@ -210,7 +210,6 @@
       people: s.people.map(function (p) { return p.login; }),
       stars: d.repo ? d.repo.stars : null,
       forks: d.repo ? d.repo.forks : null,
-      downloads: d.totalAssetDownloads == null ? null : d.totalAssetDownloads,
       tel: (d.telemetry && d.telemetry.configured && d.telemetry.totals) || null
     };
   }
@@ -277,8 +276,6 @@
         d.repo ? num(d.repo.stars) + ' total' : ''),
       dcell('forks', cumDelta(d.repo && d.repo.forks, base && base.forks, 'repo metadata unavailable', firstVisit),
         d.repo ? num(d.repo.forks) + ' total' : ''),
-      dcell('release bundle downloads', cumDelta(d.totalAssetDownloads, base && base.downloads, 'no release data returned', firstVisit),
-        d.totalAssetDownloads == null ? '' : num(d.totalAssetDownloads) + ' lifetime'),
       dcell('opted-in installs', cumDelta(telTotals && telTotals.install, base && base.tel && base.tel.install, telWhy, firstVisit)),
       dcell('opted-in searches', cumDelta(telTotals && telTotals.search, base && base.tel && base.tel.search, telWhy, firstVisit)),
       dcell('opted-in sessions', cumDelta(telTotals && telTotals.session, base && base.tel && base.tel.session, telWhy, firstVisit)),
@@ -432,10 +429,10 @@
         caveat: 'The only tile here that counts PEOPLE. GitHub de-duplicates by visitor, so this is humans who opened the repo page — not machines, not CI.'
       }),
       rcell({
-        label: 'bundle downloads',
-        window: 'lifetime, all releases',
+        label: 'release asset downloads',
+        window: 'fetched window · up to 20 most recent releases',
         value: metric(d.totalAssetDownloads, 'no release data returned'),
-        caveat: 'Downloads, NOT people — GitHub exposes no unique-downloader field for release assets. Each nightly refresh re-downloads, so one machine counts many times.'
+        caveat: 'Asset totals cover the fetched release window, not lifetime downloads. Downloads, NOT people — GitHub exposes no unique-downloader field for release assets. Each nightly refresh re-downloads, so one machine counts many times.'
       }),
       rcell({
         label: newest ? 'pulled ' + newest.tag : 'newest release pulls',

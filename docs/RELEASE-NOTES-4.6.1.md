@@ -8,7 +8,9 @@ and workflow diagrams. It retains the limits on grounding, retrieval snapshots a
 recorded coverage instead of treating documentation as runtime proof.
 
 The public admin API resolves the latest code release independently of the public corpus.
-Its engineering queue includes open issues and pull requests with pagination. Failed
+Release-asset downloads are scoped to the fetched window of up to 20 recent releases,
+not a lifetime counter or cumulative since-visit delta. Its engineering queue includes
+open issues and pull requests with pagination. Failed
 probes remain unknown or degraded; an open engineering item does not imply owner action.
 
 This release changes documentation and the admin status surface. It does not refresh the

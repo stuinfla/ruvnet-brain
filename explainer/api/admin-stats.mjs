@@ -3,7 +3,7 @@
 //
 // Aggregates, all server-side so no token ever reaches the browser:
 //   • GitHub repo reach     — stars / forks / watchers / open issues       (public API)
-//   • Release downloads     — per-asset download counts on every release   (public API)
+//   • Release downloads     — per-asset counts on up to 20 recent releases   (public API)
 //   • GitHub traffic        — clones + views (count/uniques/14-day daily) and top referrers.
 //                             These three REQUIRE an authenticated GITHUB_TOKEN with push access
 //                             to stuinfla/ruvnet-brain (classic PAT `repo` scope or fine-grained
