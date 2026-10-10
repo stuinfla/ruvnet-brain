@@ -4,8 +4,8 @@ title: Routing architecture qualification requires a current finite source revie
 status: Accepted
 date: 2026-10-05
 updated: 2026-10-10
-version: 0.1.23
-reviewed_digest: 54844be550d7
+version: 0.1.24
+reviewed_digest: fe3bd67a609b
 impl: built
 authors: [Stuart Kerr, Codex]
 tags: [routing, governance, review, release, traceability]
@@ -270,6 +270,8 @@ and P10 by reusing doc-currency. It trades P3's usual nudge for the owner's expl
 finite release refusal. No paid provider call, model generation or system configuration is added.
 
 ## Currency log
+
+| 2026-10-10 | Reviewed `fe3bd67a609b` against source `1caa967158560562795e1e6ebae44e2c2cd386f5` and governed paths `package-lock.json` and `scripts/release-qualification-contract.mjs`. | Root independently read `package-lock.json` and `scripts/release-qualification-contract.mjs` in the baseline-plus-delta diff against `db36152f274043d423eb61ef1cf0a85fb9ff49a7`: two root version literals advance 4.6.0 to 4.6.1 without dependency changes; one source requirement adds the two changed admin suites while retaining the prior inventory. Independent candidate execution passed 16 API/DOM fixture cases without skips; root also inspected the local rendered README and admin surface. No hook or routing implementation changed. These scoped checks do not establish full source qualification, remote preflight, production deployment, public installation or upstream corpus freshness; the previous failed preflight remains failed. |
 
 | 2026-10-10 | Reviewed `54844be550d7` against governed source `scripts/release-qualification-contract.mjs` and the final normative mapping. | Independent read-only baseline-plus-delta review of `scripts/release-qualification-contract.mjs` retained all existing requirements and approved the updater qualification additions: portable channel/version policy and immutable artifact negatives, complete coordinator-source receipt controls, POSIX original-prefix/existing-owner/shared-lock fixtures, and the actual authenticated Console endpoint. The integrated 173-case focused report passed without skips. This review does not establish native Windows execution, arbitrary runtime closure, whole-repository plugin equality, or candidate/publication acceptance; those remain separate machine gates. |
 
