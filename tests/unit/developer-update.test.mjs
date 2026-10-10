@@ -9,6 +9,7 @@ import { acquireDeveloperLock, sharedLockStatus } from '../../plugin/scripts/dev
 import { automaticInvocation } from '../../plugin/scripts/automatic-update.mjs';
 import { installNightlyRunner, developerRunHealth } from '../../plugin/scripts/nightly-scheduler.mjs';
 import { developerCoordinatorOwner } from '../../plugin/scripts/developer-update-owner.mjs';
+import { normalizeNpmDistTags } from '../../plugin/scripts/developer-update-policy.mjs';
 import { cleanupNpxDuplicates } from '../../plugin/scripts/developer-update-cleanup.mjs';
 import { cargoInventory, uvInventory, maintenance } from '../../plugin/scripts/developer-update-maintenance.mjs';
 const tmp = () => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'nightly-suite-test-')));
@@ -167,4 +168,15 @@ test('Windows global layout binds declared npm cmd shim to its existing owner', 
   assert.equal(identity(location,prefix,{platform:'win32'}).launchers[0].owned,true);
   fs.writeFileSync(path.join(prefix,'example.cmd'),'node "%dp0%\\node_modules\\foreign\\cli.js" %*');
   assert.equal(identity(location,prefix,{platform:'win32'}).launchers[0].owned,false);
+});
+
+test('npm 11 object and npm 12 singleton dist-tag records choose identical release', () => {
+  const object={latest:'1.1.0',alpha:'1.2.0-alpha.1'};
+  assert.deepEqual(normalizeNpmDistTags([object]),object);
+  assert.deepEqual(selectTag('ruflo','1.0.0',[object],'alpha'),selectTag('ruflo','1.0.0',object,'alpha'));
+});
+test('ambiguous or malformed npm registry records cannot pick a release', () => {
+  for(const value of [[],[{latest:'1.0.0'},{latest:'2.0.0'}],[[{latest:'1.0.0'}]],[null],['1.0.0'],{latest:1},{}]) {
+    assert.throws(()=>normalizeNpmDistTags(value),/npm dist-tags/);
+  }
 });

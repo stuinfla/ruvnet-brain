@@ -19,6 +19,18 @@ export function cmpVersion(a, b) {
   }
   return 0;
 }
+export function normalizeNpmDistTags(value) {
+  // npm 11 emits an object for a queried field; npm 12 retains its singleton record array.
+  if (Array.isArray(value)) {
+    if (value.length !== 1) throw Error('npm dist-tags has ambiguous or empty records');
+    [value] = value;
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || !Object.keys(value).length || Object.values(value).some(version => typeof version !== 'string' || !version)) {
+    throw Error('npm dist-tags record is unverified');
+  }
+  return value;
+}
 export function pickTargetTag(tags, want = 'latest', defaultTag = 'latest') {
   const candidates = [...new Set([want, defaultTag])].filter(tag => typeof tags?.[tag] === 'string');
   candidates.sort((a, b) => cmpVersion(tags[b], tags[a]));
@@ -27,6 +39,7 @@ export function pickTargetTag(tags, want = 'latest', defaultTag = 'latest') {
 export function selectTag(name, current, tags, channel = 'latest') {
   if (!['latest', 'alpha'].includes(channel)) throw Error('unsupported update channel');
   // Kit's installed release contract uses next; never convert it to an npm alpha alias.
+  tags = normalizeNpmDistTags(tags);
   const wanted = name === '@pacphi/agentic-kit' ? 'next' : FAMILY.test(name) && channel === 'alpha' ? 'alpha' : 'latest';
   const { tag, target: version } = pickTargetTag(tags, wanted);
   if (!tag) throw Error(`no allowed release tag: ${name}`);

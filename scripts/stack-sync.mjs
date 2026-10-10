@@ -37,8 +37,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { runDeveloperUpdate, readDeveloperUpdateConfig } from '../plugin/scripts/developer-update.mjs';
-import { FAMILY, PLUGIN_MARKETPLACES, cmpVersion, pickTargetTag } from '../plugin/scripts/developer-update-policy.mjs';
-export { FAMILY, PLUGIN_MARKETPLACES, cmpVersion, pickTargetTag } from '../plugin/scripts/developer-update-policy.mjs';
+import { FAMILY, PLUGIN_MARKETPLACES, cmpVersion, pickTargetTag, normalizeNpmDistTags } from '../plugin/scripts/developer-update-policy.mjs';
+export { FAMILY, PLUGIN_MARKETPLACES, cmpVersion, pickTargetTag, normalizeNpmDistTags } from '../plugin/scripts/developer-update-policy.mjs';
 
 const HOME = os.homedir();
 
@@ -190,7 +190,7 @@ function listInstalled({ lib = GLOBAL_LIB, pluginsDir = PLUGINS_DIR } = {}) {
 function registryTags(pkg) {
   const r = spawnSync('npm', ['view', pkg, 'dist-tags', '--json'], { encoding: 'utf8', timeout: 30000 });
   if (r.status !== 0 || !r.stdout) return null;
-  try { return JSON.parse(r.stdout); } catch { return null; }
+  try { return normalizeNpmDistTags(JSON.parse(r.stdout)); } catch { return null; }
 }
 
 // A second copy of a stack package in the npx cache can only ever SHADOW the global one.
