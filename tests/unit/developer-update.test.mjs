@@ -154,7 +154,8 @@ test('registered coordinator bridges automatic hooks to the same bytes; corrupte
 test('canonical nightly health is source/identity bound; manual checks do not prove nightly runs', () => {
   const home=tmp(),brainHome=path.join(home,'.cache/ruvnet-brain'),source=new URL('../../bin/nightly-refresh.mjs',import.meta.url).pathname;
   const record=installNightlyRunner({brainHome,source,nodePath:process.execPath});
-  const receipt={schemaVersion:1,kind:'nightly-suite-update',mode:'apply',state:'completed',ok:true,sourceSha256:record.updateModules['developer-update.mjs'].sha256,schedulerIdentity:record.identity,finishedAt:new Date().toISOString()};
+  const sourceSnapshot=Object.fromEntries(Object.entries(record.updateModules).map(([name,value])=>[name,value.sha256]));
+  const receipt={sourceSnapshot,schemaVersion:1,kind:'nightly-suite-update',mode:'apply',state:'completed',ok:true,sourceSha256:record.updateModules['developer-update.mjs'].sha256,schedulerIdentity:record.identity,finishedAt:new Date().toISOString()};
   atomic(path.join(brainHome,'nightly-suite-update.json'),receipt);assert.equal(developerRunHealth({brainHome,registration:record}).state,'ok');
   receipt.mode='check';atomic(path.join(brainHome,'nightly-suite-update.json'),receipt);assert.equal(developerRunHealth({brainHome,registration:record}).state,'never-ran');
   receipt.sourceSha256='forged';atomic(path.join(brainHome,'nightly-suite-update.json'),receipt);assert.equal(developerRunHealth({brainHome,registration:record}).state,'failed');

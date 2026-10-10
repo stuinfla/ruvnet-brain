@@ -254,7 +254,8 @@ export function developerRunHealth({ brainHome, registration, now = Date.now(), 
   try { receipt = JSON.parse(fs.readFileSync(file, 'utf8')); }
   catch (error) { return { state: 'failed', evidence: `Coordinated update receipt unreadable: ${error.message}`, receipt: null }; }
   const bound = receipt.kind === 'nightly-suite-update' && receipt.schemaVersion === 1
-    && receipt.sourceSha256 === registration.updateModules?.['developer-update.mjs']?.sha256;
+    && receipt.sourceSha256 === registration.updateModules?.['developer-update.mjs']?.sha256
+    && ['developer-update.mjs', 'developer-update-policy.mjs', 'developer-update-lock.mjs', 'developer-update-maintenance.mjs', 'developer-update-cleanup.mjs'].every(name => receipt.sourceSnapshot?.[name] === registration.updateModules?.[name]?.sha256);
   const ageHours = (now - Date.parse(receipt.finishedAt || receipt.startedAt || '')) / 3_600_000;
   if (!bound || !Number.isFinite(ageHours)) return { state: 'failed', evidence: 'Coordinated update receipt is not bound to registered source.', receipt };
   if (receipt.state === 'running') {

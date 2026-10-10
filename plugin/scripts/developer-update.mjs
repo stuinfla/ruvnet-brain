@@ -249,8 +249,10 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
   const locate = name => locateExecutable(name, { env: childEnv });
   const receipt = { schemaVersion: 1, kind: 'nightly-suite-update', runId: crypto.randomUUID(), pid: process.pid,
     startedAt: new Date().toISOString(), mode, state: 'running', ok: false, config, steps: [], notes: [],
-    sourceSha256: hash(fs.readFileSync(new URL(import.meta.url))), ownerToken: lock.token, ownerPid: lock.ownerPid, schedulerIdentity: env.RUVNET_NIGHTLY_IDENTITY || null };
+    sourceSha256: null, ownerToken: lock.token, ownerPid: lock.ownerPid, schedulerIdentity: env.RUVNET_NIGHTLY_IDENTITY || null };
   try {
+    receipt.sourceSha256 = hash(fs.readFileSync(new URL(import.meta.url)));
+    receipt.sourceSnapshot = Object.fromEntries(['developer-update.mjs', 'developer-update-policy.mjs', 'developer-update-lock.mjs', 'developer-update-maintenance.mjs', 'developer-update-cleanup.mjs'].map(name => [name, hash(fs.readFileSync(new URL(name, import.meta.url)))]));
     atomic(paths.receipt, receipt);
     const npm = locate('npm');
     if (!npm) throw Error('existing npm owner absent; fresh install refused');
