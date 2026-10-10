@@ -252,24 +252,45 @@ export function resolveNightlyProofBundle({ brainHome, env = process.env } = {})
 }
 
 export function developerRunHealth({ brainHome, registration, now = Date.now(), maxAgeHours = 30 }) {
-  const file = path.join(brainHome, 'nightly-suite-update.json');
-  if (!fs.existsSync(file)) return { state: 'never-ran', evidence: 'No coordinated update receipt exists yet.', receipt: null };
+  const scheduled = value => value?.mode === 'apply' && value.scheduled !== false && !!value.schedulerIdentity;
+  const readReceipt = file => {
+    try {
+      const stat = fs.lstatSync(file);
+      if (!stat.isFile() || stat.isSymbolicLink()) throw Error('receipt is not a regular file');
+      return JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+  };
   let receipt;
-  try { receipt = JSON.parse(fs.readFileSync(file, 'utf8')); }
-  catch (error) { return { state: 'failed', evidence: `Coordinated update receipt unreadable: ${error.message}`, receipt: null }; }
+  try {
+    const retained = readReceipt(path.join(brainHome, 'scheduler/last-suite-attempt.json'));
+    const latest = readReceipt(path.join(brainHome, 'nightly-suite-update.json'));
+    if (retained && !scheduled(retained)) throw Error('retained receipt is not a scheduled apply attempt');
+    receipt = retained || latest;
+    if (scheduled(latest)) {
+      const latestTime = Date.parse(latest.startedAt || latest.finishedAt || '');
+      const retainedTime = Date.parse(retained?.startedAt || retained?.finishedAt || '');
+      if (!retained || !Number.isFinite(latestTime) || !Number.isFinite(retainedTime) || latestTime >= retainedTime) receipt = latest;
+    }
+  } catch (error) { return { state: 'failed', evidence: `Coordinated update receipt unreadable or refused: ${error.message}`, receipt: null }; }
+  if (!receipt) return { state: 'never-ran', evidence: 'No coordinated update receipt exists yet.', receipt: null };
   const validDigest = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
   const bound = validDigest(receipt.sourceSha256) && receipt.kind === 'nightly-suite-update' && receipt.schemaVersion === 1
     && receipt.sourceSha256 === registration.updateModules?.['developer-update.mjs']?.sha256
+    && Object.entries(receipt.sourceSnapshot || {}).every(([name, digest]) => validDigest(digest) && digest === registration.updateModules?.[name]?.sha256)
     && EXECUTION_MODULES.filter(name => name !== 'plugin-artifact-proof.mjs' || registration.updateModules?.[name]).every(name => validDigest(receipt.sourceSnapshot?.[name]) && receipt.sourceSnapshot[name] === registration.updateModules?.[name]?.sha256);
   const ageHours = (now - Date.parse(receipt.finishedAt || receipt.startedAt || '')) / 3_600_000;
-  if (!bound || !Number.isFinite(ageHours)) return { state: 'failed', evidence: 'Coordinated update receipt is not bound to registered source.', receipt };
+  const times = [receipt.startedAt, receipt.finishedAt].filter(value => value !== undefined).map(value => Date.parse(value));
+  const timestampsValid = times.length > 0 && times.every(value => Number.isFinite(value) && value <= now)
+    && !(receipt.startedAt && receipt.finishedAt && Date.parse(receipt.finishedAt) < Date.parse(receipt.startedAt));
+  if (!bound) return { state: 'failed', evidence: 'Coordinated update receipt is not bound to registered source.', receipt };
+  if (!Number.isFinite(ageHours) || !timestampsValid) return { state: 'failed', evidence: 'Coordinated update receipt timestamps are invalid or future-dated.', receipt };
+  if (!scheduled(receipt) || receipt.schedulerIdentity !== registration.identity) return { state: 'never-ran', ageHours, receipt, evidence: 'No scheduled apply attempt is bound to the current registration.' };
   if (receipt.state === 'running') {
     const lock = sharedLockStatus({ brainHome });
     const live = lock.state === 'running' && lock.owner.pid === (receipt.ownerPid || receipt.pid) && lock.owner.token === receipt.ownerToken;
     return { state: live ? 'running' : 'failed', ageHours, receipt, evidence: live ? 'Coordinated updates have a live exact owner.' : 'Coordinated update owner is absent or unverified.' };
   }
   if (receipt.state === 'failed' || receipt.ok !== true) return { state: 'failed', ageHours, receipt, evidence: receipt.error || 'Coordinated updates failed.' };
-  if (receipt.mode !== 'apply' || receipt.schedulerIdentity !== registration.identity) return { state: 'never-ran', ageHours, receipt, evidence: 'Latest receipt is manual or a currency check; nightly execution remains unproven.' };
   if (receipt.state !== 'completed') return { state: 'failed', ageHours, receipt, evidence: 'Coordinated update terminal state is unverified.' };
   if (ageHours > maxAgeHours) return { state: 'stale', ageHours, receipt, evidence: `Last coordinated update is ${ageHours.toFixed(1)}h old.` };
   const verification = { ok: bound && receipt.mode === 'apply' && receipt.schedulerIdentity === registration.identity && receipt.state === 'completed' && receipt.ok === true && ageHours >= 0 && ageHours <= maxAgeHours };

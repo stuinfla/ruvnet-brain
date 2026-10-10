@@ -310,7 +310,7 @@ function knowledge(run, dryRun, runId, { brainHome, root, node }) {
 }
 export function developerUpdatePaths({ home = os.homedir(), brainHome = process.env.RUVNET_BRAIN_HOME || path.join(home, '.cache/ruvnet-brain') } = {}) {
   return { home, brainHome, config: path.join(brainHome, 'developer-update-config.json'),
-    receipt: path.join(brainHome, 'nightly-suite-update.json'), lock: path.join(brainHome, 'developer-update.lock') };
+    receipt: path.join(brainHome, 'nightly-suite-update.json'), scheduledReceipt: path.join(brainHome, 'scheduler/last-suite-attempt.json'), lock: path.join(brainHome, 'developer-update.lock') };
 }
 export function validateDeveloperUpdateConfig(value = {}) {
   const defaults = { schemaVersion: 1, channel: 'latest', scope: 'ruvnet', homebrew: false, uv: false, cargo: false, native: false, managedCallback: null, cleanup: false, preservePackages: [] };
@@ -371,12 +371,42 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
   run.receipt = (command, args, options = {}) => dispatch(command, args, { ...options, capture: true });
   const locate = name => locateExecutable(name, { env: childEnv });
   const receipt = { schemaVersion: 1, kind: 'nightly-suite-update', runId: crypto.randomUUID(), pid: process.pid,
-    startedAt: new Date().toISOString(), mode, state: 'running', ok: false, config, steps: [], notes: [],
+    startedAt: new Date().toISOString(), mode, scheduled: mode === 'apply' && env.RUVNET_NIGHTLY === '1' && !!env.RUVNET_NIGHTLY_IDENTITY, state: 'running', ok: false, config, steps: [], notes: [],
     sourceSha256: null, ownerToken: lock.token, ownerPid: lock.ownerPid, schedulerIdentity: env.RUVNET_NIGHTLY_IDENTITY || null };
+  const scheduledAttempt = value => value?.mode === 'apply' && value.scheduled !== false && !!value.schedulerIdentity;
+  const readAttempt = file => {
+    try {
+      const stat = fs.lstatSync(file);
+      if (!stat.isFile() || stat.isSymbolicLink()) throw Error('scheduled receipt must be a regular file');
+      return read(file);
+    } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+  };
+  const persistReceipt = () => {
+    // Write Activity first: if the second write fails, health still sees this newer failed attempt.
+    atomic(paths.receipt, receipt);
+    if (receipt.scheduled) {
+      try { atomic(paths.scheduledReceipt, receipt); }
+      catch (error) {
+        receipt.state = 'failed'; receipt.ok = false; receipt.error = `Scheduled receipt persistence failed: ${error.message}`;
+        atomic(paths.receipt, receipt);
+        throw error;
+      }
+    }
+  };
+  let latestMayBeReplaced = receipt.scheduled;
   try {
+    if (!receipt.scheduled) {
+      const latest = readAttempt(paths.receipt), retained = readAttempt(paths.scheduledReceipt);
+      const latestTime = Date.parse(latest?.startedAt || latest?.finishedAt || ''), retainedTime = Date.parse(retained?.startedAt || retained?.finishedAt || '');
+      if (scheduledAttempt(latest) && (!retained || !Number.isFinite(latestTime) || !Number.isFinite(retainedTime) || latestTime >= retainedTime)) {
+        // Preserve real legacy/failed evidence before a check or manual run replaces Activity.
+        atomic(paths.scheduledReceipt, latest);
+      }
+      latestMayBeReplaced = true;
+    }
     receipt.sourceSha256 = hash(fs.readFileSync(new URL(import.meta.url)));
     receipt.sourceSnapshot = Object.fromEntries(EXECUTION_MODULES.map(name => [name, hash(fs.readFileSync(new URL(name, import.meta.url)))]));
-    atomic(paths.receipt, receipt);
+    persistReceipt();
     const npm = locate('npm');
     if (!npm) throw Error('existing npm owner absent; fresh install refused');
     const prefix = run(npm, ['prefix', '-g'], { timeout: 30_000 }).trim();
@@ -386,16 +416,16 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
     childEnv.npm_config_prefix = prefix;
     receipt.npmIdentity = { npm, prefix, root, node: process.execPath };
     receipt.before = discover(root, prefix, config.scope);
-    atomic(paths.receipt, receipt);
+    persistReceipt();
     for (const before of receipt.before) {
       const tags = before.localSource ? {} : JSON.parse(run(npm, ['view', before.name, 'dist-tags', '--json'], { timeout: 90_000 }));
       receipt.steps.push(upgradePackage(before, tags, REVIEWED_INSTALL_SCRIPTS, { run, dryRun: mode === 'check', channel: config.channel, npm, preservePackages: config.preservePackages }));
-      atomic(paths.receipt, receipt);
+      persistReceipt();
     }
     receipt.plugins = await synchronizePlugins(run, mode === 'check', receipt.notes, { home, prefix, scope: config.scope, locate, unattended: !!env.RUVNET_NIGHTLY_IDENTITY });
     if (exists(path.join(paths.brainHome, 'kb/forge-update.mjs'))) receipt.knowledge = knowledge(run, mode === 'check', receipt.runId, { brainHome: paths.brainHome, root, node: process.execPath });
     else receipt.notes.push('Brain corpus absent; fresh knowledge install excluded');
-    receipt.maintenance = await maintenance(config, run, mode === 'check', { home, brainHome: paths.brainHome, locate, node: process.execPath, progress: result => { receipt.maintenance = result; atomic(paths.receipt, receipt); } });
+    receipt.maintenance = await maintenance(config, run, mode === 'check', { home, brainHome: paths.brainHome, locate, node: process.execPath, progress: result => { receipt.maintenance = result; persistReceipt(); } });
     receipt.cleanup = cleanupNpxDuplicates({ home, globalRoot: root, enabled: config.cleanup && mode === 'apply', run });
     receipt.after = discover(root, prefix, config.scope);
     receipt.state = mode === 'check' ? 'checked' : 'completed'; receipt.ok = true;
@@ -412,7 +442,7 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
     throw error;
   } finally {
     receipt.finishedAt = new Date().toISOString();
-    try { atomic(paths.receipt, receipt); } finally { lock.release(); }
+    try { if (latestMayBeReplaced) persistReceipt(); } finally { lock.release(); }
   }
 }
 export async function developerUpdateCli(args = process.argv.slice(2)) {
