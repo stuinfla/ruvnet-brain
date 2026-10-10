@@ -1,4 +1,4 @@
-Updated: 2026-10-10 05:06:39 EDT | Version 1.0.1
+Updated: 2026-10-10 05:37:59 EDT | Version 1.0.2
 Created: 2026-10-10 04:39:18 EDT
 
 # RuvNet Brain 4.6.0 — coordinated installed-tool updates
@@ -12,6 +12,9 @@ saved choice, native scheduler state and actual run evidence separately. The sch
 03:30 in the user's local time. The public default covers installed RuvNet-suite tools; broader
 developer-tool maintenance is an explicit choice.
 
+Latest/Alpha policy remains explicit in runtime receipts. Native updates use the existing
+command owner; private caches and signed applications retain their existing owner and path.
+
 The coordinator discovers the existing package prefix, commands and plugin scopes before
 applying updates. It preserves their owner and path, refuses downgrades and records targets,
 before/after snapshots and exclusions. Enabled maintenance stages use existing managers rather
@@ -24,6 +27,21 @@ Activity uses the source-bound run receipt. A check remains a check, a failed st
 visible, and an excluded or unverified tool is not reported as current. Hosted MCP software
 updates remain the provider's responsibility; checking a connection does not prove software
 currency. The Brain's signed corpus update still preserves private and local-ingest stores.
+
+## Dependency and plugin identity checks
+
+The knowledge runtime advances Sharp from 0.35.4 to 0.35.5, with a supported dependency floor
+of `>=0.35.5`. npm audits of the root and knowledge-runtime lockfiles on October 10 reported
+zero vulnerabilities. Dependency-audit results describe the audited lockfiles at their check time;
+they do not prove native image-processing behavior or all future registry state.
+
+Plugin currency uses published semantic versions for versioned unpinned plugins and exact
+commit identity for pinned or otherwise opaque targets. A versioned unpinned plugin does not
+need to match a newer repository HEAD when its published version is unchanged. Updates preserve
+installed user/project/local scopes and disabled state. Unresolved targets remain visible rather
+than being reported as current. A catalogue refresh is distinct from an installed plugin update.
+The inspected Codex CLI has no installed-plugin update command: Git catalogues can refresh while
+installed generations remain preserved. These limits stay visible in the run receipt.
 
 ## Evidence and limits
 
