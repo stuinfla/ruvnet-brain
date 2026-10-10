@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { compare, selectTag, discover, identity, upgradePackage, pluginScopes, scopeKey, runDeveloperUpdate, locateExecutable, atomic } from '../../plugin/scripts/developer-update.mjs';
+import { compare, selectTag, discover, identity, upgradePackage, pluginScopes, scopeKey, runDeveloperUpdate, locateExecutable, resolvePluginTarget, pluginUpdateDecision, synchronizePlugins, atomic } from '../../plugin/scripts/developer-update.mjs';
 import { acquireDeveloperLock, sharedLockStatus } from '../../plugin/scripts/developer-update-lock.mjs';
 import { automaticInvocation, automaticPath } from '../../plugin/scripts/automatic-update.mjs';
 import { installNightlyRunner, developerRunHealth } from '../../plugin/scripts/nightly-scheduler.mjs';
@@ -218,5 +218,64 @@ test('minimal scheduler PATH discovers native owner roots and prefers existing g
     const receipt=await runDeveloperUpdate({mode:'check',home,config:{cargo:true},env:{PATH},runner});
     const stage=receipt.maintenance.stages.find(s=>s.owner==='cargo-registry-tools');assert.ok(stage);assert.equal(stage.before[0].name,'cargo-audit');assert.equal(stage.after[0].version,'1.0.0');assert.equal(stage.state,'completed');assert.equal(request.mock.calls.length,1);
     assert.ok(!receipt.maintenance.exclusions.some(note=>note.startsWith('cargo has no existing')));assert.ok(!calls.some(c=>c.args[0]==='install'));
+  } finally { request.mockRestore(); }
+});
+
+function pluginFixture({source='./',version=null,catalogFile=false,rootCatalog=false}={}) {
+  const home=tmp(),market=path.join(home,'market'),catalog=catalogFile?path.join(home,'catalog.json'):path.join(market,rootCatalog?'marketplace.json':'.claude-plugin/marketplace.json');
+  const entry={name:'sample',source,...(version?{version}:{})};atomic(catalog,{plugins:[entry]});
+  atomic(path.join(home,'.claude/plugins/known_marketplaces.json'),{market:{installLocation:catalogFile?catalog:market}});
+  return {home,market,catalog,plugin:{id:'sample@market',scope:'user',projectPath:null,version:version||'unknown',gitCommitSha:null}};
+}
+test('root-source plugins bind root manifest or refreshed catalogue commit without clones', () => {
+  const f=pluginFixture();atomic(path.join(f.market,'.claude-plugin/plugin.json'),{version:'1.0.0'});
+  const sha='a'.repeat(40),target=resolvePluginTarget(f.plugin,{home:f.home,run:()=>sha});
+  assert.equal(target.version,'1.0.0');assert.equal(target.commit,sha);assert.equal(pluginUpdateDecision({...f.plugin,version:'1.0.0',gitCommitSha:sha},target).state,'CURRENT');
+});
+test('hash-version plugins use exact refreshed git identity; opaque targets stay unsupported', () => {
+  const f=pluginFixture(),sha='b'.repeat(40);
+  const target=resolvePluginTarget(f.plugin,{home:f.home,run:()=>sha});assert.equal(target.version,null);assert.equal(pluginUpdateDecision({...f.plugin,gitCommitSha:sha},target).state,'CURRENT');
+  assert.equal(resolvePluginTarget(f.plugin,{home:f.home,run:()=>{throw Error('no git')}}).supported,false);
+});
+test('pinned remote plugin sources compare the catalogue SHA with installed SHA', () => {
+  const sha='c'.repeat(40),f=pluginFixture({source:{source:'url',url:'https://github.com/example/plugin.git',sha}});
+  const target=resolvePluginTarget(f.plugin,{home:f.home,run:()=>assert.fail()});assert.equal(target.commit,sha);assert.equal(pluginUpdateDecision({...f.plugin,gitCommitSha:sha},target).state,'CURRENT');assert.equal(pluginUpdateDecision(f.plugin,target).state,'UPDATE_AVAILABLE');
+});
+test('JSON-file and root marketplace catalogues are read at their exact installed owner path', () => {
+  for(const settings of [{catalogFile:true},{rootCatalog:true}]) {const f=pluginFixture({...settings,version:'1.0.0',source:{source:'github',repo:'example/plugin'}});assert.equal(resolvePluginTarget(f.plugin,{home:f.home,run:()=>assert.fail()}).version,'1.0.0');}
+});
+test('escape and opaque/unpinned refs cannot authorize plugin update', () => {
+  const escape=pluginFixture({source:'./../../outside',version:'2.0.0'});assert.equal(resolvePluginTarget(escape.plugin,{home:escape.home}).supported,false);
+  const opaque=pluginFixture({source:{source:'url',url:'https://github.com/example/plugin.git'}});assert.equal(resolvePluginTarget(opaque.plugin,{home:opaque.home}).supported,false);
+  assert.equal(pluginUpdateDecision({version:'2.0.0'},{supported:true,version:'1.0.0',commit:'d'.repeat(40)}).state,'AHEAD');
+});
+test('stock plugin update preserves original scope/cwd and verifies exact pinned commit', () => {
+  const sha='e'.repeat(40),f=pluginFixture({source:{source:'url',url:'https://github.com/example/plugin.git',sha}}),project=path.join(f.home,'project'),artifact=path.join(f.home,'artifact');fs.mkdirSync(project);fs.mkdirSync(artifact);
+  const installed=path.join(f.home,'.claude/plugins/installed_plugins.json');atomic(installed,{plugins:{'sample@market':[{scope:'local',projectPath:project,installPath:artifact,version:'unknown',gitCommitSha:'f'.repeat(40)}]}});
+  atomic(path.join(project,'.claude/settings.local.json'),{enabledPlugins:{'sample@market':false}});
+  const calls=[],runner=(command,args,options)=>{calls.push({command,args,options});if(args[1]==='update')atomic(installed,{plugins:{'sample@market':[{scope:'local',projectPath:project,installPath:artifact,version:sha.slice(0,12),gitCommitSha:sha}]}});return '{}';};
+  const notes=[],receipt=synchronizePlugins(runner,false,notes,{home:f.home,prefix:path.join(f.home,'prefix'),scope:'all',locate:name=>name==='claude'?'/fixture/claude':null});
+  const update=calls.find(c=>c.args[1]==='update');assert.deepEqual(update.args,['plugin','update','sample@market','--scope','local','--json']);assert.equal(update.options.cwd,project);assert.equal(receipt.steps[0].state,'UPDATED');assert.equal(receipt.after[0].gitCommitSha,sha);assert.equal(JSON.parse(fs.readFileSync(path.join(project,'.claude/settings.local.json'))).enabledPlugins['sample@market'],false);
+});
+test('plugin updater cannot accept success without exact target identity', () => {
+  const sha='1'.repeat(40),f=pluginFixture({source:{source:'github',repo:'example/plugin',sha}}),artifact=path.join(f.home,'artifact');fs.mkdirSync(artifact);
+  atomic(path.join(f.home,'.claude/plugins/installed_plugins.json'),{plugins:{'sample@market':[{scope:'user',installPath:artifact,version:'unknown',gitCommitSha:'2'.repeat(40)}]}});
+  assert.throws(()=>synchronizePlugins(()=>'{"ok":true}',false,[],{home:f.home,scope:'all',locate:()=>'/fixture/claude'}),/target not verified/);
+});
+
+test('native Rust channels precede Cargo installs and uv self-update precedes uv tool upgrades', async () => {
+  const home=tmp(),cargoRoot=path.join(home,'.cargo'),uv=path.join(home,'.local/bin/uv'),rustup=path.join(cargoRoot,'bin/rustup'),cargo=path.join(cargoRoot,'bin/cargo');
+  for(const file of [uv,rustup,cargo,path.join(cargoRoot,'bin/cargo-audit')]) {fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,'fixture',{mode:0o755});}
+  const toolRoot=path.join(home,'.local/share/uv/tools/sample');fs.mkdirSync(toolRoot,{recursive:true});fs.writeFileSync(path.join(toolRoot,'uv-receipt.toml'),'[tool]\nrequirements = [{ name = "sample" }]\n');
+  const crates=path.join(cargoRoot,'.crates2.json');atomic(crates,{installs:{'cargo-audit 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)':{bins:['cargo-audit'],version_req:null}}});
+  const calls=[],runner=(command,args)=>{calls.push({command,args});if(args[0]==='--version')return command===uv?'uv 0.13.0':'rustup 1.29.1';if(args[0]==='toolchain')return 'stable-aarch64-apple-darwin (default)\n1.89.0-aarch64-apple-darwin\nnightly-aarch64-apple-darwin';if(command===cargo&&args[0]==='install')atomic(crates,{installs:{'cargo-audit 2.0.0 (registry+https://github.com/rust-lang/crates.io-index)':{bins:['cargo-audit'],version_req:null}}});return '';};
+  const request=vi.spyOn(globalThis,'fetch').mockResolvedValue({ok:true,json:async()=>({crate:{max_stable_version:'2.0.0'}})});
+  try {
+    const receipt=await maintenance({native:true,uv:true,cargo:true},runner,false,{home,locate:name=>({uv,cargo})[name]||null});
+    const position=(command,args)=>calls.findIndex(c=>c.command===command&&args.every((value,i)=>c.args[i]===value));
+    assert.ok(position(rustup,['update','stable-aarch64-apple-darwin'])<position(cargo,['install','cargo-audit']));
+    assert.ok(position(uv,['self','update'])<position(uv,['tool','upgrade','sample']));
+    assert.ok(!calls.some(c=>c.command===rustup&&c.args[0]==='update'&&c.args[1].startsWith('1.89.0')));
+    assert.equal(receipt.stages.find(s=>s.owner==='cargo-registry-tools').after[0].version,'2.0.0');
   } finally { request.mockRestore(); }
 });

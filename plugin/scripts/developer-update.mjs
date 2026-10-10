@@ -103,7 +103,7 @@ export function pluginScopes(file) {
   return Object.entries(read(file).plugins || {}).flatMap(([id, entries]) => entries.map(p => {
     if (!['user', 'project', 'local', 'managed'].includes(p.scope)) throw Error(`unknown plugin scope: ${id}`);
     if (['project', 'local'].includes(p.scope) && (!p.projectPath || !path.isAbsolute(p.projectPath) || !exists(p.projectPath))) throw Error(`missing plugin project: ${id}`);
-    return { id, scope: p.scope, projectPath: p.projectPath || null, installPath: p.installPath, version: p.version };
+    return { id, scope: p.scope, projectPath: p.projectPath || null, installPath: p.installPath, version: p.version, gitCommitSha: p.gitCommitSha || null };
   }));
 }
 export function scopeKey(p) { return `${p.id}\0${p.scope}\0${p.projectPath || ''}`; }
@@ -119,40 +119,69 @@ function pluginFlags(scopes = [], home = HOME) {
   }
   return values;
 }
-export function pluginTarget(plugin, home = HOME) {
+export function resolvePluginTarget(plugin, { home = HOME, run = invoke } = {}) {
   try {
     const marketplace = plugin.id.split('@').at(-1), name = plugin.id.slice(0, plugin.id.lastIndexOf('@'));
-    const directory = read(path.join(home, '.claude/plugins/known_marketplaces.json'))[marketplace]?.installLocation;
-    if (!directory || !path.isAbsolute(directory)) return null;
-    const entry = read(path.join(directory, '.claude-plugin/marketplace.json')).plugins.find(p => p.name === name);
-    if (typeof entry?.version === 'string') return entry.version;
-    if (typeof entry?.source !== 'string' || !entry.source.startsWith('./')) return null;
-    const source = path.resolve(directory, entry.source);
-    if (!inside(directory, source)) return null;
-    return read(path.join(source, '.claude-plugin/plugin.json')).version || null;
-  } catch { return null; }
+    const location = read(path.join(home, '.claude/plugins/known_marketplaces.json'))[marketplace]?.installLocation;
+    if (!location || !path.isAbsolute(location)) throw Error('marketplace owner path absent');
+    const directory = fs.statSync(location).isDirectory() ? location : path.dirname(location);
+    const catalog = fs.statSync(location).isFile() ? location : [path.join(directory, '.claude-plugin/marketplace.json'), path.join(directory, 'marketplace.json')].find(exists);
+    if (!catalog) throw Error('marketplace catalogue absent');
+    const entry = read(catalog).plugins?.find(p => p.name === name);
+    if (!entry) throw Error('installed plugin absent from catalogue');
+    let version = typeof entry.version === 'string' && entry.version !== 'unknown' ? entry.version : null;
+    let commit = null, proof = 'catalog-version';
+    if (typeof entry.source === 'object' && entry.source !== null) {
+      if (!['url', 'github'].includes(entry.source.source)) throw Error('unsupported remote plugin source');
+      if (entry.source.sha !== undefined && !/^[a-f0-9]{40}$/i.test(entry.source.sha)) throw Error('malformed pinned plugin commit');
+      if (/^[a-f0-9]{40}$/i.test(entry.source.sha || '')) {
+        commit = entry.source.sha.toLowerCase(); proof = 'catalog-pinned-commit';
+      }
+    } else if (typeof entry.source === 'string' && entry.source.startsWith('./')) {
+      const source = path.resolve(directory, entry.source);
+      if (source !== directory && !inside(directory, source)) throw Error('plugin source escapes marketplace');
+      const manifest = path.join(source, '.claude-plugin/plugin.json');
+      if (!version && exists(manifest)) { const declared = read(manifest).version; version = declared && declared !== 'unknown' ? declared : null; }
+      try {
+        const resolved = run('git', ['-C', directory, 'rev-parse', 'HEAD'], { timeout: 10_000 }).trim();
+        if (/^[a-f0-9]{40}$/i.test(resolved)) { commit = resolved.toLowerCase(); proof = 'refreshed-marketplace-commit'; }
+      } catch { /* explicit catalogue/manifest version is still usable */ }
+    } else throw Error('unsupported plugin source shape');
+    if (!version && !commit) throw Error('opaque or unpinned plugin target');
+    return { supported: true, version, commit, proof, catalog, catalogSha256: hash(fs.readFileSync(catalog)) };
+  } catch (error) { return { supported: false, reason: error.message }; }
 }
-function plugins(run, dryRun, notes, { home, prefix, scope, locate }) {
+export function pluginTarget(plugin, home = HOME) { return resolvePluginTarget(plugin, { home }).version || null; }
+export function pluginUpdateDecision(plugin, target) {
+  if (!target.supported) return { state: 'UNSUPPORTED', reason: target.reason };
+  if (target.version && plugin.version && plugin.version !== 'unknown' && target.version !== plugin.version) {
+    try { if (compare(target.version, plugin.version) < 0) return { state: 'AHEAD', reason: 'published plugin version is older' }; }
+    catch { if (!target.commit) return { state: 'UNSUPPORTED', reason: 'plugin version ordering is opaque' }; }
+  }
+  if (target.commit) {
+    return { state: plugin.gitCommitSha?.toLowerCase() === target.commit ? 'CURRENT' : 'UPDATE_AVAILABLE', proof: target.proof };
+  }
+  return { state: target.version === plugin.version ? 'CURRENT' : 'UPDATE_AVAILABLE', proof: target.proof };
+}
+export function synchronizePlugins(run, dryRun, notes, { home, prefix, scope, locate }) {
   const installed = path.join(home, '.claude/plugins/installed_plugins.json');
   const all = pluginScopes(installed), before = all.filter(p => scope === 'all' || PLUGIN_MARKETPLACES.has(p.id.split('@').at(-1))), flags = pluginFlags(all, home);
   const claude = locate('claude');
   if (before.length && !claude) throw Error('installed Claude plugins have no existing Claude command');
-  if (!dryRun) {
-    const markets = [...new Set(before.map(p => p.id.split('@').at(-1)))];
-    for (const name of markets) run(claude, ['plugin', 'marketplace', 'update', name]);
-    for (const p of before) {
-      if (p.scope === 'managed') { notes.push(`managed plugin preserved: ${p.id}`); continue; }
-      const target = pluginTarget(p, home);
-      if (!target) { notes.push(`plugin target unverified; preserved: ${p.id}`); continue; }
-      if (target === p.version) continue;
-      let newer;
-      try { newer = compare(target, p.version) > 0; }
-      catch { notes.push(`plugin version ordering unverified; preserved: ${p.id}`); continue; }
-      if (!newer) { notes.push(`ahead plugin preserved: ${p.id}`); continue; }
-      run(claude, ['plugin', 'update', p.id, '--scope', p.scope, '--json'], { cwd: p.projectPath || home });
-      const live = pluginScopes(installed).find(item => scopeKey(item) === scopeKey(p));
-      if (!live || live.version !== target) throw Error(`plugin target not verified: ${p.id}`);
-    }
+  const steps = [];
+  const markets = [...new Set(before.map(p => p.id.split('@').at(-1)))];
+  if (!dryRun) for (const name of markets) run(claude, ['plugin', 'marketplace', 'update', name]);
+  for (const p of before) {
+    const target = resolvePluginTarget(p, { home, run });
+    const decision = p.scope === 'managed' ? { state: 'UNSUPPORTED', reason: 'managed scope belongs to its administrator' } : pluginUpdateDecision(p, target);
+    const step = { id: p.id, scope: p.scope, projectPath: p.projectPath, before: p, target, ...decision }; steps.push(step);
+    if (decision.state === 'UNSUPPORTED') { notes.push(`plugin target unsupported; preserved: ${p.id}: ${decision.reason}`); continue; }
+    if (decision.state === 'AHEAD') { notes.push(`ahead plugin preserved: ${p.id}`); continue; }
+    if (dryRun || decision.state === 'CURRENT') { step.after = p; continue; }
+    run(claude, ['plugin', 'update', p.id, '--scope', p.scope, '--json'], { cwd: p.projectPath || home });
+    const live = pluginScopes(installed).find(item => scopeKey(item) === scopeKey(p));
+    if (!live || (target.commit ? live.gitCommitSha?.toLowerCase() !== target.commit : live.version !== target.version)) throw Error(`plugin target not verified: ${p.id}`);
+    Object.assign(step, { state: 'UPDATED', after: live });
   }
   const after = pluginScopes(installed).filter(p => before.some(b => scopeKey(b) === scopeKey(p)));
   if (JSON.stringify(all.map(scopeKey).sort()) !== JSON.stringify(pluginScopes(installed).map(scopeKey).sort())) throw Error('plugin install set changed');
@@ -169,7 +198,7 @@ function plugins(run, dryRun, notes, { home, prefix, scope, locate }) {
     notes.push('Codex has no plugin update command; configured Git catalogues refreshed, installed generations preserved');
   }
   if (JSON.stringify(flags) !== JSON.stringify(pluginFlags(all, home))) throw Error('Codex plugin enablement changed');
-  return { before, after };
+  return { before, after, steps };
 }
 function knowledge(run, dryRun, runId, { brainHome, root, node }) {
   const kb = path.join(brainHome, 'kb'), updater = path.join(kb, 'forge-update.mjs');
@@ -269,7 +298,7 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
       receipt.steps.push(upgradePackage(before, tags, REVIEWED_INSTALL_SCRIPTS, { run, dryRun: mode === 'check', channel: config.channel, npm, preservePackages: config.preservePackages }));
       atomic(paths.receipt, receipt);
     }
-    receipt.plugins = plugins(run, mode === 'check', receipt.notes, { home, prefix, scope: config.scope, locate });
+    receipt.plugins = synchronizePlugins(run, mode === 'check', receipt.notes, { home, prefix, scope: config.scope, locate });
     if (exists(path.join(paths.brainHome, 'kb/forge-update.mjs'))) receipt.knowledge = knowledge(run, mode === 'check', receipt.runId, { brainHome: paths.brainHome, root, node: process.execPath });
     else receipt.notes.push('Brain corpus absent; fresh knowledge install excluded');
     receipt.maintenance = await maintenance(config, run, mode === 'check', { home, brainHome: paths.brainHome, locate, node: process.execPath, progress: result => { receipt.maintenance = result; atomic(paths.receipt, receipt); } });
@@ -279,7 +308,7 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
     receipt.coverage = { scope: config.scope, excluded: receipt.steps.filter(s => /preserved$/.test(s.state)).map(s => ({ name: s.name, reason: s.state })),
       ahead: receipt.steps.filter(s => s.state === 'ahead-preserved').map(s => s.name),
       preservedLocalModification: receipt.steps.filter(s => s.reason === 'preservedLocalModification').map(s => s.name),
-      unverified: receipt.notes.filter(note => /unverified|no plugin update command/.test(note)), notes: [...receipt.notes, ...(receipt.maintenance?.exclusions || [])] };
+      unverified: receipt.notes.filter(note => /unverified|unsupported|no plugin update command/.test(note)), notes: [...receipt.notes, ...(receipt.maintenance?.exclusions || [])] };
     return receipt;
   } catch (error) {
     receipt.state = 'failed'; receipt.error = error.message;

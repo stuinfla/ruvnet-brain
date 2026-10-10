@@ -29,6 +29,33 @@ export async function maintenance(config, run, dryRun, { home = HOME, brainHome,
     if (!['schemaVersion', 'scope', 'channel', 'cleanup', 'preservePackages', 'homebrew', 'uv', 'cargo', 'native', 'managedCallback'].includes(name)) throw Error(`unknown maintenance flag: ${name}`);
     if (['homebrew', 'uv', 'cargo', 'native'].includes(name) && typeof enabled !== 'boolean') throw Error(`maintenance flag must be boolean: ${name}`);
   }
+  if (config.native) {
+    for (const [file, args] of [[path.join(home, '.bun/bin/bun'), ['upgrade']], [path.join(home, '.local/bin/uv'), ['self', 'update']],
+      [path.join(home, '.cargo/bin/rustup'), ['self', 'update']], [path.join(home, '.local/bin/codex'), ['update']]]) {
+      if (!fs.existsSync(file)) { result.exclusions.push(`native owner absent: ${file}`); continue; }
+      const resolved = fs.realpathSync(file);
+      if (resolved.split(path.sep).includes('node_modules')) { result.exclusions.push(`npm owns native alias: ${file}`); continue; }
+      required(file);
+      const owner = fs.realpathSync(file), before = run(file, ['--version'], { timeout: 30_000 });
+      const stage = { owner: file, before, originalTarget: owner, state: 'running' }; result.stages.push(stage);
+      if (!dryRun) run(file, args, { timeout: 900_000 });
+      const after = run(file, ['--version'], { timeout: 30_000 });
+      const version = text => text.match(/\b(\d+\.\d+\.\d+(?:-[\w.-]+)?)/)?.[1];
+      if (!version(before) || !version(after) || compare(version(after), version(before)) < 0) throw Error(`native version changed unsafely: ${file}`);
+      // Native launchers may re-point to a newer version, but stay in the same established root.
+      const afterOwner = fs.realpathSync(file);
+      if (file.endsWith('/codex') && owner === file && afterOwner !== file) throw Error('native Codex owner changed');
+      Object.assign(stage, { after, currentTarget: afterOwner, state: 'completed' });
+    }
+    const rustup = path.join(home, '.cargo/bin/rustup');
+    if (fs.existsSync(rustup)) {
+    const before = run(rustup, ['toolchain', 'list'], { timeout: 30_000 });
+    const channels = before.split('\n').map(l => l.split(/\s/)[0]).filter(n => /^(stable|nightly)(-|$)/.test(n));
+    if (!dryRun) for (const channel of channels) run(rustup, ['update', channel, '--no-self-update'], { timeout: 1_800_000 });
+    result.stages.push({ owner: 'rust-toolchains', before, after: run(rustup, ['toolchain', 'list'], { timeout: 30_000 }), channels });
+    result.exclusions.push('Pinned Rust toolchains and all local-source builds preserved');
+    }
+  }
   if (config.homebrew && locate('brew')) {
     const brew = required(locate('brew'));
     const snapshot = () => JSON.parse(run(brew, ['info', '--json=v2', '--installed'], { timeout: 120_000 }));
@@ -91,33 +118,6 @@ export async function maintenance(config, run, dryRun, { home = HOME, brainHome,
       if (!live || live.version !== tool.version || live.source !== tool.source) throw Error(`Cargo local source changed: ${tool.name}`);
     }
     Object.assign(stage, { after, state: 'completed' });
-  }
-  if (config.native) {
-    for (const [file, args] of [[path.join(home, '.bun/bin/bun'), ['upgrade']], [path.join(home, '.local/bin/uv'), ['self', 'update']],
-      [path.join(home, '.cargo/bin/rustup'), ['self', 'update']], [path.join(home, '.local/bin/codex'), ['update']]]) {
-      if (!fs.existsSync(file)) { result.exclusions.push(`native owner absent: ${file}`); continue; }
-      const resolved = fs.realpathSync(file);
-      if (resolved.split(path.sep).includes('node_modules')) { result.exclusions.push(`npm owns native alias: ${file}`); continue; }
-      required(file);
-      const owner = fs.realpathSync(file), before = run(file, ['--version'], { timeout: 30_000 });
-      const stage = { owner: file, before, originalTarget: owner, state: 'running' }; result.stages.push(stage);
-      if (!dryRun) run(file, args, { timeout: 900_000 });
-      const after = run(file, ['--version'], { timeout: 30_000 });
-      const version = text => text.match(/\b(\d+\.\d+\.\d+(?:-[\w.-]+)?)/)?.[1];
-      if (!version(before) || !version(after) || compare(version(after), version(before)) < 0) throw Error(`native version changed unsafely: ${file}`);
-      // Native launchers may re-point to a newer version, but stay in the same established root.
-      const afterOwner = fs.realpathSync(file);
-      if (file.endsWith('/codex') && owner === file && afterOwner !== file) throw Error('native Codex owner changed');
-      Object.assign(stage, { after, currentTarget: afterOwner, state: 'completed' });
-    }
-    const rustup = path.join(home, '.cargo/bin/rustup');
-    if (fs.existsSync(rustup)) {
-    const before = run(rustup, ['toolchain', 'list'], { timeout: 30_000 });
-    const channels = before.split('\n').map(l => l.split(/\s/)[0]).filter(n => /^(stable|nightly)(-|$)/.test(n));
-    if (!dryRun) for (const channel of channels) run(rustup, ['update', channel, '--no-self-update'], { timeout: 1_800_000 });
-    result.stages.push({ owner: 'rust-toolchains', before, after: run(rustup, ['toolchain', 'list'], { timeout: 30_000 }), channels });
-    result.exclusions.push('Pinned Rust toolchains and all local-source builds preserved');
-    }
   }
   if (config.managedCallback) {
     const file = config.managedCallback;
