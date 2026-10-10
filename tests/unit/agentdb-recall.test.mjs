@@ -134,7 +134,7 @@ describe('canonical prompt-time AgentDB recall', () => {
       const calls = w.calls(); expect(calls.some(c => c.args.includes('default'))).toBe(true); expect(calls.some(c => c.args.includes('proj'))).toBe(true);
       for (const c of calls) {
         expect(c.args[c.args.indexOf('--path') + 1]).toBe(path.join(w.proj, '.swarm', 'memory.db'));
-        expect(c.cwd).not.toBe(w.proj); expect(c.daemon).toBe('0'); expect(fs.existsSync(c.cwd)).toBe(false);
+        expect(c.cwd).not.toBe(w.proj); expect(c.daemon).toBe('0'); expect(fs.existsSync(c.cwd)).toBe(false); // sync-version-ignore: daemon opt-out is the fixed CLI environment protocol string
       }
       expect(fs.existsSync(path.join(w.proj, 'ruvector.db'))).toBe(false);
     } finally { w.cleanup(); }

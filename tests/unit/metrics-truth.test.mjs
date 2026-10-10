@@ -46,7 +46,7 @@ describe('metrics observations never manufacture a score or measurements', () =>
     expect(body.data.sources.npm.period).toEqual({ start: '2026-10-03', end: '2026-10-04' });
     expect(body.data.sources.github.checkedAt).toBe(body.timestamp);
     expect(body.data.performance.requestsPerSecond).toBeNull();
-    expect(render(body.data).get('dashboard').innerHTML).toContain('72');
+    expect(render(body.data).get('dashboard').innerHTML).toContain('72'); // sync-version-ignore: 72 is the fixture API response whose rendered value this test checks
   });
   it('partial and malformed sources render missing values without false zeros', async () => {
     const { body } = await call(async url => ({ ok: true, json: async () => String(url).includes('npm')

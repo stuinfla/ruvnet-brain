@@ -49,7 +49,7 @@ describe('active managed generation boundary (#384)', () => {
     activate(fx, '0.0.102', 2);
     const refused = await call('ruvnet_cli_run', runArgs(fx), fx.env, undefined, lifecycle);
     expect(refused).toMatchObject({ isError: true, fixtureGeneration: '0.0.102' }); expect(refused.content[0].text).toMatch(/read the interface first/i);
-    expect((await call('ruvnet_cli_help', args, fx.env)).fixtureGeneration).toBe('0.0.102');
+    expect((await call('ruvnet_cli_help', args, fx.env)).fixtureGeneration).toBe('0.0.102'); // sync-version-ignore: these synthetic fixture generations distinguish concurrent installed byte identities
     expect(fs.readFileSync(stamp, 'utf8')).not.toBe(previous);
     expect(await call('ruvnet_cli_run', runArgs(fx), fx.env, undefined, lifecycle)).toMatchObject({ isError: false, fixtureGeneration: '0.0.102', structuredContent: { code: 0, stdout: 'generation fixture executed\n' } });
     const fetch = async () => ({ ok: true, text: async () => '{"version":"3.0.0"}' });
@@ -88,7 +88,7 @@ describe('active managed generation boundary (#384)', () => {
     const inFlight = call('ruvnet_cli_help', args, fx.env);
     expect(await entered).toContain('/versions/0.0.101/');
     const leases = path.join(fx.brain, 'leases'); const files = fs.readdirSync(leases);
-    expect(files).toHaveLength(1); expect(JSON.parse(fs.readFileSync(path.join(leases, files[0]), 'utf8')).version).toBe('0.0.101');
+    expect(files).toHaveLength(1); expect(JSON.parse(fs.readFileSync(path.join(leases, files[0]), 'utf8')).version).toBe('0.0.101'); // sync-version-ignore: these synthetic fixture generations distinguish concurrent installed byte identities
     activate(fx, '0.0.102', 2); release(); expect((await inFlight).isError).toBe(false); expect(fs.readdirSync(leases)).toEqual([]);
     activate(fx, '0.0.101', 3); fs.appendFileSync(path.join(root, 'mcp/managed-cli-interface.mjs'), '\n// altered immutable code\n');
     expect((await call('ruvnet_cli_help', args, fx.env)).content[0].text).toMatch(/immutable generation changed/);

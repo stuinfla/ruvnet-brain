@@ -236,6 +236,7 @@ export function sampleIdFor(remedy) {
   switch (remedy.key) {
     case 'memory-index': return 'repair:memory-index';
     case 'learning-flush': return 'learning:flush';
+    case 'learning-legacy-user-flush': return 'learning:flush-legacy-user';
     case 'learning-train': return 'learning:train';
     case 'distill-fleet': return 'learning:distill-fleet';
     case 'enable-memory-distillation': return 'enable:memory-distillation';

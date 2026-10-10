@@ -103,6 +103,18 @@ test('the North Star recommendation is runnable — it was not, and that was the
   expect(plan.exec.needsReceipt, 'a fleet-wide change must record WHICH stores it touched, or its undo is a guess').toBeTruthy();
 });
 
+test('legacy user learning has a sample that resolves to its exact retained-history handler', () => {
+  const remedy = REMEDIES.find((r) => r.key === 'learning-legacy-user-flush');
+  expect(remedy).toBeTruthy();
+  const id = sampleIdFor(remedy);
+  expect(id).toBe('learning:flush-legacy-user');
+  const plan = planFor(id);
+  expect(plan.key).toBe(remedy.key);
+  expect(plan.exec).toMatchObject({ script: 'scripts/health-repair.mjs', args: ['--flush-legacy-user-learning'] });
+  expect(plan.undo.kind).toBe(UNDO_KINDS.NONE);
+  expect(plan.undo.human).toContain('original queue bytes stay retained');
+});
+
 test('project distillation stays explicitly runnable but is not offered without an available undo', () => {
   const ids = allOfferableIds();
   expect(ids.includes('enable:memory-distillation'), 'an unavailable inverse must not be offered as reversible').toBe(false);

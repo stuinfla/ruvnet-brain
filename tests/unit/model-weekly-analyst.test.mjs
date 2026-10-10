@@ -87,7 +87,7 @@ it('uses the real dispatch boundary, Standard argv, stdin and bounded structured
   expect(schema.properties.proposedRoutes.maxItems).toBe(2);
   expect(schema.properties.providerAnalyses.maxItems).toBe(2);
   expect(schema.properties.gaps.maxItems).toBe(4);
-  expect(capture.options.env.MODEL_ROUTER_WEEKLY_ANALYST).toBe('1');
+  expect(capture.options.env.MODEL_ROUTER_WEEKLY_ANALYST).toBe('1'); // sync-version-ignore: the analyst child marker is the fixed environment protocol string
   expect(capture.options.env.OPENROUTER_API_KEY).toBeUndefined(); expect(capture.options.env.RUVNET_SIGNING_KEY).toBeUndefined();
   expect(capture.prompt).toContain('UNTRUSTED DATA'); expect(capture.prompt).toContain('Owner instruction');
   expect(fs.readFileSync(path.join(f.routerDir, 'routing-policy.json'), 'utf8')).toBe(before);

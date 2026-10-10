@@ -172,7 +172,7 @@ describe('Claude native startup guard', () => {
   }
   it('accepts bound live receipt, preserves native status, and cleans owned launch data', async () => {
     const f = fixture('ready'); const result = await runClaudeTerminal(f);
-    expect(result.code).toBe(7); expect(result.readinessReceipt.nativeVersion).toBe('2.1.287');
+    expect(result.code).toBe(7); expect(result.readinessReceipt.nativeVersion).toBe('2.1.287'); // sync-version-ignore: the native version is supplied by this isolated launcher fixture
     expect(fs.readdirSync(f.tempRoot).some((name) => name.startsWith('rnb-claude-'))).toBe(false);
   });
   it.each(['missing', 'bad'])('terminates only its own child on %s receipt', async (mode) => {
