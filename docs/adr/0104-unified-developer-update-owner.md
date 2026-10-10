@@ -3,8 +3,8 @@ id: ADR-104
 title: One source-bound coordinator for installed developer updates
 status: Accepted
 date: 2026-10-10
-updated: 2026-10-10 08:24:10 EDT
-version: 1.0.4
+updated: 2026-10-10 12:34:24 EDT
+version: 1.0.5
 authors: [Stuart Kerr, Codex]
 tags: [updates, install-identity, scheduler, receipts, footprint]
 amends: [ADR-098]
@@ -40,3 +40,19 @@ Brain knowledge is checked using its existing installed KB updater and a fresh m
 ADR-098's known-generation footprint guarantees remain in force. Additional npx cleanup is explicit: only attributed Brain/Ruflo installer-cache roots with an existing global counterpart, known cache contents and no live process/open-file owner qualify. Unknown files, aliases and ownership remain intact. No plugin generation, signed application, project dependency tree, KB backup or git worktree is removed by this coordinator.
 
 Validation covers absent tools, same-prefix binding, latest/alpha ordering, downgrade rejection, shadowed launchers, inherited lock ownership, failed receipts, original plugin scopes, local uv/Cargo sources, safe npx cleanup and immutable scheduler-module registration. Provider apply receipts and real platform activation are separate acceptance evidence, collected by integration against the final candidate source.
+
+## Trusted terminal wrapper and scheduled execution correction (4.6.2)
+
+Native Codex maintenance distinguishes an exact registered Brain wrapper from the
+standalone executable it delegates to. Owned configuration, complete runtime digest,
+exact wrapper bytes and native standalone paths must verify before a provider update.
+The existing installer restores that registered wrapper with shared Claude configuration
+preserved and shell integration unchanged. Unknown replacements fail closed. Recovery
+can restore the wrapper and its prior native reference; it does not roll back files the
+vendor installer changed.
+
+The verified developer-suite runner forwards all five registered execution identity
+fields to the coordinator. This corrects the missing registration, Node, runner and
+digest fields while retaining the existing identity verifier and scheduler contract.
+Fixture acceptance does not establish a completed scheduled customer update; integration
+must collect actual installed registration and execution evidence on the published build.

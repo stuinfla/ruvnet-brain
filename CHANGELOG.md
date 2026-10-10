@@ -10,6 +10,14 @@ current campaign and is finalized by the lead session before the next release cu
 
 ## Unreleased
 
+## 4.6.2 — 2026-10-10
+
+- Native Codex updates preserve the exact registered Brain launcher after verifying
+  owned configuration, complete runtime and standalone executable identity.
+- Developer-suite scheduled runs forward the registration and executable identity
+  required by the installed update verifier. Corpus freshness is unchanged.
+
+
 ## 4.6.1 — 2026-10-10
 
 - Restores an inviting README with rendered architecture and workflow diagrams,

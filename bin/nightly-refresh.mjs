@@ -80,7 +80,11 @@ try {
   if (registration.mode === 'developer-suite') {
     const coordinator = await import(pathToFileURL(modules['developer-update.mjs'].path).href);
     const receipt = await coordinator.runDeveloperUpdate({ mode: 'apply', env: { ...process.env,
-      RUVNET_NIGHTLY_IDENTITY: registration.identity, RUVNET_NIGHTLY: '1' } });
+      RUVNET_NIGHTLY_IDENTITY: registration.identity, RUVNET_NIGHTLY: '1',
+      RUVNET_NIGHTLY_REGISTRATION: registrationPath,
+      RUVNET_NIGHTLY_NODE_PATH: registration.nodePath,
+      RUVNET_NIGHTLY_RUNNER_PATH: registration.runnerPath,
+      RUVNET_NIGHTLY_RUNNER_SHA256: registration.runnerSha256 } });
     console.log(JSON.stringify(receipt));
     process.exit(0);
   }

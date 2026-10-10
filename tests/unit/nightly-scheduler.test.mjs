@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   NIGHTLY_LABEL,
   updateOwnedByAgenticKit,
@@ -85,6 +87,41 @@ function fixture() {
 }
 
 describe('one immutable nightly executable across every scheduler', () => {
+  it('forwards verified execution identity from the actual developer-suite runner', () => {
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-suite-identity-')));
+    roots.push(root);
+    const brainHome = path.join(root, 'brain');
+    const moduleSource = path.join(root, 'modules');
+    fs.mkdirSync(moduleSource);
+    const sourceDir = fileURLToPath(new URL('../../plugin/scripts/', import.meta.url));
+    for (const name of fs.readdirSync(sourceDir).filter(name => name.endsWith('.mjs'))) {
+      fs.copyFileSync(path.join(sourceDir, name), path.join(moduleSource, name));
+    }
+    const verifier = pathToFileURL(path.join(sourceDir, 'nightly-scheduler.mjs')).href;
+    fs.writeFileSync(path.join(moduleSource, 'developer-update.mjs'), `
+      import { verifyNightlyExecutionIdentity } from ${JSON.stringify(verifier)};
+      export async function runDeveloperUpdate({ env }) {
+        const result = verifyNightlyExecutionIdentity({ brainHome: env.RUVNET_BRAIN_HOME, env });
+        if (!result.ok) throw new Error(result.why);
+        return { ok: true };
+      }
+    `);
+    const env = { ...process.env, HOME: root, RUVNET_BRAIN_HOME: brainHome };
+    for (const key of Object.keys(env).filter(key => key.startsWith('RUVNET_NIGHTLY'))) delete env[key];
+    const record = installNightlyRunner({ brainHome, source: fileURLToPath(new URL('../../bin/nightly-refresh.mjs', import.meta.url)),
+      nodePath: process.execPath, developerSuite: true, moduleSource, env });
+    for (const poison of [false, true]) {
+      const childEnv = { ...env };
+      if (poison) for (const key of ['REGISTRATION', 'NODE_PATH', 'RUNNER_PATH', 'RUNNER_SHA256']) {
+        childEnv[`RUVNET_NIGHTLY_${key}`] = 'foreign caller value';
+      }
+      const result = spawnSync(process.execPath, [record.runnerPath, '--registration', record.recordPath],
+        { env: childEnv, encoding: 'utf8', timeout: 10_000 });
+      expect(result.error).toBeUndefined();
+      expect(result.status, result.stderr).toBe(0);
+    }
+  });
+
   it('separates proof jobs from production and rehashes their exact tarball on every read', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-nightly-proof-'));
     roots.push(root);

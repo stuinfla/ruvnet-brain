@@ -4,8 +4,8 @@ title: Routing architecture qualification requires a current finite source revie
 status: Accepted
 date: 2026-10-05
 updated: 2026-10-10
-version: 0.1.24
-reviewed_digest: fe3bd67a609b
+version: 0.1.25
+reviewed_digest: 6c905535ed9c
 impl: built
 authors: [Stuart Kerr, Codex]
 tags: [routing, governance, review, release, traceability]
@@ -192,6 +192,10 @@ governs:
   - .github/workflows/release-candidate-preflight.yml
   - .github/workflows/protected-release.yml
   - .github/workflows/early-public.yml
+  - plugin/scripts/developer-update-maintenance.mjs
+  - tests/unit/developer-update-codex-launcher.test.mjs
+  - bin/nightly-refresh.mjs
+  - tests/unit/nightly-scheduler.test.mjs
 ---
 
 # ADR-103 — Routing architecture review lock
@@ -254,6 +258,22 @@ actual normal managed UUID-resume witness on an owned synthetic native-cache fix
 synthetic-context acceptance, not proof the live user conversation resumed or the owner activated a
 new release. Its native full-history source and projected context have distinct digests and provenance.
 
+## Native update and nightly identity repair (4.6.2)
+
+The finite scope includes the native maintenance adapter and its trusted-launcher
+regressions, plus the immutable nightly runner and scheduler execution tests. Native
+Codex maintenance validates the registered user-owned configuration, exact wrapper
+bytes, complete runtime digest and standalone native owner before updating. The
+existing terminal installer restores the registered wrapper without changing shell
+configuration or adopting unknown replacements. Shared Claude configuration remains
+preserved. Failed commands or restoration cannot complete the provider; vendor native
+files are not rolled back by this adapter.
+
+The developer-suite runner forwards the registration, Node path, runner path and runner
+SHA-256 it has already verified. Caller-supplied conflicting identity values do not
+replace that registration. Native wrapper tests are POSIX qualification; portable
+policy and scheduler identity qualification remain selected on Windows.
+
 ## Assurance limits and consequences
 
 The machine guard enforces byte-bound review currency and evidence structure. It cannot establish
@@ -270,6 +290,8 @@ and P10 by reusing doc-currency. It trades P3's usual nudge for the owner's expl
 finite release refusal. No paid provider call, model generation or system configuration is added.
 
 ## Currency log
+
+| 2026-10-10 | Reviewed `6c905535ed9c` against worker source `4a6e3a71`, integration source `3fc97cc5` and the final finite 4.6.2 mapping. | Root independently reviewed `plugin/scripts/developer-update-maintenance.mjs`, its focused tests, `bin/nightly-refresh.mjs`, `tests/unit/nightly-scheduler.test.mjs`, the POSIX qualification additions and ADR-103/104 normative mapping. Eleven independent wrapper cases passed. Integration reproduced missing scheduled registration identity against the actual content-addressed runner, then passed all 24 scheduler cases and 96 combined focused cases. The controlled existing-runtime launcher restoration matched its 605-file digest, preserved shared config, Claude and shell bytes, and returned native Codex 0.162.1. This bounded review does not assert rereading all 185 governed paths, protected publication, completed customer maintenance, corpus freshness or SDK hot reload. Vendor files are not rolled back on provider failure. |
 
 | 2026-10-10 | Reviewed `fe3bd67a609b` against source `1caa967158560562795e1e6ebae44e2c2cd386f5` and governed paths `package-lock.json` and `scripts/release-qualification-contract.mjs`. | Root independently read `package-lock.json` and `scripts/release-qualification-contract.mjs` in the baseline-plus-delta diff against `db36152f274043d423eb61ef1cf0a85fb9ff49a7`: two root version literals advance 4.6.0 to 4.6.1 without dependency changes; one source requirement adds the two changed admin suites while retaining the prior inventory. Independent candidate execution passed 16 API/DOM fixture cases without skips; root also inspected the local rendered README and admin surface. No hook or routing implementation changed. These scoped checks do not establish full source qualification, remote preflight, production deployment, public installation or upstream corpus freshness; the previous failed preflight remains failed. |
 

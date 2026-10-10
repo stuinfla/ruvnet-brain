@@ -1,4 +1,4 @@
-Updated: 2026-10-10 10:41:47 EDT | Version 4.6.1
+Updated: 2026-10-10 10:41:47 EDT | Version 4.6.2
 Created: 2026-06-29 22:36:38 EDT
 
 <div align="center">
@@ -9,7 +9,7 @@ Created: 2026-06-29 22:36:38 EDT
 
 ### Discover the stack. Read the source. Build with confidence.
 
-[![RuvNet Brain version 4.6.1 — README updated 2026-10-10 EDT](https://img.shields.io/badge/version_4.6.2-updated_2026--10--10_EDT-1E90FF?style=for-the-badge&labelColor=0757BA)](plugin/.claude-plugin/plugin.json)
+[![RuvNet Brain version 4.6.2 — README updated 2026-10-10 EDT](https://img.shields.io/badge/version_4.6.2-updated_2026--10--10_EDT-1E90FF?style=for-the-badge&labelColor=0757BA)](plugin/.claude-plugin/plugin.json)
 
 **A source-grounded companion for Claude Code and Codex that helps you find and use Reuven Cohen's (rUv's) RuvNet ecosystem.**
 
@@ -259,7 +259,8 @@ The **4.6.0 published-corpus baseline** is **199 public stores · 162,680 public
 Those are bundle census values, not a claim that every upstream repository is fresh today.
 Later corpus publication may advance the knowledge generation independently of code changes.
 
-See [4.6.1 release notes](docs/RELEASE-NOTES-4.6.1.md) and
+See [4.6.2 native update repair notes](docs/RELEASE-NOTES-4.6.2.md),
+[4.6.1 README/admin notes](docs/RELEASE-NOTES-4.6.1.md) and
 [4.6.0 coordinated-update notes](docs/RELEASE-NOTES-4.6.0.md) and the authoritative
 [update and release policy](CONTRIBUTING.md).
 
