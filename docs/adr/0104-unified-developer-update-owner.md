@@ -3,8 +3,8 @@ id: ADR-104
 title: One source-bound coordinator for installed developer updates
 status: Accepted
 date: 2026-10-10
-updated: 2026-10-10 07:53:46 EDT
-version: 1.0.3
+updated: 2026-10-10 08:24:10 EDT
+version: 1.0.4
 authors: [Stuart Kerr, Codex]
 tags: [updates, install-identity, scheduler, receipts, footprint]
 amends: [ADR-098]
@@ -16,7 +16,7 @@ amends: [ADR-098]
 
 Acceptance records the coordination decision; native execution and public release verification remain separate gates.
 
-Updated: 2026-10-10 07:53:46 EDT | Version 1.0.3
+Updated: 2026-10-10 08:24:10 EDT | Version 1.0.4
 Created: 2026-10-10 04:45:00 EDT
 
 The owner requested one nightly update job, one copy of each installed tool, preserved package/plugin ownership, and an explicit latest/alpha choice. Independent Brain, Kit, native-CLI and package-manager jobs could race, downgrade each other's channels, or report success for an unused copy. This decision adds a coordination boundary; it grants no deployment, inference-spend or fresh-install authority.
@@ -28,6 +28,8 @@ Public defaults are latest, the existing RuvNet family, and provider maintenance
 Pinned Claude targets may be accepted when cached Git metadata is stale only after the immutable manifest, default resources, declared references and bounded literal local dependencies match the pinned Git blobs. Reverse inventory rejects extra cached active resource files. Receipts distinguish the active Claude artifact proof, stale provider metadata, compared paths, verified resource inventory and outside-proof paths. Dynamically computed references, other cached files and other host artifacts remain unverified. This does not establish whole-repository equality, arbitrary transitive runtime closure, hosted MCP currency or a Codex installed-plugin update.
 
 Unattended scheduler runs preserve project/local plugin scopes before accessing their project settings, targets or command working directories. Their receipts remain unsupported and unverified; they cannot claim project plugin currency. Managed scopes remain owned by their administrator. Global user scopes retain stock provider updates and exact target proof. Foreground runs retain the existing explicit project/local update path. Source package links are classified lexically before opening their targets; missing or inaccessible linked source remains preserved with no version claim.
+
+Claude provider commands may select an already-installed native binary when the canonical npm entry exactly matches the known stock placeholder. The original global prefix, physical package owner, matching native package/version/platform and actual version command must all agree. The receipt names the canonical entry and selected native path; unknown placeholders, external aliases and mismatched owners fail closed. This provider fallback performs no installation, download, alias change or canonical-entry repair.
 
 The shared `developer-update.lock` directory contains `owner.json` with a PID and random token. Atomic directory creation excludes concurrent owners. A child may inherit a live matching token through `RUVNET_DEVELOPER_UPDATE_TOKEN`; it never releases its parent's claim. Stale or unknown ownership fails closed rather than being silently stolen. Kit and Brain use the same protocol. Package installs are bound to npm's live global prefix/root, their original manifest and executable ownership. Reviewed lifecycle-script policy ships with Brain rather than depending on an imported, potentially overwritten Kit implementation.
 
