@@ -152,13 +152,20 @@ describe('the installed Console (.console-runtime from npm pack) drives the nigh
     expect(registration).toMatchObject({ identity: LABEL, runnerSha256: sha(path.join(fx.payload, 'bin', 'nightly-refresh.mjs')) });
     expect(path.dirname(registration.runnerPath)).toBe(path.join(fx.brainHome, 'scheduler'));
     expect(sha(registration.runnerPath)).toBe(registration.runnerSha256);
+    expect(registration.mode).toBe('developer-suite');
+    expect(registration.updateModules['developer-update.mjs']).toBeTruthy();
+    for (const [name, module] of Object.entries(registration.updateModules)) {
+      expect(sha(module.path), name).toBe(module.sha256);
+      expect(module.sha256, name).toBe(sha(path.join(fx.payload, 'plugin', 'scripts', name)));
+    }
     // this OS's scheduler entry (plist / crontab row / task, test-mode) runs exactly the registered runner
     expect(schedulerEntry(fx).text, schedulerEntry(fx).kind).toContain(registration.runnerPath);
     if (darwin) {
       const plist = fs.readFileSync(plistPath(), 'utf8');
       expect(plist).toContain(`<string>${LABEL}</string>`);
       const argv = [.../<key>ProgramArguments<\/key>\s*<array>([\s\S]*?)<\/array>/.exec(plist)[1].matchAll(/<string>([^<]*)<\/string>/g)].map((m) => m[1]);
-      expect(argv).toEqual([path.resolve(process.execPath), registration.runnerPath]);
+      expect(argv).toEqual([registration.nodePath, registration.runnerPath]);
+      expect(fs.realpathSync(registration.nodePath)).toBe(fs.realpathSync(process.execPath));
       expect(plist).toMatch(new RegExp(`<key>RUVNET_NIGHTLY_REGISTRATION</key>\\s*<string>${path.join(fx.brainHome, 'scheduler', 'registration.json').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</string>`));
     }
     expect(launchctlCalls(), 'test mode must never reach launchctl').toEqual([]);
