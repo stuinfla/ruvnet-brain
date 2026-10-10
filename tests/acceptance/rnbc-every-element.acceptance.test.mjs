@@ -17,6 +17,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { buildRnbcFixture, startRnbc, cleanupRnbc, REPO, schedulerEntry, schedulerState, registeredRunner } from './helpers/rnbc-fixture.mjs';
+import { isolateDeveloperUpdateOwners } from './helpers/rnbc-updater-fixture.mjs';
 import { inventoryInPage, writeLedger } from './helpers/rnbc-inventory.mjs';
 import { chromeExecutable } from './helpers/packed-console-fixture.mjs';
 
@@ -50,14 +51,14 @@ const routeCheap = () => spawnSync(process.execPath, [path.join(REPO, 'scripts/r
   { cwd: fx.project, env: { ...fx.env, OPENROUTER_API_KEY: '' }, encoding: 'utf8', timeout: 60_000 });
 const readJSON = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
 
-async function openPage(name) {
+async function openPage(name, base = srv.url) {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => pageErrors.push(`[${name}] ${e.message}`));
   page.on('console', (m) => { if (m.type() === 'error') pageErrors.push(`[${name}] console: ${m.text()}`); });
   page.on('requestfailed', (r) => failedRequests.push(`[${name}] ${r.method()} ${r.url()} ${r.failure()?.errorText}`));
   page.on('response', (r) => { if (r.status() >= 400) failedRequests.push(`[${name}] ${r.status()} ${r.url()}`); });
   page.on('request', (r) => { if (r.method() === 'POST') posts.push({ page: name, url: new URL(r.url()).pathname, body: r.postData() }); });
-  await page.goto(new URL(name, srv.url).toString(), { waitUntil: 'load' });
+  await page.goto(new URL(name, base).toString(), { waitUntil: 'load' });
   return page;
 }
 
@@ -882,6 +883,54 @@ describe('RNBC — every element on every page, on an isolated console', () => {
     const broken = served.map((name) => rows.get(`${name}|page:stylesheet-and-head`)).filter((r) => r.verdict !== 'PASS');
     expect(broken.map((r) => `${r.page}: ${r.observed}`)).toEqual([]);
   }, 900_000);
+
+  it('Coordinated updates: Latest/Alpha, Keep enrolls nightly, real receipt reaches Activity', async () => {
+    const local = buildRnbcFixture();
+    const owner = isolateDeveloperUpdateOwners(local);
+    let server, page;
+    try {
+      server = await startRnbc(local);
+      page = await openPage('index.html', server.url);
+      await page.waitForSelector('#suite-update-run');
+      await inventory(page, 'index.html');
+      const channel = q(page, 'select:suite-update-channel');
+      const initial = await channel.inputValue();
+      const recommendation = await page.locator('#card-suite-update .chip').innerText();
+      const absent = !fs.existsSync(owner.policy) && !schedulerEntry(local).text;
+      await channel.selectOption('alpha');
+      const alpha = await channel.inputValue();
+      await channel.selectOption('latest');
+      const latest = await channel.inputValue();
+      await channel.selectOption('alpha');
+      record('index.html', 'select:suite-update-channel', { claim: 'Latest (recommended) / Alpha release policy', action: 'select Alpha, Latest, Alpha',
+        observed: `initial=${initial}; selected=${alpha},${latest}; recommended=${recommendation}; read/selection writes no policy or job=${absent && !fs.existsSync(owner.policy) && !schedulerEntry(local).text}`,
+        ok: initial === 'latest' && alpha === 'alpha' && latest === 'latest' && /recommended/i.test(recommendation) && absent && !fs.existsSync(owner.policy) && !schedulerEntry(local).text });
+      if (await q(page, 'label:suite-update-channel').count()) {
+        await uc(page, q(page, 'label:suite-update-channel'));
+        const focused = await channel.evaluate(element => document.activeElement === element);
+        record('index.html', 'label:suite-update-channel', { action: 'click label', observed: `release-policy select focused=${focused}`, ok: focused });
+      }
+      const before = posts.length;
+      await uc(page, q(page, 'btn:suite-update'));
+      await page.waitForFunction(() => /Last update completed successfully/.test(document.querySelector('#suite-update-result')?.textContent || ''), null, { timeout: STATE_WAIT_MS });
+      const policy = readJSON(owner.policy), receipt = readJSON(owner.receipt);
+      const registration = readJSON(path.join(local.brainHome, 'scheduler/registration.json'));
+      const status = schedulerState(local);
+      const activity = await page.locator('#suite-update-activity').innerText();
+      const body = JSON.parse(postsSince(before).find(post => post.url === '/api/suite-update')?.body || '{}');
+      const calls = fs.readFileSync(local.nightlyCallLog, 'utf8').split('\n').filter(line => /--enable-nightly/.test(line));
+      const sameClosure = receipt?.sourceSnapshot && Object.entries(receipt.sourceSnapshot).every(([name, digest]) => registration.updateModules?.[name]?.sha256 === digest);
+      record('index.html', 'btn:suite-update', { claim: 'Keep all tools updated (recommended)', action: 'click once; real authenticated POST, scheduler enrollment, coordinator completion',
+        observed: `POST channel=${body.channel}; scope=${policy?.scope}; job=${registration?.identity}; mode=${registration?.mode}; enable calls=${calls.length}; scheduler=${status.state}; apply=${receipt?.mode}/${receipt?.state}; empty private prefix=${receipt?.npmIdentity?.prefix === owner.prefix}; five module digests match=${sameClosure}; Activity=${activity.includes('completed successfully')}`,
+        ok: body.channel === 'alpha' && policy?.channel === 'alpha' && policy?.scope === 'all' && registration?.identity === 'com.ruvnet.brain-update' && registration?.mode === 'developer-suite'
+          && calls.length === 1 && status.state === 'on' && receipt?.ok === true && receipt?.mode === 'apply' && receipt?.finishedAt && receipt?.npmIdentity?.prefix === owner.prefix
+          && Object.keys(receipt.sourceSnapshot || {}).length === 5 && sameClosure && activity.includes('completed successfully') });
+      const inv = await inventory(page, 'index.html');
+      for (const entry of inv.filter(entry => entry.key.startsWith('summary:card-activity:') && /update-receipt|tools-preserved/.test(entry.key))) await checkSummary(page, 'index.html', entry.key);
+      expect(rows.get('index.html|select:suite-update-channel')?.verdict).toBe('PASS');
+      expect(rows.get('index.html|btn:suite-update')?.verdict).toBe('PASS');
+    } finally { await page?.close(); await server?.stop(); cleanupRnbc(local); }
+  }, 300_000);
 
   it('every element found has a ledger row; nothing failed; no JS errors or failed requests', () => {
     const missing = [...found.keys()].filter((id) => !rows.has(id));
