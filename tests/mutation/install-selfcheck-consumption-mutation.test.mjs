@@ -130,15 +130,21 @@ function seedEmptyPluginSurface(home) {
   fs.writeFileSync(path.join(root, 'scripts', 'hook-shim.mjs'), 'const TABLE = {};\nprocess.exit(0);\n');
 }
 
-function runFullInstall(scratchRoot, { includePlugin = true } = {}) {
+function runFullInstall(scratchRoot, { includePlugin = true, inheritedEnv = process.env } = {}) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'mutant-home-'));
   scratchDirs.push(home);
   if (includePlugin) seedEmptyPluginSurface(home);
+  // Outer npm invocations export global-only options (notably allow-scripts). This is a
+  // project reader install, so inherited selectors must not change its location or policy.
+  const env = Object.fromEntries(Object.entries(inheritedEnv).filter(([key]) => !/^npm_config_/i.test(key)));
+  const userConfig = path.join(home, 'user.npmrc'), globalConfig = path.join(home, 'global.npmrc');
+  fs.writeFileSync(userConfig, ''); fs.writeFileSync(globalConfig, '');
   const r = spawnSync(process.execPath, [
     path.join(scratchRoot, 'bin', 'install.mjs'), '--local',
     '--no-stack', '--no-enhance', '--no-statusline', '--no-telemetry', '--no-nightly-prompt',
   ], {
-    env: { ...process.env, PATH: safePath(), HOME: home, USERPROFILE: home, CODEX_HOME: path.join(home, '.codex'),
+    env: { ...env, PATH: safePath(), HOME: home, USERPROFILE: home, CODEX_HOME: path.join(home, '.codex'),
+      npm_config_cache: path.join(home, '.npm'), npm_config_userconfig: userConfig, npm_config_globalconfig: globalConfig,
       RUVNET_BRAIN_HOME: path.join(home, '.cache/ruvnet-brain'), RUVNET_BRAIN_TEST: '1' },
     input: '',
     encoding: 'utf8',
@@ -164,7 +170,8 @@ describe.skipIf(!canRun)('mutation M-D8b — process.exitCode = selfcheck.exitCo
 
   it('baseline (REAL code): a HEALTHY install (installed plugin surface present) exits ZERO — the mutation target is not a hardcoded fail', () => {
     const root = buildScratchRoot();
-    const r = runFullInstall(root);
+    const r = runFullInstall(root, { inheritedEnv: { ...process.env, npm_config_allow_scripts: 'ruflo',
+      NPM_CONFIG_PREFIX: path.join(root, 'must-not-replace-original-reader-owner') } });
     expect(r.error, `spawn failed: ${r.error && r.error.message}`).toBeUndefined();
     expect(r.status, `expected zero on a healthy install; stdout:\n${r.stdout}\nstderr:\n${r.stderr}`).toBe(0);
   }, 60_000);
