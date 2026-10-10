@@ -224,11 +224,15 @@ describe('session capture counts commands, not containers', () => {
         hooks: { PreCompact: [{ matcher: '.*', hooks: [] }], SessionEnd: [{ matcher: '.*', hooks: [] }] },
       }));
       const r = JSON.parse(inHome(home, detect('session-capture')).out);
-      expect(r.state, 'zero registered commands cannot be "on"').toBe('off');
+      // Empty inspected declarations prove neither native absence nor activation.
+      expect(r.state, 'zero declared commands cannot be "on"').not.toBe('on');
+      expect(r.state, 'uninspected runtime hooks must not become a measured OFF').toBe('unknown');
+      expect(r.evidence).toMatch(/no state-saving declaration was observed/i);
+      expect(r.evidence).toMatch(/runtime.*not checked/i);
     } finally { fs.rmSync(home, { recursive: true, force: true }); }
   }, 60_000);
 
-  it('reports "on" only as REGISTERED, never as proven to have captured anything', () => {
+  it('reports "on" only as declared wiring, never as proven to have captured anything', () => {
     // The standard the MCP row already held itself to, applied here too: a settings entry proves a
     // command is wired to fire. No local artifact proves it ever ran, so the wording must not imply
     // that it did. Same discipline as "configured, which is not the same as currently reachable".
@@ -242,8 +246,10 @@ describe('session capture counts commands, not containers', () => {
       }));
       const r = JSON.parse(inHome(home, detect('session-capture')).out);
       expect(r.state).toBe('on');
-      expect(r.evidence, 'an "on" derived from config must say it is only registered')
-        .toMatch(/registered/i);
+      expect(r.evidence, 'an "on" derived from config must name the declared boundaries')
+        .toMatch(/declared at compaction and session end/i);
+      expect(r.evidence, 'declared commands must never imply observed native execution or capture')
+        .toMatch(/not proof of native activation or successful capture/i);
     } finally { fs.rmSync(home, { recursive: true, force: true }); }
   }, 60_000);
 });
