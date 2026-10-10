@@ -22,6 +22,12 @@ export function uvInventory(root = path.join(HOME, '.local/share/uv/tools')) {
     return { name, root: path.join(root, name), registry, receipt };
   });
 }
+export function nativeOwnerPreserved(file, beforeTarget, afterTarget, home = HOME) {
+  if (afterTarget.split(path.sep).includes('node_modules')) return false;
+  if (beforeTarget === afterTarget) return true;
+  const standalone = path.join(home, '.codex/packages/standalone') + path.sep;
+  return file === path.join(home, '.local/bin/codex') && beforeTarget.startsWith(standalone) && afterTarget.startsWith(standalone);
+}
 export function verifyMaintenanceStage(commands, postconditions) {
   const failures = Object.entries(postconditions).filter(([, passed]) => passed !== true).map(([name]) => name);
   const commandFailures = commands.filter(command => command.exitCode !== 0 || command.error);
@@ -68,7 +74,7 @@ export async function maintenance(config, run, dryRun, { home = HOME, brainHome,
       const versionVerified = !!version(before) && !!version(after) && compare(version(after), version(before)) >= 0;
       // Native launchers may re-point to a newer version, but stay in the same established root.
       const afterOwner = fs.realpathSync(file);
-      const ownerPreserved = !(owner === file && afterOwner !== file) && !afterOwner.split(path.sep).includes('node_modules');
+      const ownerPreserved = nativeOwnerPreserved(file, owner, afterOwner, home);
       settleStage(stage, after, { versionVerified, ownerPreserved }, { currentTarget: afterOwner });
     }
     const rustup = path.join(home, '.cargo/bin/rustup');
@@ -95,7 +101,13 @@ export async function maintenance(config, run, dryRun, { home = HOME, brainHome,
     }
     const after = snapshot();
     const names = x => x.formulae.map(f => f.full_name).sort();
-    settleStage(stage, after, { formulaOwnersPreserved: names(before).every(name => names(after).includes(name)) });
+    const currencyChecked = after.formulae.every(formula => typeof formula.outdated === 'boolean');
+    const pinned = after.formulae.filter(formula => formula.pinned === true).map(formula => formula.full_name);
+    const outdated = after.formulae.filter(formula => formula.outdated === true && formula.pinned !== true).map(formula => formula.full_name);
+    settleStage(stage, after, { formulaOwnersPreserved: names(before).every(name => names(after).includes(name)) }, { currencyChecked, pinned, outdated,
+      currency: currencyChecked ? outdated.length ? 'updates-available' : 'manager-current' : 'unverified' });
+    if (!currencyChecked) result.exclusions.push('Homebrew execution verified; formula currency markers unavailable');
+    for (const formula of pinned) result.exclusions.push(`Homebrew pinned formula preserved: ${formula}`);
     result.exclusions.push('Homebrew casks need their application-specific owner (VS Code is the managed callback)');
   }
   if (config.uv && locate('uv')) {

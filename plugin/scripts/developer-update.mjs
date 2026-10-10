@@ -120,23 +120,38 @@ function pluginFlags(scopes = [], home = HOME) {
   }
   return values;
 }
+export function marketplaceRemoteCommit(owner, run) {
+  if (owner?.source !== 'github' || typeof owner.repo !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(owner.repo)) throw Error('unsupported marketplace GitHub owner');
+  const declared = owner.ref ?? owner.branch ?? 'HEAD';
+  if (typeof declared !== 'string' || !/^(?:HEAD|(?:refs\/heads\/)?[A-Za-z0-9][A-Za-z0-9._/-]*)$/.test(declared) || /\.\.|@\{|\/\/|\.lock(?:\/|$)|[/.]$/.test(declared)) throw Error('unsupported marketplace ref');
+  if (declared.startsWith('refs/') && !declared.startsWith('refs/heads/')) throw Error('unsupported marketplace ref');
+  const ref = declared === 'HEAD' || declared.startsWith('refs/heads/') ? declared : `refs/heads/${declared}`;
+  const url = `https://github.com/${owner.repo}.git`;
+  const output = run('git', ['ls-remote', '--exit-code', url, ref], { timeout: 30_000 }).trim();
+  const lines = output.split('\n');
+  const match = lines.length === 1 ? /^([a-f0-9]{40})\s+(\S+)$/i.exec(lines[0]) : null;
+  if (!match || match[2] !== ref) throw Error('marketplace remote commit response is ambiguous or unverified');
+  return { commit: match[1].toLowerCase(), url, ref };
+}
 export function resolvePluginTarget(plugin, { home = HOME, run = invokeText } = {}) {
   try {
     const marketplace = plugin.id.split('@').at(-1), name = plugin.id.slice(0, plugin.id.lastIndexOf('@'));
-    const location = read(path.join(home, '.claude/plugins/known_marketplaces.json'))[marketplace]?.installLocation;
+    const knownOwner = read(path.join(home, '.claude/plugins/known_marketplaces.json'))[marketplace];
+    const location = knownOwner?.installLocation;
     if (!location || !path.isAbsolute(location)) throw Error('marketplace owner path absent');
     const directory = fs.statSync(location).isDirectory() ? location : path.dirname(location);
     const catalog = fs.statSync(location).isFile() ? location : [path.join(directory, '.claude-plugin/marketplace.json'), path.join(directory, 'marketplace.json')].find(exists);
     if (!catalog) throw Error('marketplace catalogue absent');
+    const catalogSha256 = hash(fs.readFileSync(catalog));
     const entry = read(catalog).plugins?.find(p => p.name === name);
     if (!entry) throw Error('installed plugin absent from catalogue');
     let version = typeof entry.version === 'string' && entry.version !== 'unknown' ? entry.version : null;
-    let commit = null, proof = 'catalog-version';
+    let commit = null, catalogCommit = null, remote = null, authority = 'version', proof = 'catalog-version';
     if (typeof entry.source === 'object' && entry.source !== null) {
       if (!['url', 'github'].includes(entry.source.source)) throw Error('unsupported remote plugin source');
       if (entry.source.sha !== undefined && !/^[a-f0-9]{40}$/i.test(entry.source.sha)) throw Error('malformed pinned plugin commit');
       if (/^[a-f0-9]{40}$/i.test(entry.source.sha || '')) {
-        commit = entry.source.sha.toLowerCase(); proof = 'catalog-pinned-commit';
+        commit = entry.source.sha.toLowerCase(); authority = 'commit'; proof = 'catalog-pinned-commit';
       }
     } else if (typeof entry.source === 'string' && entry.source.startsWith('./')) {
       const source = path.resolve(directory, entry.source);
@@ -145,11 +160,19 @@ export function resolvePluginTarget(plugin, { home = HOME, run = invokeText } = 
       if (!version && exists(manifest)) { const declared = read(manifest).version; version = declared && declared !== 'unknown' ? declared : null; }
       try {
         const resolved = run('git', ['-C', directory, 'rev-parse', 'HEAD'], { timeout: 10_000 }).trim();
-        if (/^[a-f0-9]{40}$/i.test(resolved)) { commit = resolved.toLowerCase(); proof = 'refreshed-marketplace-commit'; }
-      } catch { /* explicit catalogue/manifest version is still usable */ }
+        if (/^[a-f0-9]{40}$/i.test(resolved)) catalogCommit = resolved.toLowerCase();
+      } catch { /* a refreshed archive can lack Git metadata */ }
+      let semanticVersion = false;
+      try { semanticVersion = !!version && compare(version, version) === 0; } catch { /* hash versions use commit authority */ }
+      if (semanticVersion) { authority = 'version'; proof = 'published-plugin-version'; }
+      else {
+        if (!catalogCommit && knownOwner?.source?.source === 'github') { remote = marketplaceRemoteCommit(knownOwner.source, run); catalogCommit = remote.commit; }
+        commit = catalogCommit; authority = 'commit'; proof = remote ? 'known-marketplace-remote-commit' : 'refreshed-marketplace-commit';
+      }
     } else throw Error('unsupported plugin source shape');
     if (!version && !commit) throw Error('opaque or unpinned plugin target');
-    return { supported: true, version, commit, proof, catalog, catalogSha256: hash(fs.readFileSync(catalog)) };
+    if (hash(fs.readFileSync(catalog)) !== catalogSha256) throw Error('marketplace catalogue changed during identity resolution');
+    return { supported: true, version, commit, catalogCommit, authority, proof, remote, catalog, catalogSha256 };
   } catch (error) { return { supported: false, reason: error.message }; }
 }
 export function pluginTarget(plugin, home = HOME) { return resolvePluginTarget(plugin, { home }).version || null; }
@@ -159,10 +182,11 @@ export function pluginUpdateDecision(plugin, target) {
     try { if (compare(target.version, plugin.version) < 0) return { state: 'AHEAD', reason: 'published plugin version is older' }; }
     catch { if (!target.commit) return { state: 'UNSUPPORTED', reason: 'plugin version ordering is opaque' }; }
   }
-  if (target.commit) {
+  if (target.authority === 'commit' || target.commit) {
     return { state: plugin.gitCommitSha?.toLowerCase() === target.commit ? 'CURRENT' : 'UPDATE_AVAILABLE', proof: target.proof };
   }
-  return { state: target.version === plugin.version ? 'CURRENT' : 'UPDATE_AVAILABLE', proof: target.proof };
+  return { state: target.version === plugin.version ? 'CURRENT' : 'UPDATE_AVAILABLE', proof: target.proof,
+    sourceCommitMatched: target.catalogCommit ? plugin.gitCommitSha?.toLowerCase() === target.catalogCommit : null };
 }
 export function synchronizePlugins(run, dryRun, notes, { home, prefix, scope, locate }) {
   const installed = path.join(home, '.claude/plugins/installed_plugins.json');

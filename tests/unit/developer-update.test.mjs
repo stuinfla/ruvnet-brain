@@ -4,14 +4,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { compare, selectTag, discover, identity, upgradePackage, pluginScopes, scopeKey, runDeveloperUpdate, locateExecutable, resolvePluginTarget, pluginUpdateDecision, synchronizePlugins, atomic } from '../../plugin/scripts/developer-update.mjs';
+import { compare, selectTag, discover, identity, upgradePackage, pluginScopes, scopeKey, runDeveloperUpdate, locateExecutable, resolvePluginTarget, pluginUpdateDecision, synchronizePlugins, marketplaceRemoteCommit, atomic } from '../../plugin/scripts/developer-update.mjs';
 import { acquireDeveloperLock, sharedLockStatus } from '../../plugin/scripts/developer-update-lock.mjs';
 import { automaticInvocation, automaticPath } from '../../plugin/scripts/automatic-update.mjs';
 import { installNightlyRunner, developerRunHealth } from '../../plugin/scripts/nightly-scheduler.mjs';
 import { developerCoordinatorOwner } from '../../plugin/scripts/developer-update-owner.mjs';
 import { normalizeNpmDistTags } from '../../plugin/scripts/developer-update-policy.mjs';
 import { cleanupNpxDuplicates } from '../../plugin/scripts/developer-update-cleanup.mjs';
-import { cargoInventory, uvInventory, maintenance, verifyMaintenanceStage } from '../../plugin/scripts/developer-update-maintenance.mjs';
+import { cargoInventory, uvInventory, maintenance, verifyMaintenanceStage, nativeOwnerPreserved } from '../../plugin/scripts/developer-update-maintenance.mjs';
 const tmp = () => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'nightly-suite-test-')));
 function fixture(name = 'example-cli', version = '1.0.0') {
   const prefix = tmp(), location = path.join(prefix, 'lib/node_modules', name);
@@ -230,7 +230,7 @@ function pluginFixture({source='./',version=null,catalogFile=false,rootCatalog=f
 test('root-source plugins bind root manifest or refreshed catalogue commit without clones', () => {
   const f=pluginFixture();atomic(path.join(f.market,'.claude-plugin/plugin.json'),{version:'1.0.0'});
   const sha='a'.repeat(40),target=resolvePluginTarget(f.plugin,{home:f.home,run:()=>sha});
-  assert.equal(target.version,'1.0.0');assert.equal(target.commit,sha);assert.equal(pluginUpdateDecision({...f.plugin,version:'1.0.0',gitCommitSha:sha},target).state,'CURRENT');
+  assert.equal(target.version,'1.0.0');assert.equal(target.commit,null);assert.equal(target.catalogCommit,sha);assert.equal(target.authority,'version');assert.equal(pluginUpdateDecision({...f.plugin,version:'1.0.0',gitCommitSha:sha},target).state,'CURRENT');
 });
 test('hash-version plugins use exact refreshed git identity; opaque targets stay unsupported', () => {
   const f=pluginFixture(),sha='b'.repeat(40);
@@ -336,4 +336,45 @@ test('unsupported plugin steps appear in coordinator coverage independently of n
   const runner=(_command,args)=>{if(args[0]==='prefix')return prefix;if(args[0]==='root')return root;throw Error('unexpected mutation')};
   const receipt=await runDeveloperUpdate({mode:'check',home,config:{scope:'all'},env:{PATH:bin},runner});
   assert.equal(receipt.plugins.steps[0].state,'UNSUPPORTED');assert.ok(receipt.coverage.unverified.some(note=>note.includes('opaque@unknown-market')));
+});
+
+test('Codex symlink cannot leave its established standalone namespace at the same version', async () => {
+  const home=tmp(),file=path.join(home,'.local/bin/codex'),old=path.join(home,'.codex/packages/standalone/vOld/bin/codex'),outside=path.join(tmp(),'codex');
+  for(const target of [file,old,outside])fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(old,'fixture',{mode:0o755});fs.writeFileSync(outside,'fixture',{mode:0o755});fs.symlinkSync(old,file);
+  let observed;const runner=(command,args)=>{if(command===file&&args[0]==='update'){fs.unlinkSync(file);fs.symlinkSync(outside,file);}return {exitCode:0,stdout:'codex 1.0.0'};};
+  await assert.rejects(maintenance({native:true},runner,false,{home,progress:value=>observed=value}),/postconditions failed/);
+  const stage=observed.stages.find(s=>s.owner===file);assert.equal(stage.state,'failed');assert.equal(stage.verification.postconditions.ownerPreserved,false);
+});
+test('native version changes are allowed only inside the proven standalone owner namespace', () => {
+  const home=tmp(),file=path.join(home,'.local/bin/codex'),root=path.join(home,'.codex/packages/standalone');
+  assert.equal(nativeOwnerPreserved(file,path.join(root,'vOld/bin/codex'),path.join(root,'vNew/bin/codex'),home),true);
+  assert.equal(nativeOwnerPreserved(file,path.join(home,'unknown/codex'),path.join(root,'vNew/bin/codex'),home),false);
+  const uv=path.join(home,'.local/bin/uv');assert.equal(nativeOwnerPreserved(uv,uv,path.join(home,'elsewhere/uv'),home),false);
+});
+test('archive-only known GitHub marketplace resolves a strict advertised identity without clones', () => {
+  const f=pluginFixture(),sha='b'.repeat(40);atomic(path.join(f.home,'.claude/plugins/known_marketplaces.json'),{market:{installLocation:f.market,source:{source:'github',repo:'example/plugin'}}});
+  const calls=[],target=resolvePluginTarget(f.plugin,{home:f.home,run:(_cmd,args)=>{calls.push(args);if(args[0]==='-C')throw Error('archive has no git');return sha+'\tHEAD';}});
+  assert.equal(target.supported,true);assert.equal(target.commit,sha);assert.equal(target.authority,'commit');assert.equal(target.proof,'known-marketplace-remote-commit');assert.equal(target.catalogSha256.length,64);
+  assert.deepEqual(calls[1],['ls-remote','--exit-code','https://github.com/example/plugin.git','HEAD']);
+});
+test('remote marketplace owner/ref and returned identities reject ambiguity or guessed fallback', () => {
+  const sha='c'.repeat(40);
+  for(const owner of [{source:'url',repo:'example/plugin'},{source:'github',repo:'../foreign'},{source:'github',repo:'example/plugin',ref:'--upload-pack=evil'},{source:'github',repo:'example/plugin',ref:'a..b'},{source:'github',repo:'example/plugin',ref:'refs/tags/v1'}])assert.throws(()=>marketplaceRemoteCommit(owner,()=>assert.fail()),/unsupported/);
+  const owner={source:'github',repo:'example/plugin',ref:'main'};
+  assert.equal(marketplaceRemoteCommit(owner,()=>sha+'\trefs/heads/main').commit,sha);
+  for(const output of ['',sha+'\tHEAD',sha+'\trefs/heads/main\n'+sha+'\trefs/heads/other','malformed\trefs/heads/main'])assert.throws(()=>marketplaceRemoteCommit(owner,()=>output),/ambiguous|unverified/);
+});
+test('equal published semantic versions never force stock updates for unrelated unpinned repo commits', () => {
+  const f=pluginFixture({version:'1.1.0'}),newHead='d'.repeat(40),oldHead='e'.repeat(40),artifact=path.join(f.home,'artifact');fs.mkdirSync(artifact);
+  atomic(path.join(f.home,'.claude/plugins/installed_plugins.json'),{plugins:{'sample@market':[{scope:'user',installPath:artifact,version:'1.1.0',gitCommitSha:oldHead}]}});
+  const calls=[],run=(_command,args)=>{calls.push(args);return args[0]==='-C'?newHead:'{}';};
+  const result=synchronizePlugins(run,false,[],{home:f.home,scope:'all',locate:name=>name==='claude'?'/fixture/claude':null});
+  assert.equal(result.steps[0].state,'CURRENT');assert.equal(result.steps[0].proof,'published-plugin-version');assert.equal(result.steps[0].sourceCommitMatched,false);assert.ok(!calls.some(args=>args[0]==='plugin'&&args[1]==='update'));
+  assert.equal(pluginUpdateDecision({version:'1.1.0',gitCommitSha:oldHead},{supported:true,authority:'commit',version:'1.1.0',commit:newHead}).state,'UPDATE_AVAILABLE');
+});
+test('Homebrew execution completion exposes currency only when manager markers are actually present', async () => {
+  const home=tmp(),brew=path.join(home,'brew');fs.writeFileSync(brew,'fixture',{mode:0o755});
+  const run=(_cmd,args)=>({exitCode:0,stdout:args[0]==='info'?JSON.stringify({formulae:[{full_name:'owned'}]}):''});
+  const result=await maintenance({homebrew:true},run,true,{home,locate:()=>brew});const stage=result.stages[0];
+  assert.equal(stage.verification.ok,true);assert.equal(stage.currencyChecked,false);assert.equal(stage.currency,'unverified');assert.ok(result.exclusions.some(note=>note.includes('currency markers unavailable')));
 });
