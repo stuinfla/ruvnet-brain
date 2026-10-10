@@ -92,6 +92,8 @@ function buildScratchRoot({ mutateTo } = {}) {
   // Use the real runtime directory instead of maintaining a second, partial import list.
   // Only bin/install.mjs is mutated; every dependency remains byte-identical to the candidate.
   fs.cpSync(path.join(REPO, 'scripts'), path.join(root, 'scripts'), { recursive: true });
+  // The installer also reads native boot manifests, outside the Console runtime's source list.
+  fs.cpSync(path.join(REPO, 'plugin'), path.join(root, 'plugin'), { recursive: true });
   for (const rel of ['kb/verify-citation.mjs', 'kb/brain-profile.mjs', 'kb/model-requirements.mjs']) {
     fs.copyFileSync(path.join(REPO, rel), path.join(root, rel));
   }
@@ -136,7 +138,8 @@ function runFullInstall(scratchRoot, { includePlugin = true } = {}) {
     path.join(scratchRoot, 'bin', 'install.mjs'), '--local',
     '--no-stack', '--no-enhance', '--no-statusline', '--no-telemetry', '--no-nightly-prompt',
   ], {
-    env: { ...process.env, PATH: safePath(), HOME: home, USERPROFILE: home, RUVNET_BRAIN_TEST: '1' },
+    env: { ...process.env, PATH: safePath(), HOME: home, USERPROFILE: home, CODEX_HOME: path.join(home, '.codex'),
+      RUVNET_BRAIN_HOME: path.join(home, '.cache/ruvnet-brain'), RUVNET_BRAIN_TEST: '1' },
     input: '',
     encoding: 'utf8',
     timeout: 60_000,
