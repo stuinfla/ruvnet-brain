@@ -3,6 +3,114 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { cmpVersion as compare } from './developer-update-policy.mjs';
+import crypto from 'node:crypto';
+import { pathToFileURL } from 'node:url';
+const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
+const quote = text => `'${String(text).replaceAll("'", "'\\''")}'`;
+function regular(file) {
+  const stat = fs.lstatSync(file);
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.uid !== process.getuid?.()
+    || (stat.mode & 0o022)) throw Error('Codex launcher requires owned regular files');
+  return fs.readFileSync(file);
+}
+function runtimeIdentity(root) {
+  const entries = [];
+  function visit(relative) {
+    const file = path.join(root, relative), stat = fs.lstatSync(file);
+    if (stat.isDirectory() && !stat.isSymbolicLink() && stat.uid === process.getuid?.()) {
+      for (const name of fs.readdirSync(file)) visit(path.join(relative, name));
+    } else entries.push([relative.split(path.sep).join('/'), sha(regular(file))]);
+  }
+  visit('');
+  return sha(JSON.stringify(entries.sort(([a], [b]) => a.localeCompare(b))));
+}
+function nativeOwner(file, home) {
+  const real = fs.realpathSync(file), root = path.join(home, '.codex/packages/standalone/releases') + path.sep;
+  if (!real.startsWith(root) || path.basename(real) !== 'codex') throw Error('Codex native owner outside standalone releases');
+  const bytes = regular(real), magic = bytes.subarray(0, 4).toString('hex');
+  if (!['7f454c46', 'cffaedfe', 'feedfacf', 'cafebabe', 'bebafeca'].includes(magic)) throw Error('Codex native executable identity unavailable');
+  fs.accessSync(real, fs.constants.X_OK);
+  return real;
+}
+export function inspectCodexLauncher(file, home) {
+  if (file !== path.join(home, '.local/bin/codex') || fs.lstatSync(file).isSymbolicLink()) return null;
+  const bytes = regular(file);
+  // A direct native binary is handled by the ordinary owner gate; unknown scripts never run.
+  if (!bytes.subarray(0, 2).equals(Buffer.from('#!'))) {
+    if (!['7f454c46', 'cffaedfe', 'feedfacf', 'cafebabe', 'bebafeca'].includes(bytes.subarray(0, 4).toString('hex'))) throw Error('Unknown Codex native launcher refused');
+    return null;
+  }
+  const configPath = path.join(home, '.cache/ruvnet-brain/model-routing/terminal-launcher-config.json');
+  const configBytes = regular(configPath), config = JSON.parse(configBytes);
+  const runtimeRoot = path.join(home, '.cache/ruvnet-brain/model-routing/versions', config.runtimeDigest || '');
+  const keys = ['schemaVersion', 'managedBy', 'runtimeDigest', 'runtimeRoot', 'nodeBinary', 'runner', 'realCodex', 'gatewayPath',
+    ...(config.realClaude ? ['realClaude', 'claudeHelperPath', 'enginePath'] : [])];
+  if (Object.keys(config).sort().join(',') !== keys.sort().join(',')) throw Error('Codex launcher config shape mismatch');
+  if (config.schemaVersion !== 1 || config.managedBy !== 'ruvnet-brain-terminal-launchers'
+    || !/^[a-f0-9]{64}$/.test(config.runtimeDigest || '') || config.runtimeRoot !== runtimeRoot
+    || fs.realpathSync(runtimeRoot) !== runtimeRoot || config.runner !== path.join(runtimeRoot, 'scripts/model-terminal-launchers.mjs')
+    || config.gatewayPath !== path.join(runtimeRoot, 'scripts/model-terminal-gateway.mjs')
+    || (config.realClaude && (config.claudeHelperPath !== path.join(runtimeRoot, 'scripts/claude-terminal-mod.mjs')
+      || config.enginePath !== path.join(runtimeRoot, 'scripts/model-router-engine.mjs')))
+    || runtimeIdentity(runtimeRoot) !== config.runtimeDigest) throw Error('Codex launcher runtime/config identity mismatch');
+  const expected = `#!/bin/sh\n# Managed RuvNet Brain terminal launcher\nexec ${quote(config.nodeBinary)} ${quote(config.runner)} --launch 'codex' --config ${quote(configPath)} -- "$@"\n`;
+  if (!bytes.equals(Buffer.from(expected))) throw Error('Preserving unknown Codex terminal wrapper');
+  regular(config.nodeBinary); fs.accessSync(config.nodeBinary, fs.constants.X_OK);
+  // The shared installer also visits registered Claude launchers; require exact existing bytes.
+  const claudeEntries = [];
+  if (config.realClaude) {
+    const claudeBytes = Buffer.from(expected.replace("--launch 'codex'", "--launch 'claude'"));
+    for (const entry of ['claude', 'ruvnet-brain-claude-terminal']) {
+      const claudeFile = path.join(home, '.local/bin', entry);
+      if (!regular(claudeFile).equals(claudeBytes)) throw Error('Preserving changed Claude terminal wrapper');
+      claudeEntries.push({ file: claudeFile, bytes: claudeBytes });
+    }
+  }
+  return { file, home, configPath, configBytes, config, bytes, claudeEntries, native: nativeOwner(config.realCodex, home) };
+}
+export function updatedCodexNative(proof) {
+  if (fs.lstatSync(proof.file).uid !== process.getuid?.()) throw Error('Codex canonical owner changed during update');
+  if (!fs.lstatSync(proof.file).isSymbolicLink() && regular(proof.file).equals(proof.bytes)) {
+    return nativeOwner(path.join(proof.home, '.codex/packages/standalone/current/bin/codex'), proof.home);
+  }
+  return nativeOwner(proof.file, proof.home);
+}
+export async function restoreCodexLauncher(proof, { retainOriginalNative = false } = {}) {
+  const { file, home, config, configPath } = proof;
+  if (!regular(configPath).equals(proof.configBytes) || runtimeIdentity(config.runtimeRoot) !== config.runtimeDigest) {
+    throw Error('Codex launcher identity changed during native update');
+  }
+  for (const entry of proof.claudeEntries) if (!regular(entry.file).equals(entry.bytes)) throw Error('Claude wrapper changed during Codex update');
+  const candidate = updatedCodexNative(proof);
+  const native = retainOriginalNative ? nativeOwner(proof.native, home) : candidate;
+  const installed = await import(pathToFileURL(config.runner).href);
+  if (typeof installed.installTerminalLaunchers !== 'function') throw Error('Codex launcher installer unavailable');
+  // Installer accepts only same-owner native links. On failure retain the known original
+  // wrapper first, backing up the verified vendor link, then let its installer reconcile config.
+  if (retainOriginalNative && fs.lstatSync(file).isSymbolicLink()) {
+    const link = fs.readlinkSync(file), backup = `${file}.${sha(link)}.original`;
+    try { fs.symlinkSync(link, backup); }
+    catch (error) {
+      if (error.code !== 'EEXIST' || !fs.lstatSync(backup).isSymbolicLink()
+        || fs.lstatSync(backup).uid !== process.getuid?.() || fs.readlinkSync(backup) !== link) throw Error('Codex vendor link backup mismatch');
+    }
+    const temporary = `${file}.${crypto.randomUUID()}.tmp`;
+    try { fs.writeFileSync(temporary, proof.bytes, { flag: 'wx', mode: 0o755 }); fs.renameSync(temporary, file); }
+    finally { fs.rmSync(temporary, { force: true }); }
+  }
+  installed.installTerminalLaunchers({ home, runtimeRoot: config.runtimeRoot, runtimeDigest: config.runtimeDigest,
+    nodeBinary: config.nodeBinary, realCodex: native, realClaude: config.realClaude, apply: true, manageZsh: false });
+  if (!regular(file).equals(proof.bytes)) throw Error('Codex wrapper restoration verification failed');
+  const after = JSON.parse(regular(configPath));
+  const expectedConfig = { ...config, realCodex: native };
+  const sameConfig = Object.keys(after).sort().join(',') === Object.keys(expectedConfig).sort().join(',')
+    && Object.entries(expectedConfig).every(([key, value]) => after[key] === value);
+  if (!sameConfig || nativeOwner(after.realCodex, home) !== native) {
+    throw Error('Codex restored owner verification failed');
+  }
+  return native;
+}
+
 const HOME = os.homedir();
 const read = p => JSON.parse(fs.readFileSync(p, 'utf8'));
 function required(p) { fs.accessSync(p, fs.constants.X_OK); return p; }
@@ -66,14 +174,33 @@ export async function maintenance(config, run, dryRun, { home = HOME, brainHome,
       const resolved = fs.realpathSync(file);
       if (resolved.split(path.sep).includes('node_modules')) { result.exclusions.push(`npm owns native alias: ${file}`); continue; }
       required(file);
-      const owner = fs.realpathSync(file), stage = { owner: file, originalTarget: owner, state: 'running', commands: [] }; result.stages.push(stage);
-      const before = commandOutput(run, file, ['--version'], { timeout: 30_000 }, stage); stage.before = before;
-      if (!dryRun) commandOutput(run, file, args, { timeout: 900_000 }, stage);
-      const after = commandOutput(run, file, ['--version'], { timeout: 30_000 }, stage);
+      const launcher = inspectCodexLauncher(file, home);
+      const command = launcher?.native || file;
+      const owner = launcher?.native || fs.realpathSync(file), stage = { owner: file, originalTarget: owner, state: 'running', commands: [] }; result.stages.push(stage);
+      if (launcher) stage.launcherProof = { kind: 'brain-terminal-wrapper', runtimeDigest: launcher.config.runtimeDigest, wrapperSha256: sha(launcher.bytes) };
+      const before = commandOutput(run, command, ['--version'], { timeout: 30_000 }, stage); stage.before = before;
       const version = text => text.match(/\b(\d+\.\d+\.\d+(?:-[\w.-]+)?)/)?.[1];
-      const versionVerified = !!version(before) && !!version(after) && compare(version(after), version(before)) >= 0;
+      let after, afterOwner, versionVerified, restorationAttempted = false;
+      try {
+        if (!dryRun) commandOutput(run, command, args, { timeout: 900_000 }, stage);
+        const afterCommand = launcher && !dryRun ? updatedCodexNative(launcher) : command;
+        after = commandOutput(run, afterCommand, ['--version'], { timeout: 30_000 }, stage);
+        versionVerified = !!version(before) && !!version(after) && compare(version(after), version(before)) >= 0;
+        if (launcher && !dryRun) {
+          restorationAttempted = true;
+          if (!versionVerified) stage.rejectedNativeTarget = afterCommand;
+          afterOwner = await restoreCodexLauncher(launcher, { retainOriginalNative: !versionVerified });
+        }
+        else afterOwner = launcher?.native || fs.realpathSync(file);
+      } catch (error) {
+        stage.state = 'failed';
+        if (launcher && !dryRun && !restorationAttempted) {
+          try { stage.restoredTarget = await restoreCodexLauncher(launcher, { retainOriginalNative: true }); }
+          catch (restoreError) { stage.restorationError = restoreError.message; }
+        }
+        throw error;
+      }
       // Native launchers may re-point to a newer version, but stay in the same established root.
-      const afterOwner = fs.realpathSync(file);
       const ownerPreserved = nativeOwnerPreserved(file, owner, afterOwner, home);
       settleStage(stage, after, { versionVerified, ownerPreserved }, { currentTarget: afterOwner });
     }
