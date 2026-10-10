@@ -37,9 +37,17 @@ function invoke(command, args, { cwd = HOME, timeout = 600_000, allowed = [0], e
 }
 const invokeText = (command, args, options) => invoke(command, args, options).stdout;
 export function identity(location, prefix = PREFIX, { platform = process.platform } = {}) {
+  const root = exists(path.join(prefix, 'lib/node_modules')) ? path.join(prefix, 'lib/node_modules') : path.join(prefix, 'node_modules');
+  // Linked source checkouts may be unavailable to an unattended host. Never open their target.
+  if (fs.lstatSync(location).isSymbolicLink()) {
+    const name = path.relative(root, location).split(path.sep).join('/');
+    if (!/^(?:@[\w.-]+\/)?[\w.-]+$/.test(name) || location !== path.join(root, name)) throw Error(`invalid global link identity: ${location}`);
+    const rawLink = fs.readlinkSync(location);
+    return { name, version: null, location, prefix, manifestSha256: null, realLocation: null,
+      localSource: true, rawLink, linkTarget: path.resolve(path.dirname(location), rawLink), launchers: [] };
+  }
   const manifestFile = path.join(location, 'package.json');
   const manifest = read(manifestFile);
-  const root = exists(path.join(prefix, 'lib/node_modules')) ? path.join(prefix, 'lib/node_modules') : path.join(prefix, 'node_modules');
   if (!/^(?:@[\w.-]+\/)?[\w.-]+$/.test(manifest.name) || location !== path.join(root, manifest.name)) throw Error(`invalid global identity: ${location}`);
   const realLocation = fs.realpathSync(location);
   const localSource = realLocation !== location;
@@ -65,8 +73,8 @@ export function discover(root = ROOT, prefix = PREFIX, scope = 'all') {
       for (const child of fs.readdirSync(path.join(root, entry.name))) locations.push(path.join(root, entry.name, child));
     } else locations.push(path.join(root, entry.name));
   }
-  return locations.filter(p => exists(path.join(p, 'package.json'))).map(p => identity(p, prefix))
-    .filter(p => FAMILY.test(p.name) || scope === 'all' && p.launchers.length)
+  return locations.filter(p => fs.lstatSync(p).isSymbolicLink() || exists(path.join(p, 'package.json'))).map(p => identity(p, prefix))
+    .filter(p => FAMILY.test(p.name) || scope === 'all' && (p.localSource || p.launchers.length))
     .sort((a, b) => a.name === '@pacphi/agentic-kit' ? 1 : b.name === '@pacphi/agentic-kit' ? -1 : a.name.localeCompare(b.name));
 }
 function verifyPackage(before, expected, run) {
@@ -88,6 +96,12 @@ function verifyPackage(before, expected, run) {
 }
 export function upgradePackage(before, tags, scripts = REVIEWED_INSTALL_SCRIPTS, { run = invokeText, dryRun = false, channel = 'latest', npm = NPM, preservePackages = [] } = {}) {
   // Snapshot identity must still exist and own the original paths before any installer runs.
+  if (before.localSource && before.rawLink !== undefined) {
+    if (!fs.lstatSync(before.location).isSymbolicLink() || fs.readlinkSync(before.location) !== before.rawLink) throw Error(`source link changed before preservation: ${before.name}`);
+    const live = identity(before.location, before.prefix);
+    if (!live.localSource || live.name !== before.name || live.rawLink !== before.rawLink || live.linkTarget !== before.linkTarget) throw Error(`source link changed before preservation: ${before.name}`);
+    return { name: before.name, state: 'local-source-preserved', reason: 'linked source currency unverified; target not opened', before, after: live };
+  }
   const live = identity(before.location, before.prefix);
   if (live.name !== before.name || live.manifestSha256 !== before.manifestSha256) throw Error(`source changed before install: ${before.name}`);
   if (live.localSource) return { name: before.name, state: 'local-source-preserved', before, after: live };

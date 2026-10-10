@@ -32,6 +32,25 @@ test('release selection never downgrades and uses newer Kit next/Ruflo alpha', (
 test('new/disconnected global roots rejected', () => {
   assert.throws(() => discover(tmp(), tmp()), /new prefix/);
 });
+test.each([false, true])('source package link is preserved without target reads (available=%s)', available => {
+  const prefix=tmp(),root=path.join(prefix,'lib/node_modules'),location=path.join(root,'@marketing/ai-swarms'),target=path.join(prefix,'checkout');
+  fs.mkdirSync(path.dirname(location),{recursive:true});
+  if(available){fs.mkdirSync(target);fs.writeFileSync(path.join(target,'package.json'),'{"name":"@marketing/ai-swarms","version":"9.0.0"}');}
+  fs.symlinkSync(target,location);
+  const original=fs.readFileSync,spy=vi.spyOn(fs,'readFileSync').mockImplementation((file,...args)=>{
+    if(String(file).includes('package.json'))assert.fail('linked manifest must never be opened');return original(file,...args);
+  });
+  try {
+    const rows=discover(root,prefix,'all');assert.equal(rows.length,1);assert.equal(rows[0].name,'@marketing/ai-swarms');
+    assert.equal(rows[0].version,null);assert.equal(rows[0].manifestSha256,null);assert.equal(rows[0].realLocation,null);assert.equal(rows[0].localSource,true);
+    assert.deepEqual(rows[0].launchers,[]);assert.equal(rows[0].linkTarget,target);
+    assert.equal(upgradePackage(rows[0],{},[],{run:()=>assert.fail('linked package must not invoke installer')}).state,'local-source-preserved');
+    fs.unlinkSync(location);fs.symlinkSync(target+'-changed',location);
+    assert.throws(()=>upgradePackage(rows[0],{},[],{run:()=>assert.fail()}),/source link changed/);
+    fs.unlinkSync(location);fs.mkdirSync(location);
+    assert.throws(()=>upgradePackage(rows[0],{},[],{run:()=>assert.fail()}),/source link changed/);
+  }finally{spy.mockRestore();fs.rmSync(prefix,{recursive:true,force:true});}
+});
 test('absent original package cannot cause fresh installation', () => {
   const before = fixture();fs.rmSync(before.location, { recursive: true });
   let calls = 0;
