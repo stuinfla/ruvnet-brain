@@ -40,6 +40,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { nativeTurnLines } from './native-turn-transcript.mjs';
 import { resolveRuflo, rufloInvocation } from './ruflo-bin.mjs';
+import { rufloCwdFor, rufloScratchRoot } from './project-progression-store.mjs';
 import { redactText, userLevelAgentdbHooks } from './continuity-events.mjs';
 import { resolveProjectStore, globalEnrollmentAllowed } from './project-store-resolver.mjs';
 import { digest, journalTurn, readJournal, pendingTurnFiles, acknowledgeJournal, appendReceipt, storeData } from './turn-transport-journal.mjs';
@@ -161,7 +162,7 @@ const consentMap = (value) => value !== null && typeof value === 'object'
   && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype
   && Object.values(value).every((setting) => setting === 'on' || setting === 'off');
 
-export function resolveTurnDb({ projectDir, brainHome, requestedStorePath, gitTimeoutMs = 1000, unknownOriginalPath = false, deadlineAt = Infinity, signal } = {}) {
+export function resolveTurnDb({ projectDir, brainHome, requestedStorePath, gitTimeoutMs = 1000, unknownOriginalPath = false, deadlineAt = Infinity, signal, enrollmentRoots = {} } = {}) {
   if (signal?.aborted || Date.now() >= deadlineAt) throw new Error('restore deadline exceeded');
   const resolved = resolveProjectStore({ projectDir, requestedStorePath, gitTimeoutMs, deadlineAt });
   if (signal?.aborted || Date.now() >= deadlineAt) throw new Error('restore deadline exceeded');
@@ -192,7 +193,7 @@ export function resolveTurnDb({ projectDir, brainHome, requestedStorePath, gitTi
   if (setting === 'off') return { db, scope: 'project', capturePath, projectRoot: resolved.projectRoot, skipped: 'persisted turn capture opt-out' };
   let exists = false;
   try { exists = fs.statSync(db).isFile(); } catch { /* absent */ }
-  if (!exists && setting === 'on' && explicitSetting !== 'on' && !globalEnrollmentAllowed({ resolution: resolved, brainHome })) {
+  if (!exists && setting === 'on' && explicitSetting !== 'on' && !globalEnrollmentAllowed({ resolution: resolved, brainHome, ...enrollmentRoots })) {
     return { db, scope: 'project', capturePath, projectRoot: resolved.projectRoot, skipped: 'global capture consent requires a safe Git project root; explicit project/path opt-in required' };
   }
   if (!exists && setting !== 'on') return { db, scope: 'project', capturePath, projectRoot: resolved.projectRoot, skipped: 'no project memory db; persisted opt-in required' };
@@ -428,8 +429,13 @@ export function runSteps({ steps = [], receipts } = {}, { run: suppliedRun = spa
       const invocation = rufloInvocation(ruflo, args);
       const remaining = deadlineMs === undefined ? STEP_TIMEOUT_MS : deadlineMs - Date.now();
       if (remaining <= 0) throw new Error('turn replay deadline exhausted');
-      const options = { encoding: 'utf8', timeout: Math.min(STEP_TIMEOUT_MS, remaining), cwd: path.dirname(db), windowsHide: true,
-        maxBuffer: 1024 * 1024, env: { ...env, ...RUFLO_ENV, CLAUDE_FLOW_MEMORY_PATH: path.dirname(db) } };
+      // Measured 2026-10-10 with global Ruflo 3.56.3: cwd=<project>/.swarm litters ruvector.db/.claude-flow there, and
+      // CLAUDE_FLOW_MEMORY_PATH=<.swarm> makes Ruflo create a second agentdb-memory.db beside the canonical store.
+      // The explicit --path already binds the store, so run from private scratch with neither.
+      const options = { encoding: 'utf8', timeout: Math.min(STEP_TIMEOUT_MS, remaining), windowsHide: true,
+        cwd: rufloCwdFor(db, { root: rufloScratchRoot({ ...env, RUVNET_BRAIN_HOME: brainHome }) }),
+        maxBuffer: 1024 * 1024, env: { ...env, ...RUFLO_ENV } };
+      delete options.env.CLAUDE_FLOW_MEMORY_PATH;
       const existing = kind === 'store' && queued.journalFile ? read({ ruflo, db, key, run, options }) : null;
       if (existing !== null && existing !== value) throw new Error('existing turn key content differs; no upsert permitted');
       verified = kind === 'store' && existing === value;

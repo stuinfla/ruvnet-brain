@@ -43,7 +43,10 @@ describe('continuity brief: host-appropriate MORE hint', () => {
       env: { ...process.env, HOME: p.home, USERPROFILE: p.home, CLAUDE_PROJECT_DIR: p.dir, PATH: `${bin}${path.delimiter}${process.env.PATH}` } });
     expect(run.status, run.stderr).toBe(0); const result = JSON.parse(run.stdout);
     expect(result.elapsedMs).toBeLessThan(1200); expect(result.degraded).toBe(true);
-    expect(result.brief).toMatchObject({ status: 'unknown', reason: 'deadline-exceeded' });
+    // Project identity now fails CLOSED when Git is present but unusable (resolver safeGit), so an unusable Git
+    // reports brief-read-failed; a slow-but-working Git reports deadline-exceeded. Both are 'unknown', never fabricated.
+    expect(result.brief.status).toBe('unknown');
+    expect(['deadline-exceeded', 'brief-read-failed']).toContain(result.brief.reason);
     expect(result.context).toContain('PROJECT CONTINUITY UNKNOWN'); expect(result.context).toContain('fixture checkpoint');
     expect(fs.readFileSync(state, 'utf8')).toBe(prior); expect(fs.readFileSync(calls, 'utf8').trim().split('\n').length).toBeLessThan(6);
   });

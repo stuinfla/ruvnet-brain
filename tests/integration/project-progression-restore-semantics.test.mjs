@@ -15,6 +15,7 @@ import { createProgressionSnapshot } from '../../plugin/scripts/project-progress
 import { ProjectProgressionStore } from '../../plugin/scripts/project-progression-store.mjs';
 import { resolveProjectStore } from '../../plugin/scripts/project-store-resolver.mjs';
 import { restoreProgressionForSession } from '../../plugin/scripts/project-progression-session-start.mjs';
+import { enrollProjectMemory } from '../../plugin/scripts/project-memory-enrollment.mjs';
 import { runSessionSnapshotHook } from '../../plugin/scripts/session-snapshot-hook.mjs';
 import { resolveRuflo } from '../../plugin/scripts/ruflo-bin.mjs';
 
@@ -191,11 +192,15 @@ describe('SessionStart restore semantics', () => {
    * cost of losing it is invisible: the journal simply gets bigger, and nothing fails until a
    * restore is slow or a store is huge.
    */
-  it('deduplicates unchanged ordinary boundaries, preserves a fresh compaction boundary, and captures source changes', () => {
+  it('deduplicates unchanged ordinary boundaries, preserves a fresh compaction boundary, and captures source changes', async () => {
     expect(ruflo, 'global Ruflo is required; this integration must not vacuously skip').toBeTruthy();
     const project = temporaryProject();
     const resolution = resolveProjectStore({ projectDir: project });
     fs.mkdirSync(path.dirname(resolution.canonicalAgentDbPath), { recursive: true });
+    // A brand-new store is bootstrapped natively before its first boundary is captured (the first boundary is
+    // queued and replayed, not written inline). This test is about retention AFTER the store exists.
+    const enrolled = await enrollProjectMemory({ projectDir: project, env: { ...process.env, RUVNET_TURN_CAPTURE: 'force' } });
+    expect(enrolled, JSON.stringify({ state: enrolled.state, reason: enrolled.reason })).toMatchObject({ state: 'ready' });
     const payload = (event) => JSON.stringify({ hook_event_name: event, cwd: project, session_id: 'retention' });
 
     const first = runSessionSnapshotHook(project, 'Stop', { rawInput: payload('Stop'), host: 'claude' });

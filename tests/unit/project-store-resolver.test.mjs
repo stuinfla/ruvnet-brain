@@ -179,6 +179,15 @@ describe('enrollment identity safety', () => {
     fs.mkdirSync(nested, { recursive: true }); fs.writeFileSync(path.join(root, 'package.json'), '{}');
     expect(resolveProjectStore({ projectDir: nested }).projectRoot).toBe(root);
   });
+  it('resolves a non-Git project when HOME does not exist, and a Git project with one identity process', () => {
+    const root = temporaryRoot(); fs.writeFileSync(path.join(root, 'package.json'), '{}');
+    const saved = process.env.HOME; process.env.HOME = path.join(root, 'no-such-home');
+    try { expect(resolveProjectStore({ projectDir: root }).projectRoot).toBe(root); } finally { process.env.HOME = saved; }
+    const repo = temporaryRoot(); git(repo, 'init');
+    const wt = path.join(repo, 'sub'); fs.mkdirSync(wt);
+    const resolved = resolveProjectStore({ projectDir: wt });
+    expect(resolved.projectRoot).toBe(repo); expect(resolved.checkoutRoot).toBe(repo);
+  });
   it('allows default enrollment only for Git outside home, temp, system and cache roots', () => {
     const root = temporaryRoot(); git(root, 'init');
     const resolution = resolveProjectStore({ projectDir: root });

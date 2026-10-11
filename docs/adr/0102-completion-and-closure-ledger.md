@@ -1,10 +1,11 @@
 ---
 id: ADR-102
 title: Completion and the closure ledger — release-scoped proof, persistent North Star debt, and published closure
-status: Proposed
+status: Superseded
+superseded_by: ADR-105
 date: 2026-10-03
-updated: 2026-10-03
-version: 0.1.1
+updated: 2026-10-10 22:01:00 EDT
+version: 0.2.0
 authors: [Stuart Kerr, Claude Opus 5.5]
 tags: [governance, release, requirements, issues, agentdb, privacy, closure]
 supersedes: []
@@ -21,7 +22,9 @@ governs:
 
 # ADR-102 — Completion and the closure ledger
 
-**Status**: Proposed
+**Status**: Superseded (in part by ADR-105 on 2026-10-10)
+
+Prior status: Proposed. Superseded in part by [ADR-105](0105-one-agentdb-integration-standard.md): in (d), READ-ALWAYS "silent on failure, deduped per session" (recall failure is now reported and recall is never deduped) and the `--no-upsert --path` write command; the rest of this proposal is unchanged and still Proposed.
 
 **Date**: 2026-10-03 · **Baseline**: `origin/main` 3ddeb1fd = published 4.5.2 · **DDD**: [0022](../ddd/0022-closure-governance-context.md)
 

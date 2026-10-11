@@ -71,9 +71,11 @@ function gitValue(cwd, args, gitTimeoutMs, deadlineAt) {
 }
 
 function gitProject(projectDir, gitTimeoutMs, deadlineAt) {
-  const commonValue = gitValue(projectDir, ['rev-parse', '--path-format=absolute', '--git-common-dir'], gitTimeoutMs, deadlineAt);
-  if (commonValue === null) return null;
-  const checkoutValue = gitValue(projectDir, ['rev-parse', '--show-toplevel'], gitTimeoutMs, deadlineAt);
+  // One process, two lines (common dir, then checkout root): each Git spawn is a load-sensitive cost on the prompt path.
+  const identity = gitValue(projectDir, ['rev-parse', '--path-format=absolute', '--git-common-dir', '--show-toplevel'], gitTimeoutMs, deadlineAt);
+  if (identity === null) return null;
+  const [commonValue, checkoutValue, ...extra] = identity.split('\n');
+  if (extra.length) throw new Error('Git project identity incomplete');
   if (!commonValue || !checkoutValue) throw new Error('Git project identity incomplete');
   const gitCommonDir = canonicalDirectory(commonValue, 'Git common directory');
   const checkoutRoot = canonicalDirectory(checkoutValue, 'Git checkout root');
@@ -88,7 +90,8 @@ function gitProject(projectDir, gitTimeoutMs, deadlineAt) {
 }
 
 function nonGitRoot(input) {
-  const home = fs.realpathSync.native(os.homedir());
+  // A home directory that does not exist (CI sandboxes, relocated HOME) must not make project resolution throw.
+  const home = (() => { try { return fs.realpathSync.native(os.homedir()); } catch { return path.resolve(os.homedir()); } })();
   let cursor = input;
   while (cursor !== path.dirname(cursor) && cursor !== home) {
     if (fs.existsSync(path.join(cursor, '.swarm', 'memory.db'))

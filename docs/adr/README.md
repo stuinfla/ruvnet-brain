@@ -1,5 +1,5 @@
 
-Updated: 2026-10-10 05:05:00 EDT | Version 1.1.3
+Updated: 2026-10-10 22:02:00 EDT | Version 1.2.0
 Created: 2026-06-29 00:00:00 EDT
 > **Before writing or reviewing any ADR, read [`../PRINCIPLES.md`](../PRINCIPLES.md).**
 > An ADR that contradicts a principle is wrong, and the contradiction is the finding.
@@ -81,7 +81,7 @@ line), first clause only — see each ADR for the full, dated status history.
 | [0058](0058-the-95-contract.md) | The 95 contract | Proposed |
 | [0059](0059-cross-encoder-pool-cap.md) | Bounding the cross-encoder pool | Superseded |
 | [0060](0060-cross-encoder-cascade.md) | The two-stage cross-encoder cascade | Accepted |
-| [0061](0061-subscription-only-dual-host-deliberation.md) | Subscription-only dual-host deliberation | Proposed |
+| [0061](0061-subscription-only-dual-host-deliberation.md) | Subscription-only dual-host deliberation | Superseded (in part by ADR-105) |
 | [0062](0062-remote-durable-release-transaction.md) | Remote-durable staged release transaction | Accepted |
 | [0063](0063-managed-memory-boundary-is-enforceable.md) | The managed-memory boundary is enforceable, opt-in, and default-off | Accepted |
 | [0064](0064-corpus-qa-proves-machinery-not-ranking.md) | The corpus-QA round trip proves the machinery, not the ranking | Accepted |
@@ -93,7 +93,7 @@ line), first clause only — see each ADR for the full, dated status history.
 | [0070](0070-release-generation-convergence.md) | One release generation across corpus, package, hosts, and retained state | Accepted |
 | [0071](0071-facts-are-generated-behaviours-are-tested.md) | Facts are generated, behaviours are tested | Proposed |
 | [0072](0072-whole-product-integrity-conformance.md) | Whole-product integrity is one executable contract | Accepted |
-| [0073](0073-agentdb-perennial-project-continuity.md) | AgentDB is the complete perennial project continuity record | Accepted |
+| [0073](0073-agentdb-perennial-project-continuity.md) | AgentDB is the complete perennial project continuity record | Superseded (in part by ADR-105) |
 | [0074](0074-ruvnet-capability-claim-integrity.md) | RuvNet capability claims require live evidence | Accepted |
 | [0075](0075-knowledge-to-execution-enforcement.md) | Knowledge-to-execution enforcement is a mandatory policy boundary | Accepted |
 | [0076](0076-memory-full-integration.md) | Memory full integration: session recall and decision ledger | Rejected |
@@ -113,8 +113,9 @@ line), first clause only — see each ADR for the full, dated status history.
 | [0093](0093-proactive-package-recommender.md) | ADR-093 — The proactive package recommender — "what would rUv do" from package cards, behind a flag | Proposed |
 | [0098](0098-footprint-and-currency-guarantee.md) | The footprint and currency guarantee — one knowledge base, current, in use, nothing building up | Accepted |
 | [0099](0099-self-learning-retrieval.md) | Self-learning newcomer retrieval with rUv's own learning tools | Proposed |
-| [0100](0100-guaranteed-agentdb-continuity.md) | Guaranteed AgentDB continuity — material events, durable outbox, come-up-to-speed brief, one writer | Accepted |
-| [0101](0101-agentdb-first.md) | Canonical AgentDB recall before every nontrivial prompt | Accepted |
-| [0102](0102-completion-and-closure-ledger.md) | ADR-102 — Completion and the closure ledger | Proposed |
+| [0100](0100-guaranteed-agentdb-continuity.md) | Guaranteed AgentDB continuity — material events, durable outbox, come-up-to-speed brief, one writer | Superseded (in part by ADR-105) |
+| [0101](0101-agentdb-first.md) | Canonical AgentDB recall before every nontrivial prompt | Superseded (in part by ADR-105) |
+| [0102](0102-completion-and-closure-ledger.md) | ADR-102 — Completion and the closure ledger | Superseded (in part by ADR-105) |
 | [0103](0103-routing-architecture-review-lock.md) | Routing architecture qualification requires a current finite source review | Accepted |
 | [0104](0104-unified-developer-update-owner.md) | One installed-owner update coordinator | Accepted |
+| [0105](0105-one-agentdb-integration-standard.md) | One AgentDB integration standard for Claude Code and Codex hooks | Accepted |

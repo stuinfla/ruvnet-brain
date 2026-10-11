@@ -33,7 +33,7 @@ export function searchOnce({ ruflo, store, args, deadline, env, scratch, operati
     catch { cleanup(); resolve({ rows: [], state: 'unavailable' }); return; }
     let child;
     try {
-      child = spawn(inv.executable, inv.args, { cwd, env: { ...env, RUFLO_DAEMON_AUTOSTART: '0' },
+      child = spawn(inv.executable, inv.args, { cwd, env: { ...env, RUFLO_DAEMON_AUTOSTART: '0', CLAUDE_FLOW_MEMORY_PATH: undefined },
         stdio: ['ignore', 'pipe', 'ignore'], detached: process.platform !== 'win32', windowsHide: true });
     } catch { cleanup(); resolve({ rows: [], state: 'unavailable' }); return; }
     let out = '', outputBytes = 0;

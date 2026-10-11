@@ -26,6 +26,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ensureProjectMemory } from './project-memory-enrollment.mjs';
 import { restoreWithBrief } from './continuity-brief.mjs';
 import { turnRecordingStatus } from './turn-outcome-capture.mjs';
 import {
@@ -189,6 +190,8 @@ export async function runSessionStart({
     }
   };
 
+  const enrollment = ensureProjectMemory({ projectDir: cwd, env, deadlineAt: hookDeadlineAt });
+  if (enrollment.state === 'pending' || enrollment.state === 'unavailable') emit(`[RuvNet Brain — TURN CAPTURE] Project memory enrollment ${enrollment.state}; restoration is not yet proven.`);
   const restoreStart = Date.now();
   const restoreDeadlineAt = Math.min(hookDeadlineAt, restoreStart + STAGE_BUDGETS_MS.restore);
   const restoreController = new AbortController();

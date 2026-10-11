@@ -183,8 +183,11 @@ describe('turn-outcome capture at the shared snapshot boundary', () => {
     expect(calls.map((c) => c.args[1])).toEqual(['store', 'distill']);
     expect(calls.every((c) => c.bin === process.execPath)).toBe(true);
     expect(calls.every((c) => c.opts.env.RUFLO_DAEMON_AUTOSTART === '0' && c.opts.timeout > 0)).toBe(true);
-    // ruflo writes hnsw.index / ruvector.db relative to its cwd even with --path: contain them.
-    expect(calls.every((c) => c.opts.cwd === path.dirname(db) && c.opts.env.CLAUDE_FLOW_MEMORY_PATH === path.dirname(db))).toBe(true);
+    // ruflo writes hnsw.index / ruvector.db relative to its cwd even with --path, and CLAUDE_FLOW_MEMORY_PATH=<.swarm>
+    // makes it create a SECOND store (agentdb-memory.db) beside the canonical one (measured, ruflo 3.56.3, 2026-10-10).
+    // So: private scratch cwd outside the project, and the explicit --path alone binds the store.
+    expect(calls.every((c) => !c.opts.cwd.startsWith(path.dirname(db)) && c.opts.cwd !== path.dirname(db)
+      && c.opts.env.CLAUDE_FLOW_MEMORY_PATH === undefined && (c.args.includes('--path') || c.args.includes('--db')))).toBe(true);
     const rows = fs.readFileSync(receipts, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
     expect(rows.map((r) => [r.kind, r.db, r.status])).toEqual([['store', db, 0], ['distill', db, 0]]);
   });

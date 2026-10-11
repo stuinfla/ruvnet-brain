@@ -376,7 +376,7 @@ function defaultStore({ ruflo, db, key, value }) {
     const { executable, args } = rufloInvocation(ruflo, ['memory', 'store', '--key', key, '--value', value,
       '--namespace', CONTINUITY_NAMESPACE, '--no-upsert', '--require-native', '--append-only', '--provenance', provenance, '--path', db]);
     const r = spawnSync(executable, args, { cwd, encoding: 'utf8', timeout: 60_000, windowsHide: true,
-      env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' } });
+      env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0', CLAUDE_FLOW_MEMORY_PATH: undefined } });
     return { status: Number.isInteger(r.status) ? r.status : 1, output: `${r.stderr || ''}\n${r.stdout || ''}${r.error ? `\n${r.error.message}` : ''}` };
   } finally { fs.rmSync(cwd, { recursive: true, force: true }); }
 }
@@ -385,7 +385,7 @@ function defaultReadBack({ ruflo, db, key }) {
   const cwd = rufloRunDir(db);
   try {
     const { executable, args } = rufloInvocation(ruflo, ['memory', 'retrieve', '--key', key, '--namespace', CONTINUITY_NAMESPACE, '--value-only', '--path', db]);
-    const r = spawnSync(executable, args, { cwd, encoding: 'utf8', timeout: 60_000, windowsHide: true, env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' } });
+    const r = spawnSync(executable, args, { cwd, encoding: 'utf8', timeout: 60_000, windowsHide: true, env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0', CLAUDE_FLOW_MEMORY_PATH: undefined } });
     return { key, content: r.status === 0 ? String(r.stdout || '') : null, readPath: 'ruflo-cli' };
   } finally { fs.rmSync(cwd, { recursive: true, force: true }); }
 }
@@ -472,7 +472,7 @@ export function takeLock(journal, { now = Date.now } = {}) {
 export function launchDrain({ projectRoot, spawnFn = spawn, env = process.env } = {}) {
   try {
     const child = spawnFn(process.execPath, [fileURLToPath(import.meta.url), '--drain', projectRoot], {
-      cwd: os.tmpdir(), detached: true, stdio: 'ignore', windowsHide: true, env: { ...env, RUFLO_DAEMON_AUTOSTART: '0' },
+      cwd: os.tmpdir(), detached: true, stdio: 'ignore', windowsHide: true, env: { ...env, RUFLO_DAEMON_AUTOSTART: '0', CLAUDE_FLOW_MEMORY_PATH: undefined },
     });
     child.unref?.();
     return true;

@@ -386,7 +386,7 @@ export class ProjectProgressionStore {
         cwd,
         encoding: 'utf8',
         timeout: 120_000,
-        env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' },
+        env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0', CLAUDE_FLOW_MEMORY_PATH: undefined },
       });
     } finally {
       fs.rmSync(cwd, { recursive: true, force: true });

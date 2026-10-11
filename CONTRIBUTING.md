@@ -477,6 +477,18 @@ contradicts a principle is wrong, and the contradiction is the finding.
 
 ### Automatic memory observations and their limits (4.5.4 candidate)
 
+The user-approved perennial policy uses native AgentDB through the global Ruflo writer,
+canonical project identity and explicit namespaces. All authoritative writes require native
+immutable insertion and exact readback before acknowledgment; failed work remains in the
+durable outbox. Existing secondary stores are preserved. Persisted user opt-in lazily enrolls
+eligible Git projects on use; explicit project/path opt-out and content exclusions win, and
+new non-Git/unsafe-root stores require explicit scope. Prompt recall supplies bounded relevant
+untrusted evidence, including captured strategic decisions, and honors the current privacy
+policy. No automatic semantic detector turns a model conclusion into ratified user policy;
+explicit strategic checkpoints remain required. Native lifecycle delivery and restart proof
+are separate from configured hook declarations.
+
+
 Claude and Codex prompt, pre-tool, post-tool and child-completion boundaries route through the
 existing snapshot dispatcher to a normalized observation handler; Claude also observes tool failure.
 Selected task intent is a bounded redacted user-text excerpt, not a raw prompt dump, and is labelled

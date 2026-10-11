@@ -318,6 +318,8 @@ export function runOutboxReplay({ projectDir, token = process.env.RUVNET_REPLAY_
             const options = { rawInput: JSON.stringify(job.payload), host: job.host, env,
               budgetMs: Math.max(0, deadlineAt - now()), deadlineAt, signal,
               makeStoreFactory: () => makeStoreFactory(deadlineAt), now, ordered: held, writeMetadata: false,
+              // A queued job was admitted at its live boundary; replay must not re-run (or be suspended by) enrollment.
+              enrollMemory: () => ({ state: 'existing' }),
               captureTurn: () => ({ recorded: false, skipped: 'detached replay' }),
               captureEvents: () => ({ recorded: 0, skipped: 'detached replay' }) };
             const result = job.payload?.normalizedTransition ? captureNormalized(job, options)

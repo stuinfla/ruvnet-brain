@@ -219,7 +219,12 @@ export function formatBlock({ picks, status }) {
   return render(limit);
 }
 
-async function consequentialRecall({ prompt, root, store, bin, scratch, env, deadline, binding, signal, enumerateKeys, exclusions }) {
+/** Semantic ranking gets a bounded slice; exact curated reads keep the rest so load cannot erase all history. */
+export const SEARCH_BUDGET_SHARE = 0.8;
+export function searchDeadlineFor(started, deadline) { return Math.min(deadline, started + Math.floor((deadline - started) * SEARCH_BUDGET_SHARE)); }
+
+async function consequentialRecall({ prompt, root, store, bin, scratch, env, deadline, binding, signal, enumerateKeys, exclusions, rankedSearch = true }) {
+  const searchDeadline = searchDeadlineFor(Date.now(), deadline);
   const phaseBinding = recallBinding({ binding, projectRoot: root, storePath: store.path, prompt });
   const namespaces = [...new Set([path.basename(root), 'default', 'lessons', 'continuity-events'])];
   const enumeration = await enumerateKeys({ storePath: store.path, namespaces, deadline, signal, env, scratch });
@@ -232,13 +237,21 @@ async function consequentialRecall({ prompt, root, store, bin, scratch, env, dea
   const decisionKeys = decisionNamespaces.flatMap(namespace => keys[namespace].filter(key => /^decision[-_]|^cevt-.*-decision-/i.test(key)).map(key => ({ category: 'decisions', namespace, key })));
   let relevantDecisions = decisionKeys;
   let decisionAvailability = 'ok-empty';
-  if (decisionKeys.length > 8) {
+  if (decisionKeys.length > 8 && !rankedSearch) {
+    relevantDecisions = decisionKeys.slice(-8);
+    decisionAvailability = 'unavailable'; // unranked newest slice only; not a claim about all decisions
+  } else if (decisionKeys.length > 8) {
     const searched = await Promise.all(decisionNamespaces.map(async namespace => ({ namespace,
-      ...await searchOnce({ ruflo: bin, store, deadline, env, scratch, signal, args: ['--format', 'json', '-q', recallQuery(prompt), '-n', namespace, '--limit', '12'] }) })));
-    if (searched.some(row => row.state !== 'ok')) decisionAvailability = searched.some(row => row.state === 'timed out') ? 'timed-out' : 'unavailable';
+      ...await searchOnce({ ruflo: bin, store, deadline: searchDeadline, env, scratch, signal, args: ['--format', 'json', '-q', recallQuery(prompt), '-n', namespace, '--limit', '12'] }) })));
+    const rankingFailed = searched.some(row => row.state !== 'ok');
+    if (rankingFailed) decisionAvailability = searched.some(row => row.state === 'timed out') ? 'timed-out' : 'unavailable';
     relevantDecisions = searched.flatMap(result => result.rows.filter(row => row.namespace === result.namespace && Number.isFinite(row.score) && row.score >= MIN_RELEVANCE
       && decisionKeys.some(key => key.namespace === row.namespace && key.key === row.key)).map(row => ({ category: 'decisions', namespace: row.namespace, key: row.key, score: row.score })))
       .sort((a, b) => b.score - a.score).slice(0, 8);
+    if (rankingFailed && !relevantDecisions.length) {
+      // Semantic ranking is gone, not the history: read the newest bounded slice natively and keyword-match it exactly.
+      relevantDecisions = decisionKeys.slice(-8);
+    }
     if (!relevantDecisions.length) decisionAvailability = 'unavailable'; // semantic miss is not absent history
   }
   const candidates = [
@@ -294,7 +307,7 @@ export async function recall({ prompt, projectDir = process.cwd(), env = process
     const budget = Number.isFinite(requested) && requested > 0 ? Math.min(requested, 1900) : DEFAULT_DEADLINE_MS;
     const deadline = Math.min(started + budget, absoluteDeadline ?? Infinity);
     if (deadline <= started) return { ...empty, outcome: 'timed-out' };
-    const gitTimeoutMs = Math.max(1, Math.min(100, Math.floor(budget / 4)));
+    const gitTimeoutMs = Math.max(1, Math.min(600, Math.floor(budget / 3)));
     const privacy = resolveTurnDb({ projectDir, brainHome: env.RUVNET_BRAIN_HOME || path.join(env.HOME || os.homedir(), '.cache', 'ruvnet-brain'), gitTimeoutMs, deadlineAt: deadline, signal });
     if (privacy.skipped) {
       const outcome = /opt-out/.test(privacy.skipped) ? 'disabled' : /no project memory db/.test(privacy.skipped) ? 'not-adopted' : 'unavailable';
@@ -325,9 +338,15 @@ export async function recall({ prompt, projectDir = process.cwd(), env = process
       : /where are we|status|catch me up/i.test(prompt) ? 'project-state-current'
       : /releas|publish|workflow run|dispatch/i.test(prompt) ? 'release'
       : /requirement|always|every prompt/i.test(prompt) ? 'decision-agentdb' : null;
+    // This machine runs loaded (load average 30-60 measured 2026-10-10) and ranked search spawns one Ruflo process
+    // per namespace; run concurrently they starve every other read past the deadline. Read exact curated
+    // state/lessons/decisions first (~0.3s, one native child at a time), then spend what remains on ranking.
+    const curated = store ? await consequentialRecall({ prompt, root, store, bin, scratch: scratchFor, env, deadline, binding, signal,
+      enumerateKeys: enumerateCanonicalKeys, exclusions, rankedSearch: false }).catch(() => null) : null;
+    const searchDeadline = searchDeadlineFor(Date.now(), deadline);
     const presence = store ? await nativeRead({ store, namespaces, deadline, env, scratch: scratchFor, signal }) : null;
-    if (presence?.fatal) return { ...empty, stores, outcome: presence.state === 'timed out' ? 'timed-out' : 'unavailable',
-      block: formatBlock({ picks: [], status: presence.state }), reason: 'namespace enumeration failed' };
+    if (presence?.fatal) { return { ...empty, stores, outcome: presence.state === 'timed out' ? 'timed-out' : 'unavailable',
+      block: formatBlock({ picks: [], status: presence.state }), reason: 'namespace enumeration failed' }; }
     const activeNamespaces = presence?.ok ? namespaces.filter(namespace => presence.value[namespace]?.length) : namespaces;
     const jobs = (store ? activeNamespaces : []).flatMap((namespace) => [{ store, namespace, family: null, args: ['--format', 'json', '-q', query, '-n', namespace, '--limit', '12'] },
       ...(family && !SIGNAL_NAMESPACES.has(namespace) && namespace !== 'turns' ? [{ store, namespace, family, args: ['--format', 'json', '-q', family, '-n', namespace, '-t', 'keyword', '--limit', '4'] }] : [])]);
@@ -337,25 +356,29 @@ export async function recall({ prompt, projectDir = process.cwd(), env = process
     if (learningStore && workflowQuery) jobs.push({ store: learningStore, namespace: LEARNING_NAMESPACE, family: null,
       args: ['--format', 'json', '-q', workflowQuery, '-n', LEARNING_NAMESPACE, '-t', 'keyword', '--limit', '4'] });
     const results = await Promise.all(jobs.map(async ({ store: jobStore, namespace, family: recordFamily, args }) => ({ namespace, family: recordFamily, storePath: jobStore.path,
-      ...await searchOnce({ ruflo: bin, store: jobStore, deadline, env, scratch: scratchFor, args, signal }) })));
+      ...await searchOnce({ ruflo: bin, store: jobStore, deadline: searchDeadline, env, scratch: scratchFor, args, signal }) })));
     let status = results.every((r) => r.state === 'ok') ? 'ok'
       : results.some((r) => r.state === 'timed out') ? 'timed out' : 'unavailable';
     // Overfetch a bounded six exact values so rejected turn metadata cannot hide
     // the next useful outcome; at most three verified excerpts are delivered.
     const candidates = pickRows(results, 6);
+    if (!candidates.length && status !== 'ok' && curated?.picks?.length) {
+      // Ranked search was shed under load: deliver exact curated state/lessons/decisions, not "timed out" and nothing.
+      return { ...curated, reason: 'semantic search ' + status + '; exact curated records delivered' };
+    }
     // Ruflo previews are ~60 characters. Read the actual selected values within
     // the same deadline so the block contains useful evidence rather than titles.
     const exactResults = await exactReads({ candidates, bin, deadline, env, scratch: scratchFor, signal });
     const retrieved = await Promise.all(candidates.map(async (p) => {
       const r = exactResults.get(p);
       if (r.state === 'ok' && r.value && !r.value.startsWith('[WARN]')) {
-        if (maskExcludedPaths(r.value, exclusions, root) !== r.value || maskExcludedPaths(p.key, exclusions, root) !== p.key) return { pick: null, state: 'ok' };
+        if (maskExcludedPaths(r.value, exclusions, root) !== r.value || maskExcludedPaths(p.key, exclusions, root) !== p.key) return { pick: null, state: r.state };
         let event;
         if (p.namespace === 'continuity-events') {
-          try { event = JSON.parse(r.value); } catch { return { pick: null, state: 'ok' }; }
+          try { event = JSON.parse(r.value); } catch { return { pick: null, state: r.state }; }
           if (event.schema !== 'ruvnet-brain.continuity-event' || event.schemaVersion !== 1 || event.project !== root
             || !['decision', 'lesson', 'open-item'].includes(event.kind) || typeof event.summary !== 'string'
-            || !promptKeywords(prompt, 14).some(word => redactText(event.summary).toLowerCase().includes(word))) return { pick: null, state: 'ok' };
+            || !promptKeywords(prompt, 14).some(word => redactText(event.summary).toLowerCase().includes(word))) return { pick: null, state: r.state };
         }
         const clauses = p.namespace === 'turns' ? turnOutcomeClauses(r.value, prompt) : null;
         const preview = p.namespace === LEARNING_NAMESPACE ? learningObservationExcerpt(r.value)

@@ -79,7 +79,7 @@ if (a[0] === 'memory' && a[1] === 'store') {
   if (left > 0) { fs.writeFileSync(${JSON.stringify(counter)}, String(left - 1)); console.error(${JSON.stringify(WAL_REFUSAL_TEXT)}); process.exit(1); }
   const d = new DatabaseSync(db);
   const hit = d.prepare('SELECT 1 FROM memory_entries WHERE namespace=? AND key=?').all(flag('--namespace'), flag('--key'));
-  if (hit.length) { console.error('[ERROR] key exists'); process.exit(1); }
+  if (hit.length) { console.error('[ERROR] immutable append rejected: logical key already exists'); process.exit(1); }
   d.prepare("INSERT INTO memory_entries (id, namespace, key, content, status, created_at) VALUES (?, ?, ?, ?, 'active', ?)")
     .run(flag('--namespace') + ':' + flag('--key'), flag('--namespace'), flag('--key'), flag('--value'), Date.now());
   d.close();
