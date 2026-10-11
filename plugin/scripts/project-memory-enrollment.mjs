@@ -31,6 +31,8 @@ export function enrollmentPlan({ projectDir, env = process.env, deadlineAt = Inf
   try { policy = JSON.parse(fs.readFileSync(turnCapturePolicyFile(brainHome), 'utf8')); } catch { /* resolveTurnDb validates any present policy */ }
   const explicit = policy.paths?.[canonical(projectDir)] ?? policy.projects?.[resolution.projectRoot];
   const hasDb = fs.existsSync(resolution.canonicalAgentDbPath);
+  // RUVNET_TURN_CAPTURE=off means turn capture is off: it never creates a store. (It does not suspend progression or
+  // continuity capture on an existing store; queueBoundary additionally withholds the assistant text while it is off.)
   if (!hasDb && String(env.RUVNET_TURN_CAPTURE || '').toLowerCase() === 'off') return { ...resolution, state: 'disabled', reason: 'RUVNET_TURN_CAPTURE=off' };
   if (!hasDb && explicit !== 'on') {
     if (resolution.kind !== 'git') return { ...resolution, state: 'disabled', reason: 'non-Git enrollment requires explicit project opt-in' };
@@ -43,9 +45,18 @@ export function enrollmentPlan({ projectDir, env = process.env, deadlineAt = Inf
   if (fs.existsSync(receipt)) {
     const stat = fs.lstatSync(receipt);
     if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1) throw new Error('unsafe enrollment receipt');
-    enrollmentPending = JSON.parse(fs.readFileSync(receipt, 'utf8')).state === 'pending';
+    // An unparsable receipt is a torn write from a killed hook: it means "not ready", never "unavailable forever".
+    try { enrollmentPending = JSON.parse(fs.readFileSync(receipt, 'utf8')).state === 'pending'; } catch { enrollmentPending = true; }
   }
   return { ...resolution, state: hasDb && !enrollmentPending ? 'existing' : 'pending', brainHome, contentPathExcludes: consent.contentPathExcludes || [] };
+}
+
+/** Create-if-absent, atomically: a hook killed mid-write leaves a temp file, never a torn final file. */
+function createExclusive(file, text) {
+  const temporary = `${file}.${crypto.randomUUID()}.tmp`;
+  const fd = fs.openSync(temporary, 'wx', 0o600);
+  try { fs.writeFileSync(fd, text); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+  try { fs.linkSync(temporary, file); } catch (error) { if (error.code !== 'EEXIST') throw error; } finally { fs.rmSync(temporary, { force: true }); }
 }
 
 function safeDirectory(directory) {
@@ -55,11 +66,12 @@ function safeDirectory(directory) {
 }
 
 /** Only a small derived outcome is queued; never prompts, transcripts, tool input or environment. */
-function queueBoundary(plan, { event, payload, host, projectDir }) {
+function queueBoundary(plan, { event, payload, host, projectDir, env = process.env }) {
   if (!event || typeof payload?.session_id !== 'string' || !payload.session_id) return false;
   const directory = path.join(plan.projectRoot, '.swarm', queueName);
   safeDirectory(directory);
-  const text = String(payload.last_assistant_message || '');
+  const turnCaptureOff = String(env.RUVNET_TURN_CAPTURE || '').toLowerCase() === 'off';
+  const text = turnCaptureOff ? '' : String(payload.last_assistant_message || '');
   const filtered = maskExcludedPaths(text, plan.contentPathExcludes, projectDir);
   const last = filtered === text ? redactText(text).slice(0, 12000) : '[REDACTED:excluded-resource-outcome]';
   const normalized = normalizeHostEvent(payload) || payload;
@@ -80,11 +92,8 @@ function queueBoundary(plan, { event, payload, host, projectDir }) {
     payload: { session_id: payload.session_id, hook_event_name: event, ...tool, ...strategic, ...(last ? { last_assistant_message: last } : {}) } };
   const digest = crypto.createHash('sha256').update(JSON.stringify(boundary)).digest('hex');
   const file = path.join(directory, `${digest}.json`);
-  try {
-    const fd = fs.openSync(file, 'wx', 0o600);
-    try { fs.writeFileSync(fd, JSON.stringify(boundary)); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-    const dirFd = fs.openSync(directory, 'r'); try { fs.fsyncSync(dirFd); } finally { fs.closeSync(dirFd); }
-  } catch (error) { if (error.code !== 'EEXIST') throw error; }
+  createExclusive(file, JSON.stringify(boundary));
+  const dirFd = fs.openSync(directory, 'r'); try { fs.fsyncSync(dirFd); } finally { fs.closeSync(dirFd); }
   return true;
 }
 
@@ -100,10 +109,9 @@ export function ensureProjectMemory({ projectDir, env = process.env, event, payl
     safeDirectory(path.join(plan.projectRoot, '.swarm'));
     if (plan.state === 'pending') {
       const receipt = path.join(plan.projectRoot, '.swarm', receiptName);
-      try { fs.writeFileSync(receipt, JSON.stringify({ schemaVersion: 1, state: 'pending', canonicalAgentDbPath: plan.canonicalAgentDbPath }), { flag: 'wx', mode: 0o600 }); }
-      catch (error) { if (error.code !== 'EEXIST') throw error; }
+      createExclusive(receipt, JSON.stringify({ schemaVersion: 1, state: 'pending', canonicalAgentDbPath: plan.canonicalAgentDbPath }));
     }
-    const queued = plan.state === 'pending' && queueBoundary(plan, { event, payload, host, projectDir });
+    const queued = plan.state === 'pending' && queueBoundary(plan, { event, payload, host, projectDir, env });
     const launched = launch({ projectDir, env });
     return { ...plan, state: plan.state === 'existing' ? 'existing' : 'pending', queued, launched };
   } catch (error) { return { state: 'unavailable', reason: error.message }; }
@@ -168,7 +176,12 @@ export async function enrollProjectMemory({ projectDir, env = process.env, run =
         const file = path.join(queue, name);
         const stat = fs.lstatSync(file);
         if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || stat.size > 256000) continue;
-        const boundary = JSON.parse(fs.readFileSync(file, 'utf8'));
+        let boundary;
+        try { boundary = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {
+          // Preserve the evidence, stop it blocking every later replay.
+          try { fs.renameSync(file, `${file}.corrupt`); } catch { /* retry next boundary */ }
+          continue;
+        }
         // Original path privacy is rechecked, never replaced by the primary worktree identity.
         const consent = enrollmentPlan({ projectDir: boundary.projectDir, env });
         if (consent.state === 'disabled' || consent.canonicalAgentDbPath !== plan.canonicalAgentDbPath) continue;

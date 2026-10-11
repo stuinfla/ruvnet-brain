@@ -57,6 +57,39 @@ describe('consent-gated project memory enrollment', () => {
     expect(queued).not.toMatch(/SECRET|transcript|private\/record/);
     expect(queued).toContain('REDACTED');
   });
+  it('withholds assistant text from the queue while turn capture is off, without suspending the boundary', () => {
+    const f = fixture(); policy(f, { projects: { [f.project]: 'on' } });
+    const swarm = path.join(f.project, '.swarm'); fs.mkdirSync(swarm, { recursive: true });
+    fs.writeFileSync(path.join(swarm, 'memory.db'), 'half-enrolled store');
+    fs.writeFileSync(path.join(swarm, '.memory-enrollment.json'), JSON.stringify({ schemaVersion: 1, state: 'pending' }));
+    const result = ensureProjectMemory({ projectDir: f.project, env: { ...f.env, RUVNET_TURN_CAPTURE: 'off' }, event: 'Stop', launch: () => false,
+      payload: { session_id: 'off', last_assistant_message: 'OFFSECRETWORDS we decided something important about storage.' } });
+    expect(result).toMatchObject({ state: 'pending', queued: true });
+    const queue = path.join(swarm, '.memory-enrollment-pending');
+    const files = fs.readdirSync(queue).filter((n) => /\.json$/.test(n));
+    expect(files).toHaveLength(1);
+    expect(fs.readFileSync(path.join(queue, files[0]), 'utf8')).not.toContain('OFFSECRETWORDS');
+  });
+  it('self-heals after a hook was killed mid-write: torn receipt and torn queue entry never wedge enrollment', async () => {
+    const f = fixture(); policy(f, { projects: { [f.project]: 'on' } });
+    const swarm = path.join(f.project, '.swarm'); fs.mkdirSync(swarm, { recursive: true });
+    fs.writeFileSync(path.join(swarm, '.memory-enrollment.json'), '');           // torn pending receipt
+    expect(enrollmentPlan({ projectDir: f.project, env: f.env }).state).toBe('pending');
+    const queued = ensureProjectMemory({ projectDir: f.project, env: f.env, event: 'Stop', launch: () => false,
+      payload: { session_id: 'torn', last_assistant_message: 'We decided to keep the append-only native store for this project.' } });
+    expect(queued).toMatchObject({ state: 'pending', queued: true });
+    const queue = path.join(swarm, '.memory-enrollment-pending');
+    const torn = `${'a'.repeat(64)}.json`; fs.writeFileSync(path.join(queue, torn), '');   // torn queue entry
+    let stored; const replayed = [];
+    const run = (_, args) => { if (args[1] === 'store') { stored = args[args.indexOf('--value') + 1]; return { status: 0 }; } return { status: 0, stdout: stored }; };
+    const result = await enrollProjectMemory({ projectDir: f.project, env: f.env, run,
+      replay: (dir, event, options) => { replayed.push(event); return { turn: { queued: true } }; } });
+    expect(result.state).toBe('ready');
+    expect(replayed).toEqual(['Stop']);                                           // the valid boundary still replayed
+    expect(fs.existsSync(path.join(queue, torn))).toBe(false);
+    expect(fs.existsSync(path.join(queue, `${torn}.corrupt`))).toBe(true);        // evidence preserved
+    expect(JSON.parse(fs.readFileSync(path.join(swarm, '.memory-enrollment.json'), 'utf8')).state).toBe('ready');
+  });
   it('keeps partial bootstrap pending until exact same-path readback succeeds, with strict native flags', async () => {
     const f = fixture(); policy(f, { projects: { [f.project]: 'on' } });
     ensureProjectMemory({ projectDir: f.project, env: f.env, launch: () => false });

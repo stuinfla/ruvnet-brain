@@ -26,7 +26,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ensureProjectMemory } from './project-memory-enrollment.mjs';
+import { enrollmentPlan } from './project-memory-enrollment.mjs';
 import { restoreWithBrief } from './continuity-brief.mjs';
 import { turnRecordingStatus } from './turn-outcome-capture.mjs';
 import {
@@ -190,7 +190,10 @@ export async function runSessionStart({
     }
   };
 
-  const enrollment = ensureProjectMemory({ projectDir: cwd, env, deadlineAt: hookDeadlineAt });
+  // Report only. SessionStart never creates or bootstraps a store (ADR-105 rule 6); enrollment starts at the first
+  // consented captured boundary, so a session that merely started leaves no store behind.
+  let enrollment;
+  try { enrollment = enrollmentPlan({ projectDir: cwd, env, deadlineAt: hookDeadlineAt }); } catch (error) { enrollment = { state: 'unavailable', reason: error.message }; }
   if (enrollment.state === 'pending' || enrollment.state === 'unavailable') emit(`[RuvNet Brain — TURN CAPTURE] Project memory enrollment ${enrollment.state}; restoration is not yet proven.`);
   const restoreStart = Date.now();
   const restoreDeadlineAt = Math.min(hookDeadlineAt, restoreStart + STAGE_BUDGETS_MS.restore);

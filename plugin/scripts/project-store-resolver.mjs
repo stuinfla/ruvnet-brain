@@ -56,7 +56,8 @@ function gitValue(cwd, args, gitTimeoutMs, deadlineAt) {
   } catch (error) {
     // A timed-out Git identity check is not evidence for a non-git project.
     if (error.code === 'ETIMEDOUT') throw new Error('Git project identity timed out');
-    if (error.status === 128 && /^fatal: not a git repository(?: \(or any of the parent directories\))?:/m.test(String(error.stderr || ''))) {
+    if (error.code === 'ENOENT' && !(() => { for (let c = cwd; ; c = path.dirname(c)) { if (fs.existsSync(path.join(c, '.git'))) return true; if (path.dirname(c) === c) return false; } })()) return null; // no git binary and no .git marker: not a Git project
+    if (error.status === 128 && /^fatal: not a git repository\b/m.test(String(error.stderr || ''))) {
       let cursor = cwd;
       for (;;) {
         if (fs.existsSync(path.join(cursor, '.git'))) throw new Error('Git project identity unavailable: invalid Git marker');

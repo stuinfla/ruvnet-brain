@@ -339,14 +339,16 @@ export async function recall({ prompt, projectDir = process.cwd(), env = process
       : /releas|publish|workflow run|dispatch/i.test(prompt) ? 'release'
       : /requirement|always|every prompt/i.test(prompt) ? 'decision-agentdb' : null;
     // This machine runs loaded (load average 30-60 measured 2026-10-10) and ranked search spawns one Ruflo process
-    // per namespace; run concurrently they starve every other read past the deadline. Read exact curated
-    // state/lessons/decisions first (~0.3s, one native child at a time), then spend what remains on ranking.
-    const curated = store ? await consequentialRecall({ prompt, root, store, bin, scratch: scratchFor, env, deadline, binding, signal,
-      enumerateKeys: enumerateCanonicalKeys, exclusions, rankedSearch: false }).catch(() => null) : null;
-    const searchDeadline = searchDeadlineFor(Date.now(), deadline);
+    // per namespace; run concurrently they starve every other read past the deadline. So: ONE native enumeration
+    // (reused for the curated pass and for pruning empty namespaces), then exact curated state/lessons/decisions,
+    // then spend what remains on ranking.
     const presence = store ? await nativeRead({ store, namespaces, deadline, env, scratch: scratchFor, signal }) : null;
     if (presence?.fatal) { return { ...empty, stores, outcome: presence.state === 'timed out' ? 'timed-out' : 'unavailable',
       block: formatBlock({ picks: [], status: presence.state }), reason: 'namespace enumeration failed' }; }
+    const sharedKeys = presence?.ok ? async () => ({ ok: true, value: presence.value }) : enumerateCanonicalKeys;
+    const curated = store ? await consequentialRecall({ prompt, root, store, bin, scratch: scratchFor, env, deadline, binding, signal,
+      enumerateKeys: sharedKeys, exclusions, rankedSearch: false }).catch(() => null) : null;
+    const searchDeadline = searchDeadlineFor(Date.now(), deadline);
     const activeNamespaces = presence?.ok ? namespaces.filter(namespace => presence.value[namespace]?.length) : namespaces;
     const jobs = (store ? activeNamespaces : []).flatMap((namespace) => [{ store, namespace, family: null, args: ['--format', 'json', '-q', query, '-n', namespace, '--limit', '12'] },
       ...(family && !SIGNAL_NAMESPACES.has(namespace) && namespace !== 'turns' ? [{ store, namespace, family, args: ['--format', 'json', '-q', family, '-n', namespace, '-t', 'keyword', '--limit', '4'] }] : [])]);
@@ -362,10 +364,6 @@ export async function recall({ prompt, projectDir = process.cwd(), env = process
     // Overfetch a bounded six exact values so rejected turn metadata cannot hide
     // the next useful outcome; at most three verified excerpts are delivered.
     const candidates = pickRows(results, 6);
-    if (!candidates.length && status !== 'ok' && curated?.picks?.length) {
-      // Ranked search was shed under load: deliver exact curated state/lessons/decisions, not "timed out" and nothing.
-      return { ...curated, reason: 'semantic search ' + status + '; exact curated records delivered' };
-    }
     // Ruflo previews are ~60 characters. Read the actual selected values within
     // the same deadline so the block contains useful evidence rather than titles.
     const exactResults = await exactReads({ candidates, bin, deadline, env, scratch: scratchFor, signal });
@@ -399,6 +397,14 @@ export async function recall({ prompt, projectDir = process.cwd(), env = process
       });
       return unique.length ? [{ ...p, preview: clean('OUTCOME: ' + unique.join(' '), 280) }] : [];
     }).slice(0, 3);
+    // Curated exact records were read before ranking and are already verified: they lead, ranked hits fill the
+    // rest, deduplicated by (namespace, key). Ranked search failing or finding nothing never discards them, and
+    // everything leaves through formatBlock so the prompt path stays within BLOCK_MAX_BYTES.
+    const exactCurated = (curated?.picks ?? []).map(p => ({ store: 'memory.db', storePath: p.storePath, key: p.key, namespace: p.namespace,
+      score: 1, preview: p.preview, valueDigest: p.valueDigest }));
+    const seenKeys = new Set(exactCurated.map(p => `${p.namespace}\u0000${p.key}`));
+    const merged = [...exactCurated, ...picks.filter(p => !seenKeys.has(`${p.namespace}\u0000${p.key}`))].slice(0, 3);
+    picks.length = 0; picks.push(...merged);
     if (retrieved.some((r) => r.state !== 'ok')) status = retrieved.some((r) => r.state === 'timed out') ? 'timed out reading exact values' : 'unavailable exact values';
     const outcome = status === 'ok' ? (picks.length ? 'ok-with-results' : 'ok-empty') : /timed out/.test(status) ? 'timed-out' : 'unavailable';
     const receipt = { schemaVersion: 1, kind: 'canonical-memory-recall', outcome,

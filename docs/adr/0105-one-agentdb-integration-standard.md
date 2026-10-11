@@ -3,8 +3,8 @@ id: ADR-105
 title: One AgentDB integration standard for Claude Code and Codex hooks
 status: Accepted
 date: 2026-10-10
-updated: 2026-10-10 22:05:00 EDT
-version: 1.0.0
+updated: 2026-10-10 23:10:00 EDT
+version: 1.1.0
 authors: [Stuart Kerr, Claude Opus 5.5]
 tags: [agentdb, hooks, continuity, recall, enrollment, decisions, claude-code, codex]
 supersedes: [ADR-061, ADR-073, ADR-100, ADR-101, ADR-102]
@@ -226,8 +226,8 @@ Example value (shape only):
 | Rule | State | Evidence or gap |
 |---|---|---|
 | 1 One store, global binary, `--path` | Implemented | `project-store-resolver.mjs`; `ruflo-bin.mjs`; `agentdb-recall.mjs` `STORE_FILES = ['memory.db']` |
-| 2 Scratch cwd, no daemon | Implemented | All writers use `rufloCwdFor`/`rufloRunDir` |
-| 2 `CLAUDE_FLOW_MEMORY_PATH` removed | Implemented | `turn-outcome-capture.mjs` `runSteps`, `project-progression-store.mjs`, `continuity-journal.mjs`, `project-memory-enrollment.mjs` and `agentdb-recall-process.mjs` pass `CLAUDE_FLOW_MEMORY_PATH: undefined` to every Ruflo child. Guard: `tests/unit/ruflo-env-scrub.test.mjs` (fails when the scrub is removed). The user-level learning store spawns (`learning-store.mjs`, `learn-flush.mjs`) are out of scope (ADR-017). |
+| 2 Scratch cwd, no daemon | Implemented | Capture, recall and the progression/continuity writers use `rufloCwdFor`; the enrollment worker uses a private `mkdtemp` under the OS temp directory (outside the project). A Ruflo spawn in `degradation-watch.mjs` (bare `ruflo` from PATH, inherited env and cwd) is NOT yet covered. Follow-up. |
+| 2 `CLAUDE_FLOW_MEMORY_PATH` removed | Implemented at five spawn sites | `turn-outcome-capture.mjs` `runSteps`, `project-progression-store.mjs`, `continuity-journal.mjs`, `project-memory-enrollment.mjs` and `agentdb-recall-process.mjs` pass `CLAUDE_FLOW_MEMORY_PATH: undefined`. Guard: `tests/unit/ruflo-env-scrub.test.mjs` covers the recall spawn only; the other four sites are unguarded by test. `degradation-watch.mjs` is not covered. |
 | 3 Native immutable append + exact readback | Implemented | `appendExact` (`project-progression-store.mjs`), `runSteps`, `continuity-journal.mjs` `defaultStore`, `enrollProjectMemory` |
 | 3 Refusal ≠ duplicate | Implemented | `appendExact` accepts only the exact duplicate diagnostics. Turn and continuity writers count a row as stored only after a matching exact readback. |
 | 4 Exact-first recall, shared deadline | Implemented | `agentdb-recall.mjs` `recall` (curated pass, then `searchDeadlineFor`), `agentdb-recall-process.mjs` |
@@ -245,7 +245,7 @@ Each superseded ADR keeps its body as history. Its status line points here.
   - §1 clause 4, the "raw SQLite" prohibition, as far as product-owned schema-pinned read-only
     reads are concerned;
   - §4 step 3, enumeration with `ruflo memory list`;
-  - §6, initialization at SessionStart.
+  - §6, initialization at SessionStart (removed in code: `restoreProgressionForSession` returns `not-enrolled` and `session-start-core.mjs` only reports the enrollment plan).
   The binary continuity contract, the progression journal, the outbox and the acceptance clauses
   stay in force.
 - **ADR-100**: two items are superseded:
@@ -284,3 +284,11 @@ Each superseded ADR keeps its body as history. Its status line points here.
 - Live Ruflo 3.56.3 search on the canonical store, 2026-10-10. It warned: "16817 entries are in
   …/.swarm/agentdb-memory.db and were not searched. That store is written by the MCP/AgentDB
   path."
+
+## Review record
+
+- 2026-10-10, Opus 5.5 (independent read of HEAD `36fe043f`, file by file, no tests run by the reviewer): REVISE with four blocking findings, all resolved in the same release:
+  SessionStart created a store without consent (removed); the curated block could exceed 600 bytes and was discarded when ranked search was empty (curated and ranked are now merged and always leave through `formatBlock`); torn enrollment receipt/queue files wedged enrollment (atomic create-if-absent, torn files tolerated and preserved as `.corrupt`);
+  and non-blocking findings fixed: opt-out checked in every enrollment state, Git mount-boundary wording and a missing `git` binary, and a test that now counts Git processes.
+- Astra (`gpt-6-astra`): NOT obtained. The managed dispatcher refused the launch ("Native subscription allowance host exited before proof"), because the Brain's `codex` wrapper rejects `codex app-server` ("no proved terminal routing transport"). No bypass was attempted. ADR-075's dual-seat review is therefore OPEN for this ADR.
+- Open non-blocking findings carried forward: enrollment queue is unbounded while enrollment stays pending (N2); enrollment lock has a check-then-act gap and no age expiry (N3); "newest" decision slice is key-ordered, not time-ordered (N5); presence enumeration lists every turn key (N6); CLI-fallback exact reads are spawned in parallel (N7); Codex `shell`/`local_shell_call` commands are not mapped for path exclusion (N10).
