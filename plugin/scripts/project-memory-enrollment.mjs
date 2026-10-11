@@ -51,12 +51,13 @@ export function enrollmentPlan({ projectDir, env = process.env, deadlineAt = Inf
   return { ...resolution, state: hasDb && !enrollmentPending ? 'existing' : 'pending', brainHome, contentPathExcludes: consent.contentPathExcludes || [] };
 }
 
-/** Create-if-absent, atomically: a hook killed mid-write leaves a temp file, never a torn final file. */
+/** Create-if-absent. A hook killed mid-write leaves a torn FINAL file, which every reader tolerates (an unparsable
+ * receipt means pending; an unparsable queue entry is preserved as .corrupt). No hard-link or rename dance: a link
+ * window leaves nlink 2 on a killed hook, which the readers' nlink check would then reject forever. */
 function createExclusive(file, text) {
-  const temporary = `${file}.${crypto.randomUUID()}.tmp`;
-  const fd = fs.openSync(temporary, 'wx', 0o600);
+  let fd;
+  try { fd = fs.openSync(file, 'wx', 0o600); } catch (error) { if (error.code === 'EEXIST') return; throw error; }
   try { fs.writeFileSync(fd, text); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-  try { fs.linkSync(temporary, file); } catch (error) { if (error.code !== 'EEXIST') throw error; } finally { fs.rmSync(temporary, { force: true }); }
 }
 
 function safeDirectory(directory) {

@@ -289,7 +289,7 @@ async function consequentialRecall({ prompt, root, store, bin, scratch, env, dea
   let limit = 350;
   while (limit > 0 && Buffer.byteLength(render(limit)) > CONSEQUENTIAL_BLOCK_MAX_BYTES) limit--;
   const block = render(limit);
-  return { block, picks: selected, stores: [store], status: { 'memory.db': outcome }, outcome, categories,
+  return { block, picks: selected, stores: [store], status: { 'memory.db': outcome }, outcome, categories, enumerated: true,
     receipt: { schemaVersion: 1, kind: 'canonical-memory-recall', binding: phaseBinding, outcome, categories,
       observedAt: new Date().toISOString(), deadline, queryDigest: crypto.createHash('sha256').update(String(prompt)).digest('hex'),
       records: selected.map(({ category, namespace, key, storePath, valueDigest }) => ({ category, namespace, key, storePath, valueDigest })), authority: false } };
@@ -405,6 +405,11 @@ export async function recall({ prompt, projectDir = process.cwd(), env = process
     const seenKeys = new Set(exactCurated.map(p => `${p.namespace}\u0000${p.key}`));
     const merged = [...exactCurated, ...picks.filter(p => !seenKeys.has(`${p.namespace}\u0000${p.key}`))].slice(0, 3);
     picks.length = 0; picks.push(...merged);
+    // A failed curated read of state or lessons is not empty history: it must surface even when ranked search was ok.
+    // (Decisions are unranked by design in this pass, so their availability marker is not folded in.)
+    if (status === 'ok' && curated?.enumerated && ['state', 'lessons'].some(c => ['timed-out', 'unavailable'].includes(curated.categories?.[c]))) {
+      status = ['state', 'lessons'].some(c => curated.categories[c] === 'timed-out') ? 'timed out reading curated records' : 'unavailable curated records';
+    }
     if (retrieved.some((r) => r.state !== 'ok')) status = retrieved.some((r) => r.state === 'timed out') ? 'timed out reading exact values' : 'unavailable exact values';
     const outcome = status === 'ok' ? (picks.length ? 'ok-with-results' : 'ok-empty') : /timed out/.test(status) ? 'timed-out' : 'unavailable';
     const receipt = { schemaVersion: 1, kind: 'canonical-memory-recall', outcome,

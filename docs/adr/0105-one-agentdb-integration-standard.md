@@ -3,8 +3,8 @@ id: ADR-105
 title: One AgentDB integration standard for Claude Code and Codex hooks
 status: Accepted
 date: 2026-10-10
-updated: 2026-10-10 23:10:00 EDT
-version: 1.1.0
+updated: 2026-10-11 00:30:00 EDT
+version: 1.1.1
 authors: [Stuart Kerr, Claude Opus 5.5]
 tags: [agentdb, hooks, continuity, recall, enrollment, decisions, claude-code, codex]
 supersedes: [ADR-061, ADR-073, ADR-100, ADR-101, ADR-102]
@@ -292,3 +292,4 @@ Each superseded ADR keeps its body as history. Its status line points here.
   and non-blocking findings fixed: opt-out checked in every enrollment state, Git mount-boundary wording and a missing `git` binary, and a test that now counts Git processes.
 - Astra (`gpt-6-astra`): NOT obtained. The managed dispatcher refused the launch ("Native subscription allowance host exited before proof"), because the Brain's `codex` wrapper rejects `codex app-server` ("no proved terminal routing transport"). No bypass was attempted. ADR-075's dual-seat review is therefore OPEN for this ADR.
 - Open non-blocking findings carried forward: enrollment queue is unbounded while enrollment stays pending (N2); enrollment lock has a check-then-act gap and no age expiry (N3); "newest" decision slice is key-ordered, not time-ordered (N5); presence enumeration lists every turn key (N6); CLI-fallback exact reads are spawned in parallel (N7); Codex `shell`/`local_shell_call` commands are not mapped for path exclusion (N10).
+- 2026-10-10, Opus 5.5 second pass over `git diff 36fe043f 32ebd019`: B1, B2 and B3 RESOLVED. B4 PARTIAL: the first atomic-write fix used `link()`, which a killed hook could leave at nlink 2, making readers reject the file forever. Replaced by a direct exclusive create that every reader tolerates when torn. Also fixed from this pass: a failed curated state/lessons read after a successful enumeration is no longer reported as `ok-empty` (the block says `unavailable curated records`).

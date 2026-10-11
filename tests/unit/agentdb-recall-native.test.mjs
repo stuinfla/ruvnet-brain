@@ -74,3 +74,21 @@ for (const mode of ['hang', 'low']) {
     } finally { fs.rmSync(w.dir, { recursive: true, force: true }); }
   }, 30000);
 }
+
+it('does not report ok-empty when the curated state read is unavailable but ranked search succeeded empty', async () => {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'recall-unavail-')));
+  const proj = path.join(dir, 'proj'); const db = path.join(proj, '.swarm/memory.db');
+  fs.mkdirSync(path.dirname(db), { recursive: true });
+  const bin = path.join(dir, 'ruflo');
+  fs.writeFileSync(bin, `#!${process.execPath}\nconsole.log(JSON.stringify({results: []}));\n`, { mode: 0o755 });
+  const env = { ...process.env, RUFLO_DAEMON_AUTOSTART: '0', RUVNET_BRAIN_HOME: path.join(dir, 'brain') };
+  try {
+    // A checkpoint WITHOUT the numeric suffix cannot be selected as "latest": curated state is UNAVAILABLE, not absent.
+    const seeded = spawnSync(resolveRuflo({ env: process.env }), ['memory', 'store', '--path', db, '--namespace', 'proj',
+      '--key', 'project-state-current', '--value', '{"status":"legacy bare key"}'], { cwd: dir, env, encoding: 'utf8', timeout: 20000 });
+    expect(seeded.status, seeded.stderr).toBe(0);
+    const r = await recall({ prompt: 'Zebra quokka unrelated question entirely', projectDir: proj, env: { ...env, RUFLO_BIN: bin } });
+    expect(r.outcome, JSON.stringify(r.categories)).toBe('unavailable');
+    expect(r.block).toContain('unavailable curated records');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+}, 30000);
