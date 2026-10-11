@@ -188,7 +188,7 @@ describe('enrollment identity safety', () => {
     const resolved = resolveProjectStore({ projectDir: wt });
     expect(resolved.projectRoot).toBe(repo); expect(resolved.checkoutRoot).toBe(repo);
   });
-  it('spawns exactly one git process for project identity and tolerates the mount-boundary wording', () => {
+  it.skipIf(process.platform === 'win32')('spawns exactly one git process for project identity and tolerates the mount-boundary wording', () => { // /bin/sh shim: POSIX only
     const repo = temporaryRoot(); git(repo, 'init');
     const bin = path.join(temporaryRoot(), 'bin'); fs.mkdirSync(bin);
     const log = path.join(path.dirname(bin), 'git-calls.log');
