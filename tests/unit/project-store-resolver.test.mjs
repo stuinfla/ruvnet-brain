@@ -188,15 +188,15 @@ describe('enrollment identity safety', () => {
     const resolved = resolveProjectStore({ projectDir: wt });
     expect(resolved.projectRoot).toBe(repo); expect(resolved.checkoutRoot).toBe(repo);
   });
-  it.skipIf(process.platform === 'win32')('spawns exactly one git process for project identity and tolerates the mount-boundary wording', () => { // /bin/sh shim: POSIX only
+  it('spawns exactly one git process for project identity', () => {
     const repo = temporaryRoot(); git(repo, 'init');
-    const bin = path.join(temporaryRoot(), 'bin'); fs.mkdirSync(bin);
-    const log = path.join(path.dirname(bin), 'git-calls.log');
-    const realGit = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
-    fs.writeFileSync(path.join(bin, 'git'), `#!/bin/sh\necho "$@" >> ${JSON.stringify(log)}\nexec ${JSON.stringify(realGit)} "$@"\n`, { mode: 0o755 });
-    const saved = process.env.PATH; process.env.PATH = `${bin}${path.delimiter}${saved}`;
-    try { expect(resolveProjectStore({ projectDir: repo }).projectRoot).toBe(repo); } finally { process.env.PATH = saved; }
-    expect(fs.readFileSync(log, 'utf8').trim().split('\n')).toHaveLength(1);
+    const trace = path.join(temporaryRoot(), 'trace2.jsonl');
+    const saved = process.env.GIT_TRACE2_EVENT; process.env.GIT_TRACE2_EVENT = trace;
+    try { expect(resolveProjectStore({ projectDir: repo }).projectRoot).toBe(repo); }
+    finally { if (saved === undefined) delete process.env.GIT_TRACE2_EVENT; else process.env.GIT_TRACE2_EVENT = saved; }
+    // Git's own trace2 log is cross-platform: one "start" event per git process, whatever the shell or OS.
+    const starts = fs.readFileSync(trace, 'utf8').split('\n').filter((line) => /"event":"start"/.test(line));
+    expect(starts).toHaveLength(1);
   });
   it('allows default enrollment only for Git outside home, temp, system and cache roots', () => {
     const root = temporaryRoot(); git(root, 'init');
