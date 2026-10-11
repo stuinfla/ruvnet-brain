@@ -336,15 +336,15 @@ describe('customer managed actions and immutable frozen recovery', () => {
     const f = fixture(); const { first } = collidingQueue(f);
     fs.writeFileSync(f.cli.counter, '10');
     drain(f);
+    // A REFUSED native write is not "already stored": nothing is acknowledged, no recovery identity is minted
+    // from the refusal, and the whole frozen queue is retained (hardened append; ADR-101).
     expect(queuedWork(f.dir)).toBe(2);
-    const pending = f.store.outbox.pendingSnapshots();
-    expect(pending).toHaveLength(1);
-    const recoveryKey = pending[0].eventKey;
-    expect(recoveryKey).not.toBe(first.eventKey);
+    expect(f.store.outbox.pendingSnapshots()).toHaveLength(0);
     fs.writeFileSync(f.cli.counter, '0');
     drain(f);
     expect(queuedWork(f.dir)).toBe(0);
-    expect(f.store.retrieveSnapshots([recoveryKey]).snapshots).toHaveLength(1);
+    const recovered = f.store.listSnapshotKeys().filter((key) => key !== first.eventKey);
+    expect(recovered.length).toBeGreaterThanOrEqual(1);
   });
 
   it('retains the queue when the recovery write lacks exact readback, then verifies the same key', () => {

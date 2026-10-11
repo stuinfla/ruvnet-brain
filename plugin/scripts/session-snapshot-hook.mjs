@@ -15,6 +15,7 @@ import { projectDirectory } from './project-identity.mjs';
 import { buildProjectProgression } from './project-progression-producer.mjs';
 import { ProjectProgressionStore } from './project-progression-store.mjs';
 import { resolveProjectStore } from './project-store-resolver.mjs';
+import { ensureProjectMemory } from './project-memory-enrollment.mjs';
 import { resolveTurnDb, captureTurnOutcome } from './turn-outcome-capture.mjs';
 import { captureContinuityEvents, stopNotice } from './continuity-journal.mjs';
 import { automaticProgressionSuspensionResult } from './project-progression-suspension.mjs';
@@ -129,6 +130,7 @@ export function runSessionSnapshotHook(projectDir, event, {
   spawnReplay = replayOutboxDetached,
   ordered = null,
   captureEvents = captureContinuityEvents,
+  enrollMemory = ensureProjectMemory,
   deadlineAt: inheritedDeadlineAt = Infinity,
   signal,
 } = {}) {
@@ -136,6 +138,11 @@ export function runSessionSnapshotHook(projectDir, event, {
   const checkDeadline = () => { if (signal?.aborted || now() >= deadlineAt) throw new Error('restore deadline exceeded'); };
   const suspended = (reason) => ({ metadataWritten: false, progressionCaptured: false, receipt: null, skipped: reason,
     turn: { event, recorded: false, skipped: reason }, continuity: { event, recorded: 0, launched: false, skipped: reason } });
+  let enrollmentPayload = {};
+  try { enrollmentPayload = rawInput ? JSON.parse(rawInput) : {}; } catch { /* malformed payload */ }
+  const enrollment = enrollMemory({ projectDir, env, event, payload: enrollmentPayload, host, deadlineAt });
+  if (enrollment.state === 'pending') return { ...suspended('native project memory enrollment pending'), enrollment };
+  if (enrollment.state === 'disabled' || enrollment.state === 'unavailable') return { ...suspended(enrollment.reason), enrollment };
   // Consent is checked before metadata, transcript inspection or any durable capture queue.
   try {
     checkDeadline();

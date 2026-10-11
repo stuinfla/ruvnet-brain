@@ -26,9 +26,11 @@ export function syncTurnDirectory(dir, { platform = process.platform, io = fs } 
 export function storeData(step) {
   if (step?.kind !== 'store' || !Array.isArray(step.args) || step.args[0] !== 'memory' || step.args[1] !== 'store') throw new Error('invalid turn store operation');
   const fields = {}; const aliases = { '-k': 'key', '--key': 'key', '--value': 'value', '-n': 'namespace', '--namespace': 'namespace', '--path': 'db', '--tags': 'tags', '--provenance': 'provenance' };
-  let strict = false;
+  let strict = false; let native = false; let immutable = false;
   for (let i = 2; i < step.args.length; i++) {
     const flag = step.args[i];
+    if (flag === '--append-only') { if (immutable) throw new Error('duplicate turn store flag'); immutable = true; continue; }
+    if (flag === '--require-native') { if (native) throw new Error('duplicate turn store flag'); native = true; continue; }
     if (flag === '--no-upsert') { if (strict) throw new Error('duplicate turn store flag'); strict = true; continue; }
     const field = aliases[flag];
     if (!field || Object.hasOwn(fields, field) || typeof step.args[i + 1] !== 'string') throw new Error('unknown or duplicate turn store flag');

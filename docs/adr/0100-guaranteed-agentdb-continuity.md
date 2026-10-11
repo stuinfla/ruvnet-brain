@@ -1,19 +1,22 @@
 ---
 id: ADR-100
 title: Guaranteed AgentDB continuity — material events, durable outbox, come-up-to-speed brief, one writer
-status: Accepted
+status: Superseded
+superseded_by: ADR-105
 date: 2026-10-01
-updated: 2026-10-10 06:00:22 EDT
+updated: 2026-10-10 22:01:00 EDT
 authors: [Stuart Kerr, Claude Opus 5.5]
 tags: [agentdb, continuity, hooks, durability, memory]
 supersedes: []
 relates: [ADR-073, ADR-076]
-version: 1.1.1
+version: 1.2.0
 ---
 
 # ADR-100 — Guaranteed AgentDB continuity
 
-**Status**: Accepted (requirements reaffirmed by the owner on 2026-10-03)
+**Status**: Superseded (in part by ADR-105 on 2026-10-10)
+
+Prior status: Accepted (requirements reaffirmed by the owner on 2026-10-03). Superseded in part by [ADR-105](0105-one-agentdb-integration-standard.md): the §2 write command (now `--no-upsert --require-native --append-only --path`) and §3 deferral to a user-level writer; material events, outbox, brief and positive confirmation remain in force.
 
 Implementation acceptance remains incomplete.
 
@@ -126,7 +129,7 @@ whole-image mutator (access_count bump) — `ruflo/v3/@claude-flow/cli/src/memor
 - Detected decisions/lessons are pattern-matched and can miss or over-match; they are marked `detected`.
 - The progression event-key collision (same session, sequence and dedup id at two boundaries) is now
   contained, not fixed at its source (`project-progression-contract.mjs` `eventKeyFor`).
-- The outbox is not compacted yet; at the measured rate (tens of events/day, ~1 KB each) that is months.
+- The outbox is compacted by the implemented journal; its measured recovery and retention scope still governs acceptance; at the measured rate (tens of events/day, ~1 KB each) that is months.
 - Restore context (progression JSON, ≤ 8 KB) plus the brief (≤ 3 KB) can exceed a host's inline preview;
   the brief is first so it survives a cut.
 
@@ -162,3 +165,10 @@ hook bodies preserved. This is a machine repair, not an automatic product permis
 user-owned hooks elsewhere. The product's filename-based legacy-owner detection still does not
 establish that an arbitrary external writer meets the canonical contract. Full ADR-073 conformity,
 all-host native delivery and unrestricted semantic learning are not claimed by this amendment.
+
+
+## 2026-10-10 perennial memory hardening
+
+Material outcomes are recovered at Stop, SessionEnd and PreCompact, including bounded native Codex transcript records. Short strategic decisions are independently captured as unconfirmed observations. Continuity, turn and progression writes require native immutable insertion; generic refusals cannot be acknowledged from an older matching row. Only a verified strict duplicate may be replayed idempotently. Unreadable outbox is unavailable, never empty. The constructor never deletes existing AgentDB stores. Prompt recall includes relevant typed continuity decisions/lessons/open items, with provenance and current privacy exclusions.
+
+Implementation acceptance is pending final source-bound and native-host verification.

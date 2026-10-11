@@ -124,29 +124,6 @@ function resultText(result, field) {
   return Buffer.isBuffer(value) ? value.toString('utf8') : String(value ?? '');
 }
 
-function initializeCanonicalStore(store, resolution) {
-  const key = 'project-continuity-bootstrap-v1';
-  const namespace = 'project-progression-control';
-  const value = JSON.stringify({
-    schema: 'ruvnet-brain.project-continuity-bootstrap',
-    schemaVersion: 1,
-    projectIdentity: resolution.projectIdentity,
-  });
-  store.run([
-    'memory', 'store', '--key', key, '--value', value,
-    '--namespace', namespace, '--no-upsert', '--provenance', 'system_observation',
-    '--path', resolution.canonicalAgentDbPath,
-  ]);
-  const readback = store.run([
-    'memory', 'retrieve', '--key', key, '--namespace', namespace,
-    '--value-only', '--path', resolution.canonicalAgentDbPath,
-  ]);
-  if (resultStatus(readback) !== 0 || resultText(readback, 'stdout') !== value
-    || !fs.existsSync(resolution.canonicalAgentDbPath)) {
-    throw new Error('canonical AgentDB initialization failed');
-  }
-}
-
 /**
  * One line, only when there is something to say. Durable-but-uncommitted snapshots are evidence the
  * session must know about: they will be committed at the next capture boundary, and until then the
@@ -267,10 +244,13 @@ export function restoreProgressionForSession({
       const failed = miss('outbox-replay');
       return { ...failed, context: `${failed.context} Replay is suspended by capture consent; no older checkpoint was injected.` };
     }
-    if (initializing) {
-      fs.mkdirSync(path.dirname(resolution.canonicalAgentDbPath), { recursive: true, mode: 0o700 });
-      initializeCanonicalStore(store, resolution);
-    }
+    // ADR-105 rule 6: restoring a session never creates a store. A project's store is created only by the
+    // consent-gated native enrollment (project-memory-enrollment.mjs), never by SessionStart and never when
+    // consent is absent or RUVNET_TURN_CAPTURE=off.
+    if (initializing) return {
+      status: 'unavailable', reason: 'not-enrolled', severity: 'info',
+      context: '[RuvNet Brain — PROJECT CONTINUITY UNAVAILABLE]\nNo canonical project store exists yet; it is created by consent-gated native enrollment at the first captured boundary. Nothing to restore.',
+    };
     if (!suspended) {
       const queue = drainCaptureQueue({ projectDir, budgetMs: Math.max(0, deadlineAt - Date.now()),
         deadlineAt, signal, env, makeStoreFactory: () => () => store });

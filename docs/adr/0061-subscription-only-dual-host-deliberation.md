@@ -1,9 +1,10 @@
 ---
 id: ADR-061
 title: Subscription-only dual-host deliberation for hard problems
-status: Proposed
+status: Superseded
+superseded_by: ADR-105
 date: 2026-07-28
-updated: 2026-09-27
+updated: 2026-10-10 22:01:00 EDT
 updated_source: derived-from-git
 reviewed_digest: 962ea30fdbcf
 authors: [Stuart Kerr, GPT-5.6-Sol]
@@ -22,7 +23,9 @@ governs:
 
 # ADR-061: Subscription-only dual-host deliberation
 
-**Status**: Proposed
+**Status**: Superseded (in part by ADR-105 on 2026-10-10)
+
+Prior status: Proposed. Superseded in part by [ADR-105](0105-one-agentdb-integration-standard.md): §7 "an MCP-aware caller owns the write" (project history is written only through global `ruflo memory --path`, never MCP `memory_*`/`agentdb_*`); the rest of this proposal is unchanged and still Proposed.
 
 Codex review is complete; Claude review is still required before acceptance.
 **Date**: 2026-07-28

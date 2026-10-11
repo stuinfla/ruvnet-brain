@@ -112,7 +112,7 @@ function memoryRunner({ beforeStore } = {}) {
     const identity = `${flag(args, '--namespace')}/${flag(args, '--key')}`;
     if (command === 'memory store') {
       beforeStore?.();
-      if (rows.has(identity)) return { status: 1, stdout: '', stderr: 'already exists' };
+      if (rows.has(identity)) return { status: 1, stdout: '', stderr: 'immutable append rejected: logical key already exists' };
       rows.set(identity, flag(args, '--value'));
       return { status: 0, stdout: 'stored', stderr: '' };
     }
@@ -250,7 +250,7 @@ describe('managed ProjectProgression append and readback', () => {
         binary: '/managed/global/ruflo',
         args: [
           'memory', 'store', '--key', snapshot.eventKey, '--value', JSON.stringify(snapshot),
-          '--namespace', NAMESPACE, '--no-upsert', '--provenance', 'system_observation',
+          '--namespace', NAMESPACE, '--no-upsert', '--require-native', '--append-only', '--provenance', 'system_observation',
           '--path', bridge.resolution.canonicalAgentDbPath,
         ],
       },
@@ -341,6 +341,37 @@ describe('managed ProjectProgression append and readback', () => {
 
     expect(() => bridge.capture(snapshot)).toThrow(/readback digest mismatch/i);
     expect(bridge.outbox.pendingSnapshots()).toEqual([snapshot]);
+  });
+
+  it.each(['native writer unavailable', 'active native WAL connection — refusing unsafe write', 'permission denied', 'random file already exists', 'immutable append rejected: logical key already exists\n[ERROR] native writer unavailable'])(
+    'never acknowledges an old matching row after generic native refusal: %s', (diagnostic) => {
+      const projectRoot = temporaryProject(), snapshot = progression(projectRoot), fake = memoryRunner();
+      fake.rows.set(`${NAMESPACE}/${snapshot.eventKey}`, JSON.stringify(snapshot));
+      const bridge = new ProjectProgressionStore({ projectDir: projectRoot, rufloBinary: '/managed/global/ruflo',
+        runner: (binary, args, options) => args[1] === 'store' ? { status: 1, stderr: diagnostic } : fake.runner(binary, args, options), reader: null });
+      expect(() => bridge.capture(snapshot)).toThrow(/native append failed/);
+      expect(bridge.outbox.pendingSnapshots()).toEqual([snapshot]);
+      expect(fake.calls).toHaveLength(0);
+    });
+
+  it('native immutable strict duplicate plus exact content permits idempotent replay', () => {
+    const projectRoot = temporaryProject(), snapshot = progression(projectRoot), fake = memoryRunner();
+    fake.rows.set(`${NAMESPACE}/${snapshot.eventKey}`, JSON.stringify(snapshot));
+    const bridge = new ProjectProgressionStore({ projectDir: projectRoot, rufloBinary: '/managed/global/ruflo', runner: fake.runner, reader: null });
+    expect(bridge.capture(snapshot)).toMatchObject({ alreadyStored: true, payloadDigest: snapshot.payloadDigest });
+    expect(bridge.outbox.pendingSnapshots()).toEqual([]);
+    expect(fake.calls[0].args).toEqual(expect.arrayContaining(['--no-upsert', '--require-native', '--append-only']));
+  });
+
+  it('opening continuity preserves canonical, sibling and mirrored nested stores byte-for-byte', () => {
+    const projectRoot = temporaryProject(), storeDir = path.join(projectRoot, '.swarm');
+    fs.mkdirSync(path.join(storeDir,'.swarm'), { recursive:true });
+    const canonical=path.join(storeDir,'memory.db'), sibling=path.join(storeDir,'agentdb-memory.db'), nested=path.join(storeDir,'.swarm','agentdb-memory.db');
+    for (const file of [canonical,sibling,nested]) memoryStore(file,[['legacy','kept','same content']]);
+    const before = [canonical,sibling,nested].map(file=>fs.readFileSync(file));
+    const bridge=new ProjectProgressionStore({projectDir:projectRoot,rufloBinary:'/managed/global/ruflo',runner:memoryRunner().runner});
+    expect(bridge.legacyDebris.removed).toEqual([]);
+    for (const [index,file] of [canonical,sibling,nested].entries()) expect(fs.readFileSync(file)).toEqual(before[index]);
   });
 
   it('fails closed when a successful insert reads back a different payload', () => {
@@ -557,7 +588,7 @@ describe('managed ProjectProgression append and readback', () => {
   // 4.3.40 ran ruflo with cwd <project>/.swarm: upgraded projects carry its cwd artifacts inside the store
   // directory, including .swarm/.swarm/hnsw.metadata.json (snapshot content). The tree below is made the
   // way 4.3.40 made it: real ruflo, cwd = .swarm, --path = .swarm/memory.db.
-  realRufloIt('removes exactly the 4.3.40 ruflo artifacts inside .swarm, keeping the store, outbox and queue', () => {
+  realRufloIt('preserves the existing 4.3.40 stores and artifacts when opening continuity', () => {
     const projectRoot = temporaryProject();
     const resolution = resolveProjectStore({ projectDir: projectRoot });
     const storeDir = path.dirname(resolution.canonicalAgentDbPath);
@@ -579,13 +610,14 @@ describe('managed ProjectProgression append and readback', () => {
 
     const opened = new ProjectProgressionStore({ projectDir: projectRoot, rufloBinary: ruflo });
     expect(opened.legacyDebris.refused).toEqual([]);
-    expect(opened.legacyDebris.removed.map((entry) => path.basename(entry)).sort()).toEqual(['.claude', '.claude-flow', '.swarm', 'ruvector.db']);
-    expect(fs.readdirSync(storeDir).sort()).toEqual(before.filter((name) => !['.swarm', '.claude', '.claude-flow', 'ruvector.db'].includes(name)));
+    expect(opened.legacyDebris.removed).toEqual([]);
+    expect(opened.legacyDebris.skipped).toContain('preserved');
+    expect(fs.readdirSync(storeDir).sort()).toEqual(before);
     expect(fs.readdirSync(storeDir)).toEqual(expect.arrayContaining(['memory.db', 'project-progression-outbox.jsonl', 'agentdb-sessions.jsonl']));
     const read = spawnSync(ruflo, ['memory', 'retrieve', '--key', 'legacy-row', '--namespace', 'legacy', '--value-only',
       '--path', resolution.canonicalAgentDbPath], { cwd: rufloRunDir(resolution.canonicalAgentDbPath), env, encoding: 'utf8', timeout: 120_000 });
     expect(JSON.parse(read.stdout)).toEqual({ kept: true }); // the store of record is untouched
-    expect(new ProjectProgressionStore({ projectDir: projectRoot, rufloBinary: ruflo }).legacyDebris).toEqual({ removed: [], refused: [] });
+    expect(new ProjectProgressionStore({ projectDir: projectRoot, rufloBinary: ruflo }).legacyDebris).toMatchObject({ removed: [], refused: [], skipped: expect.stringContaining('preserved') });
   }, 300_000);
 
   // The SHAPE (names only, never contents) of a real upgraded project's .swarm on the owner's Mac, read-only

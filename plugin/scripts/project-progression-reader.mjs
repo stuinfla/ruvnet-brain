@@ -43,8 +43,8 @@
 import fs from 'node:fs';
 import { loadNodeSqlite } from './node-sqlite.mjs';
 
-/** Rows that `ruflo memory` itself considers live (memory-initializer.js ACTIVE_MEMORY_ROW_SQL). */
-const ACTIVE_ROW_SQL = "(status = 'active' OR status IS NULL)";
+/** Installed Ruflo live-memory-row.js visibility; bind current time on every read. */
+const ACTIVE_ROW_SQL = "(status = 'active' OR status IS NULL) AND (expires_at IS NULL OR expires_at > ?)";
 
 /**
  * Every SQLite database file begins with this 16-byte header (sqlite.org/fileformat.html §1.3):
@@ -224,7 +224,7 @@ export function openProgressionReader(dbPath, { deadlineAt = Infinity, signal } 
   }
 
   const query = (statement, params) => {
-    try { return statement.all(...params); } catch (error) {
+    try { return statement.all(Date.now(), ...params); } catch (error) {
       throw new ProgressionReaderUnavailable(`read failed: ${error.message}`);
     }
   };
@@ -236,7 +236,7 @@ export function openProgressionReader(dbPath, { deadlineAt = Infinity, signal } 
       if (!Number.isSafeInteger(maxEntries) || maxEntries < 1) throw new TypeError('maxEntries must be a positive safe integer');
       let rows = [];
       if (Number.isFinite(deadlineAt) || signal) {
-        for (const row of listStatement.iterate(namespace)) {
+        for (const row of listStatement.iterate(Date.now(), namespace)) {
           checkDeadline(); rows.push(row);
           if (rows.length > maxEntries) throw new Error('progression enumeration exceeds its bound');
         }

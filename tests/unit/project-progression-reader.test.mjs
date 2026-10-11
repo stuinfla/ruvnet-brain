@@ -36,10 +36,10 @@ function fixtureStore(rows, { extraColumn = null, userVersion = null } = {}) {
     created_at INTEGER, updated_at INTEGER, expires_at INTEGER, last_accessed_at INTEGER,
     access_count INTEGER, status TEXT, provenance_type TEXT${extraColumn ? `, ${extraColumn} TEXT` : ''})`);
   const insert = database.prepare(
-    'INSERT INTO memory_entries (id, key, namespace, content, status) VALUES (?, ?, ?, ?, ?)',
+    'INSERT INTO memory_entries (id, key, namespace, content, status, expires_at) VALUES (?, ?, ?, ?, ?, ?)',
   );
   rows.forEach((row, index) => {
-    insert.run(`entry_${index}`, row.key, row.namespace ?? NAMESPACE, row.content, row.status ?? null);
+    insert.run(`entry_${index}`, row.key, row.namespace ?? NAMESPACE, row.content, row.status ?? null, row.expiresAt ?? null);
   });
   if (userVersion !== null) database.exec(`PRAGMA user_version = ${userVersion}`);
   database.close();
@@ -198,4 +198,25 @@ describe('canonical progression reader', () => {
     expect(() => withProgressionReader(file, (reader) => reader.listKeys(NAMESPACE)))
       .toThrow(/duplicate progression key/);
   });
+});
+
+
+it('applies installed Ruflo TTL visibility at every exact, namespace and aggregate read', () => {
+  let clock = 1000; vi.spyOn(Date, 'now').mockImplementation(() => clock);
+  const file = fixtureStore([{ key: 'expired', content: 'withheld', expiresAt: 999 },
+    { key: 'boundary', content: 'withheld', expiresAt: 1000 },
+    { key: 'expiring', content: 'visible', expiresAt: 1001 }, { key: 'permanent', content: 'visible' }]);
+  const reader = openProgressionReader(file);
+  const before = fs.readFileSync(file);
+  try {
+    expect(reader.listKeys(NAMESPACE)).toEqual(['expiring', 'permanent']);
+    expect(reader.readContent(NAMESPACE, 'expired')).toBeNull();
+    expect(reader.readContent(NAMESPACE, 'boundary')).toBeNull();
+    expect(reader.readContent(NAMESPACE, 'expiring')).toBe('visible');
+    clock = 1001;
+    expect(reader.readContent(NAMESPACE, 'expiring')).toBeNull();
+    expect(reader.allRows().map(row => row.key)).toEqual(['permanent']);
+    expect(reader.listKeys(NAMESPACE, { maxEntries: 10 })).toEqual(['permanent']);
+  } finally { reader.close(); }
+  expect(fs.readFileSync(file)).toEqual(before);
 });

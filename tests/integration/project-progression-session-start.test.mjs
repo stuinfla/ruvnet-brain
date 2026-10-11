@@ -165,71 +165,26 @@ describe('ADR-073 Slice F SessionStart restore bridge', () => {
     expect(fs.existsSync(path.join(project, '.swarm', 'memory.db'))).toBe(false);
   });
 
-  it('initializes a new writable project only through the canonical managed-store seam', () => {
-    const project = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'progression-new-project-')));
-    temporaryRoots.push(project);
-    fs.writeFileSync(path.join(project, 'package.json'), '{}');
-    let options;
-    const calls = [];
-    let bootstrapValue = '';
-
-    const result = restoreProgressionForSession({
-      cwd: project,
-      env: { ...process.env, CLAUDE_PROJECT_DIR: project },
-      storeFactory: (received) => {
-        options = received;
-        return {
-          run: (args) => {
-            calls.push(args);
-            if (args[1] === 'store') {
-              bootstrapValue = flag(args, '--value');
-              fs.writeFileSync(received.requestedStorePath, 'initialized by managed seam');
-              return { status: 0, stdout: '', stderr: '' };
-            }
-            if (args[1] === 'retrieve') return { status: 0, stdout: bootstrapValue, stderr: '' };
-            throw new Error(`unexpected command: ${args.join(' ')}`);
-          },
-          restoreLatest: () => {
-          const error = new Error('no coherent progression state could be restored');
-          error.rejectedCandidates = [];
-          throw error;
-          },
-        };
-      },
-    });
-
-    expect(result.status).toBe('initialized');
-    expect(result.context).toContain('PROJECT CONTINUITY INITIALIZED');
-    expect(options.requestedStorePath).toBe(resolveProjectStore({ projectDir: project }).canonicalAgentDbPath);
-    expect(fs.existsSync(options.requestedStorePath)).toBe(true);
-    expect(calls[0]).toEqual(expect.arrayContaining([
-      'memory', 'store', '--key', 'project-continuity-bootstrap-v1', '--no-upsert',
-      '--provenance', 'system_observation', '--path', options.requestedStorePath,
-    ]));
-    expect(calls[1]).toEqual(expect.arrayContaining([
-      'memory', 'retrieve', '--key', 'project-continuity-bootstrap-v1',
-      '--value-only', '--path', options.requestedStorePath,
-    ]));
-  });
-
-  it('fails closed without leaking CLI output when managed initialization fails', () => {
-    const project = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'progression-init-fail-')));
-    temporaryRoots.push(project);
-    fs.writeFileSync(path.join(project, 'package.json'), '{}');
-    const result = restoreProgressionForSession({
-      cwd: project,
-      env: { ...process.env, CLAUDE_PROJECT_DIR: project },
-      storeFactory: () => ({
-        run: () => ({ status: 1, stdout: '', stderr: 'private cli diagnostic' }),
-        restoreLatest: () => { throw new Error('must not restore'); },
-      }),
-    });
-
-    expect(result.status).toBe('unknown');
-    expect(result.reason).toBe('initialization-failed');
-    expect(result.context).toContain('PROJECT CONTINUITY UNKNOWN');
-    expect(result.context).not.toContain('private cli diagnostic');
-    expect(fs.existsSync(path.join(project, '.swarm', 'memory.db'))).toBe(false);
+  it('never creates a store at SessionStart: an absent store is reported not-enrolled and nothing is written', () => {
+    // ADR-105 rule 6. Store creation belongs to consent-gated native enrollment, not to restoring a session.
+    for (const env of [{}, { RUVNET_TURN_CAPTURE: 'off' }]) {
+      const project = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'progression-new-project-')));
+      temporaryRoots.push(project);
+      fs.writeFileSync(path.join(project, 'package.json'), '{}');
+      const calls = [];
+      const result = restoreProgressionForSession({
+        cwd: project,
+        env: { ...process.env, ...env, CLAUDE_PROJECT_DIR: project },
+        storeFactory: () => ({
+          run: (args) => { calls.push(args); return { status: 0, stdout: '', stderr: '' }; },
+          restoreLatest: () => { throw new Error('must not restore from an absent store'); },
+        }),
+      });
+      expect(result.status).toBe('unavailable');
+      expect(result.context).toContain('PROJECT CONTINUITY UNAVAILABLE');
+      expect(calls.filter((args) => args[1] === 'store'), JSON.stringify(env)).toEqual([]);
+      expect(fs.existsSync(path.join(project, '.swarm', 'memory.db')), JSON.stringify(env)).toBe(false);
+    }
   });
 
   it('surfaces unavailable and performs no store call for a read-only project', () => {

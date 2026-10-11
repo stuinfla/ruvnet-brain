@@ -1,10 +1,11 @@
 ---
 id: ADR-101
 title: Canonical AgentDB recall before every nontrivial prompt
-status: Accepted
+status: Superseded
+superseded_by: ADR-105
 date: 2026-10-02
-updated: 2026-10-10 06:00:22 EDT
-version: 1.1.2
+updated: 2026-10-10 22:01:00 EDT
+version: 1.2.0
 authors: [Stuart Kerr]
 tags: [agentdb, hooks, recall, continuity]
 supersedes: []
@@ -13,7 +14,9 @@ relates: [ADR-100, ADR-098, ADR-0030, ADR-054]
 
 # ADR-101 — Canonical AgentDB recall before every nontrivial prompt
 
-**Status**: Accepted (2026-10-03 owner mandate and implementation authorization)
+**Status**: Superseded (in part by ADR-105 on 2026-10-10)
+
+Prior status: Accepted (2026-10-03 owner mandate and implementation authorization). Superseded in part by [ADR-105](0105-one-agentdb-integration-standard.md): §3-§4 read order (exact curated reads now precede ranked search) and §6 per-probe Git timeouts (now one call, `min(600ms, budget/3)`, fail closed); trigger, canonical-only store, redaction, 600 B cap and 1900 ms budget remain in force.
 Acceptance records the decision; it does not claim publication or installation verification.
 2026-10-03 amendment: the 4.5.4 candidate checks acknowledgement prompts, resolves nested
 checkouts canonically, prioritizes substantive lessons and delivers useful evidence on repeated prompts.
@@ -95,3 +98,10 @@ receipts prove actual delivery and consumption for their recorded source version
 they are not proof of every supported host, every prompt, or a published package.
 Filesystem stalls, host process startup, and the existing shell
 stack's work outside the recall block are outside the module's child-process budget.
+
+
+## 2026-10-10 perennial memory hardening
+
+Prompt recall prunes structurally empty namespaces and batches exact values through the existing schema-checked read-only provider in one cancellable process. Ruflo remains the semantic ranker. TTL visibility matches the installed provider; opted-out or excluded historical content is not injected. Automatically captured strategic continuity records are eligible untrusted evidence, not ratified instructions. The shared 1900ms total budget remains unchanged. Real native cold/warm measurements and host delivery receipts qualify only their observed source and scope.
+
+Implementation acceptance is pending final source-bound and native-host verification.
