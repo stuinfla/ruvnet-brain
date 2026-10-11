@@ -150,7 +150,7 @@ describe('canonical prompt-time AgentDB recall', () => {
   it('does not inject previews when exact-key retrieval times out', async () => {
     const w = world();
     try {
-      const r = await recall({ prompt: 'Fix parser', projectDir: w.proj, env: { ...w.env, RECALL_RETRIEVE_HANG: '1' }, deadlineMs: 350 });
+      const r = await recall({ prompt: 'Fix parser', projectDir: w.proj, env: { ...w.env, RECALL_RETRIEVE_HANG: '1' }, deadlineMs: 600 });
       expect(r.picks).toEqual([]); expect(r.block).toContain('timed out reading exact values');
       expect(r.block).not.toContain('requirement present');
     } finally { w.cleanup(); }
@@ -456,4 +456,34 @@ fs.appendFileSync(process.env.RECALL_LOG,child.pid+'\\n');console.log(JSON.strin
     for (const child of pid ?? []) try { process.kill(child, 'SIGKILL'); } catch { /* already retired */ }
     w.cleanup();
   }
+});
+
+it.each(['off', 'invalid', 'exclude'])('honors %s recall privacy before delivering historical content', async mode => {
+  const w = world();
+  try {
+    const policyDir = path.join(w.env.RUVNET_BRAIN_HOME, 'turn-capture'); fs.mkdirSync(policyDir, { recursive: true });
+    const policy = { schemaVersion: 1, projects: { [w.proj]: mode === 'off' ? 'off' : 'on' } };
+    if (mode === 'exclude') {
+      policy.contentPathExcludes = [path.join(w.proj, 'private')];
+      fs.writeFileSync(w.env.RECALL_ROWS, JSON.stringify([{ ...rows[0], content: `Decision: parser source ${w.proj}/private/key.txt carries confidential content.` }]));
+    }
+    fs.writeFileSync(path.join(policyDir, 'policy.json'), mode === 'invalid' ? '{' : JSON.stringify(policy));
+    const result = await recall({ prompt: 'Fix parser', projectDir: w.proj, env: w.env });
+    expect(result.picks).toEqual([]);
+    expect(result.block).not.toContain('confidential');
+    if (mode !== 'exclude') expect(fs.existsSync(w.env.RECALL_LOG)).toBe(false);
+  } finally { w.cleanup(); }
+});
+
+it('recalls short typed continuity decisions while rejecting commit and gate telemetry', async () => {
+  const w = world();
+  try {
+    fs.writeFileSync(w.env.RECALL_ROWS, JSON.stringify(['decision', 'lesson', 'commit', 'gate'].map(kind => ({
+      key: `cevt-example-${kind}-1`, namespace: 'continuity-events', score: 0.8, preview: 'event',
+      content: JSON.stringify({ schema: 'ruvnet-brain.continuity-event', schemaVersion: 1, kind, project: w.proj, summary: `${kind}: parser uses canonical memory.` }),
+    }))));
+    const result = await recall({ prompt: 'Fix parser', projectDir: w.proj, env: w.env });
+    expect(result.block).toContain('parser uses canonical memory');
+    expect(result.picks.map(row => row.key)).toEqual(['cevt-example-decision-1', 'cevt-example-lesson-1']);
+  } finally { w.cleanup(); }
 });

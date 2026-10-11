@@ -23,11 +23,9 @@
  *   • Content = assistant outcome text, files changed, Bash descriptions. NEVER raw user text (a
  *     2026-07-13 measurement: prompt echoes made 87% of a store noise). Trivial turns are skipped.
  *
- * CODEX: codex-cli 0.158.0's own `stop.command.input` schema (read from the installed binary
- * 2026-09-29) carries `last_assistant_message` (nullable) and `transcript_path` (nullable).
- * The Codex rollout format is NOT parsed: project-progression-sources.mjs already declares it
- * unknown, and the rollout records observed locally (custom_tool_call / function_call with free-form
- * inputs) give no stable file-change shape. Codex records therefore carry the outcome text only.
+ * CODEX: native response_item JSONL is normalized mechanically through native-turn-transcript.
+ * SessionEnd and PreCompact recover a closing outcome when Stop payload text is absent. Tool IDs
+ * correlate observable gate outcomes; opaque custom orchestration inputs remain unclassified.
  *
  * LATENCY: Stop runs synchronously in the host's turn, and one `ruflo memory store` costs ~0.7s
  * (measured). So the writes run in ONE detached worker (this file, `--run-steps`), store then
@@ -40,9 +38,10 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { nativeTurnLines } from './native-turn-transcript.mjs';
 import { resolveRuflo, rufloInvocation } from './ruflo-bin.mjs';
 import { redactText, userLevelAgentdbHooks } from './continuity-events.mjs';
-import { resolveProjectStore } from './project-store-resolver.mjs';
+import { resolveProjectStore, globalEnrollmentAllowed } from './project-store-resolver.mjs';
 import { digest, journalTurn, readJournal, pendingTurnFiles, acknowledgeJournal, appendReceipt, storeData } from './turn-transport-journal.mjs';
 import { contentPathExcludes, pathIsExcluded, privateTurn, maskExcludedPaths, captureFailureReason, firstTurnCaptureNotice } from './turn-capture-privacy.mjs';
 
@@ -173,12 +172,14 @@ export function resolveTurnDb({ projectDir, brainHome, requestedStorePath, gitTi
     try {
       policy = JSON.parse(fs.readFileSync(file, 'utf8'));
       if (policy?.schemaVersion !== 1 || !consentMap(policy.projects)
+        || (Object.hasOwn(policy, 'default') && !['on', 'off'].includes(policy.default))
         || (Object.hasOwn(policy, 'paths') && !consentMap(policy.paths))) throw new Error('invalid policy');
       contentPathExcludes(policy.contentPathExcludes);
     } catch { return { skipped: 'turn capture policy unreadable or invalid', projectRoot: resolved.projectRoot }; }
   }
   // A path rule wins over a project rule, allowing a linked checkout/subdirectory to opt out.
-  const setting = policy.paths?.[capturePath] ?? policy.projects?.[resolved.projectRoot];
+  const explicitSetting = policy.paths?.[capturePath] ?? policy.projects?.[resolved.projectRoot];
+  const setting = explicitSetting ?? policy.default;
   if (setting !== undefined && !['on', 'off'].includes(setting)) return { skipped: 'invalid turn capture consent', projectRoot: resolved.projectRoot };
   const db = resolved.canonicalAgentDbPath;
   const exclusions = contentPathExcludes(policy.contentPathExcludes);
@@ -191,6 +192,9 @@ export function resolveTurnDb({ projectDir, brainHome, requestedStorePath, gitTi
   if (setting === 'off') return { db, scope: 'project', capturePath, projectRoot: resolved.projectRoot, skipped: 'persisted turn capture opt-out' };
   let exists = false;
   try { exists = fs.statSync(db).isFile(); } catch { /* absent */ }
+  if (!exists && setting === 'on' && explicitSetting !== 'on' && !globalEnrollmentAllowed({ resolution: resolved, brainHome })) {
+    return { db, scope: 'project', capturePath, projectRoot: resolved.projectRoot, skipped: 'global capture consent requires a safe Git project root; explicit project/path opt-in required' };
+  }
   if (!exists && setting !== 'on') return { db, scope: 'project', capturePath, projectRoot: resolved.projectRoot, skipped: 'no project memory db; persisted opt-in required' };
   return { db, scope: 'project', capturePath, projectRoot: resolved.projectRoot, optedIn: setting === 'on',
     contentPathExcludes: exclusions };
@@ -292,14 +296,14 @@ export function captureTurnOutcome({
   if (deferTo) {
     report.skipped = 'deferred: an enabled user-level Stop writer explicitly targets the canonical turn store; actual native delivery is unproven';
     report.deferredToUserLevel = true;
-  } else if (event === 'Stop') {
+  } else if (['Stop', 'SessionEnd', 'PreCompact'].includes(event)) {
     const sessionKey = String(payload.session_id || payload.transcript_path || '');
     const message = typeof payload.last_assistant_message === 'string' ? payload.last_assistant_message.trim() : '';
     let turn = { finalText: '', files: [], actions: [] };
-    if (host === 'claude' && typeof payload.transcript_path === 'string' && payload.transcript_path) {
+    if (typeof payload.transcript_path === 'string' && payload.transcript_path) {
       // With the closing message in hand, the transcript is read immediately (tool calls are already
       // flushed); without it, wait for the closing message to land, bounded.
-      try { turn = claudeTurn(readTranscript(payload.transcript_path, { maxMs: message ? 0 : settleMs })); } catch { /* unreadable */ }
+      try { turn = claudeTurn(nativeTurnLines(readTranscript(payload.transcript_path, { maxMs: message || event !== 'Stop' ? 0 : settleMs }), host)); } catch { /* unreadable */ }
     }
     if (message && (message.length >= MIN_OUTCOME_CHARS || message.length >= turn.finalText.length)) turn.finalText = message;
     turn = privateTurn(turn, target.contentPathExcludes, target.capturePath);
@@ -323,12 +327,12 @@ export function captureTurnOutcome({
           catch (error) { return { ...report, skipped: `durable turn queue invalid: ${redactText(error.message)}` }; }
         }
         steps.push({ ...binding, kind: 'store', ruflo, args: ['memory', 'store', '-k', key, '--value', value, '-n', TURN_NAMESPACE,
-          '--path', db, '--no-upsert', '--tags', `project=${project},host=${host}`, '--provenance', 'agent_output'] });
+          '--path', db, '--no-upsert', '--require-native', '--append-only', '--tags', `project=${project},host=${host}`, '--provenance', 'agent_output'] });
         // This synchronous boundary proves only queuing; the worker's exact receipt proves recording.
         Object.assign(report, { queued: true, key, value });
       }
     }
-  } else report.skipped = `turn outcomes are recorded at Stop, not ${event}`;
+  } else report.skipped = `no turn outcome capture at ${event}`;
 
   if (event === 'SessionEnd' || event === 'PreCompact') {
     if (!fs.existsSync(db)) report.distill = { queued: false, skipped: 'no memory db to distill yet' };
@@ -376,7 +380,7 @@ export function runSteps({ steps = [], receipts } = {}, { run: suppliedRun = spa
   };
   const results = [];
   for (const queued of steps) {
-    let status = 1; let error = null; let verified = false; let db = ''; let key; let privacyPatterns = [];
+    let status = 1; let error = null; let skipped = null; let verified = false; let db = ''; let key; let privacyPatterns = [];
     const kind = queued.kind === 'journal' ? 'store' : queued.kind;
     try {
       if (String(env.RUVNET_TURN_CAPTURE || '').toLowerCase() === 'off') throw new Error('RUVNET_TURN_CAPTURE=off');
@@ -396,7 +400,7 @@ export function runSteps({ steps = [], receipts } = {}, { run: suppliedRun = spa
         binding = queued.kind === 'journal' ? data.binding : queued;
         key = data.key; value = maskExcludedPaths(redactText(data.value), target.contentPathExcludes, target.capturePath);
         if (value !== redactText(data.value)) throw new Error('content exclusions changed; immutable turn retained');
-        args = ['memory', 'store', '-k', key, '--value', value, '-n', TURN_NAMESPACE, '--path', db, '--no-upsert', '--provenance', 'agent_output'];
+        args = ['memory', 'store', '-k', key, '--value', value, '-n', TURN_NAMESPACE, '--path', db, '--no-upsert', '--require-native', '--append-only', '--provenance', 'agent_output'];
       } else if (kind === 'distill') {
         if (queued.brainHome !== brainHome) throw new Error('queued consent settings differ from trusted caller');
         const recipe = queued.args;
@@ -431,14 +435,18 @@ export function runSteps({ steps = [], receipts } = {}, { run: suppliedRun = spa
       verified = kind === 'store' && existing === value;
       const r = verified ? { status: 0 } : run(invocation.executable, invocation.args, options);
       status = Number.isInteger(r.status) ? r.status : 1;
-      if (kind === 'store' && !verified) verified = read({ ruflo, db, key, run, options }) === value;
+      if (kind === 'store' && !verified && status === 0) verified = read({ ruflo, db, key, run, options }) === value;
       if (verified) status = 0;
+      if (kind === 'distill' && status === 0) {
+        const match = /(?:^|\n)\s*skipped:\s*([^\n]+)/i.exec(String(r.stdout || '').replace(/\x1b\[[0-9;]*m/g, ''));
+        if (match) skipped = redactText(match[1]).slice(0, 300);
+      }
       if (!verified && (r.error || status !== 0)) error = captureFailureReason(r, status);
       else if (kind === 'store' && !verified) { status = 1; error = 'exact turn key/content readback failed'; }
     } catch (e) { status = 1; error = redactText(e.message).slice(0, 300); }
     if (error) error = maskExcludedPaths(error, privacyPatterns, projectDir);
     const row = { at: new Date().toISOString(), kind, db: redactText(db), storeIdentity: digest(db), key, status, error,
-      ...(kind === 'store' ? { verified } : {}) };
+      ...(kind === 'store' ? { verified } : {}), ...(skipped ? { skipped } : {}) };
     results.push(row);
     if (receipts) {
       try { appendReceipt(receipts, row); if (verified && queued.journalFile) acknowledgeJournal(queued.journalFile, db); }

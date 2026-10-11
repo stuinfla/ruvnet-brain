@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 
 function sha256(value) {
@@ -47,21 +48,33 @@ function gitValue(cwd, args, gitTimeoutMs, deadlineAt) {
     return execFileSync('git', args, {
       cwd,
       encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, LC_ALL: 'C', LANG: 'C' },
       ...(Number.isFinite(remaining) || gitTimeoutMs
         ? { timeout: Math.max(1, Math.floor(Math.min(gitTimeoutMs || Infinity, remaining))), killSignal: 'SIGKILL' } : {}),
     }).trim();
   } catch (error) {
     // A timed-out Git identity check is not evidence for a non-git project.
     if (error.code === 'ETIMEDOUT') throw new Error('Git project identity timed out');
-    return null;
+    if (error.status === 128 && /^fatal: not a git repository(?: \(or any of the parent directories\))?:/m.test(String(error.stderr || ''))) {
+      let cursor = cwd;
+      for (;;) {
+        if (fs.existsSync(path.join(cursor, '.git'))) throw new Error('Git project identity unavailable: invalid Git marker');
+        const parent = path.dirname(cursor);
+        if (parent === cursor) break;
+        cursor = parent;
+      }
+      return null;
+    }
+    throw new Error('Git project identity unavailable');
   }
 }
 
 function gitProject(projectDir, gitTimeoutMs, deadlineAt) {
   const commonValue = gitValue(projectDir, ['rev-parse', '--path-format=absolute', '--git-common-dir'], gitTimeoutMs, deadlineAt);
+  if (commonValue === null) return null;
   const checkoutValue = gitValue(projectDir, ['rev-parse', '--show-toplevel'], gitTimeoutMs, deadlineAt);
-  if (!commonValue || !checkoutValue) return null;
+  if (!commonValue || !checkoutValue) throw new Error('Git project identity incomplete');
   const gitCommonDir = canonicalDirectory(commonValue, 'Git common directory');
   const checkoutRoot = canonicalDirectory(checkoutValue, 'Git checkout root');
   if (path.basename(gitCommonDir) !== '.git') {
@@ -74,6 +87,17 @@ function gitProject(projectDir, gitTimeoutMs, deadlineAt) {
   };
 }
 
+function nonGitRoot(input) {
+  const home = fs.realpathSync.native(os.homedir());
+  let cursor = input;
+  while (cursor !== path.dirname(cursor) && cursor !== home) {
+    if (fs.existsSync(path.join(cursor, '.swarm', 'memory.db'))
+      || ['AGENTS.md', 'package.json', 'Cargo.toml', 'pyproject.toml'].some((marker) => fs.existsSync(path.join(cursor, marker)))) return cursor;
+    cursor = path.dirname(cursor);
+  }
+  return input;
+}
+
 export function resolveProjectStore({ projectDir = process.cwd(), requestedStorePath, gitTimeoutMs, deadlineAt = Infinity } = {}) {
   const canonicalInput = canonicalDirectory(projectDir, 'projectDir');
   if (gitTimeoutMs !== undefined && (!Number.isSafeInteger(gitTimeoutMs) || gitTimeoutMs <= 0)) throw new TypeError('gitTimeoutMs must be a positive integer');
@@ -81,7 +105,7 @@ export function resolveProjectStore({ projectDir = process.cwd(), requestedStore
   const resolved = git ?? {
     gitCommonDir: null,
     checkoutRoot: canonicalInput,
-    projectRoot: canonicalInput,
+    projectRoot: nonGitRoot(canonicalInput),
   };
   const kind = git ? 'git' : 'non-git';
   const canonicalAgentDbPath = path.join(resolved.projectRoot, '.swarm', 'memory.db');
@@ -115,4 +139,14 @@ export function resolveProjectStore({ projectDir = process.cwd(), requestedStore
     canonicalAgentDbPath,
     projectIdentity,
   });
+}
+
+/** Default enrollment applies only to Git developer roots; explicit consent is evaluated by callers. */
+export function globalEnrollmentAllowed({ resolution, home = os.homedir(), brainHome = path.join(home, '.cache', 'ruvnet-brain'),
+  temporaryRoots = [os.tmpdir(), '/tmp', '/private/tmp'],
+  systemRoots = ['/System', '/Library', '/usr', '/etc', '/var', '/private/var', '/proc', '/sys', '/dev'] } = {}) {
+  const canonical = (value) => { try { return fs.realpathSync.native(value); } catch { return path.resolve(value); } };
+  const root = resolution.projectRoot;
+  return resolution.kind === 'git' && root !== canonical(home) && root !== path.parse(root).root
+    && ![...temporaryRoots, ...systemRoots, brainHome].some((excluded) => isWithin(canonical(excluded), root));
 }

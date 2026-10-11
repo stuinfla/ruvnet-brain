@@ -28,6 +28,7 @@
  * detail.status: 'detected-unconfirmed'`, written only to the project's own local store; the brief never
  * presents one as a standing rule. RUVNET_CONTINUITY_LESSON_DETECT=off turns that detector off.
  */
+import { nativeTurnLines } from './native-turn-transcript.mjs';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -265,12 +266,12 @@ function exitOutcome(result) {
 }
 
 /**
- * Typed events from one Claude JSONL turn. Codex rollouts are not parsed (project-progression-sources
- * declares that format unknown); Codex gets decisions/lessons from `last_assistant_message` only.
+ * Typed events from the current native turn. Codex JSONL is normalized mechanically; opaque
+ * custom-tool orchestration inputs cannot manufacture a gate outcome or semantic decision.
  */
 export function collectTurnEvents({ lines = null, lastAssistantMessage = '', host, session, project, env = process.env, at = Date.now() }) {
   const events = [];
-  const turn = lines ? currentTurnRecords(lines) : { userMessage: '', records: [] };
+  const turn = lines ? currentTurnRecords(nativeTurnLines(lines, host)) : { userMessage: '', records: [] };
   const uses = new Map();
   const assistantTexts = [];
   for (const rec of turn.records) {
@@ -306,9 +307,9 @@ export function collectTurnEvents({ lines = null, lastAssistantMessage = '', hos
   for (const text of assistantTexts) {
     for (const line of text.split('\n')) {
       if (DECISION_LINE.test(line)) {
-        events.push(makeEvent({ kind: 'decision', at, host, session, project, source: 'assistant-detected', authoritative: false, summary: line.replace(/\*\*/g, '') }));
+        events.push(makeEvent({ kind: 'decision', at, host, session, project, source: 'assistant-detected', authoritative: false, detail: { status: 'detected-unconfirmed' }, summary: line.replace(/\*\*/g, '') }));
       } else if (LESSON_LINE.test(line)) {
-        events.push(makeEvent({ kind: 'lesson', at, host, session, project, source: 'assistant-detected', authoritative: false, summary: line.replace(/\*\*/g, '') }));
+        events.push(makeEvent({ kind: 'lesson', at, host, session, project, source: 'assistant-detected', authoritative: false, detail: { status: 'detected-unconfirmed' }, summary: line.replace(/\*\*/g, '') }));
       }
     }
   }

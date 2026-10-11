@@ -46,7 +46,10 @@ async function waitForStopDrain(state) {
     const committed = journal.scan().committed.has(key);
     let held = false;
     try {
-      const match = /^([1-9]\d*) ([1-9]\d*)\n$/.exec(fs.readFileSync(lock, 'utf8'));
+      const lockText = fs.readFileSync(lock, 'utf8');
+      // Exclusive open creates the inode before its owner writes PID metadata.
+      if (!lockText) { await new Promise(resolve => setTimeout(resolve, 10)); continue; }
+      const match = /^([1-9]\d*) ([1-9]\d*)\n$/.exec(lockText);
       if (!match || !Number.isSafeInteger(Number(match[1])) || !Number.isSafeInteger(Number(match[2]))) {
         throw new Error(`Malformed Stop drain lock; fixtures retained at ${journal.projectRoot}`);
       }
@@ -89,7 +92,7 @@ describe('1. contention → outbox → eventual commit', () => {
     const stored = rows(journal.db, CONTINUITY_NAMESPACE);
     expect(stored).toHaveLength(1);
     expect(JSON.parse(stored[0].content).summary).toBe('Read back every write before calling it stored.');
-    expect([...scan.committed.values()][0]).toMatchObject({ readPath: 'node:sqlite' });
+    expect([...scan.committed.values()][0]).toMatchObject({ readPath: 'ruflo-cli' });
   });
 
   it('when the budget runs out under contention the event stays pending (never lost) and a later drain commits it', () => {
@@ -203,7 +206,7 @@ describe('2. never silent', () => {
       await waitForStopDrain(stopDrain);
       stopDrain = null;
       expect(journal.pending()).toHaveLength(0);
-      expect(journal.scan().committed.get(rec.key)).toMatchObject({ readPath: 'node:sqlite' });
+      expect(journal.scan().committed.get(rec.key)).toMatchObject({ readPath: 'ruflo-cli' });
       expect(JSON.parse(rows(journal.db, CONTINUITY_NAMESPACE).find((row) => row.key === rec.key).content).summary).toBe(summary);
     }
   });

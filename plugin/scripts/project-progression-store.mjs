@@ -358,9 +358,8 @@ export class ProjectProgressionStore {
     this.deadlineAt = deadlineAt;
     this.signal = signal;
     this.resolution = resolveProjectStore({ projectDir, requestedStorePath, deadlineAt });
-    // Best effort: a cleanup that cannot run must never stop a capture or a restore.
-    try { this.legacyDebris = cleanLegacyRufloDebris(path.dirname(this.resolution.canonicalAgentDbPath)); }
-    catch (error) { this.legacyDebris = { removed: [], refused: [{ path: null, reason: error.message }] }; }
+    // Opening continuity is never authorization to remove another store or its artifacts.
+    this.legacyDebris = { removed: [], refused: [], skipped: 'automatic cleanup disabled; existing stores preserved' };
     this.brainHome = brainHome;
     this.rufloBinary = rufloBinary;
     this.runner = runner;
@@ -416,11 +415,24 @@ export class ProjectProgressionStore {
     this.requireCaptureConsent(snapshot);
     const stored = this.run([
       'memory', 'store', '--key', snapshot.eventKey, '--value', JSON.stringify(snapshot),
-      '--namespace', PROGRESSION_NAMESPACE, '--no-upsert', '--provenance', 'system_observation',
+      '--namespace', PROGRESSION_NAMESPACE, '--no-upsert', '--require-native', '--append-only', '--provenance', 'system_observation',
       '--path', this.resolution.canonicalAgentDbPath,
     ]);
     const alreadyStored = resultStatus(stored) !== 0;
-    if (!alreadyStored) onPhase('stored');
+    if (alreadyStored) {
+      const diagnostic = `${resultText(stored, 'stderr')}\n${resultText(stored, 'stdout')}`.replace(/\x1b\[[0-9;]*m/g, '');
+      const isDuplicate = line => {
+        const reason = line.trim().replace(/^\[ERROR\]\s*/, '').replace(/^Failed to store:\s*/, '');
+        return reason === 'immutable append rejected: logical key already exists'
+          || reason === `key "${snapshot.eventKey}" already exists in namespace "${PROGRESSION_NAMESPACE}" — pass upsert=true (--upsert on the CLI) to update it`;
+      };
+      const lines = diagnostic.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+      const duplicate = lines.some(isDuplicate) && lines.filter(line => /^\[ERROR\]|^Failed to store:/i.test(line)).every(isDuplicate)
+        && !/\b(?:unavailable|refus(?:ed|ing|al)|permission denied|native WAL|unsafe write)\b/i.test(diagnostic);
+      if (resultStatus(stored) !== 1 || stored.error || stored.signal || !duplicate) {
+        throw new Error(`progression native append failed: ${resultText(stored, 'stderr').trim() || resultText(stored, 'stdout').trim() || 'unknown error'}`);
+      }
+    } else onPhase('stored');
 
     // THE READ-BACK, through the fast path when it is available.
     //

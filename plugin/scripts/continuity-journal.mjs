@@ -12,6 +12,7 @@
  * RETAIN_COMMITTED_MS, ages quarantine/corrupt notices after QUARANTINE_REPORT_MS, and bounds committed
  * history at MAX_EVENT_RECORDS. Pending events are never dropped; prolonged outages report pressure.
  */
+import { nativeTurnLines } from './native-turn-transcript.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -137,7 +138,9 @@ export class ContinuityJournal {
   scan() {
     this.requireBudget();
     let text = '';
-    try { text = fs.readFileSync(this.path, 'utf8'); } catch { /* no outbox yet */ }
+    try { text = fs.readFileSync(this.path, 'utf8'); } catch (error) {
+      if (error.code !== 'ENOENT') throw new Error(`continuity outbox unreadable: ${error.code || 'I/O error'}`);
+    }
     const events = new Map();
     const committed = new Map();
     const failures = new Map();
@@ -367,9 +370,11 @@ export function stopNotice({ journal, status, session }) {
 }
 function defaultStore({ ruflo, db, key, value }) {
   const cwd = rufloRunDir(db);
+  const source = JSON.parse(value).source;
+  const provenance = ['assistant-detected', 'owner-correction-detected', 'agent-result'].includes(source) ? 'agent_output' : 'system_observation';
   try {
     const { executable, args } = rufloInvocation(ruflo, ['memory', 'store', '--key', key, '--value', value,
-      '--namespace', CONTINUITY_NAMESPACE, '--no-upsert', '--provenance', 'system_observation', '--path', db]);
+      '--namespace', CONTINUITY_NAMESPACE, '--no-upsert', '--require-native', '--append-only', '--provenance', provenance, '--path', db]);
     const r = spawnSync(executable, args, { cwd, encoding: 'utf8', timeout: 60_000, windowsHide: true,
       env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' } });
     return { status: Number.isInteger(r.status) ? r.status : 1, output: `${r.stderr || ''}\n${r.stdout || ''}${r.error ? `\n${r.error.message}` : ''}` };
@@ -377,13 +382,11 @@ function defaultStore({ ruflo, db, key, value }) {
 }
 
 function defaultReadBack({ ruflo, db, key }) {
-  const fast = withProgressionReader(db, (reader) => reader.readContent(CONTINUITY_NAMESPACE, key));
-  if (fast.ok) return { key, content: fast.value, readPath: 'node:sqlite' };
   const cwd = rufloRunDir(db);
   try {
     const { executable, args } = rufloInvocation(ruflo, ['memory', 'retrieve', '--key', key, '--namespace', CONTINUITY_NAMESPACE, '--value-only', '--path', db]);
     const r = spawnSync(executable, args, { cwd, encoding: 'utf8', timeout: 60_000, windowsHide: true, env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' } });
-    return { key, content: r.status === 0 ? String(r.stdout || '') : null, readPath: `ruflo-cli (${fast.reason})` };
+    return { key, content: r.status === 0 ? String(r.stdout || '') : null, readPath: 'ruflo-cli' };
   } finally { fs.rmSync(cwd, { recursive: true, force: true }); }
 }
 
@@ -414,15 +417,18 @@ export function drain(journal, {
       if (now() >= deadline) break;
       const value = JSON.stringify(privateContinuityEvent(rec.event, consent.contentPathExcludes, consent.capturePath));
       if (value !== JSON.stringify(rec.event)) return { committed, failed, remaining: journal.pending().length, skipped: 'content exclusions changed; immutable continuity retained' };
-      attempts += 1; const result = store({ ruflo, db: journal.db, key: rec.key, value });
-      const back = readBack({ ruflo, db: journal.db, key: rec.key });
+      attempts += 1;
+      const prior = readBack({ ruflo, db: journal.db, key: rec.key });
+      const alreadyStored = typeof prior.content === 'string' && prior.content.trim() === value && (prior.key === undefined || prior.key === rec.key);
+      const result = alreadyStored ? { status: 0 } : store({ ruflo, db: journal.db, key: rec.key, value });
+      const back = alreadyStored ? prior : readBack({ ruflo, db: journal.db, key: rec.key });
       const content = typeof back.content === 'string' ? back.content.trim() : '';
-      if (content === value && digestCanonical(rec.event) === rec.digest && (back.key === undefined || back.key === rec.key)) {
+      if (result.status === 0 && content === value && digestCanonical(rec.event) === rec.digest && (back.key === undefined || back.key === rec.key)) {
         journal.appendRecords([{ type: 'commit', key: rec.key, digest: rec.digest, committedAt: new Date(now()).toISOString(), readPath: back.readPath,
-          alreadyStored: result.status !== 0 || content !== value, ...(attempts > 1 ? { attempts, lastError: last?.reason } : {}) }]);
+          alreadyStored, ...(attempts > 1 ? { attempts, lastError: last?.reason } : {}) }]);
         committed += 1;
         done = true;
-      } else if (content) {
+      } else if (content && (content !== value || digestCanonical(rec.event) !== rec.digest || (back.key !== undefined && back.key !== rec.key))) {
         // A DIFFERENT row holds our key: never overwritten (--no-upsert), never retried, reported.
         journal.appendRecords([{ type: 'quarantine', key: rec.key, at: new Date(now()).toISOString(), reason: 'a different stored row holds this key' }]);
         failed += 1;
@@ -513,13 +519,13 @@ export function captureContinuityEvents({
     events.push(...collectCommits({ checkoutRoot: resolution.checkoutRoot, sinceMs, host, session, project }));
     events.push(...collectReleases({ checkoutRoot: resolution.checkoutRoot, sinceMs, host, session, project }));
   }
-  if (event === 'Stop') {
+  if (['Stop', 'SessionEnd', 'PreCompact', 'SubagentStop'].includes(event)) {
     let lines = null;
-    if (host === 'claude' && typeof payload.transcript_path === 'string' && payload.transcript_path) {
+    if (typeof payload.transcript_path === 'string' && payload.transcript_path) {
       try { lines = readTranscript(payload.transcript_path); } catch { /* unreadable transcript: git events still count */ }
     }
     const last = typeof payload.last_assistant_message === 'string' ? payload.last_assistant_message : ''; const policy = journal.captureConsent();
-    if (!policy.skipped && !(lines && turnReferencesExcludedResource(claudeTurn(lines), policy.contentPathExcludes, projectDir))) events.push(...collectTurnEvents({ lines, lastAssistantMessage: last, host, session, project, env, at: now() }));
+    if (!policy.skipped && !(lines && turnReferencesExcludedResource(claudeTurn(nativeTurnLines(lines, host)), policy.contentPathExcludes, projectDir))) events.push(...collectTurnEvents({ lines, lastAssistantMessage: last, host, session, project, env, at: now() }));
   }
   try { report.recorded = journal.record(events).length; } catch (error) { return { ...report, skipped: `outbox write failed: ${error.message}` }; }
   try { if (journal.needsCompaction()) journal.compact(); } catch { /* bounded next time */ }

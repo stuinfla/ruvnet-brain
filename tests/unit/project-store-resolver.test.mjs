@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
-import { resolveProjectStore } from '../../plugin/scripts/project-store-resolver.mjs';
+import { resolveProjectStore, globalEnrollmentAllowed } from '../../plugin/scripts/project-store-resolver.mjs';
 
 let temporaryRoots = [];
 
@@ -164,5 +164,27 @@ describe('canonical project store resolution', () => {
     expect(() => resolveProjectStore({ projectDir: project })).toThrow(/hard link rejected/);
     fs.rmSync(foreignDb);
     expect(resolveProjectStore({ projectDir: project }).canonicalAgentDbPath).toBe(path.join(project, '.swarm', 'memory.db'));
+  });
+});
+
+
+describe('enrollment identity safety', () => {
+  it('fails closed on an invalid Git marker', () => {
+    const root = temporaryRoot(); git(root, 'init');
+    fs.writeFileSync(path.join(root, '.git', 'HEAD'), 'INVALID\n');
+    expect(() => resolveProjectStore({ projectDir: root })).toThrow(/Git project identity unavailable/);
+  });
+  it('anchors a nested non-Git directory at its nearest project marker', () => {
+    const root = temporaryRoot(); const nested = path.join(root, 'src', 'deep');
+    fs.mkdirSync(nested, { recursive: true }); fs.writeFileSync(path.join(root, 'package.json'), '{}');
+    expect(resolveProjectStore({ projectDir: nested }).projectRoot).toBe(root);
+  });
+  it('allows default enrollment only for Git outside home, temp, system and cache roots', () => {
+    const root = temporaryRoot(); git(root, 'init');
+    const resolution = resolveProjectStore({ projectDir: root });
+    expect(globalEnrollmentAllowed({ resolution })).toBe(false);
+    expect(globalEnrollmentAllowed({ resolution, temporaryRoots: [], systemRoots: [] })).toBe(true);
+    expect(globalEnrollmentAllowed({ resolution, home: root, temporaryRoots: [], systemRoots: [] })).toBe(false);
+    expect(globalEnrollmentAllowed({ resolution: { ...resolution, kind: 'non-git' }, temporaryRoots: [], systemRoots: [] })).toBe(false);
   });
 });

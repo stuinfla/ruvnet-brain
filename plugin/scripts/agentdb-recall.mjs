@@ -2,15 +2,16 @@
 /** Prompt-time canonical AgentDB recall (ADR-101, G-022).
  * Every nonempty human prompt searches curated signal, turn outcomes and project/default namespaces in
  * .swarm/memory.db. Recalled records are untrusted evidence, never instructions.
- * Global Ruflo executes in isolated scratch directories; all processes share one
+ * Global Ruflo ranks semantic matches; an isolated read-only child prunes empty namespaces
+ * and batches exact values through the schema-checked canonical reader. All processes share one
  * <=2s deadline. ground-ruvnet.sh delivers <=600 bytes on each eligible prompt.
  */
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { resolveRuflo, rufloInvocation } from './ruflo-bin.mjs';
+import { resolveRuflo } from './ruflo-bin.mjs';
 import { rufloCwdFor, rufloScratchRoot } from './project-progression-store.mjs';
 import { resolveProjectStore } from './project-store-resolver.mjs';
 import { isHarnessGenerated, readStdinBounded } from './hook-input.mjs';
@@ -19,7 +20,9 @@ import { learningTarget, LEARNING_NAMESPACE } from './learning-store.mjs';
 import { safeAction } from './learning-queue.mjs';
 
 import { redactText } from './continuity-events.mjs';
-import { withProgressionReader } from './project-progression-reader.mjs';
+import { resolveTurnDb } from './turn-outcome-capture.mjs';
+import { maskExcludedPaths } from './turn-capture-privacy.mjs';
+import { searchOnce, nativeRead, exactReads, searchJsonResult } from './agentdb-recall-process.mjs';
 import { makeLesson } from './lesson-store.mjs';
 export const STORE_FILES = Object.freeze(['memory.db']);
 export const DEFAULT_DEADLINE_MS = 1900;
@@ -39,9 +42,9 @@ export function recallBinding({ binding = {}, projectRoot, storePath, prompt } =
     requestDigest: binding.requestDigest ?? crypto.createHash('sha256').update(String(prompt)).digest('hex') };
 }
 
-/** Bounded enumeration is structural evidence; exact values still come from global Ruflo. */
-function enumerateCanonicalKeys({ storePath, namespaces, deadline, signal }) {
-  return withProgressionReader(storePath, reader => Object.fromEntries(namespaces.map(namespace => [namespace, reader.listKeys(namespace, { maxEntries: 2000 })])), { deadlineAt: deadline, signal });
+/** Bounded structural enumeration uses the same cancellable read-only canonical provider. */
+function enumerateCanonicalKeys({ storePath, namespaces, deadline, signal, env, scratch }) {
+  return nativeRead({ store: { path: storePath }, namespaces, deadline, signal, env, scratch });
 }
 
 export function applicableRecallLesson(value, projectRoot) {
@@ -96,17 +99,6 @@ export function recallQuery(prompt) {
 
 export function parseSearchJson(stdout) {
   return searchJsonResult(stdout).rows;
-}
-
-function searchJsonResult(stdout) {
-  const s = String(stdout || '');
-  // Live Ruflo prints warnings AFTER the JSON object as well as logs before it.
-  const start = s.indexOf('{'); const end = s.lastIndexOf('}');
-  if (start < 0 || end < start) return { valid: false, rows: [] };
-  try { const rows = JSON.parse(s.slice(start, end + 1)).results;
-    return Array.isArray(rows) && rows.every(r => r && typeof r.key === 'string' && r.key)
-      ? { valid: true, rows } : { valid: false, rows: [] };
-  } catch { return { valid: false, rows: [] }; }
 }
 
 function clean(value, limit) {
@@ -195,7 +187,7 @@ export function learningObservationExcerpt(raw) {
 }
 
 export function pickRows(results, limit = 3) {
-  const candidates = results.flatMap((r) => r.rows.filter((p) => p.namespace === r.namespace && (!NOISE_KEY.test(p.key) || p.namespace === 'turns' && /^turn[-_]/i.test(p.key))
+  const candidates = results.flatMap((r) => r.rows.filter((p) => p.namespace === r.namespace && (!NOISE_KEY.test(p.key) || p.namespace === 'turns' && /^turn[-_]/i.test(p.key) || p.namespace === 'continuity-events' && /^cevt-.*-(?:decision|lesson|open-item)-/i.test(p.key))
     && (!r.family || p.key.toLowerCase().includes(r.family))
     && Number.isFinite(p.score) && p.score >= MIN_RELEVANCE).map((p) => ({ ...p, storePath: r.storePath, targeted: Boolean(r.family) })));
   const signal = (p) => SIGNAL_NAMESPACES.has(p.namespace) ? 2 : p.namespace === 'turns' ? 1 : p.namespace === LEARNING_NAMESPACE ? -1 : 0;
@@ -227,76 +219,10 @@ export function formatBlock({ picks, status }) {
   return render(limit);
 }
 
-function killGroup(child) {
-  try { if (process.platform !== 'win32') process.kill(-child.pid, 'SIGKILL'); else child.kill('SIGKILL'); }
-  catch { try { child.kill('SIGKILL'); } catch { /* already gone */ } }
-}
-
-/** One ruflo search, bounded by an absolute deadline. Resolves { rows, state } — never rejects. */
-function searchOnce({ ruflo, store, args, deadline, env, scratch, operation = 'search', signal }) {
-  return new Promise((resolve) => {
-    const remaining = deadline - Date.now();
-    if (signal?.aborted || remaining <= 0) { resolve({ rows: [], state: signal?.aborted ? 'unavailable' : 'timed out' }); return; }
-    let cwd;
-    try { cwd = fs.mkdtempSync(path.join(scratch(store.path), 'run-')); } catch { resolve({ rows: [], state: 'unavailable' }); return; }
-    const cleanup = () => { try { fs.rmSync(cwd, { recursive: true, force: true }); } catch { /* swept later as a stale run- dir */ } };
-    let inv;
-    try { inv = rufloInvocation(ruflo, ['memory', operation, '--path', store.path, ...args]); }
-    catch { cleanup(); resolve({ rows: [], state: 'unavailable' }); return; }
-    let child;
-    try {
-      child = spawn(inv.executable, inv.args, { cwd, env: { ...env, RUFLO_DAEMON_AUTOSTART: '0' },
-        stdio: ['ignore', 'pipe', 'ignore'], detached: process.platform !== 'win32', windowsHide: true });
-    } catch { cleanup(); resolve({ rows: [], state: 'unavailable' }); return; }
-    let out = '', outputBytes = 0;
-    const decoder = new TextDecoder('utf-8', { fatal: true });
-    let done = false, retiring = null, retirementTimer, timer;
-    const finish = (state, retirement = process.platform === 'win32' ? 'direct-child-only' : 'confirmed') => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      clearTimeout(retirementTimer);
-      signal?.removeEventListener('abort', cancel);
-      cleanup();
-      const parsed = operation === 'search' ? searchJsonResult(out) : null;
-      if (state === 'ok' && parsed && !parsed.valid) state = 'unavailable';
-      resolve({ rows: state === 'ok' && parsed ? parsed.rows : [], value: state === 'ok' ? out.trim() : '', state, retirement });
-    };
-    const retire = state => {
-      if (done || retiring) return;
-      retiring = state; killGroup(child);
-      retirementTimer = setTimeout(() => finish('unavailable', 'unconfirmed'), Math.max(1, deadline - Date.now()));
-    };
-    const cancel = () => retire('unavailable');
-    signal?.addEventListener('abort', cancel, { once: true });
-    // Reserve cleanup inside the same caller deadline; pipe inheritance cannot report success.
-    timer = setTimeout(() => retire('timed out'), Math.max(1, deadline - Date.now() - 100));
-    child.stdout.on('data', c => { if (done || retiring) return; outputBytes += c.length;
-      if (outputBytes > 1 << 20) return retire('unavailable');
-      try { out += decoder.decode(c, { stream: true }); } catch { retire('unavailable'); } });
-    child.on('error', () => retire('unavailable'));
-    child.on('close', code => {
-      killGroup(child); // Successful parent exit must not leave an owned detached grandchild.
-      let valid = true; try { out += decoder.decode(); } catch { valid = false; }
-      const settle = () => {
-        if (done) return;
-        let alive = false;
-        if (process.platform !== 'win32') {
-          try { process.kill(-child.pid, 0); alive = true; } catch (error) { alive = error.code !== 'ESRCH'; }
-        }
-        if (alive && Date.now() < deadline) { retirementTimer = setTimeout(settle, 5); return; }
-        finish(alive || !valid ? 'unavailable' : retiring ?? (code === 0 ? 'ok' : 'failed'), alive ? 'unconfirmed' : undefined);
-      };
-      clearTimeout(retirementTimer); settle();
-    });
-    if (signal?.aborted) cancel();
-  });
-}
-
-async function consequentialRecall({ prompt, root, store, bin, scratch, env, deadline, binding, signal, enumerateKeys }) {
+async function consequentialRecall({ prompt, root, store, bin, scratch, env, deadline, binding, signal, enumerateKeys, exclusions }) {
   const phaseBinding = recallBinding({ binding, projectRoot: root, storePath: store.path, prompt });
   const namespaces = [...new Set([path.basename(root), 'default', 'lessons', 'continuity-events'])];
-  const enumeration = await enumerateKeys({ storePath: store.path, namespaces, deadline, signal });
+  const enumeration = await enumerateKeys({ storePath: store.path, namespaces, deadline, signal, env, scratch });
   if (!enumeration?.ok || signal?.aborted || Date.now() >= deadline) return { block: formatBlock({ picks: [], status: 'unavailable structural enumeration' }), picks: [], stores: [store],
     status: { 'memory.db': 'unavailable' }, outcome: signal?.aborted ? 'unavailable' : Date.now() >= deadline ? 'timed-out' : 'unavailable', categories: { state: 'unavailable', decisions: 'unavailable', lessons: 'unavailable' } };
   const keys = enumeration.value;
@@ -323,9 +249,12 @@ async function consequentialRecall({ prompt, root, store, bin, scratch, env, dea
   if (candidates.length > 32) return { block: formatBlock({ picks: [], status: 'unavailable bounded category selection' }), picks: [], stores: [store], status: { 'memory.db': 'unavailable' }, outcome: 'unavailable', categories: { state: 'unavailable', decisions: 'unavailable', lessons: 'unavailable' } };
   const categories = { state: !stateKeys.length && keys[path.basename(root)].includes('project-state-current') ? 'unavailable' : 'ok-empty', decisions: decisionAvailability, lessons: 'ok-empty' };
   const records = [];
+  candidates.forEach(candidate => { candidate.storePath = store.path; });
+  const exactResults = await exactReads({ candidates, bin, deadline, env, scratch, signal });
   await Promise.all(candidates.map(async candidate => {
-    const exact = await searchOnce({ ruflo: bin, store, deadline, env, scratch, operation: 'retrieve', signal, args: ['-k', candidate.key, '-n', candidate.namespace, '--value-only'] });
+    const exact = exactResults.get(candidate);
     if (exact.state !== 'ok' || !exact.value || exact.value.startsWith('[WARN]')) { categories[candidate.category] = /timed out/.test(exact.state) ? 'timed-out' : 'unavailable'; return; }
+    if (maskExcludedPaths(exact.value, exclusions, root) !== exact.value) return;
     let structured; try { structured = JSON.parse(exact.value); } catch { structured = null; }
     const declaredRoot = structured?.projectRoot ?? structured?.scope?.projectRoot;
     if (declaredRoot && declaredRoot !== root || structured?.supersededBy || structured?.superseded === true) {
@@ -365,7 +294,15 @@ export async function recall({ prompt, projectDir = process.cwd(), env = process
     const budget = Number.isFinite(requested) && requested > 0 ? Math.min(requested, 1900) : DEFAULT_DEADLINE_MS;
     const deadline = Math.min(started + budget, absoluteDeadline ?? Infinity);
     if (deadline <= started) return { ...empty, outcome: 'timed-out' };
-    const { root, stores } = agentdbStores(projectDir, Math.max(1, Math.min(100, Math.floor(budget / 4))));
+    const gitTimeoutMs = Math.max(1, Math.min(100, Math.floor(budget / 4)));
+    const privacy = resolveTurnDb({ projectDir, brainHome: env.RUVNET_BRAIN_HOME || path.join(env.HOME || os.homedir(), '.cache', 'ruvnet-brain'), gitTimeoutMs, deadlineAt: deadline, signal });
+    if (privacy.skipped) {
+      const outcome = /opt-out/.test(privacy.skipped) ? 'disabled' : /no project memory db/.test(privacy.skipped) ? 'not-adopted' : 'unavailable';
+      return { ...empty, outcome, reason: privacy.skipped, block: outcome === 'unavailable' ? formatBlock({ picks: [], status: 'unavailable privacy policy' }) : '' };
+    }
+    const exclusions = privacy.contentPathExcludes;
+    const root = privacy.projectRoot; const stores = [];
+    try { if (fs.statSync(privacy.db).isFile()) stores.push({ name: 'memory.db', path: privacy.db }); } catch { /* absent */ }
     recallBinding({ binding, projectRoot: root, storePath: stores[0]?.path ?? null, prompt });
     let learningStore;
     try {
@@ -381,14 +318,18 @@ export async function recall({ prompt, projectDir = process.cwd(), env = process
     const store = stores[0];
     const query = recallQuery(prompt);
     const scratchFor = scratch || ((storePath) => rufloCwdFor(storePath, { root: rufloScratchRoot(env) }));
-    if (consequential) return await consequentialRecall({ prompt, root, store, bin, scratch: scratchFor, env, deadline, binding, signal, enumerateKeys });
-    const namespaces = [...new Set(['lessons', 'patterns', 'pattern', 'turns', path.basename(root), 'default'])];
+    if (consequential) return await consequentialRecall({ prompt, root, store, bin, scratch: scratchFor, env, deadline, binding, signal, enumerateKeys, exclusions });
+    const namespaces = [...new Set(['lessons', 'patterns', 'pattern', 'turns', 'continuity-events', path.basename(root), 'default'])];
     const family = /\bhooks?\b|hook.harness/i.test(prompt) ? 'decision-hook-harness-index'
       : /score|grade|north.star/i.test(prompt) ? 'scorecard'
       : /where are we|status|catch me up/i.test(prompt) ? 'project-state-current'
       : /releas|publish|workflow run|dispatch/i.test(prompt) ? 'release'
       : /requirement|always|every prompt/i.test(prompt) ? 'decision-agentdb' : null;
-    const jobs = (store ? namespaces : []).flatMap((namespace) => [{ store, namespace, family: null, args: ['--format', 'json', '-q', query, '-n', namespace, '--limit', '12'] },
+    const presence = store ? await nativeRead({ store, namespaces, deadline, env, scratch: scratchFor, signal }) : null;
+    if (presence?.fatal) return { ...empty, stores, outcome: presence.state === 'timed out' ? 'timed-out' : 'unavailable',
+      block: formatBlock({ picks: [], status: presence.state }), reason: 'namespace enumeration failed' };
+    const activeNamespaces = presence?.ok ? namespaces.filter(namespace => presence.value[namespace]?.length) : namespaces;
+    const jobs = (store ? activeNamespaces : []).flatMap((namespace) => [{ store, namespace, family: null, args: ['--format', 'json', '-q', query, '-n', namespace, '--limit', '12'] },
       ...(family && !SIGNAL_NAMESPACES.has(namespace) && namespace !== 'turns' ? [{ store, namespace, family, args: ['--format', 'json', '-q', family, '-n', namespace, '-t', 'keyword', '--limit', '4'] }] : [])]);
     const words = promptKeywords(prompt, 14);
     const workflowQuery = words.map(word => safeAction('Bash', word))
@@ -404,13 +345,21 @@ export async function recall({ prompt, projectDir = process.cwd(), env = process
     const candidates = pickRows(results, 6);
     // Ruflo previews are ~60 characters. Read the actual selected values within
     // the same deadline so the block contains useful evidence rather than titles.
+    const exactResults = await exactReads({ candidates, bin, deadline, env, scratch: scratchFor, signal });
     const retrieved = await Promise.all(candidates.map(async (p) => {
-      const r = await searchOnce({ ruflo: bin, store: { name: 'memory.db', path: p.storePath }, deadline, env, scratch: scratchFor, operation: 'retrieve',
-        args: ['-k', p.key, '-n', p.namespace, '--value-only'], signal });
+      const r = exactResults.get(p);
       if (r.state === 'ok' && r.value && !r.value.startsWith('[WARN]')) {
+        if (maskExcludedPaths(r.value, exclusions, root) !== r.value || maskExcludedPaths(p.key, exclusions, root) !== p.key) return { pick: null, state: 'ok' };
+        let event;
+        if (p.namespace === 'continuity-events') {
+          try { event = JSON.parse(r.value); } catch { return { pick: null, state: 'ok' }; }
+          if (event.schema !== 'ruvnet-brain.continuity-event' || event.schemaVersion !== 1 || event.project !== root
+            || !['decision', 'lesson', 'open-item'].includes(event.kind) || typeof event.summary !== 'string'
+            || !promptKeywords(prompt, 14).some(word => redactText(event.summary).toLowerCase().includes(word))) return { pick: null, state: 'ok' };
+        }
         const clauses = p.namespace === 'turns' ? turnOutcomeClauses(r.value, prompt) : null;
         const preview = p.namespace === LEARNING_NAMESPACE ? learningObservationExcerpt(r.value)
-          : clauses ? turnOutcomeExcerpt(r.value, prompt) : evidenceExcerpt(r.value, p.key, prompt);
+          : event ? clean(event.summary, 280) : clauses ? turnOutcomeExcerpt(r.value, prompt) : evidenceExcerpt(r.value, p.key, prompt);
         return { pick: preview ? { ...p, preview, clauses, valueDigest: crypto.createHash('sha256').update(r.value).digest('hex') } : null, state: 'ok' };
       }
       return { pick: null, state: r.state === 'ok' ? 'unavailable' : r.state };
