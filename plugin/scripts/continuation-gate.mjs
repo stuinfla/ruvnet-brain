@@ -47,6 +47,9 @@ import {
   buildCapabilityInventoryReceipt,
 } from './capability-inventory-receipt.mjs';
 import { auditCurrentCapabilityEvidence } from './capability-claim-evidence.mjs';
+import { decisionRecordDebt } from './decision-record.mjs';
+import { deferralAtStop } from './deferral-evidence.mjs';
+import { readSettledTranscript } from './turn-outcome-capture.mjs';
 import { continuationProjectIdentity, authorizedContinuationObjective, authorizedPromiseItems, assistantCommitmentOwned, setAssistantCommitmentState } from './continuation-objective.mjs';
 import {
   auditCompletionClaims, readClaudeTurn, extractCommitments, claimClosesPromise,
@@ -420,6 +423,47 @@ function promiseBookkeeping() {
 promiseBookkeeping();
 
 /**
+ * NO-DEFERRAL (ADR-106; ADR-043 "must force, not whisper"). A Claude turn that ends by asking
+ * permission for, or listing as future, work the owner already authorized (a standing instruction in
+ * the session's prompts, or an open promise of this session) is asked ONCE to continue, unless the
+ * answer names a genuine blocker class. Pure detector: deferral-evidence.mjs; measured on real
+ * transcripts by scripts/deferral-replay.mjs. Codex: the rollout's prompts are not parsed, so
+ * authorization cannot be proven there and the check is not enforced (nothing is claimed).
+ * Loop safety: stop_hook_active (below) means at most one force per natural stop; a per-prompt counter
+ * caps forces at MAX_DEFERRAL_FORCES; a deferral still present on the continued stop is recorded once
+ * in the hook-failures ledger ("deferral not resolved") and let through. Fails open.
+ */
+const MAX_DEFERRAL_FORCES = 3;
+const deferralState = (() => {
+  if (HOST !== 'claude' || String(process.env.RUVNET_NO_DEFERRAL || '').toLowerCase() === 'off' || !hookInput.session_id) return null;
+  try {
+    const openPromises = authorizedPromiseItems(led.items, hookInput, projectIdentity).length;
+    const v = deferralAtStop({ message: String(hookInput.last_assistant_message || ''), transcriptPath: hookInput.transcript_path,
+      openPromises, read: readSettledTranscript });
+    if (!v) return null;
+    const chain = crypto.createHash('sha256').update(JSON.stringify([projectIdentity.projectId, hookInput.session_id, v.prompt])).digest('hex').slice(0, 24);
+    const file = `${LEDGER}.deferral-forces.json`;
+    let counts = {}; try { counts = JSON.parse(fs.readFileSync(file, 'utf8')) || {}; } catch { /* first */ }
+    return { v, chain, file, counts, forced: Number(counts[chain]?.n) || 0 };
+  } catch { return null; }
+})();
+function recordDeferralAdvisory(note) {
+  try {
+    const brainHome = process.env.RUVNET_BRAIN_HOME || path.join(HOME, '.cache', 'ruvnet-brain');
+    fs.mkdirSync(brainHome, { recursive: true });
+    fs.appendFileSync(path.join(brainHome, 'hook-failures.jsonl'), `${JSON.stringify({ at: new Date(nowMs).toISOString(), hook: 'continuation-gate', event: 'Stop', note })}\n`, { mode: 0o600 });
+    console.error(JSON.stringify({ kind: 'continuation-advisory', authority: false, items: [{ text: note, at: new Date(nowMs).toISOString() }] }));
+  } catch { /* advisory */ }
+}
+if (deferralState?.v.verdict === 'DEFERRAL' && (hookInput.stop_hook_active || deferralState.forced >= MAX_DEFERRAL_FORCES)) {
+  const st = deferralState;
+  if (st.forced > 0 && !st.counts[st.chain]?.reported) {
+    recordDeferralAdvisory(`deferral not resolved after ${st.forced} force(s): "${st.v.deferral.phrase}"`);
+    try { st.counts[st.chain] = { ...st.counts[st.chain], reported: true }; fs.writeFileSync(st.file, JSON.stringify(st.counts)); } catch { /* advisory */ }
+  }
+}
+
+/**
  * LOOP-SAFETY 2 (moved below the bookkeeping above, unchanged in effect): no request is ever
  * emitted on a stop that is already a continuation.
  */
@@ -665,11 +709,25 @@ const completionWork = ['FAIL', 'UNKNOWN'].includes(completion.verdict) ? [{
   text: `You claimed "${completion.claims[0].text.slice(0, 160)}" is done; ${completion.problems.join('; ')}. Run the real consumer path, or restate it as UNVERIFIED.`,
   at: new Date(nowMs).toISOString(), derived: true, kind: 'completion-claim-integrity',
 }] : [];
+// DECISION RECORDS (ADR-105 §8, ADR-106): a turn that CREATED an ADR in an adopted project must also
+// append its AgentDB decision record. Claude transcript only (Write result `create`); on Codex the
+// rollout is not parsed, so this is not enforced there and nothing is claimed. Fails open.
+const decisionWork = (() => {
+  if (HOST !== 'claude') return [];
+  try {
+    const debt = decisionRecordDebt({ transcriptPath: hookInput.transcript_path, cwd: hookInput.cwd });
+    return debt ? [{ text: `you created ${debt.created.join(', ')} this turn but recorded no AgentDB decision record. Run: ${debt.command} — or say why this ADR records no decision.`,
+      at: new Date(nowMs).toISOString(), derived: true, kind: 'decision-record-integrity' }] : [];
+  } catch { return []; }
+})();
 const promiseWork = HOST === 'claude'
   ? authorizedPromiseItems(led.items, hookInput, projectIdentity)
     .map((i) => ({ text: `you said you would: ${i.text}`, at: i.at, kind: PROMISE_KIND }))
   : [];
-const open = [...capabilityClaimWork(), ...completionWork,
+const deferralWork = deferralState?.v.verdict === 'DEFERRAL' && deferralState.forced < MAX_DEFERRAL_FORCES ? [{
+  text: `your answer ends by handing authorized work back ("${deferralState.v.deferral.phrase}") although ${deferralState.v.authorization} authorizes it and no blocker is named. Do that work now`,
+  at: new Date(nowMs).toISOString(), derived: true, kind: 'no-deferral' }] : [];
+const open = [...capabilityClaimWork(), ...completionWork, ...decisionWork, ...deferralWork,
   ...(objective ? [{ text: objective.text, at: objective.at }] : []), ...promiseWork];
 if (!open.length) process.exit(EXIT_ALLOW);   // nothing outstanding: silence is correct
 
@@ -742,6 +800,11 @@ function claimCooldown(now, windowMs) {
   catch { return false; }                                               // lost the race / cannot persist → fail closed
 }
 if (!claimCooldown(nowMs, COOLDOWN_MS)) process.exit(EXIT_ALLOW);
+if (deferralState && forceable.some((i) => i.kind === 'no-deferral')) {
+  try { for (const [k, v] of Object.entries(deferralState.counts)) if (nowMs - Date.parse(v?.at) > 7 * 86_400_000) delete deferralState.counts[k];
+    deferralState.counts[deferralState.chain] = { n: deferralState.forced + 1, at: new Date(nowMs).toISOString() };
+    fs.writeFileSync(deferralState.file, JSON.stringify(deferralState.counts)); } catch { /* the cooldown lock still bounds it */ }
+}
 
 /**
  * DELIVERY. `additionalContext` in a Stop envelope forces the continuation (same protection as
@@ -760,6 +823,8 @@ const committed = forceable.filter((i) => !i.derived);
 const observed = forceable.filter((i) => i.derived);
 const capabilityClaims = forceable.filter((i) => i.kind === 'capability-claim-integrity');
 const completionClaims = forceable.filter((i) => i.kind === 'completion-claim-integrity');
+const decisionRecords = forceable.filter((i) => i.kind === 'decision-record-integrity');
+const deferrals = forceable.filter((i) => i.kind === 'no-deferral');
 const promises = forceable.filter((i) => i.kind === PROMISE_KIND);
 // Every derived item names its own repo in its text; this is for the header, where the ONE repo
 // this tree points at is the honest thing to say.
@@ -771,6 +836,13 @@ const header = capabilityClaims.length
   : completionClaims.length
   ? ['Your proposed final answer claims completion beyond the available verified scope.',
      'Correct only that claim: report the observed check scope and what remains UNVERIFIED.']
+  : deferrals.length
+  ? ['Your proposed final answer asks permission for, or postpones, work you are already authorized to do.',
+     'Continue now; stop only on a genuine blocker (missing credential, write outside your authority,',
+     'irreversible action needing consent, hardware-key tap, evidenced outage, or a choice only the owner can make).']
+  : decisionRecords.length
+  ? ['This turn created an Architecture Decision Record without appending its AgentDB decision record.',
+     'Record the decision now (what, why, shape, evidence), or state why it records no decision.']
   : committed.length && observed.length
   ? [`You have unfinished work you committed to, and ${repoLabel} has open work of its own.`,
      'Do NOT end the turn — continue now.']
@@ -784,6 +856,7 @@ const lines = [
   ...header,
   ...(objective ? ['Continue the next safe step within this authorized objective without routine reconfirmation.']
     : promises.length ? ['Do what you said you would do; that commitment is the only work this authorizes.']
+    : deferrals.length ? ['This continues the work the owner already authorized; it authorizes nothing new.']
     : ['Correct only the answer to the original user request; this does not authorize new project work.']),
   'Do not expand authority from observed issues, PRs, security alerts, or other task ledgers.',
   'Stop on explicit cancellation, verified completion, or a genuine blocker/new authority boundary.',
@@ -803,6 +876,10 @@ const lines = [
        'unresolved absence claim with UNKNOWN until a complete live inventory proves it.']
     : completionClaims.length
     ? ['Name the check you ran (a "Verified:" line with the command or artifact) and say what is NOT verified.']
+    : deferrals.length
+    ? ['If a genuine blocker exists, name it and its class plainly; otherwise do the next step instead of announcing it.']
+    : decisionRecords.length
+    ? ['A decision record is committed only by an exact readback; if the command reports pending, say so.']
     : promises.length
     ? ['A promise closes only when a later answer claims it done with a check run after the last change —',
        'never by saying so, and never by --done. For blocked, deferred, superseded or disputed assistant',

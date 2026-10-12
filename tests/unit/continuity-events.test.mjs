@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   CONTINUITY_SECRETS,
-  collectCommits, collectReleases, collectTurnEvents, eventIdOf, eventKey, makeEvent, userLevelAgentdbHooks,
+  collectCommits, collectReleases, collectTurnEvents, eventIdOf, eventKey, makeEvent,
 } from '../../plugin/scripts/continuity-events.mjs';
 import { ContinuityJournal } from '../../plugin/scripts/continuity-journal.mjs';
 import { adoptedProject, cleanup, commit, git, tmp, transcript } from '../helpers/continuity-fixture.mjs';
@@ -267,53 +267,6 @@ describe('secrets in commands, outputs and findings are redacted (re-review S3)'
       makeEvent({ kind: 'finding', source: 'agent-result', authoritative: false, summary: text });
       expect(Date.now() - started).toBeLessThan(250);
     }
-  });
-});
-
-describe('user-level hook detection (read-only)', () => {
-  it('never grants capture ownership from legacy filenames or comments and preserves settings bytes', () => {
-    const home = tmp('cont-home-');
-    expect(userLevelAgentdbHooks({ home })).toMatchObject({ turnCapture: false, autocapture: false, ensure: false });
-    const settings = path.join(home, '.claude', 'settings.json');
-    fs.mkdirSync(path.dirname(settings), { recursive: true });
-    const body = JSON.stringify({ hooks: {
-      Stop: [{ matcher: '*', hooks: [{ type: 'command', command: 'node "${HOME}/.claude/hooks/agentdb-turn-capture.mjs" || true' }] }],
-      SessionStart: [{ matcher: '*', hooks: [{ type: 'command', command: 'bash "${HOME}/.claude/hooks/agentdb-ensure.sh" || true' }] }],
-    } });
-    fs.writeFileSync(settings, body);
-    expect(userLevelAgentdbHooks({ home, event: 'Stop', projectDir: home })).toMatchObject({ turnCapture: false, autocapture: false, ensure: false, ownership: 'unknown' });
-    expect(fs.readFileSync(settings, 'utf8')).toBe(body);
-  });
-  const owner = () => {
-    const home = tmp('owner-home-'); const projectDir = tmp('owner-project-'); fs.mkdirSync(path.join(projectDir, '.swarm'));
-    const root = path.join(home, '.npm-global/lib/node_modules/ruflo'); const entry = path.join(root, 'bin/ruflo.js');
-    fs.mkdirSync(path.dirname(entry), { recursive: true }); fs.writeFileSync(entry, '#!/usr/bin/env node\n'); fs.chmodSync(entry, 0o700);
-    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'ruflo', bin: { ruflo: 'bin/ruflo.js' } }));
-    const bin = path.join(home, '.npm-global/bin/ruflo'); fs.mkdirSync(path.dirname(bin), { recursive: true }); fs.symlinkSync(entry, bin);
-    const settings = path.join(home, '.claude/settings.json'); fs.mkdirSync(path.dirname(settings), { recursive: true });
-    const db = path.join(projectDir, '.swarm/memory.db'); const command = `${JSON.stringify(bin)} memory store --namespace turns --key owner-turn --value "fixture turn" --path ${JSON.stringify(db)}`;
-    const doc = { hooks: { Stop: [{ hooks: [{ type: 'command', command }] }] } }; fs.writeFileSync(settings, JSON.stringify(doc));
-    return { home, projectDir, settings, db, doc, command };
-  };
-  it.skipIf(!process.getuid)('marks a relevant canonical registration only as a collision candidate, never current-turn ownership', () => {
-    const f = owner(); const before = fs.readFileSync(f.settings); const result = userLevelAgentdbHooks({ ...f, event: 'Stop', env: {} });
-    expect(result).toMatchObject({ turnCapture: false, autocapture: false, ensure: false, target: f.db, event: 'Stop', ownership: 'unknown', collisionCandidate: true });
-    expect(userLevelAgentdbHooks({ ...f, event: 'SessionStart', env: {} }).turnCapture).toBe(false);
-    expect(fs.readFileSync(f.settings)).toEqual(before); expect(fs.existsSync(f.db)).toBe(false);
-  });
-  it.skipIf(!process.getuid).each(['disabled', 'global-off', 'wrong-event', 'foreign-target', 'relative-target', 'shell-wrapper', 'duplicate-target', 'foreign-binary', 'malformed'])('does not defer to %s ownership and leaves configuration untouched', variant => {
-    const f = owner(); const hook = f.doc.hooks.Stop[0].hooks[0];
-    if (variant === 'disabled') hook.enabled = false;
-    if (variant === 'global-off') f.doc.disableAllHooks = true;
-    if (variant === 'wrong-event') { f.doc.hooks.PreToolUse = f.doc.hooks.Stop; delete f.doc.hooks.Stop; }
-    if (variant === 'foreign-target') hook.command = f.command.replace(JSON.stringify(f.db), JSON.stringify(path.join(f.home, '.claude/global-memory/.swarm/memory.db')));
-    if (variant === 'relative-target') hook.command = f.command.replace(JSON.stringify(f.db), '".swarm/memory.db"');
-    if (variant === 'shell-wrapper') hook.command += ' || true';
-    if (variant === 'duplicate-target') hook.command += ` --path ${JSON.stringify(f.db)}`;
-    if (variant === 'foreign-binary') hook.command = f.command.replace(/^[^ ]+/, '"/foreign/ruflo"');
-    const body = variant === 'malformed' ? '{broken' : JSON.stringify(f.doc); fs.writeFileSync(f.settings, body);
-    expect(userLevelAgentdbHooks({ ...f, event: 'Stop', env: {} })).toMatchObject({ turnCapture: false, ownership: 'unknown' });
-    expect(fs.readFileSync(f.settings, 'utf8')).toBe(body);
   });
 });
 

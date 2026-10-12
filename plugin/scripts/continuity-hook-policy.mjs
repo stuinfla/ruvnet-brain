@@ -122,8 +122,8 @@ const registration = (id, matcher, hosts) => Object.freeze({ id, matcher, hosts:
  */
 export const CONTINUITY_EVENTS = Object.freeze({
   SessionStart: Object.freeze([
+    // learn-flush is no longer its own registration (ADR-106): session-start schedules it detached.
     registration('session-start', 'startup|resume|clear|compact|fork', ['claude', 'codex']),
-    registration('learn-flush', 'startup|resume|clear|compact|fork', ['claude', 'codex']),
   ]),
   UserPromptSubmit: Object.freeze([
     registration('session-snapshot', '*', ['claude', 'codex']),
@@ -154,7 +154,7 @@ export const CONTINUITY_EVENTS = Object.freeze({
   // no change either (proven live: the real MCP tool_response's `content[0].text` carries the exact
   // "Searched N RuvNet repos" banner and query text the script already looks for).
   PostToolUse: Object.freeze([
-    registration('learn-capture', '^(?:Bash|Write|Edit|MultiEdit|exec_command|apply_patch|functions(?:\\.|__)(?:exec_command|apply_patch))$', ['claude', 'codex']),
+    // learn-capture runs in-process inside session-snapshot's PostToolUse boundary (ADR-106).
     registration('session-snapshot', '*', ['claude', 'codex']),
     registration('grounding-stamp', '^(?:.*__)?search_ruvnet$', ['claude', 'codex']),
   ]),
@@ -186,7 +186,7 @@ export const CONTINUITY_EVENTS = Object.freeze({
     registration('session-snapshot', '*', ['claude', 'codex']),
   ]),
   SessionEnd: Object.freeze([
-    registration('learn-flush', '*', ['claude', 'codex']),
+    // learn-flush is scheduled by session-snapshot's SessionEnd boundary (ADR-106).
     registration('session-snapshot', '*', ['claude', 'codex']),
   ]),
 });

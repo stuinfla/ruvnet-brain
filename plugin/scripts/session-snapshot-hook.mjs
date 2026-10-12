@@ -323,8 +323,13 @@ if (process.argv[1] && path.resolve(process.argv[1]).endsWith('session-snapshot-
     const payload = JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
     const projectDir = payload.cwd || projectDirectory();
     const result = runProjectTransitionHook(projectDir, process.argv[2], { payload });
-    if (result.state === 'pending') {
-      const message = transitionPendingNotice(projectDir, payload, 'Project memory transition remains pending; exact readback was not verified.');
+    // ADR-106: learning capture rides this boundary instead of a second PostToolUse registration.
+    if (process.argv[2] === 'PostToolUse') { try { (await import('./learn-capture.mjs')).captureLearning(payload); } catch { /* advisory */ } }
+    // A queued, handed-off observation is normal and silent (ADR-106); only stuck or degraded speaks.
+    if (result.state === 'stuck' || result.state === 'degraded') {
+      const message = transitionPendingNotice(projectDir, payload, result.state === 'stuck'
+        ? `Project memory capture is stuck: queued work since ${result.oldestQueuedAt} has not been committed by exact readback.`
+        : 'Project memory capture degraded: the observation queue is unwritable.');
       if (message) process.stdout.write(JSON.stringify({ systemMessage: message }));
     }
   } catch { process.stdout.write(JSON.stringify({ systemMessage: 'Project memory transition capture degraded; exact readback was not verified.' })); }
@@ -340,6 +345,10 @@ if (process.argv[1] && path.resolve(process.argv[1]).endsWith('session-snapshot-
       if (typeof cwd === 'string' && path.isAbsolute(cwd)) originProjectDir = cwd;
     } catch { /* malformed input keeps the host's project fallback */ }
     const result = runSessionSnapshotHook(originProjectDir, process.argv[2] || 'SessionEnd', { rawInput });
+    // ADR-106: learning recovery rides SessionEnd instead of a second SessionEnd registration.
+    if ((process.argv[2] || 'SessionEnd') === 'SessionEnd') {
+      import('./learn-capture.mjs').then((m) => m.scheduleLearningRecovery({ cwd: originProjectDir })).catch(() => {});
+    }
     // FAIL LOUDLY, NEVER SILENTLY — AND ONCE. When recording is stuck (events pending past STUCK_AFTER_MS,
     // a quarantined conflict, a corrupt outbox line, a cap drop) Claude Code shows this systemMessage, at
     // most once per session per condition (stopNotice; it used to repeat at every turn). "Not applicable"

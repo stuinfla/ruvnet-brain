@@ -312,6 +312,52 @@ function resolveCodeRoot() {
   } catch { return null; }
 }
 
+/**
+ * A FAILED ADVISORY BODY IS RECORDED, NEVER SILENT (ADR-106). Advisory bodies return 0 to the host
+ * whatever happened (below), and the host shows no stderr on exit 0 — so a crashed Stop gate used to
+ * leave no trace anywhere (measured 2026-10-11: a throwing continuation-gate body → shim exit 0,
+ * 0 bytes, nothing on disk). One bounded JSONL line per failure, read and summarized ONCE by
+ * SessionStart (hook-failures.mjs owns the reader and the file name; tests/unit/hook-failures.test.mjs
+ * holds the two copies of the name together, the same way brain-off.test.mjs holds the sentinel).
+ * Inlined, not imported, because this file is boot-frozen. Never throws, never prints.
+ */
+function recordFailure(fields) {
+  try {
+    const file = path.join(BRAIN_HOME, 'hook-failures.jsonl');
+    fs.mkdirSync(BRAIN_HOME, { recursive: true });
+    try { if (fs.statSync(file).size > 256 * 1024) fs.renameSync(file, `${file}.1`); } catch { /* absent */ }
+    fs.appendFileSync(file, `${JSON.stringify({ at: new Date().toISOString(), hook: hookId, ...fields })}\n`, { mode: 0o600 });
+  } catch { /* an unrecordable failure must not become a second one */ }
+}
+
+/**
+ * THE WATCHDOG (ADR-106). The host kills a hook at its registered timeout and DISCARDS its output
+ * (measured: "UserPromptSubmit hook … timed out after 10s — output discarded"). So the shim stops the
+ * body itself 1.5 s before the registered timeout of THIS command (read from the frozen manifest it
+ * was registered from; under Codex the stable wrapper owns the kill instead), records one
+ * `timed-out-internally` line in the failure ledger, writes NOTHING partial, and exits 0. SessionStart
+ * then reports it once. stdout is captured and forwarded only when the body finished on its own.
+ */
+const WATCHDOG_MARGIN_MS = 1500;
+function registeredTimeoutMs(extraArgs) {
+  try {
+    // Under Codex the stable wrapper already owns a process-group kill below the host timeout
+    // (codex-hook-wrapper.mjs); a second, shorter watchdog here would pre-empt it and orphan the
+    // body's own children. So the watchdog is Claude's, where nothing else stands before the host.
+    if (process.env.RUVNET_CODEX_BUDGET_MS || process.env.RUVNET_HOOK_HOST === 'codex') return Infinity;
+    const manifest = JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, 'hooks', 'hooks.json'), 'utf8'));
+    const want = ['hook-shim.mjs"', hookId, ...extraArgs].join(' ');
+    let best = Infinity;
+    for (const groups of Object.values(manifest.hooks || {})) {
+      for (const g of groups || []) for (const h of g.hooks || []) {
+        const c = String(h.command || '').replace(/\s+\|\|\s+true\s*$/, '');
+        if ((c.endsWith(want) || c.includes(`${want} `)) && Number.isFinite(h.timeout)) best = Math.min(best, h.timeout * 1000);
+      }
+    }
+    return best;
+  } catch { return Infinity; }
+}
+
 // Run one hook body. No shell is ever involved: spawnSync with an argument array, interpreter
 // chosen from the typed table — never from input.
 function runHook(file, activeVersion = '') {
@@ -345,11 +391,15 @@ function runHook(file, activeVersion = '') {
     ...(BRAIN_OFF && entry.offBehavior === 'partial' ? { RUVNET_BRAIN_OFF: '1' } : {}),
   };
   const io = hookInput !== null
-    ? { stdio: ['pipe', 'inherit', 'inherit'], input: hookInput }
-    : { stdio: 'inherit' };
+    ? { stdio: ['pipe', 'pipe', 'inherit'], input: hookInput }
+    : { stdio: ['inherit', 'pipe', 'inherit'] };
+  const registered = registeredTimeoutMs(extraArgs);
+  const watchdog = Number.isFinite(registered) ? Math.max(500, registered - WATCHDOG_MARGIN_MS) : undefined;
   let sessionTimeout;
   if (hookId === 'session-start') {
     try {
+      // The restore plans inside the watchdog, so it finishes cleanly instead of being killed mid-write.
+      if (watchdog) env.RUVNET_SESSION_START_DEADLINE_AT = String(Math.min(Number(env.RUVNET_SESSION_START_DEADLINE_AT) || Infinity, Date.now() + watchdog));
       const deadlineAt = sessionStartDeadlineAt({ host: env.RUVNET_HOOK_HOST || 'claude', env,
         startedAt: performance.timeOrigin, pluginRoot: path.resolve(path.dirname(file), '..') });
       env.RUVNET_SESSION_START_DEADLINE_AT = String(deadlineAt);
@@ -361,11 +411,27 @@ function runHook(file, activeVersion = '') {
     }
   }
   if (advisoryBudgetFor(hookId, extraArgs[0] || '') === null) recordContextBudget({ handler: hookId, event: extraArgs[0] || hookId, scope: 'unknown-unframed-context-unchanged' }, env);
-  const r = spawnSync(cmd, [file, ...extraArgs], { ...io, env,
-    ...(sessionTimeout ? { timeout: sessionTimeout, killSignal: 'SIGKILL' } : {}) });
+  const limit = Math.min(sessionTimeout || Infinity, watchdog || Infinity);
+  const r = spawnSync(cmd, [file, ...extraArgs], { ...io, env, maxBuffer: 16 * 1024 * 1024,
+    ...(Number.isFinite(limit) ? { timeout: limit, killSignal: 'SIGKILL' } : {}) });
+  const timedOut = r.error?.code === 'ETIMEDOUT' || (r.signal === 'SIGKILL' && Number.isFinite(limit));
+  if (timedOut) {
+    recordFailure({ event: extraArgs[0] || '', error: 'timed-out-internally', limitMs: limit, signal: r.signal || null });
+    return 0; // nothing partial reaches the host; a killed body never refuses
+  }
+  if (r.stdout?.length) {
+    // Synchronous, because process.exit() follows and an async pipe write could be cut off.
+    for (let off = 0, spins = 0; off < r.stdout.length && spins < 2000;) {
+      try { off += fs.writeSync(1, r.stdout, off); } catch (e) { if (e.code !== 'EAGAIN') break; spins += 1; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5); }
+    }
+  }
   if (r.error) {
+    recordFailure({ event: extraArgs[0] || '', error: String(r.error.code || r.error.message).slice(0, 120), signal: r.signal || null });
     process.stderr.write(`[hook-shim] ${entry.file}: ${r.error.message}\n`);
     return entry.mode === 'blocking' ? 1 : 0;
+  }
+  if (r.signal || (entry.mode !== 'blocking' && r.status !== 0)) {
+    recordFailure({ event: extraArgs[0] || '', status: r.status, signal: r.signal || null });
   }
   // Blocking hooks: the exit code IS the contract — ground-before-write, design-wall, protect-state,
   // and hijack-ruvnet at an opted-in managedMemoryBoundary (ADR-063). Advisory hooks: always 0.

@@ -142,10 +142,14 @@ describe('minimal non-authoritative transitions', () => {
     expect(result).toMatchObject({ progressionCaptured: true, receipt: { eventKey: stored.eventKey, readbackDigest: stored.payloadDigest } });
     expect(capture).not.toHaveBeenCalled();
   });
-  it('unavailable history leaves a minimized normalized observation durably pending', () => {
+  it('a prompt boundary only queues a minimized observation and hands it to the detached worker (ADR-106)', () => {
     const p = project(); fs.writeFileSync(path.join(p, '.swarm', 'memory.db'), '');
-    const result = runProjectTransitionHook(p, 'UserPromptSubmit', { payload: { session_id: 's', prompt: 'Fix parseCookies in parser.mjs. password=private-value' }, env: { RUVNET_BRAIN_HOME: p }, readHistory: () => { throw new Error('read deadline'); } });
-    expect(result.state).toBe('pending');
+    const spawnReplay = vi.fn(() => true);
+    const result = runProjectTransitionHook(p, 'UserPromptSubmit', { payload: { session_id: 's', prompt: 'Fix parseCookies in parser.mjs. password=private-value' }, env: { RUVNET_BRAIN_HOME: p }, spawnReplay });
+    expect(result).toMatchObject({ state: 'queued', handed: true });
+    expect(spawnReplay).toHaveBeenCalledOnce();
+    const stale = runProjectTransitionHook(p, 'UserPromptSubmit', { payload: { session_id: 's', prompt: 'Fix parseCookies again' }, env: { RUVNET_BRAIN_HOME: p }, spawnReplay, now: () => Date.now() + 11 * 60_000 });
+    expect(stale.state).toBe('stuck');
     const files = fs.readdirSync(path.join(p, '.swarm')).filter((name) => name.startsWith('.progression-capture-queue-') || name.startsWith('.progression-capture-claimed-'));
     expect(files.length).toBeGreaterThan(0);
     const bytes = files.map((name) => fs.readFileSync(path.join(p, '.swarm', name), 'utf8')).join('');
@@ -156,7 +160,7 @@ describe('minimal non-authoritative transitions', () => {
     fs.mkdirSync(path.join(brainHome, 'turn-capture'));
     fs.writeFileSync(path.join(brainHome, 'turn-capture', 'policy.json'), JSON.stringify({ schemaVersion: 1, projects: { [fs.realpathSync(p)]: 'off' } }));
     const readHistory = vi.fn(() => { throw new Error('must not read'); }); const capture = vi.fn();
-    expect(runProjectTransitionHook(p, 'UserPromptSubmit', { payload: { session_id: 's', prompt: 'fix memory' }, env: { RUVNET_BRAIN_HOME: brainHome }, readHistory, capture })).toMatchObject({ state: 'skipped', reason: 'persisted turn capture opt-out' });
+    expect(runProjectTransitionHook(p, 'UserPromptSubmit', { payload: { session_id: 's', prompt: 'fix memory' }, env: { RUVNET_BRAIN_HOME: brainHome }, readHistory, capture, spawnReplay: capture })).toMatchObject({ state: 'skipped', reason: 'persisted turn capture opt-out' });
     expect(readHistory).not.toHaveBeenCalled(); expect(capture).not.toHaveBeenCalled();
   });
   it('failed replay keeps claimed boundary queued instead of deleting evidence', () => {

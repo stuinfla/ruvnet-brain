@@ -362,8 +362,9 @@ it does not claim all of them are implemented or native-verified. Updates requir
 requirement, source, test and adapter mapping plus new-source review and relevant execution proof.
 
 
-Consent-eligible learning registers fixed-vocabulary PostToolUse capture and bounded recovery at
-SessionStart/SessionEnd. Project observations use the resolved project's `.swarm/memory.db` and
+Consent-eligible learning captures a fixed vocabulary inside the `session-snapshot` PostToolUse
+boundary and schedules bounded recovery from `session-start` and the `session-snapshot` SessionEnd
+boundary (ADR-106: no separate learning registrations). Project observations use the resolved project's `.swarm/memory.db` and
 namespace `learning-observations`; acknowledgments require exact CLI retrieval plus independent
 canonical row verification. Original queue bytes stay retained. Persisted OFF, malformed consent,
 Brain OFF, or an unadopted project prevent capture. User scope requires explicit persisted consent
@@ -378,9 +379,12 @@ and manual invocation do not prove native event delivery.
 
 Project-level hooks are empty. The installed plugin registers exactly the hooks in
 `plugin/hooks/hooks.json` (Codex: `plugin/hooks/codex-hooks.json`), all dispatched through
-`plugin/scripts/hook-shim.mjs`: SessionStart restore; UserPromptSubmit grounding + advisories;
+`plugin/scripts/hook-shim.mjs` (ADR-106: one registration per role, 17 on Claude and 16 on Codex):
+SessionStart restore; UserPromptSubmit grounding + advisories;
 PreToolUse `decision-gate` on file writes (the only hook that may refuse, for rUv-product code
-without a fresh `search_ruvnet`, or — in this checkout — a new code file or large new export that
+without a fresh `search_ruvnet`; for a new ADR or an ADR status change in an adopted project without
+a `decision-record.mjs --consult` receipt younger than two hours, refused once per path per session,
+`RUVNET_DECISION_RECALL_GATE=off` disables it; or — in this checkout — a new code file or large new export that
 duplicates existing code: refused once per path per session, allowed by a header line
 `// DISTINCT-FROM: <path> — <reason>`, `RUVNET_DUPLICATE_GATE=off` disables it); PostToolUse grounding stamp; Stop continuation and grounding
 check; snapshot capture on Stop/PreCompact/SessionEnd. The Stop grounding check (`grounding-turn-gate`)
@@ -396,7 +400,26 @@ are shadow-logged only). The Stop continuation body also asks for ONE
 correction when a final answer claims work is done without a check run after the last change this
 turn, a named check, and a NOT-verified disclosure, and it records first-person promises ("I'll do X
 next") in the project's work ledger until a later evidenced completion claim closes them (Claude
-only; `npm run completion-claim:replay` measures both on real transcripts). SessionStart prints one
+only; `npm run completion-claim:replay` measures both on real transcripts). It also asks ONCE when a
+Claude turn created an ADR in an adopted project and no successful `decision-record.mjs --record` ran
+after it (ADR-105 §8; `RUVNET_DECISION_RECORD_CHECK=off` disables it; Codex is not enforced). A
+decision record is committed only by an exact readback; a refusal stays pending for `--flush`; `--supersedes` must name an existing decision record of the project and also writes a
+`supersession-<key>` tombstone that recall honors even when the superseding record is not retrieved.
+It also asks ONCE (`no-deferral`, Claude only) when the final answer ends by asking permission for,
+or postponing, work a standing instruction or open promise already authorized and names no genuine
+blocker class (credential, hardware-key tap, out-of-authority write, irreversible action, evidenced
+outage, running background work, owner-only action, purchase, choice between named options); a
+deferral that survives the continued stop is recorded once as "deferral not resolved"
+(`npm run deferral:replay` measures it on real transcripts; `RUVNET_NO_DEFERRAL=off` disables it).
+Prompt and tool boundaries (UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure,
+SubagentStop) only fsync their observation into the capture queue and start the detached replay
+worker. They never write the store inline, and a normally queued boundary prints nothing; only an
+unwritable queue or work queued for more than 10 minutes is reported. On Claude the shim stops any
+body 1.5 s before its registered timeout and writes nothing partial. It records
+`timed-out-internally`, and SessionStart reports it once. Under Codex the stable wrapper owns the
+kill (ADR-106).
+An advisory hook that fails (nonzero exit, signal, spawn error) still exits 0 to the host; the shim
+records it and SessionStart prints one `[RuvNet Brain — HOOK FAILURES]` summary of new failures. SessionStart prints one
 `[RuvNet Brain — KNOWLEDGE …]` line when the installed knowledge cannot be proven current (older than
 48h, or the latest refresh receipt FAILED) and names the fix. The same snapshot capture records each
 turn's outcome at Stop (final assistant text, files changed, command descriptions — never user
@@ -423,9 +446,8 @@ records are not rewritten. The global Ruflo CLI currently accepts stored content
 only redacted content is passed there. Filesystem paths still have to be passed to the OS/CLI; avoid
 putting credentials in repository directory names. Receipt paths and project identifiers are redacted.
 
-Where the owner's user-level
-`~/.claude/hooks/agentdb-turn-capture.mjs` is registered in `~/.claude/settings.json`, the product defers
-Claude turn records to it (one writer per turn; `RUVNET_TURN_CAPTURE=force` keeps both). The same
+The product is the only writer of project turn history; a user-level hook is never evidence of
+capture and is never deferred to (ADR-105 §7, ADR-106). The same
 boundaries also record MATERIAL EVENTS (ADR-100, `continuity-events.mjs` / `continuity-journal.mjs`):
 commits and tags from git, test/check/release gate outcomes, agent findings, decisions and lessons
 (explicit, or detected and marked non-authoritative), each fsynced to `.swarm/continuity-events-outbox.jsonl`

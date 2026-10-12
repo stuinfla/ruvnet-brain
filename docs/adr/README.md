@@ -1,5 +1,5 @@
 
-Updated: 2026-10-10 22:02:00 EDT | Version 1.2.0
+Updated: 2026-10-11 09:30:00 EDT | Version 1.3.0
 Created: 2026-06-29 00:00:00 EDT
 > **Before writing or reviewing any ADR, read [`../PRINCIPLES.md`](../PRINCIPLES.md).**
 > An ADR that contradicts a principle is wrong, and the contradiction is the finding.
@@ -119,3 +119,4 @@ line), first clause only — see each ADR for the full, dated status history.
 | [0103](0103-routing-architecture-review-lock.md) | Routing architecture qualification requires a current finite source review | Accepted |
 | [0104](0104-unified-developer-update-owner.md) | One installed-owner update coordinator | Accepted |
 | [0105](0105-one-agentdb-integration-standard.md) | One AgentDB integration standard for Claude Code and Codex hooks | Accepted |
+| [0106](0106-hook-standard.md) | The hook standard — one registration per role, refuse only on a fact, AgentDB before and after decisions | Proposed |

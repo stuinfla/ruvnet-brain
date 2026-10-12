@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
   "kind": "ruvnet-brain-convergence-manifest",
-  "version": "4.6.3",
-  "sourceIdentity": "d79a20c304129ecb8db70ae6308bbd93b498cded4d60a7430fea25b88da05e4c",
+  "version": "4.6.4",
+  "sourceIdentity": "e875083c63f8601250bf82019c36cf9314059a76f2d191965f8f5f94006315b3",
   "versionSurfaces": {
-    "package.json": "4.6.3",
-    "plugin/.claude-plugin/plugin.json": "4.6.3",
-    "plugin/.codex-plugin/plugin.json": "4.6.3",
-    "data/manifest.json": "4.6.3",
-    "kb/RVF-GENERATIONS.json": "4.6.3",
-    "explainer/index.html": "4.6.3",
-    "primer/ruvnet-primer.md": "4.6.3"
+    "package.json": "4.6.4",
+    "plugin/.claude-plugin/plugin.json": "4.6.4",
+    "plugin/.codex-plugin/plugin.json": "4.6.4",
+    "data/manifest.json": "4.6.4",
+    "kb/RVF-GENERATIONS.json": "4.6.4",
+    "explainer/index.html": "4.6.4",
+    "primer/ruvnet-primer.md": "4.6.4"
   },
   "adrInventory": [
     "0001-verified-bundle-not-single-file.md",
@@ -112,10 +112,11 @@
     "0103-routing-architecture-review-lock.md",
     "0104-unified-developer-update-owner.md",
     "0105-one-agentdb-integration-standard.md",
+    "0106-hook-standard.md",
     "README.md"
   ],
-  "trackedFileCount": 1986,
-  "trackedFilesSha256": "c204cbdb6d8d047706ee96393617bbfdc8b1c892ee255f0369e3264848e622bf",
+  "trackedFileCount": 1998,
+  "trackedFilesSha256": "08d14ef143c52b56092f56ee7714e216ce59074e57ce6878ecac3c95ac567a80",
   "ownershipChecks": [
     "version:check",
     "doc:currency",

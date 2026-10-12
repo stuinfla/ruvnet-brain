@@ -34,7 +34,7 @@ import { resolveProjectStore } from './project-store-resolver.mjs';
 import { restoreProgressionForSession } from './project-progression-session-start.mjs';
 import { STAGE_BUDGETS_MS } from './session-start-budget.mjs';
 import { projectDirectory } from './project-identity.mjs';
-import { CONTINUITY_NAMESPACE, EVENT_KINDS, makeEvent, userLevelAgentdbHooks } from './continuity-events.mjs';
+import { CONTINUITY_NAMESPACE, EVENT_KINDS, makeEvent } from './continuity-events.mjs';
 import { ContinuityJournal, drain, launchDrain, recordingLine, storeReady } from './continuity-journal.mjs';
 import { digestCanonical } from './project-progression-contract.mjs';
 
@@ -176,7 +176,6 @@ export function buildBrief({ projectDir, env = process.env, home = os.homedir(),
   const rows = readEvents(journal, options);
   const status = journal.status();
   const of = (kind) => rows.filter((r) => r.event?.kind === kind);
-  const user = userLevelAgentdbHooks({ home });
 
   const root = resolution.checkoutRoot;
   const branch = git(root, ['rev-parse', '--abbrev-ref', 'HEAD'], options);
@@ -200,13 +199,8 @@ export function buildBrief({ projectDir, env = process.env, home = os.homedir(),
   const ruleLines = lessons.filter(isOwned).map((r) => `• ${oneLine(r.event.summary)} ${tag(r)}`);
   const storeLessonLines = lessons.filter((r) => !isOwned(r) && r.event.authoritative).map((r) => `• ${oneLine(r.event.summary)} ${tag(r)}`);
   const detectedLines = lessons.filter((r) => !isOwned(r) && !r.event.authoritative).map((r) => `• ${oneLine(r.event.summary)} ${tag(r)}`);
-  let lessonNote = '';
-  if (user.ensure) {
-    lessonNote = '(owner lesson-* keys and project-state-current are printed by your user-level agentdb-ensure hook; not repeated)';
-  } else {
-    for (const l of ownerLessons(journal.db, [path.basename(resolution.projectRoot), 'default', 'lessons'], options)) {
-      storeLessonLines.push(`• ${oneLine(l.content)} [${oneLine(`${l.ns}/${l.key}`, 80)}]`);
-    }
+  for (const l of ownerLessons(journal.db, [path.basename(resolution.projectRoot), 'default', 'lessons'], options)) {
+    storeLessonLines.push(`• ${oneLine(l.content)} [${oneLine(`${l.ns}/${l.key}`, 80)}]`);
   }
 
   const trusted = [
@@ -216,7 +210,7 @@ export function buildBrief({ projectDir, env = process.env, home = os.homedir(),
       { name: 'SINCE LAST SESSION', cap: SECTION_CAPS.commit, intro: `(${new Date(since).toISOString().slice(0, 16)}Z → now; git, read live): ${changed.length}${changed.length === 20 ? '+' : ''} commit(s) on ${oneLine(branch, 80) || '?'}${newTags.length ? `; local tags (publication unverified): ${newTags.map((r) => oneLine(r.event.detail?.tag, 60)).join(', ')}` : ''}`,
       items: changed.map((c) => `• ${oneLine(c, 140)}`) },
     { name: 'DECISIONS', cap: SECTION_CAPS.decision, items: of('decision').reverse().map((r) => `• ${oneLine(r.event.summary)} ${tag(r)}`) },
-    { name: 'LESSONS FOUND IN THE PROJECT STORE (not confirmed as yours)', cap: SECTION_CAPS.lesson, intro: lessonNote, items: storeLessonLines.reverse() },
+    { name: 'LESSONS FOUND IN THE PROJECT STORE (not confirmed as yours)', cap: SECTION_CAPS.lesson, items: storeLessonLines.reverse() },
     { name: 'DETECTED, UNCONFIRMED (heuristic: owner phrasing or assistant lines; not rules)', cap: SECTION_CAPS.lesson, items: detectedLines.reverse() },
     { name: 'OPEN ITEMS', cap: SECTION_CAPS.open, items: openItems },
     { name: 'GATES (latest outcomes)', cap: SECTION_CAPS.gate, items: of('gate').reverse().map((r) => `• ${oneLine(r.event.summary, 160)} ${tag(r)}`) },

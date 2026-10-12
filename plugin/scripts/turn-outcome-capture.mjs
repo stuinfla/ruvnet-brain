@@ -41,7 +41,7 @@ import { fileURLToPath } from 'node:url';
 import { nativeTurnLines } from './native-turn-transcript.mjs';
 import { resolveRuflo, rufloInvocation } from './ruflo-bin.mjs';
 import { rufloCwdFor, rufloScratchRoot } from './project-progression-store.mjs';
-import { redactText, userLevelAgentdbHooks } from './continuity-events.mjs';
+import { redactText } from './continuity-events.mjs';
 import { resolveProjectStore, globalEnrollmentAllowed } from './project-store-resolver.mjs';
 import { digest, journalTurn, readJournal, pendingTurnFiles, acknowledgeJournal, appendReceipt, storeData } from './turn-transport-journal.mjs';
 import { contentPathExcludes, pathIsExcluded, privateTurn, maskExcludedPaths, captureFailureReason, firstTurnCaptureNotice } from './turn-capture-privacy.mjs';
@@ -287,17 +287,10 @@ export function captureTurnOutcome({
   const project = projectName(projectRoot);
   const receipts = path.join(brainHome, 'turn-capture', 'receipts.jsonl');
 
-  // ONE WRITER PER TURN (ADR-100 §3). Measured 2026-10-01 on this repo's real store: 624 `turns` rows
-  // in five days for 323 distinct outcomes — this writer (host-tagged) and the owner's user-level
-  // ~/.claude/hooks/agentdb-turn-capture.mjs both recorded every Claude turn. The user-level hook is
-  // the owner's and is never edited by the product, so where it is registered the product DEFERS
-  // (RUVNET_TURN_CAPTURE=force keeps both). Codex turns are not seen by that Claude-only hook.
-  const deferTo = event === 'Stop' && host === 'claude' && String(env.RUVNET_TURN_CAPTURE || '').toLowerCase() !== 'force'
-    && userLevelAgentdbHooks({ home, event, projectDir, env }).turnCapture;
-  if (deferTo) {
-    report.skipped = 'deferred: an enabled user-level Stop writer explicitly targets the canonical turn store; actual native delivery is unproven';
-    report.deferredToUserLevel = true;
-  } else if (['Stop', 'SessionEnd', 'PreCompact'].includes(event)) {
+  // ONE WRITER PER TURN (ADR-105 §7): the product is the only writer of project turn history. The
+  // former deferral to a user-level ~/.claude hook (ADR-100 §3) could never fire — its probe never
+  // reported a writer — and cost a git call on every Stop, so it was removed (ADR-106).
+  if (['Stop', 'SessionEnd', 'PreCompact'].includes(event)) {
     const sessionKey = String(payload.session_id || payload.transcript_path || '');
     const message = typeof payload.last_assistant_message === 'string' ? payload.last_assistant_message.trim() : '';
     let turn = { finalText: '', files: [], actions: [] };
@@ -487,8 +480,7 @@ export function turnRecordingStatus({ projectDir = process.cwd(), env = process.
   let target;
   try { target = resolveTurnDb({ projectDir, brainHome }); } catch { return { state: 'unknown', line: 'turn recording unavailable: canonical store resolution failed' }; }
   if (String(env.RUVNET_TURN_CAPTURE || '').toLowerCase() === 'off' || target.skipped) return { state: 'unknown', line: `turn recording n/a — ${target.skipped || 'RUVNET_TURN_CAPTURE=off'}` };
-  const deferred = String(env.RUVNET_HOOK_HOST || 'claude') === 'claude' && String(env.RUVNET_TURN_CAPTURE || '').toLowerCase() !== 'force' && userLevelAgentdbHooks({ home, event: 'Stop', projectDir, env }).turnCapture;
-  const notice = noticeOnFirstUse && !deferred ? firstTurnCaptureNotice({ target, brainHome, policyFile: turnCapturePolicyFile(brainHome), env }) : null;
+  const notice = noticeOnFirstUse ? firstTurnCaptureNotice({ target, brainHome, policyFile: turnCapturePolicyFile(brainHome), env }) : null;
   const status = (value) => ({ ...value, ...(notice ? { notice } : {}) });
   let rows = [];
   try {

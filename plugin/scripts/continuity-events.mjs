@@ -30,12 +30,8 @@
  */
 import { nativeTurnLines } from './native-turn-transcript.mjs';
 import crypto from 'node:crypto';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { redactProgression } from './project-progression-contract.mjs';
-import { resolveProjectStore } from './project-store-resolver.mjs';
 
 export const CONTINUITY_NAMESPACE = 'continuity-events';
 export const EVENT_SCHEMA = 'ruvnet-brain.continuity-event';
@@ -326,79 +322,3 @@ export function collectTurnEvents({ lines = null, lastAssistantMessage = '', hos
   return events.filter((e) => (seen.has(`${e.kind}:${e.id}`) ? false : seen.add(`${e.kind}:${e.id}`)));
 }
 
-/**
- * The owner's own user-level AgentDB hooks (~/.claude/settings.json). Read, never modified. Used to
- * DEFER: where one of them already records a thing, the product does not record it a second time.
- */
-export function userLevelAgentdbHooks({ home = os.homedir(), event, projectDir, env = process.env } = {}) {
-  const found = { turnCapture: false, autocapture: false, ensure: false, ownership: 'unknown', collisionCandidate: false,
-    settings: path.join(home, '.claude', 'settings.json') };
-  if (!['Stop', 'PreCompact', 'SessionEnd', 'SessionStart'].includes(event) || !projectDir
-    || String(env.RUVNET_HOOK_HOST || 'claude') !== 'claude') return found;
-  let doc;
-  try { doc = JSON.parse(fs.readFileSync(found.settings, 'utf8')); } catch { return found; }
-  if (!doc || typeof doc !== 'object' || Array.isArray(doc) || doc.disableAllHooks === true || doc.allowManagedHooksOnly === true) return found;
-  let target, executable;
-  try {
-    for (const file of [path.join(projectDir, '.claude', 'settings.json'), path.join(projectDir, '.claude', 'settings.local.json')]) {
-      let local;
-      try { local = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (error) { if (error.code === 'ENOENT') continue; throw error; }
-      if (!local || typeof local !== 'object' || Array.isArray(local) || local.disableAllHooks === true || local.allowManagedHooksOnly === true) return found;
-    }
-    const deadlineAt = Number(env.RUVNET_SESSION_START_DEADLINE_AT) || Infinity;
-    target = resolveProjectStore({ projectDir, gitTimeoutMs: 500, deadlineAt }).canonicalAgentDbPath;
-    // Bind the direct command to the declared entry of the user's one managed GLOBAL Ruflo.
-    // Arbitrary Node handlers, filenames and source comments do not prove their actual target.
-    if (!process.getuid) return found; // Native Windows ACL ownership is not attested by POSIX uid metadata.
-    const root = path.join(home, '.npm-global', 'lib', 'node_modules', 'ruflo');
-    const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-    const declared = typeof manifest.bin === 'string' ? manifest.bin : manifest.bin?.ruflo;
-    if (manifest.name !== 'ruflo' || typeof declared !== 'string' || path.isAbsolute(declared) || declared.split(/[\\/]/).includes('..')) return found;
-    executable = fs.realpathSync.native(path.join(home, '.npm-global', 'bin', 'ruflo'));
-    const entry = fs.realpathSync.native(path.join(root, declared));
-    const relative = path.relative(fs.realpathSync.native(root), entry);
-    const stat = fs.statSync(entry);
-    if (executable !== entry || relative.startsWith('..') || path.isAbsolute(relative) || !stat.isFile() || stat.uid !== process.getuid()) return found;
-    fs.accessSync(executable, fs.constants.X_OK);
-  } catch { return found; }
-  const groups = doc?.hooks?.[event];
-  for (const group of Array.isArray(groups) ? groups : []) {
-    if (group?.enabled === false || group?.disabled === true || (group?.matcher && group.matcher !== '*')) continue;
-    for (const hook of Array.isArray(group?.hooks) ? group.hooks : []) {
-      if (hook?.type !== 'command' || hook.enabled === false || hook.disabled === true || typeof hook.command !== 'string') continue;
-      const command = hook.command.trim();
-      if (/[$`;&|<>\r\n]/.test(command)) continue;
-      const tokens = []; const words = /"([^"\\]*)"|'([^']*)'|([^\s"'\\]+)/g;
-      let match, previous = 0, valid = true;
-      while ((match = words.exec(command))) {
-        if (command.slice(previous, match.index).trim()) { valid = false; break; }
-        tokens.push(match[1] ?? match[2] ?? match[3]); previous = words.lastIndex;
-      }
-      if (!valid || command.slice(previous).trim() || tokens[1] !== 'memory') continue;
-      try { if (!path.isAbsolute(tokens[0]) || fs.realpathSync.native(tokens[0]) !== executable) continue; } catch { continue; }
-      const options = tokens[2] === 'store' ? ['--path', '-p', '--namespace', '-n', '--key', '-k', '--value']
-        : tokens[2] === 'retrieve' ? ['--path', '-p', '--namespace', '-n', '--key', '-k']
-          : tokens[2] === 'init' ? ['--path', '-p'] : [];
-      for (let i = 3; i < tokens.length; i += 2) {
-        if (!options.includes(tokens[i]) || !tokens[i + 1] || tokens[i + 1].startsWith('-')) { valid = false; break; }
-      }
-      if (!valid) continue;
-      const flag = names => {
-        const positions = tokens.flatMap((token, i) => names.includes(token) ? [i] : []);
-        return positions.length === 1 ? tokens[positions[0] + 1] : undefined;
-      };
-      const db = flag(['--path', '-p']);
-      if (!db || !path.isAbsolute(db) || db.split(/[\\/]/).includes('..') || path.resolve(db) !== target) continue;
-      const namespace = flag(['--namespace', '-n']);
-      const captureRegistration = tokens[2] === 'store' && flag(['--key', '-k']) && flag(['--value'])
-        && ((event === 'Stop' && namespace === 'turns') || (['PreCompact', 'SessionEnd'].includes(event) && namespace === 'sessions'));
-      const ensureRegistration = event === 'SessionStart' && ['init', 'retrieve'].includes(tokens[2]);
-      if (captureRegistration || ensureRegistration) found.collisionCandidate = true;
-    }
-  }
-  if (found.collisionCandidate) {
-    found.target = target; found.event = event;
-    found.reason = 'canonical registration alone does not prove capture of the current turn/session';
-  }
-  return found;
-}

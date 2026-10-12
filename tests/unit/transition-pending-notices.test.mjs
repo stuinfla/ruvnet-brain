@@ -29,8 +29,13 @@ function run(dir, script, session = 'one', event = 'UserPromptSubmit', extra = {
   if (expected) expect(result.stdout, diagnostics).toMatch(expected);
   return result.stdout;
 }
-function pending(dir, script, session = 'one') {
-  return run(dir, script, session, 'UserPromptSubmit', {}, undefined, /pending.*readback/);
+function stuck(dir, script, session = 'one') {
+  return run(dir, script, session, 'UserPromptSubmit', {}, undefined, /stuck.*exact readback/);
+}
+/** ADR-106: a normally queued boundary is silent; only work queued past 10 minutes is reported. */
+function ageQueue(dir) {
+  const old = new Date(Date.now() - 11 * 60_000);
+  for (const name of fs.readdirSync(path.join(dir, '.swarm'))) if (name.startsWith('.progression-capture-')) fs.utimesSync(path.join(dir, '.swarm', name), old, old);
 }
 const direct = 'project-transition-hook.mjs';
 const compatibility = 'session-snapshot-hook.mjs';
@@ -38,11 +43,13 @@ const ledger = (dir) => path.join(dir, '.swarm', '.continuity-stop-notices.json'
 describe('#380 pending notices retain capture and independent warning conditions', () => {
   for (const first of [direct, compatibility]) it(`deduplicates actual ${first} boundaries across both entrypoints`, () => {
     const dir = project();
-    pending(dir, first);
+    expect(run(dir, first)).toBe('');                 // queued and handed off: normal, silent
     expect(run(dir, first, 'one', 'PreToolUse')).toBe('');
+    ageQueue(dir);
+    stuck(dir, first);                                // stuck past 10 minutes: said once per session
     expect(run(dir, first === direct ? compatibility : direct, 'one', 'PostToolUse')).toBe('');
-    pending(dir, first, 'two');
-    expect(fs.readdirSync(path.join(dir, '.swarm')).filter((name) => name.startsWith('.progression-capture-queue-'))).toHaveLength(4);
+    stuck(dir, first, 'two');
+    expect(fs.readdirSync(path.join(dir, '.swarm')).filter((name) => name.startsWith('.progression-capture-queue-'))).toHaveLength(5);
     expect(fs.lstatSync(ledger(dir)).isFile()).toBe(true);
     if (process.platform !== 'win32') expect(fs.statSync(ledger(dir)).mode & 0o777).toBe(0o600);
     for (const problem of ['stuck-pending', 'quarantined', 'corrupt']) {
@@ -54,7 +61,7 @@ describe('#380 pending notices retain capture and independent warning conditions
     expect(run(dir, first, 'one')).toBe('');
   });
   it('does not hide degraded capture errors after a pending notice', () => {
-    const dir = project(); expect(run(dir, direct)).toMatch(/pending/);
+    const dir = project(); expect(run(dir, direct)).toBe(''); ageQueue(dir); expect(run(dir, direct)).toMatch(/stuck/);
     for (const script of [direct, compatibility]) {
       expect(run(dir, script, 'one', 'UserPromptSubmit', {}, '{')).toContain('capture degraded');
       expect(run(dir, script, 'one', 'UserPromptSubmit', {}, '{')).toContain('capture degraded');

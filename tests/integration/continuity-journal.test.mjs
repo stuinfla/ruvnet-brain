@@ -415,7 +415,6 @@ describe('5. one writer per turn', () => {
       command: `${JSON.stringify(bin)} memory store --namespace turns --key fixture --value "fixture turn" --path ${JSON.stringify(path.join(project, '.swarm/memory.db'))}` }] }] } }));
     const captured = fireTurn(home, {}, { configure });
     expect(captured.stores).toHaveLength(1);
-    expect(captured.r.deferredToUserLevel).not.toBe(true);
     const capturedArgs = captured.stores[0].args;
     expect(capturedArgs[capturedArgs.indexOf('--value') + 1]).toContain(OUTCOME);
     const forced = fireTurn(home, { RUVNET_TURN_CAPTURE: 'force' }, { configure });
@@ -429,7 +428,6 @@ describe('5. one writer per turn', () => {
     const settings = path.join(home, '.claude/settings.json');
     const body = JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'node "/foreign/agentdb-turn-capture.mjs"' }] }] } });
     fs.writeFileSync(settings, body); const captured = fireTurn(home);
-    expect(captured.stores).toHaveLength(1); expect(captured.r.deferredToUserLevel).not.toBe(true); expect(fs.readFileSync(settings, 'utf8')).toBe(body);
   });
 });
 

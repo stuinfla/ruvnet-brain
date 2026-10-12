@@ -15,7 +15,7 @@ import { normalizeHostEvent } from './hook-input.mjs';
 import { resolveProjectStore } from './project-store-resolver.mjs';
 import { withProgressionReader } from './project-progression-reader.mjs';
 import { redactProgression, restoreProjectProgression, digestCanonical, validateProgressionSnapshot } from './project-progression-contract.mjs';
-import { runSessionSnapshotHook, effectiveBudgetMs, queueCapture, replayOutboxDetached, runOutboxReplay } from './session-snapshot-hook.mjs';
+import { runSessionSnapshotHook, queueCapture, replayOutboxDetached } from './session-snapshot-hook.mjs';
 
 const EVENTS = new Set(['UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'SubagentStop']);
 const TOPICS = [
@@ -197,8 +197,23 @@ export function captureNormalizedTransition(job, { readHistory = readTransitionH
   return { ...result, eventId: normalized.observation.id };
 }
 
+/** Queued work older than this is no longer in flight; the boundary says so (continuity-journal STUCK_AFTER_MS). */
+export const QUEUE_STUCK_AFTER_MS = 10 * 60_000;
+
+/**
+ * Prompt and tool boundaries (UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure,
+ * SubagentStop) do only bounded, local work: consent and identity, fsync the observation into the
+ * durable queue, hand the queue to the detached replay worker, return. No native store write runs
+ * inline. Measured 2026-10-11: each inline commit cost one ~3 s native write per boundary, queued
+ * debt made every later boundary spend its full 6.5 s budget, and under load the host killed the
+ * hook at its 10 s timeout and discarded its output. A queued-and-handed-off observation is the
+ * NORMAL state and says nothing; only an unwritable queue or work stuck past
+ * QUEUE_STUCK_AFTER_MS is reported. Exact readback is unchanged: the worker commits each item only
+ * by exact readback (captureNormalizedTransition), and Stop/PreCompact/SessionEnd keep their own
+ * bounded synchronous budgets.
+ */
 export function runProjectTransitionHook(projectDir, event, { payload = {}, host = process.env.RUVNET_HOOK_HOST || 'claude',
-  readHistory = readTransitionHistory, capture = runSessionSnapshotHook, env = process.env } = {}) {
+  env = process.env, spawnReplay = replayOutboxDetached, now = Date.now } = {}) {
   if (developmentHooksSuspended(projectDir)) return { state: 'skipped', reason: 'development hooks suspended' };
   const suspended = automaticProgressionSuspensionResult(env, { state: 'suspended', reason: 'automatic project progression is operator-suspended' });
   if (suspended) return suspended;
@@ -218,12 +233,16 @@ export function runProjectTransitionHook(projectDir, event, { payload = {}, host
     payload: { session_id: payload.session_id, hook_event_name: transportEvent,
       normalizedTransition: { observation, sourceIdentity: observeTransitionSource(resolution, projectDir) } } });
   if (!queued) return { state: 'degraded', reason: 'normalized observation queue unwritable', eventId: observation.id };
-  let result = null;
-  runOutboxReplay({ projectDir: resolution.projectRoot, env, budgetMs: Math.min(6500, effectiveBudgetMs(env)),
-    captureNormalized: (job, options) => captureNormalizedTransition(job, { ...options, env, readHistory, capture }),
-    onCaptured: (captured) => { if (captured?.eventId === observation.id) result = captured; } });
-  if (!result?.receipt) replayOutboxDetached({ projectDir: resolution.projectRoot, env });
-  return { state: result?.progressionCaptured && result.receipt ? 'committed' : 'pending', eventId: observation.id, result };
+  const handed = spawnReplay({ projectDir: resolution.projectRoot, env });
+  let oldest = Infinity;
+  try {
+    for (const name of fs.readdirSync(path.join(resolution.projectRoot, '.swarm'))) {
+      if (!/^\.progression-capture-(?:queue|claimed)-.*\.json$/.test(name)) continue;
+      oldest = Math.min(oldest, fs.statSync(path.join(resolution.projectRoot, '.swarm', name)).mtimeMs);
+    }
+  } catch { /* the observation itself is already durable */ }
+  if (now() - oldest > QUEUE_STUCK_AFTER_MS) return { state: 'stuck', eventId: observation.id, handed, oldestQueuedAt: new Date(oldest).toISOString() };
+  return { state: 'queued', eventId: observation.id, handed };
 }
 
 /** One pending-readback condition across prompt/tool boundaries and both CLI entrypoints. */
@@ -238,8 +257,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     const payload = JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
     const projectDir = payload.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
     const result = runProjectTransitionHook(projectDir, process.argv[2], { payload });
-    if (result.state === 'pending') {
-      const message = transitionPendingNotice(projectDir, payload, 'Project memory transition is pending; exact AgentDB readback was not verified at this boundary.');
+    if (result.state === 'stuck' || result.state === 'degraded') {
+      const message = transitionPendingNotice(projectDir, payload, result.state === 'stuck'
+        ? `Project memory capture is stuck: queued work since ${result.oldestQueuedAt} has not been committed by exact readback.`
+        : 'Project memory capture degraded: the observation queue is unwritable.');
       if (message) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: process.argv[2], additionalContext: message } }));
     }
   } catch { process.stdout.write(JSON.stringify({ systemMessage: 'Project memory transition capture degraded; exact readback was not verified.' })); }

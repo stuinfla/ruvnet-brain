@@ -3,8 +3,8 @@ id: ADR-105
 title: One AgentDB integration standard for Claude Code and Codex hooks
 status: Accepted
 date: 2026-10-10
-updated: 2026-10-11 00:30:00 EDT
-version: 1.1.1
+updated: 2026-10-11 09:30:00 EDT
+version: 1.2.0
 authors: [Stuart Kerr, Claude Opus 5.5]
 tags: [agentdb, hooks, continuity, recall, enrollment, decisions, claude-code, codex]
 supersedes: [ADR-061, ADR-073, ADR-100, ADR-101, ADR-102]
@@ -234,8 +234,8 @@ Example value (shape only):
 | 5 One Git call, fail closed | Implemented | `project-store-resolver.mjs` `gitValue`/`gitProject`; `nonGitRoot` tolerates missing HOME |
 | 6 Lazy consent-gated enrollment, no re-enroll on replay | Implemented | `project-memory-enrollment.mjs`; `project-capture-queue.mjs` replay passes `enrollMemory: () => ({ state: 'existing' })`. Native test `tests/integration/project-memory-enrollment-native.test.mjs` passes (10/10 with its unit file, 2026-10-10). |
 | 7 Shared shim, explicit host | Implemented for capture hooks | `hook-shim.mjs:190–197`, `codex-hook-adapter.mjs:118`. Some scripts still default to `'claude'` when the host is unset (for example `turn-outcome-capture.mjs:490`, `continuity-events.mjs:337`). Follow-up. |
-| 7 Single writer | **Gap** | `turn-outcome-capture.mjs:295` still defers Claude Stop turns to a user-level `agentdb-turn-capture.mjs` when one is registered (ADR-100 §3). Under this standard the product is the one writer of project history. A foreign hook is never evidence of capture. Follow-up: remove the deferral, or require that the foreign hook prove the §3 contract. |
-| 8 Decision record contract | **Not implemented** | Continuity events (`continuity-events.mjs` `makeEvent`) carry only `summary` (≤400 chars) plus a free-form `detail`. They have no `why`, `shape`, `evidence` or `supersedes`. Recall honors only an in-record `supersededBy`/`superseded` flag (`agentdb-recall.mjs:273`), which an append-only store cannot set afterwards. Follow-up: a writer for decision records, a validator, and supersession computed from `supersedes` on newer records. |
+| 7 Single writer | Implemented (ADR-106) | The user-level deferral in `turn-outcome-capture.mjs` could never fire (`userLevelAgentdbHooks` never reported a writer) and was removed with the probe; the product is the only writer of project turn history. |
+| 8 Decision record contract | Implemented in part (ADR-106) | `decision-record.mjs`: validator, redact-then-bound builder, key, §3 door with exact readback and a durable pending file, supersession computed from newer ratified records (recall drops superseded ones). Consulted before deciding: decision-gate `decision-recall` policy (new ADR or status change needs a fresh consult receipt; refuses once). Recorded after: continuation-gate asks once on Claude when a turn created an ADR without `--record`; Codex is not enforced (rollout not parsed). Detected `Decision:` lines in continuity events remain `detected-unconfirmed` and are not converted. |
 
 ## What this supersedes (in part)
 
@@ -271,7 +271,7 @@ Each superseded ADR keeps its body as history. Its status line points here.
 - Load no longer turns into apparent amnesia: under contention the exact curated records still
   arrive.
 - Three gaps are named, not hidden: the environment scrub, single-writer deferral and decision
-  records. None of them is claimed as working until code and a native-host receipt exist.
+  records. (ADR-106 closed the single-writer gap and implemented decision records in part.) None of them is claimed as working until code and a native-host receipt exist.
 - Cost: decision records need a writer, and authors need discipline. A record without `why`,
   `shape` and `evidence` is only `detected-unconfirmed`.
 
