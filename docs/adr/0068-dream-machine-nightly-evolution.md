@@ -3,7 +3,7 @@ id: ADR-068
 title: The Dream Machine runs this repo's nights — evaluation is not promotion
 status: Accepted
 date: 2026-08-19
-updated: 2026-09-04
+updated: 2026-10-14
 authors: [Stuart Kerr, Claude Code]
 tags: [automation, evaluation, nightly, self-improvement, promotion-gate]
 supersedes: []
@@ -136,6 +136,7 @@ committed config).
 
 ## Currency log
 
+| 2026-10-14 | Night of 2026-10-14 (slot 4, `memory-durability`) filed PR #453 (`decision-recall-gate.mjs`'s ack ledger made crash-safe) with this ADR's ledger row appended. Separately observed and worth recording here since this ADR governs the ledger's own health: the dream-cycle review backlog is now ~52 open draft PRs with zero merges since #178 (2026-08-26), 48+ days — issue #410 (2026-10-06) already tracks it; `autoMerge: false` remains the deliberate decision this ADR records, not the cause of the backlog (the backlog is a review-capacity gap, not a request to auto-merge). | d2982ac28ebb72216145e122133403de6102ec03 |
 | 2026-08-30 | Reviewed against release candidate 4.3.3: the nightly ledger status vocabulary was corrected to the engine's yes/no/blocked contract; auto-merge remains disabled. | 1beedaa |
 
 | 2026-08-30 | Nightly findings are separated from the bounded release gate; deterministic contract lanes run on PRs while corpus/nightly work remains explicit. | `scripts/qa-runner.mjs` and `docs/QA-RELEASE-PROCESS.md` prevent exploratory work from silently approving or blocking publication. |

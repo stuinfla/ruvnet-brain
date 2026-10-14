@@ -87,6 +87,29 @@ function brainOff(env) {
 const ackFile = (brainHome) => path.join(brainHome, 'decision-recall-acks.json');
 function readAcks(file) { try { const o = JSON.parse(fs.readFileSync(file, 'utf8')); return o && typeof o === 'object' ? o : {}; } catch { return {}; } }
 
+/**
+ * Publish the ledger the way decision-record.mjs's own sibling (writeConsultReceipt) already does:
+ * temp file in the same directory, fsync, then rename. fs.writeFileSync on the real path truncates
+ * before it writes — a process killed between those two steps leaves an empty ledger, discarding
+ * every acknowledgment ever recorded, not just the one being added. rename() is atomic on POSIX, so
+ * a reader (or a crash) only ever sees the old complete ledger or the new complete one.
+ */
+function writeAcksAtomic(file, acks) {
+  const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
+  let fd;
+  try {
+    fd = fs.openSync(tmp, 'wx', 0o600);
+    fs.writeSync(fd, JSON.stringify(acks));
+    try { fs.fsyncSync(fd); } catch { /* filesystem without fsync (some network mounts) — proceed */ }
+    fs.closeSync(fd);
+    fd = null;
+    fs.renameSync(tmp, file);
+  } finally {
+    if (fd !== null) { try { fs.closeSync(fd); } catch { /* nothing to close */ } }
+    try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch { /* leave the temp rather than throw over it */ }
+  }
+}
+
 /** The verdict. Returns { code, stderr?, stdout? }. */
 export function evaluate(payload, { env = process.env, now = Date.now() } = {}) {
   if (['off'].includes(String(env.RUVNET_DECISION_RECALL_GATE || '').toLowerCase())
@@ -108,13 +131,13 @@ export function evaluate(payload, { env = process.env, now = Date.now() } = {}) 
   const acks = readAcks(file);
   if (acks[key]) {
     acks[key].retriedAt = new Date(now).toISOString();
-    try { fs.writeFileSync(file, JSON.stringify(acks)); } catch { /* the ledger never blocks a write */ }
+    try { writeAcksAtomic(file, acks); } catch { /* the ledger never blocks a write */ }
     return { code: ALLOW, stdout: `This ${decision.kind} was written without an AgentDB consult (retry after one refusal). Record it afterwards with decision-record.mjs --record.` };
   }
   // Keep the ledger bounded: drop acknowledgements older than a week.
   for (const [k, v] of Object.entries(acks)) if (now - Date.parse(v?.at) > 7 * 86_400_000) delete acks[k];
   acks[key] = { at: new Date(now).toISOString(), kind: decision.kind };
-  try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(acks), { mode: 0o600 }); } catch { return { code: ALLOW }; }
+  try { fs.mkdirSync(path.dirname(file), { recursive: true }); writeAcksAtomic(file, acks); } catch { return { code: ALLOW }; }
   const script = path.join(path.dirname(fileURLToPath(import.meta.url)), 'decision-record.mjs');
   return { code: REFUSE, stderr: [
     `⛔ BLOCKED (once) — ${decision.kind} ${decision.path}: run decision-record.mjs --consult "<topic>" first (AgentDB decisions unread).`,
