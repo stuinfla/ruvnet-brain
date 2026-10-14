@@ -6,7 +6,6 @@ import {
   CONTINUITY_SECRETS,
   collectCommits, collectReleases, collectTurnEvents, eventIdOf, eventKey, makeEvent,
 } from '../../plugin/scripts/continuity-events.mjs';
-import { ContinuityJournal } from '../../plugin/scripts/continuity-journal.mjs';
 import { adoptedProject, cleanup, commit, git, tmp, transcript } from '../helpers/continuity-fixture.mjs';
 
 let savedCwdRoot;
@@ -122,15 +121,6 @@ describe('continuity events: one Claude turn', () => {
     expect(events[0]).toMatchObject({ kind: 'decision', host: 'codex' });
   });
 
-  it('an event seen at three boundaries is journalled once', () => {
-    const p = adoptedProject();
-    const journal = new ContinuityJournal({ projectRoot: p.dir });
-    const e = makeEvent({ kind: 'lesson', source: 'explicit', authoritative: true, summary: 'Read back every write.' });
-    expect(journal.record([e])).toHaveLength(1);
-    expect(journal.record([e])).toHaveLength(0);
-    expect(journal.record([makeEvent({ kind: 'lesson', source: 'explicit', authoritative: true, summary: 'read back EVERY write.', at: Date.now() + 5000 })])).toHaveLength(0);
-    expect(journal.pending()).toHaveLength(1);
-  });
 });
 
 describe('redaction happens BEFORE truncation (review S2)', () => {

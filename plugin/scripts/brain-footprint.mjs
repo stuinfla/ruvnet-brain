@@ -41,7 +41,7 @@ export const FOOTPRINT_POLICY = Object.freeze({
   staleStageMs: 2 * 3_600_000,       // an install stage nobody activated in 2h is debris
   staleForgeCandidateMs: 24 * 3_600_000,
   staleLeaseMs: 6 * 3_600_000,       // plugin/scripts/update-apply.mjs LEASE_FRESH_MS
-  staleRufloRunMs: 3_600_000,        // plugin/scripts/project-progression-store.mjs STALE_RUN_MS
+  staleRufloRunMs: 3_600_000,        // plugin/scripts/ruflo-bin.mjs STALE_RUN_MS
 });
 
 /** Every full-KB copy name this product (or a recovery) has ever created beside the live KB. A superset of

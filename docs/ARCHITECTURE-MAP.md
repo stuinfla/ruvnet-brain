@@ -217,7 +217,7 @@ Six Claude Code events, 14 invocations, 10 distinct scripts. All but two route t
 | PreToolUse `Bash` | `design-wall.sh` | **blocking** | Refuses shipping/committing/opening a visual surface without a fresh design-grade stamp. **Repo-scoped since issue #17** — it checks the plugin manifest's own name and stays silent everywhere else, after a plain `git commit` in an unrelated project got blocked demanding a ruvnet-brain ritual. |
 | PreToolUse `Write\|Edit\|MultiEdit` / `Bash` | `lesson-hooks.sh write-code` / `mutate-machine` | advisory | Your recorded corrections for writing code / changing the machine. |
 | PostToolUse `Write\|Edit\|MultiEdit\|Bash` | `learn-capture.sh` | advisory | Appends one compact step to the session's learning queue: the command *verb* or a file's *basename*. Never content, never full paths, never secrets. |
-| SessionEnd | `learn-flush.mjs` | advisory | Drains the queue into the SONA learner. |
+| SessionEnd | `the former learning flusher (deleted 2026-10-12)` | advisory | Drains the queue into the SONA learner. |
 | Stop | `continuation-gate.mjs` | advisory | Fires on *stopping*, because stopping is the absence of an action and every other gate needs a tool call to intercept. Checks the work ledger for committed-to items still unfinished. |
 | Stop | `lesson-hooks.sh report-status/claim-done` | advisory | Your recorded corrections about reporting progress and claiming done. |
 
@@ -273,7 +273,7 @@ which only fires inside this repo. In practice a new user is subject to exactly 
   failed *for days, invisibly*, returning empty results that read as "nothing exists." The four
   structural checks in `session-start.sh` exist because of that, and they are the only thing that
   tells you the brain has died rather than gone quiet.
-- **No learning capture.** `learn-capture.sh` → `learn-flush.mjs` → SONA is how "the way you work"
+- **No learning capture.** `learn-capture.sh` → `the former learning flusher (deleted 2026-10-12)` → SONA is how "the way you work"
   accumulates across all your projects. Without it the learner starves. (It already did: the flush
   originally fired only on a clean `SessionEnd`, so sessions that compacted, crashed, or resumed
   never reached it — the queue grew to 1,884 undelivered events over days while the learner sat at 5

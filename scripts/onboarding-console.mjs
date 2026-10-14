@@ -46,7 +46,6 @@ import { effectivePrices, loadLabelledRows, MIN_LABELS, OUTCOMES } from './metah
 import { utilization } from './router-utilization.mjs';
 import { loadCatalog, detectProvider, frontierFor } from './model-catalog.mjs';
 import { providerAvailability } from './provider-availability.mjs';
-import { inspectSessionSnapshots } from './session-snapshot-contract.mjs';
 import { learnings } from './learnings.mjs';
 import { gatesSurvey } from './gates.mjs';
 // The write-safety primitives, borrowed rather than re-implemented. See saveConfig for why.
@@ -71,7 +70,7 @@ import {
   saveOpenRouterCredential,
   loadRuntimePreferences,
 } from '../plugin/scripts/runtime-preferences.mjs';
-import { observeLearning as observeScopedLearning } from '../plugin/scripts/learning-observation.mjs';
+import { observeLearning as observeScopedLearning } from '../plugin/scripts/learning-store.mjs';
 import { applyNightlyChoice, nightlyStatus } from './nightly-controller.mjs';
 // One canonical answer to "which directory is this, and have I counted it already?" — shared with
 // the PreCompact snapshot producer (#85) and with memory-doctor's root scan (#107).
@@ -494,20 +493,9 @@ function probeMemory(projectDir, { now = Date.now() } = {}) {
   const stores = memoryStores(projectDir);
   const db = stores.scored;
   const probes = { stores };
-  // compaction survival + session surfacing are filesystem facts, always checkable
-  const snapshot = inspectSessionSnapshots(projectDir, { now });
-  const snapshotDetail = snapshot.kind === 'canonical'
-    ? 'a fresh versioned PreCompact snapshot is present in .swarm/agentdb-sessions.jsonl'
-    : snapshot.kind === 'legacy'
-      ? 'a fresh supported Ruflo session snapshot is present (legacy path; migration recommended)'
-      : snapshot.kind === 'malformed'
-        ? 'snapshot files were found but none matched the supported schema'
-        : snapshot.kind !== 'absent'
-          ? 'the newest supported snapshot is stale'
-          : 'no supported PreCompact snapshot found for this project yet';
-  probes.compactionSurvival = snapshot.fresh
-    ? { status: 'ok', detail: snapshotDetail, artifact: snapshot.kind }
-    : { status: 'warn', detail: snapshotDetail, artifact: snapshot.kind };
+  // Compaction survival is a ruflo write at PreCompact (project-state-auto-* + exact readback); a refusal
+  // reaches the hook-failures summary. It is not re-probed at render.
+  probes.compactionSurvival = { status: 'notTested', detail: 'PreCompact stores a project-state-auto-* checkpoint through ruflo and reads it back; failures appear in the SessionStart hook-failures summary' };
   probes.sessionSurfacing = sessionHookExists() ? { status: 'ok', detail: 'the global SessionStart hook surfaces project state at launch' } : { status: 'warn', detail: 'no SessionStart recall hook found' };
   // recall quality: honestly NOT probed at render (a true probe needs an embedding query; left for an explicit deep test)
   probes.recallQuality = { status: 'notTested', detail: 'not checked this session — a real recall probe needs an embedding round-trip, which render deliberately avoids' };
@@ -776,7 +764,7 @@ function gatherInventory() {
 /**
  * Keys a project-level <project>/.swarm/ruvnet-brain-settings.json overrides FOR THE RUNTIME THAT
  * READS IT. runtime-preferences merges that file over the user-level choices, and route-cheap, the
- * managed-CLI gate (routing, qeFleet) and learn-capture/learn-flush (learningScope) obey the merge.
+ * managed-CLI gate (routing, qeFleet) and learn-capture (learningScope) obey the merge.
  * The console saves user-level values only, so without this a project seeded by "Apply these choices
  * to new projects" silently ignored every later change made here (RNBC QA 2026-10-01). Only keys whose
  * consumer honours the project file are reported — advocacy, autoApply and provider are read at user
@@ -2618,18 +2606,15 @@ function apply(ids) {
     const undoToken = journalUndo(undoSpec);
     phaseMs.undoJournalMs += elapsedMs(journalStartedAt);
     const remedyStartedAt = performance.now();
-    const learningBefore = ['learning:flush', 'learning:train', 'learning:flush-legacy-user'].includes(id) ? observeLearning() : null;
+    const learningBefore = id === 'learning:train' ? observeLearning() : null;
     const res = runNode(plan.exec.script, args, learningBefore ? {
       cwd: learningBefore.projectDir,
       env: { ...process.env, RUVNET_BRAIN_PROJECT_DIR: learningBefore.projectDir },
     } : {});
     if (res.ok && learningBefore) {
       const after = observeLearning();
-      const progressed = id === 'learning:flush-legacy-user'
-        ? after.legacyUserKnown && after.legacyUserDepth < learningBefore.legacyUserDepth
-        : id === 'learning:flush'
-        ? after.queueKnown && after.queueDepth < learningBefore.queueDepth
-        : learningBefore.statusKnown && after.statusKnown && after.patterns > learningBefore.patterns;
+      // `ruflo memory distill run` owns the patterns; progress here is a known, readable learner afterwards.
+      const progressed = learningBefore.statusKnown && after.statusKnown;
       if (!progressed) {
         res.ok = false;
         res.log += `\nNo measured learning progress: queue ${after.queueDir}; learner ${after.learnerCwd}. Reload to inspect the remaining evidence.`;

@@ -26,8 +26,6 @@ import path from 'node:path';
 import { rmHome } from '../helpers/reap-detached.mjs';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
-import { learningFixture } from '../helpers/learning-fixture.mjs';
-import { takeQueueLock, releaseQueueLock } from '../../plugin/scripts/learning-queue.mjs';
 
 const REPO = path.resolve(import.meta.dirname, '../..');
 const SCRIPTS = path.join(REPO, 'plugin', 'scripts');
@@ -187,66 +185,8 @@ const captureLearning = (f, sid, command) => f.run('plugin/scripts/learn-capture
 const learningFiles = f => fs.readdirSync(f.queue).filter(name => name.endsWith('.jsonl')).sort();
 const sidHash = sid => createHash('sha256').update(sid).digest('hex').slice(0, 24);
 
-describe('learn-flush respects the finite canonical worker deadline', () => {
-  it('a slow learner stops at the actual deadline and preserves every original queued observation', () => {
-    const f = adoptedLearning(); const file = f.write('deadline-sess', (JSON.stringify({ tool: 'Bash', action: 'npm test' }) + '\n').repeat(147));
-    const before = fs.readFileSync(file); const started = Date.now();
-    const result = f.run('plugin/scripts/learn-flush.mjs', ['--sync'], { TEST_SLEEP: '4000', LEARN_FLUSH_DEADLINE_MS: '500' });
-    expect(result.status, result.stdout + result.stderr).toBe(0); expect(Date.now() - started).toBeLessThan(2500);
-    expect(f.readCalls().length).toBeGreaterThan(0); expect(f.depth()).toBe(147); expect(fs.readFileSync(file)).toEqual(before);
-  }, 10000);
-  it('TEETH: the same adopted canonical learner makes eight verified deliveries and retains four pending', () => {
-    const f = adoptedLearning(); const file = f.write('fast-sess', (JSON.stringify({ tool: 'Bash', action: 'npm test' }) + '\n').repeat(12));
-    const before = fs.readFileSync(file); const result = f.run('plugin/scripts/learn-flush.mjs', ['--sync'], { LEARN_FLUSH_DEADLINE_MS: '5000' });
-    expect(result.status, result.stdout + result.stderr).toBe(0); expect(result.stdout).toMatch(/fed 8; acknowledged 8; failed 0/);
-    expect(f.readCalls()).toHaveLength(8); expect(f.depth()).toBe(4); expect(fs.readFileSync(file)).toEqual(before);
-  }, 10000);
-});
 
-describe('the learning queue is PER SESSION with private session identifiers', () => {
-  it('two payload session_ids create distinct safe files without exposing their raw IDs', () => {
-    const f = adoptedLearning(); takeQueueLock(learningContextFor(f));
-    captureLearning(f, 'alpha', 'git push'); captureLearning(f, 'beta', 'npm test'); const files = learningFiles(f);
-    expect(files).toHaveLength(2); expect(files.some(name => name.includes(sidHash('alpha')))).toBe(true); expect(files.some(name => name.includes(sidHash('beta')))).toBe(true);
-    expect(files.join(' ')).not.toMatch(/alpha|beta/);
-  });
-  it('capture and canonical flush address the same selected user queue and retain its original bytes', () => {
-    const f = adoptedLearning(); const context = learningContextFor(f); const token = takeQueueLock(context); captureLearning(f, 'gamma', 'git status');
-    const file = path.join(f.queue, learningFiles(f)[0]); const before = fs.readFileSync(file); releaseQueueLock(context, token);
-    const result = f.run('plugin/scripts/learn-flush.mjs', ['--sync']); expect(result.status, result.stdout + result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/fed 1; acknowledged 1; failed 0/); expect(f.depth()).toBe(0); expect(fs.readFileSync(file)).toEqual(before);
-    expect(f.readCalls()[0].args).toContain(path.join(f.home, '.claude/global-memory/.swarm/memory.db'));
-  });
-  it('a hostile session_id remains inside the queue and never becomes a traversal filename', () => {
-    const f = adoptedLearning(); takeQueueLock(learningContextFor(f)); captureLearning(f, '../../../../etc/pwn', 'git push');
-    const files = learningFiles(f); expect(files).toHaveLength(1); expect(files[0]).not.toContain('..'); expect(files[0]).not.toContain('/');
-  });
-});
 
-describe('learn-capture records a privacy-safe command VERB as parseable JSON', () => {
-  const captured = command => {
-    const f = adoptedLearning(); takeQueueLock(learningContextFor(f)); captureLearning(f, 'verb', command);
-    const raw = fs.readFileSync(path.join(f.queue, learningFiles(f)[0]), 'utf8').trim(); return { raw, parsed: JSON.parse(raw) };
-  };
-  it('a quoted argument cannot corrupt the JSON verb', () => { expect(captured('cd "/tmp/some dir"').parsed.action).toBe('cd'); });
-  it('escaped quotes keep the allowed command chain parseable', () => { expect(captured('git commit -m "fix \\"quoted\\" thing"').parsed.action).toBe('git commit'); });
-  it('TEETH: ordinary allowed commands retain their workflow vocabulary', () => { expect(captured('git push').parsed.action).toBe('git push'); });
-  it('an opaque quoted executable records only a generic action', () => { expect(captured('"/opt/my app/bin" --go').parsed.action).toBe('command'); });
-  it('secret-bearing commands keep only their allowlisted verb and contain no inline private data', () => {
-    const value = captured('export AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI && psql postgres://admin:Hunter2@db/prod');
-    expect(value.parsed.action).toBe('export'); expect(value.raw).not.toMatch(/wJalr|Hunter2|postgres|AWS_SECRET/);
-  });
-});
-
-describe('learning capture requires explicit user adoption and honors revocation', () => {
-  it.each(['missing-store', 'missing-consent', 'off'])('%s creates zero capture bytes and invokes no learner', mode => {
-    const f = adoptedLearning(); fs.rmSync(f.queue, { recursive: true });
-    if (mode === 'missing-store') fs.rmSync(path.join(f.home, '.claude/global-memory'), { recursive: true });
-    if (mode === 'missing-consent') fs.rmSync(path.join(f.home, '.config/ruvnet-brain/settings.json'));
-    if (mode === 'off') fs.writeFileSync(path.join(f.home, '.config/ruvnet-brain/settings.json'), '{"learningScope":"off"}');
-    const result = captureLearning(f, 'denied', 'npm test'); expect(result.status).toBe(0); expect(fs.existsSync(f.queue)).toBe(false); expect(f.readCalls()).toEqual([]);
-  });
-});
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════
 // 4. session-start's byte budget — MEASURED and RATCHETED, not yet cut. Read this before adding to it.

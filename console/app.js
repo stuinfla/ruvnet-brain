@@ -3453,7 +3453,7 @@ function bpParts(bp) {
       'need the RuVector source. Nightly updates preserve whichever profile is selected.'),
 
     // RNBC QA 2026-10-01: this used to say these switches were "deliberately not shown … nothing
-    // enforces them yet" — while the Settings card rendered all of them and learn-capture/learn-flush,
+    // enforces them yet" — while the Settings card rendered all of them and learn-capture,
     // the console's guarded remedy loop and SessionStart seeding each read one. A sentence about the
     // page that the page itself contradicts is the failure this card exists to prevent.
     el('p', { class: 'fineprint bp-more-settings' },

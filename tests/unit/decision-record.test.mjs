@@ -7,7 +7,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
-  DECISION_SCHEMA, auditDecisionTurn, buildDecisionRecord, decisionKey, flushPending, freshConsultReceipt,
+  DECISION_SCHEMA, auditDecisionTurn, buildDecisionRecord, decisionKey, freshConsultReceipt,
   isAdrPath, main, storeDecision, supersededKeys, validateDecisionRecord, writeConsultReceipt,
 } from '../../plugin/scripts/decision-record.mjs';
 import { adrDecisionIn } from '../../plugin/scripts/decision-recall-gate.mjs';
@@ -58,7 +58,7 @@ describe('decision record contract (ADR-105 §8)', () => {
   });
 });
 
-describe('the §3 door: committed only on exact readback; a refusal stays pending', () => {
+describe('the §3 door: committed only on exact readback; a refusal is loud and nothing is kept for replay', () => {
   const memory = () => {
     const rowsByKey = new Map(); let refusals = 0;
     return {
@@ -71,8 +71,9 @@ describe('the §3 door: committed only on exact readback; a refusal stays pendin
       readBack: ({ key }) => ({ content: rowsByKey.get(key) ?? null }),
     };
   };
-  it('commits, reports already-stored, quarantines a different row, and retains a refusal', () => {
+  it('commits, reports already-stored, quarantines a different row, and records a refusal in the ledger only', () => {
     const dir = tmp('decision-door-'); const db = path.join(dir, '.swarm', 'memory.db');
+    const brainHome = tmp('decision-door-bh-'); const priorHome = process.env.RUVNET_BRAIN_HOME; process.env.RUVNET_BRAIN_HOME = brainHome;
     fs.mkdirSync(path.dirname(db), { recursive: true }); fs.writeFileSync(db, '');
     const m = memory();
     const args = { ruflo: 'x', db, namespace: 'app', key: 'decision-a-20261011T123456789Z', value: '{"a":1}', store: m.store, readBack: m.readBack };
@@ -80,22 +81,28 @@ describe('the §3 door: committed only on exact readback; a refusal stays pendin
     expect(storeDecision(args).state).toBe('already-stored');
     expect(storeDecision({ ...args, value: '{"a":2}' }).state).toBe('quarantined');
     m.refuse(1);
-    const pending = storeDecision({ ...args, key: 'decision-b-20261011T123456789Z' });
-    expect(pending.state).toBe('pending');
-    expect(pending.reason).toMatch(/whole-image/);
-    expect(fs.statSync(pending.pending).mode & 0o777).toBe(0o600);
+    const refused = storeDecision({ ...args, key: 'decision-b-20261011T123456789Z' });
+    if (priorHome === undefined) delete process.env.RUVNET_BRAIN_HOME; else process.env.RUVNET_BRAIN_HOME = priorHome;
+    expect(refused.state).toBe('refused');
+    expect(refused.reason).toMatch(/whole-image/);
     expect(m.rowsByKey.has('decision-b-20261011T123456789Z')).toBe(false);
-    const flushed = flushPending({ ruflo: 'x', db, store: m.store, readBack: m.readBack });
-    expect(flushed.map((r) => r.state)).toEqual(['committed']);
-    expect(fs.existsSync(pending.pending)).toBe(false);
+    // Loud: exactly one hook-failures row naming the refusal; no private outbox/replay directory anywhere.
+    const ledger = fs.readFileSync(path.join(brainHome, 'hook-failures.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0]).toMatchObject({ hook: 'decision-record', event: 'record' });
+    expect(ledger[0].error).toMatch(/whole-image/);
+    expect(fs.readdirSync(path.dirname(db)).sort()).toEqual(['memory.db']);
     cleanup();
   });
   it('a store that exits 0 but reads back nothing is NOT committed', () => {
     const dir = tmp('decision-door-'); const db = path.join(dir, '.swarm', 'memory.db');
     fs.mkdirSync(path.dirname(db), { recursive: true });
+    const brainHome = tmp('decision-door-bh-'); const priorHome = process.env.RUVNET_BRAIN_HOME; process.env.RUVNET_BRAIN_HOME = brainHome;
     const r = storeDecision({ ruflo: 'x', db, namespace: 'n', key: 'decision-c-20261011T123456789Z', value: 'v',
       store: () => ({ status: 0, output: '[ERROR] silently failed' }), readBack: () => ({ content: null }) });
-    expect(r.state).toBe('pending');
+    if (priorHome === undefined) delete process.env.RUVNET_BRAIN_HOME; else process.env.RUVNET_BRAIN_HOME = priorHome;
+    expect(r.state).toBe('refused');
+    expect(fs.readFileSync(path.join(brainHome, 'hook-failures.jsonl'), 'utf8')).toMatch(/"hook":"decision-record"/);
     cleanup();
   });
 });

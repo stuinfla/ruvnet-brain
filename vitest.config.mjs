@@ -16,7 +16,7 @@ export default defineConfig({
     // Turn-outcome capture (plugin/scripts/turn-outcome-capture.mjs) launches a detached `ruflo`
     // writer from every Stop/SessionEnd the suite fires through the real hook path. Off here so no
     // test writes into the developer's real machine-wide AgentDB; its own tests inject fakes.
-    // ruflo's per-project scratch cwd (plugin/scripts/project-progression-store.mjs rufloCwdFor) lives
+    // ruflo's per-project scratch cwd (plugin/scripts/ruflo-bin.mjs rufloCwdFor) lives
     // under the Brain home in production; tests that build a store must never create it in the
     // developer's real ~/.cache/ruvnet-brain, so the suite points it at a private test root.
     env: { RUVNET_TURN_CAPTURE: 'off', RUVNET_CONTINUITY_CAPTURE: 'off',

@@ -287,3 +287,30 @@ test('Claude native allow rules still encounter owned scope and unresolved appro
     assert.equal(fs.existsSync(path.join(root, 'owned.mjs')), false);
   } finally { native.mockRestore(); fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test('native binaries fall back to the standard install paths when the retired launcher config is absent, and never recreate it', async () => {
+  // 4.7.1 (checks 1f/6d): the owner removed terminal-launcher-config.json on purpose; reading it threw
+  // ENOENT before any worker could launch. Recreating it would make install.mjs reinstall the wrappers.
+  const { nativeWorkflowBinaries } = await import('../../scripts/model-routing-execution-adapters.mjs');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'rnb-native-binaries-'));
+  const config = path.join(home, '.cache/ruvnet-brain/model-routing/terminal-launcher-config.json');
+  try {
+    const standard = { claude: path.join(home, '.npm-global/bin/claude'), codex: path.join(home, '.local/bin/codex') };
+    // nothing installed and nothing on PATH: throw ENOENT, never hand back a path that cannot run
+    assert.throws(() => nativeWorkflowBinaries(home, { PATH: '' }), { code: 'ENOENT' });
+    // not at the standard path but on PATH: the PATH binary is used (hosted Linux runners)
+    const onPath = path.join(home, 'pathbin'); fs.mkdirSync(onPath);
+    for (const name of ['claude', 'codex']) fs.writeFileSync(path.join(onPath, name), '#!/bin/sh\n', { mode: 0o755 });
+    assert.deepEqual(nativeWorkflowBinaries(home, { PATH: onPath }), { claude: path.join(onPath, 'claude'), codex: path.join(onPath, 'codex') });
+    // standard install paths win when present
+    for (const file of Object.values(standard)) { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, '#!/bin/sh\n', { mode: 0o755 }); }
+    assert.deepEqual(nativeWorkflowBinaries(home, { PATH: onPath }), standard);
+    assert.equal(fs.existsSync(config), false);
+    assert.equal(fs.existsSync(path.dirname(config)), false);
+    fs.mkdirSync(path.dirname(config), { recursive: true });
+    fs.writeFileSync(config, JSON.stringify({ realClaude: '/configured/claude', realCodex: '/configured/codex' }));
+    assert.deepEqual(nativeWorkflowBinaries(home), { claude: '/configured/claude', codex: '/configured/codex' });
+    fs.writeFileSync(config, '{malformed');
+    assert.throws(() => nativeWorkflowBinaries(home), SyntaxError);
+  } finally { fs.rmSync(home, { recursive: true, force: true }); }
+});

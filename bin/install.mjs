@@ -89,7 +89,6 @@ import { installTerminalLaunchers } from '../scripts/model-terminal-launchers.mj
 import { readConsoleReceipts, replaceStaleConsoles } from '../scripts/console-instances.mjs';
 import { moveBrain, MoveRefused } from '../scripts/move-brain.mjs';
 import { brainLocation } from '../plugin/scripts/brain-location.mjs';
-import { cleanLegacyRufloDebris } from '../plugin/scripts/project-progression-store.mjs';
 import { resolveProjectStore } from '../plugin/scripts/project-store-resolver.mjs';
 import { runHostCli, waitForHostCli } from '../scripts/host-cli.mjs';
 import {
@@ -1074,9 +1073,9 @@ export function serverDependencies(source, seen = new Set()) {
     try { src = fs.readFileSync(file, 'utf8'); } catch { return; }
     // Lazy [^'"]* (no \n exclusion) so a multi-line named import — `import {\n  a,\n} from './x.mjs';`
     // — is still seen: the exclusion used to stop at the first newline, so this walker silently
-    // missed any dependency imported that way. Caught live 2026-09-27: session-snapshot-hook.mjs's
-    // multi-line import of project-progression-hook.mjs never reached the Codex MCP server package,
-    // reproducing the exact packaging-boundary failure this function's own header warns about.
+    // missed any dependency imported that way. Caught live 2026-09-27: a multi-line import in the
+    // lifecycle hook never reached the Codex MCP server package, reproducing the exact
+    // packaging-boundary failure this function's own header warns about.
     for (const m of src.matchAll(/^\s*(?:import|export)[^'"]*?from\s*['"](\.[^'"]+)['"]/gm)) {
       const spec = specPrefix ? path.join(specPrefix, m[1]) : m[1];
       const from = path.resolve(path.dirname(file), m[1]);
@@ -1307,30 +1306,6 @@ export function withLiveConsoleState(recorded, { receiptDir, alive, probe } = {}
   const live = { ...kept, ...consoleRestartState(recorded.consoleRuntime, { receiptDir, alive, probe }) };
   if (live.state !== 'ready' && replacementFailures) live.replacementFailures = replacementFailures;
   return { ...recorded, consoleRuntime: live };
-}
-
-/**
- * 4.3.40's ruflo leftovers inside this project's `.swarm` (cleanLegacyRufloDebris). --update removes
- * them; --doctor only reports (dryRun). Either way a REFUSED artifact (unexpected contents, a symlink) is
- * printed, never dropped silently. Not a project (or no .swarm): nothing to say.
- */
-export function reportLegacyRufloDebris({ projectDir = process.cwd(), dryRun = false } = {}) {
-  let storeDir;
-  try { storeDir = path.dirname(resolveProjectStore({ projectDir }).canonicalAgentDbPath); } catch { return null; }
-  if (!fs.existsSync(storeDir)) return null;
-  const result = cleanLegacyRufloDebris(storeDir, { dryRun });
-  for (const entry of result.removed) {
-    // Dry run applies the same checks (allowlist, mirror proof, in-use window); only the final
-    // unchanged-since-proof comparison can still keep it at --update time.
-    if (dryRun) info(`legacy ruflo debris from 4.3.40 in ${entry}: passes every check; --update removes it unless it is written to before then`);
-    else ok(`removed legacy ruflo debris from 4.3.40: ${entry}`);
-  }
-  for (const { path: entry, reason, kept } of result.refused) {
-    // A KEPT nested AgentDB holds rows (or may still be written): never suggest deleting it by hand.
-    if (kept) warn(`left 4.3.40's nested ruflo store in place — ${entry}: ${reason}. It is checked again on every update.`);
-    else warn(`left legacy ruflo debris in place — ${entry}: ${reason}. Inspect it; remove it yourself if it is ruflo's.`);
-  }
-  return result;
 }
 
 export function consoleRestartState(identity, {
@@ -1781,10 +1756,60 @@ function legacyBrainWrapperOwnership(wrapperPath, home) {
     || (typeof process.getuid === 'function' && stat.uid !== process.getuid())) {
     return { state: 'conflict', reason: 'existing bridge is not an unshared regular file' };
   }
+  let installed;
   try {
-    if (fs.readFileSync(wrapperPath).equals(fs.readFileSync(source))) return { state: 'verified' };
+    installed = fs.readFileSync(wrapperPath);
+    if (installed.equals(fs.readFileSync(source))) return { state: 'verified' };
   } catch { /* Missing proof is not ownership. */ }
+  // An UPGRADE: the bridge is still byte-identical to a wrapper an earlier Brain generation shipped.
+  // Comparing only against the NEW source made every release that changed the wrapper bytes refuse
+  // its own previous install (4.6.4 -> 4.7.0, hook-wrapper-ownership-conflict). The proof is a
+  // generation the Stable Spine keeps under the already-verified namespace: versions/<v>/ (the
+  // active one named by active.json, its previous, and any retained one). Every directory on that
+  // path must be a real, owner-uid directory and the candidate a regular file; nothing is followed.
+  if (installed && shippedByRetainedGeneration(installed, path.join(home, '.cache', 'ruvnet-brain', 'versions'))) {
+    return { state: 'prior-generation' };
+  }
   return { state: 'conflict', reason: 'existing bridge differs from the shipped Brain source' };
+}
+
+function shippedByRetainedGeneration(bytes, versionsDir) {
+  const ownedDir = (dir) => {
+    try {
+      const st = fs.lstatSync(dir);
+      return st.isDirectory() && !st.isSymbolicLink()
+        && (typeof process.getuid !== 'function' || st.uid === process.getuid());
+    } catch { return false; }
+  };
+  if (!ownedDir(versionsDir)) return false;
+  let names;
+  try { names = fs.readdirSync(versionsDir); } catch { return false; }
+  return names.some((name) => {
+    // Staging remnants and hidden temporaries were never activated, so they prove nothing.
+    if (name.startsWith('.') || name.includes('.staging-')) return false;
+    const generation = path.join(versionsDir, name);
+    const scripts = path.join(generation, 'scripts');
+    const candidate = path.join(scripts, 'codex-hook-wrapper.mjs');
+    if (!ownedDir(generation) || !ownedDir(scripts)) return false;
+    try {
+      const st = fs.lstatSync(candidate);
+      if (!st.isFile() || st.isSymbolicLink() || st.size !== bytes.length) return false;
+      return fs.readFileSync(candidate).equals(bytes);
+    } catch { return false; }
+  });
+}
+
+// The bridge's previous bytes are kept beside it under ONE fixed name (the immediately prior
+// generation's wrapper), so a rollback is a rename and nothing accumulates release over release.
+// Written temp-then-rename: rename replaces a planted link at the backup name, never follows it.
+function backupPriorWrapper(wrapperPath) {
+  const backup = `${wrapperPath}.prior`;
+  const temporary = `${backup}.tmp-${process.pid}-${crypto.randomUUID()}`;
+  try {
+    fs.writeFileSync(temporary, fs.readFileSync(wrapperPath), { flag: 'wx', mode: fs.statSync(wrapperPath).mode & 0o777 });
+    fs.renameSync(temporary, backup);
+  } finally { fs.rmSync(temporary, { force: true }); }
+  return backup;
 }
 
 export function wireCodexHost({
@@ -1870,6 +1895,7 @@ export function wireCodexHost({
     return { host: true, action: 'hook-wrapper-source-missing' };
   }
   let hookRetirement;
+  let hookWrapperBackup = null;
   try {
     fs.mkdirSync(path.dirname(hookWrapperPath), { recursive: true });
     const wrapperStat = (() => { try { return fs.lstatSync(hookWrapperPath); } catch (error) {
@@ -1881,6 +1907,7 @@ export function wireCodexHost({
     const currentOwnership = legacyBrainWrapperOwnership(hookWrapperPath, path.dirname(codexDir));
     if (currentOwnership.state === 'conflict') throw new Error(currentOwnership.reason);
     hookRetirement = retireManagedHookRegistrations({ home: path.dirname(codexDir), codexDir, wrapperPath: hookWrapperPath });
+    if (currentOwnership.state === 'prior-generation') hookWrapperBackup = backupPriorWrapper(hookWrapperPath);
     atomicReplace(hookWrapperPath, (tmp) => fs.copyFileSync(hookWrapperSource, tmp));
   } catch (error) {
     if (announce) warn(`could not install the Codex hook bridge at ${hookWrapperPath}: ${error.message}`);
@@ -1899,7 +1926,7 @@ export function wireCodexHost({
       info(`  to hand it to us instead, delete that ${c.bold('[mcp_servers.ruvnet-brain]')} block and re-run this installer`);
     }
     return { host: true, action, serverPath, managedCliPath, runtimePreferencesPath,
-      hookWrapperPath, hookWrapperInstalled: true, hookOwnershipConflicts: hookRetirement.conflicts.length };
+      hookWrapperPath, hookWrapperInstalled: true, hookWrapperBackup, hookOwnershipConflicts: hookRetirement.conflicts.length };
   }
   if (text !== before) {
     fs.mkdirSync(path.dirname(configPath), { recursive: true });
@@ -1911,7 +1938,7 @@ export function wireCodexHost({
     info(`  ${c.dim('only our marked block is written; every other section is byte-preserved')}`);
   }
   return { host: true, action, serverPath, managedCliPath, runtimePreferencesPath,
-    hookWrapperPath, hookWrapperInstalled: true, hookOwnershipConflicts: hookRetirement.conflicts.length,
+    hookWrapperPath, hookWrapperInstalled: true, hookWrapperBackup, hookOwnershipConflicts: hookRetirement.conflicts.length,
     changed: text !== before };
 }
 
@@ -2386,7 +2413,9 @@ export function retireManagedHookRegistrations({ home = os.homedir(), codexDir =
   let removed = 0;
   const changedFiles = [];
   const conflicts = [];
-  const verifiedWrapper = legacyBrainWrapperOwnership(wrapperPath, path.dirname(codexDir)).state === 'verified';
+  // A bridge a retained Brain generation shipped is as much the Brain's as the new source.
+  const verifiedWrapper = ['verified', 'prior-generation']
+    .includes(legacyBrainWrapperOwnership(wrapperPath, path.dirname(codexDir)).state);
   const tokensOf = (command) => (command.match(/"[^"]*"|'[^']*'|[^\s]+/g) || [])
     .map((token) => token.replace(/^["']|["']$/g, ''));
   const registry = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'plugin', 'hooks', 'codex-hooks.json'), 'utf8'));
@@ -3127,7 +3156,6 @@ async function doctorRun({ json }) {
       warn(`host convergence receipt is invalid: ${error.message}`);
     }
   }
-  try { reportLegacyRufloDebris({ dryRun: true }); } catch (error) { warn(`legacy ruflo debris check failed: ${error.message}`); }
   const brainHome = process.env.RUVNET_BRAIN_HOME || path.dirname(cacheDir);
   const nightlyHealth = schedulerStatus({ platform: process.platform, env: process.env,
     brainHome, kbDir: cacheDir });
@@ -3304,26 +3332,9 @@ async function doctorRun({ json }) {
     c.dim('\n  Heads-up: a window that was ALREADY open when you installed needs a restart to pick it up;\n  newly-opened windows are fine.\n'),
   );
 
-  // ── AGENTDB RECORDING (ADR-100 §4) — positive confirmation, or the loud reason it is not ────────
-  // For the project --doctor is run from. Read-only: the outbox and the store are inspected, nothing
-  // is written. A project without `.swarm` has not adopted the store and gets no line. It is a LINE OF THE
-  // ONE VERDICT (re-review S2: it used to be narration only, so --json never saw it): advisory '!' when
-  // stuck — recording is the project's opt-in memory, not the Brain's health — ✓ when proven, ○ otherwise.
-  let agentdbLine = null;
-  try {
-    const { ContinuityJournal, recordingLine } = await import('../plugin/scripts/continuity-journal.mjs');
-    const { resolveProjectStore } = await import('../plugin/scripts/project-store-resolver.mjs');
-    const journal = new ContinuityJournal({ projectRoot: resolveProjectStore({ projectDir: process.cwd() }).projectRoot });
-    if (fs.existsSync(journal.swarm)) {
-      const status = journal.status();
-      const detail = recordingLine(status).replace(/^AgentDB: /, '');
-      agentdbLine = { id: 'agentdb', label: 'AgentDB', detail,
-        state: status.stuck ? 'warn' : status.lastCommitAt && !status.notApplicable ? 'ok' : 'unknown',
-        fix: status.stuck ? (status.problem === 'stuck-pending' ? 'ruflo doctor --fix (then the next session drains the outbox)' : 'node <plugin>/scripts/continuity-brief.mjs --clear') : null };
-    }
-  } catch (error) {
-    agentdbLine = { id: 'agentdb', label: 'AgentDB', state: 'unknown', detail: `recording status unavailable: ${error.message}`, fix: null };
-  }
+  // AgentDB recording is proven per write: a refused or unverified ruflo write is a hook-failures row,
+  // summarized at SessionStart. There is no local outbox to inspect here any more.
+  const agentdbLine = null;
 
   const { turnRecordingStatus } = await import('../plugin/scripts/turn-outcome-capture.mjs');
   const turnStatus = turnRecordingStatus({ projectDir: process.cwd() });
@@ -4337,7 +4348,6 @@ async function runUpdate() {
       warn(hostSynchronizationFailureMessage(convergence, active));
       updateStatus = 1;
     } else if (convergence.convergence?.notice) info(convergence.convergence.notice);
-    try { reportLegacyRufloDebris(); } catch (error) { warn(`legacy ruflo debris cleanup failed: ${error.message}`); }
     recordRefreshPhase(refreshReceipt, 'host-convergence', convergence.ok && convergence.convergence?.healthy === true ? 'PASS' : 'FAIL', {
       state: convergence.convergence?.state || null, error: convergence.error || null,
       ...(convergence.convergence?.openSessions ? { openSessions: convergence.convergence.openSessions } : {}),
@@ -4929,6 +4939,7 @@ function uninstallAll() {
     // ADR-054 §5: a reinstall must never inherit an invisible OFF. See brainOffSentinelPath().
     ['brain on/off switch', brainOffSentinelPath()],
     ['legacy Codex lifecycle hook wrapper', codexHookWrapperPath()],
+    ['prior Codex hook wrapper backup', `${codexHookWrapperPath()}.prior`],
     ['Codex MCP server files', codexServerDir()],
   ]) {
     if (!fs.existsSync(target)) continue;

@@ -4,7 +4,7 @@
  * WHY (measured 2026-10-01, Node 22.13.1 locally and Node 22 on the Linux CI full suite, run 36894944735):
  * on Node 22 the first load of `node:sqlite` prints
  *   (node:PID) ExperimentalWarning: SQLite is an experimental feature and might change at any time
- * to stderr. SessionStart reads the store through project-progression-reader.mjs, so every SessionStart
+ * to stderr. SessionStart once read the store through a native reader, so every SessionStart
  * in an adopted git project on Node 22 carried that line — hook noise a customer sees on every session.
  * Node 24 does not warn, which is why the owner's machine never showed it.
  *

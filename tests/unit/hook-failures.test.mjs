@@ -57,8 +57,8 @@ describe('hook failures are recorded, then reported once', () => {
   });
 
   it('SessionStart prints the summary line', async () => {
-    const bh = spine({ 'learn-flush.mjs': 'process.exit(3)' });
-    expect(fire(bh, 'learn-flush').status).toBe(0);
+    const bh = spine({ 'md-stamp.mjs': 'process.exit(3)' });
+    expect(fire(bh, 'md-stamp').status).toBe(0);
     const { runSessionStart } = await import('../../plugin/scripts/session-start-core.mjs');
     let out = '';
     const home = tmp('hf-home-');
@@ -66,7 +66,7 @@ describe('hook failures are recorded, then reported once', () => {
       cwd: tmp('hf-cwd-'), stdout: { write: (s) => { out += s; } }, stderr: { write: () => {} }, runHeartbeat: false,
       restoreContinuity: async () => ({ context: '' }) });
     expect(out).toContain(`${FAILURE_LINE_PREFIX} 1 advisory hook run(s)`);
-    expect(out).toMatch(/learn-flush ×1 \(exit 3\)/);
+    expect(out).toMatch(/md-stamp ×1 \(exit 3\)/);
   }, 30_000);
 });
 

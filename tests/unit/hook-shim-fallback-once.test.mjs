@@ -66,9 +66,9 @@ describe.skipIf(process.platform === 'win32')('hook-shim fallback notice — sai
     // ~19 registrations share one spine. Keying the notice per hook id would put nineteen identical
     // diagnoses of one fault on the screen, which is the same disease in a smaller dose.
     brokenSpine();
-    fs.writeFileSync(path.join(PLUGIN_ROOT, 'scripts', 'learn-flush.mjs'), 'process.exit(0);\n');
+    fs.writeFileSync(path.join(PLUGIN_ROOT, 'scripts', 'signal-watch.mjs'), 'process.exit(0);\n');
     fs.writeFileSync(path.join(PLUGIN_ROOT, 'scripts', 'continuation-gate.mjs'), 'process.exit(0);\n');
-    const lines = ['md-stamp', 'learn-flush', 'continuation-gate', 'md-stamp'].flatMap((id) => fireN(1, id));
+    const lines = ['md-stamp', 'signal-watch', 'continuation-gate', 'md-stamp'].flatMap((id) => fireN(1, id));
     expect(lines.length, lines.join(' | ')).toBe(1);
   });
 

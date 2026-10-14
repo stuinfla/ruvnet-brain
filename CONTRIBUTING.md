@@ -362,24 +362,19 @@ it does not claim all of them are implemented or native-verified. Updates requir
 requirement, source, test and adapter mapping plus new-source review and relevant execution proof.
 
 
-Consent-eligible learning captures a fixed vocabulary inside the `session-snapshot` PostToolUse
-boundary and schedules bounded recovery from `session-start` and the `session-snapshot` SessionEnd
-boundary (ADR-106: no separate learning registrations). Project observations use the resolved project's `.swarm/memory.db` and
-namespace `learning-observations`; acknowledgments require exact CLI retrieval plus independent
-canonical row verification. Original queue bytes stay retained. Persisted OFF, malformed consent,
-Brain OFF, or an unadopted project prevent capture. User scope requires explicit persisted consent
-and an existing adopted `~/.claude/global-memory/.swarm/memory.db`; retained legacy home queues are
-never imported into project memory automatically. Explicit Console Apply can drain them only into
-that existing user store. Structural distillation is a separate bounded $0 operation, requires a
-source-reported native online snapshot plus independently checked observation rows, and reports
-pattern progress without ratifying lessons. Automatic cycles run at most hourly and retain three owned snapshots. A finite supervisor confirms
-owned worker-tree retirement before releasing the queue fence; unconfirmed retirement pauses
-recovery without consuming original observations. Automatic exact rollback is unavailable. Registration
-and manual invocation do not prove native event delivery.
+Consent-eligible learning writes one fixed-vocabulary observation per successful Bash/Write/Edit inside
+the `session-snapshot` PostToolUse boundary, directly with `ruflo memory store` into namespace
+`learning-observations` of the resolved project's `.swarm/memory.db`, proven by exact `ruflo memory retrieve`.
+There is no local queue, flush worker or replay (owner ruling 2026-10-12): a refused or unverified write is
+one row in `hook-failures.jsonl`, summarized at the next SessionStart. Persisted OFF, malformed consent,
+Brain OFF, or an unadopted project prevent capture. User scope requires explicit persisted consent and an
+existing adopted `~/.claude/global-memory/.swarm/memory.db`. Structural distillation is an explicit
+`ruflo memory backup` followed by `ruflo memory distill run`; it ratifies no lessons. Registration and
+manual invocation do not prove native event delivery.
 
 Project-level hooks are empty. The installed plugin registers exactly the hooks in
 `plugin/hooks/hooks.json` (Codex: `plugin/hooks/codex-hooks.json`), all dispatched through
-`plugin/scripts/hook-shim.mjs` (ADR-106: one registration per role, 17 on Claude and 16 on Codex):
+`plugin/scripts/hook-shim.mjs` (ADR-106: one registration per role, 13 on each host):
 SessionStart restore; UserPromptSubmit grounding + advisories;
 PreToolUse `decision-gate` on file writes (the only hook that may refuse, for rUv-product code
 without a fresh `search_ruvnet`; for a new ADR or an ADR status change in an adopted project without
@@ -387,7 +382,7 @@ a `decision-record.mjs --consult` receipt younger than two hours, refused once p
 `RUVNET_DECISION_RECALL_GATE=off` disables it; or — in this checkout — a new code file or large new export that
 duplicates existing code: refused once per path per session, allowed by a header line
 `// DISTINCT-FROM: <path> — <reason>`, `RUVNET_DUPLICATE_GATE=off` disables it); PostToolUse grounding stamp; Stop continuation and grounding
-check; snapshot capture on Stop/PreCompact/SessionEnd. The Stop grounding check (`grounding-turn-gate`)
+check; ruflo memory writes on Stop/PreCompact/SessionEnd. The Stop grounding check (`grounding-turn-gate`)
 asks for a `search_ruvnet` call only when the final answer asserts what a rUv product does, can, cannot,
 requires or says (`ruvCapabilityClaims` in `grounding-turn-evidence.mjs`) — a status report, git/CI check
 or memory write on a rUv-named prompt is never corrected; when the transcript tail cannot see the turn's
@@ -403,7 +398,7 @@ next") in the project's work ledger until a later evidenced completion claim clo
 only; `npm run completion-claim:replay` measures both on real transcripts). It also asks ONCE when a
 Claude turn created an ADR in an adopted project and no successful `decision-record.mjs --record` ran
 after it (ADR-105 §8; `RUVNET_DECISION_RECORD_CHECK=off` disables it; Codex is not enforced). A
-decision record is committed only by an exact readback; a refusal stays pending for `--flush`; `--supersedes` must name an existing decision record of the project and also writes a
+decision record is committed only by an exact readback; a refused or unverified write returns `refused`, writes one hook-failures row and prints `NOT recorded` (nothing is kept on disk for a replay); `--supersedes` must name an existing decision record of the project and also writes a
 `supersession-<key>` tombstone that recall honors even when the superseding record is not retrieved.
 It also asks ONCE (`no-deferral`, Claude only) when the final answer ends by asking permission for,
 or postponing, work a standing instruction or open promise already authorized and names no genuine
@@ -411,30 +406,26 @@ blocker class (credential, hardware-key tap, out-of-authority write, irreversibl
 outage, running background work, owner-only action, purchase, choice between named options); a
 deferral that survives the continued stop is recorded once as "deferral not resolved"
 (`npm run deferral:replay` measures it on real transcripts; `RUVNET_NO_DEFERRAL=off` disables it).
-Prompt and tool boundaries (UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure,
-SubagentStop) only fsync their observation into the capture queue and start the detached replay
-worker. They never write the store inline, and a normally queued boundary prints nothing; only an
-unwritable queue or work queued for more than 10 minutes is reported. On Claude the shim stops any
+Lifecycle memory only CALLS ruflo (owner ruling 2026-10-12, ADR-106): no hand-rolled store, queue,
+journal or outbox exists. Prompt and pre-tool boundaries record nothing. SessionStart restores the newest
+`project-state-current-*` checkpoint (and a newer `project-state-auto-*` one) and lists `lessons` keys,
+each by exact key through `ruflo memory list|retrieve`. PreCompact and SessionEnd store one append-only
+`project-state-auto-<ms>` checkpoint and read it back by exact key. On Claude the shim stops any
 body 1.5 s before its registered timeout and writes nothing partial. It records
 `timed-out-internally`, and SessionStart reports it once. Under Codex the stable wrapper owns the
 kill (ADR-106).
 An advisory hook that fails (nonzero exit, signal, spawn error) still exits 0 to the host; the shim
 records it and SessionStart prints one `[RuvNet Brain — HOOK FAILURES]` summary of new failures. SessionStart prints one
 `[RuvNet Brain — KNOWLEDGE …]` line when the installed knowledge cannot be proven current (older than
-48h, or the latest refresh receipt FAILED) and names the fix. The same snapshot capture records each
-turn's outcome at Stop (final assistant text, files changed, command descriptions — never user
-text), redacted with the shared credential/private-key scanner before truncation, to AgentDB
-namespace `turns` in the canonical project's `.swarm/memory.db` (a linked worktree uses the primary
-repository store). There is no automatic global fallback. An existing project store is eligible by
-default; a project without one records nothing until explicitly opted in. The breadcrumb
-`agentdb-turns.jsonl` holds only `{ts,key,hash,len}`, never outcome text. A separate permission-restricted
-project-local transport journal fsyncs the redacted outcome and canonical binding before the detached
-writer starts. Startup replays eligible pending entries; exact key/content readback, with no upsert,
-commits transport. File fsync is mandatory. Where Windows directory handles cannot be flushed,
-the capture report explicitly records the missing directory flush; namespace survival across power
-loss is unproven. Unexpected I/O failures remain errors. Recent explicit failures and historical unverified receipts are diagnosed separately
-at SessionStart and in `--doctor`, independently
-of material-event recording status. `RUVNET_TURN_CAPTURE=off` disables it.
+48h, or the latest refresh receipt FAILED) and names the fix. The same boundary records each turn's
+outcome at Stop (final assistant text, files changed, command descriptions — never user text), redacted
+with the shared credential/private-key scanner before truncation, with one bounded `ruflo memory store
+--no-upsert --append-only` into namespace `turns` of the canonical project's `.swarm/memory.db` (a linked
+worktree uses the primary repository store) and an exact key/content `ruflo memory retrieve`. There is no
+journal, outbox or replay: a refused write (for example Ruflo's WAL guard) is one `turn-capture` row in
+`hook-failures.jsonl`, reported at the next SessionStart, and SessionStart/`--doctor` show recent failed
+receipts. There is no automatic global fallback. An existing project store is eligible by default; a project
+without one records nothing until explicitly opted in. `RUVNET_TURN_CAPTURE=off` disables it.
 
 Persisted consent lives in `<Brain home>/turn-capture/policy.json` (Brain home defaults to
 `~/.cache/ruvnet-brain`), and is reread at every capture boundary without restarting the host:
@@ -447,24 +438,11 @@ only redacted content is passed there. Filesystem paths still have to be passed 
 putting credentials in repository directory names. Receipt paths and project identifiers are redacted.
 
 The product is the only writer of project turn history; a user-level hook is never evidence of
-capture and is never deferred to (ADR-105 §7, ADR-106). The same
-boundaries also record MATERIAL EVENTS (ADR-100, `continuity-events.mjs` / `continuity-journal.mjs`):
-commits and tags from git, test/check/release gate outcomes, agent findings, decisions and lessons
-(explicit, or detected and marked non-authoritative), each fsynced to `.swarm/continuity-events-outbox.jsonl`
-before a detached drainer stores it (`ruflo memory store --no-upsert --path`, namespace `continuity-events`)
-and reads it back by exact key; a refused write (WAL contention) stays pending and is retried at every
-boundary, and a stuck one is shown (`AgentDB: recording stuck …`, an advisory `!`) at Stop (Claude, once per
-session per condition), at SessionStart and in `--doctor`. No initialized store or no ruflo reads `recording n/a`,
-and launches no drainer; a quarantined key or corrupt line is reported for 7 days or until
-`continuity-brief.mjs --clear`; failures are one record per event and the outbox is compacted (committed
-events leave after 7 days; 2000 is a soft cap when accepted events remain pending. Pending events
-are never evicted to satisfy that cap; capacity pressure is reported and a prolonged outage can grow
-the pending journal). SessionStart prints a bounded `[RuvNet Brain — COME UP TO SPEED …]` brief before the progression
-restore; everything it quotes from the repository (commit subjects, `.swarm` rows) sits inside a fenced
-`PROJECT RECORD` marked as untrusted data, and only lessons recorded with `--record` on this machine (an
-ownership ledger outside the repo) are shown as standing rules; `/ruvnet-brain:rnb-brief` (`continuity-brief.mjs --full | --record`) pulls history or records
-explicitly. `RUVNET_CONTINUITY_CAPTURE=off` disables event capture. `npm run hooks:check` and
-`npm run wired:check` fail on any hook or module that is registered-but-missing or present-but-unwired.
+capture and is never deferred to (ADR-105 §7, ADR-106). Material events (decisions, lessons, open items)
+are recorded explicitly with `/ruvnet-brain:rnb-brief`, which runs `ruflo memory store` into namespace
+`continuity-events` and confirms by exact `ruflo memory retrieve`; there is no automatic event journal.
+`npm run hooks:check` and `npm run wired:check` fail on any hook or module that is registered-but-missing
+or present-but-unwired.
 
 ## Tests
 
@@ -499,30 +477,21 @@ contradicts a principle is wrong, and the contradiction is the finding.
 
 ### Automatic memory observations and their limits (4.5.4 candidate)
 
-The user-approved perennial policy uses native AgentDB through the global Ruflo writer,
-canonical project identity and explicit namespaces. All authoritative writes require native
-immutable insertion and exact readback before acknowledgment; failed work remains in the
-durable outbox. Existing secondary stores are preserved. Persisted user opt-in lazily enrolls
-eligible Git projects on use; explicit project/path opt-out and content exclusions win, and
-new non-Git/unsafe-root stores require explicit scope. Prompt recall supplies bounded relevant
-untrusted evidence, including captured strategic decisions, and honors the current privacy
-policy. No automatic semantic detector turns a model conclusion into ratified user policy;
-explicit strategic checkpoints remain required. Native lifecycle delivery and restart proof
-are separate from configured hook declarations.
-
-
-Claude and Codex prompt, pre-tool, post-tool and child-completion boundaries route through the
-existing snapshot dispatcher to a normalized observation handler; Claude also observes tool failure.
-Selected task intent is a bounded redacted user-text excerpt, not a raw prompt dump, and is labelled
-non-authoritative. Tool intent is pending; observed failure, success and unknown remain distinct.
-Lightweight observations declare head-only source evidence rather than claiming an exact tree scan.
-Startup uses an eight-second host envelope and a shared replay/restore deadline; unsettled debt
-is unavailable, never a silently stale successful restoration. Opt-out suspends replay.
+The policy uses native AgentDB through the global Ruflo CLI only (`ruflo memory store|retrieve|list|search`),
+canonical project identity and explicit namespaces. Every write is acknowledged only after exact-key
+readback; a failed write is reported in `hook-failures.jsonl` and is not retried by any local queue
+(owner ruling 2026-10-12). Explicit project/path opt-out and content exclusions win. A project without a
+store records nothing until it adopts one (persisted opt-in, or `ruflo memory store` creating it).
+Prompt recall supplies bounded relevant untrusted evidence through one `ruflo memory list` per curated
+namespace, exact `ruflo memory retrieve` reads and at most ONE supplementary `ruflo memory search`, and
+honors the current privacy policy. No automatic semantic detector turns a model conclusion into ratified
+user policy; explicit checkpoints (`/ruvnet-brain:checkpoint`) remain required. Prompt, pre-tool and
+child-completion boundaries record nothing. Native lifecycle delivery and restart proof are separate from
+configured hook declarations.
 
 Canonical recall checks nonempty human prompts, including acknowledgements, from nested directories
 and worktrees. It prioritizes useful lessons and patterns, retrieves exact values and delivers
 bounded untrusted evidence again on repeated prompts. Empty/harness messages, explicit opt-out and
 honest no-match remain quiet. Native Grok prompt-first recall is not supported by the measured hook
-context surfaces. Fail-open capture and head-only observations do not satisfy every ADR-073 clause;
-that acceptance remains open. Unknown secrets and every semantically useful lesson are not guaranteed
+context surfaces. Fail-open capture does not satisfy every ADR-073 clause; that acceptance remains open. Unknown secrets and every semantically useful lesson are not guaranteed
 by the bounded classifier/redactor.

@@ -28,7 +28,7 @@ routes it through the shared resolver so it is testable and consistent with its 
   `retrievedValue.includes(writtenValue)` — never the store command's own claimed-success text.
 - `record-lesson.mjs` now resolves the `ruflo` binary via `plugin/scripts/ruflo-bin.mjs`'s
   `resolveRuflo()` (honors `RUFLO_BIN`, then `~/.npm-global/bin/ruflo`, then a PATH walk), matching
-  `distill-project.mjs`, `learn-flush.mjs`, and `degradation-watch.mjs`'s own probe.
+  `distill-project.mjs`, `the former learning flusher (deleted 2026-10-12)`, and `degradation-watch.mjs`'s own probe.
 - New test file `tests/unit/record-lesson.test.mjs` (0 lines of coverage existed before tonight): a
   fake-binary harness reproducing the exact 2026-08-13 incident shape (`store` claims success,
   `retrieve` on the same key answers "Key not found"), a healthy round-trip case, a damaged-store

@@ -26,8 +26,19 @@ function binaryFor(host) {
   return path.join(entry.location.path, 'resources/native-binary', process.platform === 'win32' ? 'claude.exe' : 'claude');
 }
 
-export function verifyClaudeAllowance(usage, model) {
-  // Native 2.1.289 get_usage is explicitly experimental. Unknown shapes fail closed.
+// The get_usage contract was first verified on native 2.1.289. An exact pin broke every hourly weekly
+// cycle once 2.1.296 was installed (4.7.1), so any 2.x at or above that floor is accepted; the
+// experimental response SHAPE is still checked and fails closed below (verifyClaudeAllowance).
+export function supportedClaudeVersion(harnessVersion) {
+  const m = /^(\d+)\.(\d+)\.(\d+) \(Claude Code\)$/.exec(String(harnessVersion || ''));
+  if (!m) return null;
+  const [major, minor, patch] = m.slice(1).map(Number);
+  const atLeastFloor = minor > 1 || (minor === 1 && patch >= 289);
+  return major === 2 && atLeastFloor ? `${major}.${minor}.${patch}` : null;
+}
+
+export function verifyClaudeAllowance(usage, model, version = '2.1.289') {
+  // Native get_usage is explicitly experimental. Unknown shapes fail closed.
   if (usage?.rate_limits_available !== true || usage.rate_limits?.extra_usage?.is_enabled !== false) throw new Error('Native Claude allowance unknown or extra usage enabled');
   const limits = usage.rate_limits;
   for (const key of ['five_hour', 'seven_day']) {
@@ -40,7 +51,7 @@ export function verifyClaudeAllowance(usage, model) {
   for (const limit of limits.limits || []) {
     if (!Number.isFinite(limit.percent) || limit.percent < 0 || limit.percent >= 100 || !['normal', 'warning'].includes(limit.severity)) throw new Error('Native Claude allowance unavailable or unknown');
   }
-  return { verified: true, basis: 'native-get_usage-2.1.289', checkedAt: new Date().toISOString(), reservation: false, raceSafe: false, model };
+  return { verified: true, basis: `native-get_usage-${version}`, checkedAt: new Date().toISOString(), reservation: false, raceSafe: false, model };
 }
 
 class Transport {
@@ -189,10 +200,11 @@ async function run(options, inspectOnly) {
         } else result.sourceReceipt.nativeSettings.after.serviceTierBasis = 'pre-turn-native-settings-and-fixed-host-configuration';
       }
     } else {
-      if (!/^2\.1\.289 \(Claude Code\)$/.test(result.harnessVersion)) throw new Error('Experimental Claude allowance contract version unsupported');
+      const claudeVersion = supportedClaudeVersion(result.harnessVersion);
+      if (!claudeVersion) throw new Error('Experimental Claude allowance contract version unsupported');
       const initialized = await request('initialize');
       if (initialized?.session_state !== 'idle') throw new Error('Native Claude session not idle');
-      result.sourceReceipt.allowance = verifyClaudeAllowance(await request('get_usage', { skip_behaviors: true }), model);
+      result.sourceReceipt.allowance = verifyClaudeAllowance(await request('get_usage', { skip_behaviors: true }), model, claudeVersion);
       // Native initialize.models is the extension's supportedModels() source.
       result.catalogStatus = Array.isArray(initialized.models) ? 'verified' : 'unknown';
       for (const m of initialized.models || []) {

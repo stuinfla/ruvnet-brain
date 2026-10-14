@@ -89,11 +89,11 @@ export function fixturesFor(reg, root = REPO) {
     const base = all.find((f) => eventOf(reg.host, f.payload) === baseEvent);
     const event = reg.host === 'grok' ? reg.event.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase() : reg.event;
     // Consumer-only Layer 1 coverage: hook-input.mjs accepts the common host envelope;
-    // project-transition-hook.mjs dispatches child/failure observations by event name.
+    // Child/failure observations are dispatched by event name.
     // No unobserved producer-specific child/error fields are invented. Layer 2/public
     // host verification must establish native schema and delivery independently.
     return base ? [{ name: `${reg.event}-adapter-contract-derived`, nativeSchemaObserved: false, nativeDeliveryObserved: false,
-      _provenance: `DERIVED adapter-contract envelope from captured ${reg.host} ${baseEvent}; consumer-only mapping in plugin/scripts/hook-input.mjs and project-transition-hook.mjs; native schema and delivery NOT observed; producer completeness NOT verified`,
+      _provenance: `DERIVED adapter-contract envelope from captured ${reg.host} ${baseEvent}; consumer-only mapping in plugin/scripts/hook-input.mjs; native schema and delivery NOT observed; producer completeness NOT verified`,
       payload: { ...base.payload, hook_event_name: event, ...(reg.host === 'grok' ? { hookEventName: event } : {}) } }] : [];
   }
   if (!/ToolUse$/.test(reg.event)) return [];

@@ -6,7 +6,6 @@
  *   node decision-record.mjs --consult "<topic>"            consequential recall + persisted receipt
  *   node decision-record.mjs --record --what W --why Y --shape S --evidence kind:ref [...]
  *                            [--supersedes <key>]... [--status ratified|detected-unconfirmed]
- *   node decision-record.mjs --flush                        retry records left pending by a refusal
  *
  * Two hooks consume the facts this file produces (ADR-106): decision-gate's `decision-recall` policy
  * reads the consult receipt before a new ADR or an ADR status change; continuation-gate reads the
@@ -15,7 +14,8 @@
  * Store contract (ADR-105 §3, `ruflo memory store --help` read 2026-10-11): every write is
  * `--no-upsert --require-native --append-only --path <abs>` from a private scratch cwd with no
  * CLAUDE_FLOW_MEMORY_PATH; a row is committed only when an exact-key readback returns the same
- * bytes; any other refusal stays pending on disk (mode 0600, fsynced) and is never reported as done.
+ * bytes; any other refusal is LOUD — a hook-failures row plus the printed reason — and is never reported as
+ * done. Nothing is kept on disk for a later replay (owner ruling 2026-10-12: no private outbox).
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -28,8 +28,9 @@ import { maskExcludedPaths } from './turn-capture-privacy.mjs';
 import { resolveTurnDb, readSettledTranscript } from './turn-outcome-capture.mjs';
 import { resolveProjectStore } from './project-store-resolver.mjs';
 import { resolveRuflo, rufloInvocation } from './ruflo-bin.mjs';
-import { rufloRunDir } from './project-progression-store.mjs';
+import { rufloRunDir } from './ruflo-bin.mjs';
 import { currentTurnRecords } from './completion-claim-evidence.mjs';
+import { recordHookFailure } from './hook-failures.mjs';
 
 export const DECISION_SCHEMA = 'ruvnet-brain.decision-record';
 export const STATUSES = Object.freeze(['ratified', 'detected-unconfirmed']);
@@ -151,21 +152,11 @@ export function defaultReadBack({ ruflo, db, namespace, key }) {
   return { content: r.status === 0 ? r.stdout.trim() : null };
 }
 
-const pendingDir = (db) => path.join(path.dirname(db), '.decision-records-pending');
-function writePending(db, entry) {
-  const dir = pendingDir(db);
-  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const file = path.join(dir, `${entry.key}.json`);
-  const fd = fs.openSync(file, 'w', 0o600);
-  try { fs.writeSync(fd, JSON.stringify(entry)); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-  return file;
-}
-
 /**
- * The §3 door. committed | already-stored | quarantined | pending — never "committed" without an
+ * The §3 door. committed | already-stored | quarantined | refused — never "committed" without an
  * exact readback of the same bytes, and a refusal is never treated as a duplicate.
  */
-export function storeDecision({ ruflo, db, namespace, key, value, store = defaultStore, readBack = defaultReadBack, keepPending = true }) {
+export function storeDecision({ ruflo, db, namespace, key, value, store = defaultStore, readBack = defaultReadBack }) {
   const prior = readBack({ ruflo, db, namespace, key });
   if (typeof prior.content === 'string' && prior.content === value) return { state: 'already-stored', key };
   if (typeof prior.content === 'string' && prior.content && prior.content !== value) return { state: 'quarantined', key, reason: 'a different stored row holds this key' };
@@ -174,23 +165,8 @@ export function storeDecision({ ruflo, db, namespace, key, value, store = defaul
   if (result.status === 0 && back.content === value) return { state: 'committed', key };
   if (typeof back.content === 'string' && back.content && back.content !== value) return { state: 'quarantined', key, reason: 'a different stored row holds this key' };
   const reason = redactText(String(result.output || '').trim().split('\n').filter(Boolean).slice(-1)[0] || `store exited ${result.status}`).slice(0, 300);
-  const pending = keepPending ? writePending(db, { key, namespace, value, at: new Date().toISOString(), reason }) : null;
-  return { state: 'pending', key, reason, pending };
-}
-
-/** Replay pending records through the same door; a committed one leaves the pending directory. */
-export function flushPending({ ruflo, db, store = defaultStore, readBack = defaultReadBack }) {
-  const out = [];
-  let names = [];
-  try { names = fs.readdirSync(pendingDir(db)).filter((n) => n.endsWith('.json')); } catch { return out; }
-  for (const name of names) {
-    const file = path.join(pendingDir(db), name);
-    let entry; try { entry = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { out.push({ state: 'unreadable', file }); continue; }
-    const r = storeDecision({ ruflo, db, namespace: entry.namespace, key: entry.key, value: entry.value, store, readBack, keepPending: false });
-    if (r.state === 'committed' || r.state === 'already-stored') fs.rmSync(file, { force: true });
-    out.push(r);
-  }
-  return out;
+  recordHookFailure({ hook: 'decision-record', event: 'record', error: `not recorded: ${reason}`.slice(0, 160) });
+  return { state: 'refused', key, reason };
 }
 
 // ── consult receipt (read before deciding) ─────────────────────────────────────────────────────
@@ -267,7 +243,7 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => { const v = argv[++i]; if (v === undefined) throw new Error(`${a} needs a value`); return v; };
-    if (['--consult', '--record', '--flush'].includes(a)) { o.mode = a.slice(2); if (a === '--consult') o.topic = next(); }
+    if (['--consult', '--record'].includes(a)) { o.mode = a.slice(2); if (a === '--consult') o.topic = next(); }
     else if (a === '--what') o.what = next();
     else if (a === '--why') o.why = next();
     else if (a === '--shape') o.shape = next();
@@ -286,7 +262,7 @@ function parseArgs(argv) {
 export async function main(argv = process.argv.slice(2), { env = process.env, out = process.stdout, err = process.stderr, recallFn, store, readBack } = {}) {
   let o;
   try { o = parseArgs(argv); } catch (e) { err.write(`decision-record: ${e.message}\n`); return 2; }
-  if (!o.mode) { err.write('decision-record: one of --consult "<topic>", --record, --flush is required\n'); return 2; }
+  if (!o.mode) { err.write('decision-record: one of --consult "<topic>", --record is required\n'); return 2; }
   const projectDir = path.resolve(o.project || process.cwd());
   const brainHome = brainHomeOf(env);
   let target;
@@ -306,11 +282,6 @@ export async function main(argv = process.argv.slice(2), { env = process.env, ou
   const ruflo = resolveRuflo({ env });
   if (!ruflo) { err.write('decision-record: not recorded — global ruflo not found\n'); return 3; }
   try { if (!fs.statSync(target.db).isFile()) throw new Error(); } catch { err.write('decision-record: not recorded — project has no canonical store (.swarm/memory.db)\n'); return 3; }
-  if (o.mode === 'flush') {
-    const rows = flushPending({ ruflo, db: target.db });
-    out.write(`decision-record flush: ${rows.map((r) => `${r.key || r.file} ${r.state}`).join('; ') || 'nothing pending'}\n`);
-    return rows.every((r) => ['committed', 'already-stored'].includes(r.state)) ? 0 : 3;
-  }
   const identity = resolveProjectStore({ projectDir, gitTimeoutMs: 1000 }).projectIdentity.id;
   const built = buildDecisionRecord(o, { projectRoot: target.projectRoot, projectIdentity: identity,
     host: env.RUVNET_HOOK_HOST === 'codex' ? 'codex' : env.CLAUDE_PLUGIN_ROOT || env.CLAUDECODE ? 'claude' : 'cli',
@@ -329,7 +300,7 @@ export async function main(argv = process.argv.slice(2), { env = process.env, ou
     out.write(`decision-record: supersedes ${key} — ${String(row.what).slice(0, 120)}\n`);
   }
   const r = storeDecision({ ruflo, db: target.db, namespace, key: built.key, value: built.value, ...(store ? { store } : {}), ...(readBack ? { readBack } : {}) });
-  out.write(`decision-record: ${r.state} ${r.key} (namespace ${namespace})${r.reason ? ` — ${r.reason}` : ''}${r.pending ? ` — retained for --flush` : ''}\n`);
+  out.write(`decision-record: ${r.state} ${r.key} (namespace ${namespace})${r.reason ? ` — ${r.reason}` : ''}${r.state === 'refused' ? ` — NOT recorded (logged to hook-failures). A store that committed but did not read back may still hold it: run \`ruflo memory retrieve -k ${r.key} -n ${namespace} --path ${target.db}\` before re-running --record` : ''}\n`);
   if (!['committed', 'already-stored'].includes(r.state)) return 3;
   let ok = true;
   for (const oldKey of built.record.supersedes) {

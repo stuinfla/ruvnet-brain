@@ -162,6 +162,7 @@ const POLICY = (id, file, interpreter = 'bash') => ({ id, file, interpreter });
 const REFUSAL_POLICIES = [
   POLICY('protect-state', 'protect-brain-state.sh'),
   POLICY('hijack-ruvnet', 'hijack-ruvnet.sh'),
+  POLICY('substitution-wall', 'substitution-wall.mjs', 'node'), // owner ruling 2026-10-12: only CALL rUv's memory tools; refuses a rebuilt transport (outbox/queue/journal/replay), in this repo only
   POLICY('ground-before-write', 'ground-before-write.sh'), POLICY('decision-recall', 'decision-recall-gate.mjs', 'node'), // ADR-106
   // adr-currency-gate fires on the EDIT, where the pre-push gate fires on the push. Same rule, same
   // machinery (it calls doc-currency.mjs, never a second copy of the logic) — moved to the earliest
@@ -181,7 +182,7 @@ const SPEECH = { id: 'unprompted-speech', file: 'unprompted-runtime.mjs', interp
 
 /** Which policies apply to which PreToolUse sub-event, mirroring the matchers they replaced. */
 const REGISTRY = {
-  'write': ['protect-state', 'hijack-ruvnet', 'ground-before-write', 'decision-recall', 'adr-currency', 'duplicate-code'],
+  'write': ['protect-state', 'hijack-ruvnet', 'substitution-wall', 'ground-before-write', 'decision-recall', 'adr-currency', 'duplicate-code'],
 };
 
 export function policiesFor(event, registry = REGISTRY, all = REFUSAL_POLICIES) {
@@ -287,7 +288,6 @@ function payloadInput(payload) { return parsed(payload).tool_input || {}; }
  * `Cannot access 'speechEventFor' before initialization` on this gate's first live refusal.
  */
 function speechEventFor(event) { return event === 'bash' ? 'PreToolUse-bash' : 'PreToolUse-write'; }
-
 // ── Runtime ──────────────────────────────────────────────────────────────────────────────────────
 if (isMain()) {
   const started = Date.now();

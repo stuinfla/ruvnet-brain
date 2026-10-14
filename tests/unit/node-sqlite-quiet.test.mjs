@@ -99,7 +99,7 @@ describe('real SessionStart on a real Node 22', () => {
     fs.writeFileSync(emptyGit, '');
     const gitEnv = { ...process.env, GIT_CONFIG_GLOBAL: emptyGit, GIT_CONFIG_NOSYSTEM: '1' };
     expect(spawnSync('git', ['init', '-q'], { cwd: project, env: gitEnv }).status).toBe(0);
-    // An adopted store with ruflo's shape, so the restore AND the brief both read it through node:sqlite.
+    // An adopted store with ruflo's shape.
     fs.mkdirSync(path.join(project, '.swarm'));
     createStore(path.join(project, '.swarm', 'memory.db'));
     const env = warningEnv({ HOME: home, USERPROFILE: home, RUVNET_BRAIN_HOME: path.join(home, '.cache', 'ruvnet-brain'),
@@ -113,7 +113,8 @@ describe('real SessionStart on a real Node 22', () => {
     const r = spawnSync(node22.bin, [path.join(plugin, 'scripts', 'session-start-core.mjs')], {
       cwd: project, env, encoding: 'utf8', input: '{}', timeout: 60_000 });
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain('[RuvNet Brain — COME UP TO SPEED'); // the brief ran, so the store WAS read
+    // The restore ran (through ruflo, which is absent here, so it is honestly UNKNOWN) and nothing warned.
+    expect(r.stdout).toContain('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN] ruflo memory list did not answer');
     expect(r.stderr).toBe('');
     expect(r.stdout).not.toMatch(/ExperimentalWarning|experimental feature/);
   }, 120_000);

@@ -1,0 +1,69 @@
+{
+ "_provenance": "captured: grok 1.0.50 (c58f321264ba) grok -p --yolo --output-format json, project .grok/hooks dump hook, GROK_FOLDER_TRUST=0, 2026-10-13; prompt: create probe.txt containing hi, run cat probe.txt, reply DONE. Paths replaced by {{CWD}} / {{TRANSCRIPT}}; otherwise byte-for-byte the stdin Grok sent.",
+ "payload": {
+  "hookEventName": "post_tool_use",
+  "sessionId": "01a136cb-29d3-7760-9dad-c904303c5e1a",
+  "cwd": "{{CWD}}",
+  "workspaceRoot": "{{CWD}}/",
+  "timestamp": "2026-10-13T19:46:40.576867+00:00",
+  "transcriptPath": "{{TRANSCRIPT}}",
+  "permissionMode": "bypassPermissions",
+  "toolName": "run_terminal_command",
+  "toolUseId": "call-f6f9071d-0836-4b2e-9818-bf06a521edc2-1",
+  "toolInput": {
+   "command": "cat probe.txt",
+   "description": "Print probe.txt contents"
+  },
+  "toolResult": {
+   "type": "Bash",
+   "output": [
+    104,
+    105,
+    10
+   ],
+   "output_for_prompt": "exit: 0\nhi\n",
+   "exit_code": 0,
+   "command": "cat probe.txt",
+   "truncated": false,
+   "signal": null,
+   "timed_out": false,
+   "description": "Print probe.txt contents",
+   "current_dir": "{{CWD}}",
+   "output_file": "{{GROK_HOME}}/sessions/{{SESSION_DIR}}/terminal/{{FILE}}",
+   "total_bytes": 3
+  },
+  "toolInputTruncated": false,
+  "toolResultTruncated": false,
+  "durationMs": 201,
+  "isBackgrounded": false,
+  "hook_event_name": "PostToolUse",
+  "session_id": "01a136cb-29d3-7760-9dad-c904303c5e1a",
+  "transcript_path": "{{TRANSCRIPT}}",
+  "permission_mode": "bypassPermissions",
+  "tool_name": "run_terminal_command",
+  "tool_input": {
+   "command": "cat probe.txt",
+   "description": "Print probe.txt contents"
+  },
+  "tool_response": {
+   "type": "Bash",
+   "output": [
+    104,
+    105,
+    10
+   ],
+   "output_for_prompt": "exit: 0\nhi\n",
+   "exit_code": 0,
+   "command": "cat probe.txt",
+   "truncated": false,
+   "signal": null,
+   "timed_out": false,
+   "description": "Print probe.txt contents",
+   "current_dir": "{{CWD}}",
+   "output_file": "{{GROK_HOME}}/sessions/{{SESSION_DIR}}/terminal/{{FILE}}",
+   "total_bytes": 3
+  },
+  "tool_use_id": "call-f6f9071d-0836-4b2e-9818-bf06a521edc2-1",
+  "duration_ms": 201
+ }
+}

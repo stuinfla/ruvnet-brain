@@ -3,15 +3,27 @@ id: ADR-103
 title: Routing architecture qualification requires a current finite source review
 status: Accepted
 date: 2026-10-05
-updated: 2026-10-11
-version: 0.1.28
-reviewed_digest: abe7f78abbf5
+updated: 2026-10-14
+version: 0.1.38
+reviewed_digest: 76e2a4e8f66b
 impl: built
 authors: [Stuart Kerr, Codex]
 tags: [routing, governance, review, release, traceability]
 relates: [ADR-024, ADR-069, ADR-072, ADR-100, ADR-101]
 governs:
+  - .github/workflows/ci.yml
+  - .github/workflows/early-public.yml
+  - .github/workflows/protected-release.yml
+  - .github/workflows/release-candidate-preflight.yml
+  - CONTRIBUTING.md
+  - bin/install.mjs
+  - bin/nightly-refresh.mjs
+  - config/model-router/policy.default.mjs
+  - config/model-router/weekly-analyst-instruction.md
   - config/practical-rule-catalog.json
+  - docs/adr/0074-ruvnet-capability-claim-integrity.md
+  - docs/model-routing-operation.md
+  - package-lock.json
   - plugin/hooks/codex-hooks.json
   - plugin/hooks/hook-contracts.json
   - plugin/scripts/adr-currency-gate.mjs
@@ -20,14 +32,22 @@ governs:
   - plugin/scripts/capability-inventory-receipt.mjs
   - plugin/scripts/capability-registry.mjs
   - plugin/scripts/capacity-aware-parallel-work.mjs
+  - plugin/scripts/codex-console-alias.mjs
   - plugin/scripts/codex-hook-adapter.mjs
   - plugin/scripts/codex-hook-wrapper.mjs
-  - plugin/scripts/continuity-brief.mjs
+  - plugin/scripts/completion-claim-evidence.mjs
+  - plugin/scripts/continuation-gate.mjs
+  - plugin/scripts/continuation-objective.mjs
   - plugin/scripts/continuity-events.mjs
   - plugin/scripts/continuity-hook-policy.mjs
   - plugin/scripts/decision-gate.mjs
   - plugin/scripts/decision-outcomes.mjs
+  - plugin/scripts/decision-recall-gate.mjs
+  - plugin/scripts/decision-record.mjs
+  - plugin/scripts/deferral-evidence.mjs
   - plugin/scripts/detach.mjs
+  - plugin/scripts/developer-update-maintenance.mjs
+  - plugin/scripts/developer-update.mjs
   - plugin/scripts/doc-currency.mjs
   - plugin/scripts/ground-ruvnet.sh
   - plugin/scripts/grounding-answer.mjs
@@ -36,39 +56,93 @@ governs:
   - plugin/scripts/grounding-turn-gate.mjs
   - plugin/scripts/grounding-turn-mark.mjs
   - plugin/scripts/hook-context-budget.mjs
+  - plugin/scripts/hook-failures.mjs
   - plugin/scripts/hook-registry.mjs
+  - plugin/scripts/hook-shim.mjs
   - plugin/scripts/lesson-gate.mjs
-  - plugin/scripts/project-capture-queue.mjs
-  - plugin/scripts/project-progression-producer.mjs
-  - plugin/scripts/project-progression-reader.mjs
-  - plugin/scripts/project-progression-session-start.mjs
-  - plugin/scripts/project-progression-sources.mjs
-  - plugin/scripts/project-progression-store.mjs
+  - plugin/scripts/nightly-scheduler.mjs
   - plugin/scripts/project-store-resolver.mjs
-  - plugin/scripts/project-transition-hook.mjs
+  - plugin/scripts/routing-outcome-capture.mjs
+  - plugin/scripts/ruflo-memory-hooks.mjs
   - plugin/scripts/session-snapshot-hook.mjs
+  - plugin/scripts/session-start-budget.mjs
+  - plugin/scripts/session-start-core.mjs
   - plugin/scripts/session-start-trace.mjs
+  - plugin/scripts/substitution-wall.mjs
   - plugin/scripts/turn-outcome-capture.mjs
   - plugin/scripts/unprompted-runtime.mjs
   - plugin/scripts/user-settings.mjs
+  - scripts/architecture-review-lock.mjs
+  - scripts/candidate-ci-receipt.mjs
+  - scripts/claude-controlled-terminal.mjs
+  - scripts/codex-managed-terminal.mjs
+  - scripts/deferral-replay.mjs
+  - scripts/doc-currency.mjs
   - scripts/hook-qualify-core.mjs
+  - scripts/managed-terminal-input.mjs
+  - scripts/model-managed-prompt.mjs
+  - scripts/model-managed-workflow-service.mjs
+  - scripts/model-native-catalog.mjs
+  - scripts/model-native-qualification.mjs
+  - scripts/model-router-catalog.mjs
+  - scripts/model-router-dispatch.mjs
+  - scripts/model-router-engine.mjs
+  - scripts/model-router-outcome.mjs
+  - scripts/model-router-setup.mjs
+  - scripts/model-routing-controller.mjs
+  - scripts/model-routing-defence.mjs
+  - scripts/model-routing-execution-adapters.mjs
+  - scripts/model-routing-gateway.mjs
+  - scripts/model-routing-launchers.mjs
+  - scripts/model-routing-policy-promotion.mjs
+  - scripts/model-terminal-launchers.mjs
+  - scripts/model-weekly-analyst.mjs
+  - scripts/model-weekly-assessment.mjs
+  - scripts/model-weekly-cycle.mjs
+  - scripts/model-weekly-qualification.mjs
+  - scripts/native-subscription-usage.mjs
   - scripts/practical-rule-selector.mjs
+  - scripts/prepublication-evidence.mjs
   - scripts/product-integrity-contract.mjs
-  - tests/integration/continuity-journal.test.mjs
-  - tests/integration/project-progression-session-start.test.mjs
+  - scripts/qe/agentic-qe-4.3.mjs
+  - scripts/release-qualification-contract.mjs
+  - scripts/release-qualification.mjs
+  - scripts/release-transaction-provider.mjs
+  - scripts/release-transaction.mjs
+  - scripts/source-scope-receipt.mjs
+  - scripts/subscription-hosts.mjs
+  - tests/integration/model-managed-checker-native.test.mjs
   - tests/integration/unprompted-speech-registry.test.mjs
+  - tests/qe/release/packed-clean-install.test.mjs
   - tests/unit/adr-currency-gate-parity.test.mjs
   - tests/unit/adr-currency-gate.test.mjs
   - tests/unit/advocacy-outcomes.test.mjs
   - tests/unit/agentdb-recall.test.mjs
+  - tests/unit/agentic-qe-early-public.test.mjs
+  - tests/unit/architecture-review-lock.test.mjs
+  - tests/unit/automatic-hook-retirement-posix.test.mjs
+  - tests/unit/automatic-hook-retirement.test.mjs
   - tests/unit/capability-inventory-receipt.test.mjs
   - tests/unit/capability-registry.test.mjs
+  - tests/unit/claude-controlled-terminal.test.mjs
   - tests/unit/codex-claude-hook-parity.test.mjs
-  - tests/unit/continuity-brief-host-hint.test.mjs
+  - tests/unit/codex-fresh-host-proof.test.mjs
+  - tests/unit/codex-managed-terminal.test.mjs
+  - tests/unit/continuation-commitment-ownership.test.mjs
+  - tests/unit/continuation-gate-capability-truth.test.mjs
+  - tests/unit/continuation-gate-completion-claims.test.mjs
+  - tests/unit/continuation-gate-decision-record.test.mjs
+  - tests/unit/continuation-gate-objective-close.test.mjs
+  - tests/unit/continuation-gate.test.mjs
+  - tests/unit/continuation-objective.test.mjs
   - tests/unit/continuity-events.test.mjs
-  - tests/unit/continuity-journal-bounds.test.mjs
   - tests/unit/decision-gate.test.mjs
   - tests/unit/decision-outcomes.test.mjs
+  - tests/unit/decision-record.test.mjs
+  - tests/unit/deferral-evidence.test.mjs
+  - tests/unit/developer-update-codex-launcher.test.mjs
+  - tests/unit/developer-update-scheduled-receipt.test.mjs
+  - tests/unit/doc-currency-review.test.mjs
   - tests/unit/doc-currency.test.mjs
   - tests/unit/entrypoint-symlink.test.mjs
   - tests/unit/grounding-scope.test.mjs
@@ -80,137 +154,45 @@ governs:
   - tests/unit/grounding-turn-false-alarm.test.mjs
   - tests/unit/grounding-turn-gate.test.mjs
   - tests/unit/hook-context-budget.test.mjs
+  - tests/unit/hook-failures.test.mjs
   - tests/unit/hook-hardening.test.mjs
   - tests/unit/hook-registry-lint.test.mjs
+  - tests/unit/hook-shim.test.mjs
   - tests/unit/injection-budget.test.mjs
   - tests/unit/lesson-gate.test.mjs
-  - tests/unit/practical-rule-selector.test.mjs
-  - tests/unit/product-integrity-contract.test.mjs
-  - tests/unit/project-progression-producer.test.mjs
-  - tests/unit/project-progression-reader.test.mjs
-  - tests/unit/project-transition-hook.test.mjs
-  - tests/unit/session-snapshot-budget.test.mjs
-  - tests/unit/session-start-budget.test.mjs
-  - tests/unit/session-start-trace.test.mjs
-  - tests/unit/source-scope-receipt.test.mjs
-  - tests/unit/continuation-commitment-ownership.test.mjs
-  - plugin/scripts/continuation-gate.mjs
-  - plugin/scripts/completion-claim-evidence.mjs
-  - plugin/scripts/continuation-objective.mjs
-  - plugin/scripts/hook-shim.mjs
-  - tests/unit/continuation-gate-completion-claims.test.mjs
-  - tests/unit/continuation-gate-objective-close.test.mjs
-  - tests/unit/continuation-objective.test.mjs
-  - tests/unit/continuation-gate.test.mjs
-  - tests/unit/continuation-gate-capability-truth.test.mjs
-  - tests/unit/hook-shim.test.mjs
-  - tests/unit/automatic-hook-retirement.test.mjs
-  - tests/unit/automatic-hook-retirement-posix.test.mjs
-  - docs/adr/0074-ruvnet-capability-claim-integrity.md
-  - package-lock.json
-  - scripts/model-managed-prompt.mjs
-  - scripts/model-managed-workflow-service.mjs
-  - scripts/model-routing-controller.mjs
-  - scripts/model-routing-execution-adapters.mjs
-  - scripts/claude-controlled-terminal.mjs
-  - scripts/codex-managed-terminal.mjs
-  - scripts/managed-terminal-input.mjs
-  - scripts/model-router-dispatch.mjs
-  - scripts/model-routing-defence.mjs
-  - config/model-router/policy.default.mjs
-  - tests/unit/model-managed-prompt.test.mjs
-  - tests/unit/model-managed-workflow-service.test.mjs
-  - tests/unit/model-routing-controller.test.mjs
-  - tests/unit/model-routing-execution-adapters.test.mjs
-  - tests/unit/claude-controlled-terminal.test.mjs
-  - tests/unit/codex-managed-terminal.test.mjs
   - tests/unit/managed-terminal-input.test.mjs
   - tests/unit/model-managed-parent-context-posix.test.mjs
-  - tests/unit/codex-fresh-host-proof.test.mjs
-  - tests/integration/model-managed-checker-native.test.mjs
-  - docs/model-routing-operation.md
-  - scripts/model-router-engine.mjs
-  - scripts/model-routing-launchers.mjs
-  - CONTRIBUTING.md
-  - scripts/subscription-hosts.mjs
-  - scripts/native-subscription-usage.mjs
-  - scripts/model-native-catalog.mjs
-  - scripts/model-native-qualification.mjs
-  - scripts/model-weekly-cycle.mjs
-  - scripts/model-weekly-analyst.mjs
-  - scripts/model-weekly-assessment.mjs
-  - scripts/model-weekly-qualification.mjs
-  - scripts/model-routing-policy-promotion.mjs
-  - scripts/model-router-catalog.mjs
-  - scripts/model-router-setup.mjs
-  - scripts/model-router-outcome.mjs
-  - plugin/scripts/routing-outcome-capture.mjs
-  - bin/install.mjs
-  - plugin/scripts/codex-console-alias.mjs
-  - plugin/scripts/session-start-budget.mjs
-  - plugin/scripts/session-start-core.mjs
-  - scripts/model-terminal-launchers.mjs
-  - tests/unit/model-terminal-launchers.test.mjs
-  - tests/unit/npm-tarball-codex.test.mjs
-  - tests/qe/release/packed-clean-install.test.mjs
-  - tests/unit/session-start-core-parity.test.mjs
-  - plugin/scripts/continuity-journal.mjs
-  - config/model-router/weekly-analyst-instruction.md
-  - tests/unit/subscription-hosts.test.mjs
-  - tests/unit/native-subscription-usage.test.mjs
+  - tests/unit/model-managed-prompt.test.mjs
+  - tests/unit/model-managed-workflow-service.test.mjs
   - tests/unit/model-native-catalog.test.mjs
   - tests/unit/model-native-qualification.test.mjs
-  - tests/unit/model-weekly-cycle.test.mjs
+  - tests/unit/model-router-outcome.test.mjs
+  - tests/unit/model-router-update-convergence.test.mjs
+  - tests/unit/model-routing-controller.test.mjs
+  - tests/unit/model-routing-execution-adapters.test.mjs
+  - tests/unit/model-routing-gateway-boundaries.test.mjs
+  - tests/unit/model-routing-gateway.test.mjs
+  - tests/unit/model-routing-policy-promotion.test.mjs
+  - tests/unit/model-terminal-launchers.test.mjs
   - tests/unit/model-weekly-analyst.test.mjs
   - tests/unit/model-weekly-assessment.test.mjs
+  - tests/unit/model-weekly-cycle.test.mjs
   - tests/unit/model-weekly-qualification.test.mjs
-  - tests/unit/model-routing-policy-promotion.test.mjs
-  - tests/unit/model-router-outcome.test.mjs
-  - tests/unit/routing-outcome-capture.test.mjs
-  - tests/unit/model-router-update-convergence.test.mjs
-  - scripts/model-routing-gateway.mjs
-  - tests/unit/model-routing-gateway.test.mjs
-  - tests/unit/model-routing-gateway-boundaries.test.mjs
-  - scripts/doc-currency.mjs
-  - scripts/architecture-review-lock.mjs
-  - tests/unit/architecture-review-lock.test.mjs
-  - tests/unit/doc-currency-review.test.mjs
-  - scripts/release-qualification-contract.mjs
-  - scripts/release-qualification.mjs
-  - scripts/prepublication-evidence.mjs
-  - scripts/candidate-ci-receipt.mjs
-  - scripts/qe/agentic-qe-4.3.mjs
-  - tests/unit/agentic-qe-early-public.test.mjs
-  - tests/unit/release-evidence-dag.test.mjs
-  - tests/unit/protected-release-workflow.test.mjs
-  - tests/unit/prepublication-evidence.test.mjs
-  - scripts/source-scope-receipt.mjs
-  - scripts/release-transaction.mjs
-  - scripts/release-transaction-provider.mjs
-  - tests/unit/release-transaction-provider-buffer.test.mjs
-  - .github/workflows/ci.yml
-  - .github/workflows/release-candidate-preflight.yml
-  - .github/workflows/protected-release.yml
-  - .github/workflows/early-public.yml
-  - plugin/scripts/developer-update-maintenance.mjs
-  - tests/unit/developer-update-codex-launcher.test.mjs
-  - bin/nightly-refresh.mjs
+  - tests/unit/native-subscription-usage.test.mjs
   - tests/unit/nightly-scheduler.test.mjs
-  - plugin/scripts/developer-update.mjs
-  - plugin/scripts/nightly-scheduler.mjs
-  - tests/unit/developer-update-scheduled-receipt.test.mjs
-  - plugin/scripts/decision-record.mjs
-  - plugin/scripts/decision-recall-gate.mjs
-  - plugin/scripts/hook-failures.mjs
-  - plugin/scripts/deferral-evidence.mjs
-  - scripts/deferral-replay.mjs
-  - tests/unit/decision-record.test.mjs
-  - tests/unit/hook-failures.test.mjs
-  - tests/unit/deferral-evidence.test.mjs
-  - tests/unit/continuation-gate-decision-record.test.mjs
-  - tests/integration/hook-latency-budget.test.mjs
-  - tests/integration/learning-fold.test.mjs
-  - tests/unit/transition-pending-notices.test.mjs
+  - tests/unit/npm-tarball-codex.test.mjs
+  - tests/unit/practical-rule-selector.test.mjs
+  - tests/unit/prepublication-evidence.test.mjs
+  - tests/unit/product-integrity-contract.test.mjs
+  - tests/unit/protected-release-workflow.test.mjs
+  - tests/unit/release-evidence-dag.test.mjs
+  - tests/unit/release-transaction-provider-buffer.test.mjs
+  - tests/unit/routing-outcome-capture.test.mjs
+  - tests/unit/session-start-budget.test.mjs
+  - tests/unit/session-start-core-parity.test.mjs
+  - tests/unit/session-start-trace.test.mjs
+  - tests/unit/source-scope-receipt.test.mjs
+  - tests/unit/subscription-hosts.test.mjs
 ---
 
 # ADR-103 — Routing architecture review lock
@@ -356,17 +338,26 @@ finite release refusal. No paid provider call, model generation or system config
 | 2026-10-07 | Reviewed `c30a133bd5aa` against clean `09a8476516488f88842b041c97cee9765c2d307b`. | Reviewed `scripts/claude-controlled-terminal.mjs`, `scripts/model-managed-prompt.mjs` and the bounded routing/doc delta; 99 paths are a byte inventory, not a full semantic reread. Native acceptance and protected publication require their separate receipts. |
 
 
-| 2026-10-07 | Reviewed `ef6b7ed562b6` against source `5f2d3cde64d007c9e92743b3f223e0730e348d6d` and the recorded final working bytes. | Bounded baseline-plus-delta semantic coverage from the 25-artifact review chain and corrected transition addendum; explicit 181-path byte inventory is not 181 fresh file reads. `plugin/scripts/project-transition-hook.mjs`, shared outcome normalization, native identity, typed advisory budgets and practical-rule phase decoration were reviewed with their direct consumers. 335 shared outcome/grounding checks passed. Native event delivery, one Windows case, all-rule hard enforcement and protected publication remain separate or incomplete. |
+| 2026-10-07 | Reviewed `ef6b7ed562b6` against source `5f2d3cde64d007c9e92743b3f223e0730e348d6d` and the recorded final working bytes. | Bounded baseline-plus-delta semantic coverage from the 25-artifact review chain and corrected transition addendum; explicit 181-path byte inventory is not 181 fresh file reads. `plugin/scripts/project-transition-hook.mjs`, shared outcome normalization, native identity, typed advisory budgets and practical-rule phase decoration were reviewed with their direct consumers. 335 shared outcome/grounding checks passed. Native event delivery, one Windows case, all-rule hard enforcement and protected publication remain separate or incomplete. Source as of commit 845d55bd (4.6.4); the modules named in this row were removed on 2026-10-12 (see the section below). |
 
 | 2026-10-07 | Reviewed `09d465c11e67` against source `0e8e1290` and the recorded final working bytes. | Prior bounded baseline-plus-delta review remains scoped. Independent test-correction review confirms `tests/unit/hook-shim.test.mjs` copies the actual hook manifest and `tests/unit/continuation-gate-capability-truth.test.mjs` preserves unknown installation and activation claims; 23 focused checks passed. Native memory capture and protected publication remain incomplete. |
 
 | 2026-10-07 | Reviewed `de355dd5acbb` against source `b92aa838` and the recorded current bytes. | Independent bounded reviews cover the existing native administrative resolver export in `bin/install.mjs`, its discovery and installer fixtures, conservative foreign-owner recall assertions and the actual SessionStart budget-helper import. Root focused checks passed 5 native discovery, 66 ownership/startup and 7 managed-boundary tests with zero skips. Earlier failed integration receipt remains failed; fresh clean qualification, native session evidence and protected publication are required. |
 
-| 2026-10-07 | Reviewed `e34f347644a6` against source `92147327` and the recorded current bytes. | Independent bounded review covers the PreCompact-only no-op exemption in `plugin/scripts/project-progression-producer.mjs` and actual lifecycle regression through the existing canonical append/readback path. 43 integrated checks passed without skips. The prior native run remains blocked: it delivered PreCompact but intentionally suppressed an unchanged snapshot. Fresh packed native execution and publication are still required; no historical receipt is relabeled. |
+| 2026-10-07 | Reviewed `e34f347644a6` against source `92147327` and the recorded current bytes. | Independent bounded review covers the PreCompact-only no-op exemption in `plugin/scripts/project-progression-producer.mjs` and actual lifecycle regression through the existing canonical append/readback path. 43 integrated checks passed without skips. The prior native run remains blocked: it delivered PreCompact but intentionally suppressed an unchanged snapshot. Fresh packed native execution and publication are still required; no historical receipt is relabeled. Source as of commit 845d55bd (4.6.4); the modules named in this row were removed on 2026-10-12 (see the section below). |
 
 | 2026-10-07 | Reviewed `c694f81d5ae3` against source `6808039e` and recorded current bytes. | Bounded independent review and 17 integrated checks cover the three grounding dispatches joining the existing matching-root, undefined-only Claude fallback in `plugin/scripts/hook-shim.mjs`. Explicit Codex and unknown-host safeguards remain. Prior same-source native Claude tool/restore/capture succeeded but grounding was blocked; this new dispatcher requires fresh packed native proof. The reviewed subprocess cases are qualified on macOS/Linux only by the existing platform contract, not asserted on Windows. |
 
 | 2026-10-07 | Reviewed `7ba26e9903fa` against source `439d94d1` and recorded current bytes. | Independent review covers the test-local fixed Node syntax checker in `tests/unit/model-managed-workflow-service.test.mjs`: original hosted source-only refusal was reproduced, all fresh-recall and receipt assertions retained, and the full 27-case integrated file passed. No production runtime code changed. Prior native proof stays bound to its original source and artifact; exact new qualification and hosted gates remain required. Failed preflight 37606672323 remains failed and main was not promoted. |
+| 2026-10-12 | Reviewed `a1808e649ce1` against source `8ac35320` and the recorded final working bytes. | Three fresh-context single-seat Anthropic reviews (claude-opus-5-5; the OpenAI/Codex seat was unavailable because the managed codex wrapper refused `exec`, so this is DEGRADED under ADR-0075 section 5 and is not a dual-seat review) covered the persistence removal against shipped commit `845d55bd`: `plugin/scripts/ruflo-memory-hooks.mjs`, `plugin/scripts/turn-outcome-capture.mjs`, `plugin/scripts/learn-capture.mjs`, `plugin/scripts/session-snapshot-hook.mjs`, `plugin/scripts/agentdb-recall.mjs` and `plugin/scripts/substitution-wall.mjs`. Each returned ACCEPT-WITH-CONDITIONS with no blocker; conditions 1-7, then 1-5, then 1-2 were fixed with tests (2,079 tests passed on the committed tree). The two third-round fixes (linear Add-File judging and CRLF-tolerant hunk matching, in `plugin/scripts/substitution-wall.mjs`) were not independently re-reviewed. Not verified: Windows, a live Codex session, concurrency under load, and the installed plugin against a live-size store. This is a finite source inventory, not a claim that every governed file was semantically reread. |
+| 2026-10-12 | Reviewed `3f8e7f179c75` against source `061a70c1` and the recorded final working bytes. | Mechanical follow-up to the review row above, found by the hosted preflight on the first push of 4.7.0: `scripts/release-qualification-contract.mjs` still named three deleted tests (`tests/unit/learn-flush-partial-failure.test.mjs`, `tests/unit/health-repair-flush-learning.test.mjs`, `tests/integration/learning-console-scope.test.mjs`), so release-acceptance failed on all three platforms with ENOENT. The entries were removed and the retired learning-recovery entry now says so; no behaviour changed. This edit was not independently re-reviewed; the platform-wide qualification command passed locally (2,079 of 2,079) after it. |
+| 2026-10-13 | Reviewed `68f3db5eace3` against source `1c5950f8` and the recorded final working bytes. | Mechanical follow-up found by hosted run 38267827528: release qualification refuses todo and skipped cases, and the integration suite carried nine `it.todo` entries in `tests/unit/agentdb-recall.test.mjs` (the register of recall capabilities lost vs 4.6.4). The nine were deleted from that governed test file with no assertion changed; all thirteen lost capabilities are now a named list in the ADR-106 4.7.0 amendment, and the persistence-removal section here points to it. The ungated `tests/unit/learn-capture-*.test.mjs` POSIX shell stub became a Node stub with an npm `ruflo.cmd` layout on Windows; no production code changed. DEGRADED under ADR-0075 section 5: author edit only, not independently re-reviewed, single seat. Verified locally on macOS only; hosted Linux and Windows results were not available when this row was written. |
+| 2026-10-13 | Reviewed `09a1b97166d8` against source `2c48bb27` (release/4.7.1 integration of fix/4.7.1-a, -c, -d, -e on 4.7.0 `bd70b05f`) and the recorded final working bytes. | Governed changes: `plugin/scripts/continuation-gate.mjs` now returns before gating when `plugin/scripts/automated-run.mjs` finds an SDK entrypoint or a `codex exec` ancestor (the owner's own gate `owner-review-gate.mjs` was read, not edited); `plugin/scripts/agentdb-recall.mjs` and `plugin/scripts/ruflo-memory-hooks.mjs` select the newest `project-state-current-<epoch-ms>` by its key and run every ruflo call from a private scratch directory with daemon autostart off (measured median 1,729 ms to 1,067 ms for one list); `bin/install.mjs` accepts a Codex hook bridge byte-identical to a wrapper a retained Brain generation shipped, fixing the 4.6.4 to 4.7.0 refusal `hook-wrapper-ownership-conflict` measured on the owner's machine. Non-governed additions: the Grok host adapter and manifest, the weekly-cycle version-pin fix and the advice-only prompt text. The integrating session read every governed diff in full; 141 of 141 focused tests passed on the merged tree and `single-source:check`, `wired:check`, `hooks:check` and `substitution:check` pass. DEGRADED under ADR-0075 section 5: author-side review by the integrating session only, no independent seat, no OpenAI seat. Real-machine upgrade proof, hosted Linux and Windows results and a fresh Grok session are not yet available and are stated as UNVERIFIED in the release notes. |
+| 2026-10-13 | Reviewed `6b96467e7126` against source `8723fc1f` and the recorded final working bytes. | Mechanical follow-up found by hosted preflight run 38467250540 on `ee723e28`: Linux integration failed 3 cases because the new fallback in `scripts/model-routing-execution-adapters.mjs` returned `~/.local/bin/codex` without checking it exists (it now returns the standard path only if present, else a PATH match, else throws ENOENT as 4.7.0 did); Windows source failed because two POSIX-only cases skipped and the gate allows none (the weekly-cycle stub case and the symlink cases moved to files listed only for linux and macos in `scripts/release-qualification-contract.mjs`; the other-uid case now runs everywhere). No gate was loosened. Reproduced locally before pushing: full macOS source qualification 2,093 of 2,093 with 0 skipped, a zero skip-capable scan of the 106 Windows source files, the Linux no-codex condition, and the three stranger scenarios from the packed tarball. DEGRADED under ADR-0075 section 5: author edit only, single seat, not independently re-reviewed. Hosted early-public, macos-candidate-search and Windows results are not yet available. |
+| 2026-10-13 | Reviewed `073780ab6199` against source `d45c3ede` (fix on top of 4.7.1 `fbe233ba`) and the recorded final working bytes. | Found by the post-install proof of 4.7.1: a real `grok -p` turn still returned the continuation gate's UNVERIFIED correction because the exemption read by `plugin/scripts/continuation-gate.mjs` (`plugin/scripts/automated-run.mjs`) covered only Claude `sdk-*` and `codex exec`. Measured with a temporary user-level probe hook under `grok -p` (removed afterwards): the hook's parent process is `grok -p ...` and its environment carries `GROK_HOOK_EVENT` and `GROK_SESSION_ID`. The exemption now also applies when Grok set that environment (or the Grok adapter marked the host) and an ancestor is a headless `grok` (`-p`, `--single`, `--prompt-file`, `--prompt-json`, `agent`); interactive `grok` stays gated. No other governed behaviour changed. Tests: a real-process `grok -p` / interactive `grok` case and the ancestor-table cases, order-independent (unique session id per case), verified to fail with the exemption removed. DEGRADED under ADR-0075 section 5: author edit only, single seat, not independently re-reviewed. Hosted results and a live `grok -p` after install are not yet available. |
+| 2026-10-14 | Reviewed `b86f4fce23a7` against source `05f7af95` (fix on top of 4.7.2 `d2982ac2`) and the recorded final working bytes. | 4.7.3 changes no routing behavior. The one governed byte that moved is `package-lock.json`: its two version fields went 4.7.2 to 4.7.3 through `npm run version:set`; a JSON comparison of `origin/main` against this branch shows the file identical apart from those two fields, and no other governed file changed (`plugin/scripts/continuation-gate.mjs` and the rest of the governed set are byte-identical to 4.7.2). The code change is `scripts/model-currency-evidence.mjs`, which is not governed: one incomplete third-party coding-agent row (Meta Muse Wonder Full (max), `mean.costUsd` null) made the weekly refresh throw for all 39 rows. An incomplete row from a harness other than Codex/OpenAI or Claude Code/Anthropic is now skipped and listed in `coverage.skippedIncomplete`; routable rows still throw. DEGRADED: a single-session review by the integrating agent, not an independent review. |
+| 2026-10-14 | Reviewed `743d1ca45768` against source `c0ac45dc` (fix on top of 4.7.3 `5e6a28c0`) and the recorded final working bytes. | Found by running the weekly job on 4.7.3: with the metadata stage fixed, the semantic stage failed with "Private native hook metadata transport failed" because launchd gives the job `PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`, on which `codex` does not exist (it is `~/.local/bin/codex`), and `scripts/model-analyst-sandbox.mjs` spawns bare `codex`. Measured: the trust step fails under that PATH and returns `trusted:true, inferenceStarted:false` with `~/.local/bin` added. `scripts/goldie-weekly.sh` now prepends `$HOME/.local/bin:$HOME/.npm-global/bin`. Governed bytes that moved: `scripts/release-qualification-contract.mjs` gained one test file in the existing weekly group's linux and macos platform lists (the new test needs `/bin/bash`), and `package-lock.json` changed only its two version fields. No routing rule, policy or selection logic changed. DEGRADED: a single-session review by the integrating agent, not an independent review. |
+| 2026-10-14 | Reviewed `76e2a4e8f66b` against source `de60ac6c` (fix on top of 4.7.4 `4dc7a034`) and the recorded final working bytes. | 4.7.5 changes no routing behavior. Two governed bytes moved. `package-lock.json`: its two version fields went 4.7.4 to 4.7.5 (2 lines, from `npm run version:set`). `scripts/release-qualification-contract.mjs`: one new inventory entry, `ruflo-runs-under-a-node-that-loads-its-binding`, listing `tests/unit/ruflo-native-node.test.mjs` under linux and macos (9 lines added, nothing removed or reordered). Found by diagnosing 67 `turn-capture` hook failures: hooks inherited a PATH whose first node (v26) could not load ruflo's node-24 better-sqlite3, so `ruflo memory store` was refused. The fix is in the non-governed `plugin/scripts/ruflo-bin.mjs`: `rufloInvocation` now runs ruflo under the first node that loads its own binding and changes nothing when the PATH node already does. |
 
 ## Current completion safeguard scope
 
@@ -423,3 +414,16 @@ Component reviews and focused checks cover their recorded source/range scopes.
 The dated integrated review identifies the baseline-plus-delta read scope, its
 source hashes, resolved findings and remaining limits. Native qualification is
 still required before publication. File hashes do not certify semantic reading.
+
+## Persistence removal — 2026-10-12
+
+The owner ruled that the plugin only CALLS rUv's memory tools and never rebuilds his storage. The
+progression store/outbox/producer/reader/sources/hook/session-start/checkpoint, the capture queue, the
+transition hook, the continuity journal and brief, the learning queue/flush/worker and the turn transport
+journal were deleted, together with the tests that exercised only them. The governed set above no longer
+names them; `ruflo-memory-hooks.mjs` (checkpoint and restore through `ruflo memory`) and
+`substitution-wall.mjs` (the write-time refusal of a rebuilt transport) now join it. Capabilities that
+were reduced rather than moved are recorded as a named register in the ADR-106 4.7.0 amendment (they were
+todos in `tests/unit/agentdb-recall*.test.mjs`; the gated ones were removed because qualification refuses todo cases). This
+section is a change record, not a review: the source-bound review of the final governed bytes below is the
+only statement that they were examined, and it states its own limits.

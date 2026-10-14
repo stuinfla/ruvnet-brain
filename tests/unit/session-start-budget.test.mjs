@@ -15,7 +15,6 @@ import {
   sessionStartTimeoutMs,
   sessionStartDeadlineAt,
 } from '../../plugin/scripts/session-start-budget.mjs';
-import { SESSION_CONTINUITY_DEADLINE_MS } from '../../plugin/scripts/project-progression-session-start.mjs';
 
 describe('SessionStart derived-sum latency budget contract', () => {
   it.each(['registered-envelope', 'inherited-deadline'])('the actual Codex wrapper respects %s instead of silently truncating restoration at four seconds', kind => {
@@ -65,9 +64,6 @@ describe('SessionStart derived-sum latency budget contract', () => {
     expect(STAGE_BUDGETS_MS.banner).toBeLessThanOrEqual(200);
   });
 
-  it('the continuity implementation enforces the same restore ceiling declared in this budget', () => {
-    expect(SESSION_CONTINUITY_DEADLINE_MS).toBe(STAGE_BUDGETS_MS.restore);
-  });
 
   it('every declared stage has an explicit, positive budget', () => {
     expect(Object.keys(STAGE_BUDGETS_MS).length).toBeGreaterThan(0);

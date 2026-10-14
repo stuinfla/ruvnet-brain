@@ -13,8 +13,30 @@ import { readCodexAllowance } from './native-subscription-usage.mjs';
 const digest = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const blocked = reason => Object.assign(new Error(reason), { safetyBlocked: true });
 
-export function nativeWorkflowBinaries(home = os.homedir()) {
-  const config = JSON.parse(fs.readFileSync(path.join(home, '.cache/ruvnet-brain/model-routing/terminal-launcher-config.json'), 'utf8'));
+// The launcher config is retired: an owner who removed it gets the standard install path, else a PATH
+// lookup. A binary that exists nowhere throws ENOENT (as before), never a path that cannot run. Never
+// recreate the config here (install.mjs refreshInstalledModelLaunchers would reinstall the terminal wrappers).
+function findNativeBinary(name, standard, env) {
+  const isFile = file => { try { return fs.statSync(file).isFile(); } catch { return false; } };
+  if (isFile(standard)) return standard;
+  const exts = process.platform === 'win32' ? ['.exe', '.cmd', ''] : [''];
+  for (const dir of String(env.PATH || env.Path || '').split(path.delimiter).filter(Boolean)) {
+    for (const ext of exts) { const candidate = path.join(dir, name + ext); if (isFile(candidate)) return candidate; }
+  }
+  throw Object.assign(new Error(`native ${name} binary not found at ${standard} or on PATH`), { code: 'ENOENT' });
+}
+
+export function nativeWorkflowBinaries(home = os.homedir(), env = process.env) {
+  let text;
+  try { text = fs.readFileSync(path.join(home, '.cache/ruvnet-brain/model-routing/terminal-launcher-config.json'), 'utf8'); }
+  catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+    return {
+      claude: findNativeBinary('claude', path.join(home, '.npm-global/bin/claude'), env),
+      codex: findNativeBinary('codex', path.join(home, '.local/bin/codex'), env)
+    };
+  }
+  const config = JSON.parse(text);
   return { claude: config.realClaude, codex: config.realCodex };
 }
 

@@ -18,7 +18,7 @@
  *
  * HOSTS. Claude Code transcripts (`transcript_path`, JSONL) are parsed. Codex's Stop payload also
  * carries `transcript_path`, but its rollout format is NOT parsed anywhere in this repository
- * (project-progression-sources.mjs and turn-outcome-capture.mjs both decline it), so on Codex the
+ * (turn-outcome-capture.mjs declines it), so on Codex the
  * transcript half is UNKNOWN and only the answer-side half (2)+(3) is enforced — disclosed in the
  * correction text, never silently treated as proven.
  */

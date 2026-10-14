@@ -49,7 +49,7 @@
 // SINGLE WRITER (DDD-0013 Context 2 invariant 3): this file is the ONLY writer of pending.jsonl.
 // scripts/signal-watch.mjs (the poller) only ever reads it.
 //
-// CONTRACT (matches every other node hook body in this dir — md-stamp.mjs, learn-flush.mjs):
+// CONTRACT (matches every other node hook body in this dir — md-stamp.mjs):
 // dispatched via hook-shim.mjs (mode: advisory). ALWAYS exits 0; never throws to the caller; a
 // parse/IO failure degrades to silence, never a crash the harness has to survive (DDD invariant 4:
 // "observation never blocks and never manufactures a refusal").

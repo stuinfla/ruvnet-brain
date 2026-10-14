@@ -145,7 +145,7 @@ The proposed `RowClosed` event emits the closure comment on each linked issue (r
   provide qualification or closure evidence.
 
 Canonical-path policy source: [ADR-102 canonical recall contract](../adr/0102-completion-and-closure-ledger.md#d-agentdb-first--applied-to-every-review-every-score-and-to-the-product-r15-r16). The existing
-[continuity journal](../../plugin/scripts/continuity-journal.mjs) supplies the explicit-path
+[continuity journal](../../the former continuity journal (deleted 2026-10-12)) supplies the explicit-path
 store and exact-key read-back pattern; this reference does not claim every capture path is fixed.
 
 ## Ports

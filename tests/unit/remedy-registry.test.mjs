@@ -82,7 +82,8 @@ test('every offerable recommendation id resolves to exactly one remedy with a re
   const ids = allOfferableIds();
   // Guard the guard: if the fixture stops producing ids, the closure check below would pass
   // vacuously and prove nothing. That is a failure mode this test must not have.
-  expect(ids.length >= 7, `fixture produced only ${ids.length} ids — it is no longer exercising every builder branch`).toBeTruthy();
+  // Six builder branches remain since the learning queue (and its two flush remedies) was deleted.
+  expect(ids.length >= 6, `fixture produced only ${ids.length} ids — it is no longer exercising every builder branch`).toBeTruthy();
 
   const { orphanIds, ambiguousIds, unhandledUndoKinds, deadKinds } = assertRegistryClosure(ids, HANDLED_UNDO_KINDS);
 
@@ -103,17 +104,6 @@ test('the North Star recommendation is runnable — it was not, and that was the
   expect(plan.exec.needsReceipt, 'a fleet-wide change must record WHICH stores it touched, or its undo is a guess').toBeTruthy();
 });
 
-test('legacy user learning has a sample that resolves to its exact retained-history handler', () => {
-  const remedy = REMEDIES.find((r) => r.key === 'learning-legacy-user-flush');
-  expect(remedy).toBeTruthy();
-  const id = sampleIdFor(remedy);
-  expect(id).toBe('learning:flush-legacy-user');
-  const plan = planFor(id);
-  expect(plan.key).toBe(remedy.key);
-  expect(plan.exec).toMatchObject({ script: 'scripts/health-repair.mjs', args: ['--flush-legacy-user-learning'] });
-  expect(plan.undo.kind).toBe(UNDO_KINDS.NONE);
-  expect(plan.undo.human).toContain('original queue bytes stay retained');
-});
 
 test('project distillation stays explicitly runnable but is not offered without an available undo', () => {
   const ids = allOfferableIds();

@@ -162,32 +162,6 @@ describe.skipIf(process.platform === 'win32')('process boundary: a faulty hook b
     }
   }, 60_000);
 
-  it('the registered Claude child-completion handler is clean on its labelled derived protocol payload', async () => {
-    const { dir } = fakeRoot();
-    const r = find(dir, 'claude', 'SubagentStop', 'session-snapshot');
-    expect(r, 'the shipped child-completion registration is missing').toBeTruthy();
-    const res = await run(dir, r);
-    expect(res.findings, JSON.stringify(res.findings)).toEqual([]);
-  }, 60_000);
-  it('the registered Claude tool-failure handler is clean on its labelled derived failure payload', async () => {
-    const { dir } = fakeRoot();
-    const r = find(dir, 'claude', 'PostToolUseFailure', 'session-snapshot');
-    expect(r, 'the shipped tool-failure registration is missing').toBeTruthy();
-    const res = await run(dir, r);
-    expect(res.findings, JSON.stringify(res.findings)).toEqual([]);
-  }, 60_000);
-  for (const [host, event] of [['codex', 'SubagentStop'], ['grok', 'SubagentStop'], ['grok', 'PostToolUseFailure']]) {
-    it(`${host} ${event}: the consumer accepts its labelled adapter envelope without claiming native delivery`, async () => {
-      const { dir } = fakeRoot();
-      const r = find(dir, host, event, 'session-snapshot');
-      expect(r, 'the registered observation consumer is missing').toBeTruthy();
-      const fixture = fixturesFor(r, dir)[0];
-      expect(fixture.nativeDeliveryObserved).toBe(false);
-      const res = await run(dir, r);
-      expect(res.findings, JSON.stringify(res.findings)).toEqual([]);
-    }, 60_000);
-  }
-
   it('stderr: a hook that writes to stderr is red on Claude; the Codex adapter swallows an exit-0 stderr, so it stays green there', async () => {
     const { dir, breakBody } = fakeRoot();
     breakBody('grounding-turn-mark.mjs', 'process.stderr.write("boom\\n"); process.exit(0);\n');

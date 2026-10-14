@@ -145,19 +145,19 @@ test('checker registry modifications and captured package script drift fail befo
   } finally { f.cleanup(); }
 });
 
-test('default receipt boundary requires exact canonical AgentDB bytes, queued output never proves completion', () => {
+test('default receipt boundary requires exact canonical AgentDB readback; a refused or differing store never proves completion', () => {
   const f = fixture(); try {
-    let row;
-    class Journal { constructor() { this.db = '/canonical/.swarm/memory.db'; }
-      record([event]) { row = { key: 'exact-current-key', event, digest: 'receipt-digest' }; return [row]; } }
     const receipt = { status: 'complete', at: new Date().toISOString() };
-    const inject = { Journal, drainJournal: () => ({ remaining: 1 }), read: () => ({ ok: true, value: null }) };
-    assert.throws(() => commitManagedReceipt(f.input, receipt, inject), /queued is not complete/);
-    inject.read = (_db, query) => ({ ok: true, value: query({ readContent: (namespace, key) => {
-      assert.equal(namespace, 'continuity-events'); assert.equal(key, 'exact-current-key'); return JSON.stringify(row.event); } }) });
-    assert.equal(commitManagedReceipt(f.input, receipt, inject).agentDbCommitted, true);
-    inject.read = () => ({ ok: true, value: '{}' });
-    assert.throws(() => commitManagedReceipt(f.input, receipt, inject), /exact receipt readback failed/);
+    assert.throws(() => commitManagedReceipt(f.input, receipt, { store: () => ({ verified: false, error: 'ruflo memory store refused' }) }),
+      /exact receipt readback failed: ruflo memory store refused/);
+    assert.throws(() => commitManagedReceipt(f.input, receipt, { store: () => ({ verified: false }) }), /exact receipt readback failed: value differs/);
+    let seen;
+    const committed = commitManagedReceipt(f.input, receipt, { store: (args) => { seen = args; return { verified: true }; } });
+    assert.equal(committed.agentDbCommitted, true);
+    assert.equal(seen.namespace, 'continuity-events');
+    assert.match(seen.key, /^cevt-workflow-/);
+    assert.match(seen.db, /\.swarm/);
+    assert.equal(JSON.parse(seen.value).summary.startsWith('Managed workflow '), true);
   } finally { f.cleanup(); }
 });
 

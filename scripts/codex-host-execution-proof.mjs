@@ -25,7 +25,7 @@ export function startupDeclaration(listed, cwd) {
   const triggered = new Set(['sessionStart', 'userPromptSubmit', 'stop', 'sessionEnd']);
   if (groups[0].hooks.some((row) => triggered.has(row.eventName) && row.enabled !== false
     && (row.pluginId !== OWNER || row.handlerType !== 'command' || !['trusted', 'managed'].includes(row.trustStatus)))) throw new Error('Foreign or non-command enabled turn/startup handler prevents owned execution');
-  // Independently bound published siblings (e.g. learn-flush) may share this event/source file.
+  // Independently bound published siblings (e.g. a learning hook) may share this event/source file.
   const bodies = starts.filter((row) => /\s(?:\d+\s+)?session-start\s*$/.test(row.command || ''));
   if (bodies.length !== 1 || !Number.isSafeInteger(bodies[0].displayOrder) || bodies[0].displayOrder < 0) throw new Error('Exact published SessionStart body identity is unavailable');
   return bodies[0];

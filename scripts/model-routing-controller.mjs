@@ -7,8 +7,9 @@ import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { performance } from 'node:perf_hooks';
 import { validateDispatchDecision } from './model-router-dispatch.mjs';
-import { ContinuityJournal, drain } from '../plugin/scripts/continuity-journal.mjs';
-import { EVENT_SCHEMA } from '../plugin/scripts/continuity-events.mjs';
+import { CONTINUITY_NAMESPACE, EVENT_SCHEMA } from '../plugin/scripts/continuity-events.mjs';
+import { storeExact } from '../plugin/scripts/ruflo-memory-hooks.mjs';
+import { resolveProjectStore } from '../plugin/scripts/project-store-resolver.mjs';
 import { collectMacPressure, effectiveAgentRecommendation } from '../plugin/scripts/capacity-aware-parallel-work.mjs';
 
 const HASH = /^[a-f0-9]{64}$/;
@@ -271,15 +272,15 @@ function guardAdapters(adapters, request, budget, now, admission) {
   }));
 }
 
-export function durableWorkflowReceipt(request, receipt) {
-  const journal = new ContinuityJournal({ projectRoot: request.projectRoot });
+export function durableWorkflowReceipt(request, receipt, { store = storeExact } = {}) {
   const event = { schema: EVENT_SCHEMA, kind: 'decision', id: sha(JSON.stringify(receipt)),
     at: receipt.at, source: 'model-routing-controller', authoritative: true,
     summary: `Routing workflow ${request.id}: ${receipt.status}`, detail: receipt };
-  journal.record([event]);
-  // Existing outbox is durable before the existing exact-readback AgentDB drainer runs.
-  const status = drain(journal, { budgetMs: Math.max(0, Math.min(1000, request.deadline - Date.now())), backoff: [] });
-  return { durable: true, agentDbCommitted: status.remaining === 0, ...status };
+  // Written directly through `ruflo memory store` and proven by exact-key readback; no local outbox.
+  const db = resolveProjectStore({ projectDir: request.projectRoot, gitTimeoutMs: 1000 }).canonicalAgentDbPath;
+  const result = store({ db, namespace: CONTINUITY_NAMESPACE, key: `cevt-routing-${event.id.slice(0, 24)}`, value: JSON.stringify(event),
+    timeoutMs: Math.max(1, Math.min(6000, request.deadline - Date.now())) });
+  return { durable: result.verified, agentDbCommitted: result.verified, ...(result.error ? { error: result.error } : {}) };
 }
 
 function validateAcceptance(request, acceptance) {

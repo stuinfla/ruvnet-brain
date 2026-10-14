@@ -1,0 +1,12 @@
+{
+  "name": "ruvnet-brain",
+  "description": "Source-grounded RuvNet knowledge, write gate, continuation gate and continuity capture for Grok CLI.",
+  "author": {
+    "name": "Stuart Kerr"
+  },
+  "repository": "https://github.com/stuinfla/ruvnet-brain",
+  "license": "MIT",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "hooks": "./hooks/grok-hooks.json"
+}

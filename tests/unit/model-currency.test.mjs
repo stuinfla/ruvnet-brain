@@ -155,6 +155,19 @@ describe('independent currency evidence', () => {
     expect(() => parseCodingAgentEvidence('<html>200 OK</html>', agentMethodology, source)).toThrow(/records absent/);
     expect(() => parseCodingAgentEvidence(agentHtml, '', source)).toThrow(/version absent/);
   });
+  it('drops an incomplete row from a harness we never route to, discloses it, and stays strict for Codex and Claude Code', () => {
+    const rowsOf = (mutate) => { const rows = structuredClone(agentFixture.rows); mutate(rows); return `<script>self.__next_f.push(${JSON.stringify([1, `42:${JSON.stringify({ rows })}\n`])})</script>`; };
+    const mixedIdx = agentFixture.rows.findIndex((r) => String(r.agentName).includes('Devin'));
+    const nativeIdx = agentFixture.rows.findIndex((r) => r.agentName === 'Codex' && r.provider === 'openai');
+    const baseline = parseCodingAgentEvidence(agentHtml, agentMethodology, source);
+    const skipped = parseCodingAgentEvidence(rowsOf((rows) => { rows[mixedIdx].mean.costUsd = null; }), agentMethodology, source);
+    expect(skipped.records.length).toBe(baseline.records.length - 1);
+    expect(skipped.coverage.skippedIncompleteCount).toBe(1);
+    expect(skipped.coverage.skippedIncomplete[0].sourceId).toBe(agentFixture.rows[mixedIdx].id);
+    expect(skipped.records.some((r) => r.sourceId === agentFixture.rows[mixedIdx].id)).toBe(false);
+    expect(() => parseCodingAgentEvidence(rowsOf((rows) => { rows[nativeIdx].mean.costUsd = null; }), agentMethodology, source))
+      .toThrow(/Incomplete coding-agent record/);
+  });
   it('preserves prior agent records when source or methodology collection fails, with explicit stale diagnostics', async () => {
     const routerDir = dir();
     await refreshModelCurrency({ routerDir, now: NOW, fetchImpl: goodFetch, aaUrls: [source.url] });

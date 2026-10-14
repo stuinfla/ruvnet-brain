@@ -42,6 +42,7 @@ import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import { readStopHookInput } from './hook-input.mjs';
+import { isAutomatedRun } from './automated-run.mjs';
 import {
   auditCapabilityClaims,
   buildCapabilityInventoryReceipt,
@@ -335,6 +336,11 @@ if (has('--clear')) { save({ items: [] }); console.log('ledger cleared'); proces
  * with no piped input, and a gate that hangs is worse than a gate that is silent.
  */
 const hookInput = await readStopHookInput(); // shared with grounding-turn-gate: hook-input.mjs (ADR-043)
+
+// AUTOMATED RUNS KEEP THEIR EXACT OUTPUT (4.7.1): scripted `claude -p` / SDK runs and `codex exec` are
+// read by machines, and a correction request rewrote their answers. Same rule as the owner's
+// owner-review-gate.mjs lines 15-24; see automated-run.mjs. Interactive sessions are still gated.
+if (isAutomatedRun()) process.exit(EXIT_ALLOW);
 
 // LOOP-SAFETY 1 (ADR-043 / Fable #1) — only an affirmatively-parsed hook payload may force. A 'tty' or
 // 'unreadable' source cannot be confirmed a fresh stop, so it never forces.

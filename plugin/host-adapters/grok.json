@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "kind": "ruvnet-brain-host-adapter",
+  "id": "grok",
+  "displayName": "Grok CLI",
+  "os": ["linux", "macos", "windows"],
+  "modes": [],
+  "manifest": "plugin/.grok-plugin/plugin.json",
+  "hooks": "plugin/hooks/grok-hooks.json",
+  "loader": "plugin/scripts/grok-hook-adapter.mjs"
+}

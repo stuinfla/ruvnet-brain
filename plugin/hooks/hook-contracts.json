@@ -1,5 +1,5 @@
 {
-  "_note": "The legacy automatic gate collection remains retired. What is permitted is the continuity plane below and nothing else: SessionStart restores the canonical project checkpoint; UserPromptSubmit runs the single unprompted-speech chokepoint; Stop may nudge one explicitly authorized project-scoped objective AND capture a project snapshot; PreCompact and SessionEnd capture a project snapshot. Version 3 of this file permitted exactly two handlers, which was not a safety property but a contradiction: it demanded a restore while forbidding any event that could WRITE the journal the restore reads, so the canonical store held zero progression rows. Adding to this list is still a deliberate act that must pass `npm run hooks:check`; what changed is that the shape can now express the plane that actually works. Amended 2026-09-11 (Stuart): the continuity-only charter had retired the ONLY enforcement of ADR-0012 — never write rUv-product code the brain has not seen — and the failure it exists to prevent recurred the day it was measured absent. The plane now also carries three grounding registrations: ground-ruvnet (UserPromptSubmit, grounding injection — a second owner of that event, scoped by ADR-040 §Amendment 2026-09-11 to directives rather than speech), decision-gate’s write route (PreToolUse, the one refuser, ADR-067), and grounding-stamp (PostToolUse on a successful search_ruvnet, the receipt that opens the write gate). Amended 2026-09-12: the 2026-09-11 claim that Codex PreToolUse/PostToolUse delivery had never been observed was measured with a prompt that never invoked a tool (`codex exec \"reply OK\"`), so it was an untested path, not a failing one. Re-measured with prompts that actually call a tool (a real apply_patch write, a real MCP search_ruvnet call against this repo's own server): both events FIRED on codex-cli 0.154.0 with real payloads. decision-gate's write route and grounding-stamp are now dual-host (see _codexCapture and contracts below); the bash route (exec_command) remains Claude-only — today's measurement did not exercise it. Also amended 2026-09-12: added grounding-turn-mark (UserPromptSubmit) and grounding-turn-gate (Stop), the \"answered without searching\" pair — ground-ruvnet's Gate 1 directive is advisory, so nothing previously checked whether the model complied before the turn ended. grounding-turn-mark records that Gate 1 fired for a turn; grounding-turn-gate forces continuation at Stop if grounding-stamp's own evidence shows no search_ruvnet call happened since. Both dual-host from the start (the Stop-block contract is already proven on Codex via continuation-gate). Added capacity-aware-parallel-work at UserPromptSubmit on both measured hosts: it is context-only, resource-bounded, and requires the coordinator to check actual tool/runtime slots; it does not spawn or claim workers. Amended 2026-09-30 (ADR-0030 decision point #1, no new registration): grounding-turn-mark also arms a turn when the prompt asks a capability/feasibility/architecture question about any tool or platform, and grounding-turn-gate then requires every capability claim in the final answer to be bound to a relevant STRONG source read this turn after the last weak one (a WebFetch body is a small model's summary: weak); on Claude it reads the transcript instead of stamp mtimes, which removed the measured 'no search recorded' false alarms. ADR-0030 #2/#3 run in shadow only. Amendment 2026-10-03: normalized prompt/tool/failure/child observations are automatic; startup replays before restoring. Queued and unavailable evidence remain distinct from exact committed readback. Native Grok prompt recall is unsupported. Amendment 2026-10-11 (ADR-106): learn-flush (SessionStart, SessionEnd) and learn-capture (PostToolUse) are no longer separate registrations; session-start, session-snapshot SessionEnd and session-snapshot PostToolUse run them in-process or detached, with learningContext() still owning consent and brain-off. All three were trailing groups, so no surviving Codex trust position or hash moved. decision-gate gained the decision-recall policy and continuation-gate the decision-record check (ADR-105 §8) without new registrations; the shim records failed advisory bodies for one SessionStart summary.",
+  "_note": "The legacy automatic gate collection remains retired. What is permitted is the continuity plane below and nothing else: SessionStart restores the canonical project checkpoint; UserPromptSubmit runs the single unprompted-speech chokepoint; Stop may nudge one explicitly authorized project-scoped objective AND capture a project snapshot; PreCompact and SessionEnd capture a project snapshot. Version 3 of this file permitted exactly two handlers, which was not a safety property but a contradiction: it demanded a restore while forbidding any event that could WRITE the journal the restore reads, so the canonical store held zero progression rows. Adding to this list is still a deliberate act that must pass `npm run hooks:check`; what changed is that the shape can now express the plane that actually works. Amended 2026-09-11 (Stuart): the continuity-only charter had retired the ONLY enforcement of ADR-0012 — never write rUv-product code the brain has not seen — and the failure it exists to prevent recurred the day it was measured absent. The plane now also carries three grounding registrations: ground-ruvnet (UserPromptSubmit, grounding injection — a second owner of that event, scoped by ADR-040 §Amendment 2026-09-11 to directives rather than speech), decision-gate’s write route (PreToolUse, the one refuser, ADR-067), and grounding-stamp (PostToolUse on a successful search_ruvnet, the receipt that opens the write gate). Amended 2026-09-12: the 2026-09-11 claim that Codex PreToolUse/PostToolUse delivery had never been observed was measured with a prompt that never invoked a tool (`codex exec \"reply OK\"`), so it was an untested path, not a failing one. Re-measured with prompts that actually call a tool (a real apply_patch write, a real MCP search_ruvnet call against this repo's own server): both events FIRED on codex-cli 0.154.0 with real payloads. decision-gate's write route and grounding-stamp are now dual-host (see _codexCapture and contracts below); the bash route (exec_command) remains Claude-only — today's measurement did not exercise it. Also amended 2026-09-12: added grounding-turn-mark (UserPromptSubmit) and grounding-turn-gate (Stop), the \"answered without searching\" pair — ground-ruvnet's Gate 1 directive is advisory, so nothing previously checked whether the model complied before the turn ended. grounding-turn-mark records that Gate 1 fired for a turn; grounding-turn-gate forces continuation at Stop if grounding-stamp's own evidence shows no search_ruvnet call happened since. Both dual-host from the start (the Stop-block contract is already proven on Codex via continuation-gate). Added capacity-aware-parallel-work at UserPromptSubmit on both measured hosts: it is context-only, resource-bounded, and requires the coordinator to check actual tool/runtime slots; it does not spawn or claim workers. Amended 2026-09-30 (ADR-0030 decision point #1, no new registration): grounding-turn-mark also arms a turn when the prompt asks a capability/feasibility/architecture question about any tool or platform, and grounding-turn-gate then requires every capability claim in the final answer to be bound to a relevant STRONG source read this turn after the last weak one (a WebFetch body is a small model's summary: weak); on Claude it reads the transcript instead of stamp mtimes, which removed the measured 'no search recorded' false alarms. ADR-0030 #2/#3 run in shadow only. Amendment 2026-10-03: normalized prompt/tool/failure/child observations are automatic; startup replays before restoring. Queued and unavailable evidence remain distinct from exact committed readback. Native Grok prompt recall is unsupported. Amendment 2026-10-12 (ADR-106): the hand-rolled progression store, outbox, capture queue, continuity journal, turn journal and learning queue are deleted; session-snapshot keeps Stop (turn outcome), PreCompact/SessionEnd (checkpoint + distill) and PostToolUse (opted-in learning), each a direct `ruflo memory store` with exact-key readback, and a refusal is a hook-failures row.",
   "_version": 12,
   "_eventOwners": [
     {
@@ -10,7 +10,7 @@
         "claude",
         "codex"
       ],
-      "responsibility": "Replay consent-eligible pending canonical memory within the shared startup budget, then restore only verified coherent state; disclose pending or unavailable rather than silently treating an older checkpoint as latest."
+      "responsibility": "Restore the newest project-state-current-* checkpoint (and a newer project-state-auto-* one) by exact-key `ruflo memory retrieve`, list lesson keys, and summarize hook failures once; disclose unknown rather than claim a restore."
     },
     {
       "event": "UserPromptSubmit",
@@ -40,7 +40,7 @@
         "claude",
         "codex"
       ],
-      "responsibility": "Persist redacted turn outcomes through the fsynced canonical-project journal; queued is not recorded. No global fallback. Exact-key content readback commits transport; terminal boundaries also distill eligible records."
+      "responsibility": "Write the redacted turn outcome with one bounded `ruflo memory store` in namespace turns and prove it by exact-key readback; a refusal is a hook-failures row. No journal, outbox or replay."
     },
     {
       "event": "PreCompact",
@@ -50,7 +50,7 @@
         "claude",
         "codex"
       ],
-      "responsibility": "The boundary at which context is about to be lost — capture before it is."
+      "responsibility": "Store one append-only project-state-auto-<ms> checkpoint through `ruflo memory store` and read it back by exact key; start turn distillation (`ruflo memory distill run`)."
     },
     {
       "event": "SessionEnd",
@@ -60,7 +60,7 @@
         "claude",
         "codex"
       ],
-      "responsibility": "The boundary at which the session is about to be gone — capture before it is."
+      "responsibility": "Store one append-only project-state-auto-<ms> checkpoint through `ruflo memory store` and read it back by exact key; start turn distillation (`ruflo memory distill run`)."
     },
     {
       "event": "UserPromptSubmit",
@@ -123,26 +123,6 @@
       "responsibility": "The 'answered without searching' gate (2026-09-12): if grounding-turn-mark's marker shows Gate 1 fired this turn and grounding-stamp's own stamp evidence shows no search_ruvnet call happened since, forces continuation via the same hookSpecificOutput.additionalContext contract continuation-gate already uses on both hosts. A separate registration from continuation-gate — see grounding-turn-gate.mjs's header for why folding it into that file's ledger/cooldown semantics would corrupt them rather than extend them. Consumes its marker unconditionally so a stale one can never pressure an unrelated later turn. Amended 2026-09-30 (ADR-0030 #1): on Claude, 'was search_ruvnet called' is read from the transcript, and on an armed turn each capability claim in the final answer must be bound to a relevant strong source read this turn after the last weak one, else ONE correction naming the claim and what was read; on Codex (rollout not parsed) only rUv-term claims are judged, from stamps, and the rest are UNKNOWN. Gates #2/#3 are shadow-logged, never delivered."
     },
     {
-      "event": "UserPromptSubmit",
-      "owner": "session-snapshot",
-      "class": "normalized continuity observation",
-      "hosts": [
-        "claude",
-        "codex"
-      ],
-      "responsibility": "Capture bounded redacted observable intent or outcome through the canonical progression bridge; retain pending/failed status and do not infer success from pre-tool intent."
-    },
-    {
-      "event": "PreToolUse",
-      "owner": "session-snapshot",
-      "class": "normalized continuity observation",
-      "hosts": [
-        "claude",
-        "codex"
-      ],
-      "responsibility": "Capture bounded redacted observable intent or outcome through the canonical progression bridge; retain pending/failed status and do not infer success from pre-tool intent."
-    },
-    {
       "event": "PostToolUse",
       "owner": "session-snapshot",
       "class": "normalized continuity observation",
@@ -150,26 +130,7 @@
         "claude",
         "codex"
       ],
-      "responsibility": "Capture bounded redacted observable intent or outcome through the canonical progression bridge; retain pending/failed status and do not infer success from pre-tool intent."
-    },
-    {
-      "event": "PostToolUseFailure",
-      "owner": "session-snapshot",
-      "class": "normalized continuity observation",
-      "hosts": [
-        "claude"
-      ],
-      "responsibility": "Capture bounded redacted observable intent or outcome through the canonical progression bridge; retain pending/failed status and do not infer success from pre-tool intent."
-    },
-    {
-      "event": "SubagentStop",
-      "owner": "session-snapshot",
-      "class": "normalized continuity observation",
-      "hosts": [
-        "claude",
-        "codex"
-      ],
-      "responsibility": "Capture bounded redacted observable intent or outcome through the canonical progression bridge; retain pending/failed status and do not infer success from pre-tool intent."
+      "responsibility": "When learning is opted in, write one minimized workflow observation with `ruflo memory store` + exact-key readback; a refusal is a hook-failures row. No queue."
     }
   ],
   "_notInThisPlane": [
@@ -360,54 +321,7 @@
     },
     {
       "id": "session-snapshot",
-      "event": "UserPromptSubmit",
-      "hosts": [
-        "claude",
-        "codex"
-      ],
-      "mode": "advisory",
-      "offBehavior": "run",
-      "matcher": "*",
-      "timeout": 10
-    },
-    {
-      "id": "session-snapshot",
-      "event": "PreToolUse",
-      "hosts": [
-        "claude",
-        "codex"
-      ],
-      "mode": "advisory",
-      "offBehavior": "run",
-      "matcher": "*",
-      "timeout": 10
-    },
-    {
-      "id": "session-snapshot",
       "event": "PostToolUse",
-      "hosts": [
-        "claude",
-        "codex"
-      ],
-      "mode": "advisory",
-      "offBehavior": "run",
-      "matcher": "*",
-      "timeout": 10
-    },
-    {
-      "id": "session-snapshot",
-      "event": "PostToolUseFailure",
-      "hosts": [
-        "claude"
-      ],
-      "mode": "advisory",
-      "offBehavior": "run",
-      "matcher": "*",
-      "timeout": 10
-    },
-    {
-      "id": "session-snapshot",
-      "event": "SubagentStop",
       "hosts": [
         "claude",
         "codex"
@@ -470,38 +384,10 @@
     },
     {
       "layer": "plugin",
-      "event": "PreToolUse",
-      "matcher": "*",
-      "reason": "Observe normalized lifecycle transitions independently of the write-refusal and grounding matchers; the body enforces canonical identity, consent and bounded non-authoritative semantic observations.",
-      "retiredBy": "not retired - owner automatic AgentDB mandate 2026-10-03"
-    },
-    {
-      "layer": "plugin",
       "event": "PostToolUse",
       "matcher": "*",
       "reason": "Observe normalized lifecycle transitions independently of the write-refusal and grounding matchers; the body enforces canonical identity, consent and bounded non-authoritative semantic observations.",
       "retiredBy": "not retired - owner automatic AgentDB mandate 2026-10-03"
-    },
-    {
-      "layer": "plugin",
-      "event": "PostToolUseFailure",
-      "matcher": "*",
-      "reason": "Observe normalized lifecycle transitions independently of the write-refusal and grounding matchers; the body enforces canonical identity, consent and bounded non-authoritative semantic observations.",
-      "retiredBy": "not retired - owner automatic AgentDB mandate 2026-10-03"
-    },
-    {
-      "layer": "plugin",
-      "event": "SubagentStop",
-      "matcher": "*",
-      "reason": "Observe normalized lifecycle transitions independently of the write-refusal and grounding matchers; the body enforces canonical identity, consent and bounded non-authoritative semantic observations.",
-      "retiredBy": "not retired - owner automatic AgentDB mandate 2026-10-03"
-    },
-    {
-      "layer": "codex",
-      "event": "PreToolUse",
-      "matcher": "*",
-      "reason": "Canonical observation owner sees tool transitions before normalization; bounded body selects substantive observations. The independent anchored decision and grounding matchers remain unchanged.",
-      "retiredBy": "not retired - automatic memory mandate 2026-10-03"
     },
     {
       "layer": "codex",
@@ -548,13 +434,6 @@
     {
       "layer": "codex",
       "event": "SessionEnd",
-      "matcher": "*",
-      "reason": "Explicit supported Codex lifecycle registration, corresponding to the host-filtered continuity policy; its enforcing handler and live registration are checked independently.",
-      "retiredBy": "not retired - canonical continuity host parity"
-    },
-    {
-      "layer": "codex",
-      "event": "SubagentStop",
       "matcher": "*",
       "reason": "Explicit supported Codex lifecycle registration, corresponding to the host-filtered continuity policy; its enforcing handler and live registration are checked independently.",
       "retiredBy": "not retired - canonical continuity host parity"

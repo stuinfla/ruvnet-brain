@@ -22,9 +22,9 @@ The two independent source audits record bounded semantic reads and open finding
 | `claude/PreCompact/session-snapshot` | advisory | Recorded; findings open | UNKNOWN |
 | `claude/PreToolUse/decision-gate` | blocking | Recorded; findings open | UNKNOWN |
 | `claude/PreToolUse/session-snapshot` | advisory | Recorded; findings open | UNKNOWN |
-| `claude/SessionEnd/learn-flush` | advisory | Recorded; findings open | UNKNOWN |
+| `claude/SessionEnd/the former learning flusher (deleted 2026-10-12)` | advisory | Recorded; findings open | UNKNOWN |
 | `claude/SessionEnd/session-snapshot` | advisory | Recorded; findings open | UNKNOWN |
-| `claude/SessionStart/learn-flush` | advisory | Recorded; findings open | UNKNOWN |
+| `claude/SessionStart/the former learning flusher (deleted 2026-10-12)` | advisory | Recorded; findings open | UNKNOWN |
 | `claude/SessionStart/session-start` | advisory | Recorded; findings open | UNKNOWN |
 | `claude/Stop/continuation-gate` | advisory | Recorded; findings open | UNKNOWN |
 | `claude/Stop/grounding-turn-gate` | advisory | Recorded; findings open | UNKNOWN |
@@ -40,9 +40,9 @@ The two independent source audits record bounded semantic reads and open finding
 | `codex/PostToolUse/session-snapshot` | advisory | Recorded; findings open | UNKNOWN |
 | `codex/PreToolUse/decision-gate` | blocking | Recorded; findings open | UNKNOWN |
 | `codex/PreToolUse/session-snapshot` | advisory | Recorded; findings open | UNKNOWN |
-| `codex/SessionEnd/learn-flush` | advisory | Recorded; findings open | UNKNOWN |
+| `codex/SessionEnd/the former learning flusher (deleted 2026-10-12)` | advisory | Recorded; findings open | UNKNOWN |
 | `codex/SessionEnd/session-snapshot` | advisory | Recorded; findings open | UNKNOWN |
-| `codex/SessionStart/learn-flush` | advisory | Recorded; findings open | UNKNOWN |
+| `codex/SessionStart/the former learning flusher (deleted 2026-10-12)` | advisory | Recorded; findings open | UNKNOWN |
 | `codex/SessionStart/session-start` | advisory | Recorded; findings open | UNKNOWN |
 | `codex/Stop/continuation-gate` | advisory | Recorded; findings open | UNKNOWN |
 | `codex/Stop/grounding-turn-gate` | advisory | Recorded; findings open | UNKNOWN |

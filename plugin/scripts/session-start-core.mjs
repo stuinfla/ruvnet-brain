@@ -26,8 +26,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { enrollmentPlan } from './project-memory-enrollment.mjs';
-import { restoreWithBrief } from './continuity-brief.mjs';
+import { restore as restoreFromRuflo } from './ruflo-memory-hooks.mjs';
 import { turnRecordingStatus } from './turn-outcome-capture.mjs';
 import {
   read, json, exists, mkdir, write, runNode,
@@ -93,13 +92,12 @@ export async function runSessionStart({
   stdout = process.stdout,
   stderr = process.stderr,
   platform = process.platform,
-  restoreContinuity = restoreWithBrief,
+  restoreContinuity = restoreFromRuflo,
   runHeartbeat = true,
   sessionSource = 'startup',
   probeConsoleAlias = probeCodexConsoleAlias,
   startedAt = Date.now(),
   deadlineAt = Infinity,
-  scheduleRecovery = true,
 } = {}) {
   const hookDeadlineAt = Math.min(deadlineAt, sessionStartDeadlineAt({ host: env.RUVNET_HOOK_HOST || 'claude', env, startedAt }));
   const lines = [];
@@ -195,11 +193,6 @@ export async function runSessionStart({
     }
   };
 
-  // Report only. SessionStart never creates or bootstraps a store (ADR-105 rule 6); enrollment starts at the first
-  // consented captured boundary, so a session that merely started leaves no store behind.
-  let enrollment;
-  try { enrollment = enrollmentPlan({ projectDir: cwd, env, deadlineAt: hookDeadlineAt }); } catch (error) { enrollment = { state: 'unavailable', reason: error.message }; }
-  if (enrollment.state === 'pending' || enrollment.state === 'unavailable') emit(`[RuvNet Brain — TURN CAPTURE] Project memory enrollment ${enrollment.state}; restoration is not yet proven.`);
   const restoreStart = Date.now();
   const restoreDeadlineAt = Math.min(hookDeadlineAt, restoreStart + STAGE_BUDGETS_MS.restore);
   const restoreController = new AbortController();
@@ -454,9 +447,6 @@ export async function runSessionStart({
   stdout.write(output);
   trace('body-finished');
   recordProof({ stages: tracer.table(), restore: restoreProof, bodyFailed, bannerFallback: !bannerEmitted });
-  // ADR-106: learning recovery rides SessionStart instead of a second SessionStart registration.
-  // learningContext() inside owns consent and brain-off; the detached worker is never awaited.
-  if (scheduleRecovery) { try { (await import('./learn-capture.mjs')).scheduleLearningRecovery({ cwd, env }); } catch { /* advisory */ } }
   return { ok: true, outputBytes: Buffer.byteLength(output, 'utf8'), platform };
 }
 

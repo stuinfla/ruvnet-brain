@@ -201,8 +201,8 @@ describe('closed world: the real hooks.json routes every unprompted producer thr
     // speech-shaped hook reappears on PreToolUse — survives by pinning the registration to exactly
     // decision-gate's known-safe write matcher, not to emptiness.
     const preToolUse = realHooks().hooks.PreToolUse;
-    // Observational capture also runs here; it must not become a second speech writer.
-    expect(preToolUse).toHaveLength(2);
+    // Only decision-gate's write route is registered here; no speech-shaped hook may reappear.
+    expect(preToolUse).toHaveLength(1);
     const writeGate = preToolUse.find((entry) => entry.matcher === '^(Write|Edit|MultiEdit|NotebookEdit|apply_patch)$');
     expect(writeGate).toBeDefined();
     for (const entry of preToolUse) for (const hook of entry.hooks) {

@@ -8,7 +8,7 @@ One thing I agree with: splitting boot-frozen declarations from invoked behavior
 
 1. **BLOCKER — The ADR is marked Accepted, but the described spine is not implemented.**
 
-   `plugin/hooks/hooks.json` still invokes `${CLAUDE_PLUGIN_ROOT}/scripts/*.sh` and `${CLAUDE_PLUGIN_ROOT}/scripts/learn-flush.mjs` directly (`hooks.json:11`, `:21`, `:33`, `:45`, `:55`, `:65`, `:75`, `:87`, `:99`). `plugin/mcp/server.mjs` is still a one-shot `spawn('node', [MCP], { stdio: 'inherit' })` launcher (`server.mjs:41`). `scripts/update-apply.mjs` does not exist. `scripts/forge-update.mjs` does not exist. `scripts/release.mjs` has no gate for hook shim presence, reload-stamp behavior, `requiresRestart`, or spine integrity. As written, the ADR is not an accepted design record for shipped behavior; it is a future implementation sketch with production claims.
+   `plugin/hooks/hooks.json` still invokes `${CLAUDE_PLUGIN_ROOT}/scripts/*.sh` and `${CLAUDE_PLUGIN_ROOT}/the former learning flusher (deleted 2026-10-12)` directly (`hooks.json:11`, `:21`, `:33`, `:45`, `:55`, `:65`, `:75`, `:87`, `:99`). `plugin/mcp/server.mjs` is still a one-shot `spawn('node', [MCP], { stdio: 'inherit' })` launcher (`server.mjs:41`). `scripts/update-apply.mjs` does not exist. `scripts/forge-update.mjs` does not exist. `scripts/release.mjs` has no gate for hook shim presence, reload-stamp behavior, `requiresRestart`, or spine integrity. As written, the ADR is not an accepted design record for shipped behavior; it is a future implementation sketch with production claims.
 
    Superior alternative: downgrade the ADR status to Proposed until the shell shims, update engine, proxy semantics, release gates, and failure tests are present. Add release gates that fail if hooks still reference `${CLAUDE_PLUGIN_ROOT}/scripts/` directly or if `scripts/update-apply.mjs` is missing.
 
@@ -98,7 +98,7 @@ One thing I agree with: splitting boot-frozen declarations from invoked behavior
 
 16. **MAJOR — The proposed hook shim is POSIX-only and omits `.mjs` hooks.**
 
-   ADR-0023 describes `hook-shim.sh <name>` resolving `current/plugin/scripts/<name>`. Current hooks include shell scripts and a Node script (`learn-flush.mjs`, `hooks.json:99`). Some hook names include extensions in declarations, some ADR prose examples omit them. Without a typed script manifest, the shim will either hard-code extensions or fail on non-shell hooks.
+   ADR-0023 describes `hook-shim.sh <name>` resolving `current/plugin/scripts/<name>`. Current hooks include shell scripts and a Node script (`the former learning flusher (deleted 2026-10-12)`, `hooks.json:99`). Some hook names include extensions in declarations, some ADR prose examples omit them. Without a typed script manifest, the shim will either hard-code extensions or fail on non-shell hooks.
 
    Superior alternative: use a Node shim with a small dispatch table: hook id -> relative executable, interpreter, advisory/blocking mode, timeout expectations, and minimum body version. Node is already required for MCP and installer.
 
@@ -212,7 +212,7 @@ One thing I agree with: splitting boot-frozen declarations from invoked behavior
 
 1. **BLOCKER — The ADR is marked Accepted, but the described spine is not implemented.**
 
-   `plugin/hooks/hooks.json` still invokes `${CLAUDE_PLUGIN_ROOT}/scripts/*.sh` and `${CLAUDE_PLUGIN_ROOT}/scripts/learn-flush.mjs` directly (`hooks.json:11`, `:21`, `:33`, `:45`, `:55`, `:65`, `:75`, `:87`, `:99`). `plugin/mcp/server.mjs` is still a one-shot `spawn('node', [MCP], { stdio: 'inherit' })` launcher (`server.mjs:41`). `scripts/update-apply.mjs` does not exist. `scripts/forge-update.mjs` does not exist. `scripts/release.mjs` has no gate for hook shim presence, reload-stamp behavior, `requiresRestart`, or spine integrity. As written, the ADR is not an accepted design record for shipped behavior; it is a future implementation sketch with production claims.
+   `plugin/hooks/hooks.json` still invokes `${CLAUDE_PLUGIN_ROOT}/scripts/*.sh` and `${CLAUDE_PLUGIN_ROOT}/the former learning flusher (deleted 2026-10-12)` directly (`hooks.json:11`, `:21`, `:33`, `:45`, `:55`, `:65`, `:75`, `:87`, `:99`). `plugin/mcp/server.mjs` is still a one-shot `spawn('node', [MCP], { stdio: 'inherit' })` launcher (`server.mjs:41`). `scripts/update-apply.mjs` does not exist. `scripts/forge-update.mjs` does not exist. `scripts/release.mjs` has no gate for hook shim presence, reload-stamp behavior, `requiresRestart`, or spine integrity. As written, the ADR is not an accepted design record for shipped behavior; it is a future implementation sketch with production claims.
 
    Superior alternative: downgrade the ADR status to Proposed until the shell shims, update engine, proxy semantics, release gates, and failure tests are present. Add release gates that fail if hooks still reference `${CLAUDE_PLUGIN_ROOT}/scripts/` directly or if `scripts/update-apply.mjs` is missing.
 
@@ -302,7 +302,7 @@ One thing I agree with: splitting boot-frozen declarations from invoked behavior
 
 16. **MAJOR — The proposed hook shim is POSIX-only and omits `.mjs` hooks.**
 
-   ADR-0023 describes `hook-shim.sh <name>` resolving `current/plugin/scripts/<name>`. Current hooks include shell scripts and a Node script (`learn-flush.mjs`, `hooks.json:99`). Some hook names include extensions in declarations, some ADR prose examples omit them. Without a typed script manifest, the shim will either hard-code extensions or fail on non-shell hooks.
+   ADR-0023 describes `hook-shim.sh <name>` resolving `current/plugin/scripts/<name>`. Current hooks include shell scripts and a Node script (`the former learning flusher (deleted 2026-10-12)`, `hooks.json:99`). Some hook names include extensions in declarations, some ADR prose examples omit them. Without a typed script manifest, the shim will either hard-code extensions or fail on non-shell hooks.
 
    Superior alternative: use a Node shim with a small dispatch table: hook id -> relative executable, interpreter, advisory/blocking mode, timeout expectations, and minimum body version. Node is already required for MCP and installer.
 

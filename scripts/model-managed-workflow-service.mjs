@@ -9,9 +9,8 @@ import { runRoutingWorkflow, validateWorkflowRequest, artifactDigest, verifyCont
 import { createGuardedWorkflowAdapters, runObservedWorkflowWorker, nativeWorkflowBinaries } from './model-routing-execution-adapters.mjs';
 import { extractFeatures, selectDecision, loadPolicy, loadProfile, applyProfile, loadCatalog } from './model-router-engine.mjs';
 import { validateDispatchDecision, subscriptionEnvironment } from './model-router-dispatch.mjs';
-import { ContinuityJournal, drain } from '../plugin/scripts/continuity-journal.mjs';
+import { storeExact } from '../plugin/scripts/ruflo-memory-hooks.mjs';
 import { CONTINUITY_NAMESPACE, EVENT_SCHEMA, redactText } from '../plugin/scripts/continuity-events.mjs';
-import { withProgressionReader } from '../plugin/scripts/project-progression-reader.mjs';
 import { recall } from '../plugin/scripts/agentdb-recall.mjs';
 import { resolveProjectStore } from '../plugin/scripts/project-store-resolver.mjs';
 import { selectPracticalRules, practicalSelectionReceipt } from './practical-rule-selector.mjs';
@@ -262,18 +261,18 @@ export async function runRegisteredChecker(check, { deadline, signal, env = proc
   return result;
 }
 
-/** Completion requires the exact current receipt row in the adopted canonical store; queued debt fails closed. */
-export function commitManagedReceipt(request, receipt, { Journal = ContinuityJournal, drainJournal = drain, read = withProgressionReader } = {}) {
+/** Completion requires the receipt written through `ruflo memory store` and read back by exact key. */
+export function commitManagedReceipt(request, receipt, { store = storeExact } = {}) {
   const resolved = resolveProjectStore({ projectDir: request.projectRoot, gitTimeoutMs: 1000 });
-  const journal = new Journal({ projectRoot: resolved.projectRoot, projectDir: request.projectRoot });
   const event = { schema: EVENT_SCHEMA, kind: 'decision', id: sha(JSON.stringify(receipt)).slice(0, 16),
     at: receipt.at, source: 'model-managed-workflow-service', authoritative: true,
     summary: `Managed workflow ${request.id}: ${receipt.status}`, detail: receipt };
-  const [row] = journal.record([event]); assert(row, 'Current workflow receipt was not durably enqueued');
-  drainJournal(journal, { budgetMs: Math.max(0, Math.min(1000, request.deadline - Date.now())), backoff: [] });
-  const readback = read(journal.db, (reader) => reader.readContent(CONTINUITY_NAMESPACE, row.key));
-  assert(readback.ok && readback.value === JSON.stringify(row.event), 'Canonical AgentDB exact receipt readback failed; queued is not complete');
-  return { durable: true, agentDbCommitted: true, key: row.key, digest: row.digest };
+  const key = `cevt-workflow-${event.id}`;
+  const value = JSON.stringify(event);
+  const result = store({ db: resolved.canonicalAgentDbPath, namespace: CONTINUITY_NAMESPACE, key, value,
+    timeoutMs: Math.max(1, Math.min(6000, request.deadline - Date.now())) });
+  assert(result.verified, `Canonical AgentDB exact receipt readback failed: ${result.error || 'value differs'}`);
+  return { durable: true, agentDbCommitted: true, key, digest: sha(value) };
 }
 
 function validateStoredRegistry(request) {

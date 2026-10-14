@@ -29,10 +29,10 @@ describe('architecture QA checks named source, not only contract syntax', () => 
   });
   it('fails with the exact absent implementation and acceptance test', () => {
     const root = fixture();
-    for (const file of ['kb/update-storage-transaction.mjs', 'tests/acceptance/cross-host-project-resume.test.mjs']) fs.unlinkSync(path.join(root, file));
+    for (const file of ['kb/update-storage-transaction.mjs', 'tests/integration/ruflo-memory-hooks.test.mjs']) fs.unlinkSync(path.join(root, file));
     const { code, report } = check(root);
     expect(code).toBe(1);
-    expect(report.missing).toEqual(['kb/update-storage-transaction.mjs', 'tests/acceptance/cross-host-project-resume.test.mjs']);
+    expect(report.missing).toEqual(['kb/update-storage-transaction.mjs', 'tests/integration/ruflo-memory-hooks.test.mjs']);
   });
   it('refuses directories and symlinks in place of governed source', () => {
     const root = fixture();

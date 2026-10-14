@@ -1,8 +1,15 @@
-/** Bounded read-only projection of canonical Ruflo rows; never opens a second store.
- * Run as an owned child so SQLite/filesystem stalls can be retired at the recall deadline.
- * Unsupported schema stands down to global Ruflo; malformed/duplicate rows fail closed.
+/** Bounded read-only projection of canonical Ruflo rows THROUGH THE RUFLO CLI — never direct SQLite
+ * (owner ruling 2026-10-12: hooks call rUv's tools, they do not reimplement them). Run as an owned child
+ * so a stalled CLI is retired at the recall deadline. Output contract unchanged: {ok, value}.
  */
-import { withProgressionReader } from './project-progression-reader.mjs';
+import { execFile } from 'node:child_process';
+import { resolveRuflo } from './ruflo-bin.mjs';
+
+const call = (bin, args, deadline) => new Promise((resolve) => {
+  const timeout = Math.max(1, deadline - Date.now());
+  execFile(bin, args, { timeout, killSignal: 'SIGKILL', encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' } },
+    (error, stdout) => resolve(error ? null : String(stdout || '')));
+});
 
 try {
   const [storePath, input] = process.argv.slice(2);
@@ -12,11 +19,24 @@ try {
       || requests.some(row => typeof row?.namespace !== 'string' || typeof row?.key !== 'string' || !row.key))
     || namespaces && (!Array.isArray(namespaces) || namespaces.length > 8 || namespaces.some(value => typeof value !== 'string'))
     || Boolean(requests) === Boolean(namespaces)) throw new Error('invalid bounded read');
-  const result = withProgressionReader(storePath, reader => requests
-    ? requests.map(({ namespace, key }) => reader.readContent(namespace, key))
-    : Object.fromEntries(namespaces.map(namespace => [namespace, reader.listKeys(namespace, { maxEntries: 100000 })])),
-  { deadlineAt: deadline });
-  process.stdout.write(JSON.stringify(result));
+  const bin = resolveRuflo();
+  if (!bin) throw new Error('global Ruflo unavailable');
+  let value;
+  if (requests) {
+    value = await Promise.all(requests.map(async ({ namespace, key }) => {
+      const out = await call(bin, ['memory', 'retrieve', '--key', key, '--namespace', namespace, '--value-only', '--path', storePath], deadline);
+      return out === null ? null : out.trim();
+    }));
+  } else {
+    const lists = await Promise.all(namespaces.map(async (namespace) => {
+      const out = await call(bin, ['memory', 'list', '--namespace', namespace, '--limit', '100000', '--format', 'json', '--path', storePath], deadline);
+      if (out === null) throw new Error('list failed');
+      const at = out.indexOf('[');
+      return [namespace, at < 0 ? [] : JSON.parse(out.slice(at)).map((row) => row.key).filter((key) => typeof key === 'string')];
+    }));
+    value = Object.fromEntries(lists);
+  }
+  process.stdout.write(JSON.stringify({ ok: true, value }));
 } catch {
   process.stdout.write(JSON.stringify({ ok: false, fatal: true }));
 }

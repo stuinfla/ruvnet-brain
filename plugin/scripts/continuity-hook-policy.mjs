@@ -20,9 +20,10 @@
  *   session-start       continuity recovery   at SessionStart       claude, codex
  *   unprompted-speech   advisory delivery     at UserPromptSubmit   claude, codex
  *   continuation-gate   continuation nudge    at turn end           claude, codex
- *   session-snapshot    continuity capture    at turn end           claude, codex
- *   session-snapshot    continuity capture    at PreCompact         claude
- *   session-snapshot    continuity capture    at SessionEnd         claude, codex
+ *   session-snapshot    turn outcome (ruflo)  at Stop               claude, codex
+ *   session-snapshot    checkpoint (ruflo)    at PreCompact         claude, codex
+ *   session-snapshot    checkpoint (ruflo)    at SessionEnd         claude, codex
+ *   session-snapshot    learning (opt-in)     at PostToolUse        claude, codex
  *   ground-ruvnet       grounding injection   at UserPromptSubmit   claude, codex
  *   capacity-aware-parallel-work coordination guidance at UserPromptSubmit claude, codex
  *   decision-gate       write authorization   at PreToolUse (write) claude, codex
@@ -122,11 +123,9 @@ const registration = (id, matcher, hosts) => Object.freeze({ id, matcher, hosts:
  */
 export const CONTINUITY_EVENTS = Object.freeze({
   SessionStart: Object.freeze([
-    // learn-flush is no longer its own registration (ADR-106): session-start schedules it detached.
     registration('session-start', 'startup|resume|clear|compact|fork', ['claude', 'codex']),
   ]),
   UserPromptSubmit: Object.freeze([
-    registration('session-snapshot', '*', ['claude', 'codex']),
     registration('unprompted-speech', '*', ['claude', 'codex']),
     registration('ground-ruvnet', '*', ['claude', 'codex']),
     // Context-only recommendation for clearly substantial, independently splittable work. The
@@ -144,7 +143,6 @@ export const CONTINUITY_EVENTS = Object.freeze({
   // Claude's `Edit` shape for decision-gate.mjs's own policies (protect-state, hijack-ruvnet,
   // ground-before-write, adr-currency all then see tool_name:"Edit" exactly as on Claude).
   PreToolUse: Object.freeze([
-    registration('session-snapshot', '*', ['claude', 'codex']),
     registration('decision-gate', '^(Write|Edit|MultiEdit|NotebookEdit|apply_patch)$', ['claude', 'codex']),
   ]),
   // Extended to Codex 2026-09-12: a real MCP `search_ruvnet` call was measured to fire PostToolUse
@@ -154,15 +152,9 @@ export const CONTINUITY_EVENTS = Object.freeze({
   // no change either (proven live: the real MCP tool_response's `content[0].text` carries the exact
   // "Searched N RuvNet repos" banner and query text the script already looks for).
   PostToolUse: Object.freeze([
-    // learn-capture runs in-process inside session-snapshot's PostToolUse boundary (ADR-106).
+    // Learning observation (consent-gated `ruflo memory store`) runs inside session-snapshot's PostToolUse body.
     registration('session-snapshot', '*', ['claude', 'codex']),
     registration('grounding-stamp', '^(?:.*__)?search_ruvnet$', ['claude', 'codex']),
-  ]),
-  PostToolUseFailure: Object.freeze([
-    registration('session-snapshot', '*', ['claude']),
-  ]),
-  SubagentStop: Object.freeze([
-    registration('session-snapshot', '*', ['claude', 'codex']),
   ]),
   Stop: Object.freeze([
     registration('continuation-gate', '*', ['claude', 'codex']),
@@ -186,7 +178,6 @@ export const CONTINUITY_EVENTS = Object.freeze({
     registration('session-snapshot', '*', ['claude', 'codex']),
   ]),
   SessionEnd: Object.freeze([
-    // learn-flush is scheduled by session-snapshot's SessionEnd boundary (ADR-106).
     registration('session-snapshot', '*', ['claude', 'codex']),
   ]),
 });

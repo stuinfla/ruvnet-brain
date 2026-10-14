@@ -18,7 +18,7 @@
  *   lesson     an owner correction / standing rule, or explicit        explicit only is authoritative
  *   open-item  explicit only (the work ledger is read live, not copied) authoritative
  *
- * Each event is redacted (redactProgression), bounded (SUMMARY_LIMIT), and carries a content-derived
+ * Each event is redacted (redactProgression, below), bounded (SUMMARY_LIMIT), and carries a content-derived
  * `id` so the same commit, decision or lesson is recorded once however many boundaries see it.
  *
  * PRIVACY. Turn capture never stores user text (a 2026-07-13 measurement: prompt echoes were 87% of a
@@ -31,7 +31,95 @@
 import { nativeTurnLines } from './native-turn-transcript.mjs';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { redactProgression } from './project-progression-contract.mjs';
+
+// Secret redaction for event payloads: pure functions, no storage.
+function canonicalize(value) {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) {
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalize(value[key])]));
+  }
+  throw new TypeError('progression values must be JSON-compatible');
+}
+
+function secretKind(key) {
+  const normalized = key.replace(/[^a-z0-9]/gi, '').toLowerCase();
+  if (normalized.includes('privatekey')) return 'private-key';
+  if (normalized.includes('apikey')) return 'api-key';
+  if (normalized.includes('authorization')) return 'authorization';
+  if (normalized.includes('password') || normalized.includes('passwd')) return 'password';
+  if (normalized.includes('token')) return 'token';
+  if (normalized.includes('secret')) return 'secret';
+  if (normalized.includes('credential')) return 'credential';
+  return null;
+}
+
+const INLINE_SECRETS = Object.freeze([
+  {
+    kind: 'private-key',
+    pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
+    replace: '[REDACTED:private-key]',
+  },
+  {
+    kind: 'bearer-token',
+    pattern: /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi,
+    replace: 'Bearer [REDACTED:bearer-token]',
+  },
+  {
+    kind: 'api-key',
+    pattern: /\b(?:sk|api-key|ghp|github_pat)[-_][A-Za-z0-9._-]{8,}/gi,
+    replace: '[REDACTED:api-key]',
+  },
+  {
+    kind: 'password',
+    pattern: /\b(password|passwd)\s*[:=]\s*[^\s;,]+/gi,
+    replace: '$1=[REDACTED:password]',
+  },
+  {
+    kind: 'token',
+    pattern: /\b(token|secret|credential)\s*[:=]\s*[^\s;,]+/gi,
+    replace: '$1=[REDACTED:token]',
+  },
+]);
+
+export function redactProgression(value) {
+  const redactions = [];
+  const mark = (path, kind) => {
+    if (!redactions.some((row) => row.path === path && row.kind === kind)) redactions.push({ path, kind });
+  };
+  const walk = (current, currentPath) => {
+    if (typeof current === 'string') {
+      let output = current;
+      for (const rule of INLINE_SECRETS) {
+        rule.pattern.lastIndex = 0;
+        const replaced = output.replace(rule.pattern, rule.replace);
+        if (replaced !== output) {
+          mark(currentPath, rule.kind);
+          output = replaced;
+        }
+      }
+      return output;
+    }
+    if (Array.isArray(current)) return current.map((item, index) => walk(item, `${currentPath}[${index}]`));
+    if (current && typeof current === 'object' && Object.getPrototypeOf(current) === Object.prototype) {
+      return Object.fromEntries(Object.keys(current).sort().map((key) => {
+        const path = `${currentPath}.${key}`;
+        const kind = secretKind(key);
+        if (kind && current[key] !== null && current[key] !== undefined) {
+          if (current[key] !== `[REDACTED:${kind}]`) mark(path, kind);
+          return [key, `[REDACTED:${kind}]`];
+        }
+        return [key, walk(current[key], path)];
+      }));
+    }
+    return canonicalize(current);
+  };
+  const redacted = walk(value, '$');
+  redactions.sort((left, right) => left.path.localeCompare(right.path) || left.kind.localeCompare(right.kind));
+  return { value: redacted, redactions };
+}
+
 
 export const CONTINUITY_NAMESPACE = 'continuity-events';
 export const EVENT_SCHEMA = 'ruvnet-brain.continuity-event';

@@ -8,6 +8,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 
 export const FAILURE_FILE = 'hook-failures.jsonl';
 export const FAILURE_LINE_PREFIX = '[RuvNet Brain — HOOK FAILURES]';
@@ -42,4 +43,19 @@ export function failureLine(brainHome, { advance = true } = {}) {
     .map(([id, e]) => `${id} ×${e.n} (${[...e.why].slice(0, 3).join(', ')})`);
   return `${FAILURE_LINE_PREFIX} ${rows.length} advisory hook run(s) did not complete or did not resolve since ${rows[0].at}: ${parts.join('; ')}. `
     + `They failed open. Details: ${file}`;
+}
+
+/**
+ * The writer for bodies that run OUTSIDE the shim's watchdog (a refused `ruflo memory store`, a failed
+ * exact readback). Same file, same row shape as hook-shim.mjs's inlined recordFailure, so the next
+ * SessionStart's failureLine() reports it. Never throws: an unrecordable failure must not become a second one.
+ */
+export function recordHookFailure(fields, { brainHome = process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain') } = {}) {
+  try {
+    const file = path.join(brainHome, FAILURE_FILE);
+    fs.mkdirSync(brainHome, { recursive: true });
+    try { if (fs.statSync(file).size > 256 * 1024) fs.renameSync(file, `${file}.1`); } catch { /* absent */ }
+    fs.appendFileSync(file, `${JSON.stringify({ at: new Date().toISOString(), ...fields })}\n`, { mode: 0o600 });
+    return true;
+  } catch { return false; }
 }

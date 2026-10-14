@@ -59,14 +59,11 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
     },
     {
       "id": "canonical-learning-capture",
-      "reason": "Fixed metadata capture, canonical scope, consent, acknowledgement and bounded owned recovery retain privacy and originals",
+      "reason": "Fixed metadata capture, canonical scope, consent, exact readback and loud refusal retain privacy; learning is handed straight to ruflo memory store with no local queue",
       "files": [
-        "tests/unit/learn-flush-partial-failure.test.mjs",
         "tests/unit/learn-capture-project-root.test.mjs",
         "tests/unit/learn-capture-redaction.test.mjs",
-        "tests/unit/learner-scope-agreement.test.mjs",
-        "tests/unit/health-repair-flush-learning.test.mjs",
-        "tests/unit/learning-worker-supervisor.test.mjs"
+        "tests/unit/learner-scope-agreement.test.mjs"
       ]
     },
     {
@@ -77,7 +74,7 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
     {
       "id": "complete-progression-validation",
       "reason": "Canonical digest validation retains full-history and serialization semantics",
-      "files": ["tests/unit/project-progression-contract.test.mjs"]
+      "files": []
     },
     {
       "id": "signed-artifacts",
@@ -121,16 +118,21 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
     },
     {
       "id": "safe-install-update",
-      "reason": "Installation and update preserve prior and private state and reject invalid dependencies",
+      "reason": "Installation and update preserve prior and private state and reject invalid dependencies; the Codex hook bridge a retained Brain generation shipped upgrades reversibly while edited, linked, shared or foreign-owned bridges stay preserved",
       "files": [
         "tests/unit/automatic-hook-retirement.test.mjs",
+        "tests/unit/codex-wrapper-upgrade-ownership.test.mjs",
         "tests/unit/install-activation-rollback.test.mjs",
         "tests/unit/forge-update-apply-rollback.test.mjs",
         "tests/unit/forge-update-archive-digest.test.mjs",
         "tests/unit/kb-copy-proof-legacy-sidecars.test.mjs",
         "tests/unit/kb-copy-proof-unknown-content.test.mjs",
         "tests/unit/user-model-hook-install.test.mjs"
-      ]
+      ],
+      "platformFiles": {
+        "linux": ["tests/unit/codex-wrapper-upgrade-ownership-links.test.mjs"],
+        "macos": ["tests/unit/codex-wrapper-upgrade-ownership-links.test.mjs"]
+      }
     },
     {
       "id": "approved-native-routing",
@@ -186,7 +188,11 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
         "tests/unit/user-model-prompt-hook.test.mjs",
         "tests/unit/model-routing-policy-promotion.test.mjs",
         "tests/unit/codex-hook-trust.test.mjs"
-      ]
+      ],
+      "platformFiles": {
+        "linux": ["tests/unit/model-weekly-cycle-native-stub.test.mjs", "tests/unit/goldie-weekly-path.test.mjs"],
+        "macos": ["tests/unit/model-weekly-cycle-native-stub.test.mjs", "tests/unit/goldie-weekly-path.test.mjs"]
+      }
     },
     {
       "id": "native-scheduler",
@@ -211,10 +217,17 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       "files": [
         "tests/unit/turn-outcome-capture.test.mjs",
         "tests/unit/turn-capture-content-privacy.test.mjs",
-        "tests/integration/project-progression-hook.test.mjs",
-        "tests/unit/turn-journal-platform.test.mjs",
         "tests/unit/project-store-resolver.test.mjs"
       ]
+    },
+    {
+      "id": "ruflo-runs-under-a-node-that-loads-its-binding",
+      "reason": "Hooks inherit whatever node is first on their PATH; ruflo is run under the first node that can load its own better-sqlite3 (a healthy machine is untouched, and no candidate means no change), so a native memory write is not refused for a node-ABI mismatch",
+      "files": [],
+      "platformFiles": {
+        "linux": ["tests/unit/ruflo-native-node.test.mjs"],
+        "macos": ["tests/unit/ruflo-native-node.test.mjs"]
+      }
     },
     {
       "id": "lossless-lifecycle-retention",
@@ -287,11 +300,6 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       "id": "pending-memory-durability",
       "reason": "Complete outbox tails replay and accepted pending journal events survive capacity pressure without silent deletion",
       "files": [
-        "tests/unit/project-progression-outbox.test.mjs",
-        "tests/unit/project-progression-durability.test.mjs",
-        "tests/unit/continuity-customer-regressions.test.mjs",
-        "tests/unit/progression-outbox-containment.test.mjs",
-        "tests/unit/transition-pending-notices.test.mjs"
       ]
     }
   ],
@@ -312,16 +320,16 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
     },
     {
       "id": "canonical-learning-recovery",
-      "reason": "Cross-session recovery and Console evidence agree on the same canonical scope without ratifying tool metadata as instructions",
-      "files": ["tests/integration/learning-recovery-377.test.mjs", "tests/integration/learning-console-scope.test.mjs"]
+      "reason": "Retired 2026-10-12: the learning queue, flush worker and Console queue recovery were deleted (owner ruling: hooks only call rUv's memory tools); learning writes are covered by canonical-learning-capture",
+      "files": []
     },
     {
       "id": "canonical-progression-store",
       "reason": "Actual adopted canonical storage, exact readback, and concurrent session restoration retain consent and complete history",
-      "files": ["tests/integration/project-progression-concurrent-sessions.test.mjs", "tests/integration/project-progression-reader-identity.test.mjs"],
+      "files": [],
       "platformFiles": {
-        "linux": ["tests/integration/project-progression-store.test.mjs"],
-        "macos": ["tests/integration/project-progression-store.test.mjs"]
+        "linux": [],
+        "macos": []
       }
     },
     {
@@ -372,7 +380,6 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
         "tests/unit/agentdb-recall.test.mjs",
         "tests/unit/session-start-core-parity.test.mjs",
         "tests/unit/learning-replay.test.mjs",
-        "tests/integration/continuity-journal.test.mjs",
         "tests/integration/changed-memory-process-probes.test.mjs",
         "tests/unit/managed-memory-boundary.test.mjs"
       ]
@@ -381,20 +388,13 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       "id": "automatic-memory-transition-durability",
       "reason": "Reviewed POSIX automatic boundary capture, complete history, consent suspension, first-start recovery and data-only turn replay; real global Ruflo and filesystem prerequisites are required",
       "files": [
-        "tests/unit/project-transition-hook.test.mjs",
-        "tests/unit/turn-transport-security.test.mjs",
-        "tests/unit/turn-durable-transport.test.mjs",
-        "tests/integration/automatic-progression-continuation.test.mjs",
-        "tests/integration/capture-consent-boundary.test.mjs",
-        "tests/integration/session-start-turn-replay.test.mjs",
-        "tests/integration/progression-suspension.test.mjs"
+        "tests/integration/capture-consent-boundary.test.mjs"
       ]
     },
     {
       "id": "pending-continuity-capacity",
       "reason": "POSIX non-root permission refusal, capacity-pressure reporting and recovery preserve all accepted pending continuity events",
       "files": [
-        "tests/unit/continuity-journal-bounds.test.mjs"
       ]
     }
   ]

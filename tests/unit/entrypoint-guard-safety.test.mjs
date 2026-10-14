@@ -127,26 +127,6 @@ describe('a file that gets copied alone must have its dependencies copied with i
     for (const spec of declared) expect(found, `${spec} would not be copied beside the server`).toContain(spec);
   });
 
-  // 2026-09-27, found live: the walk's own import-detecting regex excluded '\n' from what it would
-  // match between "import" and "from", so a MULTI-LINE named import was invisible to it — the exact
-  // shape session-snapshot-hook.mjs uses for project-progression-hook.mjs. The dependency was never
-  // copied into the Codex host package; the first real end-to-end release run since this was
-  // introduced failed with ERR_MODULE_NOT_FOUND on that exact file, on the packaging boundary this
-  // whole describe block exists to guard. The TEETH test above didn't catch it because it only
-  // checks server.mjs's own DIRECT imports (which happen to be single-line) — not a transitive
-  // dependency's multi-line import. This test checks that specific gap directly.
-  it('TEETH: a multi-line named import is not invisible to the walk (the 2026-09-27 regression)', async () => {
-    const { serverDependencies } = await import('../../bin/install.mjs');
-    const server = path.join(ROOT, 'plugin', 'mcp', 'server.mjs');
-    const snapshotHook = path.join(ROOT, 'plugin', 'scripts', 'session-snapshot-hook.mjs');
-    const src = fs.readFileSync(snapshotHook, 'utf8');
-    expect(src, 'fixture assumption: this import must still be multi-line, or the test proves nothing')
-      .toMatch(/import\s*\{\n[^}]*\n\}\s*from\s*['"]\.\/project-progression-hook\.mjs['"]/);
-    const found = serverDependencies(server).map((d) => d.spec);
-    expect(found, 'a multi-line-imported transitive dependency must still be copied').toContain(
-      '../scripts/project-progression-hook.mjs',
-    );
-  });
 });
 
 /**

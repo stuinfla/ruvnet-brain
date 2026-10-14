@@ -122,7 +122,6 @@ const TABLE = {
   // invocation". Restored. wired-check.mjs's H6 fix does not depend on these keys existing either
   // way — it stopped trusting hook-shim.mjs as a blind generic spawner, not their presence here.
   'learn-capture':    { file: 'learn-capture.mjs',   interpreter: 'node', mode: 'advisory', offBehavior: 'silence', stdinBytes: 65536 },
-  'learn-flush':      { file: 'learn-flush.mjs',     interpreter: 'node', mode: 'advisory', offBehavior: 'silence' },
   // 1 MiB, not 64 KiB: the Stop payload now carries `last_assistant_message`, and a long closing
   // message truncated mid-JSON would parse as `{}` and silently drop the whole capture.
   'session-snapshot': { file: 'session-snapshot-hook.mjs', interpreter: 'node', mode: 'advisory', offBehavior: 'run', stdinBytes: 1048576 },
@@ -268,7 +267,7 @@ function readHookInput(limit) {
  * even if an older one was already reported.
  *
  * WHY A TTL RATHER THAN A TRUE SESSION ID, stated plainly rather than implied: no session identifier
- * reaches this dispatcher. Claude Code does not set CLAUDE_SESSION_ID (learn-flush.mjs documents the
+ * reaches this dispatcher. Claude Code does not set CLAUDE_SESSION_ID (the learning hook documented the
  * same finding), and the only place `session_id` exists is the stdin payload — which the majority of
  * these table entries deliberately never read. So the window is an approximation of a session, not a
  * claim to be one: it bounds a persistent breakage to roughly one line per working session instead

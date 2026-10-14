@@ -28,6 +28,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { substitutionVerdict, inScope, codeOf, message } from '../plugin/scripts/substitution-wall.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -155,8 +156,71 @@ export function audit(root = ROOT) {
   return violations;
 }
 
+// ── CLASS 2: STORAGE / QUEUE / JOURNAL (2026-10-12) ─────────────────────────────────────────────
+// The package-name rule above said "none" on a 3.38 GB outbox, queues and replay workers in front of
+// `ruflo memory store`: storage was not in CAPABILITIES, and spawning the `ruflo` binary counted as
+// "rUv is used". This class is behaviour-based, shares ONE detector with the PreToolUse policy
+// (plugin/scripts/substitution-wall.mjs), and is a RATCHET over config/state-files.json:
+//   · a file the detector refuses must be in `substitutionBaseline` (known debt, signals recorded) or
+//     `substitutionAllow` (owner-approved). A NEW one fails; a baseline file that GAINS a signal fails.
+//   · every module that appends to a file must be registered in `stateFiles` with its bound (or an
+//     explicit `bound: null`), and the count of unbounded ones may not rise above `maxUnbounded`.
+export const STATE_CONFIG = 'config/state-files.json';
+const APPEND = /\b(?:appendFileSync|appendFile|createWriteStream)\b|\bO_APPEND\b|flags?\s*:\s*['"]a\+?['"]/;
+const BOUND = /\bMAX_\w*(?:BYTES|LINES|RECORDS|ROWS|ENTRIES|AGE\w*)\b|\bmax(?:Bytes|Lines|Records|Rows|Entries)\b|\brotat\w+|\bcompact\w*|\btruncateSync\b|\bprune\w*/;
+
+function scopedFiles(root) {
+  return ['plugin/scripts', 'scripts'].flatMap((d) => (fs.existsSync(path.join(root, d)) ? walkAll(path.join(root, d)) : []))
+    .map((f) => path.relative(root, f).split(path.sep).join('/')).filter(inScope).sort();
+}
+function walkAll(dir, out = []) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name) && !e.name.startsWith('.')) walkAll(path.join(dir, e.name), out); }
+    else out.push(path.join(dir, e.name));
+  }
+  return out;
+}
+
+/** Every module that appends to a file: its literal targets and the first bound token in its code (or null). */
+export function stateFileInventory(root = ROOT) {
+  return scopedFiles(root).flatMap((rel) => {
+    const code = codeOf(fs.readFileSync(path.join(root, rel), 'utf8'), rel);
+    if (!APPEND.test(code)) return [];
+    const targets = [...new Set([...code.matchAll(/['"`/]([\w.-]+\.(?:jsonl|ndjson|log))['"`]/g)].map((m) => m[1]))].sort();
+    return [{ module: rel, targets, bound: BOUND.exec(code)?.[0] ?? null }]; // bound = a grep-detected token, NOT proof it bounds the target
+  });
+}
+
+export function readStateConfig(root = ROOT) {
+  try { return JSON.parse(fs.readFileSync(path.join(root, STATE_CONFIG), 'utf8')); } catch { return {}; }
+}
+
+export function storageAudit(root = ROOT, config = readStateConfig(root)) {
+  const violations = []; const notes = [];
+  const allow = (config.substitutionAllow || []).map((a) => a.path);
+  const baseline = new Map((config.substitutionBaseline || []).map((b) => [b.path, b]));
+  for (const rel of scopedFiles(root)) {
+    const v = substitutionVerdict({ path: rel, content: fs.readFileSync(path.join(root, rel), 'utf8'), allow });
+    const known = baseline.get(rel);
+    if (v.verdict === 'refuse' && !known) violations.push({ file: rel, capability: 'storage/queue/journal', pkg: 'ruflo memory', why: message(rel, v).split('\n')[0], fix: `Call ${v.tool}; delete the transport.` });
+    else if (v.verdict === 'refuse' && v.signals.some((s) => !known.signals.includes(s))) violations.push({ file: rel, capability: 'storage/queue/journal', pkg: 'ruflo memory', why: `known debt GREW: signals ${v.signals.join(',')} vs baseline ${known.signals.join(',')}`, fix: 'Shrink it toward one ruflo call; never grow it.' });
+    else if (known && v.verdict !== 'refuse') notes.push(`${rel} no longer refuses — remove it from substitutionBaseline (the ratchet tightens).`);
+  }
+  const registered = new Map((config.stateFiles || []).map((s) => [s.module, s]));
+  const inventory = stateFileInventory(root);
+  for (const s of inventory) if (!registered.has(s.module)) violations.push({ file: s.module, capability: 'state-file ratchet', pkg: STATE_CONFIG, why: `appends to ${s.targets.join(', ') || 'a file'} and is not registered with a bound`, fix: `Register it in ${STATE_CONFIG} stateFiles (bound or explicit null), or store via ruflo memory.` });
+  const unbounded = [...registered.values()].filter((s) => s.bound === null && inventory.some((i) => i.module === s.module)).length;
+  if (unbounded > (config.maxUnbounded ?? 0)) violations.push({ file: STATE_CONFIG, capability: 'state-file ratchet', pkg: STATE_CONFIG, why: `${unbounded} unbounded append targets > maxUnbounded ${config.maxUnbounded ?? 0}`, fix: 'Bound the new one, or remove an old one first.' });
+  for (const m of registered.keys()) if (!inventory.some((i) => i.module === m)) notes.push(`${m} no longer appends — remove it from stateFiles.`);
+  return { violations, notes, unbounded };
+}
+
 function main() {
-  const violations = audit();
+  if (process.argv.includes('--inventory')) { console.log(JSON.stringify(stateFileInventory(), null, 2)); process.exit(0); }
+  const storage = storageAudit();
+  for (const n of storage.notes) console.log(`ℹ ${n}`);
+  console.log(`storage/queue/journal: ${(readStateConfig().substitutionBaseline || []).length} known debt file(s), ${storage.unbounded} unbounded append target(s) registered.`);
+  const violations = [...audit(), ...storage.violations];
   console.log('no-silent-substitution — is any local code impersonating a real rUv tool?\n');
   if (!violations.length) {
     console.log('✅ none. Every RuvNet capability this repo names is either genuinely used or openly disclosed as a hand-roll.');

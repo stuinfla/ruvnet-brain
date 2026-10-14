@@ -25,15 +25,13 @@ import os from 'node:os';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { findStores, diagnose } from './memory-doctor.mjs';
 import { distillLearning } from '../plugin/scripts/learning-store.mjs';
-import { readSafe } from '../plugin/scripts/learning-queue.mjs';
 import { learningContext } from '../plugin/scripts/runtime-preferences.mjs';
-import { learningQueueDepth, learningQueueFiles, observeLearning } from '../plugin/scripts/learning-observation.mjs';
 import { resolveRuflo, rufloInvocation } from '../plugin/scripts/ruflo-bin.mjs';
 import { projectDirectory } from '../plugin/scripts/project-identity.mjs';
 import { newestSnapshot, snapshotInventory, MTIME_GRACE_MS } from './snapshot-freshness.mjs';
 
 const HOME = os.homedir();
-// The SAME project root learn-flush.mjs computes, by the same rule — the two halves of the flush
+// The SAME project root the learning hook computes, by the same rule — the two halves of the flush
 // have to agree about which project they mean or they address different queues (issue #104).
 // RESIDUAL of #134: RUVNET_BRAIN_PROJECT_DIR is never set by real hook dispatch on either host, so
 // consult `projectDirectory()` (project-identity.mjs) — the CLAUDE_PROJECT_DIR-with-containment
@@ -98,82 +96,6 @@ function repairMemory() {
     return { ok: false, log: `ROW COUNT CHANGED (${rowsBefore} → ${rowsAfter}) — treating as data loss. Restore: ${backup.replace(HOME, '~')}`, backup };
   }
   return { ok: true, log: `repaired — integrity ok, ${rowsAfter} entries intact (was ${rowsBefore}). Backup: ${backup.replace(HOME, '~')}`, backup };
-}
-
-/**
- * Drain the capture queue into rUv's learner — his tool, not ours.
- *
- * ISSUE #104: this measured one queue and drained another, so it could only ever report "fed 0".
- * The flusher was spawned with NO environment, so inside learn-flush.mjs RUVNET_LEARNING_SCOPE was
- * unset and defaulted to 'project' — it drained `<project>/.swarm/ruvnet-brain-learn/` while THIS
- * function counted `<user>/.cache/ruvnet-brain/learn/`. `before - after` was structurally 0: it
- * could not report truthfully in either direction even on a flush that worked, and the real queue
- * grew forever. Two independent defaults are not an agreement.
- *
- * So: resolve the scope ONCE, from the same policy module learn-flush reads, derive the queue root
- * FROM that scope, pass the scope (and the exact queue file) to the child explicitly, and measure
- * the root that was actually drained.
- *
- * And LOOP. learn-flush feeds at most MAX_ACTIONS distinct actions per invocation and writes the
- * remainder back on purpose (a SessionEnd hook must stay fast), so one call cannot drain a deep
- * queue — the reporter needed 15 rounds for 293 entries. A single call would leave a queue that
- * "flushes" every time and never empties, which is the same lie in slow motion.
- */
-function flushLearning(legacyUser = false) {
-  const original = learningContext({ cwd: PROJECT });
-  const context = legacyUser && original.enabled
-    ? learningContext({ cwd: PROJECT, env: { ...process.env, RUVNET_LEARNING_SCOPE: 'user' } }) : original;
-  if (!context.enabled) return { ok: true, noop: true, log: 'learning is switched off for this project — queued evidence is untouched' };
-  const { scope, queueDir } = context;
-  const bundled = path.resolve(import.meta.dirname, '../plugin/scripts/learn-flush.mjs');
-  const flusher = path.join(HOME, '.claude', 'plugins', 'marketplaces', 'ruvnet-brain', 'plugin', 'scripts', 'learn-flush.mjs');
-  const local = path.join(PROJECT, 'plugin', 'scripts', 'learn-flush.mjs');
-  const script = [bundled, local, flusher].find((file) => fs.existsSync(file));
-  if (!script) return { ok: false, log: 'learn-flush.mjs not found — cannot drain the queue' };
-
-  // Displayed to a human and matched by tests, so it is normalised to forward slashes on every
-  // platform. Without this, Windows reports `~\.cache\ruvnet-brain\learn` while macOS and Linux
-  // report `~/.cache/ruvnet-brain/learn` — the same location under two spellings, which is the
-  // exact defect class this branch has been closing (one fact, two representations).
-  const where = queueDir.replace(HOME, '~').split(path.sep).join('/');
-
-  const depth = () => learningQueueDepth(queueDir);
-  try {
-    const lock = JSON.parse(readSafe(path.join(queueDir, '.worker-lock'), 4096));
-    if (lock.retirementUnconfirmed || (lock.retirementRequired && lock.expires < Date.now())) return { ok: false, log: 'learning recovery is paused: owned worker retirement is unconfirmed; queue fence and original observations retained' };
-  } catch { /* Regular safety checks below still decide whether a queue is readable. */ }
-  let before;
-  try { before = depth(); }
-  catch { return { ok: false, log: `cannot read learning queue ${where} safely — evidence is preserved` }; }
-  if (!before) return { ok: true, noop: true, log: `nothing queued in ${where} — the learner is already caught up` };
-  const env = { ...process.env, RUVNET_BRAIN_PROJECT_DIR: PROJECT, ...(legacyUser ? { RUVNET_LEARNING_SCOPE: 'user', RUVNET_LEGACY_USER_APPLY: '1' } : {}) };
-  const deadline = Date.now() + 540_000;
-  const stalled = [];
-  let previous = before;
-  while (previous > 0 && Date.now() < deadline) {
-    try {
-      execFileSync(process.execPath, [script, '--sync'], { env, cwd: PROJECT, stdio: 'ignore',
-        timeout: Math.min(25_000, Math.max(1000, deadline - Date.now())) });
-    } catch { stalled.push('bounded worker failed'); break; }
-    const next = depth();
-    if (next >= previous) { stalled.push(`${next} entries would not feed`); break; }
-    previous = next;
-  }
-
-  const after = depth();
-  const fed = before - after;
-  if (fed <= 0) {
-    // Name the most likely cause instead of shrugging: learn-flush invokes ruflo at a FIXED path,
-    // so on a machine with a different npm prefix it feeds nothing and honestly keeps the queue.
-    const why = stalled.length ? ` (${stalled.slice(0, 3).join('; ')})` : '';
-    const hint = RUFLO ? '' : ' No global ruflo was resolved from the managed prefix or PATH.';
-    return { ok: false, log: `fed 0 of ${before} queued events from ${where}${why} — the queue is preserved for retry.${hint}` };
-  }
-  return {
-    ok: true,
-    log: `fed ${fed} captured events into the ${scope} learner (queue ${before} → ${after} in ${where})`
-      + (after ? ` — ${after} remain and will drain on the next flush` : ''),
-  };
 }
 
 /** One explicit training cycle in the same learner the Console measures. */
@@ -304,8 +226,6 @@ function distillFleet() {
 }
 
 const action = has('--repair-memory') ? repairMemory
-  : has('--flush-legacy-user-learning') ? () => flushLearning(true)
-  : has('--flush-learning') ? flushLearning
     : has('--train-learning') ? trainLearning
       : has('--distill-fleet') ? distillFleet
         : null;

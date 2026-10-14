@@ -152,7 +152,7 @@ Comprehensive guide covering:
 
 1. **Session-Start Recall** (10 samples)
    - Remove cache to simulate cold start
-   - Load `session-snapshot-contract.mjs`
+   - Load `the former session snapshot contract (deleted 2026-10-12)`
    - Parse session snapshots
    - Measure latency
 
