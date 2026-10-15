@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { managedGenerationIdentity } from './managed-cli-generation.mjs';
 import { loadRuntimePreferences, runtimeChildEnv } from '../scripts/runtime-preferences.mjs';
+import { resolveRuflo } from '../scripts/ruflo-bin.mjs';
 import { projectDirectory } from '../scripts/project-identity.mjs';
 import { recordManagedCliObservation, recordRegistryLatestObservation } from '../scripts/capability-claim-evidence.mjs';
 
@@ -180,12 +181,8 @@ function writeStamps(executable, argv, env, binding) {
 
 export function resolveManagedExecutable(executable, env = process.env) {
   if (executable !== 'ruflo') return executable;
-  const home = env.HOME || os.homedir();
-  const candidates = [path.join(home, '.npm-global', 'bin', 'ruflo')];
-  if (process.platform === 'win32') candidates.push(`${candidates[0]}.cmd`);
-  return candidates.find((candidate) => {
-    try { fs.accessSync(candidate, fs.constants.X_OK); return true; } catch { return false; }
-  }) || executable;
+  // #420 item 5: same rules as every other Brain caller (RUFLO_BIN is authoritative, then ~/.npm-global/bin, then PATH); this used to check ~/.npm-global only and ignored RUFLO_BIN.
+  return resolveRuflo({ env, home: env.HOME || os.homedir() }) || executable;
 }
 
 function quoteWindowsCommandArg(value) {
