@@ -8,9 +8,11 @@ const ROOT = path.resolve(import.meta.dirname, '../../..');
 const ENGINE = path.join(ROOT, 'plugin/scripts/update-apply.mjs');
 const EXPECTED = '9.9.1-issue64';
 const OTHER = '9.9.2-issue64';
+const CURRENT = '9.9.2-issue420';
+const OLD = '9.9.0-issue420';
 const previousImportOnly = process.env.RUVNET_BRAIN_IMPORT_ONLY;
 process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
-const { claudePluginStatus } = await import('../../../bin/install.mjs');
+const { claudePluginStatus, claudeProjectInstalls, projectInstallsCheck } = await import('../../../bin/install.mjs');
 afterAll(() => {
   if (previousImportOnly === undefined) delete process.env.RUVNET_BRAIN_IMPORT_ONLY;
   else process.env.RUVNET_BRAIN_IMPORT_ONLY = previousImportOnly;
@@ -146,4 +148,58 @@ describe('issue #64 — exact dual-host convergence', () => {
     expect(fs.existsSync(path.join(brain, 'active.json'))).toBe(false);
   });
 
+
+  // #420 item 4: --update moves only the user row; per-project rows must be reported with their own command, never edited.
+  it('reports a lagging per-project install with its exact command and leaves the registry and project untouched', () => {
+    const home = temporary('rvb-issue420-projects-');
+    const project = temporary('rvb-issue420-repo-');
+    const userPath = stagedPayload(home, 'claude', CURRENT);
+    const oldPath = stagedPayload(home, 'claude', OLD);
+    const gone = path.join(project, 'deleted-repo');
+    const registry = path.join(home, '.claude', 'plugins', 'installed_plugins.json');
+    fs.mkdirSync(path.dirname(registry), { recursive: true });
+    fs.writeFileSync(registry, JSON.stringify({ plugins: { 'ruvnet-brain@ruvnet-brain': [
+      { scope: 'user', version: CURRENT, installPath: userPath },
+      { scope: 'local', projectPath: project, version: 'stale-metadata', installPath: oldPath },
+      { scope: 'project', projectPath: gone, version: OLD, installPath: oldPath },
+    ] } }));
+    const before = fs.readFileSync(registry, 'utf8');
+    expect(claudePluginStatus({ home })).toMatchObject({ installed: true, version: CURRENT });
+    const rows = claudeProjectInstalls({ home, referenceVersion: CURRENT });
+    expect(rows).toEqual([
+      { scope: 'local', projectPath: project, version: OLD, exists: true, behind: true,
+        command: `cd '${project}' && claude plugin update ruvnet-brain@ruvnet-brain --scope local` },
+      { scope: 'project', projectPath: gone, version: OLD, exists: false, behind: false, command: null },
+    ]);
+    const line = projectInstallsCheck(rows, CURRENT);
+    expect(line).toMatchObject({ id: 'project-installs', state: 'warn', fix: rows[0].command });
+    expect(line.detail).toContain(`1 per-project Claude Code install(s) behind ${CURRENT}: ${project} (local, ${OLD})`);
+    expect(line.detail).toContain(`1 registered for a folder that no longer exists: ${gone} (project, ${OLD})`);
+    expect(fs.readFileSync(registry, 'utf8')).toBe(before);
+    expect(fs.readdirSync(project)).toEqual([]);
+    expect(fs.existsSync(gone)).toBe(false);
+  });
+
+  it('is silent with no per-project rows and green when every project is current', () => {
+    const home = temporary('rvb-issue420-current-');
+    const project = temporary('rvb-issue420-repo-');
+    const installPath = stagedPayload(home, 'claude', CURRENT);
+    const registry = path.join(home, '.claude', 'plugins', 'installed_plugins.json');
+    fs.mkdirSync(path.dirname(registry), { recursive: true });
+    fs.writeFileSync(registry, JSON.stringify({ plugins: { 'ruvnet-brain@ruvnet-brain': [{ scope: 'user', installPath }] } }));
+    expect(projectInstallsCheck(claudeProjectInstalls({ home, referenceVersion: CURRENT }), CURRENT)).toBeNull();
+    fs.writeFileSync(registry, JSON.stringify({ plugins: { 'ruvnet-brain@ruvnet-brain': [
+      { scope: 'user', installPath }, { scope: 'local', projectPath: project, installPath },
+    ] } }));
+    expect(projectInstallsCheck(claudeProjectInstalls({ home, referenceVersion: CURRENT }), CURRENT))
+      .toMatchObject({ state: 'ok', fix: null, detail: `1 per-project Claude Code install(s) at ${CURRENT} or newer` });
+    expect(claudeProjectInstalls({ home: temporary('rvb-issue420-empty-'), referenceVersion: CURRENT })).toEqual([]);
+  });
+
+  it('wires the per-project report into --update and the --doctor verdict', () => {
+    const source = fs.readFileSync(path.join(ROOT, 'bin', 'install.mjs'), 'utf8');
+    expect(source).toContain('claudeProjectInstalls({ referenceVersion: installed.version }).filter((p) => p.behind)');
+    expect(source).toContain('projectInstallsCheck(claudeProjectInstalls({ referenceVersion: projectReference }), projectReference)');
+    expect(source).toContain('...(projectLine ? [projectLine] : []),');
+  });
 });
