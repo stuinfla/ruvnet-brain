@@ -1,5 +1,6 @@
 // footprint-io.mjs — the footprint sweep's disk operations (ADR-0098), kept apart from the classifier in
-// brain-footprint.mjs: byte counts, log rotation, the guarded removal, and the KEPT-proof cache.
+// brain-footprint.mjs: byte counts, log rotation, the guarded removal, the rescue of a released copy's
+// operational files, and the KEPT-proof cache.
 //
 // THE KEPT-PROOF CACHE (independent review S7).
 // kbCopyProof hashes every file of a GB-sized copy. A copy kept because it holds data the live brain lacks
@@ -9,6 +10,7 @@
 // any change to the live brain's identity files (a restore, an update) invalidates it.
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 
 const lstat = (file) => { try { return fs.lstatSync(file); } catch { return null; } };
 const names = (dir) => { try { return fs.readdirSync(dir).sort(); } catch { return []; } };
@@ -157,7 +159,36 @@ export function removeWithin(target, expectedParent, owned) {
   return size;
 }
 
+/**
+ * RESCUE BEFORE RELEASE. kbCopyProof lists a disposable copy's operational files (logs, ruflo scratch) as
+ * `rescue`, each with the bytes it was proven with. They are copied to <brainHome>/kb-copy-rescued/<copy
+ * name>/<path> and verified there BEFORE the copy is removed. Any mismatch (the source changed since the
+ * proof, a different file already at the destination, a link in the way) throws, and the caller keeps the
+ * copy. Retention of the rescued directories is brain-footprint.mjs's (FOOTPRINT_POLICY.rescuedCopiesKept).
+ */
+export const RESCUE_DIR = 'kb-copy-rescued';
+const sha256Of = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+const regular = (file) => { const st = lstat(file); return Boolean(st && st.isFile() && !st.isSymbolicLink()); };
+export function rescueOperationalFiles(copyDir, rescue, brainHome, name = path.basename(copyDir)) {
+  if (!rescue?.length) return null;
+  const root = path.join(brainHome, RESCUE_DIR); const dest = path.join(root, name);
+  for (const dir of [brainHome, root, dest]) {
+    if (lstat(dir)?.isSymbolicLink()) throw new Error(`refusing to rescue into ${dir}: it is a link`);
+  }
+  for (const { file, sha256 } of rescue) {
+    const from = path.join(copyDir, file); const to = path.join(dest, file);
+    if (!regular(from) || sha256Of(from) !== sha256) throw new Error(`${file} changed after the copy was proven; the copy is kept`);
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    if (!lstat(to)) fs.copyFileSync(from, to, fs.constants.COPYFILE_EXCL);
+    if (!regular(to) || sha256Of(to) !== sha256) throw new Error(`could not rescue ${file} to ${to} (a different file is there); the copy is kept`);
+  }
+  return dest;
+}
+
 const PROOF_CACHE = '.footprint-proof-cache.json';
+// The proof rule a cached KEPT verdict was reached under. A verdict from an older rule (one that kept copies
+// the current rule releases, e.g. for a log file before rescue existed) is not reused; that copy is proven again.
+const PROOF_RULE = 2;
 const IDENTITY_FILES = ['SOURCE.json', 'PRIVATE-STORES.json', 'COVERAGE.json', 'RVF-GENERATIONS.json'];
 const statKey = (file) => { try { const st = fs.lstatSync(file); return `${st.size}:${Math.floor(st.mtimeMs)}`; } catch { return '-'; } };
 const fingerprint = (dir) => [statKey(dir), ...IDENTITY_FILES.map((f) => statKey(path.join(dir, f)))].join('|');
@@ -173,13 +204,13 @@ export function readProofCache(brainHome) {
 /** The cached KEPT proof for this copy, if neither the copy nor the live brain changed since. */
 export function cachedKept(cache, copyDir, liveDir) {
   const hit = cache.entries[copyDir];
-  return hit && hit.copy === fingerprint(copyDir) && hit.live === fingerprint(liveDir) ? hit : null;
+  return hit && hit.rule === PROOF_RULE && hit.copy === fingerprint(copyDir) && hit.live === fingerprint(liveDir) ? hit : null;
 }
 
 export function rememberKept(brainHome, copyDir, liveDir, proof) {
   try {
     const cache = readProofCache(brainHome);
-    cache.entries[copyDir] = { copy: fingerprint(copyDir), live: fingerprint(liveDir), reason: proof.reason,
+    cache.entries[copyDir] = { rule: PROOF_RULE, copy: fingerprint(copyDir), live: fingerprint(liveDir), reason: proof.reason,
       unique: (proof.unique || []).slice(0, 10), at: new Date().toISOString() };
     const file = path.join(brainHome, PROOF_CACHE);
     fs.writeFileSync(`${file}.tmp-${process.pid}`, JSON.stringify(cache));

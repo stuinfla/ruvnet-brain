@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { FOOTPRINT_POLICY, inventoryFootprint, kbCopyPrefixes, sweepFootprint, footprintRoots } from '../../plugin/scripts/brain-footprint.mjs';
+import { FOOTPRINT_POLICY, inventoryFootprint, kbCopyPrefixes, sweepFootprint, footprintRoots, treeBytes } from '../../plugin/scripts/brain-footprint.mjs';
 // (kbCopyProof is imported below; the S7 tests also spy on it through sweepFootprint's proveCopy seam.)
 import { kbCopyProof } from '../../plugin/scripts/kb-copy-proof.mjs';
 import { confirm, doctorVerdict, footprintAlarm, formatConfirmation, writeSignatureRecord } from '../../plugin/scripts/brain-confirmation.mjs';
@@ -1027,5 +1027,155 @@ describe('BREAK IT: every guard is proven by a mutant that goes red', () => {
     const roots = footprintRoots({ env: { HOME: m.home }, home: m.home });
     expect(roots.brainHome).toBe(fs.realpathSync(realHome));
     expect(roots.kbDir).toBe(path.join(fs.realpathSync(realHome), 'kb'));
+  });
+});
+
+// ── Logs and ruflo scratch never pin a KB copy; they are rescued, verified, before it goes ─────────────
+// Measured on a 4.5.11 install: 34 KB (update.log, forge-guard-injection.log, .claude-flow/policy/state.json)
+// kept a 1.2 GB kb.install-preserved-* copy forever, and an update.log like that one can be the only record of a failed night.
+const OPERATIONAL = { 'update.log': 'nightly 2026-10-02: host-convergence failed\n', 'forge-guard-injection.log': '{"flagged":1}\n',
+  [path.join('.claude-flow', 'policy', 'state.json')]: '{"policy":"ruflo"}' };
+const litterCopy = (m, name = 'kb.install-preserved-JHpOWH', extra = {}) => kbTree(path.join(m.brainHome, name),
+  { publicStores: { alpha: 'alpha-v1' }, privateStores: { secret: 'secret-bytes' }, extra: { ...OPERATIONAL, ...extra } });
+const rescuedAt = (m, name, file) => path.join(m.brainHome, 'kb-copy-rescued', name, file);
+
+describe('operational files (logs, ruflo scratch) never pin a copy; they are rescued and kept for the newest five', () => {
+  it('a copy whose only extra files are logs and ruflo scratch is disposable, and names them for rescue', () => {
+    const m = machine(); live(m); const copy = litterCopy(m);
+    const proof = kbCopyProof({ copyDir: copy, liveDir: m.kbDir });
+    expect(proof).toMatchObject({ disposable: true, unique: [] });
+    expect(proof.rescue.map((r) => r.file).sort()).toEqual(Object.keys(OPERATIONAL).sort());
+    expect(proof.rescue.find((r) => r.file === 'update.log').sha256).toBe(sha(OPERATIONAL['update.log']));
+  });
+  it('the sweep copies them out byte-identical, then releases the copy; a dry run writes nothing', () => {
+    const m = machine(); live(m); const copy = litterCopy(m);
+    const dry = sweepFootprint(opts(m));
+    expect(dry.removed.map((r) => r.path)).toContain(copy);
+    expect(fs.existsSync(copy)).toBe(true);
+    expect(fs.existsSync(path.join(m.brainHome, 'kb-copy-rescued'))).toBe(false);
+    const out = sweepFootprint(opts(m, { apply: true }));
+    expect(out.errors).toEqual([]);
+    expect(fs.existsSync(copy)).toBe(false);
+    for (const [file, body] of Object.entries(OPERATIONAL)) expect(fs.readFileSync(rescuedAt(m, path.basename(copy), file), 'utf8')).toBe(body);
+    const after = inventoryFootprint(opts(m));
+    expect(after.items.filter((i) => i.kind === 'rescued-kb-logs')).toMatchObject([{ class: 'may-exist', action: 'keep' }]);
+    expect(after.cruft).toEqual([]);
+  });
+  it.each([
+    ['a user file beside the logs', { [path.join('notes', 'personal.txt')]: 'mine' }, path.join('notes', 'personal.txt')],
+    ['a ruflo memory store (.swarm is not scratch)', { [path.join('.swarm', 'memory.db')]: 'store' }, path.join('.swarm', 'memory.db')],
+    ['a nested file named like a log', { [path.join('notes', 'update.log')]: 'mine' }, path.join('notes', 'update.log')],
+    ['another top-level log', { 'research.log': 'mine' }, 'research.log'],
+  ])('%s still keeps the copy, and nothing is rescued or removed', (_, extra, file) => {
+    const m = machine(); live(m); const copy = litterCopy(m, 'kb.install-preserved-USER', extra);
+    expect(kbCopyProof({ copyDir: copy, liveDir: m.kbDir }).unique.map((u) => u.file)).toEqual([file]);
+    sweepFootprint(opts(m, { apply: true }));
+    expect(fs.readFileSync(path.join(copy, file), 'utf8')).toBe(Object.values(extra)[0]);
+    expect(fs.existsSync(path.join(m.brainHome, 'kb-copy-rescued'))).toBe(false);
+  });
+  it('a log over the cap, a log that is a link, and a private store named like a log stay unique', () => {
+    const m = machine(); live(m);
+    const big = litterCopy(m, 'kb.install-preserved-BIG', { 'update.log': Buffer.alloc(2 * 1024 * 1024 + 1, 65) });
+    expect(kbCopyProof({ copyDir: big, liveDir: m.kbDir }).unique.map((u) => u.file)).toEqual(['update.log']);
+    const linked = litterCopy(m, 'kb.install-preserved-LINK');
+    fs.rmSync(path.join(linked, 'update.log')); write(path.join(m.home, 'elsewhere.log'), 'x');
+    fs.symlinkSync(path.join(m.home, 'elsewhere.log'), path.join(linked, 'update.log'));
+    expect(kbCopyProof({ copyDir: linked, liveDir: m.kbDir }).unique.map((u) => u.file)).toEqual(['update.log']);
+    const priv = kbTree(path.join(m.brainHome, 'kb.install-preserved-PRIV'), { publicStores: { alpha: 'a1' },
+      privateStores: { secret: 'secret-bytes', update: 'private-update-store' }, extra: { 'update.log': 'private store sidecar' } });
+    expect(kbCopyProof({ copyDir: priv, liveDir: m.kbDir }).unique.map((u) => u.file)).toContain('update.log');
+  });
+  it('the rescue is bounded per copy: scratch past 16 MiB keeps the copy, names the overflow, rescues nothing', () => {
+    const m = machine(); live(m);
+    const scratch = Object.fromEntries(Array.from({ length: 8 }, (_, i) => [path.join('.claude-flow', `run-${i}.json`), Buffer.alloc(2 * 1024 * 1024, 65 + i)]));
+    const copy = litterCopy(m, 'kb.install-preserved-SCRATCH', scratch);
+    const proof = kbCopyProof({ copyDir: copy, liveDir: m.kbDir });
+    expect(proof.disposable).toBe(false);
+    expect(proof.unique).toEqual([{ file: path.join('.claude-flow', 'run-7.json'), why: expect.stringMatching(/past the rescue cap/) }]);
+    sweepFootprint(opts(m, { apply: true }));
+    expect(fs.existsSync(copy)).toBe(true);
+    expect(fs.existsSync(path.join(m.brainHome, 'kb-copy-rescued'))).toBe(false);
+  });
+  it('a failed rescue (a different file already at the destination) keeps the copy and both files', () => {
+    const m = machine(); live(m); const copy = litterCopy(m);
+    write(rescuedAt(m, path.basename(copy), 'update.log'), 'an older, different rescue');
+    const out = sweepFootprint(opts(m, { apply: true }));
+    expect(fs.existsSync(copy)).toBe(true);
+    expect(fs.readFileSync(path.join(copy, 'update.log'), 'utf8')).toBe(OPERATIONAL['update.log']);
+    expect(fs.readFileSync(rescuedAt(m, path.basename(copy), 'update.log'), 'utf8')).toBe('an older, different rescue');
+    expect(out.errors.map((e) => e.reason).join()).toMatch(/could not rescue update\.log/);
+  });
+  it('a quarantined copy with logs is released the same way, rescued under a unique name', () => {
+    const m = machine(); live(m);
+    const quarantine = path.join(m.brainHome, 'kb-quarantine-20260901');
+    kbTree(path.join(quarantine, 'kb'), { publicStores: { alpha: 'alpha-v1' }, privateStores: { secret: 'secret-bytes' }, extra: OPERATIONAL });
+    sweepFootprint(opts(m, { apply: true }));
+    expect(fs.existsSync(quarantine)).toBe(false);
+    expect(fs.readFileSync(rescuedAt(m, 'kb-quarantine-20260901--kb', 'update.log'), 'utf8')).toBe(OPERATIONAL['update.log']);
+  });
+  it('a KEPT verdict cached by an older proof rule is proven again, so an upgrade releases the copy', () => {
+    const m = machine(); live(m); const copy = litterCopy(m);
+    const { items } = inventoryFootprint(opts(m));
+    expect(items.find((i) => i.path === copy)).toMatchObject({ action: 'remove-if-proven' });
+    // What 4.5.11 cached for this copy: no `rule`, same fingerprints.
+    sweepFootprint(opts(m, { apply: true, proveCopy: () => ({ disposable: false, unique: [{ file: 'update.log', why: 'old rule' }], reason: 'old rule' }) }));
+    const cache = JSON.parse(fs.readFileSync(path.join(m.brainHome, '.footprint-proof-cache.json'), 'utf8'));
+    delete cache.entries[copy].rule; fs.writeFileSync(path.join(m.brainHome, '.footprint-proof-cache.json'), JSON.stringify(cache));
+    sweepFootprint(opts(m, { apply: true }));
+    expect(fs.existsSync(copy)).toBe(false);
+    expect(fs.existsSync(rescuedAt(m, path.basename(copy), 'update.log'))).toBe(true);
+  });
+  it('rescued directories are bounded: the newest five are kept, older ones are removed', () => {
+    const m = machine(); live(m);
+    for (let i = 0; i < 7; i += 1) {
+      const dir = path.join(m.brainHome, 'kb-copy-rescued', `kb.install-preserved-${i}`);
+      write(path.join(dir, 'update.log'), `run ${i}`); old(dir, 10 - i);
+    }
+    const fp = inventoryFootprint(opts(m));
+    const rescued = fp.items.filter((i) => i.kind === 'rescued-kb-logs');
+    expect(rescued.filter((i) => i.action === 'remove').map((i) => path.basename(i.path)).sort()).toEqual(['kb.install-preserved-0', 'kb.install-preserved-1']);
+    sweepFootprint(opts(m, { apply: true }));
+    expect(fs.readdirSync(path.join(m.brainHome, 'kb-copy-rescued')).sort()).toEqual([2, 3, 4, 5, 6].map((i) => `kb.install-preserved-${i}`));
+  });
+});
+
+describe('BREAK IT: the rescue is what makes releasing a log-holding copy safe', () => {
+  it('per-copy rescue cap removed -> any amount of scratch is copied into the brain home', async () => {
+    const mod = await mutant([['kb-copy-proof.mjs', '&& rescueBytes + size <= RESCUE_TOTAL_CAP_BYTES', '']]);
+    const m = machine(); live(m);
+    const scratch = Object.fromEntries(Array.from({ length: 8 }, (_, i) => [path.join('.claude-flow', `run-${i}.json`), Buffer.alloc(2 * 1024 * 1024, 65 + i)]));
+    const copy = litterCopy(m, 'kb.install-preserved-SCRATCH', scratch);
+    expect(kbCopyProof({ copyDir: copy, liveDir: m.kbDir }).disposable).toBe(false); // real module: kept
+    mod.sweepFootprint(opts(m, { apply: true }));
+    expect(fs.existsSync(copy)).toBe(false); // mutant: released...
+    expect(treeBytes(path.join(m.brainHome, 'kb-copy-rescued'))).toBeGreaterThan(16 * 1024 * 1024); // ...and the rescue is unbounded
+  });
+  it('rescue skipped -> the copy is deleted and its only nightly log is lost', async () => {
+    const mod = await mutant([['brain-footprint.mjs', 'if (apply) rescueOperationalFiles(item.path, proof.rescue, roots.brainHome);', 'if (false) void 0;']]);
+    const real = machine(); live(real); const keptLog = litterCopy(real);
+    sweepFootprint(opts(real, { apply: true }));
+    expect(fs.readFileSync(rescuedAt(real, path.basename(keptLog), 'update.log'), 'utf8')).toBe(OPERATIONAL['update.log']); // real: rescued
+    const m = machine(); live(m); const copy = litterCopy(m);
+    mod.sweepFootprint(opts(m, { apply: true }));
+    expect(fs.existsSync(copy)).toBe(false);
+    expect(fs.existsSync(rescuedAt(m, path.basename(copy), 'update.log'))).toBe(false); // mutant: the log is gone
+  });
+  it('rescue verification removed -> a conflicting destination lets the copy go and its log bytes are lost', async () => {
+    const mod = await mutant([['footprint-io.mjs', 'if (!regular(to) || sha256Of(to) !== sha256) throw', 'if (false) throw']]);
+    const m = machine(); live(m); const copy = litterCopy(m);
+    write(rescuedAt(m, path.basename(copy), 'update.log'), 'an older, different rescue');
+    mod.sweepFootprint(opts(m, { apply: true }));
+    expect(fs.existsSync(copy)).toBe(false); // mutant: the copy is released...
+    expect(fs.readFileSync(rescuedAt(m, path.basename(copy), 'update.log'), 'utf8')).not.toBe(OPERATIONAL['update.log']); // ...and the log is lost
+  });
+  it('operational rule widened to every file -> a user file stops pinning its copy', async () => {
+    const mod = await mutant([['kb-copy-proof.mjs', 'if (isOperational(relative) && size <= RESCUE_CAP_BYTES', 'if (size <= RESCUE_CAP_BYTES']]);
+    const user = { [path.join('notes', 'personal.txt')]: 'mine' };
+    const real = machine(); live(real); const kept = litterCopy(real, 'kb.install-preserved-USER', user);
+    sweepFootprint(opts(real, { apply: true }));
+    expect(fs.existsSync(kept)).toBe(true); // real module: kept
+    const m = machine(); live(m); const copy = litterCopy(m, 'kb.install-preserved-USER', user); // fresh: no cached KEPT verdict
+    mod.sweepFootprint(opts(m, { apply: true }));
+    expect(fs.existsSync(copy)).toBe(false); // mutant: the user's copy is gone from where they left it
   });
 });
