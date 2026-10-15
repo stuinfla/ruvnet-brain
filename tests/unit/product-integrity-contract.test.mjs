@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { digest } from '../../scripts/source-scope-receipt.mjs';
 import {
   PRODUCT_INTEGRITY_OBLIGATIONS,
   PRODUCT_INTEGRITY_PROCESSES,
@@ -67,11 +68,25 @@ describe('ADR-072 executable product-integrity contract', () => {
     for (const file of governed) { fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true }); fs.writeFileSync(path.join(root, file), file); }
     const inventory = () => [...governed].sort(); const sourceSha = 'a'.repeat(40);
     const trace = buildProductIntegrityTrace({ root, sourceSha, contract, inventory });
+    expect(trace).toMatchObject({ schemaVersion: 2, evidenceScope: 'contract-and-source-byte-inventory', semanticReviewVerified: false, behaviorVerified: false, untested: ['semantic-review', 'behavior-execution'] });
+    expect(trace.sourceScope.semanticReview).toEqual({ status: 'UNKNOWN', performed: false });
     expect(validateProductIntegrityTrace(trace, { root, sourceSha, inventory })).toBe(trace);
     for (const mutate of [
       (copy) => { copy.verdict = 'FAIL'; }, (copy) => { copy.sourceSha = 'b'.repeat(40); },
-      (copy) => { copy.contractSha256 = '0'.repeat(64); }, (copy) => { copy.traceSha256 = '0'.repeat(64); },
+      (copy) => { copy.schemaVersion = 1; }, (copy) => { copy.semanticReviewVerified = true; },
+      (copy) => { copy.untested = []; }, (copy) => { copy.contractSha256 = '0'.repeat(64); }, (copy) => { copy.traceSha256 = '0'.repeat(64); },
     ]) { const copy = structuredClone(trace); mutate(copy); expect(() => validateProductIntegrityTrace(copy, { root, sourceSha, inventory })).toThrow(); }
+    // Valid digests cannot turn a legacy or inflated claim into current authority.
+    for (const mutate of [
+      (copy) => { copy.schemaVersion = 1; delete copy.evidenceScope; delete copy.semanticReviewVerified; delete copy.behaviorVerified; copy.untested = []; },
+      (copy) => { copy.semanticReviewVerified = true; },
+      (copy) => { copy.behaviorVerified = true; },
+      (copy) => { copy.untested = []; },
+    ]) {
+      const copy = structuredClone(trace); mutate(copy);
+      const { traceSha256, ...unsigned } = copy; copy.traceSha256 = digest(unsigned);
+      expect(() => validateProductIntegrityTrace(copy, { root, sourceSha, inventory })).toThrow(/identity is invalid or legacy/);
+    }
     fs.writeFileSync(path.join(root, governed[0]), 'mutated');
     expect(() => validateProductIntegrityTrace(trace, { root, sourceSha, inventory })).toThrow();
     fs.rmSync(root, { recursive: true, force: true });

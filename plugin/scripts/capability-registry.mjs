@@ -356,6 +356,45 @@ function countCaptureCommands(groups) {
   return n;
 }
 
+/** Read declared capture wiring only; plugin cache presence is not activation or execution. */
+export function captureDeclarationCounts({ home = HOME, project = process.cwd() } = {}) {
+  const counts = { pre: 0, end: 0, unknown: false };
+  const enabled = {};
+  const settings = [...new Set([path.join(home, '.claude/settings.json'), path.join(project, '.claude/settings.json'), path.join(project, '.claude/settings.local.json')])];
+  const add = (hooks) => {
+    if (hooks !== undefined && (!hooks || typeof hooks !== 'object' || Array.isArray(hooks))) { counts.unknown = true; return; }
+    const pre = countCaptureCommands(hooks?.PreCompact), end = countCaptureCommands(hooks?.SessionEnd);
+    if (pre === null || end === null) counts.unknown = true;
+    else { counts.pre += pre; counts.end += end; }
+  };
+  for (const file of settings) {
+    const result = readJSON(file);
+    if (result.missing) continue;
+    if (result.err) { counts.unknown = true; continue; }
+    add(result.value?.hooks);
+    if (result.value?.enabledPlugins !== undefined && (!result.value.enabledPlugins || typeof result.value.enabledPlugins !== 'object' || Array.isArray(result.value.enabledPlugins))) counts.unknown = true;
+    else Object.assign(enabled, result.value?.enabledPlugins || {});
+  }
+  const active = Object.entries(enabled).filter(([, value]) => value === true).map(([id]) => id);
+  if (active.length) {
+    const installed = readJSON(path.join(home, '.claude/plugins/installed_plugins.json'));
+    if (installed.missing || installed.err || !installed.value?.plugins || typeof installed.value.plugins !== 'object') counts.unknown = true;
+    else for (const id of active) {
+      const entries = installed.value.plugins[id];
+      if (!Array.isArray(entries) || !entries.length) { counts.unknown = true; continue; }
+      const candidates = entries.filter((entry) => entry?.scope !== 'project' || entry.projectPath === project);
+      if (candidates.length !== 1) { counts.unknown = true; continue; }
+      for (const entry of candidates) {
+        if (typeof entry?.installPath !== 'string' || !path.isAbsolute(entry.installPath)) { counts.unknown = true; continue; }
+        const manifest = readJSON(path.join(entry.installPath, 'hooks/hooks.json'));
+        if (manifest.missing || manifest.err) { counts.unknown = true; continue; }
+        add(manifest.value?.hooks);
+      }
+    }
+  }
+  return counts;
+}
+
 // ── The capabilities ─────────────────────────────────────────────────────────────────────────────
 // Ordered by blast radius: the ones whose dormancy costs the most sit at the top, because this list
 // is rendered in order and nobody reads to the bottom.
@@ -578,70 +617,15 @@ export const CAPABILITIES = [
     // already standing in a ruvnet-brain checkout; everyone else got `Cannot find module`. A real
     // executor behind an unreachable path is a dead button with extra steps.
     turnOn: selfTurnOn('Route one read-only task through the cheap path', 'route-cheap.mjs', '--task "<text>"'),
-    detect() {
-      const bin = path.join(HOME, '.npm-global/bin/agentic-flow');
-      const installed = fs.existsSync(bin);
-      const receipts = process.env.METAHARNESS_RECEIPTS || path.join(HOME, '.claude/metaharness/routing-receipts.jsonl');
-      const n = lineCount(receipts);
-
-      // Receipts are the proof, and they outrank installation: a receipt file with lines means this
-      // genuinely ran, even if the binary later moved. Absence of the binary AND of receipts is the
-      // only honest 'absent'.
-      if (n === null && !fs.existsSync(receipts)) {
-        return installed
-          ? row(STATE.OFF, 'agentic-flow is installed but no routing receipt has ever been written — the cheap path exists and has never been used')
-          : row(STATE.ABSENT, 'agentic-flow is not installed and no routing receipts exist, so cheap routing has never been set up here');
+    detect({ home = HOME } = {}) {
+      const config = readJSON(path.join(home, '.cache/ruvnet-brain/model-routing/terminal-launcher-config.json'));
+      if (config.err) return row(STATE.UNKNOWN, 'managed native routing settings are unreadable; routing and savings are not inferred');
+      if (!config.missing) {
+        const value = config.value;
+        if (!value || !path.isAbsolute(value.runtimeRoot || '') || !/^[a-f0-9]{64}$/.test(value.runtimeDigest || '')) return row(STATE.UNKNOWN, 'managed routing declaration is incomplete; no execution claim is made');
+        return row(STATE.UNKNOWN, 'a managed native routing runtime is configured. The retired Task dispatch hook is not a prerequisite. Configuration alone does not prove normal entry wiring, model allocation, execution or savings; those runtime facts were not checked by this declaration-only probe.');
       }
-      if (n === null) return row(STATE.UNKNOWN, 'the routing receipt ledger exists but could not be read — usage not checked');
-      if (n === 0) return row(STATE.OFF, 'the routing receipt ledger is present but empty — no task has been routed to a cheaper model');
-      const age = daysSince(mtimeOf(receipts));
-
-      // THE AGE NOW DECIDES, INSTEAD OF DECORATING. This line used to return ON for any n > 0 and
-      // merely MENTION the age in the evidence — so a router with 38 receipts and nothing invoking it
-      // for a fortnight read as healthy. We were holding the disproving fact and printing it politely.
-      //
-      // 7 days: this path should fire on ordinary sessions, so a full quiet week means something
-      // upstream stopped calling it — not that the user had a light week. Measured on this machine
-      // 2026-07-24: 38 receipts, last one 4.8 days old, and the PreToolUse gate that invokes it
-      // (plugin/scripts/route-dispatch.sh, written 2026-07-13) had never been added to settings.json.
-      // Built, correct, and unwired — which no state in this registry could previously express.
-      // MEASURE THE CAUSE, NOT A SYMPTOM. An age threshold alone is a proxy and it FAILED on the real
-      // case: measured 2026-07-24, the last receipt was 5 days old — under any sane horizon — while the
-      // router was in fact never being consulted at all. A quiet week and a severed wire look identical
-      // from the receipt file, so read the wire directly.
-      //
-      // Two things must both be true for the host-limited dispatch audit to record anything: a
-      // PreToolUse hook on subagent dispatch and the opt-in profile it refuses to act without
-      // (route-dispatch.sh exits 0 when
-      // profile.json is absent). Either missing ⇒ the router cannot fire, regardless of how healthy
-      // the receipt ledger looks.
-      const profile = fs.existsSync(path.join(HOME, '.claude/model-router/profile.json'));
-      // ONE READING OF THE WIRING, from the module that owns it — see dispatchGateWiring(). Scanning
-      // settings.json here was a second, narrower implementation of that question, and it answered
-      // "not wired" for every plugin-marketplace install (issue #112).
-      const gate = dispatchGateWiring();
-      const gateWired = gate.wired;
-      // THE ONE RULE OF THIS FILE. A census we could not take is not a gate we observed to be
-      // missing, and "nothing can invoke it" is a claim about the user's machine.
-      if (gate.unreadable) return row(STATE.UNKNOWN, `${n} routing receipt${n === 1 ? '' : 's'} recorded, but the hook registries on this machine could not be read — whether anything is wired to invoke the router was not checked`);
-
-      if (!gateWired || !profile) {
-        const missing = [!gateWired && 'no PreToolUse gate on Task|Agent is wired to route-dispatch.sh',
-          !profile && 'no ~/.claude/model-router/profile.json (the opt-in the gate requires)'].filter(Boolean).join('; and ');
-        return row(STATE.IDLE,
-          `set up and proven — ${n} routing receipt${n === 1 ? '' : 's'} recorded — but nothing can invoke it: ${missing}. `
-          + 'Every receipt so far came from someone running the router by hand. Until the gate is wired, subagents keep '
-          + 'inheriting this session\'s model, which is the single largest cost leak in the harness.');
-      }
-
-      const IDLE_AFTER_DAYS = 7;
-      if (age !== null && age > IDLE_AFTER_DAYS) {
-        return row(STATE.IDLE,
-          `set up and proven — ${n} routing receipt${n === 1 ? '' : 's'} recorded — but nothing has routed through it in ${age} days. `
-          + 'It is configured; something that should be calling it is not. Check that the subagent-dispatch gate is wired '
-          + '(a PreToolUse hook on Task|Agent) and that ~/.claude/model-router/profile.json exists — without either, the router is never consulted.');
-      }
-      return row(STATE.ON, `${n} routing receipt${n === 1 ? '' : 's'} recorded${age === null ? '' : `, most recent ${age} day${age === 1 ? '' : 's'} ago`}`);
+      return row(STATE.UNKNOWN, 'no managed routing declaration was observed in this inspected location; legacy Task routing receipts or binary presence do not establish current native routing or its absence');
     },
   },
 
@@ -733,17 +717,9 @@ export const CAPABILITIES = [
   {
     key: 'harness-evolution',
     label: 'Harness self-improvement',
-    // Issue #116: this was `turnOn: null`, justified by a "VERIFIED NULL: evolve is not among them"
-    // measurement that has since drifted — ruflo v3.34.0 ships evolve, bench and flywheel. The
-    // precondition is named in the human text because brain-score/SKILL.md:97 requires the WRITE
-    // layer's OPENROUTER_API_KEY to be disclosed rather than discovered on failure.
-    turnOn: {
-      human: 'Evolve the harness and keep only measured winners (needs OPENROUTER_API_KEY; without it, `--subcommand score` is the free read-only layer)',
-      cmd: 'ruflo metaharness --subcommand evolve',
-    },
     whatItBuysYou: 'The rules your AI works by get tested against each other, and the version that measurably does better becomes the new default.',
     scope: SCOPE.MACHINE,
-    // VERIFIED NULL: `ruflo metaharness --help` enumerates its subcommands and `evolve` is not among them.
+    // No automatic enable action: policy evolution has separate authority and potential spend.
     turnOn: null,
     detect({ project = process.cwd() } = {}) {
       const policy = path.join(HOME, '.claude-flow/harness-active-policy.json');
@@ -808,48 +784,13 @@ export const CAPABILITIES = [
     scope: SCOPE.MACHINE,
     // Registering hooks means editing settings.json by hand — no single verified command.
     turnOn: null,
-    detect() {
-      const r = readJSON(path.join(HOME, '.claude/settings.json'));
-      if (r.missing) return row(STATE.ABSENT, 'no Claude Code settings file exists on this machine yet');
-      if (r.err) return row(STATE.UNKNOWN, `the settings file could not be parsed (${r.err}) — capture hooks not checked`);
-      const hooksRoot = r.value?.hooks;
-      if (hooksRoot !== undefined && (!hooksRoot || typeof hooksRoot !== 'object' || Array.isArray(hooksRoot))) {
-        return row(STATE.UNKNOWN, 'the settings file has a hooks section this version cannot interpret — capture hooks not counted');
-      }
-      const hooks = hooksRoot || {};
-      // COUNT COMMANDS, NOT MATCHER GROUPS. See countHookCommands: `[{matcher:'.*',hooks:[]}]` has
-      // length 1 and executes nothing, and the old `.length` check called that "both boundaries are
-      // covered" — a fabricated ON on a machine that saves nothing.
-      //
-      // AND COUNT *CAPTURE* COMMANDS, NOT ANY COMMAND. The old count accepted whatever was wired at
-      // those two boundaries, so a shell logger and a terminal beep — neither of which saves a byte of
-      // session state — produced "Session capture: ON". MEASURED with exactly that pair. The boundary
-      // a command is attached to says WHEN it runs, never WHAT it does, and this row's whole claim is
-      // about what it does. A command is only counted when it names a mechanism known to persist state.
-      //
-      // A MALFORMED GROUP POISONS THE COUNT rather than being skipped — the same rule, and the same
-      // words, as learning-enable.readSettingsWiring, which documents at length why skipping an
-      // unparseable entry and reporting the remainder as a total is this project's signature lie.
-      // MEASURED: a PreCompact written as an object instead of an array was silently skipped and the
-      // row reported OFF — "nothing is saved when a session compacts" — about a machine whose capture
-      // hook we simply failed to parse. Identical structure to the bug fixed in that file, opposite
-      // treatment, same commit.
-      const pre = countCaptureCommands(hooks.PreCompact);
-      const end = countCaptureCommands(hooks.SessionEnd);
-      if (pre === null || end === null) {
-        return row(STATE.UNKNOWN, `the ${pre === null ? 'pre-compaction' : 'session-end'} hook list could not be parsed, so whether anything is registered there cannot be read — no conclusion is drawn from the half that did parse`);
-      }
-      // "registered", never "capturing" — the same standard the MCP row holds itself to twenty lines
-      // below. A settings entry proves a command is wired to fire; no local artifact proves it ever
-      // ran or that it succeeded when it did, and claiming captured state from a config file would be
-      // exactly the fabricated status this registry exists to refuse.
-      if (pre && end) return row(STATE.ON, 'a state-saving hook is registered at both boundaries: one before compaction and one at session end — registered, which is not the same as proven to have captured anything');
-      // ON, not OFF: one boundary IS covered. Partially configured is not never-used — half the
-      // sessions are being saved today, and calling that "off" both understates what they have and
-      // invites them to re-enable a thing already running. The gap is named in the evidence, which is
-      // where a real but partial shortfall belongs. Found by GPT-5.6-Sol, 2026-07-24.
-      if (pre || end) return row(STATE.ON, `a state-saving hook is registered only at ${pre ? 'the pre-compaction' : 'the session-end'} boundary — the other one loses its state`);
-      return row(STATE.OFF, 'no hook that saves session state is registered at either boundary, so nothing is kept when a session compacts or closes');
+    detect({ home = HOME, project = process.cwd() } = {}) {
+      const { pre, end, unknown } = captureDeclarationCounts({ home, project });
+      if (unknown) return row(STATE.UNKNOWN, 'capture declarations could not be read completely; no absence or execution conclusion is drawn');
+      if (pre && end) return row(STATE.ON, 'commands naming capture mechanisms are declared at compaction and session end, including explicitly enabled installed-plugin manifests. Declared wiring is not proof of native activation or successful capture.');
+      if (pre || end) return row(STATE.ON, `a command naming a capture mechanism is declared at ${pre ? 'pre-compaction' : 'session end'} only in the inspected sources; actual capture and the other boundary remain unproved`);
+      return row(STATE.UNKNOWN, 'no state-saving declaration was observed in the inspected sources; runtime and invocation-only plugin hooks were not checked and may still exist');
+
     },
   },
 

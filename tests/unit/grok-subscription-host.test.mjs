@@ -18,7 +18,7 @@ function fixture({ initialBilling = billing, finalBilling = billing, controlMism
   const controls = [{ id: 'model', currentValue: 'grok-test' }, { id: 'reasoning_effort', currentValue: 'medium' }];
   const launch = (_binary, args, options) => {
     expect(args).toEqual(['agent', '--no-leader', 'stdio']);
-    expect(options.env.GROK_DISABLE_API_KEY_AUTH).toBe('1');
+    expect(options.env.GROK_DISABLE_API_KEY_AUTH).toBe('1'); // sync-version-ignore: subscription-auth opt-out is the fixed environment protocol string
     child = new EventEmitter(); child.stdout = new EventEmitter(); child.stderr = new EventEmitter();
     child.stdout.destroy = child.stderr.destroy = () => { child.pipesDestroyed = true; };
     child.kill = () => {
@@ -69,7 +69,7 @@ describe('Grok native subscription adapter', () => {
   it('strips credential and endpoint escapes without exposing account secrets', () => {
     const env = grokSubscriptionEnv({ XAI_API_KEY: 'x', GROK_API_KEY: 'g', GROK_MODELS_BASE_URL: 'bad', PATH: '/bin' });
     expect(env).not.toHaveProperty('XAI_API_KEY'); expect(env).not.toHaveProperty('GROK_API_KEY');
-    expect(env).not.toHaveProperty('GROK_MODELS_BASE_URL'); expect(env.GROK_DISABLE_API_KEY_AUTH).toBe('1');
+    expect(env).not.toHaveProperty('GROK_MODELS_BASE_URL'); expect(env.GROK_DISABLE_API_KEY_AUTH).toBe('1'); // sync-version-ignore: subscription-auth opt-out is the fixed environment protocol string
     const receipt = grokBillingReceipt(auth, billing, topup);
     expect(receipt.eligible).toBe(true); expect(JSON.stringify(receipt)).not.toMatch(/secret|private@/);
     expect(receipt.atomicReservation).toBe(false);

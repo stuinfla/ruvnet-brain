@@ -104,10 +104,6 @@ const STANDALONE = [
   ['grounding-turn-replay', 'human-run measurement harness for grounding-turn-gate.mjs (ADR-0030 #1 and shadow #2/#3): replays real transcripts read-only through the same pure functions the hooks call, sharing completion-claim-replay.mjs\'s turn walkers; nothing to schedule'],
   ['duplicate-gate-replay','human-run tuning harness for plugin/scripts/duplicate-gate.mjs: replays the gate over git history, read-only, when its thresholds are re-tuned; it imports the gate\'s own scoring functions, so there is no second copy to drift and nothing to schedule'],
   ['sync-commands', 'explicit maintainer alias synchronizer; run deliberately before release, never from a lifecycle hook'],
-  ['project-progression-checkpoint', 'the body of the shipped `/ruvnet-brain:checkpoint` command '
-    + '(plugin/commands/checkpoint.md:39; added a7167b6b 2026-09-11). The command host executes that '
-    + 'instruction, and this check does not scan command markdown — the same shape as '
-    + '`onboarding-console` below. Recorded 2026-09-11 when wired-check first named it.'],
   ['handoff-asset', 'client explainer handoff to a named host, run by a human per docs/CLIENT-ASSET-HANDOFF.md '
     + '(added 32b7b7ca 2026-09-11 with the TriSmart sub-product); nothing may schedule a copy to a client '
     + 'machine. Surfaced 2026-09-11 the first time wired-check ran with no agent worktrees under '
@@ -953,7 +949,7 @@ export function hookWiringAudit({
   // below double-counts every OTHER entry in its TABLE as "spawned", because the pass's own predicate
   // (callerPattern) matches any quoted filename — and every TABLE entry is, by construction, a quoted
   // filename in hook-shim.mjs's source, dispatched or not. Measured: before this exclusion,
-  // design-wall.sh, route-dispatch.sh, verify-interface.sh, learn-capture.sh, learn-flush.mjs,
+  // design-wall.sh, route-dispatch.sh, verify-interface.sh, learn-capture.sh,
   // md-stamp.mjs, signal-watch.mjs, routing-outcome-capture.mjs and swarm-slot-recycler.mjs all read
   // "wired · via spawned by plugin/scripts/hook-shim.mjs" while zero manifest (hooks.json,
   // codex-hooks.json, this repo's or the user's settings.json) ever dispatches most of their ids —

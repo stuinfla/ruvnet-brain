@@ -29,16 +29,19 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const SCRIPT = path.join(ROOT, 'plugin', 'scripts', 'session-start.sh');
 const BANNER_MARKER = 'grounding not yet PROVEN';
 
-let home, cacheDir, statePath;
+let home, cacheDir, statePath, project;
 beforeEach(() => {
   home = fs.mkdtempSync(path.join(os.tmpdir(), 'rb-grounding-home-'));
   cacheDir = path.join(home, '.cache', 'ruvnet-brain');
   fs.mkdirSync(cacheDir, { recursive: true });
   statePath = path.join(cacheDir, 'install-state.json');
+  project = path.join(home, 'project');
+  fs.mkdirSync(project);
   // Keep the run hermetic and fast, same suppressions star-ask-once.test.mjs uses: auto-update
   // pref answered (no setup question), heartbeat stamped "just checked" (no curl), meter off.
   fs.writeFileSync(path.join(cacheDir, '.auto-update-pref'), 'no\n');
   fs.writeFileSync(path.join(cacheDir, '.last-update-check'), String(Math.floor(Date.now() / 1000)));
+  fs.writeFileSync(path.join(cacheDir, '.seed-attempted'), String(Math.floor(Date.now() / 1000)));
 });
 // Teardown retries: session-start.sh's spine seed is deliberately detached and still writing
 // into HOME when this runs (plugin/scripts/detach.mjs's header explains why it must be). Node's
@@ -49,7 +52,12 @@ function run(extraEnv = {}) {
   // 'bash' via PATH (not /bin/bash): Windows runners resolve this to Git Bash, the same shell
   // Claude Code uses for hooks on a real Windows machine.
   const r = spawnSync('bash', [SCRIPT], {
-    env: { ...process.env, HOME: home, USERPROFILE: home, CLAUDE_PLUGIN_ROOT: path.join(ROOT, 'plugin'), RUVNET_BRAIN_METER: '0', ...extraEnv },
+    cwd: project, input: '{}',
+    env: { ...process.env, HOME: home, USERPROFILE: home, CLAUDE_PROJECT_DIR: project,
+      XDG_CACHE_HOME: path.join(home, '.cache'), RUVNET_BRAIN_HOME: cacheDir,
+      RUVNET_BRAIN_STATE_DIR: path.join(home, '.config/ruvnet-brain'),
+      RUVNET_SETTINGS_FILE: path.join(home, '.config/ruvnet-brain/settings.json'),
+      RUVNET_HOOK_HOST: 'claude', CLAUDE_PLUGIN_ROOT: path.join(ROOT, 'plugin'), RUVNET_BRAIN_METER: '0', ...extraEnv },
     encoding: 'utf8',
     timeout: 15000,
   });

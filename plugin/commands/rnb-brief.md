@@ -1,41 +1,44 @@
 ---
-description: "Come up to speed on this project from AgentDB: the brief (state, what changed, decisions, standing rules, open items, gate outcomes, agent findings) and, on request, the full recorded history. Also records a decision, lesson or open item explicitly, with a read-back receipt."
-updated: 2026-10-01
+description: "Come up to speed on this project from AgentDB with rUv's own tools: the newest project-state-current checkpoint, lessons, recent turn outcomes and decisions, read by exact key with `ruflo memory list|retrieve|search`. Also records a decision, lesson or open item with a read-back receipt."
+updated: 2026-10-12
 ---
 
 # RuvNet-Brain: rnb-brief
 
 The user wants to know **what has happened on this project**, from the record — not from your memory.
+Every command below is `ruflo` (the global binary); `<db>` is `<project>/.swarm/memory.db` and `<ns>` is
+the project directory name.
 
 ## Do this
 
-**1. Show the brief.** Run it and show the output as-is:
+**1. The newest checkpoint.** List, pick the newest `project-state-current-*` key, read it exactly:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/continuity-brief.mjs"
+ruflo memory list -n <ns> --limit 1000 --format json --path <db>
+ruflo memory retrieve -k <newest project-state-current-key> -n <ns> --value-only --path <db>
 ```
 
-**2. If they asked for more** (history, "everything", one kind of thing, a time window), pull it:
+**2. Lessons, decisions and recent turns.**
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/continuity-brief.mjs" --full [--kind decision|lesson|commit|release|gate|finding|open-item] [--since 7d] [--limit 200]
+ruflo memory list -n lessons --format json --path <db>
+ruflo memory list -n turns --limit 20 --format json --path <db>
+ruflo memory search -q "<what the user asked about>" -n continuity-events --limit 10 --path <db>
 ```
 
-Every line carries its provenance (the AgentDB key and time, or the commit SHA). Quote it when you
-rely on an item. A line marked `detected` was inferred from the transcript, not stated explicitly —
-say so. A line marked `PENDING` is durable in the outbox but not yet committed to AgentDB.
+Quote the key of every item you rely on. Search hits are ranked previews: read the exact value with
+`ruflo memory retrieve` before asserting it.
 
 **3. If they asked you to record something** (a decision, a standing rule, an open item):
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/continuity-brief.mjs" --record --kind decision|lesson|open-item --text "<exactly what was decided>" [--owner "<who>"]
+ruflo memory store -k "<decision|lesson|open-item>-$(node -e 'process.stdout.write(String(Date.now()))')" -n continuity-events --path <db> --value "<exactly what was decided>"
+ruflo memory retrieve -k <that key> -n continuity-events --value-only --path <db>
 ```
 
-Report it as stored only when it prints `stored-and-read-back`. `durable-pending` means it is safe in the
-outbox and will commit at the next capture boundary — say exactly that, not "stored".
+Report it as stored only when the retrieved value matches exactly.
 
 ## What NOT to do
 
-- Do not summarize the history from memory or from the conversation instead of running the command.
-- Do not hand-write rows into `.swarm/memory.db` or call `ruflo memory store` for these yourself.
-- If the last line says `AgentDB: recording stuck`, tell the user that line verbatim before anything else.
+- Do not summarize the history from memory or from the conversation instead of running the commands.
+- Do not use the MCP `agentdb_hierarchical-*` tools for this: they read a different store.

@@ -836,7 +836,7 @@ plugin/scripts/host-update.mjs	C08-plugin-other	code	2159	59	2026-07-30	wired	13
 plugin/scripts/identifier-preflight.mjs	C07-plugin-hooks	code	7142	135	2026-08-13	wired	5	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
 plugin/scripts/kling-preflight.sh	C08-plugin-other	code	8840	147	2026-07-27	exempt	5	READ		wired-check exempt — stated reason is unverified prose; verify it	auto-rules-2026-09-26
 plugin/scripts/learn-capture.sh	C07-plugin-hooks	code	14724	242	2026-08-30	wired	26	READ		hook-shim id 'learn-capture' is in the dispatch table but no hooks.json / codex-hooks.json / settings.json registers it — possibly dead route (wired-check over-counts)	auto-rules-2026-09-26
-plugin/scripts/learn-flush.mjs	C07-plugin-hooks	code	12680	202	2026-09-07	wired	26	READ		hook-shim id 'learn-flush' is in the dispatch table but no hooks.json / codex-hooks.json / settings.json registers it — possibly dead route (wired-check over-counts)	auto-rules-2026-09-26
+the former learning flusher (deleted 2026-10-12)	C07-plugin-hooks	code	12680	202	2026-09-07	wired	26	READ		hook-shim id 'the former learning flusher (deleted 2026-10-12)' is in the dispatch table but no hooks.json / codex-hooks.json / settings.json registers it — possibly dead route (wired-check over-counts)	auto-rules-2026-09-26
 plugin/scripts/learning-enable.mjs	C07-plugin-hooks	code	22530	383	2026-08-06	wired	9	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
 plugin/scripts/lesson-bridge.mjs	C07-plugin-hooks	code	20253	344	2026-08-13	wired	8	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
 plugin/scripts/lesson-command-scope.mjs	C07-plugin-hooks	code	5567	134	2026-08-02	wired	5	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
@@ -852,15 +852,15 @@ plugin/scripts/memory-doctor.mjs	C08-plugin-other	code	20490	342	2026-09-07	exem
 plugin/scripts/nightly-controller.mjs	C08-plugin-other	code	5254	98	2026-09-07	wired	9	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
 plugin/scripts/nightly-scheduler.mjs	C08-plugin-other	code	34132	531	2026-09-12	wired	19	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
 plugin/scripts/project-identity.mjs	C08-plugin-other	code	5285	90	2026-08-04	wired	17	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
-plugin/scripts/project-progression-checkpoint.mjs	C08-plugin-other	code	6728	146	2026-09-11	exempt	3	READ		wired-check exempt — stated reason is unverified prose; verify it	auto-rules-2026-09-26
-plugin/scripts/project-progression-contract.mjs	C08-plugin-other	code	18460	426	2026-09-11	wired	13	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
-plugin/scripts/project-progression-hook.mjs	C08-plugin-other	code	8009	200	2026-09-11	wired	6	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
-plugin/scripts/project-progression-outbox.mjs	C08-plugin-other	code	3584	96	2026-08-22	wired	3	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
-plugin/scripts/project-progression-producer.mjs	C08-plugin-other	code	12826	253	2026-09-11	wired	4	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
-plugin/scripts/project-progression-reader.mjs	C08-plugin-other	code	13791	283	2026-09-19	wired	5	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
-plugin/scripts/project-progression-session-start.mjs	C08-plugin-other	code	14089	279	2026-09-19	wired	11	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
-plugin/scripts/project-progression-sources.mjs	C08-plugin-other	code	10203	221	2026-09-11	wired	2	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
-plugin/scripts/project-progression-store.mjs	C08-plugin-other	code	19669	443	2026-09-19	wired	11	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
+the former checkpoint writer (deleted 2026-10-12)	C08-plugin-other	code	6728	146	2026-09-11	exempt	3	READ		wired-check exempt — stated reason is unverified prose; verify it	auto-rules-2026-09-26
+the former progression contract (deleted 2026-10-12)	C08-plugin-other	code	18460	426	2026-09-11	wired	13	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
+the former progression hook (deleted 2026-10-12)	C08-plugin-other	code	8009	200	2026-09-11	wired	6	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
+the former progression outbox (deleted 2026-10-12)	C08-plugin-other	code	3584	96	2026-08-22	wired	3	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
+the former progression producer (deleted 2026-10-12)	C08-plugin-other	code	12826	253	2026-09-11	wired	4	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
+the former native progression reader (deleted 2026-10-12)	C08-plugin-other	code	13791	283	2026-09-19	wired	5	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
+the former progression restore (deleted 2026-10-12)	C08-plugin-other	code	14089	279	2026-09-19	wired	11	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
+the former progression sources reader (deleted 2026-10-12)	C08-plugin-other	code	10203	221	2026-09-11	wired	2	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
+the former progression store (deleted 2026-10-12)	C08-plugin-other	code	19669	443	2026-09-19	wired	11	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
 plugin/scripts/project-store-resolver.mjs	C08-plugin-other	code	3912	107	2026-08-22	wired	15	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
 plugin/scripts/protect-brain-state.sh	C07-plugin-hooks	code	6193	94	2026-08-12	wired	12	READ		hook-shim id 'protect-state' is in the dispatch table but no hooks.json / codex-hooks.json / settings.json registers it — possibly dead route (wired-check over-counts)	auto-rules-2026-09-26
 plugin/scripts/route-dispatch.sh	C08-plugin-other	code	7557	123	2026-08-02	wired	26	READ		hook-shim id 'route-dispatch' is in the dispatch table but no hooks.json / codex-hooks.json / settings.json registers it — possibly dead route (wired-check over-counts)	auto-rules-2026-09-26
@@ -868,7 +868,7 @@ plugin/scripts/routing-outcome-capture.mjs	C08-plugin-other	code	3336	90	2026-07
 plugin/scripts/ruflo-bin.mjs	C08-plugin-other	code	6374	102	2026-09-07	wired	20	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
 plugin/scripts/runtime-preferences.mjs	C08-plugin-other	code	14505	328	2026-08-14	wired	18	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
 plugin/scripts/ruvnet-gate1-pattern.mjs	C08-plugin-other	code	2171	30	2026-09-12	wired	4	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
-plugin/scripts/session-snapshot-contract.mjs	C08-plugin-other	code	4714	106	2026-09-07	wired	6	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
+the former session snapshot contract (deleted 2026-10-12)	C08-plugin-other	code	4714	106	2026-09-07	wired	6	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
 plugin/scripts/session-snapshot-hook.mjs	C08-plugin-other	code	8284	183	2026-09-11	wired	5	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
 plugin/scripts/session-start-budget.mjs	C07-plugin-hooks	code	3778	60	2026-09-11	wired	5	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
 plugin/scripts/session-start-core.mjs	C07-plugin-hooks	code	22580	375	2026-09-14	wired	35	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
@@ -1135,7 +1135,7 @@ scripts/rvf-wire.mjs	C02-scripts-corpus-update	code	13020	270	2026-09-14	wired	1
 scripts/seal-gist-receipt.mjs	C06-scripts-other	code	3772	66	2026-09-13	manual	4	KEEP		wired-check: manual (npm script / named hold)	auto-rules-2026-09-26
 scripts/self-update.mjs	C02-scripts-corpus-update	code	22630	327	2026-09-19	exempt	37	READ		wired-check exempt — stated reason is unverified prose; verify it	auto-rules-2026-09-26
 scripts/selfcheck.mjs	C06-scripts-other	code	46585	750	2026-09-15	wired	30	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
-scripts/session-snapshot-contract.mjs	C03-scripts-memory-lessons-continuity	code	65	2	2026-08-02	wired	5	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
+the former session snapshot contract (deleted 2026-10-12)	C03-scripts-memory-lessons-continuity	code	65	2	2026-08-02	wired	5	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
 scripts/set-version.mjs	C01-scripts-release	code	1517	32	2026-08-30	wired	3	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
 scripts/sign-bundle.mjs	C01-scripts-release	code	3882	70	2026-07-07	wired	19	KEEP		wired-check: reached from a live entry point	auto-rules-2026-09-26
 scripts/signal-watch.mjs	C06-scripts-other	code	9570	172	2026-07-27	wired	14	READ		hook-shim id 'signal-watch' is in the dispatch table but no hooks.json / codex-hooks.json / settings.json registers it — possibly dead route (wired-check over-counts)	auto-rules-2026-09-26
@@ -1251,20 +1251,20 @@ tests/integration/ingest-gists.test.mjs	C11-tests-other	test	22749	412	2026-09-1
 tests/integration/ingest-repo.test.mjs	C11-tests-other	test	12182	212	2026-08-19	-	3	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
 tests/integration/install-smoke.mjs	C11-tests-other	test	47764	792	2026-09-20	-	9	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
 tests/integration/learning-enable.test.mjs	C11-tests-other	test	8144	211	2026-07-22	-	0	KEEP		runnable test that exercises repo file(s) by path: learning-enable.mjs	auto-rules-2026-09-26
-tests/integration/learning-scope-policy.test.mjs	C11-tests-other	test	3642	106	2026-07-30	-	0	KEEP		runnable test that exercises repo file(s) by path: learn-capture.sh, learn-flush.mjs	auto-rules-2026-09-26
+tests/integration/learning-scope-policy.test.mjs	C11-tests-other	test	3642	106	2026-07-30	-	0	KEEP		runnable test that exercises repo file(s) by path: learn-capture.sh, the former learning flusher (deleted 2026-10-12)	auto-rules-2026-09-26
 tests/integration/managed-cli-mcp.test.mjs	C11-tests-other	test	22123	528	2026-09-08	-	2	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
 tests/integration/managed-memory-structured-recovery.test.mjs	C11-tests-other	test	5945	96	2026-08-19	-	0	READ		test imports no local module and names no repo script — verify what it tests	auto-rules-2026-09-26
 tests/integration/nightly-gists-error-paths.test.mjs	C11-tests-other	test	11870	210	2026-09-11	-	3	KEEP		runnable test that exercises repo file(s) by path: forge-big.mjs, ingest-gists.mjs, nightly-gists.sh	auto-rules-2026-09-26
 tests/integration/pack-completeness.test.mjs	C11-tests-other	test	3772	84	2026-07-28	-	1	KEEP		runnable test that exercises repo file(s) by path: install.mjs, server.mjs, codex-hook-wrapper.mjs	auto-rules-2026-09-26
 tests/integration/proactivity-ground-truth.test.mjs	C11-tests-other	test	1658	29	2026-07-23	-	1	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
-tests/integration/project-progression-checkpoint.test.mjs	C11-tests-other	test	6593	125	2026-09-11	-	0	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
+the former checkpoint writer (deleted 2026-10-12)	C11-tests-other	test	6593	125	2026-09-11	-	0	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
 tests/integration/project-progression-concurrent-sessions.test.mjs	C11-tests-other	test	7516	142	2026-09-11	-	0	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
-tests/integration/project-progression-hook.test.mjs	C11-tests-other	test	15563	382	2026-09-11	-	1	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
-tests/integration/project-progression-reader-identity.test.mjs	C11-tests-other	test	7940	155	2026-09-11	-	1	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
+the former progression hook (deleted 2026-10-12)	C11-tests-other	test	15563	382	2026-09-11	-	1	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
+the former native progression reader (deleted 2026-10-12)	C11-tests-other	test	7940	155	2026-09-11	-	1	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
 tests/integration/project-progression-restore-semantics.test.mjs	C11-tests-other	test	11966	218	2026-09-11	-	0	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
 tests/integration/project-progression-restore.test.mjs	C11-tests-other	test	12981	286	2026-09-07	-	0	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
-tests/integration/project-progression-session-start.test.mjs	C11-tests-other	test	21032	475	2026-09-19	-	2	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
-tests/integration/project-progression-store.test.mjs	C11-tests-other	test	16774	397	2026-09-19	-	0	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
+the former progression restore (deleted 2026-10-12)	C11-tests-other	test	21032	475	2026-09-19	-	2	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
+the former progression store (deleted 2026-10-12)	C11-tests-other	test	16774	397	2026-09-19	-	0	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
 tests/integration/prove-classification.test.mjs	C11-tests-other	test	5904	79	2026-07-08	-	0	READ		test has no runnable assertion (only .todo or none)	auto-rules-2026-09-26
 tests/integration/public-gist-git-capture.test.mjs	C11-tests-other	test	1733	31	2026-09-19	-	1	READ		test has no runnable assertion (only .todo or none)	auto-rules-2026-09-26
 tests/integration/public-inputs-packaging.test.mjs	C11-tests-other	test	17265	277	2026-09-14	-	1	KEEP		runnable test that exercises repo file(s) by path: install.mjs, zip-extract.mjs, gates.mjs	auto-rules-2026-09-26
@@ -1477,7 +1477,7 @@ tests/unit/grounding-identifier-recall.test.mjs	C09-tests-unit-a-l	test	14653	26
 tests/unit/grounding-receipt-lanes.test.mjs	C09-tests-unit-a-l	test	13979	335	2026-08-22	-	3	READ		imports missing: ./forge-evidence.mjs	auto-rules-2026-09-26
 tests/unit/grounding-turn-gate.test.mjs	C09-tests-unit-a-l	test	8274	165	2026-09-12	-	0	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
 tests/unit/grounding-unproven-surfacer.test.mjs	C09-tests-unit-a-l	test	5072	97	2026-07-27	-	0	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
-tests/unit/health-repair-flush-learning.test.mjs	C09-tests-unit-a-l	test	11911	231	2026-08-06	-	1	KEEP		runnable test that exercises repo file(s) by path: learn-capture.sh, learn-flush.mjs, memory-doctor.mjs	auto-rules-2026-09-26
+tests/unit/health-repair-flush-learning.test.mjs	C09-tests-unit-a-l	test	11911	231	2026-08-06	-	1	KEEP		runnable test that exercises repo file(s) by path: learn-capture.sh, the former learning flusher (deleted 2026-10-12), memory-doctor.mjs	auto-rules-2026-09-26
 tests/unit/helpers/console-child.mjs	C09-tests-unit-a-l	test	2806	55	2026-09-11	-	7	READ		test has no runnable assertion (only .todo or none)	auto-rules-2026-09-26
 tests/unit/hijack-managed-memory-matcher.test.mjs	C09-tests-unit-a-l	test	4032	70	2026-08-05	-	0	KEEP		runnable test that exercises repo file(s) by path: hijack-ruvnet.sh	auto-rules-2026-09-26
 tests/unit/hijack-no-jq.test.mjs	C09-tests-unit-a-l	test	6712	118	2026-07-29	-	0	KEEP		runnable test that exercises repo file(s) by path: hijack-ruvnet.sh, hook-input.mjs, hook-shim.mjs	auto-rules-2026-09-26
@@ -1488,7 +1488,7 @@ tests/unit/hook-hardening.test.mjs	C09-tests-unit-a-l	test	35245	578	2026-09-26	
 tests/unit/hook-input.test.mjs	C09-tests-unit-a-l	test	16788	260	2026-07-27	-	2	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
 tests/unit/hook-registry-lint.test.mjs	C09-tests-unit-a-l	test	39835	634	2026-09-12	-	2	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
 tests/unit/hook-shim-bash.test.mjs	C09-tests-unit-a-l	test	5445	131	2026-07-24	-	0	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
-tests/unit/hook-shim-fallback-once.test.mjs	C09-tests-unit-a-l	test	6714	121	2026-08-14	-	2	KEEP		runnable test that exercises repo file(s) by path: continuation-gate.mjs, hook-shim.mjs, learn-flush.mjs	auto-rules-2026-09-26
+tests/unit/hook-shim-fallback-once.test.mjs	C09-tests-unit-a-l	test	6714	121	2026-08-14	-	2	KEEP		runnable test that exercises repo file(s) by path: continuation-gate.mjs, hook-shim.mjs, the former learning flusher (deleted 2026-10-12)	auto-rules-2026-09-26
 tests/unit/hook-shim-ground-fast.test.mjs	C09-tests-unit-a-l	test	1706	49	2026-07-29	-	1	KEEP		runnable test that exercises repo file(s) by path: hook-shim.mjs	auto-rules-2026-09-26
 tests/unit/hook-shim.test.mjs	C09-tests-unit-a-l	test	9552	172	2026-09-07	-	6	KEEP		runnable test that exercises repo file(s) by path: decision-gate.mjs, ground-ruvnet.sh, grounding-stamp.sh	auto-rules-2026-09-26
 tests/unit/host-convergence-lock.test.mjs	C09-tests-unit-a-l	test	3239	77	2026-09-09	-	0	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
@@ -1522,7 +1522,7 @@ tests/unit/kling-preflight.test.mjs	C09-tests-unit-a-l	test	8054	149	2026-07-13	
 tests/unit/latency-to-surface.test.mjs	C09-tests-unit-a-l	test	9179	184	2026-07-26	-	0	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
 tests/unit/learn-capture-project-root.test.mjs	C09-tests-unit-a-l	test	8462	152	2026-08-31	-	1	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
 tests/unit/learn-capture-redaction.test.mjs	C09-tests-unit-a-l	test	5020	106	2026-07-30	-	0	KEEP		runnable test that exercises repo file(s) by path: learn-capture.sh	auto-rules-2026-09-26
-tests/unit/learn-flush-partial-failure.test.mjs	C09-tests-unit-a-l	test	3629	72	2026-09-07	-	0	KEEP		runnable test that exercises repo file(s) by path: learn-flush.mjs	auto-rules-2026-09-26
+the former learning flusher (deleted 2026-10-12)	C09-tests-unit-a-l	test	3629	72	2026-09-07	-	0	KEEP		runnable test that exercises repo file(s) by path: the former learning flusher (deleted 2026-10-12)	auto-rules-2026-09-26
 tests/unit/learner-scope-agreement.test.mjs	C09-tests-unit-a-l	test	8784	146	2026-08-30	-	1	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
 tests/unit/learning-replay-proof.test.mjs	C09-tests-unit-a-l	test	18176	428	2026-09-07	-	0	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
 tests/unit/learning-replay-verdict.test.mjs	C09-tests-unit-a-l	test	12662	304	2026-09-07	-	0	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
@@ -1602,10 +1602,10 @@ tests/unit/product-integrity-contract.test.mjs	C10-tests-unit-m-z	test	5103	85	2
 tests/unit/product-integrity-review-workflow.test.mjs	C10-tests-unit-m-z	test	1192	26	2026-09-04	-	0	READ		test imports no local module and names no repo script — verify what it tests	auto-rules-2026-09-26
 tests/unit/product-integrity-source-check.test.mjs	C10-tests-unit-m-z	test	2294	49	2026-09-07	-	0	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
 tests/unit/project-identity.test.mjs	C10-tests-unit-m-z	test	2599	63	2026-08-04	-	1	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
-tests/unit/project-progression-contract.test.mjs	C10-tests-unit-m-z	test	15702	367	2026-09-07	-	3	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
-tests/unit/project-progression-outbox.test.mjs	C10-tests-unit-m-z	test	3009	87	2026-08-26	-	0	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
-tests/unit/project-progression-producer.test.mjs	C10-tests-unit-m-z	test	9975	196	2026-09-11	-	0	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
-tests/unit/project-progression-reader.test.mjs	C10-tests-unit-m-z	test	9275	186	2026-09-19	-	0	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
+the former progression contract (deleted 2026-10-12)	C10-tests-unit-m-z	test	15702	367	2026-09-07	-	3	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
+the former progression outbox (deleted 2026-10-12)	C10-tests-unit-m-z	test	3009	87	2026-08-26	-	0	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
+the former progression producer (deleted 2026-10-12)	C10-tests-unit-m-z	test	9975	196	2026-09-11	-	0	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
+the former native progression reader (deleted 2026-10-12)	C10-tests-unit-m-z	test	9275	186	2026-09-19	-	0	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
 tests/unit/project-store-resolver.test.mjs	C10-tests-unit-m-z	test	6540	156	2026-08-22	-	0	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
 tests/unit/project-store-views.test.mjs	C10-tests-unit-m-z	test	7788	112	2026-09-13	-	0	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
 tests/unit/promoted-lessons-survive-update.test.mjs	C10-tests-unit-m-z	test	7145	141	2026-08-22	-	1	KEEP		runnable test that exercises repo file(s) by path: lesson-promote.mjs, full-hints.mjs, git-clone-refresh.mjs	auto-rules-2026-09-26
@@ -1639,7 +1639,7 @@ tests/unit/reclaim-backups-data-safety.test.mjs	C10-tests-unit-m-z	test	4190	85	
 tests/unit/reclaim-backups.test.mjs	C10-tests-unit-m-z	test	8900	208	2026-09-08	-	1	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
 tests/unit/reclaim-retention-rule.test.mjs	C10-tests-unit-m-z	test	10234	167	2026-09-11	-	0	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
 tests/unit/reclaim-symlink-scope.test.mjs	C10-tests-unit-m-z	test	4199	83	2026-09-07	-	0	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
-tests/unit/record-lesson.test.mjs	C10-tests-unit-m-z	test	7638	139	2026-08-30	-	2	KEEP		runnable test that exercises repo file(s) by path: degradation-watch.mjs, learn-flush.mjs, ruflo-bin.mjs	auto-rules-2026-09-26
+tests/unit/record-lesson.test.mjs	C10-tests-unit-m-z	test	7638	139	2026-08-30	-	2	KEEP		runnable test that exercises repo file(s) by path: degradation-watch.mjs, the former learning flusher (deleted 2026-10-12), ruflo-bin.mjs	auto-rules-2026-09-26
 tests/unit/recover-public-verification-workflow.test.mjs	C10-tests-unit-m-z	test	4389	75	2026-09-07	-	0	KEEP		runnable test that exercises repo file(s) by path: public-verification-aggregate.mjs, public-verification-finalizer.mjs, public-verification-lane.mjs	auto-rules-2026-09-26
 tests/unit/recovery-candidate-source.test.mjs	C10-tests-unit-m-z	test	10258	187	2026-09-07	-	1	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26
 tests/unit/refresh-run.test.mjs	C10-tests-unit-m-z	test	8124	146	2026-09-07	-	1	KEEP		test with runnable assertions; every relative import resolves	auto-rules-2026-09-26

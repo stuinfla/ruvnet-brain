@@ -5,7 +5,7 @@
 ## TL;DR
 
 Issue #134's fix pinned the learn-queue writer (`plugin/scripts/learn-capture.sh`) and its two readers
-(`plugin/scripts/learn-flush.mjs`, `scripts/health-repair.mjs`) to a shared rule —
+(`the former learning flusher (deleted 2026-10-12)`, `scripts/health-repair.mjs`) to a shared rule —
 `RUVNET_BRAIN_PROJECT_DIR || cwd` — so a shell that drifted below the project root mid-session (any tool
 call that `cd`'s) would not orphan captured events. `RUVNET_BRAIN_PROJECT_DIR` is, in production, never set
 by either host's real hook dispatcher: `plugin/scripts/hook-shim.mjs` (Claude Code) forwards
@@ -72,7 +72,7 @@ AssertionError: CLAUDE_PROJECT_DIR must anchor the queue when the shell has drif
 i.e. on current code, with the real-production env shape (`RUVNET_BRAIN_PROJECT_DIR` unset,
 `CLAUDE_PROJECT_DIR` set, cwd drifted), the queue is silently orphaned — reproducing #134/#104 live.
 
-**Restored the fix** (`plugin/scripts/learn-capture.sh`, `plugin/scripts/learn-flush.mjs`,
+**Restored the fix** (`plugin/scripts/learn-capture.sh`, `the former learning flusher (deleted 2026-10-12)`,
 `scripts/health-repair.mjs` — reusing `project-identity.mjs`'s `projectDirectory()` in the two Node files
 rather than a hand-rolled fallback chain, plus a containment-checked bash equivalent in the writer) and
 re-ran: **4/4 in the target file, including a new containment-negative case** (an unrelated
@@ -149,9 +149,9 @@ recording: cross-host-conformance findings are not always "host A differs from h
 
 **stranger-project-behaviour.** This is exactly the surface a fresh install in someone else's project would
 hit: any tool call that `cd`'s during a session (a build, a test run inside a subdirectory) orphans that
-session's learning-queue entries in a project that has never adopted `RUVNET_BRAIN_PROJECT_DIR` (nothing
+session's the former learning queue (deleted 2026-10-12) entries in a project that has never adopted `RUVNET_BRAIN_PROJECT_DIR` (nothing
 sets it anywhere), silently, with no error — the queue simply accumulates in the wrong place and
-`learn-flush.mjs` never sees those entries at `SessionEnd`.
+`the former learning flusher (deleted 2026-10-12)` never sees those entries at `SessionEnd`.
 
 ## Governance note (not this candidate's problem, flagged for the human owner)
 
@@ -194,7 +194,7 @@ appending this section changed the bytes. That is expected by construction, not 
 1. `git checkout 486a144dbc9bd5fa3b8b715e0c13935d1add0f1f` (this cycle's base commit on `main`).
 2. Apply the candidate diff from the PR this report is attached to.
 3. Recompute `sha256(REPORT_HASH + SESSION_COMMIT)` — must equal `WITNESS` above.
-4. Revert only `plugin/scripts/learn-capture.sh`, `plugin/scripts/learn-flush.mjs`,
+4. Revert only `plugin/scripts/learn-capture.sh`, `the former learning flusher (deleted 2026-10-12)`,
    `scripts/health-repair.mjs` (keep the test file changes), re-run
    `tests/unit/learn-capture-project-root.test.mjs` — the "ISSUE #134 RESIDUAL" case must fail with
    `expected [] to not deeply equal []`.

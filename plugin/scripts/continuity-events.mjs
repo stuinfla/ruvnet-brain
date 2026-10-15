@@ -11,14 +11,14 @@
  * So this module turns what is OBSERVABLE at a capture boundary into small typed events:
  *
  *   commit     git, by SHA (subject, files, merge flag, branch)        authoritative
- *   release    git tags, by tag + target SHA                           authoritative
+ *   release    local git tag observations, by tag + target SHA         publication unverified
  *   gate       a test / check / release command and its exit outcome   authoritative (tool result)
  *   finding    an Agent/Task completion's reported result             not authoritative (agent text)
  *   decision   a line the assistant marked as a decision, or explicit  explicit only is authoritative
  *   lesson     an owner correction / standing rule, or explicit        explicit only is authoritative
  *   open-item  explicit only (the work ledger is read live, not copied) authoritative
  *
- * Each event is redacted (redactProgression), bounded (SUMMARY_LIMIT), and carries a content-derived
+ * Each event is redacted (redactProgression, below), bounded (SUMMARY_LIMIT), and carries a content-derived
  * `id` so the same commit, decision or lesson is recorded once however many boundaries see it.
  *
  * PRIVACY. Turn capture never stores user text (a 2026-07-13 measurement: prompt echoes were 87% of a
@@ -28,12 +28,98 @@
  * detail.status: 'detected-unconfirmed'`, written only to the project's own local store; the brief never
  * presents one as a standing rule. RUVNET_CONTINUITY_LESSON_DETECT=off turns that detector off.
  */
+import { nativeTurnLines } from './native-turn-transcript.mjs';
 import crypto from 'node:crypto';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { redactProgression } from './project-progression-contract.mjs';
+
+// Secret redaction for event payloads: pure functions, no storage.
+function canonicalize(value) {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) {
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalize(value[key])]));
+  }
+  throw new TypeError('progression values must be JSON-compatible');
+}
+
+function secretKind(key) {
+  const normalized = key.replace(/[^a-z0-9]/gi, '').toLowerCase();
+  if (normalized.includes('privatekey')) return 'private-key';
+  if (normalized.includes('apikey')) return 'api-key';
+  if (normalized.includes('authorization')) return 'authorization';
+  if (normalized.includes('password') || normalized.includes('passwd')) return 'password';
+  if (normalized.includes('token')) return 'token';
+  if (normalized.includes('secret')) return 'secret';
+  if (normalized.includes('credential')) return 'credential';
+  return null;
+}
+
+const INLINE_SECRETS = Object.freeze([
+  {
+    kind: 'private-key',
+    pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
+    replace: '[REDACTED:private-key]',
+  },
+  {
+    kind: 'bearer-token',
+    pattern: /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi,
+    replace: 'Bearer [REDACTED:bearer-token]',
+  },
+  {
+    kind: 'api-key',
+    pattern: /\b(?:sk|api-key|ghp|github_pat)[-_][A-Za-z0-9._-]{8,}/gi,
+    replace: '[REDACTED:api-key]',
+  },
+  {
+    kind: 'password',
+    pattern: /\b(password|passwd)\s*[:=]\s*[^\s;,]+/gi,
+    replace: '$1=[REDACTED:password]',
+  },
+  {
+    kind: 'token',
+    pattern: /\b(token|secret|credential)\s*[:=]\s*[^\s;,]+/gi,
+    replace: '$1=[REDACTED:token]',
+  },
+]);
+
+export function redactProgression(value) {
+  const redactions = [];
+  const mark = (path, kind) => {
+    if (!redactions.some((row) => row.path === path && row.kind === kind)) redactions.push({ path, kind });
+  };
+  const walk = (current, currentPath) => {
+    if (typeof current === 'string') {
+      let output = current;
+      for (const rule of INLINE_SECRETS) {
+        rule.pattern.lastIndex = 0;
+        const replaced = output.replace(rule.pattern, rule.replace);
+        if (replaced !== output) {
+          mark(currentPath, rule.kind);
+          output = replaced;
+        }
+      }
+      return output;
+    }
+    if (Array.isArray(current)) return current.map((item, index) => walk(item, `${currentPath}[${index}]`));
+    if (current && typeof current === 'object' && Object.getPrototypeOf(current) === Object.prototype) {
+      return Object.fromEntries(Object.keys(current).sort().map((key) => {
+        const path = `${currentPath}.${key}`;
+        const kind = secretKind(key);
+        if (kind && current[key] !== null && current[key] !== undefined) {
+          if (current[key] !== `[REDACTED:${kind}]`) mark(path, kind);
+          return [key, `[REDACTED:${kind}]`];
+        }
+        return [key, walk(current[key], path)];
+      }));
+    }
+    return canonicalize(current);
+  };
+  const redacted = walk(value, '$');
+  redactions.sort((left, right) => left.path.localeCompare(right.path) || left.kind.localeCompare(right.kind));
+  return { value: redacted, redactions };
+}
+
 
 export const CONTINUITY_NAMESPACE = 'continuity-events';
 export const EVENT_SCHEMA = 'ruvnet-brain.continuity-event';
@@ -191,9 +277,9 @@ export function collectReleases({ checkoutRoot, sinceMs, host, session, project,
     if (!tag || !Number.isFinite(at) || at < sinceMs) continue;
     const sha = peeled || object;
     events.push(makeEvent({
-      kind: 'release', at, host, session, project, source: 'git', authoritative: true,
-      summary: `${tag} -> ${String(sha).slice(0, 8)}`, basis: `${tag}@${sha}`,
-      detail: { tag, sha, channel: tag.startsWith('corpus-') ? 'corpus' : 'code' },
+      kind: 'release', at, host, session, project, source: 'git-tag', authoritative: false,
+      summary: `LOCAL TAG ${tag} -> ${String(sha).slice(0, 8)} (publication unverified)`, basis: `${tag}@${sha}`,
+      detail: { tag, sha, channel: tag.startsWith('corpus-') ? 'corpus' : 'code', publicationVerified: false },
     }));
     if (events.length >= max) break;
   }
@@ -236,21 +322,40 @@ export function currentTurnRecords(lines) {
   return { userMessage: start >= 0 ? textOf(recs[start].message?.content) : '', records: recs.slice(start + 1) };
 }
 
+export { exitOutcome as normalizeToolOutcome };
+
 function exitOutcome(result) {
   const text = resultText(result?.content);
-  const code = /\bExit code (\d+)/i.exec(text);
-  const failed = result?.is_error === true || (code && code[1] !== '0');
+  const response = result?.content && typeof result.content === 'object' && !Array.isArray(result.content)
+    ? result.content : result;
+  const codes = [...text.matchAll(/^(?:Exit code\s*:?|Process exited with code)\s+(-?\d+)\s*$/gim)].map(match => Number(match[1]));
+  for (const value of [result, response]) for (const key of ['exit_code', 'exitCode', 'status']) {
+    if (Number.isSafeInteger(value?.[key])) codes.push(value[key]);
+  }
+  const distinct = [...new Set(codes)], code = distinct.length === 1 ? distinct[0] : null;
+  const states = [result, response].flatMap(value => [value?.status, value?.outcome]).filter(value => typeof value === 'string').map(value => value.toLowerCase());
+  const uncertain = states.some(value => ['unknown', 'unavailable'].includes(value));
+  const failed = states.some(value => ['fail', 'failed', 'failure', 'error', 'denied'].includes(value)) || [result, response].some(value => value?.is_error === true || value?.isError === true
+    || value?.success === false || value?.ok === false || Boolean(value?.error)) || codes.some(value => value !== 0);
+  const interrupted = [result, response].some(value => value?.interrupted === true || value?.cancelled === true || value?.canceled === true || Boolean(value?.signal))
+    || states.some(value => ['cancelled', 'canceled', 'interrupted', 'aborted', 'timeout', 'timed_out'].includes(value));
+  const running = /\bProcess running with session ID\b|\bScript running with cell ID\b/i.test(text)
+    || states.some(value => ['running', 'pending', 'queued'].includes(value))
+    || [result, response].some(value => value?.completed === false);
+  const outcome = failed ? 'fail' : interrupted ? 'interrupted' : running ? 'pending' : !uncertain && code === 0 ? 'pass' : 'unknown';
   const tail = text.split('\n').map((l) => l.trim()).filter(Boolean).slice(-1)[0] || '';
-  return { outcome: failed ? 'fail' : 'pass', exitCode: code ? Number(code[1]) : (failed ? null : 0), tail: bound(tail, 200) };
+  const nativeSuccess = [result, response].some(value => value?.is_error === false || value?.isError === false || value?.success === true || value?.ok === true);
+  return { outcome, exitCode: running || interrupted ? null : code, tail: bound(tail, 200),
+    uncertain, successfulToolResult: !failed && !interrupted && !running && !uncertain && (code === 0 || nativeSuccess) };
 }
 
 /**
- * Typed events from one Claude JSONL turn. Codex rollouts are not parsed (project-progression-sources
- * declares that format unknown); Codex gets decisions/lessons from `last_assistant_message` only.
+ * Typed events from the current native turn. Codex JSONL is normalized mechanically; opaque
+ * custom-tool orchestration inputs cannot manufacture a gate outcome or semantic decision.
  */
 export function collectTurnEvents({ lines = null, lastAssistantMessage = '', host, session, project, env = process.env, at = Date.now() }) {
   const events = [];
-  const turn = lines ? currentTurnRecords(lines) : { userMessage: '', records: [] };
+  const turn = lines ? currentTurnRecords(nativeTurnLines(lines, host)) : { userMessage: '', records: [] };
   const uses = new Map();
   const assistantTexts = [];
   for (const rec of turn.records) {
@@ -269,7 +374,7 @@ export function collectTurnEvents({ lines = null, lastAssistantMessage = '', hos
         if (use.name === 'Bash' && typeof input.command === 'string' && GATE_COMMAND.test(input.command)) {
           const command = bound(input.command, 200);
           const { outcome, exitCode, tail } = exitOutcome(r);
-          events.push(makeEvent({ kind: 'gate', at, host, session, project, source: 'tool-result', authoritative: true,
+          events.push(makeEvent({ kind: 'gate', at, host, session, project, source: 'tool-result', authoritative: ['pass', 'fail'].includes(outcome),
             summary: `${outcome.toUpperCase()} ${command}${tail ? ` — ${tail}` : ''}`,
             basis: `${session}\u0000${use.id}`, detail: { command, outcome, exitCode, description: bound(input.description || '', 120) } }));
         } else if (use.name === 'Agent' || use.name === 'Task') {
@@ -286,9 +391,9 @@ export function collectTurnEvents({ lines = null, lastAssistantMessage = '', hos
   for (const text of assistantTexts) {
     for (const line of text.split('\n')) {
       if (DECISION_LINE.test(line)) {
-        events.push(makeEvent({ kind: 'decision', at, host, session, project, source: 'assistant-detected', authoritative: false, summary: line.replace(/\*\*/g, '') }));
+        events.push(makeEvent({ kind: 'decision', at, host, session, project, source: 'assistant-detected', authoritative: false, detail: { status: 'detected-unconfirmed' }, summary: line.replace(/\*\*/g, '') }));
       } else if (LESSON_LINE.test(line)) {
-        events.push(makeEvent({ kind: 'lesson', at, host, session, project, source: 'assistant-detected', authoritative: false, summary: line.replace(/\*\*/g, '') }));
+        events.push(makeEvent({ kind: 'lesson', at, host, session, project, source: 'assistant-detected', authoritative: false, detail: { status: 'detected-unconfirmed' }, summary: line.replace(/\*\*/g, '') }));
       }
     }
   }
@@ -305,23 +410,3 @@ export function collectTurnEvents({ lines = null, lastAssistantMessage = '', hos
   return events.filter((e) => (seen.has(`${e.kind}:${e.id}`) ? false : seen.add(`${e.kind}:${e.id}`)));
 }
 
-/**
- * The owner's own user-level AgentDB hooks (~/.claude/settings.json). Read, never modified. Used to
- * DEFER: where one of them already records a thing, the product does not record it a second time.
- */
-export function userLevelAgentdbHooks({ home = os.homedir() } = {}) {
-  const found = { turnCapture: false, autocapture: false, ensure: false, settings: path.join(home, '.claude', 'settings.json') };
-  let doc;
-  try { doc = JSON.parse(fs.readFileSync(found.settings, 'utf8')); } catch { return found; }
-  for (const groups of Object.values(doc?.hooks ?? {})) {
-    for (const group of Array.isArray(groups) ? groups : []) {
-      for (const hook of Array.isArray(group?.hooks) ? group.hooks : []) {
-        const command = String(hook?.command ?? '');
-        if (/agentdb-turn-capture\.mjs/.test(command)) found.turnCapture = true;
-        if (/agentdb-autocapture\.mjs/.test(command)) found.autocapture = true;
-        if (/agentdb-ensure\.sh/.test(command)) found.ensure = true;
-      }
-    }
-  }
-  return found;
-}

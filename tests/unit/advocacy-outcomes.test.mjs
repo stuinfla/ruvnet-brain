@@ -353,10 +353,9 @@ describe('qualitative — "unknown" is a value with a reason, never a number tha
   });
 });
 
-describe('medium — a broken ledger degrades to "no outcomes yet", and fails toward SPEAKING', () => {
-  // The direction of the failure is the whole point. A suppression mechanism that breaks toward
-  // silence is silent in exactly the same way a healthy one is when there is nothing to say, so
-  // nobody would ever discover it.
+describe('broken suppression history stays quiet; a genuinely absent ledger starts empty', () => {
+  // Unknown history cannot stand in for consent. Reporting degradation is separate from
+  // authorizing another optional recommendation. A missing fresh ledger remains normal.
 
   it('a missing file is not an error', () => {
     expect(loadOutcomes(path.join(tmp, 'nope.jsonl'))).toEqual([]);
@@ -364,11 +363,11 @@ describe('medium — a broken ledger degrades to "no outcomes yet", and fails to
     expect(shouldStillOffer('anything', { file: path.join(tmp, 'nope.jsonl') })).toBe(true);
   });
 
-  it('a file of pure garbage yields no outcomes and keeps the brain talking', () => {
+  it('corrupt suppression history cannot authorize a new offer', () => {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, 'not json at all\n<<<>>>\n   \n');
     expect(loadOutcomes(file)).toEqual([]);
-    expect(shouldStillOffer('repair:memory-index', { file, severity: 'IMPORTANT' })).toBe(true);
+    expect(shouldStillOffer('repair:memory-index', { file, severity: 'IMPORTANT' })).toBe(false);
     expect(precision({ file }).precision).toBe(null);
   });
 

@@ -23,7 +23,7 @@
     "319": "STILL OPEN -> G-036, G-003, G-033",
     "320": "STILL OPEN (feature) -> G-032",
     "326": "STILL OPEN (latent) -> G-040",
-    "329": "ALREADY FIXED d1f87ad6 (v4.4.0); tests/integration/project-progression-store.test.mjs",
+    "329": "ALREADY FIXED d1f87ad6 (v4.4.0); the former progression store (deleted 2026-10-12)",
     "330": "STILL OPEN -> G-031",
     "331": "ALREADY FIXED 4750f287 (v4.3.38); residual G-042",
     "335": "PARTLY FIXED (ADR-098 --clean; hand-made kb.bak kept) -> G-028",
@@ -707,7 +707,7 @@
       "requirement": [
         "R7"
       ],
-      "evidence": "no timeZone/toLocale/\"act by\" in session-start-core.mjs or continuity-brief.mjs (fork C)",
+      "evidence": "no timeZone/toLocale/\"act by\" in session-start-core.mjs or the former continuity brief (deleted 2026-10-12) (fork C)",
       "acceptanceTest": {
         "probe": "tests/e2e/closure/G-026.probe.mjs",
         "realProcess": true,

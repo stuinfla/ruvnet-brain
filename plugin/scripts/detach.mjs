@@ -41,7 +41,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const SELF = fileURLToPath(import.meta.url);
@@ -73,7 +73,8 @@ function receipt(row) {
     const p = receiptPath();
     fs.mkdirSync(path.dirname(p), { recursive: true });
     fs.appendFileSync(p, `${JSON.stringify({ ts: new Date().toISOString(), ...row })}\n`);
-  } catch { /* a maintenance job must not die because its log directory is read-only */ }
+    return true;
+  } catch { return false; }
 }
 
 /** Open the job's log, or /dev/null. Never throws — an unwritable log is not a reason to skip work. */
@@ -149,6 +150,8 @@ if (!SUPERVISOR) {
 // ── SUPERVISOR HALF (already outside the session's process group). Runs the real job, holds the
 // clock, and is the only thing that can end it early.
 const out = openLog();
+// Keep an unresolved retirement requirement if any later receipt cannot be written.
+if (!receipt({ state: 'launching', supervisorPid: process.pid, ttlSec, cmd, retirementRequired: true })) process.exit(0);
 const job = spawn(cmd[0], cmd.slice(1), {
   detached: true, // its own group again, so the TTL kill reaches ITS children too (npm, git, node)
   stdio: ['ignore', out, out],
@@ -157,26 +160,63 @@ const job = spawn(cmd[0], cmd.slice(1), {
 });
 
 let killedAtTtl = false;
-receipt({ state: 'started', pid: job.pid ?? null, ttlSec, cmd });
+let finished = false;
+let grace;
+const probe = (group = process.platform !== 'win32') => {
+  if (!job.pid) return { state: 'unknown', error: 'missing-job-pid' };
+  try { process.kill(group ? -job.pid : job.pid, 0); return { state: 'alive' }; }
+  catch (error) { return error.code === 'ESRCH' ? { state: 'gone' } : { state: 'unknown', error: error.code || 'probe-failed' }; }
+};
+const finish = (state, detail = {}) => {
+  if (finished) return;
+  finished = true; clearTimeout(deadline); clearTimeout(grace);
+  // Group absence cannot certify descendants that escaped into another group. Keep that fence.
+  receipt({ state, pid: job.pid ?? null, supervisorPid: process.pid, ttlSec, cmd,
+    retirementRequired: true, retirementConfirmed: false, retirementState: 'UNKNOWN',
+    scope: process.platform === 'win32' ? 'windows-taskkill-tree-attempt' : 'posix-process-group', ...detail });
+  process.exit(0);
+};
+receipt({ state: 'started', pid: job.pid ?? null, supervisorPid: process.pid, ttlSec, cmd, retirementRequired: true });
 
 const deadline = setTimeout(() => {
   killedAtTtl = true;
-  try { process.kill(-job.pid, 'SIGTERM'); } catch { /* already gone */ }
-  setTimeout(() => {
-    try { process.kill(-job.pid, 'SIGKILL'); } catch { /* already gone */ }
-    receipt({ state: 'killed-at-ttl', pid: job.pid ?? null, ttlSec, cmd });
-    process.exit(0);
-  }, GRACE_MS).unref();
+  if (process.platform === 'win32') {
+    if (job.exitCode !== null || job.signalCode !== null) return finish('retirement-unknown', { reason: 'parent-exited; descendant identity unavailable', rootObservation: probe(false) });
+    const killed = spawnSync('taskkill', ['/PID', String(job.pid), '/T', '/F'], {
+      timeout: 1000, windowsHide: true, encoding: 'utf8', maxBuffer: 16 * 1024 });
+    return finish('retirement-unknown', { reason: 'complete Windows descendant retirement not observed',
+      taskkill: { status: killed.status, error: killed.error?.code || null }, rootObservation: probe(false) });
+  }
+  const errors = [];
+  const signal = name => {
+    try { process.kill(-job.pid, name); }
+    catch (error) { if (error.code !== 'ESRCH') errors.push({ signal: name, error: error.code || 'kill-failed' }); }
+  };
+  signal('SIGTERM');
+  grace = setTimeout(() => {
+    if (probe().state !== 'gone') signal('SIGKILL');
+    // Ref'd timers retain supervision after the direct parent exits; observe native reaping too.
+    grace = setTimeout(() => {
+      const groupObservation = probe();
+      finish(groupObservation.state === 'gone' && !errors.length ? 'group-retired-at-ttl' : 'retirement-unknown',
+        { groupObservation, groupRetirementConfirmed: groupObservation.state === 'gone', killErrors: errors,
+          reason: 'escaped or unobserved descendants are not certified' });
+    }, 100);
+  }, GRACE_MS);
 }, ttlSec * 1000);
 
 job.on('error', (e) => {
   clearTimeout(deadline);
-  receipt({ state: 'spawn-failed', pid: null, ttlSec, cmd, detail: e.message });
+  receipt({ state: 'spawn-failed', pid: null, ttlSec, cmd, detail: e.message, retirementRequired: false, launched: false });
   process.exit(0);
 });
 job.on('exit', (code, signal) => {
-  clearTimeout(deadline);
   if (killedAtTtl) return; // the TTL path writes its own, more specific receipt
-  receipt({ state: 'exited', pid: job.pid ?? null, code, signal, cmd });
-  process.exit(0);
+  receipt({ state: 'parent-exited', pid: job.pid ?? null, code, signal, cmd, retirementRequired: true, retirementConfirmed: false });
+  if (process.platform === 'win32') return finish('retirement-unknown', { reason: 'parent exit does not establish descendant retirement', rootObservation: probe(false) });
+  const groupObservation = probe();
+  if (groupObservation.state === 'gone') finish('group-retired', { code, signal, groupObservation, groupRetirementConfirmed: true,
+    reason: 'escaped or unobserved descendants are not certified' });
+  else if (groupObservation.state === 'unknown') finish('retirement-unknown', { code, signal, groupObservation });
+  // A surviving owned group stays supervised until the original TTL.
 });

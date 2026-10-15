@@ -111,14 +111,20 @@ export function parseCodingAgentEvidence(html, methodology, { url, checkedAt, id
   }
   const source = { url, checkedAt, sha256: digest(html), parser: 'aa-coding-agents-flight-v1' };
   const records = [];
+  const skippedIncomplete = [];
   for (const row of rows.values()) {
+    const nativeHost = row.agentName === 'Codex' && row.provider === 'openai' ? 'codex'
+      : row.agentName === 'Claude Code' && row.provider === 'anthropic' ? 'claude-code' : null;
     if (!finite(row.indexScore) || row.indexScore > 1 || !finite(row.mean?.costUsd) || !finite(row.mean?.agentWallTimeSec)
       || !row.display?.model || !Array.isArray(row.evals) || row.evals.length !== row.indexComponentCount || !row.versions
       || row.evals.some((e) => !e.datasetIndexName || !finite(e.mean?.reward))) {
-      throw new Error(`Incomplete coding-agent record: ${row.id}`);
+      // A routable (Codex / Claude Code) row must be complete or the whole refresh fails; an incomplete row from a
+      // harness we never route to is dropped and disclosed so one third-party null cannot block the weekly review.
+      if (nativeHost) throw new Error(`Incomplete coding-agent record: ${row.id}`);
+      skippedIncomplete.push({ sourceId: row.id, harness: row.agentName ?? null, provider: row.provider ?? null,
+        displayModel: row.display?.model ?? null });
+      continue;
     }
-    const nativeHost = row.agentName === 'Codex' && row.provider === 'openai' ? 'codex'
-      : row.agentName === 'Claude Code' && row.provider === 'anthropic' ? 'claude-code' : null;
     const binding = nativeHost ? identityBindings[row.modelRelease?.slug] : null;
     if (binding && (!binding.model || !binding.evidence || !binding.checkedAt)) throw new Error('Invalid coding-agent native identity binding');
     const effort = nativeHost ? row.display.model.match(/\((low|medium|high|xhigh|max|minimal|none)\)/i)?.[1]?.toLowerCase() ?? null : null;
@@ -135,5 +141,6 @@ export function parseCodingAgentEvidence(html, methodology, { url, checkedAt, id
   }
   if (!records.length) throw new Error('Coding-agent structured records absent');
   return { source, records, coverage: { scope: 'public serialized agent/configuration records; native entitlements unverified',
-    recordCount: records.length, renderedChartSelectionVerified: false }, selectionQualified: false };
+    recordCount: records.length, skippedIncompleteCount: skippedIncomplete.length, skippedIncomplete,
+    renderedChartSelectionVerified: false }, selectionQualified: false };
 }

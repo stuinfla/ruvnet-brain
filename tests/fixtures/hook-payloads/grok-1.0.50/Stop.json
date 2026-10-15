@@ -1,0 +1,22 @@
+{
+ "_provenance": "captured: grok 1.0.50 (c58f321264ba) grok -p --yolo --output-format json, project .grok/hooks dump hook, GROK_FOLDER_TRUST=0, 2026-10-13; prompt: create probe.txt containing hi, run cat probe.txt, reply DONE. Paths replaced by {{CWD}} / {{TRANSCRIPT}}; otherwise byte-for-byte the stdin Grok sent.",
+ "payload": {
+  "hookEventName": "stop",
+  "sessionId": "01a136cb-29d3-7760-9dad-c904303c5e1a",
+  "cwd": "{{CWD}}",
+  "workspaceRoot": "{{CWD}}/",
+  "timestamp": "2026-10-13T19:46:46.640055+00:00",
+  "transcriptPath": "{{TRANSCRIPT}}",
+  "promptId": "1d930396-b68b-491a-8280-dc0851bb21c4",
+  "permissionMode": "bypassPermissions",
+  "reason": "end_turn",
+  "stopHookActive": false,
+  "lastAssistantMessage": "DONE",
+  "backgroundTasks": [],
+  "sessionCrons": [],
+  "hook_event_name": "Stop",
+  "session_id": "01a136cb-29d3-7760-9dad-c904303c5e1a",
+  "transcript_path": "{{TRANSCRIPT}}",
+  "permission_mode": "bypassPermissions"
+ }
+}

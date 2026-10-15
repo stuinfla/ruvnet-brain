@@ -19,6 +19,7 @@
 //
 // Every ground-ruvnet.sh case asserts the same pair: exit 0, EMPTY stderr, plus the expected
 // gate behavior (which blocks fired / stayed silent).
+import { saveSettings } from '../../plugin/scripts/user-settings.mjs';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -300,7 +301,8 @@ describe('session-start.sh — greeting + one-time star-ask', () => {
   });
 
   it('star-ask appears at most ONCE ever: fires on the first eligible run, never again', () => {
-    // Eligible = the brain has grounded at least once on this machine (.grounded-once stamp).
+    // Promotion requires explicit owner opt-in as well as prior useful grounding.
+    expect(saveSettings({ advocacy: 4 }, { file: path.join(tmpHome, '.config/ruvnet-brain/settings.json') }).ok).toBe(true);
     fs.writeFileSync(path.join(cacheDir(), '.grounded-once'), '1');
     const run1 = runSessionHook();
     const run2 = runSessionHook();
@@ -311,6 +313,14 @@ describe('session-start.sh — greeting + one-time star-ask', () => {
     expect(run2.stdout).not.toContain(STAR); // second run, same HOME: never again
     // The stamp is written BEFORE the echo, so even a killed session can't repeat it.
     expect(fs.existsSync(path.join(cacheDir(), '.star-ask-shown'))).toBe(true);
+  });
+
+  it('grounding alone cannot authorize promotion or consume the one-time offer', () => {
+    fs.writeFileSync(path.join(cacheDir(), '.grounded-once'), '1');
+    const out = runSessionHook();
+    expectClean(out);
+    expect(out.stdout).not.toContain('Star github.com');
+    expect(fs.existsSync(path.join(cacheDir(), '.star-ask-shown'))).toBe(false);
   });
 
   it('star-ask never fires on a machine where the brain has not grounded anything', () => {

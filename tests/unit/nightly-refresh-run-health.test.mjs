@@ -41,7 +41,8 @@ function fixture() {
   const source = path.join(root, 'nightly-refresh.mjs');
   fs.mkdirSync(kbDir, { recursive: true });
   fs.writeFileSync(source, '#!/usr/bin/env node\nprocess.exitCode = 0;\n');
-  const record = installNightlyRunner({ brainHome, source, nodePath: '/absolute/node' });
+  // These fixtures model the historical schema-3 corpus producer, not the new suite receipt.
+  const record = installNightlyRunner({ brainHome, source, nodePath: '/absolute/node', developerSuite: false });
   const identity = { schedulerIdentity: NIGHTLY_LABEL, registrationPath: record.recordPath,
     nodePath: record.nodePath, runnerPath: record.runnerPath, runnerSha256: record.runnerSha256, argv: [] };
   const write = (receipt) => {

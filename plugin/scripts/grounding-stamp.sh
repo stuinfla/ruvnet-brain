@@ -70,6 +70,9 @@ VERDICT="$(printf '%s' "$INPUT" | "$NODE_BIN" "$HERE/grounding-answer.mjs" 2>/de
 # No HOME, no stamp dir to write — and under `set -u` a bare $HOME is an "unbound variable" on stderr
 # (found by hook-qualify's home-unset case on an ANSWERED search, 4.5). Exit quietly instead.
 [ -n "${HOME:-}" ] || exit 0
+# Same-turn proof is separate from the shared 24h write-gate freshness stamps below.
+# Native session/project/turn identity and the current marker nonce must all match.
+printf '%s' "$INPUT" | "$NODE_BIN" "$HERE/grounding-turn-mark.mjs" --record-search >/dev/null 2>&1 || true
 DIR="$HOME/.cache/ruvnet-brain/grounded"
 mkdir -p "$DIR" 2>/dev/null || exit 0
 

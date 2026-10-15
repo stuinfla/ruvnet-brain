@@ -24,7 +24,7 @@ export function authorizedContinuationObjective(objective, input, identity) {
   if (!identity || input?.hook_event_name !== 'Stop' || !text(input.session_id)
     || input.interrupted || input.cancelled || input.stop_hook_active) return null;
   if (objective?.schemaVersion !== 1 || objective.kind !== 'continuation-preferences'
-    || objective.authoritative !== false || objective.state !== 'active'
+    || objective.authoritative !== false || !['active', 'completed'].includes(objective.state)
     || !text(objective.id) || !text(objective.text) || !Number.isFinite(Date.parse(objective.at))
     || objective.authorization?.kind !== 'user' || !text(objective.authorization.reference)
     || objective.projectId !== identity.projectId

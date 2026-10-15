@@ -5,9 +5,9 @@
 //   api/admin-stats.mjs — auth fails CLOSED: no ADMIN_TOKEN env → 503; wrong token → 401.
 //                         No network is touched in any of these paths.
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import ping, { validatePing } from '../../explainer/api/ping.mjs';
-import adminStats, { tokenMatches, hashFromResult } from '../../explainer/api/admin-stats.mjs';
+import adminStats, { tokenMatches, hashFromResult, readOpenWork } from '../../explainer/api/admin-stats.mjs';
 
 const KV_VARS = ['KV_REST_API_URL', 'KV_REST_API_TOKEN', 'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'];
 const saved = {};
@@ -15,6 +15,7 @@ beforeEach(() => {
   for (const k of [...KV_VARS, 'ADMIN_TOKEN', 'GITHUB_TOKEN']) { saved[k] = process.env[k]; delete process.env[k]; }
 });
 afterEach(() => {
+  vi.unstubAllGlobals();
   for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
 });
 
@@ -95,5 +96,39 @@ describe('admin-stats.mjs — auth fails CLOSED', () => {
     expect(hashFromResult({ result: ['install', '3', 'search', '17'] })).toEqual({ install: 3, search: 17 });
     expect(hashFromResult({ result: [] })).toEqual({});
     expect(hashFromResult(null)).toEqual({});
+  });
+});
+
+
+describe('admin current-work inventory', () => {
+  const issue = (number) => ({ number, title: `Issue ${number}`, user: { login: 'contributor' }, created_at: '2026-10-10T00:00:00Z', html_url: 'https://github.com/example', state: 'open' });
+  it('includes older open work beyond the first page, owner-authored issues and PRs', async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => Array.from({ length: 100 }, (_, n) => issue(n)) })
+      .mockResolvedValueOnce({ ok: true, json: async () => [{ ...issue(101), user: { login: 'stuinfla' }, pull_request: {} }] });
+    vi.stubGlobal('fetch', fetcher);
+    const result = await readOpenWork('');
+    expect(result.available).toBe(true);
+    expect(result.items).toHaveLength(101);
+    expect(result.items[100]).toMatchObject({ login: 'stuinfla', isPR: true });
+    expect(fetcher.mock.calls[1][0]).toContain('page=2');
+    expect(fetcher.mock.calls[0][0]).toContain('state=open');
+  });
+  it('a failed page is unknown, never an empty or partial cleared queue', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
+    expect(await readOpenWork('')).toMatchObject({ available: false, items: null });
+  });
+  it('uses releases/latest even when list order has an older release first', async () => {
+    process.env.ADMIN_TOKEN = 'test-only';
+    vi.stubGlobal('fetch', vi.fn(async (url) => ({ ok: true, json: async () => {
+      if (url.endsWith('/releases/latest')) return { tag_name: 'v4.6.0', assets: [{ name: 'bundle.zip', download_count: 10 }] };
+      if (url.includes('/releases?')) return [{ tag_name: 'v4.3.13', assets: [{ download_count: 75 }] }];
+      if (url.includes('/issues?') || url.includes('/stargazers?') || url.includes('/forks?')) return [];
+      return {};
+    } })));
+    const res = mockRes();
+    await adminStats({ method: 'GET', headers: { 'x-admin-token': 'test-only' } }, res);
+    expect(res.body.latestRelease.tag).toBe('v4.6.0');
+    expect(res.body.openWork).toMatchObject({ available: true, items: [] });
+    expect(res.headers['Cache-Control']).toBe('no-store');
   });
 });

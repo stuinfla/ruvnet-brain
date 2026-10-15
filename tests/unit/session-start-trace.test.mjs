@@ -12,6 +12,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { createStageTracer } from '../../plugin/scripts/session-start-trace.mjs';
 
 describe('createStageTracer — stage()', () => {
+  it('charges earlier restore time to the inherited absolute deadline', () => {
+    const work = vi.fn(); const write = vi.fn();
+    const tracer = createStageTracer({ budgets: { body: 20 }, deadlineMs: 10000, deadlineAt: Date.now() - 1, write });
+    expect(tracer.stage('body', work)).toBeUndefined(); expect(work).not.toHaveBeenCalled();
+    expect(write).toHaveBeenCalledWith(expect.stringContaining('skipped=budget-exceeded'));
+  });
   it('runs the stage function and returns its result', () => {
     const tracer = createStageTracer({ budgets: { a: 100 }, deadlineMs: 1000 });
     const result = tracer.stage('a', () => 42);

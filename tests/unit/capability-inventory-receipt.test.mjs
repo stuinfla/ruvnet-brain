@@ -70,33 +70,29 @@ describe('RuvNet installation-claim audit', () => {
     return buildCapabilityInventoryReceipt({ host: 'codex', roots: [root] });
   };
 
-  it('rejects the exact false-negative failure: installed ADR Verify called not installed', () => {
-    const result = auditCapabilityClaims('Ruflo ADR Verify is not installed.', inventory());
-    expect(result.verdict).toBe('FAIL');
-    expect(result.contradictions).toEqual([
-      expect.objectContaining({ polarity: 'absent', matchedRef: 'ruflo-adr:adr-verify' }),
-    ]);
+  it('does not turn cached skill bytes into installed or registered truth', () => {
+    for (const statement of ['Ruflo ADR Verify is installed.', 'Ruflo ADR Verify is not installed.', "Ruflo ADR Verify isn't installed.", 'Ruflo ADR Verify is registered.', 'Ruflo ADR Create is installed.', 'Ruflo ADR Create is not installed.']) {
+      const result = auditCapabilityClaims(statement, inventory());
+      expect(result.verdict).toBe('UNKNOWN');
+      expect(result.contradictions).toEqual([]);
+      expect(result.unresolved).toHaveLength(1);
+    }
+  });
+  it('admits only the enumerated skill-source predicate, not complete host absence', () => {
+    const receipt = inventory();
+    expect(receipt.scope).toBe('enumerated-skill-source-files');
+    expect(receipt.predicates).toMatchObject({ skillSourceFiles: 'complete', cliInstallation: 'unknown', mcpRegistration: 'unknown', reachability: 'unknown' });
+    expect(auditCapabilityClaims('Ruflo ADR Verify skill source is present.', receipt).verdict).toBe('PASS');
+    expect(auditCapabilityClaims('Ruflo ADR Verify skill source is not present.', receipt).verdict).toBe('FAIL');
+    expect(auditCapabilityClaims('Ruflo ADR Create skill source is not present.', receipt).verdict).toBe('UNKNOWN');
   });
 
-  it('also rejects contracted absence claims', () => {
-    expect(auditCapabilityClaims("Ruflo ADR Verify isn't installed.", inventory())).toMatchObject({ verdict: 'FAIL' });
-  });
-
-  it('accepts presence only when the sealed inventory contains the named capability', () => {
-    expect(auditCapabilityClaims('Ruflo ADR Verify is installed.', inventory())).toMatchObject({ verdict: 'PASS' });
-    expect(auditCapabilityClaims('Ruflo ADR Create is installed.', inventory())).toMatchObject({ verdict: 'FAIL' });
-  });
-
-  it('allows a proved absence but requires UNKNOWN when enumeration was incomplete', () => {
-    const complete = inventory();
-    expect(auditCapabilityClaims('Ruflo ADR Create is not installed.', complete)).toMatchObject({ verdict: 'PASS' });
-
-    const unknown = structuredClone(complete);
-    unknown.completeness = 'unknown';
-    unknown.errors = ['permission denied'];
-    const { inventoryDigest, ...unsigned } = unknown;
-    unknown.inventoryDigest = crypto.createHash('sha256').update(JSON.stringify(unsigned)).digest('hex');
-    expect(auditCapabilityClaims('Ruflo ADR Create is not installed.', unknown)).toMatchObject({ verdict: 'UNKNOWN' });
+  it('rejects a rehashed skill inventory that tries to promote cache bytes into reachability', () => {
+    const receipt = inventory();
+    receipt.predicates.reachability = 'complete';
+    const { inventoryDigest, ...unsigned } = receipt;
+    receipt.inventoryDigest = crypto.createHash('sha256').update(JSON.stringify(unsigned)).digest('hex');
+    expect(() => validateCapabilityInventoryReceipt(receipt)).toThrow(/predicates exceed/);
   });
 
   it('does not reinterpret quoted history, code, or a hypothetical as the assistant claim', () => {

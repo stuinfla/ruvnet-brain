@@ -5,10 +5,12 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { automaticPath } from './automatic-update.mjs';
+import { sharedLockStatus } from './developer-update-lock.mjs';
+import { EXECUTION_MODULES } from './developer-update-policy.mjs';
 
 export const NIGHTLY_LABEL = 'com.ruvnet.brain-update';
 export const NIGHTLY_HOUR = 3;
-export const NIGHTLY_MINUTE = 47;
+export const NIGHTLY_MINUTE = 30;
 export const NIGHTLY_PROOF_LABEL = /^com\.ruvnet\.brain-update\.proof-[A-Za-z0-9._-]+$/;
 export const NIGHTLY_ENV_ALLOWLIST = Object.freeze([
   'PATH', 'HOME', 'USERPROFILE', 'RUVNET_BRAIN_HOME', 'RUVNET_BRAIN_KB', 'npm_config_cache', 'NO_COLOR', 'SystemRoot', 'SYSTEMROOT', 'ComSpec', 'COMSPEC', 'PATHEXT', 'TEMP', 'TMP',
@@ -140,8 +142,13 @@ function inspectRefreshOwner(owner) {
   } catch { return 'unknown'; }
 }
 
-function updateModules(directory, sourceDir = path.dirname(fileURLToPath(import.meta.url))) {
-  const files = ['automatic-update.mjs', 'user-settings.mjs', 'ruvnet-gate1-pattern.mjs'];
+const HISTORICAL_UPDATE_MODULES = ['automatic-update.mjs', 'user-settings.mjs', 'ruvnet-gate1-pattern.mjs'];
+const BRIDGED_UPDATE_MODULES = [...HISTORICAL_UPDATE_MODULES, 'developer-update-owner.mjs'];
+const LEGACY_UPDATE_MODULES = [...BRIDGED_UPDATE_MODULES, 'developer-update-policy.mjs'];
+const PREVIOUS_DEVELOPER_MODULES = [...BRIDGED_UPDATE_MODULES, ...EXECUTION_MODULES.filter(name => name !== 'plugin-artifact-proof.mjs')];
+const DEVELOPER_UPDATE_MODULES = [...new Set([...LEGACY_UPDATE_MODULES, ...EXECUTION_MODULES])];
+function updateModules(directory, sourceDir = path.dirname(fileURLToPath(import.meta.url)), developerSuite = true) {
+  const files = developerSuite ? DEVELOPER_UPDATE_MODULES : LEGACY_UPDATE_MODULES;
   const bytes = Object.fromEntries(files.map(file => [file, fs.readFileSync(path.join(sourceDir, file))]));
   const digest = sha256(Buffer.concat(files.flatMap(file => [Buffer.from(file), bytes[file]])));
   const target = path.join(directory, `update-modules-${digest}`);
@@ -157,7 +164,8 @@ function updateModules(directory, sourceDir = path.dirname(fileURLToPath(import.
 
 function verifyUpdateModules(modules) {
   if (!modules) return; // existing schema-2 registrations remain inspectable
-  if (Object.keys(modules).sort().join(',') !== 'automatic-update.mjs,ruvnet-gate1-pattern.mjs,user-settings.mjs') throw new Error('invalid update module closure');
+  if (![HISTORICAL_UPDATE_MODULES, BRIDGED_UPDATE_MODULES, LEGACY_UPDATE_MODULES, PREVIOUS_DEVELOPER_MODULES, DEVELOPER_UPDATE_MODULES].some(names => [...names].sort().join(',') === Object.keys(modules).sort().join(','))) throw new Error('invalid update module closure');
+  if (modules['developer-update.mjs'] && !modules['plugin-artifact-proof.mjs'] && fs.readFileSync(modules['developer-update.mjs'].path, 'utf8').includes('./plugin-artifact-proof.mjs')) throw new Error('new coordinator artifact closure is incomplete');
   for (const [name, item] of Object.entries(modules)) {
     if (!path.isAbsolute(item.path) || path.basename(item.path) !== name
       || path.dirname(item.path) !== path.dirname(modules['automatic-update.mjs'].path)
@@ -167,7 +175,7 @@ function verifyUpdateModules(modules) {
 }
 
 export function installNightlyRunner({ brainHome, source, nodePath = process.execPath,
-  identity = NIGHTLY_LABEL, packageTarget, bundleTarget, env = {}, moduleSource } = {}) {
+  identity = NIGHTLY_LABEL, packageTarget, bundleTarget, env = {}, moduleSource, developerSuite = !NIGHTLY_PROOF_LABEL.test(identity) } = {}) {
   validateIdentity(identity);
   if (!source || !fs.existsSync(source)) throw new Error(`nightly runner source is missing: ${source || '(unset)'}`);
   const bytes = fs.readFileSync(source);
@@ -179,8 +187,8 @@ export function installNightlyRunner({ brainHome, source, nodePath = process.exe
     throw new Error(`nightly runner at ${runnerPath} does not match its content-addressed identity`);
   }
   if (!fs.existsSync(runnerPath)) fs.writeFileSync(runnerPath, bytes, { mode: 0o755 });
-  const modules = updateModules(dir, moduleSource);
-  const record = { updateModules: modules, schemaVersion: 2, kind: 'ruvnet-brain-nightly-scheduler', identity,
+  const modules = updateModules(dir, moduleSource, developerSuite);
+  const record = { updateModules: modules, ...(developerSuite ? { mode: 'developer-suite' } : {}), schemaVersion: 2, kind: 'ruvnet-brain-nightly-scheduler', identity,
     nodePath: path.resolve(nodePath), runnerPath, runnerSha256: digest, argv: [],
     environment: Object.fromEntries(NIGHTLY_ENV_ALLOWLIST.filter(key => env[key] !== undefined).map(key => [key, key === 'PATH' ? automaticPath({ nodePath, home: homeOf(env), env }) : String(env[key])])),
     packageTarget: normalizePackageTarget(packageTarget), bundleTarget: normalizeBundleTarget(bundleTarget, identity) };
@@ -200,6 +208,7 @@ export function readNightlyRegistration({ brainHome, identity = NIGHTLY_LABEL,
       || !path.isAbsolute(record.nodePath) || !path.isAbsolute(record.runnerPath)
       || !Array.isArray(record.argv) || record.argv.length !== 0) throw new Error('invalid registration schema');
     if (record.environment !== undefined && (!record.environment || Array.isArray(record.environment) || Object.entries(record.environment).some(([key, value]) => !NIGHTLY_ENV_ALLOWLIST.includes(key) || typeof value !== 'string'))) throw new Error('invalid registered environment');
+    if (![undefined, 'developer-suite'].includes(record.mode) || (record.mode === 'developer-suite') !== Boolean(record.updateModules?.['developer-update.mjs'])) throw new Error('nightly coordinator mode/module closure mismatch');
     verifyUpdateModules(record.updateModules);
     const actual = sha256(fs.readFileSync(record.runnerPath));
     if (actual !== record.runnerSha256) throw new Error('runner digest mismatch');
@@ -242,8 +251,56 @@ export function resolveNightlyProofBundle({ brainHome, env = process.env } = {})
   return execution.record.bundleTarget;
 }
 
+export function developerRunHealth({ brainHome, registration, now = Date.now(), maxAgeHours = 30 }) {
+  const scheduled = value => value?.mode === 'apply' && value.scheduled !== false && !!value.schedulerIdentity;
+  const readReceipt = file => {
+    try {
+      const stat = fs.lstatSync(file);
+      if (!stat.isFile() || stat.isSymbolicLink()) throw Error('receipt is not a regular file');
+      return JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+  };
+  let receipt;
+  try {
+    const retained = readReceipt(path.join(brainHome, 'scheduler/last-suite-attempt.json'));
+    const latest = readReceipt(path.join(brainHome, 'nightly-suite-update.json'));
+    if (retained && !scheduled(retained)) throw Error('retained receipt is not a scheduled apply attempt');
+    receipt = retained || latest;
+    if (scheduled(latest)) {
+      const latestTime = Date.parse(latest.startedAt || latest.finishedAt || '');
+      const retainedTime = Date.parse(retained?.startedAt || retained?.finishedAt || '');
+      if (!retained || !Number.isFinite(latestTime) || !Number.isFinite(retainedTime) || latestTime >= retainedTime) receipt = latest;
+    }
+  } catch (error) { return { state: 'failed', evidence: `Coordinated update receipt unreadable or refused: ${error.message}`, receipt: null }; }
+  if (!receipt) return { state: 'never-ran', evidence: 'No coordinated update receipt exists yet.', receipt: null };
+  const validDigest = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+  const bound = validDigest(receipt.sourceSha256) && receipt.kind === 'nightly-suite-update' && receipt.schemaVersion === 1
+    && receipt.sourceSha256 === registration.updateModules?.['developer-update.mjs']?.sha256
+    && Object.entries(receipt.sourceSnapshot || {}).every(([name, digest]) => validDigest(digest) && digest === registration.updateModules?.[name]?.sha256)
+    && EXECUTION_MODULES.filter(name => name !== 'plugin-artifact-proof.mjs' || registration.updateModules?.[name]).every(name => validDigest(receipt.sourceSnapshot?.[name]) && receipt.sourceSnapshot[name] === registration.updateModules?.[name]?.sha256);
+  const ageHours = (now - Date.parse(receipt.finishedAt || receipt.startedAt || '')) / 3_600_000;
+  const times = [receipt.startedAt, receipt.finishedAt].filter(value => value !== undefined).map(value => Date.parse(value));
+  const timestampsValid = times.length > 0 && times.every(value => Number.isFinite(value) && value <= now)
+    && !(receipt.startedAt && receipt.finishedAt && Date.parse(receipt.finishedAt) < Date.parse(receipt.startedAt));
+  if (!bound) return { state: 'failed', evidence: 'Coordinated update receipt is not bound to registered source.', receipt };
+  if (!Number.isFinite(ageHours) || !timestampsValid) return { state: 'failed', evidence: 'Coordinated update receipt timestamps are invalid or future-dated.', receipt };
+  if (!scheduled(receipt) || receipt.schedulerIdentity !== registration.identity) return { state: 'never-ran', ageHours, receipt, evidence: 'No scheduled apply attempt is bound to the current registration.' };
+  if (receipt.state === 'running') {
+    const lock = sharedLockStatus({ brainHome });
+    const live = lock.state === 'running' && lock.owner.pid === (receipt.ownerPid || receipt.pid) && lock.owner.token === receipt.ownerToken;
+    return { state: live ? 'running' : 'failed', ageHours, receipt, evidence: live ? 'Coordinated updates have a live exact owner.' : 'Coordinated update owner is absent or unverified.' };
+  }
+  if (receipt.state === 'failed' || receipt.ok !== true) return { state: 'failed', ageHours, receipt, evidence: receipt.error || 'Coordinated updates failed.' };
+  if (receipt.state !== 'completed') return { state: 'failed', ageHours, receipt, evidence: 'Coordinated update terminal state is unverified.' };
+  if (ageHours > maxAgeHours) return { state: 'stale', ageHours, receipt, evidence: `Last coordinated update is ${ageHours.toFixed(1)}h old.` };
+  const verification = { ok: bound && receipt.mode === 'apply' && receipt.schedulerIdentity === registration.identity && receipt.state === 'completed' && receipt.ok === true && ageHours >= 0 && ageHours <= maxAgeHours };
+  return { state: verification.ok ? 'ok' : 'failed', verification, ageHours, receipt, evidence: verification.ok ? `Coordinated updates completed ${ageHours.toFixed(1)}h ago; ${receipt.config?.scope || 'unknown'} scope.` : 'Coordinated update timestamp or terminal evidence is invalid.' };
+}
+
 export function refreshRunHealth({ brainHome, identity = NIGHTLY_LABEL, now = Date.now(), maxAgeHours = 30,
   inspectOwner = inspectRefreshOwner } = {}) {
+  const registration = readNightlyRegistration({ brainHome, identity });
+  if (registration.ok && registration.record.mode === 'developer-suite') return developerRunHealth({ brainHome, registration: registration.record, now, maxAgeHours });
   const dir = path.join(brainHome, 'refresh-runs');
   let files = [];
   try {
@@ -270,13 +327,13 @@ export function refreshRunHealth({ brainHome, identity = NIGHTLY_LABEL, now = Da
   const stamp = Date.parse(receipt.finishedAt || receipt.startedAt || '');
   if (!Number.isFinite(stamp)) return { state: 'failed', evidence: 'Latest nightly receipt has no valid timestamp.', receipt };
   const ageHours = (now - stamp) / 3_600_000;
-  const registration = readNightlyRegistration({ brainHome, identity });
-  if (!registration.ok) return { state: 'failed', ageHours,
-    evidence: `Nightly registration is invalid: ${registration.why}`, receipt };
-  const expectedIdentity = { schedulerIdentity: registration.record.identity,
-    registrationPath: registration.record.recordPath, nodePath: registration.record.nodePath,
-    runnerPath: registration.record.runnerPath, runnerSha256: registration.record.runnerSha256, argv: [] };
-  if (receipt.schedulerIdentity !== registration.record.identity
+  const legacyRegistration = readNightlyRegistration({ brainHome, identity });
+  if (!legacyRegistration.ok) return { state: 'failed', ageHours,
+    evidence: `Nightly registration is invalid: ${legacyRegistration.why}`, receipt };
+  const expectedIdentity = { schedulerIdentity: legacyRegistration.record.identity,
+    registrationPath: legacyRegistration.record.recordPath, nodePath: legacyRegistration.record.nodePath,
+    runnerPath: legacyRegistration.record.runnerPath, runnerSha256: legacyRegistration.record.runnerSha256, argv: [] };
+  if (receipt.schedulerIdentity !== legacyRegistration.record.identity
     || JSON.stringify(receipt.executableIdentity) !== JSON.stringify(expectedIdentity)) {
     return { state: 'failed', ageHours, evidence: 'Nightly receipt is not bound to the registered runner bytes.', receipt };
   }
@@ -334,9 +391,12 @@ export function refreshHistory({ brainHome }) {
     failuresSinceSuccess: sinceSuccess.filter(({ receipt }) => receipt.status === 'FAILED').length };
 }
 
-/** agentic-kit owns this machine's Brain updates (`ak sync`), so the Brain's own scheduler is off on purpose. */
+/** Kit retains the legacy update owner unless this machine explicitly assigns it to Brain. */
 export function updateOwnedByAgenticKit(home = os.homedir()) {
-  try { return JSON.parse(fs.readFileSync(path.join(home, '.config', 'agentic-kit', 'kit.json'), 'utf8')).ruvnetBrain === true; }
+  try {
+    const config = JSON.parse(fs.readFileSync(path.join(home, '.config', 'agentic-kit', 'kit.json'), 'utf8'));
+    return config.ruvnetBrain === true && config.ruvnetBrainUpdateOwner !== 'brain';
+  }
   catch { return false; }
 }
 

@@ -1,0 +1,95 @@
+{
+  "description": "RuvNet Brain lifecycle plane for Grok CLI. Grok selects this file through plugin/.grok-plugin/plugin.json (measured on grok 1.0.50: a plugin directory carrying that manifest registers ONLY this file, so the Claude registry plugin/hooks/hooks.json is not also run). Every command enters plugin/scripts/grok-hook-adapter.mjs, which normalizes the Grok payload, withholds Grok's non-Claude transcript, skips the session-end Stop fire, runs the SAME hook-shim.mjs bodies as Claude and Codex, and returns Grok-valid output. Registered: decision-gate write route (PreToolUse, the only refuser), session-snapshot and grounding-stamp (PostToolUse), grounding-turn-mark (UserPromptSubmit, a marker file only), continuation-gate + session-snapshot + grounding-turn-gate (Stop), session-snapshot (PreCompact, SessionEnd). Deliberately NOT registered on Grok: session-start, ground-ruvnet, unprompted-speech and capacity-aware-parallel-work. Grok ignores SessionStart stdout and discards an allowing UserPromptSubmit hook's stdout (~/.grok/docs/user-guide/10-hooks.md:113, :507, :531), so they would spend time on every session or prompt and deliver nothing, and session-start would consume the once-only hook-failure summary where nobody sees it. UNVERIFIED (docs silent, not measured): whether Grok honours a SessionEnd timeout above its 1.5 s default (10-hooks.md:477-478); the payload tool_name of an MCP search_ruvnet call and whether grounding-stamp accepts Grok's toolResult shape; PreCompact delivery (no compaction was driven); Windows expansion of ${GROK_PLUGIN_ROOT} (10-hooks.md:581 describes it; not measured).",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^(write|search_replace|Write|Edit|MultiEdit|NotebookEdit)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${GROK_PLUGIN_ROOT}/scripts/grok-hook-adapter.mjs\" decision-gate write",
+            "timeout": 8
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${GROK_PLUGIN_ROOT}/scripts/grok-hook-adapter.mjs\" session-snapshot PostToolUse",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "^(?:.*__)?search_ruvnet$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${GROK_PLUGIN_ROOT}/scripts/grok-hook-adapter.mjs\" grounding-stamp",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${GROK_PLUGIN_ROOT}/scripts/grok-hook-adapter.mjs\" grounding-turn-mark",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${GROK_PLUGIN_ROOT}/scripts/grok-hook-adapter.mjs\" continuation-gate",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node \"${GROK_PLUGIN_ROOT}/scripts/grok-hook-adapter.mjs\" session-snapshot Stop",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node \"${GROK_PLUGIN_ROOT}/scripts/grok-hook-adapter.mjs\" grounding-turn-gate",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${GROK_PLUGIN_ROOT}/scripts/grok-hook-adapter.mjs\" session-snapshot PreCompact",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${GROK_PLUGIN_ROOT}/scripts/grok-hook-adapter.mjs\" session-snapshot SessionEnd",
+            "timeout": 3
+          }
+        ]
+      }
+    ]
+  }
+}

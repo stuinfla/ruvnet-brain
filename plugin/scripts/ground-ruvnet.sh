@@ -652,30 +652,43 @@ if [ -n "$BLK" ]; then
   # is never marked delivered (measured: the once-a-day flywheel offer starved behind the memory offer).
   # Without a session there is no budget either — the pre-4.5 behaviour, everything every time.
   [ -n "$INJ_DIR" ] || INJ_BUDGET=999999999
+  [ "${RUVNET_HOOK_CONTEXT_BUDGET:-0}" = "1" ] && [ "$INJ_BUDGET" -gt 7900 ] && INJ_BUDGET=7900
   INJ_USED=0
   for _f in $(cd "$BLK" 2>/dev/null && ls | grep -v '\.' | sort -t- -k2,2n -k1,1n); do
     _rest=${_f#*-}; _prio=${_rest%%-*}; _id=${_rest#*-}
     if [ "$_id" != "resume" ] && [ "${_id#agentdb-recall-}" = "$_id" ] && inj_seen "$_id"; then
-      if [ -f "$BLK/$_f.short" ]; then echo short > "$BLK/$_f.pick"; INJ_SHORTENED=$((INJ_SHORTENED + 1)); fi
+      if [ -f "$BLK/$_f.short" ]; then
+        if [ "${RUVNET_HOOK_CONTEXT_BUDGET:-0}" = "1" ] && [ "$_prio" != "0" ]; then
+          _short_size=$(wc -c < "$BLK/$_f.short")
+          if [ $((INJ_USED + _short_size)) -gt 7900 ]; then printf '%s\n' "$_f" >> "$BLK/.budget-deferred"; INJ_DEFERRED=$((INJ_DEFERRED + 1)); continue; fi
+          INJ_USED=$((INJ_USED + _short_size))
+        fi
+        echo short > "$BLK/$_f.pick"; INJ_SHORTENED=$((INJ_SHORTENED + 1))
+      fi
       continue
     fi
     _size=$(($(wc -c < "$BLK/$_f" 2>/dev/null || echo 0)))
     # A block bigger than the whole budget still goes out when it is the prompt's ONLY non-safety block —
     # otherwise an offer longer than the budget (the flywheel's is ~2.9 KB) could never be made at all.
-    if [ "$_prio" != "0" ] && [ "$INJ_USED" -gt 0 ] && [ $((INJ_USED + _size)) -gt "$INJ_BUDGET" ]; then
-      INJ_DEFERRED=$((INJ_DEFERRED + 1)); continue
+    if [ "$_prio" != "0" ] && { [ "$INJ_USED" -gt 0 ] || { [ "${RUVNET_HOOK_CONTEXT_BUDGET:-0}" = "1" ] && [ "$_size" -gt 7900 ]; }; } && [ $((INJ_USED + _size)) -gt "$INJ_BUDGET" ]; then
+      printf '%s\n' "$_f" >> "$BLK/.budget-deferred"; INJ_DEFERRED=$((INJ_DEFERRED + 1)); continue
     fi
     if [ "$_id" = "flywheel" ]; then claim_flywheel_day || continue; fi
     echo full > "$BLK/$_f.pick"
     [ "$_prio" != "0" ] && INJ_USED=$((INJ_USED + _size))
     [ "$_id" != "resume" ] && [ "${_id#agentdb-recall-}" = "$_id" ] && inj_mark "$_id"
   done
+  if [ "${RUVNET_HOOK_CONTEXT_BUDGET:-0}" = "1" ] &&
+    "${RUVNET_NODE_BIN:-node}" "$(dirname "$0")/hook-context-budget.mjs" --ground-dir "$BLK" > "$BLK/.bounded-context"; then
+    cat "$BLK/.bounded-context"
+  else
   for _f in $(cd "$BLK" 2>/dev/null && ls | grep -v '\.' | sort -n); do
     case "$(cat "$BLK/$_f.pick" 2>/dev/null)" in
       full) cat "$BLK/$_f" ;;
       short) cat "$BLK/$_f.short" ;;
     esac
   done
+  fi
   rm -rf "$BLK" 2>/dev/null
 fi
 

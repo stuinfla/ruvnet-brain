@@ -203,7 +203,7 @@ path, or surface but not the stated rule · **PROSE ONLY** = nothing mechanical.
 | Re-score 8 dimensions at end of every session, ≥95 | `feedback_rescore_every_session_target_95.md` | nothing | **PROSE ONLY** | Med — SessionEnd hook |
 | Recall memory before non-trivial decisions | Rule 19 | `agentdb-ensure.sh` surfaces `project-state-current` at SessionStart | **PARTIAL** | Low |
 | Append-only `project-state-current-<epochms>` | Rule 19 (corrected 2026-07-12) | `agentdb-ensure.sh` reads latest by LIKE | **PARTIAL** | Low |
-| Store lessons after meaningful work | Rule 19 | `learn-capture` / `learn-flush` hooks | **GATED** | done |
+| Store lessons after meaningful work | Rule 19 | `learn-capture` / `the former learning flusher (deleted 2026-10-12)` hooks | **GATED** | done |
 | Know the datetime; never guess | `feedback_always_know_the_datetime.md` | `date-awareness-fast.sh` (SessionStart) | **GATED** | done |
 | Persist "always do X" the moment it is uttered | `feedback_realtime_project_track.md` | `correction-detect.mjs` + `lesson-seed.mjs` | **PARTIAL** | Low |
 | No architecture thrashing | `feedback_no_thrashing.md` | nothing | **PROSE ONLY** | High |

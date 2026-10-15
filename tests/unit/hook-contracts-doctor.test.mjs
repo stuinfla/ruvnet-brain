@@ -70,9 +70,19 @@ describe('--doctor derives its hook judgments from the contracts', () => {
     ...(overrides[spec.event] || {}),
   }));
   it('reports a registered hook Codex will not run (modified / untrusted) as PENDING TRUST, with the exact fix', () => {
-    const status = classifyCodexLifecycle(plugin, listed(registered({ SessionEnd: { trustStatus: 'modified' }, SessionStart: { trustStatus: 'untrusted' } })));
+    const hooks = registered();
+    // An event may declare several handlers. Hold back exactly one at each boundary;
+    // the remaining trusted handlers must not be counted as pending merely by event.
+    const end = hooks.find((hook) => hook.event === 'SessionEnd');
+    const start = hooks.find((hook) => hook.event === 'SessionStart');
+    expect(end).toBeTruthy();
+    expect(start).toBeTruthy();
+    end.trustStatus = 'modified';
+    start.trustStatus = 'untrusted';
+    const status = classifyCodexLifecycle(plugin, listed(hooks));
     expect(status.state).toBe('pending-trust');
     expect(status.pending.map((h) => h.event).sort()).toEqual(['SessionEnd', 'SessionStart']);
+    expect(status.pending.map((h) => h.command).sort()).toEqual([end.command, start.command].sort());
     const guidance = codexLifecycleGuidance(status);
     expect(guidance.healthy).toBe(false);
     expect(guidance.intentional).toBe(false);
@@ -376,32 +386,3 @@ describe('a home recreated without a Brain after an interrupted move', () => {
   }
 });
 
-// Re-review S2: "AgentDB: recording stuck" was printed as narration but was not a line of the ONE verdict, so
-// it vanished from --doctor --json. It is now a verdict line (advisory '!': recording is a project's
-// opt-in memory, not the Brain's health), identical in text and JSON. Built with the REAL journal.
-describe('AgentDB recording is a line of the one verdict', () => {
-  it('a stuck outbox reads "! AgentDB" in text AND JSON; a directory without .swarm has no such line', async () => {
-    const { completeBrain } = await import('../helpers/doctor-brain-fixture.mjs');
-    const { ContinuityJournal, STUCK_AFTER_MS } = await import('../../plugin/scripts/continuity-journal.mjs');
-    const { makeEvent } = await import('../../plugin/scripts/continuity-events.mjs');
-    const { createStore } = await import('../helpers/continuity-fixture.mjs');
-    const b = completeBrain();
-    try {
-      expect(b.doctor(['--json']).stdout).not.toMatch(/"id": "agentdb"/);
-      fs.mkdirSync(path.join(b.project, '.swarm'));
-      createStore(path.join(b.project, '.swarm', 'memory.db'));
-      const ruflo = path.join(b.parent, 'ruflo'); fs.writeFileSync(ruflo, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
-      const old = Date.now() - STUCK_AFTER_MS - 60_000;
-      new ContinuityJournal({ projectRoot: b.project, ruflo, now: () => old })
-        .record([makeEvent({ kind: 'lesson', at: old, source: 'explicit', authoritative: true, summary: 'Stuck for the doctor.' })]);
-      const extraEnv = { RUFLO_BIN: ruflo };
-      const text = b.doctor([], { extraEnv });
-      const json = JSON.parse(b.doctor(['--json'], { extraEnv }).stdout);
-      const line = json.lines.find((l) => l.id === 'agentdb');
-      expect(line).toMatchObject({ state: 'warn', detail: expect.stringMatching(/recording stuck — 1 event\(s\) pending/) });
-      expect(text.text).toMatch(/^\s+! AgentDB\s+recording stuck — 1 event\(s\) pending/m);
-      expect(json.advisories).toContain('agentdb');
-      expect(json.failing).not.toContain('agentdb');
-    } finally { b.cleanup(); }
-  }, 120_000);
-});

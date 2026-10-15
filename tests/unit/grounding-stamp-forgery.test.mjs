@@ -294,3 +294,53 @@ describe.skipIf(!hasBash || process.platform === 'win32')('grounding-stamp: genu
     expect(m).not.toContain('agentdb');
   });
 });
+
+describe.skipIf(!hasBash || process.platform === 'win32')('native failure and incomplete execution override an answer banner', () => {
+  it.each([
+    ['outer error', { is_error: true }, BANNERED],
+    ['declared failed', { status: 'failed' }, BANNERED],
+    ['declared failure outcome', { outcome: 'failure' }, BANNERED],
+    ['declared unknown', { status: 'unknown' }, BANNERED],
+    ['declared unavailable', { outcome: 'unavailable' }, BANNERED],
+    ['outer failed completion', { success: false }, BANNERED],
+    ['MCP error', {}, { isError: true, content: [{ type: 'text', text: BANNERED }] }],
+    ['running result', {}, { status: 'running', content: [{ type: 'text', text: BANNERED }] }],
+    ['interrupted result', {}, { signal: 'SIGTERM', content: [{ type: 'text', text: BANNERED }] }],
+  ])('%s mints no product or any-search stamp', (_name, flags, response) => {
+    const w = world(); const result = stamp(w, { ...payload('ruflo', response), ...flags });
+    expect(result.status, result.stderr).toBe(0); expect(minted(w)).toEqual([]);
+  });
+  it('a failed structured response is not a genuine answer in the shared Stop predicate', () => {
+    expect(brainAnswered({ isError: true, content: [{ type: 'text', text: BANNERED }] })).toBe(false);
+  });
+  it.each([
+    ['serialized MCP error', { isError: true, content: [{ type: 'text', text: BANNERED }] }],
+    ['serialized running', { status: 'running', answer: BANNERED }],
+    ['serialized unknown', { outcome: 'unknown', answer: BANNERED }],
+    ['serialized cancelled', { status: 'cancelled', answer: BANNERED }],
+    ['nested error envelope', { content: [{ type: 'text', text: JSON.stringify({ isError: true, answer: BANNERED }) }] }],
+    ['structured pending', { structuredContent: { status: 'pending', answer: BANNERED } }],
+  ])('%s cannot mint through the consumed serialized or saved envelope', (_name, response) => {
+    const serialized = JSON.stringify(response), w = world();
+    expect(brainAnswered(serialized)).toBe(false);
+    expect(stamp(w, payload('ruflo', serialized)).status).toBe(0);
+    expect(minted(w)).toEqual([]);
+    const saved = path.join(w.toolResults, 'envelope.txt'); fs.writeFileSync(saved, serialized);
+    expect(brainAnswered(OVERSIZE(saved), { home: w.home })).toBe(false);
+    stamp(w, payload('ruflo', OVERSIZE(saved)));
+    expect(minted(w)).toEqual([]);
+  });
+  it('malformed or bounded-truncated JSON never certifies an answer prefix', () => {
+    const w = world(), raw = JSON.stringify({ answer: BANNERED }).slice(0, -1);
+    expect(brainAnswered(raw)).toBe(false);
+    const saved = path.join(w.toolResults, 'truncated.txt');
+    fs.writeFileSync(saved, JSON.stringify({ answer: BANNERED + 'x'.repeat(70_000), isError: true }));
+    expect(brainAnswered(OVERSIZE(saved), { home: w.home })).toBe(false);
+  });
+  it('explicit successful serialized and saved envelopes preserve genuine answers', () => {
+    const w = world(), serialized = JSON.stringify({ isError: false, answer: BANNERED });
+    expect(brainAnswered(serialized)).toBe(true);
+    const saved = path.join(w.toolResults, 'successful.txt'); fs.writeFileSync(saved, serialized);
+    expect(brainAnswered(OVERSIZE(saved), { home: w.home })).toBe(true);
+  });
+});

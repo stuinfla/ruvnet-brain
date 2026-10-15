@@ -3,7 +3,7 @@
 //
 // Aggregates, all server-side so no token ever reaches the browser:
 //   • GitHub repo reach     — stars / forks / watchers / open issues       (public API)
-//   • Release downloads     — per-asset download counts on every release   (public API)
+//   • Release downloads     — per-asset counts on up to 20 recent releases   (public API)
 //   • GitHub traffic        — clones + views (count/uniques/14-day daily) and top referrers.
 //                             These three REQUIRE an authenticated GITHUB_TOKEN with push access
 //                             to stuinfla/ruvnet-brain (classic PAT `repo` scope or fine-grained
@@ -24,6 +24,17 @@ function ghHeaders(token) {
   const h = { Accept: 'application/vnd.github+json', 'User-Agent': 'ruvnet-brain-admin' };
   if (token) h.Authorization = `Bearer ${token}`;
   return h;
+}
+
+async function readOpenWork(token) {
+  const items = [];
+  for (let page = 1; page <= 20; page++) {
+    const rows = await ghJson(`/repos/${REPO}/issues?state=open&per_page=100&page=${page}&sort=created&direction=asc`, token);
+    if (!Array.isArray(rows)) return { available: false, items: null, note: 'GitHub open-work source unavailable; owner requests and backlog are unknown.' };
+    items.push(...rows.map((it) => ({ number: it.number, title: it.title, login: it.user?.login || 'unknown', isPR: Boolean(it.pull_request), url: it.html_url, at: (it.created_at || '').slice(0, 10) })));
+    if (rows.length < 100) return { available: true, items, note: 'Complete current open issue and PR inventory from GitHub.' };
+  }
+  return { available: false, items: null, note: 'Open-work inventory exceeded its page limit; counts are unknown.' };
 }
 
 async function ghJson(path, token) {
@@ -96,7 +107,7 @@ export default async function handler(req, res) {
 
   const gh = process.env.GITHUB_TOKEN || '';
 
-  const [repo, releases, clones, views, referrers, npmRange, telemetry, issuesRaw, starsRaw, forksRaw] = await Promise.all([
+  const [repo, releases, clones, views, referrers, npmRange, telemetry, issuesRaw, starsRaw, forksRaw, openWork, latestRelease] = await Promise.all([
     ghJson(`/repos/${REPO}`, gh),
     ghJson(`/repos/${REPO}/releases?per_page=20`, gh),
     gh ? ghJson(`/repos/${REPO}/traffic/clones`, gh) : Promise.resolve(null),
@@ -110,6 +121,8 @@ export default async function handler(req, res) {
     ghJson(`/repos/${REPO}/issues?state=all&per_page=100&sort=created&direction=desc`, gh),
     ghJson(`/repos/${REPO}/stargazers?per_page=100`, gh),
     ghJson(`/repos/${REPO}/forks?per_page=100&sort=newest`, gh),
+    readOpenWork(gh),
+    ghJson(`/repos/${REPO}/releases/latest`, gh),
   ]);
 
   // ── people: group issues+PRs by external author, collect stargazers + forkers ──────────────────
@@ -158,6 +171,8 @@ export default async function handler(req, res) {
       ? { stars: repo.stargazers_count, forks: repo.forks_count, watchers: repo.subscribers_count, openIssues: repo.open_issues_count }
       : null,
     releases: releaseRows,
+    latestRelease: latestRelease ? { tag: latestRelease.tag_name, publishedAt: latestRelease.published_at, assets: (latestRelease.assets || []).map((a) => ({ name: a.name, downloads: a.download_count || 0 })) } : null,
+    openWork,
     totalAssetDownloads,
     traffic: {
       configured: Boolean(gh),
@@ -181,4 +196,4 @@ export default async function handler(req, res) {
   });
 };
 
-export { tokenMatches, hashFromResult };
+export { tokenMatches, hashFromResult, readOpenWork };

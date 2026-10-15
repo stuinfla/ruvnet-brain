@@ -48,7 +48,7 @@ function world() {
   const transcriptDir = path.join(home, '.claude', 'projects', 'p', 'sess-1');
   fs.mkdirSync(path.join(transcriptDir, 'tool-results'), { recursive: true });
   const env = { ...process.env, HOME: home, USERPROFILE: home, RUVNET_GROUNDING_TURN_DIR: path.join(home, 'grounding-turn'),
-    RUVNET_ASSERTION_SHADOW_LOG: path.join(home, 'shadow.jsonl'), RUVNET_KB_DIR: path.join(home, 'no-kb'), RUVNET_HOOK_HOST: '' };
+    RUVNET_ASSERTION_SHADOW_LOG: path.join(home, 'shadow.jsonl'), RUVNET_KB_DIR: path.join(home, 'no-kb'), RUVNET_HOOK_HOST: 'claude' };
   delete env.RUVNET_BRAIN_HOME;
   return { home, cwd, transcriptDir, transcript: `${transcriptDir}.jsonl`, env };
 }
@@ -165,41 +165,73 @@ describe.skipIf(process.platform === 'win32')('Stop grounding-turn-gate on a rea
 });
 
 describe.skipIf(process.platform === 'win32')('Stop grounding-turn-gate on a LONG turn (the transcript tail no longer reaches the turn start)', () => {
-  it('a real search early in a >2 MiB turn is not reported as "no search" just because the tail cut it off (false alarm #3)', () => {
-    const w = world();
+  function longTurn(w, includeSearch = true) {
     const rows = [
       { type: 'user', message: { role: 'user', content: 'what does ruflo ship for memory?' } },
-      { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: TOOL, input: { query: 'ruflo memory' } }] } },
-      { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: JSON.stringify({ answer: BANNERED }) }] } },
     ];
-    for (let i = 0; i < 30; i++) {   // 30 x 100 KB of later tool output pushes the turn start out of the 2 MiB tail
-      rows.push({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: `b${i}`, name: 'Bash', input: { command: 'cat big' } }] } });
-      rows.push({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `b${i}`, content: 'x'.repeat(100_000) }] } });
-    }
-    rows.push({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Ruflo ships AgentDB-backed memory.' }] } });
-    fs.writeFileSync(w.transcript, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
-    expect(fs.statSync(w.transcript).size).toBeGreaterThan(2 * 1024 * 1024);
-    node(MARK, w, fixture('UserPromptSubmit', w, { prompt: 'what does ruflo ship for memory?' }));
-    // The tail cannot see the early search, so the gate falls back to the STAMP evidence (4.4.0: never a
-    // silent pass). The early search's PostToolUse ran the real stamp hook, which minted it.
-    stamp(w, fixture('PostToolUse-search_ruvnet-oversize', w, { tool_input: { query: 'ruflo memory' }, tool_response: JSON.stringify({ answer: BANNERED }) }));
-    expect(minted(w)).toContain('.any-search');
-    const r = node(GATE, w, fixture('Stop', w, { last_assistant_message: 'Ruflo ships AgentDB-backed memory.' }));
-    expect(r.stdout).toBe('');
-  });
-
-  it('TEETH: the same long turn with NO search evidence anywhere FIRES — the tail is not a free pass', () => {
-    const w = world();
-    const rows = [{ type: 'user', message: { role: 'user', content: 'what does ruflo ship for memory?' } }];
+    if (includeSearch) rows.push(
+      { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: TOOL, input: { query: 'ruflo memory' } }] } },
+      { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', is_error: false, content: JSON.stringify({ answer: BANNERED }) }] } },
+    );
     for (let i = 0; i < 30; i++) {
       rows.push({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: `b${i}`, name: 'Bash', input: { command: 'cat big' } }] } });
       rows.push({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `b${i}`, content: 'x'.repeat(100_000) }] } });
     }
     rows.push({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Ruflo ships AgentDB-backed memory.' }] } });
     fs.writeFileSync(w.transcript, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
-    node(MARK, w, fixture('UserPromptSubmit', w, { prompt: 'what does ruflo ship for memory?' }));
-    const r = node(GATE, w, fixture('Stop', w, { last_assistant_message: 'Ruflo ships AgentDB-backed memory.' }));
-    expect(r.stdout).toMatch(FALSE_ALARM);
+    expect(fs.statSync(w.transcript).size).toBeGreaterThan(2 * 1024 * 1024);
+  }
+  // Synthetic prompt identity supplements the unchanged captured Claude common-field contract.
+  const boundFixture = (name, w, overrides = {}) => fixture(name, w, { prompt_id: 'native-prompt-1', ...overrides });
+  const arm = (w) => node(MARK, w, boundFixture('UserPromptSubmit', w, { prompt: 'what does ruflo ship for memory?' }));
+  const search = (w, overrides = {}) => stamp(w, boundFixture('PostToolUse-search_ruvnet-oversize', w, {
+    tool_input: { query: 'ruflo memory' }, tool_response: JSON.stringify({ isError: false, answer: BANNERED }), ...overrides,
+  }));
+  const stop = (w) => node(GATE, w, boundFixture('Stop', w, { last_assistant_message: 'Ruflo ships AgentDB-backed memory.' }));
+  const unknown = (stdout) => {
+    expect(stdout).toMatch(/UNKNOWN/);
+    expect(stdout).toMatch(/UNVERIFIED/);
+    expect(stdout).not.toMatch(FALSE_ALARM); // A bounded tail cannot prove that no search happened.
+  };
+
+  it('a complete native identity and nonce-bound receipt satisfy a search lost from the >2 MiB tail', () => {
+    const w = world(); longTurn(w); expect(arm(w).status).toBe(0);
+    const file = path.join(w.env.RUVNET_GROUNDING_TURN_DIR, 'claude-sess-1.json');
+    const marker = JSON.parse(fs.readFileSync(file, 'utf8'));
+    expect(search(w).status).toBe(0);
+    const receipt = JSON.parse(fs.readFileSync(`${file}.search-${marker.nonce}`, 'utf8'));
+    expect(receipt).toMatchObject({ sessionId: 'sess-1', host: 'claude', nativeKind: 'claude-prompt-id', turnId: 'native-prompt-1', projectId: marker.projectId,
+      nonce: marker.nonce, searchCount: 1, terms: ['ruflo'] });
+    expect(receipt.sources).toEqual([expect.objectContaining({ querySha256: expect.stringMatching(/^[a-f0-9]{64}$/), answerSha256: expect.stringMatching(/^[a-f0-9]{64}$/) })]);
+    expect(minted(w)).toContain('.any-search');
+    expect(stop(w).stdout).toBe('');
+    expect(fs.existsSync(`${file}.search-${marker.nonce}`)).toBe(false);
+  });
+
+  it.each([
+    ['missing canonical prompt', { prompt_id: undefined }],
+    ['foreign session', { session_id: 'other-session' }],
+    ['foreign prompt', { prompt_id: 'other-prompt' }],
+    ['foreign project', { cwd: null }],
+  ])('%s product freshness cannot satisfy the current long turn', (_name, overrides) => {
+    const w = world(); longTurn(w); arm(w); search(w, overrides.cwd === null ? { ...overrides, cwd: w.home } : overrides);
+    expect(minted(w)).toContain('.any-search');
+    expect(fs.readdirSync(w.env.RUVNET_GROUNDING_TURN_DIR).some(name => name.includes('.search-'))).toBe(false);
+    unknown(stop(w).stdout);
+  });
+
+  it('the unchanged captured fixture uses its documented prompt_id despite lacking turn_id', () => {
+    const w = world(); longTurn(w);
+    const prompt = fixture('UserPromptSubmit', w, { prompt: 'what does ruflo ship for memory?' });
+    expect(prompt).not.toHaveProperty('turn_id'); node(MARK, w, prompt);
+    stamp(w, fixture('PostToolUse-search_ruvnet-oversize', w, { tool_input: { query: 'ruflo memory' }, tool_response: JSON.stringify({ answer: BANNERED }) }));
+    expect(minted(w)).toContain('.any-search');
+    expect(node(GATE, w, fixture('Stop', w, { last_assistant_message: 'Ruflo ships AgentDB-backed memory.' })).stdout).toBe('');
+  });
+
+  it('no receipt and no product freshness yield UNKNOWN; an unreadable turn opening never supplies a free pass', () => {
+    const w = world(); longTurn(w, false); arm(w);
+    expect(minted(w)).toEqual([]); unknown(stop(w).stdout);
   });
 });
 

@@ -61,7 +61,7 @@ export function createStore(file) {
  * A fake `ruflo` on disk. `refusals` is how many store calls print the WAL refusal and exit 1 before
  * stores start succeeding (a file the test can rewrite mid-run). Every call is logged.
  */
-export function fakeRuflo({ refusals = 0 } = {}) {
+export function fakeRuflo({ refusals = 0, storeDelayMs = 0 } = {}) {
   const dir = tmp('cont-ruflo-');
   const counter = path.join(dir, 'refusals');
   const log = path.join(dir, 'calls.jsonl');
@@ -75,11 +75,12 @@ const flag = (n) => a[a.indexOf(n) + 1];
 fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ argv: a.slice(0, 2), key: flag('--key'), at: Date.now() }) + '\\n');
 const db = flag('--path');
 if (a[0] === 'memory' && a[1] === 'store') {
+  if (${storeDelayMs}) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ${storeDelayMs});
   const left = Number(fs.readFileSync(${JSON.stringify(counter)}, 'utf8')) || 0;
   if (left > 0) { fs.writeFileSync(${JSON.stringify(counter)}, String(left - 1)); console.error(${JSON.stringify(WAL_REFUSAL_TEXT)}); process.exit(1); }
   const d = new DatabaseSync(db);
   const hit = d.prepare('SELECT 1 FROM memory_entries WHERE namespace=? AND key=?').all(flag('--namespace'), flag('--key'));
-  if (hit.length) { console.error('[ERROR] key exists'); process.exit(1); }
+  if (hit.length) { console.error('[ERROR] immutable append rejected: logical key already exists'); process.exit(1); }
   d.prepare("INSERT INTO memory_entries (id, namespace, key, content, status, created_at) VALUES (?, ?, ?, ?, 'active', ?)")
     .run(flag('--namespace') + ':' + flag('--key'), flag('--namespace'), flag('--key'), flag('--value'), Date.now());
   d.close();

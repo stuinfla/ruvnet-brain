@@ -100,20 +100,21 @@ export function canonicalTextReleases(bytes) {
 function discoveryDue(state, now) { const checked = Date.parse(state?.checkedAt);
   return !Number.isFinite(checked) || checked > now || now - checked >= WEEK_MS;
 }
-export function maybeLaunchWeeklyCycle({ routerDir = path.join(os.homedir(), '.claude', 'model-router'), now = Date.now(), launch = spawn, env = process.env } = {}) {
+// READ-ONLY status for the per-prompt hook (4.7.1). It never creates, claims or launches anything:
+// the prompt hook used to launch a detached cycle on every prompt, which spawned native claude/codex.
+// The weekly cycle runs only from the scheduled LaunchAgent (com.ruvnet.goldie-weekly, goldie-weekly.sh).
+export function weeklyCycleStatus({ routerDir = path.join(os.homedir(), '.claude', 'model-router'), now = Date.now() } = {}) {
   try {
-    if (env.MODEL_ROUTER_WEEKLY_ANALYST === '1') return { status: 'recursive-worker', launched: false, reviewRequired: false };
-    fs.mkdirSync(routerDir, { recursive: true, mode: 0o700 }); const state = json(routerDir, STATE_FILE, 1048576);
+    const state = json(routerDir, STATE_FILE, 1048576);
     const reviewRequired = !!state?.pendingReleases?.length;
-    if (!reviewRequired && !discoveryDue(state, now) && state?.removedPublicReleases?.length) return { status: 'blocked', launched: false, checkedAt: state.checkedAt, reviewRequired: false, reason: 'Public release removal requires native access verification; policy retained' };
-    if (!reviewRequired && !discoveryDue(state, now)) return { status: 'current', launched: false, checkedAt: state.checkedAt, reviewRequired: false };
-    const last = json(routerDir, 'weekly-cycle-last-attempt.json'); const tried = Date.parse(last?.checkedAt);
-    if (['failed', 'qualification-pending'].includes(last?.status) && Number.isFinite(tried) && tried <= now && now - tried < RETRY_MS) return { status: 'blocked', launched: false, reason: 'weekly retry cooldown', checkedAt: state?.checkedAt, reviewRequired };
-    const token = claim(routerDir, now); if (!token) return { status: 'busy', launched: false, reviewRequired };
-    try { const child = launch(process.execPath, [fileURLToPath(import.meta.url), '--router-dir', routerDir, '--claim-token', token], { detached: true, stdio: 'ignore' });
-      child.once?.('error', () => release(routerDir, token)); child.unref(); return { status: 'launched', launched: true, checkedAt: state?.checkedAt, reviewRequired };
-    } catch (e) { release(routerDir, token); throw e; }
-  } catch (e) { return { status: 'blocked', launched: false, reason: e.message.slice(0, 240), reviewRequired: false }; }
+    const last = json(routerDir, 'weekly-cycle-last-attempt.json');
+    if (['failed', 'qualification-pending'].includes(last?.status)) return { status: 'blocked', checkedAt: state?.checkedAt, reviewRequired,
+      reason: `last scheduled run ${last.status} at ${last.checkedAt}: ${String(last.reason || 'no reason recorded').slice(0, 200)}` };
+    if (reviewRequired) return { status: 'review-pending', checkedAt: state.checkedAt, reviewRequired: true };
+    if (discoveryDue(state, now)) return { status: 'due', checkedAt: state?.checkedAt, reviewRequired: false };
+    if (state?.removedPublicReleases?.length) return { status: 'blocked', checkedAt: state.checkedAt, reviewRequired: false, reason: 'Public release removal requires native access verification; policy retained' };
+    return { status: 'current', checkedAt: state.checkedAt, reviewRequired: false };
+  } catch (e) { return { status: 'blocked', reason: e.message.slice(0, 240), reviewRequired: false }; }
 }
 export async function runWeeklyCycle({ routerDir = path.join(os.homedir(), '.claude', 'model-router'), now = Date.now(), stage = runCycleStage,
   env = process.env, maxMs = 900000, fetchImpl = fetch, claimToken = null } = {}) {

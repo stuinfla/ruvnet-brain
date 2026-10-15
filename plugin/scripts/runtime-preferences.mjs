@@ -290,7 +290,7 @@ if (process.argv.includes('--learning-scope')) {
 /**
  * WHERE THE LEARNER LIVES — ONE ANSWER, SHARED BY THE WRITER AND EVERY READER.
  *
- * ISSUE #139, filed by @ObiWanKenobi, and he is right about the shape. `learn-flush.mjs` resolves
+ * ISSUE #139, filed by @ObiWanKenobi, and he is right about the shape. the learning flusher resolved
  * the learning scope properly and then writes to `HOME` or `PROJECT` accordingly. The console read
  * the learner with a HARDCODED cwd — first `SYSTEM_HOME` (issue #136), then `process.cwd()` after
  * the fix. Both are hardcodes. Neither asks which scope is in effect.

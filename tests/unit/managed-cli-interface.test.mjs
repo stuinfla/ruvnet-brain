@@ -118,47 +118,7 @@ describe('managed CLI structured interface policy', () => {
     fs.rmSync(home, { recursive: true, force: true });
   });
 
-  it('requires adopted projects to acknowledge durable pre and post progression capture', async () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'managed-cli-capture-'));
-    const canonical = path.join(home, '.npm-global', 'bin', process.platform === 'win32' ? 'ruflo.cmd' : 'ruflo');
-    fs.mkdirSync(path.dirname(canonical), { recursive: true });
-    fs.writeFileSync(canonical, process.platform === 'win32' ? '@echo ok\r\n' : '#!/bin/sh\nexit 0\n');
-    fs.chmodSync(canonical, 0o755);
-    const env = { ...process.env, HOME: home, RUVNET_BRAIN_HOME: path.join(home, '.cache', 'brain') };
-    await callManagedCli('ruvnet_cli_help', { executable: 'ruflo', argv: ['status'] }, env);
-    const events = [];
-    const result = await callManagedCli('ruvnet_cli_run', { executable: 'ruflo', argv: ['status'] }, env, globalThis.fetch, {
-      capture: ({ event }) => { events.push(event); return { adopted: true, progressionCaptured: true }; },
-    });
-    expect(result.isError).toBe(false);
-    expect(events).toEqual(['PreToolUse', 'PostToolUse']);
 
-    const refused = await callManagedCli('ruvnet_cli_run', { executable: 'ruflo', argv: ['status'] }, env, globalThis.fetch, {
-      capture: ({ event }) => event === 'PreToolUse' ? { adopted: true, progressionCaptured: false, skipped: 'outbox unavailable' } : { adopted: true, progressionCaptured: true },
-    });
-    expect(refused.isError).toBe(true);
-    expect(refused.content[0].text).toContain('outbox unavailable');
-    fs.rmSync(home, { recursive: true, force: true });
-  });
-
-  it('refuses the actual managed path when the adopted canonical store resolves outside the project', async () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'managed-cli-foreign-'));
-    const home = path.join(root, 'home');
-    const bin = path.join(home, '.npm-global', 'bin');
-    const project = path.join(root, 'project');
-    const foreign = path.join(root, 'foreign');
-    fs.mkdirSync(bin, { recursive: true }); fs.mkdirSync(path.join(project, '.swarm'), { recursive: true }); fs.mkdirSync(foreign, { recursive: true });
-    const executable = path.join(bin, 'ruflo');
-    fs.writeFileSync(executable, '#!/bin/sh\nexit 0\n'); fs.chmodSync(executable, 0o755);
-    fs.writeFileSync(path.join(foreign, 'memory.db'), 'foreign');
-    fs.symlinkSync(foreign, path.join(project, '.swarm', 'memory.db'));
-    const env = { ...process.env, HOME: home, RUVNET_BRAIN_HOME: path.join(home, '.cache', 'brain'), RUVNET_BRAIN_PROJECT_DIR: project, RUVNET_HOOK_HOST: 'codex' };
-    await callManagedCli('ruvnet_cli_help', { executable: 'ruflo', argv: ['status'] }, env);
-    const result = await callManagedCli('ruvnet_cli_run', { executable: 'ruflo', argv: ['status'] }, env);
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toMatch(/store could not be resolved|refused/i);
-    fs.rmSync(root, { recursive: true, force: true });
-  });
 
   it('does not accept a caller supplied host label for continuity identity', async () => {
     const env = { ...process.env, RUVNET_HOOK_HOST: undefined };

@@ -39,8 +39,8 @@ Concrete contract problems:
 | New ID | Assessment | Append-only linkage and proof needed |
 |---|---|---|
 | G-053 | Distinct containment defect related to G-002. Resolver check alone does not close worker/side-file/race scope. | Link G-002/R6/R11; retain exact fixture outcomes separately. |
-| G-054 | Distinct durability defect; source `project-progression-outbox.mjs:records()` unconditionally drops final split line. | Link R6; bounded complete-no-newline vs torn-record replay proof. |
-| G-055 | Distinct durability defect; `continuity-journal.mjs:221-229` drops pending events above hard cap despite comment saying never loses pending. | Link R6; sustained refusal/backpressure/recovery proof. |
+| G-054 | Distinct durability defect; source `the former progression outbox (deleted 2026-10-12):records()` unconditionally drops final split line. | Link R6; bounded complete-no-newline vs torn-record replay proof. |
+| G-055 | Distinct durability defect; `the former continuity journal (deleted 2026-10-12)-229` drops pending events above hard cap despite comment saying never loses pending. | Link R6; sustained refusal/backpressure/recovery proof. |
 | G-056 | Distinct fast-lane citation identity defect. Actual renderer path differs from concepts CARD identity. | Link G-004/R2/R10; require lane fires and cited identity resolves, separate from framing. |
 | G-057 | Historical privacy-cleanup obligation, related to G-001, not evidence new captures still leak. | Add lifecycle child obligation; explicit authorization for deleting/scrubbing owner data; keep old and new evidence separate. |
 | G-058 | Distinct notification delivery defect; ntfy-alerts.yml exits0 on absent topic and suppresses curl failure. | Link G-010/G-021/R9; independent nonce delivery, not sender-only success. |
@@ -85,7 +85,7 @@ G-054 now retains a complete final JSON snapshot or commit with no trailing newl
 
 G-055 compaction now prunes only committed event history at the limit, retains every pending event and its aggregated failure count, reports capacityPressure above2000 pending, and avoids automatic rewriting when the backlog cannot shrink. Tests preserve2500 accepted pending records byte-for-record after reopening; drain2005 exact-content events successfully after recovery; retain aggregate failure counts; clear pressure and restore committed-history cap/age expiry. Existing append-during-compaction protection remains tested.
 
-Independent execution: `npm exec -- vitest run tests/unit/project-progression-outbox.test.mjs tests/unit/continuity-journal-bounds.test.mjs tests/unit/project-progression-durability.test.mjs` => **3 files,25 tests passed,24.67s**, no skips.
+Independent execution: `npm exec -- vitest run the former progression outbox (deleted 2026-10-12) the former continuity journal (deleted 2026-10-12) tests/unit/project-progression-durability.test.mjs` => **3 files,25 tests passed,24.67s**, no skips.
 
 Tradeoffs/remaining work:
 - During prolonged refusal the accepted pending backlog can grow without a hard byte bound. This intentionally exchanges silent data loss for disk pressure; no new admission rejection policy was added. This does not prove unlimited-scale throughput or recovery from ENOSPC.

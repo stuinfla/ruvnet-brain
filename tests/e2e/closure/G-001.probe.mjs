@@ -13,8 +13,6 @@ try {
   assert.ok(content.includes('Verified the synthetic repair'));
   assert.ok(content.includes('[REDACTED:token]'));
   for (const bytes of [...fileBytes(f.home), ...fileBytes(path.join(f.project, '.swarm'))]) assert.equal(bytes.includes(Buffer.from(token)), false, 'raw token reached disk or argv log');
-  const breadcrumb = JSON.parse(fs.readFileSync(path.join(f.project, '.swarm', 'agentdb-turns.jsonl'), 'utf8').trim());
-  assert.deepEqual(Object.keys(breadcrumb).sort(), ['hash', 'key', 'len', 'ts']);
   f.policy({ [f.project]: 'off' });
   assert.match(f.stop({ message: `${outcome} Changed after policy write.` }).skipped, /persisted.*opt-out/);
   f.policy({}, { [f.project]: 'off' });
@@ -23,5 +21,5 @@ try {
   assert.match(f.stop().skipped, /policy unreadable or invalid/);
   f.policy({}, 'off');
   assert.match(f.stop().skipped, /policy unreadable or invalid/);
-  console.log(JSON.stringify({ malformedConsentFailsClosed: true, gap: 'G-001', evidenceClass: 'EXECUTED', verified: true, rawTokenBytes: 0, breadcrumbFields: Object.keys(breadcrumb), liveProjectAndPathOptOut: true }));
+  console.log(JSON.stringify({ malformedConsentFailsClosed: true, gap: 'G-001', evidenceClass: 'EXECUTED', verified: true, rawTokenBytes: 0, liveProjectAndPathOptOut: true }));
 } finally { f.cleanup(); }

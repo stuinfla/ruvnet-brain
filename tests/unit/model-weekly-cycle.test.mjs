@@ -2,7 +2,7 @@ import fs from 'node:fs';import os from 'node:os';import path from 'node:path';i
 import {spawn} from 'node:child_process';
 import {afterEach,expect,it,vi} from 'vitest';
 import {digest} from '../../scripts/model-currency-evidence.mjs';
-import {runWeeklyCycle,runCycleStage,canonicalTextReleases,maybeLaunchWeeklyCycle} from '../../scripts/model-weekly-cycle.mjs';
+import {runWeeklyCycle,runCycleStage,canonicalTextReleases,weeklyCycleStatus} from '../../scripts/model-weekly-cycle.mjs';
 const dirs=[],NOW=Date.now(),WEEK=604800000;const write=(d,f,v)=>fs.writeFileSync(path.join(d,f),JSON.stringify(v));
 const releases=[{id:'openai/sol-20261001',provider:'openai',aliases:['openai/sol']},{id:'anthropic/sonnet-20261001',provider:'anthropic',aliases:['anthropic/sonnet']}];
 function inventory(extra=[]){return JSON.stringify({data:[...Array.from({length:50},(_,i)=>({id:'other/model'+i})),...releases.map(r=>({id:r.aliases[0],canonical_slug:r.id,architecture:{output_modalities:['text']}})),...extra]});}
@@ -52,10 +52,16 @@ it('source failure is unknown and preserves prior baseline; public removals aler
   const s=JSON.parse(before);s.baselineReleaseIds.push('openai/other-existing');write(dir,'weekly-model-discovery.json',s);
   const result=await runWeeklyCycle({routerDir:dir,now:NOW+WEEK+3600001,stage,fetchImpl:fetcher(JSON.stringify(parsed))});expect(result.status).toBe('availability-alert-policy-retained');expect(result.publicAvailabilityAlert.nativeAvailability).toMatch(/unknown/);expect(stage).not.toHaveBeenCalled();
 });
-it('offline prompt path stays quiet without a new release and fences one background cycle',()=>{
-  const dir=fixture(),launch=vi.fn(()=>({once(){},unref(){}}));expect(maybeLaunchWeeklyCycle({routerDir:dir,now:NOW,launch})).toMatchObject({status:'current',launched:false,reviewRequired:false});
+it('prompt-path status is read-only: reports current, due, pending and a failed scheduled run, and never claims or launches',()=>{
+  const dir=fixture(),files=()=>fs.readdirSync(dir).sort(),before=files();
+  expect(weeklyCycleStatus({routerDir:dir,now:NOW})).toMatchObject({status:'current',reviewRequired:false});
+  expect(weeklyCycleStatus({routerDir:dir,now:NOW+WEEK})).toMatchObject({status:'due',reviewRequired:false});
   const s=JSON.parse(fs.readFileSync(path.join(dir,'weekly-model-discovery.json')));s.pendingReleases=[{id:newRelease.canonical_slug}];write(dir,'weekly-model-discovery.json',s);
-  expect(maybeLaunchWeeklyCycle({routerDir:dir,now:NOW,launch})).toMatchObject({status:'launched',launched:true,reviewRequired:true});expect(maybeLaunchWeeklyCycle({routerDir:dir,now:NOW,launch}).status).toBe('busy');expect(launch).toHaveBeenCalledOnce();
+  expect(weeklyCycleStatus({routerDir:dir,now:NOW})).toMatchObject({status:'review-pending',reviewRequired:true});
+  write(dir,'weekly-cycle-last-attempt.json',{status:'failed',checkedAt:new Date(NOW).toISOString(),reason:'Native account model catalog refresh unavailable; approved policy retained'});
+  expect(weeklyCycleStatus({routerDir:dir,now:NOW})).toMatchObject({status:'blocked',reason:expect.stringMatching(/last scheduled run failed .*catalog refresh unavailable/)});
+  expect(files()).toEqual([...before,'weekly-cycle-last-attempt.json'].sort());expect(fs.existsSync(path.join(dir,'weekly-cycle-owner.json'))).toBe(false);
+  const missing=path.join(os.tmpdir(),'weekly-cycle-absent-'+process.pid+'-'+NOW);expect(weeklyCycleStatus({routerDir:missing,now:NOW}).status).toBe('due');expect(fs.existsSync(missing)).toBe(false);
 });
 it('deduplicates and fences delayed old-worker writes and cleanup after successor claim',async()=>{
   const dir=fixture(),s=JSON.parse(fs.readFileSync(path.join(dir,'weekly-model-discovery.json')));s.pendingReleases=[{id:newRelease.canonical_slug}];write(dir,'weekly-model-discovery.json',s);let finishOld,finishNew;
@@ -182,3 +188,7 @@ it('a late promotion-shaped qualification cannot mark the cycle promoted or reti
  expect(JSON.parse(fs.readFileSync(path.join(dir,'weekly-model-discovery.json')))).toEqual(state);expect(fs.readFileSync(path.join(dir,'routing-policy.json'))).toEqual(before);
  expect(JSON.parse(fs.readFileSync(path.join(dir,'weekly-cycle-last-attempt.json')))).toEqual(receipt);
 });
+
+// 4.7.1 checks 1f/6d: a full scheduled cycle in a TEMP HOME with stubbed native claude/codex. The real
+// native-catalog stage runs as a child process against the stubs; the stub Claude reports the installed
+// 2.1.296 that the old exact 2.1.289 pin refused, which failed every cycle. Native protocol replies are

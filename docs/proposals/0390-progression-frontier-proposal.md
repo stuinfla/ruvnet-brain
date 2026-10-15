@@ -23,13 +23,13 @@ in the open issue. Preserve any later supplied fixture unchanged and record its 
 
 Relevant sources:
 
-- `plugin/scripts/project-transition-hook.mjs`: `captureNormalizedTransition` reads the entire
+- `the former transition hook (deleted 2026-10-12)`: `captureNormalizedTransition` reads the entire
   namespace; `buildRestoredTransitionProgression` appends to accumulated observations/commands.
-- `plugin/scripts/project-progression-contract.mjs`: validates ancestry and merges heads/conflicts.
-- `plugin/scripts/project-progression-store.mjs`: native/CLI exact reads, append-only capture,
+- `the former progression contract (deleted 2026-10-12)`: validates ancestry and merges heads/conflicts.
+- `the former progression store (deleted 2026-10-12)`: native/CLI exact reads, append-only capture,
   recovery of frozen conflicting event keys, `restoreLatest` full-history validation.
-- `plugin/scripts/project-progression-outbox.mjs`: streaming records and digest/recovery quarantine.
-- `plugin/scripts/project-capture-queue.mjs`: exclusive queue claims and replay fencing.
+- `the former progression outbox (deleted 2026-10-12)`: streaming records and digest/recovery quarantine.
+- `the former capture queue (deleted 2026-10-12)`: exclusive queue claims and replay fencing.
 - `docs/adr/0073-agentdb-perennial-project-continuity.md` §7 requires exact range/digests,
   exact canonical readback, independent restore equivalence and a retention receipt before cleanup.
 
@@ -49,7 +49,7 @@ module hashes and keeps the disposable mature journal. No customer evidence was 
 
 ## Operator containment contract (B)
 
-The independent control is `project-progression-suspension.mjs --suspend | --resume | --status`.
+The independent control is `the former progression suspension switch (deleted 2026-10-12) --suspend | --resume | --status`.
 It atomically writes operator configuration `brain-progression-suspension` under
 `RUVNET_BRAIN_STATE_DIR`, otherwise `HOME/.config/ruvnet-brain`. `RUVNET_BRAIN_PROGRESSION_SUSPENDED=1`
 is an explicit process control; resuming the file does not override that environment setting.

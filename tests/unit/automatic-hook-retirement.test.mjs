@@ -20,12 +20,12 @@ function fixture() {
   fs.mkdirSync(path.dirname(wrapper), { recursive: true });
   fs.mkdirSync(path.dirname(settings), { recursive: true });
   const foreign = { type: 'command', command: 'node /foreign/task.mjs' };
-  fs.writeFileSync(wrapper, '// installer-owned old bridge');
+  const ambiguous = { pluginId: 'ruvnet-brain@ruvnet-brain', command: 'echo personal', type: 'command' };
+  fs.copyFileSync(path.join(ROOT, 'plugin/scripts/codex-hook-wrapper.mjs'), wrapper);
   fs.writeFileSync(settings, JSON.stringify({ permissions: { allow: ['Read'] }, hooks: { Stop: [{ hooks: [foreign,
-    { command: `node "${wrapper}"`, type: 'command' },
-    { pluginId: 'ruvnet-brain@ruvnet-brain', command: 'old callback', type: 'command' }] }] } }));
+    { command: `node "${wrapper}" continuation-gate`, type: 'command', timeout: 10 }, ambiguous] }] } }));
   const install = () => wireCodexHost({ codexDir, serverDir: path.join(home, 'mcp'), announce: false });
-  return { home, codexDir, wrapper, settings, foreign, install };
+  return { home, codexDir, wrapper, settings, foreign, ambiguous, install };
 }
 
 it('requires schema-valid continuity-only shipped registries/contracts and canonical host pointers', () => {
@@ -88,7 +88,80 @@ it('actual offline host install removes owned callbacks and preserves foreign se
   expect(fs.existsSync(f.wrapper)).toBe(true);
   expect(fs.existsSync(result.serverPath)).toBe(true);
   expect(fs.readFileSync(path.join(f.codexDir, 'config.toml'), 'utf8')).toContain('[mcp_servers.ruvnet-brain]');
-  expect(JSON.parse(fs.readFileSync(f.settings))).toEqual({ permissions: { allow: ['Read'] }, hooks: { Stop: [{ hooks: [f.foreign] }] } });
+  expect(JSON.parse(fs.readFileSync(f.settings))).toEqual({ permissions: { allow: ['Read'] }, hooks: { Stop: [{ hooks: [f.foreign, f.ambiguous] }] } });
+});
+
+it('actual install preserves customized, same-name, marker-only and mixed-command hooks in both user files', () => {
+  const f = fixture();
+  const owned = { type: 'command', timeout: 10, command: `node "${f.wrapper}" continuation-gate` };
+  const personal = [f.foreign, f.ambiguous,
+    { ...owned, command: `${owned.command} --personal-override` },
+    { ...owned, command: `node "${path.join(f.home, 'personal/codex-hook.mjs')}" continuation-gate` },
+    { ...owned, command: `${owned.command} && echo personal` },
+    { ...owned, command: `node "${f.wrapper}"continuation-gate` },
+    { ...owned, timeout: 999 }, { ...owned, async: true },
+    { type: 'command', command: owned.command },
+    { ...owned, env: { PERSONAL: 'yes' } }, { ...owned, if: 'personal-rule' },
+    { command: 123, pluginId: 'ruvnet-brain@ruvnet-brain' },
+  ];
+  const document = { permissions: { allow: ['Read'] }, hooks: {
+    Stop: [{ hooks: [owned, ...personal] }, { matcher: 'personal', hooks: [owned] }],
+    PostToolUse: [{ hooks: [owned] }],
+  } };
+  const codexHooks = path.join(f.codexDir, 'hooks.json');
+  for (const file of [f.settings, codexHooks]) fs.writeFileSync(file, JSON.stringify(document));
+  expect(f.install().hookWrapperInstalled).toBe(true);
+  const expected = { ...document, hooks: { ...document.hooks,
+    Stop: [{ hooks: personal }, { matcher: 'personal', hooks: [owned] }],
+  } };
+  for (const file of [f.settings, codexHooks]) expect(JSON.parse(fs.readFileSync(file))).toEqual(expected);
+  const before = [f.settings, codexHooks].map(file => fs.readFileSync(file));
+  const result = retireManagedHookRegistrations({ home: f.home, codexDir: f.codexDir });
+  expect(result.removed).toBe(0);
+  expect(result.conflicts.length).toBeGreaterThan(0);
+  for (const [i, file] of [f.settings, codexHooks].entries()) expect(fs.readFileSync(file)).toEqual(before[i]);
+});
+
+it('refuses a customized bridge before any registration or installed-host write', () => {
+  const f = fixture();
+  fs.writeFileSync(f.wrapper, '// personal customization at a familiar filename');
+  const originalSettings = fs.readFileSync(f.settings), originalWrapper = fs.readFileSync(f.wrapper);
+  const result = f.install();
+  expect(result.action).toBe('hook-wrapper-ownership-conflict');
+  expect(result.hookWrapperInstalled).toBe(false);
+  expect(fs.readFileSync(f.settings)).toEqual(originalSettings);
+  expect(fs.readFileSync(f.wrapper)).toEqual(originalWrapper);
+  expect(fs.existsSync(path.join(f.home, 'mcp'))).toBe(false);
+  expect(fs.existsSync(path.join(f.codexDir, 'config.toml'))).toBe(false);
+});
+
+it('preserves shared settings files rather than replacing another owner’s data', () => {
+  const f = fixture();
+  const shared = path.join(f.home, 'personal-settings.json');
+  const original = fs.readFileSync(f.settings);
+  fs.renameSync(f.settings, shared);
+  fs.linkSync(shared, f.settings);
+  const linked = path.join(f.codexDir, 'hooks.json');
+  fs.linkSync(shared, linked);
+  const result = retireManagedHookRegistrations({ home: f.home, codexDir: f.codexDir });
+  expect(result.removed).toBe(0);
+  expect(result.conflicts.length).toBe(2);
+  expect(fs.statSync(f.settings).ino).toBe(fs.statSync(shared).ino);
+  expect(fs.statSync(linked).ino).toBe(fs.statSync(shared).ino);
+  expect(fs.readFileSync(shared)).toEqual(original);
+});
+
+it('refuses an escaping parent namespace before overwriting byte-equal personal files', () => {
+  const f = fixture();
+  const originalSettings = fs.readFileSync(f.settings), originalWrapper = fs.readFileSync(f.wrapper);
+  const personal = path.join(f.home, 'personal-brain');
+  fs.renameSync(path.dirname(f.wrapper), personal);
+  fs.symlinkSync(personal, path.dirname(f.wrapper), 'junction');
+  const result = f.install();
+  expect(result.action).toBe('hook-wrapper-ownership-conflict');
+  expect(fs.readFileSync(f.settings)).toEqual(originalSettings);
+  expect(fs.readFileSync(path.join(personal, 'codex-hook.mjs'))).toEqual(originalWrapper);
+  expect(fs.existsSync(path.join(f.home, 'mcp'))).toBe(false);
 });
 
 it('repeated host install does not recreate callbacks or rewrite foreign settings', () => {

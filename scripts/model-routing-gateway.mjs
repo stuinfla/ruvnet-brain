@@ -20,7 +20,7 @@ const UNQUALIFIED = new Set(['review/start', 'thread/queue/add', 'thread/queue/u
   'thread/realtime/start', 'thread/realtime/appendAudio', 'thread/realtime/appendSpeech', 'thread/realtime/appendText',
   'thread/goal/set', 'thread/goal/create', 'thread/goal/resume', 'thread/compact/start', 'turn/addUserMessage', 'thread/startAeon']);
 
-function canonicalCodexConfig(config) {
+export function canonicalCodexConfig(config) {
   if (!config || (config.model_provider ?? 'openai') !== 'openai') return false;
   // Native 0.160 gives serviceTierForTurn precedence over daemon/thread Fast defaults.
   // routeCodexTurn supplies both standard overrides; provider/auth checks remain mandatory.

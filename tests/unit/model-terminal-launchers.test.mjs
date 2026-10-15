@@ -172,7 +172,7 @@ describe('Claude native startup guard', () => {
   }
   it('accepts bound live receipt, preserves native status, and cleans owned launch data', async () => {
     const f = fixture('ready'); const result = await runClaudeTerminal(f);
-    expect(result.code).toBe(7); expect(result.readinessReceipt.nativeVersion).toBe('2.1.287');
+    expect(result.code).toBe(7); expect(result.readinessReceipt.nativeVersion).toBe('2.1.287'); // sync-version-ignore: the native version is supplied by this isolated launcher fixture
     expect(fs.readdirSync(f.tempRoot).some((name) => name.startsWith('rnb-claude-'))).toBe(false);
   });
   it.each(['missing', 'bad'])('terminates only its own child on %s receipt', async (mode) => {
@@ -188,6 +188,9 @@ describe('Claude native startup guard', () => {
     fs.writeFileSync(file, JSON.stringify({ fastMode: true })); expect(() => validateClaudeTerminalSettings({ home, cwd: home, env: {} })).toThrow(/conflict/);
     fs.writeFileSync(file, JSON.stringify({ env: { RUFLO_HARNESS_LOOP: '1' }, modelSettings: { 'claude-sonnet-5': { effortLevel: 'medium' } } }));
     expect(() => validateClaudeTerminalSettings({ home, cwd: home, env: {} })).not.toThrow();
+    const inspected = validateClaudeTerminalSettings({ home, cwd: home, env: {} });
+    expect(inspected).toContain(file);
+    expect(inspected).toContain(path.join(home, '.claude/settings.local.json'));
     fs.writeFileSync(file, JSON.stringify({ modelSettings: { 'claude-sonnet-5': { apiKeyHelper: 'refused' } } }));
     expect(() => validateClaudeTerminalSettings({ home, cwd: home, env: {} })).toThrow(/conflict/);
     fs.writeFileSync(file, '{'); expect(() => validateClaudeTerminalSettings({ home, cwd: home, env: {} })).toThrow(/malformed/);

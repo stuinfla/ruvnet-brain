@@ -46,6 +46,7 @@ export const CONSOLE_RUNTIME_SURFACE = Object.freeze([
   'kb/update-storage-transaction.mjs',
   'kb/model-requirements.mjs',
   'kb/zip-extract.mjs',
+  'kb/download-retry.mjs',
   // install.mjs imports this STATICALLY (corpus transport identity + approved-runtime stamping,
   // ADR-086 step 16). A copied installer whose sibling is missing does not degrade — it throws
   // ERR_MODULE_NOT_FOUND on import, before a single line runs.
@@ -56,6 +57,7 @@ export const CONSOLE_RUNTIME_SURFACE = Object.freeze([
   // customer got "nightly runner source is missing" (RNBC review 2026-10-01). It imports only node:
   // built-ins, so nothing further travels with it.
   'bin/nightly-refresh.mjs',
+  'bin/developer-update.mjs',
   'package.json',
 ]);
 

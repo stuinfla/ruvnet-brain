@@ -219,7 +219,8 @@ describe('SessionStart knowledge auto-update — end to end through runSessionSt
   afterEach(() => new Promise((resolve) => server.close(resolve)));
 
   const stubNpx = (exitCode) => {
-    const bin = path.join(home, 'bin');
+    // automaticInvocation chooses the owner prefix before PATH; stub that actual door.
+    const bin = path.join(home, '.npm-global', 'bin');
     fs.mkdirSync(bin, { recursive: true });
     fs.writeFileSync(path.join(bin, 'npx'), `#!/bin/sh\necho "$@" >> "$HOME/npx-called"\n${exitCode ? 'echo "✗ refresh transaction could not start: stub failure" >&2\n' : ''}exit ${exitCode}\n`, { mode: 0o755 });
     return bin;

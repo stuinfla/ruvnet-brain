@@ -20,7 +20,7 @@ describe('SessionStart restart notice safety filter', () => {
     const plugin = path.join(root, 'plugin');
     const state = path.join(home, '.cache', 'ruvnet-brain');
     fs.mkdirSync(project, { recursive: true });
-    fs.cpSync(path.join(ROOT, 'plugin', 'scripts'), path.join(plugin, 'scripts'), { recursive: true });
+    fs.cpSync(path.join(ROOT, 'plugin'), plugin, { recursive: true });
     fs.mkdirSync(path.join(plugin, '.claude-plugin'), { recursive: true });
     fs.writeFileSync(path.join(plugin, '.claude-plugin', 'plugin.json'), JSON.stringify({ version: '4.0.2-test' }));
     fs.mkdirSync(state, { recursive: true });

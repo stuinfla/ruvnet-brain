@@ -4,7 +4,7 @@ import { PassThrough, Writable } from 'node:stream';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { controlledClaudeArguments, runControlledClaudeTurn, launchControlledClaudeTerminal, retireControlledClaudeChild, assertClaudeModuleBoundary } from '../../scripts/claude-controlled-terminal.mjs';
+import { controlledClaudeArguments, runControlledClaudeTurn, launchControlledClaudeTerminal, retireControlledClaudeChild, assertClaudeModuleBoundary, claudeTerminalReadOnly } from '../../scripts/claude-controlled-terminal.mjs';
 
 const sessionId = '11111111-1111-4111-8111-111111111111';
 const decision = { harness: 'claude-code', provider: 'anthropic', subscriptionCovered: true,
@@ -21,7 +21,7 @@ function fixture(overrides = {}) {
       if (message.type === 'control_request') {
         const applied = overrides.settings?.(message, sent) || { model: decision.model, effort: decision.effort };
         emit({ type: 'control_response', response: { subtype: overrides.controlError ? 'error' : 'success', request_id: message.request_id,
-          response: message.request.subtype === 'initialize' ? {} : { applied, sources: overrides.sources || [] } } });
+          response: message.request.subtype === 'initialize' ? (overrides.initializeResponse ?? { hooks_applied: true }) : { applied, sources: overrides.sources || [] } } });
       }
       if (message.type === 'user') {
         if (overrides.workerCrash) return child.emit('close', 1);
@@ -162,7 +162,7 @@ describe('controlled Claude native turn boundary', () => {
     expect(f.launches[0].args).toContain('manual'); expect(f.launches[0].args.join(' ')).not.toMatch(/skip-permissions|bypassPermissions/);
     expect(f.launches[0].args).toContain('Agent,Task');
     expect(f.launches[0].args).toContain('--permission-prompt-tool'); expect(f.launches[0].args).toContain('stdio');
-    const g = fixture({ tool: true }); await runControlledClaudeTurn(g.options);
+    const g = fixture({ tool: true }); await expect(runControlledClaudeTurn(g.options)).rejects.toThrow(/refused/);
     expect(g.sent.find(m => m.type === 'control_response').response.response.behavior).toBe('deny');
   });
 
@@ -193,12 +193,13 @@ describe('controlled Claude native turn boundary', () => {
     expect(child.listenerCount('close')).toBe(0);
   });
 
-  it('ignores a late permission answer after overlapping native requests force retirement', async () => {
+  it('cancellation drops queued requests and ignores a late permission answer', async () => {
     let approve;
     const f = fixture({ tool: true, options: { approve: () => new Promise(resolve => { approve = resolve; }) } });
-    const pending = runControlledClaudeTurn(f.options); await tick();
+    const controller = new AbortController();
+    const pending = runControlledClaudeTurn({ ...f.options, signal: controller.signal }); await tick();
     f.child.stdout.write(JSON.stringify({ type: 'control_request', request_id: 'second', request: { subtype: 'can_use_tool', tool_name: 'Bash', input: {} } }) + '\n');
-    await expect(pending).rejects.toThrow(/refused/); approve(true); await tick();
+    controller.abort(); await expect(pending).rejects.toThrow(/refused/); approve(true); await tick();
     expect(f.sent.some(m => m.type === 'control_response')).toBe(false);
     expect(f.receipts.some(r => r.status === 'completed')).toBe(false);
   });
@@ -215,8 +216,8 @@ describe('controlled Claude native turn boundary', () => {
   });
 
   it('terminal entry accepts only explicit resume and requires human input; no implicit permission bypass', async () => {
-    for (const args of [['--dangerously-skip-permissions'], ['--model', 'opus'], ['--continue'], ['--resume', 'invalid'],
-      ['--permission-mode'], ['--permission-mode', 'manual'], ['--permission-mode=bypassPermissions'],
+    for (const args of [['--model', 'opus'], ['--continue'], ['--resume', 'invalid'],
+      ['--permission-mode'], ['--permission-mode', 'unknown'], ['--permission-mode=bypassPermissions'],
       ['--permission-mode', 'bypassPermissions', '--permission-mode', 'bypassPermissions']]) {
       await expect(launchControlledClaudeTerminal({ args })).rejects.toThrow(/only --resume/);
     }
@@ -239,7 +240,7 @@ describe('controlled Claude native turn boundary', () => {
           calls.push(options.originalPrompt);
           if (calls.length === 1) {
             input.write('Queued instruction.\n');
-            approved = await options.approve({ tool_name: 'Edit', input: {} });
+            approved = await options.approve({ tool_name: 'Read', input: {} });
           } else input.write('/exit\n');
           return { sessionId, completed: true, modelObserved: true };
         } });
@@ -248,25 +249,29 @@ describe('controlled Claude native turn boundary', () => {
     } finally { input.destroy(); output.destroy(); diagnostics.destroy(); }
   });
 
-  it.each([['--permission-mode', 'bypassPermissions'], ['--permission-mode', 'bypassPermissions', '--resume', sessionId],
+  it.each([['--dangerously-skip-permissions'], ['--permission-mode', 'bypassPermissions'], ['--permission-mode', 'bypassPermissions', '--resume', sessionId],
     ['--resume', sessionId, '--permission-mode', 'bypassPermissions']].map(flags => ({ flags })))(
     'honours the exact owner bypass flag at the host while preserving resume and worker refusal %#', async ({ flags }) => {
       const input = new PassThrough(), output = new PassThrough(), diagnostics = new PassThrough();
       input.isTTY = true; output.isTTY = true;
       let messages = '', observed;
       diagnostics.on('data', chunk => { messages += chunk; });
-      await expect(launchControlledClaudeTerminal({ args: [...flags, 'literal initial prompt'], input, output, diagnostics, env: { RUVNET_AGENTDB_FIRST: 'off' },
+      await expect(launchControlledClaudeTerminal({ args: [...flags, 'Explain this function.'], input, output, diagnostics, env: { RUVNET_AGENTDB_FIRST: 'off' },
+        managedPrompt: options => options.primaryTurn({ ...options, ...options.nativeContext, prompt: options.originalPrompt }),
         runTurn: async options => {
           observed = options;
-          expect(await options.approve({ tool_name: 'Write', input: {} })).toBe(true);
+          expect(await options.approve({ tool_name: 'Write', input: {} })).toBe(false);
+          expect(await options.approve({ tool_name: 'Write', input: {} }, { ownership: { mode: 'write' } })).toBe(true);
+          expect(await options.approve({ tool_name: 'Bash', input: {} })).toBe(false);
+          expect(await options.scopeTool({ tool_name: 'Write', input: {} })).toBe(false);
           expect(await options.approve({ tool_name: 'Agent', input: {} })).toBe(false);
           expect(await options.approve({ tool_name: 'Task', input: {} })).toBe(false);
           throw Error('fixture-stop');
         } })).rejects.toThrow('fixture-stop');
-      expect(observed.prompt).toBe('literal initial prompt');
+      expect(observed.prompt).toBe('Explain this function.');
       expect(observed.resume).toBe(flags.includes('--resume'));
       expect(observed.sessionId).toBe(flags.includes('--resume') ? sessionId : undefined);
-      expect(messages).toContain('Owner permission bypass is active');
+      expect(messages).toContain('Owner permission intent is active only within guarded workflow scope');
       expect(controlledClaudeArguments(decision, sessionId).join(' ')).toContain('--permission-mode manual');
       input.destroy(); output.destroy(); diagnostics.destroy();
     });
@@ -357,5 +362,224 @@ describe('native schema serializer approval', () => {
     const f = fixture({ tool: true, toolName: 'StructuredOutput', toolInput, structuredOutput: { passed: true }, denials: [{}] });
     await expect(runControlledClaudeTurn(schemaOptions(f))).rejects.toThrow(/refused/);
     expect(f.sent.find(m => m.type === 'control_response').response.response.behavior).toBe('deny');
+  });
+});
+
+describe('native PreToolUse ownership enforcement before native autoallows', () => {
+  it.each([{}, { hooks_applied: false }])('refuses missing/false native hook admission before any prompt: %j', async initializeResponse => {
+    const f = fixture({ initializeResponse });
+    await expect(runControlledClaudeTurn(f.options)).rejects.toThrow(/refused/);
+    expect(f.sent.map(row => row.request?.subtype)).toEqual(['initialize']);
+    expect(f.sent.some(row => row.type === 'user')).toBe(false);
+  });
+  function guarded(overrides = {}) {
+    const f = fixture({ tool: true, toolName: 'Write', options: { approve: async () => true, ...overrides } });
+    // Hold the model fixture at its permission callback while injecting a native guard packet.
+    const write = f.child.stdin._write.bind(f.child.stdin);
+    f.child.stdin._write = (chunk, encoding, callback) => {
+      const row = JSON.parse(chunk.toString());
+      if (row.type === 'control_response' && row.response.request_id === 'tool-approval') { f.sent.push(row); callback(); }
+      else if (row.type === 'control_response' && row.response.request_id === 'scope-1') { f.sent.push(row); callback(); }
+      else write(chunk, encoding, callback);
+    };
+    return f;
+  }
+  it.each([true, false])('guard checks native-autoallowed tool scope and leaves native policy intact inside: %s', async within => {
+    const calls = [], f = guarded({ scopeTool: permission => { calls.push(permission); return within; } });
+    const controller = new AbortController(); const pending = runControlledClaudeTurn({ ...f.options, signal: controller.signal });
+    const rejected = expect(pending).rejects.toThrow(/refused/); await tick();
+    expect(f.sent[0].request.hooks).toEqual({ PreToolUse: [{ hookCallbackIds: ['owned-scope'] }] });
+    f.child.stdout.write(JSON.stringify({ type: 'control_request', request_id: 'scope-1', request: { subtype: 'hook_callback', callback_id: 'owned-scope',
+      tool_use_id: 'owned-use', input: { hook_event_name: 'PreToolUse', session_id: sessionId, tool_name: 'Write', tool_input: { file_path: 'owned.mjs' } } } }) + '\n');
+    await tick();
+    expect(calls).toEqual([{ tool_name: 'Write', input: { file_path: 'owned.mjs' } }]);
+    const reply = f.sent.find(row => row.response?.request_id === 'scope-1').response.response;
+    expect(reply).toEqual(within ? {} : { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'Outside the host declared tool scope' } });
+    controller.abort(); await rejected;
+  });
+  it.each([{ callback_id: 'unknown' }, { input: { hook_event_name: 'PostToolUse', session_id: sessionId } },
+    { input: { hook_event_name: 'PreToolUse', session_id: 'other', tool_name: 'Write', tool_input: {} } }])('unknown or mismatched native guard packets retire without approving %#', async override => {
+    const f = guarded(); const pending = runControlledClaudeTurn(f.options); const rejected = expect(pending).rejects.toThrow(/refused/); await tick();
+    f.child.stdout.write(JSON.stringify({ type: 'control_request', request_id: 'scope-1', request: { subtype: 'hook_callback', callback_id: 'owned-scope', tool_use_id: 'use',
+      input: { hook_event_name: 'PreToolUse', session_id: sessionId, tool_name: 'Write', tool_input: {} }, ...override } }) + '\n');
+    await rejected; expect(f.sent.some(row => row.response?.request_id === 'scope-1')).toBe(false);
+  });
+  it('explicit plan cannot acquire potential write authority or approve a worker write', async () => {
+    const input = new PassThrough(), output = new PassThrough(), diagnostics = new PassThrough(); input.isTTY = output.isTTY = true;
+    try {
+      await expect(launchControlledClaudeTerminal({ args: ['--permission-mode', 'plan', 'Read this function.'], input, output, diagnostics,
+        managedPrompt: async options => {
+          expect(options.permissions).toEqual({ apiBilling: false, write: false });
+          expect(await options.approve({ tool_name: 'Write', input: {} }, { ownership: { mode: 'write' } })).toBe(false);
+          throw Error('plan-fixture-stop');
+        } })).rejects.toThrow('plan-fixture-stop');
+    } finally { input.destroy(); output.destroy(); diagnostics.destroy(); }
+  });
+});
+
+describe('inherited Claude plan is a conservative preplanner restriction', () => {
+  it.each([[], ['--dangerously-skip-permissions']].map(flags => ({ flags })))('bare/owner intent cannot expand inherited plan: %j', async ({ flags }) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-plan-source-'));
+    const config = path.join(root, '.claude'); fs.mkdirSync(config);
+    fs.writeFileSync(path.join(config, 'settings.json'), JSON.stringify({ permissions: { defaultMode: 'plan' } }));
+    // A writable local source does not erase a plan restriction by guessed precedence.
+    fs.writeFileSync(path.join(config, 'settings.local.json'), JSON.stringify({ permissions: { defaultMode: 'auto' } }));
+    const input = new PassThrough(), output = new PassThrough(), diagnostics = new PassThrough(); input.isTTY = output.isTTY = true;
+    try {
+      await expect(launchControlledClaudeTerminal({ args: [...flags, 'Change totals.mjs to return zero.'], cwd: root,
+        env: { HOME: root, CLAUDE_CONFIG_DIR: config }, input, output, diagnostics, managedPrompt: async options => {
+          expect(options.permissions).toEqual({ apiBilling: false, write: false });
+          expect(await options.approve({ tool_name: 'Write', input: {} }, { ownership: { mode: 'write' } })).toBe(false);
+          throw Error('inherited-plan-stop');
+        } })).rejects.toThrow('inherited-plan-stop');
+    } finally { input.destroy(); output.destroy(); diagnostics.destroy(); fs.rmSync(root, { recursive: true, force: true }); }
+  });
+  it('recognized auto or absent settings keep ordinary approval; explicit plan still restricts', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-mode-source-')), env = { HOME: root, CLAUDE_CONFIG_DIR: root };
+    try {
+      expect(claudeTerminalReadOnly({ env, cwd: root })).toBe(false);
+      fs.writeFileSync(path.join(root, 'settings.json'), JSON.stringify({ permissions: { defaultMode: 'auto' } }));
+      expect(claudeTerminalReadOnly({ env, cwd: root })).toBe(false);
+      expect(claudeTerminalReadOnly({ env, cwd: root, readOnly: true })).toBe(true);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  });
+  it('unknown inherited mode refuses before the managed planner is called', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-unknown-mode-')), env = { HOME: root, CLAUDE_CONFIG_DIR: root };
+    fs.writeFileSync(path.join(root, 'settings.json'), JSON.stringify({ permissions: { defaultMode: 'unknown' } }));
+    const input = new PassThrough(), output = new PassThrough(), diagnostics = new PassThrough(); input.isTTY = output.isTTY = true;
+    let planned = false;
+    try {
+      await expect(launchControlledClaudeTerminal({ args: ['Change totals.mjs to return zero.'], env, cwd: root, input, output, diagnostics,
+        managedPrompt: async () => { planned = true; } })).rejects.toThrow('Unsupported inherited Claude permission mode');
+      expect(planned).toBe(false);
+    } finally { input.destroy(); output.destroy(); diagnostics.destroy(); fs.rmSync(root, { recursive: true, force: true }); }
+  });
+  it('an uninspected native settings source refuses before user inference', async () => {
+    const f = fixture({ sources: [{ source: 'uninspectedSettings', settings: {} }] });
+    await expect(runControlledClaudeTurn(f.options)).rejects.toThrow(/refused/);
+    expect(f.sent.some(row => row.type === 'user')).toBe(false);
+  });
+});
+
+describe('recovered native denials must match emitted host scope refusals', () => {
+  const input = { command: 'pwd', description: 'owned fixture' };
+  const known = { tool_name: 'Bash', tool_use_id: 'guarded-use', tool_input: input };
+  function recovering(denials, { userDenial = false, fixtureOptions = {}, ...options } = {}) {
+    const f = fixture({ ...fixtureOptions, denials, options: { scopeTool: async () => false, ...options } });
+    const write = f.child.stdin._write;
+    f.child.stdin._write = (chunk, encoding, callback) => {
+      const row = JSON.parse(chunk.toString());
+      if (row.type === 'user') {
+        f.sent.push(row); callback();
+        queueMicrotask(() => f.child.stdout.write(JSON.stringify({ type: 'control_request', request_id: 'scope-recovery', request: {
+          subtype: 'hook_callback', callback_id: 'owned-scope', tool_use_id: 'guarded-use',
+          input: { hook_event_name: 'PreToolUse', session_id: sessionId, tool_name: 'Bash', tool_input: input } } }) + '\n'));
+      } else if (userDenial && row.type === 'control_response' && row.response.request_id === 'scope-recovery') {
+        f.sent.push(row); callback();
+        queueMicrotask(() => f.child.stdout.write(JSON.stringify({ type: 'control_request', request_id: 'user-refused', request: {
+          subtype: 'can_use_tool', tool_name: 'Read', input: { file_path: 'owned.mjs' } } }) + '\n'));
+      } else write(chunk, encoding, callback);
+    };
+    return f;
+  }
+  it('admits recovery only from exact scope denial and keeps redacted receipt evidence', async () => {
+    const f = recovering([{ ...known, tool_input: { description: 'owned fixture', command: 'pwd' } }], {
+      fixtureOptions: { structuredOutput: { tasks: [{ id: 'work' }] } },
+      responseSchema: { type: 'object', properties: { tasks: { type: 'array' } } }, validateStructuredOutput: value => Array.isArray(value.tasks) });
+    const result = await runControlledClaudeTurn(f.options);
+    expect(result.modelObserved).toBe(true);
+    expect(result.structuredOutput).toBe(true);
+    expect(JSON.parse(result.finalAnswer)).toEqual({ tasks: [{ id: 'work' }] });
+    expect(result.scopeDenials).toHaveLength(1);
+    const denial = f.receipts.find(row => row.status === 'host-scope-denied');
+    expect(denial).toMatchObject({ sessionId, toolUseId: 'guarded-use', toolName: 'Bash', inputSha256: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    expect(denial).not.toHaveProperty('input'); expect(denial).not.toHaveProperty('tool_input');
+    expect(JSON.stringify(denial)).not.toContain('owned fixture');
+    expect(f.receipts.at(-1).status).toBe('completed');
+  });
+  it.each([
+    [{ ...known, tool_use_id: 'untracked' }], [{ ...known, tool_name: 'Write' }],
+    [{ ...known, tool_input: { command: 'different' } }], [known, known], [{ ...known, tool_input: [] }],
+    [{ tool_use_id: 'guarded-use' }], { not: 'a native denial list' },
+  ].map(denials => ({ denials })))('refuses malformed, untracked, mismatched or duplicate denial records %#', async ({ denials }) => {
+    const f = recovering(denials);
+    await expect(runControlledClaudeTurn(f.options)).rejects.toThrow(/refused/);
+    expect(f.receipts.some(row => row.status === 'completed')).toBe(false);
+  });
+  it('a separate user approval refusal cannot be hidden by known or empty native denial lists', async () => {
+    for (const denials of [[known], []]) {
+      const f = recovering(denials, { userDenial: true, approve: async () => false });
+      await expect(runControlledClaudeTurn(f.options)).rejects.toThrow(/refused/);
+      expect(f.receipts.some(row => row.status === 'completed')).toBe(false);
+    }
+  });
+});
+
+describe('bounded FIFO native approval handling', () => {
+  const requests = [
+    { request_id: 'read-first', request: { subtype: 'can_use_tool', tool_name: 'Read', input: { file_path: 'first.json' } } },
+    { request_id: 'read-second', request: { subtype: 'can_use_tool', tool_name: 'Read', input: { file_path: 'second.json' } } },
+  ];
+  function parallel(approve, packets = requests) {
+    const f = fixture({ options: { approve } }), write = f.child.stdin._write;
+    let answered = 0;
+    f.child.stdin._write = (chunk, encoding, callback) => {
+      const row = JSON.parse(chunk.toString());
+      if (row.type === 'user') {
+        f.sent.push(row); callback();
+        queueMicrotask(() => f.child.stdout.write(packets.map(packet => JSON.stringify({ type: 'control_request', ...packet })).join('\n') + '\n'));
+      } else if (row.type === 'control_response') {
+        answered++;
+        if (answered === packets.length) write(chunk, encoding, callback);
+        else { f.sent.push(row); callback(); }
+      } else write(chunk, encoding, callback);
+    };
+    return f;
+  }
+  it('two native parallel Reads display/approve/reply in FIFO order with original IDs and inputs', async () => {
+    const calls = []; let release;
+    const f = parallel(async request => {
+      calls.push(request.input.file_path);
+      if (calls.length === 1) await new Promise(resolve => { release = resolve; });
+      request.input.file_path = 'callback mutation must not change native input';
+      return true;
+    });
+    const pending = runControlledClaudeTurn(f.options); await tick();
+    expect(calls).toEqual(['first.json']);
+    expect(f.sent.filter(row => row.type === 'control_response')).toEqual([]);
+    release(); await pending;
+    expect(calls).toEqual(['first.json', 'second.json']);
+    expect(f.sent.filter(row => row.type === 'control_response').map(row => [row.response.request_id, row.response.response.updatedInput])).toEqual([
+      ['read-first', { file_path: 'first.json' }], ['read-second', { file_path: 'second.json' }],
+    ]);
+  });
+  it.each([
+    { packets: [requests[0], requests[0]] },
+    { packets: Array.from({ length: 33 }, (_, i) => ({ ...requests[0], request_id: `overflow-${i}` })) },
+  ])('duplicate IDs and pending overflow refuse before any queued approval %#', async ({ packets }) => {
+    const calls = [], f = parallel(async request => { calls.push(request); return true; }, packets);
+    await expect(runControlledClaudeTurn(f.options)).rejects.toThrow(/refused/);
+    expect(calls).toEqual([]); expect(f.sent.some(row => row.type === 'control_response')).toBe(false);
+  });
+  it('a native success result while approval is pending cannot complete the turn', async () => {
+    let release; const calls = [], f = parallel(request => { calls.push(request); return new Promise(resolve => { release = resolve; }); });
+    const pending = runControlledClaudeTurn(f.options); const rejected = expect(pending).rejects.toThrow(/refused/); await tick();
+    f.child.stdout.write(JSON.stringify({ type: 'assistant', session_id: sessionId, message: { model: decision.model, content: [] } }) + '\n'
+      + JSON.stringify({ type: 'result', session_id: sessionId, subtype: 'success', is_error: false, result: 'premature result', permission_denials: [] }) + '\n');
+    await rejected; release(true); await tick();
+    expect(calls).toHaveLength(1); expect(f.receipts.some(row => row.status === 'completed')).toBe(false);
+    expect(f.sent.some(row => row.type === 'control_response')).toBe(false);
+  });
+  it('user refusal retires the turn and never displays the next queued request', async () => {
+    const calls = [], f = parallel(async request => { calls.push(request.input.file_path); return false; });
+    await expect(runControlledClaudeTurn(f.options)).rejects.toThrow(/refused/);
+    expect(calls).toEqual(['first.json']);
+    expect(f.sent.filter(row => row.type === 'control_response').map(row => [row.response.request_id, row.response.response.behavior])).toEqual([['read-first', 'deny']]);
+  });
+  it('cancellation drops queued prompts and late responses', async () => {
+    let release; const calls = [], f = parallel(request => { calls.push(request); return new Promise(resolve => { release = resolve; }); });
+    const controller = new AbortController(), pending = runControlledClaudeTurn({ ...f.options, signal: controller.signal });
+    const rejected = expect(pending).rejects.toThrow(/refused/); await tick(); controller.abort(); await rejected; release(true); await tick();
+    expect(calls).toHaveLength(1); expect(f.sent.some(row => row.type === 'control_response')).toBe(false);
   });
 });

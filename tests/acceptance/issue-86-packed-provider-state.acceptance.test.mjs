@@ -5,6 +5,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { npmInvocation } from '../helpers/npm-invocation.mjs';
 import { consoleFixtureEnvironment } from '../helpers/console-fixture-environment.mjs';
 
 // Issue #86 crossed two release boundaries that source-checkout tests cannot cover: npm's packed
@@ -20,6 +21,7 @@ const temps = [];
 const children = new Set();
 let runtimeScript;
 let runtimeKb;
+let packagedRouterCatalog;
 
 function temporary(prefix) {
   const value = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
@@ -30,10 +32,10 @@ function temporary(prefix) {
 function scrubbedEnvironment() {
   const env = { ...process.env };
   for (const key of Object.keys(env)) {
-    if (/(?:API_KEY|TOKEN|SECRET|PASSWORD)$/.test(key)) delete env[key];
+    if (/(?:API_KEY|TOKEN|SECRET|PASSWORD)$/.test(key) || /^npm_config_/i.test(key)) delete env[key];
   }
   for (const key of [
-    'RUVNET_MODEL_CATALOG',
+    'RUVNET_MODEL_CATALOG', 'MODEL_ROUTER_CATALOG', 'MODEL_ROUTER_CONFIG_DIR', 'MODEL_ROUTER_PROFILE', 'MODEL_ROUTER_DECISIONS',
     'RUVNET_BRAIN_COMPLETE_SOURCE',
     ...Object.keys(secrets),
   ]) delete env[key];
@@ -51,7 +53,11 @@ function runtimeEnvironment(root, port, credentials = {}) {
     }),
     HOME: root,
     USERPROFILE: root,
+    CODEX_HOME: path.join(root, '.codex'),
+    CLAUDE_CONFIG_DIR: path.join(root, '.claude'),
+    RUVNET_BRAIN_HOME: path.join(root, '.cache', 'ruvnet-brain'),
     RUVNET_BRAIN_KB: runtimeKb,
+    MODEL_ROUTER_CATALOG: path.join(root, '.claude', 'model-router', 'catalog.json'),
     ...credentials,
   };
 }
@@ -103,15 +109,18 @@ beforeAll(async () => {
   const packDir = path.join(artifactRoot, 'pack');
   const installRoot = path.join(artifactRoot, 'install');
   fs.mkdirSync(packDir, { recursive: true });
-  const packed = JSON.parse(execFileSync('npm', [
-    'pack', '--json', '--pack-destination', packDir,
-  ], { cwd: ROOT, encoding: 'utf8' }));
+  const npmHome = path.join(artifactRoot, 'npm-home');
+  fs.mkdirSync(npmHome, { recursive: true });
+  const userConfig = path.join(npmHome, '.npmrc'); fs.writeFileSync(userConfig, '');
+  const npmEnv = { ...scrubbedEnvironment(), HOME: npmHome, USERPROFILE: npmHome, npm_config_userconfig: userConfig };
+  const pack = npmInvocation(['pack', '--json', '--pack-destination', packDir], { env: npmEnv });
+  const packed = JSON.parse(execFileSync(pack.executable, pack.args, { cwd: ROOT, env: npmEnv, encoding: 'utf8' }));
   const tarball = path.join(packDir, packed[0].filename);
-  execFileSync('npm', [
-    'install', '--ignore-scripts', '--no-audit', '--no-fund', '--prefix', installRoot, tarball,
-  ], { cwd: artifactRoot, encoding: 'utf8' });
+  const install = npmInvocation(['install', '--ignore-scripts', '--no-audit', '--no-fund', '--prefix', installRoot, tarball], { env: npmEnv });
+  execFileSync(install.executable, install.args, { cwd: artifactRoot, env: npmEnv, encoding: 'utf8' });
 
   const installedPackage = path.join(installRoot, 'node_modules', 'ruvnet-brain');
+  packagedRouterCatalog = path.join(installedPackage, 'config', 'model-router', 'catalog.template.json');
   process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
   const installedEntrypoint = path.join(installedPackage, 'bin', 'install.mjs');
   const installer = await import(`${pathToFileURL(installedEntrypoint).href}?issue86=${Date.now()}`);
@@ -150,6 +159,9 @@ describe('issue #86 packed and staged provider availability', () => {
       fs.mkdirSync(project, { recursive: true });
       const port = await freePort();
       const env = runtimeEnvironment(home, port, scenario.credentials);
+      fs.mkdirSync(path.dirname(env.MODEL_ROUTER_CATALOG), { recursive: true });
+      fs.copyFileSync(packagedRouterCatalog, env.MODEL_ROUTER_CATALOG);
+      expect(fs.readFileSync(env.MODEL_ROUTER_CATALOG)).toEqual(fs.readFileSync(packagedRouterCatalog));
       const warm = spawnSync(process.execPath, [runtimeScript, '--print-state'], {
         cwd: project,
         env,
@@ -174,7 +186,7 @@ describe('issue #86 packed and staged provider availability', () => {
       }
 
       const router = state.sections.savings.routerEngine;
-      expect(router.providerCatalog, scenario.name).toMatchObject({ status: 'ok' });
+      expect(router.providerCatalog, scenario.name).toMatchObject({ status: 'ok', keysVerified: true });
       expect(router.keys, scenario.name).toMatchObject(scenario.want);
       expect(router.subscriptions.openai.apiKey, scenario.name).toBe(scenario.want.openai);
       expect(router.subscriptions.google.apiKey, scenario.name).toBe(scenario.want.google);

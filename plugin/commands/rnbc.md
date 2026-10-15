@@ -1,6 +1,7 @@
 ---
 description: "RNBC — RuvNet Brain Console. Opens the live console page: your whole RuvNet stack on one page — what's installed, what your AI learned, one-click reversible fixes. Read-only until you click. (Also: /rnb, /rvbc, /rvcb, /brain-console — all the same thing.)"
-updated: 2026-10-01
+updated: 2026-10-10 06:00:22 EDT
+version: 1.0.2
 ---
 
 Launch the **RuvNet Brain Console** (RNBC) for the user. `/rnbc` is its name; `/rnb`, `/rvbc`,
@@ -63,6 +64,17 @@ header chip says how fresh the reading is and re-measures if they click it.
 
 Report it plainly — the real error, not a guess — and offer to fix it. Never leave them staring at
 a dead tab wondering whether it is still loading.
+
+## Promise capture preference
+
+If the user asks to stop automatic promise capture, explain the supported setting:
+`RUVNET_PROMISE_CAPTURE=off` in the hook process environment. It can be supplied for the machine or
+one project through the host's environment configuration. The exact value `off` stops capturing new
+"I'll …" promises; unset it or set `on` to resume capture. This preference is separate from the Brain
+on/off switch and is not currently a Console toggle. Existing promises remain visible and forceable,
+and close only on verified evidence. Capability and completion integrity checks keep running. Do not
+disable the Stop hook or edit the work ledger to apply this preference. Reopen the host if its current
+session has not picked up the changed environment.
 
 ---
 

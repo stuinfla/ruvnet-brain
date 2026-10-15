@@ -141,23 +141,26 @@ beforeAll(async () => {
 afterAll(() => fs.rmSync(fixture.root, { recursive: true, force: true }), 120_000);
 
 describe('ADR-074 packed capability-claim enforcement', () => {
-  it.each(['claude', 'codex'])('blocks the exact false installed-capability claim through packed %s wiring', (host) => {
-    const result = firePacked(host, 'Ruflo ADR Verify is not installed.');
-    expect(result.status).toBe(0);
-    expect(result.stderr).toBe('');
+  it.each(['claude', 'codex'])('blocks unsupported installed assertions and false source absence through packed %s wiring', (host) => {
+    // Cached SKILL bytes prove source presence, not CLI installation, registration or reachability.
+    for (const statement of ['Ruflo ADR Verify is not installed.', 'Ruflo ADR Verify is installed.']) {
+      const result = firePacked(host, statement);
+      expect(result.status).toBe(0); expect(result.stderr).toBe('');
+      const output = JSON.parse(result.stdout);
+      expect(output.decision).toBe('block'); expect(output.reason).toContain('UNKNOWN');
+      expect(output.reason).toContain('inventory is incomplete');
+    }
+    const result = firePacked(host, 'Ruflo ADR Verify skill source is not present.');
+    expect(result.status).toBe(0); expect(result.stderr).toBe('');
     const output = JSON.parse(result.stdout);
-    const reason = host === 'codex'
-      ? output.reason
-      : output.hookSpecificOutput?.additionalContext;
-    expect(host === 'codex' ? output.decision : output.hookSpecificOutput?.hookEventName)
-      .toBe(host === 'codex' ? 'block' : 'Stop');
-    expect(reason).toContain('ruflo-adr:adr-verify');
-    expect(reason).toContain(path.join(fixture.env.RUVNET_CAPABILITY_ROOTS,
+    expect(output.decision).toBe('block');
+    expect(output.reason).toContain('ruflo-adr:adr-verify');
+    expect(output.reason).toContain(path.join(fixture.env.RUVNET_CAPABILITY_ROOTS,
       'ruflo', 'ruflo-adr', '0.4.1', 'skills', 'adr-verify', 'SKILL.md'));
   });
 
-  it.each(['claude', 'codex'])('stays silent through packed %s wiring when the claim matches the inventory', (host) => {
-    const result = firePacked(host, 'Ruflo ADR Verify is installed.');
+  it.each(['claude', 'codex'])('stays silent through packed %s wiring when source presence matches the sealed bytes', (host) => {
+    const result = firePacked(host, 'Ruflo ADR Verify skill source is present.');
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
     expect(result.stdout).toBe('');

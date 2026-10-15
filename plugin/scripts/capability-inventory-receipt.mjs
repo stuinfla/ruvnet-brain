@@ -129,6 +129,9 @@ export function buildCapabilityInventoryReceipt({
     host,
     observedAt: now,
     completeness: errors.length ? 'unknown' : 'complete',
+    scope: 'enumerated-skill-source-files',
+    predicates: { skillSourceFiles: errors.length ? 'unknown' : 'complete',
+      skillActivation: 'unknown', cliInstallation: 'unknown', mcpRegistration: 'unknown', reachability: 'unknown' },
     roots: observedRoots,
     entries: deduplicated,
     errors,
@@ -148,6 +151,11 @@ export function validateCapabilityInventoryReceipt(receipt) {
     || !SHA256.test(String(inventoryDigest || ''))
     || digest(unsigned) !== inventoryDigest) {
     throw new Error('capability inventory receipt digest or schema is invalid');
+  }
+  if (receipt.scope !== undefined && (receipt.scope !== 'enumerated-skill-source-files'
+    || receipt.predicates?.skillSourceFiles !== receipt.completeness
+    || ['skillActivation', 'cliInstallation', 'mcpRegistration', 'reachability'].some((key) => receipt.predicates?.[key] !== 'unknown'))) {
+    throw new Error('capability inventory predicates exceed enumerated skill-source scope');
   }
   if (receipt.entries.some((entry) => entry?.type !== 'skill' || !entry.name || !entry.ref
     || !path.isAbsolute(entry.sourcePath || '') || !SHA256.test(String(entry.sha256 || '')))) {
@@ -202,15 +210,16 @@ export function auditCapabilityClaims(message, receipt) {
   const unresolved = [];
   for (const claim of claims) {
     const matched = matchEntry(claim, receipt.entries);
-    if (claim.polarity === 'absent' && matched) {
+    const skillSourceClaim = claim.predicate === 'present' && /\bskill\s+(?:source|file)s?\b/i.test(claim.subject);
+    if (!skillSourceClaim) {
+      unresolved.push({ ...claim, reason: 'Enumerated skill source files do not establish installation, activation, registration or reachability.' });
+    } else if (claim.polarity === 'absent' && matched) {
       contradictions.push({ ...claim, matchedRef: matched.ref, sourcePath: matched.sourcePath,
-        reason: 'absence claim contradicts installed source bytes' });
-    } else if (claim.polarity === 'present' && !matched && receipt.completeness === 'complete') {
-      contradictions.push({ ...claim, matchedRef: null,
-        reason: 'presence claim has no matching entry in the complete inventory' });
-    } else if (!matched && receipt.completeness !== 'complete') {
-      unresolved.push({ ...claim, reason: 'capability inventory is incomplete' });
+        reason: 'Skill-source absence claim contradicts the enumerated source bytes.' });
+    } else if (!matched) {
+      unresolved.push({ ...claim, reason: 'No matching source was observed in the selected roots; this is not a complete host inventory.' });
     }
+
   }
   return {
     schemaVersion: 1,

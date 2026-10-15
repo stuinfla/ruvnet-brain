@@ -261,3 +261,56 @@ test('host-owned Claude schemas preserve existing role envelopes and negative re
   assert.equal(review.validateStructuredOutput({ passed: true, artifactDigest: 'a'.repeat(64), findings: [], evidence: [] }), false);
   for (const role of ['unknown', 'constructor', undefined]) assert.throws(() => claudeWorkflowResponse(role), /Unknown/);
 });
+
+test('Claude native allow rules still encounter owned scope and unresolved approval cannot replace that bound', async () => {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'owned-clause-'))), calls = [];
+  const worker = { id: 'bounded', host: 'claude', role: 'worker', configuredModel: 'fixture-model',
+    decision: { harness: 'claude-code', provider: 'anthropic', model: 'fixture-model', effort: 'medium' },
+    ownership: { mode: 'write', worktree: root, paths: ['owned.mjs'] }, prompt: 'Implement the original function.' };
+  const request = { originalPrompt: worker.prompt, projectRoot: root, contextRefs: [], permissions: { write: true, apiBilling: false } };
+  const native = vi.spyOn(controlledClaude, 'runControlledClaudeTurn').mockImplementation(async options => {
+    const owned = { tool_name: 'Write', input: { file_path: path.join(root, 'owned.mjs') } }, outside = { tool_name: 'Write', input: { file_path: path.join(root, '..', 'outside.mjs') } };
+    assert.equal(await options.scopeTool(owned), true); assert.equal(await options.scopeTool(outside), false);
+    assert.equal(await options.scopeTool({ tool_name: 'Bash', input: { command: 'touch outside' } }), false);
+    assert.equal(await options.scopeTool({ tool_name: 'Agent', input: {} }), false);
+    assert.equal(await options.approve(outside), false); assert.equal(calls.length, 0);
+    assert.equal(await options.approve(owned), false); assert.equal(calls.length, 1);
+    return { decision: worker.decision, sessionId: crypto.randomUUID(), modelObserved: true, effortSettingsObserved: true,
+      structuredOutput: true, finalAnswer: '{"outcome":"fixture","artifacts":[],"decisions":[],"risks":[]}' };
+  });
+  try {
+    const adapter = createGuardedWorkflowAdapters({ request, budget: { deadline: Date.now() + 10000 }, binaries: { codex: process.execPath, claude: process.execPath }, verifyDecision: () => {},
+      approve: async (permission, scope) => { calls.push([permission, scope]); return false; } }).claude;
+    const state = await adapter.prepare({ worker, timeoutMs: 5000 }); await adapter.launch(state);
+    assert.equal(adapter.interpret(state, await adapter.observe(state)).status, 'succeeded');
+    assert.equal(calls[0][1].workerId, worker.id); assert.deepEqual(calls[0][1].ownership, worker.ownership);
+    assert.equal(fs.existsSync(path.join(root, 'owned.mjs')), false);
+  } finally { native.mockRestore(); fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('native binaries fall back to the standard install paths when the retired launcher config is absent, and never recreate it', async () => {
+  // 4.7.1 (checks 1f/6d): the owner removed terminal-launcher-config.json on purpose; reading it threw
+  // ENOENT before any worker could launch. Recreating it would make install.mjs reinstall the wrappers.
+  const { nativeWorkflowBinaries } = await import('../../scripts/model-routing-execution-adapters.mjs');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'rnb-native-binaries-'));
+  const config = path.join(home, '.cache/ruvnet-brain/model-routing/terminal-launcher-config.json');
+  try {
+    const standard = { claude: path.join(home, '.npm-global/bin/claude'), codex: path.join(home, '.local/bin/codex') };
+    // nothing installed and nothing on PATH: throw ENOENT, never hand back a path that cannot run
+    assert.throws(() => nativeWorkflowBinaries(home, { PATH: '' }), { code: 'ENOENT' });
+    // not at the standard path but on PATH: the PATH binary is used (hosted Linux runners)
+    const onPath = path.join(home, 'pathbin'); fs.mkdirSync(onPath);
+    for (const name of ['claude', 'codex']) fs.writeFileSync(path.join(onPath, name), '#!/bin/sh\n', { mode: 0o755 });
+    assert.deepEqual(nativeWorkflowBinaries(home, { PATH: onPath }), { claude: path.join(onPath, 'claude'), codex: path.join(onPath, 'codex') });
+    // standard install paths win when present
+    for (const file of Object.values(standard)) { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, '#!/bin/sh\n', { mode: 0o755 }); }
+    assert.deepEqual(nativeWorkflowBinaries(home, { PATH: onPath }), standard);
+    assert.equal(fs.existsSync(config), false);
+    assert.equal(fs.existsSync(path.dirname(config)), false);
+    fs.mkdirSync(path.dirname(config), { recursive: true });
+    fs.writeFileSync(config, JSON.stringify({ realClaude: '/configured/claude', realCodex: '/configured/codex' }));
+    assert.deepEqual(nativeWorkflowBinaries(home), { claude: '/configured/claude', codex: '/configured/codex' });
+    fs.writeFileSync(config, '{malformed');
+    assert.throws(() => nativeWorkflowBinaries(home), SyntaxError);
+  } finally { fs.rmSync(home, { recursive: true, force: true }); }
+});

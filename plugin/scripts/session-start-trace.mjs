@@ -33,6 +33,7 @@ export function createStageTracer({
   write = () => {},
   budgets = STAGE_BUDGETS_MS,
   deadlineMs = sumBudgetsMs(budgets) - (budgets.restore || 0),
+  deadlineAt,
 } = {}) {
   const stages = [];
   const bodyStart = Date.now();
@@ -52,7 +53,7 @@ export function createStageTracer({
    * "assume the worst case" posture the hooks.json timeout itself takes. */
   const wouldExceedDeadline = (name) => {
     const budget = budgets[name] ?? 0;
-    return (Date.now() - bodyStart) + budget > deadlineMs;
+    return Date.now() + budget > (deadlineAt ?? bodyStart + deadlineMs);
   };
 
   const stage = (name, fn) => {

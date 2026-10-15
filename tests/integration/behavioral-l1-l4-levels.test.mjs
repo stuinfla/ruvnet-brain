@@ -24,7 +24,9 @@
 // across all 18 prior passes): the fix is to seed `allPass` from whether ANY level actually ran
 // (`Object.values(results).some(r => r.length)`), not from a literal `true`, and/or exit non-zero
 // with an explicit "0 levels selected" message when --levels matches nothing.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
@@ -33,8 +35,18 @@ const SCRIPT = path.join(REPO_ROOT, 'scripts/behavioral-l1-l4.mjs');
 
 const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*m/g, ''); // G()/R() colorize PASS/FAIL for terminal display
 
+const fixtureHomes = [];
+afterEach(() => { for (const dir of fixtureHomes.splice(0)) fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); });
 function run(args) {
-  const r = spawnSync('node', [SCRIPT, ...args], { encoding: 'utf8', cwd: REPO_ROOT });
+  const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'behavioral-levels-')));
+  fixtureHomes.push(home);
+  const brainHome = path.join(home, '.cache/ruvnet-brain'); fs.mkdirSync(brainHome, { recursive: true });
+  // Keep native hook behavior isolated from the developer's source worktree and scheduled checks.
+  fs.writeFileSync(path.join(brainHome, '.last-update-check'), String(Math.floor(Date.now()/1000)));
+  fs.writeFileSync(path.join(brainHome, '.stack-versions-checked'), String(Math.floor(Date.now()/1000)));
+  const r = spawnSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8', cwd: home, timeout: 20000,
+    env: { ...process.env, HOME: home, USERPROFILE: home, CODEX_HOME: path.join(home, '.codex'),
+      RUVNET_BRAIN_HOME: brainHome, CLAUDE_PROJECT_DIR: home, RUVNET_BRAIN_METER: '0' } });
   return { code: r.status, stdout: stripAnsi(r.stdout || ''), stderr: r.stderr || '' };
 }
 

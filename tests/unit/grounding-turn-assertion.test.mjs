@@ -22,7 +22,7 @@ const VOCAB = ['hook', 'hooks', 'ruflo', 'metaharness', 'claude code', 'codex', 
 function sandbox() {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gt-assert-'));
   return { home, env: { HOME: home, USERPROFILE: home, RUVNET_GROUNDING_TURN_DIR: path.join(home, 'grounding-turn'),
-    RUVNET_ASSERTION_SHADOW_LOG: path.join(home, 'shadow.jsonl'), RUVNET_KB_DIR: path.join(home, 'no-kb'), RUVNET_HOOK_HOST: '' } };
+    RUVNET_ASSERTION_SHADOW_LOG: path.join(home, 'shadow.jsonl'), RUVNET_KB_DIR: path.join(home, 'no-kb'), RUVNET_HOOK_HOST: 'claude' } };
 }
 const run = (file, payload, env) => spawnSync(process.execPath, [file], { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, ...env }, timeout: 10_000 });
 const stamp = (home, term) => { const d = path.join(home, '.cache', 'ruvnet-brain', 'grounded'); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, term), ''); };
@@ -30,9 +30,9 @@ const stamp = (home, term) => { const d = path.join(home, '.cache', 'ruvnet-brai
 /** A Claude JSONL transcript: prompt, then [name, input, result] tool calls, then the final answer. */
 function transcript(dir, prompt, calls, answer) {
   const rows = [{ type: 'user', message: { role: 'user', content: prompt } }];
-  calls.forEach(([name, input, result], i) => {
+  calls.forEach(([name, input, result, evidence = { is_error: false }], i) => {
     rows.push({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: `t${i}`, name, input }] } });
-    rows.push({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `t${i}`, content: result }] } });
+    rows.push({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `t${i}`, content: result, ...evidence }] } });
   });
   rows.push({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: answer }] } });
   const file = path.join(dir, 'session.jsonl');
@@ -60,16 +60,16 @@ describe('the false alarm, reproduced (grounding-turn-gate said "no search" afte
     // mid-turn, AFTER search_ruvnet had stamped, and re-dated the marker. Red on release/4.3.38.
     const { home, env } = sandbox();
     const sid = 'queued-1';
-    run(MARK, { hook_event_name: 'UserPromptSubmit', session_id: sid, prompt: 'use ruflo memory for this' }, env);
+    run(MARK, { hook_event_name: 'UserPromptSubmit', session_id: sid, prompt_id: 'queued-native-prompt', prompt: 'use ruflo memory for this' }, env);
     const marker = markerPathFor(sid, env.RUVNET_GROUNDING_TURN_DIR);
     const past = new Date(Date.now() - 60_000);
     fs.utimesSync(marker, past, past);                 // the prompt arrived a minute ago
     stamp(home, 'ruflo');                               // the search happened 30s ago
     fs.utimesSync(path.join(home, '.cache', 'ruvnet-brain', 'grounded', 'ruflo'), new Date(Date.now() - 30_000), new Date(Date.now() - 30_000));
-    run(MARK, { hook_event_name: 'UserPromptSubmit', session_id: sid, prompt: 'and what about ruvector?' }, env); // queued now
+    run(MARK, { hook_event_name: 'UserPromptSubmit', session_id: sid, prompt_id: 'queued-native-prompt', prompt: 'and what about ruvector?' }, env); // queued now
     expect(Math.abs(fs.statSync(marker).mtimeMs - past.getTime())).toBeLessThan(1500);
     expect(readMarker(marker).subjects).toContain('ruvector');   // merged, not lost
-    const gate = run(GATE, { hook_event_name: 'Stop', session_id: sid, stop_hook_active: false }, env);
+    const gate = run(GATE, { hook_event_name: 'Stop', session_id: sid, prompt_id: 'queued-native-prompt', stop_hook_active: false }, env);
     expect(gate.status).toBe(0);
     expect(gate.stdout).toBe('');
   });
@@ -95,7 +95,7 @@ describe('the false alarm, reproduced (grounding-turn-gate said "no search" afte
 
   it('a search_ruvnet that FAILED (outage banner) does not count', () => {
     expect(sourceOf('mcp__x__search_ruvnet', { query: 'ruflo' }, 'RUVNET BRAIN IS DOWN — all repos failed').ok).toBe(false);
-    expect(sourceOf('mcp__x__search_ruvnet', { query: 'ruflo' }, SEARCH_OK).ok).toBe(true);
+    expect(sourceOf('mcp__x__search_ruvnet', { query: 'ruflo' }, SEARCH_OK, { resultEvidence: { type: 'tool_result', tool_use_id: 'search', is_error: false } }).ok).toBe(true);
   });
 });
 
@@ -119,7 +119,7 @@ describe('ADR-0030 #1 — capability claims need a relevant, strong source read 
   });
 
   it('a STRONG source about the subject read AFTER the summary clears it', () => {
-    const calls = [...INCIDENT_CALLS, ['Read', { file_path: '/docs/claude-code/hooks.md' }, 'hook events …']];
+    const calls = [...INCIDENT_CALLS, ['Read', { file_path: '/docs/claude-code/hooks.md' }, 'Hooks run lifecycle handlers and cannot change the active model.']];
     const turn = turnSources(fs.readFileSync(transcript(sandbox().home, INCIDENT_PROMPT, calls, INCIDENT_ANSWER), 'utf8').split('\n'));
     const audit = auditAssertions({ message: INCIDENT_ANSWER, subjects: ['hooks'], vocab: VOCAB, sources: turn.sources });
     expect(audit.claims.length).toBeGreaterThan(0);
@@ -127,7 +127,7 @@ describe('ADR-0030 #1 — capability claims need a relevant, strong source read 
   });
 
   it('ORDER matters: the same strong source read BEFORE the summary does not clear it', () => {
-    const calls = [['Read', { file_path: '/docs/claude-code/hooks.md' }, 'hook events'], ...INCIDENT_CALLS];
+    const calls = [['Read', { file_path: '/docs/claude-code/hooks.md' }, 'Hooks run lifecycle handlers and cannot change the active model.'], ...INCIDENT_CALLS];
     const turn = turnSources(fs.readFileSync(transcript(sandbox().home, INCIDENT_PROMPT, calls, INCIDENT_ANSWER), 'utf8').split('\n'));
     expect(auditAssertions({ message: INCIDENT_ANSWER, subjects: ['hooks'], vocab: VOCAB, sources: turn.sources }).findings.length).toBeGreaterThan(0);
   });
@@ -175,20 +175,20 @@ describe('ADR-0030 #1 — capability claims need a relevant, strong source read 
   });
 
   it('BREAK-IT: if WebFetch were trusted as a strong source, the incident would pass — so it must be weak', () => {
-    const fetch = { ...sourceOf('WebFetch', { url: 'https://code.claude.com/docs/en/hooks' }), order: 0 };
+    const fetch = { ...sourceOf('WebFetch', { url: 'https://code.claude.com/docs/en/hooks' }, 'Hooks cannot change the model according to this generated summary.', { resultEvidence: { type: 'tool_result', tool_use_id: 'summary', is_error: false } }), order: 0 };
     expect(fetch.strength).toBe('weak');
     expect(bindingSources('hook', [fetch])).toHaveLength(1);
     expect(auditAssertions({ message: 'No hook can change the model.', subjects: ['hook'], vocab: VOCAB, sources: [fetch] }).findings).toHaveLength(1);
     expect(auditAssertions({ message: 'No hook can change the model.', subjects: ['hook'], vocab: VOCAB, sources: [{ ...fetch, strength: 'strong' }] }).findings).toEqual([]);
   });
 
-  it('fails open: an unreadable transcript falls back to stamps, a missing marker is silence', () => {
+  it('an unreadable transcript remains UNKNOWN despite shared stamps, a missing marker is silence', () => {
     const { home, env } = sandbox();
     run(MARK, { hook_event_name: 'UserPromptSubmit', session_id: 'fo', prompt: 'can ruflo route models?' }, env);
     stamp(home, 'ruflo');
     const gate = run(GATE, { hook_event_name: 'Stop', session_id: 'fo', transcript_path: path.join(home, 'missing.jsonl'), last_assistant_message: 'Ruflo cannot route models.' }, env);
     expect(gate.status).toBe(0);
-    expect(gate.stdout).toBe('');   // stamp says searched; Ruflo claims are continuation-gate's, not this gate's
+    expect(gate.stdout).toMatch(/UNKNOWN/); // shared product freshness is not current-turn evidence
     expect(run(GATE, { hook_event_name: 'Stop', session_id: 'never-marked' }, env).stdout).toBe('');
   });
 
@@ -219,9 +219,73 @@ describe('ADR-0030 #2/#3 — SHADOW only: logged, never delivered', () => {
   });
 
   it('a number relayed from a subagent without a re-check is detected; re-reading the artifact clears it', () => {
-    const agent = { ...sourceOf('Agent', { description: 'score it' }, 'Final score: 87.5/100'), order: 0 };
+    const agent = { ...sourceOf('Agent', { description: 'score it' }, 'Final score: 87.5/100', { resultEvidence: { type: 'tool_result', tool_use_id: 'agent', is_error: false } }), order: 0 };
     expect(relayShadow({ message: 'The score is 87.5/100.', sources: [agent] })).toMatchObject({ numbers: ['87.5/100'] });
-    const reread = { ...sourceOf('Bash', { command: 'cat score.json' }, '{"score":"87.5/100"}'), order: 1 };
+    const reread = { ...sourceOf('Bash', { command: 'cat score.json' }, '{"score":"87.5/100"}\nExit code: 0', { resultEvidence: { type: 'tool_result', tool_use_id: 'read-score', is_error: false, content: '{"score":"87.5/100"}\nExit code: 0' } }), order: 1 };
     expect(relayShadow({ message: 'The score is 87.5/100.', sources: [agent, reread] })).toBeNull();
   });
+});
+
+describe('grounding requires observed successful substantive source content', () => {
+  const claim = 'No hook can change the model.';
+  const body = '# Hook documentation\nHooks run lifecycle handlers and cannot change the active model.';
+  const observed = (extra = {}) => ({ type: 'tool_result', tool_use_id: 'source', is_error: false, ...extra });
+  const audit = sources => auditAssertions({ message: claim, subjects: ['hook'], vocab: VOCAB, sources });
+  it.each([
+    ['failed', body, { is_error: true }, 'failed'],
+    ['missing', '', null, 'unknown'],
+    ['declared failure', body, observed({ status: 'failed' }), 'failed'],
+    ['declared unknown', body, observed({ status: 'unknown' }), 'unknown'],
+    ['absent completion flags', body, { type: 'tool_result', tool_use_id: 'source' }, 'unknown'],
+    ['running', body, observed({ content: { status: 'running' } }), 'unknown'],
+  ])('%s Read result never becomes strong from its requested path', (_name, content, evidence, strength) => {
+    const source = { ...sourceOf('Read', { file_path: '/docs/hooks.md' }, content, { resultEvidence: evidence }), order: 0 };
+    expect(source.strength).toBe(strength); expect(audit([source]).findings).toHaveLength(1);
+  });
+  it('turnSources preserves failed native result flags even when the body contains matching documentation', () => {
+    const f = sandbox(); const file = transcript(f.home, 'Can hooks change the model?', [['Read', { file_path: '/docs/hooks.md' }, body, { is_error: true }]], claim);
+    const turn = turnSources(fs.readFileSync(file, 'utf8').split('\n'));
+    expect(turn.sources[0]).toMatchObject({ strength: 'failed', terminalOutcome: 'fail' });
+    expect(audit(turn.sources).findings).toHaveLength(1);
+  });
+  it('a tool_use with no matching result remains UNKNOWN, never a strong source', () => {
+    const lines = [{ type: 'user', message: { role: 'user', content: 'Can hooks change the model?' } },
+      { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'not-returned', name: 'Read', input: { file_path: '/docs/hooks.md' } }] } }].map(row => JSON.stringify(row));
+    const turn = turnSources(lines); expect(turn.sources[0].strength).toBe('unknown'); expect(audit(turn.sources).findings).toHaveLength(1);
+  });
+  it('a genuinely returned Read body binds the subject, while a matching requested path with unrelated contents does not', () => {
+    const f = sandbox(), file = path.join(f.home, 'hooks.md'); fs.writeFileSync(file, body);
+    const source = { ...sourceOf('Read', { file_path: file }, fs.readFileSync(file, 'utf8'), { resultEvidence: observed() }), order: 0 };
+    expect(source).toMatchObject({ strength: 'strong', terminalOutcome: 'unknown', successEvidence: 'native-read-success' });
+    expect(audit([source]).findings).toEqual([]);
+    const unrelated = { ...sourceOf('Read', { file_path: '/docs/hooks.md' }, 'A router selects task priorities and processes its queue.', { resultEvidence: observed() }), order: 0 };
+    expect(bindingSources('hook', [unrelated])).toEqual([]); expect(audit([unrelated]).findings).toHaveLength(1);
+  });
+  it.each(['echo "Hooks can change the model"', 'printf "Hooks run lifecycle handlers"', 'cat /docs/hooks.md; echo Hook'])('arbitrary or compound Bash %s cannot launder requested or echoed subject text', command => {
+    const source = { ...sourceOf('Bash', { command }, body + '\nExit code: 0', { resultEvidence: observed({ content: body + '\nExit code: 0' }) }), order: 0 };
+    expect(source.strength).not.toBe('strong'); expect(audit([source]).findings).toHaveLength(1);
+  });
+  it('a literal direct file read requires explicit terminal zero and matching substantive returned body', () => {
+    const source = { ...sourceOf('Bash', { command: 'cat /docs/hooks.md' }, body + '\nExit code: 0', { resultEvidence: observed({ content: body + '\nExit code: 0' }) }), order: 0 };
+    expect(source).toMatchObject({ strength: 'strong', terminalOutcome: 'pass' }); expect(audit([source]).findings).toEqual([]);
+    const pending = sourceOf('Bash', { command: 'cat /docs/hooks.md' }, body, { resultEvidence: observed({ content: body }) });
+    expect(pending).toMatchObject({ strength: 'unknown', terminalOutcome: 'unknown' });
+  });
+  it('bare returned paths or one-word echoes do not provide substantive source content', () => {
+    for (const content of ['/docs/hooks.md', 'hook']) {
+      const source = { ...sourceOf('Read', { file_path: '/docs/hooks.md' }, content, { resultEvidence: observed() }), order: 0 };
+      expect(source.strength).not.toBe('strong'); expect(audit([source]).findings).toHaveLength(1);
+    }
+  });
+  it('an errored search cannot satisfy the search gate merely by returning an answer banner', () => {
+    const source = sourceOf('mcp__x__search_ruvnet', { query: 'ruflo' }, SEARCH_OK, { resultEvidence: observed({ is_error: true }) });
+    expect(source).toMatchObject({ strength: 'failed', ok: false });
+  });
+});
+
+it('the classifier uses the actual native returned body rather than an inconsistent supplied copy', () => {
+  const content = 'A router chooses priorities and maintains a queue.';
+  const source = sourceOf('Read', { file_path: '/docs/hooks.md' }, 'Hooks support lifecycle handlers and prompt blocking.',
+    { resultEvidence: { type: 'tool_result', tool_use_id: 'actual', is_error: false, content } });
+  expect(bindingSources('hook', [source])).toEqual([]); expect(source.result).toBe(content);
 });

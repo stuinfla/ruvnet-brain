@@ -29,20 +29,12 @@
  *     tests/unit/ruvnet-gate1-pattern.test.mjs. This file does not re-test the prompt itself —
  *     Stop's payload carries no prompt text — it reads grounding-turn-mark.mjs's marker instead
  *     (see that file's header for why the split exists).
- *   - "was search_ruvnet called": the EXISTING evidence grounding-stamp.sh already produces —
- *     ~/.cache/ruvnet-brain/grounded/<term>, one file per product term, minted ONLY on a genuinely
- *     successful search (grounding-stamp.sh's own header: stamps mint ONLY on a successful grounded
- *     result). ground-before-write.sh already trusts this exact directory's file mtimes for its own
- *     24h freshness check; this file trusts the SAME directory the SAME way, just against a
- *     narrower window (since the marker's own mtime, not "20 hours ago", is the turn boundary).
- *     UPDATE (H1 / GitHub #316): per-product term files alone under-reported "was it searched" —
- *     grounding-stamp.sh used to recognise only a 9-term write-gate vocabulary that omitted `ruvnet`
- *     itself (and every other Gate-1 term), so a search literally about "ruvnet" minted nothing and
- *     this gate wrongly fired. grounding-stamp.sh now also writes a vocabulary-independent
- *     `.any-search` marker into this SAME directory on every successful search regardless of query
- *     content, so newestGroundingStampMs below (which already scans every file, by name-agnostic
- *     design) sees it with no code change needed here — a search_ruvnet call this turn always mints
- *     evidence here now, not only when its query happens to name a recognised product.
+ *   - "was search_ruvnet called": Claude's complete turn transcript is primary evidence. When
+ *     transcript history is unavailable, only a successful PostToolUse receipt bound to the marker
+ *     nonce and native session/project/turn identity may satisfy the obligation. Global product
+ *     stamps remain write-gate freshness data and cannot certify a current turn. Unobservable native
+ *     identity or absent relevant receipts is UNKNOWN, with one correction to check or qualify the
+ *     claim; it is not a claim that no search happened.
  *   - The Stop block/continue contract: `{"hookSpecificOutput":{"hookEventName":"Stop",
  *     "additionalContext":"..."}}` on stdout, exit 0. This is not a new discovery — it is the exact
  *     contract continuation-gate.mjs already uses and this repo's own tests already prove works on
@@ -64,7 +56,7 @@
  *     mtimes. The stamp was a lossy proxy: 7 real false alarms were measured, 3 from a queued
  *     mid-turn prompt re-dating the marker (fixed in grounding-turn-mark.mjs), 3 pre-H1 vocabulary
  *     misses, 1 successful search whose stamp never minted. Codex's rollout is not parsed anywhere in
- *     this repo, so Codex keeps the stamp evidence.
+ *     this repo, so Codex requires native-turn-bound search receipts.
  *   - When the marker says the prompt asked a capability/feasibility/architecture question, every
  *     capability claim in the final answer needs a RELEVANT, STRONG source read this turn after the
  *     last weak one (auditAssertions). A WebFetch body is a small model's summary: weak.
@@ -79,7 +71,7 @@
  * search is demanded only when the final answer asserts a rUv capability (ruvCapabilityClaims);
  * measured on a held-out set of 70 real Stop points: false positives 68/68 -> 0/68, and 2 borderline
  * claims (copula, parenthetical) are missed — tests/unit/grounding-turn-false-alarm.test.mjs.
- * A LONG turn (the transcript tail cannot see its start) falls back to the stamps, never to a pass.
+ * A LONG turn (the transcript tail cannot see its start) requires a bound receipt or reports UNKNOWN.
  *
  * FAILS OPEN ALWAYS. Exit 0 unconditionally — a gate that breaks a turn's completion because a
  * cache directory was unreadable would be disabled within a day.
@@ -90,7 +82,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { groundingSubjectAllowed } from './ruvnet-gate1-pattern.mjs';
 import { readStopHookInput } from './hook-input.mjs';
-import { markerPathFor, consumeMarker } from './grounding-turn-mark.mjs';
+import { MARKER_DIR, markerPathFor, consumeMarker, groundingIdentity, sameGroundingIdentity } from './grounding-turn-mark.mjs';
 import { readSettledTranscript } from './turn-outcome-capture.mjs';
 import {
   architectureShadow, auditAssertions, correctionText, describeSources, loadVocabulary, logShadow,
@@ -147,27 +139,30 @@ export function wasGroundedSince(markerMs, newestStampMs) {
  * The whole Stop decision for one armed turn: the correction text, or null. Exported so tests can
  * drive it with a synthetic transcript. Every failure inside returns null (fail open).
  */
-export function decide({ hookInput, marker, markerMs, env = process.env, read = readSettledTranscript }) {
+export function decide({ hookInput, marker, markerMs, searchEvidence = null, ownershipUnknown = false, env = process.env, read = readSettledTranscript }) {
   try {
     const host = env.RUVNET_HOOK_HOST === 'codex' ? 'codex' : 'claude';
     const tp = hookInput.transcript_path;
     let turn = null;
-    if (host === 'claude' && typeof tp === 'string' && /\.jsonl$/i.test(tp)) {
+    if (!ownershipUnknown && host === 'claude' && typeof tp === 'string' && /\.jsonl$/i.test(tp)) {
       try { turn = turnSources(read(tp, { maxMs: 0 })); } catch { turn = null; }
     }
     // The transcript is read as a bounded TAIL. When the turn's opening prompt is not inside it
     // (a long turn), the tail is a suffix of the turn and cannot prove a search did NOT happen
-    // earlier — so it is not evidence either way. Fall back to the stamp evidence (the same path
-    // Codex uses), never to a silent pass: `return null` here let every long turn skip the gate.
+    // earlier — so it is not evidence either way. Only a bound native receipt can supply the missing
+    // proof; shared freshness or an unreadable history cannot certify this turn.
     if (turn && !turn.boundaryFound) turn = null;
     const sources = turn ? turn.sources : null;
     const message = String(hookInput.last_assistant_message || '');
+    const bound = searchEvidence && sameGroundingIdentity(marker, groundingIdentity(hookInput, env))
+      && sameGroundingIdentity(searchEvidence, marker) && searchEvidence.nonce === marker.nonce;
+    const terms = bound ? searchEvidence.terms : [];
 
     let assertion = null;
     if (marker.assert && message) {
       const vocab = loadVocabulary({ env });
       const audit = auditAssertions({ message, subjects: marker.subjects, vocab, sources,
-        stampTerms: sources ? [] : stampTermsSince(markerMs),
+        stampTerms: sources ? [] : terms,
         subjectAllowed: (subject) => groundingSubjectAllowed(subject, marker.groundingScope) });
       if (audit.findings.length) assertion = audit.findings;
       const shadow = [architectureShadow({ architecture: marker.architecture, message }), relayShadow({ message, sources })].filter(Boolean);
@@ -177,8 +172,16 @@ export function decide({ hookInput, marker, markerMs, env = process.env, read = 
     // Gate 1 demands a search only when the answer ASSERTS what a rUv product does (the directive's
     // own words). A status report, git/CI check or memory write on a rUv-named repo asserts nothing.
     const ruvClaims = marker.gate1 === false ? [] : ruvCapabilityClaims(message).filter((claim) => groundingSubjectAllowed(claim.subject, marker.groundingScope));
+    if (!sources && (ruvClaims.length || assertion)) {
+      const queried = ruvClaims.every(claim => terms.includes(claim.subject));
+      if (!bound || !queried) return [
+        'Grounding evidence for this session and turn is UNKNOWN; shared product freshness is not same-turn proof.',
+        'Check the relevant product source with `search_ruvnet` in this native turn, or restate the capability as UNVERIFIED.',
+        'This is one bounded correction; missing host evidence does not prove that no search occurred.',
+      ].join('\n');
+    }
     const grounded = !ruvClaims.length
-      || (sources ? searchedThisTurn(sources) : wasGroundedSince(markerMs, newestGroundingStampMs()));
+      || (sources ? searchedThisTurn(sources) : Boolean(bound));
     if (assertion) {
       return correctionText(assertion) + (grounded ? '' : '\nThis turn also asserted what a rUv tool does and no successful search_ruvnet call was recorded: call it with the product term(s).');
     }
@@ -189,7 +192,7 @@ export function decide({ hookInput, marker, markerMs, env = process.env, read = 
       'ground-ruvnet\'s directive requires calling the search_ruvnet MCP tool before asserting what any',
       'RuvNet tool can/cannot do — but no successful',
       sources ? `search_ruvnet call is in this turn's transcript (read this turn: ${describeSources(sources).join('; ')}).`
-        : 'search_ruvnet call was recorded this turn (checked against the grounding-stamp evidence).',
+        : 'search_ruvnet call was proven by a receipt bound to this native session, project, turn and marker nonce.',
       '',
       'Do NOT end the turn on an ungrounded rUv-domain answer. Call `search_ruvnet` now with the',
       'relevant product term(s) in the query, ground your answer in the cited source paths it returns,',
@@ -203,18 +206,20 @@ export function decide({ hookInput, marker, markerMs, env = process.env, read = 
 async function main() {
   const hookInput = await readStopHookInput();
   if (hookInput.__source !== 'stdin') process.exit(EXIT_ALLOW);
-  if (hookInput.stop_hook_active) process.exit(EXIT_ALLOW);
-  if (hookInput.hook_event_name !== 'Stop' || hookInput.interrupted || hookInput.cancelled) {
+  if (hookInput.stop_hook_active && !hookInput.interrupted && !hookInput.cancelled) process.exit(EXIT_ALLOW);
+  if (hookInput.hook_event_name !== 'Stop') {
     process.exit(EXIT_ALLOW);
   }
   if (!hookInput.session_id) process.exit(EXIT_ALLOW);
 
-  const marker = markerPathFor(hookInput.session_id);
+  const identity = groundingIdentity(hookInput), marker = markerPathFor(hookInput.session_id, MARKER_DIR, identity.host);
   if (!marker) process.exit(EXIT_ALLOW);
 
-  const episode = consumeMarker(marker);
+  const episode = consumeMarker(marker, identity);
   if (!episode) process.exit(EXIT_ALLOW);
-  const text = decide({ hookInput, marker: episode.marker, markerMs: episode.markerMs });
+  if (hookInput.interrupted || hookInput.cancelled) process.exit(EXIT_ALLOW);
+  const text = decide({ hookInput, marker: episode.marker, markerMs: episode.markerMs,
+    searchEvidence: episode.searchEvidence, ownershipUnknown: episode.ownershipUnknown });
   if (!text) process.exit(EXIT_ALLOW);
 
   process.stdout.write(JSON.stringify({

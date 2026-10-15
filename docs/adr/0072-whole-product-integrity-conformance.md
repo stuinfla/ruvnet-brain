@@ -3,9 +3,9 @@ id: ADR-072
 title: Whole-product integrity is one executable contract
 status: Accepted
 date: 2026-08-21
-updated: 2026-10-01
+updated: 2026-10-07
 updated_source: derived-from-git
-version: 1.2.1
+version: 1.2.2
 reviewed_digest: e4226a2ff390
 authors: [Stuart Kerr, Codex]
 tags: [architecture, quality, corpus, lifecycle, release, traceability, smart, sparc]
@@ -376,7 +376,23 @@ requires trust and artifact/expectation checks; [in-toto layouts](https://in-tot
 link actor-specific products/materials and distinguish inspections; [TUF](https://theupdateframework.github.io/specification/latest/)
 defines expiry and rollback defenses. These are design references, not claims of conformance.
 
+## Source inventory and review evidence
+
+A source-scope receipt proves that every inventoried file was read for hashing and binds the
+complete repository inventory plus governed-file bytes. Schema 2 names this boundary
+`complete-repository-byte-inventory` and records `bytesReadComplete`, with semantic review explicitly
+`UNKNOWN` and unperformed. It cannot certify that a reviewer understood those files or exercised
+their behavior. A product-integrity trace schema 2 `PASS` verifies contract structure and matching
+source bytes only; it declares semantic review and behavior execution untested. The separate
+independent review and S-1 through S-12 behavior evidence remain mandatory.
+
+Schema 1 receipts remain historical records, but current validators reject them rather than
+reinterpret `readComplete` as review evidence. Regenerating schema 2 evidence preserves byte
+integrity checks without granting semantic approval. Protected publication, exact candidate
+identity, signed public verification, and whole-product completion gates are unchanged.
+
 ## Currency log
+| 2026-10-07 | Corrected automatic byte inventory evidence so it cannot imply semantic review. Receipt and trace schema 2 expose the exact structural scope and semantic UNKNOWN; current validators reject legacy schema 1 without changing publication or completion gates. | `scripts/source-scope-receipt.mjs`, `scripts/product-integrity-contract.mjs`; failed legacy and forged-review fixtures, byte-mutation checks, and the existing completion reducer suite. This scoped correction does not refresh the historical whole-ADR reviewed digest. |
 | 2026-10-01 | Currency review (4.5 retrieval): decision unchanged. `.github/workflows/ci.yml` adds the capability-selection battery on the exact sealed bundle in release-qe, which tightens conformance evidence. No integrity contract changed. reviewed_digest e4226a2ff390. | Reviewed `.github/workflows/ci.yml`; probe runs 36889499709 and 36889505309. |
 | 2026-09-27 | Currency review: decision unchanged. Motion: broad release-pipeline hardening (this session's macOS and ENOBUFS fixes among them), corpus-currency consolidation, host-install-matrix search-timing fixes, and CI workflow fixes. All are reliability fixes to the integrity-conformance machinery itself; none change what conformance means. | Reviewed `docs/ddd/0018-product-integrity-context.md`, `docs/ddd/0019-project-continuity-context.md`, `docs/ddd/0020-capability-claim-integrity-context.md`, `docs/reviews/adr-072-traceability.md`, `scripts/build-bundle.mjs`, `scripts/corpus-candidate.mjs` against the commits listed above; reviewed_digest fd6d8098f221. |
 | 2026-09-19 | Reviewed the operational recovery changes against S-1/S-4/S-7: gist capture now precedes expensive corpus transformation; nightly dispatch identifies its unique child and propagates that outcome. Neither mechanism proves successful fresh corpus production. Doctor requires consistent identities and usable smoke evidence. All twelve whole-product obligations remain required and unclaimed. | `scripts/corpus-reconcile.mjs`, `.github/workflows/protected-release.yml`, `scripts/corpus-dispatch-receipt.mjs`, `bin/install.mjs`. Independent correlation and false-success tests passed; live dispatch and public release qualification are pending. |

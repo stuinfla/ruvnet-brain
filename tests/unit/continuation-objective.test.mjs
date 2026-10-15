@@ -39,11 +39,21 @@ describe('explicit continuation objective authority', () => {
     expect(result.stdout).not.toContain('legacy unscoped promise');
     expect(result.stdout).toContain('without routine reconfirmation');
   });
-  it.each(['cancelled', 'completed', 'blocked'])('does not restart a %s objective or mark unfinished items done', (state) => {
+  it.each(['cancelled', 'blocked'])('does not restart a %s objective or mark unfinished items done', (state) => {
     const f = fixture(); f.objective.state = state; f.objective.reason = 'explicit fixture reason';
     const result = run(f);
     expect(result.stdout).toBe('');
     expect(JSON.parse(fs.readFileSync(f.ledger)).items[0].done).toBe(false);
+  });
+  it('a legacy completed label cannot bypass truth; cancelled preference suppresses only its own nudge', () => {
+    const f = fixture(); f.objective.state = 'completed'; expect(run(f).stdout).toContain(f.objective.text);
+    f.objective.state = 'cancelled'; expect(run(f, { payload: { last_assistant_message: 'The task is fixed.' } }).stdout).toContain('completion');
+  });
+  it('two sessions have independent bounded corrections and duplicate delivery does not loop', () => {
+    const f = fixture(); f.objective.sessionIds.push('session-2'); fs.writeFileSync(f.ledger, JSON.stringify({ objective: f.objective, items: [] }));
+    const env = { ...process.env, RUVNET_WORK_LEDGER: f.ledger, RUVNET_CONTINUATION_COOLDOWN_MS: '20000', RUVNET_OPEN_ISSUES_FILE: path.join(f.root, 'absent'), RUVNET_CI_STATUS_FILE: path.join(f.root, 'absent') };
+    const fire = session_id => spawnSync(process.execPath, [GATE], { cwd: f.repo, env, encoding: 'utf8', input: JSON.stringify({ hook_event_name: 'Stop', cwd: f.repo, session_id, turn_id: 'turn', last_assistant_message: 'Progress only.' }) }).stdout;
+    expect(fire('session-1')).toContain(f.objective.text); expect(fire('session-1')).toBe(''); expect(fire('session-2')).toContain(f.objective.text);
   });
   it('does not derive authority from an old global or project ledger', () => {
     expect(run(fixture(), { objective: null }).stdout).toBe('');

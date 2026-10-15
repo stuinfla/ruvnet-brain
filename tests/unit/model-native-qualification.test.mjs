@@ -103,6 +103,19 @@ describe('native qualification identity and safety boundaries', () => {
       } finally { f.cleanup(); }
     }
   });
+  it('accepts newer installed Claude versions (2.1.296 measured 2026-10-13) and refuses ones below the floor or unparseable', async () => {
+    // The exact 2.1.289 pin failed every hourly weekly cycle once 2.1.296 was installed. Safety stays in the
+    // fail-closed get_usage shape check (verifyClaudeAllowance), not in an exact version string.
+    for (const [version, ok] of [['2.1.296 (Claude Code)', true], ['2.1.289 (Claude Code)', true], ['2.2.0 (Claude Code)', true],
+      ['2.1.288 (Claude Code)', false], ['3.0.0 (Claude Code)', false], ['1.9.999 (Claude Code)', false], ['not a version', false]]) {
+      const f = fixture('claude-code'); f.options.versionProbe = () => version;
+      try {
+        const r = await inspectNativeQualificationHost(f.options);
+        if (ok) { expect(r.failure, version).toBeUndefined(); expect(r.available).toBe(true); expect(r.sourceReceipt.allowance.basis).toBe(`native-get_usage-${version.split(' ')[0]}`); }
+        else { expect(r.failure, version).toMatch(/version unsupported/); expect(f.packets).toHaveLength(0); }
+      } finally { f.cleanup(); }
+    }
+  });
   it('refuses tool inference and terminates stalled native processes at the shared deadline', async () => {
     for (const variation of [{ tool: true }, { stall: true }]) {
       const f = fixture('codex', variation); f.options.deadline = Date.now() + 80;

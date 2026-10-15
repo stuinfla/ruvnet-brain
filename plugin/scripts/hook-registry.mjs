@@ -69,6 +69,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import crypto from 'node:crypto';
+import { createRequire, isBuiltin } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -488,6 +490,130 @@ export function census(reg) {
   };
 }
 
+const auditDigest = value => crypto.createHash('sha256').update(typeof value === 'string' || Buffer.isBuffer(value) ? value : JSON.stringify(value)).digest('hex');
+
+/** Contract IDs already distinguish event and host; foreign commands never inherit ownership. */
+export function canonicalHookAuditId(record) {
+  const host = record.layer === 'codex' ? 'codex' : 'claude';
+  const id = record.shimId ?? record.codexHookId;
+  return ['plugin', 'codex'].includes(record.layer) && id ? `${host}/${record.event}/${id}`
+    : `foreign/${host}/${auditDigest([record.layer, record.file, record.event, record.command]).slice(0, 24)}`;
+}
+
+/** A hash is integrity evidence only. No PASS or readComplete flag authorizes semantic closure. */
+export function hookAuditReviewStatus(entry, review) {
+  if (!review || typeof review.reviewer !== 'string' || !review.reviewer || !Array.isArray(review.readCoverage)
+    || !Array.isArray(review.findings) || !['source-read', 'subprocess', 'native'].includes(review.verificationStrength)) {
+    return { state: 'UNKNOWN', reason: 'substantive source-bound reviewer evidence missing' };
+  }
+  const evidence = { reviewer: review.reviewer, findings: review.findings, verificationStrength: review.verificationStrength,
+    reference: review.reference ?? null, readCoverage: review.readCoverage };
+  if (review.fingerprint !== entry.fingerprint) return { ...evidence, state: 'STALE', reason: 'registration, source, import or configuration fingerprint changed' };
+  const uncovered = entry.inputs.filter(input => input.sha256 && !review.readCoverage.some(read => read.path === input.path
+    && read.sha256 === input.sha256 && typeof read.notes === 'string' && read.notes.trim()
+    && Array.isArray(read.lineRanges) && read.lineRanges.some(range => Array.isArray(range) && range.length === 2
+      && Number.isInteger(range[0]) && Number.isInteger(range[1]) && range[0] > 0 && range[1] >= range[0] && range[1] <= input.lines)));
+  if (review.state !== 'complete' || uncovered.length || !Array.isArray(review.contractDimensions)
+    || !['purpose', 'inputs', 'outputs', 'authority', 'scope', 'failure', 'budgets', 'dependencies', 'parity'].every(dimension => review.contractDimensions.includes(dimension))) {
+    return { ...evidence, state: 'UNKNOWN', reason: 'review coverage remains open', uncovered: uncovered.map(input => input.path) };
+  }
+  return { ...evidence, state: 'REVIEW_RECORDED',
+    limitation: 'reviewer declaration bound to source; not native execution or promotion authority' };
+}
+
+/** Read-only audit of the existing registry. This does not resolve every effective native layer. */
+export function buildHookAudit({ repo = REPO, home = os.homedir(), includeMachine = true,
+  registry = buildRegistry({ repo, home, includeMachine }), configFiles = [], reviews = [], sourceSha = null } = {}) {
+  repo = fs.realpathSync(repo);
+  const scriptRoot = fs.existsSync(path.join(repo, 'plugin/scripts/hook-shim.mjs')) ? path.join(repo, 'plugin/scripts') : path.join(repo, 'scripts');
+  const contractsFile = registry.contractsFile;
+  const cache = new Map(), texts = new Map();
+  const input = (file, kind) => {
+    const name = file.startsWith(repo + path.sep) ? path.relative(repo, file).split(path.sep).join('/') : file;
+    if (cache.has(file)) return { ...cache.get(file), kind };
+    try {
+      const stat = fs.lstatSync(file);
+      if (!stat.isFile() || stat.isSymbolicLink() || fs.realpathSync(file) !== file || stat.size > 1024 * 1024) throw new Error('unbounded or noncanonical source');
+      const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+      let bytes;
+      try { bytes = Buffer.alloc(stat.size); let offset = 0;
+        while (offset < bytes.length) { const count = fs.readSync(fd, bytes, offset, Math.min(65536, bytes.length - offset), offset); if (!count) throw new Error('source truncated'); offset += count; }
+        const after = fs.fstatSync(fd), current = fs.lstatSync(file);
+        if (after.size !== stat.size || after.mtimeMs !== stat.mtimeMs || after.ino !== stat.ino || after.dev !== stat.dev
+          || current.ino !== stat.ino || current.dev !== stat.dev || current.size !== stat.size || current.mtimeMs !== stat.mtimeMs || current.isSymbolicLink()) throw new Error('source changed during audit');
+      } finally { fs.closeSync(fd); }
+      const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+      const row = { path: name, sha256: auditDigest(bytes), bytes: bytes.length, lines: text.split('\n').length, uid: stat.uid };
+      texts.set(file, text);
+      cache.set(file, row); return { ...row, kind };
+    } catch (error) { return { path: name, sha256: null, kind, state: error.code === 'ENOENT' ? 'absent' : 'unavailable', reason: error.code === 'ENOENT' ? null : String(error.message) }; }
+  };
+  input(contractsFile, 'contract-declaration');
+  let document; try { document = JSON.parse(texts.get(contractsFile)); } catch { document = {}; }
+  const contracts = Array.isArray(document.contracts) ? document.contracts : [];
+  const packageFile = path.join(repo, 'package.json');
+  input(packageFile, 'package-declaration');
+  let packageDeclaration; try { packageDeclaration = JSON.parse(texts.get(packageFile)); } catch { packageDeclaration = null; }
+  const entries = registry.records.map(record => {
+    const host = record.layer === 'codex' ? 'codex' : 'claude', dispatchId = record.shimId ?? record.codexHookId;
+    const contract = contracts.find(row => row.id === dispatchId && row.event === record.event && row.hosts?.includes(host));
+    const purpose = document._eventOwners?.find(row => row.owner === dispatchId && row.event === record.event && row.hosts?.includes(host));
+    const seeds = [record.file, contractsFile, path.join(scriptRoot, 'hook-shim.mjs'), path.join(scriptRoot, record.handler ?? 'missing-body')];
+    if (host === 'codex') seeds.push(path.join(scriptRoot, 'codex-hook-wrapper.mjs'), path.join(scriptRoot, 'codex-hook-adapter.mjs'));
+    const refs = new Map(), unresolved = [], pending = [...seeds], seen = new Set(), allowedRoots = new Set([repo]);
+    while (pending.length && seen.size < 512) {
+      const file = path.resolve(pending.shift()); if (seen.has(file)) continue; seen.add(file);
+      const ref = input(file, 'source'); refs.set(ref.path, ref);
+      if (!ref.sha256 || !/\.(?:mjs|cjs|js|sh)$/.test(file)) continue;
+      const text = texts.get(file);
+      // Same literal relative-import mechanism used by the shipped-package falsifier. Dynamic
+      // resolution remains explicit incomplete evidence; this is never semantic read coverage.
+      for (const match of text.matchAll(/(?:from|import|require)\s*\(?\s*['"](\.[^'"]+)['"]/g)) {
+        const dependency = path.resolve(path.dirname(file), match[1]);
+        if ([...allowedRoots].some(root => dependency.startsWith(root + path.sep))) pending.push(dependency);
+        else unresolved.push({ file: ref.path, kind: 'outside-root-import', specifier: match[1] });
+      }
+      for (const match of text.matchAll(/(?:from|import|require)\s*\(?\s*['"]([^.'"][^'"]*)['"]/g)) {
+        if (isBuiltin(match[1])) continue;
+        try {
+          const resolved = createRequire(file).resolve(match[1]);
+          let directory = path.dirname(resolved);
+          while (!fs.existsSync(path.join(directory, 'package.json')) && directory !== path.dirname(directory)) directory = path.dirname(directory);
+          if (!fs.existsSync(path.join(directory, 'package.json'))) throw new Error('package declaration missing');
+          allowedRoots.add(directory); pending.push(resolved, path.join(directory, 'package.json'));
+        } catch { unresolved.push({ file: ref.path, kind: 'unresolved-package-import', specifier: match[1] }); }
+      }
+      if (/\bimport\s*\(\s*[^'"\s]/.test(text)) unresolved.push({ file: ref.path, kind: 'dynamic-import' });
+      if (/\.(?:sh)$/.test(file)) unresolved.push({ file: ref.path, kind: 'shell-child/config-resolution-requires-review' });
+    }
+    if (pending.length) unresolved.push({ kind: 'source-closure-bound' });
+    for (const file of configFiles) { const ref = input(path.resolve(file), 'configuration'); refs.set(ref.path, ref); }
+    const pkg = input(packageFile, 'package-declaration'); refs.set(pkg.path, pkg);
+    const inputs = [...refs.values()].sort((a, b) => a.path.localeCompare(b.path));
+    let declarationMatches = false;
+    try { declarationMatches = ['plugin', 'codex'].includes(record.layer) && readRegistrations(record.file).some(row => row.event === record.event
+      && row.matcher === record.matcher && row.command === record.command && row.timeout === record.timeout); } catch { /* ownership remains unknown */ }
+    const managed = declarationMatches && contract && packageDeclaration?.name === 'ruvnet-brain' && record.file.startsWith(repo + path.sep)
+      && inputs.every(ref => ref.sha256 && ref.uid === process.getuid?.());
+    const registration = { host, event: record.event, matcher: record.matcher, commandSha256: auditDigest(record.command), timeout: record.timeout,
+      asyncRewake: record.asyncRewake, condition: record.if, dispatchId, contract };
+    const entry = { id: canonicalHookAuditId(record), host, event: record.event, dispatchId, layer: record.layer,
+      purpose: purpose?.responsibility ?? null, intendedHosts: contract?.hosts ?? [], declaredMode: record.mode,
+      controlGuarantee: dispatchId === 'capacity-aware-parallel-work' && record.mode === 'advisory' ? 'advisory-only' : 'not-proven-by-inventory',
+      ownership: { status: managed ? 'CORRELATED_PACKAGE_SOURCE' : 'UNKNOWN', mutationAuthority: false,
+        proof: managed ? { declarationMatches, packageName: packageDeclaration.name, packageVersion: packageDeclaration.version, canonicalRoot: repo, uid: process.getuid() } : null },
+      registration, inputs, dependencyCoverage: { state: 'PARTIAL_STATIC', unresolved,
+        limitation: 'literal reachable imports and resolved package entries only; dynamic dispatch and runtime configuration require explicit reviewer coverage' },
+      fingerprint: auditDigest({ registration, inputs, unresolved }), nativeExecution: 'UNKNOWN' };
+    entry.review = hookAuditReviewStatus(entry, reviews.find(review => review.id === entry.id));
+    return entry;
+  });
+  const duplicates = entries.filter((entry, index) => entries.findIndex(other => other.id === entry.id) !== index).map(entry => entry.id);
+  return { schemaVersion: 1, kind: 'hook-registry-source-audit', sourceSha, entries, duplicates, registryErrors: registry.errors,
+    inventoryCoverage: 'existing registry discovery only; local/managed/native-active overlays are not exhaustive',
+    auditSha256: auditDigest(entries), promotionAuthority: false };
+}
+
 // ── THE MESH INVARIANTS (ADR-055 §7) ────────────────────────────────────────────────────────────
 //
 // Each is a PURE function from records → findings, for three reasons that all matter:
@@ -630,7 +756,9 @@ const invokedDirectly = process.argv[1] && path.resolve(process.argv[1]).endsWit
 if (invokedDirectly) {
   const includeMachine = !process.argv.includes('--machine=0') && process.env.CI !== 'true';
   const reg = buildRegistry({ includeMachine });
-  if (process.argv.includes('--json')) {
+  if (process.argv.includes('--audit-json')) {
+    process.stdout.write(`${JSON.stringify(buildHookAudit({ registry: reg, includeMachine }), null, 2)}\n`);
+  } else if (process.argv.includes('--json')) {
     process.stdout.write(`${JSON.stringify(reg.records, null, 2)}\n`);
   } else if (process.argv.includes('--lint')) {
     const found = lintAll(reg);

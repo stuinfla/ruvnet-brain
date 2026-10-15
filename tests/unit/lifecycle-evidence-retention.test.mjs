@@ -62,7 +62,7 @@ describe('lifecycle evidence retention', () => {
     for (const [file, original] of originals) {
       const raw = fs.readFileSync(file, 'utf8');
       expect(JSON.parse(raw)).toEqual(original.value);
-      expect(raw).toContain('9007199254740993');
+      expect(raw).toContain('9007199254740993'); // sync-version-ignore: this fixture integer exceeds safe JS precision to prove byte preservation
       expect(fs.statSync(file).mode).toBe(original.stat.mode);
       expect(fs.statSync(file).uid).toBe(original.stat.uid);
       expect(fs.statSync(file).gid).toBe(original.stat.gid);

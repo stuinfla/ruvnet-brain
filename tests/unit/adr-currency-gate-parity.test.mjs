@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import * as docCurrency from '../../scripts/doc-currency.mjs';
-import { staleGovernorsOf } from '../../plugin/scripts/adr-currency-gate.mjs';
+import { boundedStaleGovernorsOf, owningEditedCheckout, staleGovernorsOf } from '../../plugin/scripts/adr-currency-gate.mjs';
 
 const roots = [];
 const DOC = 'docs/adr/0099-parity.md';
@@ -72,4 +72,14 @@ describe('ADR edit gate matches canonical document-currency policy on real Git h
     expect(await staleGovernorsOf(TARGET, { root, docCurrency })).toEqual([]);
     expect(await staleGovernorsOf('other.mjs', { root, docCurrency })).toHaveLength(1);
   });
+});
+
+
+it('the installed gate evaluates actual owning-repo stale history with the existing currency machinery', async () => {
+  const root = fixture({ governs: `governs: ${TARGET}` });
+  fs.writeFileSync(path.join(root, 'scripts/doc-currency.mjs'), `throw new Error('Untrusted edited-checkout code executed');`);
+  const scope = owningEditedCheckout({ cwd: root, tool_input: { file_path: TARGET } });
+  const result = await boundedStaleGovernorsOf(scope, Date.now() + 2500);
+  expect(result.stale).toHaveLength(1);
+  expect(result.stale[0]).toMatchObject({ id: 'ADR-099', doc: DOC });
 });

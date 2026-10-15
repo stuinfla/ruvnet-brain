@@ -4,8 +4,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { spawn } from 'node:child_process';
 import { artifactDigest, buildWorkflowPlan, validateWorkflowRequest, validateWorkflowPlan,
-  loadManagedRunner, runRoutingWorkflow } from '../../scripts/model-routing-controller.mjs';
+  loadManagedRunner, runRoutingWorkflow, waitForManagedCapacity } from '../../scripts/model-routing-controller.mjs';
 
 const digest = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const decision = { harness: 'codex', model: 'gpt-6.1-sol', effort: 'medium' };
@@ -47,6 +48,7 @@ function adapters(log, behavior = {}) {
 function boundaries(f, overrides = {}) {
   const log = [], receipts = [];
   return { log, receipts, options: {
+    sampleCapacity: () => ({ workers: f.request.maxConcurrent, tier: 'test-measurement', reason: 'bounded fixture' }),
     route: async ({ originalPrompt, taskFacts }) => { assert.equal(originalPrompt, f.request.originalPrompt); assert.deepEqual(taskFacts, f.request.taskFacts); return decision; },
     verifyDecision, createAdapters: async () => adapters(log),
     checkAcceptance: async () => f.acceptance(),
@@ -75,7 +77,7 @@ test('one ordinary worker preserves original context and launches independent re
     const result = await runRoutingWorkflow(f.request, b.options);
     assert.equal(result.status, 'complete'); assert.equal(result.attemptsUsed, 2);
     assert.deepEqual(b.log.filter(([phase]) => phase === 'launch').map(([, id]) => id), ['work', 'independent-review']);
-    assert.deepEqual(b.receipts.map((r) => r.status), ['running', 'stage-finished', 'review-finished', 'complete']);
+    assert.deepEqual(b.receipts.map((r) => r.status), ['queued', 'running', 'task-dispatch', 'stage-finished', 'checks-finished', 'review-finished', 'complete']);
     assert.equal(result.artifactDigest, f.acceptance().artifactDigest);
   } finally { f.cleanup(); }
 });
@@ -99,15 +101,15 @@ test('explicit dependency DAG executes through actual runner and retains origina
   } finally { f.cleanup(); }
 });
 
-test('overlapping ownership and shared-worktree parallel writers are refused before effects', () => {
+test('all multiple writers are refused without resource claims, including sequential writers', () => {
   const f = fixture(); try {
     f.request.permissions.write = true;
     f.request.tasks = ['one', 'two'].map((id) => ({ id, instructions: id, dependsOn: [],
       ownership: { mode: 'write', worktree: f.root, paths: ['src'] }, acceptanceChecks: [{ id: 'check' }] }));
-    assert.throws(() => validateWorkflowRequest(f.request), /nonoverlapping/);
+    assert.throws(() => validateWorkflowRequest(f.request), /Only one writer/);
     f.request.tasks[1].ownership.paths = ['tests'];
-    assert.throws(() => validateWorkflowRequest(f.request), /separate worktrees/);
-    f.request.tasks[1].dependsOn = ['one']; assert.equal(validateWorkflowRequest(f.request), f.request);
+    assert.throws(() => validateWorkflowRequest(f.request), /Only one writer/);
+    f.request.tasks[1].dependsOn = ['one']; assert.throws(() => validateWorkflowRequest(f.request), /Only one writer/);
     f.request.tasks[0].dependsOn = ['two']; assert.throws(() => validateWorkflowRequest(f.request), /cycle/);
   } finally { f.cleanup(); }
 });
@@ -358,4 +360,128 @@ test('artifact drift during repair preparation refuses launch against stale prio
     assert.equal(result.status, 'blocked');
     assert.deepEqual(log.filter(([phase]) => phase === 'launch').map(([, id]) => id), ['original-writer']);
   } finally { f.cleanup(); }
+});
+
+test('actual AK runner overlaps read subprocesses and gives their handoffs to one exclusive writer', async () => {
+  const f = fixture(), intervals = []; try {
+    f.request.permissions.write = true; f.request.maxConcurrent = 3;
+    f.request.tasks = ['reader-a', 'reader-b', 'writer-c'].map((id, index) => ({ id, instructions: id,
+      dependsOn: index === 2 ? ['reader-a', 'reader-b'] : [], ownership: { mode: index === 2 ? 'write' : 'read',
+        worktree: f.root, paths: index === 2 ? ['artifact.txt'] : [] }, acceptanceChecks: [{ id: 'actual-check' }] }));
+    const b = boundaries(f), native = adapters(b.log);
+    native.codex.launch = async state => {
+      if (state.worker.id === 'writer-c') {
+        assert.match(state.worker.prompt, /reader-a-result/); assert.match(state.worker.prompt, /reader-b-result/);
+      }
+      const interval = { id: state.worker.id, start: Date.now() }; intervals.push(interval);
+      const source = `const fs=require('fs');fs.readFileSync(process.argv[1]);setTimeout(()=>{${state.worker.id === 'writer-c' ? "fs.writeFileSync(process.argv[2],'Written after both reader handoffs');" : ''}process.exit(0)},120)`;
+      state.child = spawn(process.execPath, ['-e', source, path.join(f.root, 'context.md'), path.join(f.root, 'artifact.txt')]);
+      interval.pid = state.child.pid;
+      state.done = new Promise((resolve, reject) => { state.child.once('error', reject); state.child.once('close', code => {
+        interval.end = Date.now(); code === 0 ? resolve() : reject(Error('stub subprocess failed')); }); });
+      return state;
+    };
+    native.codex.observe = async state => { await state.done; return {}; };
+    native.codex.cleanup = async state => { assert.equal(state.child.exitCode, 0); return {}; };
+    native.codex.summarize = state => ({ outcome: `${state.worker.id}-result`, artifacts: [], decisions: [], risks: [] });
+    b.options.createAdapters = async () => native;
+    b.options.checkAcceptance = async () => { const a = f.acceptance(); a.evidence = f.request.tasks.map(t => ({
+      taskId: t.id, checkId: 'actual-check', passed: true, artifactDigest: a.artifactDigest })); return a; };
+    const result = await runRoutingWorkflow(f.request, b.options);
+    assert.equal(result.status, 'complete');
+    const [a, c] = ['reader-a', 'reader-b'].map(id => intervals.find(x => x.id === id));
+    const writer = intervals.find(x => x.id === 'writer-c');
+    assert.notEqual(a.pid, c.pid); assert.ok(Math.max(a.start, c.start) < Math.min(a.end, c.end));
+    assert.ok(writer.start >= Math.max(a.end, c.end));
+    assert.ok(result.capacityAdmissions.some(x => x.activeChildren === 2));
+    assert.equal(result.attemptsUsed, 4); // three task children plus the existing independent reviewer
+  } finally { f.cleanup(); }
+});
+
+test('slots remain held until cleanup and queued admission never exceeds a reduced ceiling', async () => {
+  const f = fixture(), events = []; try {
+    f.request.tasks = ['reader-a', 'reader-b'].map(id => ({ id, instructions: id, dependsOn: [],
+      ownership: { mode: 'read', worktree: f.root, paths: [] }, acceptanceChecks: [{ id: 'actual-check' }] }));
+    const b = boundaries(f), native = adapters(b.log);
+    native.codex.launch = async state => { events.push(['launch', state.worker.id, Date.now()]); return state; };
+    native.codex.observe = async () => { await new Promise(resolve => setTimeout(resolve, 20)); return {}; };
+    native.codex.cleanup = async state => { await new Promise(resolve => setTimeout(resolve, 40)); events.push(['clean', state.worker.id, Date.now()]); return {}; };
+    b.options.createAdapters = async () => native;
+    b.options.sampleCapacity = () => ({ workers: 1, tier: 'reduced', reason: 'pressure fixture' });
+    b.options.checkAcceptance = async () => { const a = f.acceptance(); a.evidence = f.request.tasks.map(t => ({
+      taskId: t.id, checkId: 'actual-check', passed: true, artifactDigest: a.artifactDigest })); return a; };
+    const result = await runRoutingWorkflow(f.request, b.options);
+    const launches = events.filter(x => x[0] === 'launch');
+    assert.ok(launches[1][2] >= events.find(x => x[0] === 'clean' && x[1] === launches[0][1])[2]);
+    assert.ok(result.capacityAdmissions.every(x => x.activeChildren <= 1));
+  } finally { f.cleanup(); }
+});
+
+test('known zero capacity waits for recovery or deadline; unavailable measurement is explicitly serial', async () => {
+  let samples = 0;
+  const recovered = await waitForManagedCapacity({ maxConcurrent: 5, deadline: Date.now() + 1000,
+    sampleCapacity: () => ({ workers: ++samples < 2 ? 0 : 8, tier: 'sampled' }) });
+  assert.equal(recovered.workers, 5); assert.equal(samples, 2);
+  const unknown = await waitForManagedCapacity({ maxConcurrent: 5, deadline: Date.now() + 1000, sampleCapacity: () => null });
+  assert.equal(unknown.workers, 1); assert.match(unknown.reason, /unknown.*serial/);
+  await assert.rejects(waitForManagedCapacity({ maxConcurrent: 2, deadline: Date.now() + 30,
+    sampleCapacity: () => ({ workers: 0, tier: 'constrained' }) }), /deadline/);
+});
+
+test('validated checklist precedes effects and verified writer is locked with an exact safe handoff', async () => {
+  const f = fixture(); try {
+    f.request.permissions.write = true; f.request.tasks = [{ id: 'work', instructions: 'Bounded work', dependsOn: [],
+      ownership: { mode: 'write', worktree: f.root, paths: ['artifact.txt'] }, acceptanceChecks: [{ id: 'actual-check' }] }];
+    const b = boundaries(f), base = adapters(b.log), launch = base.codex.launch;
+    base.codex.launch = async state => { assert.equal(b.receipts[0].status, 'queued');
+      assert.deepEqual(b.receipts[0].taskChecklist[0].requiredCheckIds, ['actual-check']); return launch(state); };
+    b.options.createAdapters = async () => base;
+    const result = await runRoutingWorkflow(f.request, b.options);
+    assert.equal(result.taskChecklist[0].state, 'verified');
+    assert.equal(result.taskChecklist[0].proof.artifactDigest, result.artifactDigest);
+    assert.deepEqual(result.resumeHandoff.lockedWriterIds, ['work']); assert.match(result.resumeHandoff.nextStep, /STOP/);
+    assert.equal(result.resumeHandoff.originalPromptDigest, crypto.createHash('sha256').update(f.request.originalPrompt).digest('hex'));
+  } finally { f.cleanup(); }
+});
+
+test.each([false, true])('failed source identity is path-bound; byte swap=%s', async swap => {
+  const f = fixture(); try {
+    f.request.permissions.write = true; f.request.maxAttempts = 8;
+    f.request.tasks = [{ id: 'work', instructions: 'Bounded writer', dependsOn: [],
+      ownership: { mode: 'write', worktree: f.root, paths: ['artifact.txt'] }, acceptanceChecks: [{ id: 'actual-check' }] }];
+    let gates = 0; if (swap) { fs.writeFileSync(path.join(f.root, 'other.txt'), 'Other content'); f.request.tasks[0].ownership.paths.push('other.txt'); }
+    const b = boundaries(f, { checkAcceptance: async () => { const a = f.acceptance(); a.passed = swap && ++gates >= 3;
+      a.evidence[0].passed = a.passed; a.evidence[0].exitCode = a.passed ? 0 : 1; return a; },
+    planRepair: async ({ request, acceptance }) => ({ baseArtifactDigest: acceptance.artifactDigest, artifactRefs: acceptance.artifactRefs,
+      tasks: [{ ...request.tasks[0], id: 'scoped-repair', repairsTaskId: 'work', repairArtifacts: acceptance.artifactRefs }] }) });
+    if (swap) { const native = adapters(b.log), launch = native.codex.launch; let starts = 0; native.codex.launch = async state => { if (++starts === 2) { const a = path.join(f.root, 'artifact.txt'), c = path.join(f.root, 'other.txt'), bytes = fs.readFileSync(a); fs.writeFileSync(a, fs.readFileSync(c)); fs.writeFileSync(c, bytes); } return launch(state); }; b.options.createAdapters = async () => native; }
+    const result = await runRoutingWorkflow(f.request, b.options);
+    if (swap) { assert.equal(result.status, 'complete'); assert.equal(result.attemptsUsed, 4); return; }
+    assert.equal(result.reason, 'unchanged-check-failure-and-source-bytes'); assert.equal(result.attemptsUsed, 2);
+    assert.equal(result.taskChecklist[0].state, 'blocked'); assert.deepEqual(result.resumeHandoff.lockedWriterIds, ['work']);
+  } finally { f.cleanup(); }
+});
+
+test('no-active capacity stall has a bounded exact exit while active work is never retired for pressure', async () => {
+  const began = Date.now();
+  await assert.rejects(waitForManagedCapacity({ maxConcurrent: 2, deadline: Date.now() + 2000, maxStallMs: 25,
+    sampleCapacity: () => ({ workers: 0, tier: 'constrained' }) }), /Capacity admission stalled/);
+  assert.ok(Date.now() - began < 500);
+  let calls = 0;
+  const result = await waitForManagedCapacity({ maxConcurrent: 2, deadline: Date.now() + 2000, maxStallMs: 5,
+    progress: () => true, sampleCapacity: () => ({ workers: ++calls < 3 ? 0 : 1, tier: 'constrained' }) });
+  assert.equal(result.workers, 1); assert.equal(calls, 3);
+});
+
+test('task-dispatch persistence cancellation or context drift cannot cross the underlying launch boundary', async () => {
+  for (const change of ['drift', 'cancel']) {
+    const f = fixture(), abort = new AbortController(); try {
+      const b = boundaries(f); b.options.signal = abort.signal;
+      b.options.recordReceipt = async (_req, receipt) => { b.receipts.push(receipt); if (receipt.status === 'task-dispatch') {
+        if (change === 'drift') fs.writeFileSync(path.join(f.root, 'context.md'), 'Changed during receipt'); else abort.abort();
+      } return { durable: true }; };
+      const result = await runRoutingWorkflow(f.request, b.options);
+      assert.equal(result.status, 'blocked'); assert.equal(b.log.some(([phase]) => phase === 'launch'), false);
+    } finally { f.cleanup(); }
+  }
 });

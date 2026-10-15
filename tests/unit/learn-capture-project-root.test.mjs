@@ -4,152 +4,118 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolveBash } from '../../plugin/scripts/hook-shim-bash.mjs';
 
 /**
- * ISSUE #134 — the writer and the reader must name the SAME queue.
+ * ISSUE #134 — the writer and the reader must name the SAME project store.
  *
- * `learn-capture.sh` is wired on PostToolUse, so it runs after every tool call. It anchored the queue
- * on bare `$PWD` while `learn-flush.mjs:26` and `health-repair.mjs:32` both resolve
- * `RUVNET_BRAIN_PROJECT_DIR || cwd`. Any command that left the shell below the project root — a test
- * run, a build, anything that cd's — made the writer create a queue the reader never opens, and those
- * events are orphaned rather than misfiled.
- *
- * This is #104's residual: that issue made the two halves of the FLUSH agree, and the component that
- * creates the queue was not brought along.
- *
- * The test runs the real script the way the host runs it — argv and stdin payload, no tty — because a
- * hook proven any other way is proven on a channel that cannot observe the defect.
+ * learn-capture is wired on PostToolUse, so it runs after every tool call. A drifted shell cwd (a test
+ * run, a build, anything that cd's below the project root) must not send the observation to a store the
+ * reader never opens. Since the 2026-10-12 ruling the observation is handed straight to rUv's
+ * `ruflo memory store`; the project it lands in is the `--path` argument, so that argument is what these
+ * tests read (a stub `ruflo` records its argv). Run the real hook the way the host runs it: argv and a
+ * stdin payload, no tty.
  */
 const ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const CAPTURE = path.join(ROOT, 'plugin', 'scripts', 'learn-capture.mjs');
 
 const temps = [];
 const originalCwd = process.cwd();
-// realpathSync.native, not the raw mkdtemp result: GitHub Actions Windows runners hand out the 8.3
-// short form (C:\Users\RUNNER~1\...) from os.tmpdir(), while a subprocess's own $PWD resolves the
-// long form — the exact mismatch tests/unit/memory-doctor-discovery.test.mjs and
-// tests/unit/project-identity.test.mjs already canonicalize around for this same reason (#85/#107).
-// Left uncanonicalized, `project` (passed as CLAUDE_PROJECT_DIR) and the bash subprocess's own $PWD
-// name the same directory with two different strings, and a string-prefix containment check between
-// them never matches — not a production defect, a CI-temp-dir artifact this test must not launder in.
+// realpathSync.native: the temp dir and a subprocess's own cwd must name the same directory with the
+// same string (GitHub Windows runners hand out 8.3 short names from os.tmpdir()).
 const mktemp = () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-root-'));
   temps.push(d);
   return fs.realpathSync.native(d);
 };
-const cleanup = async () => {
+afterEach(() => {
   process.chdir(originalCwd);
-  // Capture schedules a real detached recovery owner. Windows cannot remove its cwd
-  // until the finite supervisor has confirmed retirement and released the queue lock.
-  const deadline = Date.now() + 19_000;
-  while (temps.some(d => fs.existsSync(path.join(d, '.swarm', 'ruvnet-brain-learn', '.worker-lock')))) {
-    if (Date.now() >= deadline) throw new Error('fixture recovery owner did not retire before cleanup');
-    await new Promise(resolve => setTimeout(resolve, 25));
-  }
-  // Releasing the queue fence confirms the worker tree, not the supervisor's own exit.
-  // Its cwd can remain open briefly on Windows; use the same finite cleanup budget.
-  for (const d of temps) {
-    for (;;) {
-      try { fs.rmSync(d, { recursive: true, force: true }); break; }
-      catch (error) {
-        if (!['EBUSY', 'EPERM', 'ENOTEMPTY'].includes(error.code) || Date.now() >= deadline) throw error;
-        await new Promise(resolve => setTimeout(resolve, 25));
-      }
-    }
-  }
+  for (const d of temps) fs.rmSync(d, { recursive: true, force: true });
   temps.length = 0;
-};
-afterEach(cleanup);
+});
 
-/** Fire the hook exactly as PostToolUse does: JSON on stdin, from some working directory. */
+/**
+ * A ruflo stand-in written in Node, so it runs on every OS: logs argv; `memory store` records the
+ * --value, `memory retrieve` echoes it back. On Windows it is laid out as npm's global `ruflo.cmd`
+ * shim beside `node_modules/ruflo`, so the hook reaches it through the same rufloInvocation() path a
+ * real Windows install takes (the .cmd itself fails if it is ever run); elsewhere RUFLO_BIN is the
+ * executable script.
+ */
+function makeStub(dir) {
+  const prefix = path.join(dir, 'npm-global');
+  const pkg = path.join(prefix, 'node_modules', 'ruflo');
+  fs.mkdirSync(pkg, { recursive: true });
+  const entry = path.join(pkg, 'cli.mjs');
+  fs.writeFileSync(entry, `#!/usr/bin/env node
+import fs from 'node:fs';
+const args = process.argv.slice(2);
+const stored = ${JSON.stringify(path.join(dir, 'stored.json'))};
+fs.appendFileSync(${JSON.stringify(path.join(dir, 'argv.log'))}, args.join(' ') + '\\n');
+if (args[0] === 'memory' && args[1] === 'store') {
+  for (let i = 0; i < args.length - 1; i += 1) if (args[i] === '--value') fs.writeFileSync(stored, args[i + 1]);
+} else if (args[0] === 'memory' && args[1] === 'retrieve' && fs.existsSync(stored)) {
+  process.stdout.write(fs.readFileSync(stored, 'utf8'));
+}
+`, { mode: 0o755 });
+  fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: 'ruflo', bin: { ruflo: 'cli.mjs' } }));
+  if (process.platform !== 'win32') return entry;
+  const shim = path.join(prefix, 'ruflo.cmd');
+  fs.writeFileSync(shim, '@echo off\r\nexit /b 99\r\n');
+  return shim;
+}
+
+/** Fire the hook exactly as PostToolUse does; return the `--path` rUv's store was asked to write, or null. */
 function capture({ cwd, projectDir, claudeProjectDir }) {
+  const rig = mktemp();
+  const stub = makeStub(rig);
   const payload = JSON.stringify({
     session_id: 'issue134', hook_event_name: 'PostToolUse', cwd,
     tool_name: 'Write', tool_input: { file_path: 'a.mjs' }, tool_response: { success: true },
   });
-  const env = { ...process.env, RUVNET_LEARNING_SCOPE: 'project' };
+  const env = { ...process.env, HOME: rig, USERPROFILE: rig, RUFLO_BIN: stub, RUVNET_LEARNING_SCOPE: 'project' };
   if (projectDir) env.RUVNET_BRAIN_PROJECT_DIR = projectDir; else delete env.RUVNET_BRAIN_PROJECT_DIR;
-  // Explicit, not just "absent from the ambient env": a real hook run always carries a definite
-  // CLAUDE_PROJECT_DIR value or none, never "whatever this test runner's own process happened to have".
+  // Explicit: a real hook run always carries a definite CLAUDE_PROJECT_DIR or none.
   if (claudeProjectDir) env.CLAUDE_PROJECT_DIR = claudeProjectDir; else delete env.CLAUDE_PROJECT_DIR;
   try { execFileSync(process.execPath, [CAPTURE], { cwd, env, input: payload, stdio: 'pipe', timeout: 20_000 }); }
-  catch { /* the hook fails open by design; the queue on disk is what this asserts */ }
+  catch { /* the hook fails open by design; what reached ruflo is what this asserts */ }
+  const log = path.join(rig, 'argv.log');
+  if (!fs.existsSync(log)) return null;
+  const store = fs.readFileSync(log, 'utf8').split('\n').filter((l) => l.startsWith('memory store')).pop();
+  return store ? (/--path (\S+)/.exec(store) || [])[1] || null : null;
 }
 
-const queued = (root) => {
-  const dir = path.join(root, '.swarm', 'ruvnet-brain-learn');
-  return fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl')) : [];
-};
+const inside = (p, dir) => typeof p === 'string' && (p === dir || p.startsWith(dir + path.sep));
 
-/**
- * The two behavioural cases spawn the real hook through bash. On a host with no bash the hook does
- * not run at all, so there is nothing to observe — skipped explicitly rather than left red.
- *
- * The condition is the RESOLVER, not `platform === 'win32'`. That platform check was a proxy for
- * "there is no bash here" and got it wrong in both directions: a Windows box WITH Git-for-Windows
- * can run this perfectly and was being skipped (coverage silently lost on the platform that most
- * needs it), while a stripped Linux container without bash would still have failed. Same proxy
- * mistake as reading `.claude/settings.json` to decide whether a daemon is running — ask the thing
- * that actually decides.
- */
-const behavioural = describe;
-
-behavioural('issue #134 — captured events land where the flush looks', () => {
+describe('issue #134 — captured events land in the store the reader opens', () => {
   it('honours RUVNET_BRAIN_PROJECT_DIR even when the shell has drifted below the root', () => {
     const project = mktemp();
     const drifted = path.join(project, 'tests', 'fixtures');
     fs.mkdirSync(drifted, { recursive: true });
-
-    capture({ cwd: drifted, projectDir: project, claudeProjectDir: null });
-
-    expect(queued(project), 'the queue belongs to the project the reader will open').not.toEqual([]);
-    expect(queued(drifted), 'and must NOT be stranded in whatever directory the shell happened to be in')
-      .toEqual([]);
+    const target = capture({ cwd: drifted, projectDir: project, claudeProjectDir: null });
+    expect(target, 'ruflo memory store must be called with an explicit --path').toBeTruthy();
+    expect(inside(target, project), `${target} is inside the project the reader will open`).toBe(true);
+    expect(inside(target, drifted), 'and is NOT a store stranded in whatever directory the shell was in').toBe(false);
   });
 
   it('TEETH: without the variable it still uses cwd — so the fix is the variable, not a hardcoded root', () => {
-    // If this passed by pinning the queue to a git root or some other guess, the writer would have
-    // stopped agreeing with the reader in the other direction. The reader's rule is
-    // `RUVNET_BRAIN_PROJECT_DIR || cwd`; both halves of that rule have to match.
     const loose = mktemp();
-    capture({ cwd: loose, projectDir: null, claudeProjectDir: null });
-    expect(queued(loose), 'unset variable → cwd, exactly as learn-flush.mjs resolves it').not.toEqual([]);
+    const target = capture({ cwd: loose, projectDir: null, claudeProjectDir: null });
+    expect(inside(target, loose), 'unset variable → cwd, exactly as the reader resolves it').toBe(true);
   });
 
-  it('ISSUE #134 RESIDUAL — RUVNET_BRAIN_PROJECT_DIR is never actually set by real hook dispatch on ' +
-     'either host (grep: hook-shim.mjs forwards process.env unmodified; codex-hook-adapter.mjs builds ' +
-     'its own env block and never includes it), so a drifted PostToolUse cwd must still land at the ' +
-     'project root via CLAUDE_PROJECT_DIR — the one project-root signal both hosts DO provide on every ' +
-     'invocation (native on Claude Code; explicitly derived from input.cwd by codex-hook-adapter.mjs) ' +
-     'and which this repo already trusts elsewhere for exactly this purpose (project-identity.mjs, ' +
-     'session-start-core.mjs)', () => {
+  it('CLAUDE_PROJECT_DIR anchors the store when the shell drifted and RUVNET_BRAIN_PROJECT_DIR is unset (the real shape on both hosts)', () => {
     const project = mktemp();
     const drifted = path.join(project, 'tests', 'fixtures');
     fs.mkdirSync(drifted, { recursive: true });
-
-    // Real production shape: RUVNET_BRAIN_PROJECT_DIR unset (nothing sets it), CLAUDE_PROJECT_DIR set
-    // (both hosts provide it), cwd drifted below the project root.
-    capture({ cwd: drifted, projectDir: null, claudeProjectDir: project });
-
-    expect(queued(project), 'CLAUDE_PROJECT_DIR must anchor the queue when the shell has drifted')
-      .not.toEqual([]);
-    expect(queued(drifted), 'and the event must NOT be orphaned in the drifted directory')
-      .toEqual([]);
+    const target = capture({ cwd: drifted, projectDir: null, claudeProjectDir: project });
+    expect(inside(target, project)).toBe(true);
+    expect(inside(target, drifted)).toBe(false);
   });
 
-  it('CONTAINMENT — an unrelated CLAUDE_PROJECT_DIR that does not contain cwd must NOT overrule it ' +
-     '(#85/#107: the same rule project-identity.mjs\'s projectDirectory() already enforces for the ' +
-     'receipt/Console agreement, applied here rather than trusting the variable unconditionally)', () => {
+  it('CONTAINMENT — an unrelated CLAUDE_PROJECT_DIR that does not contain cwd must NOT overrule it (#85/#107)', () => {
     const cwd = mktemp();
     const unrelated = mktemp();
-
-    capture({ cwd, projectDir: null, claudeProjectDir: unrelated });
-
-    expect(queued(cwd), 'cwd is authoritative when the declared root does not contain it')
-      .not.toEqual([]);
-    expect(queued(unrelated), 'an unrelated declared root must never receive the queue')
-      .toEqual([]);
+    const target = capture({ cwd, projectDir: null, claudeProjectDir: unrelated });
+    expect(inside(target, cwd), 'cwd is authoritative when the declared root does not contain it').toBe(true);
+    expect(inside(target, unrelated), 'an unrelated declared root must never receive the observation').toBe(false);
   });
-
 });

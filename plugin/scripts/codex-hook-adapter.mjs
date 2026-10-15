@@ -28,6 +28,7 @@
  * is missing), so a non-zero status is forwarded verbatim and never reinterpreted.
  */
 import fs from 'node:fs';
+import { readContextFrame, contextFrame, selectContextFrame, renderContextFrame, recordContextBudget } from './hook-context-budget.mjs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -115,6 +116,7 @@ const env = {
   CLAUDE_PLUGIN_ROOT: String(process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT || ''),
   CLAUDE_PROJECT_DIR: projectDir,
   RUVNET_HOOK_HOST: 'codex',
+  RUVNET_CODEX_CONTEXT_FRAMES: '1',
 };
 
 // Dream Cycle 2026-09-05. Codex's own dispatch trampoline (codex-hooks.json) never passes `cwd:`
@@ -131,7 +133,8 @@ let shimCwd = process.cwd();
 try { if (fs.statSync(projectDir).isDirectory()) shimCwd = projectDir; } catch { /* keep the default */ }
 
 const runShim = (payload) => spawnSync(process.execPath, [shim, hookId, ...process.argv.slice(3)], {
-  input: payload, encoding: 'utf8', env, cwd: shimCwd,
+  input: payload, encoding: 'utf8', env: { ...env, ...(BUDGET_MS ? { RUVNET_DECISION_DEADLINE: String(Date.now() + Math.max(1, BUDGET_MS - spent() - 350)) } : {}) }, cwd: shimCwd,
+  ...(BUDGET_MS ? { timeout: Math.max(1, BUDGET_MS - spent() - 100), killSignal: 'SIGKILL' } : {}),
 });
 
 /**
@@ -144,9 +147,9 @@ const runShim = (payload) => spawnSync(process.execPath, [shim, hookId, ...proce
  * away from the failure.
  *
  * BOUNDED, because the wrapper SIGKILLs this process at its own budget and a kill is invisible. The
- * wrapper hands its budget down; iteration stops at 75% of it and ALLOWS, which is decision-gate's
- * own rule for a blown budget ("a blown budget ALLOWS and says nothing"): the gate's slowness must
- * never be indistinguishable from the user doing something wrong.
+ * wrapper hands its budget down; advisory iteration may stop at 75% of it. A PreToolUse write-policy
+ * decision instead refuses the whole patch if any remaining path is unchecked, with explicit
+ * unchecked scope; a timeout can never authorize an uninspected write.
  */
 const BUDGET_MS = Number(process.env.RUVNET_CODEX_BUDGET_MS) || 0;
 const started = Date.now();
@@ -180,20 +183,44 @@ if (patchTool && hookId === 'md-stamp') {
 }
 
 const stdouts = [];
-for (const payload of payloads) {
+const guardedPatch = patchTool && hookId === 'decision-gate' && event === 'PreToolUse';
+// Materialize every path before consulting any policy; a move checks both ends.
+const patchScope = files.map((file) => path.resolve(projectDir, file));
+const refuseUnchecked = (index) => {
+  process.stderr.write(`Patch refused: write-policy inspection incomplete for ${JSON.stringify(patchScope.slice(index))}. Split the patch or retry after the bounded policy check is available.\n`);
+  process.exit(2);
+};
+if (guardedPatch && !patchScope.length) refuseUnchecked(0);
+for (const [index, payload] of payloads.entries()) {
+  if (guardedPatch && BUDGET_MS && BUDGET_MS - spent() <= 100) refuseUnchecked(index);
   const r = runShim(payload);
   // A refusal (or any error) from ANY file is the decision for the whole patch, forwarded verbatim
   // and immediately — there is nothing to compose once one wall has said no.
+  if (guardedPatch && (r.error || r.signal || r.status === null)) refuseUnchecked(index);
   if (r.status && r.stderr) process.stderr.write(r.stderr);
   if (r.status) process.exit(r.status);
   if (r.stdout) stdouts.push(r.stdout);
-  if (BUDGET_MS && spent() > BUDGET_MS * 0.75) break;
+  if (BUDGET_MS && spent() > BUDGET_MS * 0.75 && index + 1 < payloads.length) {
+    if (guardedPatch) refuseUnchecked(index + 1);
+    break;
+  }
 }
 
 if (!stdouts.length) process.exit(0);
 
 /** Merge N bodies' output into ONE value. Envelopes join by context; anything else joins as text. */
 function merge(outs) {
+  const frames = outs.map((value) => readContextFrame(value));
+  if (frames.every((frame) => frame && frame.event === event && frame.handler === hookId)) {
+    const selected = selectContextFrame(contextFrame(hookId, event, frames.flatMap((frame) => frame.blocks)));
+    recordContextBudget({ ...selected.receipt, stage: 'codex-final-fanout-merge' }, env);
+    return renderContextFrame(selected.frame);
+  }
+  if (frames.some(Boolean)) {
+    recordContextBudget({ handler: hookId, event, scope: 'mixed-framed-unframed-budget-unknown' }, env);
+    outs = outs.map((value, index) => frames[index] ? renderContextFrame({ ...frames[index], event }) : value);
+  }
+  if (!frames.some(Boolean)) recordContextBudget({ handler: hookId, event, scope: 'unframed-output-budget-unknown' }, env);
   if (outs.length === 1) return outs[0];
   const parsedAll = outs.map((s) => { try { return JSON.parse(s); } catch { return null; } });
   const contexts = parsedAll.map((p) => p?.hookSpecificOutput?.additionalContext);

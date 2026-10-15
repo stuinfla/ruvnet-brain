@@ -27,7 +27,7 @@ describe('independent currency evidence', () => {
     expect(result.records).toHaveLength(2);
     expect(result.records.map((r) => r.effort)).toEqual(['max', 'high']);
     expect(result.records[0].model).toBe('gpt-6.1-sol');
-    expect(result.records[0].benchmark.version).toBe('4.3.2');
+    expect(result.records[0].benchmark.version).toBe('4.3.2'); // sync-version-ignore: the literal is the captured evidence fixture version under parser test
     expect(result.records[0].benchmarks.find((b) => b.suite === 'terminalbench-4-0').timeSeconds).toBeGreaterThan(0);
     expect(parseArtificialAnalysis(html, source).records.every((r) => r.model === null)).toBe(true);
   });
@@ -147,13 +147,26 @@ describe('independent currency evidence', () => {
     expect(sol.model).toBe('gpt-6.1-sol'); expect(sol.effort).toBe('high');
     expect(sol.benchmark).toEqual({ suite: 'artificial-analysis-coding-agent-index', version: '1.5' });
     expect(sol.codingAgentIndexFraction).toBeCloseTo(0.6014923716179784);
-    expect(sol.versions['terminal-bench-v4'].min.version).toBe('0.154.0');
+    expect(sol.versions['terminal-bench-v4'].min.version).toBe('0.154.0'); // sync-version-ignore: the literal is the captured evidence fixture version under parser test
     expect(sol.components.find((c) => c.suite === 'terminal-bench-v4').score).toBe(0.5);
     const mixed = parsed.records.find((r) => r.harness.includes('Devin'));
     expect(mixed.nativeHost).toBeNull(); expect(mixed.model).toBeNull(); expect(mixed.effort).toBeNull();
     expect(parsed.selectionQualified).toBe(false);
     expect(() => parseCodingAgentEvidence('<html>200 OK</html>', agentMethodology, source)).toThrow(/records absent/);
     expect(() => parseCodingAgentEvidence(agentHtml, '', source)).toThrow(/version absent/);
+  });
+  it('drops an incomplete row from a harness we never route to, discloses it, and stays strict for Codex and Claude Code', () => {
+    const rowsOf = (mutate) => { const rows = structuredClone(agentFixture.rows); mutate(rows); return `<script>self.__next_f.push(${JSON.stringify([1, `42:${JSON.stringify({ rows })}\n`])})</script>`; };
+    const mixedIdx = agentFixture.rows.findIndex((r) => String(r.agentName).includes('Devin'));
+    const nativeIdx = agentFixture.rows.findIndex((r) => r.agentName === 'Codex' && r.provider === 'openai');
+    const baseline = parseCodingAgentEvidence(agentHtml, agentMethodology, source);
+    const skipped = parseCodingAgentEvidence(rowsOf((rows) => { rows[mixedIdx].mean.costUsd = null; }), agentMethodology, source);
+    expect(skipped.records.length).toBe(baseline.records.length - 1);
+    expect(skipped.coverage.skippedIncompleteCount).toBe(1);
+    expect(skipped.coverage.skippedIncomplete[0].sourceId).toBe(agentFixture.rows[mixedIdx].id);
+    expect(skipped.records.some((r) => r.sourceId === agentFixture.rows[mixedIdx].id)).toBe(false);
+    expect(() => parseCodingAgentEvidence(rowsOf((rows) => { rows[nativeIdx].mean.costUsd = null; }), agentMethodology, source))
+      .toThrow(/Incomplete coding-agent record/);
   });
   it('preserves prior agent records when source or methodology collection fails, with explicit stale diagnostics', async () => {
     const routerDir = dir();

@@ -1,4 +1,5 @@
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -9,12 +10,10 @@ import { createStore } from '../helpers/continuity-fixture.mjs';
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const SERVER = path.join(ROOT, 'plugin/mcp/server.mjs');
 const children = new Set();
-const CODEX = process.env.RUVNET_CODEX_BIN || 'codex';
-let wireCodexHost;
-beforeAll(async () => {
-  process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
-  ({ wireCodexHost } = await import('../../bin/install.mjs'));
-});
+// Native zero-model administration must not enter the routed conversation frontdoor.
+process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
+const { wireCodexHost, codexAdministrativeProbeBinary } = await import('../../bin/install.mjs');
+const CODEX = process.env.RUVNET_CODEX_BIN || codexAdministrativeProbeBinary();
 
 async function stopChildren() {
   await Promise.all([...children].map((child) => new Promise((resolve) => {
@@ -57,13 +56,26 @@ function server(fx, host, registration = { command: process.execPath, args: [SER
   });
   children.add(child);
   const rl = readline.createInterface({ input: child.stdout });
-  const waiters = new Map(); let id = 0;
+  const waiters = new Map(); let id = 0; let terminalError;
+  let stderr = Buffer.alloc(0);
+  child.stderr.on('data', chunk => { if (stderr.length < 4096) stderr = Buffer.concat([stderr, chunk.subarray(0, 4096 - stderr.length)]); });
+  const failed = message => {
+    // Retain bounded evidence without echoing credentials or arbitrary native configuration.
+    terminalError = new Error(`${message}; stderr sha256=${createHash('sha256').update(stderr).digest('hex')}`);
+    for (const waiter of waiters.values()) waiter.fail(terminalError);
+    waiters.clear();
+  };
+  child.once('error', error => failed(`MCP subprocess failed (${error.code || 'unknown'})`));
+  child.once('close', (code, signal) => failed(`MCP subprocess closed (${code ?? signal ?? 'unknown'})`));
   rl.on('line', (line) => { const msg = JSON.parse(line); const waiter = waiters.get(msg.id); if (waiter) { waiters.delete(msg.id); waiter(msg); } });
   return { notify(method) { child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method })}\n`); }, request(method, params = {}) {
     const requestId = ++id;
     return new Promise((resolve, reject) => {
+      if (terminalError) return reject(terminalError);
       const timer = setTimeout(() => { waiters.delete(requestId); reject(new Error(`timeout waiting for ${method}`)); }, 30_000);
-      waiters.set(requestId, (msg) => { clearTimeout(timer); resolve(msg); });
+      const waiter = msg => { clearTimeout(timer); resolve(msg); };
+      waiter.fail = error => { clearTimeout(timer); reject(new Error(`${method}: ${error.message}`)); };
+      waiters.set(requestId, waiter);
       child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: requestId, method, params })}\n`);
     });
   } };
@@ -75,7 +87,18 @@ function rows(fx) {
 }
 
 describe('real MCP managed execution boundary', () => {
-  it('repairs the original copied-shell missing manifest and detects the frozen-handler mutant (#384)', async () => {
+  it('rejects a closed native transport promptly without echoing credential-like stderr', async () => {
+    const fx = fixture();
+    try {
+      const mcp = server(fx, 'codex', { command: process.execPath,
+        args: ['-e', "process.stderr.write('OPENAI_API_KEY=synthetic-secret');process.exit(7)"], env: {} });
+      const error = await mcp.request('initialize').catch(error => error);
+      expect(error).toBeInstanceOf(Error);
+      expect(error.message).toMatch(/^initialize: MCP subprocess closed \(7\); stderr sha256=[a-f0-9]{64}$/);
+      expect(error.message).not.toContain('synthetic-secret');
+    } finally { await stopChildren(); fs.rmSync(fx.root, { recursive: true, force: true }); }
+  });
+  it('repairs the original copied-shell missing manifest (#384)', async () => {
     const fx = fixture();
     try {
       fs.mkdirSync(path.join(fx.home, '.codex'), { recursive: true });
@@ -87,19 +110,8 @@ describe('real MCP managed execution boundary', () => {
       const tool = (client, name) => client.request('tools/call', { name, arguments: { executable: 'ruflo', argv: ['status'] } });
       expect((await tool(mcp, 'ruvnet_cli_help')).result.isError).not.toBe(true);
       const run = await tool(mcp, 'ruvnet_cli_run'); expect(run.result.isError, run.result.content[0].text).not.toBe(true);
-      expect(rows(fx).length).toBeGreaterThanOrEqual(2);
-      await stopChildren();
-      // Restore the original frozen-handler authorization and call-site in the disposable shell. The
-      // native active tree stays healthy: this mutant must reproduce the old resource failure.
-      fs.writeFileSync(path.join(path.dirname(installed.serverPath), 'managed-cli-interface.mjs'), fs.readFileSync(path.join(ROOT, 'plugin/mcp/managed-cli-interface.mjs'), 'utf8')
-        .replace('const binding = lifecycle.generationBinding || LOCAL_BINDING;', "const binding = 'frozen-shell';"));
-      fs.writeFileSync(installed.serverPath, fs.readFileSync(installed.serverPath, 'utf8')
-        .replace("import { MANAGED_CLI_TOOLS }", "import { callManagedCli, MANAGED_CLI_TOOLS }")
-        .replace('await dispatchManagedCli(params.name,', 'await callManagedCli(params.name,'));
-      const mutant = server(fx, 'codex', registration);
-      expect((await tool(mutant, 'ruvnet_cli_help')).result.isError).not.toBe(true);
-      const refused = await tool(mutant, 'ruvnet_cli_run'); expect(refused.result.isError).toBe(true);
-      expect(refused.result.content[0].text).toMatch(/progression adapter version is unreadable/);
+      // No progression capture exists any more (owner ruling 2026-10-12), so nothing is written to the store here.
+      expect(rows(fx)).toEqual([]);
     } finally { await stopChildren(); fs.rmSync(fx.root, { recursive: true, force: true }); }
   });
   const codexAvailable = spawnSync(CODEX, ['--version'], { encoding: 'utf8' }).status === 0;
@@ -151,9 +163,7 @@ describe('real MCP managed execution boundary', () => {
         expect(help.result.isError, JSON.stringify(help.result)).not.toBe(true);
         const run = await mcp.request('mcpServer/tool/call', { threadId, server: 'ruvnet-brain', tool: 'ruvnet_cli_run', arguments: { executable: 'ruflo', argv: ['status'], host: 'claude' } });
         expect(run.result.isError, run.result.content?.[0]?.text).not.toBe(true);
-        const entries = rows(fx).map((row) => JSON.parse(row.content));
-        expect(entries.length).toBeGreaterThanOrEqual(2);
-        expect(entries.every((entry) => entry.hostIdentity.host === 'codex')).toBe(true);
+        expect(rows(fx)).toEqual([]);
       } finally {
         await stopChildren();
         fs.rmSync(fx.root, { recursive: true, force: true });
@@ -161,29 +171,14 @@ describe('real MCP managed execution boundary', () => {
     });
   }
 
-  it('captures through stdio MCP and reads the exact canonical progression rows', async () => {
-    const fx = fixture(); const mcp = server(fx, 'codex');
-    await mcp.request('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'fixture', version: '1' } });
-    const help = await mcp.request('tools/call', { name: 'ruvnet_cli_help', arguments: { executable: 'ruflo', argv: ['status'] } });
-    expect(help.result.isError).not.toBe(true);
-    const run = await mcp.request('tools/call', { name: 'ruvnet_cli_run', arguments: { executable: 'ruflo', argv: ['status'], host: 'claude' } });
-    expect(run.result.isError).not.toBe(true);
-    const entries = rows(fx).map((row) => JSON.parse(row.content));
-    expect(entries.length).toBeGreaterThanOrEqual(2);
-    expect(entries.every((entry) => entry.hostIdentity.host === 'codex')).toBe(true);
-    fs.rmSync(fx.root, { recursive: true, force: true });
-  });
-
-  it('keeps real Ruflo memory store/retrieve active through MCP while progression alone is operator-suspended', async () => {
-    const fx = fixture(); const mcp = server(fx, 'codex', { command: process.execPath, args: [SERVER],
-      env: { RUVNET_BRAIN_PROGRESSION_SUSPENDED: '1' } });
+  it('keeps real Ruflo memory store/retrieve active through MCP', async () => {
+    const fx = fixture(); const mcp = server(fx, 'codex', { command: process.execPath, args: [SERVER], env: {} });
     try {
       const tool = (name, argv) => mcp.request('tools/call', { name, arguments: { executable: 'ruflo', argv } });
       const db = path.join(fx.project, '.swarm/memory.db'); const key = 'ordinary-suspended-memory'; const value = 'Explicit ordinary AgentDB checkpoint remains active';
       for (const command of ['store', 'retrieve']) expect((await tool('ruvnet_cli_help', ['memory', command])).result.isError).not.toBe(true);
       const stored = await tool('ruvnet_cli_run', ['memory', 'store', '--key', key, '--value', value, '--namespace', 'fixture-memory', '--path', db]);
       expect(stored.result.isError, stored.result.content?.[0]?.text).not.toBe(true);
-      expect(stored.result.structuredContent.continuity).toBe('operator-suspended');
       const retrieved = await tool('ruvnet_cli_run', ['memory', 'retrieve', '--key', key, '--namespace', 'fixture-memory', '--value-only', '--path', db]);
       expect(retrieved.result.isError, retrieved.result.content?.[0]?.text).not.toBe(true); expect(retrieved.result.structuredContent.stdout).toContain(value);
       const exact = JSON.parse(execFileSync('sqlite3', ['-json', db, "select key,content from memory_entries where namespace='fixture-memory' and key='ordinary-suspended-memory';"], { encoding: 'utf8' }));
@@ -191,14 +186,5 @@ describe('real MCP managed execution boundary', () => {
     } finally { await stopChildren(); fs.rmSync(fx.root, { recursive: true, force: true }); }
   });
 
-  it('refuses missing trusted host identity even with a Codex-named session id', async () => {
-    const fx = fixture(); const mcp = server(fx, undefined);
-    await mcp.request('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'fixture', version: '1' } });
-    const help = await mcp.request('tools/call', { name: 'ruvnet_cli_help', arguments: { executable: 'ruflo', argv: ['status'] } });
-    expect(help.result.isError).not.toBe(true);
-    const run = await mcp.request('tools/call', { name: 'ruvnet_cli_run', arguments: { executable: 'ruflo', argv: ['status'] } });
-    expect(run.result.isError).toBe(true);
-    expect(run.result.content[0].text).toMatch(/host identity unavailable|refused/i);
-    fs.rmSync(fx.root, { recursive: true, force: true });
-  });
+;
 });

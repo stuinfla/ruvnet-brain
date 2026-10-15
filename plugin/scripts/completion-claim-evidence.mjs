@@ -18,7 +18,7 @@
  *
  * HOSTS. Claude Code transcripts (`transcript_path`, JSONL) are parsed. Codex's Stop payload also
  * carries `transcript_path`, but its rollout format is NOT parsed anywhere in this repository
- * (project-progression-sources.mjs and turn-outcome-capture.mjs both decline it), so on Codex the
+ * (turn-outcome-capture.mjs declines it), so on Codex the
  * transcript half is UNKNOWN and only the answer-side half (2)+(3) is enforced — disclosed in the
  * correction text, never silently treated as proven.
  */
@@ -213,7 +213,11 @@ export function auditCompletionClaims(message, { turn = null, host = 'claude' } 
   if (!namesCheck) problems.push('the answer does not name the check that proves it');
   if (!disclosesGaps) problems.push('the answer does not disclose what is NOT verified');
   const transcriptOk = turn ? verification.checks.length > 0 : false;
-  const verdict = transcriptOk && namesCheck && disclosesGaps ? 'PASS' : !turn && namesCheck && disclosesGaps ? 'UNKNOWN' : 'FAIL';
+  const scopedCheck = claims.every(claim => /^(?:The\s+)?(?:targeted|selected|unit|syntax)\s+(?:unit\s+)?(?:checks?|tests?)\s+(?:is|are)\s+(?:now\s+)?(?:passing|green|verified)[.!]?$/i.test(claim.text));
+  // A transcript command is an observed check, not proof of the owner's whole task.
+  if (transcriptOk && namesCheck && disclosesGaps && !scopedCheck) problems.push('observed checks cover only their executed scope; whole-task completion is UNKNOWN');
+  const verdict = transcriptOk && namesCheck && disclosesGaps && scopedCheck ? 'OBSERVED_CHECK'
+    : namesCheck && disclosesGaps ? 'UNKNOWN' : 'FAIL';
   return { verdict, claims, verification, namesCheck, disclosesGaps, problems };
 }
 

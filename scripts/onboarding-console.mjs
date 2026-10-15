@@ -19,6 +19,7 @@
 //   • Bind 127.0.0.1 only; mint a random per-launch token; every mutating POST must echo it (else 403).
 
 import http from 'node:http';
+import { createSuiteUpdater } from './console-suite-update.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -27,6 +28,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync, execFileSync, spawn } from 'node:child_process';
 
 import { auditModel, installedVersion } from './stack-sync.mjs';
+import { acquireDeveloperLock } from '../plugin/scripts/developer-update-lock.mjs';
 import { candidateRoots, findStores, findProjects, diagnose } from './memory-doctor.mjs';
 import { buildStackRecommendations, buildWiringRecommendations, summarizeWiring, scoreMemoryHealth, buildHealthRecommendations, buildCapabilityRecommendations } from './console-engine.mjs';
 import { planFor } from './remedy-registry.mjs';
@@ -44,7 +46,6 @@ import { effectivePrices, loadLabelledRows, MIN_LABELS, OUTCOMES } from './metah
 import { utilization } from './router-utilization.mjs';
 import { loadCatalog, detectProvider, frontierFor } from './model-catalog.mjs';
 import { providerAvailability } from './provider-availability.mjs';
-import { inspectSessionSnapshots } from './session-snapshot-contract.mjs';
 import { learnings } from './learnings.mjs';
 import { gatesSurvey } from './gates.mjs';
 // The write-safety primitives, borrowed rather than re-implemented. See saveConfig for why.
@@ -69,7 +70,7 @@ import {
   saveOpenRouterCredential,
   loadRuntimePreferences,
 } from '../plugin/scripts/runtime-preferences.mjs';
-import { observeLearning as observeScopedLearning } from '../plugin/scripts/learning-observation.mjs';
+import { observeLearning as observeScopedLearning } from '../plugin/scripts/learning-store.mjs';
 import { applyNightlyChoice, nightlyStatus } from './nightly-controller.mjs';
 // One canonical answer to "which directory is this, and have I counted it already?" — shared with
 // the PreCompact snapshot producer (#85) and with memory-doctor's root scan (#107).
@@ -492,20 +493,9 @@ function probeMemory(projectDir, { now = Date.now() } = {}) {
   const stores = memoryStores(projectDir);
   const db = stores.scored;
   const probes = { stores };
-  // compaction survival + session surfacing are filesystem facts, always checkable
-  const snapshot = inspectSessionSnapshots(projectDir, { now });
-  const snapshotDetail = snapshot.kind === 'canonical'
-    ? 'a fresh versioned PreCompact snapshot is present in .swarm/agentdb-sessions.jsonl'
-    : snapshot.kind === 'legacy'
-      ? 'a fresh supported Ruflo session snapshot is present (legacy path; migration recommended)'
-      : snapshot.kind === 'malformed'
-        ? 'snapshot files were found but none matched the supported schema'
-        : snapshot.kind !== 'absent'
-          ? 'the newest supported snapshot is stale'
-          : 'no supported PreCompact snapshot found for this project yet';
-  probes.compactionSurvival = snapshot.fresh
-    ? { status: 'ok', detail: snapshotDetail, artifact: snapshot.kind }
-    : { status: 'warn', detail: snapshotDetail, artifact: snapshot.kind };
+  // Compaction survival is a ruflo write at PreCompact (project-state-auto-* + exact readback); a refusal
+  // reaches the hook-failures summary. It is not re-probed at render.
+  probes.compactionSurvival = { status: 'notTested', detail: 'PreCompact stores a project-state-auto-* checkpoint through ruflo and reads it back; failures appear in the SessionStart hook-failures summary' };
   probes.sessionSurfacing = sessionHookExists() ? { status: 'ok', detail: 'the global SessionStart hook surfaces project state at launch' } : { status: 'warn', detail: 'no SessionStart recall hook found' };
   // recall quality: honestly NOT probed at render (a true probe needs an embedding query; left for an explicit deep test)
   probes.recallQuality = { status: 'notTested', detail: 'not checked this session — a real recall probe needs an embedding round-trip, which render deliberately avoids' };
@@ -659,7 +649,7 @@ function gatherSavings({ repo = REPO } = {}) {
 const CONFIG_SCHEMA = [
   { key: 'openrouterKey', label: 'OpenRouter API key', type: 'secret', secret: true, help: 'Unlocks cheap-model routing and the self-improvement loop. Stored only in your user folder.' },
   { key: 'provider', label: 'Your model house', type: 'enum', options: ['auto', 'anthropic', 'openai', 'codex', 'google', 'xai'], help: 'Which stack is yours? Sets your frontier model + savings baseline — Claude → Fable 5, ChatGPT → GPT-5.6 Sol, Codex → Sol, Gemini → 3.1 Pro, Grok → 4.5. “auto” detects from your keys.' },
-  { key: 'nightly', label: 'Nightly brain refresh', type: 'bool', help: 'Rebuild the knowledge base from pinned versions overnight so answers stay current.' },
+  { key: 'nightly', label: 'Nightly coordinated updates', type: 'bool', help: 'Run the same update coordinator overnight using your saved release policy and tool scope.' },
   { key: 'routing', label: 'Token-smart routing', type: 'enum', options: ['auto', 'off'], help: 'Send cheap, mechanical tasks to smaller, cheaper models automatically.' },
   { key: 'qeFleet', label: 'On-demand QE test fleet', type: 'bool', help: 'Let RuvNet Brain spin up an Agentic-QE test fleet when you ask it to.' },
 ];
@@ -774,7 +764,7 @@ function gatherInventory() {
 /**
  * Keys a project-level <project>/.swarm/ruvnet-brain-settings.json overrides FOR THE RUNTIME THAT
  * READS IT. runtime-preferences merges that file over the user-level choices, and route-cheap, the
- * managed-CLI gate (routing, qeFleet) and learn-capture/learn-flush (learningScope) obey the merge.
+ * managed-CLI gate (routing, qeFleet) and learn-capture (learningScope) obey the merge.
  * The console saves user-level values only, so without this a project seeded by "Apply these choices
  * to new projects" silently ignored every later change made here (RNBC QA 2026-10-01). Only keys whose
  * consumer honours the project file are reported — advocacy, autoApply and provider are read at user
@@ -805,7 +795,7 @@ function gatherConfig() {
   if (!schedule.artifact.supported) {
     unavailable.push({
       key: 'nightly',
-      label: 'Nightly brain refresh',
+      label: 'Nightly coordinated updates',
       reason: schedule.evidence,
     });
   }
@@ -1596,15 +1586,17 @@ export function settleRefreshState({ currentRunId, runId, code = 0, signal = nul
   if (code !== 0 || signal) return classifyRefreshState({ failed: signal ? `signal ${signal}` : `exit ${code}`, runId });
   return Object.freeze({ status: 'settled', runId, error: null });
 }
-function kickRefreshDetailed({ force = false } = {}) {
+let FOLLOW_UP_REFRESH = null;
+export function kickRefreshDetailed({ force = false, followUp = false, cwd = process.cwd(), spawnRefresh = spawn } = {}) {
   if (process.env.RUVNET_CONSOLE_DISABLE_BACKGROUND_REFRESH === '1') {
     REFRESH_STATE = classifyRefreshState({ disabled: true });
     return REFRESH_STATE;
   }
   const now = Date.now();
   if (REFRESH_CHILD && now - LAST_REFRESH_KICK < REFRESH_WEDGED_MS) {
+    if (followUp) FOLLOW_UP_REFRESH = { cwd, spawnRefresh };
     REFRESH_STATE = classifyRefreshState({ running: true, runId: REFRESH_STATE.runId });
-    return REFRESH_STATE;
+    return FOLLOW_UP_REFRESH ? { ...REFRESH_STATE, queued: true } : REFRESH_STATE;
   }
   if (!force && now - LAST_REFRESH_KICK < 15000) {
     REFRESH_STATE = classifyRefreshState({ debounced: true, runId: REFRESH_STATE.runId });
@@ -1622,10 +1614,19 @@ function kickRefreshDetailed({ force = false } = {}) {
     // inherit it. Machine-level caches (stack/activity/trust) don't depend on cwd, so this is safe
     // for them; it only fixes the project-scoped ones. NOT a change to the withhold-vs-recompute
     // contract (the 2026-07-17 outage) — only to which project the background compute is about.
-    const child = spawn(process.execPath, [SELF, '--refresh-cache'], { detached: true, stdio: 'ignore', cwd: process.cwd() });
+    const child = spawnRefresh(process.execPath, [SELF, '--refresh-cache'], { detached: true, stdio: 'ignore', cwd });
     REFRESH_CHILD = child;
     const runId = `${process.pid}-${now}`;
     REFRESH_STATE = classifyRefreshState({ runId });
+    const drainFollowUp = () => {
+      const queued = FOLLOW_UP_REFRESH;
+      FOLLOW_UP_REFRESH = null; // Any number of forced mutations coalesce into one scan.
+      if (!queued) return;
+      // The old child may have published after the mutation withdrew its earlier snapshot.
+      // Withdraw again only after that writer has exited, before the post-mutation child starts.
+      expireCachesEmbedding([STATE_CACHE, STACK_CACHE, MEMORY_CACHE, CAPABILITY_CACHE]);
+      kickRefreshDetailed({ ...queued, force: true });
+    };
     // unref() only releases the event-loop hold; these listeners still fire while the server lives.
     child.on('exit', (code, signal) => {
       // An older child can exit after a newer run has started. It may only settle its own run.
@@ -1633,12 +1634,14 @@ function kickRefreshDetailed({ force = false } = {}) {
       if (!settled) return;
       REFRESH_CHILD = null;
       REFRESH_STATE = settled;
+      drainFollowUp();
     });
     child.on('error', (error) => {
       const settled = settleRefreshState({ currentRunId: REFRESH_STATE.runId, runId, code: 1, signal: error?.message || error });
       if (!settled) return;
       REFRESH_CHILD = null;
       REFRESH_STATE = settled;
+      drainFollowUp();
     });
     child.unref();   // let it outlive this request; it writes the caches and exits on its own
     return REFRESH_STATE;
@@ -1813,7 +1816,7 @@ function serveCached(res, file, decorate = (d) => d, scopeKey = null) {
 
   // WARM — including over-ceiling. Never compute inline here; hand back what we measured, say when,
   // and let the detached child produce the next one.
-  const fresh = freshnessOf(c.at);
+  const fresh = { ...freshnessOf(c.at), ...(FOLLOW_UP_REFRESH ? { stale: true, refreshQueued: true } : {}) };
   kickRefresh();
   return sendJSON(res, 200, {
     ...decorate(c.data),
@@ -2603,18 +2606,15 @@ function apply(ids) {
     const undoToken = journalUndo(undoSpec);
     phaseMs.undoJournalMs += elapsedMs(journalStartedAt);
     const remedyStartedAt = performance.now();
-    const learningBefore = ['learning:flush', 'learning:train', 'learning:flush-legacy-user'].includes(id) ? observeLearning() : null;
+    const learningBefore = id === 'learning:train' ? observeLearning() : null;
     const res = runNode(plan.exec.script, args, learningBefore ? {
       cwd: learningBefore.projectDir,
       env: { ...process.env, RUVNET_BRAIN_PROJECT_DIR: learningBefore.projectDir },
     } : {});
     if (res.ok && learningBefore) {
       const after = observeLearning();
-      const progressed = id === 'learning:flush-legacy-user'
-        ? after.legacyUserKnown && after.legacyUserDepth < learningBefore.legacyUserDepth
-        : id === 'learning:flush'
-        ? after.queueKnown && after.queueDepth < learningBefore.queueDepth
-        : learningBefore.statusKnown && after.statusKnown && after.patterns > learningBefore.patterns;
+      // `ruflo memory distill run` owns the patterns; progress here is a known, readable learner afterwards.
+      const progressed = learningBefore.statusKnown && after.statusKnown;
       if (!progressed) {
         res.ok = false;
         res.log += `\nNo measured learning progress: queue ${after.queueDir}; learner ${after.learnerCwd}. Reload to inspect the remaining evidence.`;
@@ -2922,9 +2922,15 @@ function undo(undoToken) {
   // re-applies an old state over whatever the user has done since. The replay guard at the top of
   // this function covers all kinds; these calls are what arm it.
   if (entry.kind === 'reinstall-version' && entry.pkg && entry.prevVersion) {
-    const r = spawnSync('npm', ['install', '-g', '--prefix', NPM_PREFIX, `${entry.pkg}@${entry.prevVersion}`], { encoding: 'utf8', timeout: 15 * 60 * 1000 });
-    if (r.status === 0) markUndoConsumed(undoToken);
-    return { ok: r.status === 0, log: r.status === 0 ? `reinstalled ${entry.pkg}@${entry.prevVersion}` : (r.stderr || '').slice(-800) };
+    let lock;
+    try {
+      lock = acquireDeveloperLock();
+      const r = spawnSync('npm', ['install', '-g', '--prefix', NPM_PREFIX, `${entry.pkg}@${entry.prevVersion}`], { encoding: 'utf8', timeout: 15 * 60 * 1000,
+        env: { ...process.env, RUVNET_DEVELOPER_UPDATE_TOKEN: lock.token } });
+      if (r.status === 0) markUndoConsumed(undoToken);
+      return { ok: r.status === 0, log: r.status === 0 ? `reinstalled ${entry.pkg}@${entry.prevVersion}` : (r.stderr || '').slice(-800) };
+    } catch (error) { return { ok: false, log: error.message }; }
+    finally { lock?.release(); }
   }
   if (entry.kind === 'restore-backup' && entry.project) {
     const dir = resolveProjectDir(entry.project);
@@ -3068,6 +3074,7 @@ function openBrowser(url) {
   }
 }
 function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = false, cwd = process.cwd() } = {}) {
+  const suiteUpdater = createSuiteUpdater({ home: CONSOLE_ROOT, brainHome: process.env.RUVNET_BRAIN_HOME || path.join(CONSOLE_ROOT, '.cache/ruvnet-brain'), markNightly: () => saveConfig({ nightly: true }) });
   const controlToken = crypto.randomBytes(24).toString('hex');
   let activeRuntime = null;
   let receiptFile = null;
@@ -3100,7 +3107,7 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
       if (req.method === 'GET' && url === '/api/state') {
         // project-scoped: never serve another project's cached state. The measuring lives in the
         // --refresh-cache child; this handler only ever reads a file and stamps the token on it.
-        return serveCached(res, STATE_CACHE, (d) => ({ ...d, token: TOKEN }), cwd);
+        return serveCached(res, STATE_CACHE, (d) => ({ ...d, token: TOKEN, suiteUpdate: suiteUpdater.state() }), cwd);
       }
       // ── /api/capabilities — "what do I own, and is it on?" ──────────────────────────────────────
       //
@@ -3142,7 +3149,8 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
         // the request path before the instant-open fix.
         return serveCached(res, STACK_CACHE);
       }
-      if (req.method === 'GET' && url === '/api/activity') return sendJSON(res, 200, gatherActivity(cwd));
+      if (req.method === 'GET' && url === '/api/suite-update') return sendJSON(res, 200, suiteUpdater.state());
+      if (req.method === 'GET' && url === '/api/activity') return sendJSON(res, 200, { ...gatherActivity(cwd), suiteUpdate: suiteUpdater.state() });
       if (req.method === 'GET' && url === '/api/lessons') return sendJSON(res, 200, gatherLessons());
       if (req.method === 'GET' && url === '/api/trust') return sendJSON(res, 200, await gatherTrust());
       if (req.method === 'GET' && url === '/tips') { req.url = '/tips.html'; return serveStatic(req, res); }
@@ -3153,6 +3161,12 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
       if (req.method === 'POST') {
         const body = await readBody(req);
         if (body.token !== TOKEN) return sendJSON(res, 403, { error: 'bad or missing token' });
+        if (url === '/api/suite-update') {
+          const origin = req.headers.origin;
+          if (origin && origin !== `http://${req.headers.host}`) return sendJSON(res, 403, { error: 'forbidden origin' });
+          const result = suiteUpdater.start(body.channel);
+          return sendJSON(res, result.status || (result.ok ? 202 : 500), result);
+        }
         if (url === '/api/apply') return sendJSON(res, 200, apply(Array.isArray(body.ids) ? body.ids : []));
         if (url === '/api/save-config') return sendJSON(res, 200, saveConfig(body.values || {}));
         if (url === '/api/save-advocacy') return sendJSON(res, 200, saveAdvocacy(body.values || {}));
@@ -3178,7 +3192,7 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
           //     refresh that did not start must not report that it did, so `started` is the child's
           //     real answer, not a constant.
           expireCachesEmbedding([STATE_CACHE, STACK_CACHE, MEMORY_CACHE, CAPABILITY_CACHE]);
-          const refresh = kickRefreshDetailed({ force: true });
+          const refresh = kickRefreshDetailed({ force: true, followUp: true, cwd });
           return sendJSON(res, 200, { ok: refresh.status !== 'failed', started: refresh.status === 'started', refreshing: refresh.status === 'started' || refresh.status === 'already-running', refresh });
         }
         if (url === '/api/undo') return sendJSON(res, 200, undo(body.undoToken));

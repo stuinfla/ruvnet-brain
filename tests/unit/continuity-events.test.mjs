@@ -4,9 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   CONTINUITY_SECRETS,
-  collectCommits, collectReleases, collectTurnEvents, eventIdOf, eventKey, makeEvent, userLevelAgentdbHooks,
+  collectCommits, collectReleases, collectTurnEvents, eventIdOf, eventKey, makeEvent,
 } from '../../plugin/scripts/continuity-events.mjs';
-import { ContinuityJournal } from '../../plugin/scripts/continuity-journal.mjs';
 import { adoptedProject, cleanup, commit, git, tmp, transcript } from '../helpers/continuity-fixture.mjs';
 
 let savedCwdRoot;
@@ -17,7 +16,7 @@ afterEach(cleanup);
 const read = (file) => fs.readFileSync(file, 'utf8').split('\n');
 
 describe('continuity events: git', () => {
-  it('records each commit by SHA with its subject, files and branch; a tag becomes a release', () => {
+  it('records each commit by SHA with its subject, files and branch; a local tag remains an unverified release observation', () => {
     const p = adoptedProject();
     const first = commit(p.dir, p.env, 'a.txt', 'feat: first fixture change');
     const second = commit(p.dir, p.env, 'b.txt', 'fix: second fixture change');
@@ -28,7 +27,7 @@ describe('continuity events: git', () => {
     expect(events[0].detail).toMatchObject({ branch: 'main', merge: false, files: ['b.txt'] });
     const releases = collectReleases({ checkoutRoot: p.dir, sinceMs: Date.now() - 3_600_000, host: 'claude', session: 's1', project: 'x' });
     expect(releases).toHaveLength(1);
-    expect(releases[0]).toMatchObject({ kind: 'release', summary: `v9.9.9 -> ${second.slice(0, 8)}`, detail: { tag: 'v9.9.9', sha: second, channel: 'code' } });
+    expect(releases[0]).toMatchObject({ kind: 'release', authoritative: false, source: 'git-tag', summary: `LOCAL TAG v9.9.9 -> ${second.slice(0, 8)} (publication unverified)`, detail: { tag: 'v9.9.9', sha: second, channel: 'code', publicationVerified: false } });
   });
 
   it('the key sorts chronologically and ends in the content id, so dedupe is a key lookup', () => {
@@ -122,15 +121,6 @@ describe('continuity events: one Claude turn', () => {
     expect(events[0]).toMatchObject({ kind: 'decision', host: 'codex' });
   });
 
-  it('an event seen at three boundaries is journalled once', () => {
-    const p = adoptedProject();
-    const journal = new ContinuityJournal({ projectRoot: p.dir });
-    const e = makeEvent({ kind: 'lesson', source: 'explicit', authoritative: true, summary: 'Read back every write.' });
-    expect(journal.record([e])).toHaveLength(1);
-    expect(journal.record([e])).toHaveLength(0);
-    expect(journal.record([makeEvent({ kind: 'lesson', source: 'explicit', authoritative: true, summary: 'read back EVERY write.', at: Date.now() + 5000 })])).toHaveLength(0);
-    expect(journal.pending()).toHaveLength(1);
-  });
 });
 
 describe('redaction happens BEFORE truncation (review S2)', () => {
@@ -270,18 +260,59 @@ describe('secrets in commands, outputs and findings are redacted (re-review S3)'
   });
 });
 
-describe('user-level hook detection (read-only)', () => {
-  it('detects the owner turn-capture / autocapture / ensure hooks from settings.json and never writes it', () => {
-    const home = tmp('cont-home-');
-    expect(userLevelAgentdbHooks({ home })).toMatchObject({ turnCapture: false, autocapture: false, ensure: false });
-    const settings = path.join(home, '.claude', 'settings.json');
-    fs.mkdirSync(path.dirname(settings), { recursive: true });
-    const body = JSON.stringify({ hooks: {
-      Stop: [{ matcher: '*', hooks: [{ type: 'command', command: 'node "${HOME}/.claude/hooks/agentdb-turn-capture.mjs" || true' }] }],
-      SessionStart: [{ matcher: '*', hooks: [{ type: 'command', command: 'bash "${HOME}/.claude/hooks/agentdb-ensure.sh" || true' }] }],
-    } });
-    fs.writeFileSync(settings, body);
-    expect(userLevelAgentdbHooks({ home })).toMatchObject({ turnCapture: true, autocapture: false, ensure: true });
-    expect(fs.readFileSync(settings, 'utf8')).toBe(body);
+describe('tool gate terminal truth', () => {
+  it.each([
+    ['missing terminal code', '40 tests passed', {}, 'unknown', null],
+    ['async native session', 'Process running with session ID 123', {}, 'pending', null],
+    ['colon-form successful code', 'Exit code: 0', {}, 'pass', 0],
+    ['colon-form failed code', 'Exit code: 23', {}, 'fail', 23],
+    ['explicit error overrides zero', 'Exit code: 0', { is_error: true }, 'fail', 0],
+    ['declared failure overrides zero', 'Exit code: 0', { success: false }, 'fail', 0],
+    ['contradictory codes never pass', 'Exit code: 0\nExit code: 7', {}, 'fail', null],
+    ['running cannot claim zero', 'Process running with session ID 123\nExit code: 0', {}, 'pending', null],
+  ])('%s', (_name, content, extra, outcome, exitCode) => {
+    const lines = [
+      { type: 'user', message: { role: 'user', content: 'Check this fixture.' } },
+      { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'gate', name: 'Bash', input: { command: 'npm test' } }] } },
+      { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'gate', content, ...extra }] } },
+    ].map(row => JSON.stringify(row));
+    const [event] = collectTurnEvents({ lines, host: 'claude', session: 's', project: 'fixture' });
+    expect(event.detail).toMatchObject({ outcome, exitCode });
+    expect(event.authoritative).toBe(['pass', 'fail'].includes(outcome));
+    if (outcome !== 'pass') expect(event.summary).not.toMatch(/^PASS/);
   });
+});
+
+
+describe('shared completed-tool evidence boundary', () => {
+  it('keeps native read success separate from terminal command completion', async () => {
+    const { normalizeToolOutcome } = await import('../../plugin/scripts/continuity-events.mjs');
+    expect(normalizeToolOutcome({ is_error: false, content: 'actual source content' })).toMatchObject({ outcome: 'unknown', successfulToolResult: true });
+    for (const state of ['failed', 'failure', 'unknown', 'unavailable', 'running', 'pending', 'cancelled', 'canceled', 'interrupted', 'aborted', 'timeout']) {
+      expect(normalizeToolOutcome({ is_error: false, status: state, content: 'actual source content' }).successfulToolResult).toBe(false);
+    }
+    expect(normalizeToolOutcome({ is_error: false, outcome: 'failure', content: 'Exit code: 0' })).toMatchObject({ outcome: 'fail', successfulToolResult: false });
+    expect(normalizeToolOutcome({ content: 'source title only' }).successfulToolResult).toBe(false);
+  });
+  it.each([
+    [{ interrupted: true, content: { exit_code: 0 } }, 'interrupted'],
+    [{ completed: false, content: { exit_code: 0 } }, 'pending'],
+    [{ exit_code: 9, content: { exit_code: 0 } }, 'fail'],
+    [{ signal: 'SIGTERM', content: { exit_code: 0 } }, 'interrupted'],
+  ])('keeps outer failure or incomplete evidence over nested success: %j', async (payload, outcome) => {
+    const { normalizeToolOutcome } = await import('../../plugin/scripts/continuity-events.mjs');
+    expect(normalizeToolOutcome(payload)).toMatchObject({ outcome, successfulToolResult: false });
+  });
+});
+
+
+it.each(['cancelled', 'canceled'])('shared normalizer respects outer %s boolean over nested zero', async key => {
+  const { normalizeToolOutcome } = await import('../../plugin/scripts/continuity-events.mjs');
+  expect(normalizeToolOutcome({ [key]: true, content: { exit_code: 0 } })).toMatchObject({ outcome: 'interrupted', exitCode: null, successfulToolResult: false });
+});
+
+
+it.each([[{ status: 1, success: true }, 'fail', 1], [{ status: 0 }, 'pass', 0]])('shared normalizer retains integer status as exit evidence', async (content, outcome, exitCode) => {
+  const { normalizeToolOutcome } = await import('../../plugin/scripts/continuity-events.mjs');
+  expect(normalizeToolOutcome({ content })).toMatchObject({ outcome, exitCode });
 });

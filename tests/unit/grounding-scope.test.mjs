@@ -65,7 +65,7 @@ describe.skipIf(process.platform === 'win32')('Issue320 actual registered comman
       for (const [i,prompt] of ['bump the ruflo pin in my setup script to 3.42.5','What can Ruflo do?'].entries()) {
         const payload={hook_event_name:'UserPromptSubmit',session_id:`excluded-${i}`,prompt};
         const directive=fire(f,host,'ground-ruvnet',payload); expect(directive.stdout).not.toContain('ground before you assert'); expect(directive.elapsedMs).toBeLessThan(4500);
-        fire(f,host,'grounding-turn-mark',payload); expect(readMarker(path.join(f.brain,'grounding-turn',`excluded-${i}.json`)).groundingScope).toEqual(scope);
+        fire(f,host,'grounding-turn-mark',payload); expect(readMarker(path.join(f.brain,'grounding-turn',`${host}-excluded-${i}.json`)).groundingScope).toEqual(scope);
         expect(fire(f,host,'grounding-turn-gate',{hook_event_name:'Stop',session_id:`excluded-${i}`,last_assistant_message:'Ruflo supports memory.'}).stdout).toBe('');
       }
       fire(f,host,'grounding-turn-mark',{hook_event_name:'UserPromptSubmit',session_id:'introduced',prompt:'What can Ruflo do?'});
@@ -81,7 +81,7 @@ describe.skipIf(process.platform === 'win32')('Issue320 actual registered comman
       for (const raw of ['all', [], ['unknown']]) {
         const f=home(raw),payload={hook_event_name:'UserPromptSubmit',session_id:'default',prompt:'ruflo memory'};
         expect(fire(f,host,'ground-ruvnet',payload).stdout).toContain('ground before you assert');
-        fire(f,host,'grounding-turn-mark',payload);expect(fs.existsSync(path.join(f.brain,'grounding-turn/default.json'))).toBe(true);
+        fire(f,host,'grounding-turn-mark',payload);expect(fs.existsSync(path.join(f.brain,`grounding-turn/${host}-default.json`))).toBe(true);
       }
     });
   }

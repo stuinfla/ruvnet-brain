@@ -113,7 +113,7 @@ describe.skipIf(!hasBash || process.platform === 'win32')('grounding-stamp.sh â€
 describe.skipIf(!hasBash || process.platform === 'win32')('end-to-end: the exact GitHub #316 repro, mark -> stamp -> gate', () => {
   it('a prompt about "ruvnet" that IS followed by a real search_ruvnet("ruvnet: ...") call leaves the Stop gate silent', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-316-'));
-    const env = { ...process.env, HOME: home, RUVNET_GROUNDING_TURN_DIR: path.join(home, 'grounding-turn') };
+    const env = { ...process.env, HOME: home, RUVNET_HOOK_HOST: 'claude', RUVNET_GROUNDING_TURN_DIR: path.join(home, 'grounding-turn') };
 
     const markResult = spawnSync(process.execPath, [MARK], {
       input: JSON.stringify({ hook_event_name: 'UserPromptSubmit', session_id: 'sess-316', prompt: 'what does ruvnet actually ship?' }),

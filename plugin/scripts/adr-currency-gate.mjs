@@ -25,11 +25,12 @@
  * import graph in four fixtures, two ship-command definitions shipped disagreeing on day one).
  *
  * FAIL OPEN, ALWAYS. Not a git repo, unreadable doc, git unavailable, anything unexpected: ALLOW,
- * silently. An adversarial review earlier today found a sibling hook turning a missing `sqlite3`
+ * with a typed skipped-policy diagnostic when an owning-checkout inspection cannot finish. An adversarial review earlier today found a sibling hook turning a missing `sqlite3`
  * into a confident claim that the memory store was corrupt. A gate that fabricates a reason is worse
  * than no gate, because it spends the credibility every other gate is drawing on.
  */
 import fs from 'node:fs';
+import { execFileSync, spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -47,24 +48,18 @@ const STALE = new Set(['presumed-stale']);
  * the Write path. Same logic, narrower question.
  */
 /**
- * doc-currency lives OUTSIDE the payload, and that is correct rather than an oversight worked
- * around. `plugin/` is what reaches a user (marketplace.json `"source": "./plugin"`), a user's
- * install has no `docs/adr/`, and a gate about THIS repo's ADRs has nothing to say there. A static
- * `import('../../scripts/doc-currency.mjs')` would have shipped a specifier that resolves only in a
- * checkout and throws ERR_MODULE_NOT_FOUND on every real install — the exact defect ADR-065 exists
- * to stop, which `payload-self-contained.test.mjs` caught in the very commit citing ADR-065.
- *
- * So the dependency is resolved at runtime and its ABSENCE IS A CLEAN SKIP, not an error: outside a
- * checkout this gate simply has no opinion.
+ * The canonical evaluator ships adjacent to this owned hook. The root CLI is a thin compatibility
+ * entrypoint; an edited checkout supplies only files and Git history, never executable evaluator
+ * code. Missing owned bytes are unavailable evidence, not permission to import project JavaScript.
  */
-async function loadDocCurrency(root) {
-  const p = path.join(root, 'scripts', 'doc-currency.mjs');
+async function loadDocCurrency() {
+  const p = path.join(HERE, 'doc-currency.mjs');
   if (!fs.existsSync(p)) return null;
   try { return await import(pathToFileURL(p).href); } catch { return null; }
 }
 
 export async function staleGovernorsOf(relPath, { root = REPO, docCurrency = null, readFile = null } = {}) {
-  const mod = docCurrency ?? await loadDocCurrency(root);
+  const mod = docCurrency ?? await loadDocCurrency();
   if (!mod) return [];
   const { listDocs, evaluateDoc, parseFrontmatter, resolveGoverned, blockingFindings, DEFAULT_DIRS, isGitRepo } = mod;
   // `readFile` is injectable for one reason, and it is not tidiness: with `fs.readFileSync` hardcoded
@@ -137,24 +132,73 @@ const isMain = (() => {
   catch { return false; }
 })();
 
+/** Installed location is transport, never the authority for the edited repository. */
+export function owningEditedCheckout(payload, deadline = Date.now() + 1000) {
+  const input = payload?.tool_input ?? {};
+  const file = input.file_path || input.path;
+  if (typeof file !== 'string' || !file) return null;
+  let absolute = path.resolve(payload.cwd || process.cwd(), file);
+  if (fs.existsSync(absolute)) absolute = fs.realpathSync.native(absolute);
+  let directory = path.dirname(absolute);
+  while (!fs.existsSync(directory)) {
+    const parent = path.dirname(directory);
+    if (parent === directory) return null;
+    directory = parent;
+  }
+  const suffix = path.relative(directory, absolute);
+  directory = fs.realpathSync.native(directory);
+  absolute = path.join(directory, suffix);
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) throw new Error('ADR scope deadline exceeded');
+  let root;
+  try { root = execFileSync('git', ['-C', directory, 'rev-parse', '--show-toplevel'], {
+    encoding: 'utf8', timeout: remaining, killSignal: 'SIGKILL', stdio: ['ignore', 'pipe', 'ignore'],
+  }).trim(); } catch (error) { if (error.code === 'ETIMEDOUT') throw error; return null; }
+  const rel = path.relative(root, absolute).split(path.sep).join('/');
+  if (rel.startsWith('../') || rel === '..' || rel.startsWith('docs/')) return null;
+  if (!fs.existsSync(path.join(root, 'docs', 'adr'))) return null;
+  return { root, rel };
+}
+
+/** Keep imports and the reused evaluator's Git descendants inside the parent decision budget. */
+export function boundedStaleGovernorsOf(scope, deadline) {
+  return new Promise((resolve) => {
+    const remaining = deadline - Date.now() - 250;
+    if (remaining <= 0) return resolve({ skipped: 'ADR evaluation deadline exceeded' });
+    let settled = false; let timer; let output = '';
+    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--evaluate-owning-checkout', scope.root, scope.rel], {
+      detached: process.platform !== 'win32' && process.env.RUVNET_DECISION_GATE !== '1', stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const finish = (value) => { if (!settled) { settled = true; clearTimeout(timer); resolve(value); } };
+    const kill = () => { try { if (process.platform !== 'win32' && process.env.RUVNET_DECISION_GATE !== '1') process.kill(-child.pid, 'SIGKILL'); else child.kill('SIGKILL'); } catch {} };
+    timer = setTimeout(() => { kill(); finish({ skipped: 'ADR evaluation deadline exceeded' }); }, remaining);
+    child.stdout.on('data', (chunk) => { output += chunk; if (output.length > 65536) { kill(); finish({ skipped: 'ADR evaluation output exceeded bound' }); } });
+    child.once('error', () => finish({ skipped: 'ADR evaluator unavailable' }));
+    child.once('close', (code) => { kill(); if (code !== 0) return finish({ skipped: 'ADR evaluator failed' });
+      try { const stale = JSON.parse(output); if (!Array.isArray(stale)) throw Error(); finish({ stale }); }
+      catch { finish({ skipped: 'ADR evaluator returned invalid result' }); }
+    });
+  });
+}
+
 if (isMain) {
-  // Every failure path below ALLOWS. This gate may never be the reason work cannot proceed for a
-  // reason it cannot explain.
-  let allow = 0;
-  try {
-    const payload = fs.readFileSync(0, 'utf8');
-    const input = JSON.parse(payload)?.tool_input ?? {};
-    const file = input.file_path || input.path || '';
-    if (!file) process.exit(allow);
-    const rel = path.relative(REPO, path.resolve(file));
-    // Edits OUTSIDE the repo, and edits to the documents themselves, are never blocked — the second
-    // exemption is essential: reconciling a stale ADR must not be refused by the staleness it fixes.
-    if (rel.startsWith('..') || rel.startsWith('docs/')) process.exit(allow);
-    const stale = await staleGovernorsOf(rel);
-    if (!stale.length) process.exit(allow);
-    process.stderr.write(`${refusalText(rel, stale)}\n`);
-    process.exit(2);
-  } catch {
-    process.exit(allow);
+  if (process.argv[2] === '--evaluate-owning-checkout') {
+    try {
+      const ownedEvaluator = await loadDocCurrency();
+      if (!ownedEvaluator) throw new Error('Brain-owned evaluator unavailable');
+      process.stdout.write(JSON.stringify(await staleGovernorsOf(process.argv[4], { root: process.argv[3], docCurrency: ownedEvaluator })));
+    }
+    catch { process.exitCode = 1; }
+  } else {
+    try {
+      const deadline = Math.min(Number(process.env.RUVNET_DECISION_DEADLINE) || Infinity, Date.now() + 3000);
+      const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
+      const scope = owningEditedCheckout(payload, deadline);
+      if (scope) {
+        const result = await boundedStaleGovernorsOf(scope, deadline);
+        if (result.skipped) { process.stderr.write(result.skipped + '\n'); process.exitCode = 3; }
+        else if (result.stale.length) { process.stderr.write(refusalText(scope.rel, result.stale) + '\n'); process.exitCode = 2; }
+      }
+    } catch { process.stderr.write('ADR owning-checkout inspection unavailable; no currency verdict was obtained.\n'); process.exitCode = 3; }
   }
 }

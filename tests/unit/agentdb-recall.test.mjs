@@ -32,7 +32,9 @@ fs.appendFileSync(process.env.RECALL_LOG, JSON.stringify({ args: a, cwd: process
 fs.writeFileSync(path.join(process.cwd(), 'ruvector.db'), 'scratch');
 if (process.env.RECALL_HANG || (process.env.RECALL_RETRIEVE_HANG && a[1] === 'retrieve')) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,10000);
 const rows = JSON.parse(fs.readFileSync(process.env.RECALL_ROWS, 'utf8'));
-if (a[1] === 'retrieve') console.log(rows.find(r => r.key === get('-k') && r.namespace === get('-n'))?.content || '');
+const ns = a.includes('--namespace') ? get('--namespace') : get('-n'), key = a.includes('--key') ? get('--key') : get('-k');
+if (a[1] === 'retrieve') console.log(rows.find(r => r.key === key && r.namespace === ns)?.content || '');
+else if (a[1] === 'list') console.log(JSON.stringify(rows.filter(r => r.namespace === ns).map(r => ({ key: r.key, namespace: r.namespace }))));
 else {
  const kw = a.includes('-t'), q = get('-q');
  console.log('[INFO] Searching');
@@ -110,81 +112,12 @@ describe('canonical prompt-time AgentDB recall', () => {
       expect(() => agentdbStores(wt)).toThrow(/escape/);
     } finally { w.cleanup(); }
   });
-  it('searches curated lessons and patterns, excluding transcript telemetry despite its high score', async () => {
-    const w = world();
-    try {
-      fs.writeFileSync(w.env.RECALL_ROWS, JSON.stringify([
-        ...rows,
-        { key: 'lesson-wal-backup', namespace: 'lessons', score: 0.76, preview: 'misleading preview', content: 'TASK: preserve AgentDB. WORKED: use managed WAL-safe backup.' },
-        { key: 'pattern-memory-backup', namespace: 'patterns', score: 0.74, preview: 'misleading preview', content: 'WAL-safe backup preserves committed and pending database changes.' },
-        { key: 'session-precompact-old', namespace: 'proj', score: 0.99, content: 'RECENT USER ASKS: thanks and good to know.' },
-      ]));
-      const r = await recall({ prompt: 'Preserve AgentDB with a safe backup', projectDir: w.proj, env: w.env });
-      expect(r.picks.map(p => p.key)).toContain('lesson-wal-backup');
-      expect(r.picks.map(p => p.key)).toContain('pattern-memory-backup');
-      expect(r.block).not.toContain('session-precompact-old');
-      expect(r.block).toContain('WAL-safe backup'); expect(r.block).not.toContain('misleading preview');
-    } finally { w.cleanup(); }
-  });
-  it('runs real child processes for both namespaces and full-value recall in isolated cwd with daemon off', async () => {
-    const w = world();
-    try {
-      const r = await recall({ prompt: 'Fix the parser', projectDir: w.proj, env: w.env });
-      expect(r.block).toContain('Require useful recall'); expect(r.block).toContain('Historical requirement');
-      const calls = w.calls(); expect(calls.some(c => c.args.includes('default'))).toBe(true); expect(calls.some(c => c.args.includes('proj'))).toBe(true);
-      for (const c of calls) {
-        expect(c.args[c.args.indexOf('--path') + 1]).toBe(path.join(w.proj, '.swarm', 'memory.db'));
-        expect(c.cwd).not.toBe(w.proj); expect(c.daemon).toBe('0'); expect(fs.existsSync(c.cwd)).toBe(false);
-      }
-      expect(fs.existsSync(path.join(w.proj, 'ruvector.db'))).toBe(false);
-    } finally { w.cleanup(); }
-  });
   it('kills hung search processes at the shared deadline and records unavailable evidence honestly', async () => {
     const w = world();
     try {
       const started = Date.now();
       const r = await recall({ prompt: 'Fix parser', projectDir: w.proj, env: { ...w.env, RECALL_HANG: '1' }, deadlineMs: 150 });
       expect(Date.now() - started).toBeLessThan(1000); expect(r.block).toContain('timed out'); expect(r.picks).toEqual([]);
-    } finally { w.cleanup(); }
-  });
-  it('does not inject previews when exact-key retrieval times out', async () => {
-    const w = world();
-    try {
-      const r = await recall({ prompt: 'Fix parser', projectDir: w.proj, env: { ...w.env, RECALL_RETRIEVE_HANG: '1' }, deadlineMs: 350 });
-      expect(r.picks).toEqual([]); expect(r.block).toContain('timed out reading exact values');
-      expect(r.block).not.toContain('requirement present');
-    } finally { w.cleanup(); }
-  });
-  it('recalls relevant automatic OUTCOME knowledge stored only in turns, not session metadata', async () => {
-    const w = world();
-    try {
-      const token = 'ghp_' + 'z'.repeat(35);
-      const stored = [];
-      const captured = captureTurnOutcome({ event: 'Stop', host: 'codex', projectDir: w.proj,
-        env: { ...w.env, RUVNET_TURN_CAPTURE: 'on' }, home: w.env.HOME, ruflo: w.env.RUFLO_BIN,
-        payload: { session_id: 'private-session-identifier', last_assistant_message:
-          'We finished an unrelated color chart. The safe packing remedy is count three blue bins then record seven. '
-          + token + ' This outcome records the learned procedure so a later independent task can reuse it without consulting a private transcript.' },
-        launch: (steps) => {
-          for (const step of steps.filter(s => s.kind === 'store')) stored.push({ key: step.args[step.args.indexOf('-k') + 1],
-            namespace: step.args[step.args.indexOf('-n') + 1], score: 0.88, preview: 'session metadata', content: step.args[step.args.indexOf('--value') + 1] });
-          fs.writeFileSync(w.env.RECALL_ROWS, JSON.stringify([...stored,
-            { key: 'turn-codex-metadata2', namespace: 'turns', score: 1.0, content: '[turn] || SESSION: safe packing || TRANSCRIPT: private-path' },
-            { key: 'turn-codex-metadata', namespace: 'turns', score: 0.99, content: '[turn project=proj] || SESSION: safe packing metadata only || TRANSCRIPT: private-path' },
-            { key: 'turn-codex-unrelated', namespace: 'turns', score: 0.98, content: '[turn project=proj] || OUTCOME: The weather is sunny. || SESSION: safe packing' },
-          ]));
-          return { launched: true };
-        },
-      });
-      expect(captured.queued, JSON.stringify(captured)).toBe(true); expect(stored).toHaveLength(1);
-      expect(stored[0].namespace).toBe('turns'); expect(stored[0].content).not.toContain(token);
-      const r = await recall({ prompt: 'Recommend the safe packing remedy', projectDir: w.proj, env: w.env });
-      expect(r.block).toContain('safe packing remedy is count three blue bins then record seven');
-      expect(r.block).not.toContain('private-session-identifier'); expect(r.block).not.toContain('TRANSCRIPT');
-      expect(r.picks.map(p => p.key)).toEqual([stored[0].key]); expect(r.block).not.toContain(token);
-      const excerpt = turnOutcomeExcerpt('OUTCOME: safe packing ' + token + ' keeps history private. || SESSION: hidden', 'safe packing');
-      expect(excerpt).toContain('[REDACTED:token]'); expect(excerpt).not.toContain(token);
-      expect(Buffer.byteLength(r.block + '\n')).toBeLessThanOrEqual(BLOCK_MAX_BYTES);
     } finally { w.cleanup(); }
   });
   it('preserves worked, failed and no-retry facts from an automatic outcome and deduplicates repeated clauses', async () => {
@@ -251,29 +184,6 @@ describe('canonical prompt-time AgentDB recall', () => {
       } finally { process.env.PATH = original; }
     } finally { w.cleanup(); }
   });
-  it.skipIf(process.platform === 'win32')('runs the actual registered Claude command and Codex launcher/adapter with source candidate bytes', () => {
-    const w = world();
-    try {
-      const plugin = path.resolve('plugin');
-      const active = path.join(w.env.RUVNET_BRAIN_HOME, 'versions', 'candidate');
-      fs.mkdirSync(active, { recursive: true });
-      fs.cpSync(path.join(plugin, 'scripts'), path.join(active, 'scripts'), { recursive: true });
-      fs.copyFileSync(path.join(plugin, 'scripts', 'codex-hook-wrapper.mjs'), path.join(w.env.RUVNET_BRAIN_HOME, 'codex-hook.mjs'));
-      fs.writeFileSync(path.join(w.env.RUVNET_BRAIN_HOME, 'active.json'), JSON.stringify({ codeRoot: active, version: getVersion(), generation: 'candidate' }));
-      const payload = { hook_event_name: 'UserPromptSubmit', prompt: 'I require recall on every prompt.', cwd: w.proj, session_id: 'native-claude' };
-      const commands = (file) => JSON.parse(fs.readFileSync(file, 'utf8')).hooks.UserPromptSubmit.flatMap(g => g.hooks).map(h => h.command);
-      const env = { ...w.env, CLAUDE_PLUGIN_ROOT: plugin, CODEX_HOME: path.join(w.dir, 'codex') };
-      const claudeCommand = commands('plugin/hooks/hooks.json').find(c => c.includes(' ground-ruvnet'));
-      const claude = spawnSync('bash', ['-c', claudeCommand], { cwd: w.proj, env, input: JSON.stringify(payload), encoding: 'utf8', timeout: 10000 });
-      expect(claude.status).toBe(0); expect(claude.stdout).toContain('decision-agentdb-hidden'); expect(claude.stdout).toContain('untrusted historical evidence');
-      const codexCommand = commands('plugin/hooks/codex-hooks.json').find(c => c.endsWith(' ground-ruvnet'));
-      const codex = spawnSync('bash', ['-c', codexCommand], { cwd: w.proj, env, input: JSON.stringify({ ...payload, session_id: 'native-codex' }), encoding: 'utf8', timeout: 10000 });
-      expect(codex.status).toBe(0);
-      const context = JSON.parse(codex.stdout).hookSpecificOutput;
-      expect(context.hookEventName).toBe('UserPromptSubmit'); expect(context.additionalContext).toContain('decision-agentdb-hidden');
-      expect(context.additionalContext).toContain('untrusted historical evidence');
-    } finally { w.cleanup(); }
-  });
   it.skipIf(process.platform === 'win32')('registered commands recall from nested cwd and a linked worktree without local memory', () => {
     const w = world();
     try {
@@ -317,14 +227,121 @@ it('learning recall refuses extra fields and delivers only unratified fixed voca
  expect(learningObservationExcerpt(JSON.stringify(row))).toBe('Unratified host-reported success: Bash npm test. Verify current results.');
  for(const altered of [{...row,secret:'private'},{...row,action:'npm test --token private'},{...row,authoritative:true},{...row,provenance:'user_claim'},{...row,tool:'unknown'}])expect(learningObservationExcerpt(JSON.stringify(altered))).toBeNull();
 });
-it.each(['project','user'])('normal prompt recall reads exact %s observations from the authorized store',async scope=>{
- const w=world();try{
-  fs.mkdirSync(w.env.HOME,{recursive:true});w.env.RUVNET_LEARNING_SCOPE=scope;
-  const db=scope==='project'?path.join(w.proj,'.swarm','memory.db'):path.join(w.env.HOME,'.claude','global-memory','.swarm','memory.db');
-  if(scope==='user'){fs.mkdirSync(path.dirname(db),{recursive:true});fs.writeFileSync(db,'');const prefs=path.join(w.env.HOME,'.config','ruvnet-brain');fs.mkdirSync(prefs,{recursive:true});fs.writeFileSync(path.join(prefs,'settings.json'),'{"learningScope":"user"}');}
-  fs.writeFileSync(w.env.RECALL_ROWS,JSON.stringify([{key:'workflow-test',namespace:'learning-observations',score:.9,preview:'unsafe preview ignored',content:JSON.stringify({schemaVersion:1,tool:'Bash',action:'npm test',scope,authoritative:false,provenance:'system-observation',outcome:'host-reported-success'})}]));
-  const result=await recall({prompt:'npm test',projectDir:w.proj,env:w.env});expect(result.block).toContain('Unratified host-reported success: Bash npm test');expect(result.block).not.toContain('unsafe preview');
-  const relevant=w.calls().filter(c=>c.args.includes('learning-observations'));expect(relevant).toHaveLength(2);expect(relevant.every(c=>c.args[c.args.indexOf('--path')+1]===db)).toBe(true);
-  w.env.RUVNET_LEARNING_SCOPE='off';const before=w.calls().length;await recall({prompt:'npm test',projectDir:w.proj,env:w.env});expect(w.calls().slice(before).some(c=>c.args.includes('learning-observations'))).toBe(false);
- }finally{w.cleanup();}
+
+describe('explicit recall availability and phase receipt', () => {
+  it('binds exact retrieval metadata to canonical project, request and fresh phase without persisting raw prompt', async () => {
+    const w = world();
+    try {
+      const binding = { sessionId: 'owned-session', workflowId: 'workflow', phase: 'planner', workerId: 'planner', requestDigest: 'a'.repeat(64) };
+      const r = await recall({ prompt: 'Fix parser', projectDir: w.proj, env: w.env, binding });
+      expect(r.outcome).toBe('ok-with-results');
+      expect(r.receipt.binding).toMatchObject({ ...binding, projectRoot: w.proj });
+      expect(r.receipt.records.every(row => row.namespace && row.key && /^[a-f0-9]{64}$/.test(row.valueDigest))).toBe(true);
+      expect(JSON.stringify(r.receipt)).not.toContain('Fix parser');
+    } finally { w.cleanup(); }
+  });
+  it('pre-aborted recall starts no Ruflo command and cannot report empty success', async () => {
+    const w = world();
+    try {
+      const r = await recall({ prompt: 'Fix parser', projectDir: w.proj, env: w.env, signal: AbortSignal.abort() });
+      expect(r.outcome).toBe('unavailable'); expect(fs.existsSync(w.env.RECALL_LOG)).toBe(false);
+    } finally { w.cleanup(); }
+  });
+});
+
+it('consequential recall reserves state, fourth applicable lesson and decision using exact values', async () => {
+  const w = world();
+  try {
+    const lesson = projects => JSON.stringify({ id: 'scope-lesson', statement: 'Preserve the parser invariants before code changes.', trigger: 'write-code', enforcement: 'checklist', evidence: ['observed fixture regression'], projects,
+      origin: 'user-stated', sourceClass: 'current-user', status: 'ratified', ratifiedBy: 'user', demoted: false });
+    const values = [
+      { key: 'project-state-current-1791000000001', namespace: 'proj', content: '{"status":"stale parser state"}' },
+      { key: 'project-state-current-1791000000002', namespace: 'proj', content: '{"status":"current parser state"}' },
+      ...[1,2,3].map(i => ({ key: `lesson-foreign-${i}`, namespace: 'lessons', content: lesson(['/foreign']) })),
+      { key: 'lesson-applicable-4', namespace: 'lessons', content: lesson([w.proj]) },
+      { key: 'decision-parser', namespace: 'proj', content: 'Parser decision: keep original syntax validation.' },
+    ];
+    fs.writeFileSync(w.env.RECALL_ROWS, JSON.stringify(values));
+    const enumerateKeys = async () => ({ ok: true, value: Object.fromEntries(['proj','default','lessons','continuity-events'].map(namespace => [namespace, values.filter(row => row.namespace === namespace).map(row => row.key)])) });
+    const r = await recall({ prompt: 'Fix parser', projectDir: w.proj, env: w.env, consequential: true, enumerateKeys,
+      binding: { workflowId: 'workflow', phase: 'implementation', sessionId: null } });
+    expect(r.outcome).toBe('ok-with-results');
+    expect(r.picks.map(row => row.key)).toEqual(['project-state-current-1791000000002','lesson-applicable-4','decision-parser']);
+    expect(r.block).toContain('current parser state'); expect(r.block).not.toContain('stale parser state');
+    expect(r.receipt.binding.sessionId).toBeNull(); expect(r.receipt.binding.phase).toBe('implementation');
+    expect(r.picks.every(row => row.authority === false)).toBe(true);
+    expect(w.calls().every(call => call.args[1] === 'retrieve')).toBe(true);
+  } finally { w.cleanup(); }
+});
+
+it('a structural enumeration failure stays unavailable and cannot become an empty history claim', async () => {
+  const w = world();
+  try {
+    const r = await recall({ prompt: 'Fix parser', projectDir: w.proj, env: w.env, consequential: true,
+      enumerateKeys: async () => ({ ok: false, reason: 'schema unavailable' }) });
+    expect(r.outcome).toBe('unavailable'); expect(r.categories.state).toBe('unavailable');
+    expect(fs.existsSync(w.env.RECALL_LOG)).toBe(false);
+  } finally { w.cleanup(); }
+});
+
+it.each([{ projectRoot: '/foreign' }, { superseded: true }])('rejected latest state is unavailable, not proof of absent applicable history: %j', async rejected => {
+  const w = world();
+  try {
+    fs.writeFileSync(w.env.RECALL_ROWS, JSON.stringify([
+      { key: 'project-state-current-1791000000001', namespace: 'proj', content: '{"status":"earlier applicable parser state"}' },
+      { key: 'project-state-current-1791000000002', namespace: 'proj', content: JSON.stringify({ status: 'rejected state', ...rejected }) },
+    ]));
+    const result = await recall({ prompt: 'Fix parser', projectDir: w.proj, env: w.env, consequential: true,
+      enumerateKeys: async () => ({ ok: true, value: { proj: ['project-state-current-1791000000001','project-state-current-1791000000002'], default: [], lessons: [], 'continuity-events': [] } }) });
+    expect(result.categories.state).toBe('unavailable'); expect(result.outcome).toBe('unavailable');
+    expect(result.picks).toEqual([]); expect(w.calls().every(call => call.args.includes('project-state-current-1791000000002'))).toBe(true);
+  } finally { w.cleanup(); }
+});
+
+it('rejects a foreign project binding before searching canonical memory', async () => {
+  const w = world();
+  try {
+    const r = await recall({ prompt: 'Fix parser', projectDir: w.proj, env: w.env, binding: { projectRoot: '/foreign', phase: 'repair' } });
+    expect(r.outcome).toBe('unavailable'); expect(fs.existsSync(w.env.RECALL_LOG)).toBe(false);
+  } finally { w.cleanup(); }
+});
+
+it('cancellation during exact retrieval retires owned commands without an empty-success claim', async () => {
+  const w = world(), controller = new AbortController();
+  try {
+    const pending = recall({ prompt: 'Fix parser', projectDir: w.proj, env: { ...w.env, RECALL_HANG: '1' }, signal: controller.signal });
+    setTimeout(() => controller.abort(), 60);
+    const r = await pending; expect(r.outcome).toBe('unavailable'); expect(r.picks).toEqual([]);
+    expect(r.block).toContain('unavailable');
+  } finally { w.cleanup(); }
+});
+
+it('expiry during structural enumeration refuses before launching exact retrieval', async () => {
+  const w = world();
+  try {
+    const result = await recall({ prompt: 'Fix parser', projectDir: w.proj, env: w.env, consequential: true,
+      enumerateKeys: async ({ deadline, signal }) => {
+        expect(signal).toBeUndefined(); expect(Number.isFinite(deadline)).toBe(true);
+        await new Promise(resolve => setTimeout(resolve, Math.max(1, deadline - Date.now() + 5)));
+        return { ok: true, value: {} };
+      }, deadlineMs: 250 });
+    expect(result.outcome).toBe('timed-out'); expect(fs.existsSync(w.env.RECALL_LOG)).toBe(false);
+  } finally { w.cleanup(); }
+});
+
+it.each(['off', 'invalid', 'exclude'])('honors %s recall privacy before delivering historical content', async mode => {
+  const w = world();
+  try {
+    const policyDir = path.join(w.env.RUVNET_BRAIN_HOME, 'turn-capture'); fs.mkdirSync(policyDir, { recursive: true });
+    const policy = { schemaVersion: 1, projects: { [w.proj]: mode === 'off' ? 'off' : 'on' } };
+    if (mode === 'exclude') {
+      policy.contentPathExcludes = [path.join(w.proj, 'private')];
+      fs.writeFileSync(w.env.RECALL_ROWS, JSON.stringify([{ ...rows[0], content: `Decision: parser source ${w.proj}/private/key.txt carries confidential content.` }]));
+    }
+    fs.writeFileSync(path.join(policyDir, 'policy.json'), mode === 'invalid' ? '{' : JSON.stringify(policy));
+    const result = await recall({ prompt: 'Fix parser', projectDir: w.proj, env: w.env });
+    expect(result.picks).toEqual([]);
+    expect(result.block).not.toContain('confidential');
+    if (mode !== 'exclude') expect(fs.existsSync(w.env.RECALL_LOG)).toBe(false);
+  } finally { w.cleanup(); }
 });

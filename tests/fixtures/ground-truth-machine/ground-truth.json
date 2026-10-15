@@ -1,8 +1,12 @@
 {
-  "_doc": "ADR-041 ground-truth manifest. THE DENOMINATOR AUTHORITY, and it speaks only STATE-VOCABULARY — never a probe command, never an artifact shape. scripts/capability-registry.mjs NEVER reads this file; the builder (tests/helpers/ground-truth-machine.mjs) reads it and writes REAL artifacts, and the detector maps artifact->state independently. That separation of authorities is what kills the echo trap: the detector cannot echo a manifest it never sees.",
-  "_cohort_note": "Second increment (2026-07-24), 2 -> 3 capabilities. The first two are the HOME-scoped pure-JSON pair (session-capture -> ~/.claude/settings.json capture hooks at BOTH boundaries; mcp-servers -> ~/.claude.json mcpServers). workflow-pattern-learning (~/.claude-flow/neural/stats.json) was named as the follow-up in the first increment and is added here. memory-distillation (a real sqlite3 .swarm/memory.db) remains the last one outstanding. With 3 caps, breaking one detector gives recall 2/3 = 0.67 < 0.80, so the mutation test's falsifiability still holds.",
-  "_idle_note": "workflow-pattern-learning's dormant state is IDLE, not OFF, and it is the FIRST ground-truth coverage of the idle state at all. That matters because IDLE is the state this product exists for — 'you think it is on; it is set up and nothing is calling it' — and until now no oracle asserted it anywhere. It is also exactly where the detector was wrong: this row returned OFF until 2026-07-24 despite the underlying verdict already being named IDLE, which put 'turn this on' next to a learner holding hundreds of recorded trajectories. A cohort that only ever distinguishes on from off cannot catch that class of error at all, because both readings are 'not on'.",
-  "cohort": ["session-capture", "mcp-servers", "workflow-pattern-learning"],
+  "_doc": "ADR-041 ground-truth manifest. THE DENOMINATOR AUTHORITY, and it speaks only STATE-VOCABULARY \u2014 never a probe command, never an artifact shape. scripts/capability-registry.mjs NEVER reads this file; the builder (tests/helpers/ground-truth-machine.mjs) reads it and writes REAL artifacts, and the detector maps artifact->state independently. That separation of authorities is what kills the echo trap: the detector cannot echo a manifest it never sees.",
+  "_cohort_note": "Three capabilities remain observed. Two provide known dormant ground truth (MCP OFF and workflow learning IDLE); absent capture declarations remain UNKNOWN and are explicitly asserted outside the dormant-recall denominator. A false-negative mutation of observable workflow IDLE reduces known dormant recall from 2/2 to 1/2, below the unchanged 0.80 bar.",
+  "_idle_note": "workflow-pattern-learning's dormant state is IDLE, not OFF, and it is the FIRST ground-truth coverage of the idle state at all. That matters because IDLE is the state this product exists for \u2014 'you think it is on; it is set up and nothing is calling it' \u2014 and until now no oracle asserted it anywhere. It is also exactly where the detector was wrong: this row returned OFF until 2026-07-24 despite the underlying verdict already being named IDLE, which put 'turn this on' next to a learner holding hundreds of recorded trajectories. A cohort that only ever distinguishes on from off cannot catch that class of error at all, because both readings are 'not on'.",
+  "cohort": [
+    "session-capture",
+    "mcp-servers",
+    "workflow-pattern-learning"
+  ],
   "states": {
     "healthy": {
       "session-capture": "on",
@@ -10,9 +14,10 @@
       "workflow-pattern-learning": "on"
     },
     "dormant": {
-      "session-capture": "off",
+      "session-capture": "unknown",
       "mcp-servers": "off",
       "workflow-pattern-learning": "idle"
     }
-  }
+  },
+  "_capture_limit": "Empty settings establish no observed static declaration, not absence of runtime or invocation-only capture. The expected result remains explicitly UNKNOWN. Capture wiring is still measured on the declared healthy fixture, while known dormant recall uses MCP OFF and workflow learning IDLE only; no actual capture execution is claimed."
 }

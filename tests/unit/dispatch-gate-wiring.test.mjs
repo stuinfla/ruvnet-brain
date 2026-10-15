@@ -97,20 +97,34 @@ function detectInHome(key, home) {
 }
 
 describe('retired automatic routing gate', () => {
-  it('tells a plugin-marketplace user the explicit router is not automatically invoked', () => {
+  it('does not infer current native routing from marketplace hooks and legacy receipts', () => {
     const r = detectInHome('cheap-model-routing', marketplaceHome());
-    expect(r.evidence).toMatch(/no PreToolUse gate on Task\|Agent is wired/);
-    expect(r.evidence).toMatch(/running the router by hand/);
-    expect(r.state).toBe('idle');
+    expect(r.evidence).toMatch(/no managed routing declaration was observed/);
+    expect(r.evidence).toMatch(/legacy Task routing receipts.*do not establish current native routing or its absence/);
+    expect(r.state).toBe('unknown');
   });
 
-  it('still reports the gate missing when nothing anywhere declares it', () => {
+  it('keeps native routing unknown when no managed declaration is observed', () => {
     const home = marketplaceHome();
     // Same machine, minus the plugin's hooks.json — nothing is wired, and saying so is correct.
     fs.rmSync(path.join(home, '.claude', 'plugins'), { recursive: true, force: true });
     const r = detectInHome('cheap-model-routing', home);
-    expect(r.state).toBe('idle');
-    expect(r.evidence).toMatch(/no PreToolUse gate on Task\|Agent is wired to route-dispatch\.sh/);
+    expect(r.state).toBe('unknown');
+    expect(r.evidence).toMatch(/no managed routing declaration was observed/);
+  });
+});
+
+describe('managed routing declarations remain evidence-bounded', () => {
+  it('distinguishes a configured declaration from observed native execution', () => {
+    const home = marketplaceHome();
+    write(path.join(home, '.cache/ruvnet-brain/model-routing/terminal-launcher-config.json'), {
+      runtimeRoot: path.join(home, 'runtime'), runtimeDigest: 'a'.repeat(64),
+    });
+    const result = detectInHome('cheap-model-routing', home);
+    expect(result.state).toBe('unknown');
+    expect(result.evidence).toContain('a managed native routing runtime is configured');
+    expect(result.evidence).toContain('Configuration alone does not prove');
+    expect(result.evidence).not.toContain('no managed routing declaration was observed');
   });
 });
 

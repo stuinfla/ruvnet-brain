@@ -26,18 +26,21 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { restoreWithBrief } from './continuity-brief.mjs';
+import { restore as restoreFromRuflo } from './ruflo-memory-hooks.mjs';
 import { turnRecordingStatus } from './turn-outcome-capture.mjs';
 import {
   read, json, exists, mkdir, write, runNode,
 } from './session-start-fsutil.mjs';
 import { maintainerIssueEntitlement, surfaceIssuePointer } from './session-start-issue-alert.mjs';
 import { surfaceSignals } from './session-start-signals.mjs';
+import { failureLine, FAILURE_LINE_PREFIX } from './hook-failures.mjs';
 import { brainState, health, knowledgeCurrency, mcpReadiness, KNOWLEDGE_LINE_PREFIX } from './session-start-health.mjs';
 import { stableSpine, heartbeat, knowledgeAutoUpdate, footprintCheck } from './session-start-update-plane.mjs';
 import { FOOTPRINT_LINE_PREFIX } from './brain-confirmation.mjs';
 import { describeLifecycleHooks, readHookContracts } from './session-start-hook-description.mjs';
 import { createStageTracer } from './session-start-trace.mjs';
+import { sessionStartDeadlineAt, STAGE_BUDGETS_MS } from './session-start-budget.mjs';
+import { loadSettings } from './user-settings.mjs';
 import { sessionStartProofRecorder } from './session-start-proof.mjs';
 import { ALIAS_NOTICE, probeCodexConsoleAlias, readSessionSource } from './codex-console-alias.mjs';
 
@@ -89,11 +92,14 @@ export async function runSessionStart({
   stdout = process.stdout,
   stderr = process.stderr,
   platform = process.platform,
-  restoreContinuity = restoreWithBrief,
+  restoreContinuity = restoreFromRuflo,
   runHeartbeat = true,
   sessionSource = 'startup',
   probeConsoleAlias = probeCodexConsoleAlias,
+  startedAt = Date.now(),
+  deadlineAt = Infinity,
 } = {}) {
+  const hookDeadlineAt = Math.min(deadlineAt, sessionStartDeadlineAt({ host: env.RUVNET_HOOK_HOST || 'claude', env, startedAt }));
   const lines = [];
   // SessionStart is context plumbing, not an instruction channel. Keep factual, actionable
   // health/CI/issue signals and the single status line; suppress response scripts, setup
@@ -131,7 +137,8 @@ export async function runSessionStart({
       || s.startsWith('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN]')
       || s.startsWith('[RuvNet Brain — PROJECT CONTINUITY RESTORED]')
       || s.startsWith('[RuvNet Brain — COME UP TO SPEED')
-      || s.startsWith('[RuvNet Brain — MAINTAINER ONLY:');
+      || s.startsWith('[RuvNet Brain — MAINTAINER ONLY:')
+      || s.startsWith(FAILURE_LINE_PREFIX);
   };
   // An alarm's HEADER line always matches isSafeStatus on its own dedicated prefix (above); its
   // explanatory BODY lines do not, and without this they were silently dropped — a real gap this
@@ -164,6 +171,8 @@ export async function runSessionStart({
   const home = env.HOME || env.USERPROFILE || os.homedir();
   const stateDir = env.RUVNET_BRAIN_HOME || path.join(home, '.cache', 'ruvnet-brain');
   resetInjectionDedupe(stateDir, Date.now());
+  // ADR-106: advisory hooks fail open, so a failed one is reported here, once, never per fire.
+  try { const failed = failureLine(stateDir); if (failed) emit(failed); } catch { /* the summary must not cost the session */ }
   const hookDir = path.dirname(fileURLToPath(import.meta.url));
   const now = Date.now();
   const consoleInvoke = env.RUVNET_HOOK_HOST === 'codex' ? '$ruvnet-brain:rnbc' : '/rnbc';
@@ -185,15 +194,31 @@ export async function runSessionStart({
   };
 
   const restoreStart = Date.now();
+  const restoreDeadlineAt = Math.min(hookDeadlineAt, restoreStart + STAGE_BUDGETS_MS.restore);
+  const restoreController = new AbortController();
+  let restoreTimer;
   let restoreFailed = false;
   try {
-    const continuity = await restoreContinuity({ env, cwd });
+    const remaining = restoreDeadlineAt - Date.now();
+    if (remaining <= 0) throw new Error('restore deadline exhausted');
+    const expired = new Promise((_, reject) => {
+      restoreTimer = setTimeout(() => {
+        restoreController.abort(); reject(new Error('restore deadline exceeded'));
+      }, remaining);
+    });
+    const continuity = await Promise.race([Promise.resolve().then(() => restoreContinuity({ env, cwd,
+      deadlineAt: restoreDeadlineAt, signal: restoreController.signal })), expired]);
+    if (Date.now() >= restoreDeadlineAt) throw new Error('restore deadline exceeded');
+    restoreFailed = continuity?.status === 'unknown' || continuity?.brief?.status === 'unknown';
     if (continuity?.context) emit(continuity.context);
-  } catch {
+  } catch (error) {
+    restoreController.abort();
     restoreFailed = true;
     emit('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN]');
-    emit('The SessionStart restore boundary failed unexpectedly. Do not claim project state was restored; verify the canonical store before relying on remembered state.');
-  }
+    emit(/deadline/i.test(error?.message || '')
+      ? 'The SessionStart restore deadline expired. Durable work is retained; no project restoration is claimed.'
+      : 'The SessionStart restore boundary failed unexpectedly. Do not claim project state was restored; verify the canonical store before relying on remembered state.');
+  } finally { clearTimeout(restoreTimer); }
   const restoreProof = { name: 'restore', ms: Date.now() - restoreStart, failed: restoreFailed };
   // Turn health remains visible even when the separate progression restore fails.
   const turnStatus = turnRecordingStatus({ projectDir: cwd, env, home, noticeOnFirstUse: true });
@@ -209,6 +234,7 @@ export async function runSessionStart({
   }
 
   const tracer = createStageTracer({
+    deadlineAt: hookDeadlineAt,
     enabled: env.RUVNET_BRAIN_SESSION_START_TRACE === '1',
     write: (chunk) => stderr.write(chunk),
   });
@@ -320,7 +346,10 @@ export async function runSessionStart({
 
     tracer.stage('misc', () => {
       const star = path.join(stateDir, '.star-ask-shown');
-      if (!brain.off && exists(path.join(stateDir, '.grounded-once')) && !exists(star) && write(star, '')) {
+      const preferences = loadSettings(env.RUVNET_SETTINGS_FILE || path.join(home, '.config', 'ruvnet-brain', 'settings.json'));
+      const promotionAllowed = preferences.healthy && !preferences.fromFuture && preferences.values.brainEnabled
+        && [4, 5].includes(preferences.values.advocacy);
+      if (promotionAllowed && !brain.off && exists(path.join(stateDir, '.grounded-once')) && !exists(star) && write(star, '')) {
         emit('[RuvNet Brain — one-time note. This will NEVER be shown again on this machine.]');
         emit('At a natural CLOSING moment (after the work, never as an interruption), relay this line once and move on — never repeated, never embellished, in this or any future session:');
         emit('  "Finding this useful? Star github.com/stuinfla/ruvnet-brain or leave feedback — it keeps the nightly updates coming."');
@@ -438,7 +467,8 @@ function isDirectInvocation() {
 const direct = isDirectInvocation();
 if (direct) {
   const sessionSource = await readSessionSource();
-  runSessionStart({ sessionSource }).catch((error) => {
+  runSessionStart({ sessionSource, startedAt: performance.timeOrigin }).catch((error) => {
+    process.stderr.write('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN] SessionStart could not complete; no restoration success is claimed.\n');
     if (process.env.RUVNET_SESSION_TRACE === '1') {
       process.stderr.write(`SESSION_TRACE native-fail-open ${error?.message || error}\n`);
     }

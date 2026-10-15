@@ -69,22 +69,6 @@ export const REMEDIES = [
     inverse: () => ({ kind: K.RESTORE_MEMORY_BACKUP }),
   },
   {
-    key: 'learning-flush',
-    summary: 'drain the capture queue into the learner',
-    match: (id) => (id === 'learning:flush' ? {} : null),
-    plan: () => ({ script: 'scripts/health-repair.mjs', args: ['--flush-learning'] }),
-    // Genuinely additive: it moves already-captured local events into the learner. Declared NONE on
-    // purpose, and the human string says what a user would actually do instead.
-    inverse: () => ({ kind: K.NONE, human: 'nothing to reverse — this only adds observations the learner already had queued; learned state can be reset separately' }),
-  },
-  {
-    key: 'learning-legacy-user-flush',
-    summary: 'drain retained legacy user history into its original home learner',
-    match: (id) => (id === 'learning:flush-legacy-user' ? {} : null),
-    plan: () => ({ script: 'scripts/health-repair.mjs', args: ['--flush-legacy-user-learning'] }),
-    inverse: () => ({ kind: K.NONE, human: 'original queue bytes stay retained; learned observations can be reset separately' }),
-  },
-  {
     key: 'learning-train',
     summary: 'distill canonical observations into structural patterns',
     match: (id) => (id === 'learning:train' ? {} : null),
@@ -235,7 +219,6 @@ export function assertRegistryClosure(offeredIds = [], handledUndoKinds = []) {
 export function sampleIdFor(remedy) {
   switch (remedy.key) {
     case 'memory-index': return 'repair:memory-index';
-    case 'learning-flush': return 'learning:flush';
     case 'learning-train': return 'learning:train';
     case 'distill-fleet': return 'learning:distill-fleet';
     case 'enable-memory-distillation': return 'enable:memory-distillation';

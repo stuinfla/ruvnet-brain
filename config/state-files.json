@@ -1,0 +1,285 @@
+{
+  "$comment": "Ratchet for scripts/no-silent-substitution.mjs storage class and the substitution-wall PreToolUse policy. substitutionAllow entries require the OWNER. substitutionBaseline = files the wall refused at origin/main 845d55bd (4.6.4); they may shrink, never grow, and leave this list when they stop refusing. stateFiles = every module that appends to a file, discovered by grep; bound is the first bound-looking token found in its code (UNVERIFIED that it bounds the target) or null = no bound found.",
+  "substitutionAllow": [],
+  "substitutionBaseline": [
+    {
+      "path": "plugin/scripts/turn-outcome-capture.mjs",
+      "signals": [
+        "memorySink",
+        "persist",
+        "transport",
+        "worker"
+      ],
+      "note": "auditor HYBRID (journal+agentdb-turns.jsonl = REPLACE) #3"
+    },
+    {
+      "path": "scripts/onboarding-console.mjs",
+      "signals": [
+        "atomicWrite",
+        "lock",
+        "memorySink",
+        "persist",
+        "transport"
+      ],
+      "note": "not in audit — UNDO_JOURNAL of console settings + wx lock; suspected FALSE POSITIVE: OWNER DECISION (allowlist or rework)"
+    }
+  ],
+  "maxUnbounded": 29,
+  "stateFiles": [
+    {
+      "module": "plugin/scripts/advocacy-outcomes.mjs",
+      "targets": [
+        "advocacy-outcomes.jsonl"
+      ],
+      "bound": "MAX_RECORD_BYTES"
+    },
+    {
+      "module": "plugin/scripts/anticipate.sh",
+      "targets": [
+        "advocacy-outcomes.jsonl"
+      ],
+      "bound": null
+    },
+    {
+      "module": "plugin/scripts/capability-claim-evidence.mjs",
+      "targets": [
+        "capability-live-evidence.jsonl",
+        "evidence.jsonl"
+      ],
+      "bound": "MAX_AGE_MS"
+    },
+    {
+      "module": "plugin/scripts/continuation-gate.mjs",
+      "targets": [
+        "hook-failures.jsonl"
+      ],
+      "bound": null
+    },
+    {
+      "module": "plugin/scripts/decision-outcomes.mjs",
+      "targets": [
+        "decision-outcomes.jsonl"
+      ],
+      "bound": "MAX_LEDGER_BYTES"
+    },
+    {
+      "module": "plugin/scripts/detach.mjs",
+      "targets": [
+        "detached-jobs.jsonl"
+      ],
+      "bound": null
+    },
+    {
+      "module": "plugin/scripts/duplicate-gate.mjs",
+      "targets": [
+        "shadow.jsonl"
+      ],
+      "bound": "MAX_BYTES"
+    },
+    {
+      "module": "plugin/scripts/grounding-substance.mjs",
+      "targets": [
+        "evidence.jsonl",
+        "grounding-overrides.jsonl"
+      ],
+      "bound": null
+    },
+    {
+      "module": "plugin/scripts/grounding-turn-evidence.mjs",
+      "targets": [
+        "assertion-gate-shadow.jsonl"
+      ],
+      "bound": null
+    },
+    {
+      "module": "plugin/scripts/hook-context-budget.mjs",
+      "targets": [
+        "token-ledger.jsonl"
+      ],
+      "bound": null
+    },
+    {
+      "module": "plugin/scripts/hook-shim.mjs",
+      "targets": [
+        "hook-failures.jsonl"
+      ],
+      "bound": null
+    },
+    {
+      "module": "plugin/scripts/routing-outcome-capture.mjs",
+      "targets": [
+        "dispatch-log.jsonl",
+        "routing-outcomes.jsonl"
+      ],
+      "bound": null
+    },
+    {
+      "module": "plugin/scripts/session-start-core.mjs",
+      "targets": [
+        "token-ledger.jsonl"
+      ],
+      "bound": null
+    },
+    {
+      "module": "plugin/scripts/signal-watch.mjs",
+      "targets": [
+        "pending.jsonl"
+      ],
+      "bound": null
+    },
+    {
+      "module": "plugin/scripts/turn-outcome-capture.mjs",
+      "targets": [
+        "agentdb-turns.jsonl",
+        "receipts.jsonl"
+      ],
+      "bound": "receipts.jsonl: RECEIPTS_MAX_BYTES (256 KiB) then renameSync to .1 (appendReceipt); readers tail 128 KiB"
+    },
+    {
+      "module": "plugin/scripts/update-apply.mjs",
+      "targets": [
+        "update-receipts.jsonl"
+      ],
+      "bound": null
+    },
+    {
+      "module": "scripts/calibrate-router.mjs",
+      "targets": [
+        "routing-receipts.jsonl"
+      ],
+      "bound": null
+    },
+    {
+      "module": "scripts/ci/learning-replay-codex-adapter.mjs",
+      "targets": [],
+      "bound": null
+    },
+    {
+      "module": "scripts/ci/learning-replay-recorder.mjs",
+      "targets": [],
+      "bound": null
+    },
+    {
+      "module": "scripts/corpus-canary.mjs",
+      "targets": [
+        "canary.log"
+      ],
+      "bound": null
+    },
+    {
+      "module": "scripts/corpus-dispatch-decision.mjs",
+      "targets": [],
+      "bound": null
+    },
+    {
+      "module": "scripts/customer-state-matrix.mjs",
+      "targets": [],
+      "bound": null
+    },
+    {
+      "module": "scripts/design-grade.mjs",
+      "targets": [
+        "design-grades.jsonl"
+      ],
+      "bound": null
+    },
+    {
+      "module": "scripts/dispatch-receipt.mjs",
+      "targets": [],
+      "bound": null
+    },
+    {
+      "module": "scripts/full-suite-gate.mjs",
+      "targets": [],
+      "bound": null
+    },
+    {
+      "module": "scripts/metaharness-router.mjs",
+      "targets": [
+        "routing-outcomes.jsonl"
+      ],
+      "bound": null
+    },
+    {
+      "module": "scripts/model-router-dispatch.mjs",
+      "targets": [
+        "dispatch-decisions.jsonl"
+      ],
+      "bound": null
+    },
+    {
+      "module": "scripts/model-router-engine.mjs",
+      "targets": [
+        "routing-decisions.jsonl"
+      ],
+      "bound": null
+    },
+    {
+      "module": "scripts/model-router-outcome.mjs",
+      "targets": [
+        "routing-outcomes.jsonl"
+      ],
+      "bound": null
+    },
+    {
+      "module": "scripts/model-routing-gateway.mjs",
+      "targets": [
+        "native-turn-routing.jsonl"
+      ],
+      "bound": "compact"
+    },
+    {
+      "module": "scripts/onboarding-console.mjs",
+      "targets": [
+        "agentdb-sessions.jsonl",
+        "console-undo.jsonl",
+        "metaharness-receipts.jsonl",
+        "routing-decisions.jsonl",
+        "routing-receipts.jsonl",
+        "token-ledger.jsonl"
+      ],
+      "bound": "compactionSurvival"
+    },
+    {
+      "module": "scripts/oracle/doc2query-generate.mjs",
+      "targets": [],
+      "bound": null
+    },
+    {
+      "module": "scripts/publication-receipt.mjs",
+      "targets": [],
+      "bound": null
+    },
+    {
+      "module": "scripts/rehearse-corpus-pipeline.mjs",
+      "targets": [
+        "recorded-commands.jsonl"
+      ],
+      "bound": "maxEntries"
+    },
+    {
+      "module": "scripts/route-cheap.mjs",
+      "targets": [
+        "routing-receipts.jsonl"
+      ],
+      "bound": null
+    },
+    {
+      "module": "scripts/route-latency-warm.mjs",
+      "targets": [],
+      "bound": null
+    },
+    {
+      "module": "scripts/routing-flywheel.mjs",
+      "targets": [],
+      "bound": null
+    },
+    {
+      "module": "plugin/scripts/hook-failures.mjs",
+      "targets": [
+        "hook-failures.jsonl"
+      ],
+      "bound": "256 * 1024 then renameSync to .1 (recordHookFailure); reader caps MAX_READ"
+    }
+  ]
+}

@@ -1,9 +1,10 @@
 ---
 id: ADR-073
 title: AgentDB is the complete perennial project continuity record
-status: Accepted
+status: Superseded
+superseded_by: ADR-105
 date: 2026-08-22
-updated: 2026-10-03
+updated: 2026-10-10 22:01:00 EDT
 updated_source: derived-from-git
 reviewed_digest: c05f9c6169e4
 authors: [Stuart Kerr, Codex]
@@ -19,12 +20,14 @@ governs:
   - tests/unit/project-progression-contract.test.mjs
   - tests/integration/project-progression-hook.test.mjs
   - tests/acceptance/cross-host-project-resume.test.mjs
-version: 1.0.1
+version: 1.1.0
 ---
 
 # ADR-073 — AgentDB is the complete perennial project continuity record
 
-**Status**: Accepted
+**Status**: Superseded (in part by ADR-105 on 2026-10-10)
+
+Prior status: Accepted. Superseded in part by [ADR-105](0105-one-agentdb-integration-standard.md): §1 clause 4 (product-owned schema-pinned read-only reads are permitted), §4 step 3 (`ruflo memory list` enumeration) and §6 (SessionStart initialization; enrollment is now lazy and consent-gated); the binary contract, journal, outbox and acceptance clauses remain in force.
 
 Accepted by Stuart's 2026-08-22 direction. Implementation and cross-host proof are required before
 this behavior may be described as working or shipped.
@@ -216,3 +219,10 @@ read contract above. Legacy raw capture jobs are retained pending, never silentl
 Native Grok prompt-first context delivery remains unsupported. None of these limits is waived or
 closed by unit counts, publication, or a manual memory probe. Unknown unlabelled secrets cannot be
 guaranteed detectable by the shared redactor. Full host-native boundary acceptance remains required.
+
+
+## 2026-10-10 perennial memory hardening
+
+User-approved perennial enrollment is explicit user policy, not incidental directory creation. Canonical primary-project identity is shared by linked worktrees. Git identity errors refuse enrollment; new non-Git and unsafe-root stores require explicit scope. Existing stores are preserved. Native-required immutable writes, durable pending work and exact readback define committed state. Acceptance remains bounded to actual tested hosts/events and does not promise perfect semantic extraction.
+
+Implementation acceptance is pending final source-bound and native-host verification.

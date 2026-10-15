@@ -10,7 +10,7 @@
 // Grounded against scripts/capability-registry.mjs (read live, not recalled):
 //   session-capture ON  = a CAPTURE_COMMAND-matching command wired at BOTH PreCompact AND SessionEnd
 //                         (registry.mjs:560-569; countCaptureCommands walks [{hooks:[{command}]}], :212).
-//   session-capture OFF = settings.json EXISTS but neither boundary carries a capture command (:571).
+//   session-capture UNKNOWN = empty settings establish no static declaration; unchecked runtime hooks may exist.
 //                         (A MISSING settings.json would be ABSENT, not OFF — so we always write one.)
 //   mcp-servers    ON   = >=1 key under mcpServers in ~/.claude.json (registry.mjs:586-590).
 //   mcp-servers    OFF  = the file exists with an EMPTY mcpServers object (:587).
@@ -38,7 +38,7 @@ export function readManifest() {
 // The oracle is now STRUCTURAL + REFERENTIAL and names no detector rule:
 //   session-capture ON  = a command is wired at BOTH PreCompact and SessionEnd, AND that command invokes a
 //                         capture script that REALLY EXISTS on disk (the one this fixture writes).
-//   session-capture OFF = neither boundary carries such a command.
+//   session-capture UNKNOWN = neither boundary carries such a command; runtime absence remains unproved.
 // That shape is grounded in how rUv actually persists session state — a hook command at the
 // compaction/session boundary invoking a real persistence script (searched live 2026-07-24:
 // agentic-flow/.claude/helpers/context-persistence-hook.mjs, ADR-051, which intercepts PreCompact/
@@ -81,7 +81,7 @@ export function buildState(stateName, rootDir) {
     const captureGroup = [{ matcher: '.*', hooks: [{ type: 'command', command: `node ${capturePath}` }] }];
     writeJSON(settingsPath, { hooks: { PreCompact: captureGroup, SessionEnd: captureGroup } });
   } else {
-    // EXISTS but empty hooks -> OFF, not ABSENT.
+    // Empty declarations support UNKNOWN only; they cannot establish runtime absence.
     writeJSON(settingsPath, { hooks: {} });
   }
 

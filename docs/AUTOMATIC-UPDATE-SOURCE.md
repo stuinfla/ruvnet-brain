@@ -1,19 +1,30 @@
-Updated: 2026-10-05 06:18:56 EDT | Version 1.0.0
+Updated: 2026-10-10 05:06:23 EDT | Version 1.1.1
 Created: 2026-10-05 06:18:56 EDT
 
-# Automatic update source
+# Automatic update source — legacy lifecycle and coordinated schedule
 
-Automatic corpus updates remain enabled according to the existing nightly and lifecycle controls.
-The default `latest` source runs the current npm package through npx. To keep using your installed
-coordinator without unattended npx, explicitly run:
+The 4.6.0 production nightly registration uses the developer-suite coordinator and its saved
+Latest/Alpha policy. It updates the discovered existing package owner and does not use the
+legacy `latest` source's npx invocation. Its canonical operating policy lives in
+`CONTRIBUTING.md` under "Coordinated developer updates (4.6.0)".
+
+Automatic lifecycle invocation also joins the immutable canonical coordinator when configured
+or registered. Its nested child inherits the shared owner token. An active but unready canonical
+owner refuses work instead of creating a fallback copy.
+
+Canonical automatic invocation selects its owner without reading legacy `updateSource`
+settings. The preference below is resolved only for unconfigured legacy and older proof paths.
+Enrolling the coordinated schedule does not rewrite the preference.
+Its default `latest` source runs the current npm package through npx; to make those remaining
+legacy paths use the installed coordinator instead, explicitly run:
 
 ```sh
 ruvnet-brain --update-source installed
 ```
 
 This saves only the canonical per-user `updateSource` setting under
-`~/.config/ruvnet-brain/settings.json`, preserving other owner preferences. Nightly, SessionStart
-maintenance and the MCP corpus timer read that user choice; a project cannot override it. Missing
+`~/.config/ruvnet-brain/settings.json`, preserving other owner preferences. Unconfigured legacy nightly and lifecycle paths
+read that user choice; a project cannot override it. Missing
 or malformed installed packages and unreadable, corrupt or future settings refuse automatic work
 instead of falling back to npx. Restore the default with `ruvnet-brain --update-source latest`.
 
@@ -24,7 +35,7 @@ corpus is refused; update your global Brain package manually before retrying. Th
 unattended npx, not every possible network request or every existing dependency installation. It
 does not switch the updater to notifications only and does not install a second global CLI.
 
-Nightly enrollment resolves Homebrew's active `opt` Node alias from the running installer, rather
+Native schedule enrollment resolves Homebrew's active `opt` Node alias from the running installer, rather
 than recording a versioned Cellar executable. A stable alias must resolve to that interpreter and
 report a supported Node version. For another installation use:
 

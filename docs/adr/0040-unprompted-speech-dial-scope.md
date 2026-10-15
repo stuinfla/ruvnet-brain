@@ -3,7 +3,7 @@ id: ADR-040
 title: What the advocacy dial actually governs — chokepoint, or honest per-channel controls
 status: Accepted
 date: 2026-07-23
-updated: 2026-09-11
+updated: 2026-10-07
 authors: [Stuart Kerr, Claude Code]
 tags: [proactive, advocacy, dial, chokepoint, honesty, 4.0]
 supersedes: []
@@ -178,3 +178,14 @@ its key — recorded in ADR-067's status log.
 ## Currency log
 
 | 2026-09-11 | Amendment recorded (`7b8e6e73`, merged `a610f3f5`): `ground-ruvnet` is a second UserPromptSubmit owner scoped to grounding directives; the four-channel single-writer invariant is restated with its scope explicit; `unprompted-runtime.mjs` is untouched. This row exists because the amendment landed without moving `updated:`. No code review is claimed here — this ADR governs no paths. | Referents: `plugin/scripts/ground-ruvnet.sh`, `plugin/hooks/hooks.json`, `plugin/scripts/unprompted-runtime.mjs`; ADR-067; commit 7b8e6e73. |
+
+
+## Amendment 2026-10-07 — known preferences and applicable lessons
+
+Status remains Accepted pending integrated/native qualification. Shared speech delivery now reads
+applicable ratified lessons before optional advocacy; project filtering precedes the three-lesson
+limit. Missing preferences keep the established default, but unreadable, malformed or future
+preferences and unknown suppression history do not authorize optional offers. A corrupt ledger
+may remain inspectable by tolerant diagnostics; offer authorization uses strict read evidence.
+This applies to the shared runtime used by Claude and Codex. Focused process tests are evidence
+for these boundaries, not proof of every installed native hook or production activation.

@@ -18,7 +18,7 @@ const saved = {};
 let mod;
 
 beforeAll(async () => {
-  for (const k of ['OPENROUTER_API_KEY', 'SOPS_AGE_KEY_FILE', 'RUVNET_BRAIN_SECRETS_FILE', 'RUVNET_BRAIN_CONFIG_FILE', 'HOME', 'RUVNET_CONSOLE_ROOT', 'RUVNET_BRAIN_TEST']) saved[k] = process.env[k];
+  for (const k of ['OPENROUTER_API_KEY', 'SOPS_AGE_KEY_FILE', 'RUVNET_BRAIN_SECRETS_FILE', 'RUVNET_BRAIN_CONFIG_FILE', 'HOME', 'RUVNET_CONSOLE_ROOT', 'RUVNET_BRAIN_TEST', 'MODEL_ROUTER_CATALOG']) saved[k] = process.env[k];
   delete process.env.OPENROUTER_API_KEY;
   process.env.HOME = tmp;
   process.env.RUVNET_CONSOLE_ROOT = tmp;
@@ -26,6 +26,10 @@ beforeAll(async () => {
   process.env.SOPS_AGE_KEY_FILE = path.join(tmp, 'age.txt');
   process.env.RUVNET_BRAIN_SECRETS_FILE = path.join(tmp, 'secrets.enc.json');
   process.env.RUVNET_BRAIN_CONFIG_FILE = path.join(tmp, '.claude', 'ruvnet-brain', 'config.json');
+  const catalog = path.join(tmp, '.claude', 'model-router', 'catalog.json');
+  fs.mkdirSync(path.dirname(catalog), { recursive: true });
+  fs.copyFileSync(new URL('../../config/model-router/catalog.template.json', import.meta.url), catalog);
+  process.env.MODEL_ROUTER_CATALOG = catalog;
   if (available) spawnSync('age-keygen', ['-o', process.env.SOPS_AGE_KEY_FILE], { encoding: 'utf8' });
   mod = await import('../../scripts/onboarding-console.mjs');
 });

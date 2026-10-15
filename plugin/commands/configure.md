@@ -1,7 +1,7 @@
 ---
 description: Open the RuvNet Brain Console (/rnbc) — a local web page that mirrors YOUR machine's RuvNet setup, explains it in plain English, and lets you safely configure and fix it. Read-only until you click; every machine change is explained first and is reversible.
-updated: 2026-10-04
-version: 1.0.1
+updated: 2026-10-10 06:00:22 EDT
+version: 1.0.2
 ---
 
 Launch the **RuvNet Brain Console** (RNBC) for the user. `/rnbc` is its name; `/rnb`, `/rvbc`,

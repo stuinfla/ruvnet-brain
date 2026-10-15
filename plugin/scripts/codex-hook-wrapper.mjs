@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 
 // New installs colocate the helper. Older standalone fixtures/installations can omit it;
 // they retain their prior behavior until the installer upgrades both files.
@@ -44,8 +45,8 @@ const blockingHooks = new Set([
  *
  *     warning: clamping SessionEnd hook timeout to 3s in .../hooks.json
  *
- * SessionEnd is HARD-CAPPED at 3 seconds and no registration can ask for more. learn-flush needs
- * 18s: measured with a real 10-entry queue and the real `ruflo`, 18342 / 18347 / 18384 ms, because
+ * SessionEnd is HARD-CAPPED at 3 seconds and no registration can ask for more. The former learning
+ * flusher needed 18s: measured with a real 10-entry queue and the real `ruflo`, 18342 / 18347 / 18384 ms, because
  * one `ruflo hooks` call alone costs seconds and it self-bounds at LEARN_FLUSH_DEADLINE_MS.
  *
  * So the arithmetic never closes, and what shipped was the worst version of that: this wrapper
@@ -57,11 +58,14 @@ const blockingHooks = new Set([
  * exactly — the hook returns immediately — while the flush runs to its own deadline and does its
  * own write-back. Raising the number instead would have been a fiction the host silently clamps.
  */
-const DETACHED_HOOKS = new Set(['learn-flush']);
+// Empty since the learning flusher was deleted (2026-10-12): learning writes directly through ruflo.
+const DETACHED_HOOKS = new Set([]);
 
 /** THE BUDGET IS DERIVED FROM WHAT THE HOOK MEASURABLY COSTS, never from what looks tidy. */
-function timeoutFor(hookId, event = '') {
+function timeoutFor(hookId, event = '', sessionBudgetMs = 0) {
   const override = Number(process.env.RUVNET_CODEX_HOOK_TIMEOUT_MS);
+  if (hookId === 'session-start') return Math.floor(Math.min(sessionBudgetMs,
+    Number.isFinite(override) && override > 0 ? override : Infinity));
   if (Number.isFinite(override) && override > 0) return override;
   // decision-gate's own internal budget is 4000ms (RUVNET_DECISION_BUDGET_MS) and it is allowed to
   // spend all of it: measured 986–4015ms across ten runs in a project this plugin does not own. A
@@ -198,17 +202,43 @@ if (DETACHED_HOOKS.has(hookId)) {
   process.exit(0);
 }
 
-const budgetMs = timeoutFor(hookId, process.argv[3] || '');
+let sessionDeadlineAt;
+if (hookId === 'session-start') {
+  try {
+    const { sessionStartDeadlineAt } = await import(path.join(root, 'scripts', 'session-start-budget.mjs'));
+    sessionDeadlineAt = sessionStartDeadlineAt({ host: 'codex', env: process.env, startedAt: performance.timeOrigin });
+  } catch {
+    process.stderr.write('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN] SessionStart host budget unavailable; restoration was not attempted.\n');
+    process.exit(0);
+  }
+}
+const budgetMs = timeoutFor(hookId, process.argv[3] || '', Math.max(0, (sessionDeadlineAt || 0) - Date.now()));
+if (hookId === 'session-start' && budgetMs < 1) {
+  process.stderr.write('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN] SessionStart deadline exhausted before restoration.\n');
+  process.exit(0);
+}
 const result = spawnSync(process.execPath, [adapter, ...process.argv.slice(2)], {
   input,
   encoding: 'utf8',
   // The adapter may fan one multi-file patch out into several body runs, and only this process knows
   // when the axe falls. Hand the budget down so it can stop and fail open instead of being killed
   // mid-loop with nothing written — a SIGKILL here is invisible to the host and to the user.
-  env: { ...process.env, RUVNET_CODEX_BUDGET_MS: String(budgetMs) },
+  env: { ...process.env, RUVNET_CODEX_BUDGET_MS: String(budgetMs),
+    ...(sessionDeadlineAt ? { RUVNET_SESSION_START_DEADLINE_AT: String(Math.min(sessionDeadlineAt, Date.now() + budgetMs)) } : {}) },
   timeout: budgetMs,
   killSignal: 'SIGKILL',
 });
+// Review N5: Codex has no shim watchdog in front of the body, so a kill here was silent. One ledger row,
+// read by the next SessionStart (same writer and file as the shim's own rows). Never throws.
+if (result.error?.code === 'ETIMEDOUT' || result.signal === 'SIGKILL') {
+  try {
+    const { recordHookFailure } = await import(pathToFileURL(path.join(root, 'scripts', 'hook-failures.mjs')).href);
+    recordHookFailure({ hook: hookId, event: process.argv[3] || '', error: 'killed-by-codex-wrapper', limitMs: budgetMs }, { brainHome });
+  } catch { /* an unrecordable failure must not become a second one */ }
+}
+if (hookId === 'session-start' && result.status !== 0) {
+  process.stderr.write('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN] SessionStart did not complete inside its host deadline; no restoration success is claimed.\n');
+}
 
 // A broken optional Brain hook must never degrade the host. The only non-zero status that carries
 // product meaning is an intentional exit-2 refusal from a hook whose contract is blocking.

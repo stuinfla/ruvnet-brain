@@ -38,7 +38,7 @@ function run(platform, mutant) {
   }
   const spec = path.join(root, 'candidate & %PATH% !literal!.tgz'); fs.writeFileSync(spec, 'sealed fixture');
   const hash = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-  const files = ['automatic-update.mjs', 'user-settings.mjs', 'ruvnet-gate1-pattern.mjs'];
+  const files = ['automatic-update.mjs', 'user-settings.mjs', 'ruvnet-gate1-pattern.mjs', 'developer-update-owner.mjs', 'developer-update-policy.mjs'];
   const updateModules = Object.fromEntries(files.map(name => {
     const dest = path.join(root, name);
     fs.copyFileSync(new URL(`../../plugin/scripts/${name}`, import.meta.url), dest);
