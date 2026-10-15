@@ -354,6 +354,39 @@ describe('inventory: everything the Brain owns is classified', () => {
     expect(fs.existsSync(path.join(m.home, '.npm', '_npx', 'newest'))).toBe(true);
   });
 
+  it('#420 item 3: a same-version npx installer copy is a duplicate, not "older"; a lower version is still older', () => {
+    const m = machine(); live(m);
+    for (const [hash, v, days] of [['dup-a', '7.7.0', 3], ['dup-b', '7.7.0', 4], ['low', '4.3.2', 3]]) {
+      json(path.join(m.home, '.npm', '_npx', hash, 'package.json'), { _npx: { packages: [`ruvnet-brain@${v}`] } });
+      json(path.join(m.home, '.npm', '_npx', hash, 'node_modules', 'ruvnet-brain', 'package.json'), { version: v });
+      old(path.join(m.home, '.npm', '_npx', hash), days);
+    }
+    const copies = inventoryFootprint(opts(m, { now: Date.now() })).items.filter((i) => i.kind === 'npx-copy');
+    const by = Object.fromEntries(copies.map((i) => [path.basename(i.path), i]));
+    const dupes = [by['dup-a'], by['dup-b']];
+    expect(dupes.filter((i) => i.class === 'may-exist')).toHaveLength(1); // exactly one kept
+    const dupe = dupes.find((i) => i.class === 'must-not-exist');
+    expect(dupe.reason).toMatch(/duplicate installer copy/);
+    expect(dupe.reason).not.toMatch(/older/);
+    expect(by.low.reason).toMatch(/an older installer copy \(4\.3\.2\)/);
+  });
+
+  it('#420 item 3: while an older installer copy is running, an idle newer copy is not called "older"', () => {
+    const m = machine(); live(m);
+    for (const [hash, v] of [['run-old', '4.3.2'], ['idle-new', '7.7.0']]) {
+      json(path.join(m.home, '.npm', '_npx', hash, 'package.json'), { _npx: { packages: [`ruvnet-brain@${v}`] } });
+      json(path.join(m.home, '.npm', '_npx', hash, 'node_modules', 'ruvnet-brain', 'package.json'), { version: v });
+      old(path.join(m.home, '.npm', '_npx', hash), 3);
+    }
+    const selfPath = path.join(m.home, '.npm', '_npx', 'run-old', 'node_modules', 'ruvnet-brain', 'bin', 'install.mjs');
+    fs.mkdirSync(path.dirname(selfPath), { recursive: true }); fs.writeFileSync(selfPath, '');
+    const copies = inventoryFootprint(opts(m, { now: Date.now(), selfPath })).items.filter((i) => i.kind === 'npx-copy');
+    const by = Object.fromEntries(copies.map((i) => [path.basename(i.path), i]));
+    expect(by['run-old'].reason).toBe('the installer running now');
+    expect(by['idle-new'].reason).toMatch(/installer copy \(7\.7\.0\) newer than the kept one \(4\.3\.2\)/);
+    expect(by['idle-new'].reason).not.toMatch(/older|duplicate/);
+  });
+
   it('Stable Spine generations: active, previous and live-leased are kept; an unreferenced one is reported for the update GC', () => {
     const m = machine(); live(m);
     json(path.join(m.brainHome, 'active.json'), { version: '7.7.0', codeRoot: 'versions/7.7.0', previous: { codeRoot: 'versions/4.2.7' } });
