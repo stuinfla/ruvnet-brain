@@ -709,7 +709,9 @@ function securityAlertWork() {
 }
 
 const observations = [...artifactOpenWork(), ...redCiOpenWork(), ...openPrWork(), ...securityAlertWork()];
-if (observations.length) console.error(JSON.stringify({ kind: 'continuation-advisory',
+// Quiet by default (2026-10-15): an observed open issue/PR/CI row is information the user can read on GitHub;
+// printing it on every Stop turned an advisory into per-turn noise. RUVNET_STOP_NUDGES=full restores it.
+if (observations.length && STOP_NUDGES_FULL) console.error(JSON.stringify({ kind: 'continuation-advisory',
   authority: false, items: observations.map(({ text, at }) => ({ text, at })) }));
 // ONE correction per turn: a single item however many claims the answer made; the stop_hook_active
 // exit and the cooldown lock below bound it to one request per stop episode.
