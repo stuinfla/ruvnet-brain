@@ -405,3 +405,56 @@ describe('both hosts reach the capture boundary at Stop', () => {
     expect(stop).toMatch(/session-snapshot Stop/);
   });
 });
+
+describe('stores encrypted at rest (ruflo RFE1, #439)', () => {
+  const encrypt = (project) => fs.writeFileSync(path.join(project, '.swarm', 'memory.db'), Buffer.concat([Buffer.from('RFE1'), Buffer.alloc(64, 3)]));
+  const ledger = (home) => fs.readFileSync(path.join(home, '.cache', 'ruvnet-brain', 'hook-failures.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+
+  it('skips the native-only turn write before ruflo is spawned and records the cause', () => {
+    const h = harness(); encrypt(h.project);
+    const { turn } = h.fire('Stop', { session_id: 'enc', last_assistant_message: OUTCOME });
+    expect(turn).toMatchObject({ queued: false, recorded: false });
+    expect(turn.skipped).toMatch(/encrypted at rest \(ruflo RFE1\)/);
+    expect(turn.skipped).toMatch(/RUVNET_TURN_CAPTURE=off/);
+    expect(h.launches).toEqual([]);
+    const rows = ledger(h.home);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ hook: 'turn-capture', event: 'Stop' });
+    expect(rows[0].error).toMatch(/encrypted at rest/);
+  });
+
+  it('a trivial turn on an encrypted store is still just trivial (no ledger row)', () => {
+    const h = harness(); encrypt(h.project);
+    const { turn } = h.fire('Stop', { session_id: 'enc-trivial', last_assistant_message: 'ok' });
+    expect(turn.skipped).toBe('trivial turn');
+    expect(fs.existsSync(path.join(h.home, '.cache', 'ruvnet-brain', 'hook-failures.jsonl'))).toBe(false);
+  });
+
+  it('the worker refuses an encrypted store step without running ruflo', () => {
+    const h = harness(); encrypt(h.project);
+    const brainHome = path.join(h.home, '.cache', 'ruvnet-brain'); let runs = 0;
+    const step = { projectRoot: h.project, projectDir: h.project, brainHome, kind: 'store', ruflo: '/fake/ruflo',
+      args: ['memory', 'store', '--key', 'enc-key', '--value', 'substantive value', '--namespace', 'turns', '--path', path.join(h.project, '.swarm', 'memory.db')] };
+    const [row] = runSteps({ receipts: path.join(brainHome, 'r.jsonl'), steps: [step] },
+      { env: TRUSTED_ENV, projectDir: h.project, brainHome, run: () => { runs += 1; return { status: 0 }; }, read: () => 'substantive value' });
+    expect(runs).toBe(0);
+    expect(row).toMatchObject({ verified: false });
+    expect(row.error).toMatch(/encrypted at rest/);
+  });
+
+  it('SessionStart status names the cause and the two ways out instead of a retry count', () => {
+    const h = harness(); encrypt(h.project);
+    const status = turnRecordingStatus({ projectDir: h.project, home: h.home, env: TRUSTED_ENV });
+    expect(status.state).toBe('warn');
+    expect(status.line).toMatch(/^turn recording off for this store — store is encrypted at rest \(ruflo RFE1\)/);
+    expect(status.line).toMatch(/RUVNET_TURN_CAPTURE=off/);
+  });
+
+  it('a plain store is unchanged: the native-only append is still what runs', () => {
+    const h = harness();
+    const { turn } = h.fire('Stop', { session_id: 'plain', last_assistant_message: OUTCOME });
+    expect(turn).toMatchObject({ queued: true, recorded: true });
+    const [[step]] = h.launches;
+    expect(step.args).toEqual(expect.arrayContaining(['--no-upsert', '--require-native', '--append-only']));
+  });
+});
