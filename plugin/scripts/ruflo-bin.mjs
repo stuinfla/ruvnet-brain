@@ -68,6 +68,16 @@ function defaultNodeCandidates(env) {
 }
 
 const nativeNodeCache = new Map();
+const PROBE_TIMEOUT_MS = 2000;
+const PROBE_BUDGET_MS = 3000;
+
+/**
+ * rufloInvocation for callers that must never throw: an unrecognised shim keeps the plain `bin args` they
+ * always ran, so routing a call site through node selection can only add the correct interpreter.
+ */
+export function rufloInvocationOrPlain(binary, args, opts) {
+  try { return rufloInvocation(binary, args, opts); } catch { return { executable: binary, args }; }
+}
 
 /**
  * The node that can load ruflo's native better-sqlite3, or null when the caller's own PATH node
@@ -90,8 +100,12 @@ export function nativeNodeFor(binary, { env = process.env, candidates } = {}) {
 
   const probe = `new (require(${JSON.stringify(addon)}))(':memory:').close()`;
   let chosen = null;
+  // Bounded: this runs inside hooks that have their own deadline (SessionStart is stopped 1.5 s early), so a
+  // wedged candidate must cost seconds at most and then leave the invocation exactly as it was.
+  const started = Date.now();
   for (let i = 0; i < list.length; i += 1) {
-    const r = spawnSync(list[i], ['-e', probe], { stdio: 'ignore', timeout: 8000, windowsHide: true });
+    if (Date.now() - started > PROBE_BUDGET_MS) break;
+    const r = spawnSync(list[i], ['-e', probe], { stdio: 'ignore', timeout: PROBE_TIMEOUT_MS, windowsHide: true });
     if (r.status === 0) { chosen = i === 0 ? null : { node: list[i], entry }; break; }
   }
   nativeNodeCache.set(cacheKey, chosen);

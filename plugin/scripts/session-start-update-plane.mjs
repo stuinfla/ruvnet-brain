@@ -229,6 +229,17 @@ export const heartbeat = ({ env, hookDir, stateDir, home, running, seedDispatche
   dispatchDetached(hookDir, 10, versionLog, process.execPath,
     [path.join(hookDir, 'host-update.mjs'), '--check'], env);
   if (!running || !remoteVersion || remoteVersion === running) return;
+  // `running` is the version this session BOOTED with. After the Stable Spine flips, the active generation can
+  // already be the remote version (or newer): "vX is downloading" beside "vX active" is a false statement
+  // (D5, 2026-10-15). Only announce a download when the remote is strictly newer than what is active now.
+  try {
+    const active = JSON.parse(read(path.join(home, '.cache', 'ruvnet-brain', 'active.json')) || '{}').version;
+    const parts = (v) => String(v || '').split(/[.-]/).map((x) => (/^\d+$/.test(x) ? Number(x) : 0));
+    const [a, r] = [parts(active), parts(remoteVersion)];
+    let newer = false;
+    for (let i = 0; i < 3 && active; i += 1) { if ((r[i] || 0) !== (a[i] || 0)) { newer = (r[i] || 0) > (a[i] || 0); break; } }
+    if (active && !newer) return;
+  } catch { /* unknown active generation: keep the existing announcement */ }
   if (pref === 'yes' && exists(path.join(hookDir, 'host-update.mjs'))) {
     dispatchDetached(hookDir, 600, path.join(stateDir, '.last-auto-update.log'),
       process.execPath, [path.join(hookDir, 'host-update.mjs')], env);

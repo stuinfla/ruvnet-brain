@@ -12,7 +12,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { spawnSync } from 'node:child_process';
 import { nativeNodeFor, rufloInvocation } from '../../plugin/scripts/ruflo-bin.mjs';
+import { rufloMemory, storeExact } from '../../plugin/scripts/ruflo-memory-hooks.mjs';
 
 const POSIX = process.platform !== 'win32';
 const roots = [];
@@ -45,7 +47,8 @@ function fakeNode(name, ok) {
   fs.mkdirSync(dir);
   const bin = path.join(dir, 'node');
   const log = path.join(dir, 'calls.log');
-  fs.writeFileSync(bin, `#!/bin/sh\nprintf '%s\\n' "$*" >> '${log}'\nexit ${ok ? 0 : 1}\n`, { mode: 0o755 });
+  // `-e` is the binding probe (exit by `ok`); anything else is ruflo being RUN under this node: echo it.
+  fs.writeFileSync(bin, `#!/bin/sh\nprintf '%s\\n' "$*" >> '${log}'\ncase "$1" in -e) exit ${ok ? 0 : 1};; esac\necho "RAN $*"\nexit 0\n`, { mode: 0o755 });
   return { bin, dir, log, calls: () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '') };
 }
 
@@ -111,5 +114,60 @@ describe.skipIf(!POSIX)('nativeNodeFor / rufloInvocation — pick the node that 
     const inv = rufloInvocation(r.link, args, { platform: 'darwin', env });
     expect(inv).toEqual({ executable: right.bin, args: [r.entry, ...args] });
     expect(wrong.calls()).not.toBe('');
+  });
+});
+
+// The three call sites that launched `ruflo` directly (the SessionEnd/PreCompact checkpoint writer, the
+// memory reader behind SessionStart restore, and the bounded recall reader). Found 2026-10-14 by running the
+// installed 4.7.5 SessionEnd hook under the failing PATH: "store failed: ruflo memory store exited 1".
+describe.skipIf(!POSIX)('every direct ruflo launch honours the node that can load the binding', () => {
+  const home = () => tmp();
+
+  it('storeExact (checkpoint write + exact readback) runs both calls under the right node', () => {
+    const r = fakeRuflo();
+    const wrong = fakeNode('wrong', false);
+    const right = fakeNode('right', true);
+    const env = { PATH: [wrong.dir, right.dir, '/usr/bin', '/bin'].join(path.delimiter), HOME: home() };
+    const seen = [];
+    const run = (exe, argv) => { seen.push({ exe, argv }); return { status: 0, stdout: 'v' }; };
+    const out = storeExact({ db: path.join(tmp(), 'memory.db'), namespace: 'n', key: 'k', value: 'v', env, bin: r.link, run });
+    expect(out.verified).toBe(true);
+    expect(seen.map((c) => c.exe)).toEqual([right.bin, right.bin]);
+    expect(seen.every((c) => c.argv[0] === r.entry)).toBe(true);
+    expect(seen.map((c) => c.argv[1])).toEqual(['memory', 'memory']);
+  });
+
+  it('rufloMemory (SessionStart reads) really executes ruflo under the right node', async () => {
+    const r = fakeRuflo();
+    const wrong = fakeNode('wrong', false);
+    const right = fakeNode('right', true);
+    const env = { PATH: [wrong.dir, right.dir, '/usr/bin', '/bin'].join(path.delimiter), HOME: home() };
+    const out = await rufloMemory(['retrieve', '--key', 'k', '--value-only'], { db: path.join(tmp(), 'memory.db'), env, bin: r.link, deadlineAt: Date.now() + 8000 });
+    expect(out.ok).toBe(true);
+    expect(out.stdout).toContain(`RAN ${r.entry} memory retrieve`);
+  });
+
+  it('the bounded recall reader executes ruflo under the right node', () => {
+    const r = fakeRuflo();
+    const wrong = fakeNode('wrong', false);
+    const right = fakeNode('right', true);
+    const reader = path.resolve('plugin/scripts/agentdb-recall-reader.mjs');
+    const env = { ...process.env, RUFLO_BIN: r.link, PATH: [wrong.dir, right.dir, '/usr/bin', '/bin'].join(path.delimiter) };
+    const input = JSON.stringify({ requests: [{ namespace: 'n', key: 'k' }], deadline: Date.now() + 8000 });
+    const res = spawnSync(process.execPath, [reader, path.join(tmp(), 'memory.db'), input], { env, encoding: 'utf8', timeout: 20000 });
+    const parsed = JSON.parse(res.stdout);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.value[0]).toContain(`RAN ${r.entry} memory retrieve`);
+  });
+
+  it('a probe that wedges cannot stall the hook: the invocation is left as it was', () => {
+    const r = fakeRuflo();
+    const dir = path.join(tmp(), 'hang'); fs.mkdirSync(dir);
+    const hang = path.join(dir, 'node');
+    fs.writeFileSync(hang, '#!/bin/sh\nsleep 30\n', { mode: 0o755 });
+    const t = Date.now();
+    const inv = rufloInvocation(r.link, ['memory'], { platform: 'darwin', nodeCandidates: [hang] });
+    expect(inv).toEqual({ executable: r.link, args: ['memory'] });
+    expect(Date.now() - t).toBeLessThan(5000);
   });
 });

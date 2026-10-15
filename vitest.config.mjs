@@ -20,6 +20,8 @@ export default defineConfig({
     // under the Brain home in production; tests that build a store must never create it in the
     // developer's real ~/.cache/ruvnet-brain, so the suite points it at a private test root.
     env: { RUVNET_TURN_CAPTURE: 'off', RUVNET_CONTINUITY_CAPTURE: 'off',
+      // The Stop gates are quiet by default for users; the suite exercises every nudge, so it opts in.
+      RUVNET_STOP_NUDGES: 'full',
       RUVNET_RUFLO_CWD_ROOT: path.join(os.tmpdir(), `ruvnet-brain-test-ruflo-cwd-${typeof process.getuid === 'function' ? process.getuid() : 'user'}`) },
     include: [
       'tests/unit/**/*.test.mjs', 'tests/integration/*.test.mjs', 'tests/mutation/*.test.mjs',

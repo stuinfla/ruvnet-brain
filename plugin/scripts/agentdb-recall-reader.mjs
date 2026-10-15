@@ -3,11 +3,12 @@
  * so a stalled CLI is retired at the recall deadline. Output contract unchanged: {ok, value}.
  */
 import { execFile } from 'node:child_process';
-import { resolveRuflo } from './ruflo-bin.mjs';
+import { resolveRuflo, rufloInvocationOrPlain } from './ruflo-bin.mjs';
 
 const call = (bin, args, deadline) => new Promise((resolve) => {
   const timeout = Math.max(1, deadline - Date.now());
-  execFile(bin, args, { timeout, killSignal: 'SIGKILL', encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' } },
+  const inv = rufloInvocationOrPlain(bin, args, { env: process.env });
+  execFile(inv.executable, inv.args, { timeout, killSignal: 'SIGKILL', encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' } },
     (error, stdout) => resolve(error ? null : String(stdout || '')));
 });
 

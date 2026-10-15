@@ -222,7 +222,7 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
     },
     {
       "id": "ruflo-runs-under-a-node-that-loads-its-binding",
-      "reason": "Hooks inherit whatever node is first on their PATH; ruflo is run under the first node that can load its own better-sqlite3 (a healthy machine is untouched, and no candidate means no change), so a native memory write is not refused for a node-ABI mismatch",
+      "reason": "Hooks inherit whatever node is first on their PATH; every direct ruflo launch (turn and learning capture, the SessionEnd/PreCompact checkpoint writer, the SessionStart memory reader and the recall reader) runs ruflo under the first node that can load its own better-sqlite3 within a bounded probe (a healthy machine is untouched, and no candidate means no change), so a native memory write is not refused for a node-ABI mismatch",
       "files": [],
       "platformFiles": {
         "linux": ["tests/unit/ruflo-native-node.test.mjs"],

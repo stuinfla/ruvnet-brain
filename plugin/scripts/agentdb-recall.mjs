@@ -319,6 +319,18 @@ async function consequentialRecall({ prompt, root, store, bin, scratch, env, dea
       records: selected.map(({ category, namespace, key, storePath, valueDigest }) => ({ category, namespace, key, storePath, valueDigest })), authority: false } };
 }
 
+/**
+ * Quiet by default (2026-10-15): a recall that found nothing because it timed out or was unavailable says
+ * nothing — "Search timed out; no records verified" on every prompt under load is noise, not information.
+ * RUVNET_STOP_NUDGES=full keeps the honest status line.
+ */
+export function recallIsWorthSurfacing(r, env = process.env) {
+  if (!r?.block) return false;
+  if (String(env.RUVNET_STOP_NUDGES || '').toLowerCase() === 'full') return true;
+  if (Array.isArray(r.picks) && r.picks.length) return true;
+  return !/\b(timed[- ]out|unavailable)\b/i.test(String(r.outcome || r.status || r.block));
+}
+
 export async function recall({ prompt, projectDir = process.cwd(), env = process.env, deadlineMs, ruflo, scratch,
   binding = {}, signal, absoluteDeadline, consequential = false, enumerateKeys = enumerateCanonicalKeys } = {}) {
   const started = Date.now();
@@ -451,6 +463,7 @@ async function main() {
   const projectDir = typeof ev.cwd === 'string' && ev.cwd ? ev.cwd : process.cwd();
   const r = await recall({ prompt, projectDir, deadlineMs: Math.max(1, DEFAULT_DEADLINE_MS - (Date.now() - started)) });
   if (!r.block) return;
+  if (!recallIsWorthSurfacing(r)) return;
   const hash = crypto.createHash('sha256').update(r.block).digest('hex').slice(0, 12);
   // Hash only, never raw memory values, enters the per-session dedupe markers.
   process.stdout.write(`${hash}\n${r.block}\n`);

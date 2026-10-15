@@ -18,7 +18,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { execFile, execFileSync, spawnSync } from 'node:child_process';
 import os from 'node:os';
-import { resolveRuflo, rufloRunDir, rufloScratchRoot } from './ruflo-bin.mjs';
+import { resolveRuflo, rufloInvocationOrPlain, rufloRunDir, rufloScratchRoot } from './ruflo-bin.mjs';
 import { resolveProjectStore } from './project-store-resolver.mjs';
 import { checkpointNamespaces, newestOfFamily } from './checkpoint-keys.mjs';
 
@@ -57,7 +57,8 @@ export function rufloMemory(args, { db, env = process.env, bin = resolveRuflo({ 
   return new Promise((resolve) => {
     if (!bin) return resolve({ ok: false, stdout: '', error: 'global Ruflo unavailable' });
     const spawnAt = rufloSpawnOptions(db, env);
-    execFile(bin, ['memory', ...args, '--path', db], { cwd: spawnAt.cwd, env: spawnAt.env, timeout, killSignal: 'SIGKILL', encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 },
+    const inv = rufloInvocationOrPlain(bin, ['memory', ...args, '--path', db], { env: spawnAt.env });
+    execFile(inv.executable, inv.args, { cwd: spawnAt.cwd, env: spawnAt.env, timeout, killSignal: 'SIGKILL', encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 },
       // The ledger gets a fixed reason, never execFile's message (it embeds the whole argv: value, db path).
       (error, stdout) => { spawnAt.cleanup(); resolve({ ok: !error, stdout: String(stdout || ''), error: error ? (error.killed ? 'timed out' : `ruflo memory ${args[0]} exited ${error.code ?? 'abnormally'}`) : null }); });
   });
@@ -194,11 +195,13 @@ export function storeExact({ db, namespace, key, value, env = process.env, bin =
   const spawnAt = rufloSpawnOptions(db, env);
   const options = { encoding: 'utf8', timeout: timeoutMs, killSignal: 'SIGKILL', maxBuffer: 8 * 1024 * 1024, cwd: spawnAt.cwd, env: spawnAt.env };
   try {
-    const stored = run(bin, ['memory', 'store', '--key', key, '--value', value, '--namespace', namespace, '--path', db], options);
+    const storeInv = rufloInvocationOrPlain(bin, ['memory', 'store', '--key', key, '--value', value, '--namespace', namespace, '--path', db], { env: spawnAt.env });
+    const stored = run(storeInv.executable, storeInv.args, options);
     if (stored.error || stored.status !== 0) {
       return { stored: false, verified: false, error: String(stored.stderr || stored.stdout || stored.error?.message || 'store failed').trim().slice(0, 200) };
     }
-    const read = run(bin, ['memory', 'retrieve', '--key', key, '--namespace', namespace, '--value-only', '--path', db], options);
+    const readInv = rufloInvocationOrPlain(bin, ['memory', 'retrieve', '--key', key, '--namespace', namespace, '--value-only', '--path', db], { env: spawnAt.env });
+    const read = run(readInv.executable, readInv.args, options);
     return { stored: true, verified: !read.error && read.status === 0 && String(read.stdout || '').trim() === value, key };
   } finally { spawnAt.cleanup(); }
 }
