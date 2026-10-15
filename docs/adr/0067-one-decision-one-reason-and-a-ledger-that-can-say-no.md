@@ -2,9 +2,9 @@
 id: ADR-067
 title: One decision, one reason — and a ledger that can report bad news
 status: Accepted
-reviewed_digest: ecd9518d306e
+reviewed_digest: 5611bb22f011
 date: 2026-08-10
-updated: 2026-09-27
+updated: 2026-10-15
 updated_source: derived-from-git
 authors: [Stuart Kerr, Claude Code]
 tags: [hooks, architecture, enforcement, measurement, simplification]
@@ -124,6 +124,7 @@ by name, most because they duplicate a native or global lesson and a second copy
   as surfaced for coverage and never scored.
 
 ## Currency log
+| 2026-10-15 | Review `5611bb22f011`: decision unchanged. `plugin/scripts/decision-gate.mjs` moved in 4.7.8 | The budget-exhausted and policy-skipped stderr lines print only when the action was refused or `RUVNET_STOP_NUDGES=full`; every outcome is still appended to the ledger, so a timeout-allow is still recorded as one and still counts as `budget-exceeded`, never as a verdict. No policy, applicability rule, budget, refusal or ledger schema changed. Source: `plugin/scripts/decision-gate.mjs`. |
 | 2026-09-27 | Currency review: decision unchanged. Motion: decision-gate.mjs's dead-route removal and two new hooks.json entries for capacity-aware parallel work. The one-decision-one-reason ledger mechanism is unchanged; dead-code removal only. | Reviewed `plugin/scripts/decision-gate.mjs`, `plugin/scripts/decision-outcomes.mjs`, `plugin/scripts/degradation-watch.mjs`, `plugin/scripts/identifier-preflight.mjs`, `plugin/scripts/adr-currency-gate.mjs`, `plugin/scripts/mcp-readiness.mjs` against the commits listed above; reviewed_digest ecd9518d306e. |
 
 | Date | What changed | Why (with referents) |

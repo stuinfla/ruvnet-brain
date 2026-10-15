@@ -15,7 +15,9 @@ const { DatabaseSync } = await import('node:sqlite');
 export const WAL_REFUSAL_TEXT = '[ERROR] Failed to store: active native WAL connection — refusing an unsafe sql.js whole-image write';
 
 const roots = [];
-export function cleanup() { for (const r of roots.splice(0)) fs.rmSync(r, { recursive: true, force: true }); }
+// maxRetries: a detached ruflo writer can still be creating files inside the fixture while it is removed
+// (ENOTEMPTY on Linux CI, 2026-10-15); retrying the removal is the standard remedy and hides nothing.
+export function cleanup() { for (const r of roots.splice(0)) fs.rmSync(r, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 }); }
 export function tmp(prefix) {
   const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
   roots.push(dir);

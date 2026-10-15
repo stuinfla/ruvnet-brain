@@ -390,7 +390,9 @@ const completion = (() => {
  * can never close must never be written. Per-turn and total caps; dedupe against open items by
  * normalized text; project + worktree scoped exactly like --commit-to's objective. Fails open.
  */
+const STOP_NUDGES_FULL = String(process.env.RUVNET_STOP_NUDGES || '').toLowerCase() === 'full';
 function promiseBookkeeping() {
+  if (!STOP_NUDGES_FULL) return;
   if (HOST !== 'claude' || !hookInput.session_id || hookInput.session_id === '*') return;
   try {
     const pid = projectIdentity.projectId;
@@ -728,13 +730,22 @@ const decisionWork = (() => {
 })();
 const promiseWork = HOST === 'claude'
   ? authorizedPromiseItems(led.items, hookInput, projectIdentity)
-    .map((i) => ({ text: `you said you would: ${i.text}`, at: i.at, kind: PROMISE_KIND }))
+    .map((i) => ({ text: `you said you would: ${i.text}`, at: i.at, kind: PROMISE_KIND, key: i.key }))
   : [];
 const deferralWork = deferralState?.v.verdict === 'DEFERRAL' && deferralState.forced < MAX_DEFERRAL_FORCES ? [{
   text: `your answer ends by handing authorized work back ("${deferralState.v.deferral.phrase}") although ${deferralState.v.authorization} authorizes it and no blocker is named. Do that work now`,
   at: new Date(nowMs).toISOString(), derived: true, kind: 'no-deferral' }] : [];
+/**
+ * QUIET BY DEFAULT (owner, 2026-10-15): a Stop hook that talks on ordinary turns teaches people to ignore or
+ * disable the whole product. Unless RUVNET_STOP_NUDGES=full, this gate speaks ONLY for (1) an objective the
+ * user explicitly committed it to, and (2) a RuvNet capability claim contradicted by typed evidence. Promise
+ * nudges, completion-claim corrections, decision-record reminders, deferral nags and "unknown" claims are
+ * dropped. Promises are not even captured in quiet mode: capturing work that is never nudged is only ledger
+ * bloat. `full` restores every nudge (tests and anyone who wants them).
+ */
 const open = [...capabilityClaimWork(), ...completionWork, ...decisionWork, ...deferralWork,
-  ...(objective ? [{ text: objective.text, at: objective.at }] : []), ...promiseWork];
+  ...(objective ? [{ text: objective.text, at: objective.at }] : []), ...promiseWork]
+  .filter((i) => STOP_NUDGES_FULL || !i.kind || (i.kind === 'capability-claim-integrity' && / contradicts /.test(i.text)));
 if (!open.length) process.exit(EXIT_ALLOW);   // nothing outstanding: silence is correct
 
 /**
@@ -765,7 +776,7 @@ if (!open.length) process.exit(EXIT_ALLOW);   // nothing outstanding: silence is
 // how old it is, which is information the reader needs rather than a reason to withhold. If a ledger
 // is genuinely abandoned, the honest fix is to mark its items done — not to let a clock silently
 // decide the commitment expired.
-const forceable = open.filter((i) => Number.isFinite(Date.parse(i.at)));
+let forceable = open.filter((i) => Number.isFinite(Date.parse(i.at)));
 if (!forceable.length) process.exit(EXIT_ALLOW);
 
 /**
@@ -806,6 +817,49 @@ function claimCooldown(now, windowMs) {
   catch { return false; }                                               // lost the race / cannot persist → fail closed
 }
 if (!claimCooldown(nowMs, COOLDOWN_MS)) process.exit(EXIT_ALLOW);
+
+/**
+ * BOUNDED FORCING FOR PROMISES (2026-10-15). A captured promise closes only on a verified completion
+ * claim, and that verdict can be OBSERVED_CHECK or UNKNOWN but never PASS (64b0b7ee), so an assistant
+ * promise had NO route to closure and re-forced every Stop forever — measured: 36 open promises across
+ * 7 ledgers, many garbage fragments. A gate with no way out is not rigor, it is a trap that teaches the
+ * model to stop answering.
+ *
+ * So each promise is forced at most PROMISE_MAX_FORCES times (default 3). After that it is RETAINED as
+ * state 'deferred' with the reason recorded — never marked done, never deleted — and stops forcing.
+ * The count is per promise, not a clock, so old open work is still nagged until it has had its chances.
+ * User objectives and derived (observed) items are untouched.
+ */
+const PROMISE_MAX_FORCES = Number(process.env.RUVNET_PROMISE_MAX_FORCES ?? 3);
+// Counts live BESIDE the ledger, not on its rows: a forcing stop must leave the ledger byte-identical
+// (continuation-commitment-ownership.test.mjs), and only the retirement itself may write a row.
+try {
+  const FORCES = LEDGER + '.forces.json';
+  let counts = {};
+  try { counts = JSON.parse(fs.readFileSync(FORCES, 'utf8')) || {}; } catch { /* first force */ }
+  const retired = [];
+  let touched = false;
+  for (const f of forceable) {
+    if (f.kind !== PROMISE_KIND) continue;
+    const row = led.items.find((i) => i.kind === PROMISE_KIND && i.key === f.key && !i.done
+      && (i.state === undefined || i.state === 'active'));
+    if (!row) continue;
+    const id = crypto.createHash('sha256').update(JSON.stringify([row.projectId, row.sessionIds, row.key])).digest('hex').slice(0, 24);
+    const n = (counts[id]?.n || 0) + 1;
+    counts[id] = { n, at: new Date(nowMs).toISOString() };
+    touched = true;
+    if (n > PROMISE_MAX_FORCES) {
+      Object.assign(row, { state: 'deferred', stateAt: new Date(nowMs).toISOString(),
+        stateReason: `forced ${PROMISE_MAX_FORCES} times with no verified completion claim; retained, not completed` });
+      retired.push(f);
+      delete counts[id];
+    }
+  }
+  for (const [k, v] of Object.entries(counts)) if (nowMs - Date.parse(v?.at) > 14 * 86_400_000) delete counts[k];
+  if (touched) fs.writeFileSync(FORCES, JSON.stringify(counts));
+  if (retired.length) { save(led); forceable = forceable.filter((i) => !retired.includes(i)); }
+} catch { /* bookkeeping only: never break a turn */ }
+if (!forceable.length) process.exit(EXIT_ALLOW);
 if (deferralState && forceable.some((i) => i.kind === 'no-deferral')) {
   try { for (const [k, v] of Object.entries(deferralState.counts)) if (nowMs - Date.parse(v?.at) > 7 * 86_400_000) delete deferralState.counts[k];
     deferralState.counts[deferralState.chain] = { n: deferralState.forced + 1, at: new Date(nowMs).toISOString() };

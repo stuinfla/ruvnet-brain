@@ -206,6 +206,9 @@ export function decide({ hookInput, marker, markerMs, searchEvidence = null, own
 async function main() {
   const hookInput = await readStopHookInput();
   if (hookInput.__source !== 'stdin') process.exit(EXIT_ALLOW);
+  // Quiet by default (2026-10-15): the "answered without searching" correction is a nudge, not a safety stop.
+  // RUVNET_STOP_NUDGES=full restores it.
+  if (String(process.env.RUVNET_STOP_NUDGES || '').toLowerCase() !== 'full') process.exit(EXIT_ALLOW);
   if (hookInput.stop_hook_active && !hookInput.interrupted && !hookInput.cancelled) process.exit(EXIT_ALLOW);
   if (hookInput.hook_event_name !== 'Stop') {
     process.exit(EXIT_ALLOW);

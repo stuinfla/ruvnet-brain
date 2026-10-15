@@ -8,6 +8,7 @@ import { resolveProjectStore } from './project-store-resolver.mjs';
 import { rufloInvocation, rufloRunDir, resolveRuflo } from './ruflo-bin.mjs';
 import { loadRuntimePreferences } from './runtime-preferences.mjs';
 import { learningContext } from './runtime-preferences.mjs';
+import { captureFailureReason } from './turn-capture-privacy.mjs';
 
 export const LEARNING_NAMESPACE = 'learning-observations';
 export function learningTarget(context, { env = process.env, explicitLegacyApply = false } = {}) {
@@ -56,7 +57,7 @@ export function recordLearningObservation(binary, context, { tool, action, sessi
   // A refused store whose key already holds these exact bytes is the dedupe working, not a failure.
   if (stored.error || stored.status !== 0) {
     if (exact) return { db, key, digest: createHash('sha256').update(value).digest('hex'), exactCli: true, alreadyStored: true };
-    throw new Error(`ruflo memory store refused the observation: ${String(stored.stderr || stored.stdout || stored.error?.message || '').trim().slice(0, 160)}`);
+    throw new Error(`ruflo memory store refused the observation: ${captureFailureReason(stored, stored.status)}`);
   }
   if (!exact) throw new Error('canonical exact CLI readback failed');
   return { db, key, digest: createHash('sha256').update(value).digest('hex'), exactCli: true };

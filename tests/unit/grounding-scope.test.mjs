@@ -28,7 +28,7 @@ function fire(f, host, id, payload) {
   expect(command).toBeTruthy();
   const started = performance.now();
   const r = spawnSync('bash', ['-c', command], { input: JSON.stringify({ ...payload, cwd: f.h }), cwd: f.h, encoding: 'utf8', timeout: 12000,
-    env: { PATH: process.env.PATH, HOME: f.h, CODEX_HOME: path.join(f.h, '.codex'), CLAUDE_PLUGIN_ROOT: f.code,
+    env: { PATH: process.env.PATH, RUVNET_STOP_NUDGES: 'full', HOME: f.h, CODEX_HOME: path.join(f.h, '.codex'), CLAUDE_PLUGIN_ROOT: f.code,
       RUVNET_BRAIN_HOME: f.brain, RUVNET_SETTINGS_FILE: f.settings, RUVNET_AGENTDB_FIRST: 'off', RUVNET_BRAIN_NO_NETWORK: '1', RUVNET_HOOK_HOST: host } });
   expect(r.status, r.stderr).toBe(0); return { ...r, elapsedMs: performance.now() - started };
 }

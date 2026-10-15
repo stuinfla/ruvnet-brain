@@ -209,6 +209,15 @@ if (!entry) {
 // forgets to declare one fails toward the pre-ADR-054 behaviour rather than toward silent death.
 if (BRAIN_OFF && entry.offBehavior === 'silence') process.exit(0);
 
+// QUIET BY DEFAULT (owner, 2026-10-15). These advisory hooks only ever add text to a turn (advocacy offers,
+// "ADRs are living plans", MetaHarness/QE offers, parallel-work sizing, the answered-without-searching
+// nudge). None of them blocks or protects anything, and together they were the constant noise on every
+// prompt. They stay registered and run only when RUVNET_STOP_NUDGES=full, so nothing is deleted and the
+// tests still exercise them. The blocking hooks (decision-gate), the grounding directive and the silent
+// capture hooks are unaffected.
+const QUIET_BY_DEFAULT = new Set(['unprompted-speech', 'capacity-aware-parallel-work', 'grounding-turn-gate']);
+if (QUIET_BY_DEFAULT.has(hookId) && String(process.env.RUVNET_STOP_NUDGES || '').toLowerCase() !== 'full') process.exit(0);
+
 // Read a bounded payload before dispatch. The ground body owns the quiet-prompt
 // decision because it resolves canonical memory beyond the hook process's cwd.
 let hookInput = null;

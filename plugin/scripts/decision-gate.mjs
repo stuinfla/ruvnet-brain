@@ -31,6 +31,8 @@ import { append as appendOutcome, actionKey, recordRefusal, resolve as resolveOu
 // see a host-native spelling — the 4.4 measurement was a Grok write silently allowed. hook-input.mjs.
 import { normalizePayloadText } from './hook-input.mjs';
 
+const QUIET_FULL = String(process.env.RUVNET_STOP_NUDGES || '').toLowerCase() === 'full';
+
 const SCRIPTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const EVENT = process.argv[2] || '';
 
@@ -415,7 +417,10 @@ function reportBudget({ session, unconsulted, trace, started, budgetMs, refused 
   try {
     appendOutcome({ kind: 'budget-exceeded', event: EVENT, session, unconsulted, elapsedMs: elapsed, budgetMs, ts: Date.now() });
   } catch { /* a ledger must never break a tool call */ }
-  process.stderr.write(
+  // Quiet by default (2026-10-15): the outcome is already in the ledger above. On an ALLOW, a stderr line only
+  // makes the host show a hook "error" for a decision that was made. It is kept when the action was refused
+  // and under RUVNET_STOP_NUDGES=full.
+  if (refused || QUIET_FULL) process.stderr.write(
     `[decision-gate] ${budgetMs}ms budget exhausted after ${elapsed}ms — ${refused ? 'REFUSED; UNCONSULTED' : 'ALLOWED WITHOUT CONSULTING'}: `
     + `${unconsulted.join(', ')}. These policies did not vote; ${refused ? 'another policy refused the action.' : 'this allow is a timeout, not a verdict.'}\n`,
   );
@@ -424,7 +429,7 @@ function reportBudget({ session, unconsulted, trace, started, budgetMs, refused 
 function reportSelfSkipped({ session, selfSkipped }) {
   for (const r of selfSkipped) {
     try { appendOutcome({ kind: 'policy-skipped', event: EVENT, session, policy: r.id, reason: r.reason, ts: Date.now() }); } catch { /* a ledger must never break a tool call */ }
-    process.stderr.write(`[decision-gate] ${r.reason || `${r.id} skipped`} — ${r.id} did not vote; it supplied no authorization verdict.\n`);
+    if (QUIET_FULL) process.stderr.write(`[decision-gate] ${r.reason || `${r.id} skipped`} — ${r.id} did not vote; it supplied no authorization verdict.\n`);
   }
 }
 /**

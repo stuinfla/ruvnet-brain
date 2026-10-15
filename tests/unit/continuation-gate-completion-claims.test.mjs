@@ -302,6 +302,19 @@ describe('promises (Piece C)', () => {
     expect(item.completionEvidence).toBeUndefined();
   });
 
+  it('a promise with no verified closure is forced a bounded number of times, then retained as deferred', () => {
+    const repo = gitRepo('a');
+    fire(repo, PROMISE, { transcriptPath: transcript() });
+    // The first stop after capture may itself force; count forces over later stops.
+    const outs = [1, 2, 3, 4, 5, 6].map((n) => fire(repo, `Here is summary ${n}.`, { transcriptPath: transcript() }));
+    expect(outs.filter((o) => o.includes('you said you would')).length).toBeLessThanOrEqual(3);
+    expect(outs[outs.length - 1]).toBe('');
+    const item = ledger().items.find((i) => i.kind === 'assistant-commitment');
+    expect(item).toMatchObject({ done: false, state: 'deferred' });
+    expect(item.stateReason).toContain('retained, not completed');
+    expect(item.completionEvidence).toBeUndefined();
+  });
+
   it('a promise captured in one repository never forces in another', () => {
     const a = gitRepo('a');
     const b = gitRepo('b', 'https://github.com/someone-else/unrelated.git');
