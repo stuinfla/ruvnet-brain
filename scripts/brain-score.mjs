@@ -203,12 +203,22 @@ export async function readCoverage(rootOverride) {
   };
 }
 
-/** A reading past its dimension's `maxAgeDays`, or with no timestamp at all, is not current. */
+/**
+ * A reading past its dimension's `maxAgeDays`, or with no timestamp at all, is not current.
+ *
+ * MEASURED 2026-10-16: a reading dated AFTER `now` (clock skew between the writer and this read, or
+ * a corrupt/hand-edited `recorded`/`generatedAt` stamp) produced a NEGATIVE `ageDays` — e.g. `-3` —
+ * which is less than any positive `maxAgeDays`, so `stale` came back `false` with `why: null`. A
+ * corrupted-into-the-future timestamp is exactly as untrustworthy as a corrupted-into-the-past one;
+ * this file's own stated purpose (see header, ISSUE #258) is that a reading nobody can vouch for is
+ * never silently used, and a future stamp was sailing through as BETTER than fresh.
+ */
 export function staleness(at, maxAgeDays, now = Date.now()) {
   if (!at) return { stale: true, ageDays: null, why: 'no timestamp recorded' };
   const ms = now - Date.parse(at);
   if (!Number.isFinite(ms)) return { stale: true, ageDays: null, why: 'unparseable timestamp' };
   const ageDays = Math.round((ms / DAY) * 10) / 10;
+  if (ageDays < 0) return { stale: true, ageDays, why: `${ageDays}d — recorded in the future (clock skew or corrupt timestamp)` };
   return { stale: ageDays > maxAgeDays, ageDays, why: ageDays > maxAgeDays ? `${ageDays}d > ${maxAgeDays}d budget` : null };
 }
 
