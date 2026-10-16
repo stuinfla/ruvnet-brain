@@ -5,7 +5,7 @@ status: Accepted
 date: 2026-08-22
 updated: 2026-10-15
 updated_source: derived-from-git
-reviewed_digest: 1515cbfab58a
+reviewed_digest: 9ad8b3485e0d
 version: 1.1.2
 authors: [Stuart Kerr, Codex]
 tags: [architecture, truthfulness, capabilities, hosts, evidence, receipts]
@@ -144,6 +144,7 @@ tests establish request-envelope behavior, not native-host continuation or a sig
 result. Cross-platform, public-byte, false-positive, and aggregate obligations remain unproven.
 
 ## Currency log
+| 2026-10-15 | Review `9ad8b3485e0d`: decision unchanged. `plugin/scripts/continuation-gate.mjs` moved in 4.7.9 | The observed-work advisory line (open SLA-breach issues, red CI, open PRs, security alerts) is printed only under `RUVNET_STOP_NUDGES=full`; what the gate may force is unchanged. No claim-audit rule, receipt or verdict changed. Source: `plugin/scripts/continuation-gate.mjs`, `tests/unit/continuation-gate-quiet-default.test.mjs`. |
 | 2026-10-15 | Review `1515cbfab58a`: decision unchanged. `plugin/scripts/continuation-gate.mjs` moved in 4.7.7 | An assistant promise whose completion verdict cannot be PASS was forced at every Stop forever; it is now forced at most three times, counted beside the ledger, then retained as deferred and never marked completed, and the gate is quiet by default unless `RUVNET_STOP_NUDGES=full` (only an explicit user objective or a capability claim contradicted by typed evidence still speaks). No claim-audit rule, evidence receipt or verdict changed; a completion claim is still never marked verified by prose. Source: `plugin/scripts/continuation-gate.mjs`, `tests/unit/continuation-gate-quiet-default.test.mjs`. |
 | 2026-09-30 | `extractClaims` exported with an optional `tools` vocabulary (default scope unchanged, so this Stop body's audit is identical) and `currentTurnRecords` factored out of `claudeTurnEvents`, both reused by `grounding-turn-evidence.mjs` for ADR-0030 decision point #1; that gate skips sentences this ADR's RUVNET_TOOL class already audits. | `plugin/scripts/capability-claim-evidence.mjs`, `plugin/scripts/completion-claim-evidence.mjs`; `tests/unit/grounding-turn-assertion.test.mjs`, `tests/unit/continuation-gate-completion-claims.test.mjs`, `tests/unit/capability-claim-evidence.test.mjs` green. |
 | 2026-09-30 | Added claim class `completion` inside the existing Stop body (no new registration): one correction when a final answer claims work is done without post-change verification this turn, a named check and a NOT-verified disclosure; first-person promises are recorded in the same per-project ledger and close only on an evidence-passing completion claim. Claude transcripts are parsed; Codex enforces the answer-side half only (rollout format unparsed). Acceptance #5 partially measured for this class: replay over 15 real Claude transcripts / 1,016 turns (the labelled run) — arm 9.2%, block 8.6%, hand-labelled block precision 81/88 (92%), promise precision 39/44 (89%); packed-host latency and native continuation remain unproven. | `plugin/scripts/completion-claim-evidence.mjs`, `plugin/scripts/continuation-gate.mjs`, `plugin/scripts/continuation-objective.mjs`, `scripts/completion-claim-replay.mjs`, `tests/unit/continuation-gate-completion-claims.test.mjs`. |

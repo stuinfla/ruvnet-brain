@@ -6,7 +6,7 @@ date: 2026-07-27
 updated: 2026-10-15
 updated_source: derived-from-git
 version: 1.0.3
-reviewed_digest: 17ce0172df1b
+reviewed_digest: 5d2c050f38c2
 impl: built
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6 (codex, read-only)]
 tags: [proactivity, hooks, mesh, fourth-wall, learning, grounding, qa]
@@ -734,6 +734,7 @@ worker, calls a paid execution API, blocks a turn, or claims that work is runnin
 must launch real non-overlapping worker tasks through available tools and verify their results.
 
 ## Currency log
+| 2026-10-15 | Review `5d2c050f38c2`: decision unchanged. `plugin/scripts/continuation-gate.mjs` moved in 4.7.9 | The observed-work advisory line (open SLA-breach issues, red CI, open PRs, security alerts) is printed only under `RUVNET_STOP_NUDGES=full`; what the gate may force is unchanged. No claim-audit rule, receipt or verdict changed. Source: `plugin/scripts/continuation-gate.mjs`, `tests/unit/continuation-gate-quiet-default.test.mjs`. |
 | 2026-10-15 | Review `17ce0172df1b`: decision unchanged. `plugin/scripts/hook-shim.mjs` and `plugin/scripts/agentdb-recall.mjs` moved in 4.7.8 | The per-prompt advisory hooks (`unprompted-speech`, `capacity-aware-parallel-work`, `grounding-turn-gate`) are silent through the shim unless `RUVNET_STOP_NUDGES=full`, and a timed-out or unavailable AgentDB recall is silent by default. No registration, matcher, timeout, mode or offBehavior changed; the blocking decision-gate, the grounding directive and the silent capture hooks are untouched. Source: `plugin/scripts/hook-shim.mjs`, `tests/unit/continuation-gate-quiet-default.test.mjs`. |
 | 2026-10-15 | Review `529c46dd7208`: decision unchanged. `plugin/scripts/continuation-gate.mjs` moved in 4.7.7 | An assistant promise whose completion verdict cannot be PASS was forced at every Stop forever; it is now forced at most three times, counted beside the ledger, then retained as deferred and never marked completed, and the gate is quiet by default unless `RUVNET_STOP_NUDGES=full` (only an explicit user objective or a capability claim contradicted by typed evidence still speaks). No claim-audit rule, evidence receipt or verdict changed; a completion claim is still never marked verified by prose. Source: `plugin/scripts/continuation-gate.mjs`, `tests/unit/continuation-gate-quiet-default.test.mjs`. |
 | 2026-09-27 | Currency review: decision unchanged. Motion: hook-shim TABLE corrections and a UserPromptSubmit fix so hooks stop firing on harness-generated messages -- the latter directly serves this ADR's meshing goal rather than contradicting it. | Reviewed `plugin/hooks/hooks.json`, `plugin/hooks/codex-hooks.json`, `plugin/hooks/hook-contracts.json`, `plugin/scripts/continuity-hook-policy.mjs`, `plugin/scripts/hook-shim.mjs`, `plugin/scripts/capacity-aware-parallel-work.mjs` against the commits listed above; reviewed_digest dc38f53f369a. |

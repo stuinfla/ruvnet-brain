@@ -187,6 +187,19 @@ test('canonical apply needs no Kit, binds actual npm prefix and shares child tok
   const install=calls.find(c=>c.args[0]==='install');assert.equal(install.args[3],before.prefix);
   assert.ok(calls.every(c=>c.token===receipt.ownerToken));assert.equal(fs.existsSync(path.join(home,'.cache/ruvnet-brain/developer-update.lock')),false);
 });
+test('a lock whose owner has been dead for over ten minutes is reclaimed, not left to wedge updates', () => {
+  const brainHome=tmp(),dir=path.join(brainHome,'developer-update.lock');
+  fs.mkdirSync(dir,{recursive:true});
+  fs.writeFileSync(path.join(dir,'owner.json'),JSON.stringify({pid:4242,token:'t'.repeat(32),startedAt:new Date(Date.now()-11*60*1000).toISOString()}));
+  const lock=acquireDeveloperLock({brainHome,alive:()=>false});
+  assert.equal(lock.inherited,false);
+  assert.equal(sharedLockStatus({brainHome}).owner.pid,process.pid);
+  lock.release();
+  // a freshly dead owner is still refused
+  fs.mkdirSync(dir,{recursive:true});
+  fs.writeFileSync(path.join(dir,'owner.json'),JSON.stringify({pid:4242,token:'t'.repeat(32),startedAt:new Date().toISOString()}));
+  assert.throws(()=>acquireDeveloperLock({brainHome,alive:()=>false}),/lock stale/);
+});
 test('stale and malformed ownership cannot be stolen', () => {
   const brainHome=tmp(),dir=path.join(brainHome,'developer-update.lock');fs.mkdirSync(dir);atomic(path.join(dir,'owner.json'),{pid:99999999,token:'12345678901234567890'});
   assert.throws(()=>acquireDeveloperLock({brainHome,alive:()=>false}),/lock stale/);

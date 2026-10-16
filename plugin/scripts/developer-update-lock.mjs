@@ -16,7 +16,20 @@ export function sharedLockStatus({ brainHome, alive = pid => { try { process.kil
 export function acquireDeveloperLock({ brainHome, token = process.env.RUVNET_DEVELOPER_UPDATE_TOKEN, pid = process.pid, alive } = {}) {
   const status = sharedLockStatus({ brainHome, alive });
   if (token && status.state === 'running' && status.owner.token === token) return { token, ownerPid: status.owner.pid, inherited: true, release() {} };
-  if (status.state !== 'idle') throw Error(`developer update lock ${status.state}; ${status.directory}`);
+  // A dead owner's lock (dead for 10+ minutes) must not wedge every future update (measured 2026-10-15: a coordinator killed mid-run
+  // left `stale` behind and the automatic updater refused with "developer update lock stale" until a person
+  // removed the directory). Reclaim it: move the directory aside atomically (so two reclaimers cannot both
+  // win), then fall through to the normal atomic mkdir claim. Only a PROVABLY dead pid qualifies; a live,
+  // unknown or malformed lock still refuses.
+  const STALE_RECLAIM_MS = 10 * 60 * 1000;
+  const ageMs = status.state === 'stale' ? Date.now() - Date.parse(status.owner?.startedAt || '') : NaN;
+  if (status.state === 'stale' && Number.isFinite(ageMs) && ageMs >= STALE_RECLAIM_MS) {
+    const tomb = `${status.directory}.stale-${process.pid}-${Date.now()}`;
+    try { fs.renameSync(status.directory, tomb); fs.rmSync(tomb, { recursive: true, force: true }); }
+    catch { /* another reclaimer won, or the owner came back: re-read below */ }
+    const after = sharedLockStatus({ brainHome, alive });
+    if (after.state !== 'idle') throw Error(`developer update lock ${after.state}; ${after.directory}`);
+  } else if (status.state !== 'idle') throw Error(`developer update lock ${status.state}; ${status.directory}`);
   fs.mkdirSync(path.dirname(status.directory), { recursive: true });
   fs.mkdirSync(status.directory, { mode: 0o700 }); // atomic claim; racing owners get EEXIST
   const owner = { pid, token: crypto.randomUUID(), startedAt: new Date().toISOString() };

@@ -48,4 +48,19 @@ describe('quiet by default', () => {
       if (id === 'capacity-aware-parallel-work') expect(run('full').stdout).toContain('Capacity-aware parallel-work advisory');
     }
   });
+  it('an observed SLA-breach issue is not printed on an ordinary stop', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'quiet-obs-'));
+    dirs.push(dir);
+    spawnSync('git', ['init', '-q'], { cwd: dir });
+    spawnSync('git', ['remote', 'add', 'origin', 'https://github.com/example/a.git'], { cwd: dir });
+    const issues = path.join(dir, 'issues.json');
+    fs.writeFileSync(issues, JSON.stringify({ repo: 'example/a', at: new Date().toISOString(),
+      issues: [{ number: 439, title: 'x', breach: true, ageHours: 50 }] }));
+    const run = (nudges) => spawnSync(process.execPath, [GATE], { cwd: dir, encoding: 'utf8',
+      input: JSON.stringify({ hook_event_name: 'Stop', cwd: dir, session_id: 's1', last_assistant_message: 'Here is the summary.' }),
+      env: { ...process.env, HOME: dir, RUVNET_HOOK_HOST: 'claude', RUVNET_WORK_LEDGER: path.join(dir, 'l.json'),
+        RUVNET_OPEN_ISSUES_FILE: issues, RUVNET_CONTINUATION_COOLDOWN_MS: '1', RUVNET_STOP_NUDGES: nudges } });
+    expect(run('full').stderr).toContain('continuation-advisory');
+    expect(run('').stderr).not.toContain('continuation-advisory');
+  });
 });
