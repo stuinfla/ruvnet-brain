@@ -27,13 +27,15 @@ function tmp() {
 }
 
 /** A fake ruflo package: <root>/lib/ruflo/bin/ruflo.js, symlinked from <root>/bin/ruflo like npm -g. */
-function fakeRuflo({ withAddon = true } = {}) {
+function fakeRuflo({ withAddon = true, nested = false } = {}) {
   const root = tmp();
   const pkg = path.join(root, 'lib', 'ruflo');
   fs.mkdirSync(path.join(pkg, 'bin'), { recursive: true });
   const entry = path.join(pkg, 'bin', 'ruflo.js');
   fs.writeFileSync(entry, '#!/usr/bin/env node\n');
-  if (withAddon) fs.mkdirSync(path.join(pkg, 'node_modules', 'better-sqlite3'), { recursive: true });
+  if (withAddon && !nested) fs.mkdirSync(path.join(pkg, 'node_modules', 'better-sqlite3'), { recursive: true });
+  // Real `npm -g ruflo` layout (measured 2026-10-17, 3.56.10): nothing hoisted, the addon sits under @claude-flow/cli.
+  if (withAddon && nested) fs.mkdirSync(path.join(pkg, 'node_modules', '@claude-flow', 'cli', 'node_modules', 'better-sqlite3'), { recursive: true });
   fs.mkdirSync(path.join(root, 'bin'));
   const link = path.join(root, 'bin', 'ruflo');
   fs.symlinkSync(entry, link);
@@ -61,6 +63,16 @@ describe.skipIf(!POSIX)('nativeNodeFor / rufloInvocation — pick the node that 
     expect(nativeNodeFor(r.link, { candidates: [good.bin] })).toBeNull();
     expect(rufloInvocation(r.link, args, { platform: 'darwin', nodeCandidates: [good.bin] }))
       .toEqual({ executable: r.link, args });
+  });
+
+  it('finds the addon where npm really puts it (nested, not hoisted) and still switches to a node that can load it', () => {
+    const r = fakeRuflo({ nested: true });
+    const wrong = fakeNode('node26', false);
+    const right = fakeNode('node24', true);
+    expect(rufloInvocation(r.link, args, { platform: 'darwin', nodeCandidates: [wrong.bin, right.bin] }))
+      .toEqual({ executable: right.bin, args: [r.entry, ...args] });
+    // the probe must have been pointed at the NESTED copy, not a path that does not exist
+    expect(wrong.calls()).toContain('@claude-flow/cli/node_modules/better-sqlite3');
   });
 
   it('runs ruflo under the first node that CAN load it when the PATH node cannot (the 2026-10-14 defect)', () => {

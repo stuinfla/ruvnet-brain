@@ -67,6 +67,25 @@ function defaultNodeCandidates(env) {
   return [...new Set(out)].filter((c) => { try { return fs.statSync(c).isFile(); } catch { return false; } });
 }
 
+// Where ruflo's native better-sqlite3 really lives. Measured 2026-10-17 (ruflo 3.56.10, npm -g): npm does not hoist
+// it to <ruflo>/node_modules; the copies are nested under the packages that depend on it, and the CLI's own
+// memory writer (memory-initializer) resolves the one under @claude-flow/cli. Probing the hoisted path alone found
+// nothing, so node selection silently never ran. Order = the copy the writer would load first.
+const ADDON_DIRS = [
+  ['node_modules', 'better-sqlite3'],
+  ['node_modules', '@claude-flow', 'cli', 'node_modules', 'better-sqlite3'],
+  ['node_modules', '@claude-flow', 'memory', 'node_modules', 'better-sqlite3'],
+  ['node_modules', 'agentdb', 'node_modules', 'better-sqlite3'],
+];
+
+function findAddon(packageRoot) {
+  for (const parts of ADDON_DIRS) {
+    const dir = path.join(packageRoot, ...parts);
+    try { if (fs.statSync(dir).isDirectory()) return dir; } catch { /* try the next layout */ }
+  }
+  return null;
+}
+
 const nativeNodeCache = new Map();
 const PROBE_TIMEOUT_MS = 2000;
 const PROBE_BUDGET_MS = 3000;
@@ -91,8 +110,8 @@ export function rufloInvocationOrPlain(binary, args, opts) {
 export function nativeNodeFor(binary, { env = process.env, candidates } = {}) {
   let entry;
   try { entry = fs.realpathSync(binary); } catch { return null; }
-  const addon = path.join(path.dirname(path.dirname(entry)), 'node_modules', 'better-sqlite3');
-  try { if (!fs.statSync(addon).isDirectory()) return null; } catch { return null; }
+  const addon = findAddon(path.dirname(path.dirname(entry)));
+  if (!addon) return null;
 
   const list = candidates ?? defaultNodeCandidates(env);
   const cacheKey = `${entry}\0${list.join('\0')}`;

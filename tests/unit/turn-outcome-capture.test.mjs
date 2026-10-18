@@ -13,6 +13,9 @@ import { CONTINUITY_EVENTS } from '../../plugin/scripts/continuity-hook-policy.m
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const roots = [];
 const TRUSTED_ENV = { RUFLO_BIN: process.execPath };
+const WORKER_HOME = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'turn-worker-home-')));
+const WORKER_LEDGER = path.join(WORKER_HOME, '.cache', 'ruvnet-brain', 'hook-failures.jsonl');
+process.on('exit', () => fs.rmSync(WORKER_HOME, { recursive: true, force: true }));
 afterEach(() => { while (roots.length) fs.rmSync(roots.pop(), { recursive: true, force: true }); });
 
 function tmp(prefix) {
@@ -67,9 +70,12 @@ function queuedWorker(steps, receipts, marker, workerModule = path.join(ROOT, 'p
       read: ({options}) => { if(!fs.existsSync(${JSON.stringify(marker)}))return null; const args=JSON.parse(fs.readFileSync(${JSON.stringify(marker)},'utf8').trim().split('\\n').at(-1)); return args[args.indexOf('--value')+1]; }
     });
     process.stdout.write(JSON.stringify(rows));`;
+  // The worker defaults its brain home (and so its hook-failures ledger) to RUVNET_BRAIN_HOME or ~/.cache/ruvnet-brain
+  // whenever a step lacks a binding. Pin both to scratch so a refused step can never write to the real ledger
+  // (measured 2026-10-17: 53 "no canonical project binding" rows from this suite landed in the user's real log).
   const result = spawnSync(process.execPath, ['--input-type=module', '-e', source], {
     input: JSON.stringify({ steps, receipts }), encoding: 'utf8', timeout: 10000,
-    env: { ...process.env, RUVNET_TURN_CAPTURE: 'force', ...TRUSTED_ENV },
+    env: { ...process.env, RUVNET_TURN_CAPTURE: 'force', HOME: WORKER_HOME, USERPROFILE: WORKER_HOME, RUVNET_BRAIN_HOME: path.join(WORKER_HOME, '.cache', 'ruvnet-brain'), ...TRUSTED_ENV },
   });
   expect(result.status, result.stderr).toBe(0);
   return JSON.parse(result.stdout);
@@ -204,6 +210,10 @@ describe('turn privacy and receipt evidence', () => {
     const receipts = path.join(h.home, '.cache', 'ruvnet-brain', 'turn-capture', 'receipts.jsonl');
     expect(queuedWorker([step], receipts, marker)[0]).toMatchObject({ status: 1, verified: false, error: 'queued step has no canonical project binding' });
     expect(fs.existsSync(marker)).toBe(false);
+    // The refusal is recorded in the worker's SCRATCH ledger, never the real one: this is what keeps test rows
+    // out of the user's ~/.cache/ruvnet-brain/hook-failures.jsonl.
+    // (Only the brainHome case falls through to the default home; the others log under the step's own brainHome.)
+    if (field === 'brainHome') expect(fs.readFileSync(WORKER_LEDGER, 'utf8')).toContain('queued step has no canonical project binding');
   });
 
   it('revalidates a queued store and distill after directory replacement, records refusal, and permits retry', () => {
