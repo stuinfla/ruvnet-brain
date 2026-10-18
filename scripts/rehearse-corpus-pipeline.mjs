@@ -917,17 +917,11 @@ async function runGeneration({ index, api, checkoutRoot, workRoot, seed, bounds,
   });
   log(`[gen ${index}] extracted-byte verification passed with staging revoked (${generation.extractedByteVerification.files} files)`);
 
-  // --- ADR-0091 D5 + D10: a degraded generation is sealed but not published until D10 allows it ---
+  // --- ADR-0091 D5: a degraded generation inside the bound is published like any other, named -----
   const corpusTag = `corpus-sha256-${archiveSha256}`;
   if (generation.degraded.carried.length || generation.degraded.missing.length) {
-    const decision = api.degradedPublication();
-    if (!decision.allowed) {
-      generation.publication = { status: 'WITHHELD-DEGRADED', corpusTag, reason: decision.reason,
-        carried: generation.degraded.carried.map((entry) => entry.store), missing: generation.degraded.missing.map((entry) => entry.store) };
-      generation.finishedAt = new Date().toISOString();
-      log(`[gen ${index}] degraded generation sealed and WITHHELD from publication: ${decision.reason}`);
-      return { generation, withheld: true, nextSeed: null, published: null };
-    }
+    log(`[gen ${index}] degraded generation (${generation.degraded.carried.length} carried, `
+      + `${generation.degraded.missing.length} missing) is published with its stores named in the sealed coverage`);
   }
 
   // --- rehearse the real product-consumption path, publication RECORDED not executed -----------
@@ -1371,7 +1365,6 @@ export async function rehearseCorpusPipeline({
       prepareCorpusCandidate: reconcileMod.prepareCorpusCandidate,
       executeReconciliation: reconcileMod.executeReconciliation,
       defaultRunAsync: reconcileMod.defaultRunAsync,
-      degradedPublication: failureMod.degradedPublication,
       observeSourceUniverse: coverageMod.observeSourceUniverse,
       canonicalSourceObservation: coverageMod.canonicalSourceObservation,
       buildCoverage: coverageMod.buildCoverage,
@@ -1479,14 +1472,6 @@ export async function rehearseCorpusPipeline({
       phase(`generation-${index}-approved-runtime`, 'PASS', { ...runtimeCheck,
         reason: `verifyApprovedRuntime PASS: ${verdict.checked} runtime files equal the checkout's, none unpinned, seed ${seed.tag} did not leak an executable` });
 
-      if (result.withheld) {
-        phase(`generation-${index}-publication`, 'PASS', { status: 'WITHHELD-DEGRADED', ...result.generation.publication,
-          reason: `degraded generation sealed but not published (ADR-0091 D5/D10): ${result.generation.publication.reason}` });
-        if (index < generations) {
-          phase('remaining-generations', 'SKIP', { reason: `generation ${index} was withheld, so there is no published generation ${index} to seed from` });
-        }
-        break;
-      }
       const consumeNow = seedSelection && codeReleaseConsumption && !codeRelease;
       if (seedSelection && (index < generations || codeRelease)) {
         lastPublished = publishLocally({ selectionMod, registryDir, published: result.published, workRoot, index });

@@ -1,6 +1,6 @@
 // ADR-0091 D5 — per-store failure isolation for corpus reconciliation.
 //
-// One store failing to refresh must not abort the whole generation. This module owns the three
+// One store failing to refresh must not abort the whole generation. This module owns the two
 // pure decisions that make that safe, so the reconciler, the rehearsal and the tests share them:
 //
 //   1. WHICH failures are retried. Only transient ones (clone, fetch, runner I/O), exactly once, in a
@@ -10,11 +10,25 @@
 //      from log text.
 //   2. HOW MANY stores may be carried or missing before the failure is systemic and the generation
 //      must fail loudly: carried + missing <= max(3, 5% of eligible).
-//   3. WHETHER a degraded generation may be published at all. Installed clients judge every bundle
-//      with their INSTALLED validator, and every validator shipped before this change rejects any
-//      non-CURRENT eligible row. ADR-0091 D10 therefore gates degraded publication behind a
-//      transition release plus a 14-day soak; until D10 records that transition, a degraded
-//      generation is built and sealed but never published.
+//
+// A generation inside that bound PUBLISHES like any other, each carried or missing store named in its
+// sealed coverage (CORPUS-COVERAGE.json: `carry` / `failure` records). Whether installed clients accept
+// it is proven every night by the customer canary (protected-release.yml `customer-canary`: a clean
+// install, a private-overlay install and the previous runtime each apply the staged candidate through
+// the real updater before anything is promoted; scripts/corpus-canary.mjs storeFreshness names each
+// carried store), not by a hand-set constant. The former ADR-0091 D10 gate -- a committed
+// `VALIDATOR_TRANSITION` plus a 14-day soak -- was removed on 2026-10-17: the tolerant validator
+// (`eligibleRepositoryStanding`) has shipped in every code release since v4.3.36 (2026-09-29) and every
+// corpus generation since 2026-10-01, the soak it demanded ended on 2026-10-13, and the constant was
+// never set. Measured on the one night it decided (run 39069376585, 2026-10-17, runtime 4.7.10): the
+// external source cognitum-one/ruOS had been deleted upstream; 4.7.10's `ifGone` entry carried it at
+// b1762a71 while the live corpus served 576dc8c8, so the store was re-planned, the clone of the gone
+// repository failed twice, the store was carried, the 201-store generation was built and sealed over
+// ~1h40m, and this gate threw it away with exit 4 (4.7.11 fixed the `ifGone` commit). The four nights
+// before it (38529261934, 38699673841, 38867855193, 39013743592) died earlier, exit 1, on the HTTP 404
+// itself. A gate that only a code release can open, that nobody opens, is not a safety property.
+// A CODE release still ships only an all-CURRENT corpus: scripts/corpus-next-seed.mjs --require-coverage
+// refuses a degraded seed, because install verification requires eligibleCurrent === eligibleTotal.
 
 /** kb/forge-refresh.mjs exits with this status when corpus-qa rejected its candidate. */
 export const CORPUS_QA_FAILED_EXIT = 3;
@@ -57,26 +71,11 @@ export function degradedBound(eligibleCount) {
 }
 
 /**
- * ADR-0091 D10 owns this value. It stays null until the transition release N (the first release
- * shipping the tolerant validator while its own coverage is all-CURRENT) has become releases/latest;
- * D10 then records { version, latestSince } here. Null means no transition: never publish degraded.
+ * One line a run log or step summary can print for a generation's carried/missing stores; '' when none.
+ * Rows are the reconciler's `{ store, ... }` records or the coverage sidecar's bare store names.
  */
-export const VALIDATOR_TRANSITION = null;
-export const TRANSITION_SOAK_DAYS = 14;
-
-export function degradedPublication({ transition = VALIDATOR_TRANSITION, now = new Date() } = {}) {
-  if (!transition) {
-    return { allowed: false,
-      reason: 'no tolerant-validator transition release is recorded (ADR-0091 D10); installed clients would reject a non-CURRENT row' };
-  }
-  const since = Date.parse(transition.latestSince);
-  if (typeof transition.version !== 'string' || !transition.version || !Number.isFinite(since)) {
-    return { allowed: false, reason: 'the recorded validator transition is malformed' };
-  }
-  const soakEnds = since + TRANSITION_SOAK_DAYS * 24 * 60 * 60 * 1000;
-  if (now.getTime() < soakEnds) {
-    return { allowed: false,
-      reason: `validator transition ${transition.version} soaks until ${new Date(soakEnds).toISOString()} (ADR-0091 D10)` };
-  }
-  return { allowed: true, reason: `validator transition ${transition.version} has soaked ${TRANSITION_SOAK_DAYS} days` };
+export function describeDegraded({ carried = [], missing = [] } = {}) {
+  if (!carried.length && !missing.length) return '';
+  const names = (rows) => rows.map((row) => (typeof row === 'string' ? row : row.store)).join(', ') || 'none';
+  return `${carried.length} carried (${names(carried)}), ${missing.length} missing (${names(missing)})`;
 }

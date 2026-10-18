@@ -1770,7 +1770,27 @@ function legacyBrainWrapperOwnership(wrapperPath, home) {
   if (installed && shippedByRetainedGeneration(installed, path.join(home, '.cache', 'ruvnet-brain', 'versions'))) {
     return { state: 'prior-generation' };
   }
+  // A PRUNED generation's bridge (owner's machine, 2026-10-17): the bytes an EARLIER shipped release wrote,
+  // whose versions/<v>/ copy is gone (pruned, or written by a release that predates the Spine). The proof
+  // is the committed history of every wrapper each release tag carried, derived from git by
+  // scripts/codex-hook-wrapper-history.mjs and checked against git in the unit suite. Bytes only: the
+  // path, link, inode and uid checks above have already passed by the time this is consulted.
+  const past = installed && shippedByPastRelease(installed);
+  if (past) return { state: 'prior-release', release: past.tags[past.tags.length - 1] };
   return { state: 'conflict', reason: 'existing bridge differs from the shipped Brain source' };
+}
+
+// Test seam only: RUVNET_WRAPPER_HISTORY_FILE points the proof at another history file, so the unit suite
+// can hand the installer a malformed or hostile history without touching the committed data file.
+const WRAPPER_HISTORY_FILE = path.join(REPO_ROOT, 'data', 'codex-hook-wrapper-history.json');
+function shippedByPastRelease(bytes, historyFile = process.env.RUVNET_WRAPPER_HISTORY_FILE || WRAPPER_HISTORY_FILE) {
+  let history;
+  try { history = JSON.parse(fs.readFileSync(historyFile, 'utf8')); } catch { return null; }
+  if (history?.schemaVersion !== 1 || history.kind !== 'ruvnet-brain-codex-hook-wrapper-history' || !Array.isArray(history.wrappers)) return null;
+  const sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
+  const hit = history.wrappers.find((row) => row?.sha256 === sha256 && row.bytes === bytes.length
+    && Array.isArray(row.tags) && row.tags.length > 0 && row.tags.every((tag) => /^v\d+\.\d+\.\d+$/.test(tag)));
+  return hit || null;
 }
 
 function shippedByRetainedGeneration(bytes, versionsDir) {
@@ -1907,7 +1927,7 @@ export function wireCodexHost({
     const currentOwnership = legacyBrainWrapperOwnership(hookWrapperPath, path.dirname(codexDir));
     if (currentOwnership.state === 'conflict') throw new Error(currentOwnership.reason);
     hookRetirement = retireManagedHookRegistrations({ home: path.dirname(codexDir), codexDir, wrapperPath: hookWrapperPath });
-    if (currentOwnership.state === 'prior-generation') hookWrapperBackup = backupPriorWrapper(hookWrapperPath);
+    if (currentOwnership.state === 'prior-generation' || currentOwnership.state === 'prior-release') hookWrapperBackup = backupPriorWrapper(hookWrapperPath);
     atomicReplace(hookWrapperPath, (tmp) => fs.copyFileSync(hookWrapperSource, tmp));
   } catch (error) {
     if (announce) warn(`could not install the Codex hook bridge at ${hookWrapperPath}: ${error.message}`);
@@ -2413,8 +2433,8 @@ export function retireManagedHookRegistrations({ home = os.homedir(), codexDir =
   let removed = 0;
   const changedFiles = [];
   const conflicts = [];
-  // A bridge a retained Brain generation shipped is as much the Brain's as the new source.
-  const verifiedWrapper = ['verified', 'prior-generation']
+  // A bridge a retained Brain generation, or any earlier shipped release, wrote is as much the Brain's as the new source.
+  const verifiedWrapper = ['verified', 'prior-generation', 'prior-release']
     .includes(legacyBrainWrapperOwnership(wrapperPath, path.dirname(codexDir)).state);
   const tokensOf = (command) => (command.match(/"[^"]*"|'[^']*'|[^\s]+/g) || [])
     .map((token) => token.replace(/^["']|["']$/g, ''));

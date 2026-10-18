@@ -1,9 +1,10 @@
 // ADR-0091 D5 through the REAL assembler: a degraded corpus -- one store carried at its previous
 // bytes (STALE + carry), one eligible store with no bytes at all (MISSING + failure) -- assembles,
 // projects and re-validates on the full seed path. The same bundle stripped of the records is still
-// refused. And the validator every client already has installed (origin/main before D5) refuses the
-// degraded bundle: that is the constraint ADR-0091 D10 exists for, and why corpus-reconcile.mjs seals
-// a degraded generation but does not publish it until D10's transition has soaked.
+// refused. And the validator clients installed BEFORE D5 (origin/main before e76a182d, 2026-09-28) refuses
+// the degraded bundle, fail-closed: such a client keeps its corpus. Since 2026-10-17 a bounded degraded
+// generation publishes (the D10 soak constant is gone); the customer canary proves the installed path
+// (tests/unit/corpus-canary.test.mjs, "a generation with a carried store").
 import { afterEach, describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';

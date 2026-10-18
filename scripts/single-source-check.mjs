@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { readCheckpoint, checkpointStaleness } from './loop-checkpoint.mjs';
 import { PRODUCTION_ENVIRONMENT, productionEnvironmentVerdict } from './release-environment-policy.mjs';
 import { approvalHits, LOCAL_INSTRUCTION_DRIFT } from './human-approval-phrases.mjs';
+import { deriveWrapperHistory, describeDrift, historyDrift, readWrapperHistory } from './codex-hook-wrapper-history.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const HOME = os.homedir();
@@ -192,6 +193,19 @@ const checks = [
       return none([...extra, ...drift]);
     } },
 
+  // The installer proves a pre-existing Codex hook bridge is the Brain's own by its bytes: the new source, a
+  // retained Spine generation, or (2026-10-17) any wrapper an earlier release tag shipped, from the committed
+  // data/codex-hook-wrapper-history.json. That file is derived from git; a release that ships NEW wrapper
+  // bytes without regenerating it would make the next upgrade of those bytes a conflict again.
+  { id: 'D4', area: 'corpus', scope: 'repo', title: 'The committed Codex hook wrapper history carries exactly the wrappers the release tags shipped',
+    run: () => {
+      const derived = deriveWrapperHistory(ROOT);
+      if (!derived.releaseTags) return { ok: true, detail: 'no vX.Y.Z tags visible to git here; nothing to compare' };
+      const drift = historyDrift(readWrapperHistory(ROOT), derived);
+      const ok = !drift.missing.length && !drift.extra.length;
+      return { ok, detail: ok ? `${derived.wrappers.length} wrapper(s) across ${derived.releaseTags} tag(s)`
+        : `${describeDrift(drift)}; run node scripts/codex-hook-wrapper-history.mjs --write` };
+    } },
   { id: 'D2', area: 'corpus', scope: 'machine', title: 'Installed knowledge matches the installed plugin version',
     run: () => {
       const tag = String(json(readAbs(path.join(HOME, '.cache/ruvnet-brain/kb/SOURCE.json'))).releaseTag || '').replace(/^v/, '');

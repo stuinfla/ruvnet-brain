@@ -12,7 +12,6 @@ import {
   acquireSealedGeneration,
   assessCandidateCoverage,
   carriedCommittedAt,
-  DEGRADED_UNPUBLISHED_EXIT,
   dispositionForFailedStore,
   executeReconciliation,
   main,
@@ -20,9 +19,8 @@ import {
 } from '../../scripts/corpus-reconcile.mjs';
 import { artifactEvidence, classifyRepository } from '../../scripts/source-coverage.mjs';
 import { eligibleRepositoryStanding, validatePublicInventory } from '../../plugin/scripts/coverage-integrity.mjs';
-import {
-  CORPUS_QA_FAILED_EXIT, degradedBound, degradedPublication, TRANSITION_SOAK_DAYS,
-} from '../../scripts/corpus-store-failure.mjs';
+import * as storeFailure from '../../scripts/corpus-store-failure.mjs';
+import { CORPUS_QA_FAILED_EXIT, degradedBound, describeDegraded } from '../../scripts/corpus-store-failure.mjs';
 
 const temps = [];
 const temp = () => {
@@ -426,18 +424,20 @@ describe('the candidate gate that replaced strict coverage (ADR-0091 D5)', () =>
   });
 });
 
-describe('degraded publication waits for the ADR-0091 D10 validator transition', () => {
-  it('is refused while no transition is recorded (today) and during the soak, allowed after it', () => {
-    expect(degradedPublication()).toMatchObject({ allowed: false, reason: expect.stringMatching(/D10/) });
-    const latestSince = '2026-10-01T00:00:00.000Z';
-    const during = new Date(Date.parse(latestSince) + (TRANSITION_SOAK_DAYS - 1) * 86400000);
-    const after = new Date(Date.parse(latestSince) + TRANSITION_SOAK_DAYS * 86400000);
-    expect(degradedPublication({ transition: { version: '4.9.1', latestSince }, now: during }).allowed).toBe(false);
-    expect(degradedPublication({ transition: { version: '4.9.1', latestSince }, now: after }).allowed).toBe(true);
-    expect(degradedPublication({ transition: { version: '', latestSince }, now: after }).allowed).toBe(false);
+describe('a bounded degraded generation publishes, named (the ADR-0091 D10 constant gate is gone)', () => {
+  it('no hand-set publication gate exists any more: the module exports no transition constant or soak decision', () => {
+    // Cut 2026-10-17: VALIDATOR_TRANSITION / TRANSITION_SOAK_DAYS / degradedPublication withheld the one
+    // publishable night they ever decided (run 39069376585) after their own soak had ended. The customer
+    // canary is the acceptance proof.
+    for (const name of ['VALIDATOR_TRANSITION', 'TRANSITION_SOAK_DAYS', 'degradedPublication']) {
+      expect(storeFailure[name], name).toBeUndefined();
+    }
+    expect(describeDegraded({ carried: [], missing: [] })).toBe('');
+    expect(describeDegraded({ carried: [{ store: 'a' }, { store: 'b' }], missing: [{ store: 'c' }] }))
+      .toBe('2 carried (a, b), 1 missing (c)');
   });
 
-  it(`main() prints a sealed degraded generation and exits ${DEGRADED_UNPUBLISHED_EXIT}; an all-CURRENT one exits 0`, async () => {
+  it('main() prints a sealed degraded generation, warns which stores are carried, and exits 0 like an all-CURRENT one', async () => {
     const root = temp();
     fs.mkdirSync(path.join(root, 'kb'), { recursive: true });
     fs.writeFileSync(path.join(root, 'kb', 'PRIVATE-STORES.json'), '{"privateStores":[]}');
@@ -465,12 +465,13 @@ describe('degraded publication waits for the ADR-0091 D10 validator transition',
       return { code, out: JSON.parse(out.join('')), err: err.join('') };
     };
     const sealed = await invoke({ carried: [{ store: 'bigstore', ...carriedRow('bigstore').carry }], missing: [] });
-    expect(sealed.code).toBe(DEGRADED_UNPUBLISHED_EXIT);
-    expect(sealed.out).toMatchObject({ ok: false, bundleFile: '/x.zip',
-      degraded: { publishable: false, carried: [{ store: 'bigstore' }] } });
-    expect(sealed.err).toMatch(/::warning title=Degraded corpus generation sealed, not published::1 carried \(bigstore\)/);
+    expect(sealed.code).toBe(0);
+    expect(sealed.out).toMatchObject({ ok: true, bundleFile: '/x.zip', degraded: { carried: [{ store: 'bigstore' }], missing: [] } });
+    expect(sealed.out.degraded).not.toHaveProperty('publishable');
+    expect(sealed.err).toMatch(/::warning title=Degraded corpus generation::1 carried \(bigstore\), 0 missing \(none\)/);
     const clean = await invoke({ carried: [], missing: [] });
     expect(clean.code).toBe(0);
-    expect(clean.out).toMatchObject({ ok: true, degraded: { publishable: true } });
+    expect(clean.out).toMatchObject({ ok: true, degraded: { carried: [], missing: [] } });
+    expect(clean.err).toBe('');
   });
 });

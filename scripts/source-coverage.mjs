@@ -103,6 +103,22 @@ export function observeRepositories(owner, { gh = runGh } = {}) {
   return { rows: withDeltas, expected, pages };
 }
 
+// The row an external source reports once its upstream is gone: exactly what was last observed, so the
+// stored content classifies CURRENT, nothing is re-ingested, and the row says plainly it is no longer live.
+function goneExternalRow(source) {
+  const gone = source.ifGone;
+  if (!/^[0-9a-f]{40}$/i.test(String(gone.sourceCommit || ''))) {
+    throw new Error(`external source ${source.repository}: ifGone.sourceCommit must be the 40-hex commit last ingested`);
+  }
+  return {
+    name: source.repository.split('/')[1], fullName: source.repository, storeName: source.store,
+    url: `https://github.com/${source.repository}`, description: gone.description ?? null, homepageUrl: null,
+    isFork: false, upstreamIsFork: false, isArchived: false, isDisabled: false,
+    updatedAt: gone.updatedAt ?? null, pushedAt: gone.pushedAt ?? null, upstreamUnavailable: true,
+    defaultBranchRef: { name: gone.defaultBranch || 'HEAD', target: { oid: gone.sourceCommit, committedDate: gone.committedAt ?? null } },
+  };
+}
+
 export function observeExternalRepositories(sources, { gh = runGh } = {}) {
   const rows = [];
   const pages = [];
@@ -110,10 +126,23 @@ export function observeExternalRepositories(sources, { gh = runGh } = {}) {
     if (!source?.store || !/^[^/]+\/[^/]+$/.test(source?.repository || '')) {
       throw new Error('external source requires a store and owner/repository');
     }
-    const repo = JSON.parse(gh(['api', `repos/${source.repository}`]));
-    const commit = repo.default_branch
-      ? JSON.parse(gh(['api', `repos/${source.repository}/commits/${repo.default_branch}`]))
-      : null;
+    let repo;
+    let commit;
+    try {
+      repo = JSON.parse(gh(['api', `repos/${source.repository}`]));
+      commit = repo.default_branch
+        ? JSON.parse(gh(['api', `repos/${source.repository}/commits/${repo.default_branch}`]))
+        : null;
+    } catch (error) {
+      // An upstream that GitHub reports gone (404/410) must not stop every night for every customer.
+      // Only a source whose policy entry records `ifGone` (the commit it was last ingested at) may be
+      // carried; anything else -- 403, rate limit, a mistyped repository -- still fails the observation.
+      if (!source.ifGone || !/\(HTTP (404|410)\)/.test(String(error.message))) throw error;
+      process.stderr.write(`[source-coverage] external source ${source.repository} is gone upstream; carrying the last ingested content (${source.ifGone.sourceCommit})\n`);
+      rows.push(goneExternalRow(source));
+      pages.push({ repository: source.repository, responseDigest: digest({ gone: source.repository, ifGone: source.ifGone }), count: 1, terminal: true });
+      continue;
+    }
     const row = {
       databaseId: repo.id, name: repo.name, fullName: repo.full_name, storeName: source.store,
       url: repo.html_url, description: repo.description || null, homepageUrl: repo.homepage || null,
@@ -192,6 +221,7 @@ export function canonicalRepositoryRows(rows = []) {
     } }),
     isArchived: repo?.isArchived === true,
     isDisabled: repo?.isDisabled === true,
+    ...(repo?.upstreamUnavailable === true ? { upstreamUnavailable: true } : {}),
     diskUsage: repo?.diskUsage,
     updatedAt: repo?.updatedAt ?? null,
     pushedAt: repo?.pushedAt ?? null,
@@ -384,6 +414,7 @@ export function classifyRepository(repo, evidence, exclusion = null, outcome = n
     status = 'FAILED';
     reasons.push(outcome.integrity);
   }
+  if (repo.upstreamUnavailable === true) reasons.push(`upstream ${repo.fullName} is no longer reachable (HTTP 404/410); serving the content last ingested at ${upstreamSha}`);
   const record = {};
   if (disposed && outcome?.carry && status === 'STALE') record.carry = { ...outcome.carry };
   if (disposed && outcome?.failure && status === 'MISSING') record.failure = { ...outcome.failure };
@@ -396,6 +427,7 @@ export function classifyRepository(repo, evidence, exclusion = null, outcome = n
       capabilityCardPresent: evidence.cardPresent === true },
     disposition,
     archived: repo.isArchived === true,
+    ...(repo.upstreamUnavailable === true ? { upstreamUnavailable: true } : {}),
     ...(repo.forkDelta ? { forkDelta: { ...repo.forkDelta } } : {}),
     upstream: { sha: upstreamSha, committedAt: repo.defaultBranchRef?.target?.committedDate || null,
       pushedAt: repo.pushedAt, updatedAt: repo.updatedAt },

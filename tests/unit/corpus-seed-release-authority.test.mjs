@@ -270,8 +270,9 @@ describe('protected corpus-seed release authority', () => {
   });
 });
 
-// ADR-0091 D6.2 (+ the D10 check D5 could not place in the publisher): the corpus publisher is the one
-// place that can SEE a generation's coverage, so it binds it, refuses a degraded one, and publishes it.
+// ADR-0091 D6.2: the corpus publisher is the one place that can SEE a generation's coverage, so it
+// binds it to the archive and publishes it beside the archive. A bounded degraded generation is staged
+// like any other (2026-10-17: the D10 constant gate is gone; the customer canary is the acceptance proof).
 describe('corpus generation coverage sidecar (ADR-0091 D6.2)', () => {
   const ghCalls = (f) => (fs.existsSync(f.log) ? fs.readFileSync(f.log, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse) : []);
 
@@ -292,13 +293,16 @@ describe('corpus generation coverage sidecar (ADR-0091 D6.2)', () => {
     expect(verified.degraded).toEqual({ carried: [], missing: [] });
   });
 
-  it('REFUSES a degraded generation (a carried store) before any network call while D10 records no transition', async () => {
+  it('STAGES a degraded generation (a carried store), says so, and its published sidecar names the carried store', async () => {
     const f = await fixture();
     await writeCoverageFor(f.receipt, f.coverageFile, { carried: true });
     const result = run(f);
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toMatch(/degraded generation \(1 carried, 0 missing\) must not be published: no tolerant-validator transition/);
-    expect(ghCalls(f)).toEqual([]);
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.stderr).toMatch(/degraded generation staged: 1 carried \(alpha\), 0 missing \(none\)/);
+    const create = ghCalls(f).find((args) => args[1] === 'create');
+    expect(create).toBeDefined();
+    const receiptAsset = create.find((arg) => String(arg).endsWith('/coverage-receipt.json'));
+    expect(JSON.parse(fs.readFileSync(receiptAsset, 'utf8')).degraded).toMatchObject({ carried: ['alpha'], missing: [] });
   });
 
   it('REFUSES coverage that was measured against other bytes than this archive, before any network call', async () => {

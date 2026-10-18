@@ -173,10 +173,11 @@ function stage(zipBytes, { signed = true, signature = null } = {}) {
 async function canary(customer, { tag = served.tag, approvedVersion = VERSION, now = NOW, footprintUpdates = false } = {}) {
   const work = tempDir(dirs, 'canary-work');
   const before = fs.readFileSync(path.join(customer.kbDir, 'SOURCE.json'));
+  const logs = [];
   const verdict = await runCanary({ repo: REPO, tag, approvedVersion, work, apiBase: origin, home: customer.home,
     install: () => ({ kbDir: customer.kbDir }), env: { GITHUB_RUN_ID: '4242', GITHUB_RUN_ATTEMPT: '1' },
-    now: () => now, retryDelayMs: 0, footprintUpdates });
-  return { verdict, before, work, check: (name) => verdict.checks.find((entry) => entry.name === name) };
+    now: () => now, retryDelayMs: 0, footprintUpdates, log: (text) => logs.push(text) });
+  return { verdict, before, work, log: logs.join('\n'), check: (name) => verdict.checks.find((entry) => entry.name === name) };
 }
 
 /** The live tree is untouched: SOURCE.json differs only by the canary's own manifest rewrite. */
@@ -417,15 +418,15 @@ describe('the one change the canary makes to a customer install', () => {
 
 describe('storeFreshness (pure)', () => {
   const now = Date.parse('2026-09-30T12:00:00Z');
-  const row = (key, upstream, built, ingestedAt = '2026-09-30T08:00:00Z', status = 'CURRENT') => ({ key, status,
-    upstream: { sha: upstream }, artifact: { store: key, sourceCommit: built, ingestedAt } });
+  const row = (key, upstream, built, ingestedAt = '2026-09-30T08:00:00Z', status = 'CURRENT') => ({ key, kind: 'repository', status,
+    upstream: { sha: upstream }, artifact: { store: key, sourceCommit: built, ingestedAt, bytesVerified: true, passagesPresent: true } });
   const cov = (rows, observedAt = '2026-09-30T07:40:00Z') => ({ observedAt, rows });
   it('passes a fresh observation with every eligible store at its upstream commit', () => {
     expect(storeFreshness({ after: cov([row('a', '1', '1'), row('b', '2', null, null, 'MISSING')]), now }).ok).toBe(true);
   });
   it('fails an observation older than 48h and a stale store; a moved store ingested long ago is FRESH if it is at its upstream commit', () => {
     expect(storeFreshness({ after: cov([row('a', '1', '1')], new Date(now - FRESHNESS_LIMIT_MS - 1).toISOString()), now }).detail).toMatch(/limit 48h/);
-    expect(storeFreshness({ after: cov([row('a', '2', '1')]), now }).detail).toMatch(/1 store\(s\) built from a commit older than their observed upstream: a/);
+    expect(storeFreshness({ after: cov([row('a', '2', '1')]), now }).detail).toMatch(/1 store\(s\) built from a commit older than their observed upstream with no recorded carry: a/);
     // MEASURED 2026-09-30: a store keeps the ingestion time of the last night its upstream moved. A store that
     // moved since the install's generation but was ingested 10 days ago is still exactly at its upstream
     // commit, so it is fresh. The old "moved store ingested >48h ago" rule refused exactly this (about three
@@ -435,6 +436,164 @@ describe('storeFreshness (pure)', () => {
     expect(storeFreshness({ after: cov([row('a', '1', '1', '2026-09-01T00:00:00Z')]), before: cov([row('a', '1', '1')]), now }).ok).toBe(true);
     expect(storeFreshness({ after: null, now }).ok).toBe(false);
   });
+
+  // ADR-0091 D5 (decided 2026-10-17): the row shape is scripts/source-coverage.mjs classifyRepository's --
+  // status STALE, artifact.sourceCommit = the carried commit, upstream.sha = the missed commit, and a
+  // `carry` record naming both plus the reason -- exactly what the shipped validator (eligibleRepositoryStanding)
+  // accepts as `shipped`. Today's live example: cognitum-ruos carried at 576dc8c8, missed b1762a71 (run 39069376585).
+  const CARRIED = '576dc8c8bfd3fea79ba1be74cb4db54f723f6bcb';
+  const MISSED = 'b1762a71bb1ad58b9175e2ae78ed454fed47b655';
+  const carriedRow = (over = {}) => ({ key: 'repo:cognitum-one/ruos', kind: 'repository', status: 'STALE',
+    upstream: { sha: MISSED }, artifact: { store: 'cognitum-ruos', sourceCommit: CARRIED, bytesVerified: true, passagesPresent: true },
+    carry: { reason: 'transient: git clone failed', carriedSourceCommit: CARRIED, missedUpstream: MISSED, attempts: 2, carriedCommittedAt: '2026-09-16T08:51:41Z' },
+    ...over });
+  it('a store carried at its last verified bytes WITH a recorded carry is fresh and is NAMED, never silent', () => {
+    const result = storeFreshness({ after: cov([row('a', '1', '1'), carriedRow()]), now });
+    expect(result.ok).toBe(true);
+    expect(result.detail).toMatch(/0 stale, 1 carried at their last verified bytes with a recorded reason: cognitum-ruos/);
+    expect(storeFreshness({ after: cov([row('a', '1', '1')]), now }).detail).toMatch(/0 stale, 0 carried/);
+  });
+  it('MUTATION KILLER: the same shipped-older-than-upstream row WITHOUT a recorded carry, or with a carry the validator refuses, is still stale', () => {
+    const { carry: _dropped, ...unrecorded } = carriedRow();
+    const bare = storeFreshness({ after: cov([unrecorded]), now });
+    expect(bare.ok).toBe(false);
+    expect(bare.detail).toMatch(/1 store\(s\) built from a commit older than their observed upstream with no recorded carry: cognitum-ruos; 0 carried/);
+    // A row still MARKED CURRENT whose shipped commit is not its upstream, with no carry: the validator
+    // calls a CURRENT row `shipped`, so only the `row.carry` requirement keeps this stale. Drop it and this fails.
+    const mislabelled = storeFreshness({ after: cov([row('a', '2', '1')]), now });
+    expect(mislabelled.ok).toBe(false);
+    expect(mislabelled.detail).toMatch(/no recorded carry: a; 0 carried/);
+    // A carry whose carriedSourceCommit is not the shipped commit is a lie the validator rejects: stale, not carried.
+    const lying = storeFreshness({ after: cov([carriedRow({ carry: { ...carriedRow().carry, carriedSourceCommit: 'a'.repeat(40) } })]), now });
+    expect(lying.ok).toBe(false);
+    // Bytes not re-verified against the ledger: the validator refuses the carry, so does freshness.
+    expect(storeFreshness({ after: cov([carriedRow({ artifact: { ...carriedRow().artifact, bytesVerified: false } })]), now }).ok).toBe(false);
+    // A gist row never carries: it has no `carry` contract.
+    expect(storeFreshness({ after: cov([carriedRow({ kind: 'gist' })]), now }).ok).toBe(false);
+  });
+});
+
+// ── ADR-0091 D5 through the REAL updater path: a generation with one carried store ───────────────
+// Built like `nightly`, but alpha's upstream moved to MISSED and the refresh "failed": the generation keeps
+// alpha's seed bytes and records the carry (tests/unit/assemble-bundle-degraded.test.mjs proves the assembler
+// side; this proves the CUSTOMER side -- the installed validator, the updater and the canary's judge).
+const CARRIED_MISSED = '9'.repeat(40);
+let carriedNightly;
+async function buildCarriedNightly() {
+  if (carriedNightly) return carriedNightly;
+  await buildNightly();
+  const runtimeRoot = buildRuntimeRoot(shared);
+  fs.mkdirSync(path.join(runtimeRoot, 'scripts', 'oracle'), { recursive: true });
+  for (const file of ['build-bundle.mjs', 'corpus-candidate.mjs', 'public-verification-inputs.mjs', 'oracle/retrieval-accuracy.mjs', 'oracle/repo-recall.mjs']) {
+    fs.writeFileSync(path.join(runtimeRoot, 'scripts', file), '// routed to the real implementation by the test run seam\n');
+  }
+  for (const file of ['retrieval-accuracy-oracle.json', 'repo-recall-floor.json']) fs.writeFileSync(path.join(runtimeRoot, 'data', file), '{}');
+  fs.copyFileSync(path.join(ROOT, 'data', 'retrieval-query-evidence.json'), path.join(runtimeRoot, 'data', 'retrieval-query-evidence.json'));
+  const corpusDir = await buildCorpus(shared, { runtimeRoot, stores: ['alpha', 'beta', 'gamma'] });
+  const coverage = writeCoverage(runtimeRoot, corpusDir, { mutate: (rows) => {
+    const alpha = rows.find((entry) => entry.name === 'alpha');
+    alpha.status = 'STALE';
+    alpha.reasons = ['receipt sourceCommit differs from upstream HEAD'];
+    alpha.upstream = { ...alpha.upstream, sha: CARRIED_MISSED };
+    alpha.carry = { reason: 'transient: git clone failed', carriedSourceCommit: alpha.artifact.sourceCommit,
+      missedUpstream: CARRIED_MISSED, attempts: 2, carriedCommittedAt: null };
+  } });
+  const out = tempDir(shared, 'carried-nightly');
+  const driver = path.join(tempDir(shared, 'carried-driver'), 'assemble.mjs');
+  fs.writeFileSync(driver, `import { assembleBundle } from ${JSON.stringify(pathToFileURL(path.join(ROOT, 'scripts', 'build-bundle.mjs')).href)};
+await assembleBundle(JSON.parse(process.env.ASSEMBLE_OPTIONS));\n`);
+  const candidate = prepareCorpusCandidate({
+    root: runtimeRoot, assetsDir: corpusDir, builderSha: BUILDER_SHA,
+    candidateDir: path.join(out, 'candidate', 'ruvnet-brain'), receiptFile: path.join(out, 'evidence', 'corpus-receipt.json'),
+    coverageFile: path.join(runtimeRoot, 'data', 'source-coverage.json'), coverage,
+    seedArchive: { file: nightly.seed.file, tag: nightly.seed.tag, sha256: nightly.seed.sha256 },
+    run: (command, args) => {
+      const flag = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
+      if (args[0].endsWith(`${path.sep}build-bundle.mjs`)) {
+        const seedIdentity = flag('--seed-tag') === undefined ? null : { tag: flag('--seed-tag'), archiveSha256: flag('--seed-sha256'),
+          archiveBytes: Number(flag('--seed-bytes')), baselineReceiptSha256: flag('--baseline-receipt-sha256') };
+        const options = { corpusDir: flag('--assets'), runtimeRoot, outDir: flag('--out'), seedIdentity,
+          identity: { version: flag('--version'), sourceSnapshot: flag('--source-snapshot') } };
+        return spawnSync(process.execPath, [driver], { encoding: 'utf8', env: { ...process.env, ASSEMBLE_OPTIONS: JSON.stringify(options) } });
+      }
+      if (args[0].endsWith(`${path.sep}public-verification-inputs.mjs`)) {
+        return spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'public-verification-inputs.mjs'), ...args.slice(1)], { encoding: 'utf8' });
+      }
+      return { status: 0, stdout: '', stderr: '' };
+    },
+  });
+  expect(candidate.degraded).toMatchObject({ carried: [{ store: 'alpha', missedUpstream: CARRIED_MISSED }], missing: [] });
+  carriedNightly = { zip: fs.readFileSync(candidate.bundleFile) };
+  return carriedNightly;
+}
+
+/**
+ * A customer whose INSTALLED validator predates ADR-0091 D5 (origin/main before e76a182d): it rejects every
+ * STALE row. Placed through the installer's own placement (so RUNTIME-IDENTITY.json binds the old validator's
+ * bytes, exactly as a real older install does) -- a hand-edited validator would be refused as tampered, which
+ * is a different failure than the one this customer has.
+ */
+function oldClient() {
+  const customer = customerInstall();
+  const source = fs.readFileSync(path.join(ROOT, 'plugin', 'scripts', 'coverage-integrity.mjs'), 'utf8');
+  const tolerant = "if (status === 'STALE' && carry && typeof carry === 'object' && failure === undefined) {";
+  expect(source).toContain(tolerant);
+  const old = path.join(tempDir(dirs, 'old-validator'), 'coverage-integrity.mjs');
+  fs.writeFileSync(old, source.replace(tolerant, "if (false && status === 'STALE' && carry && typeof carry === 'object' && failure === undefined) {"));
+  placeTrustedCoverageValidator(customer.kbDir, { source: old, brainVersion: VERSION });
+  return customer;
+}
+
+describe('a generation with a carried store, through the real updater path (ADR-0091 D5, decided 2026-10-17)', () => {
+  beforeAll(async () => { await buildCarriedNightly(); }, 240_000);
+  const casesCanary = (makeCustomer, cases) => runCanary({ repo: REPO, tag: served.tag, approvedVersion: VERSION,
+    work: tempDir(dirs, 'carried-canary'), apiBase: origin, env: { GITHUB_RUN_ID: '4242', GITHUB_RUN_ATTEMPT: '1' },
+    now: () => NOW, retryDelayMs: 0, cases, install: () => makeCustomer() });
+
+  it('GREEN: a clean install and a private-overlay install both apply it; the carried store is named in the verdict; it is promotable', async () => {
+    const tag = stage(carriedNightly.zip);
+    const verdict = await casesCanary(() => customerInstall(), ['clean', 'private-overlay']);
+    const failing = verdict.checks.filter((entry) => !entry.ok).map((entry) => `${entry.name}: ${entry.detail}`);
+    expect(failing).toEqual([]);
+    expect(verdict.verdict).toBe('PASS');
+    for (const name of ['store-freshness', 'private-overlay:store-freshness']) {
+      expect(verdict.checks.find((entry) => entry.name === name).detail).toMatch(/0 stale, 1 carried at their last verified bytes with a recorded reason: alpha/);
+    }
+    expect(verdict.checks.find((entry) => entry.name === 'private-overlay:private-store-preserved')).toMatchObject({ ok: true });
+    expect(promotable(verdict)).toMatchObject({ allowed: true });
+    expect(verdict.tag).toBe(tag);
+  }, 300_000);
+
+  it('the installed CORPUS-COVERAGE.json the customer now holds names the carry: STALE + carry, bytes verified', async () => {
+    stage(carriedNightly.zip);
+    const customer = customerInstall();
+    const { verdict } = await canary(customer);
+    expect(verdict.verdict).toBe('PASS');
+    const alpha = readJson(path.join(customer.kbDir, 'CORPUS-COVERAGE.json')).rows.find((row) => row.name === 'alpha');
+    expect(alpha).toMatchObject({ status: 'STALE', carry: { missedUpstream: CARRIED_MISSED, attempts: 2 }, artifact: { bytesVerified: true } });
+    expect(alpha.artifact.sourceCommit).toBe(alpha.carry.carriedSourceCommit);
+    expect(alpha.upstream.sha).toBe(CARRIED_MISSED);
+  }, 180_000);
+
+  it('MUTATION KILLER (old client): a customer whose installed validator rejects carried rows refuses the apply -> FAIL, live tree untouched, NOT promotable', async () => {
+    stage(carriedNightly.zip);
+    const customer = oldClient();
+    const { verdict, before, log } = await canary(customer);
+    expect(verdict.verdict).toBe('FAIL');
+    expect(verdict.updater.exitCode).not.toBe(0);
+    expect(verdict.checks.find((entry) => entry.name === 'updater-exit').ok).toBe(false);
+    // The refusal is the OLD rule, by name -- not a tampered-validator or signature failure.
+    expect(log).toMatch(/not CURRENT \(alpha: STALE without a verified carry\/failure record\)/);
+    expect(untouched(customer, before)).toBe(true);
+    expect(promotable(verdict).allowed).toBe(false);
+  }, 180_000);
+
+  it('the same old client still applies an all-CURRENT generation (the tolerant rule is the ONLY difference)', async () => {
+    stage(nightly.zip);
+    const { verdict } = await canary(oldClient());
+    expect(verdict.checks.filter((entry) => !entry.ok).map((entry) => `${entry.name}: ${entry.detail}`)).toEqual([]);
+    expect(verdict.verdict).toBe('PASS');
+  }, 180_000);
 });
 
 // ADR-0098: the opt-in three-update footprint check (--footprint-updates). Measured here on the offline

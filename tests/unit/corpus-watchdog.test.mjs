@@ -29,7 +29,10 @@ const corpusRun = (id, h, fields) => ({
 });
 const PUBLISHED = { outcomeRecord: { conclusion: 'success', jobs: { identity: 'success', prepare: 'success', no_change: 'skipped', authorize: 'success', publish: 'success' } } };
 const NO_CHANGE = { outcomeRecord: { conclusion: 'success', jobs: { identity: 'success', prepare: 'success', no_change: 'success', authorize: 'skipped', publish: 'skipped' } } };
-const VERIFIED_CODE = { tag: 'v9.8.7', publishedAt: ago(50), aggregate: { state: 'verified' } };
+// The signed aggregate's coverage block: what the code release's three install lanes found (scripts/
+// public-verification-aggregate.mjs requires eligibleCurrent === eligibleTotal for the aggregate to verify).
+const SHIPS_ALL_CURRENT = { eligibleTotal: 197, eligibleCurrent: 197, coverageGeneration: 'f'.repeat(64) };
+const VERIFIED_CODE = { tag: 'v9.8.7', publishedAt: ago(50), aggregate: { state: 'verified', coverage: SHIPS_ALL_CURRENT } };
 const OBSERVED_CLEAN = { observable: true, newestTag: TAG(1), degraded: { carried: [], missing: [] }, stores: [] };
 const LATEST = { tag: TAG(1), publishedAt: ago(7), generation: ago(8) };
 const PROMOTED = { outcomeRecord: { conclusion: 'success', jobs: { identity: 'success', prepare: 'success', no_change: 'skipped', authorize: 'success', publish: 'success', canary: 'success', promote: 'success' } } };
@@ -165,6 +168,39 @@ describe('judgeCorpusHealth — code-release aggregate and deferral', () => {
     expect(finding(over, 'deferral').detail).toMatch(/ruflo/);
     expect(finding(at, 'deferral').level).toBe(GREEN);
     expect(at.verdict).toBe(WARNING); // degraded, not red
+  });
+
+  // 2026-10-17 (reviewer finding): the 7-day rule used to read only PROMOTED corpus releases; a code release
+  // ships a corpus too, and fresh installs receive it. The signed aggregate carries its eligible/CURRENT counts.
+  it('the corpus the newest CODE release ships is judged too: all CURRENT is GREEN and says so', () => {
+    const result = judgeCorpusHealth(healthy(), NOW);
+    expect(finding(result, 'code-corpus')).toMatchObject({ level: GREEN, detail: 'v9.8.7 ships 197/197 eligible stores CURRENT' });
+    expect(result.verdict).toBe(GREEN);
+  });
+  it('a code release can only ever ship an all-CURRENT corpus: the aggregate verifier refuses anything else (so no watchdog branch pretends otherwise)', () => {
+    // The guard lives in scripts/public-verification-aggregate.mjs, not here: a leaf or aggregate whose
+    // coverage.eligibleCurrent !== eligibleTotal does not verify, so aggregateState() reports `invalid`
+    // (RED code-aggregate) and never hands judgeCorpusHealth a verified code release with a carried store.
+    const source = fs.readFileSync(path.join(ROOT, 'scripts/public-verification-aggregate.mjs'), 'utf8');
+    expect(source.match(/coverage\.eligibleCurrent !== (leaf|aggregate)\.coverage\.eligibleTotal/g)).toHaveLength(2);
+    const watchdog = fs.readFileSync(path.join(ROOT, 'scripts/corpus-watchdog.mjs'), 'utf8');
+    expect(watchdog).not.toMatch(/not CURRENT \(/);
+    const invalid = judgeCorpusHealth(healthy({ codeRelease: { tag: 'v9.8.7', publishedAt: ago(50),
+      aggregate: { state: 'invalid', reason: 'linux/claude coverage is incomplete' } } }), NOW);
+    expect(finding(invalid, 'code-aggregate')).toMatchObject({ level: RED });
+    expect(finding(invalid, 'code-corpus')).toBeUndefined();
+    expect(invalid.verdict).toBe(RED);
+  });
+  it('MUTATION KILLER: an aggregate with no store counts is never read as "all current" -- it is a WARNING, not GREEN', () => {
+    const blind = judgeCorpusHealth(healthy({ codeRelease: { tag: 'v9.8.7', publishedAt: ago(50), aggregate: { state: 'verified' } } }), NOW);
+    expect(finding(blind, 'code-corpus')).toMatchObject({ level: WARNING, detail: expect.stringMatching(/records no eligible\/CURRENT store counts/) });
+    expect(blind.verdict).toBe(WARNING);
+  });
+  it('a degraded promoted generation names its carried and missing stores in the WARNING', () => {
+    const deferral = { observable: true, newestTag: TAG(1), degraded: { carried: ['ruflo'], missing: ['newrepo'] },
+      stores: [{ store: 'ruflo', since: ago(2), lowerBound: false }, { store: 'newrepo', since: ago(2), lowerBound: false }] };
+    const result = judgeCorpusHealth(healthy({ deferral }), NOW);
+    expect(finding(result, 'degraded')).toMatchObject({ level: WARNING, detail: `${TAG(1)} is degraded: 1 carried (ruflo), 1 missing (newrepo)` });
   });
 
   it('unobservable deferral (pre-D6.2 generation) is reported, never guessed and never RED', () => {

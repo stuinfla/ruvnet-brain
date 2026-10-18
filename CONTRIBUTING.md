@@ -1,4 +1,4 @@
-Updated: 2026-10-10 05:06:23 EDT | Version 1.1.1
+Updated: 2026-10-17 19:45:00 EDT | Version 1.2.0
 Created: 2026-07-07 09:22:01 EDT
 
 # Contributing to RuvNet Brain — the one rulebook
@@ -129,6 +129,23 @@ does not verify = a loud failure. The corpus is built at that release's source c
 executables are the install-verified ones byte for byte, and if a newer code release appears before the
 corpus publishes, the night ends `superseded` (a warning, not a failure). Never commit `data/approved-runtime.json`; `single-source:check`
 C1 fails if one appears.
+**One bad source never stops the night (ADR-0091 D5).** A store whose refresh fails is carried at its last
+verified bytes (`STALE` + a `carry` record naming the missed upstream commit) or, with no prior bytes, recorded
+`MISSING` + `failure`; up to max(3, 5% of eligible) such stores, the generation is sealed and published like any
+other, with every carried or missing store named in `CORPUS-COVERAGE.json`, a `::warning` in the run, and a
+`corpus-watchdog` WARNING (RED once a store has been carried more than 7 days; the watchdog also reports, from the
+newest code release's signed aggregate, how many eligible stores that release ships CURRENT, which install
+verification requires to be all of them). Above that bound, or on any integrity failure (carried bytes that no longer match the
+ledger), the night fails loudly. Whether installed clients accept the generation is proven by the
+`customer-canary` job on every publish (its `store-freshness` check names each carried store and still fails an
+unrecorded stale one), never by a hand-set constant: the former ADR-0091 D10 transition constant was removed on
+2026-10-17 after it withheld the one publishable night it ever decided (run 39069376585) past its own soak. A
+generation still a prerelease (never promoted by the canary) is never a seed. A **code** release ships only an
+all-CURRENT corpus: `scripts/corpus-next-seed.mjs --require-coverage` skips a degraded generation (without
+spending the 5-generation search bound on it) and takes the newest all-CURRENT one, because install verification
+requires every eligible store CURRENT. An external source GitHub reports gone (HTTP 404/410)
+is carried at the commit its `kb/external-sources.json` `ifGone` entry records; any other observation error still
+fails the night.
 **Releasing code that carries the newest corpus (ADR-0091 D6) — three rules learned the hard way (4.3.37).**
 1. *Stamp the census before you push.* `release-qe` requires the committed claim surfaces (README, `explainer/*`)
    to state the candidate KB's exact chunk and public-store counts. Assemble the candidate the way `release-qe`

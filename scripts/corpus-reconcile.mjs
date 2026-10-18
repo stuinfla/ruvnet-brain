@@ -18,7 +18,7 @@ import { rebuildCorpusAggregates } from './corpus-aggregates.mjs';
 import { assertCapabilityOnlyStore, isCapabilityOnly, CAPABILITY_RETIRED_SUFFIXES } from '../kb/capability-only.mjs';
 import { eligibleRepositoryStanding, fileIdentity, validateCoverageLedger } from '../plugin/scripts/coverage-integrity.mjs';
 import {
-  CORPUS_QA_FAILED_EXIT, FAILURE_CLASS, StoreWorkerError, degradedBound, degradedPublication, failureReason, isRetryable,
+  CORPUS_QA_FAILED_EXIT, FAILURE_CLASS, StoreWorkerError, degradedBound, describeDegraded, failureReason, isRetryable,
 } from './corpus-store-failure.mjs';
 import { readDiagnosticAccuracyReport } from './oracle/retrieval-accuracy.mjs';
 import { storeRoot } from '../kb/store-root.mjs';
@@ -132,10 +132,6 @@ function filesNamed(root, wanted) {
 // corpus-seed.yml can re-run seed extraction ONCE from the committed bootstrap in the same job.
 export const SEED_LEDGER_SCHEMA_VERSION = 2;
 export const SEED_LEDGER_INCOMPATIBLE_EXIT = 3;
-// ADR-0091 D5 + D10: the generation was built and SEALED with carried/missing stores, but degraded
-// publication is not yet allowed (no soaked tolerant-validator transition). It must not be published;
-// the next night re-plans the carried stores automatically because their sourceCommit still differs.
-export const DEGRADED_UNPUBLISHED_EXIT = 4;
 
 export class SeedLedgerIncompatibleError extends Error {
   constructor(reason) {
@@ -1256,17 +1252,13 @@ export async function main(argv = process.argv.slice(2), {
     return 0;
   }
   const { plan } = summarizeReconciliation(reconciliation);
+  // ADR-0091 D5: a generation inside the degraded bound (assessCandidateCoverage already refused one
+  // above it) is sealed and goes on to be published like any other; the night's log and step summary
+  // say which stores were carried or are missing, and each row says so in the sealed coverage.
   const degraded = candidate.degraded || { carried: [], missing: [] };
-  const isDegraded = degraded.carried.length + degraded.missing.length > 0;
-  const publication = isDegraded ? degradedPublication() : { allowed: true, reason: 'every eligible row is CURRENT' };
-  stdout.write(`${JSON.stringify({ ok: publication.allowed, seedTag, seedSha256, plan, reconciliation, ...candidate,
-    degraded: { ...degraded, publishable: publication.allowed, reason: publication.reason } }, null, 2)}\n`);
-  if (!publication.allowed) {
-    stderr.write(`::warning title=Degraded corpus generation sealed, not published::${degraded.carried.length} carried `
-      + `(${degraded.carried.map((row) => row.store).join(', ') || 'none'}), ${degraded.missing.length} missing `
-      + `(${degraded.missing.map((row) => row.store).join(', ') || 'none'}); ${publication.reason}\n`);
-    return DEGRADED_UNPUBLISHED_EXIT;
-  }
+  const summary = describeDegraded(degraded);
+  stdout.write(`${JSON.stringify({ ok: true, seedTag, seedSha256, plan, reconciliation, ...candidate, degraded }, null, 2)}\n`);
+  if (summary) stderr.write(`::warning title=Degraded corpus generation::${summary}; the carried stores keep their last verified bytes and are re-planned next night\n`);
   return 0;
 }
 

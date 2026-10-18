@@ -109,9 +109,14 @@ function ghFor(generations, { extraReleases = [], listFails = false } = {}) {
       calls.push(args.join(' '));
       if (args[0] === 'release' && args[1] === 'list') {
         if (listFails) return { status: 1, stderr: 'network down' };
+        // Like real gh: only the fields named after --json come back. A resolver that stops asking for
+        // isPrerelease gets rows without it, and its prerelease rule goes blind -- caught here, not in CI.
+        const fields = String(args[args.indexOf('--json') + 1] || '').split(',');
+        const project = (full) => Object.fromEntries(fields.map((field) => [field, full[field]]));
         const rows = [
-          ...generations.map((row) => ({ tagName: row.tag, isDraft: row.isDraft, createdAt: row.createdAt })),
-          ...extraReleases,
+          ...generations.map((row) => project({ tagName: row.tag, isDraft: row.isDraft, isPrerelease: row.isPrerelease === true,
+            createdAt: row.createdAt, publishedAt: row.createdAt })),
+          ...extraReleases.map((row) => project({ isPrerelease: false, ...row })),
         ];
         return { status: 0, stdout: JSON.stringify(rows) };
       }
@@ -161,7 +166,9 @@ describe('corpus next-seed resolution (ADR-086 step 18, ADR-0091 D4)', () => {
     expect(seed.tag).toBe(latest.tag);
     expect(seed.sha256).toBe(latest.sha256);
     expect(seed.bytes).toBe(600_000_000);
-    expect(judged).toBe(2);
+    // `judged` counts generations actually judged until one resolved: the newest resolved first, so one.
+    // (Before 2026-10-17 it reported min(candidates, SEARCH_BOUND) regardless of where the walk stopped.)
+    expect(judged).toBe(1);
     // Exactly the receipt and the recall report were fetched, and nothing else.
     expect(gh.downloads()).toEqual([
       `release download ${latest.tag} --repo stuinfla/ruvnet-brain --pattern corpus-receipt.json --dir ${gh.downloads()[0].split('--dir ')[1]}`,
@@ -472,6 +479,65 @@ describe('code-release resolution requires the D6.2 coverage sidecar (ADR-0091 D
     const nightly = await resolve(workspace(), ghFor([older, bare]));
     expect(nightly.seed.tag).toBe(bare.tag);
     expect(nightly.seed.coverage).toBeUndefined();
+  });
+
+  // 2026-10-17 (reviewer finding): a generation that is still a PRERELEASE was staged but never promoted --
+  // the customer canary refused it, or a newer code release superseded it. No customer received it, so
+  // neither a night nor a code release may build on it. The prerelease flag is the promotion state
+  // protected-release.yml corpus-promote clears (release.mjs --promote-staged).
+  it('REFUSES an unpromoted prerelease as a seed, for a code release AND for the nightly, with its reason named', async () => {
+    const refused = await coveredGeneration('9', { createdAt: '2026-09-14T00:00:00Z', release: { isPrerelease: true } });
+    const promoted = await coveredGeneration('7', { createdAt: '2026-09-13T00:00:00Z' });
+    const code = await resolve(workspace(), ghFor([refused, promoted]), { requireCoverage: true });
+    expect(code.seed.tag).toBe(promoted.tag);
+    expect(reasons(code.rejected)).toMatch(new RegExp(`${refused.tag}: unpromoted: still a prerelease \\(the customer canary never promoted it\\)`));
+    const nightly = await resolve(workspace(), ghFor([refused, promoted]));
+    expect(nightly.seed.tag).toBe(promoted.tag);
+    expect(reasons(nightly.rejected)).toMatch(/unpromoted: still a prerelease/);
+    // Only prereleases -> the committed bootstrap, never a canary-rejected candidate.
+    const only = await resolve(workspace(), ghFor([refused]), { requireCoverage: true });
+    expect(only.seed.origin).toBe('committed-bootstrap');
+  });
+
+  // 2026-10-17 (with the ADR-0091 D10 removal): a promoted generation MAY carry a store at its last verified
+  // bytes, and the nightly seeds from it so the next night re-plans that store. A CODE release may not ship
+  // it: scripts/public-verification-aggregate.mjs requires coverage.eligibleCurrent === eligibleTotal on
+  // every install lane, so such a release could never become install-verified.
+  it('a degraded (carried) promoted generation is a valid NIGHTLY seed but is REFUSED for a code release, naming the store', async () => {
+    const carried = await coveredGeneration('9', { createdAt: '2026-09-14T00:00:00Z', coverageOptions: { carried: true } });
+    const clean = await coveredGeneration('7', { createdAt: '2026-09-13T00:00:00Z' });
+    const code = await resolve(workspace(), ghFor([carried, clean]), { requireCoverage: true });
+    expect(code.seed.tag).toBe(clean.tag);
+    expect(reasons(code.rejected)).toMatch(new RegExp(`${carried.tag}: incompatible for a code release: degraded generation \\(1 carried: alpha; 0 missing: none\\); install verification requires every eligible store CURRENT`));
+    const nightly = await resolve(workspace(), ghFor([carried, clean]));
+    expect(nightly.seed.tag).toBe(carried.tag);
+    expect(reasons(nightly.rejected)).toBe('');
+  });
+
+  // Reviewer finding 2026-10-17: a degraded promoted generation is a transient state (the next night re-plans
+  // the carried store). If each one consumed the search bound, five degraded nights in a row would walk every
+  // code release back to the committed bootstrap -- a pre-ADR-0091 corpus from 2026-09 -- with nothing paging.
+  it(`code-release mode: degraded generations are skipped WITHOUT consuming the ${SEARCH_BOUND}-generation bound; incompatible ones still consume it`, async () => {
+    const degraded = await Promise.all(Array.from({ length: SEARCH_BOUND + 1 }, (_, index) => coveredGeneration(String(index + 1), {
+      createdAt: `2026-09-${String(20 - index).padStart(2, '0')}T00:00:00Z`, coverageOptions: { carried: true } })));
+    const clean = await coveredGeneration('9', { createdAt: '2026-09-01T00:00:00Z' });
+    const result = await resolve(workspace(), ghFor([...degraded, clean]), { requireCoverage: true });
+    expect(result.seed.tag).toBe(clean.tag);
+    expect(result.skippedDegraded).toBe(SEARCH_BOUND + 1);
+    expect(result.judged).toBe(1);
+    expect(reasons(result.rejected).match(/degraded generation/g)).toHaveLength(SEARCH_BOUND + 1);
+    expect(reasons(result.rejected)).not.toMatch(/not judged/);
+    // The bound itself is intact: incompatible (not degraded) generations still consume it, and an all-degraded
+    // walk ends at the committed bootstrap exactly as before -- named, never silent.
+    const incompatible = Array.from({ length: SEARCH_BOUND + 1 }, (_, index) => generation(String(index + 1), {
+      createdAt: `2026-09-${String(20 - index).padStart(2, '0')}T00:00:00Z`, recallOptions: { fixtureSha256: digest('e') } }));
+    const bounded = await resolve(workspace(), ghFor(incompatible), { requireCoverage: true });
+    expect(bounded.judged).toBe(SEARCH_BOUND);
+    expect(bounded.seed.origin).toBe('committed-bootstrap');
+    expect(reasons(bounded.rejected)).toMatch(new RegExp(`${incompatible[SEARCH_BOUND].tag}: not judged`));
+    const allDegraded = await resolve(workspace(), ghFor(degraded), { requireCoverage: true });
+    expect(allDegraded.seed.origin).toBe('committed-bootstrap');
+    expect(allDegraded.skippedDegraded).toBe(SEARCH_BOUND + 1);
   });
 
   it('only pre-D6.2 generations -> the committed bootstrap (the legacy two-pass path)', async () => {

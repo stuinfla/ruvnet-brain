@@ -299,3 +299,51 @@ describe('observeGists — falls back to the unauthenticated API on the Actions 
     expect(result.rows).toEqual(gists);
   });
 });
+
+describe('observeExternalRepositories — an upstream that is gone must not stop the night', () => {
+  const SHA = 'b1762a71bb1ad58b9175e2ae78ed454fed47b655';
+  const ifGone = { sourceCommit: SHA, committedAt: '2026-07-02T11:14:33Z', pushedAt: '2026-09-10T12:41:13Z',
+    updatedAt: '2026-09-10T19:25:36Z', description: 'packaging pipeline' };
+  const source = { store: 'cognitum-ruos', repository: 'cognitum-one/ruOS', ifGone };
+  const failing = (message) => () => { throw new Error(`gh api repos/cognitum-one/ruOS failed: ${message}`); };
+
+  it('carries the last ingested commit on 404/410 and classifies the stored content CURRENT with an honest reason', () => {
+    for (const code of [404, 410]) {
+      const { rows, expected } = observeExternalRepositories([source], { gh: failing(`gh: Gone (HTTP ${code})`) });
+      expect(expected).toBe(1);
+      const [row] = canonicalRepositoryRows(rows);
+      expect(row.upstreamUnavailable).toBe(true);
+      expect(row.defaultBranchRef.target.oid).toBe(SHA);
+      const classified = classifyRepository(row, { receipt: { sourceCommit: SHA, sha256: 'x', builtUtc: 't' },
+        rvfPresent: true, bytesVerified: true, passagesPresent: true, cardPresent: false });
+      expect(classified.status).toBe('CURRENT');
+      expect(classified.upstreamUnavailable).toBe(true);
+      expect(classified.reasons.join(' ')).toMatch(/no longer reachable/);
+    }
+  });
+
+  it('is deterministic: two observations of a gone source are byte-identical (sealed hashes must agree)', () => {
+    const a = canonicalRepositoryRows(observeExternalRepositories([source], { gh: failing('gh: Not Found (HTTP 404)') }).rows);
+    const b = canonicalRepositoryRows(observeExternalRepositories([source], { gh: failing('gh: Not Found (HTTP 404)') }).rows);
+    expect(canonicalJson(a)).toBe(canonicalJson(b));
+  });
+
+  it('still fails closed: no ifGone, a 403, a rate limit, or a malformed commit all throw', () => {
+    const bare = { store: 'cognitum-ruos', repository: 'cognitum-one/ruOS' };
+    expect(() => observeExternalRepositories([bare], { gh: failing('gh: Not Found (HTTP 404)') })).toThrow(/404/);
+    expect(() => observeExternalRepositories([source], { gh: failing('gh: Forbidden (HTTP 403)') })).toThrow(/403/);
+    expect(() => observeExternalRepositories([source], { gh: failing('API rate limit exceeded (HTTP 429)') })).toThrow(/429/);
+    const bad = { ...source, ifGone: { ...ifGone, sourceCommit: 'main' } };
+    expect(() => observeExternalRepositories([bad], { gh: failing('gh: Not Found (HTTP 404)') })).toThrow(/40-hex/);
+  });
+
+  it('never masks a live repository: when GitHub answers, the live row is used and ifGone is ignored', () => {
+    const gh = (args) => JSON.stringify(args[1].endsWith('/commits/main')
+      ? { sha: 'a'.repeat(40), commit: { committer: { date: '2026-10-01T00:00:00Z' } } }
+      : { id: 7, name: 'ruOS', full_name: 'cognitum-one/ruOS', html_url: 'https://github.com/cognitum-one/ruOS',
+        default_branch: 'main', fork: false, archived: false, disabled: false, size: 1 });
+    const { rows } = observeExternalRepositories([source], { gh });
+    expect(rows[0].upstreamUnavailable).toBeUndefined();
+    expect(rows[0].defaultBranchRef.target.oid).toBe('a'.repeat(40));
+  });
+});

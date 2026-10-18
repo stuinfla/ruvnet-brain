@@ -67,6 +67,27 @@ function defaultNodeCandidates(env) {
   return [...new Set(out)].filter((c) => { try { return fs.statSync(c).isFile(); } catch { return false; } });
 }
 
+// Where ruflo's native better-sqlite3 lives depends on the ruflo release. Measured 2026-10-17 with npm -g: ruflo
+// 3.56.10 hoisted nothing (copies nested under @claude-flow/cli, @claude-flow/memory and agentdb), so probing only
+// <ruflo>/node_modules/better-sqlite3 found nothing and node selection silently never ran; ruflo 3.57.0 hoists it.
+// We probe the hoisted copy first, so a machine that has one behaves exactly as before, then the nested layouts.
+// Every candidate is a fixed path under ruflo's own realpath. Copies can differ in version (3.57.0: hoisted 12.11.1,
+// agentdb's nested 11.10.0), so the probed copy is a proxy for the one the writer loads, not proof of it.
+const ADDON_DIRS = [
+  ['node_modules', 'better-sqlite3'],
+  ['node_modules', '@claude-flow', 'cli', 'node_modules', 'better-sqlite3'],
+  ['node_modules', '@claude-flow', 'memory', 'node_modules', 'better-sqlite3'],
+  ['node_modules', 'agentdb', 'node_modules', 'better-sqlite3'],
+];
+
+function findAddon(packageRoot) {
+  for (const parts of ADDON_DIRS) {
+    const dir = path.join(packageRoot, ...parts);
+    try { if (fs.statSync(dir).isDirectory()) return dir; } catch { /* try the next layout */ }
+  }
+  return null;
+}
+
 const nativeNodeCache = new Map();
 const PROBE_TIMEOUT_MS = 2000;
 const PROBE_BUDGET_MS = 3000;
@@ -91,8 +112,8 @@ export function rufloInvocationOrPlain(binary, args, opts) {
 export function nativeNodeFor(binary, { env = process.env, candidates } = {}) {
   let entry;
   try { entry = fs.realpathSync(binary); } catch { return null; }
-  const addon = path.join(path.dirname(path.dirname(entry)), 'node_modules', 'better-sqlite3');
-  try { if (!fs.statSync(addon).isDirectory()) return null; } catch { return null; }
+  const addon = findAddon(path.dirname(path.dirname(entry)));
+  if (!addon) return null;
 
   const list = candidates ?? defaultNodeCandidates(env);
   const cacheKey = `${entry}\0${list.join('\0')}`;

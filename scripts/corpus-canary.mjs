@@ -46,6 +46,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { addPrivateStore, resolveRuntime, resultFromRefreshReceipt, runInstallerDoor } from './customer-seams.mjs';
 import { CANARY_VERDICT_KIND, CORPUS_TAG_PATTERN, REQUIRED_CANARY_CHECKS } from './corpus-promotion.mjs';
 import { inventoryFootprint } from '../plugin/scripts/brain-footprint.mjs';
+import { eligibleRepositoryStanding } from '../plugin/scripts/coverage-integrity.mjs';
 
 export const PUBLIC_API = 'https://api.github.com';
 export const FRESHNESS_LIMIT_MS = 48 * 3_600_000;
@@ -126,6 +127,13 @@ function coverageRows(file) {
  * 2026-09-30), so a "moved store must be ingested within 48h of now" rule would wrongly refuse a
  * perfectly fresh generation about three nights after every code release.
  * MISSING/INELIGIBLE rows are the coverage validator's business (it already ran), not a freshness question.
+ *
+ * CARRIED STORES (ADR-0091 D5, decided 2026-10-17): a repository row the shipped validator accepts as
+ * `shipped` WITH a `carry` record -- STALE, bytes re-hashed against the ledger, `carry.carriedSourceCommit`
+ * equal to the shipped commit and `carry.missedUpstream` equal to the observed upstream -- is not a stale
+ * store: the generation names the miss and keeps the last verified bytes on purpose. It is reported here by
+ * name, never silently. A row whose shipped commit differs from its upstream WITHOUT that record is still
+ * stale and still fails: that is the shape an unrecorded miss has.
  */
 export function storeFreshness({ after, before = null, now }) {
   if (!after) return { ok: false, detail: 'CORPUS-COVERAGE.json is missing from the installed tree' };
@@ -136,19 +144,25 @@ export function storeFreshness({ after, before = null, now }) {
   if (age > FRESHNESS_LIMIT_MS || age < 0) problems.push(`upstream observed ${(age / 3_600_000).toFixed(1)}h ago (limit 48h)`);
   const priorCommit = new Map((before?.rows || []).map((row) => [row.key, row.artifact?.sourceCommit || null]));
   const stale = [];
+  const carried = [];
   let moved = 0;
   for (const row of after.rows) {
     if (row.status === 'INELIGIBLE') continue;
     const upstream = row.upstream?.sha || null;
     const built = row.artifact?.sourceCommit || null;
     if (!upstream || !built) continue;
-    if (upstream !== built) { stale.push(row.artifact?.store || row.key); continue; }
+    if (upstream !== built) {
+      if (row.kind === 'repository' && row.carry && eligibleRepositoryStanding(row) === 'shipped') carried.push(row.artifact?.store || row.key);
+      else stale.push(row.artifact?.store || row.key);
+      continue;
+    }
     if (before && priorCommit.get(row.key) !== upstream) moved += 1;
   }
-  if (stale.length) problems.push(`${stale.length} store(s) built from a commit older than their observed upstream: ${stale.slice(0, 10).join(', ')}`);
+  if (stale.length) problems.push(`${stale.length} store(s) built from a commit older than their observed upstream with no recorded carry: ${stale.slice(0, 10).join(', ')}`);
+  const carriedDetail = carried.length ? `${carried.length} carried at their last verified bytes with a recorded reason: ${carried.slice(0, 10).join(', ')}` : '0 carried';
   return problems.length
-    ? { ok: false, detail: problems.join('; ') }
-    : { ok: true, detail: `observed ${(age / 3_600_000).toFixed(1)}h ago; ${after.rows.length} row(s), 0 stale; ${before ? `${moved} moved since the installed generation, all at their observed upstream commit` : 'no prior coverage to diff against'}` };
+    ? { ok: false, detail: `${problems.join('; ')}; ${carriedDetail}` }
+    : { ok: true, detail: `observed ${(age / 3_600_000).toFixed(1)}h ago; ${after.rows.length} row(s), 0 stale, ${carriedDetail}; ${before ? `${moved} moved since the installed generation, all at their observed upstream commit` : 'no prior coverage to diff against'}` };
 }
 
 /**

@@ -11,7 +11,9 @@
 // and the receipt binds none, so nothing downstream of preparation could tell a degraded generation
 // (carried / missing stores) from a fully current one. The coverage lived only in a 14-day workflow
 // artifact. D6's code-release path needs the generation's sealed coverage to assemble single-pass,
-// and D10's publisher-side "no degraded generation before the soak" check needs it to exist at all.
+// the publisher (release.mjs) binds it to the receipt and names a degraded generation's stores from it,
+// and the watchdog's 7-day carry rule and corpus-next-seed's code-release refusal of a degraded seed
+// both read it. (The former ADR-0091 D10 soak gate also read it; that gate was removed 2026-10-17.)
 //
 //   CORPUS-COVERAGE.json  -- the sealed ruvnet-brain-corpus-coverage ledger, exact bytes.
 //   coverage-receipt.json -- { generationTag, archiveSha256, archiveBytes, coverageSha256, ... }.

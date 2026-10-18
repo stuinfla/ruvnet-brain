@@ -188,7 +188,21 @@ export function judgeCorpusHealth(input, now) {
   // (c) the newest code release must reach a verified aggregate within 24h of publish.
   const code = input?.codeRelease;
   if (!code) add(RED, 'code-aggregate', 'no published vX.Y.Z code release was found');
-  else if (code.aggregate?.state === 'verified') add(GREEN, 'code-aggregate', `${code.tag} carries a verified PASS aggregate`);
+  else if (code.aggregate?.state === 'verified') {
+    add(GREEN, 'code-aggregate', `${code.tag} carries a verified PASS aggregate`);
+    // (c2) THE CORPUS FRESH INSTALLS RECEIVE. A code release ships a corpus too, and its signed aggregate
+    // records how many eligible stores the three install lanes found CURRENT. The aggregate VERIFIES only when
+    // eligibleCurrent === eligibleTotal (scripts/public-verification-aggregate.mjs), so a verified code release
+    // never ships a carried or missing store; this line says so with the measured counts rather than leaving
+    // it implied. Counts that are absent (the verifier does not require their presence) are reported, not
+    // read as "all current".
+    const shipped = code.aggregate.coverage;
+    if (!shipped || !Number.isSafeInteger(shipped.eligibleTotal) || !Number.isSafeInteger(shipped.eligibleCurrent)) {
+      add(WARNING, 'code-corpus', `${code.tag}: the aggregate records no eligible/CURRENT store counts; what fresh installs receive is unmeasured`);
+    } else {
+      add(GREEN, 'code-corpus', `${code.tag} ships ${shipped.eligibleCurrent}/${shipped.eligibleTotal} eligible stores CURRENT`);
+    }
+  }
   else if (code.aggregate?.state === 'invalid') add(RED, 'code-aggregate', `${code.tag} carries an aggregate that does not verify `
     + `under this checkout's verifier (the one approved-runtime --resolve runs, so the nightly will refuse it too): ${code.aggregate.reason}`);
   else {
@@ -210,7 +224,10 @@ export function judgeCorpusHealth(input, now) {
         .map((row) => `${row.store} (${row.lowerBound ? '≥' : ''}${hours(age(row.since))})`).join(', ')}`);
     } else add(GREEN, 'deferral', `${(deferral.stores || []).length} deferred store(s), none older than 7 days`);
     const degraded = [...(deferral.degraded?.carried || []), ...(deferral.degraded?.missing || [])];
-    if (degraded.length) add(WARNING, 'degraded', `${deferral.newestTag} is degraded: ${deferral.degraded.carried.length} carried, ${deferral.degraded.missing.length} missing`);
+    if (degraded.length) {
+      add(WARNING, 'degraded', `${deferral.newestTag} is degraded: ${deferral.degraded.carried.length} carried `
+        + `(${deferral.degraded.carried.join(', ') || 'none'}), ${deferral.degraded.missing.length} missing (${deferral.degraded.missing.join(', ') || 'none'})`);
+    }
   }
 
   // (e) the generation customers receive. Its own generation stamp when it carries one (the corpus
@@ -267,7 +284,12 @@ async function aggregateState({ gh, repo, tag, root, scratch }) {
     const { verifyPublicVerificationAggregate } = await import('./public-verification-aggregate.mjs');
     verifyPublicVerificationAggregate(aggregate, crypto.createPublicKey(fs.readFileSync(path.join(root, SIGNING_PUBLIC_KEY_FILE), 'utf8')));
     if (aggregate.identity?.tag !== tag) throw new Error(`aggregate describes ${aggregate.identity?.tag}, not ${tag}`);
-    return { state: 'verified' };
+    // The corpus a CODE release ships, as its three install lanes measured it: the signed aggregate carries
+    // the eligible/CURRENT counts and the coverage generation of the installed COVERAGE.json. The code
+    // release publishes no coverage sidecar of its own (verified 2026-10-17: v4.7.10 assets), so this is
+    // the one small, signed place that says what fresh installs receive.
+    return { state: 'verified', coverage: { eligibleTotal: aggregate.coverage?.eligibleTotal ?? null,
+      eligibleCurrent: aggregate.coverage?.eligibleCurrent ?? null, coverageGeneration: aggregate.identity?.coverageGeneration ?? null } };
   } catch (error) {
     return { state: 'invalid', reason: error.message.slice(0, 200) };
   }

@@ -69,7 +69,7 @@ import {
   CORPUS_GENERATION_FIELD, CORPUS_TAG_PATTERN, evaluateCanaryVerdict, evaluateCorpusPromotion, parseCorpusGeneration,
 } from './corpus-promotion.mjs';
 import { bindCoverageToReceipt, writeCoverageAssets } from './corpus-coverage-sidecar.mjs';
-import { degradedPublication } from './corpus-store-failure.mjs';
+import { describeDegraded } from './corpus-store-failure.mjs';
 import { assertNoNewerCorpusGeneration } from './code-release-corpus.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -404,12 +404,12 @@ export async function runProtectedCorpusSeed({
     corpusFailure(`corpus receipt does not verify against the sealed archive (${error.message})`);
   }
 
-  // ADR-0091 D6.2 + D10. The archive carries no coverage and the schema-3 receipt binds none, so this
-  // is the one place the publisher can SEE whether the generation is degraded. The coverage must be
-  // the coverage of THIS archive (bound store by store to the receipt), it is published beside the
-  // archive as CORPUS-COVERAGE.json + coverage-receipt.json (no receipt schema bump), and a
-  // generation with any carried or missing store is refused while D10 has recorded no soaked
-  // tolerant-validator transition -- installed clients would reject it. Local, before any network.
+  // ADR-0091 D6.2. The archive carries no coverage and the schema-3 receipt binds none, so this is the
+  // one place the publisher can SEE whether the generation is degraded. The coverage must be the
+  // coverage of THIS archive (bound store by store to the receipt) and is published beside the archive
+  // as CORPUS-COVERAGE.json + coverage-receipt.json (no receipt schema bump). A generation inside the
+  // degraded bound is staged like any other: the customer canary, not a constant, decides whether
+  // installed clients accept it before it is promoted. Local, before any network.
   let coverageAssets;
   try {
     coverageAssets = writeCoverageAssets({
@@ -419,13 +419,8 @@ export async function runProtectedCorpusSeed({
     const degraded = bindCoverageToReceipt({
       coverage: JSON.parse(fs.readFileSync(coverageAssets.coverageFile, 'utf8')), receipt,
     });
-    if (degraded.carried.length + degraded.missing.length > 0) {
-      const decision = degradedPublication();
-      if (!decision.allowed) {
-        corpusFailure(`degraded generation (${degraded.carried.length} carried, ${degraded.missing.length} missing) `
-          + `must not be published: ${decision.reason}`);
-      }
-    }
+    const summary = describeDegraded(degraded);
+    if (summary) console.error(`[corpus-seed] degraded generation staged: ${summary} (each named in CORPUS-COVERAGE.json)`);
   } catch (error) {
     if (String(error.message).startsWith('[corpus-seed]')) throw error;
     corpusFailure(`the generation's sealed coverage does not bind this archive (${error.message})`);

@@ -189,7 +189,8 @@ export function assembleCodeReleaseCorpus({
   }
   if (verified.degraded.carried.length || verified.degraded.missing.length) {
     fail(`generation ${descriptor.tag} is degraded (${verified.degraded.carried.length} carried, `
-      + `${verified.degraded.missing.length} missing); a code release does not ship one (ADR-0091 D10)`);
+      + `${verified.degraded.missing.length} missing); a code release ships only an all-CURRENT corpus -- its install `
+      + 'verification (scripts/public-verification-aggregate.mjs) requires every eligible store CURRENT');
   }
   const before = treeDigest(assets);
   // build-bundle reads the sealed coverage from the ONE canonical path (<root>/data/source-coverage.json),

@@ -148,8 +148,8 @@ const sha256Of = (file) => crypto.createHash('sha256').update(fs.readFileSync(fi
 function judgeRelease({ run, repo, tag, digest, profile, rejected, requireCoverage = false }) {
   // `indeterminate` marks a rejection that says nothing about the release itself -- the network or
   // `gh` failed. A publish-time re-check (ADR-0091 D6.6) must not read one as "no newer generation".
-  const reject = (reason, { indeterminate = false } = {}) => {
-    rejected.push({ tag, reason, ...(indeterminate ? { indeterminate: true } : {}) });
+  const reject = (reason, { indeterminate = false, kind = null } = {}) => {
+    rejected.push({ tag, reason, ...(indeterminate ? { indeterminate: true } : {}), ...(kind ? { kind } : {}) });
     return null;
   };
   let view;
@@ -250,6 +250,18 @@ function judgeRelease({ run, repo, tag, digest, profile, rejected, requireCovera
       } catch (error) {
         return reject(`unverified: coverage sidecar does not bind this generation (${error.message})`);
       }
+      // A CODE release ships only an all-CURRENT corpus. Its install verification
+      // (scripts/public-verification-aggregate.mjs) requires coverage.eligibleCurrent === eligibleTotal on
+      // every lane, so a release assembled from a degraded generation could never become install-verified
+      // and the nightly would stand down on it. The nightly seed may be degraded: the next night re-plans
+      // the carried stores. Decided 2026-10-17 with the D10 removal.
+      const degradedCount = coverage.degraded.carried.length + coverage.degraded.missing.length;
+      if (requireCoverage && degradedCount > 0) {
+        return reject(`incompatible for a code release: degraded generation (${coverage.degraded.carried.length} carried: `
+          + `${coverage.degraded.carried.join(', ') || 'none'}; ${coverage.degraded.missing.length} missing: `
+          + `${coverage.degraded.missing.join(', ') || 'none'}); install verification requires every eligible store CURRENT`,
+        { kind: 'degraded' });
+      }
     }
 
     try {
@@ -303,7 +315,7 @@ export async function resolveNextCorpusSeed({
   const rejected = [];
   let listed = [];
   try {
-    listed = ghJson(run, ['release', 'list', '--repo', repo, '--limit', String(limit), '--json', 'tagName,isDraft,createdAt']) || [];
+    listed = ghJson(run, ['release', 'list', '--repo', repo, '--limit', String(limit), '--json', 'tagName,isDraft,isPrerelease,createdAt']) || [];
   } catch (error) {
     rejected.push({ tag: null, reason: `release list failed (${error.message})`, indeterminate: true });
   }
@@ -316,21 +328,38 @@ export async function resolveNextCorpusSeed({
   const candidates = [];
   for (const row of corpusShaped) {
     if (row.isDraft) { rejected.push({ tag: row.tagName, reason: 'unverified: release is still a draft' }); continue; }
+    // A corpus generation is STAGED as a prerelease and PROMOTED (prerelease flag cleared) only after the
+    // customer canary applied it (protected-release.yml corpus-canary -> corpus-promote). A generation
+    // still a prerelease was refused by that canary, superseded, or is mid-flight: no customer received
+    // it, so no night and no code release may build on it (reviewer finding, 2026-10-17). The committed
+    // bootstrap is a code-release tag, never corpus-shaped, so this never touches it.
+    if (row.isPrerelease) { rejected.push({ tag: row.tagName, reason: 'unpromoted: still a prerelease (the customer canary never promoted it); not a seed' }); continue; }
     const createdAt = Date.parse(row.createdAt);
     if (!Number.isFinite(createdAt)) { rejected.push({ tag: row.tagName, reason: 'unverified: release has no readable publication time' }); continue; }
     candidates.push({ tag: row.tagName, digest: CORPUS_TAG.exec(row.tagName)[1], createdAt });
   }
   candidates.sort((left, right) => right.createdAt - left.createdAt);
 
-  const judged = candidates.slice(0, searchBound);
-  for (const skipped of candidates.slice(searchBound)) {
-    rejected.push({ tag: skipped.tag, reason: `not judged: older than the ${searchBound} newest generations (ADR-0091 D4 search bound)` });
-  }
   const expects = { model: compatibility.model, dimensions: compatibility.dimensions, fixtureSha256: compatibility.fixtureSha256 };
-  for (const candidate of judged) {
+  // The bound counts generations JUDGED incompatible or unverifiable (ADR-0091 D4: one bad format change can
+  // cost at most SEARCH_BOUND downloads). In code-release mode a DEGRADED promoted generation is skipped
+  // without consuming it: a carried store is a transient state the next night re-plans, and if each such
+  // night used up the bound, SEARCH_BOUND degraded nights in a row would walk every code release back to the
+  // committed bootstrap (a pre-ADR-0091 corpus) with nothing paging (reviewer finding, 2026-10-17). The
+  // release listing (`--limit`) remains the absolute cap on the walk.
+  let judged = 0;
+  let skippedDegraded = 0;
+  for (const candidate of candidates) {
+    if (judged >= searchBound) {
+      rejected.push({ tag: candidate.tag, reason: `not judged: older than the ${searchBound} newest generations (ADR-0091 D4 search bound)` });
+      continue;
+    }
     const resolved = judgeRelease({ run, repo, tag: candidate.tag, digest: candidate.digest, profile: compatibility, rejected,
       requireCoverage });
-    if (resolved) return { seed: resolved, rejected, judged: judged.length, expects };
+    if (resolved) return { seed: resolved, rejected, judged: judged + 1, skippedDegraded, expects };
+    if (requireCoverage && rejected[rejected.length - 1]?.tag === candidate.tag && rejected[rejected.length - 1]?.kind === 'degraded') {
+      skippedDegraded += 1;
+    } else judged += 1;
   }
 
   return {
@@ -344,7 +373,8 @@ export async function resolveNextCorpusSeed({
       brainVersion: null,
     },
     rejected,
-    judged: judged.length,
+    judged,
+    skippedDegraded,
     expects,
   };
 }
