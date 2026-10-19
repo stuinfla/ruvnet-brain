@@ -182,4 +182,39 @@ describe('update-apply.mjs — the single writer of the spine', () => {
     expect(r.status).toBe(0);
     fs.rmSync(p1, { recursive: true, force: true }); fs.rmSync(p2, { recursive: true, force: true });
   });
+
+  // #420 item 6: --help / unknown flags used to fall through to the default action (lock + apply).
+  const snapshot = (root) => {
+    const out = {};
+    const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const f = path.join(d, e.name); if (e.isDirectory()) { out[path.relative(root, f) + '/'] = 'dir'; walk(f); } else out[path.relative(root, f)] = fs.readFileSync(f, 'utf8'); } };
+    walk(root); return out;
+  };
+  const runScratch = (home, ...args) => spawnSync(process.execPath, [ENGINE, ...args], { encoding: 'utf8', env: { ...process.env, HOME: home, USERPROFILE: home, RUVNET_BRAIN_HOME: path.join(home, 'brain'), CLAUDE_PLUGIN_ROOT: '' } });
+
+  it.each(['--help', '-h'])('%s prints usage, exits 0, and leaves a populated scratch home byte-identical (no lock, no new files)', (flag) => {
+    const brain = path.join(HOME_DIR, 'brain'); fs.mkdirSync(brain, { recursive: true });
+    fs.writeFileSync(path.join(brain, 'active.json'), '{"version":"1.0.0","generation":1}\n');
+    const before = snapshot(HOME_DIR);
+    const r = runScratch(HOME_DIR, flag);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/^usage: node update-apply\.mjs/);
+    for (const f of ['--auto', '--seed', '--from-dir', '--rollback', '--dev-off', '--doctor', '--gc', '--no-gc', '--expected-version']) expect(r.stdout).toContain(f);
+    expect(snapshot(HOME_DIR)).toEqual(before);
+    expect(fs.existsSync(path.join(brain, '.update.lock'))).toBe(false);
+  });
+
+  it('--help on a scratch home that does not exist yet does not create it', () => {
+    const r = runScratch(HOME_DIR, '--help');
+    expect(r.status).toBe(0);
+    expect(fs.readdirSync(HOME_DIR)).toEqual([]);
+  });
+
+  it('an unknown flag prints usage to stderr, exits nonzero, and touches nothing', () => {
+    const r = runScratch(HOME_DIR, '--frobnicate');
+    expect(r.status).not.toBe(0);
+    expect(r.stdout).toBe('');
+    expect(r.stderr).toContain('--frobnicate');
+    expect(r.stderr).toContain('usage: node update-apply.mjs');
+    expect(fs.readdirSync(HOME_DIR)).toEqual([]);
+  });
 });
