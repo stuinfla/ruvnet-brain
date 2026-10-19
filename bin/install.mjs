@@ -1378,6 +1378,40 @@ export function claudePluginStatus({ home = os.homedir() } = {}) {
   }
 }
 
+// #420 item 4: Claude Code also records per-project installs (scope "local"/"project", keyed by projectPath), and --update
+// moves only the user row above, so a project row keeps running its old generation. `claude plugin update --scope local`
+// acts on the project in its cwd, i.e. on someone's repo: REPORTED with the exact command, never run for them. A row whose
+// projectPath is gone cannot be running anything; it is listed, never counted as behind and never given a `cd` that fails.
+export function claudeProjectInstalls({ home = os.homedir(), referenceVersion = null } = {}) {
+  let rows;
+  try { rows = JSON.parse(fs.readFileSync(path.join(home, '.claude', 'plugins', 'installed_plugins.json'), 'utf8'))?.plugins?.['ruvnet-brain@ruvnet-brain']; } catch { return []; }
+  if (!Array.isArray(rows)) return [];
+  return rows.filter((row) => (row?.scope === 'local' || row?.scope === 'project') && typeof row.projectPath === 'string' && row.projectPath).map((row) => {
+    let version = null;
+    try { version = JSON.parse(fs.readFileSync(path.join(row.installPath, '.claude-plugin', 'plugin.json'), 'utf8'))?.version || null; } catch { /* registry metadata below */ }
+    version ||= typeof row.version === 'string' ? row.version : null;
+    let exists = false;
+    try { exists = fs.statSync(row.projectPath).isDirectory(); } catch { /* gone */ }
+    return { scope: row.scope, projectPath: row.projectPath, version, exists,
+      behind: exists && Boolean(referenceVersion) && !versionSatisfies(version, referenceVersion),
+      command: exists ? `cd '${row.projectPath.replace(/'/g, `'\\''`)}' && claude plugin update ruvnet-brain@ruvnet-brain --scope ${row.scope}` : null };
+  });
+}
+
+/** The doctor's advisory line for claudeProjectInstalls(): '!' while any existing project lags, never a ✗ (it is the user's project). */
+export function projectInstallsCheck(projects, referenceVersion) {
+  if (!projects.length) return null;
+  const behind = projects.filter((p) => p.behind);
+  const gone = projects.filter((p) => !p.exists);
+  const named = (p) => `${p.projectPath} (${p.scope}, ${p.version || 'unknown'})`;
+  const detail = behind.length
+    ? `${behind.length} per-project Claude Code install(s) behind ${referenceVersion}: ${behind.map(named).join(', ')}`
+    : `${projects.length - gone.length} per-project Claude Code install(s) at ${referenceVersion} or newer`;
+  return { id: 'project-installs', label: 'Projects', state: behind.length ? 'warn' : 'ok',
+    detail: `${detail}${gone.length ? `; ${gone.length} registered for a folder that no longer exists: ${gone.map(named).join(', ')}` : ''}`,
+    fix: behind.length ? behind.map((p) => p.command).join(' ; ') : null };
+}
+
 // A plugin version can change without changing anything a running host freezes at boot. Compare
 // the actual installed payload with this candidate before updating it so body-only releases do not
 // manufacture a restart requirement. Unknown paths fail closed: if we cannot prove the boundary,
@@ -1482,6 +1516,11 @@ function wirePlugin({ expectedVersion = PACKAGE_VERSION, requireManaged = false 
       info('  body-only update: the Stable Spine is live on the next hook/MCP call; no restart is required.');
     }
     info(`  commands available${shellBoundary.restartRequired ? ' in new sessions' : ' immediately'}: ${c.bold('/rnbc')} (also /rnb, /rvbc), ${c.bold('/ruvnet-brain:configure')}`);
+    // #420 item 4: the user row moved; per-project rows did not. Name each lagging one with its own command (never run here).
+    const projectsBehind = claudeProjectInstalls({ referenceVersion: installed.version }).filter((p) => p.behind);
+    for (const p of projectsBehind) {
+      warn(`per-project install still on ${p.version || 'an unknown version'} (${p.scope} scope, ${p.projectPath}); --update moves only the user install. To update it: ${c.bold(p.command)}`);
+    }
     return {
       host: true, wired: true, version: installed.version, manualMarketplace, manualInstall,
       shellChanged: shellBoundary.changed, shellChangedPaths: shellBoundary.paths,
@@ -3424,6 +3463,9 @@ async function doctorRun({ json }) {
   const nightlyFailed = nightlyHealth.state === 'degraded'
     || (nightlyHealth.state === 'on' && !['ok', 'running'].includes(nightlyHealth.runHealth?.state));
   const codexFailed = codexWiringFailed || codexReadinessFailed || (codexLifecycleFailed && !codexTrustBypassed);
+  // #420 item 4: per-project Claude installs lag silently behind the user one; advisory, with each project's own command.
+  const projectReference = claudePluginStatus().version || PACKAGE_VERSION;
+  const projectLine = projectInstallsCheck(claudeProjectInstalls({ referenceVersion: projectReference }), projectReference);
   const checks = [
     // With --hooks the install reading was never part of the verdict (release install verification); keep that.
     check('install', 'Install', !allGreen, `${v.repos} store(s), reader ${v.reader ? 'present' : 'MISSING'}, search server ${v.mcp ? 'present' : 'MISSING'}`,
@@ -3438,6 +3480,7 @@ async function doctorRun({ json }) {
       nightlyHealth.state === 'degraded' ? 'npx ruvnet-brain --enable-nightly' : 'npx ruvnet-brain --update'),
     check('host-convergence', 'Hosts sync', !hostConvergence.healthy, hostConvergence.state, 'npx ruvnet-brain --update'),
     ...(rufloOperational ? [rufloCheckLine(rufloOperational)] : []),
+    ...(projectLine ? [projectLine] : []),
     ...(agentdbLine ? [agentdbLine] : []),
     turnLine,
   ];
