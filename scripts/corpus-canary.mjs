@@ -315,10 +315,28 @@ function runUpdater({ kbDir, env, resultFile }) {
   });
 }
 
-async function fetchRelease({ apiBase, repo, tag }) {
-  const response = await fetch(candidateManifestUrl({ apiBase, repo, tag }), { headers: { accept: 'application/vnd.github+json' } });
-  if (!response.ok) throw new Error(`release ${tag} returned HTTP ${response.status}`);
-  return response.json();
+// An anonymous GitHub API read from a shared runner address is sometimes refused (403/429) or fails (5xx)
+// for a moment; one such blip must not fail the night. The same call is retried after a short wait.
+const TRANSIENT_HTTP = new Set([403, 429, 500, 502, 503, 504]);
+async function fetchJson(url, what, { retryDelayMs = 15_000, maxAttempts = 4 } = {}) {
+  for (let attempt = 1; ; attempt += 1) {
+    let status = null;
+    try {
+      const response = await fetch(url, { headers: { accept: 'application/vnd.github+json' } });
+      if (response.ok) return await response.json();
+      status = response.status;
+      if (!TRANSIENT_HTTP.has(status)) throw new Error(`${what} returned HTTP ${status}`);
+    } catch (error) {
+      if (status !== null && !TRANSIENT_HTTP.has(status)) throw error;
+      if (status === null && attempt >= maxAttempts) throw error;
+    }
+    if (attempt >= maxAttempts) throw new Error(`${what} returned HTTP ${status}`);
+    await new Promise((resolve) => setTimeout(resolve, retryDelayMs * attempt));
+  }
+}
+
+async function fetchRelease({ apiBase, repo, tag, retryDelayMs }) {
+  return fetchJson(candidateManifestUrl({ apiBase, repo, tag }), `release ${tag}`, { retryDelayMs });
 }
 
 /**
@@ -340,10 +358,8 @@ export const CANARY_CASES = Object.freeze({
   'older-runtime': Object.freeze({ runtime: 'N-1', door: 'installer', overlay: false }),
 });
 
-async function fetchReleaseList({ apiBase, repo }) {
-  const response = await fetch(`${apiBase}/repos/${repo}/releases?per_page=100`, { headers: { accept: 'application/vnd.github+json' } });
-  if (!response.ok) throw new Error(`release list returned HTTP ${response.status}`);
-  return response.json();
+async function fetchReleaseList({ apiBase, repo, retryDelayMs }) {
+  return fetchJson(`${apiBase}/repos/${repo}/releases?per_page=100`, 'release list', { retryDelayMs });
 }
 
 /** The footprint of a customer HOME after one update (plugin/scripts/brain-footprint.mjs, never restated). */
@@ -372,7 +388,7 @@ async function runCase({ name, spec, repo, tag, approvedVersion, release, work, 
   retryDelayMs, maxAttempts, log, writerRoot, approvedInstaller, footprintUpdates = false }) {
   fs.mkdirSync(home, { recursive: true });
   let runtime = approvedVersion;
-  if (spec.runtime !== 'approved') runtime = resolveRuntime(spec.runtime, { candidateTag: `v${approvedVersion}`, releases: await fetchReleaseList({ apiBase, repo }) });
+  if (spec.runtime !== 'approved') runtime = resolveRuntime(spec.runtime, { candidateTag: `v${approvedVersion}`, releases: await fetchReleaseList({ apiBase, repo, retryDelayMs }) });
   const installed = await install({ approvedVersion: runtime, work, home, log });
   const { kbDir } = installed;
   home = installed.home || home;
@@ -465,7 +481,7 @@ export async function runCanary({
     throw new Error(`--cases must start with clean and name only: ${Object.keys(CANARY_CASES).join(', ')}`);
   }
   const started = now();
-  const release = await fetchRelease({ apiBase, repo, tag });
+  const release = await fetchRelease({ apiBase, repo, tag, retryDelayMs });
   // The approved package's installer — what `npx ruvnet-brain@latest` runs — fetched once, on demand.
   let installerPath = null;
   const resolveInstaller = approvedInstaller || (async () => {

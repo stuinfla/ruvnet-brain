@@ -54,7 +54,7 @@ afterEach(() => { while (dirs.length) fs.rmSync(dirs.pop(), { recursive: true, f
 
 // ── a GitHub that serves exactly one staged candidate ────────────────────────────────────────────
 let server; let origin; const hits = [];
-const served = { tag: null, zip: null, sig: null, failFirstManifest: 0, manifestHits: 0 };
+const served = { tag: null, zip: null, sig: null, failFirstManifest: 0, failCanaryRead: [], manifestHits: 0 };
 function releasePayload() {
   const digest = crypto.createHash('sha256').update(served.zip).digest('hex');
   const assets = [
@@ -69,6 +69,7 @@ beforeAll(async () => {
   server = http.createServer((req, res) => {
     hits.push(req.url);
     if (req.url === `/repos/${REPO}/releases/tags/${served.tag}`) {
+      if (served.failCanaryRead.length) { res.writeHead(served.failCanaryRead.shift()).end('refused'); return; }
       served.manifestHits += 1;
       // The canary's own read is hit 1; the updater's first manifest read is hit 2.
       if (served.manifestHits > 1 && served.failFirstManifest > 0) { served.failFirstManifest -= 1; res.writeHead(503).end('busy'); return; }
@@ -167,6 +168,7 @@ function stage(zipBytes, { signed = true, signature = null } = {}) {
   served.tag = `corpus-sha256-${crypto.createHash('sha256').update(zipBytes).digest('hex')}`;
   served.manifestHits = 0;
   served.failFirstManifest = 0;
+  served.failCanaryRead = [];
   return served.tag;
 }
 
@@ -311,6 +313,27 @@ describe('the customer canary applies the staged candidate through a real custom
     expect(verdict.updater).toMatchObject({ exitCode: 0, attempts: 1 });
     expect(served.failFirstManifest).toBe(0);
     expect(verdict.verdict).toBe('PASS');
+  }, 180_000);
+
+  it("the canary's own first read of the release survives a transient 403 then 503 (the 2026-10-18 night)", async () => {
+    stage(nightly.zip);
+    served.failCanaryRead = [403, 503];
+    const { verdict } = await canary(customerInstall());
+    expect(served.failCanaryRead).toEqual([]);
+    expect(verdict.verdict).toBe('PASS');
+  }, 180_000);
+
+  it('BREAK IT: a release read that stays refused is still an error, not an endless wait', async () => {
+    stage(nightly.zip);
+    served.failCanaryRead = [403, 403, 403, 403, 403, 403];
+    await expect(canary(customerInstall())).rejects.toThrow(/HTTP 403/);
+  }, 180_000);
+
+  it('BREAK IT: a 404 is not retried', async () => {
+    stage(nightly.zip);
+    served.failCanaryRead = [404, 404];
+    await expect(canary(customerInstall())).rejects.toThrow(/HTTP 404/);
+    expect(served.failCanaryRead).toEqual([404]);
   }, 180_000);
 });
 
