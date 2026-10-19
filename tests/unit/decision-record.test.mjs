@@ -94,6 +94,23 @@ describe('the §3 door: committed only on exact readback; a refusal is loud and 
     expect(fs.readdirSync(path.dirname(db)).sort()).toEqual(['memory.db']);
     cleanup();
   });
+  it('an encrypted-at-rest store (RFE1) is refused before the native-only store runs, with the cause in the ledger (#439)', () => {
+    const dir = tmp('decision-door-'); const db = path.join(dir, '.swarm', 'memory.db');
+    const brainHome = tmp('decision-door-bh-'); const priorHome = process.env.RUVNET_BRAIN_HOME; process.env.RUVNET_BRAIN_HOME = brainHome;
+    fs.mkdirSync(path.dirname(db), { recursive: true }); fs.writeFileSync(db, Buffer.concat([Buffer.from('RFE1'), Buffer.alloc(64, 7)]));
+    const m = memory(); let stores = 0;
+    const r = storeDecision({ ruflo: 'x', db, namespace: 'app', key: 'decision-e-20261011T123456789Z', value: '{"e":1}',
+      store: (args) => { stores += 1; return m.store(args); }, readBack: m.readBack });
+    if (priorHome === undefined) delete process.env.RUVNET_BRAIN_HOME; else process.env.RUVNET_BRAIN_HOME = priorHome;
+    expect(r).toMatchObject({ state: 'refused', key: 'decision-e-20261011T123456789Z' });
+    expect(r.reason).toMatch(/encrypted at rest \(ruflo RFE1\)/);
+    expect(stores).toBe(0);
+    const ledger = fs.readFileSync(path.join(brainHome, 'hook-failures.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0]).toMatchObject({ hook: 'decision-record', event: 'record' });
+    expect(ledger[0].error).toMatch(/encrypted at rest/);
+    cleanup();
+  });
   it('a store that exits 0 but reads back nothing is NOT committed', () => {
     const dir = tmp('decision-door-'); const db = path.join(dir, '.swarm', 'memory.db');
     fs.mkdirSync(path.dirname(db), { recursive: true });
