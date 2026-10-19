@@ -56,6 +56,7 @@ import {
   auditCompletionClaims, readClaudeTurn, extractCommitments, claimClosesPromise,
   PROMISE_KIND, PROMISE_CAP_OPEN,
 } from './completion-claim-evidence.mjs';
+import { writeAtomic } from './user-settings.mjs';
 
 const HOME = os.homedir();
 
@@ -181,7 +182,12 @@ function load() {
 function save(led) {
   try {
     fs.mkdirSync(path.dirname(LEDGER), { recursive: true });
-    fs.writeFileSync(LEDGER, JSON.stringify({ ...led, updated: new Date().toISOString() }, null, 2) + '\n');
+    // writeAtomic (not a bare writeFileSync): writeFileSync truncates the target before writing the
+    // new bytes, so a kill -9 / ENOSPC / EIO between those two steps leaves LEDGER empty — and load()'s
+    // catch-all JSON.parse failure then reads that as "nothing was ever committed", silently discarding
+    // every item a prior turn agreed to do, not just the one being added now. Same house pattern as
+    // user-settings.mjs's own writeAtomic(): temp-in-the-same-directory + fsync + rename.
+    writeAtomic(LEDGER, JSON.stringify({ ...led, updated: new Date().toISOString() }, null, 2) + '\n');
     return true;
   } catch { return false; /* the ledger is advisory — never break a turn over it */ }
 }
