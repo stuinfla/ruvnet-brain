@@ -79,16 +79,22 @@ async function doctor(proj) {
     row.episodes = Number(sql(db, 'SELECT count(*) FROM episodes;') ?? 0);
   }
 
-  // VERIFY: real round-trip through the real CLI in the project's own namespace.
+  // VERIFY: real round-trip through the real CLI in the project's own namespace — EXACT KEY, never
+  // a semantic `memory search` match. The prior check matched a generic substring every canary this
+  // project has EVER written shares ("fleet-doctor-cana…" / "round-trip canary"), not THIS run's
+  // unique key/value, so a stale canary from a PRIOR run still ranked by `memory search` made a run
+  // whose CURRENT write silently failed report `roundtrip: true` anyway — the same "claimed success
+  // is not evidence of a write" gap already fixed this way in `record-lesson.mjs`, `distill-
+  // project.mjs`, and `health-repair.mjs`'s fleet receipt, and the exact discipline `ground-
+  // ruvnet.sh` already documents for every other write in this repo: "never infer a broken write
+  // from... semantic-search misses... unique-key store -> exact-key retrieve and read the returned
+  // VALUE."
   const canaryKey = `fleet-doctor-canary-${Date.now()}`;
   const canaryVal = `round-trip canary ${new Date().toISOString()}`;
   const stored = ruflo(proj, ['memory', 'store', '-k', canaryKey, '--value', canaryVal, '-n', name]);
   if (stored.status === 0) {
-    const found = ruflo(proj, ['memory', 'search', '-q', 'fleet-doctor round-trip canary', '-n', name, '--limit', '3']);
-    // The result table TRUNCATES keys (`fleet-doctor-cana...`) — asserting on the full key was a
-    // false-negative bug (caught on first run, 2026-07-13, SpotOn: store fine, MY check wrong —
-    // the exact lesson-agentdb-was-never-broken defect class). Match what the table can show.
-    row.roundtrip = found.out.includes('fleet-doctor-cana') || found.out.includes('round-trip canary');
+    const found = ruflo(proj, ['memory', 'retrieve', '-k', canaryKey, '-n', name, '--value-only']);
+    row.roundtrip = found.status === 0 && found.out.trim() === canaryVal;
   }
   return row;
 }
