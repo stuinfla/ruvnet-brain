@@ -116,6 +116,15 @@ describe('the nightly config points at things that exist', () => {
     expect(prompt).toContain('work record, never a GitHub issue');
     expect(prompt).toContain('fingerprint');
     expect(prompt).toContain('existing fix PR');
+    // Dream Cycle 2026-10-21, brain-currency: findingPolicy.ledgerFirst (true, set 2026-08-30) is
+    // dropped by the SAME withDefaults() gap as openIssueOnlyWhen above, but — unlike
+    // openIssueOnlyWhen — never received a compensating extraDisciplines override. Verified live
+    // before this test existed: compiling dream.config.json as committed on main produced zero
+    // mention of ledger-ordering anywhere in the output. The compiled prompt bundled the ledger
+    // row into STEP 20-25's candidate-PR commit with no instruction to finalize it first, so the
+    // owner's own 2026-08-30 decision never reached a single compiled night in the ~7 weeks since.
+    expect(prompt).toContain('LEDGER-FIRST OVERRIDE');
+    expect(prompt).toContain('ledgerFirst');
     fs.rmSync(out, { force: true });
   }, 200_000);
 });
