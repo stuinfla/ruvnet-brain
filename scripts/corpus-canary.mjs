@@ -47,6 +47,7 @@ import { addPrivateStore, resolveRuntime, resultFromRefreshReceipt, runInstaller
 import { CANARY_VERDICT_KIND, CORPUS_TAG_PATTERN, REQUIRED_CANARY_CHECKS } from './corpus-promotion.mjs';
 import { inventoryFootprint } from '../plugin/scripts/brain-footprint.mjs';
 import { eligibleRepositoryStanding } from '../plugin/scripts/coverage-integrity.mjs';
+import { TRANSIENT_HTTP, retryTransientAsync } from './transient-gh.mjs';
 
 export const PUBLIC_API = 'https://api.github.com';
 export const FRESHNESS_LIMIT_MS = 48 * 3_600_000;
@@ -151,9 +152,11 @@ export function storeFreshness({ after, before = null, now }) {
     const upstream = row.upstream?.sha || null;
     const built = row.artifact?.sourceCommit || null;
     if (!upstream || !built) continue;
+    // Named either way: a refresh that failed (upstream read, differs) or an upstream nobody could read tonight
+    // (pinned at the carried commit, `upstreamUnavailable`). Both are carried with a record the validator accepts.
+    if (row.kind === 'repository' && row.carry && eligibleRepositoryStanding(row) === 'shipped') { carried.push(row.artifact?.store || row.key); continue; }
     if (upstream !== built) {
-      if (row.kind === 'repository' && row.carry && eligibleRepositoryStanding(row) === 'shipped') carried.push(row.artifact?.store || row.key);
-      else stale.push(row.artifact?.store || row.key);
+      stale.push(row.artifact?.store || row.key);
       continue;
     }
     if (before && priorCommit.get(row.key) !== upstream) moved += 1;
@@ -285,15 +288,18 @@ function runLogged(command, args, { env, cwd, timeoutMs, log }) {
   return result;
 }
 
-/** Phase 1: the approved runtime, installed exactly as `npx ruvnet-brain@<version>` would. */
-export function installCustomer({ approvedVersion, work, home, log = () => {} }) {
+/**
+ * Phase 1: the approved runtime, installed exactly as `npx ruvnet-brain@<version>` would. The registry read is
+ * retried on a transient failure (bounded) so a registry blip reads as weather, never as "the customer refused".
+ */
+export async function installCustomer({ approvedVersion, work, home, log = () => {}, retryDelayMs = 30_000 }) {
   const env = customerEnv({ home, work });
   fs.mkdirSync(env.TMPDIR, { recursive: true });
   const prefix = path.join(work, 'npx');
   fs.mkdirSync(prefix, { recursive: true });
   const npm = path.join(path.dirname(process.execPath), process.platform === 'win32' ? 'npm.cmd' : 'npm');
-  runLogged(npm, ['install', '--prefix', prefix, '--no-audit', '--no-fund', '--no-save', `ruvnet-brain@${approvedVersion}`],
-    { env, cwd: prefix, timeoutMs: 600_000, log });
+  await retryTransientAsync(() => runLogged(npm, ['install', '--prefix', prefix, '--no-audit', '--no-fund', '--no-save', `ruvnet-brain@${approvedVersion}`],
+    { env, cwd: prefix, timeoutMs: 600_000, log }), { baseDelayMs: retryDelayMs, onRetry: ({ attempt }) => log(`--- npm install failed transiently (attempt ${attempt}); retrying`) });
   const installer = path.join(prefix, 'node_modules', 'ruvnet-brain', 'bin', 'install.mjs');
   const installed = readJson(path.join(prefix, 'node_modules', 'ruvnet-brain', 'package.json')).version;
   if (installed !== approvedVersion) throw new Error(`npm served ruvnet-brain ${installed}, not the approved ${approvedVersion}`);
@@ -316,8 +322,8 @@ function runUpdater({ kbDir, env, resultFile }) {
 }
 
 // An anonymous GitHub API read from a shared runner address is sometimes refused (403/429) or fails (5xx)
-// for a moment; one such blip must not fail the night. The same call is retried after a short wait.
-const TRANSIENT_HTTP = new Set([403, 429, 500, 502, 503, 504]);
+// for a moment; one such blip must not fail the night. The same call is retried after a short wait. The
+// status set is the pipeline's one definition (scripts/transient-gh.mjs TRANSIENT_HTTP), not a private copy.
 async function fetchJson(url, what, { retryDelayMs = 15_000, maxAttempts = 4 } = {}) {
   for (let attempt = 1; ; attempt += 1) {
     let status = null;

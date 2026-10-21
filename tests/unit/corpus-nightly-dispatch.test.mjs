@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { detectPublisherActions } from '../../scripts/release-authority.mjs';
-import { MIN_PIPELINE_VERSION } from '../../scripts/corpus-dispatch-decision.mjs';
+import { MIN_PIPELINE_VERSION, RETRY_CRON } from '../../scripts/corpus-dispatch-decision.mjs';
 
 const ROOT = path.resolve(process.env.RUVNET_RELEASE_CONTRACT_ROOT || path.resolve(import.meta.dirname, '../..'));
 const DISPATCHER = '.github/workflows/corpus-nightly-dispatch.yml';
@@ -14,7 +14,9 @@ const executable = (block) => block.split('\n').filter((line) => !line.trimStart
 describe('corpus nightly dispatcher (ADR-086 step 18)', () => {
   it('turns a schedule into a genuine workflow_dispatch on protected main in corpus mode', () => {
     const source = read(DISPATCHER);
-    expect(source).toMatch(/^on:\n {2}schedule:\n {4}# [^\n]*\n {4}- cron: '[^']+'\n {2}workflow_dispatch: \{\}$/m);
+    // Two schedule entries: the night's first slot and its one retry slot (RETRY_CRON), nothing else.
+    expect(source).toMatch(/^on:\n {2}schedule:\n {4}# [^\n]*\n {4}- cron: '17 7 \* \* \*'\n {4}# [^\n]*\n {4}- cron: '17 11 \* \* \*'\n {2}workflow_dispatch: \{\}$/m);
+    expect(source).toContain(`- cron: '${RETRY_CRON}'`);
     expect(source).toContain('gh workflow run protected-release.yml');
     expect(source).toContain('--ref main');
     expect(source).toContain('-f mode=corpus');
@@ -156,7 +158,7 @@ describe('the decision step, executed', () => {
   };
 
   /** `resolver`: { status, release } fakes approved-runtime.mjs; or { gh } runs the REAL resolver against a fake gh. */
-  function runStep({ resolver, nightly = 'on' }) {
+  function runStep({ resolver, nightly = 'on', eventSchedule = '', gh = null }) {
     const dir = tmp();
     const bin = path.join(dir, 'bin');
     fs.mkdirSync(bin);
@@ -175,8 +177,8 @@ exec ${JSON.stringify(process.execPath)} "$@"\n`);
     const output = path.join(dir, 'github-output');
     fs.writeFileSync(output, '');
     const env = { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}`,
-      GITHUB_OUTPUT: output, RUNNER_TEMP: dir, GITHUB_REPOSITORY: 'stuinfla/ruvnet-brain',
-      ...(resolver.gh ? { RUVNET_GH_COMMAND: resolver.gh } : {}) };
+      GITHUB_OUTPUT: output, RUNNER_TEMP: dir, GITHUB_REPOSITORY: 'stuinfla/ruvnet-brain', EVENT_SCHEDULE: eventSchedule,
+      ...(resolver.gh || gh ? { RUVNET_GH_COMMAND: resolver.gh || gh } : {}) };
     if (nightly === undefined) delete env.CORPUS_NIGHTLY; else env.CORPUS_NIGHTLY = nightly;
     const result = spawnSync('bash', ['-c', script()], { cwd: ROOT, encoding: 'utf8', timeout: 60_000, env });
     return { ...result, output: fs.readFileSync(output, 'utf8'), resolved: fs.existsSync(resolveLog) };
@@ -204,6 +206,67 @@ process.exit(9);
     fs.chmodSync(wrapper, 0o755);
     return wrapper;
   };
+
+  /** A fake gh for the RETRY SLOT: `run list` answers with tonight's corpus runs; the outcome artifact download
+   * fails (as it does for a run that never reached corpus-terminal-outcome) so the job list decides. */
+  const fakeRunHistory = (runs) => {
+    const dir = tmp();
+    const file = path.join(dir, 'gh.cjs');
+    const now = Date.now();
+    const rows = runs.map((run, index) => ({ databaseId: 9000 + index, attempt: 1, displayTitle: `protected-release corpus corpus-${100 + index}-1`,
+      status: run.status || 'completed', conclusion: run.conclusion ?? 'failure', createdAt: new Date(now - (3 - index) * 3_600_000).toISOString(),
+      updatedAt: new Date(now - (2 - index) * 3_600_000).toISOString(), jobs: run.jobs || [{ name: 'seal-exact-corpus-candidate', conclusion: 'failure' }] }));
+    fs.writeFileSync(file, `const args = process.argv.slice(2); const rows = ${JSON.stringify(rows)};
+if (args[0] === 'run' && args[1] === 'list') { process.stdout.write(JSON.stringify(rows)); process.exit(0); }
+if (args[0] === 'run' && args[1] === 'download') { process.stderr.write('no artifact matches'); process.exit(1); }
+if (args[0] === 'run' && args[1] === 'view') { process.stdout.write(JSON.stringify({ jobs: rows.find((r) => String(r.databaseId) === args[2]).jobs })); process.exit(0); }
+process.stderr.write('retry-slot fake gh: ' + args.join(' ')); process.exit(9);
+`);
+    const wrapper = path.join(dir, 'gh');
+    fs.writeFileSync(wrapper, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(file)} "$@"\n`);
+    fs.chmodSync(wrapper, 0o755);
+    return wrapper;
+  };
+  const armedRelease = { release: { tag: `v${NEWER}`, version: NEWER, sourceSha: B } };
+
+  it('RETRY SLOT: one failed run tonight -> arms the retry exactly like the first slot (resolver consulted)', () => {
+    const result = runStep({ resolver: armedRelease, eventSchedule: RETRY_CRON, gh: fakeRunHistory([{ conclusion: 'failure' }]) });
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.output).toBe(`armed=true\napproved_sha=${B}\napproved_version=${NEWER}\napproved_tag=v${NEWER}\nverdict=arm\n`);
+    expect(result.stdout).toMatch(/retry slot retry: corpus run 9000 failed/);
+    expect(result.resolved).toBe(true);
+  });
+
+  it('RETRY SLOT stands down, resolving nothing, when the night already has an answer, is running, or used its retry', () => {
+    const cases = [
+      [[{ conclusion: 'success', jobs: [{ name: 'corpus-no-change-round', conclusion: 'success' }] }], /ended no-change/],
+      [[{ status: 'in_progress', conclusion: null }], /still in progress/],
+      [[{ conclusion: 'failure' }, { conclusion: 'failure' }], /bound is 2 per night/],
+      [[], /dispatched no corpus run/],
+      [[{ conclusion: 'failure', jobs: [{ name: 'protected-corpus-publisher', conclusion: 'success' }, { name: 'customer-canary', conclusion: 'failure' }] }], /ended canary-rejected/],
+      // Every job green yet no outcome: a workflow defect, not weather -- never retried.
+      [[{ conclusion: 'success', jobs: [{ name: 'protected-corpus-publisher', conclusion: 'skipped' }] }], /ended unknown/],
+    ];
+    for (const [runs, reason] of cases) {
+      const result = runStep({ resolver: armedRelease, eventSchedule: RETRY_CRON, gh: fakeRunHistory(runs) });
+      expect(result.status, result.stderr + result.stdout).toBe(0);
+      expect(result.output, JSON.stringify(runs)).toBe('armed=false\nverdict=retry-stand-down\n');
+      expect(result.stdout).toMatch(reason);
+      expect(result.resolved, 'the ~555 MB resolve must not run for a stand-down').toBe(false);
+    }
+  });
+
+  it('RETRY SLOT: the kill switch still wins after a retry verdict', () => {
+    const result = runStep({ resolver: armedRelease, nightly: 'off', eventSchedule: RETRY_CRON, gh: fakeRunHistory([{ conclusion: 'failure' }]) });
+    expect(result.status).toBe(0);
+    expect(result.output).toBe('armed=false\nverdict=stand-down\n');
+    expect(result.resolved).toBe(false);
+  });
+
+  it('the first slot never consults run history (the schedule is not the retry cron)', () => {
+    const result = runStep({ resolver: armedRelease, eventSchedule: '17 7 * * *', gh: fakeRunHistory([{ conclusion: 'failure' }, { conclusion: 'failure' }]) });
+    expect(result.output).toContain('armed=true');
+  });
 
   it('MAIN AHEAD of the approved release: still arms, at the approved sourceSha (the old rule stood down)', () => {
     // main HEAD here is this checkout's HEAD; the approved release is a different commit and version.

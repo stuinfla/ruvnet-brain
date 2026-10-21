@@ -293,11 +293,17 @@ export function eligibleRepositoryStanding(row) {
   if (status === 'CURRENT') return carry === undefined && failure === undefined ? 'shipped' : null;
   if (status === 'STALE' && carry && typeof carry === 'object' && failure === undefined) {
     const carried = String(carry.carriedSourceCommit || '').toLowerCase();
+    const upstream = String(row.upstream?.sha || '').toLowerCase();
+    // Two honest shapes. A refresh that FAILED: upstream was read, differs from the carried commit, and is named
+    // as missedUpstream. An upstream nobody could READ tonight (transient, source-coverage.mjs): the row is pinned
+    // at the carried commit, says `upstreamUnavailable`, and missedUpstream is null -- unknown, never invented.
+    const missed = String(carry.missedUpstream || '').toLowerCase();
+    const upstreamKnown = HEX40.test(missed) && missed === upstream && carried !== missed;
+    const upstreamUnread = carry.missedUpstream === null && row.upstreamUnavailable === true && row.upstreamUnavailableKind === 'transient'
+      && carry.reason === 'transient: upstream unreadable' && carried === upstream;
     const shipped = typeof carry.reason === 'string' && carry.reason.length > 0
       && HEX40.test(carried) && carried === String(row.artifact?.sourceCommit || '').toLowerCase()
-      && HEX40.test(String(carry.missedUpstream || '').toLowerCase())
-      && String(carry.missedUpstream).toLowerCase() === String(row.upstream?.sha || '').toLowerCase()
-      && carried !== String(carry.missedUpstream).toLowerCase()
+      && (upstreamKnown || upstreamUnread)
       && isAttemptCount(carry.attempts) && isIsoOrNull(carry.carriedCommittedAt)
       && row.artifact?.bytesVerified === true && row.artifact?.passagesPresent === true;
     return shipped ? 'shipped' : null;

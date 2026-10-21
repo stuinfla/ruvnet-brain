@@ -1,4 +1,4 @@
-Updated: 2026-10-17 19:45:00 EDT | Version 1.2.0
+Updated: 2026-10-20 14:30:00 EDT | Version 1.3.0
 Created: 2026-07-07 09:22:01 EDT
 
 # Contributing to RuvNet Brain — the one rulebook
@@ -144,8 +144,31 @@ generation still a prerelease (never promoted by the canary) is never a seed. A 
 all-CURRENT corpus: `scripts/corpus-next-seed.mjs --require-coverage` skips a degraded generation (without
 spending the 5-generation search bound on it) and takes the newest all-CURRENT one, because install verification
 requires every eligible store CURRENT. An external source GitHub reports gone (HTTP 404/410)
-is carried at the commit its `kb/external-sources.json` `ifGone` entry records; any other observation error still
-fails the night.
+is carried at the commit its `kb/external-sources.json` `ifGone` entry records; an external source that is still
+unreadable after the bounded retry (rate limit, 5xx, a reset) is carried for one night at the seed ledger's own
+commit, its row saying so, and read again the next night; one with no prior bytes still fails the observation.
+**Three fault classes, one policy each (2026-10-20; measured on 38 nights, 24 failed, 22 in one stage).**
+*GLOBAL-INVARIANT* -- identity, ancestry, signature, digest, receipt, ledger schema, the recall gate, the
+degraded bound, the customer canary's verdict -- fails closed, is never retried and is never carried; nothing
+here loosened one. *PER-SOURCE* -- one store's source gone, unreadable, rate-limited, failing QA or build -- is
+carried at its last verified bytes with a `carry`/`failure` record, inside max(3, 5% of eligible). *TRANSIENT* --
+a rate limit, HTTP 429/5xx, a reset, a timeout, a DNS or TLS blip, git's credential prompt on an anonymous
+fetch -- is retried inside the step, bounded (3 tries, 15 s then 30 s; `scripts/transient-gh.mjs` is the one
+classifier) at every GitHub, API and git read in dispatch, identity, prepare, seal, publisher, canary and
+promote; a write (`gh release create`) runs exactly once. The night itself is retried once: the dispatcher's
+second schedule (11:17 UTC, `RETRY_CRON`) re-dispatches only when every run of the night ended `failed` (or
+reached no outcome), none is running, and no retry has happened (`decideRetry`); a published, no-change,
+superseded or canary-rejected night is an answer and is never redone, the kill switch and the approved-runtime
+resolution still apply, and a content-addressed tag that already exists is refused, so nothing is published
+twice. A source that stays unreadable after the retry is pinned at the seed commit as STALE with a `carry`
+(`missedUpstream` null: unread, not invented), counts toward the bound, and is refused a second consecutive
+carry. The watchdog's first line is the night's verdict, result first, in Eastern time (`summarizeNight`):
+published, no-change, degraded with the stores named, or failed with the stage named. When each piece takes
+effect: the dispatcher, retry slot, `corpus-authorize`, canary, watchdog and the YAML retries run from `main` and
+take effect on merge; the script-level retries and carries in `source-coverage.mjs`, `corpus-reconcile.mjs`,
+`gist-receipts.mjs`, `corpus-next-seed.mjs`, `approved-runtime.mjs` and `release.mjs` take effect only once a
+code release containing them is the approved (install-verified) runtime, because prepare, publish and promote
+check out that release's commit.
 **Releasing code that carries the newest corpus (ADR-0091 D6) — three rules learned the hard way (4.3.37).**
 1. *Stamp the census before you push.* `release-qe` requires the committed claim surfaces (README, `explainer/*`)
    to state the candidate KB's exact chunk and public-store counts. Assemble the candidate the way `release-qe`

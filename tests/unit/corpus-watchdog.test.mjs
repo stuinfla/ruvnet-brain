@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  judgeCorpusHealth, classifyCorpusRun, deferralSince, RED, WARNING, GREEN,
+  judgeCorpusHealth, classifyCorpusRun, deferralSince, failedStage, formatEastern, summarizeNight, RED, WARNING, GREEN,
 } from '../../scripts/corpus-watchdog.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
@@ -244,6 +244,52 @@ describe('classifyCorpusRun — reads the pipeline\'s own outcome record', () =>
   });
 });
 
+// THE DAILY VERDICT (2026-10-20): one line, result first, Eastern time, written before any page can fire.
+describe('summarizeNight — what the night did, in one line the owner reads first', () => {
+  const FAILED_PREPARE = { conclusion: 'failure', outcomeRecord: { outcome: 'failed', conclusion: 'failure',
+    jobs: { identity: 'success', prepare: 'failure', no_change: 'skipped', authorize: 'skipped', publish: 'skipped', canary: 'skipped', promote: 'skipped' } } };
+  it('formats Eastern 12-hour times with the zone, never UTC: 17:17Z on 2026-09-29 is 1:17 p.m. ET', () => {
+    expect(formatEastern(NOW)).toBe('1:17 p.m. ET Sep 29');
+    expect(formatEastern('2026-10-20T11:17:00Z')).toBe('7:17 a.m. ET Oct 20');
+    expect(formatEastern('2026-12-20T12:17:00Z'), 'EST in winter').toBe('7:17 a.m. ET Dec 20');
+    expect(formatEastern('garbage')).toBe('an unknown time');
+  });
+  it('published: names the promoted generation and the time it landed', () => {
+    const night = summarizeNight(healthy({ corpusRuns: [corpusRun(101, 10, PROMOTED)] }), NOW);
+    expect(night).toEqual({ outcome: 'published', line: `night: published ${TAG(1)} at ${formatEastern(ago(7))}` });
+  });
+  it('degraded: a published night whose generation carries stores names each of them', () => {
+    const deferral = { observable: true, newestTag: TAG(1), degraded: { carried: ['cognitum-ruos'], missing: [] }, stores: [] };
+    const night = summarizeNight(healthy({ corpusRuns: [corpusRun(101, 10, PROMOTED)], deferral }), NOW);
+    expect(night.outcome).toBe('degraded');
+    expect(night.line).toBe(`night: degraded -- published ${TAG(1)} at ${formatEastern(ago(7))} with 1 carried (cognitum-ruos) and 0 missing (none), each named in CORPUS-COVERAGE.json`);
+  });
+  it('no-change, superseded and canary-rejected are each their own word, with what customers keep', () => {
+    expect(summarizeNight(healthy({ corpusRuns: [corpusRun(101, 10, NO_CHANGE)] }), NOW).line)
+      .toBe(`night: no-change at ${formatEastern(ago(7))} -- every knowledge input equals the promoted generation; customers keep ${TAG(1)} (8.0h old)`);
+    expect(summarizeNight(healthy({ corpusRuns: [corpusRun(101, 10, { conclusion: 'failure', outcomeRecord: { outcome: 'superseded' } })] }), NOW).outcome).toBe('superseded');
+    const rejected = summarizeNight(healthy({ corpusRuns: [corpusRun(101, 10, { conclusion: 'failure', outcomeRecord: { outcome: 'canary-rejected', jobs: {} } })] }), NOW);
+    expect(rejected.line).toMatch(/^night: canary-rejected at .* \(GLOBAL: not retried\); customers keep/);
+  });
+  it('failed: names the STAGE, counts the retry, and says what customers keep', () => {
+    const first = corpusRun(101, 10, FAILED_PREPARE);
+    const retry = corpusRun(201, 6, FAILED_PREPARE);
+    const night = summarizeNight(healthy({ corpusRuns: [first, retry] }), NOW);
+    expect(night.outcome).toBe('failed');
+    expect(night.line).toBe(`night: failed in prepare/seal (seal-exact-corpus-candidate) at ${formatEastern(ago(3))} (attempt 2 of the night; 1 retried); customers keep ${TAG(1)} (8.0h old)`);
+    expect(failedStage({ jobs: [{ name: 'protected-corpus-publisher', conclusion: 'failure' }] })).toBe('publisher (corpus-publish)');
+    expect(failedStage({ conclusion: 'cancelled' })).toMatch(/unnamed job \(conclusion cancelled\)/);
+  });
+  it('in progress, stood down, and no run at all are said plainly, never as a success', () => {
+    expect(summarizeNight(healthy({ corpusRuns: [corpusRun(101, 2, { status: 'in_progress', conclusion: null })] }), NOW).line).toMatch(/^night: run 101 still in progress, started/);
+    expect(summarizeNight(healthy({ corpusRuns: [], dispatcherRuns: [dispatcher(100, 10)] }), NOW).outcome).toBe('stood-down');
+    expect(summarizeNight(healthy({ corpusRuns: [], dispatcherRuns: [dispatcher(100, 10, 'failure')] }), NOW).outcome).toBe('dispatcher-failed');
+    expect(summarizeNight(healthy({ corpusRuns: [], dispatcherRuns: [] }), NOW).outcome).toBe('no-run');
+    // Yesterday's run is not tonight's.
+    expect(summarizeNight(healthy({ corpusRuns: [corpusRun(101, 30, PROMOTED)], dispatcherRuns: [] }), NOW).outcome).toBe('no-run');
+  });
+});
+
 describe('deferralSince — deferred since the first generation of the unbroken run', () => {
   const gen = (h, carried, missing = []) => ({ tag: TAG(h % 10), publishedAt: ago(h), degraded: carried === null ? null : { carried, missing } });
   it('walks back while the store stays carried or missing, and stops at the first clean generation', () => {
@@ -312,7 +358,7 @@ process.stderr.write('not in fixture: ' + args.join(' ')); process.exit(1);
     expect(result.stderr).toBe('');
     expect(result.status).toBe(1);
     expect(result.stdout).toMatch(/\[RED\] promoted-age: customers receive corpus-sha256-1+, 59\.0h old/);
-    expect(result.stdout).toMatch(/^corpus-watchdog RED/);
+    expect(result.stdout).toMatch(/^corpus-watchdog RED -- night: stood down at 3:17 a\.m\. ET Sep 29 \(CORPUS_NIGHTLY off, or no install-verified runtime\); customers keep corpus-sha256-1+ \(59\.0h old\)\n {2}judged 1:17 p\.m\. ET Sep 29 \(2026-09-29T17:17:00\.000Z\)\n/); // sync-version-ignore: NOW is this file's fixture clock, rendered in ET and ISO
     expect(result.stdout).toMatch(/\[RED\] freshness: no night ended published or no-change in the last 48h/);
     expect(result.stdout).toMatch(/\[INFO\] code-aggregate: v9\.8\.7 is 2\.0h old; aggregate pending/);
     expect(result.stdout).toMatch(/\[INFO\] deferral: not observable: .*predates the D6\.2 coverage sidecar/);
@@ -329,7 +375,7 @@ process.stderr.write('not in fixture: ' + args.join(' ')); process.exit(1);
       latest: { tag_name: TAG(1), published_at: ago(30), body: `Corpus generation: ${ago(31)}` },
     });
     expect(result.stderr).toBe('');
-    expect(result.stdout).toMatch(/^corpus-watchdog GREEN/);
+    expect(result.stdout).toMatch(/^corpus-watchdog GREEN -- night: no-change at 5:17 a\.m\. ET Sep 29/);
     expect(result.status).toBe(0);
   });
 

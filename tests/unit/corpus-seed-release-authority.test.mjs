@@ -234,17 +234,19 @@ describe('protected corpus-seed release authority', () => {
   });
 
   it.each([
-    ['existing tag', 'exists', /already exists.*refusing to overwrite/i],
-    ['ambiguous lookup', 'ambiguous', /cannot prove.*absent/i],
-  ])('fails closed for %s', async (_name, mode, message) => {
+    // An existing tag is an answer: asked once. A "network timeout" is weather: the absence proof is retried,
+    // bounded (3 tries, scripts/transient-gh.mjs), and STILL fails closed when the answer never comes.
+    ['existing tag', 'exists', /already exists.*refusing to overwrite/i, 1],
+    ['ambiguous lookup', 'ambiguous', /cannot prove.*absent/i, 3],
+  ])('fails closed for %s', async (_name, mode, message, views) => {
     const f = await fixture();
     f.env.GH_VIEW_MODE = mode;
     const result = run(f);
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(message);
     const calls = fs.readFileSync(f.log, 'utf8').trim().split('\n').map(JSON.parse);
-    expect(calls).toHaveLength(1);
-    expect(calls[0]).toEqual(['release', 'view', f.tag, '--json', 'tagName', '--repo', 'stuinfla/ruvnet-brain']);
+    expect(calls).toHaveLength(views);
+    for (const call of calls) expect(call).toEqual(['release', 'view', f.tag, '--json', 'tagName', '--repo', 'stuinfla/ruvnet-brain']);
   });
 
   it('creates one non-latest non-draft prerelease containing exactly the bound bundle and receipt', async () => {

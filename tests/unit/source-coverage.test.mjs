@@ -283,10 +283,12 @@ describe('observeGists — falls back to the unauthenticated API on the Actions 
     expect(result.pages.map((page) => page.count)).toEqual([5, 0]);
   });
 
-  it('control: a gh failure for any OTHER reason still throws, not silently falling back', () => {
-    const gh = () => { throw new Error('gh api users/ruvnet/gists?per_page=100 failed: net/http: TLS handshake timeout'); };
+  it('control: a gh failure for any OTHER reason still throws (after the bounded transient retry), not silently falling back', () => {
+    let calls = 0;
+    const gh = () => { calls += 1; throw new Error('gh api users/ruvnet/gists?per_page=100 failed: net/http: TLS handshake timeout'); };
     const curl = () => { throw new Error('must not be called'); };
-    expect(() => observeGists('ruvnet', { gh, curl })).toThrow(/TLS handshake timeout/);
+    expect(() => observeGists('ruvnet', { gh, curl, sleep: () => {} })).toThrow(/TLS handshake timeout/);
+    expect(calls, 'a TLS blip is retried, bounded, before it is allowed to fail the observation').toBe(3);
   });
 
   it('control: when gh succeeds, the unauthenticated fallback is never invoked', () => {
@@ -328,11 +330,11 @@ describe('observeExternalRepositories — an upstream that is gone must not stop
     expect(canonicalJson(a)).toBe(canonicalJson(b));
   });
 
-  it('still fails closed: no ifGone, a 403, a rate limit, or a malformed commit all throw', () => {
+  it('still fails closed: no ifGone, a 403, a rate limit (retried, bounded, with no seed commit to carry), or a malformed commit all throw', () => {
     const bare = { store: 'cognitum-ruos', repository: 'cognitum-one/ruOS' };
     expect(() => observeExternalRepositories([bare], { gh: failing('gh: Not Found (HTTP 404)') })).toThrow(/404/);
     expect(() => observeExternalRepositories([source], { gh: failing('gh: Forbidden (HTTP 403)') })).toThrow(/403/);
-    expect(() => observeExternalRepositories([source], { gh: failing('API rate limit exceeded (HTTP 429)') })).toThrow(/429/);
+    expect(() => observeExternalRepositories([source], { gh: failing('API rate limit exceeded (HTTP 429)'), sleep: () => {} })).toThrow(/429/);
     const bad = { ...source, ifGone: { ...ifGone, sourceCommit: 'main' } };
     expect(() => observeExternalRepositories([bad], { gh: failing('gh: Not Found (HTTP 404)') })).toThrow(/40-hex/);
   });

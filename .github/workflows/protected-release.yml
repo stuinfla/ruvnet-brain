@@ -622,7 +622,8 @@ jobs:
           test "$RELEASE_MODE" = corpus
           [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$EXPECTED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          git fetch --no-tags origin main
+          # One network read, three bounded tries: a fetch blip is weather, not a failed night.
+          for attempt in 1 2 3; do git fetch --no-tags origin main && break; [ "$attempt" = 3 ] && exit 1; sleep $((15 * attempt)); done
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           # DECOUPLED FROM main HEAD (2026-09-29 nightly redesign). The corpus is built at the APPROVED
           # runtime's source, which is on main's history but usually behind main HEAD: ANCESTRY, never
@@ -760,6 +761,14 @@ jobs:
     outputs:
       artifact_id: ${{ steps.provenance.outputs.artifact_id }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          # Only for scripts/transient-gh.mjs below: the one retry rule, not a second copy of it.
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
       - id: provenance
         name: Resolve this run's authentic corpus preparation artifact
         env:
@@ -776,7 +785,8 @@ jobs:
           # attempt — and that is exactly what gets proved here, through GitHub-owned run metadata,
           # before a single byte is downloaded.
           artifact_id="$(node --input-type=module <<'NODE'
-          import { execFileSync } from 'node:child_process';
+          import { spawnSync } from 'node:child_process';
+          import { retryTransientResult } from './scripts/transient-gh.mjs';
           const repo = process.env.GITHUB_REPOSITORY;
           const sha = process.env.CANDIDATE_SHA;
           const runId = Number(process.env.PREPARATION_RUN_ID);
@@ -786,9 +796,14 @@ jobs:
           const runHead = process.env.GITHUB_SHA;
           if (!/^[0-9a-f]{40}$/.test(runHead || '')) throw new Error('untrusted corpus run head');
           const workflowPath = '.github/workflows/protected-release.yml';
-          const api = (endpoint) => JSON.parse(execFileSync('gh', ['api', `repos/${repo}/${endpoint}`], {
-            encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 * 1024,
-          }));
+          // Four GitHub-owned metadata reads; each retried on a transient failure, bounded, never on an answer.
+          const api = (endpoint) => {
+            const result = retryTransientResult(() => spawnSync('gh', ['api', `repos/${repo}/${endpoint}`], {
+              encoding: 'utf8', timeout: 30000, maxBuffer: 16 * 1024 * 1024,
+            }));
+            if (result.error || result.status !== 0) throw new Error(`gh api ${endpoint} failed: ${String(result.stderr || result.error?.message || '').trim().slice(0, 300)}`);
+            return JSON.parse(result.stdout);
+          };
           if (!/^[0-9a-f]{40}$/.test(sha || '')) throw new Error('untrusted corpus candidate identity');
           if (!Number.isSafeInteger(runId) || runId <= 0) throw new Error('untrusted corpus preparation run id');
           if (!Number.isSafeInteger(runAttempt) || runAttempt <= 0) throw new Error('untrusted corpus preparation run attempt');
@@ -874,8 +889,13 @@ jobs:
           [[ "$CORPUS_ARTIFACT_ID" =~ ^[0-9]+$ ]]
           # NEVER into the checkout. The code lane unzips into `release-evidence/` inside the
           # workspace; doing that here would dirty the tracked tree this job then asserts is clean,
-          # and would put a ~500 MB payload inside a git repository for no reason.
-          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$CORPUS_ARTIFACT_ID/zip" > "$RUNNER_TEMP/corpus-prepared.zip"
+          # and would put a ~500 MB payload inside a git repository for no reason. Three bounded tries: a reset
+          # mid-download of the sealed candidate must not throw away the ~3 h that produced it.
+          for attempt in 1 2 3; do
+            gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$CORPUS_ARTIFACT_ID/zip" > "$RUNNER_TEMP/corpus-prepared.zip" && break
+            [ "$attempt" = 3 ] && exit 1
+            sleep $((15 * attempt))
+          done
           rm -rf "$RUNNER_TEMP/corpus-import"
           mkdir -p "$RUNNER_TEMP/corpus-import"
           unzip -q "$RUNNER_TEMP/corpus-prepared.zip" -d "$RUNNER_TEMP/corpus-import"

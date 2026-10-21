@@ -46,6 +46,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { retryTransientResult } from './transient-gh.mjs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -190,9 +191,12 @@ const semverDescending = (left, right) => {
   return b[0] - a[0] || b[1] - a[1] || b[2] - a[2];
 };
 
+// Every read here is a `gh` read of public release metadata or assets; a transient failure (rate limit, 5xx,
+// a reset mid-download of the ~555 MB archive) is retried, bounded, before it can fail the dispatcher, the
+// identity job or the publisher (scripts/transient-gh.mjs). A refused aggregate is an answer and is never retried.
 function defaultGh(args) {
-  const result = spawnSync(process.env.RUVNET_GH_COMMAND || 'gh', args,
-    { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, timeout: 15 * 60_000 });
+  const result = retryTransientResult(() => spawnSync(process.env.RUVNET_GH_COMMAND || 'gh', args,
+    { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, timeout: 15 * 60_000 }));
   if (result.error || result.status !== 0) {
     throw new Error(`gh ${args.slice(0, 3).join(' ')} failed: ${String(result.error?.message || result.stderr || `exit ${result.status}`).trim().slice(0, 400)}`);
   }

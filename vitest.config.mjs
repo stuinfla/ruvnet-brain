@@ -22,6 +22,10 @@ export default defineConfig({
     env: { RUVNET_TURN_CAPTURE: 'off', RUVNET_CONTINUITY_CAPTURE: 'off',
       // The Stop gates are quiet by default for users; the suite exercises every nudge, so it opts in.
       RUVNET_STOP_NUDGES: 'full',
+      // scripts/transient-gh.mjs waits 15 s then 30 s before retrying a transient gh/git failure; a fake gh that
+      // answers "gateway timeout" would otherwise hold a test for 45 s. Tests that measure the retry itself
+      // inject their own sleep/baseDelayMs, so this hides nothing they assert.
+      RUVNET_TRANSIENT_RETRY_DELAY_MS: '0',
       RUVNET_RUFLO_CWD_ROOT: path.join(os.tmpdir(), `ruvnet-brain-test-ruflo-cwd-${typeof process.getuid === 'function' ? process.getuid() : 'user'}`) },
     include: [
       'tests/unit/**/*.test.mjs', 'tests/integration/*.test.mjs', 'tests/mutation/*.test.mjs',

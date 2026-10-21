@@ -286,7 +286,7 @@ export async function synchronizePlugins(run, dryRun, notes, { home, prefix, sco
   if (JSON.stringify(flags) !== JSON.stringify(pluginFlags(writable, home))) throw Error('Codex plugin enablement changed');
   return { before, after, steps, provider };
 }
-function knowledge(run, dryRun, runId, { brainHome, root, node }) {
+export function knowledge(run, dryRun, runId, { brainHome, root, node }) {
   const kb = path.join(brainHome, 'kb'), updater = path.join(kb, 'forge-update.mjs');
   if (!exists(updater)) throw Error('existing Brain KB updater absent; fresh install refused');
   const file = path.join(brainHome, `nightly-suite-corpus-${runId}.json`);
@@ -299,7 +299,10 @@ function knowledge(run, dryRun, runId, { brainHome, root, node }) {
   }
   const before = check();
   if (before.currencyVerdict === 'CURRENT' || before.currencyVerdict === 'REFUSED') return { before, after: before, state: before.currencyVerdict === 'CURRENT' ? 'current' : 'ahead-preserved' };
-  if (before.currencyVerdict !== 'UPDATE_AVAILABLE') throw Error(`corpus currency unverified: ${before.currencyVerdict}`);
+  // UNKNOWN is what a tree installed from a code release reports (no corpus generation stamp): forge-update
+  // documents it as apply-allowed, exactly like UPDATE_AVAILABLE, and the check after the apply must reach
+  // CURRENT or REFUSED. Throwing here failed every scheduled night until someone ran --update by hand.
+  if (before.currencyVerdict !== 'UPDATE_AVAILABLE' && before.currencyVerdict !== 'UNKNOWN') throw Error(`corpus currency unverified: ${before.currencyVerdict}`);
   if (dryRun) return { before, state: 'update-available' };
   const installer = path.join(root, 'ruvnet-brain/bin/install.mjs');
   if (!exists(installer)) throw Error('existing Brain installer absent');

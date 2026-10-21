@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { knowledge } from '../../plugin/scripts/developer-update.mjs';
 import { compare, selectTag, discover, identity, upgradePackage, pluginScopes, scopeKey, runDeveloperUpdate, locateExecutable, resolvePluginTarget, pluginUpdateDecision, synchronizePlugins, marketplaceRemoteCommit, atomic, claudeProviderCommand } from '../../plugin/scripts/developer-update.mjs';
 import { acquireDeveloperLock, sharedLockStatus } from '../../plugin/scripts/developer-update-lock.mjs';
 import { automaticInvocation, automaticPath } from '../../plugin/scripts/automatic-update.mjs';
@@ -479,4 +480,48 @@ test('new coordinator cannot enroll under an incomplete older five-module execut
   const home=tmp(),brainHome=path.join(home,'.cache/ruvnet-brain'),source=new URL('../../bin/nightly-refresh.mjs',import.meta.url).pathname;
   const record=installNightlyRunner({brainHome,source,nodePath:process.execPath});delete record.updateModules['plugin-artifact-proof.mjs'];atomic(record.recordPath,record);
   assert.equal(developerCoordinatorOwner({home,brainHome}).ready,false);
+});
+
+// The scheduled night of 2026-10-20 failed with "corpus currency unverified: UNKNOWN": a tree installed from a
+// code release carries no corpus generation stamp, and forge-update documents UNKNOWN as apply-allowed.
+function knowledgeRun(verdicts) {
+  const calls = [];
+  const run = (command, args) => {
+    const at = args.indexOf('--result-file'), file = at >= 0 ? args[at + 1] : null;
+    if (file) { calls.push('check'); fs.writeFileSync(file, JSON.stringify({ kind: 'ruvnet-brain-check-result', recordedAt: new Date().toISOString(), currencyVerdict: verdicts.shift() })); } else calls.push('apply');
+    return '';
+  };
+  const brainHome = tmp();
+  fs.mkdirSync(path.join(brainHome, 'kb'), { recursive: true });
+  fs.writeFileSync(path.join(brainHome, 'kb/forge-update.mjs'), '');
+  fs.mkdirSync(path.join(brainHome, 'root/ruvnet-brain/bin'), { recursive: true });
+  fs.writeFileSync(path.join(brainHome, 'root/ruvnet-brain/bin/install.mjs'), '');
+  return { run, calls, opts: { brainHome, root: path.join(brainHome, 'root'), node: process.execPath } };
+}
+test('knowledge: an UNKNOWN corpus verdict is applied, then must converge to CURRENT', () => {
+  const f = knowledgeRun(['UNKNOWN', 'CURRENT']);
+  const result = knowledge(f.run, false, 'r1', f.opts);
+  assert.equal(result.state, 'updated');
+  assert.deepEqual(f.calls, ['check', 'apply', 'check']);
+});
+test('knowledge: UNKNOWN in check mode reports an available update and applies nothing', () => {
+  const f = knowledgeRun(['UNKNOWN']);
+  assert.equal(knowledge(f.run, true, 'r2', f.opts).state, 'update-available');
+  assert.deepEqual(f.calls, ['check']);
+});
+test('knowledge: UNKNOWN that is still UNKNOWN after the apply fails the night', () => {
+  const f = knowledgeRun(['UNKNOWN', 'UNKNOWN']);
+  assert.throws(() => knowledge(f.run, false, 'r3', f.opts), /failed to converge/);
+});
+test('knowledge: any other verdict is still refused', () => {
+  const f = knowledgeRun(['BOGUS']);
+  assert.throws(() => knowledge(f.run, false, 'r4', f.opts), /currency unverified: BOGUS/);
+});
+test('knowledge: UNKNOWN then UPDATE_AVAILABLE after the apply fails the night', () => {
+  const f = knowledgeRun(['UNKNOWN', 'UPDATE_AVAILABLE']);
+  assert.throws(() => knowledge(f.run, false, 'r5', f.opts), /failed to converge/);
+});
+test('knowledge: UNKNOWN then REFUSED after the apply is accepted (rollback protection)', () => {
+  const f = knowledgeRun(['UNKNOWN', 'REFUSED']);
+  assert.equal(knowledge(f.run, false, 'r6', f.opts).state, 'updated');
 });

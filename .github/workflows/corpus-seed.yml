@@ -104,7 +104,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git fetch --no-tags origin main
+          # One network read, three bounded tries (15s, 30s): a fetch blip is weather, not a failed night.
+          for attempt in 1 2 3; do git fetch --no-tags origin main && break; [ "$attempt" = 3 ] && exit 1; sleep $((15 * attempt)); done
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA" || { echo 'candidate checkout SHA mismatch' >&2; exit 1; }
           # DECOUPLED FROM main HEAD (2026-09-29 nightly redesign): the approved runtime's source is on
           # main's history but usually behind main HEAD. Never promoting an older runtime over a newer
@@ -235,7 +236,10 @@ jobs:
               ;;
           esac
           export SEED_IS_DIGEST_DERIVED
-          gh release view "$SEED_TAG" --repo "$GITHUB_REPOSITORY" \
+          # Every gh read of the seed below is retried, bounded (15s, 30s): the archive is ~555 MB and one reset
+          # mid-download used to be the whole night. A seed that is genuinely absent still fails on the third try.
+          retry3() { for attempt in 1 2 3; do "$@" && return 0; [ "$attempt" = 3 ] && return 1; sleep $((15 * attempt)); done; }
+          retry3 gh release view "$SEED_TAG" --repo "$GITHUB_REPOSITORY" \
             --json tagName,isDraft,isPrerelease,assets > "$RUNNER_TEMP/corpus-seed-release.json"
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
@@ -251,13 +255,13 @@ jobs:
             if (matches.length !== 1) throw new Error(`configured corpus seed must carry exactly one ${asset}; found ${matches.length}`);
           }
           NODE
-          gh release download "$SEED_TAG" --repo "$GITHUB_REPOSITORY" \
-            --pattern 'ruvnet-brain.zip' --dir "$RUNNER_TEMP/corpus-seed-download"
+          retry3 gh release download "$SEED_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'ruvnet-brain.zip' --dir "$RUNNER_TEMP/corpus-seed-download" --clobber
           if [ "$SEED_IS_DIGEST_DERIVED" = 1 ]; then
-            gh release download "$SEED_TAG" --repo "$GITHUB_REPOSITORY" \
-              --pattern 'ruvnet-brain.zip.accuracy.json' --dir "$RUNNER_TEMP/corpus-seed-download"
-            gh release download "$SEED_TAG" --repo "$GITHUB_REPOSITORY" \
-              --pattern 'ruvnet-brain.zip.recall.json' --dir "$RUNNER_TEMP/corpus-seed-download"
+            retry3 gh release download "$SEED_TAG" --repo "$GITHUB_REPOSITORY" \
+              --pattern 'ruvnet-brain.zip.accuracy.json' --dir "$RUNNER_TEMP/corpus-seed-download" --clobber
+            retry3 gh release download "$SEED_TAG" --repo "$GITHUB_REPOSITORY" \
+              --pattern 'ruvnet-brain.zip.recall.json' --dir "$RUNNER_TEMP/corpus-seed-download" --clobber
           fi
           test "$(find "$RUNNER_TEMP/corpus-seed-download" -maxdepth 1 -type f -name 'ruvnet-brain.zip' | wc -l | tr -d ' ')" = 1
           printf '%s  %s\n' "$SEED_SHA256" "$RUNNER_TEMP/corpus-seed-download/ruvnet-brain.zip" | sha256sum --check --strict
@@ -277,10 +281,14 @@ jobs:
           # published no sidecar gives no coverage, so any retirement it claims is rejected.
           seed_has_sidecar="$(node -e "const r=require(process.env.RUNNER_TEMP+'/corpus-seed-release.json');const n=(x)=>(r.assets||[]).filter((a)=>a.name===x).length;console.log(n('CORPUS-COVERAGE.json')===1&&n('coverage-receipt.json')===1?1:0)")"
           if [ "$seed_has_sidecar" = 1 ]; then
-            gh release download "$SEED_TAG" --repo "$GITHUB_REPOSITORY" \
-              --pattern 'CORPUS-COVERAGE.json' --dir "$RUNNER_TEMP/corpus-seed-download"
-            gh release download "$SEED_TAG" --repo "$GITHUB_REPOSITORY" \
-              --pattern 'coverage-receipt.json' --dir "$RUNNER_TEMP/corpus-seed-download"
+            # Spelled out (not retry3) so this block stays self-contained for the test that executes it alone.
+            for asset in CORPUS-COVERAGE.json coverage-receipt.json; do
+              for attempt in 1 2 3; do
+                gh release download "$SEED_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$asset" --dir "$RUNNER_TEMP/corpus-seed-download" --clobber && break
+                [ "$attempt" = 3 ] && exit 1
+                sleep $((15 * attempt))
+              done
+            done
           fi
           node --input-type=module <<'NODE'
           import { readDiagnosticAccuracyReport } from './scripts/oracle/retrieval-accuracy.mjs';

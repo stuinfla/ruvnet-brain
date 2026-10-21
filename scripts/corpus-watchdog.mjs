@@ -22,6 +22,10 @@
 //   WARNING  a superseded or degraded night, a stand-down tonight, an unknown outcome, a long run
 //   GREEN    none of the above
 //
+// THE FIRST LINE IS THE NIGHT'S VERDICT (2026-10-20, summarizeNight): what the night did -- published,
+// no-change, degraded with the stores named, failed with the stage named, superseded, canary-rejected, still
+// running, stood down -- in Eastern time, result first, so the owner never learns of a break from a page.
+//
 // Exit code is the contract (same as scripts/github-health-watch.mjs): 0 = GREEN or WARNING,
 // 1 = RED or the evidence could not be gathered. corpus-watchdog.yml runs on a genuine `schedule:`,
 // so its red conclusion fires ntfy-alerts.yml's workflow_run listener — no secret needed here.
@@ -43,6 +47,7 @@ import { CODE_TAG_PATTERN, isCorpusReleaseTag } from './release-channel-kind.mjs
 import { AGGREGATE_ASSET, SIGNING_PUBLIC_KEY_FILE } from './approved-runtime.mjs';
 import { COVERAGE_ASSET, COVERAGE_RECEIPT_ASSET, verifyCoverageSidecar } from './corpus-coverage-sidecar.mjs';
 import { parseCorpusGeneration } from './corpus-promotion.mjs';
+import { retryTransientResult } from './transient-gh.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const RED = 'RED';
@@ -255,7 +260,9 @@ export function judgeCorpusHealth(input, now) {
 // ── Gathering (read-only gh). Everything above is pure; everything below talks to GitHub. ──────────
 
 function defaultGh(args) {
-  const result = spawnSync(process.env.RUVNET_GH_COMMAND || 'gh', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 5 * 60_000 });
+  // A transient gh failure is retried, bounded (scripts/transient-gh.mjs); the judge must not page RED on weather.
+  const result = retryTransientResult(() => spawnSync(process.env.RUVNET_GH_COMMAND || 'gh', args,
+    { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 5 * 60_000 }));
   if (result.error || result.status !== 0) {
     throw new Error(`gh ${args.slice(0, 3).join(' ')} failed: ${String(result.error?.message || result.stderr || `exit ${result.status}`).trim().slice(0, 300)}`);
   }
@@ -320,17 +327,25 @@ function corpusRunEvidence({ gh, repo, run, scratch }) {
   }
 }
 
+/**
+ * The protected-release corpus runs created since `since` (ms), each with its outcome evidence. Shared with the
+ * dispatcher's retry slot (scripts/corpus-dispatch-decision.mjs --retry-slot), so both read one definition of
+ * "tonight's runs" and one classifier.
+ */
+export function gatherCorpusRuns({ repo, since, gh = defaultGh, scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'corpus-watchdog-')) }) {
+  return JSON.parse(gh(['run', 'list', '--repo', repo, '--workflow', 'protected-release.yml', '--limit', '60',
+    '--json', 'databaseId,attempt,displayTitle,status,conclusion,createdAt,updatedAt']))
+    .filter((run) => CORPUS_RUN_TITLE.test(String(run.displayTitle || '')) && (ms(run.createdAt) ?? 0) >= since)
+    .map((run) => ({ id: run.databaseId, title: run.displayTitle, status: run.status, conclusion: run.conclusion,
+      createdAt: run.createdAt, updatedAt: run.updatedAt, ...corpusRunEvidence({ gh, repo, run, scratch }) }));
+}
+
 export async function gatherCorpusHealthInput({ repo, now, gh = defaultGh, root = ROOT, scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'corpus-watchdog-')) }) {
   const at = now.getTime();
-  const recent = (iso) => (ms(iso) ?? 0) >= at - 3 * 24 * HOUR;
   const dispatcherRuns = JSON.parse(gh(['run', 'list', '--repo', repo, '--workflow', 'corpus-nightly-dispatch.yml', '--limit', '30',
     '--json', 'databaseId,attempt,event,status,conclusion,createdAt,updatedAt']))
     .map((run) => ({ id: run.databaseId, attempt: run.attempt, event: run.event, status: run.status, conclusion: run.conclusion, createdAt: run.createdAt }));
-  const corpusRuns = JSON.parse(gh(['run', 'list', '--repo', repo, '--workflow', 'protected-release.yml', '--limit', '60',
-    '--json', 'databaseId,attempt,displayTitle,status,conclusion,createdAt,updatedAt']))
-    .filter((run) => CORPUS_RUN_TITLE.test(String(run.displayTitle || '')) && recent(run.createdAt))
-    .map((run) => ({ id: run.databaseId, title: run.displayTitle, status: run.status, conclusion: run.conclusion,
-      createdAt: run.createdAt, updatedAt: run.updatedAt, ...corpusRunEvidence({ gh, repo, run, scratch }) }));
+  const corpusRuns = gatherCorpusRuns({ repo, since: at - 3 * 24 * HOUR, gh, scratch });
   const releases = JSON.parse(gh(['release', 'list', '--repo', repo, '--limit', '100', '--json', 'tagName,publishedAt,isDraft,isPrerelease']));
   // PROMOTED only: a staged candidate (and a bootstrap seed) is a prerelease no customer receives.
   const corpusReleases = releases.filter((row) => !row.isDraft && !row.isPrerelease && isCorpusReleaseTag(row.tagName))
@@ -364,8 +379,72 @@ export async function gatherCorpusHealthInput({ repo, now, gh = defaultGh, root 
   return { corpusReleases, corpusRuns, dispatcherRuns, codeRelease, deferral, latestRelease };
 }
 
+/** A time the owner reads: local Eastern, 12-hour, named zone -- never UTC or "Z". */
+export function formatEastern(when) {
+  const t = when instanceof Date ? when.getTime() : ms(when);
+  if (t === null || !Number.isFinite(t)) return 'an unknown time';
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true }).formatToParts(new Date(t)).map((part) => [part.type, part.value]));
+  return `${parts.hour}:${parts.minute} ${parts.dayPeriod.toLowerCase().replace(/^(a|p)m$/, '$1.m.')} ET ${parts.month} ${parts.day}`;
+}
+
+/** The job the night died in, named as the owner knows the stage, from the terminal outcome record or the job list. */
+const STAGE_NAMES = { identity: 'authorize (corpus-identity)', prepare: 'prepare/seal (seal-exact-corpus-candidate)',
+  authorize: 'authenticate (corpus-authorize)', publish: 'publisher (corpus-publish)', canary: 'customer canary', promote: 'promote' };
+const JOB_NAMES = { 'authorize-corpus-generation': 'identity', 'seal-exact-corpus-candidate': 'prepare', 'authenticate-corpus-preparation-provenance': 'authorize',
+  'protected-corpus-publisher': 'publish', 'customer-canary': 'canary', 'promote-canaried-corpus': 'promote' };
+export function failedStage(run) {
+  const recorded = Object.entries(run?.outcomeRecord?.jobs || {}).find(([, result]) => result === 'failure')?.[0];
+  const listed = (run?.jobs || []).find((job) => job.conclusion === 'failure' && JOB_NAMES[job.name]);
+  const stage = recorded || (listed ? JOB_NAMES[listed.name] : null);
+  return stage ? STAGE_NAMES[stage] || stage : `an unnamed job (conclusion ${run?.conclusion || 'unknown'})`;
+}
+
+/**
+ * THE ONE LINE the owner reads first: what the night did, result first, in Eastern time. `input` is
+ * gatherCorpusHealthInput's; the night is the newest corpus run of the last 24h and every retry of it.
+ * Never learned from a page: the watchdog writes this before ntfy ever fires.
+ */
+export function summarizeNight(input, now) {
+  const at = now instanceof Date ? now.getTime() : Number(now);
+  const inWindow = (iso) => { const t = ms(iso); return t !== null && t <= at && at - t <= TONIGHT_WINDOW_MS; };
+  const runs = (input?.corpusRuns || []).filter((run) => inWindow(run.createdAt))
+    .map((run) => ({ ...run, outcome: run.outcome ?? classifyCorpusRun(run) })).sort((a, b) => ms(b.createdAt) - ms(a.createdAt));
+  const dispatcher = (input?.dispatcherRuns || []).filter((d) => inWindow(d.createdAt)).sort((a, b) => ms(b.createdAt) - ms(a.createdAt))[0];
+  const latest = input?.latestRelease;
+  const attempts = runs.length > 1 ? ` (attempt ${runs.length} of the night; ${runs.length - 1} retried)` : '';
+  const keep = latest ? `customers keep ${latest.tag} (${hours(Math.max(0, at - (ms(latest.generation || latest.publishedAt) ?? at)))} old)` : 'no promoted generation is observed';
+  if (!runs.length) {
+    if (!dispatcher) return { outcome: 'no-run', line: `night: no corpus run in the last 24h (no dispatcher run either); ${keep}` };
+    if (dispatcher.status !== 'completed') return { outcome: 'dispatching', line: `night: dispatcher run ${dispatcher.id} is ${dispatcher.status} (started ${formatEastern(dispatcher.createdAt)})` };
+    if (dispatcher.conclusion !== 'success') return { outcome: 'dispatcher-failed', line: `night: dispatcher run ${dispatcher.id} concluded ${dispatcher.conclusion} at ${formatEastern(dispatcher.createdAt)}, nothing was dispatched; ${keep}` };
+    return { outcome: 'stood-down', line: `night: stood down at ${formatEastern(dispatcher.createdAt)} (CORPUS_NIGHTLY off, or no install-verified runtime); ${keep}` };
+  }
+  const [run] = runs;
+  const when = formatEastern(run.updatedAt || run.createdAt);
+  const degraded = input?.deferral?.observable && input.deferral.degraded && latest && input.deferral.newestTag === latest.tag
+    && (input.deferral.degraded.carried.length || input.deferral.degraded.missing.length) ? input.deferral.degraded : null;
+  switch (run.outcome) {
+    case 'published': {
+      const tag = latest && (ms(latest.publishedAt) ?? 0) >= (ms(run.createdAt) ?? 0) ? latest.tag : 'a new generation';
+      if (degraded) {
+        return { outcome: 'degraded', line: `night: degraded -- published ${tag} at ${when}${attempts} with ${degraded.carried.length} carried `
+          + `(${degraded.carried.join(', ') || 'none'}) and ${degraded.missing.length} missing (${degraded.missing.join(', ') || 'none'}), each named in CORPUS-COVERAGE.json` };
+      }
+      return { outcome: 'published', line: `night: published ${tag} at ${when}${attempts}` };
+    }
+    case 'no-change': return { outcome: 'no-change', line: `night: no-change at ${when}${attempts} -- every knowledge input equals the promoted generation; ${keep}` };
+    case 'superseded': return { outcome: 'superseded', line: `night: superseded at ${when} -- a newer code release landed; the next night builds at it; ${keep}` };
+    case 'canary-rejected': return { outcome: 'canary-rejected', line: `night: canary-rejected at ${when}${attempts} -- a clean customer install could not apply the candidate (GLOBAL: not retried); ${keep}` };
+    case 'in-progress': return { outcome: 'in-progress', line: `night: run ${run.id} still in progress, started ${formatEastern(run.createdAt)}${attempts}` };
+    case 'failed': return { outcome: 'failed', line: `night: failed in ${failedStage(run)} at ${when}${attempts}; ${keep}` };
+    default: return { outcome: 'unknown', line: `night: run ${run.id} succeeded at ${when} but reached no outcome${attempts}; ${keep}` };
+  }
+}
+
 export function renderReport(result, now) {
-  const lines = [`corpus-watchdog ${result.verdict} at ${now.toISOString()}`];
+  const lines = [`corpus-watchdog ${result.verdict} -- ${result.night?.line || `judged ${formatEastern(now)}`}`,
+    `  judged ${formatEastern(now)} (${now.toISOString()})`];
   for (const f of result.findings) lines.push(`  [${f.level}] ${f.check}: ${f.detail}`);
   return `${lines.join('\n')}\n`;
 }
@@ -380,7 +459,8 @@ async function main(argv = process.argv.slice(2)) {
   }
   let result;
   try {
-    result = judgeCorpusHealth(await gatherCorpusHealthInput({ repo, now }), now);
+    const input = await gatherCorpusHealthInput({ repo, now });
+    result = { ...judgeCorpusHealth(input, now), night: summarizeNight(input, now) };
   } catch (error) {
     // Could not observe = could not prove health. Absence of evidence is failure.
     process.stderr.write(`corpus-watchdog RED: evidence could not be gathered: ${error.message}\n`);
