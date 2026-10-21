@@ -61,6 +61,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { COVERAGE_ASSET, COVERAGE_RECEIPT_ASSET, bindCoverageToReceipt, verifyCoverageSidecar } from './corpus-coverage-sidecar.mjs';
+import { retryTransientResult } from './transient-gh.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const HEX64 = /^[0-9a-f]{64}$/;
@@ -76,7 +77,10 @@ const REQUIRED_ASSETS = [ARCHIVE_ASSET, SIGNATURE_ASSET, RECEIPT_ASSET, RECALL_A
 /** ADR-0091 D4: judge at most this many of the newest generations, then use the committed bootstrap. */
 export const SEARCH_BOUND = 5;
 
-const defaultRun = (command, args, options) => spawnSync(command, args, { encoding: 'utf8', ...options });
+// Every `gh` call below is a read (release list, release view, small-asset download). A transient failure is
+// retried, bounded, before it is recorded as `indeterminate` (scripts/transient-gh.mjs): an unretried blip here
+// used to send the whole night back to the committed bootstrap seed -- a full rebuild dressed as a quiet night.
+const defaultRun = (command, args, options) => retryTransientResult(() => spawnSync(command, args, { encoding: 'utf8', ...options }));
 
 function ghJson(run, args) {
   const result = run('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });

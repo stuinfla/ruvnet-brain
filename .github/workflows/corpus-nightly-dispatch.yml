@@ -27,10 +27,18 @@ name: corpus-nightly-dispatch
 # scripts/corpus-dispatch-decision.mjs. This job returns as soon as the protected run exists; it no
 # longer polls that run for hours. Whether a night actually ended published or no-change is judged
 # by the corpus watchdog workflow, which pages through ntfy-alerts.
+#
+# THE RETRY SLOT (2026-10-20). The second cron is the same job asking one more question first
+# (scripts/corpus-dispatch-decision.mjs decideRetry): did the night's run end `failed` with nothing
+# published, nothing still running, and no retry yet? Only then does it fall through to the ordinary
+# arm-and-dispatch below -- kill switch, approved-runtime resolution and all. Bounded to one retry per
+# night; a canary-rejected, superseded, no-change or published night is an answer and is never redone.
 on:
   schedule:
     # 07:17 UTC — off the hour, so it does not queue behind the hourly GitHub Actions rush.
     - cron: '17 7 * * *'
+    # 11:17 UTC (7:17 a.m. EDT) — the night's one retry slot; must equal RETRY_CRON in scripts/corpus-dispatch-decision.mjs.
+    - cron: '17 11 * * *'
   workflow_dispatch: {}
 
 permissions:
@@ -76,9 +84,21 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           CORPUS_NIGHTLY: ${{ vars.CORPUS_NIGHTLY }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
         shell: bash
         run: |
           set -euo pipefail
+          # The retry slot decides first (decideRetry, above): a night that already has its answer, is still
+          # running, or already used its one retry stands this run down before any evidence is downloaded.
+          retry_cron="$(node --input-type=module -e "import { RETRY_CRON } from './scripts/corpus-dispatch-decision.mjs'; process.stdout.write(RETRY_CRON)")"
+          if [[ -n "${EVENT_SCHEDULE:-}" && "$EVENT_SCHEDULE" = "$retry_cron" ]]; then
+            node scripts/corpus-dispatch-decision.mjs --retry-slot --repo "$GITHUB_REPOSITORY" --github-output "$RUNNER_TEMP/retry-slot.out"
+            if ! grep -qx 'retry=true' "$RUNNER_TEMP/retry-slot.out"; then
+              printf 'armed=false\nverdict=retry-stand-down\n' >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::notice::retry slot: re-dispatching tonight's failed corpus run once"
+          fi
           # ADR-0091 D3 + the 2026-09-29 redesign. Armed unless the owner's kill switch, repository
           # variable CORPUS_NIGHTLY, reads `off` (the install-verified code release is the
           # consent: the newest verified runtime is what gets resolved). The approved runtime is resolved from evidence, never a committed file: the

@@ -19,11 +19,31 @@
 // the new workflow passes (--approved-tag, --no-change-out, --stage-candidate, --promote-staged), so the nightly stands down rather than
 // let new workflow text drive old scripts.
 
+//
+// THE RETRY SLOT (2026-10-20). Measured on 38 nights: 24 failed, most on one transient blip, and nothing
+// retried until the next calendar day. The dispatcher now also fires at RETRY_CRON (11:17 UTC, four hours
+// after the night's first slot) and asks decideRetry(): re-dispatch ONLY when every corpus run of the
+// night so far ended `failed` (or reached no outcome), none is still running, none ended published /
+// no-change / superseded / canary-rejected (those are answers, not weather), and fewer than
+// MAX_CORPUS_RUNS_PER_NIGHT runs exist -- so one night gets at most one retry, and a deterministic
+// failure fails closed a second time rather than looping. The kill switch and the approved-runtime
+// resolution still run after it, exactly as on the first slot. Double publication is impossible by
+// construction: a failed run promoted nothing, every generation is content-addressed, and release.mjs
+// refuses a tag that already exists.
+
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 export const MIN_PIPELINE_VERSION = '4.3.38'; // sync-version-ignore: a fixed pipeline floor, not the current version
+/** The dispatcher's second schedule entry; corpus-nightly-dispatch.yml's `on.schedule` must carry exactly this line. */
+export const RETRY_CRON = '17 11 * * *';
+/** How far back the retry slot looks for the night's runs: past the 07:17 UTC first slot, never into yesterday. */
+export const RETRY_WINDOW_MS = 10 * 3_600_000;
+export const MAX_CORPUS_RUNS_PER_NIGHT = 2;
+// `unknown` (every job green, no outcome) is retried only when the run itself did NOT conclude success: a green
+// run that reached no outcome is a workflow defect the terminal-outcome job already fails loudly, not weather.
+const retryable = (run) => run.outcome === 'failed' || (run.outcome === 'unknown' && run.conclusion !== 'success');
 const SEMVER = /^(\d+)\.(\d+)\.(\d+)$/;
 const HEX40 = /^[0-9a-f]{40}$/;
 const CODE_TAG = /^v\d+\.\d+\.\d+$/;
@@ -82,6 +102,21 @@ export function decide({ nightlyVar, resolution, minPipelineVersion = MIN_PIPELI
   return { verdict: 'arm', reason: `building the corpus at approved runtime ${tag} @ ${sourceSha}`, tag, version, sourceSha };
 }
 
+/**
+ * The retry slot's one decision. `runs`: the night's protected-release corpus runs so far
+ * (scripts/corpus-watchdog.mjs gatherCorpusRuns, each with `outcome` from classifyCorpusRun).
+ * Returns { verdict: 'retry' | 'stand-down', reason }.
+ */
+export function decideRetry({ runs = [], maxRuns = MAX_CORPUS_RUNS_PER_NIGHT } = {}) {
+  if (!runs.length) return { verdict: 'stand-down', reason: 'the first slot dispatched no corpus run tonight (it stood down or failed); the watchdog judges that, a retry would not' };
+  const running = runs.find((run) => run.outcome === 'in-progress');
+  if (running) return { verdict: 'stand-down', reason: `corpus run ${running.id} is still in progress` };
+  const settled = runs.find((run) => !retryable(run));
+  if (settled) return { verdict: 'stand-down', reason: `corpus run ${settled.id} ended ${settled.outcome}; that is the night's answer, not weather` };
+  if (runs.length >= maxRuns) return { verdict: 'stand-down', reason: `${runs.length} corpus run(s) already failed tonight; the bound is ${maxRuns} per night, so this is not retried again` };
+  return { verdict: 'retry', reason: `corpus run ${runs.map((run) => run.id).join(', ')} failed and nothing published; dispatching the night's one retry` };
+}
+
 /** approved-runtime.mjs --resolve's exit status + stdout (+ stderr, naming a refused release) -> a resolution. */
 export function resolutionFrom({ status, stdout, stderr = '' }) {
   if (String(status) === '3') return { status: 'not-yet-verified' };
@@ -107,10 +142,29 @@ const arg = (argv, name) => {
  * CLI: --nightly <value> --resolve-status <n|skipped> --release <file> [--resolve-stderr <file>]
  *      --github-output <file>. Exit 1 only on `fail`.
  *      --is-off <value>  prints true|false (lets the workflow skip the ~555 MB resolve when the switch is off)
+ *      --retry-slot --repo <owner/name> [--now ISO] --github-output <file>
+ *                        writes retry=true|false and retry_reason; exit 1 only when run history could not be read
  */
-export function main(argv = process.argv.slice(2), { stdout = process.stdout } = {}) {
+export async function main(argv = process.argv.slice(2), { stdout = process.stdout } = {}) {
   if (argv.includes('--is-off')) {
     stdout.write(`${killSwitchOff(arg(argv, '--is-off'))}\n`);
+    return 0;
+  }
+  if (argv.includes('--retry-slot')) {
+    const { classifyCorpusRun, gatherCorpusRuns } = await import('./corpus-watchdog.mjs');
+    const now = arg(argv, '--now') ? Date.parse(arg(argv, '--now')) : Date.now();
+    const repo = arg(argv, '--repo') || process.env.GITHUB_REPOSITORY;
+    let decision;
+    try {
+      const runs = gatherCorpusRuns({ repo, since: now - RETRY_WINDOW_MS }).map((run) => ({ ...run, outcome: classifyCorpusRun(run) }));
+      decision = decideRetry({ runs });
+    } catch (error) {
+      stdout.write(`::error::corpus-nightly-dispatch retry slot could not read the night's runs: ${error.message}\n`);
+      return 1;
+    }
+    const githubOutput = arg(argv, '--github-output');
+    if (githubOutput) fs.appendFileSync(path.resolve(githubOutput), `retry=${decision.verdict === 'retry'}\nretry_reason=${decision.reason.replace(/\n/g, ' ')}\n`);
+    stdout.write(`::notice::corpus-nightly-dispatch retry slot ${decision.verdict}: ${decision.reason}\n`);
     return 0;
   }
   const nightlyVar = arg(argv, '--nightly') ?? '';
@@ -134,5 +188,5 @@ export function main(argv = process.argv.slice(2), { stdout = process.stdout } =
 }
 
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
-  process.exitCode = main();
+  main().then((code) => { process.exitCode = code; });
 }

@@ -66,8 +66,11 @@ function select(input, observed = { output: '' }) {
     }
     throw new Error(`unexpected API endpoint: ${endpoint}`);
   };
+  // The guard reads GitHub through spawnSync wrapped in the pipeline's bounded transient retry
+  // (scripts/transient-gh.mjs); here the retry is an identity so every refusal below is the guard's own.
   vm.runInNewContext(guardSource().replace(/^\s*import .*;\s*$/gm, ''), {
-    execFileSync: api,
+    spawnSync: (command, args) => ({ status: 0, stdout: api(command, args) }),
+    retryTransientResult: (fn) => fn(),
     process: {
       env: input.env,
       stdout: { write: (value) => { output += value; observed.output += value; } },
@@ -157,13 +160,15 @@ describe('protected corpus preparation artifact provenance (ADR-086 steps 9 + 17
     input.run.repository.full_name = 'attacker/brain';
     let output = '';
     vm.runInNewContext(neutered, {
-      execFileSync: (command, args) => {
+      spawnSync: (command, args) => {
         const endpoint = args[1];
-        if (endpoint === `repos/${repo}/actions/workflows/protected-release.yml`) return JSON.stringify(input.workflow);
-        if (endpoint === `repos/${repo}/actions/runs/${RUN_ID}`) return JSON.stringify(input.run);
-        if (endpoint === `repos/${repo}/actions/runs/${RUN_ID}/artifacts?per_page=100`) return JSON.stringify({ artifacts: input.artifacts });
-        return JSON.stringify(input.artifacts[0]);
+        const answer = endpoint === `repos/${repo}/actions/workflows/protected-release.yml` ? input.workflow
+          : endpoint === `repos/${repo}/actions/runs/${RUN_ID}` ? input.run
+            : endpoint === `repos/${repo}/actions/runs/${RUN_ID}/artifacts?per_page=100` ? { artifacts: input.artifacts }
+              : input.artifacts[0];
+        return { status: 0, stdout: JSON.stringify(answer) };
       },
+      retryTransientResult: (fn) => fn(),
       process: { env: input.env, stdout: { write: (value) => { output += value; } } },
     });
     expect(output, 'with the predicates removed a foreign-repository run must sail through — proving the real predicates are what refuse it')

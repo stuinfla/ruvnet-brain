@@ -71,6 +71,7 @@ import {
 import { bindCoverageToReceipt, writeCoverageAssets } from './corpus-coverage-sidecar.mjs';
 import { describeDegraded } from './corpus-store-failure.mjs';
 import { assertNoNewerCorpusGeneration } from './code-release-corpus.mjs';
+import { retryingGh } from './transient-gh.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PUBLISH = process.argv.includes('--publish');
@@ -141,11 +142,17 @@ const compareCodeTags = (left, right) => {
   return Math.sign(a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
 };
 
-/** The one gh seam both corpus entry points use (RUVNET_GH_COMMAND / RUVNET_GH_SCRIPT for tests). */
+/**
+ * The one gh seam both corpus entry points use (RUVNET_GH_COMMAND / RUVNET_GH_SCRIPT for tests). Reads and the
+ * idempotent `release edit` retry a transient failure, bounded (scripts/transient-gh.mjs): on 2026-09-29 the
+ * night was red on "cannot confirm the promoted corpus release" -- one `release view` that failed right after
+ * the write had succeeded. `release create` runs exactly once; the absence proof above it is what makes a
+ * repeat safe to refuse.
+ */
 function corpusGh(env, run) {
-  const ghCommand = env.RUVNET_GH_COMMAND || 'gh';
-  const ghPrefix = env.RUVNET_GH_SCRIPT ? [env.RUVNET_GH_SCRIPT] : [];
-  const gh = (args) => run(ghCommand, [...ghPrefix, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const gh = retryingGh({ run, command: env.RUVNET_GH_COMMAND || 'gh', prefix: env.RUVNET_GH_SCRIPT ? [env.RUVNET_GH_SCRIPT] : [],
+    options: { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+    onRetry: ({ attempt, args, delayMs }) => console.error(`[corpus-seed] gh ${args.slice(0, 2).join(' ')} failed transiently (attempt ${attempt}); retrying in ${delayMs / 1000}s`) });
   const ghJson = (args, label) => {
     const result = gh(args);
     if (result.error || result.status !== 0) {

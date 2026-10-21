@@ -25,6 +25,7 @@ import { storeRoot } from '../kb/store-root.mjs';
 import { captureGistSources } from './gist-receipts.mjs';
 import { projectSourceStore, RUNTIME_LEDGER_KIND } from './rvf-generation.mjs';
 import { compareKnowledgeInputs, fromCoverage as knowledgeFromCoverage, fromSeed as knowledgeFromSeed } from './knowledge-input-digest.mjs';
+import { defaultBaseDelayMs } from './transient-gh.mjs';
 
 export { rebuildCorpusAggregates };
 
@@ -352,8 +353,10 @@ export async function acquireSealedGeneration({ maxAttempts = 3, assetsDir = nul
     const settled = await build(observation, storeOutcomes);
     const remaining = planReconciliation({ coverage: settled, ledger: currentLedger(), assetsDir })
       .filter((item) => !recorded(item.store));
+    // A repository row the shipped validator accepts WITH a carry -- a transiently unreadable source pinned at its
+    // seed commit (source-coverage.mjs) -- is resolved for this generation, exactly like a recorded store outcome.
     const unresolved = settled.rows.filter((row) => row.disposition === 'eligible' && row.status !== 'CURRENT'
-      && !(row.kind === 'repository' && recorded(row.artifact?.store)));
+      && !(row.kind === 'repository' && (recorded(row.artifact?.store) || (row.carry && eligibleRepositoryStanding(row) === 'shipped'))));
     attempts.push({ attempt, plan, ...reconciliation, ...pruning, ...aggregates,
       remainingArtifacts: remaining.length, unresolvedSources: unresolved.length });
     if (!remaining.length && !unresolved.length) {
@@ -635,11 +638,13 @@ export function dispositionForFailedStore({ assetsDir, ledger, item, attempts, r
 
 // Only a TRANSIENT failure is retried, exactly once, in a fresh directory: `<store>-retry1`. The first
 // attempt's directory is never reused -- a clone or a half-written worker output from the failed
-// attempt must not be mistaken for the retry's own (the pre-D5 path collided).
+// attempt must not be mistaken for the retry's own (the pre-D5 path collided). The retry waits
+// TRANSIENT_RETRY_DELAY_MS first: an immediate re-clone into the same reset connection learns nothing.
 export function workerRootFor(workspace, store, retry) {
   return path.join(workspace, 'workers', retry === 0 ? store : `${store}-retry${retry}`);
 }
 export const MAX_TRANSIENT_RETRIES = 1;
+export const TRANSIENT_RETRY_DELAY_MS = 30_000;
 
 export async function executeReconciliation({
   plan,
@@ -651,6 +656,8 @@ export async function executeReconciliation({
   signal,
   priorCoverage = null,
   log = (line) => console.log(line),
+  retryDelayMs = defaultBaseDelayMs(TRANSIENT_RETRY_DELAY_MS),
+  sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); }),
 }) {
   if (!Array.isArray(plan) || !Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 10) {
     fail('reconciliation plan or worker concurrency is invalid');
@@ -750,8 +757,10 @@ export async function executeReconciliation({
         lastError = error;
         const retrying = isRetryable(error) && retry < MAX_TRANSIENT_RETRIES;
         log(`[corpus-reconcile] ${item.store}: attempt ${attempts} failed -- ${error.message}`
-          + (retrying ? '; retrying once in a fresh worker directory' : '; not retried'));
+          + (retrying ? `; retrying once in a fresh worker directory after ${retryDelayMs / 1000}s` : '; not retried'));
         if (!retrying) break;
+        await sleep(retryDelayMs);
+        if (controller.signal.aborted) throw abortError(controller.signal);
       }
     }
     return { ok: false, attempts, error: lastError };
@@ -871,7 +880,33 @@ async function observeSourceOnly({ owner, assetsDir }) {
   const externalFile = path.join(assets, 'external-sources.json');
   const policy = fs.existsSync(externalFile) ? readJson(externalFile, 'external source policy') : { sources: [] };
   if (!Array.isArray(policy.sources)) fail('external source policy has no sources array');
-  return observeSourceUniverse({ owner, externalSources: policy.sources });
+  const ledgerFile = path.join(assets, 'RVF-GENERATIONS.json');
+  const ledger = fs.existsSync(ledgerFile) ? readJson(ledgerFile, 'RVF generation ledger') : { stores: {} };
+  return observeSourceUniverse({ owner, externalSources: policy.sources,
+    carriedCommits: transientCarryCommits({ ledger, priorCoverage: readPriorCoverage(assets) }) });
+}
+
+/**
+ * The seed's own commits, per store: what an external source unreadable tonight is pinned at (one night, STALE
+ * with a carry) instead of failing the whole observation. Read from the seed ledger, never invented -- and a store
+ * the SEED's sealed coverage already shows carried this way is left out, so the second consecutive night fails
+ * for that source exactly as before rather than carrying it forever.
+ */
+export function transientCarryCommits({ ledger, priorCoverage = null }) {
+  // No sealed coverage to read history from (the bootstrap lineage, or an invalid sidecar) = no carry at all:
+  // the allowance exists only where the previous night can prove it was not already spent.
+  if (!Array.isArray(priorCoverage?.rows)) return {};
+  // ANY carried seed row spends it -- a failed refresh last night and an unreadable upstream tonight must not
+  // alternate forever either.
+  const alreadyCarried = new Set(priorCoverage.rows
+    .filter((row) => row?.kind === 'repository' && row.carry)
+    .map((row) => String(row.artifact?.store || '').toLowerCase()));
+  return Object.fromEntries(Object.entries(ledger?.stores || {})
+    .filter(([store, row]) => HEX40.test(String(row?.sourceCommit || '').toLowerCase()) && !alreadyCarried.has(store.toLowerCase()))
+    .map(([store, row]) => {
+      const sourceCommit = String(row.sourceCommit).toLowerCase();
+      return [store.toLowerCase(), { sourceCommit, committedAt: carriedCommittedAt({ priorCoverage, store, sourceCommit }) }];
+    }));
 }
 
 export async function acquireCorpusGeneration({ owner = 'ruvnet', assetsDir, workspaceDir,

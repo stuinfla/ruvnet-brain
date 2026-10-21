@@ -34,6 +34,7 @@ import { canonicalJson, digest, validateGistAggregateReceipt } from './coverage-
 import { promoteArtifactSet } from '../kb/incremental-refresh.mjs';
 import { writeRvfGeneration } from './rvf-generation.mjs';
 import { fetchGistGitSnapshot } from './gist-git-transport.mjs';
+import { isTransientText, retryTransientAsync } from './transient-gh.mjs';
 
 const DEFAULT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TEXT_EXT = new Set(['.md', '.markdown', '.txt', '.rst']);
@@ -402,9 +403,15 @@ function reusableCachedGist(cached, stub) {
   return 'reuse';
 }
 
+// The Git snapshot is one `ls-remote` + one bare clone per gist against gist.github.com. A transient transport
+// failure (reset, timeout, "could not read Username", or the gist moving mid-capture) is retried, bounded, so
+// one blip on one of ~180 gists cannot fail the aggregate and with it the night. A gist that is gone
+// ("repository not found") is an answer and is thrown at once.
+const transientGistSnapshot = (error) => isTransientText(error?.message) || /moved while Git snapshot was captured/.test(String(error?.message || ''));
+
 export async function captureGistSources({ observation, cache = null, fetchDetail = null,
   fetchRaw = defaultFetchRaw, fetchGitSnapshot = fetchGistGitSnapshot, signal,
-  now = () => new Date().toISOString() } = {}) {
+  now = () => new Date().toISOString(), snapshotRetryDelayMs = 15_000 } = {}) {
   const stubs = observation?.gists?.rows;
   if (!Array.isArray(stubs) || stubs.some(({ id }) => !HEX_GIST.test(String(id || '')))
     || new Set(stubs.map(({ id }) => id)).size !== stubs.length) {
@@ -420,7 +427,8 @@ export async function captureGistSources({ observation, cache = null, fetchDetai
       // The production/no-key route never spends one REST detail request per gist and never trusts
       // a body-free cache or timestamps as content identity. A full bare clone gives one immutable
       // Git commit/tree; every observed raw_url's blob identity must match its HEAD file bytes.
-      const snapshot = await fetchGitSnapshot({ owner: observation.owner, stub, signal });
+      const snapshot = await retryTransientAsync(() => fetchGitSnapshot({ owner: observation.owner, stub, signal }),
+        { isTransient: transientGistSnapshot, baseDelayMs: snapshotRetryDelayMs });
       const files = [];
       for (const source of snapshot.files) {
         const filename = source.filename;
