@@ -11,7 +11,7 @@ No bonus modulus tonight (`%25`=22, `%75`=72). Session commit `0020223` on `main
 
 `main`'s `docs/dream-cycle/LEDGER.md` has not had a row land since 2026-08-31 (52 days), not because
 the routine stopped — it fires nightly on schedule — but because the dream-cycle PR backlog has had
-only 5 merges, ever, across 111 `dream/*` PRs (68 still open), none since 2026-08-26 (57 days). This is
+only 5 merges, ever, across 111 `dream/*` PRs (68 still open), none since the last one, #215 on 2026-08-31 (52 days). This is
 already tracked by open issues **#410** (the backlog itself) and **#298** (an intermittent compile-time
 sandbox denial); both re-verified still open tonight, not restated as new findings.
 
@@ -43,7 +43,7 @@ plus a regression test, without touching #412's own unmerged work.
 | System | Relevant practice | Grade | Note |
 | --- | --- | --- | --- |
 | Sakana AI Scientist | Fully automated hypothesize→code→run→write loop | B | Public writeups, no reproduction run tonight; this cycle's bounded-repair-before-research discipline is the opposite emphasis — fewer novel papers, more closed regression classes. |
-| OpenHands (All Hands AI) | Agent resolves GitHub issues end-to-end incl. PR | A | Official repo/docs; its issue-resolution loop assumes a reviewer merges promptly — this repo's 57-day, 5/111-merge backlog is exactly the failure mode that loop does not model. |
+| OpenHands (All Hands AI) | Agent resolves GitHub issues end-to-end incl. PR | A | Official repo/docs; its issue-resolution loop assumes a reviewer merges promptly — this repo's 52-day, 5/111-merge backlog is exactly the failure mode that loop does not model. |
 | DSPy / GEPA | Reflective prompt/program evolution with frozen eval sets | A | Official repo; shares this cycle's "freeze the evaluator, evolve the candidate" discipline (`eval:gate`'s frozen 120-question held-out set is the same shape). |
 | SWE-agent | Benchmark-driven single-PR code fix agent | A | Official repo/SWE-bench; closer in shape to tonight's single-file ratchet-regression fix than to a research cycle. |
 | Cursor background agents | Async coding agents opening PRs for human review | B | Vendor docs; same "draft PR, human merges" shape this repo uses — makes the merge-backlog problem a plausible failure mode for that whole category, not unique to this repo. |
@@ -212,8 +212,8 @@ still open tonight, not restated.
 
 ```
 SESSION_COMMIT = 00202230086c5ab85dd2476a8ba0ee064aade14f
-REPORT_HASH    = 6d89b8e5de552d051477a738e48a3dfb4af33e1247046fff4d0d30a9b4b05319
-WITNESS        = b55f1a79ccf7fd3de8ae7c69e78e0826cb0f7a60d9d88eaff17780eb3219ba8a
+REPORT_HASH    = 1f52e0e5fc835d66d4fe8f49e9b425ad53473c7e3caeab222b9d20846375f7b0
+WITNESS        = 9fa5d85126692acc4785ca9112293e7a4dece152b7a8ce5b0f4340f925110104
 ```
 
 REPORT_HASH above is computed over this file with this Witness section's two value lines holding the
@@ -225,7 +225,7 @@ then `printf '%s%s' REPORT_HASH SESSION_COMMIT | sha256sum` should equal WITNESS
 ## Recommendation (for the repo owner, priority order)
 
 1. **The backlog remains the dominant structural fact** (#410): 111 `dream/*` PRs, 68 open, only 5
-   ever merged, none since 2026-08-26 (57 days). This PR is deliberately tiny (2 production/doc files
+   ever merged, none since the last one, #215 on 2026-08-31 (52 days). This PR is deliberately tiny (2 production/doc files
    + 1 new test, ~40 lines) to make it cheap to review whenever that happens.
 2. **PR #412 specifically** (the entry-point-guard ratchet): tonight's finding is live proof its thesis
    is correct and the cost of leaving it unmerged is compounding, not static.
