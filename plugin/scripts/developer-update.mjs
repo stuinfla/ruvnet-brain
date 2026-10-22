@@ -5,7 +5,6 @@ import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { pathToFileURL } from 'node:url';
 import { cmpVersion as compare, selectTag, FAMILY, PLUGIN_MARKETPLACES, REVIEWED_INSTALL_SCRIPTS, EXECUTION_MODULES } from './developer-update-policy.mjs';
 import { acquireDeveloperLock, sharedLockStatus } from './developer-update-lock.mjs';
 import { maintenance } from './developer-update-maintenance.mjs';
@@ -465,4 +464,13 @@ export async function developerUpdateCli(args = process.argv.slice(2)) {
   console.log(JSON.stringify(result));
   return result;
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) developerUpdateCli().catch(error => { console.error(error.message); process.exitCode = 1; });
+// path.resolve() does not follow symlinks but Node's own import.meta.url resolution does, so an
+// npm bin shim, Homebrew-style install, or any other symlinked invocation disagrees with this
+// comparison and silently skips the CLI (exit 0, zero output) — the same entry-point-guard defect
+// documented in tests/unit/entrypoint-symlink.test.mjs. Resolve both sides through the real
+// filesystem path instead, matching the known-good pattern in scripts/selfcheck.mjs.
+const isDirectInvocation = () => {
+  try { return !!process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(new URL(import.meta.url)); }
+  catch { return false; }
+};
+if (isDirectInvocation()) developerUpdateCli().catch(error => { console.error(error.message); process.exitCode = 1; });

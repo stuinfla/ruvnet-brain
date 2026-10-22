@@ -3,9 +3,9 @@ id: ADR-103
 title: Routing architecture qualification requires a current finite source review
 status: Accepted
 date: 2026-10-05
-updated: 2026-10-21
-version: 0.1.44
-reviewed_digest: 7a1f21e3ff01
+updated: 2026-10-22
+version: 0.1.45
+reviewed_digest: 988845a37f46
 impl: built
 authors: [Stuart Kerr, Codex]
 tags: [routing, governance, review, release, traceability]
@@ -298,6 +298,8 @@ and P10 by reusing doc-currency. It trades P3's usual nudge for the owner's expl
 finite release refusal. No paid provider call, model generation or system configuration is added.
 
 ## Currency log
+
+| 2026-10-22 | Reviewed `988845a37f46` against source 4.7.16 working bytes (on top of 4.7.16 `0020223`) and the recorded final working bytes. | Dream Cycle (slot 2, `enforcement-integrity`) reviewed `plugin/scripts/developer-update.mjs`, the only governed byte moved tonight. Its CLI entry-point guard (`process.argv[1]` compared via `pathToFileURL(path.resolve(...))` against `import.meta.url`) is the same silent-exit-0-through-a-symlink defect class `tests/unit/entrypoint-symlink.test.mjs` documents for `kb/forge-ask.mjs`/`kb/forge-ask-all.mjs`; reproduced live on this container (`node <symlink> --help` printed nothing, exit 0) before the fix and confirmed fixed after it (same invocation now prints the usage line), both directly and via the new `tests/unit/developer-update-entrypoint-guard.test.mjs` (2/2 pass post-fix, 1/2 fails pre-fix exactly at the symlink case via `git stash`). Fix routes the comparison through `fs.realpathSync` on both sides, matching the known-good pattern already in `scripts/selfcheck.mjs`. No behavior change for the direct/non-symlinked invocation path (`bin/developer-update.mjs`'s own unconditional call, and the existing 99 `developer-update*`/`plugin-artifact-proof` unit tests, all still pass). Not reviewed and not claimed current: any other governed byte, or `scripts/console-suite-update.mjs`'s own spawn-chain symlink exposure (noted, not reproduced — out of tonight's bounded scope). |
 
 | 2026-10-10 | Reviewed `5b6649f102ca` against receipt-repair worker source `8f852170`, integration `56eb2f2d`, and the final 4.6.2 finite mapping. | Root independently reviewed `plugin/scripts/developer-update.mjs`, `plugin/scripts/nightly-scheduler.mjs` and the nine scheduled-receipt regressions; all nine independently executed cases passed. The two-slot constant-space intent preserves newer running/failed scheduled attempts, reconciles evidence before manual/check overwrite, refuses retention failure, and retains source/registration/time/live-owner validation plus legacy compatibility. Integration passed 118 combined focused cases. Earlier native-wrapper and four-field runner review remains scoped to its recorded source. This is not whole-set reread, public installation, actual scheduled customer execution, corpus refresh or SDK hot-reload evidence. The completed `55cf952a` preflight remains bound to its earlier bytes and is not reused. |
 
