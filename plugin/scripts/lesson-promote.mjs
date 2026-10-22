@@ -36,6 +36,8 @@
  *   node scripts/lesson-promote.mjs --json          # machine-readable, for the console
  *   node scripts/lesson-promote.mjs --apply         # write the promotion block (backs up first)
  *   node scripts/lesson-promote.mjs --min-projects 3
+ *   node scripts/lesson-promote.mjs --demote-theme <key>   # reject a theme — sticky, never re-proposed
+ *   node scripts/lesson-promote.mjs --restore-theme <key>  # undo a demotion
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -124,34 +126,55 @@ export function collectLessons(root = PROJECTS) {
  * other project's context.
  */
 /**
- * Themes the user has explicitly rejected. Read from the lesson store's demoted rows.
+ * THE DEMOTED-THEMES FILE — where "reject this theme, permanently" is recorded, and why it is not a
+ * field on a lesson row.
  *
- * WITHOUT THIS, DEMOTION WAS THEATRE. `lesson-ratify.mjs --demote` set a flag the miner never
- * looked at, so the next mining run would re-propose the exact rule the user had just deleted.
- * ADR-030 §5 states the requirement plainly — "a one-click demote that the next nightly silently
- * undoes is worse than no demote at all, because the user stops trusting the control and, correctly,
- * stops using it" — and the code did not implement it. Verified 2026-07-22: zero references to
- * `demoted` in this file.
+ * The original design (2026-07-22) stored a `themeKey` on a demoted lesson inside `lessons.json` and
+ * read it back here. It never worked, and could not have: `makeLesson()` (`lesson-store.mjs`)
+ * destructures a FIXED field set and freezes the result, so an unknown key — `themeKey` included — is
+ * silently dropped the moment a row passes through it. Verified 2026-09-07 by construction: a
+ * hand-edited row carrying `themeKey` survives only until the very next legitimate write ANYWHERE in
+ * the store (`lesson-ratify.mjs --demote`, `updateLessons()`, any `loadLessons()` → `saveLessons()`
+ * round trip) — at that point every row, not just the one touched, has been re-serialized through
+ * `makeLesson()` and the field is gone. There was also no writer at all: `lesson-ratify.mjs --demote`
+ * only ever demotes by lesson `id`, never by theme. `demotedThemeKeys()` therefore always returned an
+ * empty set in every real invocation, and the sticky-demotion guard in `analyze()` below could never
+ * fire — the exact "demotion is theatre" failure ADR-030 §5 names, just for a different reason than
+ * the 2026-07-22 comment this replaces described.
  *
- * Read defensively: the store may be absent, locked, or from a newer schema. A miner that throws
- * because it could not read an optional file is worse than one that proposes a rejected theme.
+ * `lesson-gate.mjs`'s `OPTIN_PATH` documents the identical failure shape for a different field
+ * (`userOptedIntoBlocking`) and moved that consent to its own file for exactly this reason. That
+ * precedent was never applied here; it is now. Theme demotion gets its own small file, written only
+ * by `--demote-theme` / `--restore-theme` below, and never touched by the mining or lesson-store
+ * write paths — so no future lesson-store write can silently erase it.
  */
-function demotedThemeKeys() {
+export const DEMOTED_THEMES_PATH = process.env.RUVNET_DEMOTED_THEMES
+  || path.join(HOME, '.config', 'ruvnet-brain', 'demoted-themes.json');
+
+function demotedThemeKeys(file = DEMOTED_THEMES_PATH) {
   try {
-    const file = process.env.RUVNET_LESSON_STORE
-      || path.join(os.homedir(), '.config', 'ruvnet-brain', 'lessons.json');
     const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
-    return new Set(
-      (raw.lessons || [])
-        .filter((l) => l && l.demoted === true && typeof l.themeKey === 'string')
-        .map((l) => l.themeKey),
-    );
-  } catch { return new Set(); }
+    // Tolerant of both shapes, same reasoning as OPTIN_PATH: this file is expected to be hand-edited.
+    const list = Array.isArray(raw) ? raw : Array.isArray(raw?.demoted) ? raw.demoted : [];
+    return new Set(list.filter((x) => typeof x === 'string' && x.length));
+  } catch { return new Set(); }   // absent or unparseable → nothing demoted. Never fail INTO hiding a theme.
 }
 
-export function analyze(lessons, { minProjects = MIN_PROJECTS, rejected = null } = {}) {
-  // Injectable for tests; defaults to the real store so the CLI honours real demotions.
-  const demoted = rejected instanceof Set ? rejected : demotedThemeKeys();
+/** The only writer of DEMOTED_THEMES_PATH. Demotes or restores one theme key. */
+export function setThemeDemoted(key, demoted, file = DEMOTED_THEMES_PATH) {
+  const current = demotedThemeKeys(file);
+  if (demoted) current.add(key); else current.delete(key);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify({ demoted: [...current].sort() }, null, 2) + '\n');
+  return current;
+}
+
+export function analyze(lessons, { minProjects = MIN_PROJECTS, rejected = null, demotedThemesFile } = {}) {
+  // `rejected` is a pre-built Set, injectable for pure clustering tests.
+  // `demotedThemesFile` redirects the REAL disk reader (`demotedThemeKeys()`) to a fixture path — for
+  // tests that must exercise the actual read/write round trip, not a Set built by hand. Neither
+  // option is used by the CLI, which always takes the real default file for a real process.
+  const demoted = rejected instanceof Set ? rejected : demotedThemeKeys(demotedThemesFile);
   const eligible = lessons.filter((l) => l.type === 'feedback');
   const themes = [];
   for (const t of THEMES) {
@@ -233,6 +256,19 @@ export function applyPromotion(result, { file, now }) {
 
 // ── CLI ──────────────────────────────────────────────────────────────────────────────────────────
 const invokedDirectly = process.argv[1] && path.resolve(process.argv[1]).endsWith('lesson-promote.mjs');
+if (invokedDirectly && (has('--demote-theme') || has('--restore-theme'))) {
+  const demoting = has('--demote-theme');
+  const key = arg(demoting ? '--demote-theme' : '--restore-theme');
+  if (!THEMES.some((t) => t.key === key)) {
+    console.error(`\n  ✗ unknown theme "${key}". Known keys: ${THEMES.map((t) => t.key).join(', ')}\n`);
+    process.exit(1);
+  }
+  setThemeDemoted(key, demoting);
+  console.log(`\n  ${demoting ? '✓ demoted' : '✓ restored'} theme "${key}" — `
+    + `${demoting ? 'will never be re-proposed by a future scan' : 'eligible again on the next scan'} `
+    + `(${DEMOTED_THEMES_PATH.replace(HOME, '~')})\n`);
+  process.exit(0);
+}
 if (invokedDirectly) {
   const result = analyze(collectLessons());
   if (has('--json')) { console.log(JSON.stringify(result, null, 2)); process.exit(0); }
