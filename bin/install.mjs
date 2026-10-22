@@ -54,6 +54,8 @@ import {
   installNightlyRunner,
   installScheduler,
   nightlyArtifact,
+  nightlyModuleCurrency,
+  refreshNightlyModules,
   removeScheduler,
   readNightlyRegistration,
   resolveNightlyProofBundle,
@@ -3179,8 +3181,14 @@ async function doctorRun({ json }) {
   const brainHome = process.env.RUVNET_BRAIN_HOME || path.dirname(cacheDir);
   const nightlyHealth = schedulerStatus({ platform: process.platform, env: process.env,
     brainHome, kbDir: cacheDir });
+  // Does the scheduled job run the code installed now? Its module snapshot is refreshed by --update, its runner only
+  // by --enable-nightly (measured stale 2026-10-22). Read-only; `unregistered` is already covered by the state lines.
+  let nightlyCode = { state: 'unregistered' };
+  try { nightlyCode = nightlyModuleCurrency({ brainHome, runnerSource: path.join(REPO_ROOT, 'bin', 'nightly-refresh.mjs') }); } catch (error) { nightlyCode = { state: 'unknown', why: error.message }; }
   if (nightlyHealth.state === 'on') {
     ok(`nightly scheduler: ${nightlyHealth.evidence}`);
+    if (nightlyCode.state === 'current') ok('nightly runs current code: the registered update modules are the installed set');
+    else if (nightlyCode.fix) warn(`nightly runs ${nightlyCode.state === 'runner-changed' ? 'an older runner' : 'stale update modules'} — fix:  ${c.bold(nightlyCode.fix)}`);
     if (nightlyHealth.runHealth?.state === 'ok' || nightlyHealth.runHealth?.state === 'running') {
       ok(`nightly execution: ${nightlyHealth.runHealth.evidence}`);
     } else if (nightlyHealth.runHealth?.state === 'failed') {
@@ -3436,6 +3444,10 @@ async function doctorRun({ json }) {
       : codexReadinessFailed ? 'MCP readiness blocked' : 'lifecycle hooks unhealthy') : 'wired', 'npx ruvnet-brain')] : []),
     check('nightly', 'Nightly', nightlyFailed, `${nightlyHealth.state}${nightlyHealth.runHealth?.state ? `, last run ${nightlyHealth.runHealth.state}` : ''}`,
       nightlyHealth.state === 'degraded' ? 'npx ruvnet-brain --enable-nightly' : 'npx ruvnet-brain --update'),
+    // Scheduler ON but running yesterday's code: an advisory naming the exact fix, never a failing verdict.
+    ...(nightlyHealth.state === 'on' && nightlyCode.state !== 'unregistered' ? [check('nightly-code', 'Nightly code', nightlyCode.state !== 'current',
+      nightlyCode.state === 'current' ? 'registered update modules match the installed set' : `${nightlyCode.state}: registered ${String(nightlyCode.registered || '?').slice(0, 12)}, installed ${String(nightlyCode.current || '?').slice(0, 12)}`,
+      nightlyCode.fix || 'npx ruvnet-brain@latest --update', { advisory: true })] : []),
     check('host-convergence', 'Hosts sync', !hostConvergence.healthy, hostConvergence.state, 'npx ruvnet-brain --update'),
     ...(rufloOperational ? [rufloCheckLine(rufloOperational)] : []),
     ...(agentdbLine ? [agentdbLine] : []),
@@ -4404,6 +4416,7 @@ async function runUpdate() {
     info(c.dim("\n--auto set: enrolling in Evergreen auto-update so you never run this again…\n"));
     enableNightly(); // exits on its own with verified output; if it returns, fall through to the update verdict
   }
+  if (updateStatus === 0) reconcileNightlyModules({ brainHome, refreshReceipt });
   let retention;
   try {
     retention = pruneLifecycleEvidence({ brainHome, kbDir, preserveRefreshRunIds: [refreshReceipt.runId],
@@ -4441,6 +4454,31 @@ async function runUpdate() {
     storageDelta: updaterResult?.storageDelta || null, lifecycleRetention: retention });
   process.removeListener('exit', exitGuard);
   await printConfirmation({ footprint: footprint?.after || null });
+}
+
+/**
+ * After a successful --update: the nightly runs a content-addressed SNAPSHOT of the update modules (installNightlyRunner),
+ * which until now only --enable-nightly refreshed, so a fix shipped by --update stayed invisible to the 03:30 job
+ * (measured 2026-10-22: the 4.7.15 developer-update fix). A stale registration is re-pointed at the installed modules;
+ * a changed RUNNER would change the LaunchAgent command, which only explicit enablement may do, so that case is an
+ * advisory naming the fix. Advisory and fail-open: it never fails an otherwise good update.
+ */
+export function reconcileNightlyModules({ brainHome, refreshReceipt = null, runnerSource = path.join(REPO_ROOT, 'bin', 'nightly-refresh.mjs') } = {}) {
+  const advise = (status, detail) => { // the advisory write itself must never escape this step
+    try { if (refreshReceipt) recordRefreshAdvisory(refreshReceipt, 'nightly-modules', status, detail); } catch { /* the receipt is evidence, not the gate */ }
+    return { status, ...detail };
+  };
+  try {
+    const nightly = refreshNightlyModules({ brainHome, runnerSource });
+    if (nightly.state === 'refreshed') ok(`nightly scheduler now runs the installed update modules (${nightly.registered.slice(0, 16)}…)`);
+    else if (nightly.state === 'runner-changed') warn(`nightly scheduler runs an older runner; the LaunchAgent changes only on explicit enablement — run  ${c.bold(nightly.fix)}`);
+    else if (nightly.state === 'refused') warn(`nightly module snapshot was not refreshed: ${nightly.reason} — run  ${c.bold(nightly.fix)}`);
+    return advise(['runner-changed', 'refused'].includes(nightly.state) ? 'SKIP' : 'PASS',
+      { state: nightly.state, registered: nightly.registered ?? null, current: nightly.current ?? null, ...(nightly.reason ? { reason: nightly.reason } : {}), ...(nightly.fix ? { fix: nightly.fix } : {}) });
+  } catch (error) {
+    warn(`nightly module snapshot was not refreshed (${error.message}); the scheduler registration was left as it was`);
+    return advise('FAIL', { state: 'error', reason: error.message });
+  }
 }
 
 function enableNightly() {

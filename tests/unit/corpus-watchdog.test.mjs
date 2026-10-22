@@ -256,17 +256,17 @@ describe('summarizeNight — what the night did, in one line the owner reads fir
   });
   it('published: names the promoted generation and the time it landed', () => {
     const night = summarizeNight(healthy({ corpusRuns: [corpusRun(101, 10, PROMOTED)] }), NOW);
-    expect(night).toEqual({ outcome: 'published', line: `night: published ${TAG(1)} at ${formatEastern(ago(7))}` });
+    expect(night).toEqual({ outcome: 'published', line: `night: published ${TAG(1)} at ${formatEastern(ago(7))} (1 attempt)` });
   });
   it('degraded: a published night whose generation carries stores names each of them', () => {
     const deferral = { observable: true, newestTag: TAG(1), degraded: { carried: ['cognitum-ruos'], missing: [] }, stores: [] };
     const night = summarizeNight(healthy({ corpusRuns: [corpusRun(101, 10, PROMOTED)], deferral }), NOW);
     expect(night.outcome).toBe('degraded');
-    expect(night.line).toBe(`night: degraded -- published ${TAG(1)} at ${formatEastern(ago(7))} with 1 carried (cognitum-ruos) and 0 missing (none), each named in CORPUS-COVERAGE.json`);
+    expect(night.line).toBe(`night: degraded -- published ${TAG(1)} at ${formatEastern(ago(7))} (1 attempt) with 1 carried (cognitum-ruos) and 0 missing (none), each named in CORPUS-COVERAGE.json`);
   });
   it('no-change, superseded and canary-rejected are each their own word, with what customers keep', () => {
     expect(summarizeNight(healthy({ corpusRuns: [corpusRun(101, 10, NO_CHANGE)] }), NOW).line)
-      .toBe(`night: no-change at ${formatEastern(ago(7))} -- every knowledge input equals the promoted generation; customers keep ${TAG(1)} (8.0h old)`);
+      .toBe(`night: no-change at ${formatEastern(ago(7))} (1 attempt) -- every knowledge input equals the promoted generation; customers keep ${TAG(1)} (8.0h old)`);
     expect(summarizeNight(healthy({ corpusRuns: [corpusRun(101, 10, { conclusion: 'failure', outcomeRecord: { outcome: 'superseded' } })] }), NOW).outcome).toBe('superseded');
     const rejected = summarizeNight(healthy({ corpusRuns: [corpusRun(101, 10, { conclusion: 'failure', outcomeRecord: { outcome: 'canary-rejected', jobs: {} } })] }), NOW);
     expect(rejected.line).toMatch(/^night: canary-rejected at .* \(GLOBAL: not retried\); customers keep/);
@@ -287,6 +287,51 @@ describe('summarizeNight — what the night did, in one line the owner reads fir
     expect(summarizeNight(healthy({ corpusRuns: [], dispatcherRuns: [] }), NOW).outcome).toBe('no-run');
     // Yesterday's run is not tonight's.
     expect(summarizeNight(healthy({ corpusRuns: [corpusRun(101, 30, PROMOTED)], dispatcherRuns: [] }), NOW).outcome).toBe('no-run');
+  });
+});
+
+describe('nightAttempts — one scheduled night is ONE attempt whatever else was dispatched in the last 24h', () => {
+  // The three dispatches of 2026-10-21/22, verbatim: a manual proving run, a retry slot that stood down, the real night.
+  const JUDGED = new Date('2026-10-22T09:00:00Z');
+  const run = (id, dispatchId, createdAt, updatedAt, fields = PROMOTED) => ({ id, title: `protected-release corpus corpus-${dispatchId}-1`,
+    status: 'completed', conclusion: 'success', createdAt, updatedAt, ...fields });
+  const d = (id, event, createdAt) => ({ id, attempt: 1, event, status: 'completed', conclusion: 'success', createdAt });
+  const manualProof = d(1001, 'workflow_dispatch', '2026-10-21T10:36:45Z');
+  const retrySlotStoodDown = d(1002, 'schedule', '2026-10-21T11:25:56Z'); // created NO protected-release run
+  const realNight = d(1003, 'schedule', '2026-10-22T07:36:00Z');
+  const night = (over, at = JUDGED) => summarizeNight({ ...healthy(), latestRelease: { tag: TAG(2), publishedAt: '2026-10-22T08:51:00Z', generation: '2026-10-22T08:51:00Z' },
+    dispatcherRuns: [realNight, retrySlotStoodDown, manualProof], ...over }, at);
+  it('2026-10-22: published at 4:51 a.m. ET Oct 22 (1 attempt) — the manual proving run and the stood-down slot are not retries', () => {
+    const result = night({ corpusRuns: [run(5003, 1003, '2026-10-22T07:36:30Z', '2026-10-22T08:51:00Z'), run(5001, 1001, '2026-10-21T10:37:00Z', '2026-10-21T11:10:00Z')] });
+    expect(result.line).toBe(`night: published ${TAG(2)} at 4:51 a.m. ET Oct 22 (1 attempt)`);
+  });
+  it('a failed scheduled run that the retry slot re-dispatched IS attempt 2 of the night', () => {
+    const retrySlot = d(1004, 'schedule', '2026-10-22T11:17:00Z');
+    const failed = { conclusion: 'failure', outcomeRecord: { outcome: 'failed', conclusion: 'failure', jobs: { identity: 'success', prepare: 'failure' } } };
+    const result = night({ dispatcherRuns: [retrySlot, realNight, retrySlotStoodDown, manualProof], latestRelease: { tag: TAG(2), publishedAt: '2026-10-22T12:20:00Z', generation: '2026-10-22T12:20:00Z' },
+      corpusRuns: [run(5004, 1004, '2026-10-22T11:17:30Z', '2026-10-22T12:20:00Z'), run(5003, 1003, '2026-10-22T07:36:30Z', '2026-10-22T08:10:00Z', failed), run(5001, 1001, '2026-10-21T10:37:00Z', '2026-10-21T11:10:00Z')] }, new Date('2026-10-22T13:00:00Z'));
+    expect(result.line).toBe(`night: published ${TAG(2)} at 8:20 a.m. ET Oct 22 (attempt 2 of the night; 1 retried)`);
+  });
+  it('a manual proving run BETWEEN the failed scheduled run and its re-dispatched retry is not an attempt of the night', () => {
+    const proofBetween = d(1006, 'workflow_dispatch', '2026-10-22T09:00:00Z');
+    const retrySlot = d(1004, 'schedule', '2026-10-22T11:17:00Z');
+    const failed = { conclusion: 'failure', outcomeRecord: { outcome: 'failed', conclusion: 'failure', jobs: { identity: 'success', prepare: 'failure' } } };
+    const result = night({ dispatcherRuns: [retrySlot, proofBetween, realNight, retrySlotStoodDown, manualProof], latestRelease: { tag: TAG(2), publishedAt: '2026-10-22T12:20:00Z', generation: '2026-10-22T12:20:00Z' },
+      corpusRuns: [run(5004, 1004, '2026-10-22T11:17:30Z', '2026-10-22T12:20:00Z'), run(5006, 1006, '2026-10-22T09:00:30Z', '2026-10-22T09:40:00Z'),
+        run(5003, 1003, '2026-10-22T07:36:30Z', '2026-10-22T08:10:00Z', failed)] }, new Date('2026-10-22T13:00:00Z'));
+    expect(result.line).toMatch(/\(attempt 2 of the night; 1 retried\)$/); // not 3
+  });
+  it("LAST night's re-dispatched retry slot, still inside the 24h window, is not one of tonight's attempts", () => {
+    const lastNightRetry = d(1007, 'schedule', '2026-10-21T11:17:00Z'); // yesterday's 07:36Z run failed; this slot re-ran it
+    const result = night({ dispatcherRuns: [realNight, lastNightRetry, manualProof],
+      corpusRuns: [run(5003, 1003, '2026-10-22T07:36:30Z', '2026-10-22T08:51:00Z'), run(5007, 1007, '2026-10-21T11:17:30Z', '2026-10-21T12:30:00Z')] });
+    expect(result.line).toBe(`night: published ${TAG(2)} at 4:51 a.m. ET Oct 22 (1 attempt)`);
+  });
+  it('a manual dispatch that is the newest run is its own single attempt, said so', () => {
+    const laterProof = d(1005, 'workflow_dispatch', '2026-10-22T08:55:00Z');
+    const result = night({ dispatcherRuns: [laterProof, realNight, retrySlotStoodDown, manualProof],
+      corpusRuns: [run(5005, 1005, '2026-10-22T08:55:30Z', '2026-10-22T08:58:00Z'), run(5003, 1003, '2026-10-22T07:36:30Z', '2026-10-22T08:51:00Z')] });
+    expect(result.line).toMatch(/\(1 attempt; manual dispatch\)$/);
   });
 });
 

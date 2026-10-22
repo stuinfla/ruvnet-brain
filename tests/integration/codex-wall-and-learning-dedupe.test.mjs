@@ -77,7 +77,9 @@ describe('N1: learning rows are bounded by distinct (session, tool, action) pair
     for (let i = 0; i < 20; i += 1) expect(l.fire().status).toBe(0);
     const rows = Object.keys(storedRows(l.stubDir)).filter((k) => k.startsWith('learning-observations/'));
     expect(rows).toHaveLength(1);
-    expect(l.stub.calls().filter((c) => c.argv[1] === 'store')).toHaveLength(20); // every call reached ruflo; ruflo deduped
+    // The first call reached ruflo; the 19 identical ones were coalesced by the parent's marker (2026-10-21) — before
+    // that every one spawned a ruflo that then refused the duplicate. ruflo's own --no-upsert dedupe remains the backstop.
+    expect(l.stub.calls().filter((c) => c.argv[1] === 'store')).toHaveLength(1);
     expect(ledgerRows(l.brainHome)).toEqual([]);
   }, 120_000);
   it.skipIf(!posix)('a real refusal still writes a learn-capture ledger row', () => {

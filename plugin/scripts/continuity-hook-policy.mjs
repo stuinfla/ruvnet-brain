@@ -134,7 +134,7 @@ export const CONTINUITY_EVENTS = Object.freeze({
     // The "answered without searching" gate, half 1 of 2 (2026-09-12) — see grounding-turn-gate.mjs's
     // header for the full rationale. Records that ground-ruvnet's Gate 1 fired for this turn, since
     // Stop's own payload carries no prompt text for grounding-turn-gate to test.
-    registration('grounding-turn-mark', '*', ['claude', 'codex']),
+    registration('grounding-turn-mark', '*', ['claude', 'codex', 'grok']),
   ]),
   // The write gate and its key (ADR-0012 / ADR-067), re-registered 2026-09-11 — see the header.
   // Extended to Codex 2026-09-12: a real `apply_patch` write was measured to fire PreToolUse on
@@ -143,7 +143,7 @@ export const CONTINUITY_EVENTS = Object.freeze({
   // Claude's `Edit` shape for decision-gate.mjs's own policies (protect-state, hijack-ruvnet,
   // ground-before-write, adr-currency all then see tool_name:"Edit" exactly as on Claude).
   PreToolUse: Object.freeze([
-    registration('decision-gate', '^(Write|Edit|MultiEdit|NotebookEdit|apply_patch)$', ['claude', 'codex']),
+    registration('decision-gate', '^(Write|Edit|MultiEdit|NotebookEdit|apply_patch)$', ['claude', 'codex', 'grok']),
   ]),
   // Extended to Codex 2026-09-12: a real MCP `search_ruvnet` call was measured to fire PostToolUse
   // on codex-cli 0.154.0 with tool_name "mcp__ruvnet_brain__search_ruvnet" — the matcher below
@@ -153,18 +153,18 @@ export const CONTINUITY_EVENTS = Object.freeze({
   // "Searched N RuvNet repos" banner and query text the script already looks for).
   PostToolUse: Object.freeze([
     // Learning observation (consent-gated `ruflo memory store`) runs inside session-snapshot's PostToolUse body.
-    registration('session-snapshot', '*', ['claude', 'codex']),
-    registration('grounding-stamp', '^(?:.*__)?search_ruvnet$', ['claude', 'codex']),
+    registration('session-snapshot', '*', ['claude', 'codex', 'grok']),
+    registration('grounding-stamp', '^(?:.*__)?search_ruvnet$', ['claude', 'codex', 'grok']),
   ]),
   Stop: Object.freeze([
-    registration('continuation-gate', '*', ['claude', 'codex']),
+    registration('continuation-gate', '*', ['claude', 'codex', 'grok']),
     // Codex added 2026-09-29 (owner requirement: every turn's outcome recorded on BOTH hosts —
     // turn-outcome-capture.mjs). Codex SessionEnd carries no last_assistant_message, so Stop is the
     // only boundary that can record a Codex turn. Evidence: codex-cli 0.158.0's own
     // stop.command.input schema (last_assistant_message, turn_id) and the two Codex Stop handlers
     // already registered above/below. NOT yet live-observed firing — see the probe box: the capture
     // fails open, so an unfired registration costs nothing but must not be read as proof.
-    registration('session-snapshot', '*', ['claude', 'codex']),
+    registration('session-snapshot', '*', ['claude', 'codex', 'grok']),
     // The "answered without searching" gate, half 2 of 2 (2026-09-12). Forces continuation
     // (hookSpecificOutput.additionalContext — the same contract continuation-gate.mjs already uses
     // and codex-hook-adapter.mjs already translates to Codex's decision:block on both hosts) when
@@ -172,13 +172,13 @@ export const CONTINUITY_EVENTS = Object.freeze({
     // (grounding-stamp.sh) postdates it. A separate registration from continuation-gate on purpose —
     // see grounding-turn-gate.mjs's header for why folding it in would corrupt that file's ledger
     // semantics rather than extend them.
-    registration('grounding-turn-gate', '*', ['claude', 'codex']),
+    registration('grounding-turn-gate', '*', ['claude', 'codex', 'grok']),
   ]),
   PreCompact: Object.freeze([
-    registration('session-snapshot', '*', ['claude', 'codex']),
+    registration('session-snapshot', '*', ['claude', 'codex', 'grok']),
   ]),
   SessionEnd: Object.freeze([
-    registration('session-snapshot', '*', ['claude', 'codex']),
+    registration('session-snapshot', '*', ['claude', 'codex', 'grok']),
   ]),
 });
 

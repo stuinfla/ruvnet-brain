@@ -413,10 +413,12 @@ existing adopted `~/.claude/global-memory/.swarm/memory.db`. Structural distilla
 manual invocation do not prove native event delivery.
 
 Project-level hooks are empty. The installed plugin registers exactly the hooks in
-`plugin/hooks/hooks.json` (Codex: `plugin/hooks/codex-hooks.json`), all dispatched through
-`plugin/scripts/hook-shim.mjs` (ADR-106: one registration per role, 13 on each host):
+`plugin/hooks/hooks.json` (Codex: `plugin/hooks/codex-hooks.json`; Grok: `plugin/hooks/grok-hooks.json`), all dispatched through
+`plugin/scripts/hook-shim.mjs` (ADR-106: one registration per role; 13 on Claude and on Codex, 9 on Grok, which
+deliberately omits session-start, ground-ruvnet, unprompted-speech and capacity-aware-parallel-work):
 SessionStart restore; UserPromptSubmit grounding + advisories;
-PreToolUse `decision-gate` on file writes (the only hook that may refuse, for rUv-product code
+PreToolUse `decision-gate` on file writes (the only hook that refuses a tool call — `unprompted-speech` is the
+other exit-2 path, an opted-in lesson block at UserPromptSubmit on Claude and Codex — for rUv-product code
 without a fresh `search_ruvnet`; for a new ADR or an ADR status change in an adopted project without
 a `decision-record.mjs --consult` receipt younger than two hours, refused once per path per session,
 `RUVNET_DECISION_RECALL_GATE=off` disables it; or — in this checkout — a new code file or large new export that
@@ -520,7 +522,10 @@ contradicts a principle is wrong, and the contradiction is the finding.
 The policy uses native AgentDB through the global Ruflo CLI only (`ruflo memory store|retrieve|list|search`),
 canonical project identity and explicit namespaces. Every write is acknowledged only after exact-key
 readback; a failed write is reported in `hook-failures.jsonl` and is not retried by any local queue
-(owner ruling 2026-10-12). Explicit project/path opt-out and content exclusions win. A project without a
+(owner ruling 2026-10-12). Observation writes are idempotent (a key already holding the identical bytes is
+success, not a failure) and load-shed: at most two detached writers per Brain home, an identical observation is
+not re-sent within ten minutes, and dropped observations are one aggregated ledger row per ten minutes, never
+a queue. Explicit project/path opt-out and content exclusions win. A project without a
 store records nothing until it adopts one (persisted opt-in, or `ruflo memory store` creating it).
 Prompt recall supplies bounded relevant untrusted evidence through one `ruflo memory list` per curated
 namespace, exact `ruflo memory retrieve` reads and at most ONE supplementary `ruflo memory search`, and

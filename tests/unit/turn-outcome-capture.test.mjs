@@ -409,7 +409,7 @@ describe('turn privacy and receipt evidence', () => {
 
 describe('both hosts reach the capture boundary at Stop', () => {
   it('Codex registers session-snapshot at Stop in the policy and in codex-hooks.json', () => {
-    expect(CONTINUITY_EVENTS.Stop.find((r) => r.id === 'session-snapshot')?.hosts).toEqual(['claude', 'codex']);
+    expect(CONTINUITY_EVENTS.Stop.find((r) => r.id === 'session-snapshot')?.hosts).toEqual(expect.arrayContaining(['claude', 'codex'])); // Grok too since 2026-10-13
     const codex = JSON.parse(fs.readFileSync(path.join(ROOT, 'plugin/hooks/codex-hooks.json'), 'utf8'));
     const stop = codex.hooks.Stop.flatMap((g) => g.hooks.map((h) => h.command)).join('\n');
     expect(stop).toMatch(/session-snapshot Stop/);

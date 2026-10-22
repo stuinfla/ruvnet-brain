@@ -42,22 +42,32 @@ export function runLearningRuflo(binary, args, db, { env = process.env, deadline
  * No local queue, no worker, no replay (owner ruling 2026-10-12): a failure throws to the caller, which
  * records it in the hook-failures ledger so SessionStart reports it.
  */
+// DETERMINISTIC per (session, tool, action) (review N1): with --no-upsert, rUv's store itself dedupes, so a
+// session holds at most one row per distinct pair and concurrent writers of the same pair collapse.
+export const observationKey = ({ session = '', tool, action }) => 'workflow-' + createHash('sha256').update(JSON.stringify([String(session), tool, action])).digest('hex');
+
 export function recordLearningObservation(binary, context, { tool, action, session = '' }, options = {}) {
   const db = learningTarget(context, options);
-  // DETERMINISTIC per (session, tool, action) (review N1): with --no-upsert, rUv's store itself dedupes, so a
-  // session holds at most one row per distinct pair and concurrent writers of the same pair collapse.
-  const key = 'workflow-' + createHash('sha256').update(JSON.stringify([session, tool, action])).digest('hex');
+  const key = observationKey({ session, tool, action });
   const value = JSON.stringify({ schemaVersion: 1, tool, action, scope: context.scope,
     authoritative: false, provenance: 'system-observation', outcome: 'host-reported-success' });
   const run = args => { if (options.allowed && !options.allowed()) throw new Error('learning consent changed'); return runLearningRuflo(binary, args, db, options); };
   const stored = run(['memory', 'store', '--key', key, '--value', value, '--namespace', LEARNING_NAMESPACE,
     '--no-upsert', '--provenance', 'system_observation', '--path', db]);
   const retrieved = run(['memory', 'retrieve', '--key', key, '--namespace', LEARNING_NAMESPACE, '--value-only', '--path', db]);
-  const exact = !retrieved.error && retrieved.status === 0 && String(retrieved.stdout || '').trim() === value;
-  // A refused store whose key already holds these exact bytes is the dedupe working, not a failure.
+  const readBack = !retrieved.error && retrieved.status === 0 ? String(retrieved.stdout || '').trim() : null;
+  const exact = readBack === value;
+  // A refused store whose key already holds these exact bytes is the dedupe working, not a failure (idempotent).
+  // Measured 2026-10-21: 141 ledger rows said "already exists" because the readback itself had timed out, so the
+  // row blamed the store; the reason names which step failed, and a key holding DIFFERENT bytes stays a failure.
   if (stored.error || stored.status !== 0) {
     if (exact) return { db, key, digest: createHash('sha256').update(value).digest('hex'), exactCli: true, alreadyStored: true };
-    throw new Error(`ruflo memory store refused the observation: ${captureFailureReason(stored, stored.status)}`);
+    const reason = captureFailureReason(stored, stored.status);
+    if (/already exists/i.test(reason)) {
+      if (readBack !== null) throw new Error('duplicate key holds a different observation');
+      throw new Error(`exact readback of the existing key failed: ${captureFailureReason(retrieved, retrieved.status)}`);
+    }
+    throw new Error(`ruflo memory store refused the observation: ${reason}`);
   }
   if (!exact) throw new Error('canonical exact CLI readback failed');
   return { db, key, digest: createHash('sha256').update(value).digest('hex'), exactCli: true };

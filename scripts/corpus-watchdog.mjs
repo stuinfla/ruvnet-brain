@@ -400,6 +400,31 @@ export function failedStage(run) {
   return stage ? STAGE_NAMES[stage] || stage : `an unnamed job (conclusion ${run?.conclusion || 'unknown'})`;
 }
 
+/** A night's scheduled dispatches (the 07:36Z run and its retry slot) sit within this span; a day earlier is last night. */
+const NIGHT_SPAN_MS = 12 * HOUR;
+/**
+ * How many protected-release corpus runs belong to THIS night. Measured 2026-10-22: a manual workflow_dispatch proving
+ * run at 10:36Z Oct 21 and a stood-down retry slot at 11:25Z Oct 21 made ONE scheduled night read "attempt 2; 1 retried".
+ * The night is anchored on the newest `schedule` dispatcher that dispatched a run, plus scheduled dispatchers within
+ * NIGHT_SPAN_MS before it; a run counts only from that start and never when its dispatcher was a manual
+ * workflow_dispatch. A stood-down retry slot created no run, so it never counts. `runs` is newest-first, in window.
+ */
+export function nightAttempts(runs, dispatchers) {
+  const dispatchKey = (d) => `corpus-${d.id}-${d.attempt ?? 1}`;
+  const runKey = (run) => CORPUS_RUN_TITLE.exec(String(run.title || ''))?.[1];
+  const byKey = new Map(dispatchers.map((d) => [dispatchKey(d), d]));
+  const manual = (run) => byKey.get(runKey(run))?.event === 'workflow_dispatch';
+  const [newest] = runs;
+  if (manual(newest)) return ' (1 attempt; manual dispatch)';
+  const scheduled = dispatchers.filter((d) => !d.event || d.event === 'schedule'); // an undated event is read as the schedule
+  const anchor = scheduled.find((d) => runs.some((run) => runKey(run) === dispatchKey(d)));
+  const nightStart = anchor
+    ? Math.min(...scheduled.filter((d) => ms(d.createdAt) <= ms(anchor.createdAt) && ms(anchor.createdAt) - ms(d.createdAt) <= NIGHT_SPAN_MS).map((d) => ms(d.createdAt)))
+    : ms(newest.createdAt);
+  const count = runs.filter((run) => ms(run.createdAt) >= nightStart && !manual(run)).length || 1;
+  return count > 1 ? ` (attempt ${count} of the night; ${count - 1} retried)` : ' (1 attempt)';
+}
+
 /**
  * THE ONE LINE the owner reads first: what the night did, result first, in Eastern time. `input` is
  * gatherCorpusHealthInput's; the night is the newest corpus run of the last 24h and every retry of it.
@@ -410,9 +435,10 @@ export function summarizeNight(input, now) {
   const inWindow = (iso) => { const t = ms(iso); return t !== null && t <= at && at - t <= TONIGHT_WINDOW_MS; };
   const runs = (input?.corpusRuns || []).filter((run) => inWindow(run.createdAt))
     .map((run) => ({ ...run, outcome: run.outcome ?? classifyCorpusRun(run) })).sort((a, b) => ms(b.createdAt) - ms(a.createdAt));
-  const dispatcher = (input?.dispatcherRuns || []).filter((d) => inWindow(d.createdAt)).sort((a, b) => ms(b.createdAt) - ms(a.createdAt))[0];
+  const dispatchers = (input?.dispatcherRuns || []).filter((d) => inWindow(d.createdAt)).sort((a, b) => ms(b.createdAt) - ms(a.createdAt));
+  const [dispatcher] = dispatchers;
   const latest = input?.latestRelease;
-  const attempts = runs.length > 1 ? ` (attempt ${runs.length} of the night; ${runs.length - 1} retried)` : '';
+  const attempts = runs.length ? nightAttempts(runs, dispatchers) : '';
   const keep = latest ? `customers keep ${latest.tag} (${hours(Math.max(0, at - (ms(latest.generation || latest.publishedAt) ?? at)))} old)` : 'no promoted generation is observed';
   if (!runs.length) {
     if (!dispatcher) return { outcome: 'no-run', line: `night: no corpus run in the last 24h (no dispatcher run either); ${keep}` };

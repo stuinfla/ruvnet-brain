@@ -28,7 +28,8 @@
       "class": "continuation nudge",
       "hosts": [
         "claude",
-        "codex"
+        "codex",
+        "grok"
       ],
       "responsibility": "May request one continuation for one explicitly authorized, project-scoped objective read from the user's own work ledger (ADR-043). Never a refusal, never a second task store. Amended 2026-09-30 (ADR-074 class `completion`, no new registration): the same Stop body also requests ONE correction when the final answer claims work is done without a verification command run after the last state change this turn (Claude transcript), a named check, and a NOT-verified disclosure — on Codex, whose rollout format is not parsed, only the answer-side half is enforced and the transcript half is reported UNKNOWN. It also records first-person promises from the final answer into the SAME per-project ledger (Claude only; capped; closed only by a later evidence-passing completion claim, never by --done) and requests continuation on them under the same loop guards and cooldown. Amended 2026-10-11 (ADR-106, no new registration): the same body asks ONCE when a Claude answer ends by asking permission for, or postponing, work a standing instruction or open promise already authorized and names no genuine blocker class (no-deferral); Codex is not enforced because its prompts are not parsed."
     },
@@ -38,7 +39,8 @@
       "class": "continuity capture",
       "hosts": [
         "claude",
-        "codex"
+        "codex",
+        "grok"
       ],
       "responsibility": "Write the redacted turn outcome with one bounded `ruflo memory store` in namespace turns and prove it by exact-key readback; a refusal is a hook-failures row. No journal, outbox or replay."
     },
@@ -48,7 +50,8 @@
       "class": "continuity capture",
       "hosts": [
         "claude",
-        "codex"
+        "codex",
+        "grok"
       ],
       "responsibility": "Store one append-only project-state-auto-<ms> checkpoint through `ruflo memory store` and read it back by exact key; start turn distillation (`ruflo memory distill run`)."
     },
@@ -58,7 +61,8 @@
       "class": "continuity capture",
       "hosts": [
         "claude",
-        "codex"
+        "codex",
+        "grok"
       ],
       "responsibility": "Store one append-only project-state-auto-<ms> checkpoint through `ruflo memory store` and read it back by exact key; start turn distillation (`ruflo memory distill run`)."
     },
@@ -88,7 +92,8 @@
       "class": "consequential-action authorization",
       "hosts": [
         "claude",
-        "codex"
+        "codex",
+        "grok"
       ],
       "responsibility": "The ONE process that may refuse a Write/Edit/MultiEdit/NotebookEdit/apply_patch (ADR-067): composes protect-state, hijack-ruvnet, ground-before-write (ADR-0012), adr-currency and duplicate-code (2026-09-30: a new code file or large new export duplicating existing code in this checkout, refused at most once per path per session) into one decision with one reason. Fails open on its own errors. apply_patch is Codex's raw write-tool name, added to the shared matcher 2026-09-12 after a real apply_patch call was measured to fire PreToolUse live (codex-cli 0.154.0); codex-hook-adapter.mjs normalizes it to the same Edit shape decision-gate.mjs's policies already read on Claude."
     },
@@ -98,7 +103,8 @@
       "class": "grounding receipt",
       "hosts": [
         "claude",
-        "codex"
+        "codex",
+        "grok"
       ],
       "responsibility": "After a SUCCESSFUL search_ruvnet, records which rUv products were consulted (a 24h stamp per term named in the query). It is the key that opens ground-before-write; without it the write gate would refuse every rUv-product write forever. Extended to Codex 2026-09-12: a real MCP search_ruvnet call fired PostToolUse with tool_name mcp__ruvnet_brain__search_ruvnet, which the existing matcher already recognized unchanged."
     },
@@ -108,7 +114,8 @@
       "class": "grounding turn marker",
       "hosts": [
         "claude",
-        "codex"
+        "codex",
+        "grok"
       ],
       "responsibility": "Records that ground-ruvnet's Gate 1 (the same regex, proven byte-identical by test) matched this turn's prompt, so grounding-turn-gate has something to check at Stop — Stop's own payload carries no prompt text. Amended 2026-09-30: also arms when the prompt asks a capability/feasibility/architecture question about any tool or platform, recording the subjects it named; a marker not yet consumed is merged without moving its mtime (a queued mid-turn prompt re-dating it was a measured false-alarm cause). Writes only a marker file under ~/.cache/ruvnet-brain/grounding-turn/; never blocks, never speaks to the model."
     },
@@ -118,7 +125,8 @@
       "class": "answered-without-search enforcement",
       "hosts": [
         "claude",
-        "codex"
+        "codex",
+        "grok"
       ],
       "responsibility": "The 'answered without searching' gate (2026-09-12): if grounding-turn-mark's marker shows Gate 1 fired this turn and grounding-stamp's own stamp evidence shows no search_ruvnet call happened since, forces continuation via the same hookSpecificOutput.additionalContext contract continuation-gate already uses on both hosts. A separate registration from continuation-gate — see grounding-turn-gate.mjs's header for why folding it into that file's ledger/cooldown semantics would corrupt them rather than extend them. Consumes its marker unconditionally so a stale one can never pressure an unrelated later turn. Amended 2026-09-30 (ADR-0030 #1): on Claude, 'was search_ruvnet called' is read from the transcript, and on an armed turn each capability claim in the final answer must be bound to a relevant strong source read this turn after the last weak one, else ONE correction naming the claim and what was read; on Codex (rollout not parsed) only rUv-term claims are judged, from stamps, and the rest are UNKNOWN. Gates #2/#3 are shadow-logged, never delivered."
     },
@@ -128,7 +136,8 @@
       "class": "normalized continuity observation",
       "hosts": [
         "claude",
-        "codex"
+        "codex",
+        "grok"
       ],
       "responsibility": "When learning is opted in, write one minimized workflow observation with `ruflo memory store` + exact-key readback; a refusal is a hook-failures row. No queue."
     }
@@ -204,7 +213,8 @@
       "event": "Stop",
       "hosts": [
         "claude",
-        "codex"
+        "codex",
+        "grok"
       ],
       "mode": "advisory",
       "offBehavior": "run",
@@ -216,7 +226,8 @@
       "event": "Stop",
       "hosts": [
         "claude",
-        "codex"
+        "codex",
+        "grok"
       ],
       "mode": "advisory",
       "offBehavior": "run",
@@ -228,7 +239,8 @@
       "event": "PreCompact",
       "hosts": [
         "claude",
-        "codex"
+        "codex",
+        "grok"
       ],
       "mode": "advisory",
       "offBehavior": "run",
@@ -240,7 +252,8 @@
       "event": "SessionEnd",
       "hosts": [
         "claude",
-        "codex"
+        "codex",
+        "grok"
       ],
       "mode": "advisory",
       "offBehavior": "run",
@@ -276,7 +289,8 @@
       "event": "PreToolUse",
       "hosts": [
         "claude",
-        "codex"
+        "codex",
+        "grok"
       ],
       "mode": "blocking",
       "offBehavior": "run",
@@ -288,7 +302,8 @@
       "event": "PostToolUse",
       "hosts": [
         "claude",
-        "codex"
+        "codex",
+        "grok"
       ],
       "mode": "advisory",
       "offBehavior": "silence",
@@ -300,7 +315,8 @@
       "event": "UserPromptSubmit",
       "hosts": [
         "claude",
-        "codex"
+        "codex",
+        "grok"
       ],
       "mode": "advisory",
       "offBehavior": "silence",
@@ -312,7 +328,8 @@
       "event": "Stop",
       "hosts": [
         "claude",
-        "codex"
+        "codex",
+        "grok"
       ],
       "mode": "advisory",
       "offBehavior": "silence",
@@ -324,7 +341,8 @@
       "event": "PostToolUse",
       "hosts": [
         "claude",
-        "codex"
+        "codex",
+        "grok"
       ],
       "mode": "advisory",
       "offBehavior": "run",

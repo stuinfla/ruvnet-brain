@@ -239,20 +239,18 @@ export function launchDetached(steps, { receipts, brainHome, projectDir, env = p
   return { launched: true, pid: child.pid };
 }
 
-function readTurnState(stateFile) {
-  try { return JSON.parse(fs.readFileSync(stateFile, 'utf8')) || {}; } catch { return {}; }
-}
+const readTurnState = (stateFile) => { try { return JSON.parse(fs.readFileSync(stateFile, 'utf8')) || {}; } catch { return {}; } };
+
+/** The newest store receipt for this exact key, while the receipt tail still holds it. */
+const storeReceipt = (receipts, key) => { try { return readTail(receipts, 128 * 1024).flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } }).findLast((r) => r.kind === 'store' && r.key === key) || null; } catch { return null; } };
+const verifiedReceipt = (r) => r?.status === 0 && r.verified === true;
 
 function sameTurnSeen(stateFile, sessionKey, fingerprint, receipts) {
   const previous = readTurnState(stateFile)[sessionKey];
   if (previous?.fingerprint !== fingerprint) return false;
-  try {
-    const rows = readTail(receipts, 128 * 1024).flatMap((line) => { try { return [JSON.parse(line)]; } catch { return []; } });
-    const receipt = rows.findLast((r) => r.kind === 'store' && r.key === previous.key);
-    if (receipt) return receipt.status === 0 && receipt.verified === true;
-  } catch { /* queued worker has no receipt yet */ }
-  // An in-flight worker gets a bounded grace period; a killed/lost worker cannot consume the turn forever.
-  return Date.now() - previous.at < 2 * STEP_TIMEOUT_MS + 10_000;
+  const receipt = storeReceipt(receipts, previous.key);
+  // No receipt yet: an in-flight worker gets a bounded grace period; a killed/lost worker cannot consume the turn forever.
+  return receipt ? verifiedReceipt(receipt) : Date.now() - previous.at < 2 * STEP_TIMEOUT_MS + 10_000;
 }
 
 function markTurnQueued(stateFile, sessionKey, fingerprint, key) {
@@ -266,9 +264,8 @@ function markTurnQueued(stateFile, sessionKey, fingerprint, key) {
 }
 
 /**
- * Capture this turn's outcome (Stop) and/or queue distillation (SessionEnd, PreCompact).
- * Returns a plain report; `queued` means a worker request, never proof the store committed.
- * `skipped` / `distill.skipped` carry the reason whenever nothing is requested.
+ * Capture this turn's outcome (Stop) and/or start distillation (SessionEnd, PreCompact). Returns a plain report:
+ * `queued` means a request, never proof the store committed; `skipped` / `distill.skipped` carry the reason.
  */
 export function captureTurnOutcome({
   projectDir, event, payload = {}, host = 'claude',
@@ -322,10 +319,12 @@ export function captureTurnOutcome({
       const fingerprint = crypto.createHash('sha256').update(JSON.stringify([turn.finalText, turn.files])).digest('hex');
       const stateFile = path.join(brainHome, 'turn-capture', 'last-turn.json');
       const identity = crypto.createHash('sha256').update(`${host}:${db}:${sessionKey}`).digest('hex');
+      const key = `turn-${project}-${digest(`${identity}:${fingerprint}`).slice(0, 40)}`;
       if (sameTurnSeen(stateFile, identity, fingerprint, receipts)) report.skipped = 'same turn outcome already queued or verified';
+      // Proven at Stop already: SessionEnd/PreCompact must not re-send it (2026-10-19/20: each re-send was an "append rejected" row).
+      else if (verifiedReceipt(storeReceipt(receipts, key))) report.skipped = 'turn key already verified at an earlier boundary';
       else {
         const at = now();
-        const key = `turn-${project}-${digest(`${identity}:${fingerprint}`).slice(0, 40)}`;
         dedupe = { stateFile, identity, fingerprint, key };
         const value = buildTurnRecord({ turn, project, host, session: payload.session_id, at });
         steps.push({ ...binding, kind: 'store', ruflo, args: ['memory', 'store', '--key', key, '--value', value, '--namespace', TURN_NAMESPACE,
@@ -444,13 +443,14 @@ export function runSteps({ steps = [], receipts, event = '' } = {}, { run: suppl
       delete options.env.CLAUDE_FLOW_MEMORY_PATH;
       const r = run(invocation.executable, invocation.args, options);
       status = Number.isInteger(r.status) ? r.status : 1;
-      if (kind === 'store' && !verified && status === 0) verified = read({ ruflo, db, key, run, options }) === value;
-      if (verified) status = 0;
+      const duplicate = kind === 'store' && status !== 0 && /already exists/i.test(captureFailureReason(r, status)); // append-only refusal
+      if (kind === 'store' && (status === 0 || duplicate)) { verified = read({ ruflo, db, key, run, options }) === value; if (verified) status = 0; } // identical bytes = success
       if (kind === 'distill' && status === 0) {
         const match = /(?:^|\n)\s*skipped:\s*([^\n]+)/i.exec(String(r.stdout || '').replace(/\x1b\[[0-9;]*m/g, ''));
         if (match) skipped = redactText(match[1]).slice(0, 300);
       }
-      if (!verified && (r.error || status !== 0)) error = captureFailureReason(r, status);
+      if (!verified && duplicate) error = 'duplicate turn key holds different content';
+      else if (!verified && (r.error || status !== 0)) error = captureFailureReason(r, status);
       else if (kind === 'store' && !verified) { status = 1; error = 'exact turn key/content readback failed'; }
     } catch (e) { status = 1; error = redactText(e.message).slice(0, 300); }
     if (error) error = maskExcludedPaths(error, privacyPatterns, projectDir);

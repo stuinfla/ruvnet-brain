@@ -131,7 +131,7 @@ describe('decision-gate write route and grounding-stamp are registered on Codex 
 
   it('the shared decision-gate matcher recognizes apply_patch without dropping any Claude write tool', () => {
     const spec = continuityRegistrations().find((r) => r.event === 'PreToolUse' && r.id === 'decision-gate');
-    expect(spec.hosts.slice().sort()).toEqual(['claude', 'codex']);
+    expect(spec.hosts.slice().sort()).toEqual(['claude', 'codex', 'grok']); // Grok: plugin/hooks/grok-hooks.json (measured 2026-10-13)
     const re = new RegExp(spec.matcher);
     for (const claudeTool of ['Write', 'Edit', 'MultiEdit', 'NotebookEdit']) {
       expect(re.test(claudeTool), `matcher stopped matching Claude's ${claudeTool}`).toBe(true);
@@ -145,7 +145,7 @@ describe('decision-gate write route and grounding-stamp are registered on Codex 
 
   it('grounding-stamp keeps byte-identical matchers on both hosts — Codex needed no change', () => {
     const spec = continuityRegistrations().find((r) => r.event === 'PostToolUse' && r.id === 'grounding-stamp');
-    expect(spec.hosts.slice().sort()).toEqual(['claude', 'codex']);
+    expect(spec.hosts.slice().sort()).toEqual(['claude', 'codex', 'grok']);
     // Real MCP tool_name observed live 2026-09-12 for this repo's own search_ruvnet server.
     expect(new RegExp(spec.matcher).test('mcp__ruvnet_brain__search_ruvnet')).toBe(true);
   });

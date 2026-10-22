@@ -48,11 +48,14 @@ export const GROK_OUTPUT_EVENTS = Object.freeze(new Set(['PreToolUse', 'PostTool
 
 /**
  * This adapter's own kill budget, below the registration timeout in grok-hooks.json so the adapter,
- * not Grok, ends a slow body and records it. SessionEnd: Grok bounds each SessionEnd hook by its own
- * timeout (default 1.5 s, 10-hooks.md:477-478); 2200 ms sits under the 3 s registration.
+ * not Grok, ends a slow body and records it. SessionEnd: "A plugin's SessionEnd hook runs for at most
+ * that default [1.5 s], whatever its timeout" (10-hooks.md:644-645), so the budget sits under 1500 ms and
+ * is handed to the body (RUVNET_CODEX_BUDGET_MS, the host-budget seam the Codex wrapper already uses), which
+ * then detaches its checkpoint instead of starting an inline store+readback Grok would kill partway.
  */
+export const SESSION_END_BUDGET_MS = 1_400;
 export function budgetFor(hookId, event) {
-  if (event === 'SessionEnd') return 2_200;
+  if (event === 'SessionEnd') return SESSION_END_BUDGET_MS;
   if (hookId === 'decision-gate') return 6_500;
   if (hookId === 'grounding-stamp' || hookId === 'grounding-turn-mark') return 4_000;
   return 8_500;
@@ -133,6 +136,7 @@ async function main() {
     CLAUDE_PROJECT_DIR: projectDir,
     CLAUDE_SESSION_ID: String(payload.session_id || process.env.GROK_SESSION_ID || ''),
     RUVNET_HOOK_HOST: 'grok',
+    ...(event === 'SessionEnd' ? { RUVNET_CODEX_BUDGET_MS: String(budget) } : {}), // the body plans inside Grok's 1.5 s
   };
   const r = spawnSync(process.execPath, [path.join(HERE, 'hook-shim.mjs'), hookId, ...extra], {
     input: JSON.stringify(payload), encoding: 'utf8', env, cwd, timeout: budget, killSignal: 'SIGKILL',
