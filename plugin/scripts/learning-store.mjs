@@ -32,7 +32,7 @@ export function runLearningRuflo(binary, args, db, { env = process.env, deadline
   const cwd = rufloRunDir(db, { root: env.RUVNET_RUFLO_CWD_ROOT || path.join(env.HOME || env.USERPROFILE || os.homedir(), '.cache', 'ruvnet-brain', 'learning-ruflo') });
   try {
     const invocation = rufloInvocation(binary, args);
-    return spawnSync(invocation.executable, invocation.args, { cwd, env: { ...env, RUFLO_DAEMON_AUTOSTART: '0' },
+    return spawnSync(invocation.executable, invocation.args, { cwd, env: { ...env, RUFLO_DAEMON_AUTOSTART: '0', CLAUDE_FLOW_AUTO_UPDATE: 'false' },
       encoding: 'utf8', shell: false, timeout: Math.min(maxStepMs, remaining), killSignal: 'SIGKILL', maxBuffer: 65536, windowsHide: true });
   } finally { fs.rmSync(cwd, { force: true, recursive: true }); }
 }

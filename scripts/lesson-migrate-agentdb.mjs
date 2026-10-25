@@ -96,7 +96,7 @@ function rufloJson(args) {
   const tmp = path.join(SCRATCH_DIR, `call-${callCounter++}.json`);
   const fd = fs.openSync(tmp, 'w');
   try {
-    execFileSync(RUFLO, args, { stdio: ['ignore', fd, 'ignore'], timeout: CLI_TIMEOUT_MS, env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' } });
+    execFileSync(RUFLO, args, { stdio: ['ignore', fd, 'ignore'], timeout: CLI_TIMEOUT_MS, env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0', CLAUDE_FLOW_AUTO_UPDATE: 'false' } });
   } catch (e) {
     if (e.signal || e.code === 'ETIMEDOUT') {
       throw new Error(`ruflo ${args.join(' ')} did not finish within ${CLI_TIMEOUT_MS}ms (killed with ${e.signal || e.code}) — likely lock contention from a concurrent writer on this shared machine. Re-run.`);

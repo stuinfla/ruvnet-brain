@@ -326,8 +326,10 @@ jobs:
     needs: [verified-candidate, seal-payload]
     runs-on: ubuntu-latest
     # Channel publication must be bounded. Public host proof runs in the parallel matrix below;
-    # it must never turn the publisher into a 90-minute release gate.
-    timeout-minutes: 20
+    # it must never turn the publisher into a 90-minute release gate. 40, not 20: measured runs took 18-18.5 min
+    # (4.7.16, 4.7.17) and 4.7.18's was cancelled at 20:00 while npm was still processing the staged tarball
+    # (run 40128468312; the payload restore alone took 6 min). The transaction resumed cleanly on re-run.
+    timeout-minutes: 40
     environment: Production – ruvnet-brain
     permissions:
       actions: read

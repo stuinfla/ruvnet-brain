@@ -613,7 +613,7 @@ export function runSecurityScan({ cwd = process.cwd(), timeoutMs = 20000, env = 
   // Every `ruflo` invocation auto-starts a project background daemon unless this is set (verified
   // live against the installed CLI: ~/.npm-global/lib/node_modules/ruflo/node_modules/@claude-flow/cli/dist/src/services/daemon-autostart.js:85).
   // A read-only version probe + two scan subcommands have no business leaving a daemon running.
-  env = { ...env, RUFLO_DAEMON_AUTOSTART: '0' };
+  env = { ...env, RUFLO_DAEMON_AUTOSTART: '0', CLAUDE_FLOW_AUTO_UPDATE: 'false' };
   const probe = spawnSync('ruflo', ['--version'], { encoding: 'utf8', timeout: 5000, env });
   if (probe.error || probe.status !== 0) {
     return { available: false, reason: 'ruflo not found on PATH — MCP surface not scanned (install: npm i -g ruflo)' };

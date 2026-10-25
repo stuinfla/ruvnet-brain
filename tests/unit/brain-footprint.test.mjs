@@ -155,6 +155,10 @@ describe('inventory: everything the Brain owns is classified', () => {
     write(path.join(scratch, '.swarm', 'hnsw.metadata.json'), '{}');
     fs.mkdirSync(path.join(scratch, 'run-old')); old(path.join(scratch, 'run-old'), 1);
     fs.mkdirSync(path.join(scratch, 'run-live'));
+    // ruflo's startup self-update (`npm install @claude-flow/cli@X --save-exact` in its cwd), measured 2026-10-22 at 1.3 GB
+    write(path.join(scratch, 'node_modules', '@claude-flow', 'cli', 'package.json'), '{"version":"3.59.17"}');
+    write(path.join(scratch, 'package.json'), '{"dependencies":{"@claude-flow/cli":"3.59.17"}}');
+    write(path.join(scratch, 'package-lock.json'), '{}');
     json(path.join(m.brainHome, 'leases', 'mcp-dead.json'), { pid: 2 ** 30, version: '4.2.7' }); old(path.join(m.brainHome, 'leases', 'mcp-dead.json'), 1);
     json(path.join(m.brainHome, 'leases', 'mcp-me.json'), { pid: process.pid, version: '4.2.7' }); old(path.join(m.brainHome, 'leases', 'mcp-me.json'), 1);
     write(path.join(m.brainHome, 'ruvector-mcp', 'ruvector.db'), 'their data');
@@ -185,6 +189,9 @@ describe('inventory: everything the Brain owns is classified', () => {
     expect(cls(path.join(m.brainHome, 'ruflo-cwd', 'p1', '.swarm'))).toBe('must-not-exist');
     expect(cls(path.join(m.brainHome, 'ruflo-cwd', 'p1', 'run-old'))).toBe('must-not-exist');
     expect(item(fp, path.join(m.brainHome, 'ruflo-cwd', 'p1', 'run-live'))).toBeUndefined();
+    for (const n of ['node_modules', 'package.json', 'package-lock.json']) {
+      expect(item(fp, path.join(m.brainHome, 'ruflo-cwd', 'p1', n))).toMatchObject({ class: 'must-not-exist', kind: 'ruflo-scratch', action: 'remove' });
+    }
     expect(cls(path.join(m.brainHome, 'leases', 'mcp-dead.json'))).toBe('must-not-exist');
     expect(item(fp, path.join(m.brainHome, 'leases', 'mcp-me.json'))).toBeUndefined(); // old mtime, live pid
     expect(item(fp, path.join(m.brainHome, 'ruvector-mcp'))).toMatchObject({ class: 'unowned', action: 'report' });
@@ -468,6 +475,20 @@ describe('positive confirmation', () => {
     expect(by.cruft).toMatchObject({ state: 'fail', fix: 'npx ruvnet-brain --clean' });
     expect(footprintAlarm(r)).toMatch(/^\[RuvNet Brain — FOOTPRINT NOT CLEAN\] 2 knowledge-base copies/);
     expect(r.ok).toBe(false);
+  });
+
+  it('over budget with nothing --clean can remove names the largest Brain folders, not --clean (2026-10-24)', () => {
+    const m = clean();
+    write(path.join(m.brainHome, 'model-routing', 'big.bin'), 'z'.repeat(4096));
+    const fp = inventoryFootprint(opts(m));
+    expect(fp.cruft).toEqual([]);
+    const over = run(m, { footprint: { ...fp, withinBudget: false } }).lines.find((l) => l.id === 'footprint');
+    expect(over.state).toBe('fail');
+    expect(over.fix).toMatch(/^npx ruvnet-brain --clean has nothing to remove; the largest Brain folders are .*model-routing/);
+    // With something removable, --clean is still the fix.
+    write(path.join(m.brainHome, 'ruflo-cwd', 'p9', 'node_modules', 'x', 'package.json'), '{}');
+    const fp2 = inventoryFootprint(opts(m));
+    expect(run(m, { footprint: { ...fp2, withinBudget: false } }).lines.find((l) => l.id === 'footprint').fix).toBe('npx ruvnet-brain --clean');
   });
 
   // Review S5 + the owner's ruling: ONE verdict, and currency only ADVISES. A correctly installed older build
@@ -864,7 +885,7 @@ describe('SessionStart footprint line', () => {
 async function mutant(replacements) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'footprint-mutant-'));
   dirs.push(dir);
-  for (const f of ['brain-footprint.mjs', 'kb-copy-proof.mjs', 'brain-confirmation.mjs', 'mcp-readiness.mjs', 'brain-location.mjs', 'footprint-io.mjs']) {
+  for (const f of ['brain-footprint.mjs', 'kb-copy-proof.mjs', 'brain-confirmation.mjs', 'mcp-readiness.mjs', 'brain-location.mjs', 'footprint-io.mjs', 'ruflo-bin.mjs']) {
     let src = fs.readFileSync(path.join(ROOT, 'plugin', 'scripts', f), 'utf8');
     for (const [file, from, to] of replacements) if (file === f) {
       expect(src.includes(from), `mutation anchor missing in ${f}: ${from}`).toBe(true);

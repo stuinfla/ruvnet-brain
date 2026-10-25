@@ -35,7 +35,7 @@ function ruflo(cwd, args) {
   // live: ~/.npm-global/lib/node_modules/ruflo/node_modules/@claude-flow/cli/dist/src/services/
   // daemon-autostart.js:85) — this doctor walks a whole fleet of project dirs and must not leave
   // one daemon running per project as a side effect of asking each one a question.
-  const r = spawnSync(RUFLO, args, { cwd, encoding: 'utf8', timeout: 120000, env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' } });
+  const r = spawnSync(RUFLO, args, { cwd, encoding: 'utf8', timeout: 120000, env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0', CLAUDE_FLOW_AUTO_UPDATE: 'false' } });
   return { out: (r.stdout || '') + (r.stderr || ''), status: r.status };
 }
 

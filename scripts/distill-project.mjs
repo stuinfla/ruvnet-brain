@@ -48,7 +48,7 @@ const HOME = os.homedir();
 // install whose npm prefix is not the owner's (Homebrew, nvm, Volta, plain `npm -g`) was told its
 // tool was missing while ruflo sat on their PATH. One resolver, shared — see ruflo-bin.mjs.
 const RUFLO = resolveRuflo();
-const RUFLO_ENV = { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' };
+const RUFLO_ENV = { ...process.env, RUFLO_DAEMON_AUTOSTART: '0', CLAUDE_FLOW_AUTO_UPDATE: 'false' };
 
 const argv = process.argv.slice(2);
 const arg = (f, d) => { const i = argv.indexOf(f); return i >= 0 && argv[i + 1] ? argv[i + 1] : d; };

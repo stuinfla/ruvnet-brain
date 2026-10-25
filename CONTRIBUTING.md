@@ -1,4 +1,4 @@
-Updated: 2026-10-20 14:30:00 EDT | Version 1.3.0
+Updated: 2026-10-24 15:00:00 EDT | Version 1.4.0
 Created: 2026-07-07 09:22:01 EDT
 
 # Contributing to RuvNet Brain — the one rulebook
@@ -113,13 +113,16 @@ captured by `scripts/gist-receipts.mjs` (the single gist pipeline). The job need
 secret `RUVNET_GISTS_TOKEN` (a GitHub token with no scopes) — without it, gist listing falls back
 to anonymous API calls and is rate-limited.
 
-**Published nightly.** `corpus-nightly-dispatch.yml` (07:17 UTC) dispatches
+**Published nightly.** `corpus-nightly-dispatch.yml` (05:17 UTC, 1:17 a.m. EDT) dispatches
 `protected-release.yml mode=corpus`, which signs and promotes a `corpus-sha256-*` release. It is armed
 unless the repository variable `CORPUS_NIGHTLY` is exactly `off` (the owner's kill switch; flipping it
 needs no code release) and it stands down (green, not failed) until an approved runtime resolves. A
 night whose upstream inputs are unchanged since the newest generation ends `no-change` and publishes
 nothing. `corpus-watchdog.yml` (17:17 UTC) turns red, and pages through `ntfy-alerts`, when no night has
-ended `published` or `no-change` in 48 hours, so a silent stand-down cannot go unnoticed.
+ended `published` or `no-change` in 48 hours, so a silent stand-down cannot go unnoticed. Why 05:17 (moved from
+07:17 on 2026-10-24): a night publishes 45-75 minutes after dispatch, and at 07:17 it landed about 4:00-4:35 a.m. ET,
+after the 3:30 a.m. local Brain nightly on every US machine, so those nightlies always installed the previous night's
+corpus and a session start had to catch up.
 The approved runtime is never committed: `node scripts/approved-runtime.mjs --resolve` takes the newest
 `vX.Y.Z` release only, requires its signed `public-verification-aggregate.json` to verify against
 `keys/ruvnet-brain-signing.pub.pem`, and rebuilds the runtime pin from that release's own zip
@@ -156,7 +159,7 @@ a rate limit, HTTP 429/5xx, a reset, a timeout, a DNS or TLS blip, git's credent
 fetch -- is retried inside the step, bounded (3 tries, 15 s then 30 s; `scripts/transient-gh.mjs` is the one
 classifier) at every GitHub, API and git read in dispatch, identity, prepare, seal, publisher, canary and
 promote; a write (`gh release create`) runs exactly once. The night itself is retried once: the dispatcher's
-second schedule (11:17 UTC, `RETRY_CRON`) re-dispatches only when every run of the night ended `failed` (or
+second schedule (09:17 UTC, `RETRY_CRON`) re-dispatches only when every run of the night ended `failed` (or
 reached no outcome), none is running, and no retry has happened (`decideRetry`); a published, no-change,
 superseded or canary-rejected night is an answer and is never redone, the kill switch and the approved-runtime
 resolution still apply, and a content-addressed tag that already exists is refused, so nothing is published

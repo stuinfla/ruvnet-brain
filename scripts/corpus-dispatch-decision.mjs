@@ -21,7 +21,7 @@
 
 //
 // THE RETRY SLOT (2026-10-20). Measured on 38 nights: 24 failed, most on one transient blip, and nothing
-// retried until the next calendar day. The dispatcher now also fires at RETRY_CRON (11:17 UTC, four hours
+// retried until the next calendar day. The dispatcher now also fires at RETRY_CRON (09:17 UTC since 2026-10-24, four hours
 // after the night's first slot) and asks decideRetry(): re-dispatch ONLY when every corpus run of the
 // night so far ended `failed` (or reached no outcome), none is still running, none ended published /
 // no-change / superseded / canary-rejected (those are answers, not weather), and fewer than
@@ -37,9 +37,10 @@ import { pathToFileURL } from 'node:url';
 
 export const MIN_PIPELINE_VERSION = '4.3.38'; // sync-version-ignore: a fixed pipeline floor, not the current version
 /** The dispatcher's second schedule entry; corpus-nightly-dispatch.yml's `on.schedule` must carry exactly this line. */
-export const RETRY_CRON = '17 11 * * *';
-/** How far back the retry slot looks for the night's runs: past the 07:17 UTC first slot, never into yesterday. */
-export const RETRY_WINDOW_MS = 10 * 3_600_000;
+export const RETRY_CRON = '17 9 * * *';
+/** How far back the retry slot looks for the night's runs: past the 05:17 UTC first slot (with room for GitHub's late
+ * schedule starts), never into yesterday's slot or an evening manual dispatch. */
+export const RETRY_WINDOW_MS = 8 * 3_600_000;
 export const MAX_CORPUS_RUNS_PER_NIGHT = 2;
 // `unknown` (every job green, no outcome) is retried only when the run itself did NOT conclude success: a green
 // run that reached no outcome is a workflow defect the terminal-outcome job already fails loudly, not weather.

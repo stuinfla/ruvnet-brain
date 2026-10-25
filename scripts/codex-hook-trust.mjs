@@ -23,6 +23,7 @@
 // that one hook `modified`, the other ten still `trusted`. currentHash from `hooks/list` equals
 // codexHookHash() below for every hook (tests/unit/codex-hook-trust.test.mjs pins the real values).
 import crypto from 'node:crypto';
+import nodeFs from 'node:fs';
 
 const EVENT_LABEL = Object.freeze({
   PreToolUse: 'pre_tool_use', PermissionRequest: 'permission_request', PostToolUse: 'post_tool_use',
@@ -92,3 +93,47 @@ export function codexTrustChanges(prevHooksFile, nextHooksFile, keySource) {
 export const CODEX_TRUST_ACTION = 'Start Codex (interactive, in any project). At the "Hooks need review" prompt choose'
   + ' "Trust all and continue" — or type /hooks and trust each RuvNet Brain hook. Until then Codex skips them'
   + ' (codex exec never asks). Then re-run npx ruvnet-brain --doctor.';
+
+/**
+ * Codex's plugin bundle fingerprint, ported byte for byte from openai/codex rust-v0.164.0
+ * codex-rs/hooks/src/engine/plugin_fingerprint.rs plugin_content_hash(). Since 0.164 a plugin hook's
+ * `currentHash` is "<declaration hash>/<this hash>" and its approval stores the two separately
+ * (`trusted_hash` + `trusted_content_hash`, plugin_trust.rs matches_hash). Measured 2026-10-24: every Brain update
+ * left all 13 Codex hooks "modified" because the Brain wrote only the declaration hash.
+ * Walk: depth-first, entries sorted by file name (bytes), skipping __pycache__, .venv, *.pyc, *.egg-info; each entry
+ * hashes its root-relative path (u64 LE length + bytes), then "directory", or "file" + u64 LE size + contents.
+ * Anything that is neither (a symlink) throws, as it does in Codex.
+ */
+export function codexPluginContentHash(root, { fsImpl = null, onFile = null, platform = process.platform } = {}) {
+  const fs = fsImpl || nodeFs;
+  const u64 = (n) => { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(n)); return b; };
+  if (!fs.lstatSync(root).isDirectory()) throw new Error('plugin root is not a directory');
+  const hash = crypto.createHash('sha256').update('codex-plugin-bundle-v1');
+  // Rust hashes the OS-native relative path bytes: '\\' separators on Windows (review 2026-10-24).
+  const sep = platform === 'win32' ? '\\' : '/';
+  const pending = [''];
+  while (pending.length) {
+    const rel = pending.pop();
+    const base = rel.split('/').pop();
+    if (rel && (base === '__pycache__' || base === '.venv' || base.endsWith('.pyc') || base.endsWith('.egg-info'))) continue;
+    const name = Buffer.from(rel.split('/').join(sep));
+    hash.update(u64(name.length)).update(name);
+    const full = rel ? `${root}/${rel}` : root;
+    const st = fs.lstatSync(full);
+    if (st.isDirectory()) {
+      hash.update('directory');
+      const entries = fs.readdirSync(full).sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)));
+      for (const entry of entries.reverse()) pending.push(rel ? `${rel}/${entry}` : entry);
+    } else if (st.isFile()) {
+      const bytes = fs.readFileSync(full);
+      if (bytes.length !== st.size) throw new Error('plugin file changed while fingerprinting');
+      // The caller sees exactly the bytes that enter the fingerprint: one read, so nothing can change between a check
+      // and the hash it approves (review 2026-10-24: a separate verification pass was a swap window).
+      onFile?.(rel, bytes);
+      hash.update('file').update(u64(st.size)).update(bytes);
+    } else {
+      throw new Error(`unsupported plugin entry type: ${full}`);
+    }
+  }
+  return `sha256:${hash.digest('hex')}`;
+}

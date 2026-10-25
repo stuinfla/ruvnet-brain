@@ -25,6 +25,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { isKbTree, kbCopyProof } from './kb-copy-proof.mjs';
 import { brainLocation } from './brain-location.mjs';
+import { RUFLO_CWD_ARTIFACTS } from './ruflo-bin.mjs';
 import { assessMoveLeftovers, cachedKept, cmpVersion, isVolumeMetadata, keptCopyFix, physical, pidAlive, readProofCache, rememberKept, removeWithin, rotate,
   treeBytes, truncateToTail } from './footprint-io.mjs';
 
@@ -59,7 +60,8 @@ export const LOG_FILES = Object.freeze(['evidence.jsonl', 'token-ledger.jsonl', 
   'capability-live-evidence.jsonl', 'design-grades.jsonl', 'grounding-overrides.jsonl']);
 const TEXT_LOG = /^\.(?:last-[A-Za-z0-9-]+|seed)\.log$/;
 const RECOVERY_LEFTOVER = /(?:\.(?:bak|retired|dead)-\d{6,}|^bootstrap-backup-\d)/;
-const RUFLO_DEBRIS = new Set(['.swarm', '.claude', '.claude-flow', 'ruvector.db']);
+// One list with ruflo-bin.mjs, which clears the same names before each call (incl. a self-update's npm install, 1.3 GB on 2026-10-22).
+const RUFLO_DEBRIS = new Set(RUFLO_CWD_ARTIFACTS);
 // Directories in the brain home that hold data another tool owns: measured, shown, never budgeted or removed.
 const FOREIGN = { 'ruvector-mcp': 'RuVector MCP server working store (its own live memory)',
   'worktree-recovery': 'hand-made recovery archives, not created by the Brain' };

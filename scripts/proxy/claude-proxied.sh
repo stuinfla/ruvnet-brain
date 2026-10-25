@@ -26,6 +26,7 @@ set -euo pipefail
 # daemon-autostart.js:85). This script only checks/starts the proxy — it has no business leaving a
 # swarm daemon running as a side effect.
 export RUFLO_DAEMON_AUTOSTART=0
+export CLAUDE_FLOW_AUTO_UPDATE=false
 
 TOKEN_FILE="$HOME/.ruflo/proxy-token"
 

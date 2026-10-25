@@ -245,7 +245,11 @@ export function rufloCwdFor(storePath, { root = rufloScratchRoot() } = {}) {
   return ensurePrivateDir(path.join(root, projectKey));
 }
 
-const RUFLO_CWD_ARTIFACTS = Object.freeze(['.swarm', '.claude', '.claude-flow', 'ruvector.db']);
+// node_modules / package.json / package-lock.json: ruflo's startup self-update runs `npm install @claude-flow/cli@X
+// --save-exact` in its cwd (ruflo v3 @claude-flow/cli dist/src/update/executor.js). Measured 2026-10-22: a 1.3 GB
+// install landed here. Every Brain spawn now sets CLAUDE_FLOW_AUTO_UPDATE=false (update/rate-limiter.js reads it);
+// these names are the backstop for a ruflo started without it.
+export const RUFLO_CWD_ARTIFACTS = Object.freeze(['.swarm', '.claude', '.claude-flow', 'ruvector.db', 'node_modules', 'package.json', 'package-lock.json']);
 const STALE_RUN_MS = 3_600_000;
 
 /**

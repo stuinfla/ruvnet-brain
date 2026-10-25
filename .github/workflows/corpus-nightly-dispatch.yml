@@ -35,10 +35,10 @@ name: corpus-nightly-dispatch
 # night; a canary-rejected, superseded, no-change or published night is an answer and is never redone.
 on:
   schedule:
-    # 07:17 UTC — off the hour, so it does not queue behind the hourly GitHub Actions rush.
-    - cron: '17 7 * * *'
-    # 11:17 UTC (7:17 a.m. EDT) — the night's one retry slot; must equal RETRY_CRON in scripts/corpus-dispatch-decision.mjs.
-    - cron: '17 11 * * *'
+    # 05:17 UTC (1:17 a.m. EDT), off the hour; publishes before the 3:30 a.m. local Brain nightly in US zones (CONTRIBUTING.md).
+    - cron: '17 5 * * *'
+    # 09:17 UTC (5:17 a.m. EDT) — the night's one retry slot; must equal RETRY_CRON in scripts/corpus-dispatch-decision.mjs.
+    - cron: '17 9 * * *'
   workflow_dispatch: {}
 
 permissions:

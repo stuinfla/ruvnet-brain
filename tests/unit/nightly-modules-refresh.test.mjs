@@ -8,7 +8,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { installNightlyRunner, installScheduler, readNightlyRegistration, nightlyModuleCurrency, refreshNightlyModules,
+import { installNightlyRunner, installScheduler, readNightlyRegistration, nightlyModuleCurrency, refreshNightlyModules, nextReplacedSets,
   NIGHTLY_ENABLE_FIX, NIGHTLY_UPDATE_FIX } from '../../plugin/scripts/nightly-scheduler.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
@@ -52,6 +52,9 @@ describe('nightlyModuleCurrency reads the registration against the installed mod
     expect(after.ok, after.why).toBe(true);
     expect(digestOf(after.record)).toBe(before.current);
     expect(scalar(after.record)).toBe(scalar(w.registration)); // nothing the LaunchAgent reads changed
+    // The replaced set is kept so last night's receipt stays proof until the next night (2026-10-24 false alarm).
+    expect(after.record.replacedUpdateModules[0].updateModules).toEqual(w.registration.updateModules);
+    expect(Date.parse(after.record.replacedUpdateModules[0].replacedAt)).toBeGreaterThan(Date.now() - 60_000);
     expect(nightlyModuleCurrency({ brainHome: w.brainHome, runnerSource: RUNNER }).state).toBe('current');
     // A changed runner is never applied from here: the LaunchAgent command would change.
     const otherRunner = path.join(tmp('runner-'), 'nightly-refresh.mjs');
@@ -84,7 +87,8 @@ describe('nightlyModuleCurrency reads the registration against the installed mod
     expect(result.state).toBe('refreshed');
     const after = JSON.parse(fs.readFileSync(w.registration.recordPath, 'utf8'));
     expect(after).not.toHaveProperty('environment');
-    const { updateModules: _a, ...restAfter } = after; const { updateModules: _b, ...restBefore } = stripped;
+    // updateModules moves, and the replaced set is recorded beside it (replacedUpdateModules); nothing else.
+    const { updateModules: _a, replacedUpdateModules: _r, ...restAfter } = after; const { updateModules: _b, ...restBefore } = stripped;
     expect(JSON.stringify(restAfter)).toBe(JSON.stringify(restBefore)); // same fields, same order, same bytes
     expect(digestOf(after)).toBe(result.registered);
   });
@@ -162,4 +166,14 @@ describe.skipIf(process.platform === 'win32')('the installer\'s post-update step
     expect(out).toMatch(/nightly module snapshot was not refreshed/);
     expect(result).toMatchObject({ status: 'FAIL', state: 'error' });
   }, 60_000);
+});
+
+describe('nextReplacedSets keeps every module set replaced inside the window', () => {
+  it('any number of refreshes in 48 h keeps the oldest (the set last night ran on); older ones and bad entries drop', () => {
+    const now = Date.parse('2026-10-25T12:00:00Z');
+    const set = (n) => ({ 'developer-update.mjs': { sha256: String(n).repeat(64) } });
+    let record = { updateModules: set(1), replacedUpdateModules: [{ updateModules: set(0), replacedAt: new Date(now - 72 * 3_600_000).toISOString() }, null] };
+    for (let n = 2; n <= 6; n += 1) record = { updateModules: set(n), replacedUpdateModules: nextReplacedSets(record, now - (7 - n) * 60_000) };
+    expect(record.replacedUpdateModules.map((e) => e.updateModules['developer-update.mjs'].sha256[0])).toEqual(['5', '4', '3', '2', '1']);
+  });
 });

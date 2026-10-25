@@ -150,10 +150,10 @@ fi
 # Memory distillation (ADR-174) had gone stale 3 days — same silent-death pattern as everything
 # else tonight. Independent of rebuild success/failure: mine raw memory_entries into structured
 # episodes/reasoning_patterns on every nightly run. Best-effort, never blocks the real job.
-RUFLO_DAEMON_AUTOSTART=0 ~/.npm-global/bin/ruflo memory distill run --path "$RUVNET_PROJECT_MEMORY_DB" >> "$LOG" 2>&1 || true
+RUFLO_DAEMON_AUTOSTART=0 CLAUDE_FLOW_AUTO_UPDATE=false ~/.npm-global/bin/ruflo memory distill run --path "$RUVNET_PROJECT_MEMORY_DB" >> "$LOG" 2>&1 || true
 # Durability: was a one-off manual snapshot before tonight. Now recurring — WAL-safe, rotates
 # automatically (keeps last 14), zero risk to the live DB (reads only).
-RUFLO_DAEMON_AUTOSTART=0 ~/.npm-global/bin/ruflo memory backup --db "$RUVNET_PROJECT_MEMORY_DB" --keep 14 >> "$LOG" 2>&1 || true
+RUFLO_DAEMON_AUTOSTART=0 CLAUDE_FLOW_AUTO_UPDATE=false ~/.npm-global/bin/ruflo memory backup --db "$RUVNET_PROJECT_MEMORY_DB" --keep 14 >> "$LOG" 2>&1 || true
 
 # LESSON BRIDGE (ADR-066, 2026-08-10) — carry newly-tagged machine-wide lessons into the store the
 # hooks actually read. Without this the bridge is a command someone has to remember, and a learning

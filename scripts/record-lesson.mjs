@@ -71,7 +71,7 @@ const ruflo = (args) => {
   const invocation = rufloInvocation(RUFLO, args);
   return execFileSync(invocation.executable, invocation.args, {
     cwd: dir, encoding: 'utf8', timeout: 60000, shell: false,
-    env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' },
+    env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0', CLAUDE_FLOW_AUTO_UPDATE: 'false' },
   });
 };
 

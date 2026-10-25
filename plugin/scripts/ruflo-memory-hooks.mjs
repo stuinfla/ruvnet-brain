@@ -48,7 +48,7 @@ export function projectStore(projectDir, { deadlineAt = Date.now() + 3000 } = {}
 export function rufloSpawnOptions(db, env = process.env) {
   let cwd;
   try { cwd = rufloRunDir(db, { root: rufloScratchRoot(env) }); } catch { cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-ruflo-')); }
-  return { cwd, env: { ...env, RUFLO_DAEMON_AUTOSTART: '0' }, cleanup: () => { try { fs.rmSync(cwd, { recursive: true, force: true }); } catch { /* swept later as a stale run- dir */ } } };
+  return { cwd, env: { ...env, RUFLO_DAEMON_AUTOSTART: '0', CLAUDE_FLOW_AUTO_UPDATE: 'false' }, cleanup: () => { try { fs.rmSync(cwd, { recursive: true, force: true }); } catch { /* swept later as a stale run- dir */ } } };
 }
 
 /** One `ruflo memory <args>` call, bounded by the caller's deadline. Resolves, never rejects. */

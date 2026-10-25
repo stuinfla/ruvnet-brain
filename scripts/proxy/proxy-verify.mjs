@@ -60,7 +60,7 @@ try {
     // Every `ruflo` invocation auto-starts a project background daemon unless this is set
     // (verified live: ~/.npm-global/lib/node_modules/ruflo/node_modules/@claude-flow/cli/dist/src/
     // services/daemon-autostart.js:85) — a health-check probe must not leave one running.
-    env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' },
+    env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0', CLAUDE_FLOW_AUTO_UPDATE: 'false' },
   });
   doctorOk = /Summary:.*passed/.test(doctorOut) && !/\b\d+ failed/.test(doctorOut);
 } catch (err) {

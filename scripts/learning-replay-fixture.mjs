@@ -32,6 +32,9 @@ const sh = (cmd, args, options = {}) => {
     encoding: 'utf8',
     timeout: 120_000,
     ...options,
+    // A ruflo started here would auto-start a daemon and run its in-cwd self-update (`npm install @claude-flow/cli`,
+    // 1.3 GB measured 2026-10-22) in the fixture project; a caller's own env still wins.
+    env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0', CLAUDE_FLOW_AUTO_UPDATE: 'false', ...(options.env || {}) },
   });
 };
 const remove = (target) => {

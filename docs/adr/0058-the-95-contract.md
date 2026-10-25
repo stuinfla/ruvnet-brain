@@ -3,11 +3,11 @@ id: ADR-058
 title: The 95 contract — one observable per dimension, one mutant per observable, and the external-signal watch plane
 status: Proposed
 date: 2026-07-27
-updated: 2026-10-03
+updated: 2026-10-24
 updated_source: derived-from-git
 version: 1.1.7
 impl: wired
-reviewed_digest: db5a08735446
+reviewed_digest: d88b18444b4e
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
 tags: [qa, gen2-qe, grading, external-signals, ci-watch, release-gate, mutation]
 supersedes: []
@@ -90,6 +90,7 @@ UNKNOWN, and no new behavioral learning result is claimed.
 
 ## Currency log
 
+| 2026-10-24 | Review `d88b18444b4e` (4.7.18): decision unchanged. `bin/install.mjs` and `scripts/nightly-wrapper.sh` moved | No contract threshold, lane or gate changed. `bin/install.mjs`: Codex plugin commands wait once and retry when Codex cannot load a marketplace snapshot, and only the install/update path refreshes a third-party snapshot; a failed host sync always records its reason; `--update` from a source checkout older than the installed runtime stops before downloading. `scripts/nightly-wrapper.sh`: its two ruflo calls set `CLAUDE_FLOW_AUTO_UPDATE=false`. Source: `bin/install.mjs`, `scripts/nightly-wrapper.sh`. |
 | 2026-10-03 | Architecture-aligned qualification replaces the contradictory whole-suite promotion job. New capture/recall/continuity/retention/learning boundaries join explicit reviewed inventories; duplicate Linux discovery/uninstall invocations removed. Zero-skip, exact-source, sealed artifact and native public verification remain required. Historical diagnostics are not a second release authority. | `scripts/release-qualification-contract.mjs`; `.github/workflows/canonical-qa.yml`; `.github/workflows/integration-linux.yml`; `CONTRIBUTING.md`. |
 | 2026-10-01 | Currency review (4.5 retrieval): decision unchanged. In `.github/workflows/ci.yml`, release-qe runs the capability-selection battery on the exact sealed bundle (REQUIRE_BRAIN=1), and warm-brain warms embedders through `scripts/ci/warm-brain-models.mjs`. No contract threshold changed. reviewed_digest db5a08735446. | Reviewed `.github/workflows/ci.yml`; probe runs 36889499709 and 36889505309. |
 | 2026-09-30 | **Reaffirmed the 2026-08-02 decision: no human approves a code release.** The required reviewer had been re-added to `Production – ruvnet-brain` after 2026-09-13 with no ADR row (ADR-0086 recorded none on 2026-09-13; the live setting showed one on 2026-09-30) and was removed again. CONTRIBUTING.md now names the machine gates that replace it; `single-source-check` B6/B12 reject instructions that put a person in the release path and C3 requires a branch policy and no admin bypass. | The owner cannot approve in GitHub and had asked repeatedly to be removed from the loop. The gates are unchanged: exact-SHA identity, trusted preflight, sealed payload, three-OS install verification, rollback. |

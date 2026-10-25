@@ -37,7 +37,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { runDeveloperUpdate, readDeveloperUpdateConfig } from '../plugin/scripts/developer-update.mjs';
-import { FAMILY, PLUGIN_MARKETPLACES, cmpVersion, pickTargetTag, normalizeNpmDistTags } from '../plugin/scripts/developer-update-policy.mjs';
+import { FAMILY, PLUGIN_MARKETPLACES, cmpVersion, pickTargetTag, normalizeNpmDistTags, normalizeNpmTimes, needsPublishTimes, wantedTag } from '../plugin/scripts/developer-update-policy.mjs';
 export { FAMILY, PLUGIN_MARKETPLACES, cmpVersion, pickTargetTag, normalizeNpmDistTags } from '../plugin/scripts/developer-update-policy.mjs';
 
 const HOME = os.homedir();
@@ -193,6 +193,13 @@ function registryTags(pkg) {
   try { return normalizeNpmDistTags(JSON.parse(r.stdout)); } catch { return null; }
 }
 
+// Publish times, so an abandoned pre-release tag is not reported as "behind" (same rule as the updater).
+function registryTimes(pkg) {
+  const r = spawnSync('npm', ['view', pkg, 'time', '--json'], { encoding: 'utf8', timeout: 30000 });
+  if (r.status !== 0 || !r.stdout) return null;
+  try { return normalizeNpmTimes(JSON.parse(r.stdout)); } catch { return null; }
+}
+
 // A second copy of a stack package in the npx cache can only ever SHADOW the global one.
 // It is never useful. This is how "two ruflos" happens.
 export function findShadows(npxCache = NPX_CACHE, lib = GLOBAL_LIB) {
@@ -228,11 +235,12 @@ export function classify(pkgs, { channel = readDeveloperUpdateConfig().channel }
     if (p.source === 'plugin') {
       return { ...p, tag: 'plugin', target: null, state: p.installed ? 'INSTALLED_UNVERIFIED' : 'BROKEN', evidence: 'local install record only; marketplace revision not checked' };
     }
-    const want = p.name === '@pacphi/agentic-kit' ? 'next' : channel === 'alpha' && FAMILY.test(p.name) ? 'alpha' : DEFAULT_TAG;
+    const want = wantedTag(p.name, channel);
     const tags = registryTags(p.name);
     // Newest of {policy tag, latest} — see pickTargetTag: "track @alpha" alone pinned the core behind
     // @latest on 2026-07-18. A package with no alpha tag falls through to latest.
-    const { tag, target } = pickTargetTag(tags, want);
+    const published = needsPublishTimes(tags, want) ? (registryTimes(p.name) || {}) : null;
+    const { tag, target } = pickTargetTag(tags, want, 'latest', { published });
     let state;
     if (!p.installed) state = 'BROKEN';
     else if (!target) state = 'UNRESOLVED';

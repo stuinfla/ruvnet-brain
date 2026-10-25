@@ -44,7 +44,9 @@ const OTHER_LANE_PATTERNS = [
 // RUFLO_BIN, ...) — hence case-insensitive on the identifier form. A single mandatory-prefix regex
 // (`[A-Za-z_$]<ruflo>...`) would silently reject an identifier that IS exactly "RUFLO" with nothing
 // before it — that false negative is why this is two steps instead of one combined pattern.
-const SPAWN_CALL = /\b(?:spawnSync|execFileSync|spawn|execFile)\s*\(\s*(?:(['"])([^'"]*)\1|([A-Za-z_$][A-Za-z0-9_$]*))/g;
+// `sh`/`run`/`invoke`/`invokeText`: the local spawn wrappers (2026-10-24: scripts/learning-replay-fixture.mjs ran
+// `sh(ruflo, ['memory', 'init'])` with no env and this scanner never saw it).
+const SPAWN_CALL = /\b(?:spawnSync|execFileSync|spawn|execFile|sh|run|invoke|invokeText)\s*\(\s*(?:(['"])([^'"]*)\1|([A-Za-z_$][A-Za-z0-9_$]*))/g;
 
 function fileSpawnsRuflo(src) {
   let m;
@@ -85,8 +87,11 @@ describe('RUFLO_DAEMON_AUTOSTART guard — every file that spawns the ruflo bina
     expect(relevant.length).toBeGreaterThan(0);
   });
 
-  it.each(relevant.map((f) => [path.relative(ROOT, f)]))('%s sets RUFLO_DAEMON_AUTOSTART', (rel) => {
+  it.each(relevant.map((f) => [path.relative(ROOT, f)]))('%s sets RUFLO_DAEMON_AUTOSTART and CLAUDE_FLOW_AUTO_UPDATE', (rel) => {
     const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
     expect(src).toContain('RUFLO_DAEMON_AUTOSTART');
+    // ruflo's startup self-update runs `npm install @claude-flow/cli --save-exact` in its cwd unless this is 'false'
+    // (@claude-flow/cli dist/src/update/rate-limiter.js); measured 2026-10-22: 1.3-1.4 GB left in two directories.
+    expect(src).toMatch(/CLAUDE_FLOW_AUTO_UPDATE(: 'false'|=false)/);
   });
 });

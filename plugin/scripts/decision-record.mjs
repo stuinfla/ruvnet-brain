@@ -138,7 +138,7 @@ function runRuflo(ruflo, db, args, { spawn = spawnSync } = {}) {
   try {
     const { executable, args: argv } = rufloInvocation(ruflo, args);
     const r = spawn(executable, argv, { cwd, encoding: 'utf8', timeout: 60_000, windowsHide: true,
-      env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0', CLAUDE_FLOW_MEMORY_PATH: undefined } });
+      env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0', CLAUDE_FLOW_AUTO_UPDATE: 'false', CLAUDE_FLOW_MEMORY_PATH: undefined } });
     return { status: Number.isInteger(r.status) ? r.status : 1, stdout: String(r.stdout || ''), output: `${r.stderr || ''}\n${r.stdout || ''}${r.error ? `\n${r.error.message}` : ''}` };
   } finally { fs.rmSync(cwd, { recursive: true, force: true }); }
 }

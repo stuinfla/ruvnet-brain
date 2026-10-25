@@ -303,12 +303,14 @@ describe('issue #79 — Console runtime update transaction', () => {
       wireClaude: () => ({ host: true, wired: false, error: 'Claude verification failed' }),
       wireCodexHost: () => ({ host: false, action: 'no-host' }),
       wireCodexPlugin: () => { throw new Error('Codex must remain untouched'); },
+      reason: /^Claude Code plugin wiring failed$/,
     },
     {
       label: 'Codex',
       wireClaude: () => ({ host: false, wired: false }),
       wireCodexHost: () => ({ host: true, action: 'unchanged' }),
       wireCodexPlugin: () => ({ host: true, action: 'verification-failed', error: 'Codex verification failed' }),
+      reason: /^Codex plugin verification-failed: Codex verification failed$/,
     },
   ])('$label selected-host failure rolls Console runtime B back to byte-identical A', (hostFailure) => {
     const cache = temporary('brain-console-cache-');
@@ -327,6 +329,8 @@ describe('issue #79 — Console runtime update transaction', () => {
     });
 
     expect(result.ok).toBe(false);
+    // The refresh receipt records `error`; it used to be undefined on these paths (2026-10-23: `state: null, error: null`).
+    expect(result.error).toMatch(hostFailure.reason);
     expect(treeSnapshot(runtime)).toEqual(before);
     expect(fs.existsSync(path.join(brainHome, 'host-convergence.json'))).toBe(false);
     expect(fs.readdirSync(cache).filter((name) => /\.console-runtime\.(?:tmp|prior)-/.test(name))).toEqual([]);

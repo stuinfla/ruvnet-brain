@@ -17,7 +17,8 @@ export const WAL_REFUSAL_TEXT = '[ERROR] Failed to store: active native WAL conn
 const roots = [];
 // maxRetries: a detached ruflo writer can still be creating files inside the fixture while it is removed
 // (ENOTEMPTY on Linux CI, 2026-10-15); retrying the removal is the standard remedy and hides nothing.
-export function cleanup() { for (const r of roots.splice(0)) fs.rmSync(r, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 }); }
+// 0.8 s was not enough on a loaded runner (4.7.18 preflight, 2026-10-24, capture-consent-boundary); up to ~6 s now.
+export function cleanup() { for (const r of roots.splice(0)) fs.rmSync(r, { recursive: true, force: true, maxRetries: 30, retryDelay: 200 }); }
 export function tmp(prefix) {
   const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
   roots.push(dir);

@@ -15,7 +15,7 @@ describe('corpus nightly dispatcher (ADR-086 step 18)', () => {
   it('turns a schedule into a genuine workflow_dispatch on protected main in corpus mode', () => {
     const source = read(DISPATCHER);
     // Two schedule entries: the night's first slot and its one retry slot (RETRY_CRON), nothing else.
-    expect(source).toMatch(/^on:\n {2}schedule:\n {4}# [^\n]*\n {4}- cron: '17 7 \* \* \*'\n {4}# [^\n]*\n {4}- cron: '17 11 \* \* \*'\n {2}workflow_dispatch: \{\}$/m);
+    expect(source).toMatch(/^on:\n {2}schedule:\n {4}# [^\n]*\n {4}- cron: '17 5 \* \* \*'\n {4}# [^\n]*\n {4}- cron: '17 9 \* \* \*'\n {2}workflow_dispatch: \{\}$/m);
     expect(source).toContain(`- cron: '${RETRY_CRON}'`);
     expect(source).toContain('gh workflow run protected-release.yml');
     expect(source).toContain('--ref main');
@@ -264,7 +264,7 @@ process.stderr.write('retry-slot fake gh: ' + args.join(' ')); process.exit(9);
   });
 
   it('the first slot never consults run history (the schedule is not the retry cron)', () => {
-    const result = runStep({ resolver: armedRelease, eventSchedule: '17 7 * * *', gh: fakeRunHistory([{ conclusion: 'failure' }, { conclusion: 'failure' }]) });
+    const result = runStep({ resolver: armedRelease, eventSchedule: '17 5 * * *', gh: fakeRunHistory([{ conclusion: 'failure' }, { conclusion: 'failure' }]) });
     expect(result.output).toContain('armed=true');
   });
 

@@ -6,7 +6,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { cmpVersion as compare, selectTag, FAMILY, PLUGIN_MARKETPLACES, REVIEWED_INSTALL_SCRIPTS, EXECUTION_MODULES } from './developer-update-policy.mjs';
+import { cmpVersion as compare, selectTag, needsPublishTimes, normalizeNpmDistTags, wantedTag, FAMILY, PLUGIN_MARKETPLACES, REVIEWED_INSTALL_SCRIPTS, EXECUTION_MODULES } from './developer-update-policy.mjs';
 import { acquireDeveloperLock, sharedLockStatus } from './developer-update-lock.mjs';
 import { maintenance } from './developer-update-maintenance.mjs';
 import { cleanupNpxDuplicates } from './developer-update-cleanup.mjs';
@@ -31,7 +31,7 @@ export function atomic(file, value) {
 function invoke(command, args, { cwd = HOME, timeout = 600_000, allowed = [0], env = process.env, capture = false } = {}) {
   const r = spawnSync(command, args, { cwd, encoding: 'utf8', timeout, maxBuffer: 16 * 1024 * 1024,
     env: { ...env, PATH: [...new Set([path.dirname(NODE), path.join(env.npm_config_prefix || PREFIX, process.platform === 'win32' ? '' : 'bin'), ...(env.PATH || '').split(path.delimiter)])].join(path.delimiter),
-      CI: '1', DISABLE_AUTOUPDATER: '1', GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'Never', GH_PROMPT_DISABLED: '1', HOMEBREW_NO_INSTALL_CLEANUP: '1', HOMEBREW_NO_AUTO_UPDATE: '1', RUVNET_BRAIN_HOME: env.RUVNET_BRAIN_HOME || CACHE } });
+      CI: '1', DISABLE_AUTOUPDATER: '1', CLAUDE_FLOW_AUTO_UPDATE: 'false', GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'Never', GH_PROMPT_DISABLED: '1', HOMEBREW_NO_INSTALL_CLEANUP: '1', HOMEBREW_NO_AUTO_UPDATE: '1', RUVNET_BRAIN_HOME: env.RUVNET_BRAIN_HOME || CACHE } });
   if (!capture && (r.error || !allowed.includes(r.status))) throw Error(`${path.basename(command)} ${args[0]}: ${r.error?.message || `exit ${r.status}`}: ${(r.stderr || r.stdout || '').trim().slice(-600)}`);
   return { stdout: (r.stdout || '').trim(), stderr: (r.stderr || '').trim(), exitCode: r.status, error: r.error?.message || null };
 }
@@ -120,7 +120,7 @@ function verifyPackage(before, expected, run) {
   }
   return after;
 }
-export function upgradePackage(before, tags, scripts = REVIEWED_INSTALL_SCRIPTS, { run = invokeText, dryRun = false, channel = 'latest', npm = NPM, preservePackages = [] } = {}) {
+export function upgradePackage(before, tags, scripts = REVIEWED_INSTALL_SCRIPTS, { run = invokeText, dryRun = false, channel = 'latest', npm = NPM, preservePackages = [], published = null } = {}) {
   // Snapshot identity must still exist and own the original paths before any installer runs.
   if (before.localSource && before.rawLink !== undefined) {
     if (!fs.lstatSync(before.location).isSymbolicLink() || fs.readlinkSync(before.location) !== before.rawLink) throw Error(`source link changed before preservation: ${before.name}`);
@@ -133,7 +133,7 @@ export function upgradePackage(before, tags, scripts = REVIEWED_INSTALL_SCRIPTS,
   if (live.localSource) return { name: before.name, state: 'local-source-preserved', before, after: live };
   if (live.launchers.some(b => !b.real)) throw Error(`absent launcher: ${before.name}`);
   if (live.launchers.some(b => !b.owned)) return { name: before.name, state: 'shadowed-preserved', before, after: live };
-  const target = selectTag(before.name, before.version, tags, channel);
+  const target = selectTag(before.name, before.version, tags, channel, { published });
   if (preservePackages.includes(before.name)) return { name: before.name, state: 'local-modification-preserved', reason: 'preservedLocalModification', target, before, after: live };
   if (!target.upgrade || dryRun) return { name: before.name, state: target.upgrade ? 'update-available' : target.ahead ? 'ahead-preserved' : 'current', target, before, after: live };
   const spec = `${before.name}@${target.tag}`;
@@ -422,7 +422,19 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
     persistReceipt();
     for (const before of receipt.before) {
       const tags = before.localSource ? {} : JSON.parse(run(npm, ['view', before.name, 'dist-tags', '--json'], { timeout: 90_000 }));
-      receipt.steps.push(upgradePackage(before, tags, REVIEWED_INSTALL_SCRIPTS, { run, dryRun: mode === 'check', channel: config.channel, npm, preservePackages: config.preservePackages }));
+      // A tracked non-latest tag (alpha, Kit's next) needs publish times to tell a newer pre-release from an abandoned
+      // one (developer-update-policy pickTargetTag); fetched only when that tag and latest name different versions. A
+      // failed lookup is {} — required but unknown — so the pre-release is skipped, never installed blind.
+      let published = null;
+      if (!before.localSource) {
+        let needed = false;
+        try { needed = needsPublishTimes(normalizeNpmDistTags(tags), wantedTag(before.name, config.channel)); } catch { needed = false; }
+        if (needed) {
+          try { published = JSON.parse(run(npm, ['view', before.name, 'time', '--json'], { timeout: 90_000 })); }
+          catch { published = {}; }
+        }
+      }
+      receipt.steps.push(upgradePackage(before, tags, REVIEWED_INSTALL_SCRIPTS, { run, dryRun: mode === 'check', channel: config.channel, npm, preservePackages: config.preservePackages, published }));
       persistReceipt();
     }
     receipt.plugins = await synchronizePlugins(run, mode === 'check', receipt.notes, { home, prefix, scope: config.scope, locate, unattended: !!env.RUVNET_NIGHTLY_IDENTITY });

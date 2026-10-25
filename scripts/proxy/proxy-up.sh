@@ -11,6 +11,7 @@ set -uo pipefail
 # daemon-autostart.js:85). Installing/starting the proxy has no business leaving a swarm daemon
 # running as a side effect.
 export RUFLO_DAEMON_AUTOSTART=0
+export CLAUDE_FLOW_AUTO_UPDATE=false
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 

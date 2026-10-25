@@ -181,8 +181,15 @@ export function confirm({ footprint, env = process.env, home = os.homedir(), now
   // Footprint
   const parts = Object.entries(footprint.breakdown).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${formatBytes(v)}`);
   const foreign = footprint.unowned.reduce((n, i) => n + (i.bytes || 0), 0);
+  // `--clean` is the fix only when it can remove something. Measured 2026-10-24: 3.01 GB of a 2.23 GB budget with
+  // zero cruft, the line said "fix: --clean", and --clean freed nothing — the bytes were a 1.3 GB npm install ruflo's
+  // self-update left in ruvnet-brain/ruflo-cwd, counted as Brain state. Name where the bytes are instead.
+  const reclaimable = footprint.cruft.some((i) => ['remove', 'remove-if-proven', 'rotate', 'truncate', 'collect', 'prune'].includes(i.action));
+  const largest = footprint.items.filter((i) => i.kind === 'state' && i.bytes).sort((a, b) => b.bytes - a.bytes).slice(0, 2);
+  const footprintFix = reclaimable || !largest.length ? CLEAN
+    : `${CLEAN} has nothing to remove; the largest Brain folders are ${largest.map((i) => `${i.path} (${formatBytes(i.bytes)})`).join(' and ')} — see what is filling them`;
   lines.push(line('footprint', 'Footprint', footprint.withinBudget ? 'ok' : 'fail',
-    `${formatBytes(footprint.totalBytes)} of ${formatBytes(footprint.budgetBytes)} budget (${parts.join(' · ')})${foreign ? `; not counted: ${formatBytes(foreign)} owned by other tools` : ''}`, CLEAN));
+    `${formatBytes(footprint.totalBytes)} of ${formatBytes(footprint.budgetBytes)} budget (${parts.join(' · ')})${foreign ? `; not counted: ${formatBytes(foreign)} owned by other tools` : ''}`, footprintFix));
 
   // No cruft
   const cruft = footprint.cruft;

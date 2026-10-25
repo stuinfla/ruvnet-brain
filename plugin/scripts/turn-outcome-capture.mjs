@@ -60,7 +60,7 @@ const TRANSCRIPT_TAIL_BYTES = 2 * 1024 * 1024;
 const STEP_TIMEOUT_MS = 60_000;
 export const RECEIPTS_MAX_BYTES = 256 * 1024;
 export const TURN_STATUS_FRESH_MS /* ✓ only when the newest receipt is verified and younger */ = 24 * 3_600_000;
-const RUFLO_ENV = { RUFLO_DAEMON_AUTOSTART: '0' };
+const RUFLO_ENV = { RUFLO_DAEMON_AUTOSTART: '0', CLAUDE_FLOW_AUTO_UPDATE: 'false' };
 
 function textOf(content) {
   if (typeof content === 'string') return content;

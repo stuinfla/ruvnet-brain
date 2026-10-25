@@ -296,8 +296,8 @@ describe('the whole-night safety net: one retry, never a loop, never a double pu
     expect(MAX_CORPUS_RUNS_PER_NIGHT).toBe(2);
     expect(decideRetry({ runs: [run(1, 'failed'), run(2, 'failed')] })).toMatchObject({ verdict: 'stand-down', reason: /bound is 2 per night/ });
   });
-  it('the retry window reaches back past the 07:17 UTC first slot and never into the previous night', () => {
-    expect(RETRY_CRON).toBe('17 11 * * *');
+  it('the retry window reaches back past the 05:17 UTC first slot and never into the previous night', () => {
+    expect(RETRY_CRON).toBe('17 9 * * *');
     expect(RETRY_WINDOW_MS).toBeGreaterThan(4 * 3_600_000);
     expect(RETRY_WINDOW_MS).toBeLessThan(24 * 3_600_000);
   });

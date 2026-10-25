@@ -125,3 +125,32 @@ test('a terminal retention failure records failed latest evidence rather than a 
     await f.run({ mode: 'check' }); assert.equal(f.health().state, 'failed');
   } finally { spy?.mockRestore(); fs.rmSync(f.home, { recursive: true, force: true }); }
 });
+// 2026-10-24: a session-start --update re-pointed the nightly's module snapshot and doctor then said "nightly refresh
+// FAILED — the brain is not updating" all day, about a night that had succeeded on the code the update replaced.
+test('a night that ran on the module set an update just replaced stays proof until the next night', async () => {
+  const f = fixture();
+  try {
+    await f.run(); assert.equal(f.health().state, 'ok');
+    const fake = (record, tag) => { const m = structuredClone(record.updateModules); m['developer-update.mjs'] = { ...m['developer-update.mjs'], sha256: tag.repeat(64) }; return m; };
+    const later = new Date(Date.now() + 60_000).toISOString();
+    const earlier = new Date(Date.now() - 3_600_000).toISOString();
+    const swap = (record, replacedAt) => ({ ...record, updateModules: fake(record, 'f'), replacedUpdateModules: [{ updateModules: record.updateModules, replacedAt }] });
+    const ok = developerRunHealth({ brainHome: f.paths.brainHome, registration: swap(f.record, later) });
+    assert.equal(ok.state, 'ok'); assert.match(ok.evidence, /next night runs the update/);
+    // A receipt written AFTER the swap must bind to the current modules; the replaced set no longer excuses it.
+    assert.equal(developerRunHealth({ brainHome: f.paths.brainHome, registration: swap(f.record, earlier) }).state, 'failed');
+    // Two refreshes before the next night: the set last night ran on is the OLDER entry and still counts.
+    const twice = { ...f.record, updateModules: fake(f.record, 'e'),
+      replacedUpdateModules: [{ updateModules: fake(f.record, 'f'), replacedAt: later }, { updateModules: f.record.updateModules, replacedAt: later }] };
+    assert.equal(developerRunHealth({ brainHome: f.paths.brainHome, registration: twice }).state, 'ok');
+    // A night whose own update step re-pointed the modules mid-run: launched before the swap, finished after it.
+    const receipt = JSON.parse(fs.readFileSync(f.paths.scheduledReceipt));
+    const midRun = new Date(Date.parse(receipt.startedAt) + 1).toISOString();
+    if (Date.parse(receipt.finishedAt) > Date.parse(midRun)) {
+      assert.equal(developerRunHealth({ brainHome: f.paths.brainHome, registration: swap(f.record, midRun) }).state, 'ok');
+    }
+    // Without a recorded replaced set, the old strict answer stands.
+    const { replacedUpdateModules, ...strict } = swap(f.record, later);
+    assert.equal(developerRunHealth({ brainHome: f.paths.brainHome, registration: strict }).state, 'failed');
+  } finally { fs.rmSync(f.home, { recursive: true, force: true }); }
+});

@@ -52,6 +52,7 @@ import path from 'node:path';
 // is the exact defect class this file exists to close. Caught by counting occurrences, not by
 // reading the code and believing it.
 import { fileURLToPath } from 'node:url';
+import { rufloRunDir } from './ruflo-bin.mjs';
 
 /**
  * THE PROBE TARGET IS A SCRATCH DB, NOT THE PROJECT'S.
@@ -73,8 +74,19 @@ import { fileURLToPath } from 'node:url';
  */
 const defaultDb = () => path.join(os.tmpdir(), `ruvnet-durability-probe-${process.pid}.db`);
 
+// ruflo writes into its cwd on every call (.claude/, .claude-flow/, ruvector.db, agentdb.rvf) and its startup
+// self-update runs `npm install @claude-flow/cli --save-exact` there. This probe runs on every `git push`, so with the
+// caller's cwd it could leave those in the user's project (measured 2026-10-22: a 1.4 GB node_modules and a
+// package.json in a project). It now runs in a private scratch dir, removed after the call, with both switches off.
 function defaultRun(cmd, args) {
-  return execFileSync(cmd, args, { encoding: 'utf8', timeout: 30_000, stdio: ['ignore', 'pipe', 'pipe'] });
+  let cwd = null;
+  try { cwd = rufloRunDir(path.join(os.tmpdir(), 'ruvnet-durability-probe')); } catch { /* fall back to tmp below */ }
+  try {
+    return execFileSync(cmd, args, { cwd: cwd || os.tmpdir(), encoding: 'utf8', timeout: 30_000, stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0', CLAUDE_FLOW_AUTO_UPDATE: 'false' } });
+  } finally {
+    if (cwd) { try { fs.rmSync(cwd, { recursive: true, force: true }); } catch { /* swept later as a stale run- dir */ } }
+  }
 }
 
 /**

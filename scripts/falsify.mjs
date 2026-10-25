@@ -179,7 +179,7 @@ export const CHECKS = [
       const rufloBin = resolveRuflo();
       const r = rufloBin
         ? spawnSync(rufloBin, ['memory', 'search', '-q', 'nightly job supervision heartbeat receipts'], {
-          cwd: ROOT, encoding: 'utf8', timeout: 120_000, env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' },
+          cwd: ROOT, encoding: 'utf8', timeout: 120_000, env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0', CLAUDE_FLOW_AUTO_UPDATE: 'false' },
         })
         : { error: new Error(RUFLO_MISSING), stdout: '' };
       const recalled = /Found\s+\d+\s+results/.test(r.stdout || '') && !/Found\s+0\s+results/.test(r.stdout || '');

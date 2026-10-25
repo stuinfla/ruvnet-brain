@@ -54,7 +54,7 @@ const PROJECT = learningContext({ cwd: requestedProject || process.env.RUVNET_BR
  * that one global binary is rather than assuming a path.
  */
 const RUFLO = resolveRuflo();
-const RUFLO_ENV = { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' };
+const RUFLO_ENV = { ...process.env, RUFLO_DAEMON_AUTOSTART: '0', CLAUDE_FLOW_AUTO_UPDATE: 'false' };
 
 const sqlite = (db, sql) => execFileSync('sqlite3', [db, sql], { encoding: 'utf8', timeout: 120_000 }).trim();
 

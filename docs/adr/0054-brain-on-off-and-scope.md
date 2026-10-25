@@ -3,9 +3,9 @@ id: ADR-054
 title: Brain on/off and per-part scope — a user-controlled brain that can never silently lie about being off
 status: Accepted
 date: 2026-07-26
-updated: 2026-10-05
+updated: 2026-10-24
 updated_source: derived-from-git
-reviewed_digest: 75556bed3285
+reviewed_digest: ebcaf007ff14
 version: 1.1.7
 impl: verification-expired
 verified: 2026-07-31
@@ -226,6 +226,7 @@ overlays and preserves the prior generation as unclassified data instead of dele
 source review does not renew the expired verification or prove the native-host acceptance criteria.
 
 ## Currency log
+| 2026-10-24 | Review `ebcaf007ff14` (4.7.18): decision unchanged. `bin/install.mjs` moved | The 4.7.18 changes to it are Codex snapshot retry/repair during wiring, a recorded reason on every failed host sync, and an early refusal for a stale source checkout running `--update`. The on/off switch and scope handling are untouched. Source: `bin/install.mjs`. |
 | 2026-10-01 | Currency review (4.5, keyword lane off by default): decision unchanged. `kb/keyword-lane.mjs` gains `keywordLaneEnabled()`, and `kb/forge-ask-all.mjs` adds keyword candidates only when RUVNET_BRAIN_KEYWORD_LANE=1. Brain on/off and per-part scope handling are untouched. reviewed_digest 75556bed3285. | Reviewed `kb/forge-ask-all.mjs` and `kb/keyword-lane.mjs` against `evals/runs/2026-10-01-retrieval-4.5/e2-mitigation/cost-sim.jsonl`. |
 | 2026-10-01 | Currency review (4.5 merge of 4.4.1): decision unchanged. The governed files changed only by merging the 4.4.1 release and by retrieval-only edits to `kb/forge-ask-all.mjs`: the keyword lane, the quoted-claim merge, the flag-gated learned judge, and dropping store names from identifier widening. Brain on/off and per-part scope handling are untouched. reviewed_digest 7af69131d535. | Reviewed `kb/forge-ask-all.mjs` and `bin/install.mjs` against `evals/runs/2026-10-01-retrieval-4.5/e2e3-f725e0e7/recall.json`. |
 | 2026-10-01 | Currency review (4.5): decision unchanged. `kb/forge-ask-all.mjs` changed only inside retrieval: the keyword lane, the quoted-claim merge and a flag-gated learned judge. Brain on/off and per-part scope handling are untouched. reviewed_digest 9303ba1e555f. | Reviewed `kb/forge-ask-all.mjs` against `evals/runs/2026-10-01-retrieval-4.5/e2e3-f725e0e7/recall.json`. |

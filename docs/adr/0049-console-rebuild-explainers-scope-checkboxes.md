@@ -3,9 +3,9 @@ id: ADR-049
 title: The console rebuild — explain every section, scope every suggestion, and make the safe ones checkable
 status: Accepted
 date: 2026-07-24
-updated: 2026-10-05
+updated: 2026-10-24
 updated_source: derived-from-git
-reviewed_digest: 4555b8c6896d
+reviewed_digest: 85a5b555b251
 version: 1.0.3
 authors: [Stuart Kerr, Claude Code]
 tags: [onboarding, ux, console, advocacy, capability, cache, honesty]
@@ -156,6 +156,7 @@ project the data is about. A cross-project isolation test proves it, mutation-ch
   precisely the failure ADR-055 was written to end, found by the drift check rather than by a reader.
 
 ## Currency log
+| 2026-10-24 | Review `85a5b555b251` (4.7.18): decision unchanged. `bin/install.mjs` moved | The 4.7.18 changes to it are Codex snapshot retry/repair during wiring, a recorded reason on every failed host sync, and an early refusal for a stale source checkout running `--update`. No Console page, explainer or scope control changed. Source: `bin/install.mjs`. |
 | 2026-10-05 | Reviewed current source and recorded remaining limitations; no verification or implementation-status promotion. | reviewed_digest 4555b8c6896d; inspected `console/app.js` and all expanded governs against source 5d9ea4df. Independent review preserved incident dates, Proposed/expired states and historical evidence; notification and oldest-runtime limits are explicit. |
 | 2026-09-27 | Currency review: decision unchanged. Motion: same onboarding-console.mjs learner-scope fix, plus unrelated bin/install.mjs release-pipeline fixes (macOS deadline, serverDependencies parsing, corpus-currency). No explainer/scope/checkbox logic touched. | Reviewed `console/app.js`, `scripts/console-engine.mjs`, `scripts/onboarding-console.mjs`, `plugin/scripts/runtime-preferences.mjs`, `scripts/nightly-controller.mjs`, `bin/install.mjs` against the commits listed above; reviewed_digest 9f5c0ce4d4a0. |
 | 2026-09-12 | Currency review at commit 491ea740: decision unchanged. `40d8c16b` moved the release-provenance card out of the end-user flow into a closed maintainer `<details>` and added Newest/A–Z/Behind-first views + description search to the scope page — both extend this ADR's console-scope decision rather than contradict it. `5f919c52` (`bin/install.mjs`) added `placeTrustedCoverageValidator()`, unrelated to console UI/scope; read in full, no capability-checkbox or explainer logic touched. | Reviewed `console/app.js`, `scripts/console-engine.mjs`, `scripts/onboarding-console.mjs`, `plugin/scripts/runtime-preferences.mjs`, `scripts/nightly-controller.mjs`, `bin/install.mjs` against commits `40d8c16b` and `5f919c52`; both diffs read in full. |

@@ -115,7 +115,9 @@ function publishedFixture(entry = 'package/plugin/hooks/codex-hooks.json') {
 describe('independent published hook identity', () => {
   it('verifies full archive integrity before reading exact stdout-only hooks member', async () => {
     const p = publishedFixture(); const result = await obtainVerifiedPublishedHookIdentity({ version: RELEASE_VERSION, fetch: p.fetch });
-    expect(result.state).toBe('verified'); expect(result.releaseIdentity).toEqual({ ...p.f.options.releaseIdentity, integrity: p.metadata.dist.integrity });
+    expect(result.state).toBe('verified'); const { pluginFiles, ...identity } = result.releaseIdentity;
+    expect(identity).toEqual({ ...p.f.options.releaseIdentity, integrity: p.metadata.dist.integrity });
+    expect(pluginFiles === null || pluginFiles instanceof Map).toBe(true); // plugin/ digests for Codex 0.164 content trust
     expect(p.urls).toHaveLength(2);
   });
   it('rejects corrupted archive bytes', async () => {

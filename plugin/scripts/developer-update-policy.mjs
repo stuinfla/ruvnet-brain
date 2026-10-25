@@ -32,17 +32,43 @@ export function normalizeNpmDistTags(value) {
   }
   return value;
 }
-export function pickTargetTag(tags, want = 'latest', defaultTag = 'latest') {
-  const candidates = [...new Set([want, defaultTag])].filter(tag => typeof tags?.[tag] === 'string');
+export function normalizeNpmTimes(value) {
+  // `npm view <pkg> time --json`: an object of version -> ISO time (npm 12 wraps it in a one-record array).
+  if (Array.isArray(value)) value = value.length === 1 ? value[0] : null;
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+}
+/**
+ * The newer of {want, defaultTag} by version — EXCEPT a non-default tag whose version was published BEFORE the
+ * default tag's version. That is an abandoned pre-release line, not a newer build: measured 2026-10-23, agentic-flow
+ * `alpha` = 3.0.0-alpha.2 (published 2026-03-25) against `latest` = 2.1.4 (2026-10-09); by version alone the alpha
+ * channel would install seven-month-old code. `published` is `npm view <pkg> time`; without it, ordering is unchanged.
+ */
+export function pickTargetTag(tags, want = 'latest', defaultTag = 'latest', { published = null } = {}) {
+  const at = (version) => Date.parse(published?.[version] ?? '');
+  // `published` null: the caller did not ask, ordering is by version. An object: times were REQUIRED, so a missing or
+  // unreadable time makes the non-default tag unverifiable and it is skipped (cross-model review 2026-10-24: a failed
+  // lookup must not let a seven-month-old pre-release through).
+  const abandoned = (tag) => tag !== defaultTag && typeof tags?.[defaultTag] === 'string' && published !== null
+    && (!Number.isFinite(at(tags[tag])) || !Number.isFinite(at(tags[defaultTag])) || at(tags[tag]) < at(tags[defaultTag]));
+  const candidates = [...new Set([want, defaultTag])].filter(tag => typeof tags?.[tag] === 'string' && !abandoned(tag));
   candidates.sort((a, b) => cmpVersion(tags[b], tags[a]));
   return { tag: candidates[0] || null, target: tags?.[candidates[0]] || null };
 }
-export function selectTag(name, current, tags, channel = 'latest') {
+/** Whether choosing between `want` and `latest` needs publish times: only when the two tags name different versions. */
+export function needsPublishTimes(tags, want) {
+  return want !== 'latest' && typeof tags?.[want] === 'string' && typeof tags?.latest === 'string' && tags[want] !== tags.latest;
+}
+/** The ONE answer to "which tag does this package track": shared by the updater and the stack-sync notice. */
+export function wantedTag(name, channel = 'latest') {
   if (!['latest', 'alpha'].includes(channel)) throw Error('unsupported update channel');
   // Kit's installed release contract uses next; never convert it to an npm alpha alias.
+  return name === '@pacphi/agentic-kit' ? 'next' : FAMILY.test(name) && channel === 'alpha' ? 'alpha' : 'latest';
+}
+export function selectTag(name, current, tags, channel = 'latest', { published = null } = {}) {
+  const wanted = wantedTag(name, channel);
   tags = normalizeNpmDistTags(tags);
-  const wanted = name === '@pacphi/agentic-kit' ? 'next' : FAMILY.test(name) && channel === 'alpha' ? 'alpha' : 'latest';
-  const { tag, target: version } = pickTargetTag(tags, wanted);
+  const times = published === null || published === undefined ? null : (normalizeNpmTimes(published) || {});
+  const { tag, target: version } = pickTargetTag(tags, wanted, 'latest', { published: times });
   if (!tag) throw Error(`no allowed release tag: ${name}`);
   return { tag, version, upgrade: cmpVersion(version, current) > 0, ahead: cmpVersion(version, current) < 0 };
 }
