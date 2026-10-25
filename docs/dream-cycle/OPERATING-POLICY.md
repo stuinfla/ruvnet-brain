@@ -1,4 +1,4 @@
-Updated: 2026-09-05 14:15:00 EDT | Version 1.0.0
+Updated: 2026-10-25 08:45:00 EDT | Version 1.1.0
 Created: 2026-09-05 14:15:00 EDT
 
 # Dream issue disposition and deployment verification
@@ -58,3 +58,32 @@ write path; the configuration alone does not remove direct issue-creation tools.
 its supervised mode prepares local candidates without public writes. It is not the
 Dream issue producer, so changing it would not prevent the cloud routine's issue
 creation. Existing backlog reconciliation belongs to the integration owner.
+
+## Known session-scope limitations (as of 2026-10-25)
+
+Two recurring conditions are environment facts, not repository defects, and a
+night hitting either should record `INCONCLUSIVE`/`not attempted` rather than
+retry a workaround:
+
+- **STEP 0 compile denial.** `npx -y dream-machine@0.1.1 compile` is sometimes
+  denied by the session's own auto-mode classifier (`Code from External` /
+  `Untrusted Code Integration`) before any slot is selected — see #298 (first
+  2026-09-19, recurred 2026-09-27, 2026-10-20, twice 2026-10-21, 2026-10-23;
+  succeeded again 2026-10-25). Intermittent, not permanent. The only real fix —
+  vendoring `dream-machine@0.1.1` into `devDependencies` so `npm ci` supplies it
+  without a runtime `npx -y` fetch — needs a human to run `npm install --save-dev`
+  outside this sandbox; every attempt to propose it from inside a session has
+  itself been denied by the same classifier.
+- **`coverage-gap-review` cannot execute inside a Dream Cycle session.**
+  `scripts/source-coverage.mjs` enumerates all of `ruvnet`'s public repositories
+  via `gh api graphql`, and its REST fallback (`gh api users/{owner}/repos`) is
+  also blocked — see #494 (2026-10-25). This session type is bound to a fixed,
+  pre-configured set of repositories; open-ended cross-repo discovery is refused
+  at the session layer regardless of which GitHub API shape the script uses. The
+  script itself is correct and already runs successfully in
+  `.github/workflows/corpus-seed.yml` and `.github/workflows/protected-release.yml`,
+  which have unrestricted `gh` auth. No in-session code fix exists. Until the
+  owner decides whether to drop `coverage-gap-review` from `dream.config.json`'s
+  `bonusModuli` or redefine it as a staleness check against the already-committed
+  `data/source-coverage.json` instead of a live re-measurement, a night landing on
+  this bonus slot should record the same disposition and move on.
