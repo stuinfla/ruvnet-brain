@@ -4,6 +4,25 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 
+/**
+ * ruflo encryption at rest (ruflo ADR-096, CLAUDE_FLOW_ENCRYPT_AT_REST=1) rewrites `.swarm/memory.db` as an
+ * AES-GCM image that starts with the magic bytes `RFE1`. ruflo opens that image only through its sql.js
+ * path and keeps native better-sqlite3 on a separate plaintext file (ruflo #2786), so a write that
+ * demands the native writer (`--require-native`, `--append-only`) is refused on every attempt (#439).
+ * Reads (`memory retrieve|search|list`) are unaffected. Four bytes are read; a missing or short file is
+ * not encrypted.
+ */
+export const ENCRYPTED_STORE_MAGIC = 'RFE1';
+export const ENCRYPTED_STORE_REASON = 'store is encrypted at rest (ruflo RFE1); the native append-only writer cannot open it';
+export function storeEncryptedAtRest(file) {
+  let fd;
+  try {
+    fd = fs.openSync(file, 'r');
+    const head = Buffer.alloc(4);
+    return fs.readSync(fd, head, 0, 4, 0) === 4 && head.toString('latin1') === ENCRYPTED_STORE_MAGIC;
+  } catch { return false; } finally { if (fd !== undefined) try { fs.closeSync(fd); } catch { /* already closed */ } }
+}
+
 function sha256(value) {
   return crypto.createHash('sha256').update(value).digest('hex');
 }

@@ -42,7 +42,7 @@ import { fileURLToPath } from 'node:url';
 import { nativeTurnLines } from './native-turn-transcript.mjs';
 import { resolveRuflo, rufloInvocation, rufloCwdFor, rufloScratchRoot } from './ruflo-bin.mjs';
 import { redactText } from './continuity-events.mjs';
-import { resolveProjectStore, globalEnrollmentAllowed } from './project-store-resolver.mjs';
+import { resolveProjectStore, globalEnrollmentAllowed, storeEncryptedAtRest, ENCRYPTED_STORE_REASON } from './project-store-resolver.mjs';
 import { recordHookFailure } from './hook-failures.mjs';
 
 const digest = (value) => crypto.createHash('sha256').update(String(value)).digest('hex');
@@ -315,7 +315,8 @@ export function captureTurnOutcome({
     if (!sessionKey) report.skipped = 'no session identity in the host payload';
     else if (turn.finalText.length < MIN_OUTCOME_CHARS && !turn.files.length) {
       report.skipped = turn.excludedResource ? 'turn content withheld: explicitly excluded resource' : host === 'codex' && !message ? 'codex payload carried no last_assistant_message' : 'trivial turn';
-    } else {
+    } else if (storeEncryptedAtRest(db)) report.skipped = loud(`${ENCRYPTED_STORE_REASON}; turn not written (opt out: RUVNET_TURN_CAPTURE=off)`, db); // #439: no ruflo spawn that can only be refused
+    else {
       const fingerprint = crypto.createHash('sha256').update(JSON.stringify([turn.finalText, turn.files])).digest('hex');
       const stateFile = path.join(brainHome, 'turn-capture', 'last-turn.json');
       const identity = crypto.createHash('sha256').update(`${host}:${db}:${sessionKey}`).digest('hex');
@@ -402,6 +403,7 @@ export function runSteps({ steps = [], receipts, event = '' } = {}, { run: suppl
         const data = { key: flagValue(queued.args, '--key'), value: flagValue(queued.args, '--value'), db: flagValue(queued.args, '--path') };
         if (typeof data.key !== 'string' || typeof data.value !== 'string') throw new Error('invalid turn store step');
         if (data.db !== db) throw new Error('foreign turn store rejected');
+        if (storeEncryptedAtRest(db)) throw new Error(ENCRYPTED_STORE_REASON);
         if (queued.brainHome !== brainHome) throw new Error('turn consent settings differ from trusted caller');
         binding = queued;
         key = data.key; value = maskExcludedPaths(redactText(data.value), target.contentPathExcludes, target.capturePath);
@@ -471,6 +473,7 @@ export function turnRecordingStatus({ projectDir = process.cwd(), env = process.
   let target;
   try { target = resolveTurnDb({ projectDir, brainHome }); } catch { return { state: 'unknown', line: 'turn recording unavailable: canonical store resolution failed' }; }
   if (String(env.RUVNET_TURN_CAPTURE || '').toLowerCase() === 'off' || target.skipped) return { state: 'unknown', line: `turn recording n/a — ${target.skipped || 'RUVNET_TURN_CAPTURE=off'}` };
+  if (storeEncryptedAtRest(target.db)) return { state: 'warn', line: `turn recording off for this store — ${ENCRYPTED_STORE_REASON}. Keep this project's store unencrypted, or set RUVNET_TURN_CAPTURE=off to stop trying` };
   const notice = noticeOnFirstUse ? firstTurnCaptureNotice({ target, brainHome, policyFile: turnCapturePolicyFile(brainHome), env }) : null;
   const status = (value) => ({ ...value, ...(notice ? { notice } : {}) });
   let rows = [];

@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
-import { resolveProjectStore, globalEnrollmentAllowed } from '../../plugin/scripts/project-store-resolver.mjs';
+import { resolveProjectStore, globalEnrollmentAllowed, storeEncryptedAtRest } from '../../plugin/scripts/project-store-resolver.mjs';
 
 let temporaryRoots = [];
 
@@ -205,5 +205,21 @@ describe('enrollment identity safety', () => {
     expect(globalEnrollmentAllowed({ resolution, temporaryRoots: [], systemRoots: [] })).toBe(true);
     expect(globalEnrollmentAllowed({ resolution, home: root, temporaryRoots: [], systemRoots: [] })).toBe(false);
     expect(globalEnrollmentAllowed({ resolution: { ...resolution, kind: 'non-git' }, temporaryRoots: [], systemRoots: [] })).toBe(false);
+  });
+});
+
+describe('encrypted-at-rest store detection (#439)', () => {
+  it('reads the ruflo RFE1 magic and nothing else', () => {
+    const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'rfe1-')));
+    try {
+      const file = (name, bytes) => { const p = path.join(dir, name); fs.writeFileSync(p, bytes); return p; };
+      expect(storeEncryptedAtRest(file('enc.db', Buffer.concat([Buffer.from('RFE1'), Buffer.alloc(32, 1)])))).toBe(true);
+      expect(storeEncryptedAtRest(file('plain.db', Buffer.concat([Buffer.from('SQLite format 3\0'), Buffer.alloc(84)])))).toBe(false);
+      expect(storeEncryptedAtRest(file('empty.db', ''))).toBe(false);
+      expect(storeEncryptedAtRest(file('short.db', 'RFE'))).toBe(false);
+      expect(storeEncryptedAtRest(file('lower.db', 'rfe1xxxx'))).toBe(false);
+      expect(storeEncryptedAtRest(path.join(dir, 'missing.db'))).toBe(false);
+      expect(storeEncryptedAtRest(dir)).toBe(false);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   });
 });
