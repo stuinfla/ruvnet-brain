@@ -366,6 +366,7 @@ export function inventoryFootprint({ env = process.env, home = os.homedir(), now
   const newestVersion = npx.map((n) => n.version).sort(cmpVersion).at(-1);
   const keepVersion = current && cmpVersion(newestVersion, current) < 0 ? null : newestVersion;
   const keeper = npx.find((n) => n.running) || npx.filter((n) => n.version === keepVersion).sort((a, b) => b.mtime - a.mtime)[0];
+  const refVersion = keeper?.version ?? current ?? newestVersion; // #420 item 3: "older" only when strictly below what is kept
   for (const n of npx) {
     const keep = n === keeper || n.running;
     // An older copy fetched < 2h ago may be running in another terminal; none goes during an update/install (S6).
@@ -373,7 +374,10 @@ export function inventoryFootprint({ env = process.env, home = os.homedir(), now
     const hold = !keep && (kbBlocked || (recent ? 'fetched in the last 2h; it may be running now' : null));
     add({ id: 'npx', path: n.dir, version: n.version, bytes: bytes(n.dir), class: keep ? 'may-exist' : 'must-not-exist', kind: 'npx-copy',
       action: keep || hold ? (keep ? 'keep' : 'report') : 'remove', blocked: hold || null,
-      reason: keep ? (n.running ? 'the installer running now' : 'the newest installer copy') : `an older installer copy (${n.version})` });
+      reason: keep ? (n.running ? 'the installer running now' : 'the newest installer copy')
+        : cmpVersion(n.version, refVersion) < 0 ? `an older installer copy (${n.version})`
+          : cmpVersion(n.version, refVersion) === 0 ? `a duplicate installer copy at the kept version (${n.version}); one copy is enough`
+            : `an installer copy (${n.version}) newer than the kept one (${refVersion}); one copy is enough` });
   }
 
   // ── lifecycle evidence, judged by its own policy ────────────────────────────────────────────
