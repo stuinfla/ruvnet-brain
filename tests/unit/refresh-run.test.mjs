@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { acquireRefreshLock, beginRefreshSettlement, openRefreshReceipt, recordRefreshPhase,
   recordRefreshAdvisory, releaseRefreshLock, REFRESH_PHASE_CONTRACT, REQUIRED_REFRESH_PHASES,
   settleRefreshRun, UPDATE_REFRESH_PHASES, validateCurrentRunPhaseExecution } from '../../kb/refresh-run.mjs';
@@ -165,6 +165,20 @@ describe('whole refresh transaction', () => {
     recordRefreshPhase(handle, 'source-enumeration', 'PASS');
     expect(() => recordRefreshPhase(handle, 'source-enumeration', 'PASS')).toThrow(/out of order/);
     expect(() => beginRefreshSettlement(handle, lock, 'SUCCEEDED')).toThrow(/incomplete or out of order/);
+    settleRefreshRun({ handle, lock, status: 'FAILED' });
+  });
+
+  it('a failed atomic receipt write leaves no temporary behind to block retention (#434)', () => {
+    const { root, kbDir } = fixture();
+    const lock = acquireRefreshLock({ kbDir, pid: 101, isAlive: () => true });
+    const handle = openRefreshReceipt({ brainHome: root, lock, action: 'nightly' });
+    const before = fs.readFileSync(handle.file, 'utf8');
+    const rename = vi.spyOn(fs, 'renameSync').mockImplementationOnce(() => { throw Object.assign(new Error('simulated crash before rename'), { code: 'EIO' }); });
+    try {
+      expect(() => recordRefreshPhase(handle, 'source-enumeration', 'PASS')).toThrow(/simulated crash before rename/);
+    } finally { rename.mockRestore(); }
+    expect(fs.readdirSync(path.dirname(handle.file))).toEqual([path.basename(handle.file)]);
+    expect(fs.readFileSync(handle.file, 'utf8')).toBe(before);
     settleRefreshRun({ handle, lock, status: 'FAILED' });
   });
 });

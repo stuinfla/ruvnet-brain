@@ -16,6 +16,7 @@
 // v2/crates — without --keep v2 those repos index almost nothing (open-claude-code: 68 passages
 // total) and their FULL_HINTS can never match.
 
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 export const FULL_HINTS = {
   'ruflo': 'v3/@claude-flow,v3/mcp,ruflo/src',
   'synthlang': 'proxy/src/cli/synthlang,proxy/src/app/synthlang',
@@ -81,7 +82,7 @@ export const KEEP_DIRS = {
 };
 
 // CLI helper so shell drivers can read the config:  node scripts/full-hints.mjs <kb-name>
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isDirectInvocation(import.meta.url)) {
   const kb = (process.argv[2] || '').toLowerCase();
   console.log(JSON.stringify({ full: FULL_HINTS[kb] || null, keep: KEEP_DIRS[kb] || null }));
 }

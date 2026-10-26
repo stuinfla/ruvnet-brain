@@ -6,6 +6,7 @@ import { stagedHostVerifier, readCandidateRetrieval, verifyCandidateRetrievalAss
 import { payloadIdFor } from './release-payload.mjs';
 import { validateRetrievalCanaryReceipt } from './retrieval-canary.mjs';
 import { HOST_WARMUP_TIMEOUT_MS, RELEASE_SEARCH_DEADLINE_MS } from './host-install-matrix.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const arg = (name) => {
   const index = process.argv.indexOf(name);
@@ -93,7 +94,7 @@ export async function buildCandidateHostEvidence({ manifestFile, packagePath, bu
   };
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isDirectInvocation(import.meta.url)) {
   const evidence = await buildCandidateHostEvidence({ manifestFile: arg('--manifest'),
     packagePath: arg('--package'), bundlePath: arg('--bundle'), planFile: arg('--plan'), coverageFile: arg('--coverage'), failureFile: arg('--out') ? `${arg('--out')}.failure.json` : null },
   { sequentialSearches: process.argv.includes('--sequential-searches') });

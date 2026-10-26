@@ -129,6 +129,21 @@ describe('judge(): every host-contract guard goes RED when the thing it guards i
   });
 });
 
+describe('worldEnv forwards the nudge mode, so a full-mode qualification really runs the full-mode hooks', () => {
+  const world = { home: '/h', cwd: '/c', tmp: '/t', host: 'claude', root: ROOT };
+  it('passes RUVNET_STOP_NUDGES through when the parent sets it, and invents nothing when it does not', () => {
+    const prior = process.env.RUVNET_STOP_NUDGES;
+    try {
+      process.env.RUVNET_STOP_NUDGES = 'full';
+      expect(worldEnv(world).RUVNET_STOP_NUDGES).toBe('full');
+      delete process.env.RUVNET_STOP_NUDGES;
+      expect(worldEnv(world)).not.toHaveProperty('RUVNET_STOP_NUDGES');
+    } finally {
+      if (prior === undefined) delete process.env.RUVNET_STOP_NUDGES; else process.env.RUVNET_STOP_NUDGES = prior;
+    }
+  });
+});
+
 describe('the shipped registries pass the static host-cap contract', () => {
   // RED on release/4.3.38 as shipped: codex-hooks.json registered SessionEnd at timeout 10, and a real
   // `codex exec --json` turn printed (as an error item) "clamping SessionEnd hook timeout to 3s in
@@ -177,13 +192,26 @@ describe.skipIf(process.platform === 'win32')('process boundary: a faulty hook b
     expect(res.findings.join()).toMatch(/SLOW: \d+ms > 1200ms/);
   }, 60_000);
 
-  it('invalid JSON and plain text on a Stop hook are red (Claude)', async () => {
+  // grounding-turn-gate is in hook-shim's QUIET_BY_DEFAULT set: it runs only under RUVNET_STOP_NUDGES=full (4.7.8).
+  // The mode is set explicitly per case, so the result never depends on the shell that runs the suite.
+  const FULL = { ...CASES[0], env: (e) => { e.RUVNET_STOP_NUDGES = 'full'; } };
+  const QUIET = { ...CASES[0], env: (e) => { delete e.RUVNET_STOP_NUDGES; } };
+  it('invalid JSON and plain text on a Stop hook are red (Claude, RUVNET_STOP_NUDGES=full, the mode that runs it)', async () => {
     const { dir, breakBody } = fakeRoot();
     const r = find(dir, 'claude', 'Stop', 'grounding-turn-gate');
     breakBody('grounding-turn-gate.mjs', 'process.stdout.write(\'{"hookSpecificOutput":{"hookEventName":"Stop",\'); process.exit(0);\n');
-    expect((await run(dir, r)).findings.join()).toMatch(/not ONE valid JSON/);
+    expect((await run(dir, r, FULL)).findings.join()).toMatch(/not ONE valid JSON/);
     breakBody('grounding-turn-gate.mjs', 'process.stdout.write("you should keep going"); process.exit(0);\n');
-    expect((await run(dir, r)).findings.join()).toMatch(/plain text/);
+    expect((await run(dir, r, FULL)).findings.join()).toMatch(/plain text/);
+  }, 60_000);
+
+  it('default mode: the shim never starts grounding-turn-gate, so even a broken body leaves no finding (the 4.7.8 quiet contract)', async () => {
+    const { dir, breakBody } = fakeRoot();
+    const r = find(dir, 'claude', 'Stop', 'grounding-turn-gate');
+    breakBody('grounding-turn-gate.mjs', 'process.stdout.write("you should keep going"); process.stderr.write("boom\\n"); process.exit(1);\n');
+    const res = await run(dir, r, QUIET);
+    expect(res.findings).toEqual([]);
+    expect(res.stdout.length + res.stderr.length).toBe(0);
   }, 60_000);
 
   it('a blocking hook that exits 1 is red; the same exit from an advisory hook is masked by the shim and stays green', async () => {

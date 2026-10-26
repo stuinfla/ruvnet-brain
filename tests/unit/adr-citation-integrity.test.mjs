@@ -103,38 +103,59 @@ for (const d of ASSET_DIRS) {
 
 describe('ADR-citation integrity — a figure cited to an ADR must live in that ADR, and it must be Accepted', () => {
   const adrMap = collectAdrs();
-  const haveClones = fs.existsSync(path.join(ROOT, 'clones'));
+  // The upstream ADRs this gate trusts must actually RESOLVE, not merely a clones/ folder exist: an
+  // empty clones/ used to make every case "run" and fail with "no such ADR resolves", and no clones/
+  // at all made every case return early and pass with no assertion. Both now skip visibly instead.
+  const haveUpstream = Boolean(adrMap[73]?.length && adrMap[76]?.length);
+  const NO_UPSTREAM = 'skipped: agentic-flow ADR-073/076 do not resolve under clones/*/docs/adr here';
 
   for (const rel of SURFACES) {
-    it(`${rel} — no figure is falsely attributed to an ADR`, () => {
-      const p = path.join(ROOT, rel);
-      if (!fs.existsSync(p)) return; // surface not present in this checkout
-      const src = fs.readFileSync(p, 'utf8');
-      // If the surface cites an upstream (3-digit-numbered) ADR but the clones aren't present on
-      // this runner, we cannot resolve it — skip rather than false-FAIL. Our own edits run with clones.
-      if (!haveClones && /ADR-0*(\d{3})\b/.test(src)) return;
+    const p = path.join(ROOT, rel);
+    const present = fs.existsSync(p);
+    const src = present ? fs.readFileSync(p, 'utf8') : '';
+    // A surface that cites an upstream (3-digit-numbered) ADR cannot be judged without the clones.
+    const needsUpstream = /ADR-0*(\d{3})\b/.test(src);
+    const skip = !present || (needsUpstream && !haveUpstream);
+    const why = !present ? ' (skipped: surface not in this checkout)' : skip ? ` (${NO_UPSTREAM})` : '';
+    it.skipIf(skip)(`${rel} — no figure is falsely attributed to an ADR${why}`, () => {
       const v = adrCitationViolations(src, adrMap);
       expect(v.map((x) => x.reason), `${rel}: ${v.map((x) => x.reason).join(' ; ')}`).toEqual([]);
     });
   }
 
-  // Self-proving on the EXACT B3 lie (verbatim pre-fix tips.html wording) and the fix.
-  it('detector: FAILS on the pre-fix wording — "measured 28.5% ADR-073" (Proposed, figure not in its body)', () => {
-    const knownBad = 'Grounded in rUv&rsquo;s own accepted ADRs — four pillars <code>ADR-076</code> · the measured 28.5% <code>ADR-073</code>. Nothing here is inferred.';
-    const v = adrCitationViolations(knownBad, adrMap);
-    if (!haveClones) return; // needs the agentic-flow clone to resolve ADR-073/076
+  // Runs everywhere, upstream or not: the detector itself against a synthetic map with the exact B3
+  // ground truth (073 Proposed without the figure, 076 Accepted with it). This is the part that keeps
+  // the gate from being vacuous on a runner with no clones.
+  const SYNTHETIC = {
+    73: [{ path: 'ADR-073.md', status: 'Proposed', text: '**Status**: Proposed\nSee ADR-076 for measurements.' }],
+    76: [{ path: 'ADR-076.md', status: 'Accepted', text: '**Status**: Accepted\n28.5% cheaper at 98.1% bar-compliance.' }],
+  };
+  const KNOWN_BAD = 'Grounded in rUv&rsquo;s own accepted ADRs — four pillars <code>ADR-076</code> · the measured 28.5% <code>ADR-073</code>. Nothing here is inferred.';
+  const KNOWN_GOOD = 'Per agentic-flow ADR-076: 28.5% cheaper at 98.1% bar-compliance.';
+
+  it('detector (synthetic ground truth): catches a figure cited to a Proposed ADR that lacks it, clears the fix', () => {
+    const v = adrCitationViolations(KNOWN_BAD, SYNTHETIC);
+    expect(v.filter((x) => x.adr === 73)).toHaveLength(1);
+    expect(v[0].reason).toMatch(/appears nowhere in ADR-73/);
+    expect(adrCitationViolations(KNOWN_GOOD, SYNTHETIC)).toEqual([]);
+    // Each half of the rule bites on its own: figure present but not Accepted; ADR that does not resolve.
+    const proposedWithFigure = { 76: [{ ...SYNTHETIC[76][0], status: 'Proposed' }] };
+    expect(adrCitationViolations(KNOWN_GOOD, proposedWithFigure).map((x) => x.reason).join()).toMatch(/non-Accepted/);
+    expect(adrCitationViolations(KNOWN_GOOD, {}).map((x) => x.reason).join()).toMatch(/no such ADR resolves/);
+  });
+
+  // Self-proving on the EXACT B3 lie (verbatim pre-fix tips.html wording) and the fix, on the real ADRs.
+  it.skipIf(!haveUpstream)(`detector: FAILS on the pre-fix wording — "measured 28.5% ADR-073" (Proposed, figure not in its body)${haveUpstream ? '' : ` (${NO_UPSTREAM})`}`, () => {
+    const v = adrCitationViolations(KNOWN_BAD, adrMap);
     expect(v.length, 'expected the 28.5%→ADR-073 false attribution to be caught').toBeGreaterThan(0);
     expect(v.some((x) => x.adr === 73)).toBe(true);
   });
 
-  it('detector: PASSES on the fix — "per agentic-flow ADR-076: 28.5% cheaper at 98.1% bar-compliance"', () => {
-    const knownGood = 'Per agentic-flow ADR-076: 28.5% cheaper at 98.1% bar-compliance.';
-    if (!haveClones) return;
-    expect(adrCitationViolations(knownGood, adrMap)).toEqual([]);
+  it.skipIf(!haveUpstream)(`detector: PASSES on the fix — "per agentic-flow ADR-076: 28.5% cheaper at 98.1% bar-compliance"${haveUpstream ? '' : ` (${NO_UPSTREAM})`}`, () => {
+    expect(adrCitationViolations(KNOWN_GOOD, adrMap)).toEqual([]);
   });
 
-  it('sanity: ADR-076 resolves and is Accepted, ADR-073 resolves and is Proposed (the ground truth this gate trusts)', () => {
-    if (!haveClones) return;
+  it.skipIf(!haveUpstream)(`sanity: ADR-076 resolves and is Accepted, ADR-073 resolves and is Proposed (the ground truth this gate trusts)${haveUpstream ? '' : ` (${NO_UPSTREAM})`}`, () => {
     expect(adrMap[76]?.some((r) => ACCEPTED.test(r.status))).toBe(true);
     expect(adrMap[73]?.some((r) => /Proposed/i.test(r.status))).toBe(true);
     expect(adrMap[76]?.some((r) => r.text.includes('28.5%'))).toBe(true);

@@ -11,6 +11,7 @@ import { subscriptionOnlyEnv } from './subscription-hosts.mjs';
 import { applyProfile, loadCatalog, selectionEvidenceStatus } from './model-router-engine.mjs';
 import { createAnalystHome, trustAnalystDenial } from './model-analyst-sandbox.mjs';
 import { digest, currencyStatus, WEEK_MS } from './model-currency-evidence.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const text = { type: 'string', maxLength: 320 };
 const sourceId = { type: 'string', maxLength: 64 };
@@ -328,7 +329,7 @@ export function maybeLaunchWeeklyAnalyst({ routerDir = path.join(os.homedir(), '
     } catch (error) { release(routerDir, token); throw error; }
   } catch (error) { return { status: 'blocked', launched: false, reason: error.message.slice(0, 240) }; }
 }
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isDirectInvocation(import.meta.url)) {
   const index = process.argv.indexOf('--router-dir'); const routerDir = index >= 0 ? process.argv[index + 1] : undefined;
   const claimIndex = process.argv.indexOf('--claim-token');
   if (!process.argv.includes('--run')) { console.log(JSON.stringify(maybeLaunchWeeklyAnalyst({ routerDir }))); } else runWeeklyAnalyst({ routerDir, claimToken: claimIndex >= 0 ? process.argv[claimIndex + 1] : null, ...(process.argv.includes('--timeout-ms') ? { timeoutMs: Number(process.argv[process.argv.indexOf('--timeout-ms') + 1]) } : {}) }).then((result) => { console.log(JSON.stringify(result)); if (result.status === 'failed') process.exitCode = 1; }).catch((error) => { console.error(error.message); process.exitCode = 1; });

@@ -42,7 +42,9 @@ export function verifyBundle(bundlePath, sigPath = `${bundlePath}.sig`, pubPath 
 }
 
 // CLI
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Copied ALONE into every brain bundle (scripts/build-bundle.mjs), so it cannot import
+// plugin/scripts/entrypoint.mjs; this is that helper's comparison, inline: real paths on both sides.
+if ((() => { try { return Boolean(process.argv[1]) && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })()) {
   const [bundle, sig] = process.argv.slice(2);
   if (!bundle) { console.error('Usage: node scripts/verify-bundle.mjs <bundle.zip> [<bundle.zip.sig>]'); process.exit(2); }
   const r = verifyBundle(bundle, sig);

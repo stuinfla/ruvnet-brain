@@ -34,6 +34,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { verifyCoverageSidecar } from './corpus-coverage-sidecar.mjs';
 import { resolveNextCorpusSeed } from './corpus-next-seed.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CORPUS_TAG = /^corpus-sha256-([0-9a-f]{64})$/;
@@ -266,7 +267,7 @@ export function main(argv = process.argv.slice(2)) {
 
 function isMain() {
   try {
-    return Boolean(process.argv[1]) && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+    return isDirectInvocation(import.meta.url);
   } catch {
     return false;
   }

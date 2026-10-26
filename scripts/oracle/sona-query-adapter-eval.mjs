@@ -22,6 +22,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { wilson } from '../eval-brain.mjs';
+import { isDirectInvocation } from '../../plugin/scripts/entrypoint.mjs';
 
 /** Rank (1-based) of the first hit whose path is `gold`, or null within the list. */
 export function rankOf(paths, gold) {
@@ -136,4 +137,4 @@ async function main() {
   process.exit(0);
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
+if (isDirectInvocation(import.meta.url)) await main();

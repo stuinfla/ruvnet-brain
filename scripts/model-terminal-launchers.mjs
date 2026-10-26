@@ -9,6 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { classifyTerminalArguments, validateUpstreamSocket, terminalTempRoot } from './model-terminal-gateway.mjs';
 import { nativeGatewayLaunch } from './model-routing-gateway.mjs';
 import { subscriptionEnvironment, assertSubscriptionAuth } from './model-router-dispatch.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const SELF = fileURLToPath(import.meta.url);
 const MARKER = '# Managed RuvNet Brain terminal launcher';
@@ -343,7 +344,7 @@ export async function runTerminalLauncher({ host, args = [], config, env = proce
   const unforward = forwardSignals(child, signalSource);
   try { return await exitOf(child); } finally { unforward(); }
 }
-if (process.argv[1] && path.resolve(process.argv[1]) === SELF) {
+if (isDirectInvocation(import.meta.url)) {
   const argv = process.argv.slice(2);
   Promise.resolve().then(() => {
     if (argv[0] !== '--launch' || argv[2] !== '--config' || argv[4] !== '--') throw new Error('Explicit host/config terminal launcher required');

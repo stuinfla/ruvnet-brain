@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { managedGenerationIdentity } from './managed-cli-generation.mjs';
 import { loadRuntimePreferences, runtimeChildEnv } from '../scripts/runtime-preferences.mjs';
+import { resolveRuflo } from '../scripts/ruflo-bin.mjs';
 import { projectDirectory } from '../scripts/project-identity.mjs';
 import { recordManagedCliObservation, recordRegistryLatestObservation } from '../scripts/capability-claim-evidence.mjs';
 
@@ -180,12 +181,19 @@ function writeStamps(executable, argv, env, binding) {
 
 export function resolveManagedExecutable(executable, env = process.env) {
   if (executable !== 'ruflo') return executable;
-  const home = env.HOME || os.homedir();
-  const candidates = [path.join(home, '.npm-global', 'bin', 'ruflo')];
-  if (process.platform === 'win32') candidates.push(`${candidates[0]}.cmd`);
-  return candidates.find((candidate) => {
-    try { fs.accessSync(candidate, fs.constants.X_OK); return true; } catch { return false; }
-  }) || executable;
+  // #420 item 5: same rules as every other Brain caller (RUFLO_BIN is authoritative, then ~/.npm-global/bin, then PATH); this used to check ~/.npm-global only and ignored RUFLO_BIN.
+  return resolveRuflo({ env, home: env.HOME || os.homedir() }) || executable;
+}
+
+/**
+ * ruflo (and claude-flow, the same @claude-flow/cli) self-updates at startup by running `npm install` in its
+ * working directory, which here is the user's project: measured 2026-10-22, a 1.3 GB install landed there.
+ * ruflo-bin.mjs promises every Brain spawn sets CLAUDE_FLOW_AUTO_UPDATE=false; this boundary is a Brain spawn
+ * too. RUFLO_DAEMON_AUTOSTART=0 keeps a background daemon from being left behind in that project.
+ */
+export function managedChildEnv(executable, env) {
+  if (executable !== 'ruflo' && executable !== 'claude-flow') return env;
+  return { ...env, CLAUDE_FLOW_AUTO_UPDATE: 'false', RUFLO_DAEMON_AUTOSTART: '0' };
 }
 
 function quoteWindowsCommandArg(value) {
@@ -323,7 +331,7 @@ export async function callManagedCli(toolName, args, env = process.env, fetchImp
     if (toolName === 'ruvnet_cli_help') {
       stampKeysForHelp(executable, argv);
       const commandArgv = [...argv, '--help'];
-      const execution = await execute(executable, commandArgv, env);
+      const execution = await execute(executable, commandArgv, managedChildEnv(executable, env));
       if (normalizeManagedExecution(execution).outcome === 'success') writeStamps(executable, argv, env, binding);
       recordManagedCliObservation({ toolName, executable, argv: commandArgv, execution, env });
       return resultOf(executable, commandArgv, execution);
@@ -368,7 +376,7 @@ export async function callManagedCli(toolName, args, env = process.env, fetchImp
       // host by supplying an arbitrary `host` property.
       const childEnv = (executable === 'agentic-flow' || executable === 'agentic-qe')
         ? runtimeChildEnv({ env, cwd: projectRoot })
-        : env;
+        : managedChildEnv(executable, env);
       if (lifecycle && typeof lifecycle.beforeExecute === 'function') {
         await lifecycle.beforeExecute({ executable, argv, projectRoot, env: childEnv });
       }

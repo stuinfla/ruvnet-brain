@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canonicalJson } from './release-transaction.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export const REQUIRED_RELEASE_LEAVES = Object.freeze([
   'source-quality',
@@ -38,7 +39,7 @@ export function aggregateEvidence({ sha, payloadId, leaves }) {
   return { ...envelope, evidenceDigest: crypto.createHash('sha256').update(canonicalJson(envelope)).digest('hex') };
 }
 
-const isCli = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const isCli = isDirectInvocation(import.meta.url);
 if (isCli) {
   const arg = (name) => {
     const index = process.argv.indexOf(name);

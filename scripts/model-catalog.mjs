@@ -8,6 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -70,7 +71,7 @@ export function providerChoices(catalog) {
   return Object.entries(catalog.providers || {}).map(([id, p]) => ({ id, label: p.label || id }));
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isDirectInvocation(import.meta.url)) {
   const c = loadCatalog();
   const det = detectProvider(c, {});
   console.log(`detected house: ${det.provider} (${det.source})`);

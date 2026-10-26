@@ -8,6 +8,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { requiredEmbedderModels } from '../../plugin/test/model-cache.mjs';
+import { isDirectInvocation } from '../../plugin/scripts/entrypoint.mjs';
 
 async function main() {
   const modelCache = process.env.KB_MODEL_CACHE;
@@ -25,4 +26,4 @@ async function main() {
   }
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
+if (isDirectInvocation(import.meta.url)) await main();

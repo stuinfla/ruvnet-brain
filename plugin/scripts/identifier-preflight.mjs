@@ -36,6 +36,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDirectInvocation } from './entrypoint.mjs';
 
 /**
  * Each entry knows how to enumerate the identifiers its CLI actually accepts on THIS machine.
@@ -118,7 +119,7 @@ export function check(command, opts = {}) {
 }
 
 const isMain = (() => {
-  try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); }
+  try { return isDirectInvocation(import.meta.url); }
   catch { return false; }
 })();
 

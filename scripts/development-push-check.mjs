@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export function inspectPush(root, input) {
   const checked = [];
@@ -27,7 +28,7 @@ export function inspectPush(root, input) {
   return { ok: true, checked, scope: 'unpublished-commit-secret-scan' };
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isDirectInvocation(import.meta.url)) {
   try {
     const root = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim();
     console.log(JSON.stringify(inspectPush(root, fs.readFileSync(0, 'utf8'))));

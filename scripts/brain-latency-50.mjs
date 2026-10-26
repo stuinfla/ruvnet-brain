@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -222,6 +223,6 @@ export async function main(argv = process.argv.slice(2)) {
   return summary.passed === summary.questions && summary.timedOut === 0 ? 0 : 1;
 }
 
-if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
+if (isDirectInvocation(import.meta.url)) {
   process.exitCode = await main();
 }

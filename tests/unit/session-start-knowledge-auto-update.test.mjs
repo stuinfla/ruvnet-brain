@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { knowledgeAutoUpdate, AUTO_UPDATE_POLICY } from '../../plugin/scripts/session-start-update-plane.mjs';
-import { knowledgeCurrency, KNOWLEDGE_LINE_PREFIX } from '../../plugin/scripts/session-start-health.mjs';
+import { knowledgeCurrency, KNOWLEDGE_LINE_PREFIX, AUTO_UPDATE_LOCK_STALE_MS } from '../../plugin/scripts/session-start-health.mjs';
 import { runSessionStart } from '../../plugin/scripts/session-start-core.mjs';
 
 const HOOK_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'plugin', 'scripts');
@@ -102,7 +102,10 @@ describe('SessionStart knowledge auto-update — launch decision', () => {
     built(30 * H);
     fs.writeFileSync(lockFile(), JSON.stringify({ pid: 1, at: iso(10 * 60_000) }));
     expect(run()).toMatchObject({ launched: false, why: 'locked' });
+    // A lock younger than the TTL is a live update (the TTL now covers a 90-minute bundle download plus the apply).
     fs.writeFileSync(lockFile(), JSON.stringify({ pid: 1, at: iso(40 * 60_000) }));
+    expect(run()).toMatchObject({ launched: false, why: 'locked' });
+    fs.writeFileSync(lockFile(), JSON.stringify({ pid: 1, at: iso(AUTO_UPDATE_LOCK_STALE_MS + 60_000) }));
     expect(run()).toMatchObject({ launched: true });
   });
 

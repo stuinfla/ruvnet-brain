@@ -53,10 +53,14 @@ async function probe(p, key) {
   }
 }
 
+/** true only when notify.sh reports a delivered page (exit 0). A failed or opted-out page (NTFY_TOPIC="") is not
+ *  delivered, so the key's previous state is kept and the transition fires again next run (4.7.21). Titles are
+ *  plain ASCII; the emoji rides in Tags. */
 function notify(title, message, priority, tags) {
   try {
     execFileSync('sh', [path.join(REPO, 'scripts', 'notify.sh'), title, message, priority, tags], { cwd: REPO, stdio: 'ignore', timeout: 15000 });
-  } catch { /* notification failure must not break the canary */ }
+    return true;
+  } catch { return false; /* notification failure must not break the canary */ }
 }
 
 const prev = (() => { try { return JSON.parse(fs.readFileSync(STATE, 'utf8')); } catch { return {}; } })();
@@ -73,13 +77,15 @@ for (const p of PROBES) {
   if (status === 'DEAD') {
     anyDead = true;
     if (NOTIFY && prev[p.env]?.status !== 'DEAD') {
-      notify(`🚨 ${p.provider} API key is DEAD`,
+      const sent = notify(`${p.provider} API key is DEAD`,
         `${p.env} was rejected (401/403) by ${p.provider} just now. Every script using it is silently failing. `
         + `Rotate it: edit ~/Code/openclaw-stack/secrets.env, then run secrets-sync.sh seal.`,
         'urgent', 'rotating_light,key');
+      if (!sent) now[p.env] = prev[p.env] ?? { status: 'unpaged', ts: now[p.env].ts };
     }
   } else if (status === 'alive' && NOTIFY && prev[p.env]?.status === 'DEAD') {
-    notify(`✅ ${p.provider} API key recovered`, `${p.env} is working again.`, 'default', 'white_check_mark,key');
+    const sent = notify(`${p.provider} API key recovered`, `${p.env} is working again.`, 'default', 'white_check_mark,key');
+    if (!sent) now[p.env] = prev[p.env];
   }
 }
 

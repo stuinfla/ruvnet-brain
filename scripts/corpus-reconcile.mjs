@@ -26,6 +26,7 @@ import { captureGistSources } from './gist-receipts.mjs';
 import { projectSourceStore, RUNTIME_LEDGER_KIND } from './rvf-generation.mjs';
 import { compareKnowledgeInputs, fromCoverage as knowledgeFromCoverage, fromSeed as knowledgeFromSeed } from './knowledge-input-digest.mjs';
 import { defaultBaseDelayMs } from './transient-gh.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export { rebuildCorpusAggregates };
 
@@ -1306,8 +1307,7 @@ export async function main(argv = process.argv.slice(2), {
 // with no archive and no receipt on disk. Same defect, same fix as plugin/scripts/hook-input.mjs:518.
 function isMain() {
   try {
-    if (!process.argv[1]) return false;
-    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+    return isDirectInvocation(import.meta.url);
   } catch {
     return false;
   }

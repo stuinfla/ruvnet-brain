@@ -8,6 +8,7 @@ import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 import { classify } from '../config/model-router/policy.default.mjs';
 import { extractFeatures } from './model-router-engine.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_CASES = path.join(ROOT, 'config/model-router/routing-eval-cases.json');
@@ -96,7 +97,7 @@ export function runEvaluation({ caseFile = DEFAULT_CASES, generatedAt } = {}) {
   return report;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isDirectInvocation(import.meta.url)) {
   const args = process.argv.slice(2);
   if (args.length && (args.length !== 2 || args[0] !== '--out')) throw new Error('Usage: node scripts/model-routing-eval.mjs [--out <report.json>]');
   const report = runEvaluation();

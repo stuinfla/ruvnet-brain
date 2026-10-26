@@ -26,11 +26,12 @@ import { fileURLToPath } from 'node:url';
 import { redactText } from './continuity-events.mjs';
 import { maskExcludedPaths } from './turn-capture-privacy.mjs';
 import { resolveTurnDb, readSettledTranscript } from './turn-outcome-capture.mjs';
-import { resolveProjectStore } from './project-store-resolver.mjs';
+import { resolveProjectStore, storeEncryptedAtRest, ENCRYPTED_STORE_REASON } from './project-store-resolver.mjs';
 import { resolveRuflo, rufloInvocation } from './ruflo-bin.mjs';
 import { rufloRunDir } from './ruflo-bin.mjs';
 import { currentTurnRecords } from './completion-claim-evidence.mjs';
 import { recordHookFailure } from './hook-failures.mjs';
+import { isDirectInvocation } from './entrypoint.mjs';
 
 export const DECISION_SCHEMA = 'ruvnet-brain.decision-record';
 export const STATUSES = Object.freeze(['ratified', 'detected-unconfirmed']);
@@ -160,6 +161,10 @@ export function storeDecision({ ruflo, db, namespace, key, value, store = defaul
   const prior = readBack({ ruflo, db, namespace, key });
   if (typeof prior.content === 'string' && prior.content === value) return { state: 'already-stored', key };
   if (typeof prior.content === 'string' && prior.content && prior.content !== value) return { state: 'quarantined', key, reason: 'a different stored row holds this key' };
+  if (storeEncryptedAtRest(db)) { // #439: the native-only store below is refused on every attempt; say why instead
+    recordHookFailure({ hook: 'decision-record', event: 'record', error: `not recorded: ${ENCRYPTED_STORE_REASON}`.slice(0, 160) });
+    return { state: 'refused', key, reason: ENCRYPTED_STORE_REASON };
+  }
   const result = store({ ruflo, db, namespace, key, value });
   const back = readBack({ ruflo, db, namespace, key });
   if (result.status === 0 && back.content === value) return { state: 'committed', key };
@@ -300,7 +305,7 @@ export async function main(argv = process.argv.slice(2), { env = process.env, ou
     out.write(`decision-record: supersedes ${key} — ${String(row.what).slice(0, 120)}\n`);
   }
   const r = storeDecision({ ruflo, db: target.db, namespace, key: built.key, value: built.value, ...(store ? { store } : {}), ...(readBack ? { readBack } : {}) });
-  out.write(`decision-record: ${r.state} ${r.key} (namespace ${namespace})${r.reason ? ` — ${r.reason}` : ''}${r.state === 'refused' ? ` — NOT recorded (logged to hook-failures). A store that committed but did not read back may still hold it: run \`ruflo memory retrieve -k ${r.key} -n ${namespace} --path ${target.db}\` before re-running --record` : ''}\n`);
+  out.write(`decision-record: ${r.state} ${r.key} (namespace ${namespace})${r.reason ? ` — ${r.reason}` : ''}${r.state === 'refused' && r.reason === ENCRYPTED_STORE_REASON ? ' — NOT recorded (logged to hook-failures). Keep this project\'s store unencrypted to record decisions here' : ''}${r.state === 'refused' && r.reason !== ENCRYPTED_STORE_REASON ? ` — NOT recorded (logged to hook-failures). A store that committed but did not read back may still hold it: run \`ruflo memory retrieve -k ${r.key} -n ${namespace} --path ${target.db}\` before re-running --record` : ''}\n`);
   if (!['committed', 'already-stored'].includes(r.state)) return 3;
   let ok = true;
   for (const oldKey of built.record.supersedes) {
@@ -319,6 +324,6 @@ export async function main(argv = process.argv.slice(2), { env = process.env, ou
 }
 
 function isMain() {
-  try { return Boolean(process.argv[1]) && fs.realpathSync(process.argv[1]) === fs.realpathSync(SCRIPT); } catch { return false; }
+  try { return isDirectInvocation(import.meta.url); } catch { return false; }
 }
 if (isMain()) main().then((code) => { process.exitCode = code; }, (e) => { process.stderr.write(`decision-record: ${e.message}\n`); process.exitCode = 1; });

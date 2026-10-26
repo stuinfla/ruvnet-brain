@@ -34,6 +34,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export const MIN_PIPELINE_VERSION = '4.3.38'; // sync-version-ignore: a fixed pipeline floor, not the current version
 /** The dispatcher's second schedule entry; corpus-nightly-dispatch.yml's `on.schedule` must carry exactly this line. */
@@ -188,6 +189,6 @@ export async function main(argv = process.argv.slice(2), { stdout = process.stdo
   return decision.verdict === 'fail' ? 1 : 0;
 }
 
-if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
+if (isDirectInvocation(import.meta.url)) {
   main().then((code) => { process.exitCode = code; });
 }

@@ -21,6 +21,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { packedPaths, parseNpmPack } from '../helpers/npm-pack-json.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const CATALOG_ASSET = 'data/model-catalog.json';
@@ -50,15 +51,15 @@ function packedFiles() {
   // EINVAL. `shell:` on win32 is the idiom that actually works, and this repo already proved it
   // green on Windows at tests/unit/npm-tarball-codex.test.mjs:44. Args here are fixed literals,
   // so the shell carries no injection surface.
-  const report = JSON.parse(execFileSync('npm', ['pack', '--dry-run', '--json'], {
+  const out = execFileSync('npm', ['pack', '--dry-run', '--json'], {
     cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
     shell: process.platform === 'win32',
-  }));
+  });
   // npm reports paths with the HOST separator, so on Windows every entry comes back as
   // `data\\model-catalog.json` and every comparison against the declared `data/model-catalog.json`
   // fails — a green-on-POSIX, red-on-Windows test that says nothing about packaging. The manifest
   // is defined in forward slashes because that is what npm publishes, so normalise to that.
-  return report[0].files.map((entry) => entry.path.split(path.sep).join('/'));
+  return [...packedPaths(parseNpmPack(out, { expectName: 'ruvnet-brain' }))];
 }
 
 describe('issue #86 — the model catalog must actually ship', () => {

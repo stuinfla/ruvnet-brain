@@ -101,6 +101,7 @@ describe('reversible development maintenance', () => {
     fs.mkdirSync(path.join(project, 'plugin/scripts'), { recursive: true });
     fs.copyFileSync(cli, path.join(project, 'scripts/development-maintenance.mjs'));
     fs.copyFileSync(path.join(root, 'scripts/development-push-check.mjs'), path.join(project, 'scripts/development-push-check.mjs'));
+    fs.copyFileSync(path.join(root, 'plugin/scripts/entrypoint.mjs'), path.join(project, 'plugin/scripts/entrypoint.mjs'));
     for (const dependency of serverDependencies(cli)) {
       const target = path.resolve(project, 'scripts', dependency.spec);
       fs.mkdirSync(path.dirname(target), { recursive: true });

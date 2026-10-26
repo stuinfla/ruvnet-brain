@@ -2,7 +2,7 @@
 // Host-neutral automatic updater. The published installer is the single coordinator for Claude
 // Code and Codex, so lifecycle updates cannot drift into host-specific shell pipelines again.
 import { spawnSync } from 'node:child_process';
-import { automaticInvocation, automaticPath, updateSource } from './automatic-update.mjs';
+import { automaticInvocation, automaticPath, installedUpdater, updateSource } from './automatic-update.mjs';
 import { developerCoordinatorOwner } from './developer-update-owner.mjs';
 
 const CHILD_ENV_KEYS = new Set([
@@ -92,7 +92,20 @@ if (knowledgeAt >= 0) {
       // Decide by the recorded IDENTITY verdict whenever this run wrote one; the exit code only when it did
       // not (a network failure or an incompatible release dies before recording). Measured against the real
       // API: an install whose profile selects no stores exits 0 on UPDATE_AVAILABLE ("All stores current").
-      const newer = verdict ? ['UPDATE_AVAILABLE', 'UNKNOWN'].includes(verdict) : check.status === 10;
+      let newer = verdict ? ['UPDATE_AVAILABLE', 'UNKNOWN'].includes(verdict) : check.status === 10;
+      // Exit 5 is a remembered rejection keyed to the KB's runtime stamp. Only the installer re-stamps it, so when the
+      // version that would run differs from the stamp, run the update anyway (AuditC #5; the coordinator does the same).
+      if (!newer && !verdict && check.status === 5) {
+        let stamped = null, target = null;
+        try { stamped = readJson(path.join(kbDir, 'RUNTIME-IDENTITY.json'))?.brainVersion || null; } catch { /* no stamp */ }
+        try {
+          if (source === 'latest') {
+            const response = await fetch('https://registry.npmjs.org/ruvnet-brain/latest', { signal: AbortSignal.timeout(5_000) });
+            target = response.ok ? (await response.json()).version || null : null;
+          } else target = installedUpdater().version || null;
+        } catch { /* unknown target: stays incompatible */ }
+        newer = Boolean(target && target !== stamped);
+      }
       if (!newer && (verdict || check.status === 0)) {
         note({ outcome: verdict === 'REFUSED' ? 'refused' : 'current', verdict: verdict || 'CURRENT', candidateTag, reason: '' });
         stop();
@@ -125,7 +138,9 @@ if (knowledgeAt >= 0) {
       const invocation = automaticInvocation(['--update', '--no-nightly-prompt'], { source });
       const run = spawnSync(invocation.executable, invocation.args, {
         env: childEnvironment(), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
-        timeout: Number(process.env.RUVNET_KNOWLEDGE_UPDATE_TIMEOUT_MS || 25 * 60_000),
+        // Above the coordinator's installer limit (135 min: a 90-minute bundle deadline plus the apply), below the
+        // SessionStart TTL (session-start-update-plane.mjs AUTO_UPDATE_POLICY.ttlSec), so an outcome is always recorded.
+        timeout: Number(process.env.RUVNET_KNOWLEDGE_UPDATE_TIMEOUT_MS || 150 * 60_000),
       });
       process.stdout.write(run.stdout || '');
       process.stderr.write(run.stderr || '');
@@ -133,8 +148,11 @@ if (knowledgeAt >= 0) {
       const tail = `${run.stderr || ''}\n${run.stdout || ''}`.replace(/\u001b\[[0-9;]*m/g, '')
         .split('\n').map((line) => line.trim()).filter(Boolean);
       const code = run.error ? null : run.status;
-      record({ outcome: code === 0 ? 'succeeded' : 'failed', code,
-        reason: code === 0 ? '' : String(run.error?.message || tail.find((l) => /✗|error|fail/i.test(l)) || tail.at(-1) || 'no output').slice(0, 200) });
+      // Exit 12 is the installer's "knowledge applied, redundant rollback cleanup still pending"; the coordinator
+      // (developer-update.mjs) accepts it as success too. Recording it FAILED spoke a false failure line.
+      const succeeded = code === 0 || code === 12;
+      record({ outcome: succeeded ? 'succeeded' : 'failed', code,
+        reason: succeeded ? '' : String(run.error?.message || tail.find((l) => /✗|error|fail/i.test(l)) || tail.at(-1) || 'no output').slice(0, 200) });
     }
   } catch (error) {
     record({ outcome: 'failed', code: null, reason: error.message.slice(0, 200) });
@@ -147,6 +165,12 @@ if (knowledgeAt >= 0) {
 let invocation;
 try { invocation = automaticInvocation(['--update', '--host-sync-only', '--no-nightly-prompt']); }
 catch (error) { process.stderr.write(`[ruvnet-brain] automatic update refused: ${error.message}\n`); process.exit(1); }
+if (invocation.source === 'developer-suite') {
+  // The coordinator installs code packages only in its scheduled run, and its knowledge step belongs to the SessionStart
+  // self-heal (--knowledge, sized for the bundle download). Running it here under a 9-minute limit would kill it mid-apply.
+  process.stdout.write('[ruvnet-brain] coordinated updates own this machine: the scheduled nightly installs new code; knowledge updates run from the SessionStart self-heal\n');
+  process.exit(0);
+}
 const result = spawnSync(invocation.executable, invocation.args, {
   // The downloaded package must not inherit unrelated API keys, cloud credentials, or tokens from
   // the interactive host. npm's registry integrity protects the package bytes; this boundary

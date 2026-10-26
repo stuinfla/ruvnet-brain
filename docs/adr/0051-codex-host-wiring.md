@@ -3,9 +3,9 @@ id: ADR-051
 title: Codex host wiring — register MCP and adapt the full lifecycle without version-pinned commands
 status: Accepted
 date: 2026-07-24
-updated: 2026-10-24
+updated: 2026-10-25
 updated_source: derived-from-git
-reviewed_digest: 19a2b0b0f434
+reviewed_digest: 94c82850402a
 version: 1.1.6
 authors: [Stuart Kerr, Claude Code]
 tags: [codex, mcp, install, doctor, honesty, portability]
@@ -295,6 +295,7 @@ result. `route-dispatch` remains advisory; the wrapper must not represent it as 
 These source observations do not establish native Windows or public installed-host proof.
 
 ## Currency log
+| 2026-10-25 | Review `94c82850402a` (4.7.21): decision unchanged; hook trust still needs the user's review in /hooks and installation never bypasses it. `bin/install.mjs` (#492, review E): on Codex 0.164+ (probed with `codex --version`) a change to any plugin byte is reported as holding back every Brain hook, and after a plugin or trust change a fresh install, `--update` and `--host-sync-only` ask an already-running shared Codex app-server to reload through one path (`convergeHostsAfterUpdate`); the reload starts, stops or restarts nothing and grants no approval, and the installer says open sessions pause Brain hooks until re-reviewed. Also in that file: Grok status and an opt-in AGENTS.md line (#301), `--clean --archive` (#335), the per-project Claude install report (#420 item 4), real hook counts (#400). `plugin/.codex-plugin/plugin.json` moved for the version only; `release-proof.mjs` is the entry-point sweep; the ruvnet-brain SKILL.md and PLAYBOOK.md are the #489 statement-not-question wording. | Reviewed diffs 320b778b..63ca7c0d for `bin/install.mjs`, `plugin/.codex-plugin/plugin.json`, `plugin/skills/release-proof/scripts/release-proof.mjs`, `plugin/skills/ruvnet-brain/SKILL.md` and `plugin/skills/ruvnet-brain/PLAYBOOK.md`. |
 | 2026-10-24 | Review `19a2b0b0f434` (4.7.18): decision unchanged; wiring now survives Codex's own marketplace refresh. `bin/install.mjs` moved | Codex 0.164 refuses every `plugin` command while ANY configured marketplace snapshot fails to load; on 2026-10-23 an update failed host convergence while Codex refreshed the third-party `claude-code-plugins` snapshot, and the receipt recorded no reason. `runCodexJson` now waits once and asks again; only `wireCodexPlugin` (repair: true) then refreshes the named third-party Git snapshots with `codex plugin marketplace upgrade <name>` and asks once more; the Brain's own marketplace is never refreshed this way (prepareCodexMarketplace owns it), and `--doctor`/listings only report. A lasting failure names the marketplace and the repair command. Reproduced with a snapshot missing its manifest. Source: `bin/install.mjs`. |
 | 2026-09-27 | Currency review: decision unchanged. Motion: install.mjs release fixes, a CONTRIBUTING.md doc consolidation, and routine version bumps (4.3.29-4.3.32) touching plugin.json. No change to how Codex is wired as a host. | Reviewed `bin/install.mjs`, `.codex/config.toml`, `.codex/hooks.json`, `plugin/skills/brain-build/SKILL.md`, `plugin/skills/brain-console/SKILL.md`, `plugin/skills/brain-prompt/SKILL.md` against the commits listed above; reviewed_digest b4b0d7de765c. |
 

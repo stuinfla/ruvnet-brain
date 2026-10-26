@@ -3,11 +3,11 @@ id: ADR-058
 title: The 95 contract — one observable per dimension, one mutant per observable, and the external-signal watch plane
 status: Proposed
 date: 2026-07-27
-updated: 2026-10-24
+updated: 2026-10-26
 updated_source: derived-from-git
 version: 1.1.7
 impl: wired
-reviewed_digest: d88b18444b4e
+reviewed_digest: 13b8eadd2b00
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
 tags: [qa, gen2-qe, grading, external-signals, ci-watch, release-gate, mutation]
 supersedes: []
@@ -90,6 +90,9 @@ UNKNOWN, and no new behavioral learning result is claimed.
 
 ## Currency log
 
+| 2026-10-26 | Review `13b8eadd2b00`: D4 gate redesigned, threshold unchanged. The scheduled `learning-replay` gated only on the currency of the token-priced portfolio, which nothing scheduled refreshes, so it was red every morning from 2026-09-21. It also missed a real regression: from 4.7.8 the quiet shim silenced every lesson delivery. The schedule now gates hard on `--check-wire`, a token-free brain-half measurement on HEAD (record in two projects, promote, refresh, delivery on the Claude and Codex paths, a silent brain-off control, a silent delete-lesson mutant). Portfolio currency is reported every night, is hard on dispatch, and still drives D4 UNKNOWN in release-vector. The model-behaviour half stays UNKNOWN until it is re-measured. | `.github/workflows/learning-replay.yml`; `scripts/learning-replay-cli.mjs`; `tests/unit/learning-replay.test.mjs`; run 40170584768. |
+| 2026-10-25 | Review `fcda0e66fec6` (4.7.21): decision unchanged. Of 16 moved governed files, 15 changed only by the entry-point sweep (`kb/forge-big.mjs`, `scripts/qe/card-lane-gate.mjs`, `scripts/release-proof.mjs`, `plugin/scripts/session-start-core.mjs` and the rest now call `isDirectInvocation`, which compares real paths on both sides; the copies that used `path.resolve` now run through a symlink instead of exiting 0 having done nothing, which strengthens these gates). `bin/install.mjs`: Codex hook trust and app-server reload (#492), Grok reporting (#301), `--clean --archive` (#335), per-project install report (#420 item 4), real hook counts (#400). No observable, mutant or watch-plane rule moved. | Reviewed diffs 320b778b..63ca7c0d for every moved governed path, including `bin/install.mjs`, `kb/forge-big.mjs` and `scripts/qe/card-lane-gate.mjs`. |
+| 2026-10-25 | Review `89144c2de786` (4.7.20): decision unchanged. `plugin/scripts/session-start-core.mjs` gains one allow-listed status prefix for the owner's alert count; no install, hook or release behaviour this contract scores moved. | Reviewed the `plugin/scripts/session-start-core.mjs` diff 5b1f5c59..HEAD. |
 | 2026-10-24 | Review `d88b18444b4e` (4.7.18): decision unchanged. `bin/install.mjs` and `scripts/nightly-wrapper.sh` moved | No contract threshold, lane or gate changed. `bin/install.mjs`: Codex plugin commands wait once and retry when Codex cannot load a marketplace snapshot, and only the install/update path refreshes a third-party snapshot; a failed host sync always records its reason; `--update` from a source checkout older than the installed runtime stops before downloading. `scripts/nightly-wrapper.sh`: its two ruflo calls set `CLAUDE_FLOW_AUTO_UPDATE=false`. Source: `bin/install.mjs`, `scripts/nightly-wrapper.sh`. |
 | 2026-10-03 | Architecture-aligned qualification replaces the contradictory whole-suite promotion job. New capture/recall/continuity/retention/learning boundaries join explicit reviewed inventories; duplicate Linux discovery/uninstall invocations removed. Zero-skip, exact-source, sealed artifact and native public verification remain required. Historical diagnostics are not a second release authority. | `scripts/release-qualification-contract.mjs`; `.github/workflows/canonical-qa.yml`; `.github/workflows/integration-linux.yml`; `CONTRIBUTING.md`. |
 | 2026-10-01 | Currency review (4.5 retrieval): decision unchanged. In `.github/workflows/ci.yml`, release-qe runs the capability-selection battery on the exact sealed bundle (REQUIRE_BRAIN=1), and warm-brain warms embedders through `scripts/ci/warm-brain-models.mjs`. No contract threshold changed. reviewed_digest db5a08735446. | Reviewed `.github/workflows/ci.yml`; probe runs 36889499709 and 36889505309. |

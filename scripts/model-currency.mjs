@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { buildWeeklyAssessment } from './model-weekly-assessment.mjs';
 import { fileURLToPath } from 'node:url';
 import { WEEK_MS, digest, parseInventory, parseArtificialAnalysis, parseCodingAgentEvidence, currencyStatus } from './model-currency-evidence.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export const DEFAULT_ROUTER_DIR = path.join(os.homedir(), '.claude', 'model-router');
 export const AA_URLS = [
@@ -218,13 +219,42 @@ export async function refreshModelCurrency({ routerDir = DEFAULT_ROUTER_DIR, now
   } finally { release(routerDir, lock); }
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === SELF) {
+/** The weekly CI verdict. Core evidence is the inventory, the effort evaluations and the local instruction; a
+ *  third-party scrape that only feeds the advisory sections (coding agents, official docs, extra benchmark
+ *  archives) failing on its own is `partial`: exit 0 with a warning, because the router's own facts are fresh. */
+const ANCILLARY_ERROR = /^(coding agents|official |coding benchmark )/;
+export function refreshOutcome(result) {
+  const errors = result?.lastAttempt?.errors ?? result?.errors ?? [];
+  const core = errors.filter((error) => !ANCILLARY_ERROR.test(error));
+  if (result?.action !== 'refreshed' || result.inventoryFresh !== true || result.evaluationsFresh !== true || core.length) {
+    return { status: 'failed', exitCode: 1, errors: core.length ? core : [...errors, result?.reason ?? 'core evidence not fresh'] };
+  }
+  return errors.length ? { status: 'partial', exitCode: 0, warnings: errors } : { status: 'complete', exitCode: 0, warnings: [] };
+}
+export function outcomeSummary(outcome) {
+  const lines = [`### model-currency refresh: ${outcome.status}`, ''];
+  for (const message of outcome.errors ?? []) lines.push(`- error: ${message}`);
+  for (const message of outcome.warnings ?? []) lines.push(`- warning: ${message}`);
+  if (outcome.status === 'partial') lines.push('', 'Inventory and evaluations are fresh; only a third-party advisory source failed.');
+  return `${lines.join('\n')}\n`;
+}
+
+if (isDirectInvocation(import.meta.url)) {
   const dirIndex = process.argv.indexOf('--router-dir');
   const routerDir = dirIndex >= 0 ? process.argv[dirIndex + 1] : DEFAULT_ROUTER_DIR;
   if (!routerDir || !path.isAbsolute(routerDir)) throw new Error('--router-dir must be absolute');
-  if (process.argv.includes('--refresh')) {
+  if (process.argv.includes('--summarize')) {
+    // Markdown for the CI job summary from a captured `--refresh` stdout; a missing or unreadable capture says so.
+    let outcome;
+    try { outcome = JSON.parse(fs.readFileSync(process.argv[process.argv.indexOf('--summarize') + 1], 'utf8').split('\n')[0]).outcome; }
+    catch { outcome = null; }
+    process.stdout.write(outcome ? outcomeSummary(outcome) : '### model-currency refresh: no result (the refresh step crashed before reporting)\n');
+  } else if (process.argv.includes('--refresh')) {
     refreshModelCurrency({ routerDir, claimToken: process.argv.includes('--claim-token') ? process.argv[process.argv.indexOf('--claim-token') + 1] : null }).then((result) => {
-      console.log(JSON.stringify(result)); if (result.status === 'stale') process.exitCode = 1;
+      const outcome = refreshOutcome(result);
+      console.log(JSON.stringify({ ...result, outcome }));
+      if (outcome.status === 'partial') console.log(`::warning title=model-currency partial::${outcome.warnings.join('; ').replace(/[\r\n]+/g, ' ')}`);
+      process.exitCode = outcome.exitCode;
     }).catch((error) => { console.error(error.message); process.exitCode = 1; });
   } else console.log(JSON.stringify(process.argv.includes('--catch-up') ? maybeLaunchCurrencyRefresh({ routerDir }) : readCurrencyStatus({ routerDir })));
 }

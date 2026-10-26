@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { indexCards, rank, SNAPSHOT_FILE } from '../plugin/scripts/package-recommender.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
@@ -76,7 +77,7 @@ export function evaluate(items, index) {
   };
 }
 
-const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const isMain = isDirectInvocation(import.meta.url);
 if (isMain) {
   const sets = [];
   let cards = SNAPSHOT_FILE;

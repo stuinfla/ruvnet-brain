@@ -80,7 +80,9 @@ describe('a shipped module never crashes the process that imports it', () => {
     expect(/import\.meta\.url\s*\)\s*\.pathname/.test(code(badPathname))).toBe(true);
     const bad = 'const isMain = process.argv[1] && fs.realpathSync(process.argv[1]) === x;';
     expect(/try\s*\{/.test(code(bad))).toBe(false);
-    // …and NOT on the correct pattern, or it becomes noise people route around.
+    // …and NOT on the correct pattern, or it becomes noise people route around. In shipped code that
+    // pattern now lives in ONE place, isDirectInvocation() in plugin/scripts/entrypoint.mjs (a try
+    // around both realpathSync calls); this inline string is the same shape, kept here as the probe.
     const good = 'function isMain() {\n  try {\n    return fs.realpathSync(process.argv[1]) === y;\n  } catch { return false; }\n}';
     const i = code(good).indexOf('realpathSync(process.argv[1])');
     expect(/try\s*\{/.test(code(good).slice(Math.max(0, i - 400), i + 200))).toBe(true);
@@ -260,5 +262,126 @@ describe('no fixture hand-lists the imports of a script it isolates', () => {
       + 'instead — serverDependencies() in bin/install.mjs is generic over any entry file. A list '
       + 'of a file\'s imports, written anywhere but that file, drifts the moment an import lands.',
     ).toEqual([]);
+  });
+});
+
+/**
+ * THE SAME CLASS, ONE SYNTAX OVER — a copy LOOP over a constant list of script paths.
+ *
+ * The literal-count check above cannot see `for (const f of DEPENDENCY_FILES) copyFileSync(...)`:
+ * there is one copyFileSync call, and the names sit in an array. That is exactly how
+ * tests/integration/ingest-gists.test.mjs rotted: its list missed scripts/transient-gh.mjs from
+ * v4.7.16 and plugin/scripts/entrypoint.mjs from 4.7.21, and all 11 subprocess cases died on
+ * ERR_MODULE_NOT_FOUND with nothing pointing at the list. self-update-publish-branch-guard used the
+ * same shape with an array of `*_SRC` constants.
+ *
+ * Rule: a for-of loop whose list is a constant array naming a .mjs/.js path (inline, a named const, or
+ * consts that hold such a path) and whose body calls copyFileSync is a hand list, unless that body
+ * itself walks serverDependencies().
+ */
+const SELF = fileURLToPath(import.meta.url);
+const SCRIPT_LITERAL = /['"`][^'"`\n]*\.m?js['"`]/;
+function statementAfter(src, from) {
+  let i = from;
+  while (/\s/.test(src[i] || '')) i += 1;
+  if (src[i] !== '{') { const end = src.indexOf(';', i); return src.slice(i, end < 0 ? undefined : end + 1); }
+  let depth = 0;
+  for (let j = i; j < src.length; j += 1) {
+    if (src[j] === '{') depth += 1;
+    else if (src[j] === '}' && (depth -= 1) === 0) return src.slice(i, j + 1);
+  }
+  return src.slice(i);
+}
+const escapeName = (name) => name.replace(/\$/g, '\\$');
+function constantListCopyLoops(src) {
+  const hits = [];
+  for (const m of src.matchAll(/for\s*\(\s*(?:const|let|var)\s+\w+\s+of\s+(\[[^\]]*\]|[A-Za-z_$][\w$]*)\s*\)/g)) {
+    let items = m[1];
+    if (!items.startsWith('[')) {
+      const decl = src.match(new RegExp(`(?:const|let|var)\\s+${escapeName(items)}\\s*=\\s*(\\[[^\\]]*\\])`));
+      if (!decl) continue; // not a constant array (a derived list, a function result): not this class
+      items = decl[1];
+    }
+    const names = items.slice(1, -1).split(',').map((s) => s.trim()).filter(Boolean);
+    const scripts = names.filter((e) => SCRIPT_LITERAL.test(e) || (/^[A-Za-z_$][\w$]*$/.test(e)
+      && new RegExp(`(?:const|let)\\s+${escapeName(e)}\\s*=[^;\\n]*\\.m?js['"\`]`).test(src)));
+    if (scripts.length === 0) continue;
+    const body = statementAfter(src, m.index + m[0].length);
+    if (/copyFileSync\(/.test(body) && !/serverDependencies\(/.test(body)) hits.push(m[0].replace(/\s+/g, ' ').slice(0, 80));
+  }
+  return hits;
+}
+
+/** Fixtures that had this shape when the check landed (4.7.21). Not an exemption list to grow: the
+ *  test fails when a NEW file shows the shape, and fails when a listed file no longer does, so the
+ *  list can only shrink. Each one is the same rot waiting for its script's next import. */
+const KNOWN_LOOP_HAND_LISTS = [
+  'scripts/claude-terminal-mod.mjs',
+  'tests/integration/anticipate-module-resolution.test.mjs',
+  'tests/integration/card-lane-hot-path.test.mjs',
+  'tests/integration/corpus-auto-update-e2e.test.mjs',
+  'tests/mutation/install-selfcheck-consumption-mutation.test.mjs',
+  'tests/unit/codex-lifecycle-hooks.test.mjs',
+  'tests/unit/corpus-canary.test.mjs',
+  'tests/unit/corpus-next-seed.test.mjs',
+  'tests/unit/corpus-release-customer-compat.test.mjs',
+  'tests/unit/forge-update-apply-rollback.test.mjs',
+  'tests/unit/model-router-engine.test.mjs',
+  'tests/unit/nightly-corpus-zip-coverage.test.mjs',
+  'tests/unit/promoted-lessons-survive-update.test.mjs',
+  'tests/unit/release-channel-contract.test.mjs',
+  'tests/unit/session-start-budget.test.mjs',
+  'tests/unit/update-lock-identity.test.mjs',
+];
+
+describe('no fixture copies a script beside a constant list of its imports in a loop', () => {
+  const found = (() => {
+    const out = new Map();
+    const walk = (d) => {
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        const q = path.join(d, e.name);
+        if (e.isDirectory()) { if (!/node_modules|\.git/.test(e.name)) walk(q); continue; }
+        if (!/\.(mjs|js)$/.test(e.name) || q === SELF) continue; // this file holds the probe strings
+        const hits = constantListCopyLoops(code(fs.readFileSync(q, 'utf8')));
+        if (hits.length) out.set(path.relative(ROOT, q).split(path.sep).join('/'), hits);
+      }
+    };
+    for (const d of ['tests', 'scripts', 'bin']) {
+      const full = path.join(ROOT, d);
+      if (fs.existsSync(full)) walk(full);
+    }
+    return out;
+  })();
+
+  it('TEETH: fires on the two shapes that rotted, and clears the derived walk', () => {
+    const namedList = "const DEPENDENCY_FILES = [\n  'scripts/ingest-gists.mjs',\n  'scripts/version.mjs',\n];\n"
+      + 'for (const relative of DEPENDENCY_FILES) {\n  fs.copyFileSync(path.join(REPO_ROOT, relative), path.join(tmp, relative));\n}';
+    expect(constantListCopyLoops(namedList)).toHaveLength(1);
+    const constants = "const FULL_HINTS_SRC = path.join(REPO_ROOT, 'scripts/full-hints.mjs');\n"
+      + "const WORKTREE_INTEGRITY_SRC = path.join(REPO_ROOT, 'scripts/worktree-integrity.mjs');\n"
+      + 'for (const source of [FULL_HINTS_SRC, WORKTREE_INTEGRITY_SRC]) {\n  fs.copyFileSync(source, path.join(dir, path.basename(source)));\n}';
+    expect(constantListCopyLoops(constants)).toHaveLength(1);
+    expect(constantListCopyLoops("for (const f of ['a.mjs', 'b.mjs']) fs.copyFileSync(f, t);")).toHaveLength(1);
+    // Cleared: the derived walk, a loop whose body walks the imports, a list of non-scripts, a loop
+    // that never copies.
+    expect(constantListCopyLoops('for (const dep of serverDependencies(ENTRY)) fs.copyFileSync(dep.from, t);')).toEqual([]);
+    expect(constantListCopyLoops("const entries = [path.join(ROOT, 'a.mjs')];\nfor (const s of entries) {\n"
+      + '  fs.copyFileSync(s, t);\n  for (const d of serverDependencies(s)) fs.copyFileSync(d.from, u);\n}')).toEqual([]);
+    expect(constantListCopyLoops("for (const f of ['plugin.json', 'data.txt']) fs.copyFileSync(f, t);")).toEqual([]);
+    expect(constantListCopyLoops("for (const f of ['a.mjs', 'b.mjs']) fs.writeFileSync(f, '');")).toEqual([]);
+  });
+
+  it('no NEW file copies scripts from a hand list in a loop', () => {
+    const fresh = [...found.keys()].filter((rel) => !KNOWN_LOOP_HAND_LISTS.includes(rel));
+    expect(
+      fresh.map((rel) => `${rel}: ${found.get(rel).join(' | ')}`),
+      'derive the copy list: for (const dep of serverDependencies(ENTRY)) copy dep.from, keeping its '
+      + 'path relative to the repo root (see tests/integration/ingest-gists.test.mjs).',
+    ).toEqual([]);
+  });
+
+  it('the known list only shrinks: a fixed file must leave it', () => {
+    const fixed = KNOWN_LOOP_HAND_LISTS.filter((rel) => !found.has(rel));
+    expect(fixed, 'these no longer hand-list in a loop; delete them from KNOWN_LOOP_HAND_LISTS').toEqual([]);
   });
 });

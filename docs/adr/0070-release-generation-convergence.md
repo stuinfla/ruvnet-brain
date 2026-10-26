@@ -3,9 +3,9 @@ id: ADR-070
 title: One release generation across corpus, package, hosts, and retained state
 status: Accepted
 date: 2026-08-21
-updated: 2026-10-24
+updated: 2026-10-25
 updated_source: derived-from-git
-reviewed_digest: 41fb7e526438
+reviewed_digest: 30ca8452b09f
 version: 1.1.5
 authors: [Stuart Kerr, Codex]
 tags: [release, generation, corpus, update, synchronization, retention, proof]
@@ -229,6 +229,7 @@ still supplies seed bytes to the projection producer. Focused producer and mutat
 new hosted and public verification remain required.
 
 ## Currency log
+| 2026-10-25 | Review `30ca8452b09f` (4.7.21): decision unchanged; one generation across corpus, package, hosts and retained state. `kb/forge-update.mjs` (#335, review A): `reclaimBackups` also accepts a regular file byte-identical at the same path in a `kb.archive/` tree written by the explicit `--clean --archive`; a reference reached through a link or resolving inside the backup never counts, and anything unproven falls through to the unchanged checks, so section 5's refusal to delete the only copy of a store still holds (the archive is a kept copy). Its inline entry check now compares real paths. `bin/install.mjs`: `--update` and `--host-sync-only` reload a running shared Codex app-server after a plugin or trust change through `convergeHostsAfterUpdate` (#492, review E), and a released prior generation's logs and ruflo scratch are rescued first (#406). `scripts/build-bundle.mjs` and `scripts/published-surface-probe.mjs`: entry-point sweep only. | Reviewed diffs 320b778b..63ca7c0d for `kb/forge-update.mjs`, `bin/install.mjs`, `scripts/build-bundle.mjs` and `scripts/published-surface-probe.mjs`. |
 | 2026-10-24 | Review `41fb7e526438` (4.7.18): decision unchanged. `bin/install.mjs` moved | The 4.7.18 changes to it are Codex snapshot retry/repair during wiring, a recorded reason on every failed host sync, and an early refusal for a stale source checkout running `--update`. Generation convergence is unchanged: a host still converges only to the exact published version, and a failed sync still rolls the Console runtime back; it now also says why. Source: `bin/install.mjs`. |
 | 2026-10-01 | Currency review (4.5 retrieval): decision unchanged. `.github/workflows/ci.yml` adds a read-only capability-battery step on the sealed bundle in release-qe. Generation convergence and the update path are untouched. reviewed_digest e7ef4a215243. | Reviewed `.github/workflows/ci.yml`. |
 | 2026-09-27 | Currency review: decision unchanged. Motion: this session's own install.mjs and release-transaction-provider.mjs fixes (macOS deadline, ENOBUFS), plus corpus-currency consolidation and CI hardening. These fixes strengthen generation convergence; they do not change its design. | Reviewed `.github/workflows/ci.yml`, `bin/install.mjs`, `kb/forge-update.mjs`, `scripts/brain-stamp.mjs`, `scripts/build-bundle.mjs`, `scripts/release.mjs` against the commits listed above; reviewed_digest dca3b4ba9d47. |

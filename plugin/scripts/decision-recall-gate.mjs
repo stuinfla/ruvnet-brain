@@ -16,7 +16,8 @@
  * AT MOST ONE REFUSAL PER PATH PER SESSION (the duplicate-gate shape): the retry is allowed and
  * recorded. Only in an adopted project (canonical `.swarm/memory.db` exists). Opt-outs win
  * (ADR-105 §7): RUVNET_DECISION_RECALL_GATE=off, RUVNET_AGENTDB_FIRST=off, the brain-off sentinel.
- * Fails open on its own errors.
+ * Fails open on its own errors, except a Git identity timeout, which exits 3 (skipped, with the reason) so the
+ * gate's ledger records that this ADR decision was not checked (D8, 4.7.21).
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -25,9 +26,13 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { resolveProjectStore } from './project-store-resolver.mjs';
 import { isAdrPath, freshConsultReceipt, brainHomeOf } from './decision-record.mjs';
+import { isDirectInvocation } from './entrypoint.mjs';
 
 const ALLOW = 0;
 const REFUSE = 2;
+/** decision-gate.mjs's code for "this policy could not decide, and says why on stderr". */
+const SKIPPED_SELF = 3;
+const GIT_TIMEOUT_MS = 400;
 const STATUS_LINE = /^\s*(?:status:\s*\S.*|\*\*Status\*\*\s*:.*)$/im;
 /** The document's status line, ignoring fenced code (a YAML example is not the ADR's status). */
 const STATUS_LINES = new RegExp(STATUS_LINE.source, 'gim');
@@ -87,6 +92,29 @@ function brainOff(env) {
 const ackFile = (brainHome) => path.join(brainHome, 'decision-recall-acks.json');
 function readAcks(file) { try { const o = JSON.parse(fs.readFileSync(file, 'utf8')); return o && typeof o === 'object' ? o : {}; } catch { return {}; } }
 
+/**
+ * Publish the ledger the way decision-record.mjs's own sibling (writeConsultReceipt) already does:
+ * temp file in the same directory, fsync, then rename. fs.writeFileSync on the real path truncates
+ * before it writes — a process killed between those two steps leaves an empty ledger, discarding
+ * every acknowledgment ever recorded, not just the one being added. rename() is atomic on POSIX, so
+ * a reader (or a crash) only ever sees the old complete ledger or the new complete one.
+ */
+function writeAcksAtomic(file, acks) {
+  const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
+  let fd;
+  try {
+    fd = fs.openSync(tmp, 'wx', 0o600);
+    fs.writeSync(fd, JSON.stringify(acks));
+    try { fs.fsyncSync(fd); } catch { /* filesystem without fsync (some network mounts) — proceed */ }
+    fs.closeSync(fd);
+    fd = null;
+    fs.renameSync(tmp, file);
+  } finally {
+    if (fd !== null) { try { fs.closeSync(fd); } catch { /* nothing to close */ } }
+    try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch { /* leave the temp rather than throw over it */ }
+  }
+}
+
 /** The verdict. Returns { code, stderr?, stdout? }. */
 export function evaluate(payload, { env = process.env, now = Date.now() } = {}) {
   if (['off'].includes(String(env.RUVNET_DECISION_RECALL_GATE || '').toLowerCase())
@@ -94,7 +122,14 @@ export function evaluate(payload, { env = process.env, now = Date.now() } = {}) 
   const decision = adrDecisionIn(payload);
   if (!decision) return { code: ALLOW };
   let resolution;
-  try { resolution = resolveProjectStore({ projectDir: payload.cwd || process.cwd(), gitTimeoutMs: 400 }); } catch { return { code: ALLOW }; }
+  try { resolution = resolveProjectStore({ projectDir: payload.cwd || process.cwd(), gitTimeoutMs: GIT_TIMEOUT_MS }); } catch (error) {
+    // D8 (4.7.21): a Git timeout is not a verdict. Exit SKIPPED_SELF with the reason, so decision-gate records a
+    // `policy-skipped` ledger row for this ADR decision instead of the silent allow it used to be.
+    if (/timed out/i.test(String(error?.message))) {
+      return { code: SKIPPED_SELF, stderr: `decision-recall: Git project identity timed out after ${GIT_TIMEOUT_MS}ms; the ${decision.kind} ${decision.path} was not checked for an AgentDB consult.` };
+    }
+    return { code: ALLOW };
+  }
   try { if (!fs.statSync(resolution.canonicalAgentDbPath).isFile()) return { code: ALLOW }; } catch { return { code: ALLOW }; }
   const brainHome = brainHomeOf(env);
   const receipt = freshConsultReceipt({ projectRoot: resolution.projectRoot, brainHome, now });
@@ -108,13 +143,13 @@ export function evaluate(payload, { env = process.env, now = Date.now() } = {}) 
   const acks = readAcks(file);
   if (acks[key]) {
     acks[key].retriedAt = new Date(now).toISOString();
-    try { fs.writeFileSync(file, JSON.stringify(acks)); } catch { /* the ledger never blocks a write */ }
+    try { writeAcksAtomic(file, acks); } catch { /* the ledger never blocks a write */ }
     return { code: ALLOW, stdout: `This ${decision.kind} was written without an AgentDB consult (retry after one refusal). Record it afterwards with decision-record.mjs --record.` };
   }
   // Keep the ledger bounded: drop acknowledgements older than a week.
   for (const [k, v] of Object.entries(acks)) if (now - Date.parse(v?.at) > 7 * 86_400_000) delete acks[k];
   acks[key] = { at: new Date(now).toISOString(), kind: decision.kind };
-  try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(acks), { mode: 0o600 }); } catch { return { code: ALLOW }; }
+  try { fs.mkdirSync(path.dirname(file), { recursive: true }); writeAcksAtomic(file, acks); } catch { return { code: ALLOW }; }
   const script = path.join(path.dirname(fileURLToPath(import.meta.url)), 'decision-record.mjs');
   return { code: REFUSE, stderr: [
     `⛔ BLOCKED (once) — ${decision.kind} ${decision.path}: run decision-record.mjs --consult "<topic>" first (AgentDB decisions unread).`,
@@ -127,7 +162,7 @@ export function evaluate(payload, { env = process.env, now = Date.now() } = {}) 
 }
 
 function isMain() {
-  try { return Boolean(process.argv[1]) && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; }
+  try { return isDirectInvocation(import.meta.url); } catch { return false; }
 }
 if (isMain()) {
   let verdict = { code: ALLOW };

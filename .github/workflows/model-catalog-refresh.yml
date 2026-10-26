@@ -7,10 +7,12 @@ on:
     - cron: '13 9 * * 1'
   workflow_dispatch:
 
+# REPORT-ONLY (4.7.21, decision D4). The job used to push a branch and open a pull request, which this repo's
+# Actions token is not allowed to do, so it failed every Monday after doing its real work. It now leaves the
+# refreshed catalog, its diff and the source evidence as an artifact plus a job summary; landing a change is a
+# deliberate in-session commit. No write permission and no repo setting is needed.
 permissions:
-  actions: write
-  contents: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: model-catalog-refresh
@@ -21,9 +23,6 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      GH_TOKEN: ${{ github.token }}
-      REFRESH_BRANCH: automation/model-catalog-refresh
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,8 +31,16 @@ jobs:
         with:
           node-version: '20'
 
+      # Exit 1 only when the router's core evidence (inventory, evaluations) failed; a broken third-party advisory
+      # page alone is `partial`: exit 0 with a ::warning annotation and a line in the job summary.
       - name: Collect weekly independent model and effort evidence
-        run: node scripts/model-currency.mjs --refresh --router-dir "$RUNNER_TEMP/model-currency"
+        run: |
+          set -o pipefail
+          node scripts/model-currency.mjs --refresh --router-dir "$RUNNER_TEMP/model-currency" | tee "$RUNNER_TEMP/model-currency.out"
+
+      - name: Summarize the model-currency verdict
+        if: always()
+        run: node scripts/model-currency.mjs --summarize "$RUNNER_TEMP/model-currency.out" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Preserve source evidence and incomplete-refresh diagnostics
         if: always()
@@ -50,37 +57,28 @@ jobs:
           npm run catalog:refresh
           npm run catalog:verify
 
-      - name: Open or update the one protected refresh transaction
-        id: transaction
+      - name: Preserve the refreshed catalog and its diff for review
+        if: always()
         run: |
           set -euo pipefail
-          if git diff --quiet -- data/model-catalog.json data/openrouter-catalog-snapshot.json; then
-            echo "OpenRouter facts are unchanged; nothing to land."
-            exit 0
-          fi
+          out="$RUNNER_TEMP/catalog-refresh"
+          mkdir -p "$out"
+          git diff -- data/model-catalog.json data/openrouter-catalog-snapshot.json > "$out/catalog.diff"
+          cp data/model-catalog.json data/openrouter-catalog-snapshot.json "$out/"
+          {
+            echo "### Model catalog refresh"
+            if [ -s "$out/catalog.diff" ]; then
+              echo "OpenRouter facts changed ($(grep -c '^[-+][^-+]' "$out/catalog.diff") changed lines). Review the \`model-catalog-refresh\` artifact and land it in-session."
+            else
+              echo "OpenRouter facts are unchanged; nothing to land."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin "$REFRESH_BRANCH:refs/remotes/origin/$REFRESH_BRANCH" || true
-          git checkout -B "$REFRESH_BRANCH"
-          git add data/model-catalog.json data/openrouter-catalog-snapshot.json
-          git commit -m "chore(catalog): refresh live OpenRouter facts"
-          git push --force-with-lease origin "HEAD:$REFRESH_BRANCH"
-
-          pr_number=$(gh pr list --head "$REFRESH_BRANCH" --base main --state open --json number --jq '.[0].number // empty')
-          if [ -z "$pr_number" ]; then
-            pr_url=$(gh pr create \
-              --base main \
-              --head "$REFRESH_BRANCH" \
-              --title "chore(catalog): refresh live OpenRouter facts" \
-              --body "Automated weekly refresh owned by ADR-016. The snapshot and catalog prices came from one live OpenRouter response and passed catalog:verify.")
-            pr_number=${pr_url##*/}
-          fi
-
-          echo "candidate_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          echo "pr_number=$pr_number" >> "$GITHUB_OUTPUT"
-
-      - name: Leave the maintenance PR for deliberate qualification
-        env:
-          PR_NUMBER: ${{ steps.transaction.outputs.pr_number }}
-        run: echo "Maintenance PR $PR_NUMBER is ready for review; release qualification is a separate deliberate action."
+      - name: Upload the refreshed catalog
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-catalog-refresh
+          path: ${{ runner.temp }}/catalog-refresh/
+          retention-days: 30
+          if-no-files-found: warn

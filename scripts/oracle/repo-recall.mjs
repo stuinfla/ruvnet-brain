@@ -36,6 +36,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { extractZip } from '../../kb/zip-extract.mjs';
 import { validateCoverageLedger } from '../coverage-integrity.mjs';
 import { retiredFixtureStores } from '../fixture-denominator.mjs';
+import { isDirectInvocation } from '../../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -556,8 +557,7 @@ export async function main(argv = process.argv.slice(2), { searchAll = null } = 
 // archive on disk (measured 2026-09-14).
 function isMain() {
   try {
-    if (!process.argv[1]) return false;
-    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+    return isDirectInvocation(import.meta.url);
   } catch { return false; }
 }
 

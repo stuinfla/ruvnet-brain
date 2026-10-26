@@ -7,6 +7,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { evaluateCandidateReceipt } from './release-proof.mjs';
 import { getVersion } from './version.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export const PROTECTED_WORKFLOW = 'protected-release';
 export const PROTECTED_VERSION = getVersion();
@@ -92,7 +93,7 @@ export function validateProtectedPublishInvocation({ root = process.cwd(), env =
   };
 }
 
-if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
+if (isDirectInvocation(import.meta.url)) {
   const result = validateProtectedPublishInvocation();
   if (result.verdict !== 'PASS') {
     console.error('[protected-release] publication refused:');

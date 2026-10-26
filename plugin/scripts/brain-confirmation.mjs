@@ -143,7 +143,8 @@ export function confirm({ footprint, env = process.env, home = os.homedir(), now
   const checkable = Boolean(integrity) && fs.existsSync(path.join(roots.kbDir, 'CORPUS-COVERAGE.json'));
   if (checkable && !integrity.valid) knowledgeProblems.push([`the bytes on disk fail the release-coverage check (${integrity.failures?.[0] || 'unknown'})`, UPDATE]);
   // A newer corpus is published and not yet installed (identity, not age): advisory, never a gate.
-  const pending = newerCorpusPending({ source, corpusCheck: readJson(autoUpdatePaths(roots.brainHome).checkFile) });
+  const pending = newerCorpusPending({ source, corpusCheck: readJson(autoUpdatePaths(roots.brainHome).checkFile),
+    installedAtMs: signed ? Date.parse(signature.verifiedAt || '') : NaN });
   if (pending) {
     const lockAt = readJson(autoUpdatePaths(roots.brainHome).lockFile)?.at;
     const running = Number.isFinite(Date.parse(lockAt || '')) && now - Date.parse(lockAt) < AUTO_UPDATE_LOCK_STALE_MS;

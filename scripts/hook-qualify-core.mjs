@@ -127,7 +127,9 @@ export function makeWorld(host, { root = REPO, label = 'qual' } = {}) {
 }
 export function worldEnv(w, extra = {}) {
   const env = {};
-  for (const k of ['PATH', 'LANG', 'LC_ALL', 'SHELL', 'USER']) if (process.env[k] !== undefined) env[k] = process.env[k];
+  // RUVNET_STOP_NUDGES is forwarded: with it stripped, a qualification run under `full` never executed the
+  // hooks that hook-shim.mjs runs only in that mode (grounding-turn-gate exited 0 unrun and "qualified").
+  for (const k of ['PATH', 'LANG', 'LC_ALL', 'SHELL', 'USER', 'RUVNET_STOP_NUDGES']) if (process.env[k] !== undefined) env[k] = process.env[k];
   env.PATH = `${path.dirname(process.execPath)}${path.delimiter}${env.PATH || '/usr/bin:/bin'}`;
   Object.assign(env, { HOME: w.home, USERPROFILE: w.home, TMPDIR: w.tmp, CLAUDE_PROJECT_DIR: w.cwd, RUVNET_BRAIN_HOME: path.join(w.home, '.cache', 'ruvnet-brain') });
   if (w.host === 'codex') env.CODEX_HOME = path.join(w.home, '.codex');

@@ -46,7 +46,7 @@ function refresh() {
     '--structural-only',
   ], {
     cwd: ROOT,
-    env: { ...process.env, RUVNET_BIG_SHARDS: '1', ...(modelCache ? { KB_MODEL_CACHE: modelCache } : {}) },
+    env: { ...process.env, RUVNET_BIG_SHARDS: '1', CE_DEBUG: '1', ...(modelCache ? { KB_MODEL_CACHE: modelCache } : {}) },
     encoding: 'utf8',
     timeout: 10 * 60 * 1000,
     maxBuffer: 16 * 1024 * 1024,
@@ -64,6 +64,10 @@ function passagesByPath() {
 
 describe.skipIf(!modelCache)('forge-refresh real full -> incremental path', () => {
   it('embeds only the changed file on pass two and preserves the unchanged stable ID', () => {
+    // Without kb deps forge-big cannot load @xenova/transformers and the run fails with a resolver error
+    // three layers down. Name the cause first, as a failure, not a skip.
+    const kbDeps = path.join(ROOT, 'kb', 'node_modules');
+    expect(fs.existsSync(kbDeps), `kb/node_modules missing: cd kb && npm ci (looked at ${kbDeps})`).toBe(true);
     writeCorpus('Alpha generation one.');
     const first = refresh();
     expect(first.status, `${first.stdout}\n${first.stderr}`).toBe(0);

@@ -29,6 +29,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { storeRoot, darkStores } from '../kb/store-root.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const OWNER = process.env.RUVNET_ORG_OWNER || 'ruvnet';
@@ -104,7 +105,7 @@ export function applyCardToFiles(files, card, name, insert = insertSorted) {
 }
 
 const isMain = (() => {
-  try { return process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url); }
+  try { return isDirectInvocation(import.meta.url); }
   catch { return false; }
 })();
 

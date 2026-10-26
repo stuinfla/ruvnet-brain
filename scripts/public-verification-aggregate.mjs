@@ -8,6 +8,7 @@ import { retrievalOracleExpectationFromPlan, validateRetrievalOracleReview } fro
 import { validateRetrievalCanaryPlan, validateRetrievalCanaryReceipt } from './retrieval-canary.mjs';
 import { validateNightlyProofReceipt, validateNativeSchedulerSmoke } from './nightly-two-run-proof.mjs';
 import { CLAUDE_FABLE_5_ID, GPT_5_6_SOL_ID, LEGACY_REVIEW_MODEL_IDS } from './review-model-defaults.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export const PUBLIC_VERIFICATION_OS = Object.freeze(['linux', 'macos', 'windows']);
 export const PUBLIC_VERIFICATION_MODES = Object.freeze(['claude', 'codex', 'dual']);
@@ -359,7 +360,7 @@ async function main() {
     leaves: aggregate.metrics.leaves })}\n`);
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isDirectInvocation(import.meta.url)) {
   main().catch((error) => {
     process.stderr.write(`${error.message}\n`);
     process.exitCode = 1;

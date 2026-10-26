@@ -27,6 +27,7 @@ import path from 'node:path';
 import { execFileSync, spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { extractTarball } from '../helpers/extract-tarball.mjs';
+import { parseNpmPack } from '../helpers/npm-pack-json.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const madeTmp = [];
@@ -53,7 +54,7 @@ beforeAll(() => {
     const out = execFileSync('npm', ['pack', '--json', '--pack-destination', dest], {
       cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], shell: process.platform === 'win32',
     });
-    packed = JSON.parse(out.slice(out.indexOf('[')))[0];
+    packed = parseNpmPack(out, { expectName: 'ruvnet-brain' });
     extractTarball(path.join(dest, packed.filename), dest);
   }
   unpackedRoot = path.join(dest, 'package');

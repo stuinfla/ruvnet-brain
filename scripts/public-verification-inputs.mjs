@@ -17,6 +17,7 @@ import {
   validateRetrievalQueryEvidence,
   verifyQueryOracleSource,
 } from './retrieval-canary.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const HEX40 = /^[a-f0-9]{40}$/;
 const HEX64 = /^[a-f0-9]{64}$/;
@@ -602,6 +603,6 @@ export async function main(argv = process.argv.slice(2)) {
   return result;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isDirectInvocation(import.meta.url)) {
   main().catch((error) => { console.error(error.message); process.exitCode = 1; });
 }

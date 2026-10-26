@@ -33,6 +33,7 @@ import { runCommandProbe } from '../../tests/ux/command-probe.mjs';
 import { runCardLaneGate } from './card-lane-gate.mjs';
 import { runSessionStartGate } from './session-start-gate.mjs';
 import { automaticHookRetirementStatus } from '../../bin/install.mjs';
+import { isDirectInvocation } from '../../plugin/scripts/entrypoint.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const RENDER_PROBE = path.resolve(HERE, '../../tests/ux/render-probe.mjs');
@@ -394,7 +395,7 @@ export async function runUxSuite() {
   throw error;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isDirectInvocation(import.meta.url)) {
   runUxSuite().catch((e) => {
     if (!e.receipt) console.error('  ux-suite crashed:', e.message);
     process.exit(e.receipt ? 1 : 2);

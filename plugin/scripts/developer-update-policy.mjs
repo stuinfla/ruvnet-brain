@@ -1,4 +1,7 @@
-export const EXECUTION_MODULES = Object.freeze(['developer-update.mjs', 'developer-update-policy.mjs', 'developer-update-lock.mjs', 'developer-update-maintenance.mjs', 'developer-update-cleanup.mjs', 'plugin-artifact-proof.mjs']);
+export const EXECUTION_MODULES = Object.freeze(['developer-update.mjs', 'developer-update-policy.mjs', 'developer-update-lock.mjs', 'developer-update-maintenance.mjs', 'developer-update-cleanup.mjs', 'plugin-artifact-proof.mjs', 'entrypoint.mjs']);
+// Members a coordinator generation may lack: each is required exactly when the staged developer-update.mjs imports it
+// (plugin-artifact-proof since 4.6, entrypoint since the 4.7.21 entry-point sweep), so older registrations stay valid.
+export const OPTIONAL_EXECUTION_MODULES = Object.freeze(['plugin-artifact-proof.mjs', 'entrypoint.mjs']);
 // Shared stack classification and ordering: installations are selected, never manufactured.
 export const FAMILY = /^(ruflo|ruvnet-brain|ruvector|ruvector-extensions|ruvi|ruvbot|qudag|flow-nexus|agent-browser|agent-browser-mcp|agentic-flow|agentic-qe|agentic-robotics|agentic-payments|agentdb|ruv-swarm|@pacphi\/agentic-kit$|@ruvector\/|@claude-flow\/|@metaharness\/|@agentic-robotics\/)/;
 export const PLUGIN_MARKETPLACES = new Set(['ruflo', 'ruview', 'ruvnet-brain', 'cognitum']);

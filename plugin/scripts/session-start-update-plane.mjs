@@ -11,6 +11,8 @@ import { read, write, exists, json, firstVersion, dispatchDetached, mtimeMs } fr
 import { KNOWLEDGE_LINE_PREFIX, AUTO_UPDATE_LOCK_STALE_MS, autoUpdateOptOut, knowledgeFacts } from './session-start-health.mjs';
 import { inventoryFootprint } from './brain-footprint.mjs';
 import { confirm, footprintAlarm } from './brain-confirmation.mjs';
+import { claimCodexOvernightNotice } from './codex-overnight-notice.mjs';
+import { developerCoordinatorOwner } from './developer-update-owner.mjs';
 
 /**
  * KNOWLEDGE SELF-HEAL (owner invariant 2026-09-30: no brain may ever be more than 48h old) AND
@@ -31,7 +33,9 @@ import { confirm, footprintAlarm } from './brain-confirmation.mjs';
  * (plugin/mcp/server.mjs, announce:false so it never consumes the once-per-session line). The outcome is
  * recorded by the worker and spoken by the NEXT session's knowledge line.
  */
-export const AUTO_UPDATE_POLICY = Object.freeze({ staleHours: 24, retryHours: 6, offlineRetryMinutes: 30, ttlSec: 1800, checkMinutes: 60 });
+// ttlSec sits above host-update.mjs's knowledge limit (150 min), which sits above the coordinator's installer limit
+// (135 min = the 90-minute bundle download deadline plus the apply): each kill lands on a level that records an outcome.
+export const AUTO_UPDATE_POLICY = Object.freeze({ staleHours: 24, retryHours: 6, offlineRetryMinutes: 30, ttlSec: 9300, checkMinutes: 60 });
 export const corpusCheckMinutes = (env = {}) => {
   const raw = env.RUVNET_CORPUS_CHECK_MINUTES;
   const n = Number(raw);
@@ -159,6 +163,8 @@ export const compareVersions = (a, b) => {
 };
 
 export const stableSpine = ({ env, hookDir, stateDir, home, pluginVersion, emit, now }) => {
+  const overnight = claimCodexOvernightNotice(stateDir); // the unattended nightly's deferred Codex reload, said once
+  if (overnight) emit(overnight);
   const activeFile = path.join(stateDir, 'active.json');
   const stamp = path.join(stateDir, '.last-update-check');
   let seedDispatched = false;
@@ -240,6 +246,14 @@ export const heartbeat = ({ env, hookDir, stateDir, home, running, seedDispatche
     for (let i = 0; i < 3 && active; i += 1) { if ((r[i] || 0) !== (a[i] || 0)) { newer = (r[i] || 0) > (a[i] || 0); break; } }
     if (active && !newer) return;
   } catch { /* unknown active generation: keep the existing announcement */ }
+  let coordinated = false;
+  try { coordinated = developerCoordinatorOwner({ home, brainHome: env.RUVNET_BRAIN_HOME || path.join(home, '.cache', 'ruvnet-brain') }).active; } catch { /* legacy path */ }
+  if (coordinated) {
+    // Coordinated machines install new code only in the scheduled nightly; saying "installing now" would be false.
+    emit(`[RuvNet Brain — v${remoteVersion} is published; this machine's coordinated nightly update installs it at its next scheduled run]`);
+    emit('');
+    return;
+  }
   if (pref === 'yes' && exists(path.join(hookDir, 'host-update.mjs'))) {
     dispatchDetached(hookDir, 600, path.join(stateDir, '.last-auto-update.log'),
       process.execPath, [path.join(hookDir, 'host-update.mjs')], env);

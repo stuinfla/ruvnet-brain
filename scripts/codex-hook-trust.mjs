@@ -78,15 +78,54 @@ export function codexHookIdentities(hooksFile, keySource = 'ruvnet-brain@ruvnet-
  * OLD file's hash at the same key ('modified') or that did not exist before ('untrusted'). A hook the user
  * had already trusted at the old hash stops running until reviewed; that is the whole point of the list.
  */
-export function codexTrustChanges(prevHooksFile, nextHooksFile, keySource) {
+export function codexTrustChanges(prevHooksFile, nextHooksFile, keySource, { contentChanged = false } = {}) {
   const prev = codexHookIdentities(prevHooksFile, keySource);
   const next = codexHookIdentities(nextHooksFile, keySource);
   const changes = [];
   for (const [key, hash] of next) {
     if (!prev.has(key)) changes.push({ key, status: 'untrusted' });
     else if (prev.get(key) !== hash) changes.push({ key, status: 'modified' });
+    // Codex 0.164+: an unchanged declaration is still "modified" once the plugin's bytes change, because the approval
+    // also pins trusted_content_hash (plugin_trust.rs matches_hash; legacy approvals pin a baseline the same way).
+    else if (contentChanged) changes.push({ key, status: 'modified', reason: 'plugin-content' });
   }
   return changes;
+}
+
+/**
+ * Does this Codex approve plugin hooks by content as well as declaration? True from codex-cli 0.164.0, where
+ * discovery.rs reports currentHash "<declaration>/<content>" and plugin_trust.rs checks trusted_content_hash.
+ * Unknown or unparseable versions answer null so a caller can fail toward asking for review.
+ */
+export function codexUsesContentTrust(versionText) {
+  const m = /(\d+)\.(\d+)\.(\d+)/.exec(String(versionText || ''));
+  if (!m) return null;
+  const [major, minor] = [Number(m[1]), Number(m[2])];
+  return major > 0 || minor >= 164;
+}
+
+// Codex writes this under the installed plugin itself (codex-rs/core-plugins/src/command_migration.rs); a candidate
+// release never carries it, so it says nothing about whether the release's bytes changed.
+const CODEX_GENERATED_PREFIX = '.codex-plugin/migrated-command-skills/';
+
+/**
+ * Would Codex see different plugin contents after replacing `installedRoot` with `candidateRoot`? Compares exactly
+ * the files codexPluginContentHash() fingerprints (Codex's own generated migrations aside). Anything unreadable
+ * counts as changed: the answer is used to warn, so it fails toward asking the user to review.
+ */
+export function codexPluginContentChanged(installedRoot, candidateRoot, options = {}) {
+  if (!installedRoot || !candidateRoot) return true;
+  const files = (root) => {
+    const out = new Map();
+    codexPluginContentHash(root, { ...options, onFile: (rel, bytes) => {
+      if (!rel.startsWith(CODEX_GENERATED_PREFIX)) out.set(rel, crypto.createHash('sha256').update(bytes).digest('hex'));
+    } });
+    return out;
+  };
+  try {
+    const a = files(installedRoot); const b = files(candidateRoot);
+    return a.size !== b.size || [...b].some(([rel, h]) => a.get(rel) !== h);
+  } catch { return true; }
 }
 
 /** The exact instruction for a user whose Brain hooks Codex is holding back. */

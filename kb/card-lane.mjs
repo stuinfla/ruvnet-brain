@@ -746,7 +746,16 @@ export function answerFromCards(query, dir, { allowGuideAnswers = false, k = 1 }
 }
 
 /** Render a fast-lane hit into the same "text block" shape the heavy path returns, so a caller can
- *  read content[0].text uniformly either way — plus a plain marker a consumer can grep for. */
+ *  read content[0].text uniformly either way — plus a plain marker a consumer can grep for.
+ *
+ *  The printed `repo=`/`path :` pair must be a citation `kb/verify-citation.mjs`'s
+ *  `citationResolves()` can actually resolve on disk. The header names the card's OWN repo (the
+ *  subject, e.g. `repo=ruvector`), so routing credit and the ADR-055 receipt stay with that repo.
+ *  The path is the card's real stored passage path: capability cards are folded into the derived
+ *  `concepts` store at build time (`scripts/corpus-aggregates.mjs`'s `add(repository, 'CARD', ...)`)
+ *  under `${repository}/CARD/${repository}-card`, and `citationResolves()` looks a `CARD/` path up
+ *  there. The old `<repo>/kb/capability-cards.md#<repo>` path was never a stored passage path, so
+ *  every fast-lane answer was permanently unresolvable (Dream Cycle 2026-10-03, PR #372). */
 export function renderCardHit(hit) {
   const confidence = hit.namedRepo
     ? 'named directly'
@@ -756,7 +765,7 @@ export function renderCardHit(hit) {
   return (
     `⚡ FAST LANE — zero-ML keyword match (${confidence})\n`
     + `#1  repo=${line(hit.repo)}  evidence=curated-capability-card\n`
-    + `path : ${line(hit.repo)}/kb/${line(hit.path)}\n`
+    + `path : ${line(hit.repo)}/CARD/${line(hit.repo)}-card\n`
     + `----- grounded summary -----\n`
     + `chars: ${body.length}\n----- full document -----\n`
     + `${body}\n${'='.repeat(67)}\n\n`

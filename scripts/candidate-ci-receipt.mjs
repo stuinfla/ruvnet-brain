@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { verifyPayloadMembers } from './release-payload.mjs';
 import { validateQualificationReceipt } from './release-qualification.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export const REQUIRED_CI_JOBS = ['candidate-preflight', 'release-acceptance-linux',
   'release-acceptance-windows', 'release-acceptance-macos', 'release-qe'];
@@ -50,7 +51,7 @@ export function createCandidateCiReceipt({ sha, runId, runAttempt, results, ciRe
     verdict: 'PASS', skipped: 0, unknown: 0 };
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isDirectInvocation(import.meta.url)) {
   const receipt = createCandidateCiReceipt({ sha: process.env.CANDIDATE_SHA,
     runId: Number(process.env.GITHUB_RUN_ID), runAttempt: Number(process.env.GITHUB_RUN_ATTEMPT),
     ciResult: process.env.CI_RESULT,

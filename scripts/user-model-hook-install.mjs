@@ -5,6 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import { pathToFileURL } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export function shellQuote(value) { return `'${value.replaceAll("'", "'\\''")}'`; }
 
@@ -134,7 +135,7 @@ export function applyUserModelHooks(plan) {
   return { applied: true, written };
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+if (isDirectInvocation(import.meta.url)) {
   try {
     const args = process.argv.slice(2);
     if (args.some(arg => !['--apply', '--dry-run', '--plan'].includes(arg))) throw new Error('Usage: user-model-hook-install.mjs [--apply|--dry-run|--plan]');

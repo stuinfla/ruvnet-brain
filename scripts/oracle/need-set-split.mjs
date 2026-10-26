@@ -13,6 +13,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDirectInvocation } from '../../plugin/scripts/entrypoint.mjs';
 
 export function splitNeedSet(questions, { salt = 'v1', trainFraction = 0.5 } = {}) {
   const byRepo = new Map();
@@ -45,4 +46,4 @@ async function main() {
   console.log(JSON.stringify({ train: split.train.length, heldout: split.heldout.length, contentHash: set.contentHash }));
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
+if (isDirectInvocation(import.meta.url)) await main();

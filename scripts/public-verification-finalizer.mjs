@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { finalizeReleaseTransaction } from './release-transaction.mjs';
 import { liveReleaseProvider } from './release-transaction-provider.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const argument = (args, name) => {
   const index = args.indexOf(name);
@@ -61,5 +62,5 @@ export async function main(args = process.argv.slice(2)) {
   }
 }
 
-const invokedDirectly = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const invokedDirectly = isDirectInvocation(import.meta.url);
 if (invokedDirectly) process.exitCode = await main();

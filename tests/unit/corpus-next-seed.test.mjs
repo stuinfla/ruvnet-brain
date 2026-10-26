@@ -367,7 +367,8 @@ describe('the compatibility profile is read from the consuming runtime, never re
     dirs.push(runtimeRoot);
     // repo-recall's import closure (ADR-0091 D7 added the shared retirement rule and the coverage ledger validator).
     for (const relative of ['scripts/oracle/repo-recall.mjs', 'kb/forge-corpus.mjs', 'kb/incremental-refresh.mjs', 'kb/rvf-index.mjs', 'kb/zip-extract.mjs',
-      'scripts/fixture-denominator.mjs', 'scripts/coverage-integrity.mjs', 'plugin/scripts/coverage-integrity.mjs']) {
+      'scripts/fixture-denominator.mjs', 'scripts/coverage-integrity.mjs', 'plugin/scripts/coverage-integrity.mjs',
+      'plugin/scripts/entrypoint.mjs']) {
       fs.mkdirSync(path.dirname(path.join(runtimeRoot, relative)), { recursive: true });
       fs.copyFileSync(path.join(ROOT, relative), path.join(runtimeRoot, relative));
     }

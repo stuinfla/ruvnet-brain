@@ -9,6 +9,7 @@ import { learningContext } from './runtime-preferences.mjs';
 import { recordLearningObservation, distillObservations, observationKey } from './learning-store.mjs';
 import { resolveRuflo } from './ruflo-bin.mjs';
 import { recordHookFailure } from './hook-failures.mjs';
+import { isDirectInvocation } from './entrypoint.mjs';
 
 // LOAD BOUNDS (measured 2026-10-21: one busy session spawned hundreds of concurrent detached `ruflo memory store`
 // children, which timed out against each other and wrote 826 ledger rows in a day). Owner ruling 2026-10-12 stands:
@@ -148,7 +149,7 @@ function runDetached(mode) {
   } catch (error) { fail(error); } finally { if (process.env.RUVNET_LEARN_SLOT) releaseObserveSlot(process.env.RUVNET_LEARN_SLOT); }
 }
 
-const isMain = (() => { try { return Boolean(process.argv[1]) && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })();
+const isMain = isDirectInvocation(import.meta.url);
 if (isMain && ['--observe', '--distill'].includes(process.argv[2])) {
   runDetached(process.argv[2]);
   process.exit(0);

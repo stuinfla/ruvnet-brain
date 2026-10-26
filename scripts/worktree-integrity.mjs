@@ -12,6 +12,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 function git(cwd, args) {
   const result = spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf8' });
@@ -101,8 +102,7 @@ export function assertPrimaryCheckoutUnchanged(root, before) {
   return after;
 }
 
-const invokedDirectly = process.argv[1]
-  && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+const invokedDirectly = isDirectInvocation(import.meta.url);
 if (invokedDirectly) {
   try {
     const command = process.argv[2];

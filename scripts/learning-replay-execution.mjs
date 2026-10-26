@@ -151,6 +151,8 @@ export function verifyRufloFlag(bin = RUFLO_BIN) {
   const result = spawnSync(bin, ['memory', 'search', '--help'], {
     encoding: 'utf8',
     timeout: 30_000,
+    cwd: os.tmpdir(), // ruflo writes .claude-flow/ into its cwd; never the checkout
+
     env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0', CLAUDE_FLOW_AUTO_UPDATE: 'false' },
   });
   const output = `${result.stdout || ''}${result.stderr || ''}`;

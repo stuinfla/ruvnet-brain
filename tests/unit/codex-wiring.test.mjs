@@ -649,6 +649,36 @@ describe('wireCodexPlugin — install is idempotent, state-driven, and disable-p
     });
   });
 
+  // #492 (a): on Codex 0.164+ the same body-only update DOES hold every Brain hook back (the approval pins the
+  // plugin's bytes), so without automatic trust the update must say so instead of reporting nothing to review.
+  it('on Codex 0.164+ a body-only update names every Brain hook as needing review', () => {
+    const home = tmpdir();
+    const codexDir = path.join(home, '.codex');
+    fs.mkdirSync(codexDir, { recursive: true });
+    const installedRoot = path.join(codexDir, 'plugins', 'cache', 'ruvnet-brain', 'ruvnet-brain', '1.2.2');
+    fs.mkdirSync(path.dirname(installedRoot), { recursive: true });
+    fs.cpSync(path.join(ROOT, 'plugin'), installedRoot, { recursive: true });
+    const manifest = path.join(installedRoot, '.codex-plugin', 'plugin.json');
+    fs.writeFileSync(manifest, fs.readFileSync(manifest, 'utf8').replace(/("version"\s*:\s*)"[^"]+"/, '$1"1.2.2"'));
+    let listedVersion = '1.2.2';
+    const runJson = (args) => {
+      const command = args.join(' ');
+      if (command === 'plugin list --json') return { ok: true, value: { installed: [{
+        pluginId: 'ruvnet-brain@ruvnet-brain', version: listedVersion, installed: true, enabled: true,
+      }] } };
+      if (command === 'plugin marketplace list --json') return { ok: true, value: { marketplaces: [{ name: 'ruvnet-brain' }] } };
+      if (command === 'plugin marketplace upgrade ruvnet-brain --json') return { ok: true, value: {} };
+      if (command === 'plugin add ruvnet-brain@ruvnet-brain --json') { listedVersion = '1.2.3'; return { ok: true, value: {} }; }
+      return { ok: false, error: `unexpected ${command}` };
+    };
+    const hookCount = Object.values(JSON.parse(fs.readFileSync(path.join(ROOT, 'plugin', 'hooks', 'codex-hooks.json'), 'utf8')).hooks)
+      .flat().reduce((n, group) => n + group.hooks.length, 0);
+    const result = wireCodexPlugin({ codexDir, codexHome: codexDir, expectedVersion: '1.2.3', runJson, announce: false, contentTrust: true });
+    expect(result.action).toBe('updated');
+    expect(result.hooksNeedingReview).toHaveLength(hookCount);
+    expect(result.hooksNeedingReview.every((h) => h.status === 'modified' && h.reason === 'plugin-content')).toBe(true);
+  });
+
   it('requests one restart when a boot-level declaration actually changes', () => {
     const home = tmpdir();
     const codexDir = path.join(home, '.codex');

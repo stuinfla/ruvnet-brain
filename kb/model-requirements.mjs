@@ -90,8 +90,11 @@ export function requiredEmbedderModels(kbDir) {
   return models.size ? [...models].sort() : [MINILM_MODEL];
 }
 
+// A model is present only when the files the strict offline reader loads are there (#301): a
+// folder left by a download that did not finish (no onnx/model_quantized.onnx) counts as missing,
+// or the doctor calls a cache warm that cannot answer a query.
 export function missingEmbedderModels(modelCache, models) {
-  return models.filter((model) => !fs.existsSync(modelPath(modelCache, model)));
+  return models.filter((model) => !modelCacheReady(modelCache, model));
 }
 
 export function configureTransformersModel(T, modelCache, model) {

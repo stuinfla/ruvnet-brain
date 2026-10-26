@@ -11,6 +11,7 @@ import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { connectNativeGateway, decideNativeTurn, nativeGatewayLaunch } from './model-routing-gateway.mjs';
 import { subscriptionEnvironment, assertSubscriptionAuth } from './model-router-dispatch.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export const MAX_TERMINAL_BYTES = 64 * 1024 * 1024;
 const REFUSED = 'Native terminal routing unavailable; request was not sent.';
@@ -302,7 +303,7 @@ function exitOf(child) {
   });
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isDirectInvocation(import.meta.url)) {
   runTerminalGateway(parseTerminalInvocation(process.argv.slice(2))).then(({ code, signal }) => {
     if (signal) { process.removeAllListeners(signal); process.kill(process.pid, signal); }
     else process.exitCode = code ?? 1;

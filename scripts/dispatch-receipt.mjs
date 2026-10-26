@@ -26,6 +26,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { CLAUDE_MODEL_IDS, CLAUDE_TIERS, PRICING, estTokens, estimateCosts, receiptLine, receiptsPath, priceOf } from './route-cheap.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 // Default input share when only a MEASURED TOTAL is known. A subagent's tokens are dominated by input
 // (it re-reads files and tool output on every turn); its final report is small. 0.9 is an assumption,
@@ -109,4 +110,4 @@ function main() {
   console.log(receiptLine(receipt.model, { cost: receipt.est_cost, frontier: receipt.est_frontier_cost, saved: receipt.saved, ref: receipt.inherited }));
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
+if (isDirectInvocation(import.meta.url)) main();

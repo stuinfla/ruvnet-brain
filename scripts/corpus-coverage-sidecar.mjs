@@ -26,6 +26,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { eligibleRepositoryStanding, validateCoverageLedger } from '../plugin/scripts/coverage-integrity.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export const COVERAGE_ASSET = 'CORPUS-COVERAGE.json';
 export const COVERAGE_RECEIPT_ASSET = 'coverage-receipt.json';
@@ -195,7 +196,7 @@ export function main(argv = process.argv.slice(2), { stdout = process.stdout, st
 
 function isMain() {
   try {
-    return Boolean(process.argv[1]) && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+    return isDirectInvocation(import.meta.url);
   } catch {
     return false;
   }

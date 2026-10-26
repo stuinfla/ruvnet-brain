@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CANONICAL_PUBLISHERS = new Set([
@@ -203,7 +204,7 @@ export function main(root = ROOT) {
 // spellings of one file, so the guard silently reads false and the CLI exits 0 having done nothing —
 // the same defect 6eead7bc fixed in release-projection.mjs, which is a gate this repo relies on.
 if (((() => {
-  try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; }
+  try { return isDirectInvocation(import.meta.url); } catch { return false; }
 })())) {
   process.exitCode = main();
 }

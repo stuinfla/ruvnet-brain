@@ -3,13 +3,13 @@ id: ADR-050
 title: The issue pipeline may never manufacture its own acknowledgment — awareness, escalation, and a fixer that knows when to stop
 status: Accepted
 date: 2026-07-24
-updated: 2026-09-11
+updated: 2026-10-25
 
 # PINNED: this records the incident cutoff, not the last edit. Asserted by
 # tests/unit/fix-workstream-guidance.test.mjs. Do not let a currency stamp move it.
 updated_pinned: true
 impl: wired
-reviewed_digest: 217aeebc7672
+reviewed_digest: 0479f7f2da2d
 version: 1.0.4
 authors: [Stuart Kerr, Claude Code]
 tags: [issues, automation, alerting, sla, security, circuit-breaker]
@@ -220,6 +220,8 @@ The four parallel agents working tonight support this distinction. They show tha
   regressions (8 of 12 assertions fail on the pre-fix code, proven by stash-mutation).
 
 ## Currency log
+| 2026-10-25 | Review `0479f7f2da2d` (4.7.21): decision unchanged; the pipeline still cannot silence itself. `scripts/issue-watch.mjs`, `scripts/issue-fix.mjs` and `plugin/scripts/session-start-core.mjs` changed only by the entry-point sweep (each file's own main-module check replaced by `isDirectInvocation` from `plugin/scripts/entrypoint.mjs`). `plugin/skills/ruvnet-brain/SKILL.md` rewords the optional-recommendation line as a statement, never a question or approval dialog (#489); acknowledgment, escalation, paging and the fixer's stop conditions are untouched. | Reviewed diffs 320b778b..63ca7c0d for `scripts/issue-watch.mjs`, `scripts/issue-fix.mjs`, `plugin/scripts/session-start-core.mjs` and `plugin/skills/ruvnet-brain/SKILL.md`. |
+| 2026-10-25 | Review `30b953c3e054` (4.7.20): decision unchanged; the pipeline still cannot silence itself. `scripts/issue-watch.mjs` now pages a person's issue once at the 4 h SLA (never the owner's or a bot's), adds one 9 a.m. ET summary, and leaves the arrival page to `.github/workflows/ntfy-alerts.yml` (which retries delivery and fails visibly); the acknowledgment comment and SLA tracking are unchanged. `plugin/scripts/session-start-core.mjs` admits one new counts-only NTFY status line. | Reviewed `scripts/issue-watch.mjs` and `plugin/scripts/session-start-core.mjs` diffs 5b1f5c59..HEAD; tests issue-watch-paging, issue-watch-retry, session-start-core-parity. Owner-reported cause: 10,747 notifications on one topic (2026-10-25). |
 | 2026-10-05 | Reviewed current source and recorded remaining limitations; no verification or implementation-status promotion. | reviewed_digest 217aeebc7672; inspected `scripts/issue-watch.mjs` and all expanded governs against source 5d9ea4df. Independent review preserved incident dates, Proposed/expired states and historical evidence; notification and oldest-runtime limits are explicit. |
 | 2026-09-27 | Currency review: decision unchanged. Motion: session-start-core's corpus-currency verdict consolidation and a silent-exit-0 guard closure; a release-proof SKILL.md diagnostics alignment. The issue-pipeline's own self-silencing guard is untouched. | Reviewed `scripts/issue-watch.mjs`, `scripts/issue-fix.mjs`, `plugin/scripts/session-start-core.mjs`, `plugin/skills/ruvnet-brain/SKILL.md`, `plugin/skills/release-proof/SKILL.md` against the commits listed above; reviewed_digest 51940a548841. |
 | 2026-09-11 | Currency review at commit 7296c984: decision unchanged — I1–I3 live in `scripts/issue-watch.mjs` / `issue-fix.mjs`, which did not move. `plugin/scripts/session-start-core.mjs` received ADR-076 scaffolding today (`da7f28c0`, `a90c674b`, `11c79110`) and was then restored byte-for-byte to 85f584b2 (`1de708e3`; `git diff 85f584b2 HEAD` is empty), so the file is exactly what the previous row reviewed at 2eef2024 — `e917fa25`'s version-comparison helper is an ancestor of 85f584b2 and is present. `plugin/skills/ruvnet-brain/SKILL.md` `60f269ad` is pre-session worktree work merged at 85f584b2 (recommend-first contract) and does not touch the issue-thread voice rules; `plugin/skills/release-proof/SKILL.md` did not move. | Reviewed `scripts/issue-watch.mjs`, `scripts/issue-fix.mjs`, `plugin/scripts/session-start-core.mjs`. reviewed_digest 580842da1f9a. |

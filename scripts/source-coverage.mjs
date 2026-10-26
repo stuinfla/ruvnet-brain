@@ -10,6 +10,7 @@ import { canonicalJson, coverageGenerationFor, digest, validateGistAggregateRece
 import { repositoryNames } from '../kb/card-lane.mjs';
 import { rootNeverMaterialized, storeRoot } from '../kb/store-root.mjs';
 import { isTransientText, retryTransient, sleepSync } from './transient-gh.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export { canonicalJson, digest } from './coverage-integrity.mjs';
 
@@ -759,6 +760,6 @@ export async function main(argv = process.argv.slice(2)) {
   return 0;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isDirectInvocation(import.meta.url)) {
   process.exitCode = await main();
 }

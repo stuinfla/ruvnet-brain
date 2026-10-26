@@ -397,6 +397,10 @@ describe('verifyVersionSurfaces — delegates to the existing single-source-of-t
 
 describe('claims:verify read-only contract', () => {
   const PRUNE = new Set(['.git', '.swarm', 'node_modules', 'coverage', 'dist', 'clones']);
+  // Root-relative trees other processes write while this runs (agent worktrees, job logs, the QE
+  // fleet's branch stores, local caches). A 4.7.20 baseline failed on .agentic-qe/branches/*.rvf written
+  // by another agent mid-run: a fact about the machine, not about the CLI.
+  const PRUNE_ROOTS = new Set(['.claude/worktrees', 'logs', '.agentic-qe', '.cache']);
 
   // Git-independent on purpose: this catches creation or mutation of ignored/untracked artifacts
   // too (the exact regression was evals/runs/top-100-latest.json). Size + mtime is sufficient for
@@ -405,9 +409,9 @@ describe('claims:verify read-only contract', () => {
     const rows = [];
     const walk = (dir) => {
       for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
-        if (ent.isDirectory() && PRUNE.has(ent.name)) continue;
         const absolute = path.join(dir, ent.name);
         const relative = path.relative(ROOT, absolute).split(path.sep).join('/');
+        if (ent.isDirectory() && (PRUNE.has(ent.name) || PRUNE_ROOTS.has(relative))) continue;
         if (ent.isDirectory()) {
           walk(absolute);
         } else if (ent.isFile() || ent.isSymbolicLink()) {
@@ -432,7 +436,8 @@ describe('claims:verify read-only contract', () => {
         RUVNET_BRAIN_KB: path.join(TMP, 'purity-absent-brain'),
       },
     });
+    // Purity first and on its own: a failing claim (exit 1) must not hide, or be hidden by, a write.
+    expect(repoSnapshot(), 'claims:verify wrote into the repository').toEqual(before);
     expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
-    expect(repoSnapshot()).toEqual(before);
   });
 });

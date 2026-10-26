@@ -30,6 +30,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { packedPaths, parseNpmPack } from '../helpers/npm-pack-json.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -61,13 +62,12 @@ function packedFiles() {
     timeout: 120000,
     shell: isWin,
   });
-  const report = JSON.parse(out);
   // Normalize separators: on Windows npm reports `scripts\selfcheck.mjs` while the import
   // specifiers this gate derives are always POSIX-style `scripts/selfcheck.mjs`. Comparing them
   // raw made every path "missing" on windows-unit — a gate that fails for a reason unrelated to
   // the thing it guards teaches people to ignore it, which is how the defect it exists to catch
   // gets waved through.
-  return new Set((report[0]?.files || []).map((f) => String(f.path).split(path.sep).join('/').replace(/\\/g, '/')));
+  return packedPaths(parseNpmPack(out, { expectName: 'ruvnet-brain' }));
 }
 
 describe('the published tarball contains every module the installer imports', () => {

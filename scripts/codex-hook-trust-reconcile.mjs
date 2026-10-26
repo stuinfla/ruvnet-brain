@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import zlib from 'node:zlib';
 import { codexHookIdentities, codexPluginContentHash } from './codex-hook-trust.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 /**
  * sha256 of every regular file under package/plugin/ in a verified npm tarball, read in memory (ustar with pax `path`
@@ -335,8 +336,73 @@ export async function reconcileVerifiedCodexHookTrust({ releaseIdentity, install
   } finally { await client?.close(); }
 }
 
+/**
+ * Refresh a RUNNING shared Codex app-server (the managed daemon the TUI attaches to) after the Brain changed its
+ * plugin bytes or hook trust from another process (#492). Without this, that long-lived server keeps the plugin
+ * declarations it parsed earlier — codex-rs/core-plugins/src/manager.rs LoadedPluginsCache::get() only drops an
+ * entry when the active plugin ROOT changes, not when files change in place — and its loaded sessions keep their
+ * old hook runtimes. Measured 2026-10-25, codex-cli 0.164.0, isolated CODEX_HOME: after an in-place change the
+ * daemon's hooks/list still showed the old SessionEnd declaration while a fresh server showed the new one.
+ *
+ * The refresh is Codex's own: config/batchWrite with no edits and reloadUserConfig. With no edits nothing is
+ * persisted (config_manager_service.rs apply_edits writes only when config_edits is non-empty); batch_write then
+ * clears the plugin and skill caches (config_processor.rs handle_config_mutation) and reloads every loaded thread
+ * (reload_user_config). The expectedVersion check makes a concurrent config writer fail it safely. It never grants
+ * an approval, starts or stops a server, or touches a thread. No server listening = nothing stale to refresh.
+ * Transport: WebSocket over $CODEX_HOME/app-server-control/app-server-control.sock, a symlink to the physical
+ * socket (codex-rs/app-server-transport/src/transport/{mod.rs,unix_socket.rs}).
+ */
+export async function refreshSharedCodexAppServer({ codexHome, timeoutMs = 8000, connect } = {}) {
+  if (typeof codexHome !== 'string' || !path.isAbsolute(codexHome)) return { state: 'blocked', changed: false, reason: 'Absolute Codex home required' };
+  const rendezvous = path.join(codexHome, 'app-server-control', 'app-server-control.sock');
+  let socketPath;
+  try { socketPath = fs.realpathSync(rendezvous); if (!fs.statSync(socketPath).isSocket()) throw new Error('not a socket'); }
+  catch { return { state: 'no-shared-server', changed: false }; }
+  // ONE total deadline, started BEFORE connecting: a socket that accepts but never completes the WebSocket handshake
+  // must not hang the installer (cross-vendor review F). On timeout the connecting socket is terminated.
+  let ws; let timer; let timedOut = false;
+  const deadline = new Promise((_, reject) => { timer = setTimeout(() => { timedOut = true; reject(new Error('Shared Codex app-server refresh timed out')); }, timeoutMs); });
+  deadline.catch(() => {});
+  try {
+    const run = (async () => {
+      ws = connect ? await connect(socketPath) : await (async () => {
+        const { default: WebSocket } = await import('ws');
+        const socket = new WebSocket(`ws+unix://${socketPath}:/`);
+        ws = socket; // reachable by the timeout's teardown while the handshake is still pending
+        await new Promise((resolve, reject) => { socket.once('open', resolve); socket.once('error', reject); });
+        return socket;
+      })();
+      if (timedOut) { try { if (ws.terminate) ws.terminate(); else ws.close(); } catch { /* already gone */ } return; }
+      const pending = new Map(); let nextId = 1;
+      ws.on('message', (data) => {
+        let row; try { row = JSON.parse(String(data)); } catch { return; }
+        const item = pending.get(row.id); if (!item) return;
+        pending.delete(row.id);
+        // Native error text can quote private config values; report only which call was refused.
+        if (row.error) item.reject(new Error(`Shared Codex app-server rejected ${item.method}`)); else item.resolve(row.result);
+      });
+      const rpc = (method, params) => new Promise((resolve, reject) => {
+        const id = nextId++; pending.set(id, { resolve, reject, method }); ws.send(JSON.stringify({ id, method, params }));
+      });
+      await rpc('initialize', { clientInfo: { name: 'rnb_host_refresh', version: '1' }, capabilities: { experimentalApi: true } });
+      ws.send(JSON.stringify({ method: 'initialized' }));
+      const read = await rpc('config/read', { includeLayers: true });
+      const users = (read?.layers || []).filter((r) => r.name?.type === 'user');
+      if (users.length !== 1 || typeof users[0].version !== 'string' || typeof users[0].name.file !== 'string') {
+        throw new Error('Shared Codex app-server user config version unavailable');
+      }
+      await rpc('config/batchWrite', { filePath: users[0].name.file, expectedVersion: users[0].version, reloadUserConfig: true, edits: [] });
+    })();
+    run.catch(() => {}); // a late failure after the deadline is already reported
+    await Promise.race([run, deadline]);
+    return { state: 'refreshed', changed: false, approvalsGranted: 0 };
+  } catch (error) {
+    return { state: 'failed', changed: false, reason: error.message };
+  } finally { clearTimeout(timer); try { if (timedOut && ws?.terminate) ws.terminate(); else ws?.close(); } catch { /* already closed */ } }
+}
+
 // Explicit CLI only; importing the helper never starts a process or reads stdin.
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+if (isDirectInvocation(import.meta.url)
   && process.argv[2] === '--reconcile-installed') {
   const started = Date.now(); let emitted = false; let reconcileStarted = false;
   const emit = (receipt) => { if (!emitted) { emitted = true; process.stdout.write(JSON.stringify(receipt) + '\n'); } };

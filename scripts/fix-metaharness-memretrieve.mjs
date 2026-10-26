@@ -28,6 +28,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { pathToFileURL } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const TARGET_DIR =
   process.env.METAHARNESS_SCRIPTS_DIR ||
@@ -113,7 +114,7 @@ export function check(dir = TARGET_DIR, log = console.log) {
 // Only act when run directly, so tests can import the pure functions above.
 // Compare in URL space (pathToFileURL), not by decoding a URL into a path: `new URL(...).pathname`
 // yields "/D:/..." on Windows and never matches, so `--apply` would silently no-op there.
-const invokedDirectly = process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url;
+const invokedDirectly = isDirectInvocation(import.meta.url);
 if (invokedDirectly) {
   const mode = process.argv.includes('--check') ? 'check' : 'apply';
   console.log(`metaharness memRetrieve ${mode} — ${TARGET_DIR}\n`);

@@ -45,6 +45,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { isDirectInvocation } from './entrypoint.mjs';
 
 export const SCOPE = ['scripts/', 'kb/', 'plugin/scripts/', 'tests/', 'bin/'];
 export const THRESHOLD = 0.5;
@@ -485,7 +486,7 @@ export function evaluate(payload, { env = process.env, now = Date.now(), deadlin
 }
 
 const isMain = (() => {
-  try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); }
+  try { return isDirectInvocation(import.meta.url); }
   catch { return false; }
 })();
 

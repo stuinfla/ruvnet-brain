@@ -34,6 +34,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const DIR = path.join(ROOT, 'plugin', 'commands');
@@ -76,8 +77,7 @@ function rebuild(aliasText, canonicalFrontmatter, canonicalBody) {
 // able to crash the caller that merely imported this module: not-resolvable means not-main.
 function resolvedIsMain() {
   try {
-    return Boolean(process.argv[1])
-      && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+    return isDirectInvocation(import.meta.url);
   } catch { return false; }
 }
 if (!resolvedIsMain()) { /* imported for its exports — do nothing else */ } else {

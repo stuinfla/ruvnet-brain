@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { nativeTurnLines } from '../../plugin/scripts/native-turn-transcript.mjs';
 import { collectTurnEvents } from '../../plugin/scripts/continuity-events.mjs';
-import { captureTurnOutcome, runSteps, resolveTurnDb, turnCapturePolicyFile } from '../../plugin/scripts/turn-outcome-capture.mjs';
+import { captureTurnOutcome, claudeTurn, runSteps, resolveTurnDb, turnCapturePolicyFile } from '../../plugin/scripts/turn-outcome-capture.mjs';
 import { adoptedProject, cleanup, fakeRuflo } from '../helpers/continuity-fixture.mjs';
 const ri = payload => JSON.stringify({ type: 'response_item', payload });
 const outcome = 'Decision: retain the native lifecycle source and make the canonical AgentDB journal recoverable. '.repeat(3);
@@ -69,5 +69,41 @@ describe('bounded native Codex lifecycle capture', () => {
     captureTurnOutcome({projectDir:p.dir,brainHome,env,host:'codex',event:'SessionEnd',ruflo:'/fake',payload:{session_id:'s'},launch:queued=>{steps=queued;}});
     const rows=runSteps({steps:steps.filter(s=>s.kind==='distill')},{projectDir:p.dir,brainHome,env,run:()=>({status:0,stdout:'Distillation skipped\nskipped: better-sqlite3 unavailable\n'})});
     expect(rows[0]).toMatchObject({status:0,skipped:'better-sqlite3 unavailable'});expect(rows[0].verified).toBeUndefined();
+  });
+});
+
+// #430: a Codex rollout whose closing answer survives only as event_msg task_complete (or the
+// item_completed AgentMessage) must still be captured at native SessionEnd, once.
+describe('Codex native SessionEnd outcome from task_complete (#430)', () => {
+  const ev = payload => JSON.stringify({ type: 'event_msg', payload });
+  const PROMPT = 'PRIVATE USER PROMPT 430 do not store';
+  const rollout = [
+    ri({ type: 'message', role: 'user', content: [{ type: 'input_text', text: PROMPT }] }),
+    ev({ type: 'task_started', turn_id: 't1' }),
+    ev({ type: 'task_complete', turn_id: 't1', last_agent_message: outcome }),
+  ];
+  it('maps task_complete.last_agent_message into the current turn', () => {
+    expect(claudeTurn(nativeTurnLines(rollout, 'codex')).finalText).toBe(outcome.trim());
+  });
+  it('the same answer in response_item, AgentMessage and task_complete counts once', () => {
+    const short = 'Done: the fixture order is violet latch, then hatch 23.';
+    const turn = claudeTurn(nativeTurnLines([rollout[0],
+      ev({ type: 'item_completed', item: { type: 'AgentMessage', phase: 'final_answer', content: [{ type: 'Text', text: short }] } }),
+      ri({ type: 'message', role: 'assistant', phase: 'final_answer', content: [{ type: 'output_text', text: short }] }),
+      ev({ type: 'task_complete', last_agent_message: short })], 'codex'));
+    expect(turn.finalText).toBe(short);
+  });
+  it('SessionEnd without last_assistant_message stores the outcome, never the prompt', () => {
+    const p = adoptedProject(); const brainHome = path.join(p.home, 'brain');
+    const file = path.join(p.home, 'rollout.jsonl'); fs.writeFileSync(file, rollout.join('\n') + '\n');
+    const written = [];
+    const report = captureTurnOutcome({ projectDir: p.dir, brainHome, env: { RUFLO_BIN: process.execPath }, host: 'codex', event: 'SessionEnd',
+      ruflo: '/fake', payload: { session_id: 'codex-exec-430', transcript_path: file }, launch: () => ({ launched: true }),
+      write: ({ steps }) => { written.push(...steps); return steps.map(() => ({ status: 0, verified: true })); } });
+    expect(report.skipped).toBeUndefined();
+    expect(report.recorded).toBe(true);
+    const value = written[0].args[written[0].args.indexOf('--value') + 1];
+    expect(value).toContain('Decision: retain the native lifecycle source');
+    expect(value).not.toContain(PROMPT);
   });
 });

@@ -20,7 +20,7 @@
  *
  * Alerts go to ntfy (phone) + macOS desktop, and are rate-limited so a genuine
  * runaway doesn't spam. Config via env:
- *   AIE_NTFY_TOPIC          ntfy topic (reuses the pipeline's)
+ *   AIE_NTFY_TOPIC          ntfy topic (else the first line of ~/.cache/ruvnet-brain/ntfy-topic; else none)
  *   SPEND_ALERT_USD         daily $ threshold (default 50)
  *   SPEND_BURST_AGENTS      agents/hour that trips the burst alarm (default 20)
  *   ANTHROPIC_ADMIN_KEY     admin key for the $ detector (optional)
@@ -60,41 +60,63 @@ function ntfyTopic() {
   return '';
 }
 
+// An HTTP header must be a ByteString: one non-ASCII character (an em dash, an emoji) makes fetch THROW
+// "Cannot convert argument to a ByteString" before anything is sent, and the catch below hid it, so the
+// phone page silently never left the machine (the nightly watchdog's and brain-alarm's titles, 4.7.21).
+// Every title below is plain ASCII; this keeps a future edit from reintroducing the silent drop.
+const asciiHeader = (text) => String(text).replace(/[^\x20-\x7e]/g, '-');
+
 function ts() {
   return new Date().toISOString();
 }
 
-async function alert(title, body) {
+// `stamp` is the cooldown this alert reads and earns. Money and failure alarms share LAST_ALERT; the admin-key
+// "works again" note has its own (review round 2, Opus #4): it used to earn the shared hour, so a spend-over-threshold
+// alert in the same run was held back by the cooldown a reassurance note had just started.
+async function alert(title, body, stamp = LAST_ALERT) {
   // rate limit
   try {
-    if (existsSync(LAST_ALERT)) {
-      const last = Date.parse(readFileSync(LAST_ALERT, 'utf8').trim());
+    if (existsSync(stamp)) {
+      const last = Date.parse(readFileSync(stamp, 'utf8').trim());
       if (Date.now() - last < COOLDOWN_MS) {
         console.log(`[watchdog] would alert but in cooldown: ${title}`);
         return;
       }
     }
   } catch {}
-  writeFileSync(LAST_ALERT, ts());
   try {
     writeFileSync(ALERTS_LOG, `[${ts()}] ${title} — ${body}\n`, { flag: 'a' });
   } catch {}
   console.error(`[watchdog] ALERT: ${title} — ${body}`);
+  // DERIVED, not asserted (F10a, 2026-07-18): the cooldown stamp is written only AFTER an alert
+  // channel actually delivered. The old code stamped BEFORE attempting delivery — so ntfy+osascript
+  // both failing still started the 1h cooldown, and a money alarm was silently swallowed for an hour
+  // at a time. Delivery = ntfy accepted (HTTP ok) OR the local macOS notification fired. If neither
+  // delivered: no cooldown (next run retries) and this run exits degraded so the failure is visible.
+  let delivered = false;
   const topic = ntfyTopic();
   if (topic) {
     try {
-      await fetch(`https://ntfy.sh/${topic}`, {
+      const r = await fetch(`https://ntfy.sh/${topic}`, {
         method: 'POST',
-        headers: { Title: title, Priority: 'urgent', Tags: 'rotating_light,money_with_wings' },
+        headers: { Title: asciiHeader(title), Priority: 'urgent', Tags: 'rotating_light,money_with_wings' },
         body,
       });
+      if (r.ok) delivered = true;
     } catch {}
   }
   try {
     // execFile with an arg array — no shell, so title/body can't be interpreted.
     execFileSync('osascript', ['-e',
       `display notification ${JSON.stringify(body)} with title ${JSON.stringify('⚠️ ' + title)} sound name "Basso"`]);
+    delivered = true;
   } catch {}
+  if (delivered) writeFileSync(stamp, ts());
+  else {
+    console.error('[watchdog] ALERT DELIVERY FAILED on every channel — no cooldown recorded, next run retries; exiting degraded');
+    process.exitCode = 1;
+  }
+  return delivered;
 }
 
 // ─── Detector 1: headless-agent burst (no key needed) ────────────────────────
@@ -102,10 +124,12 @@ function countRecentAgents(windowMs = 60 * 60 * 1000) {
   let count = 0;
   const cutoff = Date.now() - windowMs;
   const seen = [];
+  let rootsRead = 0; // F10b: a blind scanner must not report "healthy" — count what we could read
   for (const root of ROOTS) {
     let projects = [];
     try {
       projects = readdirSync(root).map((p) => join(root, p));
+      rootsRead++;
     } catch {
       continue;
     }
@@ -127,7 +151,7 @@ function countRecentAgents(windowMs = 60 * 60 * 1000) {
       }
     }
   }
-  return { count, seen };
+  return { count, seen, rootsRead };
 }
 
 // ─── Detector 2: Anthropic Admin Cost (definitive $) ─────────────────────────
@@ -159,11 +183,17 @@ async function todaySpendUsd(adminKey) {
 }
 
 // ─── main ─────────────────────────────────────────────────────────────────────
-const { count, seen } = countRecentAgents();
+const { count, seen, rootsRead } = countRecentAgents();
 console.log(`[watchdog] headless agents in last hour: ${count} (threshold ${BURST_AGENTS})`);
+// DERIVED, not asserted (F10b): count 0 with ZERO readable roots is blindness, not health — the old
+// code swallowed every readdir error and reported "healthy" with no scanning capability at all.
+if (rootsRead === 0) {
+  console.error('[watchdog] burst detector is BLIND — could not read any project root; exiting degraded');
+  process.exitCode = 1;
+}
 if (count >= BURST_AGENTS) {
   await alert(
-    'RUNAWAY AGENT FLEET — check your API bill',
+    'RUNAWAY AGENT FLEET - check your API bill',
     `${count} automated agents spawned in the last hour (e.g. ${seen.join(', ')}). This is the signature that burned ~$1,600 on 2026-07-09. Kill the fleet / check console spend.`
   );
 }
@@ -176,32 +206,79 @@ if (count >= BURST_AGENTS) {
 try {
   const out = execFileSync('launchctl', ['list'], { encoding: 'utf8' });
   const mine = /^(com\.ruvnet|ai\.askruvnet|com\.stuartkerr|com\.isovision)\./;
+  // 2026-10-25 flood fix (owner: 31 consecutive hourly pages, 2,157 alert lines): this detector paged EVERY HOUR for as long
+  // as any job's last exit was non-zero, and the nightly watchdog exits non-zero by design whenever anything is red, so
+  // it never cleared. Two rules now: (1) a job wrapped by scripts/job-heartbeat.sh (it has a receipt in the heartbeat
+  // dir) already pages once on failure and once on recovery, so it is not this detector's business; (2) for the rest,
+  // page only when a job NEWLY joins the failing set, never repeatedly for one that is still failing.
+  const HB_DIR = join(HOME, '.cache', 'ruvnet-brain', 'heartbeats');
+  const FAIL_STATE = join(STATE_DIR, 'api-spend-failing-jobs.json');
+  const wrapped = (label) => existsSync(join(HB_DIR, `${label}.json`));
   const failing = out.split('\n').slice(1)
     .map((l) => l.split('\t'))
-    .filter((c) => c.length >= 3 && mine.test(c[2]) && c[1] !== '0' && c[1] !== '-')
-    .map((c) => `${c[2]} (exit ${c[1]})`);
-  console.log(`[watchdog] failing scheduled jobs: ${failing.length}`);
-  if (failing.length > 0) {
-    await alert(
-      `${failing.length} scheduled job(s) failing silently`,
-      `These launchd jobs last exited non-zero and most log nothing: ${failing.slice(0, 6).join('; ')}. Check them before they cost you.`
+    .filter((c) => c.length >= 3 && mine.test(c[2]) && c[1] !== '0' && c[1] !== '-' && c[0] === '-' && !wrapped(c[2]))
+    // c[0] === '-' : not running right now. A job that IS running (a KeepAlive daemon) is not failing; its last-exit is history.
+    .map((c) => ({ label: c[2], text: `${c[2]} (exit ${c[1]})` }));
+  console.log(`[watchdog] failing scheduled jobs (unwrapped): ${failing.length}`);
+  let previous = [];
+  try { previous = JSON.parse(readFileSync(FAIL_STATE, 'utf8')); } catch {}
+  if (!Array.isArray(previous)) previous = [];
+  const labels = failing.map((f) => f.label).sort();
+  const fresh = failing.filter((f) => !previous.includes(f.label));
+  if (fresh.length > 0) {
+    const delivered = await alert(
+      `${fresh.length} scheduled job(s) newly failing silently`,
+      `These launchd jobs just started exiting non-zero and are not watched by the heartbeat wrapper: ${fresh.slice(0, 6).map((f) => f.text).join('; ')}. Check them before they cost you.`
     );
+    // Remember them only once the page really went out, so a failed or cooled-down delivery retries next run.
+    if (delivered) writeFileSync(FAIL_STATE, JSON.stringify(labels));
+    else writeFileSync(FAIL_STATE, JSON.stringify(labels.filter((l) => previous.includes(l))));
+  } else {
+    writeFileSync(FAIL_STATE, JSON.stringify(labels)); // recovered jobs drop out, so a later re-failure pages again
   }
 } catch {
   /* launchctl unavailable — skip */
 }
 
 const adminKey = process.env.ANTHROPIC_ADMIN_KEY;
+// Admin-key health is a TRANSITION, like detector 3 (4.7.21 review): a dead key paged on every hourly run, ~24 pages a
+// day until rotated. Now: one page when the key goes working -> dead, one note when it comes back, and the run still exits
+// 1 every hour while it is dead, so the heartbeat wrapper's single streak page and the watchdog keep seeing it.
+// The state flips only once the page really went out, so a failed or cooled-down delivery is retried next run.
+const KEY_STATE = join(STATE_DIR, 'api-spend-admin-key.json');
+let keyWasDead = false;
+try { keyWasDead = JSON.parse(readFileSync(KEY_STATE, 'utf8')).dead === true; } catch {}
+const saveKeyState = (dead) => writeFileSync(KEY_STATE, JSON.stringify({ dead, at: ts() }));
+const KEY_NOTE_STAMP = join(STATE_DIR, 'api-spend-key-recovered-last.ts');
 if (adminKey) {
   const s = await todaySpendUsd(adminKey);
   if (s.ok) {
     console.log(`[watchdog] Anthropic API spend today: $${s.usd.toFixed(2)} (threshold $${THRESHOLD_USD})`);
+    if (keyWasDead) {
+      const delivered = await alert('ANTHROPIC_ADMIN_KEY works again - the $ spend detector is back',
+        'cost_report answered again; the definitive spend alarm is watching.', KEY_NOTE_STAMP);
+      if (delivered) saveKeyState(false);
+    }
     if (s.usd >= THRESHOLD_USD) {
       await alert(
         `API spend today = $${s.usd.toFixed(2)}`,
         `Anthropic API spend crossed $${THRESHOLD_USD} today while you have a paid Max plan. Check console → Cost → group by API key.`
       );
     }
+  } else if (/^http_40[13]$/.test(s.reason || '')) {
+    // DERIVED, not asserted (F10c): a 401/403 on the admin key means the DEFINITIVE $ detector is
+    // dead — the old code logged one line and exited 0 forever, a permanently green job with its
+    // main sensor dark. A dead key is its own alarm (key-canary class) and a degraded exit.
+    if (keyWasDead) {
+      console.error(`[watchdog] ANTHROPIC_ADMIN_KEY still dead (${s.reason}); already paged, exiting degraded`);
+    } else {
+      const delivered = await alert(
+        'ANTHROPIC_ADMIN_KEY is DEAD - the $ spend detector is dark',
+        `cost_report returned ${s.reason}. The definitive spend alarm cannot see anything until the key is rotated. Burst detector still active, but it is the weaker signal.`
+      );
+      if (delivered) saveKeyState(true);
+    }
+    process.exitCode = 1;
   } else {
     console.log(`[watchdog] admin cost check unavailable: ${s.reason}`);
   }

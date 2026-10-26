@@ -1,6 +1,7 @@
 // Correlation is not authorization: protected-release still enforces its own release authority.
 import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export function selectCorpusDispatch(runs, { sha, dispatchId, notBefore }) {
   if (!/^[a-f0-9]{40}$/.test(sha || '') || !/^corpus-\d+-\d+$/.test(dispatchId || '')
@@ -12,7 +13,7 @@ export function selectCorpusDispatch(runs, { sha, dispatchId, notBefore }) {
   return matches[0] || null;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isDirectInvocation(import.meta.url)) {
   const response = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
   const run = selectCorpusDispatch(response.workflow_runs || [], {
     sha: process.env.CANDIDATE_SHA, dispatchId: process.env.CORPUS_DISPATCH_ID,

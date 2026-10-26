@@ -112,8 +112,39 @@ describe('real MCP managed execution boundary', () => {
       const run = await tool(mcp, 'ruvnet_cli_run'); expect(run.result.isError, run.result.content[0].text).not.toBe(true);
       // No progression capture exists any more (owner ruling 2026-10-12), so nothing is written to the store here.
       expect(rows(fx)).toEqual([]);
+      expectNoInstallInProject(fx);
     } finally { await stopChildren(); fs.rmSync(fx.root, { recursive: true, force: true }); }
-  });
+  }, 120_000); // two real ruflo boots through the MCP server
+  // Deterministic: a fake `ruflo` first on PATH records the environment and cwd it was started with. The
+  // real self-update only fires when a newer ruflo exists, so only a recorder can prove the flags are always
+  // passed. Inherited values are removed first, so the product, not this shell, must supply them.
+  // POSIX only: the fake is a node shebang script; Windows needs a .cmd shim, covered by spawnSpec's own tests.
+  it.skipIf(process.platform === 'win32')('starts ruflo with self-update and the daemon off, in the project directory, for help AND run (S1)', async () => {
+    const fx = fixture();
+    try {
+      const bin = path.join(fx.root, 'fake-bin'); const log = path.join(fx.root, 'ruflo-env.jsonl');
+      fs.mkdirSync(bin);
+      fs.writeFileSync(path.join(bin, 'ruflo'), `#!${process.execPath}\nrequire('node:fs').appendFileSync(${JSON.stringify(log)}, JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(), update: process.env.CLAUDE_FLOW_AUTO_UPDATE ?? null, daemon: process.env.RUFLO_DAEMON_AUTOSTART ?? null }) + '\\n');\nconsole.log('ok');\n`, { mode: 0o755 });
+      const mcp = server(fx, 'codex', { command: process.execPath, args: [SERVER],
+        env: { PATH: `${bin}${path.delimiter}${process.env.PATH}`, RUFLO_BIN: undefined, CLAUDE_FLOW_AUTO_UPDATE: undefined, RUFLO_DAEMON_AUTOSTART: undefined } });
+      const tool = (name) => mcp.request('tools/call', { name, arguments: { executable: 'ruflo', argv: ['status'] } });
+      const help = await tool('ruvnet_cli_help'); expect(help.result.isError, help.result.content?.[0]?.text).not.toBe(true);
+      const run = await tool('ruvnet_cli_run'); expect(run.result.isError, run.result.content?.[0]?.text).not.toBe(true);
+      const calls = fs.readFileSync(log, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+      expect(calls).toEqual([
+        { argv: ['status', '--help'], cwd: fx.project, update: 'false', daemon: '0' },
+        { argv: ['status'], cwd: fx.project, update: 'false', daemon: '0' },
+      ]);
+    } finally { await stopChildren(); fs.rmSync(fx.root, { recursive: true, force: true }); }
+  }, 60_000);
+
+  /** ruflo's self-update writes these into its cwd (ruflo-bin.mjs RUFLO_CWD_ARTIFACTS); none may land in the project. */
+  const expectNoInstallInProject = (fx) => {
+    for (const name of ['node_modules', 'package.json', 'package-lock.json']) {
+      expect(fs.existsSync(path.join(fx.project, name)), `${name} written into the user's project`).toBe(false);
+    }
+  };
+
   const codexAvailable = spawnSync(CODEX, ['--version'], { encoding: 'utf8' }).status === 0;
   if (!codexAvailable && process.env.RUVNET_REQUIRE_CODEX_DISCOVERY === '1') {
     throw new Error(`required Codex CLI is unavailable: ${CODEX}`);
@@ -164,11 +195,14 @@ describe('real MCP managed execution boundary', () => {
         const run = await mcp.request('mcpServer/tool/call', { threadId, server: 'ruvnet-brain', tool: 'ruvnet_cli_run', arguments: { executable: 'ruflo', argv: ['status'], host: 'claude' } });
         expect(run.result.isError, run.result.content?.[0]?.text).not.toBe(true);
         expect(rows(fx)).toEqual([]);
+        expectNoInstallInProject(fx); // measured before 4.7.21 under Codex: a 1.3 GB self-update into the project
       } finally {
         await stopChildren();
         fs.rmSync(fx.root, { recursive: true, force: true });
       }
-    });
+      // Explicit: a Codex app-server boot plus two real ruflo boots measured 21-25 s on the first call; the 5 s
+      // default is a load flake, and 120 s still fails a real hang.
+    }, 120_000);
   }
 
   it('keeps real Ruflo memory store/retrieve active through MCP', async () => {
@@ -183,8 +217,9 @@ describe('real MCP managed execution boundary', () => {
       expect(retrieved.result.isError, retrieved.result.content?.[0]?.text).not.toBe(true); expect(retrieved.result.structuredContent.stdout).toContain(value);
       const exact = JSON.parse(execFileSync('sqlite3', ['-json', db, "select key,content from memory_entries where namespace='fixture-memory' and key='ordinary-suspended-memory';"], { encoding: 'utf8' }));
       expect(exact).toEqual([{ key, content: value }]); expect(rows(fx)).toEqual([]);
+      expectNoInstallInProject(fx);
     } finally { await stopChildren(); fs.rmSync(fx.root, { recursive: true, force: true }); }
-  });
+  }, 120_000); // four real ruflo boots through the MCP server
 
 ;
 });

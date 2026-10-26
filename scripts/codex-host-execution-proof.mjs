@@ -10,6 +10,7 @@ import { probeFreshCodexDeclarations, classifyFreshCodexDeclarations } from './c
 import { runtimeSnapshot } from './model-routing-launchers.mjs';
 import { maintenanceStatus } from '../plugin/scripts/development-maintenance.mjs';
 import { proofFile, proofDigest, verifyReleasedHostRuntime, assertHostRuntimeUnchanged } from './codex-host-proof-runtime.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const OWNER = 'ruvnet-brain@ruvnet-brain';
 // The diagnostic verifies the canonical ordinary-work route, never selects a separate model.
@@ -241,6 +242,6 @@ export async function executionProofMain(args, { run = produceOwnedCodexExecutio
     return result.ok ? 0 : 1;
   } catch (error) { output(`${JSON.stringify(failure(error.message))}\n${usage}`); return 2; }
 }
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isDirectInvocation(import.meta.url)) {
   process.exitCode = await executionProofMain(process.argv.slice(2));
 }

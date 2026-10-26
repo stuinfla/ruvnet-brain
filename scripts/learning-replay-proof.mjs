@@ -220,14 +220,14 @@ function currency(artifact, repo, maxAgeDays) {
     const changed = diff.status === 0
       ? diff.stdout.split('\n').map((value) => value.trim()).filter(Boolean)
       : [];
-    if (changed.length) return { ok: false, why: `load-bearing files changed: ${changed.join(', ')}` };
+    if (changed.length) return { ok: false, stale: true, why: `load-bearing files changed: ${changed.join(', ')}` };
   }
   const age = artifact.at ? (Date.now() - Date.parse(artifact.at)) / 86_400_000 : Infinity;
-  if (!(age <= maxAgeDays)) return { ok: false, why: `artifact is older than ${maxAgeDays} days` };
+  if (!(age <= maxAgeDays)) return { ok: false, stale: true, why: `artifact is older than ${maxAgeDays} days` };
   return { ok: true };
 }
 
-export function checkArtifact({ file = RESULT_FILE, repo = ROOT, maxAgeDays = 14 } = {}) {
+export function checkArtifact({ file = RESULT_FILE, repo = ROOT, maxAgeDays = 14, tolerateStale = false } = {}) {
   if (!fs.existsSync(file)) return { status: VERDICT.UNKNOWN, why: 'result artifact does not exist' };
   let artifact;
   try { artifact = JSON.parse(fs.readFileSync(file, 'utf8')); }
@@ -236,7 +236,8 @@ export function checkArtifact({ file = RESULT_FILE, repo = ROOT, maxAgeDays = 14
   const source = checkSourceIdentity({ repo });
   if (!source.clean) return { status: VERDICT.UNKNOWN, why: source.why, artifact };
   const current = currency(artifact, repo, maxAgeDays);
-  if (!current.ok) return { status: VERDICT.UNKNOWN, why: current.why, artifact };
+  // `stale`: the one UNKNOWN a re-measurement fixes. Waiving it still verifies and recomputes everything below.
+  if (!current.ok && !(tolerateStale && current.stale)) return { status: VERDICT.UNKNOWN, why: current.why, ...(current.stale ? { stale: true } : {}), artifact };
   const evidence = verifyRuns(artifact, repo);
   if (!evidence.ok) return { status: VERDICT.UNKNOWN, why: evidence.why, artifact };
   const recomputed = aggregate(evidence.inputs);
@@ -244,7 +245,7 @@ export function checkArtifact({ file = RESULT_FILE, repo = ROOT, maxAgeDays = 14
     return { status: VERDICT.UNKNOWN, why: recomputed.why, artifact, recomputed };
   }
   const mismatch = aggregateMismatch(artifact, recomputed);
-  if (mismatch) return { status: VERDICT.FAIL, why: mismatch, artifact, recomputed };
+  if (mismatch) return { status: VERDICT.FAIL, inconsistent: true, why: mismatch, artifact, recomputed }; // claims contradict own evidence
   return {
     status: recomputed.verdict,
     why: `${recomputed.verdict} — ${recomputed.passes}/${recomputed.n} recomputed runs on ${artifact.sha.slice(0, 8)}`,
@@ -279,18 +280,18 @@ function causalMutantCheck(artifact, recomputed, mutant) {
 export function checkMutantArtifacts({
   files = MUTANT_RESULT_FILES,
   repo = ROOT,
-  maxAgeDays = 14,
+  maxAgeDays = 14, tolerateStale = false,
 } = {}) {
   const checked = [];
   for (const trap of [TRAP.MEMORY_SEARCH, TRAP.POST_TASK]) {
     for (const mutant of ['delete-lesson', 'brain-off-treated']) {
       const file = files[trap]?.[mutant];
       if (!file) return { status: VERDICT.UNKNOWN, why: `${trap}/${mutant}: artifact absent`, checked };
-      const result = checkArtifact({ file, repo, maxAgeDays });
+      const result = checkArtifact({ file, repo, maxAgeDays, tolerateStale });
       if (result.status === VERDICT.UNKNOWN) return { ...result, why: `${trap}/${mutant}: ${result.why}`, checked };
-      if (result.artifact?.mutant !== mutant || result.artifact?.trap !== trap) {
-        return { status: VERDICT.FAIL, why: `${trap}/${mutant}: artifact identity mismatch`, checked };
-      }
+      // Only a FAIL recomputed from self-consistent evidence is the expected one; claims that contradict the hashed transcripts are a forged receipt (Codex 4.7.21 r5 #1).
+      if (result.inconsistent) return { status: VERDICT.FAIL, why: `${trap}/${mutant}: mutant evidence is inconsistent: ${result.why}`, checked };
+      if (result.artifact?.mutant !== mutant || result.artifact?.trap !== trap) return { status: VERDICT.FAIL, why: `${trap}/${mutant}: artifact identity mismatch`, checked };
       const causal = causalMutantCheck(result.artifact, result.recomputed, mutant);
       if (causal) return { status: VERDICT.FAIL, why: `${trap}/${mutant}: ${causal}`, checked };
       checked.push(`${trap}/${mutant}`);
@@ -303,11 +304,11 @@ export function checkPortfolio({
   files = PORTFOLIO_RESULT_FILES,
   mutantFiles = MUTANT_RESULT_FILES,
   repo = ROOT,
-  maxAgeDays = 14,
+  maxAgeDays = 14, tolerateStale = false,
 } = {}) {
   const artifacts = [];
   for (const trap of [TRAP.MEMORY_SEARCH, TRAP.POST_TASK]) {
-    const result = checkArtifact({ file: files[trap], repo, maxAgeDays });
+    const result = checkArtifact({ file: files[trap], repo, maxAgeDays, tolerateStale });
     if (result.status !== VERDICT.PASS) return { ...result, why: `${trap}: ${result.why}`, artifacts };
     const metrics = result.recomputed;
     const artifact = result.artifact;
@@ -328,7 +329,7 @@ export function checkPortfolio({
     || artifacts[0].artifact.taskHash === artifacts[1].artifact.taskHash) {
     return { status: VERDICT.FAIL, why: 'portfolio traps are not independent', artifacts };
   }
-  const mutants = checkMutantArtifacts({ files: mutantFiles, repo, maxAgeDays });
+  const mutants = checkMutantArtifacts({ files: mutantFiles, repo, maxAgeDays, tolerateStale });
   if (mutants.status !== VERDICT.PASS) return { ...mutants, why: `portfolio mutants: ${mutants.why}`, artifacts };
   return { status: VERDICT.PASS, why: 'portfolio recomputed both traps and all causal mutants', artifacts, mutants };
 }

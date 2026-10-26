@@ -27,6 +27,7 @@ import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { storeRoot, storesAt } from './store-root.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const KB_DIR = path.dirname(fileURLToPath(import.meta.url));
 const HOME = os.homedir();
@@ -242,6 +243,6 @@ async function main() {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isDirectInvocation(import.meta.url)) {
   main().catch((e) => die(`unexpected: ${e.message}`));
 }

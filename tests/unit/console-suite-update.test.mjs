@@ -12,6 +12,7 @@ beforeEach(() => {
   runner = path.join(home, 'developer-update.mjs'); fs.writeFileSync(runner, '// fake runner never executed');
   for (const name of ['policy', 'lock', 'maintenance', 'cleanup']) fs.writeFileSync(path.join(home, `developer-update-${name}.mjs`), `// fake ${name}`);
   fs.writeFileSync(path.join(home, 'plugin-artifact-proof.mjs'), '// fake artifact verifier');
+  fs.writeFileSync(path.join(home, 'entrypoint.mjs'), '// fake entry-point helper (staged with the coordinator since 4.7.21)');
   configFile = path.join(brainHome, 'developer-update-config.json'); receiptFile = path.join(brainHome, 'nightly-suite-update.json');
   write(configFile, { channel: 'latest', scope: 'ruvnet', cleanup: false, homebrew: false, managedCallback: 'preserved' });
   count = 0; enrolled = 0; mirrored = 0; events = []; enrollmentOk = true; lockState = 'idle'; child = new EventEmitter(); child.pid = 999999; child.unref = () => {};

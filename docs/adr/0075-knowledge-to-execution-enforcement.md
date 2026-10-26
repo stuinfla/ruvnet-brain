@@ -3,9 +3,9 @@ id: ADR-075
 title: Knowledge-to-execution enforcement is a mandatory policy boundary
 status: Accepted
 date: 2026-08-30
-updated: 2026-10-24
+updated: 2026-10-25
 updated_source: derived-from-git
-reviewed_digest: 0c9a2ad51960
+reviewed_digest: a03380ca811d
 version: 1.1.3
 impl: built
 authors: [Stuart Kerr, Codex]
@@ -179,6 +179,8 @@ complete reconciliation and dual-seat receipt enforcement, exhaustive architectu
 and public release proof remain outstanding.
 
 ## Currency log
+| 2026-10-26 | Review (4.7.21): decision unchanged. `plugin/scripts/decision-gate.mjs` shrank by moving two reporters (no behaviour change on the allow path); `bin/install.mjs` changes are update-exit semantics, not enforcement; `scripts/doc-currency.mjs` untouched in behaviour. | `plugin/scripts/decision-gate.mjs`, `bin/install.mjs`. |
+| 2026-10-25 | Review `a03380ca811d` (4.7.21): decision unchanged; the write gate and grounding policy are untouched. `plugin/scripts/ground-ruvnet.sh` turns its three optional offers (AgentDB memory, the flywheel, a ruflo version behind) from questions into one-time statements and adds that the advice grants no authority to install or update anything (#489); `plugin/skills/ruvnet-brain/SKILL.md` and `plugin/skills/ruvnet-brain/PLAYBOOK.md` make the same change to the recommend-first line. `plugin/scripts/decision-gate.mjs` and `scripts/doc-currency.mjs`: entry-point sweep only. `bin/install.mjs` now says the allowlisted lifecycle hooks run (grounding reminders, the write gate, continuity snapshots) and counts them from the shipped manifests instead of saying none run (#400), which matches the hooks this ADR wires. | Reviewed diffs 320b778b..63ca7c0d for `plugin/scripts/ground-ruvnet.sh`, `plugin/skills/ruvnet-brain/SKILL.md`, `plugin/skills/ruvnet-brain/PLAYBOOK.md`, `plugin/scripts/decision-gate.mjs`, `scripts/doc-currency.mjs` and `bin/install.mjs`. |
 | 2026-10-24 | Review `0c9a2ad51960` (4.7.18): decision unchanged. `bin/install.mjs` moved | The 4.7.18 changes to it are Codex snapshot retry/repair during wiring, a recorded reason on every failed host sync, and an early refusal for a stale source checkout running `--update`. No grounding, routing or enforcement hook changed. Source: `bin/install.mjs`. |
 | 2026-09-27 | Currency review: decision unchanged. Motion: ground-ruvnet.sh checkpoint-staleness inlining, decision-gate dead-route removal, and this session's install.mjs fixes. Knowledge-to-execution enforcement itself is unchanged. | Reviewed `plugin/skills/ruvnet-brain/SKILL.md`, `plugin/skills/ruvnet-brain/PLAYBOOK.md`, `plugin/hooks/hooks.json`, `plugin/hooks/codex-hooks.json`, `plugin/scripts/ground-ruvnet.sh`, `plugin/scripts/ground-before-write.sh` against the commits listed above; reviewed_digest 61f7868f367e. |
 

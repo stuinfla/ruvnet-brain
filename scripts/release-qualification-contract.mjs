@@ -11,8 +11,8 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       "reason": "Allowed channels and immutable Claude artifact paths reject downgrades, ambiguous registry records, changed bytes, extra active resources and escape paths; Console success requires the exact launched source closure. POSIX owner fixtures additionally enforce original-prefix installs, existing-tool-only policy, shared locks and source-bound scheduler receipts",
       "files": ["tests/unit/developer-update-policy-portable.test.mjs", "tests/unit/plugin-artifact-proof.test.mjs", "tests/unit/console-suite-update.test.mjs", "tests/unit/developer-update-scheduled-receipt.test.mjs"],
       "platformFiles": {
-        "linux": ["tests/unit/developer-update.test.mjs", "tests/unit/developer-update-codex-launcher.test.mjs"],
-        "macos": ["tests/unit/developer-update.test.mjs", "tests/unit/developer-update-codex-launcher.test.mjs"]
+        "linux": ["tests/unit/developer-update.test.mjs", "tests/unit/developer-update-codex-launcher.test.mjs", "tests/unit/developer-update-lock-reclaim.test.mjs", "tests/unit/developer-update-lock-release-race.test.mjs", "tests/unit/developer-update-stage-isolation.test.mjs"],
+        "macos": ["tests/unit/developer-update.test.mjs", "tests/unit/developer-update-codex-launcher.test.mjs", "tests/unit/developer-update-lock-reclaim.test.mjs", "tests/unit/developer-update-lock-release-race.test.mjs", "tests/unit/developer-update-stage-isolation.test.mjs"]
       }
     },
     {
@@ -22,16 +22,29 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
     },
     {
       "id": "honest-currency-lesson-and-metrics-evidence",
-      "reason": "Foreign KB roots remain isolated; panel currency derives from measured completion rather than checkout time; exact lesson readback binds this shell-free write; public metrics never fabricate performance or a competing product score",
-      "files": ["tests/unit/forge-currency-selected-root.test.mjs", "tests/unit/brain-score-producer.test.mjs", "tests/unit/brain-grade-groundtruth-timestamp.test.mjs", "tests/unit/record-lesson.test.mjs", "tests/unit/lesson-presentation-budget.test.mjs", "tests/unit/metrics-truth.test.mjs", "tests/unit/issue-watch-retry.test.mjs"]
+      "reason": "Foreign KB roots remain isolated; panel currency derives from measured completion rather than checkout time; exact lesson readback binds this shell-free write; public metrics never fabricate performance or a competing product score; SessionStart reports a host-sync-only failure after a passed knowledge update separately from knowledge currency",
+      "files": ["tests/unit/forge-currency-selected-root.test.mjs", "tests/unit/brain-score-producer.test.mjs", "tests/unit/brain-grade-groundtruth-timestamp.test.mjs", "tests/unit/record-lesson.test.mjs", "tests/unit/lesson-presentation-budget.test.mjs", "tests/unit/metrics-truth.test.mjs", "tests/unit/issue-watch-retry.test.mjs", "tests/unit/session-start-knowledge-currency.test.mjs"],
+      "platformFiles": {
+        "linux": ["tests/unit/session-start-knowledge-auto-update.test.mjs", "tests/unit/claims-verify.test.mjs", "tests/unit/capability-registry.test.mjs"],
+        "macos": ["tests/unit/session-start-knowledge-auto-update.test.mjs", "tests/unit/claims-verify.test.mjs", "tests/unit/capability-registry.test.mjs"]
+      }
+    },
+    {
+      "id": "owner-alerting-volume-and-trust",
+      "reason": "Alerts page on change, not repeat; an undelivered page is retried; overrunning jobs and their whole process tree stop; people's issues page once at SLA with one daily summary; the ntfy inbox never turns message text into instructions",
+      "files": ["tests/unit/issue-watch-paging.test.mjs"],
+      "platformFiles": {
+        "linux": ["tests/unit/job-heartbeat-alerting.test.mjs", "tests/unit/ntfy-inbox.test.mjs", "tests/unit/brain-alarm-paging.test.mjs", "tests/unit/ntfy-alerts-filter.test.mjs", "tests/unit/api-spend-watchdog-transition.test.mjs", "tests/unit/issue-watch-unreadable-exit.test.mjs", "tests/unit/nightly-watchdog.test.mjs", "tests/unit/ntfy-delivery.test.mjs"],
+        "macos": ["tests/unit/job-heartbeat-alerting.test.mjs", "tests/unit/ntfy-inbox.test.mjs", "tests/unit/brain-alarm-paging.test.mjs", "tests/unit/ntfy-alerts-filter.test.mjs", "tests/unit/api-spend-watchdog-transition.test.mjs", "tests/unit/issue-watch-unreadable-exit.test.mjs", "tests/unit/nightly-watchdog.test.mjs", "tests/unit/ntfy-delivery.test.mjs"]
+      }
     },
     {
       "id": "automatic-update-source-and-transport",
       "reason": "Captured owner policy never falls back on read failures; installed-only automation avoids npx; transient GET and body failures retry without weakening trust; POSIX executable aliases retain interpreter identity",
       "files": ["tests/unit/automatic-update.test.mjs", "tests/unit/download-retry.test.mjs"],
       "platformFiles": {
-        "linux": ["tests/unit/automatic-update-node-alias.test.mjs"],
-        "macos": ["tests/unit/automatic-update-node-alias.test.mjs"]
+        "linux": ["tests/unit/automatic-update-node-alias.test.mjs", "tests/unit/host-update-knowledge-exit.test.mjs"],
+        "macos": ["tests/unit/automatic-update-node-alias.test.mjs", "tests/unit/host-update-knowledge-exit.test.mjs"]
       }
     },
     {
@@ -48,8 +61,8 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       "reason": "Explicit document meaning requests retain corroboration; literal searches stay silent; POSIX complete-write exemptions preserve executable and managed-store grounding",
       "files": ["tests/unit/advocacy-route.test.mjs", "tests/unit/advocacy-catalog.test.mjs", "tests/unit/card-lane.test.mjs"],
       "platformFiles": {
-        "linux": ["tests/unit/advocacy-route-budget.test.mjs", "tests/unit/ground-before-write.test.mjs", "tests/unit/grounding-code-projection.test.mjs"],
-        "macos": ["tests/unit/advocacy-route-budget.test.mjs", "tests/unit/ground-before-write.test.mjs", "tests/unit/grounding-code-projection.test.mjs"]
+        "linux": ["tests/unit/advocacy-route-budget.test.mjs", "tests/unit/ground-before-write.test.mjs", "tests/unit/grounding-code-projection.test.mjs", "tests/unit/package-recommender.test.mjs", "tests/unit/write-gate-policy.test.mjs"],
+        "macos": ["tests/unit/advocacy-route-budget.test.mjs", "tests/unit/ground-before-write.test.mjs", "tests/unit/grounding-code-projection.test.mjs", "tests/unit/package-recommender.test.mjs"]
       }
     },
     {
@@ -59,11 +72,12 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
     },
     {
       "id": "canonical-learning-capture",
-      "reason": "Fixed metadata capture, canonical scope, consent, exact readback and loud refusal retain privacy; learning is handed straight to ruflo memory store with no local queue",
+      "reason": "Fixed metadata capture, canonical scope, consent, exact readback and loud refusal retain privacy; learning is handed straight to ruflo memory store with no local queue; the SessionEnd checkpoint plans for Claude Code's real 1.5 s budget and detaches instead of being cancelled",
       "files": [
         "tests/unit/learn-capture-project-root.test.mjs",
         "tests/unit/learn-capture-redaction.test.mjs",
-        "tests/unit/learner-scope-agreement.test.mjs"
+        "tests/unit/learner-scope-agreement.test.mjs",
+        "tests/unit/claude-session-end-budget.test.mjs"
       ]
     },
     {
@@ -102,7 +116,11 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
         "tests/unit/protected-release-workflow.test.mjs",
         "tests/unit/agentic-qe-early-public.test.mjs",
         "tests/unit/release-evidence-dag.test.mjs"
-      ]
+      ],
+      "platformFiles": {
+        "linux": ["tests/unit/self-update-publish-branch-guard.test.mjs", "tests/unit/pre-push-worktree-root.test.mjs", "tests/unit/wired-baseline-classification.test.mjs"],
+        "macos": ["tests/unit/self-update-publish-branch-guard.test.mjs", "tests/unit/pre-push-worktree-root.test.mjs", "tests/unit/wired-baseline-classification.test.mjs"]
+      }
     },
     {
       "id": "public-verification",
@@ -118,7 +136,7 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
     },
     {
       "id": "safe-install-update",
-      "reason": "Installation and update preserve prior and private state and reject invalid dependencies; the Codex hook bridge a retained Brain generation shipped upgrades reversibly while edited, linked, shared or foreign-owned bridges stay preserved",
+      "reason": "Installation and update preserve prior and private state and reject invalid dependencies; the Codex hook bridge a retained Brain generation shipped upgrades reversibly while edited, linked, shared or foreign-owned bridges stay preserved; a failed host sync rolls the Console runtime back and records its reason",
       "files": [
         "tests/unit/automatic-hook-retirement.test.mjs",
         "tests/unit/codex-wrapper-upgrade-ownership.test.mjs",
@@ -127,11 +145,13 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
         "tests/unit/forge-update-archive-digest.test.mjs",
         "tests/unit/kb-copy-proof-legacy-sidecars.test.mjs",
         "tests/unit/kb-copy-proof-unknown-content.test.mjs",
-        "tests/unit/user-model-hook-install.test.mjs"
+        "tests/unit/user-model-hook-install.test.mjs",
+        "tests/unit/console-runtime-transaction.test.mjs",
+        "tests/unit/install-update-exit-semantics.test.mjs"
       ],
       "platformFiles": {
-        "linux": ["tests/unit/codex-wrapper-upgrade-ownership-links.test.mjs"],
-        "macos": ["tests/unit/codex-wrapper-upgrade-ownership-links.test.mjs"]
+        "linux": ["tests/unit/codex-wrapper-upgrade-ownership-links.test.mjs", "tests/unit/forge-update-signal.test.mjs", "tests/unit/console-runtime-replacement-posix.test.mjs", "tests/unit/update-apply-lock-identity.test.mjs", "tests/unit/update-apply-lock-takeover-race.test.mjs", "tests/integration/install-update-signals.test.mjs", "tests/unit/forge-guard-injection-log-location.test.mjs", "tests/unit/installer-sibling-imports-packaged.test.mjs", "tests/unit/npm-pack-json.test.mjs", "tests/unit/npm-tarball-codex.test.mjs", "tests/integration/pack-completeness.test.mjs"],
+        "macos": ["tests/unit/codex-wrapper-upgrade-ownership-links.test.mjs", "tests/unit/forge-update-signal.test.mjs", "tests/unit/console-runtime-replacement-posix.test.mjs", "tests/unit/update-apply-lock-identity.test.mjs", "tests/unit/update-apply-lock-takeover-race.test.mjs", "tests/integration/install-update-signals.test.mjs", "tests/unit/forge-guard-injection-log-location.test.mjs", "tests/unit/installer-sibling-imports-packaged.test.mjs", "tests/unit/npm-pack-json.test.mjs", "tests/unit/npm-tarball-codex.test.mjs", "tests/integration/pack-completeness.test.mjs", "tests/unit/spend-guard-install.test.mjs"]
       }
     },
     {
@@ -187,11 +207,12 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
         "tests/unit/model-native-catalog.test.mjs",
         "tests/unit/user-model-prompt-hook.test.mjs",
         "tests/unit/model-routing-policy-promotion.test.mjs",
-        "tests/unit/codex-hook-trust.test.mjs"
+        "tests/unit/codex-hook-trust.test.mjs",
+        "tests/unit/model-catalog-refresh-workflow.test.mjs"
       ],
       "platformFiles": {
-        "linux": ["tests/unit/model-weekly-cycle-native-stub.test.mjs", "tests/unit/goldie-weekly-path.test.mjs"],
-        "macos": ["tests/unit/model-weekly-cycle-native-stub.test.mjs", "tests/unit/goldie-weekly-path.test.mjs"]
+        "linux": ["tests/unit/model-weekly-cycle-native-stub.test.mjs", "tests/unit/goldie-weekly-path.test.mjs", "tests/unit/model-currency-live-capture.test.mjs"],
+        "macos": ["tests/unit/model-weekly-cycle-native-stub.test.mjs", "tests/unit/goldie-weekly-path.test.mjs", "tests/unit/model-currency-live-capture.test.mjs"]
       }
     },
     {
@@ -231,25 +252,45 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
     },
     {
       "id": "lossless-lifecycle-retention",
-      "reason": "Evidence compaction preserves tokens, private state and atomic transaction recovery",
+      "reason": "Evidence compaction preserves tokens, private state and atomic transaction recovery; an abandoned atomic receipt temporary is reclaimed or preserved, never a permanent blocker",
       "files": [
         "tests/unit/lifecycle-evidence-retention.test.mjs",
+        "tests/unit/refresh-run.test.mjs",
+        "tests/unit/refresh-run-stale-reclaim.test.mjs",
         "tests/unit/update-storage-transaction.test.mjs"
-      ]
+      ],
+      "platformFiles": {
+        "linux": ["tests/unit/refresh-run-takeover-race.test.mjs"],
+        "macos": ["tests/unit/refresh-run-takeover-race.test.mjs"]
+      }
+    },
+    {
+      "id": "nightly-knowledge-jobs",
+      "reason": "The gists nightly re-embeds over a stale store, scales its stall budget with the slowest batch and reports its error paths; a stalled shard is detected; a reader never deadlocks the refresh",
+      "files": ["tests/unit/forge-big-stall.test.mjs"],
+      "platformFiles": {
+        "linux": ["tests/integration/ingest-gists.test.mjs", "tests/integration/nightly-gists-error-paths.test.mjs"],
+        "macos": ["tests/integration/ingest-gists.test.mjs", "tests/integration/nightly-gists-error-paths.test.mjs"]
+      }
     },
     {
       "id": "causal-learning-proof",
       "reason": "Recorded learning evidence rejects forged, absent and mismatched causal transcripts",
       "files": [
         "tests/unit/learning-replay-proof.test.mjs"
-      ]
+      ],
+      "platformFiles": {
+        "linux": ["tests/unit/learning-replay-workflow-step.test.mjs"],
+        "macos": ["tests/unit/learning-replay-workflow-step.test.mjs"]
+      }
     },
     {
       "id": "qualification-topology",
       "reason": "Release promotion consumes qualified exact-source receipts and preserves required contexts",
       "files": [
         "tests/unit/qualify-once-workflow.test.mjs",
-        "tests/unit/architecture-review-lock.test.mjs"
+        "tests/unit/architecture-review-lock.test.mjs",
+        "tests/unit/canonical-qa-preflight-parity.test.mjs"
       ]
     },
     {
@@ -282,10 +323,13 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
   ],
   "platformFiles": {
     "linux": [
-      "tests/unit/hook-shim.test.mjs"
+      "tests/unit/hook-shim.test.mjs",
+      "tests/unit/continuation-gate-quiet-default.test.mjs"
     ],
     "macos": [
-      "tests/unit/hook-shim.test.mjs"
+      "tests/unit/hook-shim.test.mjs",
+      "tests/unit/continuation-gate-quiet-default.test.mjs",
+      "tests/unit/hook-qualify.test.mjs"
     ]
   }
 },
@@ -349,10 +393,11 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
     },
     {
       "id": "installed-routing-and-hook-trust",
-      "reason": "Actual installer update converges managed routing while preserving private overrides; POSIX archive and native metadata subprocess probes bind authorized hook trust to verified released bytes and preserve concurrent or disabled owner state",
+      "reason": "Actual installer update converges managed routing while preserving private overrides; POSIX archive and native metadata subprocess probes bind authorized hook trust to verified released bytes and preserve concurrent or disabled owner state; a running shared Codex app-server is reloaded after a plugin or trust change without granting approval (#492)",
       "files": [
         "tests/unit/model-router-update-convergence.test.mjs",
-        "tests/unit/codex-hook-trust-reconcile.test.mjs"
+        "tests/unit/codex-hook-trust-reconcile.test.mjs",
+        "tests/unit/codex-shared-host-refresh.test.mjs"
       ]
     },
     {

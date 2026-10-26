@@ -51,6 +51,7 @@ describe('package-lock participates in version synchronization', () => {
         'scripts/sync-version.mjs',
         'scripts/version.mjs',
         'plugin/.claude-plugin/plugin.json',
+        'plugin/scripts/entrypoint.mjs',
       ]) {
         const dst = path.join(tmp, rel);
         fs.mkdirSync(path.dirname(dst), { recursive: true });

@@ -14,6 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { judgeScore } from './recommendation-judge-score.mjs';
 import { wilson } from './recommendation-eval.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const POS = new Set(['design', 'diagnosis']);
@@ -31,7 +32,7 @@ export function applyFloor(key, picks, floor) {
   return Object.fromEntries(key.map((k) => [k.qid, k.lane === 'semantic' && !(k.topSimilarity >= floor) ? null : picks[k.qid] ?? null]));
 }
 
-const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const isMain = isDirectInvocation(import.meta.url);
 if (isMain) {
   const arg = (n, d) => { const i = process.argv.indexOf(n); return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : d; };
   const dir = arg('--dir', null);

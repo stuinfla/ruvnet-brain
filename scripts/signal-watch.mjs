@@ -47,6 +47,7 @@ import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { assessCiGate } from './ci-verdict.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const BRAIN_HOME = process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain');
 const SIGNAL_DIR = process.env.RUVNET_SIGNAL_DIR || path.join(BRAIN_HOME, 'external-signals');
@@ -164,7 +165,7 @@ function main() {
 }
 
 function isMain() {
-  try { return process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href; }
+  try { return isDirectInvocation(import.meta.url); }
   catch { return false; }
 }
 

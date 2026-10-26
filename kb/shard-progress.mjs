@@ -36,33 +36,62 @@ export function clearShardProgress(dir, name, shardIdx, nShards) {
 }
 
 /**
- * Poll N shards' progress files for a stall: a shard whose `completed` count has not increased in
- * `stallMs`. Pure and clock-injectable (`now`) so a test can drive time deterministically via
+ * Poll N shards' progress files for a stall: a shard whose `completed` count has not increased
+ * within its budget. Pure and clock-injectable (`now`) so a test can drive time deterministically via
  * repeated `poll()` calls instead of real sleeps — the same fixture-file technique step-watchdog's
  * own tests use, applied to per-shard completed-work evidence instead of a single process's exit.
  *
  * `onStall(shardIdx, info)` fires AT MOST ONCE per shard. A shard already reporting
- * `completed >= total` can never be flagged — it finished; it is not the thing that hung.
+ * `completed >= total` can never be flagged — it finished; it is not the thing that hung. Neither can
+ * a shard whose file was seen and is now gone: `embed` deletes it only after its vec shard is renamed
+ * into place, so before 4.7.21 an early-finishing shard was flagged "stalled" once its siblings ran
+ * past the budget.
+ *
+ * TWO CLOCKS (4.7.21; incident: 5 of 6 gists nights in Oct 2026 aborted as "stalled" while working).
+ * Healthy production batches took 6-10 min each and progress lands once per 32-passage batch, so a
+ * fixed 15-min budget fired on any 2x slowdown, and the clock also started before 8 parallel model
+ * loads. Now:
+ *   1. STARTUP — until a shard's FIRST progress write, the budget is `max(stallMs, startupMs)` from
+ *      watcher creation. Model load does not eat the batch budget, and a shard that never writes at
+ *      all (a hung model load) is still caught.
+ *   2. RUNNING — from the first write on, the budget is `max(stallMs, 4 x the slowest batch interval
+ *      observed on ANY shard)`. A machine that is uniformly slower stretches the budget; a shard that
+ *      genuinely freezes still blows through 4x the slowest real batch and fires.
+ * The budget can only grow above `stallMs`, never shrink below it, so this never fires earlier than
+ * the fixed budget it replaces.
  */
-export function createStallWatcher({ dir, name, of, stallMs, pollMs = 15_000, now = () => Date.now(), onStall }) {
+export function createStallWatcher({ dir, name, of, stallMs, startupMs = 10 * 60_000, pollMs = 15_000, now = () => Date.now(), onStall }) {
+  const createdAt = now();
   const lastCompleted = new Array(of).fill(0);
-  const lastAdvanceAt = new Array(of).fill(now());
+  const lastAdvanceAt = new Array(of).fill(null); // null until the shard's first progress write
+  let slowestBatchMs = 0;
   const stalled = new Set();
+  const budgetMs = () => Math.max(stallMs, 4 * slowestBatchMs);
   function poll() {
     const t = now();
     for (let i = 0; i < of; i++) {
       if (stalled.has(i)) continue;
       const rec = readShardProgress(dir, name, i, of);
+      if (!rec && lastAdvanceAt[i] !== null) continue; // file seen, now gone: embed clears it only on success
       const completed = typeof rec?.completed === 'number' ? rec.completed : 0;
+      if (rec && lastAdvanceAt[i] === null) {
+        // First write seen: the running clock starts here.
+        lastCompleted[i] = completed;
+        lastAdvanceAt[i] = t;
+        continue;
+      }
       if (completed > lastCompleted[i]) {
+        slowestBatchMs = Math.max(slowestBatchMs, t - lastAdvanceAt[i]);
         lastCompleted[i] = completed;
         lastAdvanceAt[i] = t;
         continue;
       }
       if (rec && typeof rec.total === 'number' && rec.completed >= rec.total) continue; // shard finished
-      if (t - lastAdvanceAt[i] > stallMs) {
+      const since = lastAdvanceAt[i] === null ? createdAt : lastAdvanceAt[i];
+      const budget = lastAdvanceAt[i] === null ? Math.max(stallMs, startupMs) : budgetMs();
+      if (t - since > budget) {
         stalled.add(i);
-        onStall(i, { lastCompleted: lastCompleted[i], staleMs: t - lastAdvanceAt[i] });
+        onStall(i, { lastCompleted: lastCompleted[i], staleMs: t - since, budgetMs: budget, started: lastAdvanceAt[i] !== null });
       }
     }
   }

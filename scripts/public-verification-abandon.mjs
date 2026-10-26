@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { extractZip } from '../kb/zip-extract.mjs';
 import { abandonPublicVerificationTransaction } from './release-transaction.mjs';
 import { liveReleaseProvider } from './release-transaction-provider.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 function regularJson(file, max = 131072) {
   const stat = fs.lstatSync(file);
@@ -90,7 +91,7 @@ export async function abandonPublicVerification({ identityFile, outputFile, env 
   return receipt;
 }
 
-const direct = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const direct = isDirectInvocation(import.meta.url);
 if (direct) {
   const arg = (name) => { const index = process.argv.indexOf(name); return index < 0 ? null : process.argv[index + 1]; };
   try {

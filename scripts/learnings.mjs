@@ -9,6 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { learningScope, learnerCwd } from '../plugin/scripts/runtime-preferences.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const HOME = os.homedir();
 
@@ -73,4 +74,4 @@ export function learnings({ statsPath, queueDir, now = Date.now(), cwd, env, hom
 
 export function printLearnings(l) { console.log(JSON.stringify(l, null, 2)); }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) printLearnings(learnings());
+if (isDirectInvocation(import.meta.url)) printLearnings(learnings());

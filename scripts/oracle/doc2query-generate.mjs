@@ -23,6 +23,7 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { claudeArgs, spawnHost, isQuotaRefusal } from './producer-hosts.mjs';
 import { subscriptionOnlyEnv } from '../subscription-hosts.mjs';
+import { isDirectInvocation } from '../../plugin/scripts/entrypoint.mjs';
 
 export const EXCERPT_CHARS = 1500;
 export const D2Q_SCHEMA = Object.freeze({
@@ -159,4 +160,4 @@ async function main() {
   console.log(JSON.stringify({ files: docs.length, written, stopped: stop }));
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
+if (isDirectInvocation(import.meta.url)) await main();

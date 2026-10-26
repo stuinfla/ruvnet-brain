@@ -14,7 +14,18 @@
 //     listed with these exact bytes in the copy's own ARCHIVE-MANIFEST.json, or a public store family (named by either COVERAGE.json
 //     or the live SOURCE.json) that a newer release replaced or retired;
 //   * installer-written or reinstallable (node_modules/, the updater/validator files the installer places);
-//   * a symbolic link identical in the live brain (links are compared, never followed).
+//   * a symbolic link identical in the live brain (links are compared, never followed);
+//   * (#335) a regular file byte-identical at the same path in a KEPT sibling: another copy the caller has
+//     already decided to retain, or a `kb.archive/<stamp>/<copy>/` tree. The caller passes only copies that
+//     stay on disk, so duplicate preserved copies release down to one and no unique byte is lost.
+//   * an OPERATIONAL file the Brain's own processes (or a ruflo hook run with the KB as its cwd) wrote into
+//     the tree: a top-level update.log / forge-update.log / forge-guard-injection.log, or ruflo's
+//     .claude-flow/ scratch, each a regular file of at most RESCUE_CAP_BYTES (RESCUE_TOTAL_CAP_BYTES per
+//     copy). No bundle ships these and nothing reads them back, but a log can be the only trace of a failed
+//     night, so they are not just dropped: they are returned as `rescue` (with their bytes), and the caller
+//     copies them out with footprint-io.mjs rescueOperationalFiles BEFORE it removes the copy; a failed
+//     rescue keeps the copy. The rescued files are kept for the newest released copies (brain-footprint.mjs
+//     FOOTPRINT_POLICY.rescuedCopiesKept).
 // Anything else — a user's own file, an unfenced store, a link the live brain lacks — KEEPS the copy, and
 // is named. Paths are checked for symlink ancestors within both KB roots before any exemption; host
 // aliases above those roots (such as macOS /tmp) are not traversed as part of this check. Invalid metadata,
@@ -54,11 +65,25 @@ const stemOf = (file) => path.basename(String(file)).replace(/(?:\.big)?\.rvf$/i
 const storeStem = (file) => path.basename(String(file)).toLowerCase()
   .replace(/-primer\.md$/, '').replace(/(?:\.big)?\.rvf(?:\.[a-z]+\.json)?$/, '')
   .replace(/(?:\.big)?(?:\.(?:meta|symbols)\.json|\.passages\.jsonl)$/, '');
+// Operational files (see the header). Top-level logs by exact name: plugin/scripts/nightly-scheduler.mjs
+// installScheduler (update.log), kb/forge-guard-injection.mjs LOG_PATH, kb/forge-update.mjs's documented
+// cron line (forge-update.log). .claude-flow/ is ruflo's working state, the same debris brain-footprint.mjs
+// RUFLO_DEBRIS removes from ruflo-cwd. A larger file, a link, or anything else (.swarm/ included) stays unique,
+// and so does every operational file past RESCUE_TOTAL_CAP_BYTES per copy (the rescue itself is bounded).
+const OPERATIONAL_LOG = /^(?:update|forge-update|forge-guard-injection)\.log$/;
+export const RESCUE_CAP_BYTES = 2 * 1024 * 1024;
+export const RESCUE_TOTAL_CAP_BYTES = 16 * 1024 * 1024;
+const isOperational = (relative) => (!relative.includes(path.sep) && OPERATIONAL_LOG.test(relative))
+  || (relative.split(path.sep)[0] === '.claude-flow' && relative.includes(path.sep));
 // Files the installer/updater writes into a KB that no bundle ships (bin/install.mjs placeUpdater,
 // placeTrustedCoverageValidator, ensureVerifier; the updater's snapshot receipt). Re-created on every install.
-const INSTALLER_WRITTEN = new Set(['coverage-integrity.mjs', 'RUNTIME-IDENTITY.json', '.refresh-snapshot.json',
+// Every bin/install.mjs UPDATER_FILES name must be here (tests/unit/kb-copy-proof-unknown-content.test.mjs holds the
+// two lists together): download-retry.mjs and forge-guard-injection.mjs were placed but missing, so an old copy whose
+// placed version differed from both the live file and its own manifest was kept as "unique" (review round 2, Opus #5).
+export const INSTALLER_WRITTEN = new Set(['coverage-integrity.mjs', 'RUNTIME-IDENTITY.json', '.refresh-snapshot.json',
   'forge-update.mjs', 'zip-extract.mjs', 'brain-profile.mjs', 'refresh-run.mjs', 'update-storage-transaction.mjs',
-  'lifecycle-evidence-retention.mjs', 'corpus-release-identity.mjs', 'verify-citation.mjs', 'package-lock.json', '.DS_Store']);
+  'lifecycle-evidence-retention.mjs', 'corpus-release-identity.mjs', 'download-retry.mjs', 'forge-guard-injection.mjs',
+  'verify-citation.mjs', 'package-lock.json', '.DS_Store']);
 
 /** A directory that is a knowledge-base tree (SOURCE.json plus a store or the search entry point). */
 export const isKbTree = (dir) => Boolean(lstat(path.join(dir, 'SOURCE.json')))
@@ -140,10 +165,11 @@ function metadataFailure(root) {
 }
 
 /**
- * @returns {{disposable: boolean, unique: {file: string, why: string}[], reason: string}} — a kept copy
- * always names the files that keep it.
+ * @returns {{disposable: boolean, unique: {file: string, why: string}[], rescue?: {file: string, bytes: number,
+ * sha256: string}[], reason: string}} — a kept copy always names the files that keep it; a disposable copy
+ * lists the operational files that must be rescued before it is removed.
  */
-export function kbCopyProof({ copyDir, liveDir }) {
+export function kbCopyProof({ copyDir, liveDir, keptSiblings = [] }) {
   const copy = lstat(copyDir);
   if (!copy || copy.isSymbolicLink() || !copy.isDirectory()) return { disposable: false, unique: [], reason: 'not a real directory (a link is never entered)' };
   const live = lstat(liveDir);
@@ -172,7 +198,19 @@ export function kbCopyProof({ copyDir, liveDir }) {
   // it lists with these exact bytes is a public, re-downloadable release file.
   const shipped = new Map((readJson(path.join(copyDir, 'ARCHIVE-MANIFEST.json'))?.files || [])
     .filter((f) => typeof f?.path === 'string').map((f) => [path.normalize(f.path), f]));
-  const unique = [];
+  // #335: retained siblings that may account for a file. Only real directories, never the copy or live itself.
+  const siblings = (Array.isArray(keptSiblings) ? keptSiblings : []).filter((dir) => {
+    const st = lstat(dir);
+    return st && st.isDirectory() && !st.isSymbolicLink() && path.resolve(dir) !== path.resolve(copyDir)
+      && path.resolve(dir) !== path.resolve(liveDir);
+  });
+  let bySibling = 0;
+  const inKeptSibling = (relative) => {
+    const hit = siblings.some((dir) => safeAncestors(dir, relative) && sameBytes(path.join(copyDir, relative), path.join(dir, relative)));
+    if (hit) bySibling += 1;
+    return hit;
+  };
+  const unique = []; const rescue = []; let rescueBytes = 0;
   let files;
   try { files = walk(copyDir); } catch (error) { return { disposable: false, unique, reason: `unreadable copy: ${error.message}` }; }
   for (const { relative, link, size } of files) {
@@ -183,7 +221,7 @@ export function kbCopyProof({ copyDir, liveDir }) {
       continue;
     }
     if (isPrivate) {
-      if (!sameBytes(path.join(copyDir, relative), inLive)) {
+      if (!sameBytes(path.join(copyDir, relative), inLive) && !inKeptSibling(relative)) {
         unique.push({ file: relative, why: lstat(inLive) ? 'private file differs from the live brain' : 'private file absent from the live brain' });
       }
       continue;
@@ -202,9 +240,19 @@ export function kbCopyProof({ copyDir, liveDir }) {
     if (listed && listed.bytes === size && listed.sha256 === sha256File(path.join(copyDir, relative))) continue;
     if (sameBytes(path.join(copyDir, relative), inLive)) continue; // existence alone proves no ownership or redundancy
     if (publicNames.has(storeStem(relative))) continue; // a public store family a newer release replaced or retired
+    if (inKeptSibling(relative)) continue; // #335: these exact bytes stay in a retained sibling copy or the archive
+    if (isOperational(relative) && size <= RESCUE_CAP_BYTES && rescueBytes + size <= RESCUE_TOTAL_CAP_BYTES) {
+      rescue.push({ file: relative, bytes: size, sha256: sha256File(path.join(copyDir, relative)) });
+      rescueBytes += size;
+      continue;
+    }
+    if (isOperational(relative)) { unique.push({ file: relative, why: 'an operational file past the rescue cap (2 MiB each, 16 MiB per copy)' }); continue; }
     unique.push({ file: relative, why: 'not in the live brain, not in this copy\'s release manifest, not a public store' });
   }
   return unique.length
     ? { disposable: false, unique, reason: `holds ${unique.length} file(s) the live brain does not: ${unique.slice(0, 4).map((u) => u.file).join(', ')}${unique.length > 4 ? ', …' : ''}` }
-    : { disposable: true, unique, reason: 'every private file is byte-identical in the live brain; public bytes are re-downloadable' };
+    : { disposable: true, unique, rescue, reason: `${bySibling
+      ? `${bySibling} file(s) the live brain lacks are byte-identical in a kept copy or kb.archive; the rest is in the live brain or re-downloadable`
+      : 'every private file is byte-identical in the live brain; public bytes are re-downloadable'}${
+      rescue.length ? `; ${rescue.length} operational log/scratch file(s) are rescued to the brain home first` : ''}` };
 }

@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { observeSourceUniverse } from './source-coverage.mjs';
 import { buildGistAggregate } from './gist-receipts.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export const REPO_KB = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'kb');
 
@@ -57,7 +58,7 @@ async function main(argv = process.argv.slice(2)) {
   return 0;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isDirectInvocation(import.meta.url)) {
   main().then((code) => { process.exitCode = code; }).catch((error) => {
     console.error(`[seal-gist-receipt] ${error.message}`);
     process.exitCode = 1;

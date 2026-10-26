@@ -55,6 +55,7 @@ import {
 import { effectivePrices, loadLabelledRows, OUTCOMES } from './metaharness-router.mjs';
 import { assertEvolutionAllowed } from './metaharness-gate.mjs';
 import { loadCatalog, applyProfile, loadProfile } from './model-router-engine.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 // ─── HARD CAPS — the self-DDoS fence. Clamped, never raised by flags. ─────────────────────────────
 export const HARD_MAX_GENERATIONS = 6;
@@ -599,7 +600,7 @@ async function main() {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isDirectInvocation(import.meta.url)) {
   main().catch((e) => {
     process.stderr.write(`routing-flywheel: ${e.stack || e.message}\n`);
     process.exit(1);

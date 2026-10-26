@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 // One existing-install owner. Does not install schedulers or remove plugin generations.
+// Over the 500-line guideline in 4.7.21 on purpose: a split needs a new module in EXECUTION_MODULES, which older registrations
+// cannot stage. The split into a new closure module is planned for 4.7.22, with the runner-changed re-registration work.
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -11,6 +13,7 @@ import { acquireDeveloperLock, sharedLockStatus } from './developer-update-lock.
 import { maintenance } from './developer-update-maintenance.mjs';
 import { cleanupNpxDuplicates } from './developer-update-cleanup.mjs';
 import { pinnedClaudeTarget, verifyClaudeArtifact } from './plugin-artifact-proof.mjs';
+import { isDirectInvocation } from './entrypoint.mjs';
 export { compare, selectTag, sharedLockStatus };
 const HOME = os.homedir();
 const PREFIX = path.join(HOME, '.npm-global');
@@ -236,13 +239,16 @@ export async function synchronizePlugins(run, dryRun, notes, { home, prefix, sco
   const writable = before.filter(p => p.scope !== 'managed' && !(unattended && ['project', 'local'].includes(p.scope))), flags = pluginFlags(writable, home);
   const provider = writable.length ? claudeProviderCommand(locate('claude'), { prefix, run }) : { command: locate('claude') };
   const claude = provider.command;
-  if (writable.length && !claude) throw Error('installed Claude plugins have no existing Claude command');
+  // No Claude CLI on this PATH (desktop-app, VS Code, nvm or ~/.claude/local installs): nothing can update these plugins
+  // here, so each is preserved and reported UNSUPPORTED instead of ending the night (AuditC #1).
+  const noClaude = writable.length > 0 && !claude;
   const steps = [], artifactCache = new Map();
-  const markets = [...new Set(writable.map(p => p.id.split('@').at(-1)))];
+  const markets = noClaude ? [] : [...new Set(writable.map(p => p.id.split('@').at(-1)))];
   if (!dryRun) for (const name of markets) run(claude, ['plugin', 'marketplace', 'update', name]);
   for (const p of before) {
-    if (!writable.includes(p)) {
-      const reason = p.scope === 'managed' ? 'managed scope belongs to its administrator' : 'unattended project settings unverified; original scope preserved';
+    if (!writable.includes(p) || noClaude) {
+      const reason = noClaude && writable.includes(p) ? 'no existing Claude command on this PATH; installed plugin preserved'
+        : p.scope === 'managed' ? 'managed scope belongs to its administrator' : 'unattended project settings unverified; original scope preserved';
       steps.push({ id: p.id, scope: p.scope, projectPath: p.projectPath, before: p, after: p, state: 'UNSUPPORTED', reason });
       notes.push(`plugin target unsupported; preserved: ${p.id} (${p.scope}): ${reason}`);
       continue;
@@ -250,9 +256,17 @@ export async function synchronizePlugins(run, dryRun, notes, { home, prefix, sco
     const target = resolvePluginTarget(p, { home, run });
     let artifactTarget = null, artifactProof = null;
     if (target.supported && target.authority === 'commit' && target.proof === 'catalog-pinned-commit' && p.gitCommitSha?.toLowerCase() !== target.commit) {
-      artifactTarget = await artifactProvider(target.source, target.commit, { cache: artifactCache });
-      artifactProof = verifyClaudeArtifact(artifactTarget, p.installPath);
-      target.version = artifactTarget.manifest.version || null;
+      try {
+        artifactTarget = await artifactProvider(target.source, target.commit, { cache: artifactCache });
+        artifactProof = verifyClaudeArtifact(artifactTarget, p.installPath);
+        target.version = artifactTarget.manifest.version || null;
+      } catch (error) {
+        // A rate-limited or oversized pinned-artifact proof leaves this plugin unproven, not the night failed (AuditC #16).
+        const reason = `pinned artifact unproven: ${error.message}`;
+        steps.push({ id: p.id, scope: p.scope, projectPath: p.projectPath, before: p, after: p, target, state: 'UNSUPPORTED', reason });
+        notes.push(`plugin target unsupported; preserved: ${p.id}: ${reason}`);
+        continue;
+      }
     }
     let decision = p.scope === 'managed' ? { state: 'UNSUPPORTED', reason: 'managed scope belongs to its administrator' } : pluginUpdateDecision(artifactProof?.actualVersion ? { ...p, version: artifactProof.actualVersion } : p, target);
     if (artifactProof?.ok && decision.state !== 'AHEAD') decision = { state: 'CURRENT', proof: 'pinned-claude-artifact', sourceCommitMatched: false, actualClaudeSourceMatched: true, providerMetadataDiscrepancy: { recordedCommit: p.gitCommitSha, pinnedCommit: target.commit } };
@@ -280,36 +294,92 @@ export async function synchronizePlugins(run, dryRun, notes, { home, prefix, sco
     const git = (result.marketplaces || []).filter(m => m.marketplaceSource?.sourceType === 'git' && (scope === 'all' || PLUGIN_MARKETPLACES.has(m.name)));
     if (!dryRun) for (const m of git) run(codex, ['plugin', 'marketplace', 'upgrade', m.name, '--json']);
     const help = run(codex, ['plugin', '--help'], { timeout: 30_000 });
-    if (/^\s+update\s/m.test(help)) throw Error('Codex plugin update now exists; review scope-aware policy before enabling');
-    notes.push('Codex has no plugin update command; configured Git catalogues refreshed, installed generations preserved');
+    // Tripwire, reported not thrown: a new Codex command must not end the night before the knowledge is checked (AuditC #17).
+    if (/^\s+update\s/m.test(help)) notes.push('Codex plugin update now exists and is unsupported until its scope-aware policy is reviewed; installed generations preserved');
+    else notes.push('Codex has no plugin update command; configured Git catalogues refreshed, installed generations preserved');
   }
   if (JSON.stringify(flags) !== JSON.stringify(pluginFlags(writable, home))) throw Error('Codex plugin enablement changed');
   return { before, after, steps, provider };
 }
-export function knowledge(run, dryRun, runId, { brainHome, root, node }) {
+// The bundle download may take its 90-minute deadline (kb/download-retry.mjs) plus the apply; host-update.mjs's own
+// knowledge limit and the SessionStart TTL sit above this, so a kill never lands mid-transaction one level up.
+export const INSTALL_UPDATE_TIMEOUT_MS = 135 * 60_000;
+export const TRANSIENT_RETRY_DELAYS_MS = Object.freeze([15_000, 30_000]);
+const sleepSync = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+const exitOf = result => typeof result === 'string' ? 0 : (result?.exitCode ?? result?.status ?? result?.code ?? null);
+export const TRANSIENT_NETWORK = /ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|ENOTFOUND|ENETUNREACH|socket hang up|network|timed out|\bE5\d\d\b|\b50[234]\b/i;
+/** Three tries of `attempt` (15 s, then 30 s apart) while `transient(error)` says the failure was the network's. */
+export function withTransientRetry(attempt, { transient = () => true, sleep = sleepSync, delays = TRANSIENT_RETRY_DELAYS_MS } = {}) {
+  for (let i = 0; ; i++) {
+    try { return attempt(i); } catch (error) { if (i >= delays.length || !transient(error)) throw error; sleep(delays[i]); }
+  }
+}
+export function knowledge(run, dryRun, runId, { brainHome, root, node, sleep = sleepSync }) {
   const kb = path.join(brainHome, 'kb'), updater = path.join(kb, 'forge-update.mjs');
   if (!exists(updater)) throw Error('existing Brain KB updater absent; fresh install refused');
   const file = path.join(brainHome, `nightly-suite-corpus-${runId}.json`);
+  // Exit codes are forge-update's: 0 current, 10 newer, 2 network (retried), 5 incompatible with this runtime.
+  const exec = (args, options) => {
+    if (!run.receipt) { run(node, args, options); return 0; }
+    const result = run.receipt(node, args, options);
+    if (result?.error) throw Error(`${path.basename(args[0])} ${args[1]}: ${result.error}`);
+    return exitOf(result);
+  };
   function check() {
     const started = Date.now();
-    run(node, [updater, '--check', '--result-file', file], { timeout: 180_000, allowed: [0, 10] });
-    const receipt = read(file);
+    const code = withTransientRetry(() => {
+      const status = exec([updater, '--check', '--result-file', file], { timeout: 180_000, allowed: [0, 10, 2, 5] });
+      if (status === 2) throw Object.assign(Error('corpus check could not reach the release (exit 2)'), { transient: true });
+      return status;
+    }, { transient: error => error.transient === true, sleep });
+    if (code === 5) return { currencyVerdict: 'INCOMPATIBLE', exitCode: 5 };
+    if (code !== 0 && code !== 10) throw Error(`corpus check exited ${code}`);
+    let receipt;
+    try { receipt = read(file); } finally { fs.rmSync(file, { force: true }); }
     if (receipt.kind !== 'ruvnet-brain-check-result' || Date.parse(receipt.recordedAt) < started - 1000) throw Error('fresh corpus check receipt absent');
     return receipt;
   }
+  const installer = path.join(root, 'ruvnet-brain/bin/install.mjs');
+  const apply = () => {
+    if (!exists(installer)) throw Error('existing Brain installer absent');
+    // 12 is cleanup-pending: the knowledge was applied and the next run finishes the cleanup (shared exit contract).
+    const code = exec([installer, '--update', '--no-nightly-prompt', '--no-stack'], { timeout: INSTALL_UPDATE_TIMEOUT_MS, allowed: [0, 12] });
+    if (code !== 0 && code !== 12) throw Error(`Brain installer --update exited ${code}`);
+    return code;
+  };
   const before = check();
+  if (before.currencyVerdict === 'INCOMPATIBLE') {
+    // A remembered rejection keyed to the KB's runtime stamp blocks every --check; only the installer re-stamps it. When the
+    // installed package is a different version than the stamp, the installer is what clears it (AuditC #5).
+    let installed = null, stamped = null;
+    try { installed = read(path.join(root, 'ruvnet-brain/package.json')).version || null; } catch { /* no installed package */ }
+    try { stamped = read(path.join(kb, 'RUNTIME-IDENTITY.json')).brainVersion || null; } catch { /* no stamp */ }
+    if (!installed || installed === stamped) return { before, state: 'incompatible', installed, stamped };
+    if (dryRun) return { before, state: 'update-available', reason: 'runtime stamp differs from the installed package', installed, stamped };
+    const installerExit = apply(), after = check();
+    if (!['CURRENT', 'REFUSED'].includes(after.currencyVerdict)) throw Error(`corpus update failed to converge after re-stamping ${stamped} -> ${installed}`);
+    return { before, after, state: 'updated', installerExit, restamped: { from: stamped, to: installed } };
+  }
   if (before.currencyVerdict === 'CURRENT' || before.currencyVerdict === 'REFUSED') return { before, after: before, state: before.currencyVerdict === 'CURRENT' ? 'current' : 'ahead-preserved' };
   // UNKNOWN is what a tree installed from a code release reports (no corpus generation stamp): forge-update
   // documents it as apply-allowed, exactly like UPDATE_AVAILABLE, and the check after the apply must reach
   // CURRENT or REFUSED. Throwing here failed every scheduled night until someone ran --update by hand.
   if (before.currencyVerdict !== 'UPDATE_AVAILABLE' && before.currencyVerdict !== 'UNKNOWN') throw Error(`corpus currency unverified: ${before.currencyVerdict}`);
   if (dryRun) return { before, state: 'update-available' };
-  const installer = path.join(root, 'ruvnet-brain/bin/install.mjs');
-  if (!exists(installer)) throw Error('existing Brain installer absent');
-  run(node, [installer, '--update', '--no-nightly-prompt', '--no-stack'], { timeout: 1_800_000 });
+  const installerExit = apply();
   const after = check();
   if (!['CURRENT', 'REFUSED'].includes(after.currencyVerdict)) throw Error('corpus update failed to converge');
-  return { before, after, state: 'updated' };
+  return { before, after, state: 'updated', installerExit };
+}
+/** Corpus check results this coordinator left behind (a run killed between check and delete) older than 48 h. */
+export function pruneCorpusResults(brainHome, now = Date.now()) {
+  let removed = 0;
+  for (const name of (() => { try { return fs.readdirSync(brainHome); } catch { return []; } })()) {
+    if (!/^nightly-suite-corpus-[\w-]+\.json$/.test(name)) continue;
+    const file = path.join(brainHome, name);
+    try { if (fs.lstatSync(file).isFile() && now - fs.lstatSync(file).mtimeMs > 48 * 3_600_000) { fs.rmSync(file); removed++; } } catch { /* raced */ }
+  }
+  return removed;
 }
 export function developerUpdatePaths({ home = os.homedir(), brainHome = process.env.RUVNET_BRAIN_HOME || path.join(home, '.cache/ruvnet-brain') } = {}) {
   return { home, brainHome, config: path.join(brainHome, 'developer-update-config.json'),
@@ -349,7 +419,7 @@ export function locateExecutable(name, { env = process.env, platform = process.p
   }
   return null;
 }
-export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), brainHome, config: override, runner = invoke, env = process.env } = {}) {
+export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), brainHome, config: override, runner = invoke, env = process.env, knowledgeOnly = false, sleep = sleepSync } = {}) {
   if (!['check', 'apply'].includes(mode)) throw Error('mode must be check or apply');
   const paths = developerUpdatePaths({ home, brainHome });
   const config = validateDeveloperUpdateConfig(override || readDeveloperUpdateConfig(paths));
@@ -374,7 +444,7 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
   run.receipt = (command, args, options = {}) => dispatch(command, args, { ...options, capture: true });
   const locate = name => locateExecutable(name, { env: childEnv });
   const receipt = { schemaVersion: 1, kind: 'nightly-suite-update', runId: crypto.randomUUID(), pid: process.pid,
-    startedAt: new Date().toISOString(), mode, scheduled: mode === 'apply' && env.RUVNET_NIGHTLY === '1' && !!env.RUVNET_NIGHTLY_IDENTITY, state: 'running', ok: false, config, steps: [], notes: [],
+    startedAt: new Date().toISOString(), mode, knowledgeOnly, scheduled: mode === 'apply' && env.RUVNET_NIGHTLY === '1' && !!env.RUVNET_NIGHTLY_IDENTITY, state: 'running', ok: false, config, steps: [], notes: [],
     sourceSha256: null, ownerToken: lock.token, ownerPid: lock.ownerPid, schedulerIdentity: env.RUVNET_NIGHTLY_IDENTITY || null };
   const scheduledAttempt = value => value?.mode === 'apply' && value.scheduled !== false && !!value.schedulerIdentity;
   const readAttempt = file => {
@@ -418,42 +488,71 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
     // Bind every subsequent install to this exact prefix instead of inherited npm config.
     childEnv.npm_config_prefix = prefix;
     receipt.npmIdentity = { npm, prefix, root, node: process.execPath };
-    receipt.before = discover(root, prefix, config.scope);
-    persistReceipt();
-    for (const before of receipt.before) {
-      const tags = before.localSource ? {} : JSON.parse(run(npm, ['view', before.name, 'dist-tags', '--json'], { timeout: 90_000 }));
-      // A tracked non-latest tag (alpha, Kit's next) needs publish times to tell a newer pre-release from an abandoned
-      // one (developer-update-policy pickTargetTag); fetched only when that tag and latest name different versions. A
-      // failed lookup is {} — required but unknown — so the pre-release is skipped, never installed blind.
-      let published = null;
-      if (!before.localSource) {
-        let needed = false;
-        try { needed = needsPublishTimes(normalizeNpmDistTags(tags), wantedTag(before.name, config.channel)); } catch { needed = false; }
-        if (needed) {
-          try { published = JSON.parse(run(npm, ['view', before.name, 'time', '--json'], { timeout: 90_000 })); }
-          catch { published = {}; }
-        }
-      }
-      receipt.steps.push(upgradePackage(before, tags, REVIEWED_INSTALL_SCRIPTS, { run, dryRun: mode === 'check', channel: config.channel, npm, preservePackages: config.preservePackages, published }));
+    // Each stage is isolated: a failure is recorded on its stage and the run goes on, so one npm view, one plugin or a missing
+    // CLI can no longer cost the night its knowledge update (AuditC #1). Packages run before knowledge so a new code package's
+    // installer applies its matching corpus; knowledge is always attempted when the KB exists.
+    const failures = [];
+    const stage = async (name, body, onError = () => {}) => {
+      try { return await body(); } catch (error) { failures.push({ stage: name, error: error.message }); onError(error); persistReceipt(); return undefined; }
+    };
+    const viewRetry = attempt => withTransientRetry(attempt, { transient: error => TRANSIENT_NETWORK.test(error.message), sleep });
+    if (!knowledgeOnly) {
+      // An inventory failure is recorded in failures; no package is then touched, and knowledge still runs.
+      receipt.before = (await stage('inventory', () => discover(root, prefix, config.scope))) ?? [];
       persistReceipt();
+      for (const before of receipt.before) {
+        await stage(`package ${before.name}`, () => {
+          const tags = before.localSource ? {} : JSON.parse(viewRetry(() => run(npm, ['view', before.name, 'dist-tags', '--json'], { timeout: 90_000 })));
+          // A tracked non-latest tag (alpha, Kit's next) needs publish times to tell a newer pre-release from an abandoned
+          // one (developer-update-policy pickTargetTag); fetched only when that tag and latest name different versions. A
+          // failed lookup is {} — required but unknown — so the pre-release is skipped, never installed blind.
+          let published = null;
+          if (!before.localSource) {
+            let needed = false;
+            try { needed = needsPublishTimes(normalizeNpmDistTags(tags), wantedTag(before.name, config.channel)); } catch { needed = false; }
+            if (needed) {
+              try { published = JSON.parse(viewRetry(() => run(npm, ['view', before.name, 'time', '--json'], { timeout: 90_000 }))); }
+              catch { published = {}; }
+            }
+          }
+          receipt.steps.push(upgradePackage(before, tags, REVIEWED_INSTALL_SCRIPTS, { run, dryRun: mode === 'check', channel: config.channel, npm, preservePackages: config.preservePackages, published }));
+        }, error => receipt.steps.push({ name: before.name, state: 'failed', error: error.message, before }));
+        persistReceipt();
+      }
     }
-    receipt.plugins = await synchronizePlugins(run, mode === 'check', receipt.notes, { home, prefix, scope: config.scope, locate, unattended: !!env.RUVNET_NIGHTLY_IDENTITY });
-    if (exists(path.join(paths.brainHome, 'kb/forge-update.mjs'))) receipt.knowledge = knowledge(run, mode === 'check', receipt.runId, { brainHome: paths.brainHome, root, node: process.execPath });
-    else receipt.notes.push('Brain corpus absent; fresh knowledge install excluded');
-    receipt.maintenance = await maintenance(config, run, mode === 'check', { home, brainHome: paths.brainHome, locate, node: process.execPath, progress: result => { receipt.maintenance = result; persistReceipt(); } });
-    receipt.cleanup = cleanupNpxDuplicates({ home, globalRoot: root, enabled: config.cleanup && mode === 'apply', run });
-    receipt.after = discover(root, prefix, config.scope);
-    receipt.state = mode === 'check' ? 'checked' : 'completed'; receipt.ok = true;
-    receipt.coverage = { scope: config.scope, excluded: receipt.steps.filter(s => /preserved$/.test(s.state)).map(s => ({ name: s.name, reason: s.state })),
+    if (exists(path.join(paths.brainHome, 'kb/forge-update.mjs'))) {
+      receipt.knowledge = await stage('knowledge', () => knowledge(run, mode === 'check', receipt.runId, { brainHome: paths.brainHome, root, node: process.execPath, sleep }),
+        error => { receipt.knowledge = { state: 'failed', error: error.message }; }) ?? receipt.knowledge;
+      pruneCorpusResults(paths.brainHome);
+    } else receipt.notes.push('Brain corpus absent; fresh knowledge install excluded');
+    persistReceipt();
+    if (!knowledgeOnly) {
+      receipt.plugins = await stage('plugins', () => synchronizePlugins(run, mode === 'check', receipt.notes, { home, prefix, scope: config.scope, locate, unattended: !!env.RUVNET_NIGHTLY_IDENTITY }));
+      receipt.maintenance = await stage('maintenance', () => maintenance(config, run, mode === 'check', { home, brainHome: paths.brainHome, locate, node: process.execPath, progress: result => { receipt.maintenance = result; persistReceipt(); } }),
+        error => { for (const item of receipt.maintenance?.stages || []) if (item.state === 'running') { item.state = 'failed'; item.error = error.message; } }) ?? receipt.maintenance;
+      receipt.cleanup = await stage('cleanup', () => cleanupNpxDuplicates({ home, globalRoot: root, enabled: config.cleanup && mode === 'apply', run }));
+      receipt.after = await stage('inventory-after', () => discover(root, prefix, config.scope));
+    } else receipt.notes.push('knowledge-only run: packages, plugins and maintenance are left to the scheduled nightly');
+    receipt.failures = failures; receipt.ok = failures.length === 0;
+    receipt.state = failures.length ? 'completed-with-failures' : mode === 'check' ? 'checked' : 'completed';
+    receipt.coverage = { scope: knowledgeOnly ? 'knowledge-only' : config.scope, excluded: receipt.steps.filter(s => /preserved$/.test(s.state)).map(s => ({ name: s.name, reason: s.state })),
       ahead: receipt.steps.filter(s => s.state === 'ahead-preserved').map(s => s.name),
       preservedLocalModification: receipt.steps.filter(s => s.reason === 'preservedLocalModification').map(s => s.name),
-      unverified: [...new Set([...receipt.notes.filter(note => /unverified|unsupported|no plugin update command/i.test(note)), ...(receipt.plugins?.steps || []).filter(step => step.state === 'UNSUPPORTED').map(step => `${step.id} (${step.scope}): ${step.reason}`)])], notes: [...receipt.notes, ...(receipt.maintenance?.exclusions || [])] };
+      unverified: [...new Set([...failures.map(f => `${f.stage}: ${f.error}`), ...receipt.notes.filter(note => /unverified|unsupported|no plugin update command/i.test(note)), ...(receipt.plugins?.steps || []).filter(step => step.state === 'UNSUPPORTED').map(step => `${step.id} (${step.scope}): ${step.reason}`)])], notes: [...receipt.notes, ...(receipt.maintenance?.exclusions || [])] };
+    if (failures.length) {
+      // Throw only after the receipt says which stages failed: the runner still exits 1 exactly as before.
+      receipt.error = failures.map(f => `${f.stage}: ${f.error}`).join('; ');
+      persistReceipt();
+      throw Object.assign(Error(`developer update completed with failures: ${receipt.error}`), { completedWithFailures: true });
+    }
     return receipt;
   } catch (error) {
-    receipt.state = 'failed'; receipt.error = error.message;
-    for (const stage of receipt.maintenance?.stages || []) if (stage.state === 'running') { stage.state = 'failed'; stage.error = error.message; }
-    receipt.coverage = { scope: config.scope, unverified: [error.message], notes: receipt.notes };
-    try { if (receipt.npmIdentity) receipt.after = discover(receipt.npmIdentity.root, receipt.npmIdentity.prefix, config.scope); } catch (e) { receipt.snapshotError = e.message; }
+    if (!error.completedWithFailures) {
+      receipt.state = 'failed'; receipt.error = error.message;
+      for (const item of receipt.maintenance?.stages || []) if (item.state === 'running') { item.state = 'failed'; item.error = error.message; }
+      receipt.coverage = { scope: config.scope, unverified: [error.message], notes: receipt.notes };
+      try { if (receipt.npmIdentity) receipt.after = discover(receipt.npmIdentity.root, receipt.npmIdentity.prefix, config.scope); } catch (e) { receipt.snapshotError = e.message; }
+    }
     throw error;
   } finally {
     receipt.finishedAt = new Date().toISOString();
@@ -462,19 +561,22 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
 }
 export async function developerUpdateCli(args = process.argv.slice(2)) {
   if (args.includes('--help') || args.includes('-h')) {
-    console.log('Usage: ruvnet-brain-update [--check|--apply] [--channel latest|alpha] [--scope ruvnet|all]');
+    console.log('Usage: ruvnet-brain-update [--check|--apply] [--knowledge-only] [--channel latest|alpha] [--scope ruvnet|all]');
     return;
   }
-  let mode = 'apply'; const override = readDeveloperUpdateConfig();
+  // --knowledge-only: npm identity plus the knowledge step under the same lock (the SessionStart self-heal); the full suite
+  // runs only from the scheduled runner.
+  let mode = 'apply', knowledgeOnly = false; const override = readDeveloperUpdateConfig();
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--check' || args[i] === '--dry-run') mode = 'check';
+    if (args[i] === '--knowledge-only') knowledgeOnly = true;
+    else if (args[i] === '--check' || args[i] === '--dry-run') mode = 'check';
     else if (args[i] === '--apply') mode = 'apply';
     else if (args[i] === '--channel') override.channel = args[++i];
     else if (args[i] === '--scope') override.scope = args[++i];
     else throw Error(`unsupported developer update argument: ${args[i]}`);
   }
-  const result = await runDeveloperUpdate({ mode, config: override });
+  const result = await runDeveloperUpdate({ mode, config: override, knowledgeOnly });
   console.log(JSON.stringify(result));
   return result;
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) developerUpdateCli().catch(error => { console.error(error.message); process.exitCode = 1; });
+if (isDirectInvocation(import.meta.url)) developerUpdateCli().catch(error => { console.error(error.message); process.exitCode = 1; });

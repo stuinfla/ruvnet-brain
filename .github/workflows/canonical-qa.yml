@@ -29,6 +29,17 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci --no-audit --no-fund
+      # The release preflight's cheap gate, run here first (4.7.21). It used to run ONLY on the release/* push,
+      # which pages; 8 of 20 preflight reds were the ADR-0103 review lock failing there for the first time.
+      # Same commands as release-candidate-preflight.yml "Validate changed release and grounding paths";
+      # tests/unit/canonical-qa-preflight-parity.test.mjs keeps the two in step.
+      - name: Release preflight checks, early
+        run: |
+          set -euo pipefail
+          node --check scripts/release.mjs
+          npm run version:check
+          npm run release:authority
+          node scripts/architecture-review-lock.mjs
       - run: node scripts/release-qualification.mjs --suite source --report /tmp/source-qualification.json
 
   canonical-qa:

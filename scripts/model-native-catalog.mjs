@@ -5,6 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 const HOSTS = { codex: 'openai', 'claude-code': 'anthropic' };
 const EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 const read = (file, optional = false) => {
@@ -104,7 +105,7 @@ export async function refreshNativeCatalog({ routerDir = path.join(os.homedir(),
     if (acquired) { try { fs.rmdirSync(guard); } catch { /* not acquired */ } }
   }
 }
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isDirectInvocation(import.meta.url)) {
   const option = name => { const at = process.argv.indexOf(name); return at < 0 ? undefined : process.argv[at + 1]; };
   refreshNativeCatalog({ routerDir: option('--router-dir'), deadline: option('--deadline') === undefined ? undefined : Number(option('--deadline')) })
     .then(result => { console.log(JSON.stringify(result)); if (result.status !== 'current') process.exitCode = 1; });

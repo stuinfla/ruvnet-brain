@@ -13,6 +13,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { judge, productSchedulerVerdict, transitions, OK, MISSING, NEVER_RAN, STALE, FAILING, STALLED } from '../../scripts/nightly-watchdog.mjs';
+import * as watchdog from '../../scripts/nightly-watchdog.mjs';
+import * as issueAlert from '../../plugin/scripts/session-start-issue-alert.mjs';
 import { writeShardProgress } from '../../kb/shard-progress.mjs';
 
 const NOW = new Date('2026-07-13T12:00:00Z');
@@ -359,3 +361,97 @@ describe('one update owner per machine (2026-09-26 consolidation)', () => {
     expect(brainUpdateOwnedByAgenticKit(home)).toBe(true);                  // agentic-kit owns updates
   });
 });
+
+// 4.7.21 (RC1.8): a stuck job with a live pid used to read "OK forever" until the 6 h long-run branch, and a
+// genuinely long full rebuild was then waved through as "LONG RUN in progress" indefinitely.
+describe.skipIf(!hasSh || process.platform === 'win32')('STUCK — a run past its maxRunHours, even with a live wrapper pid', () => {
+  it('reports STUCK with a live wrapper-shaped pid, and FAILING (never finished) when the pid is gone', async () => {
+    const fake = spawn('/bin/sh', ['-c', 'sleep 30; :', 'job-heartbeat.sh', 'com.test.stuck'], { stdio: 'ignore' });
+    try {
+      await new Promise((r) => setTimeout(r, 200));
+      const job = { label: 'com.test.stuck', maxAgeHours: 26, maxRunHours: 1, what: 'x', schedule: 'daily' };
+      const v = judge(job, { started_at: hoursAgo(2), state: 'running', pid: fake.pid }, true, NOW);
+      expect(v.state).toBe(watchdog.STUCK); // before: OK ("running right now")
+      expect(v.detail).toMatch(/2\.0h/);
+      expect(v.detail).toMatch(/limit is 1h/);
+      expect(judge(job, { started_at: hoursAgo(0.5), state: 'running', pid: fake.pid }, true, NOW).state).toBe(OK);
+      const gone = judge(job, { started_at: hoursAgo(2), state: 'running', pid: 999999 }, true, NOW);
+      expect(gone.state).toBe(FAILING);
+      expect(gone.detail).toMatch(/NEVER FINISHED/);
+    } finally { fake.kill('SIGKILL'); }
+  });
+});
+
+describe('the job registry (config/scheduled-jobs.json) matches what is actually loaded (4.7.21)', () => {
+  const registry = JSON.parse(fs.readFileSync(path.join(REPO, 'config', 'scheduled-jobs.json'), 'utf8'));
+  const job = (label) => registry.jobs.find((j) => j.label === label);
+  it('every job declares a run limit, and the long ones get more', () => {
+    for (const j of registry.jobs) expect(j.maxRunHours, j.label).toBeGreaterThan(0);
+    // brain-gists was retired 2026-10-26: the registry must not watch a job that is deliberately not loaded.
+    expect(job('com.ruvnet.brain-gists')).toBeUndefined();
+    expect(registry._retired.map((r) => r.label)).toContain('com.ruvnet.brain-gists');
+    expect(job('com.ruvnet.goldie-weekly').maxRunHours).toBe(3);
+    expect(job('com.ruvnet.model-refresh').maxRunHours).toBe(1);
+  });
+  it('schedules and budgets match the plists', () => {
+    expect(job('com.ruvnet.nightly-watchdog').schedule).toBe('daily 09:30');
+    expect(job('com.ruvnet.issue-fix').maxAgeHours).toBe(3); // 30-min cadence; 1 h false-alarmed on one late run
+  });
+  it('the loaded, wrapped stuartkerr jobs are registered; npx-72h-verdict is retired', () => {
+    expect(job('com.stuartkerr.purge-local-snapshots')).toBeTruthy();
+    expect(job('com.stuartkerr.model-freshness-watchdog')).toBeTruthy();
+    expect(job('com.ruvnet.npx-72h-verdict')).toBeUndefined();
+    expect(registry._retired.map((r) => r.label)).toContain('com.ruvnet.npx-72h-verdict');
+  });
+  it('the product scheduler verdict names the real 03:30 slot', () => {
+    expect(productSchedulerVerdict({ state: 'off' }).schedule).toBe('daily 03:30');
+  });
+});
+
+// Who watches the watchdog (4.7.21): SessionStart says one local line when a scheduled job's receipt is red or
+// the watchdog's own receipt is older than 30 h. No network; silent when there are no receipts (end users).
+describe('SessionStart job-health line', () => {
+  const setup = (receipts) => {
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-jobs-'));
+    const hb = path.join(stateDir, 'heartbeats'); fs.mkdirSync(hb);
+    for (const [label, r] of Object.entries(receipts)) fs.writeFileSync(path.join(hb, `${label}.json`), JSON.stringify({ label, ...r }));
+    const lines = []; return { stateDir, lines, emit: (l) => lines.push(l) };
+  };
+  const now = Date.parse('2026-10-26T12:00:00Z');
+  const ago = (h) => new Date(now - h * 3600_000).toISOString();
+  it('silent with no heartbeat directory at all', () => {
+    const lines = [];
+    issueAlert.surfaceJobHealth({ stateDir: fs.mkdtempSync(path.join(os.tmpdir(), 'ss-none-')), emit: (l) => lines.push(l), now });
+    expect(lines).toEqual([]);
+  });
+  it('silent when every receipt is fine and the watchdog ran recently', () => {
+    const f = setup({ 'com.ruvnet.nightly-watchdog': { state: 'ok', ended_at: ago(3) }, 'com.x': { state: 'ok', ended_at: ago(1) } });
+    issueAlert.surfaceJobHealth({ ...f, now });
+    expect(f.lines).toEqual([]);
+  });
+  it('one line naming the count when receipts are failed or killed', () => {
+    const f = setup({ 'com.ruvnet.nightly-watchdog': { state: 'ok', ended_at: ago(3) }, 'com.a': { state: 'failed', ended_at: ago(1) }, 'com.b': { state: 'killed', ended_at: ago(1) } });
+    issueAlert.surfaceJobHealth({ ...f, now });
+    expect(f.lines).toHaveLength(1);
+    expect(f.lines[0]).toMatch(/2 scheduled job\(s\) failing/);
+  });
+  it('only receipts of jobs the registry lists count; a retired job\'s failed receipt is ignored (4.7.21 review #6)', () => {
+    const f = setup({ 'com.ruvnet.nightly-watchdog': { state: 'ok', ended_at: ago(3) }, 'com.ruvnet.brain-gists': { state: 'failed', ended_at: ago(30) },
+      'com.ruvnet.issue-watch': { state: 'killed', ended_at: ago(1) } });
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-jobs-repo-'));
+    fs.mkdirSync(path.join(repo, 'config'));
+    fs.mkdirSync(path.join(repo, 'plugin', 'scripts'), { recursive: true });
+    fs.writeFileSync(path.join(repo, 'config', 'scheduled-jobs.json'), JSON.stringify({ jobs: [{ label: 'com.ruvnet.nightly-watchdog' }, { label: 'com.ruvnet.issue-watch' }],
+      _retired: [{ label: 'com.ruvnet.brain-gists' }] }));
+    issueAlert.surfaceJobHealth({ ...f, now, cwd: path.join(repo, 'plugin', 'scripts') }); // found walking up from a subdirectory
+    expect(f.lines).toEqual(['[RuvNet Brain — JOBS: 1 scheduled job(s) failing (com.ruvnet.issue-watch). Details: node scripts/nightly-watchdog.mjs --no-push]']);
+    fs.rmSync(repo, { recursive: true, force: true });
+  });
+  it('one line when the watchdog itself has not run for more than 30 h', () => {
+    const f = setup({ 'com.ruvnet.nightly-watchdog': { state: 'ok', ended_at: ago(31) } });
+    issueAlert.surfaceJobHealth({ ...f, now });
+    expect(f.lines).toHaveLength(1);
+    expect(f.lines[0]).toMatch(/watchdog last ran 31h ago/);
+  });
+});
+

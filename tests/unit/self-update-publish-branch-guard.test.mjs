@@ -10,9 +10,8 @@ import path from 'node:path';
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '../..');
 const SELF_UPDATE_SRC = path.join(REPO_ROOT, 'scripts/self-update.mjs');
-const FULL_HINTS_SRC = path.join(REPO_ROOT, 'scripts/full-hints.mjs');
-const GIT_CLONE_REFRESH_SRC = path.join(REPO_ROOT, 'scripts/git-clone-refresh.mjs');
-const WORKTREE_INTEGRITY_SRC = path.join(REPO_ROOT, 'scripts/worktree-integrity.mjs');
+process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
+const { serverDependencies } = await import(new URL('../../bin/install.mjs', import.meta.url).href);
 
 const hasGit = spawnSync('git', ['--version']).status === 0;
 
@@ -21,7 +20,7 @@ function git(cwd, ...args) {
   return execFileSync('git', ['-c', 'core.hooksPath=/dev/null', ...args], { cwd, encoding: 'utf8' });
 }
 
-// A throwaway repo with self-update.mjs and its relative imports copied in, so ROOT — derived
+// A throwaway repo with self-update.mjs and its relative imports (derived) copied in, so ROOT — derived
 // inside the script from its OWN file location, not the caller's cwd — resolves to this disposable
 // directory and never anywhere near the real ruvnet-brain checkout. An empty-but-valid
 // registry.tiers.json lets a no-publish run proceed and lets the denial mutant reach later code.
@@ -33,8 +32,12 @@ function fixtureRepo() {
   fs.mkdirSync(path.join(dir, 'scripts'), { recursive: true });
   fs.mkdirSync(path.join(dir, 'data'), { recursive: true });
   fs.copyFileSync(SELF_UPDATE_SRC, path.join(dir, 'scripts/self-update.mjs'));
-  for (const source of [FULL_HINTS_SRC, GIT_CLONE_REFRESH_SRC, WORKTREE_INTEGRITY_SRC]) {
-    fs.copyFileSync(source, path.join(dir, 'scripts', path.basename(source)));
+  // Its imports are DERIVED, each kept at its path relative to the repo root: a hand list here
+  // drifted when 4.7.21 gave self-update.mjs a ../plugin/scripts/entrypoint.mjs import.
+  for (const dep of serverDependencies(SELF_UPDATE_SRC)) {
+    const target = path.join(dir, path.relative(REPO_ROOT, dep.from));
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.copyFileSync(dep.from, target);
   }
   fs.writeFileSync(path.join(dir, 'data/registry.tiers.json'),
     JSON.stringify({ tiers: { T0: { repos: [] }, T1: { repos: [] }, T2: { repos: [] }, T3: { repos: [] } } }));

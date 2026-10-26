@@ -27,7 +27,7 @@ import {
   assertPostTaskPersisted,
   cleanupFixtureDaemons,
   buildFixtures, nightlyRefresh, seedProjectBMemory,
-  measurePortfolio,
+  measurePortfolio, checkWire,
 } from '../../scripts/learning-replay.mjs';
 import { spawn, spawnSync } from 'node:child_process';
 import { createReplaySource } from '../helpers/learning-replay-source.mjs';
@@ -64,6 +64,53 @@ describe('portfolio measurement preserves the evidence gate', () => {
       expect(result).not.toBe(EXIT.PASS);
     },
   );
+});
+
+describe('the scheduled wire gate measures HEAD and never passes on a guess', () => {
+  it('an unverified ruflo premise is UNKNOWN, never PASS, and fires nothing', () => {
+    let fired = 0;
+    const result = checkWire({ premise: () => ({ ok: false, why: 'Ruflo binary not found' }), fire: () => { fired++; return ''; } });
+    expect(result.status).toBe(VERDICT.UNKNOWN);
+    expect(result.why).toMatch(/ruflo premise not verified/);
+    expect(fired).toBe(0);
+  });
+
+  it('every LOAD_BEARING file triggers the workflow on the push that changes it', () => {
+    const yml = fs.readFileSync(path.resolve('.github/workflows/learning-replay.yml'), 'utf8');
+    const block = yml.split('\n  push:\n')[1].split('\n  workflow_dispatch:')[0];
+    const globs = [...block.matchAll(/^\s+- '([^']+)'/gm)].map((m) => m[1]);
+    const toRegex = (glob) => new RegExp(`^${glob.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+      .replace(/\*\*/g, '\u0000').replace(/\*/g, '[^/]*').replace(/\u0000/g, '.*')}$`);
+    const uncovered = LOAD_BEARING.filter((file) => !globs.some((glob) => toRegex(glob).test(file)));
+    expect(globs.length).toBeGreaterThan(5);
+    expect(uncovered).toEqual([]);
+  });
+
+  it('the schedule gates on the wire check, not on the model artifact alone', () => {
+    const yml = fs.readFileSync(path.resolve('.github/workflows/learning-replay.yml'), 'utf8');
+    expect(yml).toMatch(/run: npm run learning:replay:wire/);
+    expect(yml).not.toMatch(/continue-on-error/);
+    // Portfolio currency is hard only when a manual dispatch asks for it (strict_portfolio); every other
+    // non-zero portfolio result propagates. The behaviour is executed in learning-replay-proof.test.mjs.
+    expect(yml).toMatch(/strict_portfolio:/);
+    expect(yml).not.toMatch(/\$HARD/);
+  });
+});
+
+describe('the replay never runs ruflo inside the checkout', () => {
+  it.skipIf(process.platform === 'win32')('verifyRufloFlag starts ruflo in the temp dir (ruflo writes .claude-flow/ into its cwd, which dirtied the qualified checkout on CI)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-ruflo-'));
+    const marker = path.join(dir, 'cwd.txt');
+    const bin = path.join(dir, 'ruflo');
+    fs.writeFileSync(bin, `#!/bin/sh\npwd -P > "${marker}"\necho "  -q, --query   the query"\n`, { mode: 0o755 });
+    try {
+      const { verifyRufloFlag } = await import('../../scripts/learning-replay-execution.mjs');
+      expect(verifyRufloFlag(bin).ok).toBe(true);
+      const ranIn = fs.readFileSync(marker, 'utf8').trim();
+      expect(ranIn).toBe(fs.realpathSync(os.tmpdir()));
+      expect(ranIn).not.toBe(fs.realpathSync(process.cwd()));
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
 });
 
 describe('CLI help is side-effect free', () => {
@@ -718,6 +765,16 @@ describe('the live CLI still behaves the way the gate assumes (Rule 0, re-checke
     expect(e.exit).toBe(0);          // <- an exit-status gate passes this
     expect(e.retrieved).toBe(false); // <- the retrieval assertion does not
   }, 180_000);
+
+  // The token-free half of D4 on the code under test (the nightly's hard gate). It failed on every
+  // build from 4.7.8 to 4.7.20: the quiet-by-default shim exited unprompted-speech whole, so the
+  // promoted lesson reached project B's prompt as 0 bytes on both hosts.
+  t('WIRE live — a promoted, refresh-surviving lesson reaches project B by default on both hosts; control and delete-lesson stay silent', () => {
+    const result = checkWire();
+    expect(result.why).toMatch(/both lessons reached project B/);
+    expect(result.status).toBe(VERDICT.PASS);
+    expect(result.checked).toEqual([TRAP.MEMORY_SEARCH, TRAP.POST_TASK]);
+  }, 240_000);
 
   t('MUTANT 2 live — a perfect command against an EMPTY store exits 0 and retrieves nothing', () => {
     // Remove the whole closed fixture store, including WAL/SHM sidecars. Deleting only memory.db

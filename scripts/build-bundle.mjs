@@ -69,6 +69,7 @@ import { orgRepoCount } from './org-repo-count.mjs';
 import { assertCapabilityOnlyStore } from '../kb/capability-only.mjs';
 import { CURRENCY_BASIS, corpusCurrencyBlock } from './corpus-currency.mjs';
 import { loadFixture } from './oracle/repo-recall.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -1097,7 +1098,7 @@ node forge-ask.mjs --dir . --name ruvector --variant big --q "what is the RVF co
 }
 
 // ---- CLI -----------------------------------------------------------------------------------------
-if (((() => { try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })())) {
+if (isDirectInvocation(import.meta.url)) {
   const arg = (f, d) => { const i = process.argv.indexOf(f); return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : d; };
   // Corpus content is a release asset, not a Git blob. A clean worktree has zero stores unless the
   // operator supplies the canonical external corpus directory (or has already built one into kb/,

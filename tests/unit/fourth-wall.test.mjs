@@ -646,7 +646,9 @@ describe.skipIf(bashOnly)('T5 — the added stage stays inside its declared budg
     const slow = path.join(tmp, 'slow-substance.mjs');
     const real = fs.readFileSync(SUBSTANCE, 'utf8')
       .replace("from './hook-input.mjs'",
-        `from ${JSON.stringify(pathToFileURL(path.join(REPO, 'plugin/scripts/hook-input.mjs')).href)}`);
+        `from ${JSON.stringify(pathToFileURL(path.join(REPO, 'plugin/scripts/hook-input.mjs')).href)}`)
+      .replace("from './entrypoint.mjs'",
+        `from ${JSON.stringify(pathToFileURL(path.join(REPO, 'plugin/scripts/entrypoint.mjs')).href)}`);
     // A BLOCKING delay, charged where a real regression lands: inside the stage, after the process
     // already exists. Atomics.wait rather than a busy loop, so it does not add load of its own.
     const injected = real.replace('function main() {',

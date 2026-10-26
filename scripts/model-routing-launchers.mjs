@@ -218,7 +218,10 @@ export function updateLauncherSettings(file, requested, { apply = false } = {}) 
   return receipt;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === SELF) {
+// installNativeLaunchers() copies THIS file alone to ~/.cache/ruvnet-brain/model-routing/ as the
+// launcher runner, so it cannot import plugin/scripts/entrypoint.mjs; this is that helper's
+// comparison, inline: real paths on both sides.
+if ((() => { try { return Boolean(process.argv[1]) && fs.realpathSync(process.argv[1]) === fs.realpathSync(SELF); } catch { return false; } })()) {
   const argv = process.argv.slice(2);
   if (argv[0] === '--launch') {
     try {

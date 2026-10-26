@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { npmInvocation } from '../../scripts/npm-invocation.mjs';
+import { parseNpmPack } from '../helpers/npm-pack-json.mjs';
 import { automaticHookRetirementStatus, retireManagedHookRegistrations, wireCodexHost } from '../../bin/install.mjs';
 import { selfCheck } from '../../scripts/selfcheck.mjs';
 
@@ -201,7 +202,7 @@ it('checks the real packed artifact with explicit installed scope and rejects mi
   const root = temporary();
   const npm = npmInvocation(['pack', '--json', '--pack-destination', root]);
   const output = execFileSync(npm.executable, npm.args, { cwd: ROOT, encoding: 'utf8', timeout: 120000 });
-  const packed = JSON.parse(output.slice(output.indexOf('[')))[0];
+  const packed = parseNpmPack(output, { expectName: 'ruvnet-brain' });
   execFileSync('tar', ['-xzf', path.join(root, packed.filename), '-C', root]);
   const artifact = path.join(root, 'package');
   const { pathToFileURL } = await import('node:url');

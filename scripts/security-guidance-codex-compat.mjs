@@ -14,6 +14,7 @@ import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export const COMPATIBILITY = Object.freeze({
   version: '2.0.9', nativeContract: 'Codex 0.160.0 PostToolUse',
@@ -128,7 +129,7 @@ export function repairSecurityGuidance({ codexHome = process.env.CODEX_HOME || p
   return { ...receipt, status: 'patched', backup, patchedSha256: sha256(readRegular(target).bytes) };
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isDirectInvocation(import.meta.url)) {
   try {
     const args = process.argv.slice(2);
     let codexHome; let apply = false;

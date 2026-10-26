@@ -22,6 +22,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -319,7 +320,7 @@ export function formatVectorOutput(result, { json = false } = {}) {
   return `${lines.join('\n')}\n`;
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+if (isDirectInvocation(import.meta.url)) {
   const timings = process.argv.includes('--timings');
   const emitTiming = (phase, data) => process.stderr.write(`${JSON.stringify({
     schema: 'ruvnet-brain.release-vector.timing', phase, ...data,

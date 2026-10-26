@@ -280,6 +280,13 @@
         "hook-failures.jsonl"
       ],
       "bound": "256 * 1024 then renameSync to .1 (recordHookFailure); reader caps MAX_READ"
+    },
+    {
+      "module": "scripts/ntfy-inbox.mjs",
+      "targets": [
+        "ntfy-inbox.jsonl"
+      ],
+      "bound": "MAX_INBOX_BYTES"
     }
   ]
 }

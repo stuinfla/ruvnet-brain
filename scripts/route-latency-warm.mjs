@@ -22,6 +22,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export const percentile = (xs, p) => {
   const s = [...xs].sort((a, b) => a - b);
@@ -120,4 +121,4 @@ async function main() {
   process.exit(0);
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
+if (isDirectInvocation(import.meta.url)) await main();

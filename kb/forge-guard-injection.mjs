@@ -35,7 +35,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const LOG_PATH = process.env.GUARD_INJECTION_LOG || path.join(HERE, 'forge-guard-injection.log');
+// OUTSIDE the KB tree (4.7.21 RC2.9): the update transaction hashes every file under kb/ and recovery
+// requires the live tree to match the prior hash, so a search that appended here mid-update could wedge
+// recovery forever (and every swap discarded the log anyway). <brainHome>/logs survives swaps.
+const LOG_PATH = process.env.GUARD_INJECTION_LOG || path.join(path.dirname(HERE), 'logs', 'forge-guard-injection.log');
+const LOG_CAP_BYTES = 2 * 1024 * 1024; // one rotation (.1) is kept, so the log costs at most ~4 MiB
 
 // ---------------------------------------------------------------------------------------------
 // Detection — TIGHT, high-precision, case-insensitive. Each rule keys on a HIGH-CONFIDENCE
@@ -231,6 +235,8 @@ function logFlag(srcPath, pattern) {
   try {
     _counter += 1;
     const line = `[${new Date().toISOString()}] #${_counter} path=${srcPath || '(unknown)'} pattern=${pattern}\n`;
+    fs.mkdirSync(path.dirname(LOG_PATH), { recursive: true });
+    try { if (fs.statSync(LOG_PATH).size > LOG_CAP_BYTES) fs.renameSync(LOG_PATH, `${LOG_PATH}.1`); } catch { /* absent: first line */ }
     fs.appendFileSync(LOG_PATH, line);
   } catch {
     // logging must never break the search path

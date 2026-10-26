@@ -215,8 +215,13 @@ if (BRAIN_OFF && entry.offBehavior === 'silence') process.exit(0);
 // prompt. They stay registered and run only when RUVNET_STOP_NUDGES=full, so nothing is deleted and the
 // tests still exercise them. The blocking hooks (decision-gate), the grounding directive and the silent
 // capture hooks are unaffected.
-const QUIET_BY_DEFAULT = new Set(['unprompted-speech', 'capacity-aware-parallel-work', 'grounding-turn-gate']);
-if (QUIET_BY_DEFAULT.has(hookId) && String(process.env.RUVNET_STOP_NUDGES || '').toLowerCase() !== 'full') process.exit(0);
+// unprompted-speech is not exited (2026-10-25): its lesson channel is the only route a recorded correction
+// takes to the next prompt, and exiting it whole silenced every learned lesson from 4.7.8 (D4 wire: 0 bytes).
+// Quiet runs only its lesson/alarm producers; advocacy, promotion and anticipate offers stay silent.
+const NUDGES_FULL = String(process.env.RUVNET_STOP_NUDGES || '').toLowerCase() === 'full';
+const QUIET_BY_DEFAULT = new Set(['capacity-aware-parallel-work', 'grounding-turn-gate']);
+if (QUIET_BY_DEFAULT.has(hookId) && !NUDGES_FULL) process.exit(0);
+const QUIET_SPEECH_CHANNELS = hookId === 'unprompted-speech' && !NUDGES_FULL ? 'lesson,alarm' : null;
 
 // Read a bounded payload before dispatch. The ground body owns the quiet-prompt
 // decision because it resolves canonical memory beyond the hook process's cwd.
@@ -370,6 +375,7 @@ function registeredTimeoutMs(extraArgs) {
 // chosen from the typed table — never from input.
 function runHook(file, activeVersion = '') {
   if (!fs.existsSync(file)) return 0; // nothing to run — never invent a failure
+  try { if (QUIET_SPEECH_CHANNELS && !fs.readFileSync(file, 'utf8').includes('RUVNET_UNPROMPTED_CHANNELS')) return 0; } catch { return 0; } // quiet + a <=4.7.20 spine body that ignores the narrowing (it would speak advocacy) → the old whole-hook quiet exit
   let cmd;
   if (entry.interpreter === 'node') {
     cmd = process.execPath;
@@ -395,6 +401,7 @@ function runHook(file, activeVersion = '') {
     // machine where `node` is not on the PATH the host hands its hooks. Additive: older bodies ignore it.
     RUVNET_NODE_BIN: process.execPath,
     ...(['unprompted-speech', 'ground-ruvnet', 'decision-gate'].includes(hookId) ? { RUVNET_HOOK_CONTEXT_BUDGET: '1' } : {}),
+    ...(QUIET_SPEECH_CHANNELS ? { RUVNET_UNPROMPTED_CHANNELS: QUIET_SPEECH_CHANNELS } : {}),
     ...(activeVersion ? { RUVNET_BRAIN_ACTIVE_VERSION: activeVersion } : {}),
     ...(BRAIN_OFF && entry.offBehavior === 'partial' ? { RUVNET_BRAIN_OFF: '1' } : {}),
   };

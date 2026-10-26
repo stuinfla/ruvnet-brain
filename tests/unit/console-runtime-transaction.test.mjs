@@ -312,6 +312,13 @@ describe('issue #79 — Console runtime update transaction', () => {
       wireCodexPlugin: () => ({ host: true, action: 'verification-failed', error: 'Codex verification failed' }),
       reason: /^Codex plugin verification-failed: Codex verification failed$/,
     },
+    {
+      label: 'Codex throw',
+      wireClaude: () => ({ host: false, wired: false }),
+      wireCodexHost: () => ({ host: true, action: 'unchanged' }),
+      wireCodexPlugin: () => { throw new Error('codex-unavailable'); },
+      reason: /^Codex plugin failed: codex-unavailable$/,
+    },
   ])('$label selected-host failure rolls Console runtime B back to byte-identical A', (hostFailure) => {
     const cache = temporary('brain-console-cache-');
     const brainHome = temporary('brain-console-home-');
@@ -344,10 +351,6 @@ describe('Console instances — dead receipts and owned stale replacement', () =
   const deadPid = () => {
     const child = spawnSync(process.execPath, ['-e', 'process.stdout.write(String(process.pid))'], { encoding: 'utf8' });
     return Number(child.stdout); // exited and reaped by the time spawnSync returns
-  };
-  const freePort = async () => {
-    const net = await import('node:net');
-    return new Promise((resolve) => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const { port } = s.address(); s.close(() => resolve(port)); }); });
   };
   const ownedReceipt = (over = {}) => ({ product: 'ruvnet-brain-console', schema: 1, apiContract: 1, pid: deadPid(), port: 1,
     startedAt: '2026-09-16T10:00:00.000Z', scope: '/nowhere', scriptRealpath: '/nowhere/onboarding-console.mjs',
@@ -404,54 +407,9 @@ describe('Console instances — dead receipts and owned stale replacement', () =
     expect(fs.readdirSync(receiptDir)).toEqual(['live.json']);
   });
 
-  it.skipIf(process.platform === 'win32')('--update replaces a running owned stale Console itself; convergence is healthy', async () => {
-    const cache = temporary('brain-console-cache-');
-    const brainHome = path.join(isolatedHome, '.cache', 'ruvnet-brain');
-    const receiptDir = path.join(brainHome, 'console-instances');
-    const scope = temporary('brain-console-scope-');
-    install.installConsoleRuntime(cache, candidate('GENERATION-A'));
-    const port = await freePort();
-    // Started ORPHANED, like a real user's Console: not a child of this test process. (As our own
-    // child, its exit would leave a zombie that kill(pid, 0) still sees until this process reaps it.)
-    const entry = path.join(cache, '.console-runtime', 'scripts', 'onboarding-console.mjs');
-    spawnSync('/bin/sh', ['-c', '(cd "$1" && exec "$2" "$3" --serve </dev/null >/dev/null 2>&1) &', 'sh', scope, process.execPath, entry],
-      { stdio: 'ignore', env: { ...process.env, CONSOLE_PORT: String(port), RUVNET_CONSOLE_DISABLE_BACKGROUND_REFRESH: '1' } });
-    const started = [];
-    const old = { pid: null };
-    try {
-      const deadline = Date.now() + 30_000;
-      let receipt = null;
-      while (Date.now() < deadline) {
-        const names = fs.existsSync(receiptDir) ? fs.readdirSync(receiptDir).filter((n) => n.endsWith('.json')) : [];
-        receipt = names.map((n) => JSON.parse(fs.readFileSync(path.join(receiptDir, n), 'utf8'))).find((r) => r.port === port);
-        if (receipt) break;
-        await new Promise((r) => setTimeout(r, 200));
-      }
-      expect(receipt, 'the generation-A Console never wrote its receipt').toBeTruthy();
-      old.pid = receipt.pid;
-      const generationB = candidate('GENERATION-B');
-      const result = install.syncHostsAfterUpdate(cache, {
-        sourceRoot: generationB, brainHome, consoleReceiptDir: receiptDir,
-        hostLockPath: path.join(temporary('brain-console-lock-'), 'host.lock'),
-        wireClaude: () => ({ host: false, wired: false }),
-        wireCodexHost: () => ({ host: false, action: 'no-host' }),
-        runStableSpine: () => ({ status: 0 }),
-      });
-      for (const item of result.results.consoleReplacement || []) if (item.newPid) started.push(item.newPid);
-      expect(result.ok, JSON.stringify(result)).toBe(true);
-      expect(result.results.consoleReplacement).toEqual([expect.objectContaining({ replaced: true, port, pid: old.pid })]);
-      expect(result.convergence).toEqual({ healthy: true, state: 'channels-converged' });
-      expect(() => process.kill(old.pid, 0)).toThrow(); // the generation-A Console is gone
-      const live = JSON.parse(spawnSync(process.execPath, ['-e',
-        `require('node:http').get('http://127.0.0.1:${port}/api/runtime',(s)=>{let b='';s.on('data',(c)=>b+=c);s.on('end',()=>process.stdout.write(b));})`],
-      { encoding: 'utf8', timeout: 5000 }).stdout);
-      expect(live.sourceSha256).toBe(consoleRuntimeDigest(generationB));
-      expect(live.pid).toBe(started[0]);
-    } finally {
-      for (const pid of [old.pid, ...started]) { try { if (pid) process.kill(pid, 'SIGTERM'); } catch { /* gone */ } }
-      fs.rmSync(receiptDir, { recursive: true, force: true });
-    }
-  }, 90_000);
+  // The POSIX-only case (a real orphaned Console started through /bin/sh, then replaced by --update) lives in
+  // tests/unit/console-runtime-replacement-posix.test.mjs, listed for linux and macos only: a skipped case would
+  // fail the Windows qualification gate, which allows none, and these cases must stay on it.
 
   it('says exactly why when the stale Console cannot be replaced (its project directory is gone)', () => {
     const receiptDir = temporary('brain-console-receipts-');

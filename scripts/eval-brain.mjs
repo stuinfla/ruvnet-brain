@@ -32,6 +32,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const KB = process.env.RUVNET_BRAIN_KB || path.join(os.homedir(), '.cache', 'ruvnet-brain', 'kb');
@@ -91,8 +92,11 @@ export function gradeQuestion(q, { grounded, citations, bannerPresent, receipt, 
       return { grounded, routed: null, abstained, pass: abstained };
     case 'provenance':
       // The mechanism under test: IF a gist chunk wins, it must carry its own status banner.
-      // A better hit from the real repo is not a failure — it is better grounding.
-      return { grounded, routed: null, abstained, pass: !!grounded && !abstained && (top?.repo !== 'ruv-gists' || bannerPresent) };
+      // A better hit from the real repo is not a failure — it is better grounding. "Wins" means
+      // the citation verify-citation.mjs actually resolved (`routedRepo`, the same signal `routed`
+      // uses below) — not merely the raw top-ranked citation, which citationResolves() can walk
+      // past when it is unverified/fabricated (the sibling gap already closed for `routed`).
+      return { grounded, routed: null, abstained, pass: !!grounded && !abstained && (routedRepo !== 'ruv-gists' || bannerPresent) };
     default:
       // Abstention is correct only for the adversarial stratum. A negative cross-encoder score on
       // an answerable question is an answer miss, even when an unrelated existing path resolves.
@@ -279,6 +283,6 @@ async function main() {
   }
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isDirectInvocation(import.meta.url)) {
   await main();
 }

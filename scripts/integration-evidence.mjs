@@ -4,6 +4,7 @@ import { validateQualificationReceipt } from './release-qualification.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export const EXCLUSION_POLICY = 'release-linux-v1';
 
@@ -67,7 +68,7 @@ export function buildQualifiedIntegrationEvidence(report, identity) {
     qualificationReceiptSha256: report.receiptSha256, requirements: report.requirements };
 }
 
-const isCli = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const isCli = isDirectInvocation(import.meta.url);
 if (isCli) {
   const value = (name) => process.argv[process.argv.indexOf(name) + 1];
   const build = process.argv.includes('--qualified') ? buildQualifiedIntegrationEvidence : buildIntegrationEvidence;

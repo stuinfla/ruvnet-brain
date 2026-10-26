@@ -22,6 +22,8 @@ permissions:
 jobs:
   refresh-index:
     runs-on: ubuntu-latest
+    # A hung API call must not hold a runner for GitHub's 6-hour default (4.7.21; runs take about 30 s).
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

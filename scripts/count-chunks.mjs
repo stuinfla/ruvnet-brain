@@ -23,6 +23,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { applyFix } from './claims-verify.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const CHECK = process.argv.includes('--check');
 
@@ -49,6 +50,6 @@ async function main() {
   console.log(`\n[count-chunks] done — ${want} chunks is the live count; ${drifted.length} surface(s) rewritten.`);
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isDirectInvocation(import.meta.url)) {
   await main();
 }

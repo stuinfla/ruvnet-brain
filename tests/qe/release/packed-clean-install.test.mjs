@@ -5,6 +5,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { extractTarball } from '../../helpers/extract-tarball.mjs';
+import { parseNpmPack } from '../../helpers/npm-pack-json.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../../..');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'brain-release-qe-'));
@@ -32,7 +33,7 @@ beforeAll(async () => {
       encoding: 'utf8',
       shell: process.platform === 'win32',
     });
-    packed = JSON.parse(raw.slice(raw.indexOf('[')))[0];
+    packed = parseNpmPack(raw, { expectName: 'ruvnet-brain' });
     extractTarball(path.join(temp, packed.filename), temp);
   }
   artifact = path.join(temp, 'package');

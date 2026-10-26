@@ -26,13 +26,27 @@ import { redactText } from './continuity-events.mjs';
 export const CAPTURE_BUDGET_MS = 8_000;
 
 /**
+ * Claude Code's SessionEnd budget: 1.5 s shared by every SessionEnd hook, and "Timeouts set on
+ * plugin-provided hooks don't raise the budget" (code.claude.com/docs/en/hooks.md, SessionEnd), so
+ * hooks.json's 10 s does not apply there. Only CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS overrides it.
+ */
+export const CLAUDE_SESSION_END_BUDGET_MS = 1_500;
+
+/**
  * The budget this invocation really has. The Codex wrapper hands its own kill deadline down as
  * RUVNET_CODEX_BUDGET_MS (2200 ms at SessionEnd, which Codex caps at 3 s); 300 ms is left for the
- * adapter → shim → body spawns.
+ * adapter → shim → body spawns. At SessionEnd under Claude Code the same 300 ms comes off Claude
+ * Code's own budget (issue #420 item 2: planning for 8 s ran the checkpoint inline and /exit printed
+ * "Hook cancelled"); with that budget the checkpoint is handed to the detached child below.
  */
-export function effectiveBudgetMs(env = process.env) {
+export function effectiveBudgetMs(env = process.env, event = null) {
   const handed = Number(env.RUVNET_CODEX_BUDGET_MS);
-  return Number.isFinite(handed) && handed > 0 ? Math.max(0, Math.min(CAPTURE_BUDGET_MS, handed - 300)) : CAPTURE_BUDGET_MS;
+  if (Number.isFinite(handed) && handed > 0) return Math.max(0, Math.min(CAPTURE_BUDGET_MS, handed - 300));
+  const claude = !env.RUVNET_HOOK_HOST || env.RUVNET_HOOK_HOST === 'claude';
+  if (event !== 'SessionEnd' || !claude) return CAPTURE_BUDGET_MS;
+  const configured = Number(env.CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS);
+  const budget = Number.isFinite(configured) && configured > 0 ? configured : CLAUDE_SESSION_END_BUDGET_MS;
+  return Math.max(0, Math.min(CAPTURE_BUDGET_MS, budget - 300));
 }
 
 /**
@@ -65,7 +79,7 @@ export function detachCheckpoint({ projectDir, event, payload, env, brainHome })
   return { detached: true, pid: child.pid };
 }
 
-export async function runLifecycleBoundary(event, payload, { env = process.env, deadlineAt = Date.now() + effectiveBudgetMs(env) } = {}) {
+export async function runLifecycleBoundary(event, payload, { env = process.env, deadlineAt = Date.now() + effectiveBudgetMs(env, event) } = {}) {
   const projectDir = typeof payload?.cwd === 'string' && path.isAbsolute(payload.cwd) ? payload.cwd : projectDirectory();
   const host = env.RUVNET_HOOK_HOST || 'claude';
   if (event === 'PostToolUse') {
@@ -82,6 +96,12 @@ export async function runLifecycleBoundary(event, payload, { env = process.env, 
   if (String(env.RUVNET_TURN_CAPTURE || '').toLowerCase() === 'off') return { turn, checkpoint: { stored: false, skipped: 'RUVNET_TURN_CAPTURE=off' } };
   const brainHome = env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain');
   if (deadlineAt - Date.now() < CHECKPOINT_NEED_MS) {
+    // A persisted opt-out is answered here, so no detached child is started for a project that refused
+    // capture (the child re-checks consent anyway; a deadline throw here just leaves that check to it).
+    try {
+      const consent = resolveTurnDb({ projectDir, brainHome, deadlineAt });
+      if (consent.skipped) return { turn, checkpoint: { stored: false, skipped: consent.skipped } };
+    } catch { /* out of time: the detached child decides */ }
     try { return { turn, checkpoint: { stored: false, ...detachCheckpoint({ projectDir, event, payload, env, brainHome }) } }; } catch (error) {
       recordHookFailure({ hook: 'checkpoint', event, error: `skipped: hook budget too small and detach failed (${error.code || 'spawn'})` }, { brainHome });
       return { turn, checkpoint: { stored: false, skipped: 'hook budget too small; detach failed' } };

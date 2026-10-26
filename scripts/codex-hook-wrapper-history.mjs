@@ -21,6 +21,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const HISTORY_FILE = path.join('data', 'codex-hook-wrapper-history.json');
@@ -122,6 +123,6 @@ export function main(argv = process.argv.slice(2)) {
   return 2;
 }
 
-if (process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url))) {
+if (isDirectInvocation(import.meta.url)) {
   process.exitCode = main();
 }

@@ -23,6 +23,7 @@ import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { packedPaths as manifestPaths, parseNpmPack } from '../helpers/npm-pack-json.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..');
 const INSTALLER = path.join(ROOT, 'bin', 'install.mjs');
@@ -38,7 +39,7 @@ function dynamicImportsOfInstaller() {
 /** The real tarball manifest — npm's own answer, not a re-implementation of its glob rules. */
 function packedPaths() {
   const out = execFileSync('npm', ['pack', '--dry-run', '--json'], { cwd: ROOT, encoding: 'utf8' });
-  return new Set(JSON.parse(out)[0].files.map((f) => f.path));
+  return manifestPaths(parseNpmPack(out, { expectName: 'ruvnet-brain' }));
 }
 
 describe('npm pack ships every module bin/install.mjs dynamically imports', () => {

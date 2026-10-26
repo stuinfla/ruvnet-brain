@@ -88,6 +88,7 @@ import {
   architectureShadow, auditAssertions, correctionText, describeSources, loadVocabulary, logShadow,
   relayShadow, ruvCapabilityClaims, searchedThisTurn, turnSources,
 } from './grounding-turn-evidence.mjs';
+import { isDirectInvocation } from './entrypoint.mjs';
 
 const HOME = os.homedir();
 const EXIT_ALLOW = 0;
@@ -238,8 +239,7 @@ async function main() {
  *  helpers — same guard decision-gate.mjs uses, for the same reason (entrypoint-guard-safety). */
 function isMain() {
   try {
-    if (!process.argv[1]) return false;
-    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+    return isDirectInvocation(import.meta.url);
   } catch { return false; }
 }
 

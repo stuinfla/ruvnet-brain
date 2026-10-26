@@ -3,9 +3,9 @@ id: ADR-049
 title: The console rebuild — explain every section, scope every suggestion, and make the safe ones checkable
 status: Accepted
 date: 2026-07-24
-updated: 2026-10-24
+updated: 2026-10-25
 updated_source: derived-from-git
-reviewed_digest: 85a5b555b251
+reviewed_digest: 0e6775d80cee
 version: 1.0.3
 authors: [Stuart Kerr, Claude Code]
 tags: [onboarding, ux, console, advocacy, capability, cache, honesty]
@@ -156,6 +156,7 @@ project the data is about. A cross-project isolation test proves it, mutation-ch
   precisely the failure ADR-055 was written to end, found by the drift check rather than by a reader.
 
 ## Currency log
+| 2026-10-25 | Review `0e6775d80cee` (4.7.21): decision unchanged; explainers, per-card scope and the checkbox safety bar are untouched. `scripts/console-engine.mjs`: the 'learner has gone quiet' card now appears only when distillation status is known and observations have waited more than two days for one, and its evidence names the waiting count (#377). `scripts/onboarding-console.mjs`: the matching Apply progress check (the last distillation must move forward) and the plugin-aware session-hook probe (Dream #322). The `bin/install.mjs` changes (Codex hook trust and app-server reload #492, Grok reporting #301, `--clean --archive` #335, per-project install report #420 item 4, hook-count wording #400, entry-point helper) do not touch the console. | Reviewed diffs 320b778b..63ca7c0d for `scripts/console-engine.mjs`, `scripts/onboarding-console.mjs` and `bin/install.mjs`. |
 | 2026-10-24 | Review `85a5b555b251` (4.7.18): decision unchanged. `bin/install.mjs` moved | The 4.7.18 changes to it are Codex snapshot retry/repair during wiring, a recorded reason on every failed host sync, and an early refusal for a stale source checkout running `--update`. No Console page, explainer or scope control changed. Source: `bin/install.mjs`. |
 | 2026-10-05 | Reviewed current source and recorded remaining limitations; no verification or implementation-status promotion. | reviewed_digest 4555b8c6896d; inspected `console/app.js` and all expanded governs against source 5d9ea4df. Independent review preserved incident dates, Proposed/expired states and historical evidence; notification and oldest-runtime limits are explicit. |
 | 2026-09-27 | Currency review: decision unchanged. Motion: same onboarding-console.mjs learner-scope fix, plus unrelated bin/install.mjs release-pipeline fixes (macOS deadline, serverDependencies parsing, corpus-currency). No explainer/scope/checkbox logic touched. | Reviewed `console/app.js`, `scripts/console-engine.mjs`, `scripts/onboarding-console.mjs`, `plugin/scripts/runtime-preferences.mjs`, `scripts/nightly-controller.mjs`, `bin/install.mjs` against the commits listed above; reviewed_digest 9f5c0ce4d4a0. |

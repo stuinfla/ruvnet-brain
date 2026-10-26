@@ -5,6 +5,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { semanticAssertionsFor } from './top100-semantic-assertions.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const HELD_OUT = path.join(ROOT, 'evals', 'held-out.json');
@@ -105,7 +106,7 @@ export function corpusHash(corpus) {
   return createHash('sha256').update(JSON.stringify(corpus.questions)).digest('hex');
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isDirectInvocation(import.meta.url)) {
   const corpus = buildTop100();
   fs.writeFileSync(OUT, JSON.stringify({ ...corpus, sha256: corpusHash(corpus) }, null, 2) + '\n');
   console.log(`${OUT}: ${corpus.questions.length} questions, sha256=${corpusHash(corpus)}`);

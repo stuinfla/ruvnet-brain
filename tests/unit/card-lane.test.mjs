@@ -32,6 +32,7 @@ import {
   renderCardHit,
   routeReposFromCards,
 } from '../../kb/card-lane.mjs';
+import { verifyGrounding } from '../../kb/verify-citation.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const KB = path.join(REPO, 'kb');
@@ -445,10 +446,54 @@ describe('renderCardHit — the answer must be usable and cited on its own', () 
     expect(hit.hit).toBe(true);
     const text = renderCardHit(hit);
     expect(text).toMatch(/FAST LANE/);
-    expect(text).toContain('capability-cards.md');
+    // The header names the card's own repo; the path is the REAL stored card passage path
+    // (<repo>/CARD/<repo>-card), not the card's source markdown file — `capability-cards.md` is never
+    // a passage path on disk.
+    expect(text).toContain('#1  repo=ruflo  evidence=curated-capability-card\n');
+    expect(text).toContain('path : ruflo/CARD/ruflo-card\n');
     expect(text).toContain('ruflo');
     expect(text).toBe(text); // sanity: renders without throwing
     expect(text.length).toBeGreaterThan(hit.text.length); // more than just the bare card body
+  });
+
+  // RED FIRST: the card content lives in `concepts.passages.jsonl` under `<repo>/CARD/<repo>-card`
+  // (scripts/corpus-aggregates.mjs). The pre-fix `path: <subject>/kb/capability-cards.md#<subject>`
+  // could never resolve, so verifyGrounding() reported `grounded: false` for every fast-lane answer.
+  // Fails on the pre-fix code with `reason: 'citations-do-not-resolve'`.
+  it('is grounded end-to-end: its own citation resolves against the real concepts store', async () => {
+    const kbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'card-lane-ground-'));
+    try {
+      const passage = { id: 0, text: 'x', path: 'ruvector/CARD/ruvector-card', title: 'ruvector — Capability' };
+      fs.writeFileSync(path.join(kbDir, 'concepts.passages.jsonl'), `${JSON.stringify(passage)}\n`);
+      const hit = {
+        repo: 'ruvector', path: 'capability-cards.md#ruvector',
+        text: 'ruvector is RuvNet’s vector database.', namedRepo: true, bodyOverlap: 2, coverage: 1,
+      };
+      const result = await verifyGrounding(renderCardHit(hit), kbDir);
+      expect(result).toMatchObject({ grounded: true, reason: 'ok' });
+      // Routing credit stays with the card's own repo; the evidence is the concepts store's passage.
+      expect(result.receipt).toMatchObject({ repo: 'ruvector', file: 'concepts.passages.jsonl', storedPath: 'ruvector/CARD/ruvector-card' });
+    } finally {
+      fs.rmSync(kbDir, { recursive: true, force: true });
+    }
+  });
+
+  it('the concepts lookup is narrow: a card nobody built, or a non-CARD path, never resolves there', async () => {
+    const kbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'card-lane-ground-neg-'));
+    try {
+      const passages = [
+        { id: 0, text: 'x', path: 'ruvector/CARD/ruvector-card', title: 'ruvector — Capability' },
+        { id: 1, text: 'y', path: 'ruvector/L2/hnsw', title: 'hnsw' },
+      ];
+      fs.writeFileSync(path.join(kbDir, 'concepts.passages.jsonl'), `${passages.map((p) => JSON.stringify(p)).join('\n')}\n`);
+      const noCard = renderCardHit({ repo: 'madeup', path: 'x', text: 'body', namedRepo: true });
+      expect(await verifyGrounding(noCard, kbDir)).toMatchObject({ grounded: false, reason: 'citations-do-not-resolve' });
+      // A real concepts passage that is not a card is not reachable under another repo's name.
+      const notCardPath = '#1  repo=ruvector  kind=doc\npath : ruvector/L2/hnsw\ntitle: t\n';
+      expect(await verifyGrounding(notCardPath, kbDir)).toMatchObject({ grounded: false });
+    } finally {
+      fs.rmSync(kbDir, { recursive: true, force: true });
+    }
   });
 });
 

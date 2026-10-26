@@ -8,6 +8,7 @@ import {
   digest,
   validateSourceScopeReceipt,
 } from './source-scope-receipt.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export const PRODUCT_INTEGRITY_SCHEMA_VERSION = 1;
 export const PRODUCT_INTEGRITY_TEST_CLASSES = Object.freeze(['essential', 'supporting', 'obsolete']);
@@ -180,4 +181,4 @@ export function runProductIntegrityCli(argv = process.argv.slice(2), io = { stdo
     semanticReviewVerified: false, behaviorVerified: false, traceSha256: trace.traceSha256 })}\n`); return 0; }
   throw new Error('invalid product integrity argument combination');
 }
-if (((() => { try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })())) { try { process.exitCode = runProductIntegrityCli(); } catch (error) { console.error(`[product-integrity-contract] ${error.message}`); process.exitCode = 1; } }
+if (isDirectInvocation(import.meta.url)) { try { process.exitCode = runProductIntegrityCli(); } catch (error) { console.error(`[product-integrity-contract] ${error.message}`); process.exitCode = 1; } }

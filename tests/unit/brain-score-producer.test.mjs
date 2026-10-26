@@ -73,6 +73,19 @@ describe('a stale reading cannot back a claim', () => {
     expect(staleness('2026-08-12T00:00:00Z', 14, now).stale).toBe(false);
   });
 
+  it('TEETH: a reading dated in the FUTURE is stale, not "fresher than fresh"', () => {
+    // Clock skew between the writer and this read, or a corrupt/hand-edited recorded/generatedAt
+    // stamp, can date a reading AFTER `now`. Before the fix: ageDays went negative (e.g. -3), which
+    // is less than any positive maxAgeDays budget, so `stale` read false with `why: null` — a
+    // corrupted-into-the-future timestamp sailed through as current (worse: as BETTER than fresh).
+    const now = Date.parse('2026-10-16T00:00:00Z');
+    const future = new Date(now + 3 * 86_400_000).toISOString();
+    const s = staleness(future, 14, now);
+    expect(s.stale, 'a future-dated reading must never be treated as current').toBe(true);
+    expect(s.ageDays).toBe(-3);
+    expect(s.why).toMatch(/future/i);
+  });
+
   it('TEETH: composite() refuses when ANY of its dimensions is stale, and names which', () => {
     const dims = [dim({ key: 'a' }), dim({ key: 'b', status: 'stale' })];
     const r = composite(dims, 'quality');

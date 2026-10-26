@@ -1,4 +1,4 @@
-Updated: 2026-10-24 15:00:00 EDT | Version 1.4.0
+Updated: 2026-10-26 03:30:00 EDT | Version 1.5.2
 Created: 2026-07-07 09:22:01 EDT
 
 # Contributing to RuvNet Brain — the one rulebook
@@ -42,6 +42,8 @@ npm run version:set -- X.Y.Z && npm run convergence:write      # commit these fi
 npm run release:qualify -- --suite source --report /tmp/source-qualification-UNIQUE.json
 npm run release:qualify -- --suite integration --report /tmp/integration-qualification-UNIQUE.json
 npm test && npm run single-source:check                    # distinct grounding and rule checks
+# before the FIRST push, run what preflight runs first (the ADR-0103 review row is the usual first-push red):
+node --check scripts/release.mjs && npm run version:check && npm run release:authority && node scripts/architecture-review-lock.mjs
 git push origin release/X.Y.Z                                # triggers release-candidate-preflight
 ```
 
@@ -244,6 +246,24 @@ ruvnet-brain-update --check --channel latest --scope ruvnet
 ruvnet-brain-update --apply --channel alpha --scope all
 ```
 
+**Keeping a package at the version you chose (#319).** There is no separate notify-only mode; three
+existing controls cover it:
+
+- `preservePackages` (npm package names) in the same config file. Manual applies and the 03:30 schedule
+  never install over a listed package: the coordinator still looks up the newer tag and records the step
+  as `local-modification-preserved` (listed under `coverage.preservedLocalModification` in
+  `nightly-suite-update.json`). Unlisted packages, host plugins and the signed knowledge corpus still
+  update as configured. A corpus update runs the installed `ruvnet-brain` package's own installer
+  (`<npm root -g>/ruvnet-brain/bin/install.mjs --update`), not `npx …@latest`, and its corpus checks still apply.
+- `ruvnet-brain-update --check` changes nothing and reports each package as `current`,
+  `update-available` or preserved: that is the notify-only run, on demand.
+- `ruvnet-brain --update-source installed` makes the remaining legacy (unconfigured) automatic paths use
+  the installed package instead of unattended npx (`docs/AUTOMATIC-UPDATE-SOURCE.md`).
+
+```json
+{ "schemaVersion": 1, "channel": "latest", "scope": "ruvnet", "preservePackages": ["ruflo", "ruvnet-brain"] }
+```
+
 The coordinator discovers existing npm prefix/root and command ownership, then updates in
 place. It does not install absent tools, move a tool to another manager, alter host plugin
 scopes, or replace local development sources. Latest/Alpha selection never downgrades an
@@ -329,8 +349,21 @@ artifact only together with its classification there, or `--doctor` will report 
 
 - **Removal is proof-gated.** A KB copy is deleted only when `plugin/scripts/kb-copy-proof.mjs` shows nothing
   in it is unique: every private-store file (fence of live AND copy, plus `updateManaged:false`) byte-identical
-  in live; every other file a public release file or installer-written. Anything else keeps the copy and is
-  named. Links are never followed; trees of an in-progress storage transaction, a foreign refresh lock, an
+  in live; every other file a public release file or installer-written. A file byte-identical at the same path
+  in a copy that stays (one kept earlier in the same sweep, or a `kb.archive/` tree) is accounted for too, so
+  duplicate preserved copies release down to one (#335). Anything else keeps the copy and is
+  named. `npx ruvnet-brain --clean --archive` (explicit, never automatic) copies exactly those named files into
+  `kb.archive/<stamp>/<copy>/`, verifies each byte-for-byte, writes `<copy>.json` beside it, and only then
+  releases the copy; a link, unsafe path or unreadable metadata still keeps it. `kb.archive/` is never removed
+  automatically, counts toward the footprint budget, and the updater's `reclaimBackups` treats a copy whose
+  every byte survives in live or in an archive as accounted for. The one exception is operational files (top-level `update.log`, `forge-update.log`,
+  `forge-guard-injection.log`, and ruflo's `.claude-flow/` scratch, each at most 2 MiB, 16 MiB per copy):
+  they do not keep a copy, they are copied to `kb-copy-rescued/<copy>/` in the brain home and verified
+  before the copy goes (kept for the newest five released copies), and a failed rescue keeps the copy.
+  For a copy inside a quarantine, `<copy>` is `<quarantine>--<child>` in both `kb.archive/` and `kb-copy-rescued/`.
+  An archive is written to a dot-named temp beside it and renamed into place only once every file verifies;
+  a dot-named entry is never treated as an archive.
+  Links are never followed; trees of an in-progress storage transaction, a foreign refresh lock, an
   install that is activating (`.kb.install-activation.lock` with a live pid), and live leases are kept; plugin generations go only through `prunePluginGenerations` (lease-aware).
 - **Enforced automatically**: after install/forced reinstall (the installer releases its own preserved
   generation once the new one validates), before and after every `--update` (incl. the SessionStart
@@ -438,7 +471,10 @@ a file, command, `search_ruvnet` hit or raw page, read after any small-model Web
 same subject (`node scripts/grounding-turn-replay.mjs` measures it on real transcripts; ADR-0030 gates #2/#3
 are shadow-logged only). The Stop continuation body also asks for ONE
 correction when a final answer claims work is done without a check run after the last change this
-turn, a named check, and a NOT-verified disclosure, and it records first-person promises ("I'll do X
+turn, a named check, and a NOT-verified disclosure. When all three are present and only the task
+scope cannot be qualified (the audit recognizes check-scoped sentences only), the verdict stays
+UNKNOWN, closes nothing, and is reported as a `completion-scope-advisory` rather than a correction
+(#425). It also records first-person promises ("I'll do X
 next") in the project's work ledger until a later evidenced completion claim closes them (Claude
 only; `npm run completion-claim:replay` measures both on real transcripts). It also asks ONCE when a
 Claude turn created an ADR in an adopted project and no successful `decision-record.mjs --record` ran
@@ -508,6 +544,8 @@ missing prerequisites or skipped cases fail qualification. Use new receipt paths
 The historical whole suite (`npx vitest run` / `scripts/full-suite-gate.mjs`) remains an explicit
 developer diagnostic, not a second release gate. Public, signed-artifact, native-host and OS
 verification remain required independently; a local subset never means shipped.
+
+The 500-line source ceiling is enforced by `tests/unit/lesson-gate.test.mjs` for `lesson-gate`, `lesson-command-scope`, `lesson-presentation`, `lesson-store`, `lesson-bridge`, `decision-gate` and `decision-outcomes` (lines are counted with `split('\n')`). Shrink such a file by moving cohesive code out; never by trimming blank lines.
 
 ## The fail-closed private fence
 

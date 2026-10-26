@@ -2,9 +2,9 @@
 id: ADR-085
 title: The nightly corpus release channel — wire the already-built publisher, don't build a second one
 status: Accepted  # 2026-09-26: decision in force and wired (corpus-nightly-dispatch.yml -> protected-release.yml mode=corpus -> release.mjs --corpus-seed). Unattended promotion is DISARMED until a code release is install-verified (data/approved-runtime.json removed 2026-09-26); the corpus gist step now has RUVNET_GISTS_TOKEN. Operating rules: CONTRIBUTING.md § The knowledge corpus. Prior note 2026-09-19: scheduled dispatcher exists, but the only green scheduled run was disarmed and the latest real corpus candidate failed on a gist-detail HTTP 403. No successful end-to-end nightly refresh is proven. This ADR's 2026-09-13 history is retained as dated history; current state is recorded below. Same-day addendum: kb/forge-update.mjs and bin/install.mjs DID change on 2026-09-26 (branch fix/corpus-currency) — the "What NOT to change" finding below is about THIS ADR's own build/publish-reliability mandate, which those changes do not touch; the client-side currency-verdict/private-overlay-recovery work is recorded in ADR-086's 2026-09-26 currency-log row instead, since ADR-086 already governs kb/corpus-release-identity.mjs's Step 16.
-reviewed_digest: bacbc3394604
+reviewed_digest: 49d64d95bc39
 date: 2026-09-12
-updated: 2026-10-24
+updated: 2026-10-25
 updated_source: derived-from-git
 authors: [Stuart Kerr, Claude Sonnet 5]
 tags: [corpus, release, nightly, currency, completeness]
@@ -211,6 +211,7 @@ publisher") **for corpus content only**: `protected-release.yml` gains a second 
   yet completed successfully, is still as stale as it was before this session.
 
 ## Currency log
+| 2026-10-25 | Review `49d64d95bc39` (4.7.21): decision unchanged; the nightly channel still wires the existing publisher. `kb/forge-update.mjs` changed for archive-aware backup reclaim on the user's machine (#335, review A) and a real-path entry check; nothing in corpus publication or dispatch moved. `scripts/corpus-reconcile.mjs` and `scripts/release-authority.mjs`: entry-point sweep only. | Reviewed diffs 320b778b..63ca7c0d for `kb/forge-update.mjs`, `scripts/corpus-reconcile.mjs` and `scripts/release-authority.mjs`. |
 | 2026-10-24 | Review `bacbc3394604` (4.7.18): decision unchanged; the dispatcher's clock moved. `.github/workflows/corpus-nightly-dispatch.yml` | The first slot is 05:17 UTC (was 07:17) and the retry 09:17 UTC (was 11:17; `RETRY_CRON` in `scripts/corpus-dispatch-decision.mjs`, window 8 h). At 07:17 a night published about 4:00-4:35 a.m. ET, after the 3:30 a.m. local Brain nightly on US machines, so those nightlies installed the previous night's corpus (2026-10-24: the Mac's 3:32 a.m. check found CURRENT; a newer corpus was promoted at 4:02). Arm/stand-down, kill switch, approved runtime, bound of two runs per night: unchanged. Source: `.github/workflows/corpus-nightly-dispatch.yml`. |
 | 2026-09-27 | Currency review: decision unchanged. Motion: corpus-reconcile.mjs's C3 retrieval-accuracy gate fix (stopped incorrectly blocking corpus builds) and SOURCE.json ledger-projection completion. Both are the nightly-channel machinery being corrected per its own stated design, not a departure from it. | Reviewed `.github/workflows/corpus-nightly-dispatch.yml`, `.github/workflows/corpus-seed.yml`, `.github/workflows/protected-release.yml`, `scripts/release.mjs`, `scripts/corpus-reconcile.mjs`, `scripts/release-authority.mjs` against the commits listed above; reviewed_digest bf798f8cbbb8. |
 | Date | What changed | Why (with referents) |

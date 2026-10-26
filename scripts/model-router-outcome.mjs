@@ -25,6 +25,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const OUTCOMES_LOG =
   process.env.MODEL_ROUTER_OUTCOMES ||
@@ -105,6 +106,6 @@ function main() {
   console.log(`[model-router-outcome] logged: ${JSON.stringify(entry)}`);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isDirectInvocation(import.meta.url)) {
   try { main(); } catch (e) { process.stderr.write(`model-router-outcome: ${e.message}\n`); process.exit(1); }
 }

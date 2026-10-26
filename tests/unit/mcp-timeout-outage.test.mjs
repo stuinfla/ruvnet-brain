@@ -37,6 +37,8 @@ it('allows the same 240s cold-start budget as the installer doctor', () => {
 // A child that completes the handshake and then goes silent forever — the exact live failure shape
 // (the worker is alive and working, it just never answers within the deadline).
 const STUB_CHILD = `
+import { appendFileSync as __rec } from 'node:fs';
+__rec(new URL('../stubs.pids', import.meta.url), process.pid + '\\n'); // #420 item 7: the test reaps every stub it ever started
 import readline from 'node:readline';
 const rl = readline.createInterface({ input: process.stdin });
 rl.on('line', (line) => {
@@ -75,6 +77,24 @@ function startServer(env) {
   proc.stdout.on('data', (d) => { for (const l of String(d).split('\n')) if (l.trim()) lines.push(l); });
   proc.stderr.on('data', (d) => { stderr += String(d); });
   return { proc, send, lines, stderrOf: () => stderr };
+}
+
+// #420 item 7: every stub worker records its pid in <home>/stubs.pids. The server is SIGKILLed in
+// cleanup, which orphans its worker (the stubs stay alive on purpose), so the workers must be
+// reaped explicitly, in a finally, even when an assertion failed or the test timed out.
+function reapStubs(home) {
+  try {
+    for (const l of fs.readFileSync(path.join(home, 'stubs.pids'), 'utf8').split('\n')) {
+      const pid = Number(l);
+      if (pid > 0) { try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ } }
+    }
+  } catch { /* no stub ever started */ }
+}
+
+function cleanup(server, home, ...dirs) {
+  try { server.proc.kill('SIGKILL'); } catch { /* gone */ }
+  reapStubs(home);
+  for (const d of [home, ...dirs]) fs.rmSync(d, { recursive: true, force: true });
 }
 
 async function waitFor(fn, timeoutMs, what) {
@@ -138,9 +158,7 @@ describe('an MCP call timeout is both STOPPED and RECORDED', () => {
       expect(health.source).toBe('mcp-parent-timeout');
       expect(health.error).toMatch(/timed out/i);
     } finally {
-      try { server.proc.kill('SIGKILL'); } catch { /* gone */ }
-      fs.rmSync(home, { recursive: true, force: true });
-      fs.rmSync(fakeHome, { recursive: true, force: true });
+      cleanup(server, home, fakeHome);
     }
   }, 90000);
 
@@ -152,6 +170,8 @@ describe('an MCP call timeout is both STOPPED and RECORDED', () => {
     fs.mkdirSync(path.join(home, 'kb'), { recursive: true });
     fs.writeFileSync(path.join(home, 'kb', 'forge-mcp-all.mjs'), `
 import fs from 'node:fs';
+import { appendFileSync as __rec } from 'node:fs';
+__rec(new URL('../stubs.pids', import.meta.url), process.pid + '\\n'); // #420 item 7: the test reaps every stub it ever started
 import readline from 'node:readline';
 const starts = process.env.STUB_STARTS;
 const n = (fs.existsSync(starts) ? Number(fs.readFileSync(starts, 'utf8')) : 0) + 1;
@@ -201,9 +221,7 @@ setInterval(() => {}, 1 << 30);
       const pid = Number(fs.readFileSync(firstPid, 'utf8'));
       expect(() => process.kill(pid, 0)).toThrow();
     } finally {
-      try { server.proc.kill('SIGKILL'); } catch { /* gone */ }
-      fs.rmSync(home, { recursive: true, force: true });
-      fs.rmSync(fakeHome, { recursive: true, force: true });
+      cleanup(server, home, fakeHome);
     }
   }, 30000);
 
@@ -212,6 +230,8 @@ setInterval(() => {}, 1 << 30);
     const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'rvb-fakehome-'));
     fs.mkdirSync(path.join(home, 'kb'), { recursive: true });
     fs.writeFileSync(path.join(home, 'kb', 'forge-mcp-all.mjs'), `
+import { appendFileSync as __rec } from 'node:fs';
+__rec(new URL('../stubs.pids', import.meta.url), process.pid + '\\n'); // #420 item 7: the test reaps every stub it ever started
 import readline from 'node:readline';
 const rl = readline.createInterface({ input: process.stdin });
 rl.on('line', (line) => {
@@ -263,9 +283,7 @@ setInterval(() => {}, 1 << 30);
       });
       expect(startupHealth.elapsedMs).toEqual(expect.any(Number));
     } finally {
-      try { server.proc.kill('SIGKILL'); } catch { /* gone */ }
-      fs.rmSync(home, { recursive: true, force: true });
-      fs.rmSync(fakeHome, { recursive: true, force: true });
+      cleanup(server, home, fakeHome);
     }
   }, 20000);
 });
@@ -277,6 +295,8 @@ describe('idle worker retirement', () => {
     fs.mkdirSync(path.join(home, 'kb'), { recursive: true });
     fs.writeFileSync(path.join(home, 'kb', 'forge-mcp-all.mjs'), `
 import fs from 'node:fs';
+import { appendFileSync as __rec } from 'node:fs';
+__rec(new URL('../stubs.pids', import.meta.url), process.pid + '\\n'); // #420 item 7: the test reaps every stub it ever started
 import readline from 'node:readline';
 const starts = process.env.STUB_STARTS;
 const n = (fs.existsSync(starts) ? Number(fs.readFileSync(starts, 'utf8')) : 0) + 1;
@@ -317,8 +337,7 @@ setInterval(() => {}, 1 << 30);
       expect(second).toContain('worker 2');
       expect(Number(fs.readFileSync(starts, 'utf8'))).toBe(2);
     } finally {
-      try { server.proc.kill('SIGKILL'); } catch { /* gone */ }
-      fs.rmSync(home, { recursive: true, force: true });
+      cleanup(server, home);
     }
   }, 15000);
 });

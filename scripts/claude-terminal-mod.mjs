@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { classify } from '../config/model-router/policy.default.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const MOD_SOURCE = path.join(ROOT, 'config/model-router/claude-terminal-mod');
 export function terminalModDigest(pluginRoot) {
@@ -84,6 +85,6 @@ async function main() {
   else if (mode === '--prepare') process.stdout.write(JSON.stringify(prepareClaudeTerminalMod(request)) + '\n');
   else throw new Error('Expected --prepare, --decision, --ready, or --health');
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main().catch(() => {
+if (isDirectInvocation(import.meta.url)) main().catch(() => {
   process.stderr.write('claude-terminal-mod: routing or activation unavailable; no fallback\n'); process.exitCode = 1;
 });

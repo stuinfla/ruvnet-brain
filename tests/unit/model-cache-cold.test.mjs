@@ -28,6 +28,12 @@ import {
 
 let tmp;
 const savedEnv = {};
+// A WARM model is the three files the strict offline reader loads, not merely its folder (#301).
+const warm = (rel) => {
+  const dir = path.join(tmp, rel);
+  fs.mkdirSync(path.join(dir, 'onnx'), { recursive: true });
+  for (const f of ['tokenizer.json', 'config.json', path.join('onnx', 'model_quantized.onnx')]) fs.writeFileSync(path.join(dir, f), '{}');
+};
 const ENV_KEYS = ['KB_MODEL_CACHE', 'RUVNET_BRAIN_HOME'];
 beforeEach(() => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mcc-test-'));
@@ -55,8 +61,14 @@ describe('modelPresent — the one honest signal: is the embedder on disk?', () 
     expect(modelPresent(tmp)).toBe(false);
   });
   it('true only when Xenova/all-MiniLM-L6-v2 actually exists (warm cache)', () => {
-    fs.mkdirSync(path.join(tmp, EMBEDDER_REL), { recursive: true });
+    warm(EMBEDDER_REL);
     expect(modelPresent(tmp)).toBe(true);
+  });
+  it('#301: a folder left by an unfinished download (no onnx/model_quantized.onnx) is MISSING, not warm', () => {
+    fs.mkdirSync(path.join(tmp, EMBEDDER_REL), { recursive: true });
+    fs.writeFileSync(path.join(tmp, EMBEDDER_REL, 'tokenizer.json'), '{}');
+    fs.writeFileSync(path.join(tmp, EMBEDDER_REL, 'config.json'), '{}');
+    expect(modelPresent(tmp)).toBe(false);
   });
   it('the reranker being present does NOT warm the query path (must still read cold)', () => {
     // A machine can hold the cross-encoder (Xenova/ms-marco-MiniLM-L-6-v2) yet lack the embedder —
@@ -74,9 +86,9 @@ describe('requiredEmbedderModels — follows the installed RVF sidecars', () => 
       JSON.stringify({ model: 'Xenova/bge-base-en-v1.5', dimensions: 768 }),
     );
     expect(requiredEmbedderModels(tmp)).toEqual(['Xenova/bge-base-en-v1.5']);
-    fs.mkdirSync(path.join(tmp, EMBEDDER_REL), { recursive: true });
+    warm(EMBEDDER_REL);
     expect(modelPresent(tmp, requiredEmbedderModels(tmp))).toBe(false);
-    fs.mkdirSync(path.join(tmp, BGE_EMBEDDER_REL), { recursive: true });
+    warm(BGE_EMBEDDER_REL);
     expect(modelPresent(tmp, requiredEmbedderModels(tmp))).toBe(true);
   });
 

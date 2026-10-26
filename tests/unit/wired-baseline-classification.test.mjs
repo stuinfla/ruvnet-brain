@@ -27,13 +27,15 @@ describe('the seven formerly-unclassified first-party entrypoints', () => {
       expect(rows.get(name).callers, name).toEqual(['package.json']);
       expect(rows.get(name).why, name).toMatch(/reachable only by a human typing/i);
     }
-  });
+    // audit() reads every caller file in the repository once per module. Explicit: the 5 s default is a load
+    // flake, not a finding (measured under load in the 4.7.21 test audit); 120 s still fails a real hang.
+  }, 120_000);
 
   it('classifies the active Codex hook chain as wired', () => {
     const rows = new Map(hookWiringAudit({ repo: ROOT }).rows.map((row) => [row.file, row]));
     expect(rows.get('codex-hook-wrapper.mjs')).toMatchObject({ state: 'wired' });
     expect(rows.get('codex-hook-adapter.mjs')).toMatchObject({ state: 'wired' });
-  });
+  }, 120_000); // same reason as above: a whole-repository read
 
   it('labels a clean-checkout census as partial instead of claiming full agreement', () => {
     const result = spawnSync(process.execPath, [path.join(ROOT, 'scripts/sync-census.mjs'), '--check'], {

@@ -62,6 +62,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { COVERAGE_ASSET, COVERAGE_RECEIPT_ASSET, bindCoverageToReceipt, verifyCoverageSidecar } from './corpus-coverage-sidecar.mjs';
 import { retryTransientResult } from './transient-gh.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const HEX64 = /^[0-9a-f]{64}$/;
@@ -423,7 +424,7 @@ export async function main(argv = process.argv.slice(2), { run = defaultRun, std
 // temp directories, and the CLI then exits 0 having done nothing.
 function isMain() {
   try {
-    return Boolean(process.argv[1]) && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+    return isDirectInvocation(import.meta.url);
   } catch {
     return false;
   }

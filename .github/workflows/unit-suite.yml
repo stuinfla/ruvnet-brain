@@ -1,0 +1,33 @@
+name: unit-suite
+# The whole tests/unit suite on every PR (4.7.21, decision D6). Until now nothing ran it in CI: developer-qa is
+# dispatch-only and release qualification runs a reviewed subset, so stale tests rotted unseen for weeks.
+# Deliberately NOT a required check and NOT in ntfy-alerts' workflow list: it makes rot visible on the PR without
+# blocking or paging. Make it required in 4.7.22 after three green runs.
+on:
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unit-suite-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - name: Install the kb/ dependencies the reader and forge tests load
+        run: npm ci --no-audit --no-fund
+        working-directory: kb
+      - run: npx vitest run tests/unit

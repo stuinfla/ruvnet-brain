@@ -1,4 +1,4 @@
-Updated: 2026-10-10 05:06:23 EDT | Version 1.1.1
+Updated: 2026-10-26 00:24:22 EDT | Version 1.2.0
 Created: 2026-10-05 06:18:56 EDT
 
 # Automatic update source — legacy lifecycle and coordinated schedule
@@ -50,8 +50,12 @@ use deterministic owner-prefix and system tool paths; inherited project and npx-
 excluded. Enrollment still requires the existing explicit authorization to change OS scheduling.
 
 Bundle and metadata GET/read failures receive at most three attempts within an absolute deadline.
-Each file attempt writes a fresh private stage from byte zero; failed stages are discarded. There
-is no blind Range resume. Socket resets, timeouts and selected transient HTTP responses retry.
+The bundle streams to one private stage on disk. An attempt is aborted when no bytes arrive for 60 s,
+not after a fixed time, and the overall deadline is the larger of 90 minutes and the declared size at
+256 KiB/s. A retry asks for `Range: bytes=<staged size>-` and appends only when the server answers 206
+with a `Content-Range` that starts at exactly that size; any other answer restarts the stage from byte
+zero, and failed stages are discarded. Metadata reads keep their short whole-attempt caps. Socket
+resets, timeouts and selected transient HTTP responses retry.
 Authorization failures, 404s, TLS trust errors, invalid JSON, invalid signatures and failed corpus
 validation remain refusals. Successful transport is only the start of validation.
 

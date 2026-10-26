@@ -22,6 +22,10 @@ import { CAPABILITIES, STATE, SCOPE, auditAll } from '../../scripts/capability-r
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const STATES = Object.values(STATE);
 const SCOPES = Object.values(SCOPE);
+// ONE vocabulary for "this unknown names its obstacle", used by every test below. Two wordings grew up
+// separately (could-not/not-checked, and not-inferred/does-not-establish); the sweep knew only the first, so
+// a correctly-worded routing unknown failed it on any machine without a routing declaration.
+const UNKNOWN_NAMES_OBSTACLE = /could not|cannot|not checked|does not exist|failed|unknown|has probably changed|not inferred|does not prove|not establish|unreadable/i;
 
 describe('capability descriptors', () => {
   it('ships a real list, not a stub', () => {
@@ -170,32 +174,27 @@ describe('detect() is safe to call', () => {
 describe('unknown outranks off when a probe cannot run', () => {
   const saved = {};
   afterEach(() => {
-    if ('receipts' in saved) {
-      if (saved.receipts === undefined) delete process.env.METAHARNESS_RECEIPTS;
-      else process.env.METAHARNESS_RECEIPTS = saved.receipts;
-      delete saved.receipts;
-    }
     if ('platform' in saved) {
       Object.defineProperty(process, 'platform', { value: saved.platform, configurable: true });
       delete saved.platform;
     }
   });
 
-  it('reports unknown — not off — when a ledger exists but cannot be read', () => {
-    // FORCED REAL FAILURE, not a mock: point the receipt ledger at a directory. It exists, so the
-    // "never set up" branch is correctly skipped, and reading it throws EISDIR. The tempting
-    // shortcut (`lines || 0`) would call this "0 receipts — never used", accusing a user whose
-    // routing may have run thousands of times.
-    saved.receipts = process.env.METAHARNESS_RECEIPTS;
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cap-registry-'));
-    process.env.METAHARNESS_RECEIPTS = dir;
+  it('reports unknown — not off — when the routing declaration exists but cannot be read', () => {
+    // FORCED REAL FAILURE, not a mock: the routing declaration path is a DIRECTORY. It exists, so the
+    // "never set up" branch is correctly skipped, and reading it throws EISDIR. (This test used to set
+    // METAHARNESS_RECEIPTS, which the detector no longer reads; it passed on the not-configured branch
+    // and proved nothing about an unreadable source.)
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cap-registry-'));
     try {
-      const r = CAPABILITIES.find((c) => c.key === 'cheap-model-routing').detect();
+      fs.mkdirSync(path.join(home, '.cache/ruvnet-brain/model-routing/terminal-launcher-config.json'), { recursive: true });
+      const r = CAPABILITIES.find((c) => c.key === 'cheap-model-routing').detect({ home });
       expect(r.state).toBe(STATE.UNKNOWN);
       expect(r.state).not.toBe(STATE.OFF);
-      expect(r.evidence).toMatch(/not inferred|does not prove|not establish|unreadable/i);
+      expect(r.evidence).toMatch(/unreadable/);
+      expect(r.evidence).toMatch(UNKNOWN_NAMES_OBSTACLE);
     } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
+      fs.rmSync(home, { recursive: true, force: true });
     }
   });
 
@@ -237,9 +236,28 @@ describe('unknown outranks off when a probe cannot run', () => {
       const r = CAPABILITIES.find((c) => c.key === 'memory-distillation').detect({ project });
       expect(r.state).toBe(STATE.UNKNOWN);
       expect(r.evidence).toMatch(/no memory_entries table/);
-      expect(r.evidence).toMatch(/could not|cannot|not checked|does not exist|failed|unknown|has probably changed/i);
+      expect(r.evidence).toMatch(UNKNOWN_NAMES_OBSTACLE);
     } finally {
       fs.rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it('every cheap-model-routing unknown branch names its obstacle (absent, unreadable, incomplete, declared)', () => {
+    // Forces each branch on a real HOME, so the sweep below is not the only check and cannot pass vacuously.
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cap-registry-routing-'));
+    const file = path.join(home, '.cache/ruvnet-brain/model-routing/terminal-launcher-config.json');
+    const detect = () => CAPABILITIES.find((c) => c.key === 'cheap-model-routing').detect({ home });
+    try {
+      const seen = [detect().evidence];                                            // absent
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, '{');            seen.push(detect().evidence);        // unreadable
+      fs.writeFileSync(file, '{}');           seen.push(detect().evidence);        // incomplete
+      fs.writeFileSync(file, JSON.stringify({ runtimeRoot: home, runtimeDigest: 'a'.repeat(64) }));
+      seen.push(detect().evidence);                                                // declared
+      expect(new Set(seen).size, 'four distinct branches').toBe(4);
+      for (const evidence of seen) expect(evidence).toMatch(UNKNOWN_NAMES_OBSTACLE);
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
     }
   });
 
@@ -249,8 +267,7 @@ describe('unknown outranks off when a probe cannot run', () => {
     // the load; this one catches a badly-worded unknown wherever one happens to occur.
     for (const r of auditAll()) {
       if (r.state !== STATE.UNKNOWN) continue;
-      expect(r.evidence, `${r.key} unknown without a reason`)
-        .toMatch(/could not|cannot|not checked|does not exist|failed|unknown|has probably changed/i);
+      expect(r.evidence, `${r.key} unknown without a reason`).toMatch(UNKNOWN_NAMES_OBSTACLE);
     }
   });
 });

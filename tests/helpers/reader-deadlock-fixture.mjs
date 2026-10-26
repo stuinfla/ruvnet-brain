@@ -28,7 +28,8 @@ export function createReaderDeadlockFixture({ kbDir, modelCache }) {
       fs.cpSync(path.join(modelCache, model), path.join(cache, model), { recursive: true, dereference: true });
     }
     fs.writeFileSync(path.join(root, '.reader-deadlock-fixture'), 'disposable\n');
-    return { root, kb, cache, env: { ...process.env, HOME: path.join(root, 'home'), USERPROFILE: path.join(root, 'home'), KB_MODEL_CACHE: cache } };
+    // CE_DEBUG makes forge-rerank print why a CE load failed into the stderr the assertion quotes.
+    return { root, kb, cache, env: { ...process.env, HOME: path.join(root, 'home'), USERPROFILE: path.join(root, 'home'), KB_MODEL_CACHE: cache, CE_DEBUG: '1' } };
   } catch (error) {
     fs.rmSync(root, { recursive: true, force: true });
     throw error;

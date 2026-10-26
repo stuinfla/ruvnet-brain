@@ -430,8 +430,31 @@ function wiringSurvey() {
 }
 
 // ── Memory health (read-only probes for the project the console was launched from) ────────────────
+// Dream Cycle 2026-09-18 (memory-durability, round-trip-proof): this used to also pass on ANY
+// `.claude/hooks` directory existing, so a machine whose hooks folder holds only an unrelated
+// script (a different plugin, a stale leftover) scored `sessionSurfacing: ok` and printed "the
+// global SessionStart hook surfaces project state at launch" — a claim about a hook that was never
+// installed. Only the specific recall hook's presence can support that claim.
+//
+// Dream Cycle 2026-09-19 (memory-durability, managed-boundary): the fix above still checked only
+// the LEGACY standalone `agentdb-ensure.sh` global hook. It ignored the mechanism this very repo
+// ships and documents as the automatic one — `plugin/hooks/hooks.json`'s own SessionStart entry,
+// which every session restores via `project-progression-session-start.mjs` (wired through
+// `session-start-core.mjs`) whenever the `ruvnet-brain` plugin itself is enabled. A machine that
+// installed this plugin the real, current way (Claude Code's marketplace flow) and never separately
+// placed the legacy global shell hook scored `sessionSurfacing: warn` — a false negative, flagged
+// as an open scope question by PR #296's independent critic, not chased there to keep that change
+// to one conceptual fix. `pluginEnabled()` mirrors the exact `k.startsWith('ruvnet-brain@')` check
+// `capability-registry.mjs`'s `wiredForRoute()` already uses for the same "is our plugin the one
+// Claude Code will actually load" question, rather than re-deriving a second way to ask it.
+function pluginEnabled() {
+  const settings = readJSON(path.join(CONSOLE_ROOT, '.claude', 'settings.json'));
+  return Object.entries(settings?.enabledPlugins || {}).some(([k, v]) => k.startsWith('ruvnet-brain@') && v === true);
+}
 function sessionHookExists() {
-  return fs.existsSync(path.join(CONSOLE_ROOT, '.claude/hooks/agentdb-ensure.sh')) || fs.existsSync(path.join(CONSOLE_ROOT, '.claude/hooks'));
+  if (fs.existsSync(path.join(CONSOLE_ROOT, '.claude/hooks/agentdb-ensure.sh'))) return 'agentdb-ensure';
+  if (pluginEnabled()) return 'ruvnet-brain-plugin';
+  return null;
 }
 // WHICH FILE IS THE PROJECT'S MEMORY STORE IS NOT A CONSTANT (issue #127).
 //
@@ -496,7 +519,12 @@ function probeMemory(projectDir, { now = Date.now() } = {}) {
   // Compaction survival is a ruflo write at PreCompact (project-state-auto-* + exact readback); a refusal
   // reaches the hook-failures summary. It is not re-probed at render.
   probes.compactionSurvival = { status: 'notTested', detail: 'PreCompact stores a project-state-auto-* checkpoint through ruflo and reads it back; failures appear in the SessionStart hook-failures summary' };
-  probes.sessionSurfacing = sessionHookExists() ? { status: 'ok', detail: 'the global SessionStart hook surfaces project state at launch' } : { status: 'warn', detail: 'no SessionStart recall hook found' };
+  const sessionHookVia = sessionHookExists();
+  probes.sessionSurfacing = sessionHookVia === 'agentdb-ensure'
+    ? { status: 'ok', detail: 'the global SessionStart hook surfaces project state at launch', via: sessionHookVia }
+    : sessionHookVia === 'ruvnet-brain-plugin'
+      ? { status: 'ok', detail: 'the ruvnet-brain plugin\'s own SessionStart hook surfaces project state at launch', via: sessionHookVia }
+      : { status: 'warn', detail: 'no SessionStart recall hook found', via: null };
   // recall quality: honestly NOT probed at render (a true probe needs an embedding query; left for an explicit deep test)
   probes.recallQuality = { status: 'notTested', detail: 'not checked this session — a real recall probe needs an embedding round-trip, which render deliberately avoids' };
 
@@ -2613,12 +2641,8 @@ function apply(ids) {
     } : {});
     if (res.ok && learningBefore) {
       const after = observeLearning();
-      // `ruflo memory distill run` owns the patterns; progress here is a known, readable learner afterwards.
-      const progressed = learningBefore.statusKnown && after.statusKnown;
-      if (!progressed) {
-        res.ok = false;
-        res.log += `\nNo measured learning progress: queue ${after.queueDir}; learner ${after.learnerCwd}. Reload to inspect the remaining evidence.`;
-      }
+      res.ok = learningProgressed(learningBefore, after);
+      if (!res.ok) res.log += `\nNo measured learning progress: ${learningProgressDetail(learningBefore, after)}. Reload to inspect the remaining evidence.`;
     }
     phaseMs.childRemedyMs += elapsedMs(remedyStartedAt);
     results.push({ id, ...res, undoToken });
@@ -2626,6 +2650,21 @@ function apply(ids) {
   // This receipt contains only aggregate durations, never the applied ids, paths, command output,
   // or undo tokens. It makes an end-user-visible delay diagnosable without exposing their machine.
   return { results, timings: { ...phaseMs, totalMs: elapsedMs(startedAt) } };
+}
+
+/**
+ * #377: Apply on "Your learner has gone quiet" counts as progress only when `ruflo memory distill
+ * status` shows the learner's last distillation moved FORWARD. A readable store alone is not progress.
+ */
+export function learningProgressed(before, after) {
+  const was = Date.parse(before?.lastDistillAt || '');
+  const now = Date.parse(after?.lastDistillAt || '');
+  return !!(before?.statusKnown && after?.statusKnown && after.distillKnown === true
+    && Number.isFinite(now) && (!Number.isFinite(was) || now > was));
+}
+export function learningProgressDetail(before, after) {
+  return `learner ${after?.learningDb || before?.learningDb || 'unresolved'}; last distillation `
+    + `${before?.lastDistillAt || 'not recorded'} → ${after?.distillKnown === true ? (after.lastDistillAt || 'not recorded') : 'unknown'}`;
 }
 
 function autoEligibleIds(recommendations = []) {

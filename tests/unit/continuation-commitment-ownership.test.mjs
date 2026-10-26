@@ -102,9 +102,8 @@ describe('registered Stop assistant commitment ownership', () => {
   it('a different session cannot close another session promise even with PASS evidence', () => {
     const f = fixture(); f.stop('session-A', promise); checkedTranscript(f.transcript);
     const original = f.read().items[0];
-    const correction = JSON.parse(f.stop('session-B', verified).stdout);
-    expect(correction.decision).toBe('block');
-    expect(correction.reason).not.toContain('you said you would');
+    // #425: a scope-only UNKNOWN is not a correction, and session-B owns no promise to nudge.
+    expect(f.stop('session-B', verified).stdout).toBe('');
     expect(f.read().items[0]).toEqual(original);
     f.stop('session-A', verified);
     expect(f.read().items[0]).toEqual(original);
@@ -216,5 +215,29 @@ describe('owner-dependent offers are not executable assistant commitments', () =
     expect(extractCommitments(promise)).toHaveLength(1);
     expect(extractCommitments("I'll check the retry test before committing the patch.")).toHaveLength(1);
     expect(extractCommitments('My plan:\n1. add the retry test\n2. wire the alert')).toHaveLength(2);
+  });
+});
+
+// #369 (remaining items, reported by HF-teamdev on 4.5.11).
+describe('pronoun-only promises and double-quoted promise names (#369)', () => {
+  it.each(["I'll hide it the same way.", 'I will check for it then.', "I'll set it up again."])('rejects the referent-less %s', (message) => {
+    expect(extractCommitments(message)).toEqual([]);
+  });
+  it('keeps promises that name their object', () => {
+    expect(extractCommitments("I'll push it to origin.")).toHaveLength(1);
+    expect(extractCommitments("I'll push the branch itself, as a record.")).toHaveLength(1);
+  });
+  it('a double-quoted claim closes its promise under PASS only, and carries the raw sentence', async () => {
+    const evidence = await import('../../plugin/scripts/completion-claim-evidence.mjs');
+    const answer = '"push the branch itself" is done (verified: git ls-remote origin).\nNot verified: CI.';
+    const claims = extractCompletionClaims(answer);
+    expect(claims.map((c) => c.text)).toEqual(['is done (verified: git ls-remote origin).']);
+    const item = 'push the branch itself, as a record';
+    expect(evidence.promiseClosingClaim?.({ verdict: 'PASS', claims }, answer, item)?.text)
+      .toBe('"push the branch itself" is done (verified: git ls-remote origin).');
+    for (const verdict of ['OBSERVED_CHECK', 'UNKNOWN', 'FAIL']) expect(evidence.promiseClosingClaim({ verdict, claims }, answer, item)).toBeNull();
+    // Quoting alone is not a claim: someone else's words never close a promise.
+    const quoteOnly = 'You said "push the branch itself is done".';
+    expect(evidence.promiseClosingClaim({ verdict: 'PASS', claims: extractCompletionClaims(quoteOnly) }, quoteOnly, item)).toBeNull();
   });
 });

@@ -102,9 +102,14 @@ export function buildHealthRecommendations({ memory = null, learning = null } = 
 
   // 3. A learner that has not trained in days. Installed-but-dormant is a DEFECT, not a neutral
   //    state — the entire point of shipping a learning system is that it runs.
+  //    #377: "quiet" means observations have WAITED more than two days for a distillation, measured
+  //    from `ruflo memory distill status`. An unknown distillation state, or a learner that is caught
+  //    up (nothing recorded since its last distillation), never shows this card.
   const STALE_TRAIN_SECONDS = 60 * 60 * 24 * 2; // two days
-  const age = learning?.enabled === false ? 0 : Number(learning?.lastTrainSeconds);
-  if (learning?.statusKnown && ((Number.isFinite(age) && age > STALE_TRAIN_SECONDS) || (learning.observations > 0 && learning.lastTrainSeconds === null))) {
+  const age = Number(learning?.lastTrainSeconds);
+  const waited = learning?.oldestPendingAt ? (Date.now() - Date.parse(learning.oldestPendingAt)) / 1000 : NaN;
+  if (learning?.enabled !== false && learning?.statusKnown && learning.distillKnown === true
+    && learning.pendingObservations > 0 && Number.isFinite(waited) && waited > STALE_TRAIN_SECONDS) {
     recs.push(makeRecommendation({
       id: 'learning:train',
       scope: learning?.scope === 'user' ? 'user' : 'project',
@@ -115,7 +120,7 @@ export function buildHealthRecommendations({ memory = null, learning = null } = 
       plainImpact:
         'Runs one local training cycle so recent work becomes patterns it can reuse next time. '
         + 'Uses the same AgentDB, retains a checked local snapshot, and verifies pattern counts separately from recorded observations.',
-      evidence: [{ observed: `last distillation ${learning.lastTrainSeconds === null ? "not recorded" : (age / 86400).toFixed(1) + " days ago"} (${learning?.observations ?? learning?.trajectories ?? 0} observations recorded)${learning?.learningDb ? ` in ${learning.learningDb}` : ''}` }],
+      evidence: [{ observed: `last distillation ${Number.isFinite(age) ? (age / 86400).toFixed(1) + " days ago" : "not recorded"}; ${learning.pendingObservations} of ${learning?.observations ?? learning?.trajectories ?? 0} observations waiting, oldest ${(waited / 86400).toFixed(1)} days${learning?.learningDb ? ` in ${learning.learningDb}` : ''}` }],
       cost: { time: 'under a minute', risk: 'local structural patterns; snapshot retained; automatic exact restore unavailable' },
       change: { human: 'run one training cycle so captured work becomes reusable patterns' },
       undo: { human: 'retain the WAL-safe snapshot for supervised offline recovery; automatic exact restore is unavailable' },

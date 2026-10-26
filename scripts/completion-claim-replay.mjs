@@ -20,6 +20,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { auditCompletionClaims, claudeTurnEvents, extractCommitments } from '../plugin/scripts/completion-claim-evidence.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const argv = process.argv.slice(2);
 const opt = (flag, fallback) => { const i = argv.indexOf(flag); return i >= 0 && argv[i + 1] ? argv[i + 1] : fallback; };
@@ -110,5 +111,5 @@ function main() {
   console.log(JSON.stringify(summary, null, 2));
 }
 
-const isMain = (() => { try { return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })();
+const isMain = isDirectInvocation(import.meta.url);
 if (isMain) main();

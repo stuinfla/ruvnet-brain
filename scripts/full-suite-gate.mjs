@@ -17,6 +17,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const key = (file, name) => `${file} :: ${name}`;
@@ -132,7 +133,7 @@ export function summaryMarkdown(result) {
   ].join('\n');
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isDirectInvocation(import.meta.url)) {
   const args = process.argv.slice(2);
   const value = (flag) => { const i = args.indexOf(flag); return i < 0 ? null : args[i + 1]; };
   const out = value('--report') || path.join(os.tmpdir(), `full-suite-${process.pid}.json`);

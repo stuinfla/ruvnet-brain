@@ -5,7 +5,8 @@
 //
 //   must-exist      the live KB, the active Stable Spine generation, each registered plugin generation
 //   may-exist       bounded state: logs under a size cap, lease-held plugin generations, the newest npx
-//                   copy, lifecycle evidence under its own retention policy, models, small state files
+//                   copy, lifecycle evidence under its own retention policy, models, small state files,
+//                   the newest rescued operational files of released KB copies (kb-copy-rescued/)
 //   must-not-exist  every other full-KB copy (kb.bak-*, kb.install-preserved-*, kb.pre-update-*, …,
 //                   *-quarantine-* dirs), stale install stages and forge candidates, older npx copies,
 //                   stale leases, ruflo scratch debris, rotated-away log bytes
@@ -14,6 +15,7 @@
 // SAFETY (non-negotiable, each one has a test that breaks it and goes red):
 //   * A KB copy is removed only after kbCopyProof() shows nothing in it is unique (every private-store file
 //     byte-identical in live, everything else of public provenance); a KEPT proof is cached (footprint-io).
+//     Its operational files (logs, ruflo scratch) are copied out and verified first (rescueOperationalFiles).
 //   * Nothing is followed through a symlink; a removal target must sit directly inside the real directory it
 //     was inventoried in, itself inside an owned root (footprint-io removeWithin).
 //   * Kept: non-terminal transaction trees; every KB sibling and npx copy while someone else holds the refresh
@@ -26,7 +28,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { isKbTree, kbCopyProof } from './kb-copy-proof.mjs';
 import { brainLocation } from './brain-location.mjs';
 import { RUFLO_CWD_ARTIFACTS } from './ruflo-bin.mjs';
-import { assessMoveLeftovers, cachedKept, cmpVersion, isVolumeMetadata, keptCopyFix, physical, pidAlive, readProofCache, rememberKept, removeWithin, rotate,
+import { isDirectInvocation } from './entrypoint.mjs';
+import { RESCUE_DIR, archiveRoots, archiveUniqueFiles, assessMoveLeftovers, discardArchiveIfMirrored, cachedKept, cmpVersion, isVolumeMetadata,
+  keptCopyFix, physical, pidAlive, readProofCache, rememberKept, removeWithin, rescueOperationalFiles, rotate,
   treeBytes, truncateToTail } from './footprint-io.mjs';
 
 export { cmpVersion, physical, treeBytes } from './footprint-io.mjs';
@@ -43,6 +47,7 @@ export const FOOTPRINT_POLICY = Object.freeze({
   staleForgeCandidateMs: 24 * 3_600_000,
   staleLeaseMs: 6 * 3_600_000,       // plugin/scripts/update-apply.mjs LEASE_FRESH_MS
   staleRufloRunMs: 3_600_000,        // plugin/scripts/ruflo-bin.mjs STALE_RUN_MS
+  rescuedCopiesKept: 5,              // kb-copy-rescued/<copy>: the newest five released copies' logs are kept
 });
 
 /** Every full-KB copy name this product (or a recovery) has ever created beside the live KB. A superset of
@@ -185,6 +190,10 @@ export function inventoryFootprint({ env = process.env, home = os.homedir(), now
     }
   };
   const classifySibling = (name, full, st) => {
+    if (name === `${base}.archive` && st.isDirectory() && !st.isSymbolicLink()) { // #335: written only by --clean --archive
+      return void add({ id: 'kb-archive', path: full, class: 'may-exist', kind: 'kb-archive', action: 'keep', bytes: bytes(full),
+        reason: 'files unique to released KB copies, archived on request (--clean --archive); never removed automatically' });
+    }
     {
       const prefix = kbCopyPrefixes(base).find((p) => name.startsWith(p));
       if (prefix === `${base}.bak-` && !BRAIN_BACKUP_STAMP.test(name.slice(prefix.length))) {
@@ -262,6 +271,20 @@ export function inventoryFootprint({ env = process.env, home = os.homedir(), now
     if (LOG_FILES.some((log) => name === `${log}.1`) && st.isFile()) {
       add({ id: 'log', path: full, class: 'may-exist', kind: 'log-rotation', action: 'keep', bytes: st.size,
         reason: 'the one retained rotation of a capped log (replaced at the next rotation)' });
+      continue;
+    }
+    // Operational files rescued from released KB copies (footprint-io rescueOperationalFiles), one directory
+    // per copy, each file <= 2 MiB and <= 16 MiB per copy (kb-copy-proof RESCUE_*_CAP_BYTES): bounded like a
+    // rotated log, by keeping the newest few directories.
+    if (name === RESCUE_DIR && st.isDirectory() && !st.isSymbolicLink()) {
+      const rescued = names(full).map((n) => ({ n, s: lstat(path.join(full, n)) })).filter((r) => r.s)
+        .sort((a, b) => b.s.mtimeMs - a.s.mtimeMs || a.n.localeCompare(b.n));
+      rescued.forEach(({ n }, i) => {
+        const keep = i < policy.rescuedCopiesKept;
+        add({ id: 'rescued', path: path.join(full, n), class: keep ? 'may-exist' : 'must-not-exist', kind: 'rescued-kb-logs',
+          action: keep ? 'keep' : 'remove', bytes: bytes(path.join(full, n)),
+          reason: keep ? 'logs rescued from a released KB copy (one of the newest kept)' : `older than the newest ${policy.rescuedCopiesKept} rescued KB-copy logs` });
+      });
       continue;
     }
     if (TEXT_LOG.test(name) && st.isFile()) {
@@ -366,6 +389,7 @@ export function inventoryFootprint({ env = process.env, home = os.homedir(), now
   const newestVersion = npx.map((n) => n.version).sort(cmpVersion).at(-1);
   const keepVersion = current && cmpVersion(newestVersion, current) < 0 ? null : newestVersion;
   const keeper = npx.find((n) => n.running) || npx.filter((n) => n.version === keepVersion).sort((a, b) => b.mtime - a.mtime)[0];
+  const refVersion = keeper?.version ?? current ?? newestVersion; // #420 item 3: "older" only when strictly below what is kept
   for (const n of npx) {
     const keep = n === keeper || n.running;
     // An older copy fetched < 2h ago may be running in another terminal; none goes during an update/install (S6).
@@ -373,7 +397,10 @@ export function inventoryFootprint({ env = process.env, home = os.homedir(), now
     const hold = !keep && (kbBlocked || (recent ? 'fetched in the last 2h; it may be running now' : null));
     add({ id: 'npx', path: n.dir, version: n.version, bytes: bytes(n.dir), class: keep ? 'may-exist' : 'must-not-exist', kind: 'npx-copy',
       action: keep || hold ? (keep ? 'keep' : 'report') : 'remove', blocked: hold || null,
-      reason: keep ? (n.running ? 'the installer running now' : 'the newest installer copy') : `an older installer copy (${n.version})` });
+      reason: keep ? (n.running ? 'the installer running now' : 'the newest installer copy')
+        : cmpVersion(n.version, refVersion) < 0 ? `an older installer copy (${n.version})`
+          : cmpVersion(n.version, refVersion) === 0 ? `a duplicate installer copy at the kept version (${n.version}); one copy is enough`
+            : `an installer copy (${n.version}) newer than the kept one (${refVersion}); one copy is enough` });
   }
 
   // ── lifecycle evidence, judged by its own policy ────────────────────────────────────────────
@@ -390,7 +417,7 @@ function summarize({ roots, items, policy, kbCopyDirs, lockHeld }) {
   const owned = items.filter((i) => i.class !== 'unowned');
   const kbBytes = sum(items.filter((i) => i.kind === 'live-kb'));
   const modelBytes = sum(items.filter((i) => i.kind === 'models'));
-  const budgetBytes = kbBytes + modelBytes + policy.fixedAllowanceBytes;
+  const budgetBytes = kbBytes + modelBytes + sum(items.filter((i) => i.kind === 'kb-archive')) + policy.fixedAllowanceBytes;
   const breakdown = {};
   for (const i of owned) {
     const group = i.kind === 'live-kb' ? 'knowledge base' : i.kind === 'models' ? 'models' : /plugin|spine/.test(i.kind) ? 'plugins'
@@ -419,13 +446,40 @@ function summarize({ roots, items, policy, kbCopyDirs, lockHeld }) {
  * every refusal is returned with its reason. `collectPluginGenerations` is the caller's lease-aware
  * collector (bin/install.mjs prunePluginGenerations); `pruneEvidence` is kb's pruneLifecycleEvidence.
  */
-export function sweepFootprint({ apply = false, collectPluginGenerations = null, pruneEvidence = null,
+export function sweepFootprint({ apply = false, archive = false, collectPluginGenerations = null, pruneEvidence = null,
   proveCopy = kbCopyProof, beforeRemove = null, ...options } = {}) {
   const before = inventoryFootprint(options);
   const { roots } = before;
   const owned = [...new Set([roots.kbParent, roots.brainHome, ...roots.brainHomeParents, roots.npxRoot].map(physical))];
-  const prove = (copyDir) => {
-    const proof = proveCopy({ copyDir, liveDir: roots.kbDir });
+  // #335: copies that STAY on disk this sweep may account for a later copy's files (kept siblings). Only
+  // final decisions are added: archive trees, copies a cached proof keeps (outside --archive, which re-proves
+  // them), and each copy this sweep keeps. A copy is never a reference for one evaluated before it.
+  const archiveDir = path.join(roots.kbParent, `${path.basename(roots.kbDir)}.archive`);
+  const stampDir = path.join(archiveDir, new Date(options.now ?? Date.now()).toISOString().replace(/[:.]/g, '-'));
+  const archiving = apply && archive;
+  const reArchive = (item) => archiving && ['kb-copy', 'quarantine'].includes(item.kind) && item.keptUnique && !item.blocked;
+  // Correctness relies on SORTED directory order across concurrent sweeps: inventory and archiveRoots list
+  // entries sorted, so two sweeps evaluate copies in the same order and agree which copy of a duplicate pair
+  // is the kept reference; with unsorted order each could release the copy the other kept as its reference.
+  const refs = [...archiveRoots(archiveDir), ...before.items.filter((i) => i.kind === 'kb-copy' && i.keptUnique && !reArchive(i)).map((i) => i.path)];
+  const prove = (copyDir, label = path.basename(copyDir)) => {
+    let proof = proveCopy({ copyDir, liveDir: roots.kbDir, keptSiblings: [...refs] });
+    if (!proof.disposable && archiving && proof.unique?.length) {
+      const archived = archiveUniqueFiles({ copyDir, unique: proof.unique, stampDir, label, now: options.now ?? Date.now() });
+      if (archived.ok) {
+        refs.push(archived.root);
+        const again = proveCopy({ copyDir, liveDir: roots.kbDir, keptSiblings: [...refs] });
+        if (again.disposable) proof = { ...again, reason: `archived ${archived.files.length} unique file(s) to ${archived.root}; ${again.reason}` };
+        else { // the copy is kept (e.g. unreadable metadata on the re-proof): if it still holds every archived byte, no archive is left behind
+          const discard = discardArchiveIfMirrored({ root: archived.root, copyDir, files: archived.files });
+          if (discard.discarded) {
+            refs.pop();
+            proof = { ...again, reason: `${again.reason}; not archived: the copy is kept, so its archive was removed` };
+          } else proof = { ...again, reason: `${again.reason}; the archive at ${archived.root} is kept: ${discard.reason}` };
+        }
+      } else proof = { ...proof, reason: `${proof.reason}; not archived: ${archived.reason}` };
+    }
+    if (!proof.disposable) refs.push(copyDir);
     if (apply && !proof.disposable && isKbTree(roots.kbDir)) rememberKept(roots.brainHome, copyDir, roots.kbDir, proof); // a dry run writes nothing
     return proof;
   };
@@ -435,8 +489,13 @@ export function sweepFootprint({ apply = false, collectPluginGenerations = null,
       kept: [{ path: roots.location.path, kind: 'unmounted-brain', reason: before.items[0].reason }], freedBytes: 0, before, after: before };
   }
   const record = (item, freed, note) => removed.push({ path: item.path, kind: item.kind, bytes: freed ?? item.bytes, reason: note || item.reason });
-  for (const item of before.items) {
-    if (!['remove', 'remove-if-proven', 'rotate', 'truncate'].includes(item.action)) {
+  // Rescue retention is applied only AFTER every rescue of this sweep, and never to a destination this sweep used: a
+  // retry that re-validates an aged-out rescue and then releases its copy must not also delete that rescue (review C).
+  const rescuedNow = new Set(); const rescue = (...args) => { const dest = rescueOperationalFiles(...args); if (dest) rescuedNow.add(dest); };
+  const deferred = before.items.filter((i) => i.kind === 'rescued-kb-logs' && i.action === 'remove');
+  for (const item of [...before.items.filter((i) => !deferred.includes(i)), ...deferred]) {
+    if (deferred.includes(item) && rescuedNow.has(item.path)) { kept.push({ path: item.path, kind: item.kind, reason: 'used by a rescue in this sweep; retention applies at the next sweep' }); continue; }
+    if (!['remove', 'remove-if-proven', 'rotate', 'truncate'].includes(item.action) && !reArchive(item)) {
       if (item.class === 'must-not-exist' || item.class === 'unowned') kept.push({ path: item.path, kind: item.kind, reason: item.blocked || item.reason, fix: item.fix || null });
       continue;
     }
@@ -449,6 +508,7 @@ export function sweepFootprint({ apply = false, collectPluginGenerations = null,
       if (item.kind === 'kb-copy') {
         const proof = prove(item.path);
         if (!proof.disposable) { kept.push({ path: item.path, kind: item.kind, reason: `KEPT: ${proof.reason}`, unique: proof.unique }); continue; }
+        if (apply) rescue(item.path, proof.rescue, roots.brainHome); // throws -> the copy is kept
         record(item, apply ? removeWithin(item.path, item.realParent, owned) : item.bytes, proof.reason);
         continue;
       }
@@ -456,9 +516,10 @@ export function sweepFootprint({ apply = false, collectPluginGenerations = null,
       const quarantineReal = physical(item.path);
       for (const child of names(item.path)) {
         const childPath = path.join(item.path, child);
-        const proof = isKbTree(childPath) ? prove(childPath)
+        const proof = isKbTree(childPath) ? prove(childPath, `${path.basename(item.path)}--${child}`)
           : { disposable: false, unique: [], reason: 'not a KB copy; not ours to judge' };
         if (!proof.disposable) { uniqueLeft = true; kept.push({ path: childPath, kind: 'quarantined-copy', reason: `KEPT: ${proof.reason}`, unique: proof.unique }); continue; }
+        if (apply) rescue(childPath, proof.rescue, roots.brainHome, `${path.basename(item.path)}--${child}`); // throws -> kept
         record({ path: childPath, kind: 'quarantined-copy', bytes: treeBytes(childPath) }, apply ? removeWithin(childPath, quarantineReal, owned) : undefined, proof.reason);
       }
       if (!uniqueLeft && apply) removeWithin(item.path, item.realParent, owned);
@@ -488,7 +549,7 @@ export async function loadKbReaders(kbDir) {
 }
 
 // CLI: the detached SessionStart sweep. `node brain-footprint.mjs --sweep [--apply] [--json]`.
-if (process.argv[1] && pathToFileURL(physical(process.argv[1])).href === pathToFileURL(physical(fileURLToPath(import.meta.url))).href) {
+if (isDirectInvocation(import.meta.url)) {
   const argv = process.argv.slice(2);
   const roots = footprintRoots();
   const readers = await loadKbReaders(roots.kbDir);

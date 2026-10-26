@@ -36,6 +36,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { parseHookEvent, toolName, field, readStdinBounded } from './hook-input.mjs';
 import { contains, projectDirectory } from './project-identity.mjs';
+import { isDirectInvocation } from './entrypoint.mjs';
 
 // ── date, from the system clock, formatted in the repo's standard timezone ─────────────────────────
 // Same idiom as scripts/self-update.mjs's README badge stamp: Intl.DateTimeFormat is a Node builtin
@@ -312,7 +313,7 @@ async function main() {
 }
 
 function isMain() {
-  try { return process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url); }
+  try { return isDirectInvocation(import.meta.url); }
   catch { return false; }
 }
 

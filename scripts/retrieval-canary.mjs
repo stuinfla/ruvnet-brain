@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { canonicalJson, digest, eligibleRepositoryStanding, validateCoverageLedger } from './coverage-integrity.mjs';
 import { fixtureDenominator } from './fixture-denominator.mjs';
 import { passageMatches } from './retrieval-passage-identity.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 // Both release phases resolve against an explicit installed context, never the checkout.
 export async function resolveInstalledCanaryCitation({ kbDir, matched, expected, passageFileDigests = new Map(), contentMap }) {
@@ -740,7 +741,7 @@ export function auditOracleCoverageFromFiles({ coverageFile, oracleFile, exempti
   return { ...inventory, oracleSourceCommit: queryEvidence.sourceCommit, strictAncestor };
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isDirectInvocation(import.meta.url)) {
   try {
     const argv = process.argv.slice(2);
     if (argv.includes('--audit')) {

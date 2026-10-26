@@ -47,6 +47,7 @@
  */
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { isDirectInvocation } from './entrypoint.mjs';
 
 /** Env vars that bill per token. OPENROUTER is deliberately absent — see below. */
 export const METERED_KEYS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY'];
@@ -113,7 +114,7 @@ export function check(command, env = process.env) {
 }
 
 const isMain = (() => {
-  try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); }
+  try { return isDirectInvocation(import.meta.url); }
   catch { return false; }
 })();
 

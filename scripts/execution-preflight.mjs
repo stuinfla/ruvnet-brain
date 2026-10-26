@@ -3,12 +3,13 @@
 // live Brain search and exact project AgentDB retrieval; prose, memory, and guessed host state do
 // not satisfy this command.
 import { classifyExecutionPolicy } from './execution-policy.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export function runExecutionPreflight(input = {}) {
   return classifyExecutionPolicy({ ...input, enforceEvidence: true });
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isDirectInvocation(import.meta.url)) {
   let input;
   try { input = JSON.parse(process.argv[2] || '{}'); }
   catch { process.stderr.write('execution-preflight: input must be JSON\n'); process.exit(2); }

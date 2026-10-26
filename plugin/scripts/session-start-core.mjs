@@ -31,11 +31,12 @@ import { turnRecordingStatus } from './turn-outcome-capture.mjs';
 import {
   read, json, exists, mkdir, write, runNode,
 } from './session-start-fsutil.mjs';
-import { maintainerIssueEntitlement, surfaceIssuePointer } from './session-start-issue-alert.mjs';
+import { maintainerIssueEntitlement, surfaceIssuePointer, surfaceNtfyAlerts } from './session-start-issue-alert.mjs';
 import { surfaceSignals } from './session-start-signals.mjs';
 import { failureLine, FAILURE_LINE_PREFIX } from './hook-failures.mjs';
 import { brainState, health, knowledgeCurrency, mcpReadiness, KNOWLEDGE_LINE_PREFIX } from './session-start-health.mjs';
 import { stableSpine, heartbeat, knowledgeAutoUpdate, footprintCheck } from './session-start-update-plane.mjs';
+import { CODEX_OVERNIGHT_PREFIX } from './codex-overnight-notice.mjs';
 import { FOOTPRINT_LINE_PREFIX } from './brain-confirmation.mjs';
 import { describeLifecycleHooks, readHookContracts } from './session-start-hook-description.mjs';
 import { createStageTracer } from './session-start-trace.mjs';
@@ -43,6 +44,7 @@ import { sessionStartDeadlineAt, STAGE_BUDGETS_MS } from './session-start-budget
 import { loadSettings } from './user-settings.mjs';
 import { sessionStartProofRecorder } from './session-start-proof.mjs';
 import { ALIAS_NOTICE, probeCodexConsoleAlias, readSessionSource } from './codex-console-alias.mjs';
+import { isDirectInvocation } from './entrypoint.mjs';
 
 // Re-exported for callers/tests that import the entitlement check directly from this file's own
 // long-standing public surface (tests/unit/session-start-core-parity.test.mjs).
@@ -115,7 +117,10 @@ export async function runSessionStart({
       || s.startsWith(KNOWLEDGE_LINE_PREFIX)
       || s.startsWith(FOOTPRINT_LINE_PREFIX)
       || s.startsWith('[RuvNet Brain — OPEN ISSUES')
+      || s.startsWith('[RuvNet Brain — NTFY:')
+      || s.startsWith('[RuvNet Brain — JOBS:')
       || s.startsWith('[RuvNet Brain — TURN CAPTURE]')
+      || s.startsWith(CODEX_OVERNIGHT_PREFIX)
       || /\bopen issue\(s\)/i.test(s)
       || /^\[RuvNet Brain — external signal/i.test(s)
       || (s.startsWith('Workflow ') && !/\b(Say it plainly|offer to look|ask only|run:|invoke)\b/i.test(s))
@@ -305,6 +310,7 @@ export async function runSessionStart({
 
     tracer.stage('issue-pointer', () => {
       surfaceIssuePointer({ stateDir, emit, now, env, home, platform, cwd });
+      surfaceNtfyAlerts({ stateDir, emit, now, env, home, platform, cwd });
     });
     tracer.stage('signal-surface', () => {
       surfaceSignals({ env, cwd, stateDir, hookDir, emit, now });
@@ -450,21 +456,7 @@ export async function runSessionStart({
   return { ok: true, outputBytes: Buffer.byteLength(output, 'utf8'), platform };
 }
 
-// Entry-point guard. Compares REALPATHS on both sides: path.resolve() normalizes a path but does
-// NOT follow symlinks, while import.meta.url IS symlink-resolved by Node. Through a symlink (npm bin
-// shims, wrapper scripts, and every os.tmpdir() path on macOS) the two sides disagree, so main()
-// never runs -- and because nothing throws, the process exits 0. A silent exit 0 is indistinguishable
-// from "ran, found nothing". Reproduced live 2026-07-27; pinned by tests/unit/entrypoint-symlink.test.mjs.
-function isDirectInvocation() {
-  try {
-    if (!process.argv[1]) return false;
-    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
-  } catch {
-    return false;
-  }
-}
-
-const direct = isDirectInvocation();
+const direct = isDirectInvocation(import.meta.url);
 if (direct) {
   const sessionSource = await readSessionSource();
   runSessionStart({ sessionSource, startedAt: performance.timeOrigin }).catch((error) => {

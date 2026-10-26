@@ -25,6 +25,7 @@ import {
   sealGistReceipt,
   sealGistReceiptSet,
 } from './gist-receipts.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export { buildGistAggregate, paragraphChunks, provenanceBanner, rawUrlFor };
 
@@ -263,7 +264,7 @@ export async function main(argv = process.argv.slice(2), {
   return 0;
 }
 
-if (((() => { try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })())) {
+if (isDirectInvocation(import.meta.url)) {
   main().then((code) => { process.exitCode = code; }).catch((error) => {
     console.error(error.message);
     process.exitCode = 1;

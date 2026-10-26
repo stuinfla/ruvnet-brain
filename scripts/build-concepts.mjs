@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { observeSourceUniverse } from './source-coverage.mjs';
 import { materializePublicInputs } from './public-inputs.mjs';
 import { buildConceptAggregate } from './corpus-aggregates.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const KB = path.join(ROOT, 'kb');
@@ -44,7 +45,7 @@ export async function main() {
   }
 }
 
-if (((() => { try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })())) {
+if (isDirectInvocation(import.meta.url)) {
   main().catch((error) => {
     console.error(`[build-concepts] ${error.message}`);
     process.exitCode = 1;

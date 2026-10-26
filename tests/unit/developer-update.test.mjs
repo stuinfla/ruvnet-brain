@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { knowledge } from '../../plugin/scripts/developer-update.mjs';
+import { knowledge, validateDeveloperUpdateConfig } from '../../plugin/scripts/developer-update.mjs';
 import { compare, selectTag, discover, identity, upgradePackage, pluginScopes, scopeKey, runDeveloperUpdate, locateExecutable, resolvePluginTarget, pluginUpdateDecision, synchronizePlugins, marketplaceRemoteCommit, atomic, claudeProviderCommand } from '../../plugin/scripts/developer-update.mjs';
 import { acquireDeveloperLock, sharedLockStatus } from '../../plugin/scripts/developer-update-lock.mjs';
 import { automaticInvocation, automaticPath } from '../../plugin/scripts/automatic-update.mjs';
@@ -140,7 +140,8 @@ test('failure writes failed receipt without a false PASS or retained lock', asyn
   const run=(_command,args)=> {if(args[0]==='prefix')return prefix;if(args[0]==='root')return root;throw Error('mock registry failure');};
   await assert.rejects(runDeveloperUpdate({mode:'apply',home,env:{PATH:path.join(home,'bin')},runner:run}),/mock registry failure/);
   const receipt=JSON.parse(fs.readFileSync(path.join(home,'.cache/ruvnet-brain/nightly-suite-update.json')));
-  assert.equal(receipt.ok,false);assert.equal(receipt.state,'failed');assert.equal(sharedLockStatus({brainHome:path.join(home,'.cache/ruvnet-brain')}).state,'idle');
+  // The failing package is recorded on its own step; the run completes its other stages, then fails (WP-B2 stage isolation).
+  assert.equal(receipt.ok,false);assert.equal(receipt.state,'completed-with-failures');assert.equal(receipt.steps.length,1);assert.equal(receipt.steps[0].state,'failed');assert.deepEqual(receipt.failures.map(f=>f.stage),['package @pacphi/agentic-kit']);assert.equal(sharedLockStatus({brainHome:path.join(home,'.cache/ruvnet-brain')}).state,'idle');
 });
 test('uv inventory excludes wheel/path/pinned requirement', () => {
   const root=tmp();
@@ -211,6 +212,18 @@ test('explicit local modification policy preserves installed Kit without claimin
   const receipt=upgradePackage(before,{latest:'2.0.0',next:'2.1.0-alpha.1'},[],{preservePackages:['@pacphi/agentic-kit'],run:()=>assert.fail()});
   assert.equal(receipt.reason,'preservedLocalModification');assert.equal(receipt.state,'local-modification-preserved');assert.equal(receipt.after.version,'1.0.0');
 });
+test('#319: the documented preservePackages example validates and a preserved package is reported, never installed, even on --check', () => {
+  const doc=fs.readFileSync(new URL('../../CONTRIBUTING.md',import.meta.url),'utf8');
+  const example=/```json\n(\{[^\n]*"preservePackages"[^\n]*\})\n```/.exec(doc);
+  assert.ok(example,'CONTRIBUTING.md documents a preservePackages example');
+  for(const term of ['ruvnet-brain-update --check','--update-source installed','local-modification-preserved']) assert.ok(doc.includes(term),term);
+  const config=validateDeveloperUpdateConfig(JSON.parse(example[1]));
+  assert.deepEqual(config.preservePackages,['ruflo','ruvnet-brain']);
+  for(const dryRun of [true,false]){
+    const receipt=upgradePackage(fixture('ruflo'),{latest:'2.0.0'},[],{preservePackages:config.preservePackages,dryRun,run:()=>assert.fail('preserved package must not be installed')});
+    assert.equal(receipt.state,'local-modification-preserved');assert.equal(receipt.target.version,'2.0.0');assert.equal(receipt.after.version,'1.0.0');
+  }
+});
 
 test('registered coordinator bridges automatic hooks to the same bytes; corrupted source never falls back to npx', () => {
   const home=tmp(),brainHome=path.join(home,'.cache/ruvnet-brain');
@@ -218,7 +231,7 @@ test('registered coordinator bridges automatic hooks to the same bytes; corrupte
   const record=installNightlyRunner({brainHome,source,nodePath:process.execPath});
   const owner=developerCoordinatorOwner({home,brainHome});assert.equal(owner.ready,true);
   const invocation=automaticInvocation(['--update','--no-nightly-prompt'],{home,source:'latest'});
-  assert.deepEqual(invocation.args,[record.updateModules['developer-update.mjs'].path,'--apply']);
+  assert.deepEqual(invocation.args,[record.updateModules['developer-update.mjs'].path,'--apply','--knowledge-only']);
   fs.appendFileSync(owner.entry,'\n//changed');
   assert.throws(()=>automaticInvocation(['--update'],{home,source:'latest'}),/not ready/);
 });
@@ -380,7 +393,7 @@ test('native provider failed exit cannot write a completed coordinator receipt',
   fs.writeFileSync(path.join(prefix,'bin/npm'),'fixture',{mode:0o755});fs.writeFileSync(uv,'fixture',{mode:0o755});
   const runner=(command,args)=>{if(args[0]==='prefix')return prefix;if(args[0]==='root')return root;return {exitCode:args[0]==='self'?7:0,stdout:args[0]==='--version'?'uv 1.0.0':'',stderr:'fixture provider failure'};};
   await assert.rejects(runDeveloperUpdate({mode:'apply',home,config:{native:true},env:{PATH:path.join(prefix,'bin')},runner}),/exit 7/);
-  const receipt=JSON.parse(fs.readFileSync(path.join(home,'.cache/ruvnet-brain/nightly-suite-update.json')));assert.equal(receipt.ok,false);assert.equal(receipt.state,'failed');
+  const receipt=JSON.parse(fs.readFileSync(path.join(home,'.cache/ruvnet-brain/nightly-suite-update.json')));assert.equal(receipt.ok,false);assert.equal(receipt.state,'completed-with-failures');assert.deepEqual(receipt.failures.map(f=>f.stage),['maintenance']);
   const stage=receipt.maintenance.stages[0];assert.equal(stage.state,'failed');assert.equal(stage.commands.at(-1).exitCode,7);
 });
 test('zero native command exits cannot hide a measured version downgrade', async () => {

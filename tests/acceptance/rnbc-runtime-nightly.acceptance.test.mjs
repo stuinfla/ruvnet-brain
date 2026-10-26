@@ -13,6 +13,7 @@
 //   - a save that does not CHANGE the nightly choice must not re-run the installer or rewrite the plist;
 //   - the static file server must not serve a sibling directory whose name merely starts with "console".
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { parseNpmPack } from '../helpers/npm-pack-json.mjs';
 import { spawn, spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -84,7 +85,7 @@ beforeAll(async () => {
 
   // The bytes a customer receives: npm pack → extract → the installer's own runtime install.
   const packed = checked('npm', ['pack', '--json', '--pack-destination', packDir], { cwd: REPO });
-  checked('tar', ['-xzf', path.join(packDir, JSON.parse(packed.stdout)[0].filename), '-C', packDir]);
+  checked('tar', ['-xzf', path.join(packDir, parseNpmPack(packed.stdout, { expectName: 'ruvnet-brain' }).filename), '-C', packDir]);
   const payload = path.join(packDir, 'package');
   const baseEnv = { PATH: process.env.PATH, HOME: home, USERPROFILE: home, TMPDIR: process.env.TMPDIR || os.tmpdir(),
     GIT_CONFIG_GLOBAL: gitConfig, GIT_CONFIG_NOSYSTEM: '1' };

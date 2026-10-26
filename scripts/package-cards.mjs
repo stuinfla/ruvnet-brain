@@ -40,6 +40,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 export const SCHEMA = 'ruvnet-brain.package-cards/1';
@@ -321,7 +322,7 @@ export function snapshotAgeDays(doc, now = Date.now()) {
 }
 
 const isMain = (() => {
-  try { return process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url); }
+  try { return isDirectInvocation(import.meta.url); }
   catch { return false; }
 })();
 

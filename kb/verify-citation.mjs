@@ -127,7 +127,20 @@ function samePath(stored, docPath) {
  * takes to reach the hit. A malformed JSON line is skipped, never fatal.
  */
 export async function citationResolves(citation, kbDir) {
-  const files = passagesFilesFor(citation.repo, kbDir);
+  const own = await resolveIn(passagesFilesFor(citation.repo, kbDir), citation.docPath);
+  if (own.resolved) return own;
+  // A capability card is cited under its OWN repo (`repo=ruvector`, `path : ruvector/CARD/ruvector-card`,
+  // kb/card-lane.mjs renderCardHit) but is stored only in the derived `concepts` aggregate, under
+  // `<repo>/CARD/<repo>-card` (scripts/corpus-aggregates.mjs). Look exactly that path up there. Narrow
+  // on purpose: only a `CARD/` path, only in `concepts`, and only the exact stored path.
+  if (/^CARD\/[^/#]+-card$/.test(String(citation.docPath)) && citation.repo !== 'concepts') {
+    const card = await resolveIn(passagesFilesFor('concepts', kbDir), `${citation.repo}/${citation.docPath}`);
+    if (card.resolved) return card;
+  }
+  return own;
+}
+
+async function resolveIn(files, docPath) {
   if (!files.length) return { resolved: false, reason: 'no-store', file: null, storedPath: null };
   for (const file of files) {
     const rl = readline.createInterface({ input: fs.createReadStream(file), crlfDelay: Infinity });
@@ -136,7 +149,7 @@ export async function citationResolves(citation, kbDir) {
         if (!line) continue;
         let rec;
         try { rec = JSON.parse(line); } catch { continue; }
-        if (typeof rec?.path === 'string' && samePath(rec.path, citation.docPath)) {
+        if (typeof rec?.path === 'string' && samePath(rec.path, docPath)) {
           return { resolved: true, reason: 'ok', file: path.basename(file), storedPath: rec.path };
         }
       }

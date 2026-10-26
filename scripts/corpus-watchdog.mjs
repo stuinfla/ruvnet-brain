@@ -48,6 +48,7 @@ import { AGGREGATE_ASSET, SIGNING_PUBLIC_KEY_FILE } from './approved-runtime.mjs
 import { COVERAGE_ASSET, COVERAGE_RECEIPT_ASSET, verifyCoverageSidecar } from './corpus-coverage-sidecar.mjs';
 import { parseCorpusGeneration } from './corpus-promotion.mjs';
 import { retryTransientResult } from './transient-gh.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const RED = 'RED';
@@ -496,6 +497,6 @@ async function main(argv = process.argv.slice(2)) {
   return result.verdict === RED ? 1 : 0;
 }
 
-if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
+if (isDirectInvocation(import.meta.url)) {
   main().then((code) => { process.exitCode = code; });
 }

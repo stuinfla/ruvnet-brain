@@ -26,6 +26,7 @@ import { storeRoot } from '../kb/store-root.mjs';
 import { validateCoverageDirectory, sha256File } from './coverage-integrity.mjs';
 import { verifyPayload, verifyPayloadMembers, payloadIdFor } from './release-payload.mjs';
 import { extractZip } from '../kb/zip-extract.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -206,6 +207,9 @@ export function readCoverageClaims(readme) {
 export const COVERAGE_REGEN_CMD = 'npm run test:cov';
 
 const DIR_PRUNE = new Set(['node_modules', '.git', 'coverage', 'dist', 'clones']);
+// Root-relative trees that are never coverage sources but can be huge or busy: agent worktrees (whole
+// checkouts), job logs, the QE fleet's state and local caches.
+const ROOT_PRUNE = new Set(['.claude/worktrees', 'logs', '.agentic-qe', '.cache']);
 
 /** Minimal glob → RegExp for the shapes coverage.include/exclude actually use (`**`, `*`, `?`). */
 function globToRe(glob) {
@@ -250,9 +254,9 @@ export async function coverageSourceSet(vitestFile = path.join(ROOT, 'vitest.con
     try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
     for (const ent of ents) {
       const abs = path.join(dir, ent.name);
-      if (ent.isDirectory()) { if (!DIR_PRUNE.has(ent.name)) walk(abs); continue; }
-      if (!ent.isFile()) continue;
       const rel = path.relative(root, abs).split(path.sep).join('/');
+      if (ent.isDirectory()) { if (!DIR_PRUNE.has(ent.name) && !ROOT_PRUNE.has(rel)) walk(abs); continue; }
+      if (!ent.isFile()) continue;
       if (incl.some((r) => r.test(rel)) && !exclude.some((r) => r.test(rel))) files.push(abs);
     }
   };
@@ -903,6 +907,6 @@ async function main() {
   if (verdict === 'UNKNOWN' && process.argv.includes('--strict')) process.exitCode = 4;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isDirectInvocation(import.meta.url)) {
   await main();
 }

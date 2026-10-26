@@ -622,7 +622,7 @@ export const CAPABILITIES = [
       if (config.err) return row(STATE.UNKNOWN, 'managed native routing settings are unreadable; routing and savings are not inferred');
       if (!config.missing) {
         const value = config.value;
-        if (!value || !path.isAbsolute(value.runtimeRoot || '') || !/^[a-f0-9]{64}$/.test(value.runtimeDigest || '')) return row(STATE.UNKNOWN, 'managed routing declaration is incomplete; no execution claim is made');
+        if (!value || !path.isAbsolute(value.runtimeRoot || '') || !/^[a-f0-9]{64}$/.test(value.runtimeDigest || '')) return row(STATE.UNKNOWN, 'managed routing declaration is incomplete (no absolute runtimeRoot or 64-hex runtimeDigest), so routing could not be checked; no execution claim is made');
         return row(STATE.UNKNOWN, 'a managed native routing runtime is configured. The retired Task dispatch hook is not a prerequisite. Configuration alone does not prove normal entry wiring, model allocation, execution or savings; those runtime facts were not checked by this declaration-only probe.');
       }
       return row(STATE.UNKNOWN, 'no managed routing declaration was observed in this inspected location; legacy Task routing receipts or binary presence do not establish current native routing or its absence');

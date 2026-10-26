@@ -15,10 +15,40 @@ const { DatabaseSync } = await import('node:sqlite');
 export const WAL_REFUSAL_TEXT = '[ERROR] Failed to store: active native WAL connection — refusing an unsafe sql.js whole-image write';
 
 const roots = [];
-// maxRetries: a detached ruflo writer can still be creating files inside the fixture while it is removed
-// (ENOTEMPTY on Linux CI, 2026-10-15); retrying the removal is the standard remedy and hides nothing.
-// 0.8 s was not enough on a loaded runner (4.7.18 preflight, 2026-10-24, capture-consent-boundary); up to ~6 s now.
-export function cleanup() { for (const r of roots.splice(0)) fs.rmSync(r, { recursive: true, force: true, maxRetries: 30, retryDelay: 200 }); }
+const RETRYABLE_REMOVE = new Set(['ENOTEMPTY', 'EBUSY', 'EPERM', 'EMFILE', 'ENFILE']);
+/**
+ * Remove a fixture tree while a detached hook worker may still be adding files to it (ENOTEMPTY on Linux CI,
+ * 2026-10-15, 2026-10-24, 4.7.20 preflight run 40255856163). fs.rmSync's own maxRetries is NOT a remedy: after
+ * an ENOTEMPTY it retries only the final rmdir and never sweeps the children again, so one file that lands
+ * after the sweep fails every retry (30 x 200 ms linear backoff = the 93 s the 4.7.20 failure took). Each
+ * attempt here is a whole new rmSync, which re-reads and removes whatever arrived since the last one.
+ */
+export function removeTree(dir, { deadlineMs = 10_000, delayMs = 50 } = {}) {
+  const deadline = Date.now() + deadlineMs;
+  for (;;) {
+    try { fs.rmSync(dir, { recursive: true, force: true }); return; } catch (error) {
+      if (!RETRYABLE_REMOVE.has(error.code) || Date.now() >= deadline) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
+    }
+  }
+}
+export function cleanup() { for (const r of roots.splice(0)) removeTree(r); }
+
+/**
+ * Wait until every detached hook worker a test started has exited, so none is still writing into the fixture
+ * when it is removed. `pids` may hold undefined entries (a boundary that started no worker). Throws if one
+ * outlives the bound: a worker that never finishes is a defect, not something to clean up around.
+ */
+export async function waitForDetached(pids, { timeoutMs = 30_000 } = {}) {
+  const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (error) { return error.code === 'EPERM'; } };
+  const deadline = Date.now() + timeoutMs;
+  for (const pid of pids.filter((p) => Number.isInteger(p) && p > 0)) {
+    while (alive(pid)) {
+      if (Date.now() >= deadline) throw new Error(`detached worker ${pid} still running after ${timeoutMs} ms`);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+}
 export function tmp(prefix) {
   const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
   roots.push(dir);

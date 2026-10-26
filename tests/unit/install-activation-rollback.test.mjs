@@ -111,7 +111,7 @@ fs.existsSync=(file)=>path.resolve(String(file)).startsWith(dist+path.sep)?false
 });
 
 describe('installer exact-swap failure recovery', () => {
-  for (const contents of ['unlisted-file', 'declared-private', 'symlink', 'managed-only']) {
+  for (const contents of ['unlisted-file', 'declared-private', 'symlink', 'managed-only', 'operational-logs', 'operational-logs-linked-home']) {
     it(`preserves prior contents for ${contents} during a valid swap`, () => {
       const root = fs.mkdtempSync(path.join(os.tmpdir(), 'installer-preserve-'));
       roots.push(root);
@@ -136,6 +136,17 @@ describe('installer exact-swap failure recovery', () => {
         fs.writeFileSync(path.join(live, 'SOURCE.json'), JSON.stringify(manifest));
         fs.writeFileSync(path.join(live, 'personal.rvf'), 'private vector bytes');
       }
+      const operational = contents.startsWith('operational-logs');
+      // A moved brain (--move-brain): the spelled brain home is a link to the real one on another disk.
+      const linkedHome = contents === 'operational-logs-linked-home'
+        ? path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'installer-moved-')), 'ruvnet-brain') : null;
+      if (linkedHome) { roots.push(path.dirname(linkedHome)); fs.symlinkSync(root, linkedHome, 'dir'); }
+      if (operational) {
+        fs.writeFileSync(path.join(live, 'update.log'), 'the only trace of a failed night');
+        fs.writeFileSync(path.join(live, 'forge-guard-injection.log'), '{"flagged":1}');
+        fs.mkdirSync(path.join(live, '.claude-flow', 'policy'), { recursive: true });
+        fs.writeFileSync(path.join(live, '.claude-flow', 'policy', 'state.json'), '{}');
+      }
       if (contents === 'symlink') {
         fs.writeFileSync(path.join(root, 'external.txt'), 'external private bytes');
         fs.symlinkSync(path.join(root, 'external.txt'), path.join(live, 'personal-link'));
@@ -146,12 +157,12 @@ describe('installer exact-swap failure recovery', () => {
         if (${JSON.stringify(contents)} === 'managed-only') {
           console.log(JSON.stringify(await unzipInto(null, ${JSON.stringify(live)}, ${JSON.stringify(source)})));
         }
-      `], { cwd: root, encoding: 'utf8', env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0' } });
+      `], { cwd: root, encoding: 'utf8', env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0', RUVNET_BRAIN_HOME: linkedHome || root } });
       expect(result.status).toBe(contents === 'declared-private' ? 1 : 0);
       const retained = fs.readdirSync(root).filter((name) => name.startsWith('live.install-preserved-'));
       const receipts = result.stdout.split('\n').filter((line) => line.startsWith('{')).map((line) => JSON.parse(line));
       const old = contents === 'declared-private' ? live : receipts[0]?.priorGeneration?.path || path.join(root, 'missing');
-      if (contents !== 'managed-only') {
+      if (contents !== 'managed-only' && !operational) {
         expect(fs.existsSync(path.join(old, 'forge-mcp-all.mjs'))).toBe(true);
         expect(fs.readFileSync(path.join(old, 'forge-mcp-all.mjs'), 'utf8')).toContain('prior bytes');
       }
@@ -164,7 +175,15 @@ describe('installer exact-swap failure recovery', () => {
       // ADR-0098: the installer no longer leaves a second KB behind. A prior generation holding nothing
       // unique (managed-only: every file has exact live bytes or public release provenance) is RELEASED at once; one
       // holding a user file or a link the new tree lacks is KEPT, and the reason names that file.
-      if (contents === 'managed-only') {
+      if (operational) {
+        // Logs and ruflo scratch never pin the prior generation: copied out, verified, then it is released.
+        // The rescue lands in the real brain home (links resolved), where the footprint sweep looks for it.
+        expect(retained).toHaveLength(0);
+        expect(receipts[0].priorGeneration).toMatchObject({ status: 'RELEASED' });
+        const rescued = path.join(fs.realpathSync(root), 'kb-copy-rescued', path.basename(receipts[0].priorGeneration.path));
+        expect(fs.readFileSync(path.join(rescued, 'update.log'), 'utf8')).toBe('the only trace of a failed night');
+        expect(fs.readFileSync(path.join(rescued, '.claude-flow', 'policy', 'state.json'), 'utf8')).toBe('{}');
+      } else if (contents === 'managed-only') {
         expect(retained).toHaveLength(0);
         for (const receipt of receipts) expect(receipt.priorGeneration).toMatchObject({ status: 'RELEASED' });
         expect(validateCoverageDirectory(live, { expectedVersion: version }).valid).toBe(true);

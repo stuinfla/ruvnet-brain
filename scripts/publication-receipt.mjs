@@ -29,6 +29,7 @@ import {
   validateNightlyProofReceipt,
 } from './nightly-two-run-proof.mjs';
 import { parseRetrievalResult } from '../kb/retrieval-result.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const REPO = 'stuinfla/ruvnet-brain';
 const PACKAGE = 'ruvnet-brain';
@@ -825,4 +826,4 @@ export async function main(args = process.argv.slice(2)) {
   }
 }
 
-if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) process.exitCode = await main();
+if (isDirectInvocation(import.meta.url)) process.exitCode = await main();

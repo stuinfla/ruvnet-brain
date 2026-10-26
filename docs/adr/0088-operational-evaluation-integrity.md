@@ -1,9 +1,9 @@
 ---
 id: ADR-088
 status: Accepted
-reviewed_digest: de06e4cc70c3
+reviewed_digest: 0ab1fe66b573
 date: 2026-09-19
-updated: 2026-10-03
+updated: 2026-10-25
 updated_source: derived-from-git
 version: 1.1.5
 authors: [Stuart Kerr, Codex]
@@ -80,6 +80,7 @@ The novice-50 evaluator also exposed `expectedRepoCited` but did not require it 
 Accepted decision; v1/v2 history remains preserved and v3 implementation is tracked by the governing code and tests above. The pinned 4.3.26 archive preflight currently validates 20 cases and records one explicit cross-project `CORPUS_GAP`. An initial full-corpus attempt is diagnostic-only because its isolated archive dependency setup failed; no valid baseline or candidate retrieval replay is claimed by this ADR update.
 
 ## Currency log
+| 2026-10-25 | Review `0ab1fe66b573` (4.7.21): decision unchanged; grading got stricter, not looser. `scripts/eval-brain.mjs`: the provenance stratum applies the gist-banner rule to the citation verify-citation actually resolved (`routedRepo`), not the raw top-ranked one (Dream #297), with a new case in `tests/unit/eval-brain-gate.test.mjs`. `kb/verify-citation.mjs`: a `CARD/<name>-card` citation missing from its own repo's store is looked up at exactly `<repo>/CARD/<name>-card` in the derived `concepts` store, and the receipt keeps the card's repo (Dream #372). `package.json` moved for the version only; `scripts/brain-novice-50.mjs`, `scripts/run-operational-benchmark.mjs` and `scripts/run-operational-benchmark.v3.mjs` changed only by the entry-point sweep. | Reviewed diffs 320b778b..63ca7c0d for all seven moved governed paths, including `scripts/eval-brain.mjs` and `kb/verify-citation.mjs`. |
 | 2026-09-27 | Currency review: decision unchanged. Motion: routine version-surface bumps (4.3.29 through 4.3.32) and a CONTRIBUTING.md doc consolidation. No change to the operational-evaluation integrity model. | Reviewed `scripts/eval-brain.mjs`, `scripts/brain-novice-50.mjs`, `kb/verify-citation.mjs`, `evals/operational-benchmark.v1.mjs`, `evals/operational-benchmark.v2.mjs`, `evals/operational-benchmark.v3.mjs` against the commits listed above; reviewed_digest de06e4cc70c3. |
 
 | Date | Change | Evidence |

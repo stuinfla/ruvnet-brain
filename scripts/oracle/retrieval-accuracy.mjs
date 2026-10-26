@@ -54,6 +54,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractZip } from '../../kb/zip-extract.mjs';
+import { isDirectInvocation } from '../../plugin/scripts/entrypoint.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', '..');
@@ -871,8 +872,7 @@ export async function main(argv = process.argv.slice(2)) {
 // with no archive and no receipt on disk. Same defect, same fix as plugin/scripts/hook-input.mjs:518.
 function isMain() {
   try {
-    if (!process.argv[1]) return false;
-    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+    return isDirectInvocation(import.meta.url);
   } catch {
     return false;
   }

@@ -24,6 +24,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..', '..');
 const SCRIPT = path.join(ROOT, 'tests', 'regression', 'reader-deadlock-pr0p.mjs');
 const KB = path.join(ROOT, 'kb');
+const KB_DEPS = path.join(KB, 'node_modules');
 
 const run = (fixture, mode, timeoutMs) =>
   spawnSync(process.execPath, [SCRIPT, mode, '--dir', fixture.kb, '--fixture-root', fixture.root], {
@@ -35,6 +36,9 @@ const run = (fixture, mode, timeoutMs) =>
 
 describe('issue #29 — a corrupted CE cache must never deadlock a repeat load (Jan Lafko / @lafinak)', () => {
   it('primes, then survives a truncated cache across two calls in a fresh process', () => {
+    // A checkout without kb deps cannot load the cross-encoder at all; prime then fails with "fallback is
+    // not a successful model load", which hides the cause. Say it plainly, as a failure, not a skip.
+    expect(fs.existsSync(KB_DEPS), `kb/node_modules missing: cd kb && npm ci (looked at ${KB_DEPS})`).toBe(true);
     const fixture = createReaderDeadlockFixture({ kbDir: KB, modelCache: chooseModelCache({ kbDir: KB }) });
     try {
       // Prime may fetch into the disposable cache. Missing dependencies or failed prime are failures,

@@ -48,6 +48,7 @@ import { CANARY_VERDICT_KIND, CORPUS_TAG_PATTERN, REQUIRED_CANARY_CHECKS } from 
 import { inventoryFootprint } from '../plugin/scripts/brain-footprint.mjs';
 import { eligibleRepositoryStanding } from '../plugin/scripts/coverage-integrity.mjs';
 import { TRANSIENT_HTTP, retryTransientAsync } from './transient-gh.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export const PUBLIC_API = 'https://api.github.com';
 export const FRESHNESS_LIMIT_MS = 48 * 3_600_000;
@@ -579,6 +580,6 @@ async function main(argv = process.argv.slice(2)) {
   return record.verdict === 'PASS' ? 0 : 1;
 }
 
-if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
+if (isDirectInvocation(import.meta.url)) {
   main().then((code) => { process.exitCode = code; });
 }

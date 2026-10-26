@@ -1,12 +1,11 @@
 name: ntfy-alerts
 # Pushes significant repo events to Stuart's phone via ntfy.sh (topic = Actions secret NTFY_TOPIC).
+# 4.7.21: no star trigger (a star needs nobody) and no `reopened` (the owner already saw the first page).
 on:
   issues:
-    types: [opened, reopened]
+    types: [opened]
   pull_request_target:
-    types: [opened, reopened]
-  watch:
-    types: [started]
+    types: [opened]
   workflow_run:
     # EVERY scheduled/CI workflow belongs here — gists-nightly failed 3 nights in a row (07-10..12)
     # in silence because it was missing from this list. Silent redness is the one banned failure mode.
@@ -20,9 +19,15 @@ on:
                 "corpus-nightly-dispatch", "published-surface-probe", "learning-replay", "model-catalog-refresh",
                 "corpus-watchdog"]
     types: [completed]
-# The notify job needs nothing from the repo — strip the token to read-nothing so an injected
-# payload (were one ever to slip through again) has no credential to steal.
-permissions: {}
+# The notify job reads nothing from the repo. Its token can only READ Actions run history, which the
+# transition rule below needs (4.7.21) and which is public on this repo anyway, so an injected payload (were
+# one ever to slip through again) still has no credential worth stealing.
+permissions:
+  actions: read
+# The run title names the run that triggered it, so a later red can find THIS run's outcome and prove that the
+# page for that red went out (4.7.21 review round 2: delivery evidence must be tied to the previous red itself).
+# Only numeric ids and the workflow name reach the title; issue/PR titles never do.
+run-name: ${{ github.event_name == 'workflow_run' && format('ntfy-alerts for run {0}', github.event.workflow_run.id) || github.workflow }}
 
 # A NOTIFIER MUST NEVER BE ABLE TO STARVE THE THING IT NOTIFIES ABOUT (added 2026-08-06).
 #
@@ -48,6 +53,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: send
+        id: send
         # SECURITY: issue/PR titles and user logins are ATTACKER-CONTROLLED on a public repo, and
         # this fires on pull_request_target. They must reach the shell only via env (quoted "$VAR"
         # expansion, never ${{ }} interpolation inside run:) or a crafted title executes here.
@@ -56,17 +62,41 @@ jobs:
           ISSUE_NUM: ${{ github.event.issue.number }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_USER: ${{ github.event.issue.user.login }}
+          ISSUE_USER_TYPE: ${{ github.event.issue.user.type }}
           PR_NUM: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_USER: ${{ github.event.pull_request.user.login }}
-          SENDER: ${{ github.event.sender.login }}
+          PR_USER_TYPE: ${{ github.event.pull_request.user.type }}
           WR_CONC: ${{ github.event.workflow_run.conclusion }}
           WR_NAME: ${{ github.event.workflow_run.name }}
           WR_BRANCH: ${{ github.event.workflow_run.head_branch }}
           WR_URL: ${{ github.event.workflow_run.html_url }}
+          WR_EVENT: ${{ github.event.workflow_run.event }}
+          WR_ID: ${{ github.event.workflow_run.id }}
+          WR_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+          WR_WORKFLOW_ID: ${{ github.event.workflow_run.workflow_id }}
+          EVENT: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        # The whole block is exercised by tests/unit/ntfy-alerts-filter.test.mjs with stubbed curl and gh.
         run: |
-          [ -z "$TOPIC" ] && exit 0
-          EVENT="${{ github.event_name }}"
+          # No topic: nothing is sent, and the "page delivered" step below is skipped, so this run can never be read as
+          # proof that a red was paged (4.7.21 review round 3).
+          if [ -z "$TOPIC" ]; then echo "::warning::NTFY_TOPIC is not set; nothing was paged"; exit 0; fi
+          # PAGE ONLY WHAT NEEDS THE OWNER (2026-10-25: 10,747 notifications on this topic). Not paged:
+          #  - issues/PRs opened by the owner's own account or a bot (Dream Cycle, release PRs, dependabot):
+          #    nobody is waiting on them;
+          #  - a run that was cancelled, skipped, or is waiting for approval: superseded or not a failure;
+          #  - a red run on a working branch (dream/*, fix/*, PR checks): the work in progress reports there.
+          # Paged: a person's new issue or PR, and a red run on main, a release/* branch (a release in flight,
+          # possibly cut by the unattended responder) or a scheduled job.
+          AUTHOR="${ISSUE_USER:-$PR_USER}"
+          # Every bot account (login ends in [bot] or is an app/ login), not just two named ones.
+          # GitHub's own account type is authoritative for bots; the login patterns are a fallback.
+          if [ "$EVENT" != "workflow_run" ]; then
+            [ "${ISSUE_USER_TYPE:-$PR_USER_TYPE}" = "Bot" ] && exit 0
+            case "$AUTHOR" in stuinfla|*\[bot\]|app/*) exit 0 ;; esac
+          fi
           case "$EVENT" in
             issues)
               TITLE="🐛 New issue #${ISSUE_NUM}"
@@ -76,14 +106,80 @@ jobs:
               TITLE="🔀 New PR #${PR_NUM}"
               BODY="${PR_TITLE} — by ${PR_USER}"
               PRIO="high"; TAGS="git" ;;
-            watch)
-              TITLE="⭐ New star"
-              BODY="${SENDER} starred ruvnet-brain"
-              PRIO="default"; TAGS="star" ;;
             workflow_run)
-              [ "$WR_CONC" = "success" ] && exit 0
+              case "$WR_CONC" in success|cancelled|skipped|neutral|action_required|stale) exit 0 ;; esac
+              # A pull_request run on release/* re-reports the SHA its preflight push run already paged for.
+              [ "$WR_EVENT" = "pull_request" ] && exit 0
+              case "$WR_BRANCH" in main|release/*) ;; *) [ "$WR_EVENT" != "schedule" ] && exit 0 ;; esac
+              # PAGE ON CHANGE (4.7.21): learning-replay paged the same red 23 nights running. Look up the previous
+              # completed run of this workflow on the same branch (any event but pull_request, so a green manual re-run
+              # in between counts as the recovery it is); if it was red too AND that red's page provably went out, the
+              # owner already has this page. Cancelled/skipped runs say nothing about health and are passed over.
+              # Never deduplicated (review round 4.7.21-fix):
+              #  - a workflow_dispatch run: protected-release is always dispatched, for a corpus night AND for a code
+              #    release, so "the previous run" may be the other kind; a dispatch is a deliberate act worth one page;
+              #  - a red whose previous red's page is not PROVEN delivered. Proof is affirmative and tied to that red:
+              #    the ntfy-alerts run titled "ntfy-alerts for run <previous red's id>" (run-name above) completed green
+              #    AND its "page delivered" step succeeded. That step runs only after this step recorded a POST ntfy
+              #    accepted (or a proven repeat of a delivered page). A green run alone proves nothing: with no topic, or
+              #    on any filtered path, this step exits 0 without sending (review round 3). No such run, one still
+              #    running, one that ended any other way, or one without that step: page again.
+              #    The notifier history read is one page of 100 runs created since the previous red started (about four
+              #    days at ~25 runs a day). An older previous red reads "unknown" and pages again: over-page, never a drop.
+              # If any lookup fails, page anyway: a lost first red is worse than a repeat.
+              NOTE=""
+              set -o pipefail
+              if [ "$WR_EVENT" != "workflow_dispatch" ]; then
+                if PREV=$(gh api -X GET "repos/$REPO/actions/workflows/$WR_WORKFLOW_ID/runs" \
+                      -f branch="$WR_BRANCH" -f status=completed -f per_page=20 2>/dev/null \
+                    | jq -er --argjson id "$WR_ID" --argjson n "$WR_RUN_NUMBER" \
+                      '[.workflow_runs[] | select(.id != $id and .run_number < $n and .event != "pull_request")
+                        | select(.conclusion != "cancelled" and .conclusion != "skipped")][0]
+                        | if . == null then "none" else "\(.conclusion) \(.id) \(.run_started_at // .created_at)" end'); then
+                  PREV_CONC="${PREV%% *}"; PREV_REST="${PREV#* }"; PREV_ID="${PREV_REST%% *}"; PREV_AT="${PREV_REST#* }"
+                  case "$PREV_CONC" in
+                    failure|timed_out|startup_failure)
+                      if DELIVERY=$(gh api -X GET "repos/$REPO/actions/workflows/ntfy-alerts.yml/runs" \
+                            -f created=">=$PREV_AT" -f per_page=100 2>/dev/null \
+                          | jq -er --arg title "ntfy-alerts for run $PREV_ID" \
+                            'if .total_count > (.workflow_runs | length) then "unknown"
+                             else [.workflow_runs[] | select(.display_title == $title and .status == "completed"
+                                      and .conclusion == "success") | .id | tostring] | join(" ") end'); then
+                        # Each candidate run must show its own "page delivered" step succeeded.
+                        if [ "$DELIVERY" != "unknown" ]; then
+                          for NID in $DELIVERY; do
+                            if gh api -X GET "repos/$REPO/actions/runs/$NID/jobs" 2>/dev/null \
+                                | jq -e 'any(.jobs[].steps[]?; .name == "page delivered" and .conclusion == "success")' >/dev/null; then
+                              echo "previous run was also $PREV_CONC and its page went out; already paged"
+                              echo "delivered=repeat" >> "$GITHUB_OUTPUT"; exit 0
+                            fi
+                          done
+                        fi
+                        NOTE=" (repeat: the previous red's page may not have arrived)"
+                      else
+                        NOTE=" (repeat: delivery lookup failed)"
+                      fi ;;
+                  esac
+                else
+                  NOTE=" (previous-run lookup failed)"
+                fi
+              fi
               TITLE="🔴 CI ${WR_CONC}: ${WR_NAME}"
-              BODY="branch ${WR_BRANCH} — ${WR_URL}"
+              BODY="branch ${WR_BRANCH} — ${WR_URL}${NOTE}"
               PRIO="urgent"; TAGS="rotating_light" ;;
+            *) exit 0 ;;
           esac
-          curl -sS -H "Title: $TITLE" -H "Priority: $PRIO" -H "Tags: $TAGS" -d "$BODY" "https://ntfy.sh/$TOPIC" || true
+          # This workflow is the only sender of arrival pages, so a failed delivery is retried and then fails the run
+          # visibly (red in Actions) instead of vanishing (review round 2).
+          # --retry (not --retry-all-errors): only transient failures are retried, which keeps the rare duplicate page
+          # (a POST accepted but its reply lost) to a timeout case; a lost page is worse than a duplicate.
+          curl -sS --fail --retry 3 --retry-connrefused --retry-delay 5 -m 20 \
+            -H "Title: $TITLE" -H "Priority: $PRIO" -H "Tags: $TAGS" --data-raw "$BODY" "https://ntfy.sh/$TOPIC" >/dev/null
+          echo "delivered=sent" >> "$GITHUB_OUTPUT"
+      # The delivery receipt a later red reads (by this step's name, through the jobs API). It runs only when the send
+      # step recorded an accepted POST or a proven repeat, so a skipped "page delivered" means nothing reached the phone.
+      - name: page delivered
+        if: steps.send.outputs.delivered != ''
+        env:
+          DELIVERED: ${{ steps.send.outputs.delivered }}
+        run: echo "page receipt - $DELIVERED"

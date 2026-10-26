@@ -6,6 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const PLUGIN_JSON = path.join(ROOT, 'plugin', '.claude-plugin', 'plugin.json');
@@ -35,6 +36,6 @@ export function getVersionTag() {
 export const stripTag = (v) => String(v).replace(/^v/, '');
 
 // CLI: `node scripts/version.mjs` prints the version (handy for shell scripts).
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isDirectInvocation(import.meta.url)) {
   process.stdout.write(getVersion() + '\n');
 }

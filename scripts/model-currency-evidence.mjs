@@ -96,7 +96,9 @@ export function parseCodingAgentEvidence(html, methodology, { url, checkedAt, id
   const walk = (value) => {
     if (Array.isArray(value)) { for (const child of value) walk(child); return; }
     if (!value || typeof value !== 'object') return;
-    if (typeof value.hostModelSlug === 'string' && typeof value.id === 'string' && value.indexScore !== undefined) { rows.set(value.id, value); return; }
+    // A row is an agent/configuration record: harness name + index score. AA dropped `hostModelSlug` and
+    // `modelRelease` from the page in October 2026, so neither may be a key; both stay optional evidence.
+    if (typeof value.agentName === 'string' && typeof value.id === 'string' && value.indexScore !== undefined) { rows.set(value.id, value); return; }
     for (const child of Object.values(value)) walk(child);
   };
   for (const match of html.matchAll(/self\.__next_f\.push\((.*?)\)<\/script>/gs)) {
@@ -104,12 +106,12 @@ export function parseCodingAgentEvidence(html, methodology, { url, checkedAt, id
       const envelope = JSON.parse(match[1]);
       if (typeof envelope[1] !== 'string') continue;
       for (const line of envelope[1].split('\n')) {
-        if (!line.includes('hostModelSlug')) continue;
+        if (!line.includes('agentName')) continue;
         try { walk(JSON.parse(line.slice(line.indexOf(':') + 1))); } catch { /* unrelated frame */ }
       }
     } catch { /* required contract checked below */ }
   }
-  const source = { url, checkedAt, sha256: digest(html), parser: 'aa-coding-agents-flight-v1' };
+  const source = { url, checkedAt, sha256: digest(html), parser: 'aa-coding-agents-flight-v2' };
   const records = [];
   const skippedIncomplete = [];
   for (const row of rows.values()) {
@@ -129,7 +131,7 @@ export function parseCodingAgentEvidence(html, methodology, { url, checkedAt, id
     if (binding && (!binding.model || !binding.evidence || !binding.checkedAt)) throw new Error('Invalid coding-agent native identity binding');
     const effort = nativeHost ? row.display.model.match(/\((low|medium|high|xhigh|max|minimal|none)\)/i)?.[1]?.toLowerCase() ?? null : null;
     records.push({ sourceId: row.id, harness: row.agentName, provider: row.provider, nativeHost,
-      sourceModelSlug: row.hostModelSlug, sourceReleaseSlug: row.modelRelease?.slug ?? null,
+      sourceModelSlug: typeof row.hostModelSlug === 'string' ? row.hostModelSlug : null, sourceReleaseSlug: row.modelRelease?.slug ?? null,
       displayModel: row.display.model, configurationLabel: row.displayLabel, effort,
       model: binding?.model ?? null, identityEvidence: binding ?? null,
       fallback: /fallback/i.test(row.displayLabel ?? row.display.model),

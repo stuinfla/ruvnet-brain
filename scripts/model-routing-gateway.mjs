@@ -11,6 +11,7 @@ import { StringDecoder } from 'node:string_decoder';
 import { spawn, execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { subscriptionEnvironment, assertSubscriptionAuth, validateDispatchDecision, loadNativeCodexModels } from './model-router-dispatch.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REFUSED = 'Current reviewed native model/effort allocation unavailable; new turn was not forwarded.';
@@ -448,6 +449,6 @@ async function main(argv) {
   child.once('exit', (code, signal) => { process.stdin.pause(); process.stdin.unref?.(); process.exitCode = code ?? (signal ? 1 : 0); });
   child.once('error', () => { process.stderr.write('[native-model-routing] Native host transport unavailable.\n'); process.exitCode = 1; });
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isDirectInvocation(import.meta.url)) {
   main(process.argv.slice(2)).catch(() => { process.stderr.write('[native-model-routing] Explicit native executable or subscription authentication unavailable.\n'); process.exitCode = 1; });
 }

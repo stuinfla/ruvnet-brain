@@ -67,6 +67,7 @@ import { fileURLToPath } from 'node:url';
 // THE canonical continuity policy — the same module bin/install.mjs and scripts/hook-retirement-check.mjs
 // import. Never re-implement this predicate locally; see the note below the imports.
 import { isAllowedContinuityRegistration } from '../plugin/scripts/continuity-hook-policy.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 // ── contract constants (ADR-053 §2.5 / §2.3) ────────────────────────────────────────────────────
 export const STDOUT_CAP_BYTES = 4096; // it lands in the user's context window
@@ -739,7 +740,7 @@ export function formatVerdict(result, { color = null } = {}) {
 }
 
 // ── CLI ─────────────────────────────────────────────────────────────────────────────────────────
-if (process.argv[1] && (() => { try { return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })()) {
+if (isDirectInvocation(import.meta.url)) {
   const noSecurity = process.argv.includes('--no-security');
   const json = process.argv.includes('--json');
   const result = await selfCheck({ security: !noSecurity });

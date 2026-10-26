@@ -345,3 +345,30 @@ it.each(['off', 'invalid', 'exclude'])('honors %s recall privacy before deliveri
     if (mode !== 'exclude') expect(fs.existsSync(w.env.RECALL_LOG)).toBe(false);
   } finally { w.cleanup(); }
 });
+
+// #429 (reported by Tigon32 on 4.6.0): repeated admissions of missing knowledge outranked the concrete outcome.
+describe('missing-knowledge turn outcomes (#429)', () => {
+  const unknowns = Array.from({ length: 7 }, (_, i) => ({ key: `turn-missing-${i}`, namespace: 'turns', score: 0.95 - i * 0.01, preview: 'Missing fixture',
+    content: i % 2 ? 'OUTCOME: The zephyr fixture order cannot be determined without guessing.' : 'OUTCOME: I cannot determine the zephyr fixture order without guessing.' }));
+  const concrete = { key: 'turn-concrete', namespace: 'turns', score: 0.7, preview: 'Concrete fixture', content: 'OUTCOME: The zephyr fixture opens the violet latch before hatch 23.' };
+  it('a lower-ranked concrete outcome is not hidden by higher-ranked "cannot determine" answers', async () => {
+    const w = world();
+    try {
+      fs.writeFileSync(w.env.RECALL_ROWS, JSON.stringify([...unknowns, concrete]));
+      const r = await recall({ prompt: 'What is the zephyr fixture order?', projectDir: w.proj, env: w.env, deadlineMs: 1900 });
+      expect(r.block).toContain('violet latch before hatch 23');
+      expect(r.picks[0].key).toBe('turn-concrete');
+      expect(Buffer.byteLength(r.block + '\n')).toBeLessThanOrEqual(BLOCK_MAX_BYTES);
+      // One ranked search; overfetching adds no Ruflo search startups.
+      expect(w.calls().filter(c => c.args[1] === 'search')).toHaveLength(1);
+    } finally { w.cleanup(); }
+  });
+  it('a diagnosis query keeps the original order, so the failure records stay first', async () => {
+    const w = world();
+    try {
+      fs.writeFileSync(w.env.RECALL_ROWS, JSON.stringify([...unknowns, concrete]));
+      const r = await recall({ prompt: 'Why did the zephyr fixture recall fail?', projectDir: w.proj, env: w.env, deadlineMs: 1900 });
+      expect(r.picks[0].key).toBe('turn-missing-0');
+    } finally { w.cleanup(); }
+  });
+});

@@ -4,6 +4,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { npmInvocation } from '../../helpers/npm-invocation.mjs';
+import { parseNpmPack } from '../../helpers/npm-pack-json.mjs';
 
 export const REPO = path.resolve(import.meta.dirname, '../../..');
 
@@ -78,7 +79,7 @@ export async function installPackedConsole({ prefix, catalog = null, profile = n
   const packageRoot = process.env.RUVNET_ACCEPTANCE_PACKAGE_ROOT || REPO;
   const pack = npmInvocation(['pack', '--json', '--pack-destination', packDir], { env: npmEnv });
   const packed = checked(pack.executable, pack.args, { cwd: packageRoot, env: npmEnv });
-  const tarball = path.join(packDir, JSON.parse(packed.stdout)[0].filename);
+  const tarball = path.join(packDir, parseNpmPack(packed.stdout).filename);
   checked('tar', ['-xzf', tarball, '-C', packDir]);
   const payload = path.join(packDir, 'package');
   // npm pack omits node_modules. Install the manifest's real production graph before the

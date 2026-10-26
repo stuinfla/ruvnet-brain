@@ -68,6 +68,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REAL_ROOT = path.resolve(HERE, '..');
@@ -1591,7 +1592,7 @@ export async function main(argv = process.argv.slice(2)) {
   return receipt.verdict === 'PASS' ? 0 : 1;
 }
 
-if (((() => { try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })())) {
+if (isDirectInvocation(import.meta.url)) {
   main().then((code) => { process.exitCode = code; }).catch((error) => {
     console.error(error?.message || error);
     process.exitCode = 1;

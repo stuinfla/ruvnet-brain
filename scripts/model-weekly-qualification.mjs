@@ -6,6 +6,7 @@ import os from 'node:os';
 import { randomUUID, randomInt } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { candidateSha256, sha256, promoteRoutingPolicy } from './model-routing-policy-promotion.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const object = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const same = (a, b) => candidateSha256(a) === candidateSha256(b);
@@ -359,7 +360,7 @@ async function qualify(ctx) {
   return promoted;
 }
 
-if (process.argv[1] && fs.realpathSync(path.resolve(process.argv[1])) === fs.realpathSync(SELF)) {
+if (isDirectInvocation(import.meta.url)) {
   const args = process.argv.slice(2); const value = (flag) => args.includes(flag) ? args[args.indexOf(flag) + 1] : undefined;
   const result = await runWeeklyQualification({ routerDir: value('--router-dir'), semanticReceipt: value('--semantic-receipt'),
     deadline: args.includes('--deadline') ? Number(value('--deadline')) : undefined });

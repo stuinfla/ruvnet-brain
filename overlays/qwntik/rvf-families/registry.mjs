@@ -636,7 +636,9 @@ async function main() {
   throw new Error(`unknown command: ${command}`);
 }
 
-const invokedDirectly = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+// This overlay directory is self-contained, so it cannot import plugin/scripts/entrypoint.mjs; this is
+// that helper's comparison, inline: real paths on both sides.
+const invokedDirectly = (() => { try { return Boolean(process.argv[1]) && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })();
 if (invokedDirectly) main().catch((error) => {
   console.error(error.stack || error.message);
   process.exitCode = 1;

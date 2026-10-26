@@ -70,6 +70,8 @@ function fixtureRepo() {
   for (const f of ['self-update.mjs', 'full-hints.mjs', 'git-clone-refresh.mjs', 'worktree-integrity.mjs']) {
     fs.copyFileSync(path.join(REPO_ROOT, 'scripts', f), path.join(dir, 'scripts', f));
   }
+  fs.mkdirSync(path.join(dir, 'plugin', 'scripts'), { recursive: true });
+  fs.copyFileSync(path.join(REPO_ROOT, 'plugin', 'scripts', 'entrypoint.mjs'), path.join(dir, 'plugin', 'scripts', 'entrypoint.mjs'));
   fs.writeFileSync(path.join(dir, 'data/registry.tiers.json'),
     JSON.stringify({ tiers: { T0: { repos: [] }, T1: { repos: [] }, T2: { repos: [] }, T3: { repos: [] } } }));
   execFileSync('git', ['add', '-A'], { cwd: dir });

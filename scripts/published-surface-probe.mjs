@@ -54,6 +54,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { describeLatestPointer, isCodeReleaseTag, latestCodeReleaseTag } from './release-channel-kind.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export const EXIT = Object.freeze({ PASS: 0, FAIL: 1, UNKNOWN: 4 });
 
@@ -275,5 +276,5 @@ export async function main() {
   return EXIT[verdict];
 }
 
-const invokedDirectly = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const invokedDirectly = isDirectInvocation(import.meta.url);
 if (invokedDirectly) process.exit(await main());

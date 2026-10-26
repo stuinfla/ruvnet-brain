@@ -60,6 +60,7 @@ import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parseHookEvent, toolName, commandOf, findInvocations, rawToolResponse, readStdinBounded } from './hook-input.mjs';
+import { isDirectInvocation } from './entrypoint.mjs';
 
 const MANAGED_TOOLS = ['gh', 'vercel', 'netlify', 'npm', 'git'];
 
@@ -183,7 +184,7 @@ async function main() {
 }
 
 function isMain() {
-  try { return process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url); }
+  try { return isDirectInvocation(import.meta.url); }
   catch { return false; }
 }
 

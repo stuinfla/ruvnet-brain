@@ -8,6 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildCorpus } from '../kb/forge-corpus.mjs';
 import { loadRvf } from '../kb/resolve-deps.mjs';
 import { CAPABILITY_RETIRED_SUFFIXES, isCapabilityOnly } from '../kb/capability-only.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const NAME = 'cognitum-ruos';
@@ -138,6 +139,6 @@ async function main(argv) {
   console.log(JSON.stringify({ store: NAME, ...result }));
 }
 
-if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
+if (isDirectInvocation(import.meta.url)) {
   try { await main(process.argv.slice(2)); } catch (error) { console.error(`[capability-store] ${error.message}`); process.exitCode = 1; }
 }

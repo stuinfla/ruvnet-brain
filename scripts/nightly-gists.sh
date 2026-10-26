@@ -17,33 +17,32 @@
 set -eu
 
 cd "$(dirname "$0")/.."
-export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+# The owner's macOS-approved node (~/.local/share/ruvnet-brain/job-bin) and Apple's tools come first: this repo and
+# the model cache live on an external volume, and launchd-started Homebrew node is held at its first read there
+# (2026-10-25: every embedding shard "stalled" for 15 min, then the run failed after 1 h 49 min).
+export PATH="$HOME/.local/share/ruvnet-brain/job-bin:/usr/bin:/bin:/opt/homebrew/bin:/usr/local/bin"
 export KB_MODEL_CACHE="${KB_MODEL_CACHE:-/Users/stuartkerr/Code/PowerPlatePulse/scripts/models-cache}"
 
 mkdir -p logs
 LOG="logs/gists-nightly.log"
-# Heartbeat file: written every 30s to prove the job is still running.
-# Must match JOB_HEARTBEAT_DIR convention from job-heartbeat.sh and nightly-watchdog.mjs.
-HEARTBEAT_FILE="${JOB_HEARTBEAT_DIR:-$HOME/.cache/ruvnet-brain/heartbeats}/com.ruvnet.brain-gists.heartbeat"
+# Liveness proof is the job-heartbeat.sh wrapper's <label>.json receipt (read by nightly-watchdog.mjs).
+# A 30-second <label>.heartbeat writer used to live here; nothing ever read that file, so it was removed.
 ts() { date '+%Y-%m-%dT%H:%M:%S%z'; }
 log() { printf '[%s] %s\n' "$(ts)" "$1" >>"$LOG"; }
 
-# Heartbeat: write a timestamp every 30 seconds to prove the job is still running.
-# Runs in background; killed when the main script exits.
-start_heartbeat() {
-  mkdir -p "$(dirname "$HEARTBEAT_FILE")"
-  (
-    while true; do
-      printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$HEARTBEAT_FILE"
-      sleep 30
-    done
-  ) &
-  HEARTBEAT_PID=$!
-  trap "kill $HEARTBEAT_PID 2>/dev/null || true" EXIT
-}
-start_heartbeat
-
 log "start"
+
+# The plist must NOT say ProcessType=Background. launchd then runs every process in the job under
+# macOS's background policy (efficiency cores only, throttled I/O): measured 2026-10-25 under launchd,
+# one 32-passage bge batch took 111-176 s as Background, 18 s as Standard, 10 s Interactive, 7-13 s
+# from a shell. Eight shards at once pushed a batch past the 15-minute stall budget, so every changed
+# night from 2026-10-08 on aborted as "stalled". Nice 5 plus forge-big's below-normal priority already
+# keep the job polite. Warn loudly if the installed plist regresses.
+PLIST="$HOME/Library/LaunchAgents/com.ruvnet.brain-gists.plist"
+if [ -x /usr/libexec/PlistBuddy ] && [ -f "$PLIST" ] \
+  && [ "$(/usr/libexec/PlistBuddy -c 'Print :ProcessType' "$PLIST" 2>/dev/null)" = "Background" ]; then
+  log "WARN: $PLIST has ProcessType=Background — the re-embed will crawl on efficiency cores and trip the stall budget; set it to Standard"
+fi
 
 command -v gh >/dev/null 2>&1 || { log "FATAL: gh not on PATH"; exit 1; }
 gh auth status >/dev/null 2>&1 || { log "FATAL: gh not authenticated"; exit 1; }
@@ -60,9 +59,19 @@ if ! OUT=$(node scripts/ingest-gists.mjs 2>&1); then
 fi
 printf '%s\n' "$OUT" >>"$LOG"
 
+# A night whose embed FAILED has already rewritten the passages and the sources receipt, so the next
+# night's ingest says "nothing to do" while the store is still the old one. Without this check that
+# night skipped the embed and exited 0 over a stale store (2026-10-25 20:18: "0 new", store dated
+# 2026-10-07). The store must be at least as new as the passages it is built from.
+PASSAGES="kb/ruv-gists.passages.jsonl"
+STORE="kb/ruv-gists.big.rvf"
 if printf '%s' "$OUT" | grep -q 'nothing to do'; then
-  log "no new gists — skipping embed (cost: 0)"
-  exit 0
+  if [ -f "$PASSAGES" ] && ! [ "$STORE" -nt "$PASSAGES" ]; then
+    log "no new gists, but $STORE is older than $PASSAGES (an earlier embed did not finish) — re-embedding"
+  else
+    log "no new gists — skipping embed (cost: 0)"
+    exit 0
+  fi
 fi
 
 # 3 — re-embed, only because the corpus actually changed. 8 shards, then one assemble.

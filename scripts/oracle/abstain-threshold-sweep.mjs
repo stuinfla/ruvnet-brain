@@ -20,6 +20,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { wilson } from '../eval-brain.mjs';
+import { isDirectInvocation } from '../../plugin/scripts/entrypoint.mjs';
 
 const rate = (k, n) => { const w = wilson(k, n); return { k, n, p: +w.p.toFixed(4), lo: +w.lo.toFixed(4), hi: +w.hi.toFixed(4) }; };
 const within5 = (r) => (r.fileRank != null && r.fileRank <= 5) || (r.altFileRank != null && r.altFileRank <= 5);
@@ -59,4 +60,4 @@ async function main() {
   }
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
+if (isDirectInvocation(import.meta.url)) await main();

@@ -21,6 +21,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { wilson } from '../eval-brain.mjs';
+import { isDirectInvocation } from '../../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const { JUDGE_FEATURES, judgeFeatures, judgeLogit } = await import(pathToFileURL(path.join(ROOT, 'kb/judge-rank.mjs')).href);
@@ -155,4 +156,4 @@ async function main() {
   console.log(JSON.stringify({ threshold: tau, trainedOn: model.trainedOn, heldout: report.heldout }, null, 1));
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
+if (isDirectInvocation(import.meta.url)) await main();

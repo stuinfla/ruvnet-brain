@@ -50,6 +50,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { FULL_HINTS } from './full-hints.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const KB = path.join(ROOT, 'kb');
@@ -245,7 +246,7 @@ export function discoverStores(dir) {
 }
 
 // ---------------- CLI ----------------
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isDirectInvocation(import.meta.url)) {
   const arg = (f, d) => { const i = process.argv.indexOf(f); return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : d; };
   const has = (f) => process.argv.includes(f);
   const DIR = path.resolve(arg('--dir', KB));

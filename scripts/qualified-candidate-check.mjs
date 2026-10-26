@@ -10,6 +10,7 @@ import { evaluateCandidateReceipt } from './release-proof.mjs';
 import { aggregateEvidence } from './release-evidence-aggregate.mjs';
 import { payloadIdFor } from './release-payload.mjs';
 import { canonicalJson } from './release-transaction.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const REPO = 'stuinfla/ruvnet-brain';
 const WORKFLOW = '.github/workflows/release-candidate-preflight.yml';
@@ -109,7 +110,7 @@ export async function checkQualifiedCandidate({ sha, requiredCheck, timeoutMs = 
     await pause(Math.min(pollMs, remaining));
   }
 }
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isDirectInvocation(import.meta.url)) {
   try {
     if (process.env.GITHUB_REPOSITORY !== REPO) throw new Error('unexpected qualification repository');
     const args = process.argv.slice(2), options = {};

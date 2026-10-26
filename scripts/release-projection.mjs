@@ -24,6 +24,7 @@ import { PUBLIC_GENERATIONS_FILE, generationLedgerBytes, projectPublicGeneration
   releaseCoverageGenerationFor, validateCoverageDirectory } from '../plugin/scripts/coverage-integrity.mjs';
 import { validatePublicInventory } from './public-inventory.mjs';
 import { readRvfGenerations } from './rvf-generation.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sha256 = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
@@ -238,7 +239,7 @@ export function projectReleaseFromAssets({ corpusCoverage, assetsDir, version, s
   return releaseBase;
 }
 
-if (((() => { try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })())) {
+if (isDirectInvocation(import.meta.url)) {
   const arg = (name, fallback = null) => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : fallback; };
   try {
     const corpusFile = path.resolve(arg('--corpus', path.join(ROOT, 'data', 'source-coverage.json')));

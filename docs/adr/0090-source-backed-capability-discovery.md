@@ -3,9 +3,9 @@ id: ADR-090
 title: Additive source-verified capability discovery
 status: Accepted
 date: 2026-09-19
-updated: 2026-10-01
+updated: 2026-10-25
 updated_source: derived-from-git
-reviewed_digest: a6462a1a7d3d
+reviewed_digest: 595fb972b92d
 authors: [Stuart Kerr, Codex]
 tags: [retrieval, routing, source-grounding, capability-discovery]
 relates: [ADR-060, ADR-074]
@@ -155,6 +155,8 @@ Fresh held-out semantic and actual MCP latency evaluation remain required before
 quality improvement. No universal 98% quality or deployed-runtime claim is made here.
 
 ## Currency log
+| 2026-10-25 | Review `595fb972b92d` (4.7.21): decision unchanged; covers the Dream #372 row below and one more change. `kb/forge-ask-all.mjs` `corpusAgeFor` now prefers each store's recorded `builtUtc` in RVF-GENERATIONS.json over file mtime, which a clone or copy resets (Dream #359); routing, family matching and discovery supplements are untouched. `kb/card-lane.mjs` and `tests/unit/card-lane.test.mjs` moved as that row records. | Reviewed diffs 320b778b..63ca7c0d for `kb/forge-ask-all.mjs`, `kb/card-lane.mjs` and `tests/unit/card-lane.test.mjs`. |
+| 2026-10-25 | Currency review (Dream Cycle PR #372 port, grounding-quality): decision unchanged. In `kb/card-lane.mjs`, `renderCardHit()` still names the card's own repo in its header (`#1 repo=<repo>`), and its `path :` is now the card's real stored passage path `<repo>/CARD/<repo>-card` instead of `<repo>/kb/capability-cards.md#<repo>`, which is never a stored passage. `kb/verify-citation.mjs`'s `citationResolves()` looks up a `CARD/<name>-card` path that the cited repo's own store lacks in the derived `concepts` store at exactly `<repo>/CARD/<name>-card`, where `scripts/corpus-aggregates.mjs` puts every card; the receipt keeps the card's own repo. Before this a fast-lane answer could never resolve. Card routing, family matching and discovery supplements are unchanged. | Reviewed `kb/card-lane.mjs`, `kb/verify-citation.mjs`, `scripts/corpus-aggregates.mjs` and the end-to-end and negative tests in `tests/unit/card-lane.test.mjs`. |
 | 2026-10-01 | Currency review (4.5, after merging release-integ-4.5 2b2ec6a9): decision unchanged. In `kb/forge-ask-all.mjs`, a deployed store's key or alias still never widens the route or adds identifier candidates in another store, and it is again an identifier while its own store is searched. That restores the recall-gate question "In LatentMesh ADR-001". `kb/forge-mcp-all.mjs` only adds the flag-gated recommender endpoint at warmup. Discovery supplements and §9 are unchanged. reviewed_digest a6462a1a7d3d. | Reviewed `kb/forge-ask-all.mjs` and `kb/forge-mcp-all.mjs` against `evals/runs/2026-10-01-retrieval-4.5/final-a2adf94a/omitted.json`. |
 | 2026-10-01 | Reviewed and amended §9 (4.5): the first 4.6 item is now explicit. CI builds the BM25 index with each store and the reader loads it, never builds it. E2 turns on only if added p50 is at most +1.0 s and the gains survive (recall +2 or more, needs gold within 5 at 8/206 or more) on the same paired 69-question set. Code is unchanged since the previous row. reviewed_digest af4418a4d6d5. | Reviewed `kb/forge-ask-all.mjs` and `kb/keyword-lane.mjs` against `evals/runs/2026-10-01-retrieval-4.5/e2-mitigation/cost-sim.jsonl`. |
 | 2026-10-01 | Amended and reviewed §9 (4.5): the keyword lane ships off and RUVNET_BRAIN_KEYWORD_LANE=1 turns it on. Paired warm latency cost +2.1 s median per question [1.4-2.9] and +5.9 s at p90. Almost all of it is the query-time index build: the lane alone took p50 1.5 s and p90 5.1 s. Neither a dense-weak gate nor a read cap recovers that time without losing the gate gains. The deferred fix is an index built with the corpus. reviewed_digest 7af07f8b7386. | Reviewed `kb/keyword-lane.mjs` and `kb/forge-ask-all.mjs` against `evals/runs/2026-10-01-retrieval-4.5/e2-mitigation/gate-analysis.txt` and `evals/runs/2026-10-01-retrieval-4.5/e2-mitigation/cost-sim.jsonl`. |

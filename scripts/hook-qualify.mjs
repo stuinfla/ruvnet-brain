@@ -17,6 +17,7 @@ import {
   CASES, HOSTS, auditWrites, fixturesFor, measureInjection, registrations, runCase, runConcurrent, runRepeat,
   sandboxAvailable, staticFindings,
 } from './hook-qualify-core.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 function arg(name, dflt = null) {
   const i = process.argv.indexOf(`--${name}`);
@@ -98,4 +99,4 @@ async function main() {
   return rows.every((r) => r.pass) ? 0 : 1;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main().then((c) => process.exit(c), (e) => { console.error(e); process.exit(2); });
+if (isDirectInvocation(import.meta.url)) main().then((c) => process.exit(c), (e) => { console.error(e); process.exit(2); });

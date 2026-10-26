@@ -53,6 +53,7 @@ import path from 'node:path';
 // reading the code and believing it.
 import { fileURLToPath } from 'node:url';
 import { rufloRunDir } from './ruflo-bin.mjs';
+import { isDirectInvocation } from './entrypoint.mjs';
 
 /**
  * THE PROBE TARGET IS A SCRATCH DB, NOT THE PROJECT'S.
@@ -264,7 +265,7 @@ export function cachedDegradations(opts = {}) {
  * mechanism; the invariant this repo already paid for is that ONE process refuses a given tool call.
  */
 const isMain = (() => {
-  try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); }
+  try { return isDirectInvocation(import.meta.url); }
   catch { return false; }
 })();
 

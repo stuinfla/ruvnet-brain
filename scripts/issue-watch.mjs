@@ -33,6 +33,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = 'stuinfla/ruvnet-brain';
@@ -46,6 +47,23 @@ export const OWNER_LOGIN = 'stuinfla';
 // moved here.)
 export const BOT_MARKER = '🤖 Automated';
 const SLA_HOURS = 4;
+// A person's issue whose detail AND list comments cannot be read this many runs in a row fails the run once (review fix).
+const UNREADABLE_RUNS = 3;
+// WHO IS WAITING (owner, 2026-10-25: "10,747 notifications"). An issue opened by the owner's own account or a bot is
+// work the owner's automation filed (Dream Cycle, dependabot), not a person waiting for an answer: it never pages
+// and gets no acknowledgment. Only a person's issue pages.
+const AUTOMATION_AUTHORS = new Set([OWNER_LOGIN, 'dependabot', 'dependabot[bot]', 'github-actions', 'github-actions[bot]', 'app/dependabot']);
+export const isPersonIssue = (issue) => !AUTOMATION_AUTHORS.has(String(issue?.author?.login || '').toLowerCase())
+  && !issue?.author?.is_bot && !String(issue?.author?.login || '').endsWith('[bot]');
+// ONE morning summary instead of a page per issue per 4 hours: the first run at or after 9 a.m. Eastern sends it,
+// only if a person's issue is still waiting, and at most once per Eastern calendar day.
+const DIGEST_HOUR_ET = 9;
+const etParts = (ms) => Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric',
+  month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false }).formatToParts(new Date(ms)).map((p) => [p.type, p.value]));
+export function digestDue(lastDay, now) {
+  const p = etParts(now); const day = `${p.year}-${p.month}-${p.day}`;
+  return { due: Number(p.hour) % 24 >= DIGEST_HOUR_ET && lastDay !== day, day };
+}
 const STATE_PATH = process.env.ISSUE_WATCH_STATE
   || path.join(os.homedir(), '.claude', 'ruvnet-brain', 'issue-watch-state.json');
 // A compact, always-current snapshot the SessionStart hook surfaces (2026-07-17). ntfy alerts are
@@ -54,31 +72,40 @@ const STATE_PATH = process.env.ISSUE_WATCH_STATE
 const STATUS_PATH = path.join(os.homedir(), '.cache', 'ruvnet-brain', 'open-issues.json');
 const GH_BIN = process.env.GH_BIN || 'gh';
 
-function ghJson(args) {
-  // Retry ONCE on a transient network-shaped failure (2026-07-19, same class as issue-fix's 1am
-  // "TLS handshake timeout" page): 20s of patience absorbs a blip; a second failure still fails
-  // LOUD. Bounded, logged, never silent.
+/** A network-shaped gh failure worth waiting out (2026-07-19 "TLS handshake timeout"; 4.7.21 adds the 1 a.m.
+ *  "error connecting to api.github.com" and GitHub's 502/503/504). Anything else — auth, 404, bad JSON — is real. */
+export function isTransientGhError(text) {
+  return /TLS handshake|unexpected EOF|timeout|ECONNRESET|ETIMEDOUT|EAI_AGAIN|connection refused|temporarily unavailable|error connecting to api\.github\.com|HTTP 50[234]/i.test(String(text || ''));
+}
+/** Seconds to wait before attempts 2 and 3. Bounded: three attempts, then the failure is loud. */
+export const GH_RETRY_DELAYS_S = [10, 30];
+
+/** `gh … --json` with backoff on transient failures. Shared by issue-fix.mjs (one rule, one place). */
+export function ghJsonWithRetry(args, { bin = GH_BIN, who = 'issue-watch' } = {}) {
   let lastErr;
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    const res = spawnSync(GH_BIN, args, { encoding: 'utf8' });
+  for (let attempt = 1; attempt <= GH_RETRY_DELAYS_S.length + 1; attempt++) {
+    const res = spawnSync(bin, args, { encoding: 'utf8' });
     if (res.status === 0) return JSON.parse(res.stdout);
     const err = (res.stderr || res.stdout || '').trim();
     lastErr = new Error(`gh ${args.join(' ')} failed (exit ${res.status}): ${err}`);
-    const transient = /TLS handshake|unexpected EOF|timeout|ECONNRESET|ETIMEDOUT|EAI_AGAIN|connection refused|temporarily unavailable/i.test(err);
-    if (attempt === 1 && transient) {
-      console.error(`issue-watch: transient gh/network failure (${err.slice(0, 90)}) — retrying once in 20s`);
-      spawnSync('sleep', ['20']);
+    if (attempt <= GH_RETRY_DELAYS_S.length && isTransientGhError(err)) {
+      const wait = GH_RETRY_DELAYS_S[attempt - 1];
+      console.error(`${who}: transient gh/network failure (${err.slice(0, 90)}) — retry ${attempt} in ${wait}s`);
+      spawnSync('sleep', [String(wait)]);
       continue;
     }
     break;
   }
   throw lastErr;
 }
+const ghJson = (args) => ghJsonWithRetry(args);
 
 /** Resolve the ntfy topic the same way the rest of the repo does: env, then the machine-wide
  * cache file, then the repo .env — see scripts/notify.sh / scripts/job-heartbeat.sh / scripts/nightly-watchdog.mjs. */
 function resolveTopic() {
-  if (process.env.NTFY_TOPIC) return process.env.NTFY_TOPIC;
+  // Set-but-EMPTY is an explicit opt-out (job-heartbeat.sh's convention): tests use it, and it must never fall
+  // through to the repo's real .env topic (2026-10-25: a unit test read the owner's topic that way).
+  if (process.env.NTFY_TOPIC !== undefined) return process.env.NTFY_TOPIC || null;
   try {
     const t = fs.readFileSync(path.join(os.homedir(), '.cache', 'ruvnet-brain', 'ntfy-topic'), 'utf8').trim();
     if (t) return t;
@@ -92,11 +119,15 @@ function resolveTopic() {
 }
 
 async function pushNtfy(topic, { title, body, priority = 'urgent', tags = 'rotating_light' }) {
+  const base = (process.env.NTFY_URL || 'https://ntfy.sh').replace(/\/+$/, '');
   try {
-    const res = await fetch(`https://ntfy.sh/${topic}`, {
+    // Title is ASCII only: a non-ByteString header makes fetch() throw before sending (4.7.21). Issue titles never
+    // go in the header — they are public, untrusted text — only the body.
+    const res = await fetch(`${base}/${encodeURIComponent(topic)}`, {
       method: 'POST',
-      headers: { Title: title, Priority: priority, Tags: tags },
+      headers: { Title: String(title).replace(/[^\x20-\x7e]+/g, ' ').trim(), Priority: priority, Tags: tags },
       body,
+      signal: AbortSignal.timeout(10_000),
     });
     return res.ok;
   } catch {
@@ -104,8 +135,15 @@ async function pushNtfy(topic, { title, body, priority = 'urgent', tags = 'rotat
   }
 }
 
+/** A missing or unreadable state file is an empty one. That is safe since 4.7.21 (a reset state replayed 17
+ *  "SLA breach" pages in 11 s): every breach due in one run is ONE page, and an acknowledgment already on the
+ *  thread is recognised from the thread itself, never posted twice. */
 function loadState() {
-  try { return JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')); } catch { return {}; }
+  try {
+    const v = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8'));
+    if (v && typeof v === 'object' && !Array.isArray(v)) return v;
+  } catch { /* fall through */ }
+  return {};
 }
 
 function saveState(state) {
@@ -133,28 +171,71 @@ export function judgeIssue(issue, comments, now) {
 
 export async function run({ dryRun = false, now = Date.now(), repo = REPO } = {}) {
   const issues = ghJson(['issue', 'list', '--repo', repo, '--state', 'open', '--json',
-    'number,title,createdAt,comments,updatedAt']);
+    'number,title,createdAt,comments,updatedAt,author']);
 
   const state = loadState();
   const results = [];
   const alertsSent = [];
+  const degraded = [];
+  const dueBreaches = [];
+  const unreadable = []; // person issues unreadable for UNREADABLE_RUNS runs and no other way to judge them: fail once
 
   for (const issue of issues) {
-    const detail = ghJson(['issue', 'view', String(issue.number), '--repo', repo, '--json', 'comments']);
-    const { ageHours, ownerComment, breach } = judgeIssue(issue, detail.comments || [], now);
     const url = `https://github.com/${repo}/issues/${issue.number}`;
     const key = String(issue.number);
-    const last = state[key]?.lastAlertAt ? Date.parse(state[key].lastAlertAt) : null;
-    const dueForAlert = breach && (!last || (now - last) / 3_600_000 >= SLA_HOURS);
+    // One issue whose detail cannot be read does not stop the run (4.7.21). It is judged from the comments the list
+    // call already returned (review fix: before, it was skipped forever and never got its SLA page); with no list
+    // comments either it is skipped, and once it has been unreadable on UNREADABLE_RUNS runs in a row the run fails
+    // ONCE so the heartbeat wrapper pages. Never acknowledged from the list copy (it may be incomplete, and a second
+    // public acknowledgment is worse than none).
+    let detail; let fromList = false;
+    try { detail = ghJson(['issue', 'view', String(issue.number), '--repo', repo, '--json', 'comments']); }
+    catch (err) {
+      degraded.push(issue.number);
+      const prev = state[key] || {};
+      const runs = (Number(prev.unreadableRuns) || 0) + 1;
+      state[key] = { ...prev, unreadableRuns: runs, unreadableSince: prev.unreadableSince || new Date(now).toISOString() };
+      if (Array.isArray(issue.comments)) {
+        detail = { comments: issue.comments }; fromList = true;
+        console.error(`issue-watch: #${issue.number} detail unreadable — judged from the list's comments — ${err.message.slice(0, 160)}`);
+      } else {
+        console.error(`issue-watch: #${issue.number} skipped this run (${runs} in a row) — ${err.message.slice(0, 160)}`);
+        if (isPersonIssue(issue) && runs >= UNREADABLE_RUNS && !prev.unreadableEscalatedAt) {
+          unreadable.push(issue.number);
+          state[key].unreadableEscalatedAt = new Date(now).toISOString();
+        }
+        continue;
+      }
+    }
+    if (!fromList && state[key]?.unreadableRuns) { // readable again: the next unreadable streak counts from zero
+      state[key] = { ...state[key] };
+      for (const f of ['unreadableRuns', 'unreadableSince', 'unreadableEscalatedAt']) delete state[key][f];
+    }
+    const comments = detail.comments || [];
+    const { ageHours, ownerComment, breach } = judgeIssue(issue, comments, now);
+    // A person's issue pages ONCE when it first passes the SLA, never again (it used to repeat every 4 h, forever,
+    // which with ~14 old issues and an hourly run was most of the 10,747 notifications). The morning digest below
+    // carries whatever is still waiting. An existing lastAlertAt means that one page already went out.
+    const person = isPersonIssue(issue);
+    const dueForAlert = person && breach && !state[key]?.lastAlertAt;
     // First sighting → page once, immediately (rule 2 in the header). Delivery-derived like
     // lastAlertAt: state is only written when the push actually went out, so a failed push
     // retries next run instead of burying the sighting.
     const firstSighting = !state[key];
-    // Acknowledgment delivery is not page delivery. Retry each missing channel independently.
-    const needsNewPage = !state[key]?.newAlertAt;
-    const needsAck = !state[key]?.ackAt;
+    // Acknowledgment delivery is not page delivery. Retry each missing channel independently. Neither applies to an
+    // issue the owner's automation opened.
+    // Arrival is paged once, instantly, by .github/workflows/ntfy-alerts.yml (the `issues: opened` event). Paging it
+    // here too sent every new issue twice (review 2026-10-25), so this watcher owns only the SLA page and the digest.
+    const needsNewPage = false;
+    // Our acknowledgment already on the thread (a lost or reset state file) is never posted twice in public.
+    const alreadyAcked = comments.some((c) => c.author?.login === OWNER_LOGIN
+      && /^🤖 Automated acknowledgment/.test(String(c.body || '').trimStart()));
+    if (person && !state[key]?.ackAt && alreadyAcked) {
+      state[key] = { ...(state[key] || {}), ackAt: new Date(now).toISOString(), ackBaselined: true, title: issue.title, url };
+    }
+    const needsAck = person && !fromList && !state[key]?.ackAt;
 
-    results.push({ number: issue.number, title: issue.title, ageHours, ownerComment, breach, dueForAlert, firstSighting, url });
+    results.push({ number: issue.number, title: issue.title, ageHours, ownerComment, breach, dueForAlert, firstSighting, url, person });
 
     if (needsNewPage || needsAck) {
       if (dryRun) {
@@ -191,33 +272,62 @@ export async function run({ dryRun = false, now = Date.now(), repo = REPO } = {}
       }
     }
 
-    if (dueForAlert) {
-      const title = `SLA breach: issue #${issue.number}`;
-      const body = `${issue.title}\nopen ${fmtAge(ageHours)}, no response from ${OWNER_LOGIN}\n${url}`;
-      if (dryRun) {
-        alertsSent.push({ number: issue.number, sent: false, reason: 'dry-run' });
-      } else {
-        const topic = resolveTopic();
-        let sent = false;
-        if (topic) sent = await pushNtfy(topic, { title, body, priority: 'urgent', tags: 'rotating_light,warning' });
-        // DERIVED, not asserted (F5, 2026-07-18): lastAlertAt may only be written when the page was
-        // actually DELIVERED (sent===true). The old line stamped it unconditionally, so a breach whose
-        // push failed (ntfy down, no topic) was suppressed for the whole 4h cooldown — the alert ledger
-        // asserted a delivery it never verified. A failed attempt records itself as failed and the next
-        // hourly run retries; the ledger can no longer claim a page that didn't happen.
-        // Spread-merge, never overwrite: the record may already carry firstSeenAt/newAlertAt from
-        // the first-sighting page above — clobbering them would re-page "new" forever (the exact
-        // state-erasure class that broke issue-fix's comment dedup, 2026-07-24).
-        if (sent) state[key] = { ...(state[key] || {}), lastAlertAt: new Date(now).toISOString(), title: issue.title, url };
-        else state[key] = { ...(state[key] || {}), lastAttemptAt: new Date(now).toISOString(), sent: false, title: issue.title, url };
-        alertsSent.push({ number: issue.number, sent, kind: 'sla-breach', reason: topic ? null : 'no ntfy topic configured' });
+    if (dueForAlert) dueBreaches.push({ issue, ageHours, url, key });
+  }
+
+  // ONE page per run for every breach that is due (4.7.21), oldest first, body bounded to 8 lines. The title keeps
+  // the "SLA breach: issue #N" shape scripts/ntfy-inbox.mjs classifies. DERIVED, not asserted (F5, 2026-07-18):
+  // lastAlertAt is written only for a delivered page; a failed page retries next run as the same single page.
+  // Spread-merge, never overwrite (2026-07-24: clobbering firstSeenAt/newAlertAt re-paged forever).
+  let breachPaged = new Set();
+  if (dueBreaches.length) {
+    dueBreaches.sort((a, b) => b.ageHours - a.ageHours);
+    const [first, ...rest] = dueBreaches;
+    const title = rest.length
+      ? `SLA breach: issue #${first.issue.number} (+${rest.length} more waiting > ${SLA_HOURS}h)`
+      : `SLA breach: issue #${first.issue.number}`;
+    const lines = dueBreaches.slice(0, 8).map((b) => `#${b.issue.number} (${fmtAge(b.ageHours)}) ${String(b.issue.title).slice(0, 70)}`);
+    // Past 8 lines the rest are still NAMED ("…and K more: #a #b"): scripts/ntfy-inbox.mjs files one alert per issue,
+    // so the session banner counts the breach truly (a 17-issue page used to count as 1).
+    const body = `${dueBreaches.length} contributor issue(s) past ${SLA_HOURS}h with no response from ${OWNER_LOGIN}:\n${lines.join('\n')}`
+      + (dueBreaches.length > 8 ? `\n…and ${dueBreaches.length - 8} more: ${dueBreaches.slice(8).map((b) => `#${b.issue.number}`).join(' ')}` : '')
+      + `\nhttps://github.com/${repo}/issues`;
+    if (dryRun) {
+      for (const b of dueBreaches) alertsSent.push({ number: b.issue.number, sent: false, kind: 'sla-breach', reason: 'dry-run' });
+    } else {
+      const topic = resolveTopic();
+      const sent = topic ? await pushNtfy(topic, { title, body, priority: 'urgent', tags: 'rotating_light,warning' }) : false;
+      for (const b of dueBreaches) {
+        if (sent) state[b.key] = { ...(state[b.key] || {}), lastAlertAt: new Date(now).toISOString(), title: b.issue.title, url: b.url };
+        else state[b.key] = { ...(state[b.key] || {}), lastAttemptAt: new Date(now).toISOString(), sent: false, title: b.issue.title, url: b.url };
+        alertsSent.push({ number: b.issue.number, sent, kind: 'sla-breach', reason: topic ? null : 'no ntfy topic configured' });
       }
+      if (sent) breachPaged = new Set(dueBreaches.map((b) => b.issue.number));
+    }
+  }
+
+  // The morning digest: one notification naming every person's issue still unanswered, oldest first.
+  const waiting = results.filter((r) => r.person && r.breach).sort((a, b) => b.ageHours - a.ageHours);
+  const digest = digestDue(state._digest?.day, now);
+  // Everything still waiting was named in this run's breach page: that page IS today's summary.
+  if (waiting.length && digest.due && waiting.every((r) => breachPaged.has(r.number))) {
+    state._digest = { day: digest.day, sentAt: new Date(now).toISOString(), count: waiting.length, viaBreachPage: true };
+  } else if (waiting.length && digest.due) {
+    const title = `Waiting on a reply: ${waiting.length} contributor issue${waiting.length === 1 ? '' : 's'}`;
+    const body = waiting.slice(0, 8).map((r) => `#${r.number} (${fmtAge(r.ageHours)}) ${r.title.slice(0, 70)}`).join('\n')
+      + (waiting.length > 8 ? `\n…and ${waiting.length - 8} more` : '') + `\nhttps://github.com/${repo}/issues`;
+    if (dryRun) alertsSent.push({ kind: 'digest', sent: false, reason: 'dry-run', count: waiting.length });
+    else {
+      const topic = resolveTopic();
+      const sent = topic ? await pushNtfy(topic, { title, body, priority: 'default', tags: 'clipboard' }) : false;
+      if (sent) state._digest = { day: digest.day, sentAt: new Date(now).toISOString(), count: waiting.length };
+      alertsSent.push({ kind: 'digest', sent, count: waiting.length, reason: topic ? null : 'no ntfy topic configured' });
     }
   }
 
   if (!dryRun) saveState(state);
 
-  return { results, alertsSent, checkedAt: new Date(now).toISOString() };
+  return { results, alertsSent, degraded, unreadable, checkedAt: new Date(now).toISOString() };
 }
 
 /**
@@ -353,8 +463,10 @@ async function main() {
       if (r.dueForAlert) {
         const alert = output.alertsSent.find((a) => a.number === r.number && a.kind === 'sla-breach');
         console.log(`   ${dryRun ? '[DRY-RUN] would push ntfy alert' : alert?.sent ? 'ntfy alert pushed' : `ntfy alert NOT sent (${alert?.reason})`}`);
+      } else if (r.breach && !r.person) {
+        console.log('   opened by the owner\'s own automation — never paged');
       } else if (r.breach) {
-        console.log(`   already alerted within the last ${SLA_HOURS}h — not repeating`);
+        console.log('   already paged once — listed in the morning summary until answered');
       }
       console.log('');
     }
@@ -389,7 +501,12 @@ async function main() {
   // heartbeat records the failure and the wrapper's own channel escalates — that duplicate-looking
   // page IS the correct behavior when the primary page provably never left the building.
   const undeliveredAlert = !dryRun && (output.alertsSent || []).some((a) => !a.sent && a.reason !== 'dry-run');
-  process.exit(undeliveredAlert ? 1 : 0);
+  // Skipping one unreadable issue is a degraded run, not a failed one; reading NONE of them is a failure.
+  const allDegraded = output.degraded.length > 0 && output.results.length === 0;
+  if (output.degraded.length) console.error(`issue-watch: ${output.degraded.length} issue(s) not fully readable this run: #${output.degraded.join(', #')}`);
+  const stuck = !dryRun && (output.unreadable || []).length > 0;
+  if (stuck) console.error(`issue-watch: FAILING this run once — a person's issue has been unreadable ${UNREADABLE_RUNS} runs in a row and cannot be judged: #${output.unreadable.join(', #')}`);
+  process.exit(undeliveredAlert || allDegraded || stuck ? 1 : 0);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) await main();
+if (isDirectInvocation(import.meta.url)) await main();

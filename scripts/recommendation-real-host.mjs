@@ -21,6 +21,7 @@ import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : d; };
@@ -53,7 +54,7 @@ export function mentioned(answer, offered) {
   return null;
 }
 
-const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const isMain = isDirectInvocation(import.meta.url);
 if (isMain) {
   const outDir = arg('--out', null);
   if (!outDir || !arg('--key', null)) { console.error('--key and --out are required'); process.exit(2); }

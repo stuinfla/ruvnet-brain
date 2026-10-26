@@ -2,6 +2,7 @@
 // Keep executable strings and paths: mentioning a product in code still requires grounding.
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { isDirectInvocation } from './entrypoint.mjs';
 
 export function codeWithoutInertText(source, python = false) {
   if (/\r(?!\n)|[\u2028\u2029]/.test(source)) throw new Error('Unsupported line boundary');
@@ -80,7 +81,7 @@ export function projectGroundingInput(raw) {
 }
 
 function isMain() {
-  try { return Boolean(process.argv[1]) && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); }
+  try { return isDirectInvocation(import.meta.url); }
   catch { return false; }
 }
 

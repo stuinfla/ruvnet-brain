@@ -8,6 +8,7 @@ import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { weeklyCycleStatus } from './model-weekly-cycle.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export const PRESENTATION = 'For terminal briefings: give concise executive status; use narrow padded ASCII tables with borders, plain cell text, aligned columns and short rows. Never send pipe-delimited Markdown tables to this terminal. Use short lists when a table would wrap. Do not flood the response with commands or technical logs.';
 
@@ -65,6 +66,6 @@ async function main() {
   process.stdout.write(JSON.stringify(envelope(promptContext(payload))) + '\n');
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+if (isDirectInvocation(import.meta.url)) {
   main().catch(() => process.stdout.write(JSON.stringify(envelope(PRESENTATION)) + '\n'));
 }

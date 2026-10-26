@@ -8,6 +8,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { digest, currencyStatus, WEEK_MS } from './model-currency-evidence.mjs';
 import { subscriptionOnlyEnv } from './subscription-hosts.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const RETRY_MS = 3600000;
 function read(file, limit) {
@@ -212,7 +213,7 @@ export async function runWeeklyCycle({ routerDir = path.join(os.homedir(), '.cla
     try { save('weekly-cycle-last-attempt.json', record); } catch { /* superseded cannot write */ } return record;
   } finally { release(routerDir, token); }
 }
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isDirectInvocation(import.meta.url)) {
   const i = process.argv.indexOf('--router-dir'); const t = process.argv.indexOf('--claim-token'); runWeeklyCycle({ routerDir: i >= 0 ? process.argv[i + 1] : undefined, claimToken: t >= 0 ? process.argv[t + 1] : null }).then((r) => {
     if (r.status !== 'unchanged' || process.argv.includes('--json')) console.log(JSON.stringify(r));
     if (['failed', 'deferred', 'qualification-pending'].includes(r.status)) process.exitCode = 1;

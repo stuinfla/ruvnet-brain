@@ -24,6 +24,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { makeLesson, updateLessons, loadLessons, ENFORCEMENT, ORIGIN, STATUS, TRIGGERS } from './lesson-store.mjs';
 import { loadNodeSqlite } from './node-sqlite.mjs';
+import { isDirectInvocation } from './entrypoint.mjs';
 
 /** Every bridged lesson id starts with this. It is how a merge knows which rows it owns. */
 export const BRIDGE_PREFIX = 'G-';
@@ -250,8 +251,7 @@ const argv = process.argv.slice(2);
  */
 function isMain() {
   try {
-    if (!process.argv[1]) return false;
-    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+    return isDirectInvocation(import.meta.url);
   } catch { return false; }
 }
 if (isMain()) {

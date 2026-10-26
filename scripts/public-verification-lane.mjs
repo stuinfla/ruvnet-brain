@@ -20,6 +20,7 @@ import {
   validatePlanAgainstCoverage,
   validateRetrievalCanaryReceipt,
 } from './retrieval-canary.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const HEX40 = /^[a-f0-9]{40}$/;
 const HEX64 = /^[a-f0-9]{64}$/;
@@ -353,4 +354,4 @@ export async function main(args = process.argv.slice(2)) {
   }
 }
 
-if (((() => { try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })())) process.exitCode = await main();
+if (isDirectInvocation(import.meta.url)) process.exitCode = await main();

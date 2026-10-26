@@ -15,6 +15,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -99,6 +100,6 @@ export async function main(argv = process.argv) {
   console.log(`✓ model-catalog VERIFIED: ${r.checked} model facts match the ${live ? 'LIVE OpenRouter' : 'committed snapshot'} catalog (pulled ${source.pulledAt}, ${r.ageDays.toFixed(1)}d old ≤ 14d).`);
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isDirectInvocation(import.meta.url)) {
   main().catch((e) => { console.error('verify-model-catalog error:', e.message); process.exit(1); });
 }

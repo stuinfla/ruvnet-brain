@@ -8,6 +8,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { evaluateStabilizationCandidateReceipt } from './release-proof.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -115,4 +116,4 @@ export function main(args = process.argv.slice(2)) {
   }
 }
 
-if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) process.exitCode = main();
+if (isDirectInvocation(import.meta.url)) process.exitCode = main();

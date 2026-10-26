@@ -13,6 +13,7 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isHarnessGenerated } from './hook-input.mjs';
+import { isDirectInvocation } from './entrypoint.mjs';
 
 export const UNKNOWN_RUNTIME_TOTAL_AGENT_CEILING = 4;
 const INPUT_LIMIT = 32 * 1024;
@@ -257,4 +258,4 @@ function main() {
   }
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
+if (isDirectInvocation(import.meta.url)) main();

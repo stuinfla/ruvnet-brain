@@ -83,23 +83,169 @@ function receipt(event, data) {
   try { fs.appendFileSync(RECEIPTS, JSON.stringify({ ts: new Date().toISOString(), event, ...data }) + '\n'); } catch { /* ledger must not break the engine */ }
 }
 
-// ── the lock (finding 5): atomic mkdir; stale-pid reclaim (issue-fix.mjs house pattern) ──────────
-function acquireLock(target) {
-  fs.mkdirSync(BRAIN_HOME, { recursive: true });
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      fs.mkdirSync(LOCK); // atomic: exists → EEXIST
-      writeAtomic(path.join(LOCK, 'owner.json'), JSON.stringify({ pid: process.pid, host: os.hostname(), target, startedAt: new Date().toISOString() }));
-      return true;
-    } catch {
-      const owner = readJSON(path.join(LOCK, 'owner.json'));
-      try { if (owner && owner.pid) { process.kill(owner.pid, 0); return false; } } catch { /* stale */ }
-      try { fs.rmSync(LOCK, { recursive: true, force: true }); } catch { /* race — retry once */ }
-    }
-  }
-  return false;
+// ── the lock (finding 5): atomic mkdir; the owner is judged by PROCESS IDENTITY, not pid alone ────
+// 4.7.21 (audit C-opus, reproduced): a pid-only check let any unrelated process that reused the pid hold
+// the spine forever, and an empty owner.json (the window between mkdir and the owner write) was deleted out
+// from under a live writer. The owner now records its process start time; a live pid whose start differs is
+// a reused pid. A lock held by a genuinely live owner is BUSY (exit 75), never success: host convergence
+// must not read "nothing applied" as "applied".
+export const BUSY_EXIT = 75; // EX_TEMPFAIL
+const OWNER_PUBLISH_GRACE_MS = 60_000;
+function processStartOf(pid) {
+  try {
+    const r = process.platform === 'win32'
+      ? spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command',
+        `(Get-Process -Id ${Number(pid)} -ErrorAction Stop).StartTime.ToUniversalTime().ToString('o')`], { encoding: 'utf8' })
+      : spawnSync('ps', ['-p', String(pid), '-o', 'lstart='], { encoding: 'utf8', env: { ...process.env, TZ: 'UTC', LC_ALL: 'C', LANG: 'C' } });
+    return r.status === 0 ? String(r.stdout || '').trim() || null : null;
+  } catch { return null; }
 }
-function releaseLock() { try { fs.rmSync(LOCK, { recursive: true, force: true }); } catch { /* gone */ } }
+const startMs = (text) => Date.parse(/T.*Z$/.test(text) ? text : `${text} UTC`);
+function lockOwnerState(owner) {
+  if (!owner || !Number.isSafeInteger(owner.pid) || owner.pid < 1) return 'incomplete';
+  try { process.kill(owner.pid, 0); } catch (error) { if (error?.code !== 'EPERM') return 'stale'; }
+  const observed = processStartOf(owner.pid);
+  if (!observed) return 'live'; // alive and unprovable: never steal it
+  if (owner.processStart) return observed === owner.processStart ? 'live' : 'stale';
+  // A pre-4.7.21 owner has only startedAt. Its process existed when it wrote that, so a process that
+  // started later (lstart has 1 s resolution) is a different process holding a reused pid.
+  const written = Date.parse(owner.startedAt || '');
+  return Number.isFinite(written) && startMs(observed) > written + 2000 ? 'stale' : 'live';
+}
+function lockAgeMs() {
+  let newest = 0;
+  for (const p of [LOCK, path.join(LOCK, 'owner.json')]) { try { newest = Math.max(newest, fs.lstatSync(p).mtimeMs); } catch { /* absent */ } }
+  return Date.now() - newest;
+}
+// 4.7.21 review (Codex #1, the quarantine path): judging an owner and then moving LOCK aside are two steps, so a
+// contender could move a lock that had changed since it was judged. Moving it back on a mismatch left a window in which
+// a third run's fresh lock blocked the restore; and an owner-less lock (raw null) was indistinguishable from another
+// run's directory between its mkdir and its owner write, so the restore never ran and both runs applied. A takeover now
+// holds an exclusive claim file inside the judged directory and re-checks it (dev/ino + owner bytes) before moving it;
+// a run releases only the lock that carries its own token.
+// Round 4 (Codex #1): mkdir-then-publish left an owner-less moment; a run paused there past the grace was judged debris,
+// claimed, re-checked (still owner-less: "the same") and moved aside with the owner it published meanwhile: two runs
+// applied. LOCK is now built complete in a staging sibling and published by ONE rename, so it never exists without its
+// owner; a rename onto an existing lock fails (ENOTEMPTY/EEXIST, EPERM/EACCES on Windows) and that lock is judged.
+const CLAIM_STALE_MS = 5 * 60_000;
+const CLAIM_FILE = /^takeover(?:-(\d+))?\.json$/;
+function observeLock() {
+  const stat = fs.lstatSync(LOCK, { bigint: true });
+  if (!stat.isDirectory()) throw Object.assign(new Error('the update lock is not a directory'), { code: 'ENOTDIR' });
+  let raw = null;
+  try { raw = fs.readFileSync(path.join(LOCK, 'owner.json'), 'utf8'); } catch (error) { if (error?.code !== 'ENOENT') throw error; }
+  return { identity: `${stat.dev}:${stat.ino}`, raw };
+}
+const readRaw = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return null; } };
+// A claim file must not restart the publication grace (Opus r2 #6): writing or removing one bumps LOCK's mtime, which
+// lockAgeMs reads, so LOCK's own times are put back.
+function keepLockTimes(change) {
+  let before = null;
+  try { before = fs.lstatSync(LOCK); } catch { /* judged below */ }
+  try { return change(); } finally { if (before) try { fs.lutimesSync(LOCK, before.atime, before.mtime); } catch { /* gone */ } }
+}
+const GONE = Symbol('judged lock vanished');
+function claimTakeover() {
+  let highest = -1; let highestName = null; let names;
+  // The judged lock vanished (another run moved it): re-judge rather than throw out of main (Fable r2 P3-1).
+  try { names = fs.readdirSync(LOCK); } catch (error) { if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') return GONE; throw error; }
+  for (const name of names) {
+    const match = CLAIM_FILE.exec(name);
+    const level = match ? (match[1] ? Number(match[1]) : 0) : -1;
+    if (level > highest) { highest = level; highestName = name; }
+  }
+  if (highestName) {
+    let ageMs = 0;
+    try { ageMs = Date.now() - fs.lstatSync(path.join(LOCK, highestName)).mtimeMs; } catch { return null; }
+    if (!(ageMs > CLAIM_STALE_MS)) return null; // another run is mid-takeover
+  }
+  const level = highest + 1;
+  const file = path.join(LOCK, level ? `takeover-${level}.json` : 'takeover.json');
+  const token = crypto.randomBytes(16).toString('hex');
+  try { keepLockTimes(() => fs.writeFileSync(file, JSON.stringify({ token, pid: process.pid, claimedAt: new Date().toISOString() }), { flag: 'wx' })); }
+  catch (error) { if (error?.code === 'EEXIST') return null; if (error?.code === 'ENOENT') return GONE; throw error; }
+  return { file, token };
+}
+const dropClaim = (claim) => { try { if (readRaw(claim.file)?.includes(claim.token)) keepLockTimes(() => fs.unlinkSync(claim.file)); } catch { /* gone with its directory */ } };
+function removeObservedLock(observed) {
+  const claim = claimTakeover();
+  if (claim === GONE) return 'changed';
+  if (!claim) return 'busy';
+  let same = false;
+  try {
+    const now = observeLock();
+    same = now.identity === observed.identity && now.raw === observed.raw && Boolean(readRaw(claim.file)?.includes(claim.token));
+  } catch { same = false; }
+  if (!same) { dropClaim(claim); return 'changed'; }
+  const quarantine = `${LOCK}.stale-${process.pid}-${crypto.randomBytes(4).toString('hex')}`;
+  try { fs.renameSync(LOCK, quarantine); } catch (error) { if (error?.code === 'ENOENT') return 'changed'; dropClaim(claim); throw error; }
+  if (!readRaw(path.join(quarantine, path.basename(claim.file)))?.includes(claim.token)) {
+    try { if (!fs.existsSync(LOCK)) fs.renameSync(quarantine, LOCK); } catch { /* keep as evidence */ }
+    return 'changed';
+  }
+  try { fs.rmSync(quarantine, { recursive: true, force: true }); } catch { /* best effort */ }
+  return 'removed';
+}
+/** LOCK appears with its owner already inside, by one rename that fails when a populated lock is there. */
+const CONTENDED = new Set(['EEXIST', 'ENOTEMPTY', 'EPERM', 'EACCES']);
+function publishLock(content) {
+  const staged = `${LOCK}.acquire-${process.pid}-${crypto.randomBytes(4).toString('hex')}`;
+  const dropStaged = () => { try { fs.rmSync(staged, { recursive: true, force: true }); } catch { /* best effort */ } };
+  try {
+    fs.mkdirSync(staged);
+    fs.writeFileSync(path.join(staged, 'owner.json'), content, { flag: 'wx' });
+  } catch (error) { dropStaged(); throw error; } // staging failures are real errors, never contention
+  try { fs.renameSync(staged, LOCK); } catch (error) {
+    dropStaged();
+    // A refused publication is contention even if LOCK is gone a moment later: its holder can release in between, and
+    // re-checking existsSync here rethrew a raw ENOTEMPTY (exit 1, not BUSY_EXIT) (Opus r3 P2-1). The caller re-observes
+    // and tries again when the lock has vanished, as kb/refresh-run.mjs does.
+    if (CONTENDED.has(error?.code)) throw Object.assign(new Error('the update lock is held'), { code: 'EEXIST' });
+    throw error;
+  }
+}
+export function acquireLock(target) {
+  fs.mkdirSync(BRAIN_HOME, { recursive: true });
+  const processStart = processStartOf(process.pid);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const token = crypto.randomBytes(16).toString('hex');
+    try {
+      publishLock(JSON.stringify({ pid: process.pid, host: os.hostname(), target, token,
+        processStart, startedAt: new Date().toISOString() }));
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error;
+      let observed;
+      try { observed = observeLock(); } catch (observeError) { if (observeError?.code === 'ENOENT') continue; throw observeError; }
+      let owner = null;
+      try { owner = observed.raw === null ? null : JSON.parse(observed.raw); } catch { /* incomplete */ }
+      const state = lockOwnerState(owner);
+      if (state === 'live') return { acquired: false, owner };
+      if (state === 'incomplete' && lockAgeMs() < OWNER_PUBLISH_GRACE_MS) return { acquired: false, owner: null };
+      const outcome = removeObservedLock(observed);
+      if (outcome === 'busy') return { acquired: false, owner: null };
+      if (outcome === 'removed') {
+        receipt('StaleLockReclaimed', { owner: owner ? { pid: owner.pid, host: owner.host, startedAt: owner.startedAt } : null, state });
+      }
+      continue; // 'changed': judge the directory that is there now
+    }
+    return { acquired: true, token };
+  }
+  return { acquired: false, owner: null };
+}
+/** Releases LOCK only while it still carries this run's token: never another run's lock. */
+export function releaseLock(lock) {
+  if (!lock?.acquired || !lock.token) return false;
+  if (!readRaw(path.join(LOCK, 'owner.json'))?.includes(`"token":"${lock.token}"`)) return false;
+  const released = `${LOCK}.released-${process.pid}-${crypto.randomBytes(4).toString('hex')}`;
+  try { fs.renameSync(LOCK, released); } catch { return false; }
+  const moved = readRaw(path.join(released, 'owner.json'));
+  if (!moved?.includes(`"token":"${lock.token}"`)) {
+    try { if (!fs.existsSync(LOCK)) fs.renameSync(released, LOCK); } catch { /* keep as evidence */ }
+    return false;
+  }
+  try { fs.rmSync(released, { recursive: true, force: true }); } catch { /* gone */ }
+  return true;
+}
 
 // ── crash recovery (finding 21): resolve any incomplete transaction BEFORE new work ─────────────
 function recoverTxn() {
@@ -377,7 +523,11 @@ function main() {
     return 0;
   }
 
-  if (!acquireLock(argv.join(' '))) { console.log('another update is in progress — exiting (concurrency 1).'); return 0; }
+  const lock = acquireLock(argv.join(' '));
+  if (!lock.acquired) {
+    console.log(`another update is in progress${lock.owner?.pid ? ` (pid ${lock.owner.pid})` : ''} — nothing was applied; exiting busy (${BUSY_EXIT}, concurrency 1).`);
+    return BUSY_EXIT;
+  }
   try {
     recoverTxn();
 
@@ -456,9 +606,30 @@ function main() {
     receipt('UpdateChecked', { active: active?.version ?? null, staged: stagedVersion });
     return applyFromDir(staged.dir, stagedVersion, active ? 'auto-update' : 'auto-seed') ? 0 : 1;
   } finally {
-    releaseLock();
+    releaseLock(lock);
     if (has('--gc') || !has('--no-gc')) { try { gc(); } catch { /* GC never fails the run */ } }
   }
 }
 
-if (process.env.RUVNET_BRAIN_IMPORT_ONLY !== 'update-shell-test') process.exit(main());
+// #420 item 6: `--help` used to fall through to the default action (take the update lock and apply). Usage is derived from
+// the flags main() reads; help and unknown flags answer BEFORE main() so they touch no state (no BRAIN_HOME mkdir, lock, network).
+const USAGE = [
+  'usage: node update-apply.mjs [--auto [--expected-version <v>] | --seed | --from-dir <path> | --rollback | --dev [pluginDir] | --dev-off | --doctor] [--gc | --no-gc]',
+  '  (no flag = --auto: newest host-staged plugin version, applied only if newer than active)',
+  '  --auto [--expected-version <v>]  unattended: apply the host-staged payload, optionally pinned to exactly <v>',
+  '  --seed                           seed the spine from the running plugin install',
+  '  --from-dir <path>                apply a specific plugin payload dir',
+  '  --rollback                       flip back to the previous generation',
+  '  --dev [pluginDir]                dev mode: point codeRoot at a checkout\'s plugin/',
+  '  --dev-off                        leave dev mode',
+  '  --doctor                         report spine state (read-only)',
+  '  --gc / --no-gc                   force / skip collecting unreferenced generations after the run',
+  '  --help, -h                       print this usage and exit without touching any state',
+].join('\n');
+const KNOWN_FLAGS = new Set(['--auto', '--seed', '--from-dir', '--rollback', '--dev', '--dev-off', '--doctor', '--gc', '--no-gc', '--expected-version']);
+if (process.env.RUVNET_BRAIN_IMPORT_ONLY !== 'update-shell-test') {
+  if (has('--help') || has('-h')) { console.log(USAGE); process.exit(0); }
+  const unknown = argv.filter((a) => a.startsWith('-') && !KNOWN_FLAGS.has(a));
+  if (unknown.length) { console.error(`✗ unknown argument: ${unknown.join(' ')}\n${USAGE}`); process.exit(2); }
+  process.exit(main());
+}

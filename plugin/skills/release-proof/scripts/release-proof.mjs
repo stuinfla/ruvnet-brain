@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { isDirectInvocation } from '../../../scripts/entrypoint.mjs';
 
 export const REQUIRED_CHECKS = ['ci', 'integration-linux', 'stranger-matrix', 'ux-qe', 'release-qe'];
 
@@ -323,4 +324,4 @@ export function main(args = process.argv.slice(2)) {
   }
 }
 
-if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) process.exitCode = main();
+if (isDirectInvocation(import.meta.url)) process.exitCode = main();

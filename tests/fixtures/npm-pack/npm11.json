@@ -1,0 +1,36 @@
+[
+  {
+    "id": "ruvnet-brain@4.7.20",
+    "name": "ruvnet-brain",
+    "version": "4.7.20",
+    "size": 5525024,
+    "unpackedSize": 12310569,
+    "shasum": "5f863f958e0b27dd3512246e28273c2ca17ed70b",
+    "integrity": "sha512-IlTN9BMicGMPIL2CXEix7fpBrxZ0GL6KggH6TvDRvrUoFsopoHQLFgGROuliVZNvJxLhZIGJIcO4Rr5oaNuaDg==",
+    "filename": "ruvnet-brain-4.7.20.tgz",
+    "files": [
+      {
+        "path": ".claude-plugin/marketplace.json",
+        "size": 635,
+        "mode": 420
+      },
+      {
+        "path": "LICENSE",
+        "size": 1351,
+        "mode": 420
+      },
+      {
+        "path": "bin/install.mjs",
+        "size": 409376,
+        "mode": 493
+      },
+      {
+        "path": "data/model-catalog.json",
+        "size": 7010,
+        "mode": 420
+      }
+    ],
+    "entryCount": 591,
+    "bundled": []
+  }
+]

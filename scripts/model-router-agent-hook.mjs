@@ -10,6 +10,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { readCodexAllowance } from './native-subscription-usage.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const TASK_CLASSES = new Set(['fast', 'medium', 'substantial', 'hard', 'exceptional']);
@@ -126,7 +127,7 @@ async function main(argv) {
   // The host's normal transcript records its tool input. This hook persists no task text.
   process.stdout.write(JSON.stringify(output) + '\n');
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isDirectInvocation(import.meta.url)) {
   main(process.argv.slice(2)).catch(() => {
     const args = process.argv.slice(2); const harness = args[args.indexOf('--harness') + 1];
     const result = harness === 'codex' && loadScope(harness).strict ? deny('Agent routing hook failed; managed dispatch required.')

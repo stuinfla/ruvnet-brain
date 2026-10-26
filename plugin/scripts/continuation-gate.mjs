@@ -53,9 +53,10 @@ import { deferralAtStop } from './deferral-evidence.mjs';
 import { readSettledTranscript } from './turn-outcome-capture.mjs';
 import { continuationProjectIdentity, authorizedContinuationObjective, authorizedPromiseItems, assistantCommitmentOwned, setAssistantCommitmentState } from './continuation-objective.mjs';
 import {
-  auditCompletionClaims, readClaudeTurn, extractCommitments, claimClosesPromise,
+  auditCompletionClaims, readClaudeTurn, extractCommitments, promiseClosingClaim,
   PROMISE_KIND, PROMISE_CAP_OPEN,
 } from './completion-claim-evidence.mjs';
+import { writeAtomic } from './user-settings.mjs';
 
 const HOME = os.homedir();
 
@@ -181,7 +182,12 @@ function load() {
 function save(led) {
   try {
     fs.mkdirSync(path.dirname(LEDGER), { recursive: true });
-    fs.writeFileSync(LEDGER, JSON.stringify({ ...led, updated: new Date().toISOString() }, null, 2) + '\n');
+    // writeAtomic (not a bare writeFileSync): writeFileSync truncates the target before writing the
+    // new bytes, so a kill -9 / ENOSPC / EIO between those two steps leaves LEDGER empty — and load()'s
+    // catch-all JSON.parse failure then reads that as "nothing was ever committed", silently discarding
+    // every item a prior turn agreed to do, not just the one being added now. Same house pattern as
+    // user-settings.mjs's own writeAtomic(): temp-in-the-same-directory + fsync + rename.
+    writeAtomic(LEDGER, JSON.stringify({ ...led, updated: new Date().toISOString() }, null, 2) + '\n');
     return true;
   } catch { return false; /* the ledger is advisory — never break a turn over it */ }
 }
@@ -366,15 +372,15 @@ const HOST = process.env.RUVNET_HOOK_HOST === 'codex' ? 'codex' : 'claude';
  * COMPLETION CLAIMS (ADR-074 class `completion`, owner 2026-09-30: "You can never ever tell me
  * something is done and implemented without having tested it end to end"). Audited ONCE per Stop:
  * the verdict both requests a correction (below, under every loop guard) and is the only evidence
- * that may close a captured promise. Claude transcripts are parsed; Codex's rollout format is not
- * parsed anywhere in this repo, so on Codex only the answer-side half is enforced and the transcript
- * half is reported UNKNOWN (completion-claim-evidence.mjs header). Fails open: a throw is NONE.
+ * that may close a captured promise. Claude transcripts and Codex rollouts (through the shared
+ * nativeTurnLines reader, #423) are parsed; a Codex rollout that cannot be read or has no current-turn
+ * boundary stays UNKNOWN (completion-claim-evidence.mjs header). Fails open: a throw is NONE.
  */
 const completion = (() => {
   const message = String(hookInput.last_assistant_message || '');
   if (!message || !hookInput.session_id) return { verdict: 'NONE', claims: [] };
   try {
-    const turn = HOST === 'claude' ? readClaudeTurn(hookInput.transcript_path) : null;
+    const turn = readClaudeTurn(hookInput.transcript_path, { host: HOST });
     // Claude always sends a JSONL transcript; one we cannot read is OUR failure, and a Stop hook
     // fails open on its own machinery (ADR-074 failure semantics) — never a correction request.
     // Missing native evidence stays UNKNOWN; it cannot silently validate a completion claim.
@@ -401,7 +407,7 @@ function promiseBookkeeping() {
     if (completion.verdict === 'PASS') {
       for (const item of led.items) {
         if (!assistantCommitmentOwned(item, hookInput.session_id, projectIdentity)) continue;
-        const claim = completion.claims.find((c) => claimClosesPromise(c.text, item.text));
+        const claim = promiseClosingClaim(completion, hookInput.last_assistant_message, item.text);
         if (!claim) continue;
         const verifiedCompletion = completion.verdict === 'PASS' && Boolean(claim);
         Object.assign(item, { done: verifiedCompletion, state: verifiedCompletion ? 'completed' : item.state, doneAt: at, completionEvidence: { claim: claim.text,
@@ -715,7 +721,19 @@ if (observations.length && STOP_NUDGES_FULL) console.error(JSON.stringify({ kind
   authority: false, items: observations.map(({ text, at }) => ({ text, at })) }));
 // ONE correction per turn: a single item however many claims the answer made; the stop_hook_active
 // exit and the cooldown lock below bound it to one request per stop episode.
-const completionWork = ['FAIL', 'UNKNOWN'].includes(completion.verdict) ? [{
+// #425 (owner decision): an UNKNOWN whose ONLY problem is task scope — a check observed after the last
+// change, named in the answer, with what is NOT verified disclosed — is not a correction. The audit
+// recognizes check-scoped sentences only; it has no representation for a scoped task outcome, so
+// re-running checks or rewording cannot satisfy it. The verdict stays UNKNOWN (never PASS: it closes
+// no promise and grants no completion authority); under `full` the limitation is reported, not enforced.
+const scopeOnlyUnknown = completion.verdict === 'UNKNOWN' && completion.namesCheck === true
+  && completion.disclosesGaps === true && (completion.verification?.checks?.length || 0) > 0;
+if (scopeOnlyUnknown && STOP_NUDGES_FULL) console.error(JSON.stringify({ kind: 'completion-scope-advisory',
+  authority: false, verdict: 'UNKNOWN', text: `"${completion.claims[0].text.slice(0, 160)}": a check ran after the last change`
+    + ' and the answer names it and discloses what is not verified. This gate cannot judge whether that task outcome'
+    + ' is complete (it only qualifies check-scoped statements), so completion stays UNKNOWN. Not blocking: more checks'
+    + ' or rewording cannot change this verdict.' }));
+const completionWork = ['FAIL', 'UNKNOWN'].includes(completion.verdict) && !scopeOnlyUnknown ? [{
   text: `You claimed "${completion.claims[0].text.slice(0, 160)}" is done; ${completion.problems.join('; ')}. Run the real consumer path, or restate it as UNVERIFIED.`,
   at: new Date(nowMs).toISOString(), derived: true, kind: 'completion-claim-integrity',
 }] : [];
@@ -815,7 +833,8 @@ function claimCooldown(now, windowMs) {
     if (Number.isFinite(prev) && (now - prev) < windowMs) return false; // fresh lock: someone forced recently
     fs.unlinkSync(LOCK);                                                 // stale: clear it so we can re-claim
   } catch { /* no lock yet */ }
-  try { fs.writeFileSync(LOCK, new Date(now).toISOString(), { flag: 'wx' }); return true; }
+  // A fresh install has no work-ledgers/ folder until the first save(); ENOENT here is not a lost race.
+  try { fs.mkdirSync(path.dirname(LOCK), { recursive: true }); fs.writeFileSync(LOCK, new Date(now).toISOString(), { flag: 'wx' }); return true; }
   catch { return false; }                                               // lost the race / cannot persist → fail closed
 }
 if (!claimCooldown(nowMs, COOLDOWN_MS)) process.exit(EXIT_ALLOW);

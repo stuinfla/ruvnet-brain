@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { parseNpmPack } from './npm-pack-json.mjs';
 
 // Local diagnostics may pack once. Release evidence must consume the already sealed bytes.
 export function packedCandidate({ sealedPackage, root, destination, run }) {
@@ -12,5 +13,5 @@ export function packedCandidate({ sealedPackage, root, destination, run }) {
   const result = run('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', destination],
     { cwd: root, timeout: 120_000 });
   if (result.status !== 0) throw new Error(result.stderr || result.stdout || 'local package creation failed');
-  return path.join(destination, JSON.parse(result.stdout)[0].filename);
+  return path.join(destination, parseNpmPack(result.stdout).filename);
 }

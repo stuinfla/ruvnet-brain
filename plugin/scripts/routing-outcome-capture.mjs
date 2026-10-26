@@ -13,6 +13,7 @@ import {
   readStdinBounded,
   toolName,
 } from './hook-input.mjs';
+import { isDirectInvocation } from './entrypoint.mjs';
 
 const SUCCESS = new Set(['completed', 'success', 'succeeded']);
 const FAILURE = new Set(['failed', 'error', 'cancelled', 'canceled', 'timed_out', 'timeout']);
@@ -84,6 +85,6 @@ async function main() {
   appendObservation(observationFrom(event, new Date().toISOString(), decision));
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isDirectInvocation(import.meta.url)) {
   try { await main(); } catch { /* advisory observer: fail open */ }
 }

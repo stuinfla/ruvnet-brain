@@ -28,6 +28,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDirectInvocation } from './entrypoint.mjs';
 
 export const RUV_TOOL = 'ruflo memory store|retrieve|search (or `ruflo hooks session-end|post-task`)';
 /** Repo-relative scope: our own executable code. Tests and fixtures are never in scope. */
@@ -197,7 +198,7 @@ function repoRootOf(file) {
 }
 
 function isMain() {
-  try { return Boolean(process.argv[1]) && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; }
+  try { return isDirectInvocation(import.meta.url); } catch { return false; }
 }
 if (isMain()) {
   let code = 0;

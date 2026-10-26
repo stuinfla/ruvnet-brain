@@ -55,8 +55,10 @@ function fire(cwd, message, { transcriptPath, stopHookActive = false, host = 'cl
     encoding: 'utf8',
   });
   expect(r.status).toBe(0);
+  lastStderr = r.stderr;
   return r.stdout;
 }
+let lastStderr = '';
 const ledger = () => { try { return JSON.parse(fs.readFileSync(path.join(home, 'ledger.json'), 'utf8')); } catch { return { items: [] }; } };
 
 beforeEach(() => {
@@ -83,9 +85,22 @@ describe('completion claims (Piece A)', () => {
     expect(out).toContain('no end-to-end check ran this turn after the last change');
   });
 
-  it('allows a claim with a post-edit check that the answer names and a NOT-verified disclosure', () => {
+  it('#425: a scope-only UNKNOWN (post-edit check named, gaps disclosed) is reported, not blocked, and stays UNKNOWN', () => {
     const repo = gitRepo('a');
-    expect(fire(repo, GOOD, { transcriptPath: transcript(edit(), bash('npx vitest run tests/unit/updater.test.mjs')) })).toContain('whole-task completion is UNKNOWN');
+    const t = transcript(edit(), bash('npx vitest run tests/unit/updater.test.mjs'));
+    expect(fire(repo, GOOD, { transcriptPath: t })).toBe('');
+    const advisory = JSON.parse(lastStderr.trim().split('\n').find((l) => l.includes('completion-scope-advisory')));
+    expect(advisory).toMatchObject({ kind: 'completion-scope-advisory', authority: false, verdict: 'UNKNOWN' });
+    expect(advisory.text).toContain('completion stays UNKNOWN');
+    const turn = claudeTurnEvents(readSettledTranscript(t, { maxMs: 0 }));
+    expect(auditCompletionClaims(GOOD, { turn }).verdict).toBe('UNKNOWN');
+    // The reporter's scoped task statement: same named-check/disclosure lines, same non-blocking result.
+    const scoped = 'The five listed recovery tasks are complete at their documented local scope.\nVerified: `npx vitest run tests/unit/updater.test.mjs` — 5 passed.\nNot verified: the browser path.';
+    expect(auditCompletionClaims(scoped, { turn }).verdict).toBe('UNKNOWN');
+    expect(fire(repo, scoped, { transcriptPath: t })).toBe('');
+    // Every other UNKNOWN/FAIL still blocks: no check after the change, or no disclosure.
+    expect(fire(repo, scoped, { transcriptPath: transcript(edit()) })).toContain('beyond the available verified scope');
+    expect(fire(repo, 'The five listed recovery tasks are complete.', { transcriptPath: t })).toContain('does not disclose what is NOT verified');
   });
 
   it('blocks when the check ran but the answer neither names it nor discloses gaps', () => {
@@ -197,6 +212,49 @@ describe('completion claims (Piece A)', () => {
       expect(auditCompletionClaims(`Targeted unit tests are passing, so ${assertion}.\nVerified: vitest.\nNot verified: Windows.`, { turn }).verdict).toBe('UNKNOWN');
     }
   });
+
+  // A fresh install has no ~/.config/ruvnet-brain/work-ledgers/ until the first promise is saved.
+  // The cooldown lock lives in that folder, so the gate must create it rather than read ENOENT as
+  // "lost the race" and drop the correction in silence. Default ledger path on purpose (no override).
+  const freshEnv = (h) => ({ ...process.env, HOME: h, USERPROFILE: h, RUVNET_WORK_LEDGER: '', RUVNET_HOOK_HOST: 'claude', RUVNET_PROMISE_CAPTURE: '',
+    RUVNET_OPEN_ISSUES_FILE: path.join(h, 'none.json'), RUVNET_CI_STATUS_FILE: path.join(h, 'none.json'),
+    RUVNET_CAPABILITY_ROOTS: path.join(h, 'caps'), RUVNET_CAPABILITY_LIVE_EVIDENCE: path.join(h, 'live.jsonl'),
+    RUVNET_EVIDENCE_FILE: path.join(h, 'ev.jsonl'), RUVNET_CONTINUATION_COOLDOWN_MS: '1' });
+  const ledgerDir = (h) => path.join(h, '.config', 'ruvnet-brain', 'work-ledgers');
+
+  it('a fresh HOME with no work-ledgers folder still gets the correction', () => {
+    const repo = gitRepo('a');
+    expect(fs.existsSync(ledgerDir(home))).toBe(false);
+    const input = JSON.stringify({ hook_event_name: 'Stop', cwd: repo, session_id: 's1', stop_hook_active: false,
+      last_assistant_message: 'I fixed the config file.', transcript_path: transcript(edit()) });
+    const r = spawnSync(process.execPath, [GATE], { cwd: repo, input, env: freshEnv(home), encoding: 'utf8' });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('claims completion beyond the available verified scope');
+    expect(fs.readdirSync(ledgerDir(home)).some((f) => f.includes('.cooldown.'))).toBe(true);
+  });
+
+  it('BREAK-IT: without the cooldown mkdir, a fresh HOME drops the correction in silence', () => {
+    const copy = path.join(dir, 'mutant');
+    fs.cpSync(path.join(ROOT, 'plugin/scripts'), copy, { recursive: true });
+    const file = path.join(copy, 'continuation-gate.mjs');
+    const src = fs.readFileSync(file, 'utf8');
+    const mutated = src.replace('fs.mkdirSync(path.dirname(LOCK), { recursive: true }); ', '');
+    expect(mutated).not.toBe(src);
+    fs.writeFileSync(file, mutated);
+    const repo = gitRepo('a');
+    const input = JSON.stringify({ hook_event_name: 'Stop', cwd: repo, session_id: 's1', stop_hook_active: false,
+      last_assistant_message: 'I fixed the config file.', transcript_path: transcript(edit()) });
+    const mutant = spawnSync(process.execPath, [file], { cwd: repo, input, env: freshEnv(home), encoding: 'utf8' });
+    expect(mutant.status).toBe(0);
+    expect(mutant.stdout).toBe('');
+    expect(fs.existsSync(ledgerDir(home))).toBe(false);
+    // Same mutant, same input, folder pre-created: the correction comes back, so the missing folder is the cause.
+    fs.mkdirSync(ledgerDir(home), { recursive: true });
+    const withDir = spawnSync(process.execPath, [file], { cwd: repo, input, env: freshEnv(home), encoding: 'utf8' });
+    expect(withDir.status).toBe(0);
+    expect(withDir.stdout).toContain('claims completion beyond the available verified scope');
+  });
+
   it('detector unit cases', () => {
     expect(extractCompletionClaims('Done. The gate is now live.').length).toBe(2);
     expect(extractCompletionClaims("I'll run the baseline as soon as the set is complete.")).toEqual([]);

@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { parseNpmPack } from '../helpers/npm-pack-json.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 let fixture;
@@ -35,7 +36,7 @@ function installPackedHostFixture() {
   }
 
   const packed = checked('npm', ['pack', '--json', '--pack-destination', packDir], { cwd: ROOT });
-  const tarball = path.join(packDir, JSON.parse(packed.stdout)[0].filename);
+  const tarball = path.join(packDir, parseNpmPack(packed.stdout, { expectName: 'ruvnet-brain' }).filename);
   checked('tar', ['-xzf', tarball, '-C', packDir]);
   const payload = path.join(packDir, 'package');
   fs.cpSync(path.join(payload, 'plugin'), versionRoot, { recursive: true });

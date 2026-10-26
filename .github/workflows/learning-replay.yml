@@ -19,11 +19,28 @@ name: learning-replay
 # `node scripts/learning-replay.mjs --measure-portfolio --host codex --model gpt-6.1-sol`
 # in a clean author worktree and commits the resulting evidence through the release rail. The old
 # source-writing nightly is retired; installed-cache updates do not refresh repository proof.
-# THIS workflow is the CURRENCY
-# GATE on that artifact: every night it asserts the committed result is present, well-formed, PASS,
-# measured on a SHA that is still current for the load-bearing files, and not stale. A local nightly
-# measurement that stops being refreshed therefore turns this red, which is the failure mode that matters —
-# ADR-055's rule that a job must PROVE it ran, applied to a token-priced measurement.
+#
+# WHAT THE SCHEDULE MEASURES, AND WHAT IT NO LONGER CLAIMS (2026-10-25).
+# Until 4.7.20 the nightly failed on one thing only: whether that committed model artifact was still
+# current. Nothing scheduled ever refreshes it, so after any change to a load-bearing hook file it was
+# red every morning from 2026-09-21 (one manual refresh on 10-03 lasted a day) — the same unactionable
+# fact, paged daily. Worse, it measured nothing on the current code: on 2026-10-15 the quiet-by-default
+# shim silenced unprompted-speech whole, every learned lesson stopped reaching the next prompt, and this
+# job said only "UNKNOWN: files changed". So the nightly now gates on what a runner CAN measure:
+#   1. the trap's falsifiability tests, and
+#   2. `--check-wire` — the brain's half of D4 on HEAD with the real global ruflo: a lesson recorded in two
+#      projects is promoted, survives refresh, reaches project B's prompt on Claude and Codex hook paths,
+#      the brain-off control never receives it, and deleting the lesson removes it. No model, no tokens.
+# Both are hard gates: a broken learning loop turns this red (the 10-15 regression fails step 2).
+# It NO LONGER CLAIMS on a schedule that a real model changed behaviour on the current code. That model
+# half stays the committed portfolio's job. Out-of-date evidence (load-bearing files changed since it was
+# measured, or past the age limit) is the one result softened: printed in the run summary and annotated,
+# exit 0 (`--tolerate-stale`), and only after BOTH traps and all four mutants are verified and recomputed
+# with currency alone waived, so a stale artifact cannot hide a defect in itself or in any artifact after it.
+# A recomputed FAIL, INCONCLUSIVE, a missing/forged artifact or any other UNKNOWN in ANY of the six artifacts
+# stays red on every trigger. A manual dispatch is green on wire PASS + annotated portfolio; ask
+# for a hard currency check with strict_portfolio=true. release-vector/claims-verify read the same
+# evidence, where D4 reads UNKNOWN until someone re-measures. UNKNOWN is still never PASS.
 #
 # The token-burning path exists here too and is one click away (`workflow_dispatch` with
 # run_replay=true), gated on an ANTHROPIC_API_KEY secret being present. If the secret is absent the
@@ -39,6 +56,15 @@ on:
       - 'scripts/learning-replay-*.mjs'
       - 'scripts/ci/learning-replay-recorder.mjs'
       - 'scripts/ci/learning-replay-codex-adapter.mjs'
+      # Every LOAD_BEARING file (scripts/learning-replay-contract.mjs), so the change that could break
+      # lesson delivery is measured on the push that lands it; tests/unit/learning-replay.test.mjs holds
+      # this list and LOAD_BEARING together.
+      - 'scripts/lesson-store.mjs'
+      - 'plugin/scripts/lesson-*'
+      - 'plugin/scripts/unprompted-runtime.mjs'
+      - 'plugin/scripts/hook-shim.mjs'
+      - 'plugin/scripts/hook-input.mjs'
+      - 'plugin/scripts/codex-hook-wrapper.mjs'
       - 'data/learning-replay*-result.json'
       - 'data/learning-replay-transcripts/**'
       - '.github/workflows/learning-replay.yml'
@@ -48,14 +74,19 @@ on:
         description: 'Spend real tokens and re-measure (needs the ANTHROPIC_API_KEY secret)'
         type: boolean
         default: false
+      strict_portfolio:
+        description: 'Fail this run when the committed model portfolio is out of date (not only when it fails)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   currency:
-    name: LEARNING-REPLAY artifact is current and PASS
+    name: LEARNING-REPLAY lesson delivery on HEAD (model portfolio currency reported)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -65,14 +96,40 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-      - name: Falsifiability guards (the trap's own unit tests must be green first)
+          # 22: the runtime integration-linux already proves the global ruflo's native memory writer on.
+          node-version: '22'
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund --loglevel=error
+      - name: "Install the ruflo global binary (Rule 21: the global one, never npx, never pinned)"
         run: |
-          npm i --no-audit --no-fund --loglevel=error
-          npx vitest run tests/unit/learning-replay.test.mjs
-      - name: LEARNING-REPLAY — gate on the recorded result
+          npm install -g --prefix "$HOME/.npm-global" ruflo@latest --no-audit --no-fund
+          "$HOME/.npm-global/bin/ruflo" --version
+      - name: Falsifiability guards (the trap's own unit tests, including the live-ruflo ones)
+        run: npx vitest run tests/unit/learning-replay.test.mjs
+      - name: LEARNING-REPLAY-WIRE — the lesson reaches project B on HEAD (hard gate)
         # Exit 0 only on PASS. 1 FAIL, 3 INCONCLUSIVE, 4 UNKNOWN — none of which is a pass.
-        run: npm run learning:replay:check
+        run: npm run learning:replay:wire
+      - name: LEARNING-REPLAY-PORTFOLIO — model evidence (FAIL is red; out-of-date is annotated unless strict)
+        env:
+          STRICT: ${{ github.event_name == 'workflow_dispatch' && inputs.strict_portfolio == true }}
+        run: |
+          set +e
+          if [ "$STRICT" = "true" ]; then tolerate=""; else tolerate="--tolerate-stale"; fi
+          out="$(npm run --silent learning:replay:check -- $tolerate 2>&1)"; rc=$?
+          set -e
+          printf '%s\n' "$out"
+          {
+            echo "### Model-measured D4 portfolio (exit $rc; 0 = PASS, or out-of-date evidence tolerated)"
+            echo '```'; printf '%s\n' "$out"; echo '```'
+            echo "Re-measure on an owner seat: \`node scripts/learning-replay.mjs --measure-portfolio --host codex --model gpt-6.1-sol\`, then land the evidence through a release branch."
+          } >> "$GITHUB_STEP_SUMMARY"
+          case "$out" in *STALE-TOLERATED*)
+            echo "::warning title=LEARNING-REPLAY portfolio not current::$(printf '%s' "$out" | tr '\n' ' ')" ;;
+          esac
+          if [ "$rc" -ne 0 ]; then
+            echo "::error title=LEARNING-REPLAY portfolio::$(printf '%s' "$out" | tr '\n' ' ')"
+            exit "$rc"
+          fi
 
   replay:
     name: Re-measure with real tokens (manual, opt-in)

@@ -25,13 +25,12 @@ import { fileURLToPath } from 'node:url';
 // an install hint into the middle of a refusal reason, or manufactured stderr on an allow. Read the
 // signature, do not infer it from the name.
 import { resolveBash } from './hook-shim-bash.mjs';
-import { append as appendOutcome, actionKey, recordRefusal, resolve as resolveOutcome, sweepStale } from './decision-outcomes.mjs';
+import { append as appendOutcome, actionKey, recordRefusal, reportBudget, reportSelfSkipped, resolve as resolveOutcome, sweepStale } from './decision-outcomes.mjs';
 // Grok sends its own tool names (`write`) and a snake_case event; every policy below reads Claude's
 // shape. Normalised ONCE here, so the policies (four of them bash, matching tool_name textually) never
 // see a host-native spelling — the 4.4 measurement was a Grok write silently allowed. hook-input.mjs.
 import { normalizePayloadText } from './hook-input.mjs';
-
-const QUIET_FULL = String(process.env.RUVNET_STOP_NUDGES || '').toLowerCase() === 'full';
+import { isDirectInvocation } from './entrypoint.mjs';
 
 const SCRIPTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const EVENT = process.argv[2] || '';
@@ -93,8 +92,8 @@ export const MIN_HEADROOM_MS = 3000;
  *
  * 1. ALLOW ON TIMEOUT. A policy still running at the budget is killed and the write is ALLOWED — a gate
  *    that blocks because it is slow is one users switch off. Never silent: the outcome ledger records
- *    `budget-exceeded` with the policies that did not vote, and ONE stderr line says the allow was a
- *    timeout, not a verdict (reportBudget below).
+ *    `budget-exceeded` with the policies that did not vote; a stderr line saying the allow was a timeout,
+ *    not a verdict, is printed only on a refusal or under RUVNET_STOP_NUDGES=full (decision-outcomes.mjs).
  *
  * 2. OVERSIZE: ONLY THE FIRST 64 KiB IS CHECKED. The host hands this gate the payload through
  *    hook-shim.mjs, which reads at most TRANSPORT_CAP_BYTES (its TABLE entry), and the bash policies cap
@@ -206,7 +205,7 @@ export function policiesFor(event, registry = REGISTRY, all = REFUSAL_POLICIES) 
 /**
  * Resolved once per invocation by the runtime block below; null means no bash on this host.
  *
- * Declared HERE, and not next to runPolicy() where it reads more naturally: the `if (isMain())`
+ * Declared HERE, and not next to runPolicy() where it reads more naturally: the runtime
  * block runs during module evaluation, so a `let` declared after it sits in the temporal dead zone
  * and the assignment throws — the identical mistake `speechEventFor` was already a hoisted
  * `function` to avoid, recorded a few lines further down.
@@ -285,13 +284,14 @@ function payloadInput(payload) { return parsed(payload).tool_input || {}; }
 /**
  * The sub-event token unprompted-runtime switches on.
  *
- * A hoisted `function`, not a `const` arrow: the `if (isMain())` block below runs DURING module
+ * A hoisted `function`, not a `const` arrow: the runtime block below runs DURING module
  * evaluation, so an arrow declared after it sits in the temporal dead zone — it threw
  * `Cannot access 'speechEventFor' before initialization` on this gate's first live refusal.
  */
 function speechEventFor(event) { return event === 'bash' ? 'PreToolUse-bash' : 'PreToolUse-write'; }
 // ── Runtime ──────────────────────────────────────────────────────────────────────────────────────
-if (isMain()) {
+// isDirectInvocation never throws (entrypoint.mjs), so an importer cannot be crashed by this guard.
+if (isDirectInvocation(import.meta.url)) {
   const started = Date.now();
   const payload = normalizePayloadText(readPayload());
   const shape = classifyPayload(payload);
@@ -348,14 +348,14 @@ if (isMain()) {
     }
   } catch { /* a ledger must never break a tool call */ }
   };
-  reportSelfSkipped({ session, selfSkipped });
+  reportSelfSkipped({ event: EVENT, session, selfSkipped });
   if (decision.allow && shape.truncated) {
     // OVERSIZE POLICY (header): allowed on a check of the first TRANSPORT_CAP_BYTES only. Recorded, never silent.
     try { appendOutcome({ kind: 'payload-oversize', event: EVENT, session, bytesSeen: shape.bytes, capBytes: TRANSPORT_CAP_BYTES, tool: shape.tool, filePath: shape.filePath, ts: Date.now() }); } catch { /* a ledger must never break a tool call */ }
   }
   if (!decision.allow) {
     measureFinalDecision(false);
-    reportBudget({ session, unconsulted, trace, started, budgetMs, refused: true });
+    reportBudget({ event: EVENT, session, unconsulted, trace, started, budgetMs, refused: true });
     process.stderr.write(`${decision.reason}\n`);
     process.exit(REFUSE);
   }
@@ -373,64 +373,21 @@ if (isMain()) {
     if (speech.skipped === 'budget') unconsulted.push(SPEECH.id);
     if (speech.code === REFUSE) {
       measureFinalDecision(false, [...decision.refusals, SPEECH.id]);
-      reportBudget({ session, unconsulted, trace, started, budgetMs, refused: true });
+      reportBudget({ event: EVENT, session, unconsulted, trace, started, budgetMs, refused: true });
       process.stderr.write(`${(speech.stderr || '').trim()}\n`);
       process.exit(REFUSE);
     }
-    reportBudget({ session, unconsulted, trace, started, budgetMs });
+    reportBudget({ event: EVENT, session, unconsulted, trace, started, budgetMs });
     measureFinalDecision(true);
     const context = policyContext(results, speech.stdout || '');
     if (context) process.stdout.write(context);
     process.exit(ALLOW);
   }
-  reportBudget({ session, unconsulted, trace, started, budgetMs });
+  reportBudget({ event: EVENT, session, unconsulted, trace, started, budgetMs });
   measureFinalDecision(true);
   const context = policyContext([...results, ...unconsulted.filter((id) => !results.some((r) => r.id === id && r.skipped)).map((id) => ({ id, skipped: 'budget' }))]);
   if (context) process.stdout.write(context);
   process.exit(ALLOW);
-}
-/**
- * ── A BUDGET THAT CAN BE EXCEEDED SILENTLY FAILS OPEN WITHOUT SAYING SO ──────────────────────────
- *
- * The old loop did `break` when the budget ran out. Every remaining policy AND the speech chokepoint
- * were then skipped with no record anywhere — the gate allowed, and nothing distinguished "five
- * policies agreed this was fine" from "we ran out of time and stopped asking". That is this repo's
- * signature defect wearing a different hat: silence standing in for a measurement. degradation-watch
- * exists because a warning was printed and skimmed; this exists because nothing was printed at all.
- *
- * TWO CHANNELS, because each fails differently:
- *   · the outcome ledger (~/.config/ruvnet-brain/, survives `--update`) so a trip COMPOUNDS into
- *     evidence instead of scrolling past. `kind: 'budget-exceeded'` is inert in report()'s buckets —
- *     it counts neither as a refusal nor as a resolution, so it cannot move the obedience rate.
- *   · one stderr line, unconditionally, allow or refuse. Yes, that puts bytes on stderr during an
- *     exit-0 allow, which tests/unit/decision-gate.test.mjs asserts never happens on an ordinary
- *     write. That assertion is now a SECOND tripwire and is meant to be: after the parallel batch and
- *     the applicability skip, an ordinary write measures ~360ms against a 4000ms budget, so a trip
- *     there is not noise to be tolerated — it is the defect, and the suite should go red for it.
- */
-function reportBudget({ session, unconsulted, trace, started, budgetMs, refused = false }) {
-  const elapsed = Date.now() - started;
-  if (process.env.RUVNET_DECISION_TRACE === '1') {
-    process.stderr.write(`[decision-gate] ${EVENT} ${elapsed}ms budget=${budgetMs}ms ${JSON.stringify(trace)}\n`);
-  }
-  if (!unconsulted.length) return;
-  try {
-    appendOutcome({ kind: 'budget-exceeded', event: EVENT, session, unconsulted, elapsedMs: elapsed, budgetMs, ts: Date.now() });
-  } catch { /* a ledger must never break a tool call */ }
-  // Quiet by default (2026-10-15): the outcome is already in the ledger above. On an ALLOW, a stderr line only
-  // makes the host show a hook "error" for a decision that was made. It is kept when the action was refused
-  // and under RUVNET_STOP_NUDGES=full.
-  if (refused || QUIET_FULL) process.stderr.write(
-    `[decision-gate] ${budgetMs}ms budget exhausted after ${elapsed}ms — ${refused ? 'REFUSED; UNCONSULTED' : 'ALLOWED WITHOUT CONSULTING'}: `
-    + `${unconsulted.join(', ')}. These policies did not vote; ${refused ? 'another policy refused the action.' : 'this allow is a timeout, not a verdict.'}\n`,
-  );
-}
-/** Record and print each policy that skipped itself (exit 3), with its own one-line reason. */
-function reportSelfSkipped({ session, selfSkipped }) {
-  for (const r of selfSkipped) {
-    try { appendOutcome({ kind: 'policy-skipped', event: EVENT, session, policy: r.id, reason: r.reason, ts: Date.now() }); } catch { /* a ledger must never break a tool call */ }
-    if (QUIET_FULL) process.stderr.write(`[decision-gate] ${r.reason || `${r.id} skipped`} — ${r.id} did not vote; it supplied no authorization verdict.\n`);
-  }
 }
 /**
  * Run one policy as a CAPTURED child. Never lets its bytes touch the real streams.
@@ -493,11 +450,4 @@ function runPolicy(p, payload, deadline, extraArg, trace) {
 function readPayload() {
   if (process.stdin.isTTY) return '';
   try { return fs.readFileSync(0, 'utf8'); } catch { return ''; }
-}
-/** Never able to crash a caller that merely imported this (see tests/unit/entrypoint-guard-safety). */
-function isMain() {
-  try {
-    if (!process.argv[1]) return false;
-    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
-  } catch { return false; }
 }

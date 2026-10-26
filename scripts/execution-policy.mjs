@@ -2,6 +2,7 @@
 // One deterministic boundary between Brain knowledge and consequential execution.
 // This module is deliberately pure: it never loads credentials, calls a provider, or mutates state.
 
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 const NATIVE_HOSTS = new Set(['claude', 'codex']);
 const API_EXECUTORS = new Set(['agent_execute', 'sdk', 'openrouter', 'api']);
 const ACTIONS = new Set(['read', 'write', 'delegate', 'release', 'external']);
@@ -111,7 +112,7 @@ export function classifyExecutionPolicy(input = {}) {
   };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isDirectInvocation(import.meta.url)) {
   const raw = process.argv[2] || '{}';
   let input;
   try { input = JSON.parse(raw); } catch { process.stderr.write('execution-policy: input must be JSON\n'); process.exit(2); }

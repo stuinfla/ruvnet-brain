@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const FULL_SHA = /^[a-f0-9]{40}$/i;
 const SCOPED_BRANCH = /^(fix|bugfix|hotfix|issue|codex)\/[A-Za-z0-9][A-Za-z0-9._/-]*$/;
@@ -288,4 +289,4 @@ export function main(args = process.argv.slice(2)) {
   }
 }
 
-if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) process.exitCode = main();
+if (isDirectInvocation(import.meta.url)) process.exitCode = main();

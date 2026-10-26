@@ -74,6 +74,20 @@ describe('managed CLI structured interface policy', () => {
     fs.rmSync(home, { recursive: true, force: true });
   });
 
+  it('honors RUFLO_BIN over the global binary, authoritatively, for ruflo only (#420 item 5)', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'managed-ruflo-bin-'));
+    const canonical = path.join(home, '.npm-global', 'bin', process.platform === 'win32' ? 'ruflo.cmd' : 'ruflo');
+    fs.mkdirSync(path.dirname(canonical), { recursive: true });
+    fs.writeFileSync(canonical, '#!/bin/sh\nexit 0\n');
+    fs.chmodSync(canonical, 0o755);
+    const custom = path.join(home, 'custom', 'my-ruflo');
+    expect(resolveManagedExecutable('ruflo', { HOME: home, RUFLO_BIN: custom })).toBe(custom);
+    expect(resolveManagedExecutable('ruflo', { HOME: home, RUFLO_BIN: '' })).toBe(canonical);
+    expect(resolveManagedExecutable('agentic-qe', { HOME: home, RUFLO_BIN: custom })).toBe('agentic-qe');
+    expect(resolveManagedExecutable('claude-flow', { HOME: home, RUFLO_BIN: custom })).toBe('claude-flow');
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+
   it('mints a content-bound current-version receipt from the exact managed CLI execution', async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'managed-ruflo-receipt-'));
     const canonical = path.join(home, '.npm-global', 'bin', process.platform === 'win32' ? 'ruflo.cmd' : 'ruflo');
@@ -85,6 +99,7 @@ describe('managed CLI structured interface policy', () => {
     fs.chmodSync(canonical, 0o755);
     const env = {
       ...process.env,
+      RUFLO_BIN: '', // hermetic: a developer's RUFLO_BIN must not displace the temp-HOME stub (#420 item 5)
       HOME: home,
       RUVNET_BRAIN_HOME: path.join(home, '.cache', 'ruvnet-brain'),
       RUVNET_CAPABILITY_LIVE_EVIDENCE: evidence,
@@ -106,7 +121,7 @@ describe('managed CLI structured interface policy', () => {
       ? '@echo ruflo ok\r\n'
       : '#!/bin/sh\nprintf "ruflo ok\\n"\n');
     fs.chmodSync(canonical, 0o755);
-    const env = { ...process.env, HOME: home, RUVNET_BRAIN_HOME: path.join(home, '.cache', 'brain'), RUVNET_BRAIN_PROJECT_DIR: home };
+    const env = { ...process.env, RUFLO_BIN: '', HOME: home, RUVNET_BRAIN_HOME: path.join(home, '.cache', 'brain'), RUVNET_BRAIN_PROJECT_DIR: home };
     const phases = [];
     await callManagedCli('ruvnet_cli_help', { executable: 'ruflo', argv: ['status'] }, env);
     const result = await callManagedCli('ruvnet_cli_run', { executable: 'ruflo', argv: ['status'] }, env, globalThis.fetch, {

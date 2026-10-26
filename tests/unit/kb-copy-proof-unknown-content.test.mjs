@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { kbCopyProof } from '../../plugin/scripts/kb-copy-proof.mjs';
+import { INSTALLER_WRITTEN, kbCopyProof } from '../../plugin/scripts/kb-copy-proof.mjs';
 import { sweepFootprint } from '../../plugin/scripts/brain-footprint.mjs';
 
 const roots = [];
@@ -27,6 +27,21 @@ const witness = (dir, file) => {
 };
 
 describe('unknown-content preservation during KB copy reclamation (#335)', () => {
+  // Review round 2 (Opus #5): the installer places these with the updater; an older copy's placed version differs from
+  // the live one and is in no bundle manifest, so it was kept as unique and the ~745 MB copy was never reclaimed.
+  it.each(['forge-guard-injection.mjs', 'download-retry.mjs'])('an older installer-placed %s does not keep a copy', (name) => {
+    const f = fixture(); put(f.copyDir, name, '// placed by an older package\n'); put(f.liveDir, name, '// placed by this package\n');
+    expect(kbCopyProof(f)).toMatchObject({ disposable: true, unique: [] });
+  });
+  it('every file bin/install.mjs places with the updater is exempt as installer-written', () => {
+    const source = fs.readFileSync(new URL('../../bin/install.mjs', import.meta.url), 'utf8');
+    const list = source.match(/const UPDATER_FILES = \[([^\]]*)\]/)?.[1];
+    expect(list).toBeTruthy();
+    const placed = [...list.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+    expect(placed.length).toBeGreaterThanOrEqual(9);
+    expect(placed.filter((name) => !INSTALLER_WRITTEN.has(name))).toEqual([]);
+    expect(INSTALLER_WRITTEN.has('coverage-integrity.mjs')).toBe(true); // placeTrustedCoverageValidator
+  });
   it('retains same-length differing unknown bytes at an existing live pathname', () => {
     const f = fixture(); put(f.copyDir, 'user-notes.txt', 'older'); put(f.liveDir, 'user-notes.txt', 'newer');
     expect(kbCopyProof(f)).toMatchObject({ disposable: false, unique: [{ file: 'user-notes.txt' }] });

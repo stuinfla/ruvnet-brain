@@ -3,8 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
-import vm from 'node:vm';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { livePublicationAdapter, validateCandidateSource } from '../../scripts/publication-receipt.mjs';
 import { generatePublicVerificationLane } from '../../scripts/public-verification-lane.mjs';
 
@@ -160,20 +159,22 @@ describe('recovery candidate source is independent of verifier source', () => {
       verifierSha: '0'.repeat(40), adapter: {} })).rejects.toThrow(/verifier SHA differs/);
   });
 
-  it('recognizes direct Windows entrypoints with spaces and rejects importing callers', () => {
+  it('recognizes direct entrypoints in a path with spaces and rejects importing callers', async () => {
+    // Both CLIs decide "was I run?" with the shared helper, which compares real paths, so a checkout
+    // under a directory with spaces (file URL %20) or reached through a symlink still runs.
+    const { isDirectInvocation } = await import('../../plugin/scripts/entrypoint.mjs');
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'recovery verifier '));
+    roots.push(root);
     for (const script of ['published-surface-probe.mjs', 'public-verification-finalizer.mjs']) {
       const source = fs.readFileSync(path.join(verifierRoot, 'scripts', script), 'utf8');
-      const expression = source.match(/^const invokedDirectly = (.+);$/m)?.[1];
-      expect(expression).toBeTruthy();
-      const moduleUrl = `file:///C:/recovery%20verifier/scripts/${script}`;
-      const entry = fileURLToPath(moduleUrl, { windows: true });
-      const evaluate = (argv) => vm.runInNewContext(expression.replaceAll('import.meta.url', 'moduleUrl'), {
-        moduleUrl, path: path.win32, process: { argv },
-        fileURLToPath: (url) => fileURLToPath(url, { windows: true }),
-      });
-      expect(evaluate(['node', entry])).toBe(true);
-      expect(evaluate(['node', 'C:\\recovery verifier\\caller.mjs'])).toBe(false);
-      expect(evaluate(['node'])).toBeFalsy();
+      expect(source).toMatch(/^const invokedDirectly = isDirectInvocation\(import\.meta\.url\);$/m);
+      const entry = path.join(root, script);
+      fs.writeFileSync(entry, '');
+      const moduleUrl = pathToFileURL(entry).href;
+      expect(moduleUrl).toContain('%20');
+      expect(isDirectInvocation(moduleUrl, entry)).toBe(true);
+      expect(isDirectInvocation(moduleUrl, path.join(root, 'caller.mjs'))).toBe(false);
+      expect(isDirectInvocation(moduleUrl, undefined)).toBe(false);
     }
   });
 

@@ -46,7 +46,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { BOT_MARKER, OWNER_LOGIN } from './issue-watch.mjs';
+import { BOT_MARKER, OWNER_LOGIN, ghJsonWithRetry } from './issue-watch.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = 'stuinfla/ruvnet-brain';
@@ -118,28 +119,10 @@ export function executionPolicy(mode = 'unattended') {
   throw new Error(`unsupported issue-fix mode: ${mode}`);
 }
 
-function ghJson(args) {
-  // Retry ONCE on a transient network-shaped failure (2026-07-19: a 1am GitHub API blip — "TLS
-  // handshake timeout" / "unexpected EOF" — failed the whole run and gonged the phone, when 20s of
-  // patience was the honest fix). Same bounded philosophy as nightly-wrapper's retry: blind retries
-  // fix exactly one class (transient network), so retry exactly once, log the first failure, and
-  // still fail LOUD if it happens twice. Never a silent swallow.
-  let lastErr;
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    const res = spawnSync(GH_BIN, args, { encoding: 'utf8' });
-    if (res.status === 0) return JSON.parse(res.stdout);
-    const err = (res.stderr || res.stdout || '').trim();
-    lastErr = new Error(`gh ${args.join(' ')} failed (exit ${res.status}): ${err}`);
-    const transient = /TLS handshake|unexpected EOF|timeout|ECONNRESET|ETIMEDOUT|EAI_AGAIN|connection refused|temporarily unavailable/i.test(err);
-    if (attempt === 1 && transient) {
-      console.error(`issue-fix: transient gh/network failure (${err.slice(0, 90)}) — retrying once in 20s`);
-      spawnSync('sleep', ['20']);
-      continue;
-    }
-    break;
-  }
-  throw lastErr;
-}
+// Transient gh failures (TLS handshake, "error connecting to api.github.com", HTTP 502/503/504) are retried with
+// backoff by the watcher's shared helper — one rule in one place (4.7.21: the old copy here missed the 1 a.m.
+// "error connecting" blip and paged). Anything else still fails LOUD on the first attempt.
+const ghJson = (args) => ghJsonWithRetry(args, { bin: GH_BIN, who: 'issue-fix' });
 
 function loadState() {
   try { return JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')); } catch { return {}; }
@@ -555,4 +538,4 @@ async function main() {
   process.exit(failedAttempt ? 1 : 0);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) await main();
+if (isDirectInvocation(import.meta.url)) await main();

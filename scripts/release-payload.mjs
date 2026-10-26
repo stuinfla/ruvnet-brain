@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canonicalJson } from './release-transaction.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const sha256 = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 const digestFile = (file) => sha256(fs.readFileSync(file));
@@ -51,7 +52,7 @@ const arg = (name) => {
   const index = process.argv.indexOf(name);
   return index >= 0 ? process.argv[index + 1] : null;
 };
-const command = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+const command = isDirectInvocation(import.meta.url)
   ? process.argv[2]
   : null;
 

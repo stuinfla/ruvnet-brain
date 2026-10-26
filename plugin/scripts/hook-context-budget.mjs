@@ -3,6 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { isDirectInvocation } from './entrypoint.mjs';
 
 export const FRAME_KIND = 'brain-owned-context-blocks';
 const digest = (value) => crypto.createHash('sha256').update(value).digest('hex');
@@ -73,7 +74,7 @@ export function emitOwnedContext(frame, { env = process.env, rawText = false } =
 }
 
 let direct = false;
-try { direct = fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); } catch {}
+try { direct = isDirectInvocation(import.meta.url); } catch {}
 if (direct && process.argv[2] === '--ground-dir') {
   const directory = process.argv[3]; const blocks = [];
   for (const id of fs.readdirSync(directory).filter((id) => /^\d+-\d+-[\w-]+$/.test(id)).sort((a, b) => Number(a.split('-')[0]) - Number(b.split('-')[0]))) {

@@ -5,6 +5,7 @@
 // the caller supplies the finding and the current open issues, and receives a disposition before
 // invoking any GitHub write operation.
 
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 const HEX_SHA = /^[0-9a-f]{7,64}$/i;
 const ISSUE_MARKER = 'dream-fingerprint:';
 
@@ -98,7 +99,7 @@ export function buildIssueBody(finding, decision = assessFinding(finding)) {
 // Adapter contract for the Dream Machine runner. Input is JSON on stdin:
 // { "finding": { ... }, "openIssues": [{ "number", "title", "body" }] }
 // Output is the disposition JSON. This command intentionally cannot create or mutate GitHub data.
-if (process.argv[1] === new URL(import.meta.url).pathname) {
+if (isDirectInvocation(import.meta.url)) {
   let input = '';
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', (chunk) => { input += chunk; });

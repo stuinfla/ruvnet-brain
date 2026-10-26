@@ -13,6 +13,7 @@ import { npmInvocation } from './npm-invocation.mjs';
 import { packageTreeObservation, observeNpxPackage, validateNpxObservations } from './nightly-package-observation.mjs';
 import { NIGHTLY_LABEL, NIGHTLY_PROOF_LABEL, validateRefreshReceiptEnvelope } from '../plugin/scripts/nightly-scheduler.mjs';
 import { validateCoverageDirectory, validateCoverageLedger } from '../plugin/scripts/coverage-integrity.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const PUBLIC_KEY = fs.readFileSync(new URL('../keys/ruvnet-brain-signing.pub.pem', import.meta.url), 'utf8');
 
@@ -599,7 +600,7 @@ export async function runNightlyTwoRunProof({ packagePath, bundlePath, out, time
   }
 }
 
-if (((() => { try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })())) {
+if (isDirectInvocation(import.meta.url)) {
   try {
     const args = parseArgs(process.argv.slice(2));
     const receipt = await runNightlyTwoRunProof({ packagePath: args.package, bundlePath: args.bundle, out: args.out,

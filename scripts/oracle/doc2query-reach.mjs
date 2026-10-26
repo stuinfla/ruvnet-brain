@@ -22,6 +22,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { wilson } from '../eval-brain.mjs';
+import { isDirectInvocation } from '../../plugin/scripts/entrypoint.mjs';
 
 /** Collapse ranked entry hits (each pointing at a file) to the first `files` distinct files. */
 export function filesFromEntries(hits, pathOfId, files) {
@@ -107,4 +108,4 @@ async function main() {
   process.exit(0);
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
+if (isDirectInvocation(import.meta.url)) await main();

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canonicalJson, digest } from './coverage-integrity.mjs';
 import { HOST_MODES, MODE_HOSTS } from './host-install-matrix.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export const HOST_ADAPTER_FILES = Object.freeze([
   'plugin/host-adapters/claude.json',
@@ -115,4 +116,4 @@ export function main(args = process.argv.slice(2)) {
   }
 }
 
-if (((() => { try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })())) process.exitCode = main();
+if (isDirectInvocation(import.meta.url)) process.exitCode = main();

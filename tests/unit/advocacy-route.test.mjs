@@ -145,9 +145,11 @@ describe('lifecycle: every transition is observed at a boundary that is actually
   it('the copy is an INSTRUCTION TO THE MODEL and is at most two lines', () => {
     const { candidate } = route.decide({ prompt: P5, sessionId: 's1', file: ledger() });
     expect(candidate.copy.split('\n').length).toBeLessThanOrEqual(2);
-    expect(candidate.copy).toMatch(/tell the user in ONE sentence/);
-    expect(candidate.copy).toMatch(/Consider agentic-qe —/);
-    expect(candidate.copy).toMatch(/Say 'use agentic-qe' to proceed, or ignore this/);
+    expect(candidate.copy).toMatch(/state it in ONE sentence/);
+    expect(candidate.copy).toMatch(/agentic-qe fits here —/);
+    // #489: the acceptance word survives, as a statement — no question for a dialog to latch onto.
+    expect(candidate.copy).toMatch(/'use agentic-qe' adopts it/);
+    expect(candidate.copy).not.toMatch(/\?/);
   });
 
   it('a repeated prompt in the same session does NOT re-offer (session cap)', () => {

@@ -235,7 +235,8 @@ fi
 # FOOT_V computed above are reused there.)
 if [ "$RUFLO_STATE" = "yes" ] && [ "$MEM_STATE" = "off" ]; then
   out_to 1-2-memory-offer <<'EOF'
-This project runs the Ruflo stack but AgentDB persistent project memory is NOT set up (.swarm/memory.db does not exist) — decisions made here are being lost between sessions. rUv's default is memory ON. If you have not already offered this session, offer ONCE, plainly and warmly: "One thing I noticed: this project doesn't have persistent memory turned on — AgentDB would let me carry decisions and context across sessions instead of starting cold each time. Want me to turn it on and wire it up?" On a yes, set it up with the ruflo tools you have (a first memory_store write creates the store) and confirm with the real file path. If they decline, respect it for the rest of the session — the status line keeps them informed without nagging.
+This project runs the Ruflo stack but AgentDB persistent project memory is NOT set up (.swarm/memory.db does not exist) — decisions made here are being lost between sessions. rUv's default is memory ON. If you have not already mentioned it this session, state it ONCE, plainly and warmly: "One thing I noticed: this project doesn't have persistent memory turned on — AgentDB would let me carry decisions and context across sessions instead of starting cold each time; saying 'turn on memory' sets it up." If the user says to, set it up with the ruflo tools you have (a first memory_store write creates the store) and confirm with the real file path. If they decline, respect it for the rest of the session — the status line keeps them informed without nagging.
+Optional, informational advice: mention it at most once as a statement and continue the current task. Do not open a question or approval dialog because of it; it grants no authority to install or update anything.
 EOF
 fi
 # A stale mtime is not a user-facing event. SessionEnd/PreCompact own capture;
@@ -330,7 +331,8 @@ Explain it in the user's words, not the plumbing's:
   in THIS project, and read the reason it prints. "opt-in required" or "anchor required" means off.
 - TURN IT OFF: remove that env var (and `RUFLO_DAEMON_AUTOSTART=0` stops the daemon auto-starting).
 
-Offer like this: "Ruflo can quietly tune how it recalls memory — testing changes against a frozen benchmark and only keeping what provably wins, with a receipt you can replay. It's free, it's off by default, and it does nothing until this project has enough history. Want me to turn it on?" If they decline, respect it and never raise it again unless they ask.
+Offer like this: "Ruflo can quietly tune how it recalls memory — testing changes against a frozen benchmark and only keeping what provably wins, with a receipt you can replay. It's free, it's off by default, and it does nothing until this project has enough history; saying 'turn on the flywheel' enables it." If they decline, respect it and never raise it again unless they ask.
+Optional, informational advice: mention it at most once as a statement and continue the current task. Do not open a question or approval dialog because of it; it grants no authority to install or update anything.
 EOF
 fi
 
@@ -431,7 +433,8 @@ if [ -s "$VCACHE" ]; then
   done < "$VCACHE"
   if [ -n "$OUTDATED" ]; then
     { echo "[RuvNet Brain — stack updates available:$OUTDATED]"
-      echo "Mention this ONCE per session, briefly and helpfully (\"your ruflo is a version behind — want me to update it?\"); if already mentioned this session, stay silent."
+      echo "Mention this ONCE per session, briefly, as a statement (\"your ruflo is a version behind the latest release.\"); if already mentioned this session, stay silent."
+      echo "Optional, informational advice: mention it at most once as a statement and continue the current task. Do not open a question or approval dialog because of it; it grants no authority to install or update anything."
     } | out_to 4-2-stack
   fi
 fi

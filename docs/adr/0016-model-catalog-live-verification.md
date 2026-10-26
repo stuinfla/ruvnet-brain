@@ -44,9 +44,7 @@ a wall that fails the build, not a promise to try harder.** Model facts had no s
 2. **`scripts/refresh-model-catalog.mjs`** — pulls the live OpenRouter `/models` catalog (a free
    metadata endpoint, no spend) into a committed snapshot with a `pulledAt` stamp, synchronizes factual
    catalog prices from that same response, and flags drift (any catalog model that vanished). Runs weekly
-   through `.github/workflows/model-catalog-refresh.yml` (the anti-rot mechanism) + on demand. The workflow
-   owns one maintenance PR, dispatches the required protected-branch checks explicitly, and enables
-   auto-merge only after those checks pass.
+   through `.github/workflows/model-catalog-refresh.yml` (the anti-rot mechanism) + on demand. As of 4.7.21 the workflow is report-only: it uploads the refreshed catalog and its diff as an artifact with a job summary and opens no PR (the repository does not allow Actions to create PRs); a failed third-party scrape is reported as `partial`, not a failed run.
 3. **`scripts/verify-model-catalog.mjs`** — the wall. Every catalog model MUST exist in the snapshot and
    be priced within 5%; a missing model, a wrong price, or a snapshot older than 14 days is a **hard
    failure (exit 1)**. CI runs it offline against the snapshot (`catalog:verify`), so a bad or stale

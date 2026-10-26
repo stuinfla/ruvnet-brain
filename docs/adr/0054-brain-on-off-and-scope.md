@@ -3,9 +3,9 @@ id: ADR-054
 title: Brain on/off and per-part scope — a user-controlled brain that can never silently lie about being off
 status: Accepted
 date: 2026-07-26
-updated: 2026-10-24
+updated: 2026-10-26
 updated_source: derived-from-git
-reviewed_digest: ebcaf007ff14
+reviewed_digest: 9bf8cf55a53a
 version: 1.1.7
 impl: verification-expired
 verified: 2026-07-31
@@ -176,7 +176,7 @@ The console changes the files first and saves the preference second; if the mirr
 reports the half-failure and the on-disk RVFs remain authoritative. Complete restore copies from the
 full release bundle. Fresh installs and `forge-update.mjs` reapply the durable selection after
 verified extraction. The rollback reclaimer may ignore stores intentionally removed by the selected
-public profile, but it still keeps any backup containing an unknown private/local RVF.
+public profile, but it still keeps any backup containing an unknown private/local RVF, except after an explicit `--clean --archive`: then a backup whose every regular-file byte survives in live or in `kb.archive/` is released, and the private bytes remain in `kb.archive/` (4.7.21, #335).
 
 ## Risks register — superseded by the duel record
 
@@ -226,11 +226,15 @@ overlays and preserves the prior generation as unclassified data instead of dele
 source review does not renew the expired verification or prove the native-host acceptance criteria.
 
 ## Currency log
+| 2026-10-26 | Review `9bf8cf55a53a` (fix/learning-replay-daily): decision unchanged. `plugin/scripts/hook-shim.mjs` no longer exits `unprompted-speech` whole in quiet mode; it runs only the lesson/alarm producers (`RUVNET_UNPROMPTED_CHANNELS`). The Brain-OFF `silence` exit still runs first, so an OFF brain says nothing. | Reviewed the `plugin/scripts/hook-shim.mjs` and `plugin/scripts/unprompted-runtime.mjs` diff; `tests/unit/continuation-gate-quiet-default.test.mjs`; `npm run learning:replay:wire` (brain-off control silent). |
+| 2026-10-25 | Review `d8c2d50bf07b` (4.7.21): on/off and per-part scope handling unchanged; one retention sentence now has an exception the owner should ratify. `kb/forge-update.mjs` (#335, review A): after an explicit `npx ruvnet-brain --clean --archive`, `reclaimBackups` releases a backup whose every regular-file byte survives at the same path in live or in a `kb.archive/` tree, before and regardless of the store-inventory checks. So the sentence that the rollback reclaimer still keeps any backup containing an unknown private/local RVF no longer holds literally once such an archive exists; the private bytes stay in `kb.archive/`, which is never removed automatically, so nothing private is lost. `kb/forge-ask-all.mjs` `corpusAgeFor` reads the recorded `builtUtc` before file mtime (Dream #359). `scripts/onboarding-console.mjs`: plugin-aware session-hook probe and quiet-learner progress check. `bin/install.mjs`: #492, #301, #335, #420 item 4, #400 (the summary now states that the allowlisted lifecycle hooks run). `plugin/scripts/session-start-core.mjs`: entry-point sweep only. | Reviewed diffs 320b778b..63ca7c0d for `kb/forge-update.mjs`, `kb/forge-ask-all.mjs`, `scripts/onboarding-console.mjs`, `bin/install.mjs` and `plugin/scripts/session-start-core.mjs`; CONTRIBUTING.md 1.5.1 documents the archive rule. |
+| 2026-10-25 | Review `324748827666` (4.7.20): decision unchanged. `plugin/scripts/session-start-core.mjs` only adds `[RuvNet Brain — NTFY:` to the status allow-list for a maintainer-only, counts-only alert line; on/off and scope handling are untouched. | Reviewed the `plugin/scripts/session-start-core.mjs` diff 5b1f5c59..HEAD (one line). |
 | 2026-10-24 | Review `ebcaf007ff14` (4.7.18): decision unchanged. `bin/install.mjs` moved | The 4.7.18 changes to it are Codex snapshot retry/repair during wiring, a recorded reason on every failed host sync, and an early refusal for a stale source checkout running `--update`. The on/off switch and scope handling are untouched. Source: `bin/install.mjs`. |
 | 2026-10-01 | Currency review (4.5, keyword lane off by default): decision unchanged. `kb/keyword-lane.mjs` gains `keywordLaneEnabled()`, and `kb/forge-ask-all.mjs` adds keyword candidates only when RUVNET_BRAIN_KEYWORD_LANE=1. Brain on/off and per-part scope handling are untouched. reviewed_digest 75556bed3285. | Reviewed `kb/forge-ask-all.mjs` and `kb/keyword-lane.mjs` against `evals/runs/2026-10-01-retrieval-4.5/e2-mitigation/cost-sim.jsonl`. |
 | 2026-10-01 | Currency review (4.5 merge of 4.4.1): decision unchanged. The governed files changed only by merging the 4.4.1 release and by retrieval-only edits to `kb/forge-ask-all.mjs`: the keyword lane, the quoted-claim merge, the flag-gated learned judge, and dropping store names from identifier widening. Brain on/off and per-part scope handling are untouched. reviewed_digest 7af69131d535. | Reviewed `kb/forge-ask-all.mjs` and `bin/install.mjs` against `evals/runs/2026-10-01-retrieval-4.5/e2e3-f725e0e7/recall.json`. |
 | 2026-10-01 | Currency review (4.5): decision unchanged. `kb/forge-ask-all.mjs` changed only inside retrieval: the keyword lane, the quoted-claim merge and a flag-gated learned judge. Brain on/off and per-part scope handling are untouched. reviewed_digest 9303ba1e555f. | Reviewed `kb/forge-ask-all.mjs` against `evals/runs/2026-10-01-retrieval-4.5/e2e3-f725e0e7/recall.json`. |
 | 2026-10-01 | Currency review (4.4 routing and 4.4.1 apostrophes): decision unchanged. `kb/forge-ask-all.mjs` changed only in source routing: the tie-break, the metadata index, the rUv provenance shape and apostrophe folding. Brain on/off and per-part scope handling are untouched. reviewed_digest 63273ddf3e8a. | Reviewed `kb/forge-ask-all.mjs` against `evals/runs/2026-10-01-routing-4.4.1/README.md`. |
+| 2026-10-01 | Dream Cycle (brain-currency): `kb/forge-ask-all.mjs`'s `corpusAgeFor()` now prefers each store's recorded `builtUtc` from `RVF-GENERATIONS.json` over `fs.statSync().mtimeMs`, so a fresh clone/npm-install (which resets every file's mtime) no longer reports a near-zero corpus age regardless of true build age. Pure staleness-measurement fix; no on/off sentinel, scope-suppression, `brainEnabled`, `offBehavior`, or profile logic touched (grepped the diff directly: zero hits). Decision unchanged. | Reviewed `git diff 94bd932 -- kb/forge-ask-all.mjs` in full; grepped for `brainEnabled`/`sentinel`/`off-state`/`offBehavior`/`disabled`, same method as the 2026-09-11/09-13/09-19 rows above. |
 | 2026-09-27 | Currency review: decision unchanged. Motion: retrieval scoping fixes in forge-ask-all.mjs, hook-shim TABLE corrections, corpus-currency consolidation, and the same onboarding-console/install.mjs fixes seen elsewhere. None change the on/off or scope semantics this ADR governs. | Reviewed `scripts/user-settings.mjs`, `kb/forge-ask-all.mjs`, `plugin/mcp/server.mjs`, `plugin/scripts/hook-shim.mjs`, `plugin/scripts/session-start-core.mjs`, `scripts/onboarding-console.mjs` against the commits listed above; reviewed_digest 1e0dac253cc3. |
 
 | 2026-09-19 | Reviewed current source and normative claims; the detailed September 19 findings below retain their stated runtime limitations. reviewed_digest 910e8bb8c064. | `scripts/user-settings.mjs`, `kb/forge-ask-all.mjs`, `plugin/mcp/server.mjs`; source consistency review only, no new deployment or acceptance claim. |

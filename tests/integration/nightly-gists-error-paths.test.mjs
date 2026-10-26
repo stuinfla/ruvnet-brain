@@ -3,8 +3,8 @@
 // comment documents 3 FATAL guards plus one cost-discipline branch (skip the ~18min re-embed entirely
 // when nothing changed) — none were exercised anywhere.
 //
-// TEST-ONLY SOURCE PATCH, DOCUMENTED UP FRONT: the real script's first executable line is
-// `export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"` — a literal REASSIGNMENT, not an
+// TEST-ONLY SOURCE PATCH, DOCUMENTED UP FRONT: the real script pins
+// `export PATH="<fixed absolute dirs>"` — a literal REASSIGNMENT, not an
 // append to the caller's $PATH (its own comment explains why: launchd doesn't inherit a login shell's
 // env, so PATH must be pinned to real absolute dirs). That single line defeats the PATH-stubbing
 // technique this suite otherwise relies on everywhere (ingest-repo.test.mjs, ingest-gists.test.mjs):
@@ -61,11 +61,15 @@ beforeEach(() => {
   callLog = path.join(tmp, 'calls.log');
 
   const real = fs.readFileSync(path.join(REPO_ROOT, 'scripts/nightly-gists.sh'), 'utf8');
-  const pinnedLine = 'export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"';
-  if (!real.includes(pinnedLine)) {
-    throw new Error('nightly-gists.sh no longer has the expected hardcoded PATH line — update this test\'s patch to match the new source.');
+  // Match the PATH line by shape, not by its exact directories: the pinned dirs change (2026-10-25 they
+  // moved to the owner's job-bin) and a literal copy here went stale. Exactly ONE `export PATH=` line
+  // must exist — zero means the patch would silently test the real PATH, two means it is ambiguous.
+  const pathLines = real.match(/^export PATH=.*$/gm);
+  const pathLineCount = pathLines === null ? 0 : pathLines.length;
+  if (pathLineCount !== 1) {
+    throw new Error(`nightly-gists.sh must have exactly one \`export PATH=\` line for this test's patch; found ${pathLineCount}.`);
   }
-  const patched = real.replace(pinnedLine, 'export PATH="${TEST_STUB_BIN:+$TEST_STUB_BIN:}$PATH"');
+  const patched = real.replace(/^export PATH=.*$/m, 'export PATH="${TEST_STUB_BIN:+$TEST_STUB_BIN:}$PATH"');
   fs.writeFileSync(path.join(tmp, 'scripts/nightly-gists.sh'), patched);
 
   // Stub gh: only implements `auth status`, dispatched on argv shape. Fails if GH_AUTH_FAIL=1.
@@ -127,12 +131,15 @@ function run(env = {}) {
   const r = spawnSync('sh', ['scripts/nightly-gists.sh'], {
     cwd: tmp,
     encoding: 'utf8',
-    timeout: 15000,
+    // 120 s: the script is fast, but at high machine load (the owner's Mac often runs at load 100+)
+    // a 15 s cap killed healthy runs and read as a failure of the script.
+    timeout: 120_000,
     env: {
       PATH: `${NODE_DIR}:${SAFE_BIN}`, // node + only the tools the script needs; gh absent on EVERY platform
       TEST_STUB_BIN: stubBin,
       CALL_LOG: callLog,
       HOME: process.env.HOME,
+      JOB_HEARTBEAT_DIR: path.join(tmp, 'heartbeats'), // never write into the real ~/.cache/ruvnet-brain/heartbeats
       ...env,
     },
   });
@@ -173,6 +180,39 @@ onPosix('nightly-gists.sh — FATAL guards (verified against a patched-PATH copy
   });
 
   it('skips the ~18min re-embed and exits 0 when ingest reports "nothing to do" — the actual cost guarantee', () => {
+    const out = run({ INGEST_MODE: 'nothing' });
+    expect(out.status).toBe(0);
+    expect(out.log).toMatch(/no new gists — skipping embed \(cost: 0\)/);
+    expect(out.calls.some((c) => c.startsWith('forge-big'))).toBe(false);
+  });
+
+  it('re-embeds when ingest says "nothing to do" but the store is older than the passages (an earlier embed failed)', () => {
+    // Exactly the 2026-10-25 state: the failed night rewrote passages + receipt, the store stayed old.
+    fs.writeFileSync(path.join(tmp, 'kb/ruv-gists.big.rvf'), 'old store');
+    const old = new Date(Date.now() - 3 * 86400_000);
+    fs.utimesSync(path.join(tmp, 'kb/ruv-gists.big.rvf'), old, old);
+    fs.writeFileSync(path.join(tmp, 'kb/ruv-gists.passages.jsonl'), '{}\n');
+    const out = run({ INGEST_MODE: 'nothing' });
+    expect(out.status).toBe(0);
+    expect(out.log).toMatch(/is older than kb\/ruv-gists\.passages\.jsonl .* re-embedding/);
+    expect(out.log).not.toMatch(/skipping embed/);
+    expect(out.calls).toContain('forge-big shard-all --dir kb --name ruv-gists --shards 8 --stall-minutes 15');
+    expect(out.calls).toContain('forge-big ingest --dir kb --name ruv-gists');
+  });
+
+  it('writes no <label>.heartbeat file (the dead 30-s writer is gone; the wrapper receipt is the liveness proof)', () => {
+    const out = run({ INGEST_MODE: 'nothing' });
+    expect(out.status).toBe(0);
+    const hbDir = path.join(tmp, 'heartbeats');
+    const written = fs.existsSync(hbDir) ? fs.readdirSync(hbDir) : [];
+    expect(written).toEqual([]);
+  });
+
+  it('still skips the embed when the store is newer than the passages', () => {
+    fs.writeFileSync(path.join(tmp, 'kb/ruv-gists.passages.jsonl'), '{}\n');
+    const old = new Date(Date.now() - 3 * 86400_000);
+    fs.utimesSync(path.join(tmp, 'kb/ruv-gists.passages.jsonl'), old, old);
+    fs.writeFileSync(path.join(tmp, 'kb/ruv-gists.big.rvf'), 'fresh store');
     const out = run({ INGEST_MODE: 'nothing' });
     expect(out.status).toBe(0);
     expect(out.log).toMatch(/no new gists — skipping embed \(cost: 0\)/);

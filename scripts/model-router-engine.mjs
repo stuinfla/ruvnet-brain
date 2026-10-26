@@ -12,6 +12,7 @@ import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import { pathToFileURL, fileURLToPath } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 import { estTokens } from './route-cheap.mjs'; // reuse the verified char/4 estimator (DRY)
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -309,6 +310,6 @@ async function main() {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isDirectInvocation(import.meta.url)) {
   main().catch((e) => { process.stderr.write(`model-router-engine: ${e.stack || e.message}\n`); process.exit(1); });
 }

@@ -31,6 +31,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { sha256File, projectSourceStore } from './rvf-generation.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export const REQUIRED_SIDECARS = ['.big.rvf', '.big.rvf.embed.json', '.big.rvf.idmap.json', '.meta.json', '.passages.jsonl'];
 export const OPTIONAL_SIDECARS = ['.symbols.json', '-primer.md'];
@@ -267,4 +268,4 @@ function main() {
   console.log(JSON.stringify(receipt, null, 2));
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) main();
+if (isDirectInvocation(import.meta.url)) main();

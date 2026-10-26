@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { digest } from './coverage-integrity.mjs';
 import { sourceIdentity } from './qa-contract.mjs';
 import { RELEASE_REQUIREMENTS } from './release-qualification-contract.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PLATFORM = { linux: 'linux', darwin: 'macos', win32: 'windows' }[process.platform];
@@ -124,6 +125,12 @@ export function runQualification({ suite = 'source', platform = PLATFORM, report
   }
   const sourceAfter = sourceIdentity(root);
   const sourceStable = source.digest === sourceAfter.digest;
+  if (!sourceStable && !failure) {
+    // Name what the run changed: "source changed" with no file is undiagnosable on a runner we cannot open.
+    const git = (args) => spawnSync('git', args, { cwd: root, encoding: 'utf8' }).stdout.split('\n').filter(Boolean);
+    const changed = [...git(['ls-files', '--others', '--exclude-standard']), ...git(['diff', '--name-only'])].slice(0, 20);
+    failure = `qualification changed the checkout: ${changed.join(', ') || 'unknown files'}`;
+  }
   const receipt = { schemaVersion: 1, kind: 'ruvnet-brain-release-qualification', suite, platform, checkoutRoot: path.resolve(root),
     source, sourceAfter, sourceStable, status: !failure && sourceStable ? 'PASS' : 'FAIL',
     requirements: plan.requirements.map((entry) => entry.id), contractSha256: plan.contractSha256,
@@ -135,7 +142,7 @@ export function runQualification({ suite = 'source', platform = PLATFORM, report
   return receipt;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isDirectInvocation(import.meta.url)) {
   const args = process.argv.slice(2);
   const value = (flag, fallback) => { const i = args.indexOf(flag); return i < 0 ? fallback : args[i + 1]; };
   try {

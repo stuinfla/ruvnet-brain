@@ -33,6 +33,7 @@ import fs from 'node:fs';
 import { execFileSync, spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { isDirectInvocation } from './entrypoint.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..', '..');
@@ -128,7 +129,7 @@ An ADR describing a world the code left is worse than no ADR: the next reader tr
 }
 
 const isMain = (() => {
-  try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); }
+  try { return isDirectInvocation(import.meta.url); }
   catch { return false; }
 })();
 

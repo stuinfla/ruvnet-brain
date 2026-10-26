@@ -274,4 +274,206 @@ describe('lifecycle evidence retention', () => {
     expect(result.withinBudget).toBe(true);
     expect(fs.existsSync(old)).toBe(false);
   });
+
+  describe('abandoned atomic-write temporaries (#434)', () => {
+    const now = () => '2026-10-20T12:00:00Z';
+    const temp = ({ brainHome }, runId, { content = '', ageMs = 2 * 60 * 60 * 1000, suffix = '2756628-1574d1f1' } = {}) => {
+      const file = path.join(brainHome, 'refresh-runs', `${runId}.json.tmp-${suffix}`);
+      fs.writeFileSync(file, content, { mode: 0o600 });
+      const at = (Date.parse(now()) - ageMs) / 1000;
+      fs.utimesSync(file, at, at);
+      return file;
+    };
+
+    it('reclaims the reported pair of empty stale temps beside their canonical receipt, reported, not silent', () => {
+      const f = fixture();
+      const runId = '1791258423435-ea78236a066a7f72';
+      refresh(f, runId, { at: '2026-10-19T03:00:00Z', status: 'ABANDONED' });
+      const a = temp(f, runId);
+      const b = temp(f, runId, { suffix: '2756628-4401e88f' });
+      const assessed = assessLifecycleEvidence({ ...f, now });
+      expect(assessed.unsafe).toEqual([]);
+      expect(assessed.withinBudget).toBe(true);
+      expect(assessed.abandonedTemporaries.map(({ path: p }) => p)).toEqual([a, b]);
+      const result = pruneLifecycleEvidence({ ...f, now });
+      expect(result.unsafe).toEqual([]);
+      expect(result.withinBudget).toBe(true);
+      expect(result.reclaimedTemporaries).toEqual([a, b].map((p) => expect.objectContaining({ path: p, runId, writerPid: 2756628,
+        bytes: 0, canonicalReceipt: true, sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' })));
+      expect(fs.readdirSync(path.join(f.brainHome, 'refresh-runs'))).toEqual([`${runId}.json`]);
+      expect(result.removed).toEqual({ refresh: [], transactions: [] });
+    });
+
+    it('leaves a young (in-flight) temp alone without blocking retention', () => {
+      const f = fixture();
+      refresh(f, 'live', { at: '2026-10-20T11:59:00Z', status: 'RUNNING' });
+      const young = temp(f, 'live', { content: '{"partial"', ageMs: 1000 });
+      const result = pruneLifecycleEvidence({ ...f, now });
+      expect(result.unsafe).toEqual([]);
+      expect(result.withinBudget).toBe(true);
+      expect(result.reclaimedTemporaries).toEqual([]);
+      expect(fs.readFileSync(young, 'utf8')).toBe('{"partial"');
+    });
+
+    it('preserves a stale temp with content but no canonical receipt (ambiguous) and still reports it unsafe', () => {
+      const f = fixture();
+      const orphan = temp(f, 'orphan', { content: '{"runId":"orphan"}' });
+      const result = pruneLifecycleEvidence({ ...f, now });
+      expect(result.unsafe).toEqual([{ path: orphan, reason: expect.stringMatching(/no canonical receipt; preserved/) }]);
+      expect(result.reclaimedTemporaries).toEqual([]);
+      expect(fs.readFileSync(orphan, 'utf8')).toBe('{"runId":"orphan"}');
+    });
+
+    it('a temp that vanishes between the snapshot and its re-check is already gone, not a failed prune', () => {
+      const f = fixture();
+      const runId = '1791258423435-ea78236a066a7f72';
+      refresh(f, runId, { at: '2026-10-19T03:00:00Z', status: 'ABANDONED' });
+      const a = temp(f, runId);
+      const b = temp(f, runId, { suffix: '2756628-4401e88f' });
+      const real = fs.lstatSync;
+      // Another sweep removes `a` after this prune's snapshot listed it, just before the identity re-check.
+      const spy = vi.spyOn(fs, 'lstatSync').mockImplementation(function (file, ...rest) {
+        const caller = String(new Error().stack).split('\n').find((line) => line.includes('lifecycle-evidence-retention.mjs')) || '';
+        if (file === a && /at pruneLifecycleEvidence /.test(caller)) fs.rmSync(a, { force: true });
+        return real.call(this, file, ...rest);
+      });
+      let result;
+      try { result = pruneLifecycleEvidence({ ...f, now }); } finally { spy.mockRestore(); }
+      expect(fs.existsSync(a)).toBe(false);
+      expect(result.reclaimedTemporaries.map(({ path: p }) => p)).toEqual([b]);
+      expect(fs.readdirSync(path.join(f.brainHome, 'refresh-runs'))).toEqual([`${runId}.json`]);
+    });
+
+    it('a temp that vanishes between its re-check and the quarantine rename is already gone too', () => {
+      const f = fixture();
+      const runId = '1791258423435-ea78236a066a7f72';
+      refresh(f, runId, { at: '2026-10-19T03:00:00Z', status: 'ABANDONED' });
+      const a = temp(f, runId);
+      const b = temp(f, runId, { suffix: '2756628-4401e88f' });
+      const real = fs.renameSync;
+      const spy = vi.spyOn(fs, 'renameSync').mockImplementation(function (from, ...rest) {
+        if (from === a) fs.rmSync(a, { force: true });
+        return real.call(this, from, ...rest);
+      });
+      let result;
+      try { result = pruneLifecycleEvidence({ ...f, now }); } finally { spy.mockRestore(); }
+      expect(result.reclaimedTemporaries.map(({ path: p }) => p)).toEqual([b]);
+    });
+
+    it('refuses a stale temp that is a symlink or hard link', () => {
+      const f = fixture();
+      refresh(f, 'linked', { at: '2026-10-19T03:00:00Z' });
+      const target = path.join(f.brainHome, 'outside.txt');
+      fs.writeFileSync(target, '');
+      fs.linkSync(target, path.join(f.brainHome, 'refresh-runs', 'linked.json.tmp-1-aaaaaaaa'));
+      const result = pruneLifecycleEvidence({ ...f, now });
+      expect(result.unsafe.map(({ reason }) => reason)).toEqual(['atomic-write temporary is not an exclusive regular file']);
+      expect(fs.existsSync(target)).toBe(true);
+    });
+  });
+});
+
+
+// Review r2 (4.7.21): an entry that "vanishes" on every rename while the snapshot keeps listing it must not spin the
+// prune loop forever. The mock stops vanishing after 1000 attempts so the unbounded (pre-fix) loop still terminates.
+describe('the vanished-entry retry loop is bounded', () => {
+  it('stops after MAX_VANISHED_RETRIES, removes nothing further, and says why', async () => {
+    const { MAX_VANISHED_RETRIES } = await import('../../kb/lifecycle-evidence-retention.mjs');
+    const f = fixture();
+    for (const [i, id] of ['1791258423435-aaaaaaaaaaaaaaaa', '1791258423436-bbbbbbbbbbbbbbbb', '1791258423437-cccccccccccccccc'].entries()) {
+      refresh(f, id, { at: `2026-10-1${i}T03:00:00Z` });
+    }
+    const runs = path.join(f.brainHome, 'refresh-runs');
+    const before = fs.readdirSync(runs).sort();
+    const real = fs.renameSync; let attempts = 0;
+    const spy = vi.spyOn(fs, 'renameSync').mockImplementation(function (from, ...rest) {
+      if (path.dirname(String(from)) === runs && attempts < 1000) {
+        attempts += 1;
+        throw Object.assign(new Error(`ENOENT: no such file or directory, rename '${from}'`), { code: 'ENOENT' });
+      }
+      return real.call(this, from, ...rest);
+    });
+    let result;
+    try { result = pruneLifecycleEvidence({ ...f, policy: policy({ maxRefreshReceipts: 1 }) }); } finally { spy.mockRestore(); }
+    expect(MAX_VANISHED_RETRIES).toBeGreaterThan(0);
+    expect(attempts).toBe(MAX_VANISHED_RETRIES + 1);
+    expect(result.stopped).toMatch(/pruning stopped: lifecycle evidence vanished \d+ times/);
+    expect(result.removed).toEqual({ refresh: [], transactions: [] });
+    expect(result.withinBudget).toBe(false);
+    expect(fs.readdirSync(runs).sort()).toEqual(before);
+  });
+});
+
+// 4.7.21 (RC2.3): one `.DS_Store`, or a `.prune-*` quarantine our own time-limit kill left behind, made the state
+// unsafe forever, and the updater turned EVERY outcome (even a no-op) into recovery-required + a 745 MB reinstall.
+describe('volume metadata, foreign files and abandoned quarantines', () => {
+  const now = () => '2026-10-20T12:00:00Z';
+  // Quarantine age is measured from the entry's own mtime/ctime (a rename sets ctime), which is wall-clock:
+  // three hours from now makes every entry this test creates older than ABANDONED_TEMP_AGE_MS.
+  const later = () => new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+  it('.DS_Store and ._ shadows are ignored and removed; a stray note is foreign (kept, reported), never unsafe', () => {
+    const f = fixture();
+    refresh(f, 'r1', { at: '2026-10-19T03:00:00Z' });
+    const tx = transaction(f, 't1', { at: '2026-10-19T03:00:00Z' });
+    const runs = path.join(f.brainHome, 'refresh-runs');
+    for (const file of [path.join(runs, '.DS_Store'), path.join(runs, '._r1.json'), path.join(tx, '.DS_Store'),
+      path.join(f.brainHome, '.kb.update-transactions', 'Thumbs.db')]) fs.writeFileSync(file, 'finder');
+    fs.writeFileSync(path.join(runs, 'notes.txt'), 'mine');
+    const assessed = assessLifecycleEvidence({ ...f, now });
+    expect(assessed.unsafe).toEqual([]);
+    expect(assessed.withinBudget).toBe(true);
+    expect(assessed.foreign).toEqual([{ path: path.join(runs, 'notes.txt'), bytes: 4 }]);
+    expect(assessed.before).toEqual({ refreshReceipts: 1, transactionDirectories: 1, bytes: assessed.before.bytes });
+    const result = pruneLifecycleEvidence({ ...f, now });
+    expect(result.withinBudget).toBe(true);
+    expect(result.removedVolumeMetadata).toHaveLength(4);
+    expect(fs.readdirSync(runs).sort()).toEqual(['notes.txt', 'r1.json']);
+    expect(fs.readdirSync(tx)).toEqual(['001-COMMITTED.json']);
+    expect(result.removed).toEqual({ refresh: [], transactions: [] });
+  });
+
+  it('compaction over budget skips a .DS_Store inside a transaction directory instead of failing', () => {
+    const f = fixture();
+    const dir = transaction(f, 'big', { at: '2026-02-01T00:00:00Z' });
+    const file = path.join(dir, '001-COMMITTED.json');
+    fs.writeFileSync(file, JSON.stringify(JSON.parse(fs.readFileSync(file, 'utf8')), null, 8));
+    fs.writeFileSync(path.join(dir, '.DS_Store'), Buffer.alloc(64));
+    const result = pruneLifecycleEvidence({ ...f, preserveTransactionPaths: [dir], policy: policy({ maxEvidenceBytes: 150 }) });
+    expect(result.unsafe).toEqual([]);
+    expect(result.compacted).toEqual([file]);
+  });
+
+  it('an abandoned .prune-* receipt quarantine (>1 h, run terminal or gone) is reclaimed and retention fits again', () => {
+    const f = fixture();
+    const runs = path.join(f.brainHome, 'refresh-runs');
+    refresh(f, 'kept', { at: '2026-10-19T03:00:00Z' });
+    const stranded = path.join(runs, '.prune-old-0123456789abcdef');
+    fs.writeFileSync(stranded, JSON.stringify({ schemaVersion: 3, kind: 'ruvnet-brain-refresh-run', runId: 'old', status: 'SUCCEEDED' }));
+    const txQuarantine = path.join(f.brainHome, '.kb.update-transactions', '.prune-gone-fedcba9876543210');
+    fs.mkdirSync(txQuarantine); fs.writeFileSync(path.join(txQuarantine, '001-COMMITTED.json'), '{}');
+    expect(assessLifecycleEvidence({ ...f }).withinBudget, 'young: a prune may still be between rename and delete').toBe(false);
+    const result = pruneLifecycleEvidence({ ...f, now: later });
+    expect(result.unsafe).toEqual([]);
+    expect(result.withinBudget).toBe(true);
+    expect(result.reclaimedQuarantines.map(({ path: p }) => p).sort()).toEqual([stranded, txQuarantine].sort());
+    expect(fs.existsSync(stranded)).toBe(false);
+    expect(fs.existsSync(txQuarantine)).toBe(false);
+    expect(fs.readdirSync(runs)).toEqual(['kept.json']);
+  });
+
+  it('an old quarantine whose run is live again, or that is not the shape we quarantine, is still preserved as unsafe', () => {
+    const f = fixture();
+    const runs = path.join(f.brainHome, 'refresh-runs');
+    refresh(f, 'live', { at: '2026-10-20T14:00:00Z', status: 'RUNNING' });
+    const liveQuarantine = path.join(runs, '.prune-live-0123456789abcdef');
+    fs.writeFileSync(liveQuarantine, '{}');
+    const dirQuarantine = path.join(runs, '.prune-private-0123456789abcdef'); // a directory under refresh-runs: never ours
+    fs.mkdirSync(dirQuarantine); fs.writeFileSync(path.join(dirQuarantine, 'private.txt'), 'private original');
+    const result = pruneLifecycleEvidence({ ...f, now: later });
+    expect(result.withinBudget).toBe(false);
+    expect(result.unsafe.map(({ path: p }) => p).sort()).toEqual([dirQuarantine, liveQuarantine].sort());
+    expect(result.reclaimedQuarantines).toEqual([]);
+    expect(fs.readFileSync(path.join(dirQuarantine, 'private.txt'), 'utf8')).toBe('private original');
+    expect(fs.existsSync(liveQuarantine)).toBe(true);
+  });
 });

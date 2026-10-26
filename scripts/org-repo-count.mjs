@@ -28,6 +28,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 /** The last LIVE reading, so an offline build reuses a real measurement instead of a literal. */
@@ -103,7 +104,7 @@ export function orgRepoCount({ owner = OWNER, file = RECORD_PATH, now = new Date
  * working tree clean for `release-qe`'s stabilization seal.
  */
 const isMain = (() => {
-  try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); }
+  try { return isDirectInvocation(import.meta.url); }
   catch { return false; }
 })();
 

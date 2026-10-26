@@ -58,6 +58,7 @@ import { loadSettings, writeAtomic } from './user-settings.mjs';
 import { classifyPrompt, loadVocabulary } from './grounding-turn-evidence.mjs';
 import { answerOf, brainAnsweredResponse } from './grounding-answer.mjs';
 import { RUVNET_GATE1_TERMS } from './ruvnet-gate1-pattern.mjs';
+import { isDirectInvocation } from './entrypoint.mjs';
 
 const HOME = os.homedir();
 export const MARKER_DIR = process.env.RUVNET_GROUNDING_TURN_DIR
@@ -305,8 +306,7 @@ async function main() {
  *  helpers — same guard decision-gate.mjs uses, for the same reason (entrypoint-guard-safety). */
 function isMain() {
   try {
-    if (!process.argv[1]) return false;
-    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+    return isDirectInvocation(import.meta.url);
   } catch { return false; }
 }
 

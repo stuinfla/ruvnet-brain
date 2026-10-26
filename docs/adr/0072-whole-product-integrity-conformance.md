@@ -3,10 +3,10 @@ id: ADR-072
 title: Whole-product integrity is one executable contract
 status: Accepted
 date: 2026-08-21
-updated: 2026-10-24
+updated: 2026-10-25
 updated_source: derived-from-git
 version: 1.2.2
-reviewed_digest: 7ad79d38a0d7
+reviewed_digest: 36fb6ff68b7a
 authors: [Stuart Kerr, Codex]
 tags: [architecture, quality, corpus, lifecycle, release, traceability, smart, sparc]
 supersedes: []
@@ -392,6 +392,7 @@ integrity checks without granting semantic approval. Protected publication, exac
 identity, signed public verification, and whole-product completion gates are unchanged.
 
 ## Currency log
+| 2026-10-25 | Review `36fb6ff68b7a` (4.7.21): decision unchanged. `kb/refresh-run.mjs` `atomicJson` removes its temp file when the write or rename fails, so an abandoned receipt temp no longer blocks lifecycle retention (#434). `plugin/scripts/nightly-scheduler.mjs` accepts a coordinator closure that stages `entrypoint.mjs`, still accepts the pre-entrypoint 4.7.20 set, and refuses a staged coordinator that imports an optional member not staged beside it (review B). `kb/forge-update.mjs`: archive-aware backup reclaim (#335, review A). `bin/install.mjs`: #492, #301, #335, #420 item 4, #400. The other eight moved files (`scripts/adr-072-completion.mjs`, `scripts/product-integrity-contract.mjs`, `scripts/corpus-candidate.mjs`, `scripts/build-bundle.mjs`, `scripts/host-registry.mjs`, `scripts/public-verification-aggregate.mjs`, `scripts/public-verification-finalizer.mjs`, `scripts/retrieval-canary.mjs`) changed only by the entry-point sweep. | Reviewed diffs 320b778b..63ca7c0d for all 12 moved governed paths, including `kb/refresh-run.mjs` and `plugin/scripts/nightly-scheduler.mjs`. |
 | 2026-10-24 | Review `7ad79d38a0d7` (4.7.19): decision unchanged. `.github/workflows/protected-release.yml` and `plugin/scripts/nightly-scheduler.mjs` moved | `.github/workflows/protected-release.yml`: the publisher job's bound is 40 minutes (was 20; measured runs took 18-18.5 min and 4.7.18's was cancelled at 20:00 mid-publish, then resumed from its signed receipts). No gate, permission, environment or step changed. `plugin/scripts/nightly-scheduler.mjs`: a module refresh records the sets it replaced (`replacedUpdateModules`, last 48 h); a scheduled receipt bound to one of them still counts when it was launched before that set was replaced, so doctor no longer reports a succeeded night as failed after an update. Failed, dead-owner, stale and future-dated receipts are reported exactly as before. Source: `.github/workflows/protected-release.yml`, `plugin/scripts/nightly-scheduler.mjs`. |
 | 2026-10-24 | Review `29e2fce86bb8` (4.7.18): decision unchanged. `bin/install.mjs` moved | The 4.7.18 changes to it are Codex snapshot retry/repair during wiring, a recorded reason on every failed host sync, and an early refusal for a stale source checkout running `--update`. No conformance contract, receipt or verification lane changed. Source: `bin/install.mjs`. |
 | 2026-10-07 | Corrected automatic byte inventory evidence so it cannot imply semantic review. Receipt and trace schema 2 expose the exact structural scope and semantic UNKNOWN; current validators reject legacy schema 1 without changing publication or completion gates. | `scripts/source-scope-receipt.mjs`, `scripts/product-integrity-contract.mjs`; failed legacy and forged-review fixtures, byte-mutation checks, and the existing completion reducer suite. This scoped correction does not refresh the historical whole-ADR reviewed digest. |

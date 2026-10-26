@@ -203,6 +203,8 @@ describe('behind the flag, through advocacy-route and unprompted-runtime', () =>
     // the producer measured 2.6 s and the runtime's 2 s deadline silenced it. Timing is measured by
     // scripts/recommendation-e2e.mjs and gated in the ADR; it is not asserted here.
     RUVNET_UNPROMPTED_TIMEOUT_MS: '15000',
+    // Advocacy delivery is the full-nudges mode; the runtime is quiet (lesson + alarm only) without it.
+    RUVNET_STOP_NUDGES: 'full',
     ...extra,
   });
   const payload = (prompt, sid = 's1') => JSON.stringify({ session_id: sid, cwd: dir, hook_event_name: 'UserPromptSubmit', prompt });

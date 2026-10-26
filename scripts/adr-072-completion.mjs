@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { verifyCapabilityClaimAggregate } from '../plugin/scripts/capability-claim-evidence.mjs';
 import { LEGACY_REVIEW_MODEL_IDS } from './review-model-defaults.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const REQUIRED_REVIEWERS = LEGACY_REVIEW_MODEL_IDS;
@@ -91,7 +92,7 @@ export function evaluateCompletion({ root = ROOT, run = command,
   return { ok: failures.length === 0, head, version, receiptFile, failures };
 }
 
-if (((() => { try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })())) {
+if (isDirectInvocation(import.meta.url)) {
   const receiptIndex = process.argv.indexOf('--receipt');
   const result = evaluateCompletion({ receiptFile: receiptIndex >= 0 ? path.resolve(process.argv[receiptIndex + 1]) : undefined });
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);

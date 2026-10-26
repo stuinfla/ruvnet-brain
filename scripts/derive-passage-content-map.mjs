@@ -16,6 +16,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { digest } from './coverage-integrity.mjs';
 import { CONTENT_MAP_FILE, CONTENT_MAP_KIND, passageContentDigest } from './retrieval-passage-identity.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sha256File = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -68,4 +69,4 @@ function main(argv) {
   console.log(JSON.stringify({ out, resolved: Object.keys(map.entries).length, unresolved: map.unresolved.length }));
 }
 
-if (process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) main(process.argv.slice(2));
+if (isDirectInvocation(import.meta.url)) main(process.argv.slice(2));

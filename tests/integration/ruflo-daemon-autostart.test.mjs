@@ -39,10 +39,20 @@ function resolveRufloBin() {
   return found || null;
 }
 const RUFLO = resolveRufloBin();
+// The owner's warm model cache, read through TRANSFORMERS_CACHE (ruflo's resolveModelCacheDir honours it
+// before $HOME/.cache/ruflo/models). Without it the fresh fixture HOME downloads the embedder on every run.
+const WARM_MODELS = path.join(os.homedir(), '.cache', 'ruflo', 'models');
 
 describe.skipIf(!RUFLO)('RUFLO_DAEMON_AUTOSTART=0 acceptance probe (against the REAL installed ruflo CLI)', () => {
   let projectDir, fixtureHome, dbPath;
-  const env = () => ({ PATH: process.env.PATH, HOME: fixtureHome, USERPROFILE: fixtureHome, RUFLO_DAEMON_AUTOSTART: '0' });
+  // CLAUDE_FLOW_AUTO_UPDATE=false: with a fresh HOME there is no update rate-limit state, so a ruflo that
+  // lags the registry self-updates during `memory init` — measured 13 s, node_modules + package.json written
+  // into the project dir and 514 MB into HOME (3.63.0 vs registry 3.63.1); with the flag, 1 s and nothing.
+  const env = () => ({
+    PATH: process.env.PATH, HOME: fixtureHome, USERPROFILE: fixtureHome,
+    RUFLO_DAEMON_AUTOSTART: '0', CLAUDE_FLOW_AUTO_UPDATE: 'false',
+    ...(fs.existsSync(WARM_MODELS) ? { TRANSFORMERS_CACHE: WARM_MODELS } : {}),
+  });
   const ruflo = (args) => spawnSync(RUFLO, args, { cwd: projectDir, encoding: 'utf8', timeout: 30_000, env: env() });
 
   beforeAll(() => {
@@ -52,11 +62,12 @@ describe.skipIf(!RUFLO)('RUFLO_DAEMON_AUTOSTART=0 acceptance probe (against the 
     // Setup only — makes the fixture a genuine Ruflo project (`.swarm/memory.db` existing is itself
     // one of isRufloProject()'s direct markers). Also run under the flag: setup must not be the
     // thing that leaves a daemon behind either.
-    const init = ruflo(['memory', 'init', '-p', dbPath]);
+    if (!fs.existsSync(WARM_MODELS)) console.log(`[ruflo-daemon-autostart probe] no warm model cache at ${WARM_MODELS}; setup downloads the embedder`);
+    const init = ruflo(['memory', 'init', '-p', dbPath, '--verify', 'false']);
     if (init.status !== 0) throw new Error(`fixture setup failed (memory init): ${init.stderr || init.stdout}`);
     const store = ruflo(['memory', 'store', '-k', 'probe', '--value', 'probe', '--path', dbPath]);
     if (store.status !== 0) throw new Error(`fixture setup failed (memory store): ${store.stderr || store.stdout}`);
-  });
+  }, 180_000);
 
   afterAll(() => {
     for (const dir of [projectDir, fixtureHome]) { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* best-effort */ } }
@@ -72,6 +83,11 @@ describe.skipIf(!RUFLO)('RUFLO_DAEMON_AUTOSTART=0 acceptance probe (against the 
 
   it('the fixture genuinely qualifies as a Ruflo project before the probed command ever runs', () => {
     expect(fs.existsSync(dbPath)).toBe(true);
+  });
+
+  it('setup ran the installed ruflo as-is: no self-update install landed in the project', () => {
+    const installed = ['node_modules', 'package.json', 'package-lock.json'].filter((name) => fs.existsSync(path.join(projectDir, name)));
+    expect(installed, 'ruflo self-updated into the fixture project; CLAUDE_FLOW_AUTO_UPDATE=false is not reaching it').toEqual([]);
   });
 
   it('`ruflo memory list` under RUFLO_DAEMON_AUTOSTART=0 spawns ZERO daemon processes', () => {

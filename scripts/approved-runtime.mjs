@@ -48,6 +48,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { retryTransientResult } from './transient-gh.mjs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const APPROVED_RUNTIME_KIND = 'ruvnet-brain-approved-runtime';
@@ -417,6 +418,6 @@ async function main() {
   return 0;
 }
 
-if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
+if (isDirectInvocation(import.meta.url)) {
   main().then((code) => { process.exitCode = code; });
 }

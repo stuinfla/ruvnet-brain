@@ -51,7 +51,7 @@ const STORE_B_NEW = { kbName: 'beta', sourceCommit: 'ccc333ccc333', sourceDescri
 
 const TEST_SIGNING_KEYS = crypto.generateKeyPairSync('ed25519');
 const TEST_SIGNING_PUB = TEST_SIGNING_KEYS.publicKey.export({ type: 'spki', format: 'pem' }).trim();
-let server; let origin; let served = { release: null, zip: null, sig: null, hits: { zip: 0, sig: 0 } };
+let server; let origin; let served = { release: null, zip: null, sig: null, stallZip: false, hits: { zip: 0, sig: 0 } };
 
 beforeAll(async () => {
   server = http.createServer((req, res) => {
@@ -69,6 +69,11 @@ beforeAll(async () => {
     }
     if (req.url.startsWith('/bundle.zip')) {
       served.hits.zip += 1;
+      if (served.stallZip) { // headers and a first chunk, then nothing: a download in progress on a slow link
+        res.writeHead(200, { 'content-type': 'application/zip', 'content-length': served.zip.length });
+        res.write(served.zip.subarray(0, 64));
+        return;
+      }
       res.writeHead(200, { 'content-type': 'application/zip' });
       res.end(served.zip);
       return;
@@ -78,11 +83,11 @@ beforeAll(async () => {
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   origin = `http://127.0.0.1:${server.address().port}`;
 });
-afterAll(() => new Promise((r) => server.close(r)));
+afterAll(() => new Promise((r) => { server.closeAllConnections(); server.close(r); }));
 
 let root; let kbDir;
 beforeEach(() => {
-  served.hits = { zip: 0, sig: 0 };
+  served.hits = { zip: 0, sig: 0 }; served.stallZip = false;
   // realpath: on macOS os.tmpdir() is /var/... which is a symlink to /private/var/..., and
   // forge-update.mjs only runs main() when import.meta.url matches argv[1] — an unresolved path
   // silently no-ops the whole script.
@@ -612,6 +617,37 @@ describe('forge-update --apply (issues #106 + #108)', () => {
     expect(served.hits.zip).toBe(0);
     expect(JSON.parse(fs.readFileSync(path.join(kbDir, 'SOURCE.json'), 'utf8')).releaseTag).toBe('v4.0.7');
   });
+});
+
+// 4.7.21 (RC2.3, RC2.9): evidence housekeeping must never change the update's own verdict, and a time-limit
+// kill must settle the run instead of leaving the update lock behind.
+describe('forge-update --apply: retention is advisory; a signal settles the run', () => {
+  it('a .DS_Store, a foreign note and a fresh .prune-* quarantine in refresh-runs leave an already-current apply exit 0 noop', async () => {
+    const current = sourceJson({ releaseTag: 'v4.0.7', brainVersion: '4.0.7', builtUtc: '2026-07-31T04:39:28.414Z', stores: [STORE_A] });
+    layDown(kbDir, current);
+    publish(current, 'v4.0.7'); // same tag → already current
+    const runs = path.join(root, 'refresh-runs');
+    fs.mkdirSync(runs, { recursive: true });
+    fs.writeFileSync(path.join(runs, '.DS_Store'), 'finder');
+    fs.writeFileSync(path.join(runs, 'notes.txt'), 'mine');
+    // Young, so it is still treated as a prune that may be in progress: unsafe, and therefore an advisory.
+    fs.writeFileSync(path.join(runs, '.prune-old-0123456789abcdef'), '{}');
+    const resultFile = path.join(root, 'retention-result.json');
+
+    const { code, out } = await run('--apply', '--result-file', resultFile);
+
+    expect(code, out).toBe(0);
+    expect(out).toMatch(/Nothing to apply — already current/);
+    const result = JSON.parse(fs.readFileSync(resultFile, 'utf8'));
+    expect(result.terminalVerdict).toBe('noop');
+    expect(result).not.toHaveProperty('exitCode');
+    expect(result.retentionAdvisory).toMatchObject({ withinBudget: false, unsafe: 1, foreign: 1 });
+    expect(result.retentionAdvisory.reason).toMatch(/\.prune-old-0123456789abcdef: recognized pruning quarantine remains/);
+    expect(result.lifecycleRetention.withinBudget).toBe(false);
+    expect(fs.readdirSync(runs).sort()).toEqual(['.prune-old-0123456789abcdef', 'notes.txt']); // .DS_Store removed, the rest kept
+    expect(served.hits.zip).toBe(0);
+  });
+
 });
 
 describe('forge-update --check (issue #108 bug 2)', () => {

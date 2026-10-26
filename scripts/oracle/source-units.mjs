@@ -25,6 +25,7 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parse as babelParse } from '@babel/parser';
+import { isDirectInvocation } from '../../plugin/scripts/entrypoint.mjs';
 
 export const RULES_VERSION = 'oracle-source-units/1';
 export const MAX_SELECTED = 100;
@@ -373,19 +374,4 @@ export function main(argv = process.argv.slice(2)) {
   return 0;
 }
 
-// Entry-point guard. Compares REALPATHS on both sides: path.resolve() normalizes a path but does
-// NOT follow symlinks, while import.meta.url IS symlink-resolved by Node. Through a symlink (npm bin
-// shims, wrapper scripts, and every os.tmpdir() path on macOS) the two sides disagree, so main()
-// never runs -- and because nothing throws, the process exits 0. A silent exit 0 is indistinguishable
-// from "ran, found nothing", which is how prepareCorpusCandidate once reported SUCCESS with no
-// archive on disk. Reproduced live 2026-07-27; pinned by tests/unit/entrypoint-symlink.test.mjs.
-function isDirectInvocation() {
-  try {
-    if (!process.argv[1]) return false;
-    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
-  } catch {
-    return false;
-  }
-}
-
-if (isDirectInvocation()) process.exitCode = main();
+if (isDirectInvocation(import.meta.url)) process.exitCode = main();

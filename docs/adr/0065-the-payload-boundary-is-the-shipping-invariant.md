@@ -268,6 +268,7 @@ Note what the *before* `--status` line proves independently: the fallback path r
   silently skipped.
 
 ## Currency log
+| 2026-10-26 | Review (4.7.21): decision unchanged. `plugin/scripts/unprompted-runtime.mjs` is quiet by itself (lesson and alarm channels only unless nudges are `full`), and `plugin/scripts/capability-registry.mjs` wording of unknown evidence changed; both stay inside the payload boundary. | `plugin/scripts/unprompted-runtime.mjs`, `plugin/scripts/capability-registry.mjs`. |
 | 2026-09-27 | Currency review: decision unchanged. Motion: unprompted-runtime.mjs's own declared-timeout fix (this session), an advocacy-delivery durable-receipt fence, and a UserPromptSubmit hook-firing fix. None touch the payload-boundary shipping invariant. | Reviewed `plugin/scripts/anticipate.sh`, `plugin/scripts/unprompted-runtime.mjs`, `plugin/scripts/capability-registry.mjs`, `plugin/scripts/hook-registry.mjs`, `tests/unit/payload-self-contained.test.mjs` against the commits listed above; reviewed_digest 36cf3f49b895. |
 
 | Date | What changed | Why (with referents) |

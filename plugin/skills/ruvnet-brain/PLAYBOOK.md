@@ -41,8 +41,8 @@ went by (web searches, throwaway installs, scratch builds) before a single tool 
 So, before the DO FIRST list and before beat 1:
 
 - **Say the one capability that would materially help, in ONE sentence, within ~2 minutes** —
-  *"Consider `<capability>` — `<concrete benefit for THIS task>`. Say 'use `<capability>`' and I'll
-  wire it, or ignore this."* Then carry straight on. If nothing genuinely fits, **say nothing about
+  *"`<capability>` fits here — `<concrete benefit for THIS task>`; 'use `<capability>`' wires it."*
+  A statement, never a question or approval dialog. Then carry straight on. If nothing genuinely fits, **say nothing about
   tooling at all**; silence is the correct and common answer, and a forced tie-in is worse than none.
 - **Budget: at most THREE `search_ruvnet` calls to get there.** Enough to confirm the capability
   exists and what it is called — not enough to design the integration, and not meant to be.

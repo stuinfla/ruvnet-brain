@@ -118,6 +118,42 @@ function appendLocked(record, file, owns) {
 export function append(record, file = LEDGER, budget = {}) {
   return locked([file], owns => { appendLocked(record, file, owns); return true; }, false, budget);
 }
+/**
+ * ── A BUDGET THAT CAN BE EXCEEDED SILENTLY FAILS OPEN WITHOUT SAYING SO (decision-gate.mjs) ──────
+ *
+ * The gate's old loop did `break` when the budget ran out: every remaining policy AND the speech
+ * chokepoint were skipped with no record anywhere, and nothing distinguished "five policies agreed"
+ * from "we ran out of time and stopped asking" — silence standing in for a measurement.
+ *
+ * TWO CHANNELS, because each fails differently:
+ *   · this ledger (survives `--update`), ALWAYS, so a trip COMPOUNDS into evidence. `budget-exceeded`
+ *     and `policy-skipped` are inert in report()'s buckets, so they cannot move the obedience rate.
+ *   · one stderr line, ONLY when the action was refused or under RUVNET_STOP_NUDGES=full (quiet by
+ *     default since 2026-10-15): on an ALLOW a stderr line only makes the host show a hook "error" for
+ *     a decision that was made. tests/unit/write-gate-policy.test.mjs pins both modes.
+ */
+const STOP_NUDGES_FULL = () => String(process.env.RUVNET_STOP_NUDGES || '').toLowerCase() === 'full';
+export function reportBudget({ event, session, unconsulted, trace, started, budgetMs, refused = false }) {
+  const elapsed = Date.now() - started;
+  if (process.env.RUVNET_DECISION_TRACE === '1') {
+    process.stderr.write(`[decision-gate] ${event} ${elapsed}ms budget=${budgetMs}ms ${JSON.stringify(trace)}\n`);
+  }
+  if (!unconsulted.length) return;
+  try {
+    append({ kind: 'budget-exceeded', event, session, unconsulted, elapsedMs: elapsed, budgetMs, ts: Date.now() });
+  } catch { /* a ledger must never break a tool call */ }
+  if (refused || STOP_NUDGES_FULL()) process.stderr.write(
+    `[decision-gate] ${budgetMs}ms budget exhausted after ${elapsed}ms — ${refused ? 'REFUSED; UNCONSULTED' : 'ALLOWED WITHOUT CONSULTING'}: `
+    + `${unconsulted.join(', ')}. These policies did not vote; ${refused ? 'another policy refused the action.' : 'this allow is a timeout, not a verdict.'}\n`,
+  );
+}
+/** Record each policy that skipped itself (exit 3) with its own one-line reason; print it only under full nudges. */
+export function reportSelfSkipped({ event, session, selfSkipped }) {
+  for (const r of selfSkipped) {
+    try { append({ kind: 'policy-skipped', event, session, policy: r.id, reason: r.reason, ts: Date.now() }); } catch { /* a ledger must never break a tool call */ }
+    if (STOP_NUDGES_FULL()) process.stderr.write(`[decision-gate] ${r.reason || `${r.id} skipped`} — ${r.id} did not vote; it supplied no authorization verdict.\n`);
+  }
+}
 const stateFiles = files => ({ pending: files.pending || PENDING, ledger: files.ledger || LEDGER });
 const debtId = debt => debt.refusalId || createHash('sha256').update(JSON.stringify([debt.session, debt.key, debt.ts, debt.host || null, debt.projectId || null])).digest('hex');
 const validDebt = value => value && typeof value.session === 'string' && typeof value.key === 'string'

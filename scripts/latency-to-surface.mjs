@@ -43,6 +43,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const HOME = os.homedir();
 
@@ -206,7 +207,7 @@ export function humanMs(ms) {
 }
 
 // ── CLI ────────────────────────────────────────────────────────────────────────────────────────────
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isDirectInvocation(import.meta.url)) {
   const { loadOutcomes } = await import('./advocacy-outcomes.mjs');
   const rows = computeLatencies({ outcomes: loadOutcomes() });
   const s = summarize(rows);

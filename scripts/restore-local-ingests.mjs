@@ -43,6 +43,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { storeRoot, storesAt, rootNeverMaterialized } from '../kb/store-root.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const LEDGER = path.join(ROOT, 'kb', 'local-ingests.json');
@@ -76,7 +77,7 @@ export function classify({ ledgerFile = LEDGER, root = storeRoot() } = {}) {
 }
 
 const isMain = (() => {
-  try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); }
+  try { return isDirectInvocation(import.meta.url); }
   catch { return false; }
 })();
 

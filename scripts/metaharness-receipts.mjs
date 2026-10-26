@@ -12,6 +12,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { CLAUDE_MODEL_IDS } from './route-cheap.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export function receiptsPath() {
   return (
@@ -165,4 +166,4 @@ function main() {
   if (skipped) console.log(`(${skipped} corrupt line(s) skipped)`);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
+if (isDirectInvocation(import.meta.url)) main();

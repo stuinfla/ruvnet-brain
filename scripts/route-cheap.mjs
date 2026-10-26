@@ -28,6 +28,7 @@ import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadRuntimePreferences, runtimeChildEnv } from '../plugin/scripts/runtime-preferences.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -207,4 +208,4 @@ function main() {
   console.log(receiptLine(args.model, costs));
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
+if (isDirectInvocation(import.meta.url)) main();

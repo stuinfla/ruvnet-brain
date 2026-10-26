@@ -621,6 +621,8 @@ describe('mutation proof — every assertion is load-bearing', () => {
       // 9 of 11 shipped hook registrations as legacy and failed every real user's install).
       .replace("from '../plugin/scripts/continuity-hook-policy.mjs'",
         `from ${JSON.stringify(pathToFileURL(path.join(REPO_ROOT, 'plugin/scripts/continuity-hook-policy.mjs')).href)}`)
+      .replace("from '../plugin/scripts/entrypoint.mjs'",
+        `from ${JSON.stringify(pathToFileURL(path.join(REPO_ROOT, 'plugin/scripts/entrypoint.mjs')).href)}`)
       .replace(ANCHOR, `const here = ${JSON.stringify(path.join(REPO_ROOT, 'scripts'))};`));
     return { mod: await import(pathToFileURL(file).href), file, dir };
   }

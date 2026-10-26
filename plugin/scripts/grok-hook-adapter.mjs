@@ -36,6 +36,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { normalizeHostEvent } from './hook-input.mjs';
 import { developmentHooksSuspended } from './development-maintenance.mjs';
+import { isDirectInvocation } from './entrypoint.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PLUGIN_ROOT = path.resolve(HERE, '..');
@@ -155,5 +156,5 @@ async function main() {
   return out.code;
 }
 
-const isMain = (() => { try { return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })();
+const isMain = isDirectInvocation(import.meta.url);
 if (isMain) process.exit(await main().catch(() => 0));

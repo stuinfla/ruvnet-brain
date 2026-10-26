@@ -17,6 +17,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { parseNpmPack } from '../../helpers/npm-pack-json.mjs';
 
 // The fixture brain claims the CURRENT version, derived — a literal goes stale at every release.
 const PACKAGE_VERSION = JSON.parse(fs.readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')).version;
@@ -33,7 +34,7 @@ function installPackedRuntime(root, brainHome, env) {
     return r;
   };
   const packed = run('npm', ['pack', '--json', '--pack-destination', packDir], { cwd: REPO });
-  run('tar', ['-xzf', path.join(packDir, JSON.parse(packed.stdout)[0].filename), '-C', packDir]);
+  run('tar', ['-xzf', path.join(packDir, parseNpmPack(packed.stdout, { expectName: 'ruvnet-brain' }).filename), '-C', packDir]);
   const payload = path.join(packDir, 'package');
   run(process.execPath, ['--input-type=module', '-e',
     `const m = await import(${JSON.stringify(pathToFileURL(path.join(payload, 'bin', 'install.mjs')).href)}); m.installConsoleRuntime(${JSON.stringify(brainHome)}, ${JSON.stringify(payload)});`],

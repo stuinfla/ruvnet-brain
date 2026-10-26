@@ -23,6 +23,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { normalizeToolOutcome } from './continuity-events.mjs';
+import { isDirectInvocation } from './entrypoint.mjs';
 
 const BANNER = /^Searched \d+ RuvNet repos \(/;
 const CARD = /^⚡ FAST LANE — [^\n]*\n#1  repo=\S+  evidence=curated-capability-card\n/;
@@ -126,7 +127,7 @@ async function main() {
 }
 
 function isMain() {
-  try { return Boolean(process.argv[1]) && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); }
+  try { return isDirectInvocation(import.meta.url); }
   catch { return false; }
 }
 if (isMain()) main();

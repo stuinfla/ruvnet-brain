@@ -2,7 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { automaticInvocation, automaticPath, installedUpdater, ownerSettingsPath, updateSource } from '../../plugin/scripts/automatic-update.mjs';
+import crypto from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { automaticInvocation, automaticPath, installedUpdater, ownerSettingsPath, saveUpdateSource, updateSource } from '../../plugin/scripts/automatic-update.mjs';
+import { installNightlyRunner } from '../../plugin/scripts/nightly-scheduler.mjs';
 
 const roots = [];
 function scratch() { const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rnb-automatic-')); roots.push(root); return root; }
@@ -78,6 +82,56 @@ describe('owner automatic update authority', () => {
     expect(selected).not.toContain(poison);
     expect(selected).toContain(path.join(home, '.npm-global', 'bin'));
     expect(selected).toContain(path.dirname(process.execPath));
+  });
+});
+
+
+// Opus review #1 (4.7.21): the SessionStart self-heal passed --knowledge-only to the REGISTERED coordinator snapshot,
+// which moves only when an --update reconciles it (never on runner-changed). A 4.7.20 snapshot refuses the flag
+// ("unsupported developer update argument", exit 1), so every knowledge self-heal on those machines recorded FAILED.
+describe('coordinated self-heal against an older registered coordinator', () => {
+  const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+  const current = fs.readFileSync(path.join(ROOT, 'plugin/scripts/developer-update.mjs'), 'utf8');
+  // The real 4.7.20 coordinator when the tag is in this clone (CI checks out full history); the derived copy always runs.
+  const tagged = spawnSync('git', ['show', 'v4.7.20:plugin/scripts/developer-update.mjs'], { cwd: ROOT, encoding: 'utf8' });
+  const derived = current.replace(/\n\s*if \(args\[i\] === '--knowledge-only'\) knowledgeOnly = true;\n\s*else /, '\n    ');
+  const register = (source) => {
+    // Real path: 4.7.20's main guard compares argv[1] with import.meta.url literally (macOS /var -> /private/var).
+    const home = fs.realpathSync(scratch()); const brainHome = path.join(home, '.cache/ruvnet-brain');
+    const record = installNightlyRunner({ brainHome, source: path.join(ROOT, 'bin/nightly-refresh.mjs'), nodePath: process.execPath });
+    const entry = record.updateModules['developer-update.mjs'].path;
+    if (source !== undefined) {
+      fs.writeFileSync(entry, source);
+      const registration = JSON.parse(fs.readFileSync(record.recordPath, 'utf8'));
+      registration.updateModules['developer-update.mjs'].sha256 = crypto.createHash('sha256').update(source).digest('hex');
+      fs.writeFileSync(record.recordPath, JSON.stringify(registration));
+    }
+    return { home, entry };
+  };
+
+  it('the derived old coordinator really lacks the flag, and the current one really has it', () => {
+    expect(derived).not.toBe(current);
+    expect(derived.includes("'--knowledge-only'")).toBe(false);
+    expect(current.includes("'--knowledge-only'")).toBe(true);
+  });
+
+  it.each([['4.7.20 (git tag)', 'tagged'], ['derived pre-flag copy', 'derived']])('%s: the self-heal asks it for --apply only', (_label, kind) => {
+    if (kind === 'tagged' && tagged.status !== 0) { expect(tagged.stderr).toMatch(/v4\.7\.20|unknown revision|not a git repository/); return; }
+    const old = kind === 'tagged' ? tagged.stdout : derived;
+    const { home, entry } = register(old);
+    const invocation = automaticInvocation(['--update', '--no-nightly-prompt'], { home });
+    expect(invocation.source).toBe('developer-suite');
+    expect(invocation.args).toEqual([entry, '--apply']); // before: [entry, '--apply', '--knowledge-only']
+    // The premise, executed: the registered old coordinator refuses the flag before doing anything.
+    const refused = spawnSync(process.execPath, [entry, '--knowledge-only'], { encoding: 'utf8', timeout: 30_000,
+      env: { HOME: home, USERPROFILE: home, RUVNET_BRAIN_HOME: path.join(home, '.cache/ruvnet-brain'), PATH: path.dirname(process.execPath) } });
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toMatch(/unsupported developer update argument: --knowledge-only/);
+  });
+
+  it('a current coordinator still gets --knowledge-only', () => {
+    const { home, entry } = register(undefined);
+    expect(automaticInvocation(['--update'], { home }).args).toEqual([entry, '--apply', '--knowledge-only']);
   });
 });
 

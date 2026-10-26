@@ -3,6 +3,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { REPO_ROOT, evaluateDoc, blockingFindings } from './doc-currency.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export const GOVERNING_ADR = 'docs/adr/0103-routing-architecture-review-lock.md';
 
@@ -39,6 +40,6 @@ export function main(argv = process.argv.slice(2)) {
   return result.pass ? 0 : 1;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isDirectInvocation(import.meta.url)) {
   process.exitCode = main();
 }

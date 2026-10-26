@@ -1,5 +1,6 @@
 // footprint-io.mjs — the footprint sweep's disk operations (ADR-0098), kept apart from the classifier in
-// brain-footprint.mjs: byte counts, log rotation, the guarded removal, and the KEPT-proof cache.
+// brain-footprint.mjs: byte counts, log rotation, the guarded removal, the rescue of a released copy's
+// operational files, and the KEPT-proof cache.
 //
 // THE KEPT-PROOF CACHE (independent review S7).
 // kbCopyProof hashes every file of a GB-sized copy. A copy kept because it holds data the live brain lacks
@@ -7,6 +8,7 @@
 // which can only keep it again. Only KEPT results are cached, keyed by a cheap stat fingerprint of the copy
 // and of the live brain (no hashing, no tree walk); a stale entry can only KEEP a copy, never remove one, and
 // any change to the live brain's identity files (a restore, an update) invalidates it.
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -157,7 +159,43 @@ export function removeWithin(target, expectedParent, owned) {
   return size;
 }
 
+/**
+ * RESCUE BEFORE RELEASE. kbCopyProof lists a disposable copy's operational files (logs, ruflo scratch) as
+ * `rescue`, each with the bytes it was proven with. They are copied to <brainHome>/kb-copy-rescued/<copy
+ * name>/<path> and verified there BEFORE the copy is removed. Any mismatch (the source changed since the
+ * proof, a different file already at the destination, a link in the way) throws, and the caller keeps the
+ * copy. Retention of the rescued directories is brain-footprint.mjs's (FOOTPRINT_POLICY.rescuedCopiesKept).
+ */
+export const RESCUE_DIR = 'kb-copy-rescued';
+const sha256Of = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+const regular = (file) => { const st = lstat(file); return Boolean(st && st.isFile() && !st.isSymbolicLink()); };
+export function rescueOperationalFiles(copyDir, rescue, brainHome, name = path.basename(copyDir)) {
+  if (!rescue?.length) return null;
+  const root = path.join(brainHome, RESCUE_DIR); const dest = path.join(root, name);
+  for (const dir of [brainHome, root, dest]) {
+    if (lstat(dir)?.isSymbolicLink()) throw new Error(`refusing to rescue into ${dir}: it is a link`);
+  }
+  for (const { file, sha256 } of rescue) {
+    const from = path.join(copyDir, file); const to = path.join(dest, file);
+    if (!regular(from) || sha256Of(from) !== sha256) throw new Error(`${file} changed after the copy was proven; the copy is kept`);
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    if (!lstat(to)) fs.copyFileSync(from, to, fs.constants.COPYFILE_EXCL);
+    if (!regular(to) || sha256Of(to) !== sha256) throw new Error(`could not rescue ${file} to ${to} (a different file is there); the copy is kept`);
+  }
+  // A reused rescue folder (an earlier sweep rescued, then could not release, this copy) holds the only copy of these
+  // logs once the copy goes: make it the newest, so retention keeps it among the newest five (review r2). A failure
+  // throws, and the caller keeps the copy.
+  const touched = new Date(); fs.utimesSync(dest, touched, touched);
+  return dest;
+}
+
 const PROOF_CACHE = '.footprint-proof-cache.json';
+// #335: schema 1 KEPT proofs predate kept-sibling accounting (two identical preserved copies each kept the
+// other forever); they are proven once more. A dropped cache entry can only cost a re-hash, never a byte.
+const PROOF_CACHE_SCHEMA = 2;
+// The proof rule a cached KEPT verdict was reached under. A verdict from an older rule (one that kept copies
+// the current rule releases, e.g. for a log file before rescue existed) is not reused; that copy is proven again.
+const PROOF_RULE = 2;
 const IDENTITY_FILES = ['SOURCE.json', 'PRIVATE-STORES.json', 'COVERAGE.json', 'RVF-GENERATIONS.json'];
 const statKey = (file) => { try { const st = fs.lstatSync(file); return `${st.size}:${Math.floor(st.mtimeMs)}`; } catch { return '-'; } };
 const fingerprint = (dir) => [statKey(dir), ...IDENTITY_FILES.map((f) => statKey(path.join(dir, f)))].join('|');
@@ -165,21 +203,21 @@ const fingerprint = (dir) => [statKey(dir), ...IDENTITY_FILES.map((f) => statKey
 export function readProofCache(brainHome) {
   try {
     const doc = JSON.parse(fs.readFileSync(path.join(brainHome, PROOF_CACHE), 'utf8'));
-    if (doc && typeof doc.entries === 'object' && doc.entries) return doc;
+    if (doc && doc.schemaVersion === PROOF_CACHE_SCHEMA && typeof doc.entries === 'object' && doc.entries) return doc;
   } catch { /* none yet */ }
-  return { schemaVersion: 1, entries: {} };
+  return { schemaVersion: PROOF_CACHE_SCHEMA, entries: {} };
 }
 
 /** The cached KEPT proof for this copy, if neither the copy nor the live brain changed since. */
 export function cachedKept(cache, copyDir, liveDir) {
   const hit = cache.entries[copyDir];
-  return hit && hit.copy === fingerprint(copyDir) && hit.live === fingerprint(liveDir) ? hit : null;
+  return hit && hit.rule === PROOF_RULE && hit.copy === fingerprint(copyDir) && hit.live === fingerprint(liveDir) ? hit : null;
 }
 
 export function rememberKept(brainHome, copyDir, liveDir, proof) {
   try {
     const cache = readProofCache(brainHome);
-    cache.entries[copyDir] = { copy: fingerprint(copyDir), live: fingerprint(liveDir), reason: proof.reason,
+    cache.entries[copyDir] = { rule: PROOF_RULE, copy: fingerprint(copyDir), live: fingerprint(liveDir), reason: proof.reason,
       unique: (proof.unique || []).slice(0, 10), at: new Date().toISOString() };
     const file = path.join(brainHome, PROOF_CACHE);
     fs.writeFileSync(`${file}.tmp-${process.pid}`, JSON.stringify(cache));
@@ -187,7 +225,96 @@ export function rememberKept(brainHome, copyDir, liveDir, proof) {
   } catch { /* uncached: the next sweep proves it again, which is only slower */ }
 }
 
-/** The honest remedy for a copy no command can remove: what it holds, and that the owner decides. */
-export const keptCopyFix = (copyDir, hit) => `nothing to run: ${copyDir} is kept because it holds ${
+/** The honest remedy for a kept copy: what it holds, and the explicit archive command that releases it (#335). */
+export const keptCopyFix = (copyDir, hit) => `npx ruvnet-brain --clean --archive — ${copyDir} is kept because it holds ${
   (hit.unique || []).some((u) => /private/i.test(u.why || '')) ? 'private ' : ''}data the live brain lacks (${
-  (hit.unique || []).slice(0, 3).map((u) => u.file).join(', ') || hit.reason}); restore that into the live brain, or delete the copy yourself once inspected`;
+  (hit.unique || []).slice(0, 3).map((u) => u.file).join(', ') || hit.reason}); that copies only those files into kb.archive/ and releases the copy (or restore them into the live brain yourself)`;
+
+const sha256File = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+/**
+ * Every `<archiveDir>/<stamp>/<label>` tree `--clean --archive` wrote: real directories only, links never entered.
+ * A dot-named entry is an archive still being written (or one a killed sweep left half-written); it is never
+ * a reference, so a partial archive can never account for a copy's bytes.
+ */
+export function archiveRoots(archiveDir) {
+  const real = (p) => { const st = lstat(p); return Boolean(st && st.isDirectory() && !st.isSymbolicLink()); };
+  if (!real(archiveDir)) return [];
+  return names(archiveDir).map((s) => path.join(archiveDir, s)).filter(real)
+    .flatMap((stampDir) => names(stampDir).filter((n) => !n.startsWith('.')).map((n) => path.join(stampDir, n)).filter(real));
+}
+
+/** Undo an archive this sweep wrote (the copy it came from is being kept, so the archive holds nothing unique). */
+export function discardArchive(root) {
+  fs.rmSync(root, { recursive: true, force: true });
+  fs.rmSync(`${root}.json`, { force: true });
+}
+
+/**
+ * Discard an archive ONLY while the copy it came from still holds every archived byte (review 4.7.21 r2). Between
+ * the archive and the re-proof another process (an updater's reclaimBackups, which counts this archive as
+ * evidence) may have removed the copy; a re-proof of a missing directory still says "keep", so an unconditional
+ * discard would lose the bytes in both places. The copy must still be a real directory and each archived file a
+ * regular file there with the same SHA-256; otherwise the archive is kept and the reason is returned.
+ */
+export function discardArchiveIfMirrored({ root, copyDir, files }) {
+  const dir = lstat(copyDir);
+  if (!dir || dir.isSymbolicLink() || !dir.isDirectory()) return { discarded: false, reason: `${copyDir} is no longer a real directory` };
+  for (const { file, sha256 } of files || []) {
+    const held = path.join(copyDir, file);
+    let same = false;
+    try { same = regular(held) && sha256File(held) === sha256; } catch { same = false; }
+    if (!same) return { discarded: false, reason: `${file} is no longer identical in ${copyDir}` };
+  }
+  discardArchive(root);
+  return { discarded: true };
+}
+
+/**
+ * #335 `--clean --archive` (explicit, never automatic): COPY exactly the files a KEPT proof named unique into
+ * `<stampDir>/<label>/<same relative path>`, verify each byte-for-byte, and write `<stampDir>/<label>.json`.
+ * Moves and deletes nothing: the caller re-proves the copy against this archive before releasing it. A link,
+ * an unsafe ancestor, a non-regular file, too little free space or any copy error archives nothing usable.
+ * ALL OR NOTHING: the files go to a dot-named temp sibling and are renamed to `<label>` only after every one
+ * verifies (the receipt likewise); a failure removes the temp, so no half-written `<label>` is ever left for a
+ * later sweep to compare against.
+ */
+export function archiveUniqueFiles({ copyDir, unique, stampDir, label, now = Date.now() }) {
+  if (!Array.isArray(unique) || !unique.length) return { ok: false, reason: 'no file is named unique; the copy is kept for another reason' };
+  const root = path.join(stampDir, label);
+  if (lstat(root)) return { ok: false, reason: `${root} already exists` };
+  let need = 0;
+  for (const { file, why } of unique) {
+    const st = lstat(path.join(copyDir, file));
+    if (/link|ancestor/i.test(String(why)) || !st || !st.isFile() || st.isSymbolicLink()) return { ok: false, reason: `${file} is not a regular file that can be archived (${why})` };
+    need += st.size;
+  }
+  const temp = path.join(stampDir, `.${label}.partial-${process.pid}-${crypto.randomBytes(4).toString('hex')}`);
+  const receipt = path.join(stampDir, `${label}.json`); const receiptTemp = `${temp}.json`;
+  let renamed = false;
+  try {
+    fs.mkdirSync(stampDir, { recursive: true });
+    const free = typeof fs.statfsSync === 'function' ? fs.statfsSync(stampDir) : null;
+    if (free && Number(free.bavail) * Number(free.bsize) < need + 64 * 1024 * 1024) {
+      return { ok: false, reason: `not enough free space to archive ${need} bytes` };
+    }
+    const files = [];
+    for (const { file } of unique) {
+      const src = path.join(copyDir, file); const dst = path.join(temp, file);
+      fs.mkdirSync(path.dirname(dst), { recursive: true });
+      fs.copyFileSync(src, dst, fs.constants.COPYFILE_EXCL);
+      const sha256 = sha256File(src);
+      if (sha256File(dst) !== sha256) throw new Error(`archived bytes of ${file} differ from the source`);
+      files.push({ file, bytes: fs.lstatSync(dst).size, sha256 });
+    }
+    fs.writeFileSync(receiptTemp, `${JSON.stringify({ schemaVersion: 1, kind: 'ruvnet-brain-kb-archive',
+      source: copyDir, archivedAt: new Date(now).toISOString(), files }, null, 2)}\n`, { flag: 'wx' });
+    if (lstat(root) || lstat(receipt)) throw new Error(`${root} appeared while archiving`);
+    fs.renameSync(temp, root); renamed = true;
+    fs.renameSync(receiptTemp, receipt);
+    return { ok: true, root, files, bytes: need };
+  } catch (error) {
+    fs.rmSync(temp, { recursive: true, force: true }); fs.rmSync(receiptTemp, { force: true });
+    if (renamed) fs.rmSync(root, { recursive: true, force: true });
+    return { ok: false, reason: `archive failed: ${error.message}` };
+  }
+}

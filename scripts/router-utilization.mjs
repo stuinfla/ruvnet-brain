@@ -179,4 +179,5 @@ export function mainUtil() {
 
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) mainUtil();
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
+if (isDirectInvocation(import.meta.url)) mainUtil();

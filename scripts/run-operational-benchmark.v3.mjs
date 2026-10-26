@@ -16,6 +16,7 @@ import {
   preflightOperationalOracle,
 } from '../evals/operational-benchmark.v3.mjs';
 import { verifyGrounding as evaluatorVerifyGrounding } from '../kb/verify-citation.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const execFileAsync = promisify(execFile);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -189,6 +190,6 @@ async function main() {
   if (!report.qualificationPass) process.exitCode = 1;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isDirectInvocation(import.meta.url)) {
   main().catch((error) => { console.error(error.stack || error.message); process.exitCode = 2; });
 }

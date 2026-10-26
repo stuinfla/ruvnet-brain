@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { automaticPath } from './automatic-update.mjs';
 import { sharedLockStatus } from './developer-update-lock.mjs';
-import { EXECUTION_MODULES } from './developer-update-policy.mjs';
+import { EXECUTION_MODULES, OPTIONAL_EXECUTION_MODULES } from './developer-update-policy.mjs';
 
 export const NIGHTLY_LABEL = 'com.ruvnet.brain-update';
 export const NIGHTLY_HOUR = 3;
@@ -145,8 +145,13 @@ function inspectRefreshOwner(owner) {
 const HISTORICAL_UPDATE_MODULES = ['automatic-update.mjs', 'user-settings.mjs', 'ruvnet-gate1-pattern.mjs'];
 const BRIDGED_UPDATE_MODULES = [...HISTORICAL_UPDATE_MODULES, 'developer-update-owner.mjs'];
 const LEGACY_UPDATE_MODULES = [...BRIDGED_UPDATE_MODULES, 'developer-update-policy.mjs'];
-const PREVIOUS_DEVELOPER_MODULES = [...BRIDGED_UPDATE_MODULES, ...EXECUTION_MODULES.filter(name => name !== 'plugin-artifact-proof.mjs')];
+const PREVIOUS_DEVELOPER_MODULES = [...BRIDGED_UPDATE_MODULES, ...EXECUTION_MODULES.filter(name => !OPTIONAL_EXECUTION_MODULES.includes(name))];
+// Registered by 4.7.20 and earlier (before developer-update.mjs imported ./entrypoint.mjs); still a valid closure.
+const PRE_ENTRYPOINT_DEVELOPER_MODULES = [...new Set([...LEGACY_UPDATE_MODULES, ...EXECUTION_MODULES.filter(name => name !== 'entrypoint.mjs')])];
 const DEVELOPER_UPDATE_MODULES = [...new Set([...LEGACY_UPDATE_MODULES, ...EXECUTION_MODULES])];
+/** A staged coordinator that imports an optional member must have it staged beside it (review B, 4.7.21). */
+const missingOptional = (modules) => OPTIONAL_EXECUTION_MODULES.find(name => modules['developer-update.mjs'] && !modules[name]
+  && fs.readFileSync(modules['developer-update.mjs'].path, 'utf8').includes(`./${name}`));
 /** The shipped module set and the content digest it is registered under (`update-modules-<digest>`); reads only. */
 function readModuleSet(sourceDir, developerSuite) {
   const files = developerSuite ? DEVELOPER_UPDATE_MODULES : LEGACY_UPDATE_MODULES;
@@ -170,8 +175,8 @@ function updateModules(directory, sourceDir = path.dirname(fileURLToPath(import.
 
 function verifyUpdateModules(modules) {
   if (!modules) return; // existing schema-2 registrations remain inspectable
-  if (![HISTORICAL_UPDATE_MODULES, BRIDGED_UPDATE_MODULES, LEGACY_UPDATE_MODULES, PREVIOUS_DEVELOPER_MODULES, DEVELOPER_UPDATE_MODULES].some(names => [...names].sort().join(',') === Object.keys(modules).sort().join(','))) throw new Error('invalid update module closure');
-  if (modules['developer-update.mjs'] && !modules['plugin-artifact-proof.mjs'] && fs.readFileSync(modules['developer-update.mjs'].path, 'utf8').includes('./plugin-artifact-proof.mjs')) throw new Error('new coordinator artifact closure is incomplete');
+  if (![HISTORICAL_UPDATE_MODULES, BRIDGED_UPDATE_MODULES, LEGACY_UPDATE_MODULES, PREVIOUS_DEVELOPER_MODULES, PRE_ENTRYPOINT_DEVELOPER_MODULES, DEVELOPER_UPDATE_MODULES].some(names => [...names].sort().join(',') === Object.keys(modules).sort().join(','))) throw new Error('invalid update module closure');
+  if (missingOptional(modules)) throw new Error(missingOptional(modules) === 'plugin-artifact-proof.mjs' ? 'new coordinator artifact closure is incomplete' : `coordinator closure is missing ${missingOptional(modules)}`);
   for (const [name, item] of Object.entries(modules)) {
     if (!path.isAbsolute(item.path) || path.basename(item.path) !== name
       || path.dirname(item.path) !== path.dirname(modules['automatic-update.mjs'].path)
@@ -344,7 +349,7 @@ export function developerRunHealth({ brainHome, registration, now = Date.now(), 
   const boundTo = modules => Boolean(modules) && validDigest(receipt.sourceSha256) && receipt.kind === 'nightly-suite-update' && receipt.schemaVersion === 1
     && receipt.sourceSha256 === modules['developer-update.mjs']?.sha256
     && Object.entries(receipt.sourceSnapshot || {}).every(([name, digest]) => validDigest(digest) && digest === modules[name]?.sha256)
-    && EXECUTION_MODULES.filter(name => name !== 'plugin-artifact-proof.mjs' || modules[name]).every(name => validDigest(receipt.sourceSnapshot?.[name]) && receipt.sourceSnapshot[name] === modules[name]?.sha256);
+    && EXECUTION_MODULES.filter(name => !OPTIONAL_EXECUTION_MODULES.includes(name) || modules[name]).every(name => validDigest(receipt.sourceSnapshot?.[name]) && receipt.sourceSnapshot[name] === modules[name]?.sha256);
   // A receipt from the module set an update just replaced is still the night's proof, but only one that FINISHED before
   // the replacement: the next scheduled run must bind to the current set.
   // Judged by LAUNCH time: a night's own knowledge step can install a release and re-point the modules before the run

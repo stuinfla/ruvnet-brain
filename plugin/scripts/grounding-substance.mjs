@@ -60,6 +60,7 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseHookEvent, toolName } from './hook-input.mjs';
+import { isDirectInvocation } from './entrypoint.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -585,7 +586,7 @@ function main() {
 // stdin here is a pipe bash has already drained and re-fed (`printf '%s' "$INPUT" | node …`), so the
 // held-open-stdin hole ADR-055 F20 found in unprompted-runtime.mjs cannot occur on this path: there
 // is no interactive terminal on the other end, ever.
-if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
+if (isDirectInvocation(import.meta.url)) {
   let code = 0;
   try { code = main(); } catch (e) {
     try { process.stderr.write(`[grounding-substance] degraded (${e && e.message}) — write permitted\n`); } catch { /* never */ }

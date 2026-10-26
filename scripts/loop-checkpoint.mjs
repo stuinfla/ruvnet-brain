@@ -26,6 +26,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const argv = process.argv.slice(2);
 const cmd = argv[0];
@@ -91,7 +92,7 @@ export function checkCheckpoint(file = FILE, runner = (c) => spawnSync('sh', ['-
   return { code: 0, verdict: `continue — iteration ${cp.iteration}, next: ${cp.next}` };
 }
 
-const invokedDirectly = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const invokedDirectly = isDirectInvocation(import.meta.url);
 if (invokedDirectly) {
   if (cmd === 'read') {
     console.log(JSON.stringify(readCheckpoint() ?? {}, null, 2));

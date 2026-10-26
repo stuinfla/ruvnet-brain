@@ -1,7 +1,7 @@
 // write-gate-policy.test.mjs — the write gate's two fail-open cases are POLICY, not accident (4.5).
 //
 //   ALLOW ON TIMEOUT  a policy still running at the budget does not vote; the write is allowed; the ledger
-//                     records `budget-exceeded` and one stderr line says the allow was a timeout.
+//                     records `budget-exceeded`; under RUVNET_STOP_NUDGES=full one stderr line says it was a timeout.
 //   OVERSIZE          the host transport hands the gate at most 64 KiB; a refusal found in that prefix
 //                     stands; what only the rest could show is allowed and recorded as `payload-oversize`.
 //                     Measured before 4.5: that allow left no trace anywhere.
@@ -61,8 +61,22 @@ describe.skipIf(process.platform === 'win32' || !BASH)('through the real registe
     expect(r.rows.map((x) => x.kind)).toContain('refused');
   }, 60_000);
 
-  it('OVERSIZE: what only the rest could show is ALLOWED, with the unavailable ADR verdict disclosed and recorded', async () => {
-    const r = await fire((w) => ({ file_path: path.join(w.cwd, 'src', 'b.js'), content: `// ${pad(70_000)}\nimport x from '${term}';\n` }));
+  // The stderr channel speaks on an ALLOW only under RUVNET_STOP_NUDGES=full (quiet by default since 2026-10-15);
+  // the ledger rows are written in both modes. Each case sets the mode, so the parent shell cannot decide it.
+  const FULL = { RUVNET_STOP_NUDGES: 'full' };
+  const DEFAULT = { RUVNET_STOP_NUDGES: undefined };
+  const oversizeTail = (w) => ({ file_path: path.join(w.cwd, 'src', 'b.js'), content: `// ${pad(70_000)}\nimport x from '${term}';\n` });
+
+  it('OVERSIZE (default mode): allowed with empty stderr, and the skipped ADR verdict and the oversize are still recorded', async () => {
+    const r = await fire(oversizeTail, DEFAULT);
+    expect(r.status).toBe(0);
+    expect(r.stderr).toBe('');
+    expect(r.rows.find((x) => x.kind === 'policy-skipped' && x.policy === 'adr-currency')).toBeTruthy();
+    expect(r.rows.find((x) => x.kind === 'payload-oversize')).toMatchObject({ session: 'wgp-1', bytesSeen: TRANSPORT_CAP_BYTES });
+  }, 60_000);
+
+  it('OVERSIZE (full mode): what only the rest could show is ALLOWED, with the unavailable ADR verdict disclosed and recorded', async () => {
+    const r = await fire(oversizeTail, FULL);
     expect(r.status).toBe(0);
     // The cut-off prefix is not JSON. ADR inspection cannot vote on it; allowing the prefix
     // must preserve that diagnostic rather than claim every policy obtained a verdict.
@@ -78,8 +92,15 @@ describe.skipIf(process.platform === 'win32' || !BASH)('through the real registe
     expect(r.status).toBe(2);
   }, 60_000);
 
-  it('ALLOW ON TIMEOUT: a blown budget allows, says so on stderr, and records budget-exceeded with who did not vote', async () => {
-    const r = await fire((w) => ({ file_path: path.join(w.cwd, 'src', 'c.js'), content: `import x from '${term}';\n` }), { RUVNET_DECISION_BUDGET_MS: '1' });
+  it('ALLOW ON TIMEOUT (default mode): a blown budget allows with empty stderr and still records budget-exceeded', async () => {
+    const r = await fire((w) => ({ file_path: path.join(w.cwd, 'src', 'c.js'), content: `import x from '${term}';\n` }), { RUVNET_DECISION_BUDGET_MS: '1', ...DEFAULT });
+    expect(r.status).toBe(0);
+    expect(r.stderr).toBe('');
+    expect(r.rows.find((x) => x.kind === 'budget-exceeded')?.unconsulted).toContain('ground-before-write');
+  }, 60_000);
+
+  it('ALLOW ON TIMEOUT (full mode): a blown budget allows, says so on stderr, and records budget-exceeded with who did not vote', async () => {
+    const r = await fire((w) => ({ file_path: path.join(w.cwd, 'src', 'c.js'), content: `import x from '${term}';\n` }), { RUVNET_DECISION_BUDGET_MS: '1', ...FULL });
     expect(r.status).toBe(0);
     expect(r.stderr).toMatch(/ALLOWED WITHOUT CONSULTING: .*ground-before-write/);
     expect(r.stderr).toMatch(/this allow is a timeout, not a verdict/);

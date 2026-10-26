@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { npmInvocation } from '../helpers/npm-invocation.mjs';
+import { parseNpmPack } from '../helpers/npm-pack-json.mjs';
 import { consoleFixtureEnvironment } from '../helpers/console-fixture-environment.mjs';
 
 // Issue #86 crossed two release boundaries that source-checkout tests cannot cover: npm's packed
@@ -114,8 +115,8 @@ beforeAll(async () => {
   const userConfig = path.join(npmHome, '.npmrc'); fs.writeFileSync(userConfig, '');
   const npmEnv = { ...scrubbedEnvironment(), HOME: npmHome, USERPROFILE: npmHome, npm_config_userconfig: userConfig };
   const pack = npmInvocation(['pack', '--json', '--pack-destination', packDir], { env: npmEnv });
-  const packed = JSON.parse(execFileSync(pack.executable, pack.args, { cwd: ROOT, env: npmEnv, encoding: 'utf8' }));
-  const tarball = path.join(packDir, packed[0].filename);
+  const packed = parseNpmPack(execFileSync(pack.executable, pack.args, { cwd: ROOT, env: npmEnv, encoding: 'utf8' }), { expectName: 'ruvnet-brain' });
+  const tarball = path.join(packDir, packed.filename);
   const install = npmInvocation(['install', '--ignore-scripts', '--no-audit', '--no-fund', '--prefix', installRoot, tarball], { env: npmEnv });
   execFileSync(install.executable, install.args, { cwd: artifactRoot, env: npmEnv, encoding: 'utf8' });
 

@@ -14,6 +14,7 @@ import { decideNativeTurn, appendGatewayReceipt } from './model-routing-gateway.
 import { subscriptionEnvironment, assertSubscriptionAuth, validateDispatchDecision } from './model-router-dispatch.mjs';
 import { validateClaudeTerminalSettings } from './model-terminal-launchers.mjs';
 import { runManagedPrompt } from './model-managed-prompt.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const REFUSED = 'Controlled Claude turn refused; no fallback.';
 const uuid = value => /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(value || '');
@@ -386,7 +387,7 @@ export async function launchControlledClaudeTerminal({ binary, args = [], input 
   } finally { controller.abort(); terminal.close(); for (const name of ['SIGINT', 'SIGTERM', 'SIGHUP']) signalSource.removeListener(name, cancel); }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isDirectInvocation(import.meta.url)) {
   const args = process.argv.slice(2);
   if (args[0] !== '--real-binary' || !args[1] || args[2] !== '--') {
     process.stderr.write('Expected --real-binary /absolute/native/claude -- [--resume UUID]\n'); process.exitCode = 1;

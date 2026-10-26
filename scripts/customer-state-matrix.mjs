@@ -34,6 +34,7 @@ import { customerEnv, customerManifestUrl, installCustomer, installedModules } f
 import { addPrivateStore, resolveRuntime } from './customer-seams.mjs';
 export { resolveRuntime };
 import { doctorSmokeArgs } from './installed-brain-health.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 export const REPO = 'stuinfla/ruvnet-brain';
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -358,6 +359,6 @@ async function main(argv = process.argv.slice(2)) {
   return 0;
 }
 
-if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
+if (isDirectInvocation(import.meta.url)) {
   main().then((code) => { process.exitCode = code; }, (error) => { console.error(error.stack || error.message); process.exitCode = 1; });
 }

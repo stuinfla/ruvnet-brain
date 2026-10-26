@@ -10,6 +10,7 @@ import { readCandidateRetrieval } from './staged-host-verifier.mjs';
 import { validateRetrievalCanaryReceipt } from './retrieval-canary.mjs';
 import { payloadIdFor } from './release-payload.mjs';
 import { HOST_WARMUP_TIMEOUT_MS, RELEASE_SEARCH_DEADLINE_MS } from './host-install-matrix.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const sha256 = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 
@@ -191,7 +192,7 @@ export function buildPrepublicationEvidence({
   return { leaves, envelope: aggregateEvidence({ sha, payloadId: payload.payloadId, leaves }) };
 }
 
-const isCli = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const isCli = isDirectInvocation(import.meta.url);
 if (isCli) {
   const arg = (name) => {
     const index = process.argv.indexOf(name);

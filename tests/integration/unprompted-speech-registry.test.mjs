@@ -481,9 +481,9 @@ describe('closed world, functionally: the built-in registry reaches the real pro
     expect(r.code).toBe(0);
     expect(r.stdout, 'the recommendation route emitted nothing through the real registry').not.toBe('');
     const ctx = JSON.parse(r.stdout).hookSpecificOutput.additionalContext;
-    expect(ctx).toContain('Consider agentic-qe');
+    expect(ctx).toContain('agentic-qe fits here');
     expect(ctx).toMatch(/aqe coverage --gaps --risk/);          // a verified next action, not a guess
-    expect(ctx).toMatch(/tell the user in ONE sentence/);        // addressed to the model, as designed
+    expect(ctx).toMatch(/state it in ONE sentence/);        // addressed to the model, as designed
     // Delivered ⇒ the runtime recorded the OFFERED denominator centrally, under the namespaced id.
     const rows = ledgerRows(path.join(dir, 'route-outcomes.jsonl'), 'recommend:agentic-qe');
     expect(rows.some((x) => x.action === 'offered')).toBe(true);

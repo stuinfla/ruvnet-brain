@@ -9,6 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { assertCurrentSelection, selectionEvidenceStatus, loadSelection, loadCatalog, loadProfile, applyProfile, eligibleCandidates, TASK_CLASSES } from './model-router-engine.mjs';
 
 import { readCodexAllowance } from './native-subscription-usage.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const BILLING_ENV = /^(OPENAI_API_KEY|OPENAI_BASE_URL|ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|ANTHROPIC_BASE_URL|ANTHROPIC_CUSTOM_HEADERS|CLAUDE_CODE_USE_BEDROCK|CLAUDE_CODE_USE_VERTEX|CLAUDE_CODE_USE_FOUNDRY|CODEX_API_KEY)$/;
@@ -156,6 +157,6 @@ async function main(argv) {
       taskClass: decision.taskClass, executed: false }) + '\n');
   } else process.exitCode = await dispatch(decision, prompt, { interactive });
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isDirectInvocation(import.meta.url)) {
   main(process.argv.slice(2)).catch((e) => { process.stderr.write(`model-router-dispatch: ${e.message}\n`); process.exitCode = 1; });
 }

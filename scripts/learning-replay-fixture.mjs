@@ -31,6 +31,9 @@ const sh = (cmd, args, options = {}) => {
   return spawnSync(binary, argv, {
     encoding: 'utf8',
     timeout: 120_000,
+    // Never the checkout: ruflo writes `.claude-flow/` and `agentdb.rvf.idmap.json` into its cwd, and release
+    // qualification requires the checkout to stay byte-identical.
+    cwd: os.tmpdir(),
     ...options,
     // A ruflo started here would auto-start a daemon and run its in-cwd self-update (`npm install @claude-flow/cli`,
     // 1.3 GB measured 2026-10-22) in the fixture project; a caller's own env still wins.

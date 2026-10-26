@@ -28,23 +28,23 @@ const REPO_ROOT = path.resolve(import.meta.dirname, '../..');
 
 let tmp, binDir, logFile, fixtures;
 
-// Step 2 (2026-09-13): ingest-gists.mjs's real content path now routes through the canonical
-// gist-receipts.mjs pipeline instead of a self-contained fetch+write+chunk loop, so this hermetic
-// fixture needs that pipeline's full static-import closure copied alongside it -- not just the one
-// file. Every path here is a real, statically-resolvable local import (verified against the source
-// files, not guessed); a new import added to any of them would need adding here too.
-const DEPENDENCY_FILES = [
-  'scripts/ingest-gists.mjs',
-  'scripts/gist-receipts.mjs',
-  'scripts/gist-git-transport.mjs',
-  'scripts/coverage-integrity.mjs',
-  'scripts/rvf-generation.mjs',
-  'scripts/version.mjs',
-  'plugin/scripts/coverage-integrity.mjs',
-  'kb/incremental-refresh.mjs',
-  'kb/rvf-index.mjs',
-  'plugin/.claude-plugin/plugin.json',
-];
+// Step 2 (2026-09-13): ingest-gists.mjs's real content path routes through the canonical
+// gist-receipts.mjs pipeline, so this hermetic fixture needs that pipeline's full static-import closure
+// copied alongside it. The closure is DERIVED with serverDependencies() (bin/install.mjs), never listed:
+// the hand-written list this replaced missed scripts/transient-gh.mjs from v4.7.16 and
+// plugin/scripts/entrypoint.mjs from 4.7.21, and every subprocess case died on ERR_MODULE_NOT_FOUND.
+process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
+const { serverDependencies } = await import(new URL('../../bin/install.mjs', import.meta.url).href);
+const ENTRY = path.join(REPO_ROOT, 'scripts', 'ingest-gists.mjs');
+// plugin.json is DATA that scripts/version.mjs reads at runtime (PLUGIN_JSON), not an import, so the
+// import walk cannot see it; it is the one file named here.
+const DATA_FILES = ['plugin/.claude-plugin/plugin.json'];
+
+function copyIntoFixture(from) {
+  const destination = path.join(tmp, path.relative(REPO_ROOT, from));
+  fs.mkdirSync(path.dirname(destination), { recursive: true });
+  fs.copyFileSync(from, destination);
+}
 
 beforeEach(() => {
   // realpathSync: macOS's os.tmpdir() resolves through a /tmp -> /private/tmp symlink; the child
@@ -52,11 +52,9 @@ beforeEach(() => {
   tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ingest-gists-')));
   fs.mkdirSync(path.join(tmp, 'scripts'), { recursive: true });
   fs.mkdirSync(path.join(tmp, 'kb'), { recursive: true });
-  for (const relative of DEPENDENCY_FILES) {
-    const destination = path.join(tmp, relative);
-    fs.mkdirSync(path.dirname(destination), { recursive: true });
-    fs.copyFileSync(path.join(REPO_ROOT, relative), destination);
-  }
+  copyIntoFixture(ENTRY);
+  for (const dep of serverDependencies(ENTRY)) copyIntoFixture(dep.from);
+  for (const relative of DATA_FILES) copyIntoFixture(path.join(REPO_ROOT, relative));
 
   binDir = path.join(tmp, 'stub-bin');
   fs.mkdirSync(binDir);

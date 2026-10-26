@@ -28,6 +28,7 @@
 
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { isDirectInvocation } from './entrypoint.mjs';
 
 // ── GROK CLI PAYLOADS (4.5) ──────────────────────────────────────────────────────────────────────
 //
@@ -677,8 +678,7 @@ export function invocationLines(cmd, tools) {
 // argv[1] pointing at some other file.
 function isMain() {
   try {
-    if (!process.argv[1]) return false;
-    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+    return isDirectInvocation(import.meta.url);
   } catch {
     return false;
   }

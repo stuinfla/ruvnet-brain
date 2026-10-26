@@ -27,6 +27,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import readline from 'node:readline/promises';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const CONFIG_DIR = path.join(os.homedir(), '.claude', 'model-router');
 export const PROFILE_PATH = process.env.MODEL_ROUTER_PROFILE || path.join(CONFIG_DIR, 'profile.json');
@@ -136,6 +137,6 @@ async function main() {
 }
 
 const { pathToFileURL } = await import('node:url');
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isDirectInvocation(import.meta.url)) {
   main().catch((e) => { console.error(`model-router-setup: ${e.message}`); process.exit(1); });
 }

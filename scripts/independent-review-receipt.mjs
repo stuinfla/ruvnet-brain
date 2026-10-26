@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { canonicalJson, digest } from './coverage-integrity.mjs';
 import { transactionIdFor } from './release-transaction.mjs';
 import { CLAUDE_FABLE_5_ID, GPT_5_6_SOL_ID, LEGACY_REVIEWER_IDENTITIES } from './review-model-defaults.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 const HEX40 = /^[a-f0-9]{40}$/;
 const HEX64 = /^[a-f0-9]{64}$/;
 const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
@@ -495,4 +496,4 @@ export function main(args = process.argv.slice(2), runtime = {}) {
   }
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) process.exitCode = main();
+if (isDirectInvocation(import.meta.url)) process.exitCode = main();

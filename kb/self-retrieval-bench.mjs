@@ -21,6 +21,7 @@ import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { searchKb } from './forge-ask.mjs';
 import { discoverRepos } from './forge-ask-all.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 function arg(f, d) { const i = process.argv.indexOf(f); return i >= 0 ? process.argv[i + 1] : d; }
 const DIR = arg('--dir', '.');
@@ -77,7 +78,7 @@ export function resolveHybridMode(env = process.env) {
 }
 
 const isMain = (() => {
-  try { return process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); }
+  try { return isDirectInvocation(import.meta.url); }
   catch { return false; }
 })();
 

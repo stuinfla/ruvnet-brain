@@ -9,7 +9,7 @@ Created: 2026-06-29 22:36:38 EDT
 
 ### Discover the stack. Read the source. Build with confidence.
 
-[![RuvNet Brain version 4.6.2 — README updated 2026-10-10 EDT](https://img.shields.io/badge/version_4.7.19-updated_2026--10--10_EDT-1E90FF?style=for-the-badge&labelColor=0757BA)](plugin/.claude-plugin/plugin.json)
+[![RuvNet Brain version 4.6.2 — README updated 2026-10-10 EDT](https://img.shields.io/badge/version_4.7.21-updated_2026--10--10_EDT-1E90FF?style=for-the-badge&labelColor=0757BA)](plugin/.claude-plugin/plugin.json)
 
 **A source-grounded companion for Claude Code and Codex that helps you find and use Reuven Cohen's (rUv's) RuvNet ecosystem.**
 
@@ -255,7 +255,7 @@ uses the protected release workflow; a consumer update downloads an available ge
 does not rebuild upstream knowledge. Check `--doctor`, `SOURCE.json` and refresh receipts
 before treating an installation as current.
 
-The **4.6.0 published-corpus baseline** is **205 public stores · 165,488 public source chunks**.
+The **4.6.0 published-corpus baseline** is **205 public stores · 166,081 public source chunks**.
 Those are bundle census values, not a claim that every upstream repository is fresh today.
 Later corpus publication may advance the knowledge generation independently of code changes.
 

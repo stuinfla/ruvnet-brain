@@ -11,7 +11,7 @@ import {
   isAdrPath, main, storeDecision, supersededKeys, validateDecisionRecord, writeConsultReceipt,
 } from '../../plugin/scripts/decision-record.mjs';
 import { adrDecisionIn } from '../../plugin/scripts/decision-recall-gate.mjs';
-import { resolveRuflo } from '../../plugin/scripts/ruflo-bin.mjs';
+import { resolveRuflo, rufloInvocationOrPlain } from '../../plugin/scripts/ruflo-bin.mjs';
 import { adoptedProject, cleanup, rows, tmp } from '../helpers/continuity-fixture.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -94,6 +94,23 @@ describe('the §3 door: committed only on exact readback; a refusal is loud and 
     expect(fs.readdirSync(path.dirname(db)).sort()).toEqual(['memory.db']);
     cleanup();
   });
+  it('an encrypted-at-rest store (RFE1) is refused before the native-only store runs, with the cause in the ledger (#439)', () => {
+    const dir = tmp('decision-door-'); const db = path.join(dir, '.swarm', 'memory.db');
+    const brainHome = tmp('decision-door-bh-'); const priorHome = process.env.RUVNET_BRAIN_HOME; process.env.RUVNET_BRAIN_HOME = brainHome;
+    fs.mkdirSync(path.dirname(db), { recursive: true }); fs.writeFileSync(db, Buffer.concat([Buffer.from('RFE1'), Buffer.alloc(64, 7)]));
+    const m = memory(); let stores = 0;
+    const r = storeDecision({ ruflo: 'x', db, namespace: 'app', key: 'decision-e-20261011T123456789Z', value: '{"e":1}',
+      store: (args) => { stores += 1; return m.store(args); }, readBack: m.readBack });
+    if (priorHome === undefined) delete process.env.RUVNET_BRAIN_HOME; else process.env.RUVNET_BRAIN_HOME = priorHome;
+    expect(r).toMatchObject({ state: 'refused', key: 'decision-e-20261011T123456789Z' });
+    expect(r.reason).toMatch(/encrypted at rest \(ruflo RFE1\)/);
+    expect(stores).toBe(0);
+    const ledger = fs.readFileSync(path.join(brainHome, 'hook-failures.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0]).toMatchObject({ hook: 'decision-record', event: 'record' });
+    expect(ledger[0].error).toMatch(/encrypted at rest/);
+    cleanup();
+  });
   it('a store that exits 0 but reads back nothing is NOT committed', () => {
     const dir = tmp('decision-door-'); const db = path.join(dir, '.swarm', 'memory.db');
     fs.mkdirSync(path.dirname(db), { recursive: true });
@@ -141,12 +158,21 @@ describe('transcript audit: an ADR created this turn needs a later --record', ()
 
 describe('decision-recall policy, through the real decision-gate process', () => {
   const fire = (payload, env) => spawnSync(process.execPath, [GATE, 'write'], { input: JSON.stringify(payload), encoding: 'utf8', timeout: 20_000, env });
+  /** An allow, with the gate's stderr (the per-policy trace) as the failure message. */
+  const allows = (r) => expect(r.status, r.stderr).toBe(0);
   const setup = () => {
     const p = adoptedProject();
     const brainHome = tmp('decision-bh-'); const stateDir = tmp('decision-state-');
-    const env = { ...p.env, RUVNET_BRAIN_HOME: brainHome, RUVNET_BRAIN_STATE_DIR: stateDir, RUVNET_DUPLICATE_GATE: 'off', RUVNET_DECISION_BUDGET_MS: '8000' };
+    // RUVNET_DECISION_TRACE=1: the gate prints each policy's verdict and time on stderr, so a red assertion
+    // below (which carries stderr in its message) says which policy voted what, not just the exit code.
+    const configRoot = tmp('decision-config-');
+    const env = { ...p.env, RUVNET_BRAIN_HOME: brainHome, RUVNET_BRAIN_STATE_DIR: stateDir, RUVNET_DUPLICATE_GATE: 'off',
+      RUVNET_DECISION_BUDGET_MS: '8000', RUVNET_DECISION_TRACE: '1', RUVNET_CONFIG_ROOT: configRoot };
     fs.mkdirSync(path.join(p.dir, 'docs', 'adr'), { recursive: true });
-    return { ...p, env, brainHome };
+    return { ...p, env, brainHome, configRoot };
+  };
+  const ledgerRows = (p) => {
+    try { return fs.readFileSync(path.join(p.configRoot, 'decision-outcomes.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)); } catch { return []; }
   };
   const newAdr = (p, session = 's1') => ({ session_id: session, hook_event_name: 'PreToolUse', cwd: p.dir, tool_name: 'Write',
     tool_input: { file_path: path.join(p.dir, 'docs', 'adr', '0001-choice.md'), content: '# ADR-001\nstatus: Accepted\n' } });
@@ -157,8 +183,29 @@ describe('decision-recall policy, through the real decision-gate process', () =>
     expect(first.status, first.stderr).toBe(2);
     expect(first.stderr).toMatch(/BLOCKED \(once\).*new ADR/);
     expect(first.stderr).toMatch(/decision-record\.mjs" --consult/);
-    expect(fire(newAdr(p), p.env).status).toBe(0);
-    expect(fire(newAdr(p, 's2'), p.env).status).toBe(2); // a new session is asked again
+    const retry = fire(newAdr(p), p.env);
+    expect(retry.status, retry.stderr).toBe(0);
+    const second = fire(newAdr(p, 's2'), p.env);
+    expect(second.status, second.stderr).toBe(2); // a new session is asked again
+    // Exactly one acknowledgement per (session, project, path): s1 (refused, then retried) and s2.
+    const acks = JSON.parse(fs.readFileSync(path.join(p.brainHome, 'decision-recall-acks.json'), 'utf8'));
+    expect(Object.keys(acks), JSON.stringify(acks)).toHaveLength(2);
+    expect(Object.values(acks).filter((a) => a.retriedAt)).toHaveLength(1);
+    cleanup();
+  }, 60_000);
+
+  it('a Git identity timeout is a recorded skip, never a silent allow (D8)', () => {
+    const p = setup();
+    // A `git` first on PATH that hangs only on the project-identity query the policy makes; every other git
+    // call goes to the real binary, so the other policies vote normally.
+    const realGit = spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf8', env: p.env }).stdout.trim();
+    const bin = tmp('decision-fakegit-');
+    fs.writeFileSync(path.join(bin, 'git'), `#!/bin/sh\ncase "$*" in *--git-common-dir*--show-toplevel*) exec sleep 5;; esac\nexec ${JSON.stringify(realGit)} "$@"\n`, { mode: 0o755 });
+    const r = fire(newAdr(p), { ...p.env, PATH: `${bin}${path.delimiter}${p.env.PATH}` });
+    expect(r.status, r.stderr).toBe(0);
+    const skipped = ledgerRows(p).filter((row) => row.kind === 'policy-skipped' && row.policy === 'decision-recall');
+    expect(skipped, `${r.stderr}\n${JSON.stringify(ledgerRows(p))}`).toHaveLength(1);
+    expect(skipped[0].reason).toMatch(/Git project identity timed out after 400ms; the new ADR .*0001-choice\.md was not checked/);
     cleanup();
   }, 60_000);
 
@@ -176,14 +223,14 @@ describe('decision-recall policy, through the real decision-gate process', () =>
     const adr = path.join(p.dir, 'docs', 'adr', '0001-choice.md');
     fs.writeFileSync(adr, '# ADR\nstatus: Proposed\n');
     const edit = (o, n) => ({ session_id: 's', cwd: p.dir, tool_name: 'Edit', tool_input: { file_path: adr, old_string: o, new_string: n } });
-    expect(fire(edit('wording', 'better wording'), p.env).status).toBe(0);
-    expect(fire({ ...newAdr(p), tool_input: { file_path: path.join(p.dir, 'notes.md'), content: 'x' } }, p.env).status).toBe(0);
-    expect(fire(newAdr(p), { ...p.env, RUVNET_DECISION_RECALL_GATE: 'off' }).status).toBe(0);
+    allows(fire(edit('wording', 'better wording'), p.env));
+    allows(fire({ ...newAdr(p), tool_input: { file_path: path.join(p.dir, 'notes.md'), content: 'x' } }, p.env));
+    allows(fire(newAdr(p), { ...p.env, RUVNET_DECISION_RECALL_GATE: 'off' }));
     const status = fire(edit('status: Proposed', 'status: Accepted'), p.env);
     expect(status.status, status.stderr).toBe(2);
     expect(status.stderr).toMatch(/ADR status change/);
     fs.rmSync(path.join(p.dir, '.swarm', 'memory.db'));
-    expect(fire(newAdr(p, 's9'), p.env).status).toBe(0);
+    allows(fire(newAdr(p, 's9'), p.env));
     cleanup();
   }, 90_000);
 
@@ -192,16 +239,16 @@ describe('decision-recall policy, through the real decision-gate process', () =>
     const adr = path.join(p.dir, 'docs', 'adr', '0001-choice.md');
     fs.writeFileSync(adr, '---\nstatus: Proposed\n---\n# ADR\n');
     const write = (content, session) => ({ session_id: session, cwd: p.dir, tool_name: 'Write', tool_input: { file_path: adr, content } });
-    expect(fire(write('---\nstatus: Proposed\n---\n# ADR reworded\n', 'w1'), p.env).status).toBe(0);
+    allows(fire(write('---\nstatus: Proposed\n---\n# ADR reworded\n', 'w1'), p.env));
     const flip = fire(write('---\nstatus: Accepted\n---\n# ADR\n', 'w2'), p.env);
     expect(flip.status, flip.stderr).toBe(2);
     expect(flip.stderr).toMatch(/ADR status change/);
     const fenced = { session_id: 'e1', cwd: p.dir, tool_name: 'Edit', tool_input: { file_path: adr, old_string: '# ADR\n', new_string: '# ADR\n```yaml\nstatus: Rejected\n```\n' } };
-    expect(fire(fenced, p.env).status).toBe(0);
+    allows(fire(fenced, p.env));
     const bare = path.join(p.dir, 'docs', 'adr', '0002-no-status.md');
     fs.writeFileSync(bare, '# ADR without a status line\n');
     const example = { session_id: 'e2', cwd: p.dir, tool_name: 'Edit', tool_input: { file_path: bare, old_string: 'line\n', new_string: 'line\n```yaml\nstatus: Accepted\n```\n' } };
-    expect(fire(example, p.env).status).toBe(0); // a fenced example is not the document's status
+    allows(fire(example, p.env)); // a fenced example is not the document's status
     cleanup();
   }, 90_000);
 
@@ -224,11 +271,38 @@ describe('decision-recall policy, through the real decision-gate process', () =>
   });
 });
 
+/**
+ * recall() caps its own budget at 1900 ms (plugin/scripts/agentdb-recall.mjs, PRODUCT code) and spends two
+ * sequential ruflo boots inside it (enumerate keys, then read). Before asserting on a recall, measure one warm
+ * boot of the same kind of command. If two cannot fit in 1500 ms (the cap less git and spawn work), the recall
+ * assertions cannot pass on this machine; fail with that number rather than as a mystery "timed-out" outcome.
+ * The cap is not this test's to widen: raising the explicit --consult budget is owner decision D7 (4.7.22).
+ */
+const RECALL_TWO_BOOT_BUDGET_MS = 1500;
+function requireRecallFitsCap(ruflo, db, env) {
+  const inv = rufloInvocationOrPlain(ruflo, ['memory', 'list', '--namespace', 'boot-probe', '--limit', '1', '--format', 'json', '--path', db], { env });
+  const boot = () => {
+    const t0 = performance.now();
+    // cwd = the fixture project (db is <project>/.swarm/memory.db): ruflo writes agentdb.rvf.idmap.json into its cwd, and an
+    // inherited cwd is the checkout, which release qualification requires to stay clean.
+    const r = spawnSync(inv.executable, inv.args, { cwd: path.dirname(path.dirname(db)), env: { ...env, RUFLO_DAEMON_AUTOSTART: '0', CLAUDE_FLOW_AUTO_UPDATE: 'false' }, encoding: 'utf8', timeout: 60_000 });
+    if (r.status !== 0) throw new Error(`ruflo boot probe failed (exit ${r.status}): ${String(r.stderr || r.error || '').slice(0, 300)}`);
+    return Math.round(performance.now() - t0);
+  };
+  boot(); // cold start (disk cache, module compile) is not what a recall after --record pays
+  const ms = boot();
+  if (2 * ms > RECALL_TWO_BOOT_BUDGET_MS) {
+    throw new Error(`one warm ruflo boot measured ${ms} ms (load ${os.loadavg().map((l) => l.toFixed(1)).join(' ')}); recall needs two inside its 1900 ms product cap, `
+      + `${2 * ms} ms > ${RECALL_TWO_BOOT_BUDGET_MS} ms. This machine cannot pass the recall assertions; the cap is product code (owner decision D7), not widened here.`);
+  }
+}
+
 describe('real global ruflo round trip (skipped where absent)', () => {
   const ruflo = resolveRuflo();
   (ruflo ? it : it.skip)('--record commits through the CLI, reads back by exact key, and recall drops a superseded record', async () => {
     const p = adoptedProject();
     const env = { ...p.env, RUFLO_BIN: ruflo, RUVNET_BRAIN_HOME: tmp('decision-bh-') };
+    requireRecallFitsCap(ruflo, path.join(p.dir, '.swarm', 'memory.db'), env);
     const out = []; const err = [];
     const io = { env, out: { write: (s) => out.push(s) }, err: { write: (s) => err.push(s) } };
     const first = await main(['--project', p.dir, '--record', '--what', 'Adopt the first store layout', '--why', 'measured', '--shape', 'one path',
@@ -260,6 +334,7 @@ describe('supersession survives ranking and refuses unknown keys (review finding
   (ruflo ? it : it.skip)('a superseded decision is withheld even when its superseder is NOT among the recalled rows', async () => {
     const p = adoptedProject();
     const env = { ...p.env, RUFLO_BIN: ruflo, RUVNET_BRAIN_HOME: tmp('decision-bh-') };
+    requireRecallFitsCap(ruflo, path.join(p.dir, '.swarm', 'memory.db'), env);
     const out = []; const err = [];
     expect(await main(['--project', p.dir, '--record', '--what', 'Adopt the store layout alpha', '--why', 'w', '--shape', 's', '--evidence', 'adr:a.md'], io(env, out, err)), err.join('')).toBe(0);
     const oldKey = /committed (decision-\S+)/.exec(out.join(''))[1];
@@ -271,7 +346,7 @@ describe('supersession survives ranking and refuses unknown keys (review finding
     const hiding = async (args) => { const r = await enumerateCanonicalKeys(args); if (r?.ok) for (const ns of Object.keys(r.value)) r.value[ns] = r.value[ns].filter((k) => k !== newKey); return r; };
     const r = await recall({ prompt: 'store layout alpha decision', projectDir: p.dir, env, consequential: true, deadlineMs: 1900, enumerateKeys: hiding });
     expect(r.outcome, JSON.stringify(r.categories)).not.toMatch(/unavailable|timed-out/);
-    expect((r.picks || []).map((x) => x.key)).not.toContain(oldKey);
+    expect((r.picks || []).map((x) => x.key), `${r.outcome} ${JSON.stringify(r.categories)}`).not.toContain(oldKey);
     expect(r.block).toMatch(/1 superseded decision\(s\) withheld/); // R3: never silent
     cleanup();
   }, 240_000);
@@ -279,6 +354,7 @@ describe('supersession survives ranking and refuses unknown keys (review finding
   (ruflo ? it : it.skip)('a detected record cannot supersede: refused, no tombstone, the ratified decision is still recalled (re-review R1)', async () => {
     const p = adoptedProject();
     const env = { ...p.env, RUFLO_BIN: ruflo, RUVNET_BRAIN_HOME: tmp('decision-bh-') };
+    requireRecallFitsCap(ruflo, path.join(p.dir, '.swarm', 'memory.db'), env);
     const out = []; const err = [];
     expect(await main(['--project', p.dir, '--record', '--what', 'Adopt the store layout beta', '--why', 'w', '--shape', 's', '--evidence', 'adr:a.md'], io(env, out, err)), err.join('')).toBe(0);
     const oldKey = /committed (decision-\S+)/.exec(out.join(''))[1];
@@ -289,7 +365,7 @@ describe('supersession survives ranking and refuses unknown keys (review finding
     expect(all).toEqual([oldKey]);
     const { recall } = await import('../../plugin/scripts/agentdb-recall.mjs');
     const r = await recall({ prompt: 'store layout beta decision', projectDir: p.dir, env, consequential: true, deadlineMs: 1900 });
-    expect((r.picks || []).map((x) => x.key)).toContain(oldKey);
+    expect((r.picks || []).map((x) => x.key), `${r.outcome} ${JSON.stringify(r.categories)}`).toContain(oldKey);
     cleanup();
   }, 240_000);
 

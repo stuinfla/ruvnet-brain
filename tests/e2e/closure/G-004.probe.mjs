@@ -16,6 +16,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import { forgedKb, forgedReaderOutput } from '../../helpers/forged-citation-fixture.mjs';
+import { parseNpmPack } from '../../helpers/npm-pack-json.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../../..');
 async function report(gap, execute) {
@@ -36,7 +37,7 @@ await report('G-004', async (check) => {
     let verifier = flag > 0 ? path.resolve(process.argv[flag + 1]) : null;
     if (!verifier) {
       const out = execFileSync('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', root], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-      const tarball = path.join(root, JSON.parse(out)[0].filename);
+      const tarball = path.join(root, parseNpmPack(out, { expectName: 'ruvnet-brain' }).filename);
       execFileSync('tar', ['-xzf', tarball, '-C', root, 'package/kb/verify-citation.mjs']);
       verifier = path.join(root, 'package', 'kb', 'verify-citation.mjs');
       check('the packed package ships kb/verify-citation.mjs', fs.existsSync(verifier), tarball);
