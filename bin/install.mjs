@@ -30,7 +30,7 @@ import { saveUpdateSource, stableNode } from '../plugin/scripts/automatic-update
 import { acquireDeveloperLock } from '../plugin/scripts/developer-update-lock.mjs';
 import { footprintRoots, inventoryFootprint, sweepFootprint } from '../plugin/scripts/brain-footprint.mjs';
 import { kbCopyProof } from '../plugin/scripts/kb-copy-proof.mjs';
-import { assessMoveLeftovers, isVolumeMetadata } from '../plugin/scripts/footprint-io.mjs';
+import { assessMoveLeftovers, isVolumeMetadata, rescueOperationalFiles } from '../plugin/scripts/footprint-io.mjs';
 import { confirm, doctorVerdict, formatBytes, formatConfirmation, signatureEvidenceFromReceipts, signatureRecordValid, writeSignatureRecord } from '../plugin/scripts/brain-confirmation.mjs';
 import {
   requiredEmbedderModels,
@@ -804,6 +804,10 @@ export async function unzipInto(zipPath, cacheDir, sourceDir = null, { releaseTa
     const proof = kbCopyProof({ copyDir: preservedDir, liveDir: cacheDir });
     if (proof.disposable) {
       try {
+        // Its logs and ruflo scratch are copied out and verified first; a failed rescue keeps the copy. The
+        // rescue root is the sweep's (footprintRoots: links resolved, as after --move-brain), so the inventory
+        // finds and bounds kb-copy-rescued/ wherever the installer put it.
+        rescueOperationalFiles(preservedDir, proof.rescue, footprintRoots().brainHome);
         fs.rmSync(preservedDir, { recursive: true, force: true });
         ok(`released the prior generation (${proof.reason})`);
         priorGeneration = { status: 'RELEASED', path: preservedDir, reason: proof.reason };
