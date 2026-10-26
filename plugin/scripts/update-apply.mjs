@@ -461,4 +461,25 @@ function main() {
   }
 }
 
-if (process.env.RUVNET_BRAIN_IMPORT_ONLY !== 'update-shell-test') process.exit(main());
+// #420 item 6: `--help` used to fall through to the default action (take the update lock and apply). Usage is derived from
+// the flags main() reads; help and unknown flags answer BEFORE main() so they touch no state (no BRAIN_HOME mkdir, lock, network).
+const USAGE = [
+  'usage: node update-apply.mjs [--auto [--expected-version <v>] | --seed | --from-dir <path> | --rollback | --dev [pluginDir] | --dev-off | --doctor] [--gc | --no-gc]',
+  '  (no flag = --auto: newest host-staged plugin version, applied only if newer than active)',
+  '  --auto [--expected-version <v>]  unattended: apply the host-staged payload, optionally pinned to exactly <v>',
+  '  --seed                           seed the spine from the running plugin install',
+  '  --from-dir <path>                apply a specific plugin payload dir',
+  '  --rollback                       flip back to the previous generation',
+  '  --dev [pluginDir]                dev mode: point codeRoot at a checkout\'s plugin/',
+  '  --dev-off                        leave dev mode',
+  '  --doctor                         report spine state (read-only)',
+  '  --gc / --no-gc                   force / skip collecting unreferenced generations after the run',
+  '  --help, -h                       print this usage and exit without touching any state',
+].join('\n');
+const KNOWN_FLAGS = new Set(['--auto', '--seed', '--from-dir', '--rollback', '--dev', '--dev-off', '--doctor', '--gc', '--no-gc', '--expected-version']);
+if (process.env.RUVNET_BRAIN_IMPORT_ONLY !== 'update-shell-test') {
+  if (has('--help') || has('-h')) { console.log(USAGE); process.exit(0); }
+  const unknown = argv.filter((a) => a.startsWith('-') && !KNOWN_FLAGS.has(a));
+  if (unknown.length) { console.error(`✗ unknown argument: ${unknown.join(' ')}\n${USAGE}`); process.exit(2); }
+  process.exit(main());
+}
