@@ -155,6 +155,25 @@ export const newerCorpusPending = (facts) => {
 };
 const shortTag = (tag) => (tag && tag.length > 28 ? `${tag.slice(0, 26)}…` : tag || 'unknown');
 
+/**
+ * Issue #391 / closure gap G-015: a FAILED run whose `update` phase PASSED left the knowledge current
+ * (the ledger stops at the first required failure, so every corpus phase before it passed too). When
+ * host-convergence is the ONLY failed phase, the host plugin sync is what did not finish: a host
+ * problem, not a knowledge failure, and it is reported as one. Any other failed phase (cleanup-pending,
+ * retention recovery-required) keeps its own reason through describeFailedRefreshRun.
+ * Returns { state, why } from the host-convergence evidence, or null for any other receipt.
+ */
+export const hostSyncOnlyFailure = (receipt) => {
+  if (receipt?.status !== 'FAILED' || !Array.isArray(receipt.phases)) return null;
+  if (!receipt.phases.some((entry) => entry?.phase === 'update' && entry.status === 'PASS')) return null;
+  const failed = receipt.phases.filter((entry) => entry?.status === 'FAIL');
+  if (failed.length !== 1 || failed[0].phase !== 'host-convergence') return null;
+  const host = failed[0];
+  const state = host?.evidence?.state || null;
+  const why = String(host?.evidence?.error || state || '').split('\n')[0].trim().slice(0, 200);
+  return { state, why: why || 'no reason recorded (run npx ruvnet-brain --doctor)' };
+};
+
 export const knowledgeCurrency = ({ env = process.env, home, now = Date.now(), windowHours = 48 } = {}) => {
   const facts = knowledgeFacts({ env, home, now });
   const { brainHome, builtMs, history, hours, attempt } = facts;
@@ -169,7 +188,8 @@ export const knowledgeCurrency = ({ env = process.env, home, now = Date.now(), w
   const autoAbandoned = attempt?.outcome === 'launched' && !autoRunning;
   const autoFailed = Number.isFinite(launchedMs) && (attempt.outcome === 'failed' || autoAbandoned)
     && !(history.latest && history.latest.at >= launchedMs);
-  const failing = latest?.status === 'FAILED' || autoFailed;
+  const hostOnly = hostSyncOnlyFailure(latest);
+  const failing = (latest?.status === 'FAILED' && !hostOnly) || autoFailed;
   const ageKnown = Number.isFinite(builtMs);
   const pending = newerCorpusPending(facts);
   if (!failing && pending && (proven || (ageKnown && hours(builtMs) <= windowHours))) {
@@ -181,8 +201,18 @@ export const knowledgeCurrency = ({ env = process.env, home, now = Date.now(), w
     return `${KNOWLEDGE_LINE_PREFIX}UPDATE PENDING] a newer corpus ${shortTag(pending.tag)} is published `
       + `(this machine has ${shortTag(pending.installed)}, built ${ageKnown ? age(builtMs) : 'at an UNKNOWN time'}); ${what}.`;
   }
-  if (!failing && proven) return '';
-  if (!failing && ageKnown && hours(builtMs) <= windowHours) return '';
+  const fresh = proven || (ageKnown && hours(builtMs) <= windowHours);
+  if (!failing && hostOnly && fresh) {
+    const restart = hostOnly.state === 'host-restart-required';
+    return `${KNOWLEDGE_LINE_PREFIX}CURRENT, HOST ${restart ? 'RESTART' : 'SYNC'} PENDING] `
+      + `knowledge base built ${ageKnown ? `${day(builtMs)} (${age(builtMs)})` : 'at an UNKNOWN time'}; `
+      + `the last refresh (${latest.action || 'unknown'}) ${age(history.latest.at)} passed its knowledge update phase, `
+      + `only the host plugin sync after it did not finish: ${hostOnly.why}. `
+      // A restart writes no refresh receipt, so this line stays until the next refresh records the sync.
+      + (restart ? 'Fix: restart Claude Code or Codex (`claude --continue` keeps a Claude conversation), then record it: npx ruvnet-brain@latest --update.'
+        : 'Fix: npx ruvnet-brain@latest --update (verify: npx ruvnet-brain --doctor).');
+  }
+  if (!failing && fresh) return '';
   const kit = agenticKitUpdates({ home, facts });
   const agentKit = kit === 'delivering';
   // An agentic-kit machine must never be told to also --enable-nightly (one owner per machine).
@@ -193,14 +223,16 @@ export const knowledgeCurrency = ({ env = process.env, home, now = Date.now(), w
     const why = autoAbandoned ? 'it never recorded an outcome (killed at its 30-minute limit, or the machine slept)'
       : `exit ${attempt.code ?? 'unknown'}: ${attempt.reason || 'no reason recorded'}`;
     parts.push(`automatic update launched ${age(launchedMs)} FAILED — ${why}`);
+  } else if (hostOnly) {
+    parts.push(`last refresh (${latest.action || 'unknown'}) passed its knowledge update phase ${age(history.latest.at)} but its host sync did not finish: ${hostOnly.why}`);
   } else if (latest?.status === 'FAILED') {
     const why = describeFailedRefreshRun(latest) || 'failed';
     parts.push(`last refresh (${latest.action || 'unknown'}) FAILED ${age(history.latest.at)}: ${why}`);
   }
   if (autoRunning) parts.push(`an automatic update is running now (started ${age(facts.lockMs)})`);
-  parts.push(history.receipts
-    ? `${history.failuresSinceSuccess} failed run(s) since the last success (${history.lastSuccess ? day(history.lastSuccess.at) : 'none recorded'})`
-    : 'no refresh has ever run on this machine');
+  parts.push(!history.receipts ? 'no refresh has ever run on this machine'
+    : history.lastSuccess ? `${history.failuresSinceSuccess} failed run(s) since the last success (${day(history.lastSuccess.at)})`
+      : `${history.failuresSinceSuccess} failed run(s) and no successful run on record`);
   if (kit === 'not-delivering') {
     parts.push(`agentic-kit claims updates (kit.json ruvnetBrain:true) but no update is proven in ${AGENTIC_KIT_PROOF_HOURS}h, so the Brain's own self-heal runs instead`);
   }

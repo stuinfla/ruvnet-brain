@@ -40,6 +40,21 @@ function receipt({ status, hoursAgo, action = 'nightly' }) {
       : [{ phase: 'source-enumeration', status: 'FAIL', evidence: { reason: 'github rate limit' } }] }));
 }
 const line = () => knowledgeCurrency({ env: {}, home, now: NOW });
+// The receipt shape bin/install.mjs runUpdate writes when every corpus phase (through `update`) PASSED,
+// so the new knowledge is installed, and only host-convergence after it failed (issue #391).
+const CORPUS = ['source-enumeration', 'ingestion', 'local-overlay-restoration', 'generation-ledger-reconciliation',
+  'coverage-generation', 'bundle-assembly', 'update'];
+function hostOnlyReceipt({ hoursAgo, hostEvidence, hostStatus = 'FAIL', after = [], terminalVerdict = 'failed' }) {
+  const dir = path.join(brain, 'refresh-runs');
+  fs.mkdirSync(dir, { recursive: true });
+  n += 1;
+  const at = new Date(NOW - hoursAgo * H).toISOString();
+  fs.writeFileSync(path.join(dir, `${n}.json`), JSON.stringify({ schemaVersion: 3, kind: 'ruvnet-brain-refresh-run', action: 'update', runId: `r${n}`,
+    status: 'FAILED', terminalVerdict, startedAt: at, finishedAt: at, requiredPhaseOrder: [...CORPUS, 'host-convergence', 'cleanup'],
+    phases: [...CORPUS.map((phase) => ({ phase, status: 'PASS', evidence: {} })),
+      { phase: 'host-convergence', status: hostStatus, evidence: hostEvidence }, ...after] }));
+}
+const RETENTION = 'lifecycle evidence exceeds its fixed retention safety budget';
 async function sessionStartOutput() {
   let out = '';
   await runSessionStart({ env: { HOME: home, RUVNET_BRAIN_METER: '0' }, cwd: home, stdout: { write: (s) => { out += s; } },
@@ -86,6 +101,83 @@ describe('SessionStart knowledge currency', () => {
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('UPDATE FAILING');
     expect(lines[0]).toContain('22 failed run(s)');
+  });
+
+  // Issue #391: the knowledge DID update; only the host plugin sync after it did not finish. That must
+  // never read "KNOWLEDGE UPDATE FAILING", and the host half must still be said, with its reason.
+  it('reports a host restart as pending, not as a knowledge failure, when the corpus update landed', () => {
+    built(3 * H);
+    for (let i = 4; i >= 1; i -= 1) {
+      hostOnlyReceipt({ hoursAgo: i * 0.2, hostEvidence: { state: 'host-restart-required',
+        error: 'host convergence is host-restart-required: boot-level declarations changed: hooks/hooks.json' } });
+    }
+    const text = line();
+    expect(text).not.toContain('UPDATE FAILING');
+    expect(text).toContain(`${KNOWLEDGE_LINE_PREFIX}CURRENT, HOST RESTART PENDING]`);
+    expect(text).toContain('knowledge base built');
+    expect(text).toContain('boot-level declarations changed: hooks/hooks.json');
+    expect(text).toContain('passed its knowledge update phase');
+    expect(text).not.toContain('installed the knowledge');
+    // A restart writes no receipt, so the fix must name the step that records the sync.
+    expect(text).toContain('then record it: npx ruvnet-brain@latest --update');
+    expect(text).not.toContain('since the last success (none recorded)');
+  });
+
+  // BREAK-IT: host-convergence PASSED and only cleanup failed (runUpdate's recovery-required path).
+  // That is not a host sync failure and must keep its own cleanup reason, never "did not finish: converged".
+  it('keeps a cleanup failure after converged hosts as UPDATE FAILING with the cleanup reason', () => {
+    built(3 * H);
+    hostOnlyReceipt({ hoursAgo: 1, hostStatus: 'PASS', hostEvidence: { state: 'converged', error: null },
+      terminalVerdict: 'recovery-required', after: [{ phase: 'cleanup', status: 'FAIL', evidence: { reason: RETENTION } }] });
+    const text = line();
+    expect(text).not.toContain('HOST');
+    expect(text).not.toContain('converged');
+    expect(text).toContain(`${KNOWLEDGE_LINE_PREFIX}UPDATE FAILING]`);
+    expect(text).toContain(`failed at cleanup: ${RETENTION}`);
+  });
+
+  it('does not call it host-only when host sync AND cleanup both failed', () => {
+    built(3 * H);
+    hostOnlyReceipt({ hoursAgo: 1, hostEvidence: { state: 'host-restart-required', error: 'host restart' },
+      after: [{ phase: 'cleanup', status: 'FAIL', evidence: { reason: RETENTION } }] });
+    const text = line();
+    expect(text).not.toContain('HOST RESTART PENDING');
+    expect(text).toContain(`${KNOWLEDGE_LINE_PREFIX}UPDATE FAILING]`);
+  });
+
+  it('does not call it host-only when the process exited after converged hosts (no failed phase recorded)', () => {
+    built(3 * H);
+    hostOnlyReceipt({ hoursAgo: 1, hostStatus: 'PASS', hostEvidence: { state: 'converged', error: null } });
+    const text = line();
+    expect(text).not.toContain('HOST');
+    expect(text).toContain(`${KNOWLEDGE_LINE_PREFIX}UPDATE FAILING]`);
+  });
+
+  it('on an old KB, a host-only failure reads STALE with the host reason, not UPDATE FAILING', () => {
+    built(5 * 24 * H);
+    hostOnlyReceipt({ hoursAgo: 4 * 24, hostEvidence: { state: 'host-restart-required', error: 'host restart pending' } });
+    const text = line();
+    expect(text).toContain(`${KNOWLEDGE_LINE_PREFIX}STALE]`);
+    expect(text).toContain('passed its knowledge update phase 4d ago but its host sync did not finish: host restart pending');
+  });
+
+  it('names a reasonless host-sync failure as host sync, not knowledge, and says no reason was recorded', () => {
+    built(9 * H);
+    hostOnlyReceipt({ hoursAgo: 9, hostEvidence: { state: null, error: null } });
+    const text = line();
+    expect(text).not.toContain('UPDATE FAILING');
+    expect(text).toContain(`${KNOWLEDGE_LINE_PREFIX}CURRENT, HOST SYNC PENDING]`);
+    expect(text).toContain('no reason recorded');
+    expect(text).toContain('Fix: npx ruvnet-brain@latest --update');
+  });
+
+  it('still says UPDATE FAILING when a corpus phase failed, and never pairs "since the last success" with "none recorded"', () => {
+    built(10 * H);
+    for (let i = 3; i >= 1; i -= 1) receipt({ status: 'FAILED', hoursAgo: i });
+    const text = line();
+    expect(text).toContain('KNOWLEDGE UPDATE FAILING');
+    expect(text).toContain('3 failed run(s) and no successful run on record');
+    expect(text).not.toContain('(none recorded)');
   });
 
   it('says UNKNOWN, never current, when SOURCE.json is unreadable', () => {
