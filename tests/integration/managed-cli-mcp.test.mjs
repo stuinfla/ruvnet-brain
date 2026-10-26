@@ -159,6 +159,7 @@ function startServer(fx, extraEnv = {}) {
     env: {
       ...process.env,
       HOME: fx.home,
+      RUFLO_BIN: '', // hermetic: a developer's RUFLO_BIN must not displace the fixture ruflo (#420 item 5)
       PATH: `${fx.bin}${path.delimiter}${process.env.PATH || ''}`,
       MANAGED_CLI_CALLS: fx.calls,
       WARMUP_MARKER: fx.warmup,
