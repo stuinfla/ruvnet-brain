@@ -1,4 +1,4 @@
-Updated: 2026-10-30 10:20:00 EDT | Version 1.7.0
+Updated: 2026-10-30 17:30:00 EDT | Version 1.8.0
 Created: 2026-07-07 09:22:01 EDT
 
 # Contributing to RuvNet Brain — the one rulebook
@@ -291,6 +291,16 @@ cooperating updater paths. The source-bound run receipt is
 snapshots, stage results, exclusions and failure details. `checked` is a check; `completed` is
 an apply. Neither implies every possible tool or remote provider is current. RNBC Activity
 reads this receipt instead of presenting a static success recommendation.
+
+**What a scheduled night guarantees (4.7.25, ADR-104).** It ends converged or it says why, and the owner hears
+about it. A `CURRENT` corpus is not enough: the knowledge stage also confirms the runtime and every host run the
+installed `ruvnet-brain` (`runtimeConvergence`: `active.json` and `host-convergence.json`, no host `failed`) and runs
+the installer, a corpus no-op, when they do not. One failed host never holds back the other host or the runtime; it
+is recorded `failed` with its reason. A failed knowledge stage is tried once more 20 minutes later; a night that
+still ends not-ok pages through `scripts/notify.sh` (topic `NTFY_TOPIC` or `<brain home>/ntfy-topic`), and the next
+good night pages "recovered". The failure text carries the installer's own failing lines, and on macOS the job's
+output is kept in `<brain home>/.last-nightly-update.log` (written into the plist by `--enable-nightly`). Codex plugin
+commands run under a 180 s limit because Codex refreshes a 56 MB remote catalog inside them.
 
 Managed installs keep their current owner. An older Agentic Kit release may still have a
 competing updater or stale ownership comment; this Brain release does not claim to fix that

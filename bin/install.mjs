@@ -2108,6 +2108,12 @@ export function codexBrokenMarketplaces(text) {
 }
 const sleepSync = (ms) => { if (ms > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); };
 
+// `codex plugin list` refreshes Codex's remote plugin catalog when its cache is stale: a 56 MB download measured at
+// 38-40 s on the owner's Mac (codex-cli 0.166.0, 2026-10-30). The old 30 s limit killed it every time, and a killed
+// fetch writes no cache, so every later attempt (the 03:30 nightly, each retry, each --update) repeated the cold fetch
+// and failed the same way until someone used Codex by hand. Bounded, with ~4x headroom over the measured fetch.
+export const CODEX_PLUGIN_COMMAND_TIMEOUT_MS = 180_000;
+
 export function runCodexJson(args, {
   codexBin = process.env.CODEX_BIN || 'codex',
   codexHome = codexHomeDir(),
@@ -2117,9 +2123,10 @@ export function runCodexJson(args, {
   // Refreshing another tool's marketplace is a network write; only an install/update that is about to change the
   // Brain's Codex plugin opts in. --doctor and listings report the broken snapshot and change nothing (review 2026-10-24).
   repair = false,
+  timeoutMs = CODEX_PLUGIN_COMMAND_TIMEOUT_MS,
 } = {}) {
   const options = { stdio: 'pipe', shell: false, cwd, env: { ...process.env, CODEX_HOME: codexHome }, encoding: 'utf8',
-    timeout: 30_000, maxBuffer: 20 * 1024 * 1024 };
+    timeout: timeoutMs, maxBuffer: 20 * 1024 * 1024 };
   const snapshotFailure = (res) => !res.missingBinary && res.status !== 0 && CODEX_SNAPSHOT_FAILURE.test(String(res.stderr || res.stdout || ''));
   let r = run(codexBin, args, options);
   // One wait covers a refresh Codex is finishing; then refresh only the OTHER Git marketplaces it named (the Brain's
@@ -4156,51 +4163,66 @@ export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
     return { ok: false, results, ...detail, error: detail.error || hostFailureReason(results) };
   };
 
+  // ONE HOST CANNOT HOLD THE OTHERS BACK (2026-10-30). A Codex failure used to return before the Stable Spine and the
+  // convergence receipt, so a single `codex plugin list` timeout left Claude Code on the new plugin, the runtime and
+  // Codex on the old one, and no receipt saying so (owner's Mac, 4.7.21 -> 4.7.24, three nights). Each host is now
+  // attempted on its own, the runtime is activated regardless, and a failed host is RECORDED as `failed` with its
+  // reason: the run still ends not-ok, so the night still fails and pages, but nothing is left half-updated.
+  const failedHosts = new Set();
+  const hostError = (error) => error?.message || String(error);
   try {
     if (wireClaude === wirePlugin) results.hookRetirement = retireManagedHookRegistrations();
     results.claude = wireClaude === wirePlugin
       ? wirePlugin({ expectedVersion: PACKAGE_VERSION, requireManaged: true })
       : wireClaude({ expectedVersion: PACKAGE_VERSION, requireManaged: true });
-    if (results.claude.host && !results.claude.wired) return fail();
+    if (results.claude.host && !results.claude.wired) failedHosts.add('claude');
+  } catch (error) {
+    results.claude = { host: true, wired: false, action: 'failed', error: hostError(error) };
+    failedHosts.add('claude');
+  }
+  try {
     results.codexHost = detectCodexHost();
     if (results.codexHost.host) {
       if (!['added', 'rewritten', 'unchanged', 'user-owned'].includes(results.codexHost.action)) {
-        return fail({ error: `Codex host convergence failed: ${results.codexHost.action || 'unknown action'}` });
-      }
-      results.codex = installCodexPlugin({ expectedVersion: PACKAGE_VERSION });
-      // ~/.codex exists but no `codex` binary is on PATH (an uninstalled CLI, or a desktop-only setup whose shell
-      // cannot see it): there is no Codex host to converge here, which is absence, not a failed update (4.7.21,
-      // audit C-opus #6). Any other unavailability (the binary ran and failed) still fails.
-      if (results.codex.action === 'codex-unavailable' && results.codex.missingBinary === true) {
-        results.codexAbsent = true;
-      } else if (!['unchanged', 'installed', 'updated', 'disabled'].includes(results.codex.action)) {
-        return fail();
+        results.codexHostError = `Codex host convergence failed: ${results.codexHost.action || 'unknown action'}`;
+        failedHosts.add('codex');
+      } else {
+        results.codex = installCodexPlugin({ expectedVersion: PACKAGE_VERSION });
+        // ~/.codex exists but no `codex` binary is on PATH (an uninstalled CLI, or a desktop-only setup whose shell
+        // cannot see it): there is no Codex host to converge here, which is absence, not a failed update (4.7.21,
+        // audit C-opus #6). Any other unavailability (the binary ran and failed) still fails.
+        if (results.codex.action === 'codex-unavailable' && results.codex.missingBinary === true) {
+          results.codexAbsent = true;
+        } else if (!['unchanged', 'installed', 'updated', 'disabled'].includes(results.codex.action)) {
+          failedHosts.add('codex');
+        }
       }
     }
   } catch (error) {
-    results.codex = { action: 'failed', error: error?.message || String(error) };
-    return fail();
+    results.codex = { action: 'failed', error: hostError(error) };
+    failedHosts.add('codex');
   }
 
   const apply = path.join(sourceRoot, 'plugin', 'scripts', 'update-apply.mjs');
   if (!fs.existsSync(apply)) return fail({ error: 'Stable Spine updater missing from package' });
   const applied = runStableSpine(apply);
   const okApplied = !applied.error && applied.status === 0;
-  const codexReceipt = {
-    state: results.codex?.action === 'disabled' ? 'disabled' : (results.codexHost?.host && !results.codexAbsent ? 'ready' : 'absent'),
-    version: results.codex?.version || null,
-  };
-  if (results.codex?.restartRequired === true) {
+  const codexReceipt = failedHosts.has('codex')
+    ? { state: 'failed', version: results.codex?.version || null, error: hostFailureReason({ codex: results.codex, codexHostError: results.codexHostError }) }
+    : {
+      state: results.codex?.action === 'disabled' ? 'disabled' : (results.codexHost?.host && !results.codexAbsent ? 'ready' : 'absent'),
+      version: results.codex?.version || null,
+    };
+  if (!failedHosts.has('codex') && results.codex?.restartRequired === true) {
     codexReceipt.restartRequired = true;
     codexReceipt.sessionSafety = results.codex.sessionSafety || null;
     codexReceipt.sessionSafetyReason = results.codex.sessionSafetyReason || null;
     codexReceipt.restartScope = results.codex.restartScope || 'unproven';
   }
-  const claudeReceipt = {
-    state: results.claude.host ? 'ready' : 'absent',
-    version: results.claude.version || null,
-  };
-  if (results.claude?.restartRequired === true) {
+  const claudeReceipt = failedHosts.has('claude')
+    ? { state: 'failed', version: results.claude.version || null, error: hostFailureReason({ claude: results.claude }) }
+    : { state: results.claude.host ? 'ready' : 'absent', version: results.claude.version || null };
+  if (!failedHosts.has('claude') && results.claude?.restartRequired === true) {
     claudeReceipt.restartRequired = true;
     claudeReceipt.sessionSafety = results.claude.sessionSafety || null;
     claudeReceipt.sessionSafetyReason = results.claude.sessionSafetyReason || null;
@@ -4287,6 +4309,11 @@ export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
   };
   const convergence = classifyHostConvergence(convergedReceipt);
   hostLock.release();
+  if (failedHosts.size) {
+    // The runtime and every other host converged; the failed host is the night's failure, with its own reason.
+    return { ok: false, convergence, results, applyStatus: applied.status, failedHosts: [...failedHosts],
+      error: `${hostFailureReason(results)}; runtime ${PACKAGE_VERSION} and the other hosts converged` };
+  }
   return { ok: convergence.healthy === true, convergence, results, applyStatus: applied.status,
     ...(convergence.healthy !== true && hostRestartIsOnlyGap(convergedReceipt) ? { restartOnly: true } : {}),
     error: convergence.healthy === true ? null : `host convergence is ${convergence.state}: ${convergence.action}` };
@@ -4425,13 +4452,16 @@ export function classifyHostConvergence(receipt, expectedVersion = PACKAGE_VERSI
 /** Why host synchronization stopped, from the per-host results it had gathered; null when nothing says. */
 export function hostFailureReason(results = {}) {
   const firstLines = (text) => String(text || '').trim().split('\n').slice(0, 3).join(' ');
+  // Every failed host is named: since hosts no longer stop at the first failure, two can fail in one run.
+  const reasons = [];
   if (results.claude?.host && !results.claude.wired) {
-    return `Claude Code plugin ${results.claude.action || 'wiring failed'}${results.claude.version ? ` (installed ${results.claude.version}, required ${results.claude.expectedVersion || PACKAGE_VERSION})` : ''}`;
+    reasons.push(`Claude Code plugin ${results.claude.action || 'wiring failed'}${results.claude.version ? ` (installed ${results.claude.version}, required ${results.claude.expectedVersion || PACKAGE_VERSION})` : ''}${results.claude.error ? `: ${firstLines(results.claude.error)}` : ''}`);
   }
-  if (results.codex && !['unchanged', 'installed', 'updated', 'disabled'].includes(results.codex.action)) {
-    return `Codex plugin ${results.codex.action || 'failed'}${results.codex.error ? `: ${firstLines(results.codex.error)}` : ''}`;
+  if (results.codexHostError) reasons.push(results.codexHostError);
+  else if (results.codex && !['unchanged', 'installed', 'updated', 'disabled'].includes(results.codex.action)) {
+    reasons.push(`Codex plugin ${results.codex.action || 'failed'}${results.codex.error ? `: ${firstLines(results.codex.error)}` : ''}`);
   }
-  return null;
+  return reasons.length ? reasons.join('; ') : null;
 }
 
 export function hostSynchronizationFailureMessage(convergence, active, expectedVersion = PACKAGE_VERSION) {

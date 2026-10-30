@@ -200,6 +200,21 @@ describe('inventory: everything the Brain owns is classified', () => {
     expect(item(fp, path.join(m.brainHome, 'console-instances.dead-20260930'))).toMatchObject({ class: 'unowned', action: 'report' });
   });
 
+  // Owner's Mac, 2026-10-30: 1.1 GB of the maintainer issue-autofix job's clone, runner and fix worktrees sat in the
+  // brain home, were counted as Brain "state", and failed the footprint line every night on a correctly pruned Brain.
+  it('the issue-autofix job\'s working directories are another tool\'s data: shown, never budgeted, never removed', () => {
+    const m = machine();
+    const big = 'x'.repeat(4 * 1024 * 1024);
+    for (const dir of ['autofix-repo', 'autofix-runner', 'issue-fix-worktrees/issue-1-123', 'issue-autofix/runs']) write(path.join(m.brainHome, dir, 'blob'), big);
+    const fp = inventoryFootprint(opts(m));
+    for (const dir of ['autofix-repo', 'autofix-runner', 'issue-fix-worktrees', 'issue-autofix']) {
+      expect(item(fp, path.join(m.brainHome, dir))).toMatchObject({ class: 'unowned', action: 'report' }); // before: may-exist "Brain state"
+    }
+    expect(fp.breakdown.state || 0).toBeLessThan(4 * 1024 * 1024); // before: 16 MiB of someone else's data counted as Brain state
+    sweepFootprint(opts(m, { apply: true }));
+    expect(fs.readFileSync(path.join(m.brainHome, 'issue-fix-worktrees/issue-1-123/blob'), 'utf8')).toBe(big);
+  });
+
   it('sweep removes exactly what the proof allows, keeps private-unique copies by name, and is idempotent', () => {
     const { m, q } = messy();
     const result = sweepFootprint(opts(m, { apply: true }));

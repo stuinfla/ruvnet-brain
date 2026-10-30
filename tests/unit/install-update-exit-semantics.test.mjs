@@ -250,6 +250,47 @@ describe('syncHostsAfterUpdate: what counts as a converged host', () => {
     expect(result.error).toMatch(/codex-unavailable/);
   });
 
+  // Owner's Mac, 2026-10-28..30: `codex plugin list` timed out every night, syncHostsAfterUpdate returned before the
+  // Stable Spine, and the machine sat with Claude Code on the new plugin, runtime + Codex on the old, no receipt.
+  it('a failed Codex host no longer stops the runtime: the spine runs, the receipt records codex failed, the run is not ok', () => {
+    const spine = vi.fn(() => ({ status: 0 }));
+    const { result, receipt } = hostSync({ runStableSpine: spine,
+      wireClaude: () => ({ host: true, wired: true, version: VERSION }),
+      wireCodexPlugin: () => ({ host: true, action: 'codex-unavailable', available: false, error: 'spawnSync codex ETIMEDOUT' }) });
+    expect(spine).toHaveBeenCalledTimes(1); // before: never called — Codex returned first
+    expect(result.ok).toBe(false);
+    expect(result.failedHosts).toEqual(['codex']);
+    expect(result.error).toMatch(/Codex plugin codex-unavailable: spawnSync codex ETIMEDOUT/);
+    expect(result.error).toMatch(new RegExp(`runtime ${VERSION.replace(/\./g, '\\.')} and the other hosts converged`));
+    expect(receipt).not.toBeNull(); // before: no receipt at all
+    expect(receipt.desiredVersion).toBe(VERSION);
+    expect(receipt.hosts.claude).toEqual({ state: 'ready', version: VERSION });
+    expect(receipt.hosts.codex).toMatchObject({ state: 'failed', error: expect.stringMatching(/ETIMEDOUT/) });
+    expect(install.classifyHostConvergence(receipt)).toMatchObject({ healthy: false, state: 'host-pending' });
+  });
+
+  it('a failed Claude Code host does not stop Codex or the runtime, and a thrown Codex error is recorded too', () => {
+    const spine = vi.fn(() => ({ status: 0 }));
+    const codex = vi.fn(() => { throw new Error('codex exploded'); });
+    const { result, receipt } = hostSync({ runStableSpine: spine, wireCodexPlugin: codex,
+      wireClaude: () => ({ host: true, wired: false, action: 'verification-failed', version: '0.0.1' }) });
+    expect(codex).toHaveBeenCalledTimes(1); // before: never reached
+    expect(spine).toHaveBeenCalledTimes(1);
+    expect(result.failedHosts.sort()).toEqual(['claude', 'codex']);
+    expect(result.error).toMatch(/Claude Code plugin verification-failed/);
+    expect(result.error).toMatch(/Codex plugin failed: codex exploded/);
+    expect(receipt.hosts.claude).toMatchObject({ state: 'failed', version: '0.0.1' });
+    expect(receipt.hosts.codex).toMatchObject({ state: 'failed' });
+  });
+
+  it('runCodexJson gives Codex the bounded catalog-refresh limit, not 30 s (a cold catalog fetch measured 38-40 s)', () => {
+    const seen = [];
+    install.runCodexJson(['plugin', 'list', '--json'], { run: (_bin, _args, options) => { seen.push(options.timeout); return { status: 0, stdout: '{}' }; } });
+    expect(install.CODEX_PLUGIN_COMMAND_TIMEOUT_MS).toBeGreaterThanOrEqual(120_000);
+    expect(install.CODEX_PLUGIN_COMMAND_TIMEOUT_MS).toBeLessThanOrEqual(600_000); // still bounded
+    expect(seen).toEqual([install.CODEX_PLUGIN_COMMAND_TIMEOUT_MS]); // before: [30000]
+  });
+
   it('a busy Stable Spine (update-apply exit 75) is not applied, and says so', () => {
     const { result } = hostSync({ wireCodexPlugin: () => ({ host: true, action: 'unchanged', version: VERSION }),
       runStableSpine: () => ({ status: 75 }) });

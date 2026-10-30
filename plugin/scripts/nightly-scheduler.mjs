@@ -609,6 +609,17 @@ function cronRows(run) {
   return { ok: true, rows: String(listed.stdout || '').split('\n').filter(Boolean) };
 }
 
+/**
+ * Where the scheduled run's own output goes. On macOS it was kb/update.log, INSIDE the tree each knowledge update
+ * replaces: launchd wrote the night into the old tree, the swap moved it aside and the updater reclaimed it, so every
+ * failed night's log was gone by morning (owner's Mac, 2026-10-28..30: no update.log existed). The brain home keeps it;
+ * the `.last-*.log` name puts it under the footprint's text-log cap (truncated to its tail past 512 KiB). Linux keeps
+ * its exact registered cron line (changing it would read every existing install as degraded); Windows logs nothing.
+ */
+export function nightlyLogPath({ platform = process.platform, kbDir }) {
+  return platform === 'darwin' ? path.join(path.dirname(kbDir), '.last-nightly-update.log') : path.join(kbDir, 'update.log');
+}
+
 export function installScheduler(record, { platform = process.platform, env = process.env, kbDir,
   run = spawnSync, testMode = false, proofTick = false, proofAt, pathValue = process.env.PATH || '' } = {}) {
   validateIdentity(record.identity);
@@ -616,7 +627,7 @@ export function installScheduler(record, { platform = process.platform, env = pr
   const artifact = nightlyArtifact({ platform, env, brainHome: path.dirname(kbDir), identity: record.identity });
   if (!artifact.supported) return { ok: false, artifact, why: `unsupported platform: ${platform}` };
   if (testMode && platform !== 'darwin') run = fixtureSchedulerRun(env, platform, record.identity);
-  const logPath = path.join(kbDir, 'update.log');
+  const logPath = nightlyLogPath({ platform, kbDir });
   if (platform === 'darwin') {
     fs.mkdirSync(path.dirname(artifact.path), { recursive: true });
     fs.writeFileSync(artifact.path, launchdPlist(record, { kbDir, logPath, pathValue, env }));

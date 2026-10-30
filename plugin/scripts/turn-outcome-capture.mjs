@@ -40,7 +40,7 @@ import crypto from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { nativeTurnLines } from './native-turn-transcript.mjs';
-import { resolveRuflo, rufloInvocation, rufloCwdFor, rufloScratchRoot } from './ruflo-bin.mjs';
+import { resolveRuflo, rufloInvocation, rufloRunDir, rufloScratchRoot } from './ruflo-bin.mjs';
 import { redactText } from './continuity-events.mjs';
 import { resolveProjectStore, globalEnrollmentAllowed, storeEncryptedAtRest, ENCRYPTED_STORE_REASON } from './project-store-resolver.mjs';
 import { recordHookFailure } from './hook-failures.mjs';
@@ -388,7 +388,7 @@ export function runSteps({ steps = [], receipts, event = '' } = {}, { run: suppl
   };
   const results = [];
   for (const queued of steps) {
-    let status = 1; let error = null; let skipped = null; let verified = false; let db = ''; let key; let privacyPatterns = [];
+    let status = 1; let error = null; let skipped = null; let verified = false; let db = ''; let key; let privacyPatterns = []; let scratchRun = null;
     const kind = queued.kind;
     try {
       if (String(env.RUVNET_TURN_CAPTURE || '').toLowerCase() === 'off') throw new Error('RUVNET_TURN_CAPTURE=off');
@@ -439,9 +439,12 @@ export function runSteps({ steps = [], receipts, event = '' } = {}, { run: suppl
       if (remaining <= 0) throw new Error('turn write deadline exhausted');
       // Measured 2026-10-10 with global Ruflo 3.56.3: cwd=<project>/.swarm litters ruvector.db/.claude-flow there, and
       // CLAUDE_FLOW_MEMORY_PATH=<.swarm> makes Ruflo create a second agentdb-memory.db beside the canonical store.
-      // The explicit --path already binds the store, so run from private scratch with neither.
+      // The explicit --path already binds the store, so run from private scratch with neither. One fresh run-* directory
+      // per call, removed after it (ruflo-bin rufloRunDir): the shared project scratch dir used here before kept ruflo's
+      // ruvector.db/.swarm/.claude-flow copies between turns, which --doctor counted as cruft after every turn (2026-10-30).
+      scratchRun = rufloRunDir(db, { root: rufloScratchRoot({ ...env, RUVNET_BRAIN_HOME: brainHome }) });
       const options = { encoding: 'utf8', timeout: Math.min(STEP_TIMEOUT_MS, remaining), windowsHide: true,
-        cwd: rufloCwdFor(db, { root: rufloScratchRoot({ ...env, RUVNET_BRAIN_HOME: brainHome }) }),
+        cwd: scratchRun,
         maxBuffer: 1024 * 1024, env: { ...env, ...RUFLO_ENV } };
       delete options.env.CLAUDE_FLOW_MEMORY_PATH;
       const r = run(invocation.executable, invocation.args, options);
@@ -456,6 +459,7 @@ export function runSteps({ steps = [], receipts, event = '' } = {}, { run: suppl
       else if (!verified && (r.error || status !== 0)) error = captureFailureReason(r, status);
       else if (kind === 'store' && !verified) { status = 1; error = 'exact turn key/content readback failed'; }
     } catch (e) { status = 1; error = redactText(e.message).slice(0, 300); }
+    if (scratchRun) { try { fs.rmSync(scratchRun, { recursive: true, force: true }); } catch { /* a stale run-* is swept by the next rufloRunDir */ } }
     if (error) error = maskExcludedPaths(error, privacyPatterns, projectDir);
     const row = { at: new Date().toISOString(), kind, db: redactText(db), storeIdentity: digest(db), key, status, error,
       ...(kind === 'store' ? { verified } : {}), ...(skipped ? { skipped } : {}) };

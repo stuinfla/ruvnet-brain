@@ -3,8 +3,8 @@ id: ADR-098
 title: The footprint and currency guarantee — one knowledge base, current, in use, nothing building up
 status: Accepted
 date: 2026-10-01
-updated: 2026-10-03 13:27:32 EDT
-version: 0.1.1
+updated: 2026-10-30 17:30:00 EDT
+version: 0.2.0
 authors: [Stuart Kerr, Claude Opus 5.5]
 tags: [footprint, install, update, data-safety, confirmation]
 supersedes: []
@@ -161,3 +161,11 @@ shouldn't be there isn't, nothing building up cruft" — confirmed positively, n
   and only to their own retention policy (lifecycle-evidence-v1, 16 MiB).
 
 - *Source amendment 2026-10-03 (not published proof):* [lifecycle retention](../../kb/lifecycle-evidence-retention.mjs) first compacts formatting whitespace in terminal transaction phase files over the unchanged 16 MiB budget, preserving every JSON token, receipt payload and recorded inventory digest; raw phase-file bytes and their hashes change, active/malformed/shared-inode phases are not compacted, and the existing history/protection rules still govern pruning.
+- *Amendment 2026-10-30 (4.7.25):* the maintainer-only issue-autofix job (ADR-107) keeps its clone, runner and
+  fix worktrees in the brain home (`autofix-repo`, `autofix-runner`, `issue-fix-worktrees`, `issue-autofix`); on the
+  owner's Mac they held 1.1 GB, were counted as Brain state, and failed the footprint line every night on a Brain
+  that was itself within budget. They are now unowned foreign data: measured and shown, never budgeted or removed,
+  pruned by that job. The turn-capture worker runs ruflo in a fresh `run-*` scratch directory removed after each
+  call, so ruflo's `ruvector.db`/`.swarm`/`.claude-flow` no longer sit in the project scratch dir as cruft after every
+  turn (they were proven duplicates of rows already in the project's own store before this change).
+

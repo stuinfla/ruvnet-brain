@@ -245,8 +245,13 @@ export function checkAll(now, { registry = REGISTRY, loaded = loadedLabels(), hb
 }
 
 export function productSchedulerVerdict(status) {
+  // The night's receipt: its runId tells one failed night from the next, and a failed night the coordinator already
+  // paged itself (developer-update.mjs pageNight, delivered) is handled like a wrapper-paged one.
+  const receipt = status?.runHealth?.receipt || null;
+  const night = { ...(receipt?.runId ? { runId: receipt.runId } : {}),
+    ...(receipt?.page?.kind === 'failed' && receipt.page.state === 'delivered' ? { coordinatorPaged: true } : {}) };
   const base = { label: NIGHTLY_LABEL, what: 'Refreshes the installed Brain corpus and converges every detected host',
-    schedule: 'daily 03:30', maxAgeHours: 30, required: true };
+    schedule: 'daily 03:30', maxAgeHours: 30, required: true, ...night };
   // A 'degraded' adapter whose only defect is a NON-ZERO LAST EXIT is a job that is loaded, verified
   // and FIRED — the exact opposite of MISSING ("not loaded — it can never fire", top of this file).
   // Its truth is the receipt. Measured 2026-09-12 against two FAILED receipts: this projected as
@@ -282,9 +287,13 @@ export function brainUpdateOwnedByAgenticKit(home = os.homedir()) {
 const loadState = () => { try { return JSON.parse(fs.readFileSync(STATE, 'utf8')); } catch { return {}; } };
 const saveState = (s) => { fs.mkdirSync(path.dirname(STATE), { recursive: true }); fs.writeFileSync(STATE, JSON.stringify(s, null, 2)); };
 
-/** Page only on a CHANGE of state. Repeating the same alarm nightly is how alarms get ignored. */
+/** Page only on a CHANGE of state. Repeating the same alarm nightly is how alarms get ignored. One exception: a NEW
+ *  failed night of the product nightly (a different receipt runId than the one last handled) pages once, because "it
+ *  failed again tonight" is news; before this, three failed nights in a row paged only the first (2026-10-27..30). */
 export function transitions(results, prev) {
-  return results.filter((r) => !r.self && (prev[r.label] ?? OK) !== r.state);
+  const handledRun = (label) => prev._runs?.[label];
+  return results.filter((r) => !r.self && ((prev[r.label] ?? OK) !== r.state
+    || (r.state === FAILING && !!r.runId && !!handledRun(r.label) && handledRun(r.label) !== r.runId)));
 }
 
 /** An HTTP header value must be a ByteString. An emoji in `Title` made fetch() throw before sending a byte, so
@@ -371,7 +380,7 @@ async function main() {
     const pagedBy = { ...(prev._pagedBy || {}) };
     const sends = []; const owners = []; const viaBoth = new Set();
     for (const c of transitions(results, prev)) {
-      if (c.wrapperPaged) { pagedBy[c.label] = 'wrapper'; continue; }
+      if (c.wrapperPaged || (c.coordinatorPaged && c.state === FAILING)) { pagedBy[c.label] = 'wrapper'; continue; }
       if (c.state === OK) {
         if (pagedBy[c.label] === 'both') { delete pagedBy[c.label]; continue; } // the wrapper's "Recovered" covers it
         if (prev[c.label] === FAILING && pagedBy[c.label] !== 'watchdog') { delete pagedBy[c.label]; continue; }
@@ -389,7 +398,10 @@ async function main() {
     }
     const next = Object.fromEntries(results.map((r) => [r.label,
       r.self || undelivered.has(r.label) ? (prev[r.label] ?? OK) : r.state]));
-    saveState({ ...next, _pagedBy: pagedBy });
+    // The night each label's verdict was last handled for; an undelivered page keeps the old one so it re-fires.
+    const runs = { ...(prev._runs || {}) };
+    for (const r of results) if (r.runId && !undelivered.has(r.label)) runs[r.label] = r.runId;
+    saveState({ ...next, _pagedBy: pagedBy, _runs: runs });
   }
 
   if (json) console.log(JSON.stringify({ results, checkedAt: new Date().toISOString() }, null, 2));

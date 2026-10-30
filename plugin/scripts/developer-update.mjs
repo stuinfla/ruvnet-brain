@@ -232,6 +232,9 @@ export function pluginUpdateDecision(plugin, target) {
   return { state: target.version === plugin.version ? 'CURRENT' : 'UPDATE_AVAILABLE', proof: target.proof,
     sourceCommitMatched: target.catalogCommit ? plugin.gitCommitSha?.toLowerCase() === target.catalogCommit : null };
 }
+// Codex refreshes a remote plugin catalog (56 MB, 38-40 s cold, 2026-10-30) inside its plugin commands; a killed refresh
+// caches nothing, so a 30 s limit failed every later night the same way. Same bound as bin/install.mjs.
+export const CODEX_COMMAND_TIMEOUT_MS = 180_000;
 export async function synchronizePlugins(run, dryRun, notes, { home, prefix, scope, locate, unattended = false, artifactProvider = pinnedClaudeTarget }) {
   const installed = path.join(home, '.claude/plugins/installed_plugins.json');
   const inventoryOptions = { unattended };
@@ -290,10 +293,10 @@ export async function synchronizePlugins(run, dryRun, notes, { home, prefix, sco
   for (const p of after.filter(p => writable.some(b => scopeKey(b) === scopeKey(p)))) if (!exists(p.installPath)) throw Error(`plugin artifact missing: ${p.id}`);
   const codex = locate('codex');
   if (codex) {
-    const result = JSON.parse(run(codex, ['plugin', 'marketplace', 'list', '--json'], { timeout: 30_000 }));
+    const result = JSON.parse(run(codex, ['plugin', 'marketplace', 'list', '--json'], { timeout: CODEX_COMMAND_TIMEOUT_MS }));
     const git = (result.marketplaces || []).filter(m => m.marketplaceSource?.sourceType === 'git' && (scope === 'all' || PLUGIN_MARKETPLACES.has(m.name)));
     if (!dryRun) for (const m of git) run(codex, ['plugin', 'marketplace', 'upgrade', m.name, '--json']);
-    const help = run(codex, ['plugin', '--help'], { timeout: 30_000 });
+    const help = run(codex, ['plugin', '--help'], { timeout: CODEX_COMMAND_TIMEOUT_MS });
     // Tripwire, reported not thrown: a new Codex command must not end the night before the knowledge is checked (AuditC #17).
     if (/^\s+update\s/m.test(help)) notes.push('Codex plugin update now exists and is unsupported until its scope-aware policy is reviewed; installed generations preserved');
     else notes.push('Codex has no plugin update command; configured Git catalogues refreshed, installed generations preserved');
@@ -307,6 +310,13 @@ export const INSTALL_UPDATE_TIMEOUT_MS = 135 * 60_000;
 export const TRANSIENT_RETRY_DELAYS_MS = Object.freeze([15_000, 30_000]);
 const sleepSync = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 const exitOf = result => typeof result === 'string' ? 0 : (result?.exitCode ?? result?.status ?? result?.code ?? null);
+/** The lines of a child's output that say why it failed (the ✗/failed/incomplete ones, else its last lines), ANSI-free, <= 600 chars. */
+export function outputReason(result) {
+  if (!result || typeof result === 'string') return '';
+  const lines = `${result.stderr || ''}\n${result.stdout || ''}`.replace(/\x1b\[[0-9;]*m/g, '').split('\n').map(l => l.trim()).filter(Boolean);
+  const telling = lines.filter(l => /✗|\berror\b|failed|incomplete|refused|timed out|ETIMEDOUT/i.test(l));
+  return [...new Set((telling.length ? telling : lines).slice(-3))].join(' | ').slice(-600);
+}
 export const TRANSIENT_NETWORK = /ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|ENOTFOUND|ENETUNREACH|socket hang up|network|timed out|\bE5\d\d\b|\b50[234]\b/i;
 /** Three tries of `attempt` (15 s, then 30 s apart) while `transient(error)` says the failure was the network's. */
 export function withTransientRetry(attempt, { transient = () => true, sleep = sleepSync, delays = TRANSIENT_RETRY_DELAYS_MS } = {}) {
@@ -319,10 +329,12 @@ export function knowledge(run, dryRun, runId, { brainHome, root, node, sleep = s
   if (!exists(updater)) throw Error('existing Brain KB updater absent; fresh install refused');
   const file = path.join(brainHome, `nightly-suite-corpus-${runId}.json`);
   // Exit codes are forge-update's: 0 current, 10 newer, 2 network (retried), 5 incompatible with this runtime.
+  let lastOutput = '';
   const exec = (args, options) => {
     if (!run.receipt) { run(node, args, options); return 0; }
     const result = run.receipt(node, args, options);
-    if (result?.error) throw Error(`${path.basename(args[0])} ${args[1]}: ${result.error}`);
+    lastOutput = outputReason(result);
+    if (result?.error) throw Error(`${path.basename(args[0])} ${args[1]}: ${result.error}${lastOutput ? ` — ${lastOutput}` : ''}`);
     return exitOf(result);
   };
   function check() {
@@ -333,7 +345,7 @@ export function knowledge(run, dryRun, runId, { brainHome, root, node, sleep = s
       return status;
     }, { transient: error => error.transient === true, sleep });
     if (code === 5) return { currencyVerdict: 'INCOMPATIBLE', exitCode: 5 };
-    if (code !== 0 && code !== 10) throw Error(`corpus check exited ${code}`);
+    if (code !== 0 && code !== 10) throw Error(`corpus check exited ${code}${lastOutput ? `: ${lastOutput}` : ''}`);
     let receipt;
     try { receipt = read(file); } finally { fs.rmSync(file, { force: true }); }
     if (receipt.kind !== 'ruvnet-brain-check-result' || Date.parse(receipt.recordedAt) < started - 1000) throw Error('fresh corpus check receipt absent');
@@ -344,7 +356,8 @@ export function knowledge(run, dryRun, runId, { brainHome, root, node, sleep = s
     if (!exists(installer)) throw Error('existing Brain installer absent');
     // 12 is cleanup-pending: the knowledge was applied and the next run finishes the cleanup (shared exit contract).
     const code = exec([installer, '--update', '--no-nightly-prompt', '--no-stack'], { timeout: INSTALL_UPDATE_TIMEOUT_MS, allowed: [0, 12] });
-    if (code !== 0 && code !== 12) throw Error(`Brain installer --update exited ${code}`);
+    // The installer's own words ride along: "exited 1" alone hid a Codex timeout for three nights (2026-10-28..30).
+    if (code !== 0 && code !== 12) throw Error(`Brain installer --update exited ${code}${lastOutput ? `: ${lastOutput}` : ''}`);
     return code;
   };
   const before = check();
@@ -360,7 +373,18 @@ export function knowledge(run, dryRun, runId, { brainHome, root, node, sleep = s
     if (!['CURRENT', 'REFUSED'].includes(after.currencyVerdict)) throw Error(`corpus update failed to converge after re-stamping ${stamped} -> ${installed}`);
     return { before, after, state: 'updated', installerExit, restamped: { from: stamped, to: installed } };
   }
-  if (before.currencyVerdict === 'CURRENT' || before.currencyVerdict === 'REFUSED') return { before, after: before, state: before.currencyVerdict === 'CURRENT' ? 'current' : 'ahead-preserved' };
+  if (before.currencyVerdict === 'CURRENT' || before.currencyVerdict === 'REFUSED') {
+    // A CURRENT corpus is not a converged machine: the package stage can install a newer ruvnet-brain on a night with no
+    // new corpus, and only the installer's --update moves the runtime and hosts to it (a no-op on the corpus). Before
+    // this, such a night reported "current" and left runtime + hosts on the old version until a corpus was published.
+    const runtime = runtimeConvergence({ root, brainHome });
+    const state = before.currencyVerdict === 'CURRENT' ? 'current' : 'ahead-preserved';
+    if (runtime.converged) return { before, after: before, state, runtime };
+    if (dryRun) return { before, state: 'update-available', reason: runtime.reason, runtime };
+    const installerExit = apply(), after = check(), converged = runtimeConvergence({ root, brainHome });
+    if (!converged.converged) throw Error(`runtime did not converge: ${converged.reason}`);
+    return { before, after, state: 'runtime-converged', installerExit, runtime: converged };
+  }
   // UNKNOWN is what a tree installed from a code release reports (no corpus generation stamp): forge-update
   // documents it as apply-allowed, exactly like UPDATE_AVAILABLE, and the check after the apply must reach
   // CURRENT or REFUSED. Throwing here failed every scheduled night until someone ran --update by hand.
@@ -369,7 +393,29 @@ export function knowledge(run, dryRun, runId, { brainHome, root, node, sleep = s
   const installerExit = apply();
   const after = check();
   if (!['CURRENT', 'REFUSED'].includes(after.currencyVerdict)) throw Error('corpus update failed to converge');
-  return { before, after, state: 'updated', installerExit };
+  // Positive confirmation: the corpus converged AND the runtime and hosts sit on the installed package.
+  const runtime = runtimeConvergence({ root, brainHome });
+  if (!runtime.converged) throw Error(`corpus updated but the runtime did not converge: ${runtime.reason}`);
+  return { before, after, state: 'updated', installerExit, runtime };
+}
+/**
+ * Does this machine RUN the installed ruvnet-brain package? The Stable Spine (active.json) and the host-convergence
+ * receipt must name that version (or a newer one: ahead is not behind) and no host may be recorded failed. Evidence
+ * that does not exist is not judged (an install without a spine has nothing to compare).
+ */
+export function runtimeConvergence({ root = ROOT, brainHome = CACHE } = {}) {
+  const value = (file) => { try { return read(file); } catch { return null; } };
+  const installed = value(path.join(root, 'ruvnet-brain/package.json'))?.version || null;
+  const active = value(path.join(brainHome, 'active.json'));
+  const receipt = value(path.join(brainHome, 'host-convergence.json'));
+  const evidence = { installed, active: active?.version || null, desired: receipt?.desiredVersion || null };
+  const behind = (version) => { try { return !version || compare(version, installed) < 0; } catch { return true; } };
+  if (!installed) return { converged: true, ...evidence, reason: 'no installed ruvnet-brain package' };
+  if (active && behind(active.version)) return { converged: false, ...evidence, reason: `runtime ${active.version || 'unknown'} is behind the installed package ${installed}` };
+  if (receipt && behind(receipt.desiredVersion)) return { converged: false, ...evidence, reason: `hosts were last converged to ${receipt.desiredVersion || 'unknown'}, not the installed package ${installed}` };
+  const failed = Object.entries(receipt?.hosts || {}).filter(([, host]) => !['ready', 'disabled', 'absent'].includes(host?.state));
+  if (failed.length) return { converged: false, ...evidence, reason: `host ${failed.map(([name, host]) => `${name} ${host?.state || 'unknown'}${host?.error ? ` (${host.error})` : ''}`).join(', ')}` };
+  return { converged: true, ...evidence, reason: active || receipt ? `runtime and hosts on ${installed}` : 'no runtime evidence to compare' };
 }
 /** Corpus check results this coordinator left behind (a run killed between check and delete) older than 48 h. */
 export function pruneCorpusResults(brainHome, now = Date.now()) {
@@ -419,7 +465,31 @@ export function locateExecutable(name, { env = process.env, platform = process.p
   }
   return null;
 }
-export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), brainHome, config: override, runner = invoke, env = process.env, knowledgeOnly = false, sleep = sleepSync } = {}) {
+// A failed scheduled knowledge stage is tried once more the same night, this long after the first attempt (a network or
+// release-publication blip clears; a deterministic failure fails twice and pages with both reasons).
+export const SCHEDULED_RETRY_DELAY_MS = 20 * 60_000;
+/**
+ * Page the owner about a scheduled night through the shipped scripts/notify.sh (ntfy). Topic: NTFY_TOPIC, else the
+ * owner's `<brain home>/ntfy-topic` opt-in file; neither = paging off (recorded, not an error). Never throws, never
+ * records the topic. `kind`: 'failed' (urgent) or 'recovered' (after a failed night).
+ */
+export function pageNight(receipt, kind, { root = ROOT, brainHome = CACHE, env = process.env, runner = invoke, platform = process.platform } = {}) {
+  try {
+    if (platform === 'win32') return { kind, state: 'unsupported', reason: 'scripts/notify.sh needs a POSIX shell' };
+    const notify = path.join(root, 'ruvnet-brain/scripts/notify.sh');
+    if (!exists(notify)) return { kind, state: 'unavailable', reason: 'the installed package has no scripts/notify.sh' };
+    let topic = env.NTFY_TOPIC;
+    if (topic === undefined) { try { topic = fs.readFileSync(path.join(brainHome, 'ntfy-topic'), 'utf8').trim(); } catch { topic = ''; } }
+    if (!topic) return { kind, state: 'off', reason: 'no ntfy topic (NTFY_TOPIC or the brain home ntfy-topic file)' };
+    const title = kind === 'failed' ? 'RuvNet Brain nightly update FAILED' : 'RuvNet Brain nightly update recovered';
+    const body = `${kind === 'failed' ? receipt.error || receipt.state : `completed after a failed night (${receipt.state})`}\n\nrun ${receipt.runId}, started ${receipt.startedAt}\nreceipt: ${path.join(brainHome, 'scheduler', 'last-suite-attempt.json')}`;
+    const r = runner('/bin/sh', [notify, title, body.slice(0, 1500), kind === 'failed' ? 'urgent' : 'default', kind === 'failed' ? 'rotating_light' : 'white_check_mark'],
+      { capture: true, timeout: 30_000, env: { ...env, NTFY_TOPIC: topic } });
+    const exitCode = r?.exitCode ?? null;
+    return { kind, state: exitCode === 0 ? 'delivered' : exitCode === 2 ? 'off' : 'not-delivered', exitCode, at: new Date().toISOString() };
+  } catch (error) { return { kind, state: 'not-delivered', reason: error.message }; }
+}
+export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), brainHome, config: override, runner = invoke, env = process.env, knowledgeOnly = false, sleep = sleepSync, retryDelayMs = SCHEDULED_RETRY_DELAY_MS } = {}) {
   if (!['check', 'apply'].includes(mode)) throw Error('mode must be check or apply');
   const paths = developerUpdatePaths({ home, brainHome });
   const config = validateDeveloperUpdateConfig(override || readDeveloperUpdateConfig(paths));
@@ -467,6 +537,8 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
     }
   };
   let latestMayBeReplaced = receipt.scheduled;
+  let previousScheduled = null;
+  try { previousScheduled = receipt.scheduled ? readAttempt(paths.scheduledReceipt) : null; } catch { previousScheduled = null; }
   try {
     if (!receipt.scheduled) {
       const latest = readAttempt(paths.receipt), retained = readAttempt(paths.scheduledReceipt);
@@ -521,8 +593,20 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
       }
     }
     if (exists(path.join(paths.brainHome, 'kb/forge-update.mjs'))) {
-      receipt.knowledge = await stage('knowledge', () => knowledge(run, mode === 'check', receipt.runId, { brainHome: paths.brainHome, root, node: process.execPath, sleep }),
-        error => { receipt.knowledge = { state: 'failed', error: error.message }; }) ?? receipt.knowledge;
+      const knowledgeStage = () => stage('knowledge', () => knowledge(run, mode === 'check', receipt.runId, { brainHome: paths.brainHome, root, node: process.execPath, sleep }),
+        error => { receipt.knowledge = { state: 'failed', error: error.message }; });
+      receipt.knowledge = await knowledgeStage() ?? receipt.knowledge;
+      // SELF-RETRY THE SAME NIGHT (2026-10-30): a scheduled night whose knowledge stage failed tries once more after
+      // retryDelayMs. Only the second attempt's outcome counts; the first one's reason stays on the receipt.
+      if (receipt.scheduled && mode === 'apply' && receipt.knowledge?.state === 'failed') {
+        const firstAttemptError = receipt.knowledge.error;
+        receipt.notes.push(`knowledge attempt 1 failed (${firstAttemptError}); retrying once in ${Math.round(retryDelayMs / 60_000)} min`);
+        persistReceipt();
+        sleep(retryDelayMs);
+        const firstFailure = failures.findIndex(f => f.stage === 'knowledge');
+        if (firstFailure >= 0) failures.splice(firstFailure, 1);
+        receipt.knowledge = { ...(await knowledgeStage() ?? receipt.knowledge), attempts: 2, firstAttemptError };
+      }
       pruneCorpusResults(paths.brainHome);
     } else receipt.notes.push('Brain corpus absent; fresh knowledge install excluded');
     persistReceipt();
@@ -556,6 +640,12 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
     throw error;
   } finally {
     receipt.finishedAt = new Date().toISOString();
+    // Every scheduled night ends with a word to the owner when it failed, and once more when it recovers.
+    if (receipt.scheduled && mode === 'apply') {
+      const previousFailed = previousScheduled && previousScheduled.ok !== true && previousScheduled.state !== 'running';
+      if (receipt.ok !== true) receipt.page = pageNight(receipt, 'failed', { root: receipt.npmIdentity?.root, brainHome: paths.brainHome, env, runner });
+      else if (previousFailed) receipt.page = pageNight(receipt, 'recovered', { root: receipt.npmIdentity?.root, brainHome: paths.brainHome, env, runner });
+    }
     try { if (latestMayBeReplaced) persistReceipt(); } finally { lock.release(); }
   }
 }

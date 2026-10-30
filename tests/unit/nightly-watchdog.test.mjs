@@ -124,6 +124,26 @@ describe('transitions — page on CHANGE, because a nightly alarm is an ignored 
     const fired = transitions(results, { a: OK, b: FAILING, c: FAILING, d: OK }).map((r) => r.label);
     expect(fired).toEqual(['a', 'c']);
   });
+
+  // 2026-10-27..30: the product nightly failed three nights running and only the first paged.
+  it('a NEW failed night (another receipt runId) pages once; the same night, or no recorded night, stays silent', () => {
+    const prev = { n: FAILING, m: FAILING, o: FAILING, _runs: { n: 'night-1', m: 'night-2' } };
+    const fired = transitions([
+      { label: 'n', state: FAILING, runId: 'night-2' }, // failed again tonight → page
+      { label: 'm', state: FAILING, runId: 'night-2' }, // the night already handled → silent
+      { label: 'o', state: FAILING, runId: 'night-9' }, // no night on record (first run after upgrade) → silent
+    ], prev).map((r) => r.label);
+    expect(fired).toEqual(['n']); // before: []
+  });
+
+  it('the product verdict carries the night\'s runId and whether the coordinator already paged it', () => {
+    const receipt = { runId: 'night-3', page: { kind: 'failed', state: 'delivered' } };
+    expect(productSchedulerVerdict({ state: 'on', runHealth: { state: 'failed', evidence: 'x', receipt } }))
+      .toMatchObject({ state: FAILING, runId: 'night-3', coordinatorPaged: true });
+    const undelivered = productSchedulerVerdict({ state: 'on', runHealth: { state: 'failed', evidence: 'x', receipt: { runId: 'night-4', page: { kind: 'failed', state: 'not-delivered' } } } });
+    expect(undelivered.runId).toBe('night-4');
+    expect(undelivered.coordinatorPaged).toBeUndefined();
+  });
 });
 
 describe('installed product scheduler projection', () => {

@@ -3,8 +3,8 @@ id: ADR-104
 title: One source-bound coordinator for installed developer updates
 status: Accepted
 date: 2026-10-10
-updated: 2026-10-10 13:11:57 EDT
-version: 1.0.6
+updated: 2026-10-30 17:30:00 EDT
+version: 1.1.0
 authors: [Stuart Kerr, Codex]
 tags: [updates, install-identity, scheduler, receipts, footprint]
 amends: [ADR-098]
@@ -16,7 +16,7 @@ amends: [ADR-098]
 
 Acceptance records the coordination decision; native execution and public release verification remain separate gates.
 
-Updated: 2026-10-10 08:24:10 EDT | Version 1.0.4
+Updated: 2026-10-30 17:30:00 EDT | Version 1.1.0 (4.7.25: the nightly converges or says why, retries once, pages)
 Created: 2026-10-10 04:45:00 EDT
 
 The owner requested one nightly update job, one copy of each installed tool, preserved package/plugin ownership, and an explicit latest/alpha choice. Independent Brain, Kit, native-CLI and package-manager jobs could race, downgrade each other's channels, or report success for an unused copy. This decision adds a coordination boundary; it grants no deployment, inference-spend or fresh-install authority.
@@ -65,3 +65,35 @@ run must first preserve any newer scheduled evidence; retention failure refuses 
 latest overwrite. Health retains exact registration/source and live-owner checks,
 rejects stale/future evidence, and uses a valid legacy latest scheduled apply only when
 appropriate. No previous proof is copied back into the latest-operation file.
+
+## The nightly converges or says why (4.7.25, 2026-10-30)
+
+Measured on the owner's Mac, nights of 2026-10-28, 29 and 30: every 03:30 run ended `completed-with-failures`
+with the bare `knowledge: Brain installer --update exited 1`. Root causes, each reproduced:
+
+1. `codex plugin list --json` refreshes Codex's remote plugin catalog when its cache is stale (56 MB, 38-40 s
+   cold, codex-cli 0.166.0). Every Codex plugin command ran under a 30 s limit; the killed fetch writes no cache,
+   so each retry, each night and each manual `--update` repeated the cold fetch and timed out the same way.
+   Codex plugin commands now run under `CODEX_PLUGIN_COMMAND_TIMEOUT_MS` / `CODEX_COMMAND_TIMEOUT_MS` (180 s).
+2. `syncHostsAfterUpdate` returned on the first failed host, before the Stable Spine and the convergence
+   receipt: Claude Code moved to the new plugin while the runtime and Codex stayed old, with no receipt. Each
+   host is now attempted independently, the runtime is activated regardless, and a failed host is recorded as
+   `failed` with its reason; the run still ends not-ok.
+3. A `CURRENT` corpus returned before the installer ran, so a night whose package stage installed a newer
+   `ruvnet-brain` left the runtime and hosts on the old version until a corpus was next published. The knowledge
+   stage now confirms `runtimeConvergence` (active.json and host-convergence.json name the installed package,
+   no host failed) and runs the installer (a corpus no-op) when it does not; an installer exit 0 that leaves the
+   runtime behind is a failure.
+4. The installer's output was discarded and launchd wrote it into `kb/update.log`, inside the tree each update
+   replaces, so no failed night left a reason. The knowledge failure now carries the installer's failing lines,
+   and on macOS the job logs to `<brain home>/.last-nightly-update.log` (footprint-capped; takes effect when
+   the LaunchAgent is next written by `--enable-nightly`).
+
+Added: a scheduled night whose knowledge stage fails tries once more after `SCHEDULED_RETRY_DELAY_MS`
+(20 min); a scheduled night that ends not-ok pages the owner through the shipped `scripts/notify.sh`
+(topic `NTFY_TOPIC` or the owner's `<brain home>/ntfy-topic`, never recorded), and the first ok night after a
+failed one pages "recovered". The result is on the receipt (`page`). The maintainer watchdog pages each new
+failed night once (keyed on the receipt's `runId`) unless the coordinator's page was delivered.
+Tests: `tests/unit/nightly-self-retry-and-page.test.mjs`, `install-update-exit-semantics.test.mjs`,
+`nightly-scheduler.test.mjs`, `nightly-watchdog.test.mjs`, each guard proven red by removing it.
+
