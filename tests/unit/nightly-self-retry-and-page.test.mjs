@@ -134,6 +134,9 @@ describe('a CURRENT corpus is not a converged machine', () => {
     const linked = path.join(m.root, 'ruvnet-brain');
     fs.renameSync(linked, `${linked}-src`); fs.symlinkSync(`${linked}-src`, linked);
     expect(runtimeConvergence({ root: m.root, brainHome: m.brainHome })).toMatchObject({ converged: true, reason: 'ruvnet-brain is a linked source checkout' });
+    // ...but a host recorded failed is still not converged (review 2026-10-30: the link must not hide a Codex failure).
+    atomic(path.join(m.brainHome, 'host-convergence.json'), { desiredVersion: '0.9.0', hosts: { codex: { state: 'failed', error: 'ETIMEDOUT' } } });
+    expect(runtimeConvergence({ root: m.root, brainHome: m.brainHome })).toMatchObject({ converged: false, reason: 'host codex failed (ETIMEDOUT)' });
   });
 
   it('a converged machine with a CURRENT corpus runs no installer; a failed host in the receipt is not converged', async () => {

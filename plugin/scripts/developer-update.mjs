@@ -408,18 +408,21 @@ export function knowledge(run, dryRun, runId, { brainHome, root, node, sleep = s
  */
 export function runtimeConvergence({ root = ROOT, brainHome = CACHE } = {}) {
   const value = (file) => { try { return read(file); } catch { return null; } };
-  // A linked source checkout's version is not a release the runtime can be converged to (it may be ahead of npm).
-  try { if (fs.lstatSync(path.join(root, 'ruvnet-brain')).isSymbolicLink()) return { converged: true, installed: null, active: null, desired: null, reason: 'ruvnet-brain is a linked source checkout' }; } catch { /* absent: judged below */ }
-  const installed = value(path.join(root, 'ruvnet-brain/package.json'))?.version || null;
+  // A linked source checkout's version is not a release the runtime can be converged to (it may be ahead of npm): its
+  // versions are not compared, but a host recorded failed is still a host that did not converge.
+  let linked = false;
+  try { linked = fs.lstatSync(path.join(root, 'ruvnet-brain')).isSymbolicLink(); } catch { /* absent: judged below */ }
+  const installed = linked ? null : value(path.join(root, 'ruvnet-brain/package.json'))?.version || null;
   const active = value(path.join(brainHome, 'active.json'));
   const receipt = value(path.join(brainHome, 'host-convergence.json'));
   const evidence = { installed, active: active?.version || null, desired: receipt?.desiredVersion || null };
   const behind = (version) => { try { return !version || compare(version, installed) < 0; } catch { return true; } };
-  if (!installed) return { converged: true, ...evidence, reason: 'no installed ruvnet-brain package' };
-  if (active && behind(active.version)) return { converged: false, ...evidence, reason: `runtime ${active.version || 'unknown'} is behind the installed package ${installed}` };
-  if (receipt && behind(receipt.desiredVersion)) return { converged: false, ...evidence, reason: `hosts were last converged to ${receipt.desiredVersion || 'unknown'}, not the installed package ${installed}` };
+  if (!installed && !linked) return { converged: true, ...evidence, reason: 'no installed ruvnet-brain package' };
+  if (!linked && active && behind(active.version)) return { converged: false, ...evidence, reason: `runtime ${active.version || 'unknown'} is behind the installed package ${installed}` };
+  if (!linked && receipt && behind(receipt.desiredVersion)) return { converged: false, ...evidence, reason: `hosts were last converged to ${receipt.desiredVersion || 'unknown'}, not the installed package ${installed}` };
   const failed = Object.entries(receipt?.hosts || {}).filter(([, host]) => !['ready', 'disabled', 'absent'].includes(host?.state));
   if (failed.length) return { converged: false, ...evidence, reason: `host ${failed.map(([name, host]) => `${name} ${host?.state || 'unknown'}${host?.error ? ` (${host.error})` : ''}`).join(', ')}` };
+  if (linked) return { converged: true, ...evidence, reason: 'ruvnet-brain is a linked source checkout' };
   return { converged: true, ...evidence, reason: active || receipt ? `runtime and hosts on ${installed}` : 'no runtime evidence to compare' };
 }
 /** Corpus check results this coordinator left behind (a run killed between check and delete) older than 48 h. */
