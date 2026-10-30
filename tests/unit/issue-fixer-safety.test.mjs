@@ -12,6 +12,8 @@ import {
 } from '../../scripts/issue-fix.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
+const { serverDependencies } = await import('../../bin/install.mjs');
 
 describe('issue fixer authority modes', () => {
   it('scheduled unattended mode is read-only triage with no implementation or publication authority', () => {
@@ -180,8 +182,16 @@ describe('issue-fix.mjs --mode autofix delegation', () => {
     const root = tmp();
     fs.mkdirSync(path.join(root, 'scripts'), { recursive: true });
     fs.mkdirSync(path.join(root, 'plugin/scripts'), { recursive: true });
-    for (const f of ['issue-fix.mjs', 'issue-fix-lock.mjs']) fs.copyFileSync(path.join(ROOT, 'scripts', f), path.join(root, 'scripts', f));
-    fs.copyFileSync(path.join(ROOT, 'plugin/scripts/entrypoint.mjs'), path.join(root, 'plugin/scripts/entrypoint.mjs'));
+    // The copy list is DERIVED from issue-fix.mjs's own static imports (entrypoint-guard-safety.test.mjs), never
+    // hand-listed; the watcher is then replaced by the stub below, so no real GitHub module is reachable.
+    const entry = path.join(ROOT, 'scripts/issue-fix.mjs');
+    const copyIntoTree = (from) => {
+      const to = path.join(root, path.relative(ROOT, from));
+      fs.mkdirSync(path.dirname(to), { recursive: true });
+      fs.copyFileSync(from, to);
+    };
+    copyIntoTree(entry);
+    for (const dep of serverDependencies(entry)) copyIntoTree(dep.from);
     fs.writeFileSync(path.join(root, 'scripts/issue-watch.mjs'), "export const BOT_MARKER='x'; export const OWNER_LOGIN='o'; export const ghJsonWithRetry=()=>{throw new Error('no network in tests')};\n");
     if (autofixSrc) fs.writeFileSync(path.join(root, 'scripts/issue-autofix.mjs'), autofixSrc);
     return root;

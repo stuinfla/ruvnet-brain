@@ -356,6 +356,15 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       }
     },
     {
+      "id": "open-issue-fixes-4-7-24",
+      "reason": "A storage transaction stuck at RECOVERY_REQUIRED has a supported way out: a read-only preview, then an explicit keep-live disposition bound to the live tree's exact sha256 that moves every other tree intact and records a terminal DISPOSED receipt (#335); a detached learning capture is acknowledged only after its exact readback, so a refused store is retried instead of being coalesced away for ten minutes (#377). Windows is not verified",
+      "files": [],
+      "platformFiles": {
+        "linux": ["tests/unit/update-recovery-disposition.test.mjs", "tests/unit/learn-capture-ack-after-readback.test.mjs"],
+        "macos": ["tests/unit/update-recovery-disposition.test.mjs", "tests/unit/learn-capture-ack-after-readback.test.mjs"]
+      }
+    },
+    {
       "id": "issue-autofix-bounded-writer",
       "reason": "The unattended issue fixer (ADR-107) stays inside its authority: kill switch, single-writer lock, deny-by-default editable paths, the static malware and secret scan, the manifest/lockfile/pack/audit night gate, the red-team judge, restricted tool-less LLM stages, the macOS sandbox for model-written code (macOS only), never-weakened tests, independent verifier, resumable never-doubled release steps, no force or merge, owner-marker-prefixed comments, personal notes that are never boilerplate or repeated, and a registry and LaunchAgent that match. It runs on the owner's macOS launchd, so it is qualified on macOS and Linux only, the same scope as the ntfy inbox reader",
       "files": [],

@@ -2092,7 +2092,12 @@ function gatherActivity(cwd) {
 // recent decisions from its append-only log. Nothing here can disagree with what actually routes.
 function gatherRouterEngine() {
   const profile = engineProfile();
-  const candidates = applyProfile(engineCatalog(), profile);
+  // A missing or invalid per-user engine catalog is a degraded panel (catalogSource says 'unavailable'),
+  // never a thrown read model that takes the whole Console API down with it (issue #86 boundary; red on
+  // CI from 4.7.22, where no per-user catalog exists). No built-in model list is substituted.
+  let engineCandidates = [];
+  try { engineCandidates = engineCatalog(); } catch { /* reported through catalogSource: 'unavailable' */ }
+  const candidates = applyProfile(engineCandidates, profile);
   const prices = effectivePrices(candidates, profile);
   const { rows, unusable } = loadLabelledRows();
   const installed = fs.existsSync(path.join(__dirname, '..', 'node_modules', '@metaharness', 'router', 'package.json'));

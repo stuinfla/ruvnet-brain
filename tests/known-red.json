@@ -18,6 +18,14 @@
     {
       "file": "tests/experience/report.test.mjs",
       "reason": "node:test format, not vitest; the canonical-qa full-suite job runs it with `node --test` (8/8 green 2026-10-01)."
+    },
+    {
+      "file": "tests/fixtures/issue-autofix/repo/tests/unit/slugify.test.mjs",
+      "reason": "Not a Brain test: the throwaway repository that the ADR-107 autofix simulation (tests/integration/issue-autofix-simulate*.test.mjs) clones and fixes. It runs inside that simulated repository's own worktree, never from the root config. Added 2026-10-30 (4.7.24) after the full-suite gate went red on main for these two files."
+    },
+    {
+      "file": "tests/fixtures/issue-autofix/repo/tests/unit/titlecase.test.mjs",
+      "reason": "Not a Brain test: the throwaway repository that the ADR-107 autofix simulation (tests/integration/issue-autofix-simulate*.test.mjs) clones and fixes. It runs inside that simulated repository's own worktree, never from the root config. Added 2026-10-30 (4.7.24) after the full-suite gate went red on main for these two files."
     }
   ]
 }

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { physicalPath } from './refresh-run.mjs';
 
 const TERMINAL_REFRESH = new Set(['SUCCEEDED', 'FAILED', 'ABANDONED']);
-const TERMINAL_TRANSACTION = new Set(['NOOP', 'COMMITTED', 'ROLLED_BACK']);
+const TERMINAL_TRANSACTION = new Set(['NOOP', 'COMMITTED', 'ROLLED_BACK', 'DISPOSED']);
 const SAFE_ID = /^[A-Za-z0-9._-]+$/;
 const PHASE_FILE = /^\d{3}-[A-Z_]+\.json$/;
 const QUARANTINE = /^\.prune-[A-Za-z0-9._-]+-[a-f0-9]{16}$/;

@@ -25,7 +25,7 @@ import { applyBrainProfile, readBrainProfile } from '../kb/brain-profile.mjs';
 import { acquireRefreshLock, finishRefreshReceipt, openRefreshReceipt, physicalPath, recordRefreshAdvisory,
   recordRefreshPhase, settleRefreshRun, UPDATE_REFRESH_PHASES } from '../kb/refresh-run.mjs';
 import { assessLifecycleEvidence, pruneLifecycleEvidence } from '../kb/lifecycle-evidence-retention.mjs';
-import { checkDiskSpace, recoverIncompleteStorageTransactions } from '../kb/update-storage-transaction.mjs';
+import { checkDiskSpace, disposeRecoveryRequired, previewRecoveryRequired, recoverIncompleteStorageTransactions } from '../kb/update-storage-transaction.mjs';
 import { saveUpdateSource, stableNode } from '../plugin/scripts/automatic-update.mjs';
 import { acquireDeveloperLock } from '../plugin/scripts/developer-update-lock.mjs';
 import { footprintRoots, inventoryFootprint, sweepFootprint } from '../plugin/scripts/brain-footprint.mjs';
@@ -172,6 +172,13 @@ const MOVE_BRAIN_TO = (() => { const i = argv.indexOf('--move-brain'); const v =
 const FLAG_CLEAN = argv.includes('--clean'); // enforce the footprint guarantee now (ADR-0098), then confirm
 const FLAG_JSON = argv.includes('--json'); // with --doctor / --clean: machine-readable confirmation only
 const FLAG_ARCHIVE = argv.includes('--archive'); // with --clean only (#335): archive files unique to old KB copies, then release them
+// --recover-update (#335): show every update transaction stuck at RECOVERY_REQUIRED, changing nothing.
+// --recover-update --keep-live <sha256> [--transaction <id>]: keep that exact live tree, move the
+// transaction's other trees intact into .kb.recovered/<id>/, and record a terminal DISPOSED receipt.
+const FLAG_RECOVER_UPDATE = argv.includes('--recover-update');
+const argValue = (flag) => { const i = argv.indexOf(flag); const v = i === -1 ? null : argv[i + 1]; return v && !v.startsWith('-') ? v : null; };
+const RECOVER_KEEP_LIVE = argValue('--keep-live');
+const RECOVER_TRANSACTION = argValue('--transaction');
 // ── onboarding-experience flags (all optional; every offer is safe to decline) ──
 const FLAG_YES = argv.includes('--yes') || argv.includes('-y'); // accept every optional offer non-interactively
 const FLAG_PLAN = argv.includes('--plan') || argv.includes('--dry-run'); // show the interactive checklist, then exit — install NOTHING
@@ -4072,6 +4079,50 @@ export function acquireHostConvergenceLock(lockPath, {
   return { acquired: false, error: 'host synchronization lock changed concurrently' };
 }
 
+/**
+ * `--recover-update` (#335). Preview is read-only; disposition needs the exact live sha256 the preview
+ * printed, so nothing is decided for the operator. Returns the exit code.
+ */
+export function runRecoverUpdate({ kbDir = physicalPath(resolvedKbDir()), keepLive = RECOVER_KEEP_LIVE,
+  transaction = RECOVER_TRANSACTION, json = FLAG_JSON, log = console.log } = {}) {
+  const stuck = previewRecoveryRequired(kbDir);
+  const short = (identity) => identity?.sha256 ? `${identity.sha256}  (${identity.fileCount} files, ${identity.bytes} bytes)` : 'absent';
+  if (!keepLive) {
+    if (json) log(JSON.stringify({ kbDir, stuck }, null, 2));
+    else if (!stuck.length) log('No update is stuck at RECOVERY_REQUIRED. Nothing to recover.');
+    else {
+      for (const t of stuck) {
+        log(`Update ${t.transactionId} needs recovery: ${t.reason || 'no reason recorded'}`);
+        log(`  sealed prior:     ${short(t.sealed.prior)}`);
+        log(`  sealed candidate: ${short(t.sealed.candidate)}`);
+        for (const [name, tree] of Object.entries(t.trees)) {
+          const match = tree.matchesPrior ? ' = sealed prior' : tree.matchesCandidate ? ' = sealed candidate' : tree.exists ? ' matches no sealed identity' : '';
+          log(`  ${name.padEnd(9)} ${tree.exists ? short(tree.identity) : 'absent'}${match}`);
+        }
+        log(`  To keep the live tree above and close this update (other trees are moved, never deleted):`);
+        log(`    npx ruvnet-brain --recover-update --transaction ${t.transactionId} --keep-live ${t.trees.live.identity?.sha256 || '<live sha256>'}`);
+      }
+      log('Nothing was changed.');
+    }
+    return stuck.length ? 1 : 0;
+  }
+  const targets = transaction ? stuck.filter((t) => t.transactionId === transaction) : stuck;
+  if (!targets.length) { log(transaction ? `No stuck update named ${transaction}.` : 'No update is stuck at RECOVERY_REQUIRED.'); return 1; }
+  if (targets.length > 1) { log('More than one update is stuck; name one with --transaction <id>. Nothing was changed.'); return 1; }
+  try {
+    const result = disposeRecoveryRequired(kbDir, targets[0].transactionId, { keepLiveSha256: keepLive });
+    if (json) log(JSON.stringify(result, null, 2));
+    else {
+      log(`Closed update ${result.transactionId}: kept the live tree ${result.live.sha256}`
+        + ` (${result.liveMatchesPrior ? 'it equals the sealed prior' : result.liveMatchesCandidate ? 'it equals the sealed candidate' : 'it matches no sealed identity'}).`);
+      for (const p of result.preserved) log(`  moved ${p.tree} intact to ${p.to}`);
+      if (!result.preserved.length) log('  the update owned no other tree.');
+      log('Run  npx ruvnet-brain --update  next; nothing was deleted.');
+    }
+    return 0;
+  } catch (error) { log(`Not recovered: ${error.message}. Nothing was deleted.`); return 1; }
+}
+
 export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
   sourceRoot = REPO_ROOT,
   brainHome = process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain'),
@@ -6829,6 +6880,12 @@ Usage:
                               footprint within budget, no cruft. --doctor --json prints only that, as JSON.
   npx ruvnet-brain --clean    Remove everything that must not exist (old KB copies — never one holding
                               private files the live brain lacks — old installers, over-cap logs), then confirm.
+  npx ruvnet-brain --recover-update
+                              Read-only: list any update stuck at RECOVERY_REQUIRED, with the measured
+                              identity of the live tree and every tree that update owns.
+  npx ruvnet-brain --recover-update --keep-live <sha256> [--transaction <id>]
+                              Keep that exact live tree, move the update's other trees intact into
+                              .kb.recovered/<id>/ (nothing is deleted) and close the update for good.
   npx ruvnet-brain --clean --archive
                               Same, and for a kept copy: copy only the files it alone holds into
                               kb.archive/<stamp>/ (verified byte-for-byte), then release that copy.
@@ -6942,6 +6999,7 @@ the installer reports that boot-level declarations changed.
   // and `echo $?` → 0 coexisted for so long.
   // `--doctor --json`: the positive-confirmation object ONLY (no narration), exit 0 iff every line that
   // can be proven here is green — for scripts, CI, and agents (ADR-0098).
+  if (FLAG_RECOVER_UPDATE) { process.exitCode = runRecoverUpdate(); return; }
   if (FLAG_DOCTOR) { process.exitCode = await doctor({ json: FLAG_JSON }); return; }
   // `--clean`: enforce the footprint guarantee now, then confirm. Exit 0 only when exactly one KB copy
   // remains and nothing that must not exist is left (a private-unique copy kept for safety is a 1).

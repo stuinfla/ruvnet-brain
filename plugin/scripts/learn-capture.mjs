@@ -24,6 +24,21 @@ const learnDir = (brainHome, sub) => { const dir = path.join(brainHome, 'learn-c
 export function recentlyCaptured(brainHome, key, now = Date.now()) {
   try { return now - fs.statSync(path.join(learnDir(brainHome, 'recent'), key)).mtimeMs < COALESCE_MS; } catch { return false; }
 }
+// #377 residual (sparkling, 2026-10-30): the parent used to call markCaptured() BEFORE the detached child stored
+// anything, so a child whose store or exact readback failed left the key acknowledged as captured for the whole
+// COALESCE_MS window. Now the parent only marks the key IN FLIGHT (`<key>.pending`, which is never an
+// acknowledgement and expires with the child's slot), and the child acknowledges with markCaptured() only after
+// recordLearningObservation() has completed its exact readback. A failed child clears the in-flight mark.
+const pendingFile = (brainHome, key) => path.join(learnDir(brainHome, 'recent'), `${key}.pending`);
+export function captureInFlight(brainHome, key, now = Date.now()) {
+  try { return now - fs.statSync(pendingFile(brainHome, key)).mtimeMs < SLOT_STALE_MS; } catch { return false; }
+}
+export function markInFlight(brainHome, key) {
+  try { fs.writeFileSync(pendingFile(brainHome, key), '', { mode: 0o600 }); } catch { /* best effort: coalescing only */ }
+}
+export function clearInFlight(brainHome, key) {
+  try { fs.unlinkSync(pendingFile(brainHome, key)); } catch { /* already gone */ }
+}
 export function markCaptured(brainHome, key, now = Date.now()) {
   const dir = learnDir(brainHome, 'recent');
   try { fs.writeFileSync(path.join(dir, key), '', { mode: 0o600 }); } catch { return; }
@@ -105,12 +120,13 @@ export function captureLearning(input, { env = process.env, binary = resolveRufl
     const observation = { tool, action, session: String(input.session_id || '') };
     const key = observationKey(observation);
     if (recentlyCaptured(brainHome, key)) return true; // identical observation already captured this window: no process
+    if (detach && captureInFlight(brainHome, key)) return true; // the same observation is being stored right now
     // Review M3: on the hook path the store + exact readback run in a detached, bounded child, so the
     // tool call returns at once; that child writes the ledger row if the write is refused or unverified.
     if (detach) {
       const slot = acquireObserveSlot(brainHome);
       if (!slot) return shedObservation(brainHome);
-      markCaptured(brainHome, key);
+      markInFlight(brainHome, key); // NOT an acknowledgement: only the child's exact readback acknowledges (#377)
       return detachLearning('--observe', { env: { ...env, RUFLO_BIN: binary }, brainHome, observation, slot });
     }
     recordLearningObservation(binary, context, observation, { env, deadline: Date.now() + 6000 });
@@ -136,6 +152,8 @@ export function detachLearning(mode, { env = process.env, brainHome, observation
 }
 
 function runDetached(mode) {
+  const brainHome = defaultBrainHome(process.env);
+  let observation = null;
   const fail = (error) => recordHookFailure({ hook: mode === '--distill' ? 'learn-distill' : 'learn-capture', event: mode === '--distill' ? 'SessionEnd' : 'PostToolUse', error: String(error?.message || error).slice(0, 160) });
   try {
     const context = learningContext(); // consent is re-read: a withdrawn consent writes nothing
@@ -145,8 +163,13 @@ function runDetached(mode) {
     if (mode === '--distill') { distillObservations(binary, context, { env: process.env }); return; }
     const o = JSON.parse(process.env.RUVNET_LEARN_OBSERVATION || '{}');
     if (!['Bash', 'Write', 'Edit', 'MultiEdit'].includes(o.tool) || typeof o.action !== 'string') throw new Error('invalid detached observation');
-    recordLearningObservation(binary, context, { tool: o.tool, action: o.action, session: String(o.session || '') }, { env: process.env, deadline: Date.now() + 14_000, allowed: () => learningContext().enabled });
-  } catch (error) { fail(error); } finally { if (process.env.RUVNET_LEARN_SLOT) releaseObserveSlot(process.env.RUVNET_LEARN_SLOT); }
+    observation = { tool: o.tool, action: o.action, session: String(o.session || '') };
+    recordLearningObservation(binary, context, observation, { env: process.env, deadline: Date.now() + 14_000, allowed: () => learningContext().enabled });
+    markCaptured(brainHome, observationKey(observation)); // acknowledged only after the exact readback succeeded (#377)
+  } catch (error) { fail(error); } finally {
+    if (observation) clearInFlight(brainHome, observationKey(observation));
+    if (process.env.RUVNET_LEARN_SLOT) releaseObserveSlot(process.env.RUVNET_LEARN_SLOT);
+  }
 }
 
 const isMain = isDirectInvocation(import.meta.url);

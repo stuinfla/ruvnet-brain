@@ -70,7 +70,7 @@ const RUFLO_DEBRIS = new Set(RUFLO_CWD_ARTIFACTS);
 // Directories in the brain home that hold data another tool owns: measured, shown, never budgeted or removed.
 const FOREIGN = { 'ruvector-mcp': 'RuVector MCP server working store (its own live memory)',
   'worktree-recovery': 'hand-made recovery archives, not created by the Brain' };
-const TERMINAL = new Set(['NOOP', 'COMMITTED', 'ROLLED_BACK']);
+const TERMINAL = new Set(['NOOP', 'COMMITTED', 'ROLLED_BACK', 'DISPOSED']); // DISPOSED: operator recovery (#335)
 
 const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } };
 const lstat = (file) => { try { return fs.lstatSync(file); } catch { return null; } };
@@ -190,6 +190,10 @@ export function inventoryFootprint({ env = process.env, home = os.homedir(), now
     }
   };
   const classifySibling = (name, full, st) => {
+    if (name === `.${base}.recovered` && st.isDirectory() && !st.isSymbolicLink()) { // #335: written only by --recover-update --keep-live
+      return void add({ id: 'kb-recovered', path: full, class: 'may-exist', kind: 'kb-recovered', action: 'keep', bytes: bytes(full),
+        reason: 'trees an operator-disposed update transaction owned, moved intact (--recover-update); never removed automatically' });
+    }
     if (name === `${base}.archive` && st.isDirectory() && !st.isSymbolicLink()) { // #335: written only by --clean --archive
       return void add({ id: 'kb-archive', path: full, class: 'may-exist', kind: 'kb-archive', action: 'keep', bytes: bytes(full),
         reason: 'files unique to released KB copies, archived on request (--clean --archive); never removed automatically' });

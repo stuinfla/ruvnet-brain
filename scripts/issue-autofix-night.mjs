@@ -139,7 +139,7 @@ export async function shipAndSettle(rt, journal) {
     publish('fixed', ['install-verified on Linux, macOS and Windows']);
     patchNs(rt.paths.state, { _daily: { day: etDay(rt.now()), shipped: true, version: journal.version, issues: journal.issues } });
     rt.page(`AUTOFIX SHIPPED v${journal.version}`, `Issues ${journal.issues.join(', ')}; install-verified on main ${journal.sha}.`, 'low');
-    return { items, status: 'shipped', exitCode: 0 };
+    return { items, status: res.phase, exitCode: 0 }; // derived from the release result, never a literal (ADR-0024)
   }
   if (res.phase === 'published-unverified') {
     publish('shipping', []);
