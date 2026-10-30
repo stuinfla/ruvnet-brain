@@ -29,15 +29,15 @@ export function recentlyCaptured(brainHome, key, now = Date.now()) {
 // COALESCE_MS window. Now the parent only marks the key IN FLIGHT (`<key>.pending`, which is never an
 // acknowledgement and expires with the child's slot), and the child acknowledges with markCaptured() only after
 // recordLearningObservation() has completed its exact readback. A failed child clears the in-flight mark.
-const pendingFile = (brainHome, key) => path.join(learnDir(brainHome, 'recent'), `${key}.pending`);
+const inFlightMarker = (brainHome, key) => path.join(learnDir(brainHome, 'recent'), `${key}.pending`);
 export function captureInFlight(brainHome, key, now = Date.now()) {
-  try { return now - fs.statSync(pendingFile(brainHome, key)).mtimeMs < SLOT_STALE_MS; } catch { return false; }
+  try { return now - fs.statSync(inFlightMarker(brainHome, key)).mtimeMs < SLOT_STALE_MS; } catch { return false; }
 }
 export function markInFlight(brainHome, key) {
-  try { fs.writeFileSync(pendingFile(brainHome, key), '', { mode: 0o600 }); } catch { /* best effort: coalescing only */ }
+  try { fs.writeFileSync(inFlightMarker(brainHome, key), '', { mode: 0o600 }); } catch { /* best effort: coalescing only */ }
 }
 export function clearInFlight(brainHome, key) {
-  try { fs.unlinkSync(pendingFile(brainHome, key)); } catch { /* already gone */ }
+  try { fs.unlinkSync(inFlightMarker(brainHome, key)); } catch { /* already gone */ }
 }
 export function markCaptured(brainHome, key, now = Date.now()) {
   const dir = learnDir(brainHome, 'recent');
