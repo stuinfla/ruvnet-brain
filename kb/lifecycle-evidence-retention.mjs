@@ -349,8 +349,17 @@ function compactTerminalPhases(row) {
 }
 
 export const MAX_VANISHED_RETRIES = 64;
+// A prune stops this far UNDER the byte budget, not at it. The update that prunes still writes its own terminal refresh
+// receipt afterwards; measured on the owner's Mac on 2026-10-30, a prune left 16,769,613 bytes (8 KiB under the
+// 16 MiB budget), the settled receipt pushed it to 16,785,892, and --doctor reported the evidence as cruft after a
+// clean update. The room is made by compacting terminal phase files first, then by removing the oldest removable entry.
+export const PRUNE_HEADROOM_BYTES = 1024 * 1024;
 export function pruneLifecycleEvidence(options = {}) {
   const policy = options.policy || LIFECYCLE_EVIDENCE_RETENTION_POLICY;
+  // 1 MiB on the real 16 MiB budget; never more than a sixteenth of a (test-sized) budget.
+  const headroom = Number.isFinite(options.headroomBytes) ? Math.max(0, options.headroomBytes)
+    : Math.min(PRUNE_HEADROOM_BYTES, Math.floor(policy.maxEvidenceBytes / 16));
+  const roomy = (state) => isWithin(state, policy) && state.bytes <= policy.maxEvidenceBytes - headroom;
   const removeEntry = options.removeEntry || ((entry) => fs.rmSync(entry, { recursive: true, force: true }));
   // A prior invocation's quarantine name is not proof of ownership of its current
   // bytes. Preserve it as unsafe, measured evidence; only this invocation may remove
@@ -393,7 +402,7 @@ export function pruneLifecycleEvidence(options = {}) {
   }
   const compacted = [];
   const compactState = snapshot(options);
-  if (!compactState.unsafe.length && compactState.bytes > policy.maxEvidenceBytes) {
+  if (!compactState.unsafe.length && compactState.bytes > policy.maxEvidenceBytes - headroom) {
     for (const row of compactState.transactions.filter((entry) => TERMINAL_TRANSACTION.has(entry.latest.state))) {
       compacted.push(...compactTerminalPhases(row));
     }
@@ -404,7 +413,7 @@ export function pruneLifecycleEvidence(options = {}) {
   let vanishedRetries = 0; let stopped = null;
   for (;;) {
     const state = snapshot(options);
-    if (isWithin(state, policy)) break;
+    if (roomy(state)) break;
     if (state.unsafe.length) break;
     const refreshCandidates = state.refresh.filter((row) => TERMINAL_REFRESH.has(row.receipt.status)
       && !state.protectedRefresh.has(row.path)).sort((a, b) => a.timestamp - b.timestamp);

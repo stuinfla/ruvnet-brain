@@ -215,6 +215,23 @@ describe('inventory: everything the Brain owns is classified', () => {
     expect(fs.readFileSync(path.join(m.brainHome, 'issue-fix-worktrees/issue-1-123/blob'), 'utf8')).toBe(big);
   });
 
+  // Review 2026-10-30: the nightly's own installer trims <brain home>/.last-nightly-update.log while launchd still holds
+  // it open as the job's stdout; a rename-over trim sent the rest of that night into a deleted file.
+  it('a text-log trim keeps the inode, so a writer holding it open keeps writing into the log', () => {
+    const m = machine();
+    const log = path.join(m.brainHome, '.last-nightly-update.log');
+    write(log, `${'old line\n'.repeat(80_000)}tail-line\n`);
+    const inode = fs.statSync(log).ino;
+    const held = fs.openSync(log, 'a'); // launchd's StandardOutPath: opened once, appended to all night
+    try {
+      sweepFootprint(opts(m, { apply: true }));
+      fs.writeSync(held, 'after the sweep\n');
+    } finally { fs.closeSync(held); }
+    expect(fs.statSync(log).ino).toBe(inode); // before: a new inode (rename-over)
+    expect(fs.statSync(log).size).toBeLessThanOrEqual(FOOTPRINT_POLICY.textLogCapBytes);
+    expect(fs.readFileSync(log, 'utf8')).toMatch(/tail-line\nafter the sweep\n$/); // before: the line went to a deleted file
+  });
+
   it('sweep removes exactly what the proof allows, keeps private-unique copies by name, and is idempotent', () => {
     const { m, q } = messy();
     const result = sweepFootprint(opts(m, { apply: true }));

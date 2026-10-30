@@ -122,6 +122,20 @@ describe('a CURRENT corpus is not a converged machine', () => {
       .rejects.toThrow(/knowledge: runtime did not converge: runtime 0\.9\.0 is behind the installed package 1\.0\.0/);
   });
 
+  it('the SessionStart self-heal (--knowledge-only) reports a runtime behind but leaves the installer to the nightly', async () => {
+    const m = machine({ corpusCurrent: true });
+    const receipt = await runDeveloperUpdate({ mode: 'apply', home: m.home, env: { PATH: m.bin }, runner: m.runner, sleep: () => {}, knowledgeOnly: true });
+    expect(updates(m)).toBe(0);
+    expect(receipt.knowledge).toMatchObject({ state: 'current', runtime: { converged: false }, deferred: expect.any(String) });
+  });
+
+  it('a linked source checkout is never "converged to" (its version may be ahead of any release)', () => {
+    const m = machine({ corpusCurrent: true });
+    const linked = path.join(m.root, 'ruvnet-brain');
+    fs.renameSync(linked, `${linked}-src`); fs.symlinkSync(`${linked}-src`, linked);
+    expect(runtimeConvergence({ root: m.root, brainHome: m.brainHome })).toMatchObject({ converged: true, reason: 'ruvnet-brain is a linked source checkout' });
+  });
+
   it('a converged machine with a CURRENT corpus runs no installer; a failed host in the receipt is not converged', async () => {
     const m = machine({ corpusCurrent: true });
     atomic(path.join(m.brainHome, 'active.json'), { version: '1.0.0' });

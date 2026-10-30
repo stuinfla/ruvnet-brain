@@ -131,15 +131,22 @@ export function treeBytes(target) {
 
 /** Atomic rename-rotation: <name> -> <name>.1 (replacing the previous .1). Appenders reopen by path. */
 export function rotate(file) { fs.renameSync(file, `${file}.1`); }
+/**
+ * Keep a text log's newest tail IN PLACE (same inode). A rename-over gave the log a new inode, so a writer that still
+ * held it open (launchd's StandardOutPath for the nightly, whose own installer runs this sweep) wrote the rest of the
+ * night into a deleted file (review, 2026-10-30). Appenders (O_APPEND) continue at the new end.
+ */
 export function truncateToTail(file, keep) {
-  const size = fs.statSync(file).size;
-  const fd = fs.openSync(file, 'r');
-  const buf = Buffer.alloc(Math.min(keep, size));
-  try { fs.readSync(fd, buf, 0, buf.length, size - buf.length); } finally { fs.closeSync(fd); }
-  const nl = buf.indexOf(10);
-  const tmp = `${file}.tmp-${process.pid}`;
-  fs.writeFileSync(tmp, nl >= 0 ? buf.subarray(nl + 1) : buf);
-  fs.renameSync(tmp, file);
+  const fd = fs.openSync(file, 'r+');
+  try {
+    const size = fs.fstatSync(fd).size;
+    const buf = Buffer.alloc(Math.min(keep, size));
+    fs.readSync(fd, buf, 0, buf.length, size - buf.length);
+    const nl = buf.indexOf(10);
+    const tail = nl >= 0 ? buf.subarray(nl + 1) : buf;
+    fs.ftruncateSync(fd, 0);
+    fs.writeSync(fd, tail, 0, tail.length, 0);
+  } finally { fs.closeSync(fd); }
 }
 
 /**

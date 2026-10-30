@@ -324,7 +324,7 @@ export function withTransientRetry(attempt, { transient = () => true, sleep = sl
     try { return attempt(i); } catch (error) { if (i >= delays.length || !transient(error)) throw error; sleep(delays[i]); }
   }
 }
-export function knowledge(run, dryRun, runId, { brainHome, root, node, sleep = sleepSync }) {
+export function knowledge(run, dryRun, runId, { brainHome, root, node, sleep = sleepSync, convergeRuntime = true }) {
   const kb = path.join(brainHome, 'kb'), updater = path.join(kb, 'forge-update.mjs');
   if (!exists(updater)) throw Error('existing Brain KB updater absent; fresh install refused');
   const file = path.join(brainHome, `nightly-suite-corpus-${runId}.json`);
@@ -380,6 +380,9 @@ export function knowledge(run, dryRun, runId, { brainHome, root, node, sleep = s
     const runtime = runtimeConvergence({ root, brainHome });
     const state = before.currencyVerdict === 'CURRENT' ? 'current' : 'ahead-preserved';
     if (runtime.converged) return { before, after: before, state, runtime };
+    // The SessionStart self-heal (--knowledge-only) runs unattended without the nightly's identity, so an installer
+    // run there would count as interactive (and could reload a shared Codex app-server): it reports, the nightly acts.
+    if (!convergeRuntime) return { before, after: before, state, runtime, deferred: 'runtime convergence is left to the scheduled nightly' };
     if (dryRun) return { before, state: 'update-available', reason: runtime.reason, runtime };
     const installerExit = apply(), after = check(), converged = runtimeConvergence({ root, brainHome });
     if (!converged.converged) throw Error(`runtime did not converge: ${converged.reason}`);
@@ -405,6 +408,8 @@ export function knowledge(run, dryRun, runId, { brainHome, root, node, sleep = s
  */
 export function runtimeConvergence({ root = ROOT, brainHome = CACHE } = {}) {
   const value = (file) => { try { return read(file); } catch { return null; } };
+  // A linked source checkout's version is not a release the runtime can be converged to (it may be ahead of npm).
+  try { if (fs.lstatSync(path.join(root, 'ruvnet-brain')).isSymbolicLink()) return { converged: true, installed: null, active: null, desired: null, reason: 'ruvnet-brain is a linked source checkout' }; } catch { /* absent: judged below */ }
   const installed = value(path.join(root, 'ruvnet-brain/package.json'))?.version || null;
   const active = value(path.join(brainHome, 'active.json'));
   const receipt = value(path.join(brainHome, 'host-convergence.json'));
@@ -593,7 +598,7 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
       }
     }
     if (exists(path.join(paths.brainHome, 'kb/forge-update.mjs'))) {
-      const knowledgeStage = () => stage('knowledge', () => knowledge(run, mode === 'check', receipt.runId, { brainHome: paths.brainHome, root, node: process.execPath, sleep }),
+      const knowledgeStage = () => stage('knowledge', () => knowledge(run, mode === 'check', receipt.runId, { brainHome: paths.brainHome, root, node: process.execPath, sleep, convergeRuntime: !knowledgeOnly }),
         error => { receipt.knowledge = { state: 'failed', error: error.message }; });
       receipt.knowledge = await knowledgeStage() ?? receipt.knowledge;
       // SELF-RETRY THE SAME NIGHT (2026-10-30): a scheduled night whose knowledge stage failed tries once more after
