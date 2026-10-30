@@ -30,6 +30,10 @@ export function makeRunner(tmp) {
         RUVNET_BRAIN_KB: path.join(tmp, 'kb'),
         RUVNET_BRAIN_COMPLETE_SOURCE: path.join(tmp, 'no-such-bundle'),
         RUVNET_BRAIN_HOME: path.join(tmp, '.cache', 'ruvnet-brain'),
+        // npm's cache defaults to $HOME/.npm. With HOME = the scratch dir, an npm call the console makes
+        // could still be writing there when afterEach removes it (ENOTEMPTY .npm, preflight 41112459842).
+        // Keep npm's cache out of the directory the test deletes.
+        npm_config_cache: path.join(os.tmpdir(), 'rnb-console-child-npm-cache'),
         ...extraEnv,
       },
       encoding: 'utf8', timeout: 60_000,
