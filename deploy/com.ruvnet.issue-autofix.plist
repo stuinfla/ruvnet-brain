@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Comment</key>
+	<string>Daily 10:30 local (ADR-107): fixes every GitHub issue a person filed against stuinfla/ruvnet-brain
+	that the night's time budget allows, each in its own linked worktree of its own clone under ~/.cache/ruvnet-brain,
+	and ships all fixes that pass verification and the security gate as ONE release through the protected release
+	gates. The job is OFF unless the repository variable ISSUE_AUTOFIX is exactly "on", and it halts itself (halt
+	file) after any red once main has moved. It holds no publish operation. If the Mac is asleep at 10:30, launchd runs
+	it once on wake; caffeinate holds it awake while it runs. Wrapped in job-heartbeat.sh (positive confirmation, see
+	config/scheduled-jobs.json): JOB_MAX_SECONDS is 10 hours, the registry's maxRunHours (internal budget 9.5 h, of
+	which 3.5 h is reserved for the release). The job runs from its OWN runner worktree,
+	~/.cache/ruvnet-brain/autofix-runner, pinned to the newest install-verified release (scripts/issue-autofix-runner.mjs
+	installs it at arming and advances it after each run) - never the owner's checkout, which it never touches. Nothing installs this agent: loading it is the arming step in ADR-0107.</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>HOME</key>
+		<string>/Users/stuartkerr</string>
+		<key>JOB_MAX_SECONDS</key>
+		<string>36000</string>
+		<key>PATH</key>
+		<string>/Users/stuartkerr/.local/bin:/Users/stuartkerr/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+	</dict>
+	<key>Label</key>
+	<string>com.ruvnet.issue-autofix</string>
+	<key>ProcessType</key>
+	<string>Background</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/sh</string>
+		<string>/Users/stuartkerr/.cache/ruvnet-brain/autofix-runner/scripts/job-heartbeat.sh</string>
+		<string>com.ruvnet.issue-autofix</string>
+		<string>--</string>
+		<string>/usr/local/bin/node</string>
+		<string>/Users/stuartkerr/.cache/ruvnet-brain/autofix-runner/scripts/issue-fix.mjs</string>
+		<string>--mode</string>
+		<string>autofix</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>/Users/stuartkerr/.cache/ruvnet-brain/autofix-runner</string>
+	<key>RunAtLoad</key>
+	<false/>
+	<key>StandardErrorPath</key>
+	<string>/Users/stuartkerr/.cache/ruvnet-brain/autofix-runner/logs/issue-autofix.err.log</string>
+	<key>StandardOutPath</key>
+	<string>/Users/stuartkerr/.cache/ruvnet-brain/autofix-runner/logs/issue-autofix.out.log</string>
+	<key>StartCalendarInterval</key>
+	<dict>
+		<key>Hour</key>
+		<integer>10</integer>
+		<key>Minute</key>
+		<integer>30</integer>
+	</dict>
+</dict>
+</plist>

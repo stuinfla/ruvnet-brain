@@ -64,7 +64,7 @@ import {
 } from '../kb/brain-profile.mjs';
 // Lessons: read model + the two user verbs. Every mutation goes through lesson-store's own
 // updateLessons/ratify/demote/restore — this file adds a SURFACE, never a second writer.
-import { loadLessons, updateLessons, ratify, demote, restore, pending, weightOf, TRIGGERS, ENFORCEMENT, ORIGIN, SOURCE_CLASS, STATUS } from './lesson-store.mjs';
+import { loadLessons, lessonApplies, projectNameFor, STORE_PATH as LESSON_STORE_PATH, updateLessons, ratify, demote, restore, pending, weightOf, TRIGGERS, ENFORCEMENT, ORIGIN, SOURCE_CLASS, STATUS } from './lesson-store.mjs';
 import {
   openRouterCredentialStatus,
   saveOpenRouterCredential,
@@ -1401,6 +1401,8 @@ function setLesson(body) {
 // --refresh-cache child. A request never scans — not inline on a first-ever run, and not via
 // setImmediate either (deferring synchronous work still blocks the loop when it runs). A machine with
 // no fleet scan yet is reported `warming`, never as a fabricated zero.
+// #500: bump when the meaning of the cached fleet changes. 2 = one entry per resolved store; 3 = + stable `id`.
+const ACTIVITY_CACHE_SCHEMA = 3; // 3 = each project also carries `id`, the store's dev:inode identity
 let ACTIVITY_MACHINE_CACHE = null;
 const CONSOLE_CACHE_PATH = path.join(CONSOLE_ROOT, '.cache/ruvnet-brain/console-cache.json');
 
@@ -1862,7 +1864,9 @@ function loadConsoleCache() {
   let restored = false;
   try {
     const j = JSON.parse(fs.readFileSync(CONSOLE_CACHE_PATH, 'utf8'));
-    if (j.activity && j.activity.at) { ACTIVITY_MACHINE_CACHE = j.activity; restored = true; }
+    // #500: a cache written before the fleet scan deduped by store identity can hold one database
+    // counted twice (a nested docs/adr/.swarm beside its parent). Never trust it — re-measure.
+    if (j.activity && j.activity.at && j.activity.schema === ACTIVITY_CACHE_SCHEMA) { ACTIVITY_MACHINE_CACHE = j.activity; restored = true; }
     if (j.trust && j.trust.at) { TRUST_CACHE = j.trust; restored = true; }
   } catch { /* no cache yet — first ever boot */ }
   return restored;
@@ -1896,7 +1900,7 @@ function saveConsoleCache() {
 function adoptFleetFromDisk() {
   try {
     const j = readJSON(CONSOLE_CACHE_PATH);
-    if (j && j.activity && j.activity.at && (!ACTIVITY_MACHINE_CACHE || j.activity.at > ACTIVITY_MACHINE_CACHE.at)) {
+    if (j && j.activity && j.activity.at && j.activity.schema === ACTIVITY_CACHE_SCHEMA && (!ACTIVITY_MACHINE_CACHE || j.activity.at > ACTIVITY_MACHINE_CACHE.at)) {
       ACTIVITY_MACHINE_CACHE = j.activity;
     }
   } catch { /* no cache yet — the caller kicks a child and reports `warming` */ }
@@ -1912,8 +1916,10 @@ function refreshFleetCache() {
       // pathIdentity, not path.resolve: resolve() normalises `.`/`..` and nothing else, so a project
       // reached through a symlink OR through the other capitalisation of a case-insensitive volume
       // was two distinct strings for one directory, and its memories were summed twice (#107).
-      const resolved = pathIdentity(s.project) ?? path.resolve(s.project);
-      if (seen.has(resolved)) continue; // a project visible under two roots counts once
+      // #500: dedupe on the DATABASE, which is what holds the memories. Two directories (a repo and its
+      // nested docs/adr/.swarm, or a linked worktree) can resolve to one store; project paths differ.
+      const resolved = pathIdentity(s.db) ?? path.resolve(s.db);
+      if (seen.has(resolved)) continue; // a store visible twice counts once
       seen.add(resolved);
       const n = Number(robustRead(s.db, "SELECT COUNT(*) FROM memory_entries WHERE status='active'").value || 0);
       if (n > 0) {
@@ -1922,17 +1928,25 @@ function refreshFleetCache() {
         const lastTouched = Number(robustRead(s.db, 'SELECT MAX(updated_at) FROM memory_entries').value || 0);
         // rel = the root-relative path — the SAME key reconcile:<id> recommendations use (wiringSurvey
         // computes projName the same way, relative to whichever root the project was found under).
-        projects.push({ name: path.basename(s.project), rel: path.relative(root, s.project), memories: n, lastTouched });
+        // Name from the RESOLVED project root. A linked worktree whose main checkout lies outside this
+        // scan root would give a '..'-prefixed rel, but reconcile:<id> keys (wiringSurvey) are relative to
+        // the directory found under the root — so fall back to the found directory in that case.
+        const inRoot = path.relative(root, s.project);
+        const rel = (inRoot === '' || inRoot.startsWith('..') || path.isAbsolute(inRoot)) ? path.relative(root, s.found || s.project) : inRoot;
+        // `id` = the store's own dev:inode identity (pathIdentity follows symlinks and sees hard links), so a
+        // client can tell WHICH project is "you" without comparing folder names (two repos can share one).
+        projects.push({ id: resolved, name: path.basename(s.project), rel, memories: n, lastTouched });
         total += n;
       }
     }
   }
   projects.sort((a, b) => b.memories - a.memories);
-  ACTIVITY_MACHINE_CACHE = { at: Date.now(), projects, totalMemories: total };
+  ACTIVITY_MACHINE_CACHE = { schema: ACTIVITY_CACHE_SCHEMA, at: Date.now(), projects, totalMemories: total };
   saveConsoleCache();
 }
-function findMemoryStores(root) {
+export function findMemoryStores(root) {
   const out = [];
+  const seenDb = new Set();
   const walk = (dir, depth) => {
     if (depth > 3) return;
     let ents; try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
@@ -1944,8 +1958,12 @@ function findMemoryStores(root) {
         // Fleet activity is project memory, so resolve the canonical store rather than selecting a
         // coordination database by size. The latter is diagnostic-only and can contain unrelated rows.
         try {
-          const resolved = resolveProjectStore({ projectDir: dir }).canonicalAgentDbPath;
-          if (fs.existsSync(resolved)) out.push({ project: dir, db: resolved });
+          const store = resolveProjectStore({ projectDir: dir });
+          const resolved = store.canonicalAgentDbPath;
+          // #500: record the RESOLVED project root and one entry per database. A nested docs/adr/.swarm
+          // resolves to its parent's store; recording `dir` listed that one database twice.
+          const id = pathIdentity(resolved) ?? path.resolve(resolved);
+          if (fs.existsSync(resolved) && !seenDb.has(id)) { seenDb.add(id); out.push({ project: store.projectRoot, found: dir, db: resolved }); }
         } catch { /* an unresolvable directory is not a project store */ }
         continue;
       }
@@ -1956,6 +1974,38 @@ function findMemoryStores(root) {
   walk(root, 0);
   return out;
 }
+// #499: approved lessons are the ratified rules in the lesson store (the SAME active rule as
+// gatherLessons().counts.active). `available:false` means the store could not be read — unknown, never 0.
+//   count      = machine-wide (every ratified/active, non-demoted lesson)
+//   applicable = the subset that applies to THIS project, by the SAME rule plugin/scripts/lesson-gate.mjs
+//                uses (lesson-store.lessonApplies): unscoped, or scoped to this project, or proven in >=2 projects.
+//   items      = per-lesson id/title/scope/enforcement/status for the applicable ones, bounded (the metadata
+//                the reporter asked to keep), `itemsTruncated` says when the bound cut the list.
+const APPROVED_ITEMS_MAX = 25;
+function approvedLessonsFigure(here) {
+  try {
+    // loadLessons() swallows a parse failure and returns [] — which would read as "0 approved". A file
+    // that exists but does not parse is UNKNOWN; only an absent file is a true zero.
+    if (fs.existsSync(LESSON_STORE_PATH)) JSON.parse(fs.readFileSync(LESSON_STORE_PATH, 'utf8'));
+    const approved = loadLessons().filter((l) => (l.status === STATUS.RATIFIED || l.status === STATUS.ACTIVE) && !l.demoted);
+    const mine = approved.filter((l) => lessonApplies(l, here)); // the gate's own rule (lesson-store.lessonApplies)
+    const items = mine.slice(0, APPROVED_ITEMS_MAX).map((l) => {
+      const ps = Array.isArray(l.projects) ? l.projects : [];
+      const text = String(l.statement || '');
+      return { id: l.id, title: text.length > 140 ? `${text.slice(0, 139)}…` : text,
+        scope: ps.length ? ps.join(', ') : 'all projects', enforcement: l.enforcement ?? null,
+        ratified: l.status === STATUS.RATIFIED || l.status === STATUS.ACTIVE, status: l.status };
+    });
+    return { available: true, count: approved.length, applicable: mine.length, items, itemsTruncated: mine.length > items.length };
+  } catch { return { available: false, count: null, applicable: null, items: [], itemsTruncated: false }; }
+}
+// #499: a count that could not be read is null, not 0 — "0" would claim the store is empty.
+function readCount(db, sql) {
+  const r = robustRead(db, sql);
+  if (!r.ok) return null;
+  const n = Number(r.value ?? 0);
+  return Number.isFinite(n) ? n : null;
+}
 function gatherActivity(cwd) {
   let project;
   let db;
@@ -1965,19 +2015,27 @@ function gatherActivity(cwd) {
     db = resolved.canonicalAgentDbPath;
   } catch {
     const measuredAt = new Date().toISOString();
-    return { generatedAt: measuredAt, project: path.basename(cwd), hasStore: false, continuity: 'unavailable', ...freshnessOf(measuredAt) };
+    return { generatedAt: measuredAt, project: path.basename(cwd), hasStore: false, continuity: 'unavailable', approvedLessons: approvedLessonsFigure(projectNameFor(cwd)), ...freshnessOf(measuredAt) };
   }
   if (!fs.existsSync(db)) {
     // No store to read — the existence check above IS the entire measurement, so it IS the
     // observation instant. Stamped here, not with a value taken before the check ran.
     const measuredAt = new Date().toISOString();
-    return { generatedAt: measuredAt, project: path.basename(project), hasStore: false, ...freshnessOf(measuredAt) };
+    return { generatedAt: measuredAt, project: path.basename(project), hasStore: false, approvedLessons: approvedLessonsFigure(path.basename(project)), ...freshnessOf(measuredAt) };
   }
-  const out = { project: path.basename(project), hasStore: true };
+  // projectId = the same dev:inode identity the fleet entries carry, so the client matches on identity, not the folder name.
+  const out = { project: path.basename(project), projectId: pathIdentity(db) ?? path.resolve(db), hasStore: true, approvedLessons: approvedLessonsFigure(path.basename(project)) };
   const rows = (sql) => robustReadJSON(db, sql).rows;
+  const agentdbLessons = readCount(db, "SELECT COUNT(*) FROM memory_entries WHERE namespace='lessons' AND status='active'");
   out.totals = {
-    memories: Number(robustRead(db, "SELECT COUNT(*) FROM memory_entries WHERE status='active'").value || 0),
-    lessons: Number(robustRead(db, "SELECT COUNT(*) FROM memory_entries WHERE namespace='lessons' AND status='active'").value || 0),
+    memories: readCount(db, "SELECT COUNT(*) FROM memory_entries WHERE status='active'"),
+    agentdbLessons,
+    lessons: agentdbLessons, // legacy alias of agentdbLessons
+    // #499: the learning pipeline's OWN measurements (null = unreadable, shown as Unknown, never 0). Distillation
+    // writes patterns/episodes, never `lessons` rows; observations are the namespace it mines.
+    observations: readCount(db, "SELECT COUNT(*) FROM memory_entries WHERE namespace='learning-observations' AND status='active'"),
+    patterns: readCount(db, 'SELECT COUNT(*) FROM reasoning_patterns'),
+    episodes: readCount(db, 'SELECT COUNT(*) FROM episodes'),
   };
   out.lessons = rows("SELECT key, access_count, date(created_at/1000,'unixepoch') AS learned, substr(content,1,600) AS excerpt FROM memory_entries WHERE namespace='lessons' AND status='active' ORDER BY created_at DESC");
   out.recent = rows("SELECT key, namespace, type, datetime(updated_at/1000,'unixepoch','localtime') AS at FROM memory_entries WHERE status='active' ORDER BY updated_at DESC LIMIT 18");
@@ -3550,6 +3608,9 @@ export {
   saveBrainProfile,
   setLesson,
   gatherLessons,
+  gatherActivity,
+  refreshFleetCache,
+  loadConsoleCache,
   gatherRouterEngine,
   autoEligibleIds,
   gatherConfig,

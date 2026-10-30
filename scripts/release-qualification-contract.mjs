@@ -345,6 +345,24 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       "reason": "Complete outbox tails replay and accepted pending journal events survive capacity pressure without silent deletion",
       "files": [
       ]
+    },
+    {
+      "id": "open-issue-fixes-4-7-22",
+      "reason": "Reporter-filed defects stay fixed: completion evidence never binds a masked or negated check and a masked check is an advisory, not a false 'no check ran' stop; the boot surface of a recovered Codex host is proven per changed path; Console fleet and lesson counts match by store identity and never show unknown as zero; one project-scope rule is shared by the lesson gate and the Console; a refused or unreadable memory restore is reported as such and an aborted Ruflo call leaves no child process",
+      "files": [],
+      "platformFiles": {
+        "linux": ["tests/unit/continuation-gate-codex-transcript.test.mjs", "tests/unit/codex-boot-surface-proof.test.mjs", "tests/unit/console-activity-fleet-dedupe.test.mjs", "tests/unit/console-activity-identity.test.mjs", "tests/unit/console-activity-lessons.test.mjs", "tests/unit/lesson-gate.test.mjs", "tests/unit/ruflo-memory-session.test.mjs"],
+        "macos": ["tests/unit/continuation-gate-codex-transcript.test.mjs", "tests/unit/codex-boot-surface-proof.test.mjs", "tests/unit/console-activity-fleet-dedupe.test.mjs", "tests/unit/console-activity-identity.test.mjs", "tests/unit/console-activity-lessons.test.mjs", "tests/unit/lesson-gate.test.mjs", "tests/unit/ruflo-memory-session.test.mjs"]
+      }
+    },
+    {
+      "id": "issue-autofix-bounded-writer",
+      "reason": "The unattended issue fixer (ADR-107) stays inside its authority: kill switch, single-writer lock, deny-by-default editable paths, the static malware and secret scan, the manifest/lockfile/pack/audit night gate, the red-team judge, restricted tool-less LLM stages, the macOS sandbox for model-written code (macOS only), never-weakened tests, independent verifier, resumable never-doubled release steps, no force or merge, owner-marker-prefixed comments, personal notes that are never boilerplate or repeated, and a registry and LaunchAgent that match. It runs on the owner's macOS launchd, so it is qualified on macOS and Linux only, the same scope as the ntfy inbox reader",
+      "files": [],
+      "platformFiles": {
+        "linux": ["tests/unit/issue-autofix-policy.test.mjs", "tests/unit/issue-autofix-agents.test.mjs", "tests/unit/issue-autofix-release.test.mjs", "tests/unit/issue-autofix-release-ship.test.mjs", "tests/unit/issue-autofix-comment.test.mjs", "tests/unit/issue-autofix-deploy.test.mjs", "tests/unit/issue-autofix-security.test.mjs", "tests/unit/issue-autofix-notes.test.mjs", "tests/unit/issue-autofix-gate.test.mjs", "tests/unit/issue-autofix-night.test.mjs"],
+        "macos": ["tests/unit/issue-autofix-policy.test.mjs", "tests/unit/issue-autofix-agents.test.mjs", "tests/unit/issue-autofix-release.test.mjs", "tests/unit/issue-autofix-release-ship.test.mjs", "tests/unit/issue-autofix-comment.test.mjs", "tests/unit/issue-autofix-deploy.test.mjs", "tests/unit/issue-autofix-security.test.mjs", "tests/unit/issue-autofix-notes.test.mjs", "tests/unit/issue-autofix-gate.test.mjs", "tests/unit/issue-autofix-night.test.mjs", "tests/unit/issue-autofix-sandbox.test.mjs"]
+      }
     }
   ],
   "integration": [
@@ -366,6 +384,11 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       "id": "canonical-learning-recovery",
       "reason": "Retired 2026-10-12: the learning queue, flush worker and Console queue recovery were deleted (owner ruling: hooks only call rUv's memory tools); learning writes are covered by canonical-learning-capture",
       "files": []
+    },
+    {
+      "id": "release-prepush-shift-left",
+      "reason": "The explicit release pre-push gate collects every failure with per-check timing, reads the newest corpus generation's public census over HTTP Range (refusing zip64, unknown compression and CRC mismatch), names each stale claim surface with its old and new number, refuses stray added artifacts with anchored patterns, selects text-anchored tests for changed source, and before dispatch requires the preflight's sealed generation to still be the newest",
+      "files": ["tests/unit/release-prepush.test.mjs", "tests/unit/generation-census.test.mjs"]
     },
     {
       "id": "canonical-progression-store",
@@ -441,6 +464,24 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       "reason": "POSIX non-root permission refusal, capacity-pressure reporting and recovery preserve all accepted pending continuity events",
       "files": [
       ]
+    },
+    {
+      "id": "open-issue-fixes-4-7-22-integration",
+      "reason": "A named release over an existing install moves, skips truthfully or warns on a downgrade instead of reporting a false lookup failure; the Ruflo memory hooks honour the absolute deadline and abort, kill the whole child process group, and never report a refused or partly unreadable restore as restored",
+      "files": [],
+      "platformFiles": {
+        "linux": ["tests/integration/stale-install-trap.test.mjs", "tests/integration/ruflo-memory-hooks.test.mjs"],
+        "macos": ["tests/integration/stale-install-trap.test.mjs", "tests/integration/ruflo-memory-hooks.test.mjs"]
+      }
+    },
+    {
+      "id": "issue-autofix-simulated-end-to-end",
+      "reason": "The whole autofix night (select, AIDefence screen, plan, build, scan, sandboxed test validity, red-team, verify, one batched release, push, pull request, fast-forward, dispatch, terminal check, one personal note per person) runs against a file:// origin with a fake gh and fake claude; hostile fixes (obfuscated payload, new dependency, off-allowlist edit, red-team flag, new audit advisory) never ship, one failing fix never blocks the others, a dropped connection or the kill switch pauses and the next run resumes without a second push or dispatch, and only a red after main moved halts. macOS and Linux only (the job is the owner's launchd tool)",
+      "files": [],
+      "platformFiles": {
+        "linux": ["tests/integration/issue-autofix-simulate.test.mjs", "tests/integration/issue-autofix-simulate-night.test.mjs"],
+        "macos": ["tests/integration/issue-autofix-simulate.test.mjs", "tests/integration/issue-autofix-simulate-night.test.mjs"]
+      }
     }
   ]
 });

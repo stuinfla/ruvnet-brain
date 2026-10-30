@@ -3,10 +3,10 @@ id: ADR-056
 title: Pay the debt, then wire the gate — document currency without a ratchet
 status: Proposed
 date: 2026-07-27
-updated: 2026-10-01
+updated: 2026-10-30
 updated_source: derived-from-git
-version: 1.2.1
-reviewed_digest: ad0f3db55a59
+version: 1.2.2
+reviewed_digest: c16ecd5f0813
 impl: wired
 governs:
   - scripts/wired-check.mjs
@@ -344,6 +344,7 @@ Both models credited exactly one section of v1 as correct and correctly-sized: *
 fix** — which is the one section that was already built.
 
 ## Currency log
+| 2026-10-30 | Review `c16ecd5f0813` (4.7.23): decision unchanged. `scripts/wired-check.mjs` gains the launchd caller entry for `scripts/issue-autofix.mjs` (ADR-107: `deploy/com.ruvnet.issue-autofix.plist` → `scripts/issue-fix.mjs --mode autofix`) and corrects the stale `issue-fix` reason that cited a nonexistent `issue-watch.yml`; no check is loosened (`node scripts/wired-check.mjs --check`: 0 unwired). Reviewed by the integration agent (Claude Opus 5.5), not a person. | `scripts/wired-check.mjs`. |
 | 2026-10-26 | Review (4.7.21): decision unchanged. `scripts/wired-check.mjs` skips files that do not mention a module name before running its caller regex (result-preserving) and no longer walks `.claude/worktrees`; the brain-gists launchd job was retired, so its STANDALONE reason now says manual run. | `scripts/wired-check.mjs`, `tests/unit/wired-baseline-classification.test.mjs`. |
 | 2026-10-01 | Currency review (4.5, after merging release-integ-4.5 2b2ec6a9): decision unchanged. `scripts/wired-check.mjs` gains only STANDALONE registrations: the ADR-0093 recommendation harnesses and the package-card generator, plus the 4.5 retrieval harnesses. The onboarding-console note now lists the `/rnbc` and `/rnb` aliases. The currency chokepoint is untouched. reviewed_digest ad0f3db55a59. | Reviewed `scripts/wired-check.mjs`. |
 | 2026-10-01 | Currency review (4.5 retrieval): decision unchanged. `scripts/wired-check.mjs` only registers new human-run measurement harnesses as standalone entries (abstain-trace, abstain-threshold-sweep, need-set-split, judge-train, doc2query-generate, doc2query-reach, sona-query-adapter-eval, route-latency-warm, route-index-memory). The currency chokepoint is untouched. reviewed_digest 6d959f6ee19a. | Reviewed `scripts/wired-check.mjs`. |

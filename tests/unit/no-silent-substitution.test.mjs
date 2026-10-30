@@ -93,3 +93,17 @@ describe('the live repo obeys its own rule', () => {
     expect(v, v.map((x) => `${x.file}: ${x.why}`).join('\n')).toHaveLength(0);
   });
 });
+
+describe('state-file ratchet: an append is a CALL, not a name in a string (2026-10-30)', () => {
+  it('names appendFile inside a scanner pattern: not an appender; a real appendFileSync( call: an appender', async () => {
+    const fs = await import('node:fs'); const os = await import('node:os'); const path = await import('node:path');
+    const { stateFileInventory } = await import('../../scripts/no-silent-substitution.mjs');
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nss-'));
+    fs.mkdirSync(path.join(root, 'scripts'));
+    fs.writeFileSync(path.join(root, 'scripts', 'scanner.mjs'), "export const FSW = '(?:writeFile|appendFile|createWriteStream)(?:Sync)?';\n");
+    fs.writeFileSync(path.join(root, 'scripts', 'writer.mjs'), "import fs from 'node:fs';\nexport const log = (x) => fs.appendFileSync('runs.jsonl', x);\n");
+    const found = stateFileInventory(root).map((s) => s.module);
+    fs.rmSync(root, { recursive: true, force: true });
+    expect(found).toEqual(['scripts/writer.mjs']);
+  });
+});

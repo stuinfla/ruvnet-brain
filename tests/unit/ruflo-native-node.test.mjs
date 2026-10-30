@@ -149,6 +149,21 @@ describe.skipIf(!POSIX)('nativeNodeFor / rufloInvocation — pick the node that 
     expect(inv).toEqual({ executable: right.bin, args: [r.entry, ...args] });
     expect(wrong.calls()).not.toBe('');
   });
+
+  it('a probe cut short by the caller\'s deadline proves nothing and is not cached (#501)', () => {
+    const r = fakeRuflo();
+    const dir = path.join(tmp(), 'slow'); fs.mkdirSync(dir);
+    const slow = path.join(dir, 'node');
+    fs.writeFileSync(slow, '#!/bin/sh\nsleep 1\nexit 1\n', { mode: 0o755 });
+    const right = fakeNode('right', true);
+    const cands = [slow, right.bin];
+    const t = Date.now();
+    expect(nativeNodeFor(r.link, { candidates: cands, deadlineAt: Date.now() + 100 })).toBeNull(); // cut: gave no answer
+    expect(Date.now() - t).toBeLessThan(900); // the probe was capped by the deadline, not its own 2 s
+    // Had the cut result been cached, this would still be null. A fresh call with room must probe again.
+    expect(nativeNodeFor(r.link, { candidates: cands, deadlineAt: Date.now() + 10_000 })).toEqual({ node: right.bin, entry: r.entry });
+  });
+
 });
 
 // The three call sites that launched `ruflo` directly (the SessionEnd/PreCompact checkpoint writer, the

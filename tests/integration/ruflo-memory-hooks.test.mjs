@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 import { adoptedProject, cleanup, fakeRuflo, tmp } from '../helpers/continuity-fixture.mjs';
 
@@ -181,4 +181,229 @@ if (a[1] === 'retrieve') console.log('VALUE-OF-' + a[a.indexOf('-n') + 1] + '/' 
     const { retrieved } = await restoreWith('proj', { proj: [{ key: 'project-state-auto-1791999999000-abcdef12', createdAt: 1 }, { key: NEWEST, createdAt: 2 }] });
     expect(retrieved.sort()).toEqual(['project-state-auto-1791999999000-abcdef12', NEWEST]);
   });
+});
+
+// #501 / #502 / #503 — refusal is not permission, a list is not a read, a deadline is absolute.
+describe('refusal, exact-read honesty and deadlines (#501 #502 #503)', () => {
+  const POSIX = process.platform !== 'win32';
+  const dirs = [];
+  afterEach(() => { for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
+  const project = ({ store = true } = {}) => {
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'rmh-refuse-'))); dirs.push(dir);
+    if (store) { fs.mkdirSync(path.join(dir, '.swarm')); fs.writeFileSync(path.join(dir, '.swarm', 'memory.db'), ''); }
+    return dir;
+  };
+  const refusing = () => { throw new Error('Git project identity unavailable: invalid Git marker'); };
+  // A ruflo that logs every launch; `readFails` makes retrieve exit 1 for the listed keys.
+  const loggingRuflo = (dir, { rows, readFails = [], listFails = [] }) => {
+    const log = path.join(dir, 'launches.log'); const bin = path.join(dir, 'ruflo-fake');
+    fs.writeFileSync(bin, `#!/usr/bin/env node
+const fs = require('fs'); const a = process.argv.slice(2); fs.appendFileSync(${JSON.stringify(log)}, a[1] + '\\n');
+const rows = ${JSON.stringify(rows)}; const bad = ${JSON.stringify(readFails)}; const badList = ${JSON.stringify(listFails)};
+if (a[1] === 'list' && badList.includes(a[a.indexOf('-n') + 1])) process.exit(1);
+if (a[1] === 'list') console.log(JSON.stringify(rows[a[a.indexOf('-n') + 1]] || []));
+if (a[1] === 'retrieve') { const k = a[a.indexOf('--key') + 1]; if (bad.includes(k)) process.exit(1); console.log('VALUE-OF-' + k); }
+`, { mode: 0o755 });
+    return { bin, launches: () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n') : []) };
+  };
+
+  it('a refusing resolver with a local .swarm/memory.db is NOT adopted and names the refusal', async () => {
+    const { projectStore } = await import('../../plugin/scripts/ruflo-memory-hooks.mjs');
+    const dir = project();
+    const s = projectStore(dir, { resolve: refusing });
+    expect(s).toMatchObject({ adopted: false, db: null });
+    expect(s.refused).toMatch(/invalid Git marker/); expect(s.withheld).toBe(true);
+  });
+
+  it('a valid non-Git project is still adopted through the real resolver', async () => {
+    const { projectStore } = await import('../../plugin/scripts/ruflo-memory-hooks.mjs');
+    const dir = project();
+    const s = projectStore(dir);
+    expect(s.adopted).toBe(true); expect(s.refused).toBeUndefined(); expect(s.db).toBe(path.join(dir, '.swarm', 'memory.db'));
+  });
+
+  it.skipIf(!POSIX)('checkpoint() through the real resolver on an invalid .git marker launches nothing', async () => {
+    const { checkpoint } = await import('../../plugin/scripts/ruflo-memory-hooks.mjs');
+    const dir = project(); fs.writeFileSync(path.join(dir, '.git'), 'not a gitdir pointer\n');
+    const fake = loggingRuflo(dir, { rows: {} });
+    const r = await checkpoint({ projectDir: dir, event: 'PreCompact', payload: { session_id: 's' }, env: { ...process.env, RUVNET_TURN_CAPTURE: 'on' }, bin: fake.bin });
+    expect(r.stored).toBe(false); expect(r.skipped).toMatch(/refused/); expect(fake.launches()).toEqual([]);
+  });
+
+  it('refusal with no local store is quiet', async () => {
+    const { restore } = await import('../../plugin/scripts/ruflo-memory-hooks.mjs');
+    const r = await restore({ cwd: project({ store: false }), resolve: refusing, bin: '/nonexistent/ruflo' });
+    expect(r).toEqual({ status: 'unavailable', context: '' });
+  });
+
+  it('refusal with a local store says refused and reads nothing; a resolver timeout says unknown', async () => {
+    const { restore } = await import('../../plugin/scripts/ruflo-memory-hooks.mjs');
+    const dir = project(); const fake = loggingRuflo(dir, { rows: {} });
+    const refused = await restore({ cwd: dir, resolve: refusing, bin: fake.bin });
+    expect(refused.status).toBe('refused'); expect(refused.context).toContain('CONTINUITY UNKNOWN');
+    const timeout = () => { throw new Error('Git project identity timed out'); };
+    expect((await restore({ cwd: dir, resolve: timeout, bin: fake.bin })).status).toBe('unknown');
+    expect(fake.launches()).toEqual([]);
+  });
+
+  const KEY = 'project-state-current-1791000000300';
+  it.skipIf(!POSIX)('list ok + exact retrieve fails => unknown, restoredKeys empty', async () => {
+    const { restore } = await import('../../plugin/scripts/ruflo-memory-hooks.mjs');
+    const dir = project(); const fake = loggingRuflo(dir, { rows: { [path.basename(dir)]: [{ key: KEY, createdAt: 300 }] }, readFails: [KEY] });
+    const r = await restore({ cwd: dir, bin: fake.bin, deadlineAt: Date.now() + 5000 });
+    expect(r.status).toBe('unknown'); expect(r.restoredKeys).toEqual([]); expect(r.context).toContain('(exact read failed)');
+  });
+
+  it.skipIf(!POSIX)('1 of 2 exact reads ok => partial', async () => {
+    const { restore } = await import('../../plugin/scripts/ruflo-memory-hooks.mjs');
+    const dir = project(); const AUTO = 'project-state-auto-1791000000900-abcd1234';
+    const fake = loggingRuflo(dir, { rows: { [path.basename(dir)]: [{ key: KEY, createdAt: 300 }, { key: AUTO, createdAt: 900 }] }, readFails: [AUTO] });
+    const r = await restore({ cwd: dir, bin: fake.bin, deadlineAt: Date.now() + 5000 });
+    expect(r.status).toBe('partial'); expect(r.restoredKeys).toEqual([KEY]);
+  });
+
+  it.skipIf(!POSIX)('one namespace list fails but another yields a checkpoint => partial, naming the unreadable namespace', async () => {
+    const { restore } = await import('../../plugin/scripts/ruflo-memory-hooks.mjs');
+    const dir = project(); const name = path.basename(dir);
+    const failing = name.toLowerCase() === name ? 'default' : name.toLowerCase();   // a checkpoint namespace other than the one with the row
+    const fake = loggingRuflo(dir, { rows: { [name]: [{ key: KEY, createdAt: 300 }] }, listFails: [failing] });
+    const r = await restore({ cwd: dir, bin: fake.bin, deadlineAt: Date.now() + 5000 });
+    expect(r.restoredKeys).toEqual([KEY]);
+    expect(r.status).toBe('partial');
+    expect(r.context).toContain('CONTINUITY INCOMPLETE');
+    expect(r.context).toContain(`did not answer for ${failing}`);
+    // control: the same row with every list answering is a genuine `restored`
+    const ok = await restore({ cwd: dir, bin: loggingRuflo(dir, { rows: { [name]: [{ key: KEY, createdAt: 300 }] } }).bin, deadlineAt: Date.now() + 5000 });
+    expect(ok.status).toBe('restored');
+    expect(ok.context).not.toContain('INCOMPLETE');
+  });
+
+  it.skipIf(!POSIX)('some namespace lists fail and the rest are empty => unknown, never empty', async () => {
+    const { restore } = await import('../../plugin/scripts/ruflo-memory-hooks.mjs');
+    const dir = project();
+    const fake = loggingRuflo(dir, { rows: {}, listFails: [path.basename(dir)] });
+    const r = await restore({ cwd: dir, bin: fake.bin, deadlineAt: Date.now() + 5000 });
+    expect(r.status).toBe('unknown');
+    expect(r.context).toContain('PROJECT CONTINUITY UNKNOWN');
+    expect(r.context).not.toContain('No project-state-current-* checkpoint stored yet');
+    // control: every list answered empty is a genuine empty
+    const ok = await restore({ cwd: dir, bin: loggingRuflo(dir, { rows: {} }).bin, deadlineAt: Date.now() + 5000 });
+    expect(ok.status).toBe('empty');
+  });
+
+  it('a blocking invoke that outlasts the deadline launches nothing', async () => {
+    const { rufloMemory } = await import('../../plugin/scripts/ruflo-memory-hooks.mjs');
+    let ran = 0;
+    const r = await rufloMemory(['list'], { db: '/x/memory.db', bin: '/x/ruflo', deadlineAt: Date.now() + 30,
+      invoke: () => { const end = Date.now() + 100; while (Date.now() < end); return { executable: 'x', args: [] }; },
+      run: () => { ran += 1; } });
+    expect(ran).toBe(0); expect(r).toMatchObject({ ok: false, error: 'deadline exceeded before launch' });
+  });
+
+  it('an already-aborted signal launches nothing', async () => {
+    const { rufloMemory } = await import('../../plugin/scripts/ruflo-memory-hooks.mjs');
+    let ran = 0; const c = new AbortController(); c.abort();
+    const r = await rufloMemory(['list'], { db: '/x/memory.db', bin: '/x/ruflo', signal: c.signal, run: () => { ran += 1; } });
+    expect(ran).toBe(0); expect(r.error).toBe('cancelled');
+  });
+
+  it.skipIf(!POSIX)('a mid-run abort SIGKILLs a SIGTERM-ignoring child and resolves only after it exits', async () => {
+    const { rufloMemory } = await import('../../plugin/scripts/ruflo-memory-hooks.mjs');
+    const { execFile } = await import('node:child_process');
+    const dir = project({ store: false }); const pidFile = path.join(dir, 'pid');
+    const body = `process.on('SIGTERM',()=>{}); require('fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setInterval(()=>{},1000)`;
+    const c = new AbortController(); let closed = false;
+    const run = (exe, args, opts, cb) => { const ch = execFile(process.execPath, ['-e', body], opts, cb); ch.on('close', () => { closed = true; }); return ch; };
+    const pending = rufloMemory(['list'], { db: path.join(dir, 'memory.db'), bin: '/x/ruflo', deadlineAt: Date.now() + 20_000, signal: c.signal,
+      invoke: () => ({ executable: 'x', args: [] }), run });
+    const t = Date.now();
+    while (!fs.existsSync(pidFile) && Date.now() - t < 5000) await new Promise((r) => setTimeout(r, 20));
+    const pid = Number(fs.readFileSync(pidFile, 'utf8'));
+    c.abort();
+    const r = await pending;
+    expect(r).toMatchObject({ ok: false, error: 'cancelled' });
+    expect(closed).toBe(true);
+    expect(() => process.kill(pid, 0)).toThrow(); // child is really gone
+  }, 15_000);
+
+  // #501: sh is killed but its grandchild `sleep` keeps stdout open, so execFile's callback (which waits for
+  // the pipes to close) did not fire until the deadline: measured 5006 ms. Abort must destroy the pipes.
+  it.skipIf(!POSIX)('a mid-run abort resolves promptly even when a grandchild still holds the child stdout', async () => {
+    const { rufloMemory } = await import('../../plugin/scripts/ruflo-memory-hooks.mjs');
+    const { execFile } = await import('node:child_process');
+    const c = new AbortController();
+    const run = (exe, args, opts, cb) => execFile('sh', ['-c', 'sleep 6; echo done'], opts, cb);
+    const pending = rufloMemory(['list'], { db: '/x/memory.db', bin: '/x/ruflo', deadlineAt: Date.now() + 5000, signal: c.signal,
+      invoke: () => ({ executable: 'x', args: [] }), run });
+    await new Promise((r) => setTimeout(r, 300));
+    const t = Date.now();
+    c.abort();
+    const r = await pending;
+    const took = Date.now() - t;
+    expect(r).toMatchObject({ ok: false, error: 'cancelled' });
+    expect(took).toBeLessThan(1500); // sync-version-ignore: a latency bound on a test fixture, not a product fact
+  }, 15_000);
+
+  // Abort and timeout must end the whole process group: two `sleep` grandchildren outlived the abort (their cwd was
+  // deleted under them).
+  const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  const grandchildren = async (how) => {
+    const { rufloMemory, spawnDetached } = await import('../../plugin/scripts/ruflo-memory-hooks.mjs');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rmh-grand-')); const pids = path.join(dir, 'pids');
+    const c = new AbortController();
+    const run = (exe, args, opts, cb) => spawnDetached('sh', ['-c', `sleep 30 & echo $! >> ${pids}; sleep 30 & echo $! >> ${pids}; wait`], opts, cb);
+    const pending = rufloMemory(['list'], { db: path.join(dir, 'memory.db'), bin: '/x/ruflo', deadlineAt: Date.now() + (how === 'timeout' ? 1200 : 20_000),
+      signal: c.signal, invoke: () => ({ executable: 'x', args: [] }), run });
+    const t = Date.now();
+    while ((!fs.existsSync(pids) || fs.readFileSync(pids, 'utf8').trim().split('\n').length < 2) && Date.now() - t < 5000) await new Promise((r) => setTimeout(r, 20));
+    const list = fs.readFileSync(pids, 'utf8').trim().split('\n').map(Number);
+    if (how === 'abort') c.abort();
+    const r = await pending;
+    await new Promise((res) => setTimeout(res, 300));
+    const survivors = list.filter(alive);
+    survivors.forEach((pid) => { try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ } });
+    fs.rmSync(dir, { recursive: true, force: true });
+    return { r, list, survivors };
+  };
+  // SHOULD-1 (round-2 gate): a hook killed by its host (SIGKILL of its process group) must not leave the ruflo child or its
+  // grandchildren behind, and a child needs a deadline of its own. The parent below is a real separate node process.
+  const orphanProbe = async (mode) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rmh-orphan-')); const pids = path.join(dir, 'pids'); const script = path.join(dir, 'parent.mjs');
+    const hooks = path.join(ROOT, 'plugin/scripts/ruflo-memory-hooks.mjs');
+    fs.writeFileSync(script, `import { spawnDetached } from ${JSON.stringify(hooks)};
+spawnDetached('sh', ['-c', 'echo $$ >> ${pids}; sleep 60 & echo $! >> ${pids}; wait'], { cwd: ${JSON.stringify(dir)}, env: process.env, timeout: ${mode === 'frozen' ? 600 : 50_000} }, () => {});
+${mode === 'frozen' ? "setTimeout(() => process.kill(process.pid, 'SIGSTOP'), 300);" : ''}
+setInterval(() => {}, 1000);\n`);
+    const parent = spawn(process.execPath, [script], { detached: true, stdio: 'ignore' });
+    const t = Date.now();
+    while ((!fs.existsSync(pids) || fs.readFileSync(pids, 'utf8').trim().split('\n').length < 2) && Date.now() - t < 5000) await new Promise((r) => setTimeout(r, 20));
+    const list = fs.readFileSync(pids, 'utf8').trim().split('\n').map(Number);
+    if (mode === 'kill-parent') process.kill(-parent.pid, 'SIGKILL');   // the host kills the hook's group
+    const until = Date.now() + (mode === 'frozen' ? 9000 : 5000);
+    let survivors = list.filter(alive);
+    while (survivors.length && Date.now() < until) { await new Promise((r) => setTimeout(r, 100)); survivors = list.filter(alive); }
+    const after = Date.now() - t;
+    try { process.kill(-parent.pid, 'SIGKILL'); } catch { /* gone */ }
+    list.forEach((pid) => { try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ } });
+    fs.rmSync(dir, { recursive: true, force: true });
+    return { list, survivors, after };
+  };
+  it.skipIf(!POSIX)('SIGKILL of the hook process group leaves no ruflo child or grandchild', async () => {
+    const { list, survivors } = await orphanProbe('kill-parent');
+    expect(list).toHaveLength(2); expect(survivors).toEqual([]);
+  }, 20_000);
+  it.skipIf(!POSIX)('a child enforces its own deadline when its parent is frozen (no parent timer can fire)', async () => {
+    const { list, survivors, after } = await orphanProbe('frozen');
+    expect(list).toHaveLength(2); expect(survivors).toEqual([]);
+    expect(after).toBeLessThan(8000); // timeout 600 + 2000 grace + startup; a bound, not a product number // sync-version-ignore: latency bound on a test fixture
+  }, 20_000);
+
+  it.skipIf(!POSIX)('abort kills the whole process group: no grandchild survives', async () => {
+    const { r, list, survivors } = await grandchildren('abort');
+    expect(list).toHaveLength(2); expect(r.error).toBe('cancelled'); expect(survivors).toEqual([]);
+  }, 20_000);
+  it.skipIf(!POSIX)('timeout kills the whole process group: no grandchild survives', async () => {
+    const { r, list, survivors } = await grandchildren('timeout');
+    expect(list).toHaveLength(2); expect(r.error).toBe('timed out'); expect(survivors).toEqual([]);
+  }, 20_000);
 });

@@ -54,7 +54,6 @@ fix PR. A generated prompt passing tests is not proof that a hosted worker follo
 it. Technical enforcement additionally requires restricting that worker's GitHub
 write path; the configuration alone does not remove direct issue-creation tools.
 
-`scripts/issue-fix.mjs` consumes existing issues. Its scheduled mode only triages;
-its supervised mode prepares local candidates without public writes. It is not the
+`scripts/issue-fix.mjs` consumes existing issues. Its scheduled `unattended` mode only triages; its `supervised` mode prepares local candidates without public writes; its daily `autofix` mode (ADR-107) fixes and ships a person's issue through the protected release gates and never consumes Dream issues or PRs. It is not the
 Dream issue producer, so changing it would not prevent the cloud routine's issue
 creation. Existing backlog reconciliation belongs to the integration owner.

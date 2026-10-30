@@ -119,7 +119,10 @@ describe('SessionStart knowledge currency', () => {
     expect(text).toContain('passed its knowledge update phase');
     expect(text).not.toContain('installed the knowledge');
     // A restart writes no receipt, so the fix must name the step that records the sync.
-    expect(text).toContain('then record it: npx ruvnet-brain@latest --update');
+    expect(text).toContain('then record it: npx ruvnet-brain@latest --update --host-sync-only');
+    // `--host-sync-only` only works inside `--update` (bin/install.mjs runUpdate); alone it runs a full install.
+    expect(text).not.toMatch(/(?<!--update )--host-sync-only/);
+    expect(text).not.toMatch(/--update(?! --host-sync-only)/);
     expect(text).not.toContain('since the last success (none recorded)');
   });
 
@@ -168,7 +171,9 @@ describe('SessionStart knowledge currency', () => {
     expect(text).not.toContain('UPDATE FAILING');
     expect(text).toContain(`${KNOWLEDGE_LINE_PREFIX}CURRENT, HOST SYNC PENDING]`);
     expect(text).toContain('no reason recorded');
-    expect(text).toContain('Fix: npx ruvnet-brain@latest --update');
+    expect(text).toContain('Fix: npx ruvnet-brain@latest --update --host-sync-only');
+    expect(text).not.toMatch(/--update(?! --host-sync-only)/);
+    expect(text).not.toMatch(/(?<!--update )--host-sync-only/);
   });
 
   it('still says UPDATE FAILING when a corpus phase failed, and never pairs "since the last success" with "none recorded"', () => {

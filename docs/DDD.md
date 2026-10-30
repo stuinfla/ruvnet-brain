@@ -1,6 +1,6 @@
 # RuvNet Brain — Domain Model (DDD)
 
-`Updated: 2026-08-22 12:15 EDT | v0.3`
+`Updated: 2026-10-29 12:00 EDT | v0.4`
 
 RuvNet Brain is two coupled products: a **build-and-serve pipeline** (make the knowledge bundle) and a
 **live partner** (behave like rUv on the user's shoulder, and keep itself honest and current). DDD here
@@ -11,6 +11,8 @@ proposal-contract, currency, self-improvement) and the **self-QA** discipline of
 the Enforcement invariant to what actually ships. v0.3 separates installed-cache currency, explicit
 author candidate builds, Dream evaluation, and protected publication so no unattended source writer
 owns a developer checkout.
+
+v0.4 (ADR-107) admits exactly one bounded unattended source writer, **Issue Autofix**: it owns only its own clone and linked worktrees, never a developer checkout; it writes only `release/*` branches; `main` moves only by the protected exact-SHA fast-forward; it is stopped by a kill switch, a single-writer lock, one release per day and a security gate whose any finding blocks that release.
 
 ## Ubiquitous language
 - **Repo** — a RuvNet GitHub repository at a pinned commit SHA.
@@ -46,7 +48,7 @@ owns a developer checkout.
 6. **Evergreen / Currency** — the single owner of "is anything stale?" (ADR-0009 decision 6): registry,
    explicit clean-worktree candidate rebuilds, the installed-cache updater, and user-side
    plugin/KB/stack-package checks. *Invariant:* one version-compare implementation, one stamp
-   discipline; a stale brain pages; an author builder never publishes; only the protected exact-SHA
+   discipline; a stale brain pages; an author builder never publishes; the one unattended source writer (Issue Autofix) holds no publish operation and reaches users only through that workflow, after an independent verifier's RESOLVED verdict; only the protected exact-SHA
    workflow may ship a passing artifact.
 
 ### Live partner (behave like rUv, stay honest)
@@ -94,6 +96,7 @@ The events that cross context boundaries — the seams where behavior is trigger
   `MemoryOfferMade` / `StackUpdateOffered` (once per session).
 - **`BuildRequested`** → `ArchitectureProposed` (Proposal-Contract) → `GoAheadGiven` → `BuildProven`
   (Self-Improvement's verify/score close). `DriftNudged` fires from Enforcement on a classical-default prompt.
+- **`IssueEligible`** → `FixPlanned` → `FixBuilt` → `FixScanned` → **`FixVerified`** (independent, RESOLVED + sandboxed re-run evidence) → `NightBatched` (one release for every verified fix) → `BatchSecurityCleared` → `CandidateQualified` → **`ReleaseInstallVerified`** → `ReporterNotified` (one personal note per person). A failing fix emits `FixDropped` and only that issue leaves the batch; a hostile one also emits `SecurityHold`. A red before `main` moves emits `AutofixAborted` (private page); after `main` has moved a red emits `AutofixHalted` and a transient failure `AutofixPaused` (resumed by the next run). `FindingsReported` when it cannot be fixed.
 - **`VariantEvaluated`** → **`VariantPromoted`** *or* `VariantRejected` (Self-Improvement: only on beating the
   frozen suite with no regression).
 - **`DocCurrencyViolationFound`**, **`ADRDriftFound`**, **`DDDBoundaryViolationFound`** (Self-QA) → a surfaced

@@ -21,12 +21,13 @@ function fixture() {
     authorization: { kind: 'user', reference: 'user-turn-fixture-1' }, at: new Date().toISOString() };
   return { root, repo, ledger, objective };
 }
+let promptSeq = 0;
 function run(f, { objective = f.objective, cwd = f.repo, payload = {}, items, args = [] } = {}) {
   fs.writeFileSync(f.ledger, JSON.stringify({ objective, items: items || [
     { text: 'legacy unscoped promise', done: false, at: new Date().toISOString() },
   ] }));
   return spawnSync(process.execPath, [GATE, ...args], { cwd, encoding: 'utf8',
-    input: JSON.stringify({ hook_event_name: 'Stop', session_id: 'session-1', cwd, ...payload }),
+    input: JSON.stringify({ hook_event_name: 'Stop', session_id: 'session-1', prompt_id: `p${++promptSeq}`, cwd, ...payload }),
     env: { ...process.env, RUVNET_WORK_LEDGER: f.ledger, RUVNET_CONTINUATION_COOLDOWN_MS: '0',
       RUVNET_OPEN_ISSUES_FILE: path.join(f.root, 'absent-open.json'),
       RUVNET_CI_STATUS_FILE: path.join(f.root, 'absent-ci.json') } });

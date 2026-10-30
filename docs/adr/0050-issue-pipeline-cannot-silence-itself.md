@@ -9,8 +9,8 @@ updated: 2026-10-25
 # tests/unit/fix-workstream-guidance.test.mjs. Do not let a currency stamp move it.
 updated_pinned: true
 impl: wired
-reviewed_digest: 0479f7f2da2d
-version: 1.0.4
+reviewed_digest: 9d7803f5c88b
+version: 1.1.0
 authors: [Stuart Kerr, Claude Code]
 tags: [issues, automation, alerting, sla, security, circuit-breaker]
 supersedes: []
@@ -209,17 +209,22 @@ The four parallel agents working tonight support this distinction. They show tha
 
 **Dissent register:** None. Fable’s marker proposal is accepted for immediate containment; GPT’s identity objection governs the durable invariant.
 
+## Amendment — 2026-10-29 (ADR-107)
+
+The owner reversed "The fixer's future" above (scheduled = read-only; autonomous public action only after the GitHub App boundary). ADR-107 governs the new `autofix` mode and runs under the owner's token until the App follow-up lands. I1 and I2 bind autofix unchanged: every autofix comment begins with `BOT_MARKER`, so no autofix comment is ever a human response and the SLA page and morning summary keep firing until the maintainer replies in person. I3 is amended (2026-10-30, ADR-107 2.0.0): after the one acknowledgment a reporter sees at most one outcome comment per shipped version (`fixed` / `shipping`), at most one `findings` or `not-fixed` comment per issue update, and at most one `reply` per issue, ever (a request or question the maintainer must decide) — never a progress or timeout note. `not-fixed` says plainly that a fix was tried and did not pass verification, without revealing what any security check found; operational failures stay private (ntfy + heartbeat). The circuit breaker (`ISSUE_FIX_MAX_FAILED_ATTEMPTS`, default 1) applies to autofix attempts. The `unattended` and `supervised` modes are unchanged.
+
 ## Consequences
 
 - The watcher/fixer state file gains fields (`firstSeenAt`, `newAlertAt`, `failCount`); old
   records remain readable (spread-merges tolerate missing fields).
-- Reporters see at most one automation comment per issue, ever.
+- Reporters see at most one automation comment per issue, ever (amended by ADR-107: acknowledgment plus outcome/findings comments as defined there).
 - The maintainer's phone learns about every new issue within one watcher cycle; a fixer
   giving up is a distinct urgent page.
 - tests/unit/issue-automation.test.mjs pins all three incident mechanisms as known-bad
   regressions (8 of 12 assertions fail on the pre-fix code, proven by stash-mutation).
 
 ## Currency log
+| 2026-10-29 | Review `9d7803f5c88b` (amendment, ADR-107): the owner reversed "The fixer's future"; ADR-050 gains an Amendment section and its I3 reporter contract is widened to outcome and findings comments, with I1 and I2 unchanged. `scripts/issue-fix.mjs` gained `executionPolicy('autofix')`, a shared O_EXCL lock (`scripts/issue-fix-lock.mjs`) and a delegation to `scripts/issue-autofix.mjs`; the `unattended` and `supervised` branches are byte-identical. Author review, single seat, not independently re-reviewed; `updated:` stays pinned to the incident cutoff. | Read the staged `scripts/issue-fix.mjs` diff (mode policy, lock, autofix delegation); `docs/adr/0107-issue-autofix-bounded-unattended-writer.md` records the decision and what it gives up. The simulation and the supervised live dry-run have not been run. |
 | 2026-10-25 | Review `0479f7f2da2d` (4.7.21): decision unchanged; the pipeline still cannot silence itself. `scripts/issue-watch.mjs`, `scripts/issue-fix.mjs` and `plugin/scripts/session-start-core.mjs` changed only by the entry-point sweep (each file's own main-module check replaced by `isDirectInvocation` from `plugin/scripts/entrypoint.mjs`). `plugin/skills/ruvnet-brain/SKILL.md` rewords the optional-recommendation line as a statement, never a question or approval dialog (#489); acknowledgment, escalation, paging and the fixer's stop conditions are untouched. | Reviewed diffs 320b778b..63ca7c0d for `scripts/issue-watch.mjs`, `scripts/issue-fix.mjs`, `plugin/scripts/session-start-core.mjs` and `plugin/skills/ruvnet-brain/SKILL.md`. |
 | 2026-10-25 | Review `30b953c3e054` (4.7.20): decision unchanged; the pipeline still cannot silence itself. `scripts/issue-watch.mjs` now pages a person's issue once at the 4 h SLA (never the owner's or a bot's), adds one 9 a.m. ET summary, and leaves the arrival page to `.github/workflows/ntfy-alerts.yml` (which retries delivery and fails visibly); the acknowledgment comment and SLA tracking are unchanged. `plugin/scripts/session-start-core.mjs` admits one new counts-only NTFY status line. | Reviewed `scripts/issue-watch.mjs` and `plugin/scripts/session-start-core.mjs` diffs 5b1f5c59..HEAD; tests issue-watch-paging, issue-watch-retry, session-start-core-parity. Owner-reported cause: 10,747 notifications on one topic (2026-10-25). |
 | 2026-10-05 | Reviewed current source and recorded remaining limitations; no verification or implementation-status promotion. | reviewed_digest 217aeebc7672; inspected `scripts/issue-watch.mjs` and all expanded governs against source 5d9ea4df. Independent review preserved incident dates, Proposed/expired states and historical evidence; notification and oldest-runtime limits are explicit. |

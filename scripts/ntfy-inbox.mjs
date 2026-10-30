@@ -64,6 +64,21 @@ export function classify(msg) {
   // "✅ X is healthy again". Same cause, same key, so either recovery closes either failure.
   if ((m = /SCHEDULED JOB FAILED: (\S+)/.exec(title)) || (m = /^\W*(?:FAILING|NEVER-RAN|STALE|MISSING|STALLED|STUCK): (\S+)/.exec(title))) return { kind: 'job', key: `job:${m[1]}`, label: m[1], actionable: true };
   if ((m = /Recovered: (\S+)/.exec(title)) || (m = /^\W*(\S+) is healthy again/.exec(title))) return { kind: 'job-recovered', key: `job:${m[1]}`, label: m[1], actionable: false, resolves: true };
+  // The daily issue-autofix job (ADR-107) pages "AUTOFIX SHIPPED vX" / "ABORTED #n at S4" / "NEEDS OWNER #n" /
+  // "SECURITY HOLD #n" / "HALTED vX at S10" / "PAUSED vX at S11" / "STOPPED at S5" / "STANDING DOWN: reason". A ship
+  // or an owner's own stop is news, everything else is work. The responder never acts on these (its task builder knows
+  // only job/ci/issue/pr), and a halt or a security hold stays open until a person clears it.
+  if ((m = /\bAUTOFIX (SHIPPED|ABORTED|NEEDS OWNER|SECURITY HOLD|HALTED|PAUSED|STOPPED|STANDING DOWN|SELF-TEST)\b/.exec(title))) {
+    const n = /#(\d+)/.exec(title)?.[1];
+    const outcome = m[1].toLowerCase().replace(/ /g, '-');
+    if (m[1] === 'HALTED') return { kind: 'autofix', key: 'autofix:halt', outcome, actionable: true };
+    if (m[1] === 'PAUSED') return { kind: 'autofix', key: 'autofix:paused', outcome, actionable: true };
+    if (m[1] === 'STANDING DOWN') return { kind: 'autofix', key: 'autofix:standdown', outcome, actionable: true };
+    if (m[1] === 'SECURITY HOLD') return { kind: 'autofix', key: `autofix:security:${n || 'night'}`, outcome, ...(n ? { number: Number(n) } : {}), actionable: true };
+    if (m[1] === 'SELF-TEST') return { kind: 'autofix', key: 'autofix:selftest', outcome, actionable: /FAILED/.test(title) };
+    if (m[1] === 'STOPPED') return { kind: 'autofix', key: 'autofix:stopped', outcome, actionable: false };
+    return { kind: 'autofix', key: `autofix:${n || 'unknown'}`, outcome, ...(n ? { number: Number(n) } : {}), actionable: m[1] !== 'SHIPPED' };
+  }
   if ((m = /CI \w+: (.+)$/.exec(title))) {
     const b = /branch ([\w./-]{1,100})/.exec(body);
     // Keyed by workflow AND branch: a green main must never close a still-red release branch (review round 4).

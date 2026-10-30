@@ -3,8 +3,8 @@ id: ADR-106
 title: The hook standard — one registration per role, refuse only on a fact, AgentDB before and after decisions
 status: Proposed
 date: 2026-10-11
-updated: 2026-10-13 14:55:00 EDT
-version: 0.6.1
+updated: 2026-10-29 22:09:00 EDT
+version: 0.6.2
 authors: [Stuart Kerr, Claude Opus 5.5]
 tags: [hooks, agentdb, decisions, continuity, codex, claude-code]
 relates: [ADR-0012, ADR-040, ADR-043, ADR-054, ADR-067, ADR-074, ADR-075, ADR-100, ADR-103, ADR-105]
@@ -321,3 +321,4 @@ reads the ruflo database directly, `decision-record.mjs` keeps refusals on disk,
 `turn-outcome-capture.mjs` keeps local receipt and dedupe files. The write-time wall lists the last as
 known debt. Each is a violation of the ruling above until it is replaced by a `ruflo` call.
 
+Updated 2026-10-29 22:09 EDT (#429): importing the installed Ruflo package's public `@claude-flow/cli/memory` export (`listEntries`, `getEntry`, `resolveDbPath`) in ONE owned child per hook call counts as calling Ruflo: it is the same published code `ruflo memory list` and `ruflo memory retrieve` run, so there is no second memory backend and no direct SQLite. It is used only when the resolved `ruflo` is the real package and declares that export; otherwise the per-read CLI route is kept.

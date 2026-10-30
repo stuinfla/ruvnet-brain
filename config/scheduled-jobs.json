@@ -66,11 +66,19 @@
     },
     {
       "label": "com.ruvnet.issue-fix",
-      "what": "Every 30 min: read-only triage of eligible GitHub issues (stuinfla/ruvnet-brain); no code mutation, no worktree creation, no branch push, no public comment, and no promotion. Real fixes run only in explicit session-supervised isolated worktrees.",
+      "what": "Every 30 min: read-only triage of eligible GitHub issues (stuinfla/ruvnet-brain); no code mutation, no worktree creation, no branch push, no public comment, and no promotion. Unattended fixes run only in the separate daily com.ruvnet.issue-autofix job (ADR-107); this job stays read-only.",
       "schedule": "every 30 min",
       "maxAgeHours": 3,
       "required": true,
       "maxRunHours": 1
+    },
+    {
+      "label": "com.ruvnet.issue-autofix",
+      "what": "Daily 10:30 local: fixes every eligible GitHub issue a person filed (stuinfla/ruvnet-brain) that the night's budget allows, each in its own worktree of its own clone, and ships all fixes that pass verification and the security gate as one release through the protected release gates (ADR-107); off unless the repository variable ISSUE_AUTOFIX is exactly on; halts itself after any red once main has moved",
+      "schedule": "daily 10:30",
+      "maxAgeHours": 26,
+      "required": true,
+      "maxRunHours": 10
     },
     {
       "label": "com.ruvnet.routing-flywheel",

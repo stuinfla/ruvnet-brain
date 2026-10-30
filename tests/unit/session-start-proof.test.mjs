@@ -68,4 +68,16 @@ describe('optional SessionStart stage evidence', () => {
     expect(receipt.restore.failed).toBe(true); expect(receipt.stages.some((stage) => stage.name === 'banner')).toBe(true);
     expect(JSON.stringify(receipt)).not.toContain('private failure message');
   });
+  it.each([
+    [{ status: 'unknown' }, true], [{ status: 'partial' }, true], [{ status: 'refused' }, true],
+    [{ brief: { status: 'partial' } }, true], [{ brief: { status: 'refused' } }, true],
+    [{ status: 'restored' }, false], [{ status: 'empty' }, false], [{ status: 'unavailable', context: '' }, false], [{ context: '' }, false],
+  ])('restore %j records failed:%s in the proof', async (continuity, failed) => {
+    const f = fixture();
+    await runSessionStart({ env: { HOME: f.root, RUVNET_BRAIN_HOME: path.join(f.root, 'brain'),
+      RUVNET_BRAIN_OFF: '1', RUVNET_BRAIN_METER: '0', ...f.env }, cwd: f.root,
+      stdout: { write() {} }, stderr: { write() {} }, runHeartbeat: false, restoreContinuity: async () => continuity });
+    if (process.platform === 'win32') return;
+    expect(JSON.parse(fs.readFileSync(f.file)).restore.failed).toBe(failed);
+  });
 });

@@ -214,7 +214,8 @@ export async function runSessionStart({
     const continuity = await Promise.race([Promise.resolve().then(() => restoreContinuity({ env, cwd,
       deadlineAt: restoreDeadlineAt, signal: restoreController.signal })), expired]);
     if (Date.now() >= restoreDeadlineAt) throw new Error('restore deadline exceeded');
-    restoreFailed = continuity?.status === 'unknown' || continuity?.brief?.status === 'unknown';
+    const bad = ['unknown', 'partial', 'refused'];
+    restoreFailed = bad.includes(continuity?.status) || bad.includes(continuity?.brief?.status);
     if (continuity?.context) emit(continuity.context);
   } catch (error) {
     restoreController.abort();

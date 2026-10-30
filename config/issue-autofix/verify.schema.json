@@ -1,0 +1,65 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "verdict",
+    "evidence",
+    "summary",
+    "risks"
+  ],
+  "properties": {
+    "verdict": {
+      "enum": [
+        "RESOLVED",
+        "NOT_RESOLVED",
+        "NEEDS_OWNER"
+      ]
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "file",
+          "line",
+          "claim"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "test",
+              "code"
+            ]
+          },
+          "file": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "claim": {
+            "type": "string",
+            "maxLength": 400
+          },
+          "command": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "string",
+      "maxLength": 800
+    },
+    "risks": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 300
+      }
+    }
+  }
+}

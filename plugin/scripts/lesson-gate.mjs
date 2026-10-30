@@ -80,6 +80,8 @@ import {
   CONFIG_ROOT,
   loadLessons,
   lessonsFor,
+  projectNameFor,
+  lessonApplies,
   ENFORCEMENT,
   STATUS,
   ORIGIN,
@@ -263,42 +265,8 @@ const gateState = event ? readGateState() : {};
  * the fastest way to make someone uninstall a nudge is to nudge them about something that has
  * nothing to do with what they are doing.
  */
-const HERE = (() => {
-  let d = process.cwd();
-  for (let i = 0; i < 12; i++) {
-    if (fs.existsSync(path.join(d, '.git'))) break;
-    const up = path.dirname(d);
-    if (up === d) { d = process.cwd(); break; }
-    d = up;
-  }
-  return path.basename(d);
-})();
-/**
- * A "suffix match" for project names, bounded so it cannot fire on a bare shared tail. `a` matches
- * `b` when `b` is a whole path/name SEGMENT suffix of `a` — the character immediately before it must
- * be a separator, never a mid-word letter. Without this, "Sentry" matched inside "WhitSentry" and any
- * project name that merely happens to end another's, which is the exact cross-project leak the
- * 2026-07-22 project-scope fix (this same function, below) was written to close.
- */
-const segmentSuffixMatch = (a, b) => {
-  if (a === b) return true;
-  if (a.length <= b.length || !a.endsWith(b)) return false;
-  return /[-_/]/.test(a[a.length - b.length - 1]);
-};
-
-/** Does this lesson belong to the project we are standing in? Match is loose on purpose — stored
- *  names carry prefixes like `Code-` that the directory name does not — but bounded to a real
- *  delimiter so it cannot match a bare, accidental shared suffix between unrelated projects. */
-const isHome = (l) => {
-  const ps = Array.isArray(l.projects) ? l.projects : [];
-  if (!ps.length) return true;                       // unscoped: applies anywhere, by declaration
-  return ps.some((p) => {
-    const n = String(p).replace(/^Code-/, '');
-    return n === HERE || String(p) === HERE
-      || segmentSuffixMatch(HERE, n) || segmentSuffixMatch(n, HERE);
-  });
-};
-const isUniversal = (l) => Array.isArray(l.projects) && l.projects.length >= 2;
+const HERE = projectNameFor(process.cwd());
+const applies = (l) => lessonApplies(l, HERE);
 
 // Apply the mutate-machine predicate defined above. `mutate-machine` is requested for EVERY Bash
 // call (plugin/scripts/lesson-hooks.sh:98) — it is the ONLY trigger the dispatcher fires unconditionally
@@ -313,10 +281,10 @@ const effectiveTriggers = command === null
 const seen = new Set();
 const candidates = [];
 for (const t of effectiveTriggers) {
-  for (const l of lessonsFor(t, lessons.filter((l) => isHome(l) || isUniversal(l)), { limit: 3 })) {
+  for (const l of lessonsFor(t, lessons.filter(applies), { limit: 3 })) {
     if (seen.has(l.id)) continue;
-    // Away from home, only a lesson with cross-project evidence may speak.
-    if (!isHome(l) && !isUniversal(l)) continue;
+    // Away from home, only a lesson with cross-project evidence may speak (lessonApplies: one rule, shared with the Console).
+    if (!applies(l)) continue;
     seen.add(l.id); candidates.push(l);
   }
 }

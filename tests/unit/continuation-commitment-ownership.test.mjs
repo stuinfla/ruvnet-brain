@@ -241,3 +241,88 @@ describe('pronoun-only promises and double-quoted promise names (#369)', () => {
     expect(evidence.promiseClosingClaim({ verdict: 'PASS', claims: extractCompletionClaims(quoteOnly) }, quoteOnly, item)).toBeNull();
   });
 });
+
+describe('#369 per-promise forcing limit (RUVNET_PROMISE_MAX_FORCES, default 3)', () => {
+  it('forces a promise exactly three times, then retains it as deferred and stops forcing (separate process per stop)', () => {
+    const f = fixture();
+    const outs = [f.stop('session-A', promise).stdout];            // capture stop = force 1
+    for (let i = 0; i < 4; i += 1) outs.push(f.stop('session-A').stdout);
+    expect(outs.map((o) => o.includes('you said you would'))).toEqual([true, true, true, false, false]);
+    expect(f.read().items[0]).toMatchObject({ done: false, state: 'deferred' });
+    expect(f.read().items[0].stateReason).toContain('retained, not completed');
+  });
+
+  it('the quiet default never forces a promise at all (so there is nothing to cap), and a lower limit is honoured', () => {
+    const quiet = fixture(); quiet.env.RUVNET_STOP_NUDGES = '';
+    expect(quiet.stop('session-A', promise).stdout).toBe('');
+    expect(quiet.stop('session-A').stdout).toBe('');
+    const tight = fixture(); tight.env.RUVNET_PROMISE_MAX_FORCES = '1';
+    const outs = [tight.stop('session-A', promise).stdout, tight.stop('session-A').stdout, tight.stop('session-A').stdout];
+    expect(outs.map((o) => o.includes('you said you would'))).toEqual([true, false, false]);
+  });
+});
+
+describe('#369 evidenced promises (observed check, never completion)', () => {
+  const cmdPromise = "I'll run `npm run hooks:check` for the hook wiring.";
+  const claim = '"run for the hook wiring" is done.';
+  const answer = `${claim}\nVerified: npm run hooks:check — PASS.\nNot verified: Codex.`;
+  const step = (name, input, out) => [
+    { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: name, name: input.file_path ? 'Edit' : 'Bash', input }] } },
+    { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: name, content: out.text, is_error: out.error === true }] } }];
+  function steps(f, ...list) {
+    fs.writeFileSync(f.transcript, [{ type: 'user', message: { role: 'user', content: 'fixture task' } },
+      ...list.flatMap((s, i) => step(`s${i}`, s.input, s.out))].map(JSON.stringify).join('\n'));
+  }
+  const EDIT = { input: { file_path: '/repo/a.mjs' }, out: { text: 'ok' } };
+  const check = (command = 'npm run hooks:check', out = { text: 'PASS' }) => ({ input: { command }, out });
+  const captured = () => { const f = fixture(); f.stop('session-A', cmdPromise); return f; };
+
+  it('captures the inline-code commands of the original sentence (max 2)', () => {
+    expect(extractCommitments(cmdPromise)[0].evidenceCommands).toEqual(['npm run hooks:check']);
+    expect(extractCommitments("I will run `npm run a` and `npm run b` and `npm run c` for the wiring.")[0].evidenceCommands).toHaveLength(2);
+    expect(extractCommitments(promise)[0].evidenceCommands).toBeUndefined();
+    const f = captured();
+    expect(f.read().items[0].evidenceCommands).toEqual(['npm run hooks:check']);
+  });
+
+  it('a quoted claim plus the promised check after the edit => evidenced, not done, no longer forced', () => {
+    const f = captured(); steps(f, EDIT, check());
+    expect(f.stop('session-A', answer).stdout).toBe('');
+    const item = f.read().items[0];
+    expect(item).toMatchObject({ done: false, state: 'evidenced',
+      closureEvidence: { command: 'npm run hooks:check', auditVerdict: 'UNKNOWN', authority: false } });
+    expect(item.closureEvidence.claim).toContain('is done');
+    expect(f.stop('session-A', 'Anything else.').stdout).toBe('');
+    expect(f.read().items[0].state).toBe('evidenced');
+    expect(f.cli(['--done', item.text]).status).toBe(2);
+  });
+
+  it.each([
+    ['check ran before the edit', (f) => steps(f, check(), EDIT), 'session-A'],
+    ['a different command ran', (f) => steps(f, EDIT, check('npm test')), 'session-A'],
+    ['the promised check failed', (f) => steps(f, EDIT, check('npm run hooks:check', { text: 'FAIL', error: true })), 'session-A'],
+    ['the claim comes from another session', (f) => steps(f, EDIT, check()), 'session-B'],
+  ])('stays active when %s', (_, arrange, session) => {
+    const f = captured(); arrange(f); f.stop(session, answer);
+    expect(f.read().items[0]).toMatchObject({ done: false, state: 'active' });
+    expect(f.read().items[0].closureEvidence).toBeUndefined();
+  });
+
+  it.each([
+    ['a pipe', 'npm run hooks:check | tail -3'],
+    ['an `|| true`', 'npm run hooks:check || true'],
+    ['a `;` tail', 'npm run hooks:check; echo done'],
+    ['an env prefix', 'SKIP_HOOKS=1 npm run hooks:check'],
+  ])('stays active when the promised check ran with %s (its status is not the check\'s)', (_, command) => {
+    const f = captured(); steps(f, EDIT, check(command, { text: 'FAIL 3 failed' }));
+    f.stop('session-A', answer);
+    expect(f.read().items[0]).toMatchObject({ done: false, state: 'active' });
+    expect(f.read().items[0].closureEvidence).toBeUndefined();
+  });
+
+  it('stays active without a disclosure of what is not verified', () => {
+    const f = captured(); steps(f, EDIT, check());
+    f.stop('session-A', `${claim}\nVerified: npm run hooks:check — PASS.`);
+    expect(f.read().items[0].state).toBe('active');
+  });
+});

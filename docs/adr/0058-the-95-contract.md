@@ -3,11 +3,11 @@ id: ADR-058
 title: The 95 contract — one observable per dimension, one mutant per observable, and the external-signal watch plane
 status: Proposed
 date: 2026-07-27
-updated: 2026-10-26
+updated: 2026-10-30
 updated_source: derived-from-git
-version: 1.1.7
+version: 1.1.8
 impl: wired
-reviewed_digest: 13b8eadd2b00
+reviewed_digest: 77b919b3a69e
 authors: [Stuart Kerr, Claude Fable 5, GPT-5.6-Sol (codex)]
 tags: [qa, gen2-qe, grading, external-signals, ci-watch, release-gate, mutation]
 supersedes: []
@@ -90,6 +90,7 @@ UNKNOWN, and no new behavioral learning result is claimed.
 
 ## Currency log
 
+| 2026-10-30 | Review `77b919b3a69e` (4.7.23): threshold unchanged. `scripts/no-silent-substitution.mjs` counts a module as a state-file appender only on an append CALL (`appendFileSync(`, `appendFile(`, `createWriteStream(`), not on the name inside a string: the ADR-107 security scanner names `appendFile` in its malware patterns and writes nothing. The inventory found the same 39 appenders before and after, minus that false positive; `tests/unit/no-silent-substitution.test.mjs` pins both directions. Reviewed by the integration agent (Claude Opus 5.5), not a person. | `scripts/no-silent-substitution.mjs`, `tests/unit/no-silent-substitution.test.mjs`. |
 | 2026-10-26 | Review `13b8eadd2b00`: D4 gate redesigned, threshold unchanged. The scheduled `learning-replay` gated only on the currency of the token-priced portfolio, which nothing scheduled refreshes, so it was red every morning from 2026-09-21. It also missed a real regression: from 4.7.8 the quiet shim silenced every lesson delivery. The schedule now gates hard on `--check-wire`, a token-free brain-half measurement on HEAD (record in two projects, promote, refresh, delivery on the Claude and Codex paths, a silent brain-off control, a silent delete-lesson mutant). Portfolio currency is reported every night, is hard on dispatch, and still drives D4 UNKNOWN in release-vector. The model-behaviour half stays UNKNOWN until it is re-measured. | `.github/workflows/learning-replay.yml`; `scripts/learning-replay-cli.mjs`; `tests/unit/learning-replay.test.mjs`; run 40170584768. |
 | 2026-10-25 | Review `fcda0e66fec6` (4.7.21): decision unchanged. Of 16 moved governed files, 15 changed only by the entry-point sweep (`kb/forge-big.mjs`, `scripts/qe/card-lane-gate.mjs`, `scripts/release-proof.mjs`, `plugin/scripts/session-start-core.mjs` and the rest now call `isDirectInvocation`, which compares real paths on both sides; the copies that used `path.resolve` now run through a symlink instead of exiting 0 having done nothing, which strengthens these gates). `bin/install.mjs`: Codex hook trust and app-server reload (#492), Grok reporting (#301), `--clean --archive` (#335), per-project install report (#420 item 4), real hook counts (#400). No observable, mutant or watch-plane rule moved. | Reviewed diffs 320b778b..63ca7c0d for every moved governed path, including `bin/install.mjs`, `kb/forge-big.mjs` and `scripts/qe/card-lane-gate.mjs`. |
 | 2026-10-25 | Review `89144c2de786` (4.7.20): decision unchanged. `plugin/scripts/session-start-core.mjs` gains one allow-listed status prefix for the owner's alert count; no install, hook or release behaviour this contract scores moved. | Reviewed the `plugin/scripts/session-start-core.mjs` diff 5b1f5c59..HEAD. |

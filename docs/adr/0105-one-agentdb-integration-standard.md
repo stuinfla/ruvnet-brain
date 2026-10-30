@@ -3,8 +3,8 @@ id: ADR-105
 title: One AgentDB integration standard for Claude Code and Codex hooks
 status: Accepted
 date: 2026-10-10
-updated: 2026-10-11 09:30:00 EDT
-version: 1.2.0
+updated: 2026-10-29 22:09:00 EDT
+version: 1.2.1
 authors: [Stuart Kerr, Claude Opus 5.5]
 tags: [agentdb, hooks, continuity, recall, enrollment, decisions, claude-code, codex]
 supersedes: [ADR-061, ADR-073, ADR-100, ADR-101, ADR-102]
@@ -98,6 +98,8 @@ There is **one door to project memory, and both hosts use it.** The standard has
 - A different row under the same key is quarantined and reported. It is never overwritten.
 
 ### 4. Reads give exact records first, ranked results second, under one deadline
+
+Updated 2026-10-29 22:09 EDT (#429): importing the installed Ruflo package's public `@claude-flow/cli/memory` export (`listEntries`, `getEntry`, `resolveDbPath`) in ONE owned child per hook call counts as calling Ruflo: it is the same published code `ruflo memory list` and `ruflo memory retrieve` run, so there is no second memory backend and no direct SQLite. It is used only when the resolved `ruflo` is the real package and declares that export; otherwise the per-read CLI route is kept.
 
 - Prompt recall has one shared budget of 1900 ms from entry. Every child process shares that
   deadline.

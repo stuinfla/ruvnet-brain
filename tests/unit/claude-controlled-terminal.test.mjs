@@ -1,4 +1,8 @@
 import { describe, it, expect } from 'vitest';
+// Hermetic: the launcher validates every .claude/settings*.json from cwd up to / plus $HOME/.claude. A checkout under
+// a developer's home would otherwise read that person's own Claude settings and fail here (measured 2026-10-30).
+const HERMETIC_CWD = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'cct-cwd-')));
+const HERMETIC_ENV = { ...process.env, HOME: fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'cct-home-'))) };
 import { EventEmitter } from 'node:events';
 import { PassThrough, Writable } from 'node:stream';
 import fs from 'node:fs';
@@ -235,7 +239,7 @@ describe('controlled Claude native turn boundary', () => {
       }
     });
     try {
-      await launchControlledClaudeTerminal({ binary: '/native', args: ['original request'], input, output, diagnostics,
+      await launchControlledClaudeTerminal({ binary: '/native', args: ['original request'], input, output, diagnostics, cwd: HERMETIC_CWD, env: HERMETIC_ENV,
         managedPrompt: async options => {
           calls.push(options.originalPrompt);
           if (calls.length === 1) {
@@ -256,7 +260,7 @@ describe('controlled Claude native turn boundary', () => {
       input.isTTY = true; output.isTTY = true;
       let messages = '', observed;
       diagnostics.on('data', chunk => { messages += chunk; });
-      await expect(launchControlledClaudeTerminal({ args: [...flags, 'Explain this function.'], input, output, diagnostics, env: { RUVNET_AGENTDB_FIRST: 'off' },
+      await expect(launchControlledClaudeTerminal({ args: [...flags, 'Explain this function.'], input, output, diagnostics, cwd: HERMETIC_CWD, env: { RUVNET_AGENTDB_FIRST: 'off', HOME: HERMETIC_ENV.HOME },
         managedPrompt: options => options.primaryTurn({ ...options, ...options.nativeContext, prompt: options.originalPrompt }),
         runTurn: async options => {
           observed = options;
@@ -407,7 +411,7 @@ describe('native PreToolUse ownership enforcement before native autoallows', () 
   it('explicit plan cannot acquire potential write authority or approve a worker write', async () => {
     const input = new PassThrough(), output = new PassThrough(), diagnostics = new PassThrough(); input.isTTY = output.isTTY = true;
     try {
-      await expect(launchControlledClaudeTerminal({ args: ['--permission-mode', 'plan', 'Read this function.'], input, output, diagnostics,
+      await expect(launchControlledClaudeTerminal({ args: ['--permission-mode', 'plan', 'Read this function.'], input, output, diagnostics, cwd: HERMETIC_CWD, env: HERMETIC_ENV,
         managedPrompt: async options => {
           expect(options.permissions).toEqual({ apiBilling: false, write: false });
           expect(await options.approve({ tool_name: 'Write', input: {} }, { ownership: { mode: 'write' } })).toBe(false);

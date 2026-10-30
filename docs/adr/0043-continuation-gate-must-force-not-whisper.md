@@ -3,7 +3,7 @@ id: ADR-043
 title: The continuation gate re-engages every stop, not once per session — the guard that killed "don't stop"
 status: Proposed
 date: 2026-07-23
-updated: 2026-07-24
+updated: 2026-10-29
 authors: [Stuart Kerr, Claude Code]
 tags: [proactive, learning, stop-hook, continuation, enforcement, dogfooding, 4.0]
 supersedes: []
@@ -156,3 +156,7 @@ unless a capture path feeds it), and discharge is one `--done` away. Calling it 
 would overstate it — corrected here per Fable #5. Still, it is the first mechanism that makes the *never-stop*
 commitment cost something at the exact boundary it was being ignored, which is the half of ADR-030 the
 model's own stopping exposed. Decision + duel landed here before the fix was committed.
+
+## Update 2026-10-29 (#369)
+
+A captured promise records the inline-code commands of its sentence (`evidenceCommands`, max 2). The same session's later observed check of that command, with a matching claim and a stated gap, moves it to `evidenced`, which is not `done` and is no longer forced; promises with no command keep the bounded forces then `deferred`.

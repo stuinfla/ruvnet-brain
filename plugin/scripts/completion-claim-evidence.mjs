@@ -106,6 +106,54 @@ function segmentMutates(segment) {
   return /(?:^|[^0-9&>])>{1,2}\s*(?!&|\/dev\/null)(['"]?)([^\s'"]+)/.test(segment)
     && !TMP_PATH.test((/>{1,2}\s*['"]?([^\s'"]+)/.exec(segment) || [])[1] || '');
 }
+/**
+ * #369/#425: the exit status a transcript reports is the WHOLE command's. It is the status of one check only
+ * when the command is one simple command, or an `&&` chain (which reaches its end only if every part passed).
+ * Returns the reason a command is NOT such a shape (pipe, `||`, `;`, `&`, newline, substitution, subshell,
+ * redirection other than 2>&1 / /dev/null), or null. When unsure it names a reason: never binds by default.
+ */
+export function compoundReason(command) {
+  const s = String(command || '');
+  // A leading `!` (also after `&&`, after optional VAR=x prefixes) inverts the exit status: a failing check reports success.
+  if (/(?:^|&&)\s*(?:[A-Za-z_]\w*=\S*\s+)*!\s/.test(s)) return 'negated exit status (`!`)';
+  let q = '';
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    const n = s[i + 1];
+    if (q === "'") { if (c === "'") q = ''; continue; }
+    if (c === '\\') { i++; continue; }
+    if (q === '"') {
+      if (c === '"') q = '';
+      else if (c === '`' || (c === '$' && n === '(')) return 'command substitution';
+      continue;
+    }
+    if (c === "'" || c === '"') { q = c; continue; }
+    if (c === '|') return n === '|' ? '`||` fallback' : 'pipe';
+    if (c === ';') return '`;` sequence';
+    if (c === '\n' || c === '\r') return 'multiple lines';
+    if (c === '`' || c === '(' || c === ')' || (c === '$' && n === '(')) return 'subshell or substitution';
+    if (c === '&') {
+      if (n === '&') { i++; continue; }
+      if (/^&>/.test(s.slice(i))) return 'redirection';
+      return 'background `&`';
+    }
+    if (c === '>' || c === '<') {
+      const m = /^(?:>&\d|>>?\s*\/dev\/null)/.exec(s.slice(i));
+      if (m) { i += m[0].length - 1; continue; }
+      return 'redirection';
+    }
+  }
+  return null;
+}
+const SAFE_REDIRECT = /\s*\d?>>?\s*\/dev\/null|\s*\d?>&\d/g;
+/** The command a claim would name: safe redirects (2>&1, >/dev/null) are not part of it. */
+const withoutSafeRedirects = (seg) => seg.replace(SAFE_REDIRECT, '').trim();
+/** For an unbound segment: the leading command a claim could have named (cut at the first operator). */
+function headsOf(seg) {
+  const lead = seg.replace(/^[\s(]*(?:\$\()?/, '');
+  const cut = (t) => t.split(/[|;&<>()`$\n]/)[0].trim();
+  return [...new Set([cut(seg), cut(lead)].filter((h) => h.length >= 4))];
+}
 const segmentChecks = (segment) => !TRIVIAL.test(segment) && !segmentMutates(segment);
 function checkName(segment) {
   const words = segment.replace(/^(?:[A-Z_][A-Z0-9_]*=\S+\s+)+/, '').split(/\s+/);
@@ -133,7 +181,10 @@ export function currentTurnRecords(lines) {
     const isToolResult = Array.isArray(c) && c.some((x) => x?.type === 'tool_result');
     if (o?.type === 'user' && (o.message?.role || 'user') === 'user' && !isToolResult && !o.isMeta && textOf(c).trim()) start = i;
   });
-  return { boundaryFound: start >= 0, prompt: start >= 0 ? textOf(recs[start].message?.content) : '', recs: recs.slice(start + 1) };
+  // `openerId` identifies the turn by its opening record (uuid, else its position among the main-thread records),
+  // never by the prompt text: a repeated "continue" is a different turn with the same words.
+  const openerId = start < 0 ? '' : (typeof recs[start].uuid === 'string' && recs[start].uuid ? `uuid:${recs[start].uuid}` : `pos:${start}`);
+  return { boundaryFound: start >= 0, prompt: start >= 0 ? textOf(recs[start].message?.content) : '', openerId, recs: recs.slice(start + 1) };
 }
 
 // Codex tools that neither change state nor run a check; every other unrecognised tool is a change (fail
@@ -147,7 +198,7 @@ const CODEX_NEUTRAL = /^(?:update_plan|view_image|sleep|list_agents|wait_agent|w
 /** Ordered events for the current turn of a Claude JSONL (or normalized Codex) transcript. */
 export function claudeTurnEvents(lines, { host = 'claude' } = {}) {
   const codex = host === 'codex';
-  const { boundaryFound, recs: turnRecs } = currentTurnRecords(lines);
+  const { boundaryFound, prompt: turnPrompt, openerId, recs: turnRecs } = currentTurnRecords(lines);
   const results = new Map();
   for (const o of turnRecs) {
     const c = o?.message?.content;
@@ -173,9 +224,14 @@ export function claudeTurnEvents(lines, { host = 'claude' } = {}) {
       if (['Edit', 'Write', 'MultiEdit', 'NotebookEdit'].includes(u.name) || (codex && u.name === 'apply_patch')) {
         events.push({ kind: 'change', what: `${u.name} ${input.file_path || input.notebook_path || ''}`.trim() });
       } else if (u.name === 'Bash') {
+        const unbound = compoundReason(input.command);
         for (const seg of segments(input.command)) {
           if (segmentMutates(seg)) events.push({ kind: 'change', what: seg.slice(0, 120) });
-          else if (segmentChecks(seg)) events.push({ kind: 'check', what: seg.slice(0, 120), name: checkName(seg), ...result });
+          else if (segmentChecks(seg)) {
+            const cmd = unbound ? seg : withoutSafeRedirects(seg);
+            events.push({ kind: 'check', what: cmd.slice(0, 120), command: cmd.slice(0, 400), name: checkName(seg), ...result,
+              ...(unbound ? { unbound: `the command uses ${unbound}, so its exit status is not this check's`, heads: headsOf(seg) } : {}) });
+          }
         }
       } else if (u.name === 'Agent' || u.name === 'Task') {
         if (!READ_ONLY_AGENTS.test(String(input.subagent_type || ''))) events.push({ kind: 'change', what: `${u.name} ${input.subagent_type || 'agent'}` });
@@ -187,7 +243,7 @@ export function claudeTurnEvents(lines, { host = 'claude' } = {}) {
       }
     }
   }
-  return { boundaryFound, events };
+  return { boundaryFound, prompt: turnPrompt, openerId, events };
 }
 
 /** Verification that ran AFTER the last state change this turn, with a present, non-error result. */
@@ -195,8 +251,12 @@ export function postChangeVerification(turn) {
   const events = turn?.events || [];
   let lastChange = -1;
   events.forEach((e, i) => { if (e.kind === 'change') lastChange = i; });
-  const checks = events.slice(lastChange + 1).filter((e) => e.kind === 'check' && e.present && !e.error);
-  return { lastChange: lastChange >= 0 ? events[lastChange].what : null, checks,
+  const after = events.slice(lastChange + 1).filter((e) => e.kind === 'check' && e.present && !e.error);
+  // `checks` is STRICT (binds a claim or a promise). `maskedChecks` ran with output and no error, but the command
+  // is a pipe / `||` / `;` / file redirect, so its exit status is not attributable: counted only as "a check ran".
+  const checks = after.filter((e) => !e.unbound);
+  const maskedChecks = after.filter((e) => e.unbound);
+  return { lastChange: lastChange >= 0 ? events[lastChange].what : null, checks, maskedChecks,
     staleChecks: events.slice(0, Math.max(0, lastChange)).filter((e) => e.kind === 'check').length };
 }
 
@@ -214,16 +274,19 @@ export function readClaudeTurn(transcriptPath, { read = readSettledTranscript, h
  */
 export function auditCompletionClaims(message, { turn = null, host = 'claude' } = {}) {
   const claims = extractCompletionClaims(message);
-  if (!claims.length) return { verdict: 'NONE', claims };
+  if (!claims.length) return { verdict: 'NONE', claims, outcomes: [] };
   const text = String(message || '');
   const verification = turn ? postChangeVerification(turn) : null;
-  const names = verification?.checks.map((c) => String(c.name || '').toLowerCase()).filter((n) => n.length >= 3) || [];
+  // Naming a check that ran is not binding it: masked checks count here so an inline mention is not 'unnamed'; transcriptOk below still uses strict checks only.
+  const names = verification ? [...verification.checks, ...verification.maskedChecks].map((c) => String(c.name || '').toLowerCase()).filter((n) => n.length >= 3) : [];
   const namesCheck = NAMED_CHECK.test(text) || names.some((n) => text.toLowerCase().includes(n));
   const disclosesGaps = DISCLOSES_GAPS.test(strippedProse(text).replace(/```[\s\S]*?```/g, ''))
     || DISCLOSES_GAPS.test(text);
   const problems = [];
   if (!turn) problems.push(`this host's (${host}) transcript is unavailable or not parsed, so whether a check ran after the change is UNKNOWN`);
-  else if (!verification.checks.length) {
+  else if (!verification.checks.length && verification.maskedChecks.length) {
+    problems.push('a check ran after the last change, but its command uses a pipe, `||`, `;` or a file redirect, so its exit status is not attributable to it; completion is UNKNOWN');
+  } else if (!verification.checks.length) {
     problems.push(verification.lastChange
       ? `no end-to-end check ran this turn after the last change (${verification.lastChange})`
       : 'no end-to-end check ran this turn');
@@ -236,7 +299,81 @@ export function auditCompletionClaims(message, { turn = null, host = 'claude' } 
   if (transcriptOk && namesCheck && disclosesGaps && !scopedCheck) problems.push('observed checks cover only their executed scope; whole-task completion is UNKNOWN');
   const verdict = transcriptOk && namesCheck && disclosesGaps && scopedCheck ? 'OBSERVED_CHECK'
     : namesCheck && disclosesGaps ? 'UNKNOWN' : 'FAIL';
-  return { verdict, claims, verification, namesCheck, disclosesGaps, problems };
+  return { verdict, claims, verification, namesCheck, disclosesGaps, problems, outcomes: claimOutcomes(claims, text, turn) };
+}
+
+// ── per-claim outcomes (#425) ───────────────────────────────────────────────────────────────────
+// Evidence per claimed outcome, NOT completion authority: `authority:false` always, the verdict above is
+// computed without it, and no state here is PASS. A claim is `observed-check` only when its own sentence
+// (or a line-start `Verified:` line) NAMES the command of a check that ran after the last change, produced
+// output and did not error. Anything else is reported as what it is: stale, failed, or unbound.
+const VERIFIED_LINE = /(?:^|\n)[ \t]*(?:[-*•][ \t]*|\*\*)*verified\b[^\n:—–]{0,4}?(?:\*\*)?[ \t]*[:—–][ \t]*([^\n]+)/gi;
+// Env-var prefixes are part of the command (`SKIP_HOOKS=1 npm run x` is not `npm run x`): never stripped.
+const squash = (value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+/** `hay` contains `cmd` as a whole command: not preceded by an env-var assignment or a word character. */
+export function containsCommand(hay, cmd) {
+  const h = String(hay || ''); const c = String(cmd || '');
+  if (!c) return false;
+  for (let at = h.indexOf(c); at >= 0; at = h.indexOf(c, at + 1)) {
+    const before = h.slice(0, at);
+    if (/[\w./:=-]$/.test(before) || /^[\w:-]/.test(h.slice(at + c.length))) continue;
+    if (/(?:^|[\s`'"(])[A-Za-z_][A-Za-z0-9_]*=\S*\s+$/.test(before)) continue;
+    return true;
+  }
+  return false;
+}
+
+function rawSentenceOf(message, claim) {
+  for (const raw of String(message || '').split(/(?<=[.!?])\s+|\n+/)) if (sentences(raw).includes(claim.text)) return raw;
+  return claim.text;
+}
+
+export function claimOutcomes(claims, message, turn) {
+  const events = turn?.events || [];
+  let lastChange = -1;
+  events.forEach((e, i) => { if (e.kind === 'change') lastChange = i; });
+  const checks = events.map((e, i) => ({ e, i })).filter(({ e }) => e.kind === 'check' && String(e.command || '').length >= 4);
+  const verifiedLines = [...String(message || '').matchAll(VERIFIED_LINE)].map((m) => squash(m[1])).join('\n');
+  return (claims || []).map((claim) => {
+    const own = squash(rawSentenceOf(message, claim));
+    const namedAll = checks.filter(({ e }) => { const c = squash(e.command); const hit = (h) => containsCommand(own, h) || containsCommand(verifiedLines, h);
+      return hit(c) || (e.unbound && (e.heads || []).some((h) => hit(squash(h)))); });
+    const named = namedAll.filter(({ e }) => !e.unbound);
+    const good = named.filter(({ e, i }) => i > lastChange && e.present && !e.error);
+    const state = good.length ? 'observed-check'
+      : named.some(({ e, i }) => i > lastChange && !(e.present && !e.error)) ? 'failed-check'
+        : named.length ? 'stale' : 'unbound';
+    const reason = state === 'unbound' ? namedAll.find(({ e }) => e.unbound)?.e.unbound : undefined;
+    return { claim: claim.text.slice(0, 200), state, ...(reason ? { reason } : {}),
+      checks: (state === 'observed-check' ? good : named).slice(-3).map(({ e }) => ({ command: e.command, name: e.name })), authority: false };
+  });
+}
+
+/**
+ * #425 (sparkling): the audit category of a correction, independent of wording. A correction is delivered
+ * at most once per session + user turn + category, so rewording the answer or waiting cannot rearm it.
+ */
+export function completionCategory(completion) {
+  const ids = (completion?.problems || []).map((p) => /unavailable or not parsed/.test(p) ? 'transcript-unavailable'
+    : /no end-to-end check ran/.test(p) ? 'no-check' : /not attributable/.test(p) ? 'check-unattributed' : /does not name the check/.test(p) ? 'check-unnamed'
+      : /does not disclose/.test(p) ? 'gaps-undisclosed' : /observed checks cover only/.test(p) ? 'scope' : 'other');
+  return `${completion?.verdict || 'NONE'}:${[...new Set(ids)].sort().join('+')}`;
+}
+
+/** Correction copy for a FAIL/UNKNOWN verdict. When checks DID run, ask for an outcome-by-outcome report. */
+export function completionCorrectionText(completion) {
+  const lead = `You claimed "${completion.claims[0].text.slice(0, 160)}" is done; ${completion.problems.join('; ')}.`;
+  return (completion.verification?.checks?.length || 0) + (completion.verification?.maskedChecks?.length || 0) > 0
+    ? `${lead} A check ran, but it does not cover every claim: report outcome by outcome, naming the check that ran for each claim or restating it as UNVERIFIED.`
+    : `${lead} Run the real consumer path, or restate it as UNVERIFIED.`;
+}
+
+/** Non-blocking advisory text: which claims have an observed check and which do not. */
+export function outcomeAdvisoryText(completion) {
+  const lines = (completion.outcomes || []).map((o) => `- ${o.state}: "${o.claim.slice(0, 100)}"${o.checks.length ? ` (${o.checks.map((c) => c.command).join('; ')})` : ''}`);
+  const masked = !(completion.verification?.checks?.length) && (completion.verification?.maskedChecks?.length || 0) > 0;
+  return `A check ran after the last change${masked ? ' (its command uses a pipe, `||`, `;` or a redirect, so its exit status is not attributable to it)' : ''} and the answer names it and discloses what is not verified. Per claimed outcome:\n${lines.join('\n')}\n`
+    + 'This is evidence per outcome, not completion authority: completion stays UNKNOWN. Not blocking: more checks or rewording cannot change it.';
 }
 
 // ── promises (first-person commitments) ─────────────────────────────────────────────────────────
@@ -277,7 +414,24 @@ export function extractCommitments(message) {
       out.push({ text, key });
     }
   }
-  return out.slice(0, PROMISE_CAP_PER_TURN);
+  return out.slice(0, PROMISE_CAP_PER_TURN).map((p) => {
+    const evidenceCommands = promiseCommands(message, p.key);
+    return evidenceCommands.length ? { ...p, evidenceCommands } : p;
+  });
+}
+
+// #369: inline-code commands in the promise's own sentence are what the promise says it will run. They are
+// recorded at capture (max 2) so a later observed check can be matched to them; prose alone never is.
+const COMMAND_SPAN = /`([^`\n]{4,160})`/g;
+function promiseCommands(message, key) {
+  for (const raw of String(message || '').split(/(?<=[.!?])\s+|\n+/)) {
+    const prose = strippedProse(raw).replace(/^\s*(?:\d+[.)]|[-*•])\s+/, '').trim();
+    const action = PROMISE_LEAD.exec(prose)?.[1] ?? prose;
+    if (normalizePromise(action) !== key) continue;
+    const found = [...raw.matchAll(COMMAND_SPAN)].map((m) => squash(m[1])).filter((c) => /\s/.test(c) || c.startsWith('./'));
+    return [...new Set(found)].slice(0, 2);
+  }
+  return [];
 }
 
 const STOP = new Set(['the', 'a', 'an', 'and', 'or', 'to', 'of', 'in', 'on', 'for', 'with', 'it', 'is', 'are',
@@ -304,6 +458,10 @@ const unquoted = (value) => String(value).replace(/"([^"\n]{0,300})"|“([^”\n
 export function promiseClosingClaim(completion, answer, promiseText) {
   // DORMANT: auditCompletionClaims no longer returns PASS (only OBSERVED_CHECK/UNKNOWN/FAIL/NONE), so this never closes a promise today.
   if (completion?.verdict !== 'PASS') return null;
+  return matchingClaim(completion, answer, promiseText);
+}
+
+function matchingClaim(completion, answer, promiseText) {
   const direct = completion.claims.find((c) => claimClosesPromise(c.text, promiseText));
   if (direct) return direct;
   for (const raw of String(answer || '').split(/(?<=[.!?])\s+|\n+/)) {
@@ -312,4 +470,20 @@ export function promiseClosingClaim(completion, answer, promiseText) {
     if (claim && claimClosesPromise(unquoted(raw), promiseText)) return { ...claim, text: raw.trim() };
   }
   return null;
+}
+
+/**
+ * #369: the evidence that moves a promise to the NON-completed state `evidenced`, or null. Never `done`, never
+ * PASS, never authority. ALL must hold: a command the promise itself named ran after the last change with
+ * output and no error; the answer names that command and states what is not verified; a claim sentence
+ * matches the promise; the verdict is not FAIL. (Same-session ownership is checked by the caller.)
+ */
+export function promiseEvidence(completion, answer, item) {
+  const commands = Array.isArray(item?.evidenceCommands) ? item.evidenceCommands.map(squash) : [];
+  if (!commands.length || !completion?.claims?.length || !['OBSERVED_CHECK', 'UNKNOWN'].includes(completion.verdict)
+    || completion.disclosesGaps !== true) return null;
+  const said = squash(answer);
+  const check = (completion.verification?.checks || []).find((c) => !c.unbound && commands.includes(squash(c.command)) && containsCommand(said, squash(c.command)));
+  const claim = check && matchingClaim(completion, answer, item.text);
+  return claim ? { command: squash(check.command), check: check.what, claim: claim.text, auditVerdict: completion.verdict, authority: false } : null;
 }

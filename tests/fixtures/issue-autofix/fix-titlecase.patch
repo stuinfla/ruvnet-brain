@@ -1,0 +1,22 @@
+diff --git a/scripts/titlecase.mjs b/scripts/titlecase.mjs
+index d5f4cd4..aa4cabb 100644
+--- a/scripts/titlecase.mjs
++++ b/scripts/titlecase.mjs
+@@ -1,4 +1,4 @@
+ // Capitalises the first letter of every word.
+ export function titleCase(text) {
+-  return String(text).split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
++  return String(text).split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+ }
+diff --git a/tests/unit/titlecase-shout.test.mjs b/tests/unit/titlecase-shout.test.mjs
+new file mode 100644
+index 0000000..3e0b0a8
+--- /dev/null
++++ b/tests/unit/titlecase-shout.test.mjs
+@@ -0,0 +1,6 @@
++import { expect, it } from 'vitest';
++import { titleCase } from '../../scripts/titlecase.mjs';
++
++it('lowercases the rest of a shouted word', () => {
++  expect(titleCase('HELLO world')).toBe('Hello World');
++});

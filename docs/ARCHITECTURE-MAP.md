@@ -1,4 +1,4 @@
-Updated: 2026-08-22 12:15:00 EDT | Version 1.1.0
+Updated: 2026-10-29 12:00:00 EDT | Version 1.2.0
 Created: 2026-07-22 11:05:00 EDT
 
 # The Architecture Map — what the pieces ARE, and what you lose if you take only some
@@ -447,6 +447,8 @@ generated changes in the primary developer checkout.
 never merge. A maintainer may run `scripts/nightly-wrapper.sh` manually, but the shared mutation
 boundary refuses primary, nested, non-linked, and dirty worktrees and verifies afterward that the
 primary HEAD, index, tracked diff, and untracked-file set did not change.
+
+**The one unattended source writer.** Issue Autofix (ADR-107, `com.ruvnet.issue-autofix`, daily 10:30 local) is off unless the repository variable `ISSUE_AUTOFIX` is exactly `on`. Each night it fixes every eligible issue a person filed that its budget allows, each in its own linked worktree of its own clone — never the primary checkout — runs every fix through a security gate (deny-by-default editable paths, a static malware scan, `npm pack` and `npm audit` checks, two red-team passes; model-written code runs only inside a macOS sandbox) and ships all passing fixes as one release only through the CONTRIBUTING.md release steps and the protected-release machine gates. Dream cycles still never merge; autofix never presses merge either, and halts itself after any red once `main` has moved.
 
 **What it costs.** The end-user LaunchAgent is a real machine mutation, so the installer keeps it
 behind explicit consent. Author rebuilds consume local CPU, disk, and network only when explicitly

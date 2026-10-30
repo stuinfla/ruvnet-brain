@@ -108,6 +108,7 @@ describe('canonical lesson runtime module boundaries', () => {
       'lesson-command-scope.mjs',
       'lesson-presentation.mjs',
       'lesson-store.mjs',
+      'lesson-scope.mjs',
       'lesson-bridge.mjs',
       'decision-gate.mjs',
       'decision-outcomes.mjs',
@@ -563,6 +564,38 @@ describe('PROJECT SCOPE: isHome() must not leak across unrelated projects that m
     writeStore([sentryLesson()]);
     const home = fakeProjectDir(dir, 'totally-different-project');
     expect(classifyIn(home).inForce.map((l) => l.id)).not.toContain('T09-unrelated-sentry-lesson');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────
+describe('PROJECT IDENTITY: a linked worktree is the project it belongs to (one rule, shared with the Console)', () => {
+  const git = (cwd, ...args) => {
+    const r = spawnSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' } });
+    if (r.status !== 0) throw new Error(r.stderr);
+  };
+  function mainAndWorktree() {
+    const main = fs.realpathSync(fs.mkdtempSync(path.join(dir, 'wt-main-')));
+    const named = path.join(main, '..', 'proj-main'); fs.renameSync(main, named);
+    git(named, 'init', '-q'); git(named, '-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '--allow-empty', '-m', 'init');
+    const wt = path.join(dir, 'feature-branch-x');
+    git(named, 'worktree', 'add', '-q', '-b', 'feature-x', wt);
+    return { main: fs.realpathSync(named), wt: fs.realpathSync(wt) };
+  }
+  test('projectNameFor(worktree) is the canonical project root name, not the worktree folder', async () => {
+    const { projectNameFor, lessonApplies } = await import('../../plugin/scripts/lesson-store.mjs');
+    const { main, wt } = mainAndWorktree();
+    expect(projectNameFor(wt)).toBe('proj-main');
+    expect(projectNameFor(main)).toBe('proj-main');
+    expect(lessonApplies({ projects: ['proj-main'] }, projectNameFor(wt))).toBe(true);
+    expect(lessonApplies({ projects: ['feature-branch-x'] }, projectNameFor(wt))).toBe(false);
+  });
+  test('the gate fires a lesson scoped to the main checkout from inside its linked worktree', () => {
+    const { wt } = mainAndWorktree();
+    writeStore([{ ...blockLesson({ id: 'WT-home', trigger: 'write-code', enforcement: 'inject', check: null, status: 'ratified', origin: 'model-inferred',
+      statement: 'Scoped to the main checkout only.' }), projects: ['proj-main'] }]);
+    const { stdout, code } = runGate(['--trigger', 'write-code', '--json'], {}, wt);
+    expect(code).toBe(0);
+    expect(JSON.parse(stdout).inForce.map((l) => l.id)).toContain('WT-home');
   });
 });
 

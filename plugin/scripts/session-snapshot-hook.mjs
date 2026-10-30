@@ -62,7 +62,7 @@ async function checkpointNow({ projectDir, event, payload, env, deadlineAt, brai
   if (consent.skipped) return { stored: false, skipped: consent.skipped };
   const { checkpoint } = await import('./ruflo-memory-hooks.mjs');
   const saved = await checkpoint({ projectDir, event, payload, env, deadlineAt });
-  if (saved.stored === false && saved.key || saved.stored && saved.verified !== true) {
+  if (saved.stored === false && saved.key || saved.stored && saved.verified !== true || /refused/.test(saved.skipped || '')) {
     recordHookFailure({ hook: 'checkpoint', event, error: saved.skipped || 'exact checkpoint readback failed' }, { brainHome });
   }
   return saved;

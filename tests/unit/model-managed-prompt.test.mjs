@@ -1,4 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+// Hermetic: the launcher validates every .claude/settings*.json from cwd up to / plus $HOME/.claude. A checkout under
+// a developer's home would otherwise read that person's own Claude settings and fail here (measured 2026-10-30).
+const HERMETIC_CWD = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'cct-cwd-')));
+const HERMETIC_ENV = { ...process.env, HOME: fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'cct-home-'))) };
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -200,7 +204,7 @@ describe('actual Claude read-loop integration seam', () => {
     output.on('data', chunk => { if (chunk.toString().includes('Claude> ')) setImmediate(() => input.write(prompts.shift() + '\n')); });
     const managedPrompt = async options => { calls.push(options); return runManagedPrompt({ ...options, recallFn: async () => ({ block: '' }) }); };
     try {
-      await launchControlledClaudeTerminal({ args: ['Translate yes.'], input, output, diagnostics, managedPrompt,
+      await launchControlledClaudeTerminal({ args: ['Translate yes.'], input, output, diagnostics, managedPrompt, cwd: HERMETIC_CWD, env: HERMETIC_ENV,
         runTurn: async options => { native.push(options); return { sessionId: parent, modelObserved: true }; } });
       expect(calls.map(value => value.originalPrompt)).toEqual(['Translate yes.', 'Explain this function.']);
       expect(calls.every(value => value.harness === 'claude-code' && value.primaryTurn)).toBe(true);
@@ -214,7 +218,7 @@ describe('actual Claude read-loop integration seam', () => {
     input.isTTY = true; output.isTTY = true;
     output.on('data', chunk => { if (chunk.toString().includes('Claude> ')) setImmediate(() => input.write('/exit\n')); });
     try {
-      await launchControlledClaudeTerminal({ args: ['--resume', parent, f.options.originalPrompt], cwd: f.projectRoot,
+      await launchControlledClaudeTerminal({ args: ['--resume', parent, f.options.originalPrompt], cwd: f.projectRoot, env: HERMETIC_ENV,
         input, output, diagnostics, runTurn: f.options.primaryTurn,
         managedPrompt: options => runManagedPrompt({ ...options, contextRefs: f.options.contextRefs, recallFn: f.options.recallFn, planTask: f.options.planTask, executeWorkflow: f.options.executeWorkflow }) });
       expect(f.options.planTask).toHaveBeenCalledOnce(); expect(f.options.executeWorkflow).toHaveBeenCalledOnce();

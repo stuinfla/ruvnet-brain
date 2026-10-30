@@ -172,6 +172,10 @@ const STANDALONE = [
   // plist's own ProgramArguments on 2026-07-23, not assumed from the header comment alone:
   ['clear-claude-tmp', 'launchd, every 3h (out-of-repo scheduler) — confirmed live: '
     + 'com.stuartkerr.clear-claude-tmp.plist is loaded and its ProgramArguments invoke this exact file'],
+  ['issue-autofix', 'launchd, daily 10:30 (out-of-repo scheduler, ADR-107): deploy/com.ruvnet.issue-autofix.plist '
+    + 'ProgramArguments invoke scripts/issue-fix.mjs --mode autofix through scripts/job-heartbeat.sh, and issue-fix.mjs '
+    + 'dynamically imports this file for that mode. Off unless the repository variable ISSUE_AUTOFIX is exactly on; '
+    + 'the owner arms it after the dry-run simulation and a supervised live dry-run'],
   ['nightly-gists', 'manual re-embed of the developer checkout gists store (the launchd job '
     + 'com.ruvnet.brain-gists was retired 2026-10-26: no installed brain reads that store)'],
   ['nightly-wrapper', 'author-run maintenance harness, deliberately unscheduled; refuses primary, nested, and dirty worktrees'],
@@ -226,6 +230,8 @@ const STANDALONE = [
     + 'starts themselves (--url http://127.0.0.1:.../page.html, via Playwright) — needs a live '
     + 'rendered page, not a static diff, so it is a dev-loop tool like gen-console-images.mjs, not a '
     + 'CI step'],
+  ['recall-latency-probe', 'human-run measurement (#429): times prompt recall and SessionStart restore against a real '
+    + 'project store and exits 1 outside the budgets; it reads the owner\'s live store and loads the machine, so no scheduler runs it'],
   ['dev-plugin-link', 'developer convenience CLI — its own header: "Users never run it." Hot-links '
     + 'the cached plugin install to the working tree so hook edits apply without a CC restart'],
 
@@ -342,11 +348,13 @@ const HELD = {
     + 'ADR-028 and 4.0-READINESS §4 both name this the single largest 4.0 gap. HELD because the fix is a '
     + 'real decision — one in-session consumer that speaks unprompted, with a one-action permanent silence '
     + '— not a line of wiring.',
-  'issue-fix': 'the GitHub-issue AUTO-FIXER, built but intentionally NOT wired. Verified 2026-07-23: '
-    + 'issue-watch.yml runs only issue-watch.mjs (which LISTS issues), and issue-watch.mjs spawns only '
-    + 'gh/sleep — never this. Its own yml comment says why it is gated: it "spawns a headless Claude and '
-    + 'costs money + needs credentials". Wiring it is a cost-and-consent decision the owner makes, not a '
-    + 'gap to silently close.',
+  'issue-fix': 'the GitHub-issue fixer (modes unattended, supervised, autofix). Verified 2026-10-29: there is no '
+    + 'issue-watch.yml — the watcher runs from launchd — and the launchd jobs com.ruvnet.issue-fix '
+    + '(--mode unattended, read-only triage) and com.ruvnet.issue-autofix (--mode autofix, ADR-107) run this '
+    + 'file through scripts/job-heartbeat.sh from deploy/*.plist. A .plist is not a scanned caller extension, so '
+    + 'the gate cannot see that invocation; it stays HELD for that reason, not because it is unwired. The '
+    + 'autofix mode is armed only by the owner (repository variable ISSUE_AUTOFIX=on plus the LaunchAgent), '
+    + 'a cost-and-consent decision, not a gap to silently close.',
 };
 
 /** Where first-party executables live. v1 knew only the first line of this table. */

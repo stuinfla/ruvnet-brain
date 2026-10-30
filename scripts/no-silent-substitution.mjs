@@ -167,7 +167,7 @@ export function audit(root = ROOT) {
 //   · every module that appends to a file must be registered in `stateFiles` with its bound (or an
 //     explicit `bound: null`), and the count of unbounded ones may not rise above `maxUnbounded`.
 export const STATE_CONFIG = 'config/state-files.json';
-const APPEND = /\b(?:appendFileSync|appendFile|createWriteStream)\b|\bO_APPEND\b|flags?\s*:\s*['"]a\+?['"]/;
+const APPEND = /\b(?:appendFileSync|appendFile|createWriteStream)\s*\(|\bO_APPEND\b|flags?\s*:\s*['"]a\+?['"]/;
 const BOUND = /\bMAX_\w*(?:BYTES|LINES|RECORDS|ROWS|ENTRIES|AGE\w*)\b|\bmax(?:Bytes|Lines|Records|Rows|Entries)\b|\brotat\w+|\bcompact\w*|\btruncateSync\b|\bprune\w*/;
 
 function scopedFiles(root) {

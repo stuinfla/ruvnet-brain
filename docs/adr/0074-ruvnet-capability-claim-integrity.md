@@ -3,7 +3,7 @@ id: ADR-074
 title: RuvNet capability claims require live evidence
 status: Accepted
 date: 2026-08-22
-updated: 2026-10-26
+updated: 2026-10-29
 updated_source: derived-from-git
 reviewed_digest: 38329ebc9caa
 version: 1.1.2
@@ -175,3 +175,7 @@ The existing Stop handler checks current completion claims before legacy objecti
 Hook retirement requires the expected package definition, exact literal command, verified wrapper bytes, owned canonical namespace and safe current-user filesystem ancestry. Foreign, customized or ambiguous hooks are preserved and reported as conflicts. Only the verified Brain completion handler may be activated; other hook overrides and privacy preferences remain unchanged.
 
 This correction does not add an intake, task-contract or workflow engine. It strengthens false-completion refusal and existing scoped evidence checks; it does not prove arbitrary whole-goal acceptance. Local focused checks and a bounded Claude candidate Stop test have passed. Codex candidate execution and protected publication/installed activation are still separate required evidence.
+
+## Update 2026-10-29 (#425, #369)
+
+`auditCompletionClaims` also returns `outcomes[]`: per claim `observed-check`, `stale`, `failed-check` or `unbound`, with matching checks and `authority:false`. The verdict is computed without it; PASS never appears and UNKNOWN never closes a promise. A promise that named its command can move to the non-completed state `evidenced` (not `done`, not forced again) on an observed post-change check plus a matching claim and a stated gap.

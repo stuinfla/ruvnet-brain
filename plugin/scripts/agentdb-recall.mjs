@@ -22,7 +22,7 @@ import { safeAction } from './learn-capture.mjs';
 import { redactText } from './continuity-events.mjs';
 import { resolveTurnDb } from './turn-outcome-capture.mjs';
 import { maskExcludedPaths } from './turn-capture-privacy.mjs';
-import { searchOnce, nativeRead, exactReads, searchJsonResult } from './agentdb-recall-process.mjs';
+import { searchOnce, nativeRead, exactReads, searchJsonResult, openBatchSession } from './agentdb-recall-process.mjs';
 import { makeLesson } from './lesson-store.mjs';
 import { supersededKeys, tombstonedKeys } from './decision-record.mjs';
 import { checkpointMs, checkpointNamespaces, newestCheckpoint } from './checkpoint-keys.mjs';
@@ -50,8 +50,8 @@ export function recallBinding({ binding = {}, projectRoot, storePath, prompt } =
 }
 
 /** Bounded structural enumeration uses the same cancellable read-only canonical provider. */
-export function enumerateCanonicalKeys({ storePath, namespaces, deadline, signal, env, scratch }) {
-  return nativeRead({ store: { path: storePath }, namespaces, deadline, signal, env, scratch });
+export function enumerateCanonicalKeys({ storePath, namespaces, deadline, signal, env, scratch, session }) {
+  return nativeRead({ store: { path: storePath }, namespaces, deadline, signal, env, scratch, session });
 }
 
 export function applicableRecallLesson(value, projectRoot) {
@@ -234,12 +234,12 @@ export function formatBlock({ picks, status, withheld = 0 }) {
 export const SEARCH_BUDGET_SHARE = 0.8;
 export function searchDeadlineFor(started, deadline) { return Math.min(deadline, started + Math.floor((deadline - started) * SEARCH_BUDGET_SHARE)); }
 
-async function consequentialRecall({ prompt, root, store, bin, scratch, env, deadline, binding, signal, enumerateKeys, exclusions, rankedSearch = true }) {
+async function consequentialRecall({ prompt, root, store, bin, scratch, env, deadline, binding, signal, enumerateKeys, exclusions, rankedSearch = true, session }) {
   const searchDeadline = searchDeadlineFor(Date.now(), deadline);
   const phaseBinding = recallBinding({ binding, projectRoot: root, storePath: store.path, prompt });
   const stateNamespaces = checkpointNamespaces(root);
   const namespaces = [...new Set([...stateNamespaces, 'lessons', 'continuity-events'])];
-  const enumeration = await enumerateKeys({ storePath: store.path, namespaces, deadline, signal, env, scratch });
+  const enumeration = await enumerateKeys({ storePath: store.path, namespaces, deadline, signal, env, scratch, session });
   if (!enumeration?.ok || signal?.aborted || Date.now() >= deadline) return { block: formatBlock({ picks: [], status: 'unavailable structural enumeration' }), picks: [], stores: [store],
     status: { 'memory.db': 'unavailable' }, outcome: signal?.aborted ? 'unavailable' : Date.now() >= deadline ? 'timed-out' : 'unavailable', categories: { state: 'unavailable', decisions: 'unavailable', lessons: 'unavailable' } };
   const keys = Object.fromEntries(namespaces.map(namespace => [namespace, Array.isArray(enumeration.value?.[namespace]) ? enumeration.value[namespace] : []]));
@@ -279,7 +279,7 @@ async function consequentialRecall({ prompt, root, store, bin, scratch, env, dea
   const categories = { state: unorderedState ? 'unavailable' : 'ok-empty', decisions: decisionAvailability, lessons: lessonAvailability };
   const records = [];
   candidates.forEach(candidate => { candidate.storePath = store.path; });
-  const exactResults = await exactReads({ candidates, bin, deadline, env, scratch, signal });
+  const exactResults = await exactReads({ candidates, bin, deadline, env, scratch, signal, session });
   // ADR-105 §8: supersession is a link on the NEWER record, computed from every decision record read, plus
   // the tombstones already in the enumeration so a superseder that was not read still retires its target.
   const superseded = tombstonedKeys(keys[path.basename(root)]);
@@ -338,6 +338,8 @@ export async function recall({ prompt, projectDir = process.cwd(), env = process
   binding = {}, signal, absoluteDeadline, consequential = false, enumerateKeys = enumerateCanonicalKeys } = {}) {
   const started = Date.now();
   const empty = { block: '', picks: [], stores: [], status: {} };
+  let session = null;
+  let specAbort = null;   // hoisted so `finally` can stop a speculative search that a later throw would orphan
   try {
     if (signal?.aborted) return { ...empty, outcome: 'unavailable', reason: 'cancelled' };
     if (!agentdbFirstEnabled(env)) return { ...empty, outcome: 'disabled' };
@@ -370,7 +372,15 @@ export async function recall({ prompt, projectDir = process.cwd(), env = process
     const store = stores[0];
     const query = recallQuery(prompt);
     const scratchFor = scratch || ((storePath) => rufloCwdFor(storePath, { root: rufloScratchRoot(env) }));
-    if (consequential) return await consequentialRecall({ prompt, root, store, bin, scratch: scratchFor, env, deadline, binding, signal, enumerateKeys, exclusions });
+    // ONE owned child answers every list/get of this recall through Ruflo's public memory export (#429); null
+    // (not the real package, no ./memory export, an injected `ruflo`) keeps the per-read CLI route.
+    if (store) {
+      session = openBatchSession({ bin, storePath: store.path, env, deadline, signal, makeCwd: () => {
+        const cwd = fs.mkdtempSync(path.join(scratchFor(store.path), 'run-'));
+        return { cwd, cleanup: () => { try { fs.rmSync(cwd, { recursive: true, force: true }); } catch { /* swept later */ } } };
+      } });
+    }
+    if (consequential) return await consequentialRecall({ prompt, root, store, bin, scratch: scratchFor, env, deadline, binding, signal, enumerateKeys, exclusions, session });
     // Only namespaces something below reads: curated lessons/decisions, the checkpoint namespaces (dirname, its
     // lowercase form, default) and turns for the single ranked search. Each one is a `ruflo memory list` process.
     const namespaces = [...new Set(['lessons', 'turns', 'continuity-events', ...checkpointNamespaces(root)])];
@@ -378,12 +388,21 @@ export async function recall({ prompt, projectDir = process.cwd(), env = process
     // per namespace; run concurrently they starve every other read past the deadline. So: ONE native enumeration
     // (reused for the curated pass and for pruning empty namespaces), then exact curated state/lessons/decisions,
     // then spend what remains on ranking.
-    const presence = store ? await nativeRead({ store, namespaces, deadline, env, scratch: scratchFor, signal }) : null;
-    if (presence?.fatal) { return { ...empty, stores, outcome: presence.state === 'timed out' ? 'timed-out' : 'unavailable',
+    // The batch child's start-up (loading Ruflo's memory module, ~0.4 s) and the ranked search are independent, so with a
+    // session the search for the first-choice namespace starts NOW instead of after enumeration (#429 probe: the
+    // sequence left a 1.3-1.6 s tail against the 1.9 s budget). Still ONE search: it is cancelled and replaced only if
+    // enumeration shows that namespace is empty.
+    const specNamespace = path.basename(root);
+    specAbort = new AbortController();
+    const specSignal = signal ? AbortSignal.any([signal, specAbort.signal]) : specAbort.signal;
+    const specArgs = ['--format', 'json', '-q', query, '-n', specNamespace, '--limit', '12'];
+    const spec = session && store ? searchOnce({ ruflo: bin, store, deadline: searchDeadlineFor(Date.now(), deadline), env, scratch: scratchFor, args: specArgs, signal: specSignal }) : null;
+    const presence = store ? await nativeRead({ store, namespaces, deadline, env, scratch: scratchFor, signal, session }) : null;
+    if (presence?.fatal) { specAbort.abort(); return { ...empty, stores, outcome: presence.state === 'timed out' ? 'timed-out' : 'unavailable',
       block: formatBlock({ picks: [], status: presence.state }), reason: 'namespace enumeration failed' }; }
     const sharedKeys = presence?.ok ? async () => ({ ok: true, value: presence.value }) : enumerateCanonicalKeys;
     const curated = store ? await consequentialRecall({ prompt, root, store, bin, scratch: scratchFor, env, deadline, binding, signal,
-      enumerateKeys: sharedKeys, exclusions, rankedSearch: false }).catch(() => null) : null;
+      enumerateKeys: sharedKeys, exclusions, rankedSearch: false, session }).catch(() => null) : null;
     const searchDeadline = searchDeadlineFor(Date.now(), deadline);
     const activeNamespaces = presence?.ok ? namespaces.filter(namespace => presence.value[namespace]?.length) : namespaces;
     // ONE supplementary search (owner ruling 2026-10-12). Measured on a live-size store at load 17: ~10
@@ -392,8 +411,10 @@ export async function recall({ prompt, projectDir = process.cwd(), env = process
     const searchNamespace = [path.basename(root), 'default', 'turns'].find((namespace) => activeNamespaces.includes(namespace));
     const jobs = store && searchNamespace ? [{ store, namespace: searchNamespace, family: null,
       args: ['--format', 'json', '-q', query, '-n', searchNamespace, '--limit', '12'] }] : [];
+    const useSpec = spec && jobs[0]?.namespace === specNamespace;
+    if (!useSpec) specAbort.abort();
     const results = await Promise.all(jobs.map(async ({ store: jobStore, namespace, family: recordFamily, args }) => ({ namespace, family: recordFamily, storePath: jobStore.path,
-      ...await searchOnce({ ruflo: bin, store: jobStore, deadline: searchDeadline, env, scratch: scratchFor, args, signal }) })));
+      ...await (useSpec ? spec : searchOnce({ ruflo: bin, store: jobStore, deadline: searchDeadline, env, scratch: scratchFor, args, signal })) })));
     let status = results.every((r) => r.state === 'ok') ? 'ok'
       : results.some((r) => r.state === 'timed out') ? 'timed out' : 'unavailable';
     // Overfetch a bounded twelve exact values (the one search already returns twelve; the exact reads are
@@ -402,7 +423,7 @@ export async function recall({ prompt, projectDir = process.cwd(), env = process
     const candidates = pickRows(results, 12);
     // Ruflo previews are ~60 characters. Read the actual selected values within
     // the same deadline so the block contains useful evidence rather than titles.
-    const exactResults = await exactReads({ candidates, bin, deadline, env, scratch: scratchFor, signal });
+    const exactResults = await exactReads({ candidates, bin, deadline, env, scratch: scratchFor, signal, session });
     const retrieved = await Promise.all(candidates.map(async (p) => {
       const r = exactResults.get(p);
       if (r.state === 'ok' && r.value && !r.value.startsWith('[WARN]')) {
@@ -462,6 +483,7 @@ export async function recall({ prompt, projectDir = process.cwd(), env = process
       authority: false };
     return { block: formatBlock({ picks, status, withheld: curated?.withheld || 0 }), picks, stores, status: { 'memory.db': status }, outcome, receipt };
   } catch (error) { return { ...empty, outcome: 'unavailable', reason: 'canonical recall failed: ' + clean(error.message, 180) }; }
+  finally { specAbort?.abort(); session?.close(); }
 }
 
 async function main() {

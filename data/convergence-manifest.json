@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
   "kind": "ruvnet-brain-convergence-manifest",
-  "version": "4.7.21",
-  "sourceIdentity": "9cff6fb21830c7ac4d3ccf82f6233c2225f73600f60f85f6a7ca7678290b429e",
+  "version": "4.7.23",
+  "sourceIdentity": "bb8c1d9f7ab193ba487a7c6ed7a59d1149db3fced660ad37c664b815f8af191b",
   "versionSurfaces": {
-    "package.json": "4.7.21",
-    "plugin/.claude-plugin/plugin.json": "4.7.21",
-    "plugin/.codex-plugin/plugin.json": "4.7.21",
-    "data/manifest.json": "4.7.21",
-    "kb/RVF-GENERATIONS.json": "4.7.21",
-    "explainer/index.html": "4.7.21",
-    "primer/ruvnet-primer.md": "4.7.21"
+    "package.json": "4.7.23",
+    "plugin/.claude-plugin/plugin.json": "4.7.23",
+    "plugin/.codex-plugin/plugin.json": "4.7.23",
+    "data/manifest.json": "4.7.23",
+    "kb/RVF-GENERATIONS.json": "4.7.23",
+    "explainer/index.html": "4.7.23",
+    "primer/ruvnet-primer.md": "4.7.23"
   },
   "adrInventory": [
     "0001-verified-bundle-not-single-file.md",
@@ -113,10 +113,11 @@
     "0104-unified-developer-update-owner.md",
     "0105-one-agentdb-integration-standard.md",
     "0106-hook-standard.md",
+    "0107-issue-autofix-bounded-unattended-writer.md",
     "README.md"
   ],
-  "trackedFileCount": 2036,
-  "trackedFilesSha256": "9b9cd475a8e96d4892a2e26ce1c804778e73a43a6f2efd72faf40f23ee721845",
+  "trackedFileCount": 2111,
+  "trackedFilesSha256": "32a21fae78d19e9a3085f9fac61394782150d84be9704995f8a9ccd2adc21a9d",
   "ownershipChecks": [
     "version:check",
     "doc:currency",

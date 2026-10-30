@@ -10,6 +10,81 @@
 (function () {
   'use strict';
 
+  /* #499: every figure this card shows, as display text. A value that could not be read (null /
+     undefined / non-numeric) is the word "Unknown" — never 0, which would claim the store is empty.
+     Pure and published on the global before the DOM guard below so a test can load this file without a
+     page. nMem/nLes/nMachine are numeric (unknown -> 0) for the animation maths only; never display them. */
+  function activityFigures(d) {
+    function known(v) { return typeof v === 'number' && isFinite(v); }
+    function show(v) { return known(v) ? Number(v).toLocaleString('en-US') : 'Unknown'; }
+    function num(v) { return known(v) ? v : 0; }
+    d = d || {};
+    var t = d.totals || {};
+    var ag = known(t.agentdbLessons) ? t.agentdbLessons : t.lessons;
+    var ap = d.approvedLessons && d.approvedLessons.available === true ? d.approvedLessons.count : null;
+    var mach = d.machine && d.machine.totalMemories;
+    var apx = d.approvedLessons && d.approvedLessons.available === true ? d.approvedLessons.applicable : null;
+    return {
+      memories: show(t.memories), agentdbLessons: show(ag), lessons: show(ag),
+      approvedLessons: show(ap), approvedMachine: show(ap), approvedApplicable: show(apx), machine: show(mach),
+      observations: show(t.observations), patterns: show(t.patterns), episodes: show(t.episodes),
+      approvedAvailable: known(ap), agentdbKnown: known(ag),
+      nMem: num(t.memories), nLes: num(ag), nMachine: num(mach)
+    };
+  }
+  (typeof globalThis !== 'undefined' ? globalThis : this).activityFigures = activityFigures;
+
+  function escText(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+  /* #499: the approved lessons that apply to this project, with the approval / scope / enforcement the owner
+     set — rendered from the server's own bounded list. Pure; an unreadable lesson store says Unknown. */
+  function approvedLessonsHTML(d) {
+    var a = d && d.approvedLessons;
+    if (!a || a.available !== true) return '<p class="ab-fallback">Approved lessons: Unknown (the lesson store could not be read).</p>';
+    var items = Array.isArray(a.items) ? a.items : [];
+    var F = activityFigures(d);
+    var head = '<div class="ab-dl-title"><span class="ab-g">✦</span>' + F.approvedApplicable + ' approved lessons apply to this project · ' + F.approvedMachine + ' approved machine-wide</div>';
+    if (!items.length) return head + '<p class="ab-fallback">None of your approved lessons are scoped to this project.</p>';
+    return head + items.map(function (l) {
+      return '<div class="ab-lrow"><b>' + escText(l.id) + '</b> ' + escText(l.title) +
+        ' <span class="ab-lmeta">scope: ' + escText(l.scope) + ' · enforcement: ' + escText(l.enforcement == null ? 'unknown' : l.enforcement) +
+        ' · ' + (l.ratified ? 'ratified by you' : escText(l.status || 'not ratified')) + '</span></div>';
+    }).join('') + (a.itemsTruncated ? '<p class="ab-fallback">…showing the first ' + items.length + ' of ' + F.approvedApplicable + '.</p>' : '');
+  }
+  (typeof globalThis !== 'undefined' ? globalThis : this).activityApprovedHTML = approvedLessonsHTML;
+
+  /* #500: which machine-wide row is "you". By STORE IDENTITY (the server's projectId against each fleet entry's
+     id), never by folder name — two unrelated repos can both be called "app". No identity on either side means
+     no match (the row is then synthesised from this project's own totals), not a guess from the name. */
+  function activityUniverse(d) {
+    d = d || {};
+    var machine = d.machine || {};
+    var projects = (Array.isArray(machine.projects) ? machine.projects.slice() : [])
+      .sort(function (a, b) { return (b.memories || 0) - (a.memories || 0); });
+    var isMe = function (p) { return !!d.projectId && p.id === d.projectId; };
+    var found = projects.filter(isMe)[0] || null;
+    var others = projects.filter(function (p) { return !isMe(p); });
+    return { projects: projects, me: found, others: others.slice(0, 12), more: Math.max(0, others.length - 12) };
+  }
+  (typeof globalThis !== 'undefined' ? globalThis : this).activityUniverse = activityUniverse;
+
+  /* #499: the rolling narration, from each pipeline stage's OWN measurement. Distillation turns observations
+     into patterns and episodes; it does not write lessons — lessons are ratified by the owner. */
+  function activityNarration(d) {
+    var F = activityFigures(d);
+    var lines = [
+      'Your AI captures everything as it works — ' + F.memories + ' memories in this project so far.',
+      'Learning pipeline in this project: ' + F.observations + ' workflow observations, ' + F.patterns + ' structural patterns, ' + F.episodes + ' episodes.',
+      'Observations are distilled in the background (session end or compaction, when learning is on) into patterns and episodes — not into lessons.',
+      F.approvedApplicable + ' approved lessons apply here (' + F.approvedMachine + ' machine-wide). You ratify lessons; nothing is auto-approved.'
+    ];
+    if (F.agentdbKnown) lines.push(F.agentdbLessons + ' AgentDB lesson records in this project.');
+    else lines.push('AgentDB lesson records: Unknown.');
+    lines.push('Click any number above to see exactly what it knows.');
+    return lines;
+  }
+  (typeof globalThis !== 'undefined' ? globalThis : this).activityNarration = activityNarration;
+
   var CARD = document.getElementById('card-activity');
   var BODY = document.getElementById('body-activity');
   if (!CARD || !BODY) return;
@@ -148,6 +223,8 @@
     '#card-activity .ab-glyph.ab-pulse{animation:ab-pulse-once 1.1s ease-out 1;display:inline-block}',
     '#card-activity .ab-caret{display:inline-block;width:7px;color:var(--amber-text)}',
     /* graceful degrade */
+    '#card-activity .ab-lrow{font-size:13px;color:var(--ink-2);margin:6px 2px;line-height:1.4}',
+    '#card-activity .ab-lmeta{display:block;font-size:12px;color:var(--muted)}',
     '#card-activity .ab-fallback{margin-top:16px;font-size:13.5px;color:var(--ink-2);font-style:italic}',
     '@media (prefers-reduced-motion:reduce){',
     '  #card-activity .ab-glyph.ab-pulse{animation:none}',
@@ -192,6 +269,14 @@
   function degrade() {
     BODY.innerHTML = '<p class="ab-fallback">memory store not readable right now</p>';
     setChips('<span class="chip tone-grey">unavailable</span>');
+  }
+
+  /* #499: no readable project store, but the approved-lesson count is a separate, readable fact. */
+  function degradeWithApprovals(d) {
+    var F = activityFigures(d);
+    BODY.innerHTML = '<p class="ab-fallback">This project\'s memory store is not readable right now (memories: ' + F.memories + '). ' +
+      '<b>' + F.approvedMachine + '</b> approved lessons are in force on this machine' + (F.approvedApplicable !== 'Unknown' ? ' (<b>' + F.approvedApplicable + '</b> apply to this project)' : '') + '.</p>' + approvedLessonsHTML(d);
+    setChips('<span class="chip tone-grey">memories unknown</span><span class="chip tone-green">' + F.approvedMachine + ' approved lessons (machine-wide)</span>');
   }
 
   /* ---------------- key → plain-English sentence mapper ---------------- */
@@ -267,6 +352,7 @@
   fetch('/api/activity', { headers: { Accept: 'application/json' } })
     .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
     .then(function (d) {
+      if (d && d.hasStore === false && d.approvedLessons && d.approvedLessons.available === true) { degradeWithApprovals(d); return; }
       if (!d || d.hasStore === false || !d.totals) { degrade(); return; }
       render(d);
     })
@@ -282,8 +368,9 @@
     var projects = (Array.isArray(machine.projects) ? machine.projects.slice() : [])
       .sort(function (a, b) { return (b.memories || 0) - (a.memories || 0); });
     var projectName = d.project || 'this project';
-    var nMem = totals.memories || 0, nLes = totals.lessons || 0;
-    var nProj = projects.length, nMachine = machine.totalMemories || 0;
+    var F = activityFigures(d);
+    var nMem = F.nMem, nLes = F.nLes;
+    var nProj = projects.length;
 
     var LESSONS = lessonsRaw.map(function (l) {
       return { key: l.key, learned: l.learned, recalled: l.access_count || 0, segs: parseExcerpt(l.excerpt) };
@@ -293,8 +380,10 @@
 
     /* summary chips */
     setChips(
-      '<span class="chip tone-amber">' + fmt(nMem) + ' memories</span>' +
-      '<span class="chip tone-green">' + fmt(nLes) + ' lessons</span>'
+      '<span class="chip tone-amber">' + F.memories + ' memories</span>' +
+      '<span class="chip tone-green">' + F.approvedApplicable + ' approved lessons · this project</span>' +
+      '<span class="chip tone-grey">' + F.approvedMachine + ' approved machine-wide</span>' +
+      '<span class="chip tone-grey">' + F.agentdbLessons + ' AgentDB lesson records</span>'
     );
 
     /* ---------------- panel skeleton ---------------- */
@@ -302,16 +391,18 @@
       '<div class="ab-stats">' +
         '<div class="ab-stat ab-door" id="ab-stat-memories" role="button" tabindex="0" aria-expanded="false" aria-controls="ab-doors">' +
           '<span class="ab-hint"></span><span class="ab-tchev">▸</span>' +
-          '<div class="ab-n">' + fmt(nMem) + '</div><div class="ab-l">memories · this project</div></div>' +
+          '<div class="ab-n">' + F.memories + '</div><div class="ab-l">memories · this project</div></div>' +
         '<div class="ab-stat ab-door" id="ab-stat-lessons" role="button" tabindex="0" aria-expanded="false" aria-controls="ab-doors">' +
           '<span class="ab-hint"></span><span class="ab-tchev">▸</span>' +
-          '<div class="ab-n">' + fmt(nLes) + '</div><div class="ab-l">distilled lessons</div></div>' +
+          '<div class="ab-n">' + F.approvedApplicable + '</div><div class="ab-l">approved lessons · apply to this project</div>' +
+          '<div class="ab-l">' + F.approvedMachine + ' approved machine-wide</div>' +
+          '<div class="ab-l">' + F.agentdbLessons + ' AgentDB lesson records · this project</div></div>' +
         '<div class="ab-stat ab-door" id="ab-stat-projects" role="button" tabindex="0" aria-expanded="false" aria-controls="ab-doors">' +
           '<span class="ab-hint"></span><span class="ab-tchev">▸</span>' +
           '<div class="ab-n">' + fmt(nProj) + '</div><div class="ab-l">projects machine-wide</div></div>' +
         '<div class="ab-stat ab-door" id="ab-stat-machine" role="button" tabindex="0" aria-expanded="false" aria-controls="ab-doors">' +
           '<span class="ab-hint"></span><span class="ab-tchev">▸</span>' +
-          '<div class="ab-n">' + fmt(nMachine) + '</div><div class="ab-l">memories machine-wide</div></div>' +
+          '<div class="ab-n">' + F.machine + '</div><div class="ab-l">memories machine-wide</div></div>' +
       '</div>' +
       '<div class="ab-doors" id="ab-doors">' +
         '<div class="ab-doors-clip"><div class="ab-door-box">' +
@@ -324,17 +415,17 @@
           '<div class="ab-door-view" id="ab-view-universe"></div>' +
         '</div></div>' +
       '</div>' +
-      '<div class="ab-flow" id="ab-flow" aria-label="' + fmt(nMem) + ' captured memories distill down to ' + fmt(nLes) + ' kept lessons">' +
+      '<div class="ab-flow" id="ab-flow" aria-label="' + F.memories + ' captured memories, of which ' + F.lessons + ' are kept lesson records">' +
         '<canvas id="ab-flowCanvas"></canvas>' +
-        '<div class="ab-flow-hit ab-left" id="ab-flowHitLeft" role="button" tabindex="0" aria-label="see the ' + fmt(nMem) + ' memories by kind" title="see the ' + fmt(nMem) + ' memories by kind"></div>' +
-        '<div class="ab-flow-hit ab-right" id="ab-flowHitRight" role="button" tabindex="0" aria-label="open the ' + fmt(nLes) + ' distilled lessons" title="open the ' + fmt(nLes) + ' distilled lessons"></div>' +
-        '<div class="ab-flow-label ab-left"><span class="mono">' + fmt(nMem) + '</span> captured</div>' +
-        '<div class="ab-flow-label ab-gate">distill</div>' +
-        '<div class="ab-flow-label ab-right"><span class="mono">' + fmt(nLes) + '</span> lessons — the keepers</div>' +
+        '<div class="ab-flow-hit ab-left" id="ab-flowHitLeft" role="button" tabindex="0" aria-label="see the ' + F.memories + ' memories by kind" title="see the ' + F.memories + ' memories by kind"></div>' +
+        '<div class="ab-flow-hit ab-right" id="ab-flowHitRight" role="button" tabindex="0" aria-label="open the ' + F.lessons + ' lesson records" title="open the ' + F.lessons + ' lesson records"></div>' +
+        '<div class="ab-flow-label ab-left"><span class="mono">' + F.memories + '</span> captured</div>' +
+        '<div class="ab-flow-label ab-gate">curated</div>' +
+        '<div class="ab-flow-label ab-right"><span class="mono">' + F.lessons + '</span> lesson records — the keepers</div>' +
         '<div class="ab-flow-narr"><span class="ab-fn-text" id="ab-fnText"></span><span class="ab-fn-steps" id="ab-fnSteps" aria-hidden="true"></span></div>' +
       '</div>' +
-      '<div class="ab-vocab"><b>memories</b> = everything your AI captures automatically&ensp;·&ensp;<b>lessons</b> = what survives distillation (task → what failed → what works)</div>' +
-      (nLes ? '' : '<div class="ab-empty-note">0 lessons recorded yet. Lessons are captured manually: run <code>record-lesson</code> in this project to keep one. There is no automatic distillation into lessons yet.</div>') +
+      '<div class="ab-vocab"><b>memories</b> = everything your AI captures automatically&ensp;·&ensp;<b>lesson records</b> = the ones kept in the AgentDB lessons namespace (task → what failed → what works)&ensp;·&ensp;<b>approved lessons</b> = the ones you ratified. Background distillation makes patterns and episodes, not lessons.</div>' +
+      ((nLes || !F.agentdbKnown) ? '' : '<div class="ab-empty-note">No lesson records in this project\'s AgentDB yet. Lessons are ratified by you; background distillation (session end or compaction, when learning is on) produces patterns and episodes, not lesson records. <code>record-lesson</code> keeps one now. Approved lessons are counted separately above.</div>') +
       '<div class="ab-roster" id="ab-roster">' +
         '<span class="ab-who">written by</span>' +
         '<span class="ab-rchip" data-tool="memory">AgentDB<span class="ab-cs">via ruflo memory</span><span class="ab-k">✦</span></span>' +
@@ -404,11 +495,13 @@
     });
 
     /* ---------------- doors ---------------- */
-    document.getElementById('ab-view-lessons').innerHTML = LESSONS.length
+    document.getElementById('ab-view-lessons').innerHTML = approvedLessonsHTML(d) + (LESSONS.length
       ? LESSONS.map(function (L) {
           return '<div class="ab-dl-title"><span class="ab-g">✦</span>' + esc(lessonTitle(L.key)) + '</div>' + lessonCardHTML(L);
         }).join('')
-      : '<p class="ab-fallback">0 lessons recorded yet. Lessons are captured manually: run <code>record-lesson</code> in this project to keep one. There is no automatic distillation into lessons yet.</p>';
+      : (F.agentdbKnown
+        ? '<p class="ab-fallback">No lesson records in this project\'s AgentDB yet. Lessons are ratified by you; background distillation produces patterns and episodes, not lesson records. <code>record-lesson</code> keeps one now.</p>'
+        : '<p class="ab-fallback">AgentDB lesson records: Unknown (the store could not be read).</p>'));
 
     (function () {
       var GLOSS = {
@@ -418,7 +511,7 @@
         'adr-patterns': 'architecture decision patterns',
         'adr-edges': 'links between decisions',
         trajectories: 'reasoning paths kept for replay',
-        lessons: 'distilled lessons — the keepers',
+        lessons: 'lesson records — the keepers',
         'metaharness-audit': 'MetaHarness audit runs',
         feedback: 'edit verifications, scored',
         pattern: 'learned edit patterns',
@@ -436,7 +529,7 @@
           '<span class="ab-kc">' + fmt(b.n) + '</span>' +
           '<span class="ab-kg">' + esc(GLOSS[b.namespace] || '') + '</span></div>';
       }).join('') +
-      '<div class="ab-door-foot">' + breakdown.length + ' namespaces · <span class="mono">' + fmt(nMem) + '</span> rows — live from <span class="mono">.swarm/memory.db</span> · bars log-scaled</div>';
+      '<div class="ab-door-foot">' + breakdown.length + ' namespaces · <span class="mono">' + F.memories + '</span> rows — live from <span class="mono">.swarm/memory.db</span> · bars log-scaled</div>';
     })();
 
     (function () {
@@ -444,9 +537,12 @@
         document.getElementById('ab-view-universe').innerHTML = '<p class="ab-fallback">no machine-wide data available</p>';
         return;
       }
-      var others = projects.filter(function (p) { return p.name !== projectName; }).slice(0, 12);
-      var meRow = projects.filter(function (p) { return p.name === projectName; })[0] || { name: projectName, memories: nMem };
-      var more = Math.max(0, projects.length - others.length - 1);
+      /* #500: "you are here" is the project whose STORE IDENTITY matches, never whose folder name does —
+         two unrelated repos can share a name. No identity (older payload) means no match, not a name guess. */
+      var U = activityUniverse(d);
+      var others = U.others;
+      var meRow = U.me || { name: projectName, memories: nMem };
+      var more = U.more;
       var top = Math.log10(Math.max(projects[0].memories || 1, 10));
       var base = Math.min(2.7, top - 0.5);
       var wU = function (n) { return Math.round(100 * Math.max(0.10, (Math.log10(Math.max(n, 1)) - base) / (top - base))); };
@@ -459,12 +555,12 @@
         others.map(function (p) { return rowHTML(p.name, p.memories, false); }).join('') +
         rowHTML(meRow.name, meRow.memories, true) +
         (more ? '<div class="ab-umore">…and ' + more + ' more projects</div>' : '') +
-        '<div class="ab-door-foot"><span class="mono">' + fmt(nMachine) + '</span> memories machine-wide — every one persists across sessions and reboots</div>';
+        '<div class="ab-door-foot"><span class="mono">' + F.machine + '</span> memories machine-wide — every one persists across sessions and reboots</div>';
     })();
 
     var DOOR_META = {
-      lessons: [fmt(nLes) + ' distilled lessons', 'what survived distillation — every card is a real memory'],
-      memories: [fmt(nMem) + ' memories in this project', 'by namespace — what your AI writes down as you work'],
+      lessons: [F.lessons + ' lesson records', 'kept in this project\'s AgentDB lessons namespace — every card is a real memory'],
+      memories: [F.memories + ' memories in this project', 'by namespace — what your AI writes down as you work'],
       universe: [fmt(nProj) + ' projects machine-wide', "everywhere this machine's AI remembers"]
     };
     var VIEW_OF = { 'ab-stat-memories': 'memories', 'ab-stat-lessons': 'lessons', 'ab-stat-projects': 'universe', 'ab-stat-machine': 'universe' };
@@ -721,19 +817,7 @@
 
     /* ---------------- rolling narration — the takeaway in plain English ---------------- */
     (function () {
-      var LINES = nLes > 0 ? [
-        'Your AI captures everything as it works — ' + fmt(nMem) + ' memories in this project so far.',
-        "Most of that stays raw. Only what's proven survives distillation.",
-        fmt(nLes) + ' lessons have earned permanence — the task, what failed, what actually works.',
-        "These survive compaction, restarts, and reboots. Your AI doesn't start over tomorrow.",
-        'Click any number above to see exactly what it knows.'
-      ] : [
-        'Your AI captures everything as it works — ' + fmt(nMem) + ' memories in this project so far.',
-        "Most of that stays raw. Only what's proven survives distillation.",
-        '0 lessons distilled yet. Distillation is manual for now; there is no auto-distill.',
-        'Capture one any time: run record-lesson in this project.',
-        'Click any number above to see exactly what it knows.'
-      ];
+      var LINES = activityNarration(d);
       var txt = document.getElementById('ab-fnText');
       var steps = document.getElementById('ab-fnSteps');
       var idx = 0;

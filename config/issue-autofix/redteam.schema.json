@@ -1,0 +1,38 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "findings", "present", "summary"],
+  "properties": {
+    "verdict": { "enum": ["CLEAN", "SUSPICIOUS", "MALICIOUS"] },
+    "findings": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file", "line", "category", "evidence"],
+        "properties": {
+          "file": { "type": "string" },
+          "line": { "type": "integer", "minimum": 0 },
+          "category": { "enum": ["network-egress", "process-exec", "dynamic-code", "obfuscation", "credential-access", "env-harvest", "fs-outside-repo", "fetch-execute", "hidden-unicode", "install-hook", "dependency", "backdoor-logic", "test-weakening", "data-destruction", "other"] },
+          "evidence": { "type": "string", "maxLength": 400 }
+        }
+      }
+    },
+    "present": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["networkEgress", "processExec", "dynamicCode", "credentialAccess", "obfuscation", "fsOutsideRepo", "installHook"],
+      "properties": {
+        "networkEgress": { "type": "boolean" },
+        "processExec": { "type": "boolean" },
+        "dynamicCode": { "type": "boolean" },
+        "credentialAccess": { "type": "boolean" },
+        "obfuscation": { "type": "boolean" },
+        "fsOutsideRepo": { "type": "boolean" },
+        "installHook": { "type": "boolean" }
+      }
+    },
+    "summary": { "type": "string", "maxLength": 800 }
+  }
+}

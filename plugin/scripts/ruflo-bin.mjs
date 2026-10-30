@@ -109,7 +109,7 @@ export function rufloInvocationOrPlain(binary, args, opts) {
  * @param {{ env?: Record<string,string|undefined>, candidates?: string[] }} [opts]
  * @returns {{ node: string, entry: string }|null}
  */
-export function nativeNodeFor(binary, { env = process.env, candidates } = {}) {
+export function nativeNodeFor(binary, { env = process.env, candidates, deadlineAt = Infinity } = {}) {
   let entry;
   try { entry = fs.realpathSync(binary); } catch { return null; }
   const addon = findAddon(path.dirname(path.dirname(entry)));
@@ -123,21 +123,29 @@ export function nativeNodeFor(binary, { env = process.env, candidates } = {}) {
   let chosen = null;
   // Bounded: this runs inside hooks that have their own deadline (SessionStart is stopped 1.5 s early), so a
   // wedged candidate must cost seconds at most and then leave the invocation exactly as it was.
+  // A caller's absolute deadline caps the probes too (#501); a probe cut short by it proves nothing, so it is not cached.
   const started = Date.now();
+  let cut = false;
   for (let i = 0; i < list.length; i += 1) {
-    if (Date.now() - started > PROBE_BUDGET_MS) break;
-    const r = spawnSync(list[i], ['-e', probe], { stdio: 'ignore', timeout: PROBE_TIMEOUT_MS, windowsHide: true });
+    const budgetLeft = PROBE_BUDGET_MS - (Date.now() - started);
+    const deadlineLeft = deadlineAt - Date.now();
+    if (Math.min(budgetLeft, deadlineLeft) <= 0) { cut = deadlineLeft <= 0; break; }
+    const probeTimeout = Math.max(1, Math.floor(Math.min(PROBE_TIMEOUT_MS, budgetLeft, deadlineLeft)));
+    const deadlineLimited = deadlineLeft < Math.min(PROBE_TIMEOUT_MS, budgetLeft);
+    const r = spawnSync(list[i], ['-e', probe], { stdio: 'ignore', timeout: probeTimeout, windowsHide: true });
     if (r.status === 0) { chosen = i === 0 ? null : { node: list[i], entry }; break; }
+    // This probe's own timeout came from the deadline, not from PROBE_TIMEOUT_MS: it proves nothing, so do not cache.
+    if (r.error?.code === 'ETIMEDOUT' && deadlineLimited) { cut = true; break; }
   }
-  nativeNodeCache.set(cacheKey, chosen);
+  if (!cut) nativeNodeCache.set(cacheKey, chosen);
   return chosen;
 }
 
 // npm's Windows .cmd shim cannot be spawned without a shell. Resolve the declared entry
 // inside that same managed installation and pass argv directly to Node instead.
-export function rufloInvocation(binary, args, { platform = process.platform, env = process.env, nodeCandidates } = {}) {
+export function rufloInvocation(binary, args, { platform = process.platform, env = process.env, nodeCandidates, deadlineAt } = {}) {
   if (platform !== 'win32') {
-    const native = nativeNodeFor(binary, { env, candidates: nodeCandidates });
+    const native = nativeNodeFor(binary, { env, candidates: nodeCandidates, deadlineAt });
     return native ? { executable: native.node, args: [native.entry, ...args] } : { executable: binary, args };
   }
   if (!/\.cmd$/i.test(binary)) return { executable: binary, args };

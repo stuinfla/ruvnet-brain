@@ -85,6 +85,7 @@ import {
 import { shellDiff as pluginShellDiff } from '../plugin/scripts/host-shell-boundary.mjs';
 import { codexPluginContentChanged, codexTrustChanges, codexUsesContentTrust, CODEX_TRUST_ACTION } from '../scripts/codex-hook-trust.mjs';
 import { probeFreshCodexDeclarations } from '../scripts/codex-fresh-host-proof.mjs';
+import { proveCodexBootSurface, parseChangedPaths } from '../scripts/codex-boot-surface-proof.mjs';
 import { refreshSharedCodexAppServer } from '../scripts/codex-hook-trust-reconcile.mjs';
 import { recordCodexOvernightNotice } from '../plugin/scripts/codex-overnight-notice.mjs';
 import { repairSecurityGuidance } from '../scripts/security-guidance-codex-compat.mjs';
@@ -3344,8 +3345,15 @@ async function doctorRun({ json }) {
         const binary = codexAdministrativeProbeBinary();
         const fresh = await probeFreshCodexDeclarations({ binary, codexHome: codexHomeDir(), cwd: process.cwd(),
           releasedPluginRoot: path.join(REPO_ROOT, 'plugin'), expectedVersion: PACKAGE_VERSION });
-        hostConvergence = reconcileFreshCodexDeclarations(recorded, fresh);
-        if (fresh.ok) info('Codex fresh-declarations-ready: current trusted hook declarations only; hook bodies and MCP execution were not tested. Existing open windows remain unproven.');
+        // Issue #391: a receipt that names the hook shim, MCP server or skills/ as changed is proven path by path
+        // (scripts/codex-boot-surface-proof.mjs). Doctor only READS: the receipt on disk is never rewritten here.
+        const changedPaths = parseChangedPaths(codex.sessionSafetyReason);
+        const needsBootProof = changedPaths.some((file) => !['hooks/codex-hooks.json', 'hooks/hooks.json'].includes(file));
+        const bootSurface = needsBootProof ? await proveCodexBootSurfaceHere(changedPaths, fresh) : null;
+        hostConvergence = reconcileFreshCodexDeclarations(recorded, fresh, PACKAGE_VERSION, bootSurface);
+        if (bootSurface?.ok) info(`Codex boot-surface-ready: ${bootSurface.proven.map((p) => p.path).join(', ')} proven for NEW sessions (real shim run, real MCP initialize + tools/list). Existing open windows remain unproven; a host relaunch was not observed.`);
+        else if (bootSurface) warn(`Codex boot surface remains unproven: ${bootSurface.reason}`);
+        else if (fresh.ok) info('Codex fresh-declarations-ready: current trusted hook declarations only; hook bodies and MCP execution were not tested. Existing open windows remain unproven.');
         else warn(`Codex fresh declarations remain unproven: ${fresh.reason}`);
       }
       if (hostConvergence.healthy) {
@@ -4241,9 +4249,15 @@ export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
  */
 export async function convergeHostsAfterUpdate(cacheDir = resolvedKbDir(), { refreshHost = refreshCodexSharedHost,
   unattended = process.env.RUVNET_NIGHTLY === '1', recordNotice = recordCodexOvernightNotice,
-  noticeHome = () => footprintRoots().brainHome, ...options } = {}) {
-  const convergence = syncHostsAfterUpdate(cacheDir, options);
+  noticeHome = () => footprintRoots().brainHome, proveBootSurface = proveCodexBootSurfaceDefault, ...options } = {}) {
+  const brainHome = options.brainHome || process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain');
+  const receiptPath = path.join(brainHome, 'host-convergence.json');
+  const readReceipt = () => { try { return JSON.parse(fs.readFileSync(receiptPath, 'utf8')); } catch { return null; } };
+  const prior = readReceipt();
+  let convergence = syncHostsAfterUpdate(cacheDir, options);
   if (!convergence.results?.codex) return convergence;
+  convergence = await recordCodexBootSurface(convergence, { prior, receiptPath, readReceipt, proveBootSurface,
+    hostLockPath: options.hostLockPath || path.join(brainHome, 'host-convergence.lock') });
   // Owner decision (4.7.21 review r2): the unattended nightly never reloads the shared Codex app-server; a reload
   // pauses Brain hooks in sessions already open until someone re-reviews them in /hooks. It leaves a notice the next
   // SessionStart shows once instead. An interactive --update still reloads.
@@ -4258,6 +4272,57 @@ export async function convergeHostsAfterUpdate(cacheDir = resolvedKbDir(), { ref
   const note = codexHostRefreshMessage(hostRefresh, convergence.results.codex);
   if (note) (note.level === 'warn' ? warn : info)(note.text);
   return { ...convergence, hostRefresh };
+}
+
+/**
+ * Issue #391: when Codex still carries a boot-level restart request (a fresh one from this sync, or the previous
+ * receipt's that a repeat sync would otherwise silently drop), prove each changed path and write a NEW receipt:
+ * restartScope 'open-sessions' only when every path is proven, otherwise the request stays 'unproven' with the reason.
+ * A historical receipt is never edited in place; the new one is the atomic replacement the sync itself writes.
+ */
+async function recordCodexBootSurface(convergence, { prior, receiptPath, readReceipt, proveBootSurface, hostLockPath }) {
+  if (!convergence.ok && convergence.restartOnly !== true) return convergence;
+  const current = readReceipt();
+  const codex = current?.hosts?.codex;
+  if (!current || current.desiredVersion !== PACKAGE_VERSION || codex?.state !== 'ready') return convergence;
+  const priorCodex = prior?.desiredVersion === PACKAGE_VERSION ? prior.hosts?.codex : null;
+  const fresh = codex.restartRequired === true && codex.restartScope === 'unproven';
+  const carried = codex.restartRequired !== true && priorCodex?.state === 'ready' && priorCodex.restartRequired === true
+    && priorCodex.restartScope === 'unproven' && convergence.results.codex.action === 'unchanged';
+  if (!fresh && !carried) return convergence;
+  const reason = fresh ? codex.sessionSafetyReason : priorCodex.sessionSafetyReason;
+  const changedPaths = parseChangedPaths(reason);
+  let proof;
+  try { proof = await proveBootSurface({ changedPaths }); }
+  catch (error) { proof = { ok: false, state: 'boot-surface-unproven', changed: changedPaths, proven: [], unproven: [], reason: error?.message || String(error),
+    existingWindows: 'unproven', hostRelaunch: 'not-observed' }; }
+  const ready = proof?.ok === true && proof.state === 'boot-surface-ready';
+  const next = { ...current, verifiedAt: new Date().toISOString(), hosts: { ...current.hosts, codex: { ...codex,
+    restartRequired: true, sessionSafety: 'restart-required', sessionSafetyReason: reason,
+    restartScope: ready ? 'open-sessions' : 'unproven',
+    bootSurface: { state: proof?.state || 'boot-surface-unproven', changed: proof?.changed || changedPaths,
+      proven: (proof?.proven || []).map((p) => p.path), unproven: proof?.unproven || [], reason: proof?.reason || null,
+      existingWindows: 'unproven', hostRelaunch: 'not-observed' } } } };
+  // The receipt is the sync's own file, so this read-modify-write takes the same lock the sync holds (the proof
+  // above can be slow, so the lock is held only for the write). A receipt that changed while we proved, or a lock
+  // we cannot take, means a newer sync owns it: record nothing and leave the prior, still-truthful receipt.
+  const writeLock = acquireHostConvergenceLock(hostLockPath);
+  if (!writeLock.acquired) return { ...convergence, bootSurface: proof, bootSurfaceNotRecorded: `host synchronization lock unavailable: ${writeLock.error}` };
+  try {
+    const latest = readReceipt();
+    if (latest?.verifiedAt !== current.verifiedAt || latest?.desiredVersion !== current.desiredVersion) {
+      return { ...convergence, bootSurface: proof, bootSurfaceNotRecorded: 'host-convergence receipt changed while the boot surface was proven' };
+    }
+    const tmp = `${receiptPath}.tmp-${process.pid}`;
+    fs.writeFileSync(tmp, JSON.stringify(next, null, '  ')); // two-space indent, same bytes as before
+    fs.renameSync(tmp, receiptPath);
+  } finally { writeLock.release(); }
+  const classified = classifyHostConvergence(next);
+  if (classified.healthy) classified.state = 'boot-surface-ready';
+  const { restartOnly, ...rest } = convergence;
+  return { ...rest, ok: classified.healthy === true, convergence: classified, bootSurface: proof,
+    ...(!classified.healthy && hostRestartIsOnlyGap(next) ? { restartOnly: true } : {}),
+    error: classified.healthy ? null : `host convergence is ${classified.state}: ${classified.action}` };
 }
 
 /**
@@ -4327,7 +4392,7 @@ export function hostSynchronizationFailureMessage(convergence, active, expectedV
 }
 
 /** Doctor projection only. Fresh hook metadata cannot clear an executable or MCP boot gap. */
-export function reconcileFreshCodexDeclarations(recorded, proof, expectedVersion = PACKAGE_VERSION) {
+export function reconcileFreshCodexDeclarations(recorded, proof, expectedVersion = PACKAGE_VERSION, bootSurface = null) {
   const original = classifyHostConvergence(recorded, expectedVersion);
   const codex = recorded?.hosts?.codex;
   if (!proof?.ok || proof.state !== 'fresh-declarations-ready' || proof.expectedVersion !== expectedVersion
@@ -4338,13 +4403,42 @@ export function reconcileFreshCodexDeclarations(recorded, proof, expectedVersion
   const prefix = 'boot-level declarations changed: ';
   const reason = codex.sessionSafetyReason;
   const changed = typeof reason === 'string' && reason.startsWith(prefix) ? reason.slice(prefix.length).split(', ') : [];
-  if (!changed.length || changed.some((file) => !['hooks/codex-hooks.json', 'hooks/hooks.json'].includes(file))) {
-    return { ...original, freshDeclarations: proof, notice: 'Fresh Codex hook declarations are ready; executable/MCP boot readiness and existing open windows remain unproven.' };
+  const hookFilesOnly = changed.length > 0 && changed.every((file) => ['hooks/codex-hooks.json', 'hooks/hooks.json'].includes(file));
+  // #391: every changed path proven by the boot-surface proof (same list as the receipt names) clears the unproven
+  // scope. The proof's own existingWindows:'unproven' and hostRelaunch:'not-observed' stay on the result.
+  const bootProven = !hookFilesOnly && bootSurface?.ok === true && bootSurface.state === 'boot-surface-ready'
+    && bootSurface.changed?.length === changed.length && changed.every((file) => bootSurface.changed.includes(file));
+  if (!hookFilesOnly && !bootProven) {
+    return { ...original, freshDeclarations: proof, ...(bootSurface ? { bootSurface } : {}),
+      notice: bootSurface?.reason ? `Fresh Codex hook declarations are ready; boot surface unproven — ${bootSurface.reason}. Existing open windows remain unproven.`
+        : 'Fresh Codex hook declarations are ready; executable/MCP boot readiness and existing open windows remain unproven.' };
   }
   const projected = classifyHostConvergence({ ...recorded, hosts: { ...recorded.hosts,
     codex: { ...codex, restartScope: 'open-sessions' } } }, expectedVersion);
+  if (bootProven) {
+    return { ...projected, ...(projected.healthy ? { state: 'boot-surface-ready' } : {}), freshDeclarations: proof, bootSurface,
+      notice: 'Fresh Codex boot surface is proven for new sessions (hook shim run, MCP initialize + tools/list); existing open windows remain unproven and a host relaunch was not observed.' };
+  }
   return { ...projected, ...(projected.healthy ? { state: 'fresh-declarations-ready' } : {}), freshDeclarations: proof,
     notice: 'Fresh Codex hook declarations are ready; hook bodies and MCP execution were not tested. Existing open windows remain unproven.' };
+}
+
+/** Prove the changed Codex boot paths against the plugin tree Codex loads. Read-only; `declarations` is a fresh-declarations probe. */
+async function proveCodexBootSurfaceHere(changedPaths, declarations) {
+  const codexHome = codexHomeDir();
+  let installedPluginRoot = declarations?.pluginRoot || null;
+  if (!installedPluginRoot) { try { installedPluginRoot = codexInstalledPluginRoot({ codexHome }); } catch { installedPluginRoot = null; } }
+  return await proveCodexBootSurface({ changedPaths, declarations, installedPluginRoot,
+    releasedPluginRoot: path.join(REPO_ROOT, 'plugin') });
+}
+
+async function proveCodexBootSurfaceDefault({ changedPaths }) {
+  let declarations;
+  try {
+    declarations = await probeFreshCodexDeclarations({ binary: codexAdministrativeProbeBinary(), codexHome: codexHomeDir(), cwd: process.cwd(),
+      releasedPluginRoot: path.join(REPO_ROOT, 'plugin'), expectedVersion: PACKAGE_VERSION });
+  } catch (error) { declarations = { ok: false, reason: error?.message || String(error) }; }
+  return await proveCodexBootSurfaceHere(changedPaths, declarations);
 }
 
 const HOST_LABELS = { claude: 'Claude Code', codex: 'Codex' };
@@ -6931,6 +7025,7 @@ the installer reports that boot-level declarations changed.
   let installedTag = null;
   let latestTag = null;
   let resolvedRelease = null;   // reused below so the release is resolved at most once
+  let namedTag = null, namedMove = false, namedDowngrade = false; // --version / --pin over an existing install (#504)
   if (alreadyInstalled && !FLAG_FORCE) {
     installedTag = installedBrainVersion(cacheDir); // 'unknown' when SOURCE.json has no releaseTag
     try {
@@ -6973,10 +7068,28 @@ the installer reports that boot-level declarations changed.
       ahead = Boolean(a && b && cmpTag(a, b) > 0);
       staleSkip = Boolean(b && (a === null || (a !== b && !ahead)));
     }
+    // A NAMED release (--version / --pin) runs no lookup, so latestTag stays null and the block below
+    // used to print "the release lookup failed" for a lookup that never happened, installing nothing
+    // (#504). The operator named the target: same tag = truthful skip; different or unknown = take the
+    // same signature-verified download path. Older than installed is allowed (explicit request), loudly.
+    const named = resolvedRelease && (resolvedRelease.source === 'pinned' || resolvedRelease.source === 'forced')
+      ? (resolvedRelease.tag_name || resolvedRelease.tag) : null;
+    if (named) {
+      const nrm = (v) => (v == null || v === 'unknown' ? null : String(v).replace(/^v/, ''));
+      namedTag = named;
+      if (isCorpusReleaseTag(named)) namedMove = installedCorpusTag(cacheDir) !== named;
+      else {
+        namedMove = nrm(installedTag) !== nrm(named);
+        namedDowngrade = Boolean(nrm(installedTag) && cmpTag(nrm(installedTag), nrm(named)) > 0);
+      }
+    }
   }
 
-  if (alreadyInstalled && !FLAG_FORCE && !staleSkip) {
-    if (latestTag && ahead) {
+  if (alreadyInstalled && !FLAG_FORCE && !staleSkip && !namedMove) {
+    if (namedTag) {
+      step('Brain already at the named release — skipping the download', `installed ${installedTag} matches ${namedTag}`);
+      ok(`found ${namedTag} at ${cacheDir} — nothing to download`);
+    } else if (latestTag && ahead) {
       // Never silently imply equality when the user is AHEAD — that would be a small lie, and it is
       // the one that hides a downgrade. Skipping is right; misdescribing why is not.
       step('Brain already current — skipping the download', `installed ${installedTag} is NEWER than the latest release (${latestTag})`);
@@ -6991,6 +7104,10 @@ the installer reports that boot-level declarations changed.
       info(`When you have a connection:  ${c.bold('npx ruvnet-brain --update')}   ${c.dim('(or --force to refetch now)')}`);
     }
   } else {
+    if (namedMove) {
+      if (namedDowngrade) warn(`${namedTag} is OLDER than the installed ${installedTag} — downgrading because you named it explicitly.`);
+      step('Moving to the named release', `installed ${installedTag || 'unknown'} → named ${namedTag}`);
+    }
     if (staleSkip) {
       step('Brain is out of date — fetching the current release', `installed ${installedTag || 'unknown'} → latest ${latestTag}`);
       info(`${c.dim('(the old installer skipped this whenever any brain was present, which is why stale installs never moved)')}`);

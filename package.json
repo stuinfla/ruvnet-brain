@@ -1,6 +1,6 @@
 {
   "name": "ruvnet-brain",
-  "version": "4.7.21",
+  "version": "4.7.23",
   "description": "One-command installer for RuvNet Brain — a portable, source-grounded brain over rUv's RuvNet building blocks, delivered as a Claude Code plugin so Claude uses the stack instead of fighting it.",
   "type": "module",
   "bin": {
@@ -77,6 +77,7 @@
     "deferral:replay": "node scripts/deferral-replay.mjs",
     "hooks:check": "node scripts/hook-retirement-check.mjs",
     "release:qualify": "node scripts/release-qualification.mjs",
+    "release:prepush": "node scripts/release-prepush.mjs",
     "rehearse:corpus": "node scripts/rehearse-corpus-pipeline.mjs",
     "single-source:check": "node scripts/single-source-check.mjs",
     "host:codex:execution-proof": "node scripts/codex-host-execution-proof.mjs"

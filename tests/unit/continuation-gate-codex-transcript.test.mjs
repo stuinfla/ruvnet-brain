@@ -19,9 +19,10 @@ function repo() {
   for (const args of [['init', '-q'], ['remote', 'add', 'origin', 'https://github.com/example/a.git']]) spawnSync('git', args, { cwd: d });
   return fs.realpathSync(d);
 }
+let turnSeq = 0;
 function fire(cwd, message, transcriptPath, host = 'codex') {
   const r = spawnSync(process.execPath, [GATE], { cwd, encoding: 'utf8',
-    input: JSON.stringify({ hook_event_name: 'Stop', cwd, session_id: 'cx1', stop_hook_active: false, last_assistant_message: message,
+    input: JSON.stringify({ hook_event_name: 'Stop', cwd, session_id: 'cx1', turn_id: `t${++turnSeq}`, prompt_id: `t${turnSeq}`, stop_hook_active: false, last_assistant_message: message,
       ...(transcriptPath ? { transcript_path: transcriptPath } : {}) }),
     env: { ...process.env, HOME: home, USERPROFILE: home, RUVNET_HOOK_HOST: host, RUVNET_WORK_LEDGER: path.join(home, 'ledger.json'),
       RUVNET_OPEN_ISSUES_FILE: path.join(home, 'none.json'), RUVNET_CI_STATUS_FILE: path.join(home, 'none.json'),

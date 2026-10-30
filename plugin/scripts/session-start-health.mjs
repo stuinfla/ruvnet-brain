@@ -264,8 +264,9 @@ export const knowledgeCurrency = ({ env = process.env, home, now = Date.now(), w
       + `the last refresh (${latest.action || 'unknown'}) ${age(history.latest.at)} passed its knowledge update phase, `
       + `only the host plugin sync after it did not finish: ${hostOnly.why}. `
       // A restart writes no refresh receipt, so this line stays until the next refresh records the sync.
-      + (restart ? 'Fix: restart Claude Code or Codex (`claude --continue` keeps a Claude conversation), then record it: npx ruvnet-brain@latest --update.'
-        : 'Fix: npx ruvnet-brain@latest --update (verify: npx ruvnet-brain --doctor).');
+      // The host sync alone is what did not finish, so the fix is the host-sync-only repair, not the full knowledge update (#391).
+      + (restart ? 'Fix: restart Claude Code or Codex (`claude --continue` keeps a Claude conversation), then record it: npx ruvnet-brain@latest --update --host-sync-only.'
+        : 'Fix: npx ruvnet-brain@latest --update --host-sync-only (verify: npx ruvnet-brain --doctor).');
   }
   if (!failing && fresh) return coordinatedSuiteLine({ brainHome, now, builtMs, age });
   const kit = agenticKitUpdates({ home, facts });

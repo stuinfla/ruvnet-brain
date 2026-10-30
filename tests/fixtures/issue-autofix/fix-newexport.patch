@@ -1,0 +1,23 @@
+diff --git a/scripts/slugify-strict.mjs b/scripts/slugify-strict.mjs
+new file mode 100644
+index 0000000..563d60f
+--- /dev/null
++++ b/scripts/slugify-strict.mjs
+@@ -0,0 +1,5 @@
++// Like slugify, but drops every character that cannot appear in a URL slug.
++import { slugify } from './slugify.mjs';
++export function slugifyStrict(title) {
++  return slugify(String(title).replace(/[^A-Za-z0-9\s-]/g, ''));
++}
+diff --git a/tests/unit/slugify-strict.test.mjs b/tests/unit/slugify-strict.test.mjs
+new file mode 100644
+index 0000000..f5abacc
+--- /dev/null
++++ b/tests/unit/slugify-strict.test.mjs
+@@ -0,0 +1,6 @@
++import { expect, it } from 'vitest';
++import { slugifyStrict } from '../../scripts/slugify-strict.mjs';
++
++it('drops punctuation from the strict slug', () => {
++  expect(slugifyStrict('Hello, World!')).toBe('hello-world');
++});

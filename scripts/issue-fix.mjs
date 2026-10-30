@@ -1,10 +1,12 @@
 #!/usr/bin/env node
-// scripts/issue-fix.mjs — GitHub issue triage + supervised candidate preparation.
+// scripts/issue-fix.mjs — GitHub issue triage, supervised candidate preparation, and the daily autofix entry.
 //
 // Stuart's mandate: "look for any open issues and fix as soon as they hit." scripts/issue-watch.mjs
 // already DETECTS and ALERTS on SLA breaches (>4h no owner response). This script has two explicit
 // authority modes. Scheduled `unattended` runs are read-only triage. On-demand `supervised` runs may
 // prepare and test a candidate in an isolated worktree, but cannot push, comment, merge, or promote.
+// The daily `autofix` mode (ADR-107) takes the shared single-writer lock and delegates to
+// scripts/issue-autofix.mjs, which ships a person's fix only through the protected release gates.
 //
 // House patterns followed (read before touching this file):
 //   - State file: scripts/issue-watch.mjs's ~/.claude/ruvnet-brain/issue-watch-state.json, EXTENDED
@@ -33,6 +35,7 @@
 // Usage:
 //   node scripts/issue-fix.mjs                       # safe default: unattended read-only triage
 //   node scripts/issue-fix.mjs --mode supervised     # prepare local isolated candidates for review
+//   node scripts/issue-fix.mjs --mode autofix         # daily unattended fix + release (ADR-107; kill-switch gated)
 //   node scripts/issue-fix.mjs --dry-run              # print the plan for each candidate; NOTHING
 //                                                      # is spawned, pushed, commented, or written
 //   node scripts/issue-fix.mjs --dry-run --simulate 16
@@ -48,6 +51,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { BOT_MARKER, OWNER_LOGIN, ghJsonWithRetry } from './issue-watch.mjs';
 import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
+import { acquireLock as acquireLockFile, releaseLock as releaseLockFile } from './issue-fix-lock.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = 'stuinfla/ruvnet-brain';
@@ -116,6 +120,12 @@ export function executionPolicy(mode = 'unattended') {
       promote: false,
     };
   }
+  if (mode === 'autofix') {
+    return {
+      mode, readOnlyTriage: false, prepareWorktree: true, spawnFixer: true, publicComment: 'outcome-only',
+      pushBranch: 'release/*', promote: 'fast-forward-main', dispatch: 'protected-release:code', publish: false,
+    };
+  }
   throw new Error(`unsupported issue-fix mode: ${mode}`);
 }
 
@@ -130,21 +140,9 @@ function loadState() {
 
 // ── Concurrency-1 lock (defense in depth alongside the run loop's own sequential processing: a
 // single issue can take up to TIMEOUT_MS, which can outlive the 10-minute poll cadence). ──
-function acquireLock() {
-  fs.mkdirSync(path.dirname(LOCK_PATH), { recursive: true });
-  if (fs.existsSync(LOCK_PATH)) {
-    try {
-      const prev = JSON.parse(fs.readFileSync(LOCK_PATH, 'utf8'));
-      process.kill(prev.pid, 0); // throws if the pid is not alive -> stale lock, fall through to reclaim
-      return { acquired: false, holder: prev };
-    } catch { /* stale lock or unreadable — reclaim it below */ }
-  }
-  fs.writeFileSync(LOCK_PATH, JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }));
-  return { acquired: true };
-}
-function releaseLock() {
-  try { fs.unlinkSync(LOCK_PATH); } catch { /* already gone */ }
-}
+// O_EXCL lock shared with autofix mode (scripts/issue-fix-lock.mjs); release is pid-checked.
+const acquireLock = (mode = 'supervised') => acquireLockFile(LOCK_PATH, { mode });
+const releaseLock = () => releaseLockFile(LOCK_PATH);
 
 function prepareWorktree(issue) {
   const stamp = Date.now();
@@ -321,6 +319,7 @@ export function attemptStartRecord(prev, now) {
 
 export async function run({ dryRun = false, simulate = [], now = Date.now(), repo = REPO, mode = 'unattended' } = {}) {
   const policy = executionPolicy(mode);
+  if (mode === 'autofix') throw new Error('autofix runs through scripts/issue-autofix.mjs, never this loop');
   if (simulate.length && !dryRun) {
     throw new Error('--simulate is only permitted with --dry-run — refusing to touch a real issue outside a dry run');
   }
@@ -501,9 +500,12 @@ async function main() {
     process.exit(1);
   }
 
+  // autofix: a live dry-run still takes the lock; only a --simulate dry-run (fixtures, no real repo) skips it.
+  // --self-test (ADR-107) changes nothing in the repository or on GitHub, so it never contends for the lock.
+  const needsLock = mode === 'autofix' ? !(dryRun && argv.includes('--simulate')) && !argv.includes('--self-test') : (!dryRun && mode === 'supervised');
   let lock = { acquired: true };
-  if (!dryRun && mode === 'supervised') {
-    lock = acquireLock();
+  if (needsLock) {
+    lock = acquireLock(mode);
     if (!lock.acquired) {
       console.log(`issue-fix: another run is already in progress (pid ${lock.holder?.pid}, started ${lock.holder?.startedAt}) — exiting (concurrency 1).`);
       // 75 = the reserved skip code: job-heartbeat.sh restores the live run's receipt (F3) instead
@@ -512,15 +514,26 @@ async function main() {
     }
   }
 
+  if (mode === 'autofix') {
+    try {
+      const { main: autofixMain } = await import('./issue-autofix.mjs');
+      process.exitCode = await autofixMain(argv);
+    } catch (err) {
+      console.error(`issue-fix: autofix FAILED — ${err.message}`);
+      process.exitCode = 1;
+    } finally { if (needsLock) releaseLock(); }
+    process.exit(process.exitCode);
+  }
+
   let output;
   try {
     output = await run({ dryRun, simulate, mode });
   } catch (err) {
     console.error(`issue-fix: FAILED — ${err.message}`);
-    if (!dryRun && mode === 'supervised') releaseLock();
+    if (needsLock) releaseLock();
     process.exit(1);
   }
-  if (!dryRun && mode === 'supervised') releaseLock();
+  if (needsLock) releaseLock();
 
   if (asJson) {
     console.log(JSON.stringify(output, null, 2));

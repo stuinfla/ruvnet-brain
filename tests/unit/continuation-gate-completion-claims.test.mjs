@@ -10,7 +10,7 @@ import { spawnSync } from 'node:child_process';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readSettledTranscript } from '../../plugin/scripts/turn-outcome-capture.mjs';
 import {
-  extractCompletionClaims, extractCommitments, auditCompletionClaims, claudeTurnEvents,
+  extractCompletionClaims, extractCommitments, auditCompletionClaims, claudeTurnEvents, promiseEvidence,
 } from '../../plugin/scripts/completion-claim-evidence.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
@@ -41,11 +41,12 @@ function transcript(...steps) {
   return file;
 }
 
-function fire(cwd, message, { transcriptPath, stopHookActive = false, host = 'claude', session = 's1', promiseCapture = '' } = {}) {
+let promptSeq = 0;
+function fire(cwd, message, { transcriptPath, stopHookActive = false, host = 'claude', session = 's1', promiseCapture = '', promptId = `p${++promptSeq}` } = {}) {
   const r = spawnSync(process.execPath, [GATE], {
     cwd,
     input: JSON.stringify({ hook_event_name: 'Stop', cwd, session_id: session, stop_hook_active: stopHookActive,
-      last_assistant_message: message, ...(transcriptPath ? { transcript_path: transcriptPath } : {}) }),
+      ...(promptId ? (host === 'codex' ? { turn_id: promptId } : { prompt_id: promptId }) : {}), last_assistant_message: message, ...(transcriptPath ? { transcript_path: transcriptPath } : {}) }),
     env: { ...process.env, HOME: home, USERPROFILE: home, RUVNET_HOOK_HOST: host,
       RUVNET_WORK_LEDGER: path.join(home, 'ledger.json'),
       RUVNET_PROMISE_CAPTURE: promiseCapture,
@@ -387,3 +388,238 @@ describe('promises (Piece C)', () => {
     expect(ledger().items).toEqual([]);
   });
 });
+
+describe('#425 a completion correction is delivered once per session + turn + category', () => {
+  const CLAIM = 'The updater is fixed.';
+  it('the same category twice in one turn blocks once; rewording does not rearm it; a new turn does', () => {
+    const repo = gitRepo('a');
+    expect(fire(repo, CLAIM, { promptId: 'turn-1' })).toContain('beyond the available verified scope');
+    expect(fire(repo, CLAIM, { promptId: 'turn-1' })).toBe('');
+    expect(fire(repo, 'The updater is now fully fixed.', { promptId: 'turn-1' })).toBe('');
+    expect(fire(repo, CLAIM, { promptId: 'turn-1', session: 's2' })).toContain('beyond the available verified scope');
+    expect(fire(repo, CLAIM, { promptId: 'turn-2' })).toContain('beyond the available verified scope');
+  });
+  it('without a native id the transcript prompt is the turn identity', () => {
+    const repo = gitRepo('a');
+    const t = transcript();
+    expect(fire(repo, CLAIM, { promptId: null, transcriptPath: t })).toContain('beyond the available verified scope');
+    expect(fire(repo, CLAIM, { promptId: null, transcriptPath: t })).toBe('');
+  });
+  it('without a native id a REPEATED prompt text is a new turn: the opening record, not the words, is the identity', () => {
+    const repo = gitRepo('a');
+    const t = transcript();
+    expect(fire(repo, CLAIM, { promptId: null, transcriptPath: t })).toContain('beyond the available verified scope');
+    expect(fire(repo, CLAIM, { promptId: null, transcriptPath: t })).toBe('');
+    // the user sends the SAME words again ("please fix the updater"): a new turn, so its correction is delivered
+    fs.appendFileSync(t, [rec('assistant', [{ type: 'text', text: CLAIM }]), rec('user', 'please fix the updater')].join('\n') + '\n');
+    expect(fire(repo, CLAIM, { promptId: null, transcriptPath: t })).toContain('beyond the available verified scope');
+    expect(fire(repo, CLAIM, { promptId: null, transcriptPath: t })).toBe('');
+  });
+  it('a different audit category in the same turn is still delivered', () => {
+    const repo = gitRepo('a');
+    expect(fire(repo, CLAIM, { promptId: 'turn-1' })).toContain('beyond the available verified scope');
+    const named = 'The updater is fixed.\nVerified: `npx vitest run tests/unit/updater.test.mjs` — 5 passed.\nNot verified: host.';
+    expect(fire(repo, named, { promptId: 'turn-1', transcriptPath: transcript(edit()) })).toContain('beyond the available verified scope');
+  });
+  it('with no turn identity at all it degrades to an advisory carrying the original verdict, never a block', () => {
+    const repo = gitRepo('a');
+    expect(fire(repo, CLAIM, { promptId: null })).toBe('');
+    const adv = JSON.parse(lastStderr.trim().split('\n').find((l) => l.includes('completion-correction-advisory')));
+    expect(adv).toMatchObject({ authority: false, verdict: 'FAIL' });
+    expect(adv.reason).toContain('turn identity');
+    expect(JSON.stringify(adv)).not.toContain('"PASS"');
+  });
+});
+
+describe('#425 per-claim outcomes (evidence per outcome, never authority)', () => {
+  const CMD = 'npx vitest run tests/unit/updater.test.mjs';
+  const FIVE = 'The five listed recovery tasks are complete at their documented local scope.';
+  const ANSWER = `The updater retry is fixed (verified: ${CMD}).\n${FIVE}\nNot verified: browser.`;
+  const audit = (message, ...steps) => auditCompletionClaims(message, { turn: claudeTurnEvents([rec('user', 'go'), ...steps.flat()]) });
+
+  it('binds only the claim whose own sentence names a post-edit passing check; verdict stays UNKNOWN', () => {
+    const r = audit(ANSWER, edit(), bash(CMD));
+    expect(r.verdict).toBe('UNKNOWN');
+    expect(r.outcomes.map((o) => o.state)).toEqual(['observed-check', 'unbound']);
+    expect(r.outcomes[0].checks).toHaveLength(1);
+    expect(r.outcomes[0].checks[0].command).toBe(CMD);
+    expect(r.outcomes.every((o) => o.authority === false)).toBe(true);
+    expect(JSON.stringify(r)).not.toContain('"PASS"');
+  });
+
+  it('a check before the edit is stale, an unrelated command or a failing check never binds', () => {
+    expect(audit(ANSWER, bash(CMD), edit()).outcomes[0].state).toBe('stale');
+    expect(audit(ANSWER, edit(), bash('npm test')).outcomes[0].state).toBe('unbound');
+    expect(audit(ANSWER, edit(), bash(CMD, 'FAIL 1', true)).outcomes[0].state).toBe('failed-check');
+    expect(audit('The updater retry is fixed.\nNot verified: browser.', edit(), bash(CMD)).outcomes[0].state).toBe('unbound');
+  });
+
+  it('a line-start Verified: line can name the command; "Not verified:" never does', () => {
+    expect(audit(`The updater retry is fixed.\nVerified: ${CMD} — 5 passed.\nNot verified: browser.`, edit(), bash(CMD)).outcomes[0].state).toBe('observed-check');
+    expect(audit(`The updater retry is fixed.\nNot verified: ${CMD}.`, edit(), bash(CMD)).outcomes[0].state).toBe('unbound');
+  });
+
+  // #369/#425: the transcript reports the WHOLE command's exit status. A check is observed only when that
+  // status is the check's own: one simple command or an `&&` chain. Everything else is `unbound`, with a reason.
+  it.each([
+    ['a pipe to tail', `${CMD} | tail -3`],
+    ['an `|| true` fallback', `${CMD} || true`],
+    ['a `;` sequence', `${CMD}; echo exit=$?`],
+    ['a background `&`', `${CMD} &`],
+    ['a command substitution', `echo $(${CMD})`],
+    ['a subshell', `(${CMD})`],
+    ['a file redirection', `${CMD} > out.log`],
+    ['a second line', `${CMD}\ntail out.log`],
+  ])('a check run with %s never binds (output claims success, status is not the check\'s)', (_, command) => {
+    const answer = `The updater retry is fixed (verified: ${CMD}).\nNot verified: browser.`;
+    const r = audit(answer, edit(), bash(command, 'FAIL 3 failed'));
+    expect(r.outcomes[0].state).toBe('unbound');
+    expect(r.outcomes[0].checks).toEqual([]);
+    if (!/^echo|> out\.log/.test(command)) expect(r.outcomes[0].reason).toMatch(/exit status is not this check/);
+    expect(r.verification.checks).toEqual([]);
+    expect(r.verdict).not.toBe('OBSERVED_CHECK');
+  });
+
+  it('a negated check (`! <cmd>`) flips a failure to success, so naming it still never binds or evidences', () => {
+    const answer = `The updater retry is fixed.\nVerified: ! ${CMD}\nNot verified: browser.`;
+    const r = audit(answer, edit(), bash(`! ${CMD}`, 'FAIL 3 failed'));
+    expect(r.outcomes[0].state).toBe('unbound');
+    expect(r.outcomes[0].reason).toMatch(/negated exit status/);
+    expect(r.verification.checks).toEqual([]);
+    expect(r.verdict).not.toBe('OBSERVED_CHECK');
+  });
+
+  it('an environment prefix is part of the command: SKIP_HOOKS=1 <cmd> is not <cmd>, in either direction', () => {
+    const answer = `The updater retry is fixed (verified: ${CMD}).\nNot verified: browser.`;
+    expect(audit(answer, edit(), bash(`SKIP_HOOKS=1 ${CMD}`)).outcomes[0].state).toBe('unbound');
+    const withEnv = `The updater retry is fixed (verified: SKIP_HOOKS=1 ${CMD}).\nNot verified: browser.`;
+    expect(audit(withEnv, edit(), bash(CMD)).outcomes[0].state).toBe('unbound');
+    expect(audit(withEnv, edit(), bash(`SKIP_HOOKS=1 ${CMD}`)).outcomes[0].state).toBe('observed-check');
+  });
+
+  it('a quoted operator is not an operator, and an `&&` chain binds only through its own exit status', () => {
+    const q = 'npm run check -- --grep "a|b;c"';
+    const answer = (c) => `The updater retry is fixed (verified: ${c}).\nNot verified: browser.`;
+    expect(audit(answer(q), edit(), bash(q)).outcomes[0].state).toBe('observed-check');
+    const chain = `cd tests && ${CMD}`;
+    expect(audit(answer(CMD), edit(), bash(chain)).outcomes[0].state).toBe('observed-check');
+    expect(audit(answer(CMD), edit(), bash(chain, 'FAIL', true)).outcomes[0].state).toBe('failed-check');
+    expect(audit(answer(CMD), edit(), bash(`${CMD} 2>&1`)).outcomes[0].state).toBe('observed-check');
+  });
+
+  it('through the gate: nothing on stdout, exactly one advisory listing outcomes, ledger byte-identical', () => {
+    const repo = gitRepo('a');
+    const before = fs.existsSync(path.join(home, 'ledger.json')) ? fs.readFileSync(path.join(home, 'ledger.json')) : null;
+    expect(fire(repo, ANSWER, { transcriptPath: transcript(edit(), bash(CMD)) })).toBe('');
+    const advisories = lastStderr.trim().split('\n').filter((l) => l.includes('advisory'));
+    expect(advisories).toHaveLength(1);
+    const adv = JSON.parse(advisories[0]);
+    expect(adv).toMatchObject({ authority: false, verdict: 'UNKNOWN' });
+    expect(adv.outcomes.map((o) => o.state)).toEqual(['observed-check', 'unbound']);
+    expect(adv.text).toContain('unbound');
+    const after = fs.existsSync(path.join(home, 'ledger.json')) ? fs.readFileSync(path.join(home, 'ledger.json')) : null;
+    expect(after).toEqual(before);
+  });
+
+  it('when checks ran but the verdict is still FAIL, the correction asks for an outcome-by-outcome report', () => {
+    const repo = gitRepo('a');
+    const out = fire(repo, 'The five listed recovery tasks are complete.', { transcriptPath: transcript(edit(), bash(CMD)) });
+    expect(out).toContain('report outcome by outcome');
+    expect(out).not.toContain('Run the real consumer path');
+    expect(fire(repo, GOOD, { transcriptPath: transcript(edit()) })).toContain('Run the real consumer path');
+  });
+});
+
+describe('masked/compound checks: a check ran, its exit status is not attributable (never "no check ran")', () => {
+  const CMD = 'npx vitest run tests/unit/updater.test.mjs';
+  const ANS = `The updater is fixed.\n\nVerified: \`${CMD}\` — 5 passed after the edit.\nNot verified: the native host path.`;
+  const audit = (message, ...steps) => auditCompletionClaims(message, { turn: claudeTurnEvents([rec('user', 'go'), ...steps.flat()]) });
+
+  it.each([
+    ['a pipe to tail', `${CMD} 2>&1 | tail -20`],
+    ['a redirect to a log', `${CMD} > /tmp/run.log 2>&1`],
+    ['an || fallback', `${CMD} || true`],
+    ['a ; sequence', `${CMD}; echo done`],
+  ])('through the real Stop gate: %s is a non-blocking advisory that does not claim no check ran', (_, command) => {
+    const repo = gitRepo('a');
+    const t = transcript(edit(), bash(command));
+    expect(fire(repo, ANS, { transcriptPath: t })).toBe('');
+    const adv = JSON.parse(lastStderr.trim().split('\n').find((l) => l.includes('completion-scope-advisory')));
+    expect(adv).toMatchObject({ authority: false, verdict: 'UNKNOWN' });
+    expect(adv.text).toContain('not attributable');
+    expect(adv.text).toContain('completion stays UNKNOWN');
+    expect(lastStderr).not.toContain('no end-to-end check ran');
+    const r = audit(ANS, edit(), bash(command));
+    expect(r.verdict).toBe('UNKNOWN');
+    expect(r.problems.join(' ')).not.toContain('no end-to-end check ran');
+    expect(r.verification.checks).toEqual([]);
+    expect(r.verification.maskedChecks).toHaveLength(1);
+  });
+
+  // Round-2 gate must-fix: the answer names the masked check INLINE (not on a line-start `Verified:` line).
+  // `names` was built from strict checks only, so this read "does not name the check" and BLOCKED, where 4.7.21 advised.
+  it.each([
+    ['a pipe to tail', `${CMD} 2>&1 | tail -20`],
+    ['a redirect to a tmp log', `${CMD} > /tmp/run.log 2>&1`],
+    ['an || fallback', `${CMD} || true`],
+    ['a ; sequence', `${CMD}; echo done`],
+    ['a short tail', `${CMD} | tail -3`],
+  ])('inline-naming answer, %s: real Stop gate under full nudges is a non-blocking advisory, verdict UNKNOWN', (_, command) => {
+    const repo = gitRepo('a');
+    const INLINE = `The updater is fixed (I ran ${CMD}, 5 passed). Not verified: the native host path.`;
+    const t = transcript(edit(), bash(command));
+    const env = { ...process.env, HOME: home, USERPROFILE: home, RUVNET_HOOK_HOST: 'claude', RUVNET_STOP_NUDGES: 'full',
+      RUVNET_WORK_LEDGER: path.join(home, 'ledger.json'), RUVNET_PROMISE_CAPTURE: '',
+      RUVNET_OPEN_ISSUES_FILE: path.join(home, 'none.json'), RUVNET_CI_STATUS_FILE: path.join(home, 'none.json'),
+      RUVNET_CAPABILITY_ROOTS: path.join(home, 'caps'), RUVNET_CAPABILITY_LIVE_EVIDENCE: path.join(home, 'live.jsonl'),
+      RUVNET_EVIDENCE_FILE: path.join(home, 'ev.jsonl'), RUVNET_CONTINUATION_COOLDOWN_MS: '1' };
+    delete env.CLAUDE_CODE_ENTRYPOINT;
+    const run = spawnSync(process.execPath, [GATE], { cwd: repo, encoding: 'utf8', env,
+      input: JSON.stringify({ hook_event_name: 'Stop', cwd: repo, session_id: 's-inline', stop_hook_active: false, prompt_id: `inl${++promptSeq}`,
+        last_assistant_message: INLINE, transcript_path: t }) });
+    expect(run.status).toBe(0);
+    expect(run.stdout).toBe('');                                   // not blocked
+    expect(run.stderr).not.toContain('no end-to-end check ran');
+    expect(run.stderr).not.toContain('does not name the check');
+    const adv = JSON.parse(run.stderr.trim().split('\n').find((l) => l.includes('completion-scope-advisory')));
+    expect(adv).toMatchObject({ authority: false, verdict: 'UNKNOWN' });
+    expect(adv.text).toContain('not attributable');
+    const r = audit(INLINE, edit(), bash(command));
+    expect(r.verdict).toBe('UNKNOWN');
+    expect(r.verification.checks).toEqual([]);                      // masked-only can never reach OBSERVED_CHECK
+    expect(r.outcomes.every((o) => o.state !== 'observed-check')).toBe(true);
+    expect(promiseEvidence(r, INLINE, { text: 'fix the updater', evidenceCommands: [CMD] })).toBeNull();
+  });
+
+  it('inline naming with NO check at all, or an errored masked check, still FAILs (naming never substitutes for a run)', () => {
+    const INLINE = `The updater is fixed (I ran ${CMD}, 5 passed). Not verified: the native host path.`;
+    expect(audit(INLINE, edit()).problems.join(' ')).toContain('no end-to-end check ran');
+    expect(audit(INLINE, edit(), bash(`${CMD} | tail -3`, 'boom', true)).problems.join(' ')).toContain('no end-to-end check ran');
+    expect(audit(INLINE, edit()).verdict).not.toBe('OBSERVED_CHECK');
+  });
+
+  it('no check at all still blocks with the true statement; a masked check without naming/disclosure is still a FAIL', () => {
+    const repo = gitRepo('a');
+    expect(fire(repo, ANS, { transcriptPath: transcript(edit()) })).toContain('no end-to-end check ran this turn');
+    expect(audit('The updater is fixed.', edit(), bash(`${CMD} | tail -3`)).verdict).toBe('FAIL');
+  });
+
+  it('a masked check that errored (or has no output) is not even "a check ran"', () => {
+    expect(audit(ANS, edit(), bash(`${CMD} | tail -3`, 'boom', true)).problems.join(' ')).toContain('no end-to-end check ran');
+  });
+
+  it.each([
+    ['|| true', `${CMD} || true`],
+    ['; echo', `${CMD}; echo ok`],
+    ['| tail -3 after FAIL output', `${CMD} | tail -3`],
+    ['an env prefix', `SKIP_HOOKS=1 ${CMD}`],
+    ['a negated exit status (! flips a failure to success)', `! ${CMD}`],
+  ])('strictness kept: %s never evidences a promise nor binds an outcome', (_, command) => {
+    const answer = `The updater retry is fixed (verified: ${CMD}).\nNot verified: browser.`;
+    const r = audit(answer, edit(), bash(command, 'FAIL 3 failed'));
+    expect(r.outcomes[0].state).toBe('unbound');
+    const item = { text: 'fix the updater retry', evidenceCommands: [CMD] };
+    expect(promiseEvidence(r, answer, item)).toBeNull();
+  });
+});
+

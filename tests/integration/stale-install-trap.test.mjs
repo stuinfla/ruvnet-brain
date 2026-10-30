@@ -125,9 +125,9 @@ function runInstaller({ breakLookup = false, refuseLookup = false, latestTag } =
  * only cares about the verdict, and letting it actually fetch would make the suite depend on the
  * network and take minutes. Streams stdout and kills the child the moment the decision appears.
  */
-function runUntilDecision({ latestTag, timeoutMs = 90_000 } = {}) {
+function runUntilDecision({ latestTag, args = [], timeoutMs = 90_000 } = {}) {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [INSTALLER, '--no-verify'], {
+    const child = spawn(process.execPath, [INSTALLER, '--no-verify', ...args], {
       env: {
         ...process.env,
         HOME: home,
@@ -140,7 +140,7 @@ function runUntilDecision({ latestTag, timeoutMs = 90_000 } = {}) {
       resolve(buf.replace(/\x1b\[[0-9;]*m/g, '')); };
     const onData = (d) => {
       buf += String(d);
-      if (/out of date|already current|could not check/i.test(buf)) done();
+      if (/out of date|already current|already at the named|→ named|could not check/i.test(buf)) done();
     };
     child.stdout.on('data', onData);
     child.stderr.on('data', onData);
@@ -191,6 +191,38 @@ describe('stale-install trap', () => {
     expect(out).not.toMatch(/safe and complete|Downloading the brain/);
     expect(fs.existsSync(path.join(home, '.cache', 'ruvnet-brain', 'kb', 'forge-mcp-all.mjs'))).toBe(false);
   });
+});
+
+// ── #504: a NAMED release over an existing install ──────────────────────────────────────────────
+// `--version vX` / `--pin vX` run no lookup, so the old code fell into "could not check ... the release
+// lookup failed" and installed nothing. Offline by construction: a named release does no lookup.
+describe('named release over an existing install (#504)', () => {
+  const TARGET = 'v9.9.9-named';
+  const OLD = 'v0.0.1-ancient';
+  for (const flag of ['--version', '--pin']) {
+    it(`${flag}: a different installed tag moves to the named release, never "could not check"`, async () => {
+      seedBrain(OLD);
+      const out = await runUntilDecision({ args: [flag, TARGET] });
+      expect(out).toContain(`installed ${OLD} → named ${TARGET}`);
+      expect(out).not.toMatch(/could not check|lookup failed/i);
+      expect(out).not.toMatch(/downgrading/i);
+    }, 120_000);
+
+    it(`${flag}: the same installed tag skips and says it is at the named release`, async () => {
+      seedBrain(TARGET);
+      const out = await runUntilDecision({ args: [flag, TARGET] });
+      expect(out).toMatch(/already at the named release/i);
+      expect(out).not.toMatch(/could not check|lookup failed|→ named/i);
+    }, 120_000);
+  }
+
+  it('a named tag OLDER than installed proceeds with a visible downgrade warning', async () => {
+    seedBrain('v9.9.9-newer');
+    const out = await runUntilDecision({ args: ['--version', 'v1.0.0'] });
+    expect(out).toContain('installed v9.9.9-newer → named v1.0.0');
+    expect(out).toMatch(/OLDER than the installed.*downgrading/i);
+    expect(out).not.toMatch(/could not check|lookup failed/i);
+  }, 120_000);
 });
 
 // ── AHEAD is legal (2026-07-22) ──────────────────────────────────────────────────────────────────

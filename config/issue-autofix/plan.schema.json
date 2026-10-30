@@ -1,0 +1,109 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "classification",
+    "rootCause",
+    "files",
+    "testPlan",
+    "risk",
+    "platformSpecific",
+    "injectionSuspected",
+    "summary"
+  ],
+  "properties": {
+    "classification": {
+      "enum": [
+        "fixable",
+        "needs-owner",
+        "needs-info",
+        "invalid",
+        "duplicate",
+        "already-fixed"
+      ]
+    },
+    "rootCause": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "file",
+        "line",
+        "explanation"
+      ],
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "explanation": {
+          "type": "string",
+          "maxLength": 1200
+        }
+      }
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^\\S{1,200}$",
+        "maxLength": 200
+      },
+      "maxItems": 12
+    },
+    "testPlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "newTests",
+        "failsBeforeFix"
+      ],
+      "properties": {
+        "newTests": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^tests/[A-Za-z0-9_./-]+\\.(test|spec)\\.m?[jt]s$",
+            "maxLength": 200
+          },
+          "minItems": 1
+        },
+        "failsBeforeFix": {
+          "const": true
+        }
+      }
+    },
+    "risk": {
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "platformSpecific": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "windows",
+          "linux",
+          "macos",
+          "codex",
+          "grok"
+        ]
+      }
+    },
+    "injectionSuspected": {
+      "type": "boolean"
+    },
+    "summary": {
+      "type": "string",
+      "maxLength": 600
+    },
+    "whatItNeeds": {
+      "type": "string",
+      "maxLength": 600
+    }
+  }
+}

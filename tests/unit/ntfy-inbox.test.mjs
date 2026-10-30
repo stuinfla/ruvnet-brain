@@ -48,6 +48,22 @@ describeOnPosix('classify', () => {
     expect(mod.classify(msg('f', 'Waiting on a reply: 2 contributor issues')).actionable).toBe(false);
     expect(mod.classify(msg('g', '⭐ New star')).actionable).toBe(false);
   });
+  it('maps the daily issue-autofix pages (ADR-107): a ship is news, the rest is work, a halt has one key', () => {
+    expect(mod.classify(msg('a1', 'AUTOFIX SHIPPED #12 v4.7.23', 1_792_900_000, '', 3))).toMatchObject({ kind: 'autofix', key: 'autofix:12', number: 12, actionable: false });
+    expect(mod.classify(msg('a2', 'AUTOFIX ABORTED #12 at S8'))).toMatchObject({ kind: 'autofix', key: 'autofix:12', number: 12, actionable: true, outcome: 'aborted' });
+    expect(mod.classify(msg('a3', 'AUTOFIX NEEDS OWNER #7'))).toMatchObject({ kind: 'autofix', key: 'autofix:7', actionable: true, outcome: 'needs-owner' });
+    expect(mod.classify(msg('a4', 'AUTOFIX HALTED v4.7.23 at S10'))).toMatchObject({ kind: 'autofix', key: 'autofix:halt', actionable: true });
+    expect(mod.classify(msg('a5', 'AUTOFIX HALTED v4.7.24 at S12')).key).toBe('autofix:halt'); // a second halt is the same alert
+    // The "#N" inside a stand-down reason is a release-blocker issue, not an autofix issue: it must not key on it.
+    expect(mod.classify(msg('a6', 'AUTOFIX STANDING DOWN: release-blocker #99'))).toMatchObject({ kind: 'autofix', key: 'autofix:standdown', actionable: true });
+    expect(mod.classify(msg('a7', '🔴 AUTOFIX ABORTED #5 at S4')).key).toBe('autofix:5'); // a leading emoji changes nothing
+  });
+  it('autofix alerts fold like any other alert, stay open until a person closes them, and never reach the responder', () => {
+    let open = mod.fold([], [msg('h1', 'AUTOFIX HALTED v4.7.23 at S10'), msg('h2', 'AUTOFIX HALTED v4.7.23 at S11', 1_792_900_001), msg('s1', 'AUTOFIX SHIPPED #3 v4.7.24', 1_792_900_002, '', 3)], { resolver: never });
+    expect(open.filter((a) => !a.closedAt)).toHaveLength(1);
+    expect(open[0]).toMatchObject({ key: 'autofix:halt', count: 2 });
+    expect(mod.classify(msg('x', 'AUTOFIX SHIPPED #3 v4.7.24', 1_792_900_000, '', 5)).actionable).toBe(false); // even at high priority
+  });
   it("maps the nightly watchdog's titles to job alerts and job recovery (scripts/nightly-watchdog.mjs push())", () => {
     for (const state of ['FAILING', 'NEVER-RAN', 'STALE', 'MISSING', 'STALLED', 'STUCK']) {
       expect(mod.classify(msg('w', `🔴 ${state}: com.ruvnet.issue-watch`))).toMatchObject({ kind: 'job', key: 'job:com.ruvnet.issue-watch', label: 'com.ruvnet.issue-watch', actionable: true });

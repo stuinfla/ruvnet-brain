@@ -24,7 +24,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { SOURCE_CLASS, STATUS, isUntouchedOwnerSeedRow } from './lesson-provenance.mjs';
-
+export { projectNameFor, segmentSuffixMatch, lessonApplies } from './lesson-scope.mjs';
 export { BUNDLED_OWNER_SEED_IDS, SOURCE_CLASS, STATUS, isUntouchedOwnerSeedRow } from './lesson-provenance.mjs';
 
 /** Resolve fixture/plugin configuration without mutating the child process account HOME. */

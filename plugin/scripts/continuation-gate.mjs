@@ -54,6 +54,7 @@ import { readSettledTranscript } from './turn-outcome-capture.mjs';
 import { continuationProjectIdentity, authorizedContinuationObjective, authorizedPromiseItems, assistantCommitmentOwned, setAssistantCommitmentState } from './continuation-objective.mjs';
 import {
   auditCompletionClaims, readClaudeTurn, extractCommitments, promiseClosingClaim,
+  promiseEvidence, completionCorrectionText, outcomeAdvisoryText, completionCategory,
   PROMISE_KIND, PROMISE_CAP_OPEN,
 } from './completion-claim-evidence.mjs';
 import { writeAtomic } from './user-settings.mjs';
@@ -376,6 +377,7 @@ const HOST = process.env.RUVNET_HOOK_HOST === 'codex' ? 'codex' : 'claude';
  * nativeTurnLines reader, #423) are parsed; a Codex rollout that cannot be read or has no current-turn
  * boundary stays UNKNOWN (completion-claim-evidence.mjs header). Fails open: a throw is NONE.
  */
+let completionTurnKey = null;
 const completion = (() => {
   const message = String(hookInput.last_assistant_message || '');
   if (!message || !hookInput.session_id) return { verdict: 'NONE', claims: [] };
@@ -384,7 +386,15 @@ const completion = (() => {
     // Claude always sends a JSONL transcript; one we cannot read is OUR failure, and a Stop hook
     // fails open on its own machinery (ADR-074 failure semantics) — never a correction request.
     // Missing native evidence stays UNKNOWN; it cannot silently validate a completion claim.
-    return auditCompletionClaims(message, { turn, host: HOST });
+    const audit = auditCompletionClaims(message, { turn, host: HOST });
+    // Turn identity for correction de-duplication (#425): the host's native id (Claude prompt_id, Codex
+    // turn_id), else the transcript record that opened this turn (uuid or position, never its text: a repeated
+    // "continue" is a new turn). Never a clock.
+    const native = HOST === 'codex' ? hookInput.turn_id : hookInput.prompt_id;
+    const opener = typeof native === 'string' && native.trim() ? `native:${native}`
+      : turn?.boundaryFound && turn.openerId ? `opener:${turn.openerId}` : '';
+    if (opener) completionTurnKey = crypto.createHash('sha256').update(JSON.stringify([hookInput.session_id, opener])).digest('hex').slice(0, 24);
+    return audit;
   } catch { return { verdict: 'NONE', claims: [] }; }
 })();
 
@@ -416,6 +426,12 @@ function promiseBookkeeping() {
         changed = true;
       }
     }
+    // #369: observed evidence moves a promise to `evidenced` (NOT done, never forced again); same session only.
+    for (const item of led.items) {
+      if (!assistantCommitmentOwned(item, hookInput.session_id, projectIdentity) || !(item.state === undefined || item.state === 'active')) continue;
+      const closureEvidence = promiseEvidence(completion, hookInput.last_assistant_message, item);
+      if (closureEvidence) { Object.assign(item, { state: 'evidenced', stateAt: at, closureEvidence }); changed = true; }
+    }
     const owned = led.items.filter((i) => assistantCommitmentOwned(i, hookInput.session_id, projectIdentity));
     const openKeys = new Set(owned.map((i) => i.key));
     let activeCount = owned.filter((i) => i.state === undefined || i.state === 'active').length;
@@ -428,6 +444,7 @@ function promiseBookkeeping() {
       led.items.push({ schemaVersion: 1, kind: PROMISE_KIND, text: promise.text, key: promise.key, done: false, state: 'active', at,
         projectId: pid, worktreeIds: [projectIdentity.worktreeId], sessionIds: [hookInput.session_id],
         capturedFrom: { sessionId: hookInput.session_id },
+        ...(promise.evidenceCommands ? { evidenceCommands: promise.evidenceCommands } : {}),
         authorization: { kind: 'owner-mandate', reference: 'i-will-is-a-contract-2026-09-15' } });
       changed = true;
     }
@@ -727,14 +744,12 @@ if (observations.length && STOP_NUDGES_FULL) console.error(JSON.stringify({ kind
 // re-running checks or rewording cannot satisfy it. The verdict stays UNKNOWN (never PASS: it closes
 // no promise and grants no completion authority); under `full` the limitation is reported, not enforced.
 const scopeOnlyUnknown = completion.verdict === 'UNKNOWN' && completion.namesCheck === true
-  && completion.disclosesGaps === true && (completion.verification?.checks?.length || 0) > 0;
+  && completion.disclosesGaps === true
+  && ((completion.verification?.checks?.length || 0) + (completion.verification?.maskedChecks?.length || 0)) > 0;
 if (scopeOnlyUnknown && STOP_NUDGES_FULL) console.error(JSON.stringify({ kind: 'completion-scope-advisory',
-  authority: false, verdict: 'UNKNOWN', text: `"${completion.claims[0].text.slice(0, 160)}": a check ran after the last change`
-    + ' and the answer names it and discloses what is not verified. This gate cannot judge whether that task outcome'
-    + ' is complete (it only qualifies check-scoped statements), so completion stays UNKNOWN. Not blocking: more checks'
-    + ' or rewording cannot change this verdict.' }));
+  authority: false, verdict: 'UNKNOWN', outcomes: completion.outcomes, text: outcomeAdvisoryText(completion) }));
 const completionWork = ['FAIL', 'UNKNOWN'].includes(completion.verdict) && !scopeOnlyUnknown ? [{
-  text: `You claimed "${completion.claims[0].text.slice(0, 160)}" is done; ${completion.problems.join('; ')}. Run the real consumer path, or restate it as UNVERIFIED.`,
+  text: completionCorrectionText(completion),
   at: new Date(nowMs).toISOString(), derived: true, kind: 'completion-claim-integrity',
 }] : [];
 // DECISION RECORDS (ADR-105 §8, ADR-106): a turn that CREATED an ADR in an adopted project must also
@@ -880,6 +895,36 @@ try {
   if (touched) fs.writeFileSync(FORCES, JSON.stringify(counts));
   if (retired.length) { save(led); forceable = forceable.filter((i) => !retired.includes(i)); }
 } catch { /* bookkeeping only: never break a turn */ }
+/**
+ * A completion correction is delivered at most once per native session + user turn + audit category (#425,
+ * sparkling). The marker is an exclusive-create file (the same primitive as the cooldown lock), so two racing
+ * Stop hooks cannot both deliver. Rewording or elapsed time does not rearm it; a new user turn does. With no
+ * turn identity the correction degrades to a non-blocking advisory carrying the ORIGINAL verdict (never PASS).
+ * This only ever removes a blocking item.
+ */
+try {
+  const item = forceable.find((i) => i.kind === 'completion-claim-integrity');
+  if (item) {
+    const category = completionCategory(completion);
+    let deliver = false;
+    if (!completionTurnKey) {
+      console.error(JSON.stringify({ kind: 'completion-correction-advisory', authority: false, verdict: completion.verdict,
+        category, reason: 'turn identity unavailable; a correction cannot be de-duplicated, so it is not enforced', text: item.text }));
+    } else {
+      const id = crypto.createHash('sha256').update(JSON.stringify([hookInput.session_id, completionTurnKey, category])).digest('hex').slice(0, 24);
+      const dir = `${LEDGER}.completion-delivered`;
+      try {
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, id), new Date(nowMs).toISOString(), { flag: 'wx' });
+        deliver = true;
+        for (const f of fs.readdirSync(dir)) {   // markers are only needed for the turn; keep a week
+          try { if (nowMs - fs.statSync(path.join(dir, f)).mtimeMs > 7 * 86_400_000) fs.rmSync(path.join(dir, f), { force: true }); } catch { /* raced */ }
+        }
+      } catch { /* already delivered this turn/category, or cannot persist: do not block */ }
+    }
+    if (!deliver) forceable = forceable.filter((i) => i !== item);
+  }
+} catch { forceable = forceable.filter((i) => i.kind !== 'completion-claim-integrity'); }
 if (!forceable.length) process.exit(EXIT_ALLOW);
 if (deferralState && forceable.some((i) => i.kind === 'no-deferral')) {
   try { for (const [k, v] of Object.entries(deferralState.counts)) if (nowMs - Date.parse(v?.at) > 7 * 86_400_000) delete deferralState.counts[k];
