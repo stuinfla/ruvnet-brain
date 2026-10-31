@@ -23,7 +23,7 @@
   const KEEP_INLINE_MS = 15 * 60 * 1000;
   const kept = new Map();              // slot key -> { receipt, until }
   const keyOf = new Map();             // receipt id -> slot key it was attached to
-  const revealed = new Set();          // receipt ids whose folds were opened once already
+  const REVEAL_MS = 20 * 1000;         // the click's own repaints land well inside this
   const VERDICT = {
     changed: { chip: 'done — changed', tone: 'green' },
     'no-change': { chip: 'done — already so', tone: 'cyan' },
@@ -104,10 +104,12 @@
       if (!k || k.until < now) continue;
       if (slot.querySelector(`.receipt[data-receipt-id="${k.receipt.id}"]`)) continue;
       slot.append(render(k.receipt, { compact: false, noUndo: !!slot.closest('article.rec') }));
-      // A receipt nobody can see is no receipt: a lesson switched off moves into a collapsed group, so
-      // open the folds that hold this slot — ONCE per receipt, so a fold the owner later closes stays closed.
-      if (!revealed.has(k.receipt.id)) {
-        revealed.add(k.receipt.id);
+      // A receipt nobody can see is no receipt. A lesson switched off is REBUILT into a collapsed group
+      // a moment after the click, so revealing only the first slot left the receipt (and the box to undo
+      // it) folded away — found on the owner's machine, 4.7.26. Open the folds around every slot this
+      // receipt lands in during the click's own repaints (REVEAL_MS), never on a later background
+      // repaint, so a fold the owner closes afterwards stays closed.
+      if (now < k.revealUntil) {
         for (let d = slot.closest('details'); d; d = d.parentElement?.closest('details')) d.open = true;
       }
     }
@@ -122,7 +124,7 @@
   /** Show a server receipt next to its control (slot key) and in the history card. */
   function attach(key, receipt) {
     if (!receipt) return;
-    kept.set(key, { receipt, until: Date.now() + KEEP_INLINE_MS });
+    kept.set(key, { receipt, until: Date.now() + KEEP_INLINE_MS, revealUntil: Date.now() + REVEAL_MS });
     keyOf.set(receipt.id, key);
     for (const old of document.querySelectorAll(`[data-receipt-slot="${CSS.escape(key)}"] .receipt`)) {
       if (old.dataset.receiptId !== receipt.id) old.remove();   // one receipt per control: the newest

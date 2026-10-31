@@ -48,6 +48,21 @@ describe('every click leaves visible, durable evidence', () => {
     expect(fs.existsSync(`${fx.home}/.config/ruvnet-brain/brain-off`)).toBe(false);
   }, WAIT * 2);
 
+  it('lessons: switching a rule off moves it into a collapsed group — its receipt and its box stay in sight', async () => {
+    // 4.7.26 on the owner's machine: the row was rebuilt into the closed "switched off" group a moment
+    // after the click, so the receipt and the box that undoes it were folded out of sight.
+    const box = page.locator('#lsw-QA-ON');
+    await box.evaluate((b) => { for (let d = b.closest('details'); d; d = d.parentElement?.closest('details')) d.open = true; b.scrollIntoView({ block: 'center' }); });
+    await box.click();
+    const r = page.locator('[data-receipt-slot="lesson:QA-ON"] .receipt').first();
+    await page.waitForFunction(() => /switched off/.test(document.querySelector('[data-receipt-slot="lesson:QA-ON"] .receipt')?.textContent || ''), null, { timeout: WAIT });
+    await page.waitForTimeout(1500);                       // let the card's own re-fetch land
+    expect(await r.isVisible()).toBe(true);
+    expect(await page.locator('#lsw-QA-ON').isVisible()).toBe(true);
+    await page.locator('#lsw-QA-ON').click();              // and back on, from the same visible box
+    await page.waitForFunction(() => /in force/.test(document.querySelector('[data-receipt-slot="lesson:QA-ON"] .receipt td:last-child')?.textContent || ''), null, { timeout: WAIT });
+  }, WAIT * 2);
+
   it('settings: the saved field shows its new value and the receipt names the change', async () => {
     await page.locator('#card-settings summary').first().evaluate((s) => { s.closest('details').open = true; });
     await page.locator('#field-routing .seg label').nth(1).click();
