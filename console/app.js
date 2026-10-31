@@ -1739,7 +1739,7 @@ function addRecommendations(recs, source) {
     // AN APPLIED CARD IS EVIDENCE, NOT A PROPOSAL. It used to be deleted (gone) or rebuilt as a fresh
     // proposal (replaced) as soon as the re-measure landed — taking its log and its Undo button with
     // it, ~30 s after the click. It now stays, and says what the re-measure found.
-    if (existing?.classList.contains('is-applied')) {
+    if (existing?.classList?.contains('is-applied')) {
       existing.querySelector('.rec-remeasured')?.remove();
       existing.querySelector('.rec-actions')?.prepend(el('p', { class: 'rec-remeasured fineprint' }, rec
         ? 'Re-measured after the fix: your machine still shows this — see the receipt below.'

@@ -22,6 +22,18 @@ describe('recommendation refresh replaces the measured source', () => {
     f.addRecommendations([], 'stack');
     expect(f.renderedRecIds.size).toBe(0); expect(f.nodes.has('rec-stack:ruflo')).toBe(false);
   });
+  it('keeps an APPLIED card when the re-measure no longer reports it — its log and Undo are the evidence', () => {
+    // 4.7.25 deleted it here, ~30 s after the click, taking the only Undo button with it (2026-10-30).
+    const f = fixture(); f.addRecommendations([recommendation('reconcile:p')], 'state');
+    const card = f.nodes.get('rec-reconcile:p');
+    let replaced = false;
+    Object.assign(card, { classList: { contains: (c) => c === 'is-applied' }, querySelector: () => null,
+      remove() { f.nodes.delete(this.id); }, replaceWith() { replaced = true; } });
+    f.addRecommendations([], 'state');
+    expect(f.nodes.has('rec-reconcile:p')).toBe(true);
+    expect(replaced).toBe(false);
+    expect(f.renderedRecIds.size).toBe(0);
+  });
   it('updates evidence for the same ID and preserves recommendations from other sources', () => {
     const f = fixture(); f.addRecommendations([recommendation('stack:ruflo')], 'stack');
     f.addRecommendations([recommendation('health:memory')], 'health');
