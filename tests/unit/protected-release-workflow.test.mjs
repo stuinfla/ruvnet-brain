@@ -27,7 +27,7 @@ describe('protected release rail', () => {
     const source = read('.github/workflows/release-candidate-preflight.yml');
     const upload = source.slice(source.indexOf('name: macos-candidate-search-${{ github.sha }}'));
     expect(upload).toContain('if: always()');
-    expect(upload).toContain('candidate-host-evidence-macos.json.failure.json');
+    expect(upload).toContain('candidate-host-evidence-macos-${{ matrix.leaf }}.json.failure.json');
     expect(upload).toContain('if-no-files-found: warn');
     expect(source).toContain('needs: [candidate-preflight, ci, integration, ux, stranger, early-public-linux, early-public-macos, early-public-windows, macos-candidate-search]');
   });
@@ -37,7 +37,8 @@ describe('protected release rail', () => {
     expect(macJob).toContain('@anthropic-ai/claude-code@latest');
     expect(macJob).toContain('@openai/codex@latest');
     expect(macJob).toContain('echo "$RUNNER_TEMP/host-clis/bin" >> "$GITHUB_PATH"');
-    expect(macJob.indexOf('Install current hosts')).toBeLessThan(macJob.indexOf('Run three installed host searches'));
+    expect(macJob.indexOf('Install current hosts')).toBeGreaterThan(-1);
+    expect(macJob.indexOf('Install current hosts')).toBeLessThan(macJob.indexOf('Run the installed host search for this mode'));
   });
   it('is the sole human release dispatch and accepts source identity plus one mode selector', () => {
     const releaseWorkflows = [

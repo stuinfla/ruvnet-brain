@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFile, execFileSync, spawn, spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -99,6 +99,79 @@ const assetToFile = (asset, destination) => {
   downloadAsset(asset, destination);
   return destination;
 };
+
+// THE RECEIPT-HISTORY SCAN WAS THE LONGEST STEP OF EVERY RELEASE (measured 2026-10-30).
+//
+// discover() reads every receipt of every published release, so its cost grows with history: 1,254
+// receipts across 155 releases on 2026-10-30, one `gh api` process each, strictly one after another.
+// 4.7.25 (run 41135960694) spent 551 s of its 908 s publish step there before the first stage notice,
+// and finalize-public-verification calls discover() again (392 s of its 415 s). Nothing in the scan
+// depends on the order the bytes arrive in, so the reads now run side by side and the results are
+// consumed in exactly the order the serial loop used: same receipts, same retries, same verdicts.
+// Five at a time keeps the scan under GitHub's REST secondary limit (900 requests per minute) at the
+// ~0.4 s each read takes from a hosted runner.
+export const RECEIPT_READ_CONCURRENCY = 5;
+
+/** Run fn over items with at most `limit` in flight; results keep the input order. */
+export async function mapConcurrent(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      results[index] = await fn(items[index], index);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker));
+  return results;
+}
+
+/** Async twin of downloadAsset: same command, same retries and backoff, same final error. */
+export const downloadAssetAsync = async (asset, destination, {
+  spawnChild = spawn, wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  attempts = ASSET_DOWNLOAD_ATTEMPTS, baseDelayMs = 2000,
+} = {}) => {
+  let cause = '';
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const fd = fs.openSync(destination, 'w'); // 'w' truncates any partial bytes from the previous attempt
+    let result;
+    try {
+      result = await new Promise((resolve) => {
+        const stderr = [];
+        let child;
+        try {
+          child = spawnChild('gh', ['api', asset.url, '-H', 'Accept: application/octet-stream'], {
+            stdio: ['ignore', fd, 'pipe'], timeout: ASSET_DOWNLOAD_TIMEOUT_MS,
+          });
+        } catch (error) { resolve({ error }); return; }
+        child.stderr?.on('data', (chunk) => stderr.push(chunk));
+        child.on('error', (error) => resolve({ error, stderr: Buffer.concat(stderr) }));
+        child.on('close', (status, signal) => resolve({ status, signal, stderr: Buffer.concat(stderr) }));
+      });
+    } finally { fs.closeSync(fd); }
+    if (!result.error && !result.signal && result.status === 0) return destination;
+    const stderr = String(result.stderr || '').trim().slice(0, 300);
+    cause = `${result.error?.message || result.signal || `exit ${result.status}`}${stderr ? ` (${stderr})` : ''}`;
+    if (attempt < attempts) await wait(baseDelayMs * 2 ** (attempt - 1));
+  }
+  throw new Error(`cannot download transaction asset ${asset.name} after ${attempts} attempts: ${cause}`);
+};
+const assetReceiptAsync = async (asset) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-asset-'));
+  const file = path.join(dir, path.basename(asset.name) || 'asset.bin');
+  try {
+    await downloadAssetAsync(asset, file);
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+};
+const commandAsync = (name, args, options = {}) => new Promise((resolve, reject) => {
+  execFile(name, args, {
+    encoding: 'utf8', timeout: 30_000, maxBuffer: 32 * 1024 * 1024, ...options,
+  }, (error, stdout, stderr) => {
+    if (error) { error.stderr = stderr; reject(error); } else resolve(String(stdout).trim());
+  });
+});
 const withTempAsset = (asset, fn) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-asset-'));
   const file = path.join(dir, path.basename(asset.name) || 'asset.bin');
@@ -170,9 +243,13 @@ export function liveReleaseProvider({ root = process.cwd() } = {}) {
     return (Array.isArray(pages?.[0]) ? pages : [pages]).flat();
   };
   const hydratedRelease = (release) => ({ ...release, assets: assetsForRelease(release.id) });
-  const receiptsFor = (release) => (release?.assets || [])
-    .filter(({ name }) => name.startsWith(RECEIPT_PREFIX) && name.endsWith('.json'))
-    .map(assetReceipt);
+  const receiptAssetsOf = (release) => (release?.assets || [])
+    .filter(({ name }) => name.startsWith(RECEIPT_PREFIX) && name.endsWith('.json'));
+  const assetsForReleaseAsync = async (id) => {
+    const pages = JSON.parse(await commandAsync('gh', ['api', `repos/${REPO}/releases/${id}/assets?per_page=100`, '--paginate', '--slurp']));
+    return (Array.isArray(pages?.[0]) ? pages : [pages]).flat();
+  };
+  const receiptsForAsync = (release) => mapConcurrent(receiptAssetsOf(release), RECEIPT_READ_CONCURRENCY, assetReceiptAsync);
   const expectedAssets = (identity) => ({
     'ruvnet-brain.zip': identity.bundleSha256,
     'ruvnet-brain.zip.sig': identity.bundleSignatureSha256,
@@ -259,22 +336,27 @@ export function liveReleaseProvider({ root = process.cwd() } = {}) {
         .filter((release) => release.sha === identity.candidateSha);
       activeDraft = matchingDrafts[0] || null;
       const receipts = matchingDrafts.length === 1
-        ? receiptsFor(hydratedRelease(releaseById(matchingDrafts[0].id))) : [];
+        ? await receiptsForAsync(hydratedRelease(releaseById(matchingDrafts[0].id))) : [];
+      // Draft-release assets are not readable through the public GitHub API (they return 404
+      // even though the release metadata is visible).  The matching candidate above is read
+      // explicitly because the publisher owns it; unrelated drafts are not public channel
+      // state and must not make every subsequent release fail while scanning history. Published
+      // releases remain fully receipt-gated and continue to block competing transactions.
+      const scanned = all.filter((release) => !(release.draft && release.tag_name !== identity.tag));
+      // Every read is concurrent (RECEIPT_READ_CONCURRENCY); the fold below walks releases and their
+      // receipts in the original order, so the first-seen/highest-sequence choice is unchanged.
+      const hydratedHistory = await mapConcurrent(scanned, RECEIPT_READ_CONCURRENCY,
+        async (release) => ({ ...release, assets: await assetsForReleaseAsync(release.id) }));
+      const historyAssets = hydratedHistory.flatMap((release) => receiptAssetsOf(release).map((asset) => ({ release, asset })));
+      const historyReceipts = await mapConcurrent(historyAssets, RECEIPT_READ_CONCURRENCY, ({ asset }) => assetReceiptAsync(asset));
       const latestByTransaction = new Map();
-      for (const release of all) {
-        // Draft-release assets are not readable through the public GitHub API (they return 404
-        // even though the release metadata is visible).  The matching candidate above is read
-        // explicitly because the publisher owns it; unrelated drafts are not public channel
-        // state and must not make every subsequent release fail while scanning history. Published
-        // releases remain fully receipt-gated and continue to block competing transactions.
-        if (release.draft && release.tag_name !== identity.tag) continue;
-        for (const receipt of receiptsFor(hydratedRelease(release))) {
-          const prior = latestByTransaction.get(receipt.transactionId);
-          if (!prior || receipt.sequence > prior.receipt.sequence) {
-            latestByTransaction.set(receipt.transactionId, { receipt, release });
-          }
+      historyAssets.forEach(({ release }, index) => {
+        const receipt = historyReceipts[index];
+        const prior = latestByTransaction.get(receipt.transactionId);
+        if (!prior || receipt.sequence > prior.receipt.sequence) {
+          latestByTransaction.set(receipt.transactionId, { receipt, release });
         }
-      }
+      });
       const npmLatest = command('npm', ['view', `${PACKAGE}@latest`, 'version']);
       const githubLatest = latestCodeTag();
       const legacySettled = [];

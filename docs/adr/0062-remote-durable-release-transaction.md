@@ -3,10 +3,10 @@ id: ADR-062
 title: Remote-durable staged release transaction
 status: Accepted
 date: 2026-08-02
-updated: 2026-10-01
+updated: 2026-10-30
 updated_source: derived-from-git
 reviewed_digest: 55d6f7131a2b
-version: 1.1.6
+version: 1.2.0
 authors: [Stuart Kerr]
 tags: [release, evidence, transaction, npm, github, receipts, recovery]
 supersedes: []
@@ -376,6 +376,30 @@ enter signed, explicitly human-authorized terminal `aborted`; automation cannot 
   and both defaults identify a safe supported generation, otherwise state remains
   `manual-intervention-required`.
 - The per-generation workflow version lock remains explicit and must match source.
+
+## Amendment 2026-10-30 (4.7.28): the same checks, less waiting
+
+Measured on 4.7.22-4.7.26, a code release spent ~25 min in preflight and ~37-50 min in protected-release,
+and the longest waits were not checks but serial transfers. Three changes remove that waiting; no check,
+input, receipt field or acceptance rule is removed or loosened.
+
+- **Receipt history scan.** `discover()` (publisher and finalizer) reads every receipt of every release
+  to find a competing pending transaction: 1,254 receipts across 155 releases on 2026-10-30, one `gh api`
+  process each, one after another (551 s of 4.7.25's 908 s publish step, 392 s of its 415 s finalize).
+  The reads now run `RECEIPT_READ_CONCURRENCY` (5) at a time and are folded in the original release and
+  receipt order, so the highest-sequence-per-transaction choice, the pending/settled verdicts and the
+  retry-with-backoff per read are unchanged. Measured locally against the live repository the same
+  call took 417 s serial and 93 s concurrent with identical results.
+- **macOS exact-candidate search.** The three installed host searches ran one after another on one
+  macOS runner so that no two cold searches shared a 3-core Mac (`--sequential-searches`, 1f1913d1).
+  Each mode now has its own macOS runner and the three run at once; each leg is the full check for its
+  mode, and the preflight aggregate requires all three receipts and holds every leaf to the same rule.
+- **Payload restore.** `actions/download-artifact@v4` once ended the seal job's restore as a success with
+  the payload incomplete (run 41159273131, ENOENT on the .tgz), which cost a whole re-dispatch. The seal
+  and publisher jobs now prove every manifest member arrived and fetch the artifact again by ID if not
+  (`scripts/restore-run-artifact.mjs`); the signature and digest checks after it are unchanged. The
+  verified-candidate artifact drops `run_attempt` from its name, like `publisher-payload`, so a failed
+  seal job can be re-run in place.
 
 ## Authoritative references
 

@@ -1,4 +1,4 @@
-Updated: 2026-10-30 17:30:00 EDT | Version 1.8.0
+Updated: 2026-10-30 23:00:00 EDT | Version 1.9.0
 Created: 2026-07-07 09:22:01 EDT
 
 # Contributing to RuvNet Brain — the one rulebook
@@ -43,9 +43,11 @@ npm run version:set -- X.Y.Z && npm run convergence:write      # commit these fi
 npm run release:qualify -- --suite source --report /tmp/source-qualification-UNIQUE.json
 npm run release:qualify -- --suite integration --report /tmp/integration-qualification-UNIQUE.json
 npm test && npm run single-source:check                    # distinct grounding and rule checks
-# before the FIRST push: every cheap check preflight would fail on, all failures at once, ~1 minute
+# before the FIRST push: every cheap check preflight would fail on, all failures at once, ~2 minutes
 # (branch/version, preflight's first gates incl. the ADR-0103 review row, qualification inventory, stray files,
-# census surfaces vs the NEWEST corpus generation, text-anchored mesh/mutation/regression tests):
+# census surfaces vs the NEWEST corpus generation, text-anchored mesh/mutation/regression tests, the
+# clock-sensitive tests in TZ=UTC and in a zone on a different calendar day than Eastern now, and the
+# preflight's deterministic UX gates `npm run qe:ux`):
 npm run release:prepush -- --receipt /tmp/release-prepush-UNIQUE.json
 git push origin release/X.Y.Z                                # triggers release-candidate-preflight
 ```
@@ -111,6 +113,12 @@ is **not** a product latency target. How long a customer's first answer takes on
 open 4.5 improvement, measured on its own and never loosened through this constant. Lanes keep one warm search
 worker; a case that times out fails alone and the next case gets a fresh, re-warmed worker
 (`createRestartingMcpSession`), and the three installed doctors run one at a time (`runHostDoctors`).
+The preflight's exact-candidate macOS search gives each host mode its own macOS runner
+(`macos-candidate-search`, one matrix leg per mode, `candidate-host-evidence.mjs --modes`), so no two
+searches share a runner and the three run at once; the aggregate requires all three receipts
+(`scripts/macos-candidate-search-check.mjs`). The seal and publisher jobs prove their restored payload
+complete before signing or publishing (`scripts/restore-run-artifact.mjs`) and fetch it again by ID if a
+download came back short.
 
 ## The knowledge corpus
 

@@ -215,6 +215,59 @@ export async function anchoredTests(ctx) {
     : fail(`vitest exited ${result.status} on ${files.join(', ')}: ${tail(result)}`, { files });
 }
 
+// (h) THE CLOCK THE CI RUNNER HAS, NOT THE ONE THIS MAC HAS (4.7.26, preflight 41156104312).
+// Tests that turn a clock into a calendar day passed on the owner's Mac (Eastern) for three releases and
+// then failed on a UTC runner between 8 p.m. and midnight ET, when the two days differ. A local run can
+// only see that if the test process's zone puts it on a different day than Eastern NOW, so these files
+// run twice more: once in UTC (the runners' zone, at this hour) and once in a zone chosen so that its
+// calendar day differs from the Eastern day at this moment, whatever the hour.
+export const CLOCK_SENSITIVE_TEST = /etDay|America\/New_York|timeZone|process\.env\.TZ|toLocaleDateString|getTimezoneOffset|GIT_(?:COMMITTER|AUTHOR)_DATE|toISOString\(\)\.slice\(0, ?10\)|\.getDate\(\)|\.getHours\(\)|toDateString|Intl\.DateTimeFormat/;
+export const CLOCK_TEST_DIRS = ['tests/unit/', 'tests/integration/'];
+export const PRODUCT_ZONE = 'America/New_York';
+// UTC+14 is a day ahead of Eastern from 06:00 ET onward; UTC-12 is a day behind until 08:00 ET.
+export const DIVERGENT_ZONE_CANDIDATES = ['Pacific/Kiritimati', 'Etc/GMT+12'];
+const dayIn = (zone, ms) => new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(ms);
+
+/** A zone whose calendar day differs from Eastern's at `ms` (always exists: the two candidates cover 24 h). */
+export function dayDivergentZone(ms) {
+  const eastern = dayIn(PRODUCT_ZONE, ms);
+  return DIVERGENT_ZONE_CANDIDATES.find((zone) => dayIn(zone, ms) !== eastern) || null;
+}
+
+export async function clockZones(ctx) {
+  const tracked = lines(await git(ctx, ['ls-tree', '-r', '--name-only', 'HEAD']));
+  const files = [];
+  for (const file of tracked) {
+    if (!file.endsWith('.test.mjs') || !CLOCK_TEST_DIRS.some((dir) => file.startsWith(dir))) continue;
+    if (CLOCK_SENSITIVE_TEST.test(await ctx.deps.readFile(path.join(ctx.root, file)))) files.push(file);
+  }
+  files.sort();
+  if (!files.length) return pass('no clock-sensitive tests', { files });
+  const divergent = dayDivergentZone(ctx.deps.now());
+  if (!divergent) return fail('no candidate zone is on a different day from Eastern now (unreachable)', { files });
+  const zones = ['UTC', divergent];
+  const runs = [];
+  for (const zone of zones) {
+    // One zone at a time: both runs use the same files and temp repos; side by side they only compete.
+    runs.push({ zone, result: await ctx.deps.exec(process.execPath, [path.join(ctx.root, 'node_modules/vitest/vitest.mjs'), 'run', ...files],
+      { cwd: ctx.root, env: { ...process.env, TZ: zone } }) });
+  }
+  const failed = runs.filter(({ result }) => result.status !== 0);
+  const days = `Eastern ${dayIn(PRODUCT_ZONE, ctx.deps.now())}, UTC ${dayIn('UTC', ctx.deps.now())}, ${divergent} ${dayIn(divergent, ctx.deps.now())}`;
+  return failed.length
+    ? fail(`${files.length} clock-sensitive test file(s) fail with TZ=${failed.map(({ zone }) => zone).join(' and TZ=')} (${days}): ${failed.map(({ result }) => tail(result)).join(' || ')}`, { files })
+    : pass(`${files.length} clock-sensitive test file(s) pass with TZ=UTC and TZ=${divergent} (${days})`, { files });
+}
+
+// (i) the deterministic UX gates the preflight's ux-qe lane runs on three OSes (4.7.26 lost a preflight
+// to a console selector that changed while ux-qe was never run before the push). Same npm script as CI.
+export async function uxGates(ctx) {
+  if (!ctx.packageScripts['qe:ux']) return fail('package.json has no "qe:ux" script');
+  const result = await ctx.deps.exec('npm', ['run', '--silent', 'qe:ux'], { cwd: ctx.root });
+  return result.status === 0 ? pass('npm run qe:ux (the preflight ux-qe lane, this OS)')
+    : fail(`npm run qe:ux exited ${result.status}: ${tail(result)} — a missing browser installs with npx playwright install chromium`);
+}
+
 /** (g) pre-dispatch: the generation the preflight sealed for SHA must still be the newest. */
 export async function sealedGeneration(ctx) {
   const sha = ctx.sha;

@@ -13,14 +13,29 @@ const arg = (name) => {
   return index >= 0 ? process.argv[index + 1] : null;
 };
 
+export const CANDIDATE_LEAF_NAMES = Object.freeze({ claude: 'claude-only', codex: 'codex-only', dual: 'dual-host' });
+
+/** `--modes claude-only,dual-host` -> ['claude', 'dual']; absent -> null (all three, the default receipt). */
+export function parseCandidateModes(value) {
+  if (value == null) return null;
+  const byLeaf = Object.fromEntries(Object.entries(CANDIDATE_LEAF_NAMES).map(([mode, leaf]) => [leaf, mode]));
+  const names = String(value).split(',').map((name) => name.trim()).filter(Boolean);
+  const modes = names.map((name) => byLeaf[name]);
+  if (!names.length || modes.some((mode) => !mode) || new Set(modes).size !== modes.length) {
+    throw new Error(`--modes must list distinct leaves from ${Object.values(CANDIDATE_LEAF_NAMES).join(', ')}`);
+  }
+  return modes;
+}
+
 export async function buildCandidateHostEvidence({ manifestFile, packagePath, bundlePath, planFile, coverageFile, failureFile },
-  { createVerifier = stagedHostVerifier, sequentialSearches = false } = {}) {
+  { createVerifier = stagedHostVerifier, sequentialSearches = false, modes = null } = {}) {
   const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
   const payloadId = payloadIdFor(manifest);
   const identity = { version: manifest.version, candidateSha: manifest.candidateSha, payloadId };
   const retrieval = readCandidateRetrieval({ manifest, planFile, coverageFile });
   verifyCandidateRetrievalAssets({ retrieval, assets: { packagePath, bundlePath } });
-  const result = await createVerifier({ assets: { packagePath, bundlePath }, identity, retrieval, sequentialSearches })
+  const result = await createVerifier({ assets: { packagePath, bundlePath }, identity, retrieval, sequentialSearches,
+    ...(modes ? { modes } : {}) })
     .verify({ source: 'candidate', assets: { packagePath, bundlePath } });
   verifyCandidateRetrievalAssets({ retrieval, assets: { packagePath, bundlePath } });
   if (result.verdict !== 'PASS') {
@@ -33,10 +48,9 @@ export async function buildCandidateHostEvidence({ manifestFile, packagePath, bu
     throw new Error(`candidate host matrix failed: ${result.error || 'unknown'}`);
   }
 
-  const modeNames = { claude: 'claude-only', codex: 'codex-only', dual: 'dual-host' };
   const leaves = [];
   const failures = [];
-  for (const [mode, name] of Object.entries(modeNames)) {
+  for (const [mode, name] of Object.entries(CANDIDATE_LEAF_NAMES).filter(([mode]) => !modes || modes.includes(mode))) {
     const fixture = result.fixtures?.[mode];
     const grounding = fixture?.grounding;
     const warmupGrounding = fixture?.warmupGrounding;
@@ -97,7 +111,8 @@ export async function buildCandidateHostEvidence({ manifestFile, packagePath, bu
 if (isDirectInvocation(import.meta.url)) {
   const evidence = await buildCandidateHostEvidence({ manifestFile: arg('--manifest'),
     packagePath: arg('--package'), bundlePath: arg('--bundle'), planFile: arg('--plan'), coverageFile: arg('--coverage'), failureFile: arg('--out') ? `${arg('--out')}.failure.json` : null },
-  { sequentialSearches: process.argv.includes('--sequential-searches') });
+  { sequentialSearches: process.argv.includes('--sequential-searches'),
+    modes: parseCandidateModes(process.argv.includes('--modes') ? arg('--modes') : null) });
   fs.writeFileSync(path.resolve(arg('--out')), `${JSON.stringify(evidence, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
   console.log(JSON.stringify({ verdict: 'PASS', payloadId: evidence.payloadId, leaves: evidence.leaves.map(({ name }) => name) }));
 }

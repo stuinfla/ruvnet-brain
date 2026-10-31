@@ -231,13 +231,21 @@ export async function runHostMatrixAsync({
   resolveMcpServer = resolveInstalledMcpServer,
   retrieval,
   sequentialSearches = false,
+  // A subset of HOST_MODES, for a caller that gives each mode its own machine (the preflight's macOS
+  // candidate search runs one runner per mode, so no two searches ever share a runner). Every mode
+  // listed still gets the full install, prewarm, warmup, measured search and canaries below.
+  modes = HOST_MODES,
 }) {
   const spec = VARIANTS[variant];
   if (!spec) throw new Error(`unknown host-matrix variant: ${variant}`);
+  if (!Array.isArray(modes) || !modes.length || new Set(modes).size !== modes.length
+    || modes.some((mode) => !HOST_MODES.includes(mode))) {
+    throw new Error(`host-matrix modes must be a non-empty subset of ${HOST_MODES.join(', ')}`);
+  }
   const workspace = fs.realpathSync(temp || fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-host-matrix-')));
   const sharedModelCache = path.join(workspace, 'models-cache');
   fs.mkdirSync(sharedModelCache, { recursive: true });
-  const contexts = HOST_MODES.map((mode) => {
+  const contexts = HOST_MODES.filter((mode) => modes.includes(mode)).map((mode) => {
     const home = path.join(workspace, `home-${mode}`);
     const codexHome = path.join(home, '.codex');
     const brainHome = path.join(home, '.cache', 'ruvnet-brain');

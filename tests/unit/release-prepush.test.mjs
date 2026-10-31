@@ -8,7 +8,8 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { main, runPrepush } from '../../scripts/release-prepush.mjs';
-import { STATIC_GATES, STRAY_PATTERNS, strayFindings, surfaceCensusProblems } from '../../scripts/release-prepush-checks.mjs';
+import { CLOCK_SENSITIVE_TEST, DIVERGENT_ZONE_CANDIDATES, PRODUCT_ZONE, STATIC_GATES, STRAY_PATTERNS, dayDivergentZone, strayFindings,
+  surfaceCensusProblems } from '../../scripts/release-prepush-checks.mjs';
 import * as claims from '../../scripts/claims-verify.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -31,10 +32,12 @@ function world(over = {}) {
     ...over.repo,
   };
   const calls = [];
+  const zones = [];
   const gh = { releases: [], runs: [], preflight: [], jobs: [], log: '', ...over.gh };
   const nodeStatus = over.nodeStatus || {};
-  const exec = async (command, args) => {
+  const exec = async (command, args, options = {}) => {
     calls.push([command, ...args]);
+    if (command === process.execPath && args.some((a) => a.includes('vitest'))) zones.push(options.env?.TZ ?? null);
     const ok = (stdout) => ({ status: 0, stdout, stderr: '' });
     if (command === 'git') {
       const [sub, ...rest] = args;
@@ -59,8 +62,11 @@ function world(over = {}) {
     }
     if (command === process.execPath) {
       const key = args.find((a) => a.includes('vitest')) || args.find((a) => a.endsWith('.mjs')) || args[0];
-      return { status: nodeStatus[path.basename(key)] ?? 0, stdout: 'ran', stderr: nodeStatus[path.basename(key)] ? 'boom' : '' };
+      const zoned = over.zoneStatus && options.env?.TZ ? over.zoneStatus[options.env.TZ] : undefined;
+      const status = zoned ?? nodeStatus[path.basename(key)] ?? 0;
+      return { status, stdout: 'ran', stderr: status ? 'boom' : '' };
     }
+    if (command === 'npm' && args.includes('qe:ux')) return { status: over.uxStatus ?? 0, stdout: '', stderr: over.uxStatus ? 'render probe error' : '' };
     return { status: 1, stdout: '', stderr: `unexpected ${command} ${args.join(' ')}` };
   };
   const deps = {
@@ -77,7 +83,7 @@ function world(over = {}) {
     census: async ({ tag }) => [E93, F06].find((row) => row.tag === tag),
     ...over.deps,
   };
-  return { deps, calls };
+  return { deps, calls, zones };
 }
 const run = (w, extra = {}) => runPrepush({ root: ROOT, deps: w.deps, ...extra });
 const byName = (result) => Object.fromEntries(result.checks.map((check) => [check.name, check]));
@@ -87,7 +93,7 @@ it('passes a clean release branch whose surfaces quote the newest generation, ti
   const result = await run(w);
   expect(result.ok).toBe(true);
   expect(result.checks.map((c) => c.name)).toEqual(['branch-identity', ...STATIC_GATES.map((g) => g.name),
-    'qualification-inventory', 'stray-artifacts', 'census', 'anchored-tests']);
+    'qualification-inventory', 'stray-artifacts', 'census', 'anchored-tests', 'clock-zones', 'ux-gates']);
   for (const check of result.checks) expect(Number.isInteger(check.ms)).toBe(true);
   // Commands come from package.json: version:check is `node scripts/sync-version.mjs --check`.
   expect(w.calls).toContainEqual([process.execPath, 'scripts/sync-version.mjs', '--check']);
@@ -141,6 +147,50 @@ it('selects text-anchored mesh/mutation tests for changed source plus changed te
   const red = world({ repo: { changed: ['bin/install.mjs'] }, nodeStatus: { 'vitest.mjs': 1 } });
   expect(byName(await run(red))['anchored-tests'].ok).toBe(false);
   expect(byName(await run(world({ repo: { changed: ['README.md'] } })))['anchored-tests']).toMatchObject({ ok: true, files: [] });
+});
+
+it('clock-zones: clock-sensitive tests run in UTC and in a zone on a different day than Eastern, and fail in either', async () => {
+  const files = { 'tests/unit/day.test.mjs': 'const TODAY = policy.etDay(Date.now());', 'tests/unit/plain.test.mjs': 'expect(1).toBe(1);',
+    'tests/mesh/coexistence.test.mjs': 'nothing', 'tests/mutation/m.test.mjs': 'nothing' };
+  const tracked = ['README.md', 'package.json', 'tests/unit/day.test.mjs', 'tests/unit/plain.test.mjs', 'tests/unit/a.test.mjs'];
+  const plan = { qualificationPlan: () => ({ files: [] }) };
+  const w = world({ repo: { files, tracked }, plan });
+  const check = byName(await run(w))['clock-zones'];
+  expect(check).toMatchObject({ ok: true, files: ['tests/unit/day.test.mjs'] });
+  // 2026-10-30T12:00Z is 08:00 ET: Kiritimati (UTC+14) is already on the 31st.
+  expect(w.zones).toEqual(['UTC', 'Pacific/Kiritimati']);
+  expect(check.detail).toMatch(/Eastern 2026-10-30, UTC 2026-10-30, Pacific\/Kiritimati 2026-10-31/);
+  for (const zone of ['UTC', 'Pacific/Kiritimati']) {
+    const red = byName(await run(world({ repo: { files, tracked }, plan, zoneStatus: { [zone]: 1 } })))['clock-zones'];
+    expect(red.ok, zone).toBe(false);
+    expect(red.detail).toContain(`TZ=${zone}`);
+  }
+});
+
+it('a divergent zone exists at every quarter hour of the year, and a child process in it really is on another day', () => {
+  for (let ms = Date.parse('2026-01-01T00:00:00Z'); ms < Date.parse('2027-01-01T00:00:00Z'); ms += 15 * 60 * 1000) {
+    const zone = dayDivergentZone(ms);
+    expect(DIVERGENT_ZONE_CANDIDATES).toContain(zone);
+    const day = (z) => new Intl.DateTimeFormat('en-CA', { timeZone: z, year: 'numeric', month: '2-digit', day: '2-digit' }).format(ms);
+    if (day(zone) === day(PRODUCT_ZONE)) throw new Error(`${zone} shares Eastern's day at ${new Date(ms).toISOString()}`);
+  }
+  const now = Date.now();
+  const local = execFileSync(process.execPath, ['-e', 'const d = new Date(); console.log(d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"))'],
+    { encoding: 'utf8', env: { ...process.env, TZ: dayDivergentZone(now) } }).trim();
+  const eastern = new Intl.DateTimeFormat('en-CA', { timeZone: PRODUCT_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(Date.now());
+  // Within a second of a day boundary the two reads can straddle midnight; the zone choice itself is checked above.
+  if (Math.abs(Date.now() - now) < 1000) expect(local).not.toBe(eastern);
+  // The 4.7.26 test that failed on a UTC runner reads exactly this kind of day.
+  expect(CLOCK_SENSITIVE_TEST.test(fs.readFileSync(path.join(REPO_ROOT, 'tests/unit/issue-autofix-release.test.mjs'), 'utf8'))).toBe(true);
+});
+
+it('ux-gates runs the preflight ux-qe lane script and fails when it fails', async () => {
+  const w = world();
+  expect(byName(await run(w))['ux-gates'].ok).toBe(true);
+  expect(w.calls).toContainEqual(['npm', 'run', '--silent', 'qe:ux']);
+  const red = byName(await run(world({ uxStatus: 1 })))['ux-gates'];
+  expect(red.ok).toBe(false);
+  expect(red.detail).toMatch(/qe:ux exited 1: render probe error/);
 });
 
 it('stray patterns are anchored: real offenders hit, legitimate lookalikes do not, and no tracked file matches', () => {
