@@ -12,6 +12,7 @@ import {
   cronLine,
   installNightlyRunner,
   installScheduler,
+  nightlyLogPath,
   launchdPlist,
   nightlyCommand,
   removeScheduler,
@@ -237,6 +238,19 @@ describe('scheduler adapters are symmetric and verify exact state', () => {
       kbDir: f.kbDir, testMode: true }).state).toBe('degraded');
     expect(removeScheduler({ platform: 'darwin', env: f.env, testMode: true }).ok).toBe(true);
     expect(fs.existsSync(plist)).toBe(false);
+  });
+
+  // Owner's Mac, 2026-10-28..30: launchd wrote each night into kb/update.log, the knowledge swap moved that tree aside
+  // and the updater reclaimed it, so no failed night's log survived to the morning.
+  it('macOS logs the night OUTSIDE the knowledge tree an update replaces, under a footprint-capped name', () => {
+    const f = fixture();
+    expect(installScheduler(f.record, { platform: 'darwin', env: f.env, kbDir: f.kbDir, testMode: true, pathValue: '/bin' }).ok).toBe(true);
+    const plist = fs.readFileSync(path.join(f.home, 'Library', 'LaunchAgents', `${NIGHTLY_LABEL}.plist`), 'utf8');
+    const out = /<key>StandardOutPath<\/key><string>([^<]*)<\/string>/.exec(plist)[1];
+    expect(out).toBe(path.join(path.dirname(f.kbDir), '.last-nightly-update.log'));
+    expect(out.startsWith(`${f.kbDir}${path.sep}`)).toBe(false); // before: <kb>/update.log
+    expect(/^\.(?:last-[A-Za-z0-9-]+|seed)\.log$/.test(path.basename(out))).toBe(true); // brain-footprint TEXT_LOG: capped
+    expect(nightlyLogPath({ platform: 'linux', kbDir: f.kbDir })).toBe(path.join(f.kbDir, 'update.log')); // cron line unchanged
   });
 
   it('Linux preserves unrelated rows, replaces its managed row, verifies exact command, and removes only its row', () => {

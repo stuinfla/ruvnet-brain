@@ -2,6 +2,11 @@
 export const RELEASE_REQUIREMENTS = Object.freeze({
   "source": [
     {
+      "id": "console-click-receipts",
+      "reason": "A click's verdict is derived from two reads of the machine, never from the endpoint's own ok: success with nothing changed is unverified, unknown is never blank or zero, the history is bounded and newest first, and a small real size never prints as 0 MB",
+      "files": ["tests/unit/console-receipts.test.mjs"]
+    },
+    {
       "id": "public-admin-release-and-engineering-status",
       "reason": "Latest code release stays separate from corpus identity; issue and pull-request pagination preserves the complete engineering queue and failed probes remain unknown without inventing owner action",
       "files": ["tests/unit/explainer-api.test.mjs", "tests/unit/admin-render.test.mjs"]
@@ -109,6 +114,9 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
         "tests/unit/prepublication-evidence.test.mjs",
         "tests/unit/candidate-host-evidence.test.mjs",
         "tests/unit/host-install-matrix-concurrency.test.mjs",
+        "tests/unit/macos-candidate-search-split.test.mjs",
+        "tests/unit/release-receipt-scan-concurrency.test.mjs",
+        "tests/unit/restore-run-artifact.test.mjs",
         "tests/unit/integration-evidence.test.mjs",
         "tests/unit/qualified-candidate-check.test.mjs",
         "tests/unit/release-qualification.test.mjs",
@@ -356,6 +364,24 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       }
     },
     {
+      "id": "open-issue-fixes-4-7-24",
+      "reason": "A storage transaction stuck at RECOVERY_REQUIRED has a supported way out: a read-only preview, then an explicit keep-live disposition bound to the live tree's exact sha256 that moves every other tree intact and records a terminal DISPOSED receipt (#335); a detached learning capture is acknowledged only after its exact readback, so a refused store is retried instead of being coalesced away for ten minutes (#377). Windows is not verified",
+      "files": [],
+      "platformFiles": {
+        "linux": ["tests/unit/update-recovery-disposition.test.mjs", "tests/unit/learn-capture-ack-after-readback.test.mjs"],
+        "macos": ["tests/unit/update-recovery-disposition.test.mjs", "tests/unit/learn-capture-ack-after-readback.test.mjs"]
+      }
+    },
+    {
+      "id": "nightly-converges-4-7-25",
+      "reason": "The scheduled nightly converges or says why (ADR-104 4.7.25): a CURRENT corpus still runs the installer when the runtime or a host is behind the installed package, an installer exit 0 that leaves it behind is a failure, a failed knowledge stage is retried once the same night, a night that ends not-ok pages through scripts/notify.sh and the next good one pages recovered, the failure carries the installer's own lines, and Codex plugin commands get the catalog-refresh limit. Paging needs a POSIX shell, so Windows is not verified",
+      "files": [],
+      "platformFiles": {
+        "linux": ["tests/unit/nightly-self-retry-and-page.test.mjs"],
+        "macos": ["tests/unit/nightly-self-retry-and-page.test.mjs"]
+      }
+    },
+    {
       "id": "issue-autofix-bounded-writer",
       "reason": "The unattended issue fixer (ADR-107) stays inside its authority: kill switch, single-writer lock, deny-by-default editable paths, the static malware and secret scan, the manifest/lockfile/pack/audit night gate, the red-team judge, restricted tool-less LLM stages, the macOS sandbox for model-written code (macOS only), never-weakened tests, independent verifier, resumable never-doubled release steps, no force or merge, owner-marker-prefixed comments, personal notes that are never boilerplate or repeated, and a registry and LaunchAgent that match. It runs on the owner's macOS launchd, so it is qualified on macOS and Linux only, the same scope as the ntfy inbox reader",
       "files": [],
@@ -366,6 +392,11 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
     }
   ],
   "integration": [
+    {
+      "id": "console-click-receipts-interface",
+      "reason": "The actual Console server answers every mutating click with a receipt whose before and after are re-reads of the machine, derives changed/no-change/failed from them, keeps the history across repaints and reloads, marks a spent undo, and records nothing for a forged token",
+      "files": ["tests/integration/console-receipts-endpoint.test.mjs"]
+    },
     {
       "id": "authenticated-update-coordinator-interface",
       "reason": "The actual Console server reports unrun status without policy writes, rejects absent tokens, cross-origin requests and invalid policies, and refuses a second updater while the shared lock is owned",

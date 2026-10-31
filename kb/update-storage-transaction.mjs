@@ -15,7 +15,12 @@ const STATES = Object.freeze([
   'COMMITTED',
   'ROLLED_BACK',
   'RECOVERY_REQUIRED',
+  'DISPOSED',
 ]);
+
+// Terminal states: recovery never acts on a transaction whose newest receipt is one of these.
+// DISPOSED is the operator's explicit, evidence-preserving end to a RECOVERY_REQUIRED transaction (#335).
+export const TERMINAL_TRANSACTION_STATES = Object.freeze(['NOOP', 'COMMITTED', 'ROLLED_BACK', 'DISPOSED']);
 
 // ── DISK-SPACE PREFLIGHT ──────────────────────────────────────────────────────────────────────────
 // An apply needs room for the unpacked bundle (temp), the candidate generation beside the live one
@@ -337,6 +342,7 @@ export function recoverIncompleteStorageTransactions(liveDir, { removeTree = rem
     const phaseFiles = fs.readdirSync(receipts).filter((name) => /^\d{3}-[A-Z_]+\.json$/.test(name)).sort();
     if (!phaseFiles.length) throw new Error(`storage transaction receipt is empty: ${receipts}`);
     const latest = JSON.parse(fs.readFileSync(path.join(receipts, phaseFiles.at(-1)), 'utf8'));
+    if (latest.state === 'DISPOSED') continue;
     if (['NOOP', 'COMMITTED', 'ROLLED_BACK'].includes(latest.state)) {
       // A quarantined unsealed candidate is kept for ONE full update cycle, then released on the next
       // run — but only if its bytes are exactly what was sealed when it was quarantined.
@@ -354,7 +360,10 @@ export function recoverIncompleteStorageTransactions(liveDir, { removeTree = rem
       }
       continue;
     }
-    if (latest.state === 'RECOVERY_REQUIRED') throw new Error(`storage transaction requires manual recovery: ${transactionId}`);
+    if (latest.state === 'RECOVERY_REQUIRED') {
+      throw new Error(`storage transaction requires manual recovery: ${transactionId} `
+        + `(preview with  npx ruvnet-brain --recover-update ; nothing is changed by the preview)`);
+    }
     const paths = latest.paths;
     const expectedPaths = transactionPaths(live, transactionId);
     if (!paths || ['live', 'candidate', 'rollback', 'failed'].some((name) =>
@@ -566,4 +575,155 @@ export function runStorageTransaction({
   const delta = storageDelta(paths, { prior, candidate, inventoryBefore });
   record('COMMITTED', { terminalVerdict: 'applied', prior, candidate, storageDelta: delta });
   return { terminalVerdict: 'applied', prior, candidate, paths, storageDelta: delta };
+}
+
+// ── OPERATOR RECOVERY FOR A RECOVERY_REQUIRED TRANSACTION (#335) ──────────────────────────────────
+// Automatic recovery stops at RECOVERY_REQUIRED on purpose: the trees no longer match what the receipts
+// sealed, so no receipt can say which bytes are disposable. These two functions give the operator a
+// supported way out without weakening that check:
+//   1. previewRecoveryRequired() measures every tree the transaction owns and compares each with the
+//      identities its receipts sealed. It changes nothing.
+//   2. disposeRecoveryRequired() keeps the CURRENT live tree in service only when the operator names its
+//      exact sha256 from the preview, moves every other tree the transaction owns intact into
+//      `.<kb>.recovered/<transaction>/` (nothing is deleted), proves each moved tree is byte-identical
+//      after the move, and records a terminal DISPOSED receipt with what was measured. It never infers
+//      that live equals the prior sealed tree: it records whether it does.
+
+const SAFE_TRANSACTION_ID = /^[A-Za-z0-9._-]+$/;
+const OWNED_TREES = Object.freeze(['candidate', 'rollback', 'failed']);
+
+function receiptsRootFor(live) {
+  return path.join(path.dirname(live), `.${path.basename(live)}.update-transactions`);
+}
+
+/** Where a disposition keeps the trees it moved. Sibling of the live tree, so a move is a rename. */
+export function recoveredRootFor(liveDir) {
+  const live = path.resolve(liveDir);
+  return path.join(path.dirname(live), `.${path.basename(live)}.recovered`);
+}
+
+function latestReceipt(receipts) {
+  const phaseFiles = fs.readdirSync(receipts).filter((name) => /^\d{3}-[A-Z_]+\.json$/.test(name)).sort();
+  if (!phaseFiles.length) return null;
+  return JSON.parse(fs.readFileSync(path.join(receipts, phaseFiles.at(-1)), 'utf8'));
+}
+
+function sealedReceipts(receipts) {
+  // Every identity any receipt of this transaction sealed, newest last.
+  const out = { prior: null, candidate: null };
+  for (const name of fs.readdirSync(receipts).filter((n) => /^\d{3}-[A-Z_]+\.json$/.test(n)).sort()) {
+    try {
+      const r = JSON.parse(fs.readFileSync(path.join(receipts, name), 'utf8'));
+      if (r.prior?.sha256) out.prior = r.prior;
+      if (r.candidate?.sha256) out.candidate = r.candidate;
+    } catch { /* an unreadable receipt seals nothing */ }
+  }
+  return out;
+}
+
+const sameIdentity = (a, b) => Boolean(a?.sha256 && b?.sha256 && a.sha256 === b.sha256
+  && a.bytes === b.bytes && a.fileCount === b.fileCount);
+
+function measureTree(dir, sealed) {
+  let st = null;
+  try { st = fs.lstatSync(dir); } catch { /* absent */ }
+  if (!st) return { path: dir, exists: false, identity: null, matchesPrior: false, matchesCandidate: false };
+  if (st.isSymbolicLink() || !st.isDirectory()) {
+    return { path: dir, exists: true, directory: false, identity: null, matchesPrior: false, matchesCandidate: false };
+  }
+  const identity = identitySummary(treeIdentity(dir));
+  return { path: dir, exists: true, directory: true, identity,
+    matchesPrior: sameIdentity(identity, sealed.prior), matchesCandidate: sameIdentity(identity, sealed.candidate) };
+}
+
+/**
+ * Mutation-free report of every transaction whose newest receipt is RECOVERY_REQUIRED.
+ * @returns {Array<{transactionId:string, reason:string|null, recordedAt:string|null,
+ *   sealed:{prior:object|null,candidate:object|null}, trees:Record<string,object>}>}
+ */
+export function previewRecoveryRequired(liveDir) {
+  const live = path.resolve(liveDir);
+  const root = receiptsRootFor(live);
+  if (!fs.existsSync(root)) return [];
+  const out = [];
+  for (const transactionId of fs.readdirSync(root).sort()) {
+    if (!SAFE_TRANSACTION_ID.test(transactionId) || transactionId.startsWith('.')) continue;
+    const receipts = path.join(root, transactionId);
+    if (!fs.lstatSync(receipts).isDirectory()) continue;
+    const latest = latestReceipt(receipts);
+    if (latest?.state !== 'RECOVERY_REQUIRED') continue;
+    const sealed = sealedReceipts(receipts);
+    const expected = transactionPaths(live, transactionId);
+    const trees = { live: measureTree(live, sealed) };
+    for (const name of OWNED_TREES) trees[name] = measureTree(expected[name], sealed);
+    out.push({ transactionId, reason: latest.reason || null, recordedAt: latest.recordedAt || null,
+      sealed: { prior: sealed.prior ? identitySummary(sealed.prior) : null,
+        candidate: sealed.candidate ? identitySummary(sealed.candidate) : null }, trees });
+  }
+  return out;
+}
+
+/**
+ * The operator's explicit disposition: keep the current live tree, preserve every other tree intact.
+ * @param {string} liveDir
+ * @param {string} transactionId
+ * @param {{ keepLiveSha256: string, rename?: Function }} options keepLiveSha256 must be the live tree's
+ *   sha256 exactly as the preview reported it; any change since the preview refuses.
+ */
+export function disposeRecoveryRequired(liveDir, transactionId, { keepLiveSha256, rename = fs.renameSync } = {}) {
+  const live = path.resolve(liveDir);
+  if (!SAFE_TRANSACTION_ID.test(String(transactionId || '')) || String(transactionId).startsWith('.')) {
+    throw new Error(`not a transaction id: ${transactionId}`);
+  }
+  if (!/^[a-f0-9]{64}$/.test(String(keepLiveSha256 || ''))) {
+    throw new Error('name the live tree to keep by the exact sha256 the preview printed (--keep-live <sha256>)');
+  }
+  const receipts = path.join(receiptsRootFor(live), transactionId);
+  if (!fs.existsSync(receipts) || !fs.lstatSync(receipts).isDirectory()) throw new Error(`no such transaction: ${transactionId}`);
+  const latest = latestReceipt(receipts);
+  if (latest?.state !== 'RECOVERY_REQUIRED') {
+    throw new Error(`transaction ${transactionId} is ${latest?.state || 'empty'}, not RECOVERY_REQUIRED; nothing to dispose`);
+  }
+  const expected = transactionPaths(live, transactionId);
+  if (latest.paths && ['live', ...OWNED_TREES].some((name) => latest.paths[name] && path.resolve(latest.paths[name]) !== expected[name])) {
+    throw new Error(`transaction ${transactionId} names paths that belong to another live tree; refusing`);
+  }
+  assertDirectory(live, 'live tree');
+  const sealed = sealedReceipts(receipts);
+  const liveIdentity = identitySummary(treeIdentity(live));
+  if (liveIdentity.sha256 !== keepLiveSha256) {
+    throw new Error(`the live tree changed since the preview (now ${liveIdentity.sha256}); run the preview again`);
+  }
+  const archiveDir = path.join(recoveredRootFor(live), transactionId);
+  const moves = [];
+  for (const name of OWNED_TREES) {
+    const source = expected[name];
+    if (!fs.existsSync(source)) continue;
+    assertDirectory(source, `transaction ${name} tree`);
+    const target = path.join(archiveDir, name);
+    if (fs.existsSync(target)) throw new Error(`recovered tree already exists: ${target}`);
+    moves.push({ name, source, target, before: identitySummary(treeIdentity(source)) });
+  }
+  fs.mkdirSync(archiveDir, { recursive: true });
+  const preserved = [];
+  for (const move of moves) {
+    rename(move.source, move.target);
+    const after = identitySummary(treeIdentity(move.target));
+    if (!sameIdentity(after, move.before)) {
+      throw new Error(`${move.name} tree changed while it was moved to ${move.target}; it is kept there, nothing was deleted`);
+    }
+    preserved.push({ tree: move.name, from: move.source, to: move.target, identity: after,
+      matchesPrior: sameIdentity(after, sealed.prior), matchesCandidate: sameIdentity(after, sealed.candidate) });
+  }
+  const receipt = appendRecoveryReceipt(receipts, 'DISPOSED', {
+    terminalVerdict: 'operator-kept-live',
+    live: liveIdentity,
+    liveMatchesPrior: sameIdentity(liveIdentity, sealed.prior),
+    liveMatchesCandidate: sameIdentity(liveIdentity, sealed.candidate),
+    preserved,
+    recoveredFrom: { reason: latest.reason || null, recordedAt: latest.recordedAt || null },
+    reason: 'operator kept the current live tree; every other tree this transaction owned was moved intact, not deleted',
+  });
+  return { transactionId, terminalVerdict: 'operator-kept-live', live: liveIdentity,
+    liveMatchesPrior: receipt.liveMatchesPrior, liveMatchesCandidate: receipt.liveMatchesCandidate, preserved, archiveDir };
 }

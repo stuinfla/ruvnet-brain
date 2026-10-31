@@ -294,10 +294,10 @@ export async function runRenderProbe() {
     if (!providerSaveResponse.ok() || !providerSaveBody?.ok) {
       throw new Error(`provider save returned ${providerSaveResponse.status()}: ${JSON.stringify(providerSaveBody)}`);
     }
-    await consolePage.locator('form:has(#field-provider) .form-note.n-ok').waitFor();
+    await consolePage.locator('form:has(#field-provider) .receipt.rc-changed').waitFor();
     await consolePage.locator('#field-advocacy input[value="5"]').check();
     await consolePage.locator('form:has(#field-advocacy) button[type="submit"]').click();
-    await consolePage.locator('form:has(#field-advocacy) .form-note.n-ok').waitFor();
+    await consolePage.locator('form:has(#field-advocacy) .receipt.rc-changed').waitFor();
     const recommendationReloadStartedAt = Date.now();
     const recommendationStateResponsePromise = consolePage.waitForResponse((response) => (
       response.request().method() === 'GET'

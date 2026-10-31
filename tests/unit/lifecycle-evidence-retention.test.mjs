@@ -71,6 +71,25 @@ describe('lifecycle evidence retention', () => {
     expect(pruneLifecycleEvidence(options).compacted).toEqual([]);
   });
 
+  // Owner's Mac, 2026-10-30: a prune stopped 8 KiB under the 16 MiB budget, the update then settled its own receipt,
+  // and --doctor reported the evidence as cruft after a clean update. A prune now leaves headroom.
+  it('a prune stops UNDER the budget by its headroom, so the caller\'s own final receipt still fits', () => {
+    const f = fixture();
+    const pad = 'x'.repeat(300_000);
+    refresh(f, 'old-1', { at: '2026-02-01T00:00:00Z', action: 'update', extra: { pad } });
+    refresh(f, 'old-2', { at: '2026-02-02T00:00:00Z', action: 'update', extra: { pad } });
+    refresh(f, 'newest', { at: '2026-02-03T00:00:00Z', action: 'update', extra: { pad: 'y'.repeat(370_000) } });
+    const options = { ...f, policy: policy({ maxEvidenceBytes: 1_000_000 }) };
+    const before = assessLifecycleEvidence(options);
+    expect(before.withinBudget).toBe(true); // within budget, but under 62,500 bytes from its edge
+    expect(before.before.bytes).toBeGreaterThan(1_000_000 - 62_500);
+    expect(pruneLifecycleEvidence({ ...options, headroomBytes: 0 }).removed.refresh).toEqual([]); // the old behaviour
+    const result = pruneLifecycleEvidence(options);
+    expect(result.removed.refresh.map((p) => path.basename(p))).toEqual(['old-1.json']); // before: [] — no room left
+    expect(result.after.bytes).toBeLessThanOrEqual(1_000_000 - 62_500);
+    expect(result.withinBudget).toBe(true);
+  });
+
   it('leaves active and malformed earlier phases byte-exact even above budget', () => {
     const f = fixture();
     const active = transaction(f, 'active', { at: '2026-02-01T00:00:00Z', state: 'CLEANUP_PENDING' });

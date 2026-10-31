@@ -25,7 +25,7 @@ import { applyBrainProfile, readBrainProfile } from '../kb/brain-profile.mjs';
 import { acquireRefreshLock, finishRefreshReceipt, openRefreshReceipt, physicalPath, recordRefreshAdvisory,
   recordRefreshPhase, settleRefreshRun, UPDATE_REFRESH_PHASES } from '../kb/refresh-run.mjs';
 import { assessLifecycleEvidence, pruneLifecycleEvidence } from '../kb/lifecycle-evidence-retention.mjs';
-import { checkDiskSpace, recoverIncompleteStorageTransactions } from '../kb/update-storage-transaction.mjs';
+import { checkDiskSpace, disposeRecoveryRequired, previewRecoveryRequired, recoverIncompleteStorageTransactions } from '../kb/update-storage-transaction.mjs';
 import { saveUpdateSource, stableNode } from '../plugin/scripts/automatic-update.mjs';
 import { acquireDeveloperLock } from '../plugin/scripts/developer-update-lock.mjs';
 import { footprintRoots, inventoryFootprint, sweepFootprint } from '../plugin/scripts/brain-footprint.mjs';
@@ -172,6 +172,13 @@ const MOVE_BRAIN_TO = (() => { const i = argv.indexOf('--move-brain'); const v =
 const FLAG_CLEAN = argv.includes('--clean'); // enforce the footprint guarantee now (ADR-0098), then confirm
 const FLAG_JSON = argv.includes('--json'); // with --doctor / --clean: machine-readable confirmation only
 const FLAG_ARCHIVE = argv.includes('--archive'); // with --clean only (#335): archive files unique to old KB copies, then release them
+// --recover-update (#335): show every update transaction stuck at RECOVERY_REQUIRED, changing nothing.
+// --recover-update --keep-live <sha256> [--transaction <id>]: keep that exact live tree, move the
+// transaction's other trees intact into .kb.recovered/<id>/, and record a terminal DISPOSED receipt.
+const FLAG_RECOVER_UPDATE = argv.includes('--recover-update');
+const argValue = (flag) => { const i = argv.indexOf(flag); const v = i === -1 ? null : argv[i + 1]; return v && !v.startsWith('-') ? v : null; };
+const RECOVER_KEEP_LIVE = argValue('--keep-live');
+const RECOVER_TRANSACTION = argValue('--transaction');
 // ── onboarding-experience flags (all optional; every offer is safe to decline) ──
 const FLAG_YES = argv.includes('--yes') || argv.includes('-y'); // accept every optional offer non-interactively
 const FLAG_PLAN = argv.includes('--plan') || argv.includes('--dry-run'); // show the interactive checklist, then exit — install NOTHING
@@ -2101,6 +2108,12 @@ export function codexBrokenMarketplaces(text) {
 }
 const sleepSync = (ms) => { if (ms > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); };
 
+// `codex plugin list` refreshes Codex's remote plugin catalog when its cache is stale: a 56 MB download measured at
+// 38-40 s on the owner's Mac (codex-cli 0.166.0, 2026-10-30). The old 30 s limit killed it every time, and a killed
+// fetch writes no cache, so every later attempt (the 03:30 nightly, each retry, each --update) repeated the cold fetch
+// and failed the same way until someone used Codex by hand. Bounded, with ~4x headroom over the measured fetch.
+export const CODEX_PLUGIN_COMMAND_TIMEOUT_MS = 180_000;
+
 export function runCodexJson(args, {
   codexBin = process.env.CODEX_BIN || 'codex',
   codexHome = codexHomeDir(),
@@ -2110,9 +2123,10 @@ export function runCodexJson(args, {
   // Refreshing another tool's marketplace is a network write; only an install/update that is about to change the
   // Brain's Codex plugin opts in. --doctor and listings report the broken snapshot and change nothing (review 2026-10-24).
   repair = false,
+  timeoutMs = CODEX_PLUGIN_COMMAND_TIMEOUT_MS,
 } = {}) {
   const options = { stdio: 'pipe', shell: false, cwd, env: { ...process.env, CODEX_HOME: codexHome }, encoding: 'utf8',
-    timeout: 30_000, maxBuffer: 20 * 1024 * 1024 };
+    timeout: timeoutMs, maxBuffer: 20 * 1024 * 1024 };
   const snapshotFailure = (res) => !res.missingBinary && res.status !== 0 && CODEX_SNAPSHOT_FAILURE.test(String(res.stderr || res.stdout || ''));
   let r = run(codexBin, args, options);
   // One wait covers a refresh Codex is finishing; then refresh only the OTHER Git marketplaces it named (the Brain's
@@ -4072,6 +4086,50 @@ export function acquireHostConvergenceLock(lockPath, {
   return { acquired: false, error: 'host synchronization lock changed concurrently' };
 }
 
+/**
+ * `--recover-update` (#335). Preview is read-only; disposition needs the exact live sha256 the preview
+ * printed, so nothing is decided for the operator. Returns the exit code.
+ */
+export function runRecoverUpdate({ kbDir = physicalPath(resolvedKbDir()), keepLive = RECOVER_KEEP_LIVE,
+  transaction = RECOVER_TRANSACTION, json = FLAG_JSON, log = console.log } = {}) {
+  const stuck = previewRecoveryRequired(kbDir);
+  const short = (identity) => identity?.sha256 ? `${identity.sha256}  (${identity.fileCount} files, ${identity.bytes} bytes)` : 'absent';
+  if (!keepLive) {
+    if (json) log(JSON.stringify({ kbDir, stuck }, null, 2));
+    else if (!stuck.length) log('No update is stuck at RECOVERY_REQUIRED. Nothing to recover.');
+    else {
+      for (const t of stuck) {
+        log(`Update ${t.transactionId} needs recovery: ${t.reason || 'no reason recorded'}`);
+        log(`  sealed prior:     ${short(t.sealed.prior)}`);
+        log(`  sealed candidate: ${short(t.sealed.candidate)}`);
+        for (const [name, tree] of Object.entries(t.trees)) {
+          const match = tree.matchesPrior ? ' = sealed prior' : tree.matchesCandidate ? ' = sealed candidate' : tree.exists ? ' matches no sealed identity' : '';
+          log(`  ${name.padEnd(9)} ${tree.exists ? short(tree.identity) : 'absent'}${match}`);
+        }
+        log(`  To keep the live tree above and close this update (other trees are moved, never deleted):`);
+        log(`    npx ruvnet-brain --recover-update --transaction ${t.transactionId} --keep-live ${t.trees.live.identity?.sha256 || '<live sha256>'}`);
+      }
+      log('Nothing was changed.');
+    }
+    return stuck.length ? 1 : 0;
+  }
+  const targets = transaction ? stuck.filter((t) => t.transactionId === transaction) : stuck;
+  if (!targets.length) { log(transaction ? `No stuck update named ${transaction}.` : 'No update is stuck at RECOVERY_REQUIRED.'); return 1; }
+  if (targets.length > 1) { log('More than one update is stuck; name one with --transaction <id>. Nothing was changed.'); return 1; }
+  try {
+    const result = disposeRecoveryRequired(kbDir, targets[0].transactionId, { keepLiveSha256: keepLive });
+    if (json) log(JSON.stringify(result, null, 2));
+    else {
+      log(`Closed update ${result.transactionId}: kept the live tree ${result.live.sha256}`
+        + ` (${result.liveMatchesPrior ? 'it equals the sealed prior' : result.liveMatchesCandidate ? 'it equals the sealed candidate' : 'it matches no sealed identity'}).`);
+      for (const p of result.preserved) log(`  moved ${p.tree} intact to ${p.to}`);
+      if (!result.preserved.length) log('  the update owned no other tree.');
+      log('Run  npx ruvnet-brain --update  next; nothing was deleted.');
+    }
+    return 0;
+  } catch (error) { log(`Not recovered: ${error.message}. Nothing was deleted.`); return 1; }
+}
+
 export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
   sourceRoot = REPO_ROOT,
   brainHome = process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain'),
@@ -4105,51 +4163,66 @@ export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
     return { ok: false, results, ...detail, error: detail.error || hostFailureReason(results) };
   };
 
+  // ONE HOST CANNOT HOLD THE OTHERS BACK (2026-10-30). A Codex failure used to return before the Stable Spine and the
+  // convergence receipt, so a single `codex plugin list` timeout left Claude Code on the new plugin, the runtime and
+  // Codex on the old one, and no receipt saying so (owner's Mac, 4.7.21 -> 4.7.24, three nights). Each host is now
+  // attempted on its own, the runtime is activated regardless, and a failed host is RECORDED as `failed` with its
+  // reason: the run still ends not-ok, so the night still fails and pages, but nothing is left half-updated.
+  const failedHosts = new Set();
+  const hostError = (error) => error?.message || String(error);
   try {
     if (wireClaude === wirePlugin) results.hookRetirement = retireManagedHookRegistrations();
     results.claude = wireClaude === wirePlugin
       ? wirePlugin({ expectedVersion: PACKAGE_VERSION, requireManaged: true })
       : wireClaude({ expectedVersion: PACKAGE_VERSION, requireManaged: true });
-    if (results.claude.host && !results.claude.wired) return fail();
+    if (results.claude.host && !results.claude.wired) failedHosts.add('claude');
+  } catch (error) {
+    results.claude = { host: true, wired: false, action: 'failed', error: hostError(error) };
+    failedHosts.add('claude');
+  }
+  try {
     results.codexHost = detectCodexHost();
     if (results.codexHost.host) {
       if (!['added', 'rewritten', 'unchanged', 'user-owned'].includes(results.codexHost.action)) {
-        return fail({ error: `Codex host convergence failed: ${results.codexHost.action || 'unknown action'}` });
-      }
-      results.codex = installCodexPlugin({ expectedVersion: PACKAGE_VERSION });
-      // ~/.codex exists but no `codex` binary is on PATH (an uninstalled CLI, or a desktop-only setup whose shell
-      // cannot see it): there is no Codex host to converge here, which is absence, not a failed update (4.7.21,
-      // audit C-opus #6). Any other unavailability (the binary ran and failed) still fails.
-      if (results.codex.action === 'codex-unavailable' && results.codex.missingBinary === true) {
-        results.codexAbsent = true;
-      } else if (!['unchanged', 'installed', 'updated', 'disabled'].includes(results.codex.action)) {
-        return fail();
+        results.codexHostError = `Codex host convergence failed: ${results.codexHost.action || 'unknown action'}`;
+        failedHosts.add('codex');
+      } else {
+        results.codex = installCodexPlugin({ expectedVersion: PACKAGE_VERSION });
+        // ~/.codex exists but no `codex` binary is on PATH (an uninstalled CLI, or a desktop-only setup whose shell
+        // cannot see it): there is no Codex host to converge here, which is absence, not a failed update (4.7.21,
+        // audit C-opus #6). Any other unavailability (the binary ran and failed) still fails.
+        if (results.codex.action === 'codex-unavailable' && results.codex.missingBinary === true) {
+          results.codexAbsent = true;
+        } else if (!['unchanged', 'installed', 'updated', 'disabled'].includes(results.codex.action)) {
+          failedHosts.add('codex');
+        }
       }
     }
   } catch (error) {
-    results.codex = { action: 'failed', error: error?.message || String(error) };
-    return fail();
+    results.codex = { action: 'failed', error: hostError(error) };
+    failedHosts.add('codex');
   }
 
   const apply = path.join(sourceRoot, 'plugin', 'scripts', 'update-apply.mjs');
   if (!fs.existsSync(apply)) return fail({ error: 'Stable Spine updater missing from package' });
   const applied = runStableSpine(apply);
   const okApplied = !applied.error && applied.status === 0;
-  const codexReceipt = {
-    state: results.codex?.action === 'disabled' ? 'disabled' : (results.codexHost?.host && !results.codexAbsent ? 'ready' : 'absent'),
-    version: results.codex?.version || null,
-  };
-  if (results.codex?.restartRequired === true) {
+  const codexReceipt = failedHosts.has('codex')
+    ? { state: 'failed', version: results.codex?.version || null, error: hostFailureReason({ codex: results.codex, codexHostError: results.codexHostError }) }
+    : {
+      state: results.codex?.action === 'disabled' ? 'disabled' : (results.codexHost?.host && !results.codexAbsent ? 'ready' : 'absent'),
+      version: results.codex?.version || null,
+    };
+  if (!failedHosts.has('codex') && results.codex?.restartRequired === true) {
     codexReceipt.restartRequired = true;
     codexReceipt.sessionSafety = results.codex.sessionSafety || null;
     codexReceipt.sessionSafetyReason = results.codex.sessionSafetyReason || null;
     codexReceipt.restartScope = results.codex.restartScope || 'unproven';
   }
-  const claudeReceipt = {
-    state: results.claude.host ? 'ready' : 'absent',
-    version: results.claude.version || null,
-  };
-  if (results.claude?.restartRequired === true) {
+  const claudeReceipt = failedHosts.has('claude')
+    ? { state: 'failed', version: results.claude.version || null, error: hostFailureReason({ claude: results.claude }) }
+    : { state: results.claude.host ? 'ready' : 'absent', version: results.claude.version || null };
+  if (!failedHosts.has('claude') && results.claude?.restartRequired === true) {
     claudeReceipt.restartRequired = true;
     claudeReceipt.sessionSafety = results.claude.sessionSafety || null;
     claudeReceipt.sessionSafetyReason = results.claude.sessionSafetyReason || null;
@@ -4236,6 +4309,11 @@ export function syncHostsAfterUpdate(cacheDir = resolvedKbDir(), {
   };
   const convergence = classifyHostConvergence(convergedReceipt);
   hostLock.release();
+  if (failedHosts.size) {
+    // The runtime and every other host converged; the failed host is the night's failure, with its own reason.
+    return { ok: false, convergence, results, applyStatus: applied.status, failedHosts: [...failedHosts],
+      error: `${hostFailureReason(results)}; runtime ${PACKAGE_VERSION} and the other hosts converged` };
+  }
   return { ok: convergence.healthy === true, convergence, results, applyStatus: applied.status,
     ...(convergence.healthy !== true && hostRestartIsOnlyGap(convergedReceipt) ? { restartOnly: true } : {}),
     error: convergence.healthy === true ? null : `host convergence is ${convergence.state}: ${convergence.action}` };
@@ -4374,13 +4452,16 @@ export function classifyHostConvergence(receipt, expectedVersion = PACKAGE_VERSI
 /** Why host synchronization stopped, from the per-host results it had gathered; null when nothing says. */
 export function hostFailureReason(results = {}) {
   const firstLines = (text) => String(text || '').trim().split('\n').slice(0, 3).join(' ');
+  // Every failed host is named: since hosts no longer stop at the first failure, two can fail in one run.
+  const reasons = [];
   if (results.claude?.host && !results.claude.wired) {
-    return `Claude Code plugin ${results.claude.action || 'wiring failed'}${results.claude.version ? ` (installed ${results.claude.version}, required ${results.claude.expectedVersion || PACKAGE_VERSION})` : ''}`;
+    reasons.push(`Claude Code plugin ${results.claude.action || 'wiring failed'}${results.claude.version ? ` (installed ${results.claude.version}, required ${results.claude.expectedVersion || PACKAGE_VERSION})` : ''}${results.claude.error ? `: ${firstLines(results.claude.error)}` : ''}`);
   }
-  if (results.codex && !['unchanged', 'installed', 'updated', 'disabled'].includes(results.codex.action)) {
-    return `Codex plugin ${results.codex.action || 'failed'}${results.codex.error ? `: ${firstLines(results.codex.error)}` : ''}`;
+  if (results.codexHostError) reasons.push(results.codexHostError);
+  else if (results.codex && !['unchanged', 'installed', 'updated', 'disabled'].includes(results.codex.action)) {
+    reasons.push(`Codex plugin ${results.codex.action || 'failed'}${results.codex.error ? `: ${firstLines(results.codex.error)}` : ''}`);
   }
-  return null;
+  return reasons.length ? reasons.join('; ') : null;
 }
 
 export function hostSynchronizationFailureMessage(convergence, active, expectedVersion = PACKAGE_VERSION) {
@@ -6829,6 +6910,12 @@ Usage:
                               footprint within budget, no cruft. --doctor --json prints only that, as JSON.
   npx ruvnet-brain --clean    Remove everything that must not exist (old KB copies — never one holding
                               private files the live brain lacks — old installers, over-cap logs), then confirm.
+  npx ruvnet-brain --recover-update
+                              Read-only: list any update stuck at RECOVERY_REQUIRED, with the measured
+                              identity of the live tree and every tree that update owns.
+  npx ruvnet-brain --recover-update --keep-live <sha256> [--transaction <id>]
+                              Keep that exact live tree, move the update's other trees intact into
+                              .kb.recovered/<id>/ (nothing is deleted) and close the update for good.
   npx ruvnet-brain --clean --archive
                               Same, and for a kept copy: copy only the files it alone holds into
                               kb.archive/<stamp>/ (verified byte-for-byte), then release that copy.
@@ -6942,6 +7029,7 @@ the installer reports that boot-level declarations changed.
   // and `echo $?` → 0 coexisted for so long.
   // `--doctor --json`: the positive-confirmation object ONLY (no narration), exit 0 iff every line that
   // can be proven here is green — for scripts, CI, and agents (ADR-0098).
+  if (FLAG_RECOVER_UPDATE) { process.exitCode = runRecoverUpdate(); return; }
   if (FLAG_DOCTOR) { process.exitCode = await doctor({ json: FLAG_JSON }); return; }
   // `--clean`: enforce the footprint guarantee now, then confirm. Exit 0 only when exactly one KB copy
   // remains and nothing that must not exist is left (a private-unique copy kept for safety is a 1).

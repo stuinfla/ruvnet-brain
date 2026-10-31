@@ -225,7 +225,10 @@ jobs:
       - name: Hand the verified candidate to this transaction
         uses: actions/upload-artifact@v4
         with:
-          name: verified-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          # No run_attempt in the name, as for publisher-payload: `gh run rerun --failed` of the seal job
+          # must find the candidate this (successful, not re-run) job uploaded. overwrite covers a re-run here.
+          name: verified-candidate-${{ github.run_id }}
+          overwrite: true
           path: release-evidence/
           if-no-files-found: error
           retention-days: 7
@@ -255,8 +258,16 @@ jobs:
       - name: Restore the verified build-once candidate payload
         uses: actions/download-artifact@v4
         with:
-          name: verified-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          name: verified-candidate-${{ github.run_id }}
           path: release-evidence
+      # download-artifact@v4 once ended this restore "successfully" with the payload incomplete (4.7.26,
+      # run 41159273131: ENOENT on the .tgz, a whole re-dispatch spent). Prove every manifest member
+      # arrived, fetching the same artifact again by ID if not; the digests are still checked below.
+      - name: Prove the restored candidate is complete
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: node scripts/restore-run-artifact.mjs --name "verified-candidate-${GITHUB_RUN_ID}" --dir release-evidence
       - name: Sign this run's exact payload once
         id: seal
         env:
@@ -362,6 +373,11 @@ jobs:
         with:
           name: publisher-payload-${{ github.run_id }}
           path: release-evidence
+      - name: Prove the restored signed payload is complete
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: node scripts/restore-run-artifact.mjs --name "publisher-payload-${GITHUB_RUN_ID}" --dir release-evidence
 
       - name: Publish the CI-sealed candidate through the one canonical transaction
         env:

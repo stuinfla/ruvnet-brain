@@ -19,7 +19,8 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { rangeCensus } from './generation-census.mjs';
 import {
-  STATIC_GATES, anchoredTests, branchIdentity, censusCheck, qualificationInventory, sealedGeneration, staticGate, strayArtifacts,
+  STATIC_GATES, anchoredTests, branchIdentity, censusCheck, clockZones, qualificationInventory, sealedGeneration, staticGate,
+  strayArtifacts, uxGates,
 } from './release-prepush-checks.mjs';
 import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
@@ -97,6 +98,8 @@ export async function runPrepush({ root = ROOT, sha = null, preDispatch = false,
       ['stray-artifacts', strayArtifacts],
       ['census', censusCheck],
       ['anchored-tests', anchoredTests],
+      ['clock-zones', clockZones],
+      ['ux-gates', uxGates],
     ];
   const checks = await Promise.all(plan.map(async ([name, check]) => {
     const started = Date.now();

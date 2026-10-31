@@ -104,8 +104,9 @@ describe('coordinator stage isolation', () => {
       : args[1] === '--check' ? { exitCode: 1, stdout: '', stderr: 'boom' } : m.runner(command, args, options);
     await expect(runDeveloperUpdate({ mode: 'apply', home: m.home, env: { PATH: m.bin }, runner })).rejects.toThrow(/knowledge: corpus check exited 1/);
     const receipt = JSON.parse(fs.readFileSync(m.receiptFile, 'utf8'));
-    expect(receipt.knowledge).toEqual({ state: 'failed', error: 'corpus check exited 1' });
-    expect(receipt.failures).toEqual([{ stage: 'knowledge', error: 'corpus check exited 1' }]);
+    // The child's own words ride along since 2026-10-30 (a bare "exited 1" hid a Codex timeout for three nights).
+    expect(receipt.knowledge).toEqual({ state: 'failed', error: 'corpus check exited 1: boom' });
+    expect(receipt.failures).toEqual([{ stage: 'knowledge', error: 'corpus check exited 1: boom' }]);
     expect(receipt.plugins).toMatchObject({ steps: [] });
     expect(receipt.after.map(p => p.name)).toEqual(['agentdb', 'ruflo']);
   });

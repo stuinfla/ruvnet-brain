@@ -198,6 +198,29 @@ describe('turn-outcome capture at the shared snapshot boundary', () => {
     const rows = fs.readFileSync(receipts, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
     expect(rows.map((r) => [r.kind, r.db, r.status])).toEqual([['store', db, 0], ['distill', db, 0]]);
   });
+
+  // Owner's Mac, 2026-10-30: each turn left ruflo's ruvector.db / .swarm / .claude-flow in the shared project scratch
+  // dir, and --doctor's "No cruft" line went red after every turn. One run-* dir per call, removed after it.
+  it('ruflo litter written into the worker cwd does not outlive the call', () => {
+    const h = harness();
+    const brainHome = path.join(h.home, '.cache', 'ruvnet-brain');
+    const db = path.join(h.project, '.swarm', 'memory.db');
+    const binding = { projectRoot: h.project, projectDir: h.project, brainHome };
+    const cwds = [];
+    runSteps({ receipts: path.join(tmp('turn-receipts-'), 'r.jsonl'), steps: [
+      { ...binding, kind: 'store', ruflo: '/fake/ruflo', args: ['memory', 'store', '--key', 'k1', '--value', 'v', '--namespace', 'turns', '--path', db] },
+    ] }, { env: TRUSTED_ENV, projectDir: h.project, brainHome, read: () => 'v', run: (bin, args, opts) => {
+      cwds.push(opts.cwd);
+      for (const name of ['.swarm', '.claude-flow']) fs.mkdirSync(path.join(opts.cwd, name), { recursive: true });
+      fs.writeFileSync(path.join(opts.cwd, 'ruvector.db'), 'ruflo side store');
+      return { status: 0 };
+    } });
+    expect(cwds).toHaveLength(1);
+    expect(path.basename(cwds[0])).toMatch(/^run-/); // before: the shared project scratch dir itself
+    expect(fs.existsSync(cwds[0])).toBe(false);
+    const projectScratch = path.dirname(cwds[0]);
+    expect(fs.readdirSync(projectScratch).filter((n) => ['.swarm', '.claude-flow', 'ruvector.db'].includes(n))).toEqual([]);
+  });
 });
 
 describe('turn privacy and receipt evidence', () => {

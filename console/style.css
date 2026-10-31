@@ -2186,3 +2186,30 @@ details.sub .sub-body > *:first-child { margin-top: 4px; }
   .inv-row { grid-template-columns: 1fr auto; }
   .inv-src, .inv-meta { grid-column: 1 / -1; white-space: normal; }
 }
+
+/* ── Receipts: what a click did, before → after, read back from the machine (console/receipts.js) ── */
+.receipt {
+  margin-top: 12px; border: 1px solid var(--hair); border-left: 4px solid var(--green);
+  border-radius: 12px; padding: 12px 14px; background: color-mix(in srgb, var(--green) 6%, transparent);
+  font-size: var(--fs--1);
+}
+.receipt.rc-no-change { border-left-color: var(--cyan, #5ad6ff); background: color-mix(in srgb, #5ad6ff 5%, transparent); }
+.receipt.rc-unverified, .receipt.rc-failed { border-left-color: var(--warn); background: color-mix(in srgb, var(--warn) 8%, transparent); }
+.receipt .rc-head { margin: 0 0 4px; }
+.receipt .rc-when { margin: 0 0 8px; }
+.rc-facts { width: 100%; border-collapse: collapse; margin: 4px 0 8px; }
+.rc-facts th, .rc-facts td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--hair); vertical-align: top; overflow-wrap: anywhere; }
+.rc-facts th { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.rc-facts tr.rc-same td { color: var(--muted); }
+.rc-facts tr.rc-changed td:last-child b { color: var(--green-text); }
+.rc-undo { margin-top: 6px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+#body-receipts > .receipt:first-child { margin-top: 0; }
+
+/* Header: a long freshness reading used to push the right-hand controls over the brand and version
+   (measured 2026-10-30: "machine reading updated · as of seconds ago" overlapped "v4.7.25"). The pill
+   truncates instead (full text in its title) and the brand clips rather than slides under. */
+.brand { overflow: hidden; }
+#freshness-pill { max-width: 19rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The host is also printed in the intro's host line; below 1500px the header gives it up so the brand
+   name stays readable beside the freshness reading. */
+@media (max-width: 1500px) { .host-chip { display: none; } }

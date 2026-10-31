@@ -1,4 +1,4 @@
-Updated: 2026-10-30 10:20:00 EDT | Version 1.7.0
+Updated: 2026-10-30 23:00:00 EDT | Version 1.9.0
 Created: 2026-07-07 09:22:01 EDT
 
 # Contributing to RuvNet Brain — the one rulebook
@@ -43,9 +43,11 @@ npm run version:set -- X.Y.Z && npm run convergence:write      # commit these fi
 npm run release:qualify -- --suite source --report /tmp/source-qualification-UNIQUE.json
 npm run release:qualify -- --suite integration --report /tmp/integration-qualification-UNIQUE.json
 npm test && npm run single-source:check                    # distinct grounding and rule checks
-# before the FIRST push: every cheap check preflight would fail on, all failures at once, ~1 minute
+# before the FIRST push: every cheap check preflight would fail on, all failures at once, ~2 minutes
 # (branch/version, preflight's first gates incl. the ADR-0103 review row, qualification inventory, stray files,
-# census surfaces vs the NEWEST corpus generation, text-anchored mesh/mutation/regression tests):
+# census surfaces vs the NEWEST corpus generation, text-anchored mesh/mutation/regression tests, the
+# clock-sensitive tests in TZ=UTC and in a zone on a different calendar day than Eastern now, and the
+# preflight's deterministic UX gates `npm run qe:ux`):
 npm run release:prepush -- --receipt /tmp/release-prepush-UNIQUE.json
 git push origin release/X.Y.Z                                # triggers release-candidate-preflight
 ```
@@ -111,6 +113,12 @@ is **not** a product latency target. How long a customer's first answer takes on
 open 4.5 improvement, measured on its own and never loosened through this constant. Lanes keep one warm search
 worker; a case that times out fails alone and the next case gets a fresh, re-warmed worker
 (`createRestartingMcpSession`), and the three installed doctors run one at a time (`runHostDoctors`).
+The preflight's exact-candidate macOS search gives each host mode its own macOS runner
+(`macos-candidate-search`, one matrix leg per mode, `candidate-host-evidence.mjs --modes`), so no two
+searches share a runner and the three run at once; the aggregate requires all three receipts
+(`scripts/macos-candidate-search-check.mjs`). The seal and publisher jobs prove their restored payload
+complete before signing or publishing (`scripts/restore-run-artifact.mjs`) and fetch it again by ID if a
+download came back short.
 
 ## The knowledge corpus
 
@@ -291,6 +299,16 @@ cooperating updater paths. The source-bound run receipt is
 snapshots, stage results, exclusions and failure details. `checked` is a check; `completed` is
 an apply. Neither implies every possible tool or remote provider is current. RNBC Activity
 reads this receipt instead of presenting a static success recommendation.
+
+**What a scheduled night guarantees (4.7.25, ADR-104).** It ends converged or it says why, and the owner hears
+about it. A `CURRENT` corpus is not enough: the knowledge stage also confirms the runtime and every host run the
+installed `ruvnet-brain` (`runtimeConvergence`: `active.json` and `host-convergence.json`, no host `failed`) and runs
+the installer, a corpus no-op, when they do not. One failed host never holds back the other host or the runtime; it
+is recorded `failed` with its reason. A failed knowledge stage is tried once more 20 minutes later; a night that
+still ends not-ok pages through `scripts/notify.sh` (topic `NTFY_TOPIC` or `<brain home>/ntfy-topic`), and the next
+good night pages "recovered". The failure text carries the installer's own failing lines, and on macOS the job's
+output is kept in `<brain home>/.last-nightly-update.log` (written into the plist by `--enable-nightly`). Codex plugin
+commands run under a 180 s limit because Codex refreshes a 56 MB remote catalog inside them.
 
 Managed installs keep their current owner. An older Agentic Kit release may still have a
 competing updater or stale ownership comment; this Brain release does not claim to fix that

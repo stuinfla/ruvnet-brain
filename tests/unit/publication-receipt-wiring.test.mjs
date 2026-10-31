@@ -50,7 +50,9 @@ describe('publication receipt wiring', () => {
   });
 
   it('does not let unrelated private draft assets break the public transaction scan', () => {
-    expect(provider).toContain('if (release.draft && release.tag_name !== identity.tag) continue;');
+    // The receipt scan reads concurrently since 4.7.28; the draft exclusion is the same predicate as a filter
+    // (behaviour pinned in release-receipt-scan-concurrency.test.mjs: an unrelated draft's asset is never read).
+    expect(provider).toContain('all.filter((release) => !(release.draft && release.tag_name !== identity.tag))');
     expect(provider).toContain('Published');
     expect(provider).toContain('releases remain fully receipt-gated');
   });

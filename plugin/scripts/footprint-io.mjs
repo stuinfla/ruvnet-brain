@@ -131,7 +131,29 @@ export function treeBytes(target) {
 
 /** Atomic rename-rotation: <name> -> <name>.1 (replacing the previous .1). Appenders reopen by path. */
 export function rotate(file) { fs.renameSync(file, `${file}.1`); }
+/**
+ * Keep a text log's newest tail IN PLACE (same inode). A rename-over gave the log a new inode, so a writer that still
+ * held it open (launchd's StandardOutPath for the nightly, whose own installer runs this sweep) wrote the rest of the
+ * night into a deleted file (review, 2026-10-30). Appenders (O_APPEND) continue at the new end.
+ */
+// In-place trimming is only safe for an O_APPEND writer; the SessionStart jobs open their `.last-*.log` with 'w' (a
+// trim under them would leave a hole of zero bytes), so only the launchd nightly log, appended to all night, is
+// trimmed in place; every other text log keeps the rename-over trim (review r2, 2026-10-30).
+const TRIM_IN_PLACE = new Set(['.last-nightly-update.log']);
 export function truncateToTail(file, keep) {
+  if (!TRIM_IN_PLACE.has(path.basename(file))) return truncateByRename(file, keep);
+  const fd = fs.openSync(file, 'r+');
+  try {
+    const size = fs.fstatSync(fd).size;
+    const buf = Buffer.alloc(Math.min(keep, size));
+    fs.readSync(fd, buf, 0, buf.length, size - buf.length);
+    const nl = buf.indexOf(10);
+    const tail = nl >= 0 ? buf.subarray(nl + 1) : buf;
+    fs.ftruncateSync(fd, 0);
+    fs.writeSync(fd, tail, 0, tail.length, 0);
+  } finally { fs.closeSync(fd); }
+}
+function truncateByRename(file, keep) {
   const size = fs.statSync(file).size;
   const fd = fs.openSync(file, 'r');
   const buf = Buffer.alloc(Math.min(keep, size));

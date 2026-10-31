@@ -31,7 +31,13 @@ describe('bounded fresh-stage transport retries', () => {
       if (calls === 1) { request.socket.destroy(); return; }
       if (calls === 2) {
         response.writeHead(200, { 'content-length': 50 }); response.write('PARTIAL');
-        setTimeout(() => response.destroy(), 5); return;
+        // Cut the body only once the client has STAGED the 7 bytes. A fixed 5 ms timer raced the client's
+        // write on a slow macOS runner (preflight 41106956788): nothing was staged, so no Range was sent.
+        const staged = () => fs.readdirSync(root).some((name) => name.startsWith('bundle.zip.part-')
+          && fs.statSync(path.join(root, name)).size >= 7);
+        const started = Date.now();
+        const cut = () => (staged() || Date.now() - started > 900 ? response.destroy() : setTimeout(cut, 2));
+        cut(); return;
       }
       response.writeHead(200, { 'content-length': 8 }); response.end('complete');
     });

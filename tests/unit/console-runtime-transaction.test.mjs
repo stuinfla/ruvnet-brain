@@ -303,23 +303,27 @@ describe('issue #79 — Console runtime update transaction', () => {
       wireClaude: () => ({ host: true, wired: false, error: 'Claude verification failed' }),
       wireCodexHost: () => ({ host: false, action: 'no-host' }),
       wireCodexPlugin: () => { throw new Error('Codex must remain untouched'); },
-      reason: /^Claude Code plugin wiring failed$/,
+      reason: /^Claude Code plugin wiring failed: Claude verification failed;/,
     },
     {
       label: 'Codex',
       wireClaude: () => ({ host: false, wired: false }),
       wireCodexHost: () => ({ host: true, action: 'unchanged' }),
       wireCodexPlugin: () => ({ host: true, action: 'verification-failed', error: 'Codex verification failed' }),
-      reason: /^Codex plugin verification-failed: Codex verification failed$/,
+      reason: /^Codex plugin verification-failed: Codex verification failed;/,
     },
     {
       label: 'Codex throw',
       wireClaude: () => ({ host: false, wired: false }),
       wireCodexHost: () => ({ host: true, action: 'unchanged' }),
       wireCodexPlugin: () => { throw new Error('codex-unavailable'); },
-      reason: /^Codex plugin failed: codex-unavailable$/,
+      reason: /^Codex plugin failed: codex-unavailable;/,
     },
-  ])('$label selected-host failure rolls Console runtime B back to byte-identical A', (hostFailure) => {
+  // Reversed 2026-10-30 (ADR-0051 amendment, ADR-104 4.7.25): a failed host used to stop the Stable Spine and roll the
+  // Console runtime back to A, but the hosts already wired stayed on B, so a Codex timeout left Claude Code new and the
+  // runtime + Codex old for three nights. A failed host is now recorded `failed` with its reason; the runtime and the
+  // other hosts converge to B, and the run still fails so the night retries and pages.
+  ])('$label selected-host failure is recorded failed; the runtime still converges to B', (hostFailure) => {
     const cache = temporary('brain-console-cache-');
     const brainHome = temporary('brain-console-home-');
     install.installConsoleRuntime(cache, candidate('GENERATION-A'));
@@ -332,14 +336,17 @@ describe('issue #79 — Console runtime update transaction', () => {
       wireClaude: hostFailure.wireClaude,
       wireCodexHost: hostFailure.wireCodexHost,
       wireCodexPlugin: hostFailure.wireCodexPlugin,
-      runStableSpine: () => { throw new Error('Stable Spine must not run after host failure'); },
+      runStableSpine: () => ({ status: 0 }),
     });
 
     expect(result.ok).toBe(false);
     // The refresh receipt records `error`; it used to be undefined on these paths (2026-10-23: `state: null, error: null`).
     expect(result.error).toMatch(hostFailure.reason);
-    expect(treeSnapshot(runtime)).toEqual(before);
-    expect(fs.existsSync(path.join(brainHome, 'host-convergence.json'))).toBe(false);
+    expect(treeSnapshot(runtime)).not.toEqual(before); // B is active
+    const receipt = JSON.parse(fs.readFileSync(path.join(brainHome, 'host-convergence.json'), 'utf8'));
+    const failedHost = hostFailure.label === 'Claude' ? 'claude' : 'codex';
+    expect(receipt.hosts[failedHost]).toMatchObject({ state: 'failed', error: expect.any(String) });
+    expect(install.classifyHostConvergence(receipt)).toMatchObject({ healthy: false, state: 'host-pending' });
     expect(fs.readdirSync(cache).filter((name) => /\.console-runtime\.(?:tmp|prior)-/.test(name))).toEqual([]);
   });
 });

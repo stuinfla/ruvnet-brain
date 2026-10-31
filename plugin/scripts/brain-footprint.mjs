@@ -68,9 +68,16 @@ const RECOVERY_LEFTOVER = /(?:\.(?:bak|retired|dead)-\d{6,}|^bootstrap-backup-\d
 // One list with ruflo-bin.mjs, which clears the same names before each call (incl. a self-update's npm install, 1.3 GB on 2026-10-22).
 const RUFLO_DEBRIS = new Set(RUFLO_CWD_ARTIFACTS);
 // Directories in the brain home that hold data another tool owns: measured, shown, never budgeted or removed.
+// The maintainer-only issue-autofix job (ADR-107, scripts/issue-autofix-state.mjs) keeps its clone, runner and fix
+// worktrees here too: ~1.1 GB on the owner's Mac on 2026-10-30, counted as "Brain state", which put a correctly
+// pruned Brain 0.7 GB over its budget every night. They are that job's working data, not the product's footprint.
 const FOREIGN = { 'ruvector-mcp': 'RuVector MCP server working store (its own live memory)',
-  'worktree-recovery': 'hand-made recovery archives, not created by the Brain' };
-const TERMINAL = new Set(['NOOP', 'COMMITTED', 'ROLLED_BACK']);
+  'worktree-recovery': 'hand-made recovery archives, not created by the Brain',
+  'autofix-repo': 'the maintainer issue-autofix job\'s clone (ADR-107); that job owns and prunes it',
+  'autofix-runner': 'the maintainer issue-autofix job\'s pinned runner worktree (ADR-107); that job owns it',
+  'issue-fix-worktrees': 'the maintainer issue-autofix job\'s fix worktrees (ADR-107); that job owns and prunes them',
+  'issue-autofix': 'the maintainer issue-autofix job\'s run receipts (ADR-107); that job owns them' };
+const TERMINAL = new Set(['NOOP', 'COMMITTED', 'ROLLED_BACK', 'DISPOSED']); // DISPOSED: operator recovery (#335)
 
 const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } };
 const lstat = (file) => { try { return fs.lstatSync(file); } catch { return null; } };
@@ -190,6 +197,10 @@ export function inventoryFootprint({ env = process.env, home = os.homedir(), now
     }
   };
   const classifySibling = (name, full, st) => {
+    if (name === `.${base}.recovered` && st.isDirectory() && !st.isSymbolicLink()) { // #335: written only by --recover-update --keep-live
+      return void add({ id: 'kb-recovered', path: full, class: 'may-exist', kind: 'kb-recovered', action: 'keep', bytes: bytes(full),
+        reason: 'trees an operator-disposed update transaction owned, moved intact (--recover-update); never removed automatically' });
+    }
     if (name === `${base}.archive` && st.isDirectory() && !st.isSymbolicLink()) { // #335: written only by --clean --archive
       return void add({ id: 'kb-archive', path: full, class: 'may-exist', kind: 'kb-archive', action: 'keep', bytes: bytes(full),
         reason: 'files unique to released KB copies, archived on request (--clean --archive); never removed automatically' });
