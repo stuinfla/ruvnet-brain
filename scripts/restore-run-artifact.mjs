@@ -39,20 +39,26 @@ export function missingMembers(dir, manifestName = 'payload-manifest.json') {
   return missing;
 }
 
-function liveFetch({ repo, runId, name, dir }) {
-  const gh = (args, options = {}) => execFileSync('gh', args, { encoding: 'utf8', timeout: 60_000, maxBuffer: 16 * 1024 * 1024, ...options });
-  const listed = JSON.parse(gh(['api', `repos/${repo}/actions/runs/${runId}/artifacts?name=${encodeURIComponent(name)}&per_page=100`]));
-  const artifacts = (listed.artifacts || []).filter((artifact) => artifact.name === name && artifact.expired === false
+/** The one artifact of this run with this name, not expired; anything else is refused. */
+export function selectRunArtifact(listed, { name, runId }) {
+  const artifacts = (listed?.artifacts || []).filter((artifact) => artifact.name === name && artifact.expired === false
     && String(artifact.workflow_run?.id) === String(runId));
   if (artifacts.length !== 1) throw new Error(`expected one ${name} artifact in run ${runId}, found ${artifacts.length}`);
+  return artifacts[0];
+}
+
+export function liveFetch({ repo, runId, name, dir }, { exec = execFileSync } = {}) {
+  const listed = JSON.parse(exec('gh', ['api', `repos/${repo}/actions/runs/${runId}/artifacts?name=${encodeURIComponent(name)}&per_page=100`],
+    { encoding: 'utf8', timeout: 60_000, maxBuffer: 16 * 1024 * 1024 }));
+  const artifact = selectRunArtifact(listed, { name, runId });
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'restore-run-artifact-'));
   try {
     const zip = path.join(temp, 'artifact.zip');
     const fd = fs.openSync(zip, 'w');
     try {
-      execFileSync('gh', ['api', `repos/${repo}/actions/artifacts/${artifacts[0].id}/zip`], { stdio: ['ignore', fd, 'pipe'], timeout: 1_200_000 });
+      exec('gh', ['api', `repos/${repo}/actions/artifacts/${artifact.id}/zip`], { stdio: ['ignore', fd, 'pipe'], timeout: 1_200_000 });
     } finally { fs.closeSync(fd); }
-    execFileSync('unzip', ['-o', '-q', zip, '-d', dir], { stdio: ['ignore', 'pipe', 'pipe'], timeout: 600_000 });
+    exec('unzip', ['-o', '-q', zip, '-d', dir], { stdio: ['ignore', 'pipe', 'pipe'], timeout: 600_000 });
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 }
 

@@ -116,11 +116,13 @@ export const RECEIPT_READ_CONCURRENCY = 5;
 export async function mapConcurrent(items, limit, fn) {
   const results = new Array(items.length);
   let next = 0;
+  let failed = false;
   const worker = async () => {
-    while (next < items.length) {
+    // After the first failure no new item starts; the scan fails with that error, as the serial loop did.
+    while (!failed && next < items.length) {
       const index = next;
       next += 1;
-      results[index] = await fn(items[index], index);
+      try { results[index] = await fn(items[index], index); } catch (error) { failed = true; throw error; }
     }
   };
   await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker));
@@ -153,10 +155,13 @@ export const downloadAssetAsync = async (asset, destination, {
     if (!result.error && !result.signal && result.status === 0) return destination;
     const stderr = String(result.stderr || '').trim().slice(0, 300);
     cause = `${result.error?.message || result.signal || `exit ${result.status}`}${stderr ? ` (${stderr})` : ''}`;
-    if (attempt < attempts) await wait(baseDelayMs * 2 ** (attempt - 1));
+    // A secondary rate limit asks for at least a minute (GitHub REST docs); a plain hiccup keeps the short backoff.
+    const throttled = /rate limit|HTTP 429|HTTP 403/i.test(stderr);
+    if (attempt < attempts) await wait(throttled ? Math.max(RATE_LIMIT_WAIT_MS, baseDelayMs * 2 ** (attempt - 1)) : baseDelayMs * 2 ** (attempt - 1));
   }
   throw new Error(`cannot download transaction asset ${asset.name} after ${attempts} attempts: ${cause}`);
 };
+export const RATE_LIMIT_WAIT_MS = 60_000;
 const assetReceiptAsync = async (asset) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ruvnet-asset-'));
   const file = path.join(dir, path.basename(asset.name) || 'asset.bin');

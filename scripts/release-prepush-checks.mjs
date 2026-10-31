@@ -226,12 +226,27 @@ export const CLOCK_TEST_DIRS = ['tests/unit/', 'tests/integration/'];
 export const PRODUCT_ZONE = 'America/New_York';
 // UTC+14 is a day ahead of Eastern from 06:00 ET onward; UTC-12 is a day behind until 08:00 ET.
 export const DIVERGENT_ZONE_CANDIDATES = ['Pacific/Kiritimati', 'Etc/GMT+12'];
-const dayIn = (zone, ms) => new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(ms);
+const DAY_FORMATS = new Map();
+const dayIn = (zone, ms) => {
+  if (!DAY_FORMATS.has(zone)) DAY_FORMATS.set(zone, new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }));
+  return DAY_FORMATS.get(zone).format(ms);
+};
 
-/** A zone whose calendar day differs from Eastern's at `ms` (always exists: the two candidates cover 24 h). */
+/**
+ * A zone whose calendar day differs from Eastern's at `ms` (always exists: the two candidates cover 24 h).
+ * When both differ, the one that keeps differing longest wins, so a run of several minutes stays divergent.
+ */
 export function dayDivergentZone(ms) {
-  const eastern = dayIn(PRODUCT_ZONE, ms);
-  return DIVERGENT_ZONE_CANDIDATES.find((zone) => dayIn(zone, ms) !== eastern) || null;
+  const step = 15 * 60 * 1000;
+  const divergesAt = (zone, at) => dayIn(zone, at) !== dayIn(PRODUCT_ZONE, at);
+  const remaining = (zone) => {
+    let t = ms;
+    while (t - ms < 12 * 60 * 60 * 1000 && divergesAt(zone, t + step)) t += step;
+    return t - ms;
+  };
+  const divergent = DIVERGENT_ZONE_CANDIDATES.filter((zone) => divergesAt(zone, ms));
+  if (divergent.length < 2) return divergent[0] || null;
+  return divergent.sort((a, b) => remaining(b) - remaining(a))[0];
 }
 
 export async function clockZones(ctx) {

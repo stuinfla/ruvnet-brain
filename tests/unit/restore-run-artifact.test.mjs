@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { RESTORE_ATTEMPTS, missingMembers, restoreRunArtifact } from '../../scripts/restore-run-artifact.mjs';
+import { RESTORE_ATTEMPTS, liveFetch, missingMembers, restoreRunArtifact, selectRunArtifact } from '../../scripts/restore-run-artifact.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const dirs = [];
@@ -54,6 +54,28 @@ describe('restore-run-artifact', () => {
       fetchArtifact: async () => { fetched += 1; throw new Error('HTTP 502'); } }))
       .rejects.toThrow(`publisher-payload-7 is still incomplete after ${RESTORE_ATTEMPTS} re-download(s): ruvnet-brain-9.9.9.tgz`);
     expect(fetched).toBe(RESTORE_ATTEMPTS);
+  });
+
+  it('fetches only the one unexpired artifact of this run with this name, by ID, and unzips it over the directory', () => {
+    const mine = { id: 7, name: 'verified-candidate-5', expired: false, workflow_run: { id: 5 } };
+    expect(selectRunArtifact({ artifacts: [mine, { ...mine, id: 8, workflow_run: { id: 6 } }, { ...mine, id: 9, expired: true }] },
+      { name: 'verified-candidate-5', runId: '5' })).toBe(mine);
+    expect(() => selectRunArtifact({ artifacts: [mine, { ...mine, id: 10 }] }, { name: mine.name, runId: 5 })).toThrow(/found 2/);
+    expect(() => selectRunArtifact({ artifacts: [] }, { name: mine.name, runId: 5 })).toThrow(/found 0/);
+    const dir = payload();
+    const calls = [];
+    liveFetch({ repo: 'o/r', runId: '5', name: 'verified-candidate-5', dir }, { exec: (command, args, options) => {
+      calls.push([command, ...args]);
+      if (args[1]?.includes('/artifacts?name=')) return JSON.stringify({ artifacts: [mine] });
+      if (command === 'gh') { fs.writeSync(options.stdio[1], 'zip'); return ''; }
+      return '';
+    } });
+    expect(calls.map((call) => call.slice(0, 3).join(' '))).toEqual([
+      'gh api repos/o/r/actions/runs/5/artifacts?name=verified-candidate-5&per_page=100',
+      'gh api repos/o/r/actions/artifacts/7/zip',
+      'unzip -o -q',
+    ]);
+    expect(calls[2].at(-1)).toBe(dir);
   });
 
   it('the seal and publisher jobs prove the restore before signing or publishing; the candidate name survives a re-run', () => {

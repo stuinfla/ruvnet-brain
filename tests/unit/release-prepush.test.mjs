@@ -168,14 +168,19 @@ it('clock-zones: clock-sensitive tests run in UTC and in a zone on a different d
 });
 
 it('a divergent zone exists at every quarter hour of the year, and a child process in it really is on another day', () => {
+  const DAY = Object.fromEntries([PRODUCT_ZONE, ...DIVERGENT_ZONE_CANDIDATES].map((zone) => [zone,
+    new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' })]));
   for (let ms = Date.parse('2026-01-01T00:00:00Z'); ms < Date.parse('2027-01-01T00:00:00Z'); ms += 15 * 60 * 1000) {
     const zone = dayDivergentZone(ms);
     expect(DIVERGENT_ZONE_CANDIDATES).toContain(zone);
-    const day = (z) => new Intl.DateTimeFormat('en-CA', { timeZone: z, year: 'numeric', month: '2-digit', day: '2-digit' }).format(ms);
-    if (day(zone) === day(PRODUCT_ZONE)) throw new Error(`${zone} shares Eastern's day at ${new Date(ms).toISOString()}`);
+    if (DAY[zone].format(ms) === DAY[PRODUCT_ZONE].format(ms)) throw new Error(`${zone} shares Eastern's day at ${new Date(ms).toISOString()}`);
   }
   // The 4.7.26 test that failed on a UTC runner reads exactly this kind of day.
   expect(CLOCK_SENSITIVE_TEST.test(fs.readFileSync(path.join(REPO_ROOT, 'tests/unit/issue-autofix-release.test.mjs'), 'utf8'))).toBe(true);
+  // At 07:45 EDT both zones are on another day; UTC-12 rejoins Eastern at 08:00, UTC+14 holds until midnight.
+  expect(dayDivergentZone(Date.parse('2026-10-30T11:45:00Z'))).toBe('Pacific/Kiritimati');
+  // At 00:30 EDT only UTC-12 is on another day.
+  expect(dayDivergentZone(Date.parse('2026-10-30T04:30:00Z'))).toBe('Etc/GMT+12');
   // The release runners' zones are set by TZ on Linux and macOS; Windows lanes check the zone choice only.
   if (process.platform === 'win32') return;
   const now = Date.now();

@@ -96,7 +96,7 @@ describe('macOS candidate search, one runner per mode', () => {
     expect(parseCandidateModes(null)).toBeNull();
     expect(parseCandidateModes('dual-host')).toEqual(['dual']);
     expect(parseCandidateModes('claude-only,codex-only')).toEqual(['claude', 'codex']);
-    for (const bad of ['', 'claude', 'dual-host,dual-host', 'grok-only']) expect(() => parseCandidateModes(bad), bad).toThrow(/--modes/);
+    for (const bad of ['', 'claude', 'dual-host,dual-host', 'grok-only', '--out']) expect(() => parseCandidateModes(bad), bad).toThrow(/--modes/);
   });
 
   it('the aggregate accepts three bound one-leaf receipts and refuses anything less', async () => {

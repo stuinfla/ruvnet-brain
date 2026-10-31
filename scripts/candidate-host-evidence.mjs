@@ -18,6 +18,7 @@ export const CANDIDATE_LEAF_NAMES = Object.freeze({ claude: 'claude-only', codex
 /** `--modes claude-only,dual-host` -> ['claude', 'dual']; absent -> null (all three, the default receipt). */
 export function parseCandidateModes(value) {
   if (value == null) return null;
+  if (String(value).startsWith('--')) throw new Error('--modes needs a value');
   const byLeaf = Object.fromEntries(Object.entries(CANDIDATE_LEAF_NAMES).map(([mode, leaf]) => [leaf, mode]));
   const names = String(value).split(',').map((name) => name.trim()).filter(Boolean);
   const modes = names.map((name) => byLeaf[name]);
@@ -112,7 +113,7 @@ if (isDirectInvocation(import.meta.url)) {
   const evidence = await buildCandidateHostEvidence({ manifestFile: arg('--manifest'),
     packagePath: arg('--package'), bundlePath: arg('--bundle'), planFile: arg('--plan'), coverageFile: arg('--coverage'), failureFile: arg('--out') ? `${arg('--out')}.failure.json` : null },
   { sequentialSearches: process.argv.includes('--sequential-searches'),
-    modes: parseCandidateModes(process.argv.includes('--modes') ? arg('--modes') : null) });
+    modes: parseCandidateModes(process.argv.includes('--modes') ? (arg('--modes') ?? '') : null) });
   fs.writeFileSync(path.resolve(arg('--out')), `${JSON.stringify(evidence, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
   console.log(JSON.stringify({ verdict: 'PASS', payloadId: evidence.payloadId, leaves: evidence.leaves.map(({ name }) => name) }));
 }
