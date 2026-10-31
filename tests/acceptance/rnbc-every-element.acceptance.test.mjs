@@ -416,7 +416,7 @@ describe('RNBC — every element on every page, on an isolated console', () => {
     await uc(page, q(page, 'seglabel:provider:codex'));
     let n0 = posts.length;
     await uc(page, q(page, 'btn:save:0'));
-    await page.waitForSelector('form.settings-form >> nth=0 >> .form-note.n-ok', { timeout: STATE_WAIT_MS });
+    await page.waitForSelector('form.settings-form >> nth=0 >> .receipt.rc-changed', { timeout: STATE_WAIT_MS });
     const cfg1 = readJSON(fx.configFile);
     const house = (await (await page.request.get(new URL('/api/state', srv.url).toString())).json()).sections?.savings?.routerEngine?.house?.provider;
     const body1 = JSON.parse(postsSince(n0).find((p) => p.url === '/api/save-config')?.body || '{}');
@@ -425,7 +425,7 @@ describe('RNBC — every element on every page, on an isolated console', () => {
     await inventory(page, 'index.html');
     // undo of a first-ever save removes the file
     await uc(page, q(page, 'btn:save-undo:0'));
-    await page.waitForFunction(() => /restored from the backup|Settings restored/.test(document.querySelector('form.settings-form')?.innerText || ''), null, { timeout: STATE_WAIT_MS });
+    await page.waitForFunction(() => /Undo — Save settings/.test(document.querySelector('form.settings-form')?.innerText || ''), null, { timeout: STATE_WAIT_MS });
     record('index.html', 'btn:save-undo:0', { claim: 'Undo save', action: 'click after the first save', observed: `config.json exists=${fs.existsSync(fx.configFile)}`, ok: !fs.existsSync(fx.configFile) });
 
     // explicit choices: nightly ON (touched), routing OFF, qeFleet ON
@@ -437,7 +437,7 @@ describe('RNBC — every element on every page, on an isolated console', () => {
     n0 = posts.length;
     await uc(page, q(page, 'btn:save:0'));
     // wait for the outcome, success or not: a refused save is a row with its reason, never a timeout
-    const note2 = await page.waitForSelector('form.settings-form >> nth=0 >> .form-note', { timeout: 90_000 }).then((h) => h.innerText());
+    const note2 = await page.waitForSelector('form.settings-form >> nth=0 >> .receipt', { timeout: 90_000 }).then((h) => h.innerText());
     const cfg2 = readJSON(fx.configFile);
     const rc = routeCheap();
     const qe = nodeIn({}, `const m = await import(${JSON.stringify(path.join(REPO, 'plugin/scripts/runtime-preferences.mjs'))}); process.stdout.write(String(m.loadRuntimePreferences().values.qeFleet));`).out;
@@ -470,7 +470,7 @@ describe('RNBC — every element on every page, on an isolated console', () => {
     const nightly = q(page, 'checkbox:setting:nightly');
     await uc(page, nightly); await uc(page, nightly);        // touched, lands on "on"
     await uc(page, q(page, 'btn:save:0'));
-    await page.waitForSelector('form.settings-form >> nth=0 >> .form-note.n-ok', { timeout: 90_000 });
+    await page.waitForSelector('form.settings-form >> nth=0 >> .receipt:is(.rc-changed, .rc-no-change)', { timeout: 90_000 });
     const onCalls = calls().length;
     const onEntry = schedulerEntry(fx).text;
     const artStat = onEntry && fs.existsSync(artifact) ? fs.statSync(artifact, { bigint: true }) : null;
@@ -481,7 +481,7 @@ describe('RNBC — every element on every page, on an isolated console', () => {
     await uc(page, q(page, 'seglabel:provider:openai'));
     const n0 = posts.length;
     await uc(page, q(page, 'btn:save:0'));
-    await page.waitForSelector('form.settings-form >> nth=0 >> .form-note.n-ok', { timeout: 90_000 });
+    await page.waitForSelector('form.settings-form >> nth=0 >> .receipt:is(.rc-changed, .rc-no-change)', { timeout: 90_000 });
     const sent = JSON.parse(postsSince(n0).find((p) => p.url === '/api/save-config')?.body || '{}').values || {};
     const cfg = readJSON(fx.configFile) || {};
     const newCalls = calls().slice(onCalls);
@@ -495,7 +495,7 @@ describe('RNBC — every element on every page, on an isolated console', () => {
     await page.reload(); await settleIndex(page); await inventory(page, 'index.html');
     await uc(page, q(page, 'checkbox:setting:nightly'));
     await uc(page, q(page, 'btn:save:0'));
-    await page.waitForSelector('form.settings-form >> nth=0 >> .form-note.n-ok', { timeout: 90_000 });
+    await page.waitForSelector('form.settings-form >> nth=0 >> .receipt:is(.rc-changed, .rc-no-change)', { timeout: 90_000 });
     const offCalls = calls().slice(onCalls);
     record('index.html', 'checkbox:setting:nightly#off', { claim: 'Nightly brain refresh — switch off', action: 'switch off, Save', observed: `config nightly=${readJSON(fx.configFile)?.nightly}; installer calls: ${offCalls.map((c) => c.split(fx.home).join('~')).join(' | ')}; ${schedulerEntry(fx).kind} removed=${!schedulerEntry(fx).text}; scheduler status=${schedulerState(fx).state}`,
       ok: readJSON(fx.configFile)?.nightly === false && offCalls.length === 1 && /--disable-nightly/.test(offCalls[0]) && !schedulerEntry(fx).text && schedulerState(fx).state === 'off' });
@@ -518,7 +518,7 @@ describe('RNBC — every element on every page, on an isolated console', () => {
     const hiddenType = await input.getAttribute('type');
     record('index.html', 'btn:secret:show', { action: 'click ×2', observed: `input type ${shownType} → ${hiddenType}`, ok: shownType === 'text' && hiddenType === 'password' });
     await uc(page, q(page, 'btn:save:0'));
-    await page.waitForSelector('form.settings-form >> nth=0 >> .form-note', { timeout: STATE_WAIT_MS });
+    await page.waitForSelector('form.settings-form >> nth=0 >> .receipt', { timeout: STATE_WAIT_MS });
     const secrets = path.join(fx.home, '.config', 'ruvnet-brain', 'secrets.enc.json');
     // The tools the CONSOLE can reach (its PATH, not this test process's): a machine without SOPS+age
     // (the Linux CI runner) must refuse the key, and then the box must keep offering "Add a key".
@@ -530,7 +530,7 @@ describe('RNBC — every element on every page, on an isolated console', () => {
     const ok = hasSops
       ? !!enc && !enc.includes('sk-or-fixture') && !plain.includes('sk-or-fixture') && state.sections.config.values.openrouterKey === true && state.sections.savings.routerEngine.keys.openrouter === true
       : /SOPS and age are required/.test(await page.locator('form.settings-form').nth(0).innerText());
-    const formNote = await page.locator('form.settings-form').nth(0).locator('.form-note').innerText().catch(() => '');
+    const formNote = await page.locator('form.settings-form').nth(0).locator('.receipt').first().innerText().catch(() => '');
     record('index.html', 'input:secret', { claim: 'OpenRouter API key', action: 'type a key, Save', observed: hasSops ? `form: "${formNote.slice(0, 60)}"; secrets.enc.json written=${!!enc} (plaintext inside=${enc.includes('sk-or-fixture')}); config.json plaintext=${plain.includes('sk-or-fixture')}; Settings key=${state.sections?.config?.values?.openrouterKey}; Savings OpenRouter key=${state.sections?.savings?.routerEngine?.keys?.openrouter}` : 'sops absent: refused with an explanation, nothing written', ok });
     // once a key exists the OpenRouter box offers "Manage" instead of "Add a key" — repaint and press it
     await page.evaluate(() => window.loadState && window.loadState());
@@ -586,7 +586,7 @@ describe('RNBC — every element on every page, on an isolated console', () => {
     record('index.html', 'behaviour:unsaved-settings-survive-repaint', { claim: 'choices you have not saved yet stay on screen', action: 'choose user / 1 / act / inherit, then let the page repaint before saving', observed: `still selected after repaint: learningScope=user ${kept.scope}, advocacy=1 ${kept.adv}`, ok: kept.scope === true && kept.adv === true });
     await inventory(page, 'index.html');
     await uc(page, q(page, 'btn:save:1'));
-    await page.waitForSelector('form.settings-form >> nth=1 >> .form-note.n-ok', { timeout: STATE_WAIT_MS });
+    await page.waitForSelector('form.settings-form >> nth=1 >> .receipt.rc-changed', { timeout: STATE_WAIT_MS });
     const s = readJSON(fx.settingsFile)?.settings || {};
     const scope = spawnSync(process.execPath, [path.join(REPO, 'plugin/scripts/runtime-preferences.mjs'), '--learning-scope'], { cwd: fx.project, env: fx.env, encoding: 'utf8' }).stdout.trim();
     // newProjectDefaults: the SessionStart seeder writes the choices into a never-set-up project.
@@ -944,6 +944,51 @@ describe('RNBC — every element on every page, on an isolated console', () => {
       expect(rows.get('index.html|btn:suite-update')?.verdict).toBe('PASS');
     } finally { await page?.close(); await server?.stop(); cleanupRnbc(local); }
   }, 300_000);
+
+  // RECEIPTS (2026-10-30). Every change above left a receipt — inline beside its control and in the
+  // "What your clicks did" card. Their controls (the log disclosure, the history fold, an Undo for an
+  // earlier change) appear only after something was changed, so they are proved here, last, where
+  // undoing a change cannot disturb an earlier assertion.
+  it('receipts: every receipt control does what it says, and a receipt Undo shows what changed back', async () => {
+    const page = await openPage('index.html');
+    await settleIndex(page);
+    const isReceiptKey = (k) => /what-the-console-logged|earlier-change|^btn:receipt-undo|undo-this-change/.test(k);
+    const panel = await page.locator('#card-receipts .receipt').count();
+    record('index.html', 'card:receipts', { claim: 'What your clicks did', action: 'load after the run',
+      observed: `${panel} receipt(s) rendered from GET /api/receipts`, ok: panel > 0 });
+    const done = new Set();
+    // Re-inventory after every click: an undo rebuilds the history card, which re-keys what is left.
+    for (let guard = 0; guard < 40; guard++) {
+      const inv = await inventory(page, 'index.html');
+      const k = inv.map((e) => e.key).find((key) => isReceiptKey(key) && !done.has(key));
+      if (!k) break;
+      done.add(k);
+      if (k.startsWith('summary:')) { await checkSummary(page, 'index.html', k); continue; }
+      const loc = q(page, k);
+      if (!(await loc.isVisible())) { record('index.html', k, { action: 'click', observed: 'not visible in this state', verdict: 'NOT-RENDERED' }); continue; }
+      const before = posts.length;
+      const answer = page.waitForResponse((r) => r.url().endsWith('/api/undo'), { timeout: STATE_WAIT_MS });
+      await uc(page, loc);
+      const body = await (await answer).json();
+      const sent = postsSince(before).some((p) => p.url === '/api/undo');
+      // THIS undo's own receipt must reach the page, matched by its id, never by text an earlier
+      // receipt on the same page could already be showing.
+      const shown = !!body.receipt && await page.waitForFunction((id) => !!document.querySelector(`.receipt[data-receipt-id="${id}"]`),
+        body.receipt.id, { timeout: STATE_WAIT_MS }).then(() => true).catch(() => false);
+      record('index.html', k, { claim: 'Undo this change', action: 'click',
+        observed: `POST /api/undo sent=${sent}; server ok=${body.ok}; receipt verdict=${body.receipt?.verdict}; its receipt on the page=${shown}`,
+        ok: sent && shown && (body.ok ? body.receipt.verdict === 'changed' : body.receipt.verdict === 'failed') });
+    }
+    // A receipt control seen earlier in the run but gone now was replaced by a newer receipt for the same
+    // control (one receipt per control, by design) — said as such, never silently dropped.
+    for (const id of found.keys()) {
+      const [pg, key] = [id.slice(0, id.indexOf('|')), id.slice(id.indexOf('|') + 1)];
+      if (!rows.has(id) && /what-the-console-logged|earlier-change|^btn:receipt-undo|undo-this-change/.test(key)) {
+        record(pg, key, { action: 'look for it after the run', observed: 'superseded by a newer receipt for the same control', verdict: 'NOT-RENDERED' });
+      }
+    }
+    await page.close();
+  }, 600_000);
 
   it('every element found has a ledger row; nothing failed; no JS errors or failed requests', () => {
     const missing = [...found.keys()].filter((id) => !rows.has(id));

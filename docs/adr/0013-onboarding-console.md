@@ -3,7 +3,7 @@ id: ADR-013
 title: The Onboarding Console — RuvNet Brain becomes a mirror, an advisor, and only then a configurator
 status: Accepted
 date: 2026-07-14
-updated: 2026-10-25
+updated: 2026-10-30
 updated_source: derived-from-git
 authors: [Stuart Kerr, Claude Code]
 tags: [onboarding, ux, config, stack, memory-health, savings, safety, coverage]
@@ -12,6 +12,7 @@ related: [ADR-0012 (grounding gate), ADR-0069 (artifact-bound source coverage), 
 governs:
   - scripts/onboarding-console.mjs
   - scripts/console-runtime-identity.mjs
+  - scripts/console-receipts.mjs
   - console/*
   - plugin/commands/configure.md
 created_at: 2026-07-14T17:28:48-04:00
@@ -281,7 +282,47 @@ there. The `console/*` glob already governs the new files, so `governs:` does no
 2026-07-14 sentence under *Implementation* ("The Coverage page travels inside that same runtime") is true
 again under the new name: `CONSOLE_RUNTIME_SURFACE` lists `console/` whole.
 
+## Amendment (2026-10-30) — every click leaves a receipt: before → after, read back from the machine
+
+The owner clicked through the Console and saw no evidence that anything had worked: "even if they
+work, they're not showing me that they've worked — completely insufficient." Driven button by button
+on an isolated Console (fixture HOME, packed runtime, `agent-browser`), the defects were concrete:
+Brain power and Brain profile wrote their success note and then repainted the card from `/api/state`
+in the same tick, which rebuilt the note's slot empty; the lesson switches did the same through
+`loadLessons()`; an applied recommendation's panel — its log and its only Undo button — was deleted
+~30 s later when the re-measure landed and the proposal was (correctly) no longer detected, leaving the
+journalled undo unreachable; Settings said "Saved." beside the field it had just saved, which still
+read "Not chosen yet" (and the undo note said "Reload to see"); a memory store whose count query could
+not run was summed as 0, so the page said "0 projects machine-wide" beside a memory card listing that
+project; "Off since" printed the UTC date; a small installed brain printed "0 MB"; and a long freshness
+reading pushed the header's controls over the brand and version.
+
+Decision, added to the five principles: **evidence of a change is part of the change.**
+
+1. Every mutating endpoint (`/api/save-brain-power`, `/api/save-brain-profile`, `/api/save-config`,
+   `/api/save-advocacy`, `/api/apply`, `/api/undo`, `/api/set-lesson`, `/api/suite-update`) reads the
+   authoritative store for what it writes BEFORE writing and again AFTER — the sentinel, the RVFs on
+   disk, `config.json`, `settings.json`, the lesson store, the detector that raised the proposal — and
+   returns a `receipt` (`scripts/console-receipts.mjs`). The verdict is derived from the two reads,
+   never from the endpoint's own `ok`: `changed`, `no-change` (nothing needed changing), `unverified`
+   (said ok, nothing moved — shown as NOT done) or `failed`. A forged token records nothing.
+2. Receipts are appended to `~/.cache/ruvnet-brain/console-receipts.jsonl` (bounded to 200) and served
+   newest-first by `GET /api/receipts`, with a spent undo marked from the undo journal. The page shows
+   them in a "What your clicks did" card under Brain power, and beside the control that made them
+   (`console/receipts.js`), re-attached by a MutationObserver to any `data-receipt-slot` so a repaint
+   cannot erase them. Times are local, with the zone.
+3. The page refreshes to match: Settings repaints from the files after a save or undo; an applied
+   recommendation card is kept as evidence after the re-measure and says what the re-measure found.
+4. Unknown is never 0: an unreadable store is a project of unknown size and the machine total is a
+   floor (`N+`).
+
+Tests that failed on 4.7.25: `tests/unit/console-receipts.test.mjs`,
+`tests/integration/console-receipts-endpoint.test.mjs` (4/4 red on 4.7.25),
+`tests/acceptance/console-receipts-visible.acceptance.test.mjs` (4/4 red on 4.7.25, in a browser).
+The click-everything ledger test now also clicks every receipt control.
+
 ## Currency log
+| 2026-10-30 | Review (4.7.26): decision unchanged and extended — the amendment above adds receipts. `scripts/onboarding-console.mjs` routes every mutating endpoint through before/after probes and serves `GET /api/receipts`; new `scripts/console-receipts.mjs`; new `console/receipts.js`; `console/app.js` attaches receipts, keeps applied cards, repaints Settings, prints local times and KB sizes; `console/activity.js` and `refreshFleetCache` report unreadable stores as unknown; `console/style.css` header and receipt styles; `console/CONTRACT.md` documents `receipt` and `/api/receipts`. | Driven in a browser on an isolated Console before and after; the three new test files fail on 4.7.25 and pass on these bytes. |
 | 2026-10-25 | Review `d59ce9988da9` (4.7.21): decision unchanged; the console stays a mirror and advisor first. `scripts/onboarding-console.mjs` moved twice: the session-surfacing memory probe no longer passes on any `.claude/hooks` folder and also recognises the enabled `ruvnet-brain` plugin's own SessionStart hook (Dream Cycle #322 port), and Apply on the quiet-learner card counts as progress only when `ruflo memory distill status` shows the last distillation moved forward (#377). | Reviewed the `scripts/onboarding-console.mjs` diff 320b778b..63ca7c0d (be30a804, d441061b); no other governed file moved. |
 | 2026-09-27 | Currency review: decision unchanged. Motion since last review: a worktree merge, an orphaned-file deletion sweep, and a learner-scope read fix in onboarding-console.mjs. None touch the console's mirror/advisor/configurator ordering. | Reviewed `scripts/onboarding-console.mjs`, `scripts/console-runtime-identity.mjs`, `console/CONTRACT.md`, `console/activity.js`, `console/app.js`, `console/architecture.html` against the commits listed above; reviewed_digest c8c5b7ca0fa8. |
 

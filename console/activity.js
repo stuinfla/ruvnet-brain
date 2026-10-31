@@ -26,7 +26,9 @@
     var apx = d.approvedLessons && d.approvedLessons.available === true ? d.approvedLessons.applicable : null;
     return {
       memories: show(t.memories), agentdbLessons: show(ag), lessons: show(ag),
-      approvedLessons: show(ap), approvedMachine: show(ap), approvedApplicable: show(apx), machine: show(mach),
+      approvedLessons: show(ap), approvedMachine: show(ap), approvedApplicable: show(apx),
+      // Stores the scan could not read are not zero: the readable sum is a floor, said as one.
+      machine: known(mach) && d.machine && d.machine.unreadableStores > 0 ? show(mach) + '+' : show(mach),
       observations: show(t.observations), patterns: show(t.patterns), episodes: show(t.episodes),
       approvedAvailable: known(ap), agentdbKnown: known(ag),
       nMem: num(t.memories), nLes: num(ag), nMachine: num(mach)
@@ -549,7 +551,7 @@
       var rowHTML = function (name, n, me) {
         return '<div class="ab-urow' + (me ? ' ab-me' : '') + '"><span class="ab-un">' + esc(name) + (me ? ' — you are here' : '') + '</span>' +
           '<span class="ab-ubar"><i style="width:' + wU(n) + '%"></i></span>' +
-          '<span class="ab-uc">' + fmt(n) + '</span></div>';
+          '<span class="ab-uc">' + (n == null ? 'Unknown' : fmt(n)) + '</span></div>';
       };
       document.getElementById('ab-view-universe').innerHTML =
         others.map(function (p) { return rowHTML(p.name, p.memories, false); }).join('') +

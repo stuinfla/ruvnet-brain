@@ -229,6 +229,13 @@
       "bound": "compact"
     },
     {
+      "module": "scripts/console-receipts.mjs",
+      "targets": [
+        "console-receipts.jsonl"
+      ],
+      "bound": "RECEIPT_LIMIT"
+    },
+    {
       "module": "scripts/onboarding-console.mjs",
       "targets": [
         "agentdb-sessions.jsonl",

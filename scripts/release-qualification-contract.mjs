@@ -2,6 +2,11 @@
 export const RELEASE_REQUIREMENTS = Object.freeze({
   "source": [
     {
+      "id": "console-click-receipts",
+      "reason": "A click's verdict is derived from two reads of the machine, never from the endpoint's own ok: success with nothing changed is unverified, unknown is never blank or zero, the history is bounded and newest first, and a small real size never prints as 0 MB",
+      "files": ["tests/unit/console-receipts.test.mjs"]
+    },
+    {
       "id": "public-admin-release-and-engineering-status",
       "reason": "Latest code release stays separate from corpus identity; issue and pull-request pagination preserves the complete engineering queue and failed probes remain unknown without inventing owner action",
       "files": ["tests/unit/explainer-api.test.mjs", "tests/unit/admin-render.test.mjs"]
@@ -384,6 +389,11 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
     }
   ],
   "integration": [
+    {
+      "id": "console-click-receipts-interface",
+      "reason": "The actual Console server answers every mutating click with a receipt whose before and after are re-reads of the machine, derives changed/no-change/failed from them, keeps the history across repaints and reloads, marks a spent undo, and records nothing for a forged token",
+      "files": ["tests/integration/console-receipts-endpoint.test.mjs"]
+    },
     {
       "id": "authenticated-update-coordinator-interface",
       "reason": "The actual Console server reports unrun status without policy writes, rejects absent tokens, cross-origin requests and invalid policies, and refuses a second updater while the shared lock is owned",

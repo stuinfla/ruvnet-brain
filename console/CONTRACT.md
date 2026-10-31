@@ -1,4 +1,4 @@
-Updated: 2026-10-10 04:37:54 EDT | Version 1.1.2
+Updated: 2026-10-30 21:00:00 EDT | Version 1.2.0
 Created: 2026-07-15
 
 # Onboarding Console — API + data contract (v1)
@@ -196,7 +196,30 @@ Request: `{ "token", "values": { … } }` → writes `~/.claude/ruvnet-brain/con
 
 ## POST `/api/undo` — reverse a prior apply/save
 
-Request: `{ "token", "undoToken" }` → Response: `{ "ok" }`
+Request: `{ "token", "undoToken" }` → Response: `{ "ok", "log", "receipt" }`
+
+## Receipts — what every click did (ADR-0013 amendment 2026-10-30)
+
+Every mutating POST above (`/api/apply` per result, `/api/save-config`, `/api/save-advocacy`,
+`/api/save-brain-power`, `/api/save-brain-profile`, `/api/undo`, `/api/set-lesson`, `/api/suite-update`)
+adds a `receipt` to its response:
+
+```jsonc
+{ "id": "a1b2c3d4e5f6", "at": "2026-10-31T00:34:49.000Z", "action": "brain-power",
+  "title": "Turn the brain off", "ok": true,
+  "verdict": "changed",            // changed | no-change | unverified | failed — derived from before vs after
+  "headline": "Turn the brain off — done. 2 things changed, read back from your machine.",
+  "facts": [ { "fact": "Brain", "before": "on", "after": "off", "changed": true } ],
+  "log": "…", "undoToken": null, "undoHow": "Flip the switch back on — that deletes the switch file." }
+```
+
+`before` and `after` are separate reads of the authoritative store, never the request echoed. A receipt
+that says ok with nothing changed (and a change expected) is `unverified` and is rendered as NOT done.
+A 403 records nothing. `/api/apply` accepts an optional `titles: { id: title }` used only for wording.
+
+`GET /api/receipts` → `{ "receipts": [ …newest first, each with "undoUsed" ], "path" }`, read from
+`~/.cache/ruvnet-brain/console-receipts.jsonl` (last 200 kept). The page renders it in "What your clicks
+did" and beside each control (`console/receipts.js`), re-attached after any repaint.
 
 ---
 

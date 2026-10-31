@@ -20,6 +20,7 @@
 
 import http from 'node:http';
 import { createSuiteUpdater } from './console-suite-update.mjs';
+import { buildReceipt, recordReceipt, readReceipts, fmtBytes } from './console-receipts.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -67,6 +68,7 @@ import {
 import { loadLessons, lessonApplies, projectNameFor, STORE_PATH as LESSON_STORE_PATH, updateLessons, ratify, demote, restore, pending, weightOf, TRIGGERS, ENFORCEMENT, ORIGIN, SOURCE_CLASS, STATUS } from './lesson-store.mjs';
 import {
   openRouterCredentialStatus,
+  preferencePaths,
   saveOpenRouterCredential,
   loadRuntimePreferences,
 } from '../plugin/scripts/runtime-preferences.mjs';
@@ -102,6 +104,7 @@ const NPM_PREFIX = path.join(SYSTEM_HOME, '.npm-global');
 const CONFIG_DIR = path.join(CONSOLE_ROOT, '.claude/ruvnet-brain');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
 const UNDO_JOURNAL = path.join(CONSOLE_ROOT, '.cache/ruvnet-brain/console-undo.jsonl');
+const RECEIPTS_FILE = path.join(CONSOLE_ROOT, '.cache/ruvnet-brain/console-receipts.jsonl');
 const INSTALLED_KB = process.env.RUVNET_BRAIN_KB
   || path.join(CONSOLE_ROOT, '.cache', 'ruvnet-brain', 'kb');
 const COMPLETE_BRAIN_SOURCE = process.env.RUVNET_BRAIN_COMPLETE_SOURCE
@@ -1908,6 +1911,7 @@ function adoptFleetFromDisk() {
 function refreshFleetCache() {
   const projects = [];
   let total = 0;
+  let unreadable = 0;
   const seen = new Set();
   // Scan every candidate root (issue #19) — this is what made machine-wide totals read 0 on a
   // machine whose projects live under ~/source instead of ~/Code.
@@ -1921,7 +1925,17 @@ function refreshFleetCache() {
       const resolved = pathIdentity(s.db) ?? path.resolve(s.db);
       if (seen.has(resolved)) continue; // a store visible twice counts once
       seen.add(resolved);
-      const n = Number(robustRead(s.db, "SELECT COUNT(*) FROM memory_entries WHERE status='active'").value || 0);
+      // UNREADABLE IS NOT ZERO (2026-10-30). `Number(value || 0)` turned a store the query could not read
+      // (an older schema with no `status` column, a locked file) into 0, and a 0 is skipped — so a
+      // machine with a real 12-memory store reported "0 projects · 0 memories machine-wide" beside a
+      // memory card listing that very project. The store is now counted as a project of unknown size.
+      const read = robustRead(s.db, "SELECT COUNT(*) FROM memory_entries WHERE status='active'");
+      const n = read.ok && read.value != null && Number.isFinite(Number(read.value)) ? Number(read.value) : null;
+      if (n === null) {
+        unreadable += 1;
+        projects.push({ id: resolved, name: path.basename(s.project), rel: path.relative(root, s.found || s.project), memories: null, lastTouched: null, unreadable: true });
+        continue;
+      }
       if (n > 0) {
         // MAX(updated_at) = when this project was last actively worked — the memory store doubles
         // as the attention signal (relevance ordering, Stuart 2026-07-15).
@@ -1940,8 +1954,8 @@ function refreshFleetCache() {
       }
     }
   }
-  projects.sort((a, b) => b.memories - a.memories);
-  ACTIVITY_MACHINE_CACHE = { schema: ACTIVITY_CACHE_SCHEMA, at: Date.now(), projects, totalMemories: total };
+  projects.sort((a, b) => (b.memories ?? -1) - (a.memories ?? -1));
+  ACTIVITY_MACHINE_CACHE = { schema: ACTIVITY_CACHE_SCHEMA, at: Date.now(), projects, totalMemories: total, unreadableStores: unreadable };
   saveConsoleCache();
 }
 export function findMemoryStores(root) {
@@ -2076,6 +2090,7 @@ function gatherActivity(cwd) {
   out.machine = {
     projects: ACTIVITY_MACHINE_CACHE.projects,
     totalMemories: ACTIVITY_MACHINE_CACHE.totalMemories,
+    unreadableStores: ACTIVITY_MACHINE_CACHE.unreadableStores ?? 0,
     scannedAt: machineMeasuredAt,   // legacy field, unchanged shape
     ...freshnessOf(machineMeasuredAt),
   };
@@ -3113,8 +3128,155 @@ export const HANDLED_UNDO_KINDS = Object.freeze([
   'restore-memory-backup', 'restore-store-backups', 'restore-project-distill', 'auto-rebuild', 'none',
 ]);
 
+// ── Receipts: before → after, read back from the machine (scripts/console-receipts.mjs) ───────────
+// Each probe reads the AUTHORITATIVE store for what its endpoint writes — the sentinel, the RVFs on
+// disk, config.json, settings.json, the lesson store, the detector that raised a proposal — never the
+// request body and never a cache. A probe that cannot read says so as its value.
+const shownValue = (v) => (v === true ? 'on' : v === false ? 'off' : v == null ? 'not chosen' : String(v));
+function probeBrainPower() {
+  const s = readOffState();
+  return {
+    'Brain': s.off ? 'off' : 'on',
+    [`Switch file ${s.path.replace(CONSOLE_ROOT, '~')}`]: fs.existsSync(s.path) ? 'present (means off)' : 'absent (means on)',
+  };
+}
+function probeBrainProfile() {
+  const m = measureBrainProfile(INSTALLED_KB);
+  return { 'Repository stores installed': m.storeCount, 'Stores': m.stores.join(', ') || 'none', 'Size of the stores on disk': fmtBytes(m.bytes) };
+}
+function probeConfig() {
+  const c = gatherConfig();
+  const out = {};
+  for (const f of CONFIG_SCHEMA) out[f.label || f.key] = f.secret ? (c.values[f.key] ? 'set' : 'not set') : shownValue(c.values[f.key]);
+  try { out['Nightly job on this machine'] = nightlyStatus().state; } catch { out['Nightly job on this machine'] = 'unknown'; }
+  // Replacing a key that is already set reads "set → set"; the encrypted file's write time is what moves
+  // (the key itself is never read into a receipt).
+  try {
+    const secrets = preferencePaths({ cwd: process.cwd() }).secrets;
+    out['Encrypted key file last written'] = fs.existsSync(secrets) ? fs.statSync(secrets).mtime.toISOString() : 'no file';
+  } catch { out['Encrypted key file last written'] = 'unknown'; }
+  return out;
+}
+function probeAdvocacy() {
+  const a = gatherAdvocacy();
+  return Object.fromEntries(a.schema.map((f) => [f.label || f.key, shownValue(a.values[f.key])]));
+}
+function probeLesson(id) {
+  const l = loadLessons().find((x) => x.id === id);
+  if (!l) return { [`Rule ${id}`]: 'not found' };
+  const inForce = (l.status === STATUS.RATIFIED || l.status === STATUS.ACTIVE) && !l.demoted;
+  return { [`Rule ${id}`]: inForce ? 'in force' : l.demoted ? 'switched off' : `not in force (${l.status})` };
+}
+function probeProposal(id) {
+  // The receipt's title names the proposal in words; this row is the detector's own answer, re-run.
+  return { 'The problem this fixes, still detected on your machine': currentValidIds(id).ids.has(id) ? 'yes' : 'no' };
+}
+function safeProbe(probe) {
+  try { return probe(); } catch (e) { return { 'State': `could not be read — ${String(e?.message || e).slice(0, 160)}` }; }
+}
+/** Read, run, re-read, record. The receipt rides on the response AND lands in RECEIPTS_FILE. */
+function withReceipt({ action, title, probe, expectChange = true, undoHow = '' }, run) {
+  const before = safeProbe(probe);
+  let result;
+  try { result = run(); } catch (e) { result = { ok: false, log: String(e?.message || e) }; }
+  const after = safeProbe(probe);
+  const receipt = recordReceipt(RECEIPTS_FILE, buildReceipt({
+    action, title, ok: !!result?.ok, before, after, log: result?.log,
+    undoToken: result?.undoToken || null,
+    undoHow: typeof undoHow === 'function' ? undoHow(result) : undoHow,
+    expectChange: typeof expectChange === 'function' ? expectChange(before) : expectChange,
+  }));
+  return { ...result, receipt };
+}
+const requestedDiffers = (raw, values) => Object.entries(values || {}).some(([k, v]) => !Object.is(raw?.[k], v));
+const cleanTitle = (t, fallback) => (typeof t === 'string' && t.trim() ? t.trim().slice(0, 160) : fallback);
+
+function receiptedApply(ids, titles = {}) {
+  const valid = ids.filter((id) => typeof id === 'string');
+  const out = apply(valid);
+  // BEFORE needs no second detector run: apply() re-validates each id immediately before it runs it, so
+  // an item that ran was detected ("yes") and a skipped one was not. AFTER is ONE detector pass for the
+  // whole batch — the stack detector shells out to the npm registry per package and blocks this server,
+  // so it must not run once per item.
+  const ran = out.results.filter((r) => !r.skipped).map((r) => r.id);
+  let detectedAfter = null;
+  try { detectedAfter = ran.length ? currentValidIds(ran.length === 1 ? ran[0] : null).ids : new Set(); }
+  catch { detectedAfter = null; }
+  const label = 'The problem this fixes, still detected on your machine';
+  out.results = out.results.map((r) => {
+    // learning:* proposals are built from the cached fleet scan, which the fix itself does not refresh;
+    // a "still detected" from that cache is not evidence either way, so it is not presented as one.
+    const cached = r.id.startsWith('learning:');
+    const afterValue = detectedAfter == null ? 'unknown' : cached ? 'not re-checked here — the next re-measure decides' : detectedAfter.has(r.id) ? 'yes' : 'no';
+    const receipt = recordReceipt(RECEIPTS_FILE, buildReceipt({
+      action: 'apply', title: `Apply: ${cleanTitle(titles?.[r.id], r.id)}`, ok: !!r.ok,
+      before: { [label]: r.skipped ? 'no' : 'yes' }, after: { [label]: afterValue },
+      log: r.log, undoToken: r.undoToken || null, expectChange: !cached,
+      undoHow: r.undoToken ? 'Undo on the card restores the backup written before the change.' : '',
+    }));
+    return { ...r, receipt };
+  });
+  return out;
+}
+function receiptedUndo(token) {
+  const entry = readUndoJournal().find((e) => e.token === token) || {};
+  const probe = entry.kind === 'restore-config' ? probeConfig
+    : entry.kind === 'restore-user-settings' ? probeAdvocacy
+      : entry.id ? () => probeProposal(entry.id)
+        : () => ({ 'Undo history entry': entry.kind || 'not found' });
+  // Name the undo after the change it reverses, in the words that change's receipt used.
+  const original = readReceipts(RECEIPTS_FILE, { limit: 200 }).find((r) => r.undoToken === token);
+  const title = original ? `Undo — ${original.title}`
+    : entry.kind === 'restore-config' || entry.kind === 'restore-user-settings'
+      ? 'Undo a settings save' : `Undo: ${entry.id || entry.kind || 'unknown change'}`;
+  return withReceipt({ action: 'undo', title, probe }, () => undo(token));
+}
+function receiptedSaveConfig(values) {
+  const raw = readJSON(CONFIG_PATH) || {};
+  return withReceipt({
+    action: 'save-config', title: 'Save settings (config.json)', probe: probeConfig,
+    expectChange: () => typeof values?.openrouterKey === 'string' || requestedDiffers(raw, values),
+    undoHow: (r) => (r.undoToken ? 'Undo on this receipt puts the previous config.json back.' : ''),
+  }, () => saveConfig(values));
+}
+function receiptedSaveAdvocacy(values) {
+  const raw = readJSON(loadSettings().path)?.settings || {};
+  return withReceipt({
+    action: 'save-advocacy', title: 'Save settings (settings.json)', probe: probeAdvocacy,
+    expectChange: () => requestedDiffers(raw, values),
+    undoHow: (r) => (r.undoToken ? 'Undo on this receipt puts the previous settings.json back.' : ''),
+  }, () => saveAdvocacy(values));
+}
+function receiptedBrainPower(values) {
+  const want = values?.brainEnabled;
+  return withReceipt({
+    action: 'brain-power', title: want === false ? 'Turn the brain off' : 'Turn the brain on', probe: probeBrainPower,
+    expectChange: (b) => b.Brain !== (want === false ? 'off' : 'on'),
+    undoHow: want === false ? 'Flip the switch back on — that deletes the switch file.' : 'Flip the switch off — that writes the switch file again.',
+  }, () => saveBrainPower(values));
+}
+function receiptedBrainProfile(values) {
+  const want = values?.brainProfile;
+  return withReceipt({
+    action: 'brain-profile', title: want === 'ruvector' ? 'Switch to RuVector Only' : 'Restore the Complete Brain', probe: probeBrainProfile,
+    undoHow: want === 'ruvector' ? 'Choose Complete Brain and Apply — it restores the removed stores from the signed bundle.' : 'Choose RuVector Only and Apply.',
+  }, () => saveBrainProfile(values));
+}
+function receiptedSetLesson(body) {
+  const id = typeof body?.id === 'string' ? body.id : '';
+  const verb = { ratify: 'Turn on', demote: 'Turn off', restore: 'Restore' }[body?.action] || 'Change';
+  return withReceipt({
+    action: 'lesson', title: `${verb} rule ${id || '(none)'}`, probe: () => probeLesson(id),
+    undoHow: body?.action === 'demote' ? 'Tick the rule\'s box again to switch it back on.' : 'Untick the rule\'s box to switch it off.',
+  }, () => setLesson(body));
+}
+function gatherReceipts() {
+  const consumed = new Set(readUndoJournal().filter((e) => e.consumed).map((e) => e.consumed));
+  return { receipts: readReceipts(RECEIPTS_FILE, { consumedTokens: consumed }), path: RECEIPTS_FILE.replace(CONSOLE_ROOT, '~') };
+}
+
 // ── HTTP ─────────────────────────────────────────────────────────────────────────────────────────
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.json': 'application/json', '.woff2': 'font/woff2' };
+const MIME ={ '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.json': 'application/json', '.woff2': 'font/woff2' };
 function serveStatic(req, res) {
   const rel = decodeURIComponent(req.url.split('?')[0]).replace(/^\/+/, '') || 'index.html';
   const file = path.join(CONSOLE_DIR, rel);
@@ -3254,6 +3416,8 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
       if (req.method === 'GET' && url === '/api/suite-update') return sendJSON(res, 200, suiteUpdater.state());
       if (req.method === 'GET' && url === '/api/activity') return sendJSON(res, 200, { ...gatherActivity(cwd), suiteUpdate: suiteUpdater.state() });
       if (req.method === 'GET' && url === '/api/lessons') return sendJSON(res, 200, gatherLessons());
+      // What every click did, before → after, read back from the machine (scripts/console-receipts.mjs).
+      if (req.method === 'GET' && url === '/api/receipts') return sendJSON(res, 200, gatherReceipts());
       if (req.method === 'GET' && url === '/api/trust') return sendJSON(res, 200, await gatherTrust());
       if (req.method === 'GET' && url === '/tips') { req.url = '/tips.html'; return serveStatic(req, res); }
       // What's in the brain: derived from the installed root's own receipts on every request (read-only,
@@ -3266,16 +3430,23 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
         if (url === '/api/suite-update') {
           const origin = req.headers.origin;
           if (origin && origin !== `http://${req.headers.host}`) return sendJSON(res, 403, { error: 'forbidden origin' });
+          const facts = (st) => ({ 'Update run': st?.status || 'unknown', 'Release policy': st?.channel || 'not measured', 'Nightly updates': st?.nightlyState || 'not verified' });
+          const before = facts(suiteUpdater.state());
           const result = suiteUpdater.start(body.channel);
+          result.receipt = recordReceipt(RECEIPTS_FILE, buildReceipt({
+            action: 'suite-update', title: 'Keep all tools updated', ok: !!result.ok, before, after: facts(suiteUpdater.state()),
+            log: result.error || result.log || '', expectChange: false,
+            undoHow: 'Updates have no one-click undo. The run itself is tracked live under “Tool update activity”.',
+          }));
           return sendJSON(res, result.status || (result.ok ? 202 : 500), result);
         }
-        if (url === '/api/apply') return sendJSON(res, 200, apply(Array.isArray(body.ids) ? body.ids : []));
-        if (url === '/api/save-config') return sendJSON(res, 200, saveConfig(body.values || {}));
-        if (url === '/api/save-advocacy') return sendJSON(res, 200, saveAdvocacy(body.values || {}));
+        if (url === '/api/apply') return sendJSON(res, 200, receiptedApply(Array.isArray(body.ids) ? body.ids : [], body.titles && typeof body.titles === 'object' ? body.titles : {}));
+        if (url === '/api/save-config') return sendJSON(res, 200, receiptedSaveConfig(body.values || {}));
+        if (url === '/api/save-advocacy') return sendJSON(res, 200, receiptedSaveAdvocacy(body.values || {}));
         // ADR-054 — a distinct endpoint because it writes a distinct thing (the sentinel + the
         // mirror), never routed through save-advocacy/save-config.
-        if (url === '/api/save-brain-power') return sendJSON(res, 200, saveBrainPower(body.values || {}));
-        if (url === '/api/save-brain-profile') return sendJSON(res, 200, saveBrainProfile(body.values || {}));
+        if (url === '/api/save-brain-power') return sendJSON(res, 200, receiptedBrainPower(body.values || {}));
+        if (url === '/api/save-brain-profile') return sendJSON(res, 200, receiptedBrainProfile(body.values || {}));
         if (url === '/api/refresh') {
           // THE ONE REFRESH STORY (owner directive 2026-07-26; RVBC-INSTANT-SPEC #8). The page opens
           // instantly on the last measurement, SAYS how old it is, and this is the button that takes
@@ -3297,8 +3468,8 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
           const refresh = kickRefreshDetailed({ force: true, followUp: true, cwd });
           return sendJSON(res, 200, { ok: refresh.status !== 'failed', started: refresh.status === 'started', refreshing: refresh.status === 'started' || refresh.status === 'already-running', refresh });
         }
-        if (url === '/api/undo') return sendJSON(res, 200, undo(body.undoToken));
-        if (url === '/api/set-lesson') return sendJSON(res, 200, setLesson(body));
+        if (url === '/api/undo') return sendJSON(res, 200, receiptedUndo(body.undoToken));
+        if (url === '/api/set-lesson') return sendJSON(res, 200, receiptedSetLesson(body));
         return sendJSON(res, 404, { error: 'unknown endpoint' });
       }
       if (req.method === 'GET') return serveStatic(req, res);
@@ -3613,6 +3784,7 @@ export {
   saveBrainProfile,
   setLesson,
   gatherLessons,
+  gatherReceipts,
   gatherActivity,
   refreshFleetCache,
   loadConsoleCache,

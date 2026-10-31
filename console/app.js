@@ -1617,6 +1617,7 @@ async function undoBatchResult(result, btn) {
   if (!result.undoToken) return;
   btn.disabled = true;
   const response = await postJSON('/api/undo', { undoToken: result.undoToken });
+  if (response.data?.receipt) window.RNBReceipts?.attach(`rec:${result.id}`, response.data.receipt);
   if (response.ok && response.data?.ok) {
     btn.replaceWith(el('span', { class: 'reverted' }, 'Reverted'));
     recheckMachine();
@@ -1630,7 +1631,7 @@ async function applyAllVerified(recs) {
   const slot = $('#recs-batch');
   slot.replaceChildren(el('p', { class: 'pending-note', role: 'status' }, `Applying ${recs.length} verified fixes…`));
   try {
-    const response = await postJSON('/api/apply', { ids: recs.map((rec) => rec.id), preStateHash });
+    const response = await postJSON('/api/apply', { ids: recs.map((rec) => rec.id), preStateHash, titles: Object.fromEntries(recs.map((rec) => [rec.id, rec.title])) });
     if (response.status === 403) {
       slot.replaceChildren(el('div', { class: 'form-note n-err', role: 'alert' }, TOKEN_MSG));
       return;
@@ -1643,6 +1644,7 @@ async function applyAllVerified(recs) {
         el('b', {}, `${ok.length} applied; ${skipped.length} skipped or failed.`),
         ' Every applied item has its own undo below.')));
     for (const result of results) {
+      if (result.receipt) window.RNBReceipts?.attach(`rec:${result.id}`, result.receipt);
       const card = document.getElementById(`rec-${result.id}`);
       const actions = card?.querySelector('.rec-actions');
       if (!actions) continue;
@@ -1734,6 +1736,17 @@ function addRecommendations(recs, source) {
   for (const id of new Set([...previous.keys(), ...next.keys()])) {
     const rec = next.get(id) || [...recommendationSources.values()].map(rows => rows.get(id)).find(Boolean);
     const existing = document.getElementById(`rec-${id}`);
+    // AN APPLIED CARD IS EVIDENCE, NOT A PROPOSAL. It used to be deleted (gone) or rebuilt as a fresh
+    // proposal (replaced) as soon as the re-measure landed — taking its log and its Undo button with
+    // it, ~30 s after the click. It now stays, and says what the re-measure found.
+    if (existing?.classList.contains('is-applied')) {
+      existing.querySelector('.rec-remeasured')?.remove();
+      existing.querySelector('.rec-actions')?.prepend(el('p', { class: 'rec-remeasured fineprint' }, rec
+        ? 'Re-measured after the fix: your machine still shows this — see the receipt below.'
+        : 'Re-measured after the fix: this is no longer detected on your machine.'));
+      if (!rec) { renderedRecIds.delete(id); renderedRecommendations.delete(id); }
+      continue;
+    }
     if (!rec) {
       existing?.remove(); renderedRecIds.delete(id); renderedRecommendations.delete(id);
       continue;
@@ -1780,6 +1793,7 @@ function recScopePill(scope) {
 function buildRecCard(rec) {
   const status = el('p', { class: 'rec-status', 'aria-live': 'polite' });
   const actions = el('div', { class: 'rec-actions' });
+  const receiptSlot = el('div', { class: 'rec-receipt', 'data-receipt-slot': `rec:${rec.id}` });
   const card = el('article', { class: 'rec', id: `rec-${rec.id}` });
 
   /* impact surface — the load-bearing safety UX */
@@ -1854,11 +1868,12 @@ function buildRecCard(rec) {
     status.textContent = '';
     status.dataset.tone = '';
     try {
-      const { status: code, data } = await postJSON('/api/apply', { ids: [rec.id], preStateHash });
+      const { status: code, data } = await postJSON('/api/apply', { ids: [rec.id], preStateHash, titles: { [rec.id]: rec.title } });
       if (code === 403) return fail(TOKEN_MSG);
       if (data && data.worldMoved) return worldMoved();
       const result = (data.results || []).find((r) => r.id === rec.id) || (data.results || [])[0];
       if (!result) return fail('The server returned no result for this change — nothing was assumed applied.');
+      if (result.receipt) window.RNBReceipts?.attach(`rec:${rec.id}`, result.receipt);
       if (result.worldMoved || result.error === 'worldMoved') return worldMoved();
       if (result.ok) applied(result);
       else fail('The change didn’t complete. Nothing runs without its backup recorded first.', result.log);
@@ -1895,6 +1910,7 @@ function buildRecCard(rec) {
     try {
       const { status: code, data } = await postJSON('/api/undo', { undoToken });
       if (code === 403) return fail(TOKEN_MSG);
+      if (data?.receipt) window.RNBReceipts?.attach(`rec:${rec.id}`, data.receipt);
       if (data && data.ok) {
         card.classList.remove('is-applied');
         actions.replaceChildren(el('p', { class: 'reverted' }, 'Reverted — your machine is back exactly the way it was.'));
@@ -1947,6 +1963,7 @@ function buildRecCard(rec) {
     facts,
     actions,
     status,
+    receiptSlot,
   );
   setIdleActions();
   return card;
@@ -2491,7 +2508,8 @@ function renderSavings(sv) {
       btn.disabled = true; note.textContent = 'saving…';
       try {
         const r = await postJSON('/api/save-config', values);
-        if (r.ok && r.data && r.data.ok) onOk();
+        if (r.data?.receipt) window.RNBReceipts?.attach('savings-routing', r.data.receipt);
+        if (r.ok && r.data && r.data.ok) { onOk(); void loadState(); }
         else failed(btn, note)(r);
       } catch { btn.disabled = false; note.textContent = 'Couldn’t save — change it under Settings.'; }
     };
@@ -2503,7 +2521,7 @@ function renderSavings(sv) {
         installed
           ? chip('✓ Smart routing: ON', 'green', 'You chose smart routing, and agentic-flow is installed to carry it out')
           : chip('Smart routing: chosen, not installed', 'wait', 'You chose smart routing, but agentic-flow is not installed on this machine, so nothing is being routed yet'),
-        offBtn, note);
+        offBtn, note, el('div', { class: 'cta-receipt', 'data-receipt-slot': 'savings-routing' }));
       return;
     }
 
@@ -2514,7 +2532,7 @@ function renderSavings(sv) {
       state === 'off'
         ? chip('Smart routing: off', 'grey', 'You turned smart routing off')
         : chip('Smart routing: not chosen yet', 'wait', 'Nobody has answered this yet — it is neither on nor off'),
-      enableBtn, note);
+      enableBtn, note, el('div', { class: 'cta-receipt', 'data-receipt-slot': 'savings-routing' }));
   }
   paintCta(sv && (sv.routing === 'auto' ? 'auto' : sv.routing === 'off' ? 'off' : null));
   // Stuart: "If you haven't ever seen MetaHarness, you have no idea what the word means, and you have
@@ -2821,7 +2839,7 @@ function buildSettingsForm(cfg, { endpoint }) {
   const collectors = {}; // key → () => ({ include, value })
   const initial = {};
   let saveBtn;
-  const resultSlot = el('div');
+  const resultSlot = el('div', { 'data-receipt-slot': `settings:${endpoint}` });
 
   function isDirty() {
     for (const [key, get] of Object.entries(collectors)) {
@@ -2857,6 +2875,9 @@ function buildSettingsForm(cfg, { endpoint }) {
   // Renders the saved note and its Undo. Called on a successful save AND whenever this form is
   // rebuilt while an undo is still pending, so a repaint cannot strand the undo.
   function showSaved(data) {
+    // A server receipt carries the before → after of every field, read back from the file, and its own
+    // Undo; it is re-attached to this slot after any repaint (console/receipts.js).
+    if (data.receipt) { window.RNBReceipts?.attach(`settings:${endpoint}`, data.receipt); return; }
     // Not every store behind this form has an undo token — so the button only appears when one exists.
     const undoBtn = data.undoToken ? el('button', {
       class: 'btn btn-undo btn-sm', type: 'button',
@@ -2871,9 +2892,10 @@ function buildSettingsForm(cfg, { endpoint }) {
           const ok = r.ok && r.data?.ok;
           if (!ok) btn.disabled = false;
           if (ok || /already been used|saved again after/.test(r.data?.log || '')) PENDING_SAVE_UNDO.delete(endpoint);
+          if (ok) void loadState();   // the page must show the restored values, not ask for a reload
           resultSlot.replaceChildren(el('div', { class: `form-note ${ok ? 'n-ok' : 'n-err'}`, role: 'status' },
             ok
-              ? 'Settings restored from the backup. Reload to see the restored values.'
+              ? 'Settings restored from the backup — the form below now shows the restored values.'
               : (r.status === 403 ? TOKEN_MSG
                 : `Undo didn’t complete — ${r.data?.log || 'the backup file still exists, nothing is lost.'}`)));
         } catch (err) {
@@ -2909,13 +2931,21 @@ function buildSettingsForm(cfg, { endpoint }) {
       if (code === 403) {
         resultSlot.replaceChildren(el('div', { class: 'form-note n-err', role: 'alert' }, TOKEN_MSG));
       } else if (data && data.ok) {
-        if (data.undoToken) PENDING_SAVE_UNDO.set(endpoint, data); else PENDING_SAVE_UNDO.delete(endpoint);
+        // With a receipt, receipts.js owns re-attaching it (and its undo) after a repaint; a second copy
+        // here would re-attach the pre-undo receipt over the undo's own receipt.
+        if (data.undoToken && !data.receipt) PENDING_SAVE_UNDO.set(endpoint, data); else PENDING_SAVE_UNDO.delete(endpoint);
         showSaved(data);
         for (const [key, get] of Object.entries(collectors)) {
           const g = get(); if (!g.secret) initial[key] = g.value;
         }
         form.dataset.dirty = ''; // saved: nothing left to protect from a repaint
         announce('Settings saved.');
+        // Repaint from the files just written, so every field (and the cards that read the same choices)
+        // shows the saved value — it used to keep saying "Not chosen yet" beside "Saved.".
+        void loadState();
+      } else if (data && data.receipt) {
+        window.RNBReceipts?.attach(`settings:${endpoint}`, data.receipt);
+        refreshDirty();
       } else {
         // The server says WHY — a rejected value names itself ("routing: expected one of auto, off").
         // Swallowing that left the user re-clicking a button that would fail identically every time.
@@ -3002,12 +3032,14 @@ function renderSuiteUpdate(state) {
           suiteUpdateBusy = true; button.disabled = true;
           try {
             const result = await postJSON('/api/suite-update', { channel });
+            if (result.data?.receipt) window.RNBReceipts?.attach('suite-update', result.data.receipt);
             if (!result.ok || !result.data.ok) throw new Error(result.status === 403 ? TOKEN_MSG : result.data.error || 'The update could not start.');
             renderSuiteUpdate(result.data.state);
           } catch (error) { document.getElementById('suite-update-result').textContent = String(error.message || error); }
           finally { suiteUpdateBusy = false; void pollSuiteUpdate(); }
         } }, 'Keep all tools updated'),
         el('p', { id: 'suite-update-result', role: 'status', 'aria-live': 'polite' }),
+        el('div', { 'data-receipt-slot': 'suite-update' }),
         el('p', { id: 'suite-update-nightly', class: 'fineprint' })));
     document.getElementById('card-settings')?.before(card);
   }
@@ -3222,13 +3254,13 @@ function renderBrainPower(bp) {
     el('div', { class: 'bp-word' }, el('span', { class: 'bp-dot' }), on ? 'Your brain is ON' : 'Your brain is OFF'),
     el('p', { class: 'bp-sub' }, f && f.help ? f.help : 'Whether the brain is working at all.'),
     bp.off && bp.since
-      ? el('p', { class: 'bp-sub' }, `Off since ${String(bp.since).slice(0, 10)}${bp.reason ? ` — ${bp.reason}` : ''}.`)
+      ? el('p', { class: 'bp-sub' }, `Off since ${fmtDate(bp.since)}${bp.reason ? ` — ${bp.reason}` : ''}.`)
       : null);
 
   const main = [
     el('div', { class: `bp-row ${on ? 'bp-on' : 'bp-off'}`, id: 'bp-row' }, state, switchBtn),
     el('div', { id: 'bp-confirm-slot' }),
-    el('div', { id: 'bp-result-slot' }),
+    el('div', { id: 'bp-result-slot', 'data-receipt-slot': 'brain-power' }),
   ];
 
   // What keeps running and what stops — from the SERVER's own list, so it can never drift from what
@@ -3252,12 +3284,15 @@ function renderBrainPower(bp) {
 let bpProfileBusy = false;
 const bpSize = (bytes) => {
   if (!Number.isFinite(bytes)) return 'size measured after install';
-  return bytes >= 1e9 ? `${(bytes / 1e9).toFixed(2)} GB` : `${Math.round(bytes / 1e6)} MB`;
+  // A real non-zero size never rounds to "0 MB" (measured on a small brain, 2026-10-30).
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(2)} GB`;
+  if (bytes >= 1e6) return `${Math.round(bytes / 1e6)} MB`;
+  return bytes > 0 ? `${Math.max(1, Math.round(bytes / 1e3))} KB` : '0 MB';
 };
 
 function bpProfileControl(profile) {
   const current = profile.values?.brainProfile;
-  const result = el('div', { class: 'bp-profile-result' });
+  const result = el('div', { class: 'bp-profile-result', 'data-receipt-slot': 'brain-profile' });
   const apply = el('button', { class: 'btn btn-apply', type: 'button', disabled: true }, 'Apply selection');
   const options = [
     {
@@ -3323,25 +3358,25 @@ function bpProfileControl(profile) {
     apply.disabled = true;
     apply.textContent = selected === 'complete' ? 'Restoring…' : 'Removing unselected stores…';
     result.replaceChildren();
+    let errNote = null;   // written after the repaint, into the slot the repaint created
     try {
       const response = await postJSON('/api/save-brain-profile', { values: { brainProfile: selected } });
       const data = response?.data || {};
-      if (!response.ok || !data.ok) {
-        result.replaceChildren(el('div', { class: 'form-note n-err', role: 'alert' },
-          response?.status === 403 ? TOKEN_MSG : `The profile did not change — ${data.log || 'the console could not apply it.'}`));
+      if (response?.status === 403) {
+        errNote = el('div', { class: 'form-note n-err', role: 'alert' }, TOKEN_MSG);
       } else {
-        result.replaceChildren(el('div', { class: 'form-note n-ok', role: 'status' },
-          el('div', { class: 'fn-body' }, el('b', {}, data.profile === 'ruvector' ? 'RuVector Only is active.' : 'Complete Brain is active.'),
-            ` ${data.log}.`,
-            data.bytesFreed ? ` ${bpSize(data.bytesFreed)} released.` : '')));
-        announce(data.log || 'Brain profile changed.');
+        announce(data.ok ? (data.log || 'Brain profile changed.') : `The profile did not change — ${data.log || 'no reason given'}`);
+        // Success AND failure both carry a server receipt; it is re-attached after the repaint below.
+        if (data.receipt) window.RNBReceipts?.attach('brain-profile', data.receipt);
+        else errNote = el('div', { class: 'form-note n-err', role: 'alert' }, `The profile did not change — ${data.log || 'the console could not apply it.'}`);
       }
     } catch (error) {
-      result.replaceChildren(el('div', { class: 'form-note n-err', role: 'alert' },
-        `Couldn’t reach the console server: ${error.message || error}. Nothing was changed.`));
+      errNote = el('div', { class: 'form-note n-err', role: 'alert' },
+        `Couldn’t reach the console server: ${error.message || error}. Nothing was changed.`);
     } finally {
       bpProfileBusy = false;
       await loadState();
+      if (errNote) document.querySelector('.bp-profile-result')?.replaceChildren(errNote);
     }
   };
 
@@ -3379,28 +3414,32 @@ function bpAskToTurnOff(bp) {
 async function bpFlip(next) {
   if (bpBusy) return;
   bpBusy = true;
-  const slot = $('#bp-result-slot');
+  // An error note is written AFTER the repaint below, into the slot that repaint created — written
+  // before it, the note was on a detached element the user never saw.
+  let errNote = null;
   $('#bp-confirm-slot')?.replaceChildren();
   setChips('chips-brain', [chip(next ? 'switching on…' : 'switching off…', 'wait')]);
   announce(next ? 'Switching the brain on.' : 'Switching the brain off.');
   try {
     const r = await postJSON('/api/save-brain-power', { values: { brainEnabled: next } });
     const data = (r && r.data) || {};
-    if (!r.ok || !data.ok) {
-      slot?.replaceChildren(el('div', { class: 'form-note n-err', role: 'alert' },
-        r.status === 403 ? TOKEN_MSG : `The switch did not move — ${data.log || `the console returned ${r.status}`}.`));
-    } else {
-      slot?.replaceChildren(el('div', { class: 'form-note n-ok', role: 'status' },
-        el('div', { class: 'fn-body' }, el('b', {}, data.off ? 'The brain is off.' : 'The brain is on.'), ' ', data.log)));
-      announce(data.log || 'Done.');
+    if (data.receipt) {
+      // Success or refusal, the server's before/after receipt is the evidence; it is re-attached by
+      // key after the repaint (console/receipts.js), so it is still on screen when the card rebuilds.
+      announce(data.ok ? (data.log || 'Done.') : `The switch did not move — ${data.log || 'no reason given'}.`);
+      window.RNBReceipts?.attach('brain-power', data.receipt);
+    } else if (!r.ok || !data.ok) {
+      errNote = el('div', { class: 'form-note n-err', role: 'alert' },
+        r.status === 403 ? TOKEN_MSG : `The switch did not move — ${data.log || `the console returned ${r.status}`}.`);
     }
   } catch (err) {
-    slot?.replaceChildren(el('div', { class: 'form-note n-err', role: 'alert' },
-      `Couldn’t reach the console server: ${err.message || err}. Nothing was changed.`));
+    errNote = el('div', { class: 'form-note n-err', role: 'alert' },
+      `Couldn’t reach the console server: ${err.message || err}. Nothing was changed.`);
   } finally {
     bpBusy = false;
     // Re-read rather than trusting the write's own echo: the sentinel on disk is the authority.
     await loadState();
+    if (errNote) $('#bp-result-slot')?.replaceChildren(errNote);
   }
 }
 
@@ -3780,7 +3819,7 @@ function renderFreshness(state, { polling = false, justLanded = false } = {}) {
   }
   if (justLanded) {
     pill.className = 'chip tone-green';
-    pill.textContent = `machine reading updated · as of ${fmtAge(at)}`;
+    pill.textContent = `re-measured · as of ${fmtAge(at)}`;   // short: a long pill pushed the header controls over the brand
     return;
   }
   pill.className = polling ? 'chip tone-cyan' : (state && state.stale ? 'chip tone-warn' : 'chip tone-grey');
@@ -4286,6 +4325,7 @@ async function mockGet(url) {
   if (p === '/api/state') { await sleep(250); return mockState(); }
   if (p === '/api/stack') { await sleep(2400); return structuredClone(MOCK_STACK); }
   if (p === '/api/memory') { await sleep(1200); return { fleet: MOCK_STATE.sections.memory.fleet, recommendations: [] }; }
+  if (p === '/api/receipts') return { receipts: [], path: '~/.cache/ruvnet-brain/console-receipts.jsonl (mock)' };
   throw new Error(`no mock for ${url}`);
 }
 
@@ -4435,6 +4475,8 @@ function renderLessons(data) {
       note.textContent = want ? 'turning on…' : 'turning off…';
       try {
         const res = want ? await lessonOn(r) : await setLessonCall(r.id, 'demote');
+        // The card is re-fetched below and this row rebuilt; the receipt is re-attached to the new row.
+        if (res?.receipt) window.RNBReceipts?.attach(`lesson:${r.id}`, res.receipt);
         if (!res || !res.ok) {
           box.checked = !want;                       // the store did not move; neither does the UI
           note.textContent = (res && res.log) || 'that didn’t save — nothing changed';
@@ -4519,7 +4561,7 @@ function renderLessons(data) {
       ),
       el('div', { class: 'chips' }, ...meta),
       el('p', { class: 'cap-row-when muted' }, r.when),
-      why, note));
+      why, note, el('div', { class: 'lesson-receipt', 'data-receipt-slot': `lesson:${r.id}` })));
   }
 
   body.replaceChildren(

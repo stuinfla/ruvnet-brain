@@ -66,6 +66,8 @@ export function inventoryInPage(pageName) {
       const forms = [...document.querySelectorAll('form.settings-form')];
       return `btn:save:${forms.indexOf(el.closest('form'))}`;
     }
+    // The receipt history card (console/receipts.js): an Undo for a change made earlier from this page.
+    if (tag === 'button' && el.closest('#card-receipts')) return 'btn:receipt-undo';
     if (tag === 'button' && cls.includes('btn-undo') && el.closest('form.settings-form')) return `btn:save-undo:${[...document.querySelectorAll('form.settings-form')].indexOf(el.closest('form'))}`;
     if (tag === 'button' && el.closest('#recs-batch')) return `btn:fixall:${slug(t).replace(/-\d+$/, '')}`;
     if (tag === 'button' && el.closest('article.rec')) return `btn:rec:${el.closest('article.rec').id}:${slug(t)}`;
