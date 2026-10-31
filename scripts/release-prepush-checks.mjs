@@ -15,6 +15,10 @@ export const ANCHOR_TEST_DIRS = ['tests/mesh/', 'tests/mutation/', 'tests/regres
 // Repo-wide rules over test files: run whenever any test changed (4.7.28 lost a unit-suite run to
 // no-restated-truth, and to a unit test pinning a changed source line, neither of which preflight runs).
 export const TEST_RULE_TESTS = ['tests/unit/no-restated-truth.test.mjs'];
+// Unit tests are anchored to changed CODE only: version surfaces (package.json, plugin.json, README) are
+// named by hundreds of unit tests and change on every release, so anchoring on them selects most of the suite.
+export const VERSION_SURFACE = /^kb\/(?:package\.json|RVF-GENERATIONS\.json)$/;
+export const UNIT_ANCHOR_SOURCE = /^(?:scripts|bin|kb|plugin\/scripts|plugin\/mcp|plugin\/hooks|\.github\/workflows)\/.+\.(?:mjs|cjs|js|sh|yml|json)$/;
 const CHANGED_TEST = /^tests\/(?:unit|integration|mesh|mutation|regression)\/.+\.test\.mjs$/;
 export const RECENT_PRERELEASE_MS = 3 * 60 * 60 * 1000;
 export const SEED_LINE = /\[corpus-next-seed\] (published-generation|committed-bootstrap) (\S+)/g;
@@ -209,7 +213,8 @@ export async function anchoredTests(ctx) {
   for (const file of tracked) {
     if (!file.endsWith('.test.mjs') || !ANCHOR_TEST_DIRS.some((dir) => file.startsWith(dir))) continue;
     const text = await ctx.deps.readFile(path.join(ctx.root, file));
-    if (sources.some((source) => text.includes(source))) selected.add(file);
+    const anchors = file.startsWith('tests/unit/') ? sources.filter((source) => UNIT_ANCHOR_SOURCE.test(source) && !VERSION_SURFACE.test(source)) : sources;
+    if (anchors.some((source) => text.includes(source))) selected.add(file);
   }
   if ([...selected].length) for (const rule of TEST_RULE_TESTS) if (trackedSet.has(rule)) selected.add(rule);
   const files = [...selected].sort();
