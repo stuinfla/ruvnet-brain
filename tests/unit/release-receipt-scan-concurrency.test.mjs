@@ -5,6 +5,8 @@
 // async), so it measures overlap on the old serial code as well as the new one.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { EventEmitter } from 'node:events';
 
 const fake = vi.hoisted(() => ({ world: null }));
@@ -117,7 +119,7 @@ describe('release receipt history scan', () => {
       setTimeout(() => { child.stderr.emit('data', Buffer.from('HTTP 502')); child.emit('close', 1, null); }, 1);
       return child;
     };
-    const dest = `${fs.mkdtempSync('/tmp/receipt-scan-')}/r.json`;
+    const dest = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'receipt-scan-')), 'r.json');
     await expect(provider.downloadAssetAsync({ name: 'release-transaction-0001.json', url: 'u' }, dest,
       { spawnChild, wait: async (ms) => { waits.push(ms); }, baseDelayMs: 1 }))
       .rejects.toThrow(`release-transaction-0001.json after ${provider.ASSET_DOWNLOAD_ATTEMPTS} attempts: exit 1 (HTTP 502)`);

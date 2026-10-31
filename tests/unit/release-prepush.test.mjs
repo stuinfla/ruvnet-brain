@@ -174,14 +174,16 @@ it('a divergent zone exists at every quarter hour of the year, and a child proce
     const day = (z) => new Intl.DateTimeFormat('en-CA', { timeZone: z, year: 'numeric', month: '2-digit', day: '2-digit' }).format(ms);
     if (day(zone) === day(PRODUCT_ZONE)) throw new Error(`${zone} shares Eastern's day at ${new Date(ms).toISOString()}`);
   }
+  // The 4.7.26 test that failed on a UTC runner reads exactly this kind of day.
+  expect(CLOCK_SENSITIVE_TEST.test(fs.readFileSync(path.join(REPO_ROOT, 'tests/unit/issue-autofix-release.test.mjs'), 'utf8'))).toBe(true);
+  // The release runners' zones are set by TZ on Linux and macOS; Windows lanes check the zone choice only.
+  if (process.platform === 'win32') return;
   const now = Date.now();
   const local = execFileSync(process.execPath, ['-e', 'const d = new Date(); console.log(d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"))'],
     { encoding: 'utf8', env: { ...process.env, TZ: dayDivergentZone(now) } }).trim();
   const eastern = new Intl.DateTimeFormat('en-CA', { timeZone: PRODUCT_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(Date.now());
-  // Within a second of a day boundary the two reads can straddle midnight; the zone choice itself is checked above.
-  if (Math.abs(Date.now() - now) < 1000) expect(local).not.toBe(eastern);
-  // The 4.7.26 test that failed on a UTC runner reads exactly this kind of day.
-  expect(CLOCK_SENSITIVE_TEST.test(fs.readFileSync(path.join(REPO_ROOT, 'tests/unit/issue-autofix-release.test.mjs'), 'utf8'))).toBe(true);
+  // A read that straddles a midnight in either zone could agree by accident; only judge a clean read.
+  if (dayDivergentZone(now) === dayDivergentZone(Date.now())) expect(local).not.toBe(eastern);
 });
 
 it('ux-gates runs the preflight ux-qe lane script and fails when it fails', async () => {
