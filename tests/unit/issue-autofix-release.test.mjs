@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect, afterAll, beforeAll } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -201,6 +201,13 @@ describe('mechanical ADR-0103 review row (real doc-currency over a temp repo)', 
   // The commit lands with the real clock, and doc-currency compares the row's date with that commit (stamp-lags-doc),
   // so the row is dated today in ET exactly as the night runner does (etDay(rt.now())).
   const TODAY = policy.etDay(Date.now());
+  // The night runner commits on the owner's Mac, whose clock is Eastern, so git records the commit's day
+  // in ET — the same day etDay() stamps on the row. A CI runner is UTC: between 8 p.m. and midnight ET the
+  // commit's UTC day is already tomorrow and doc-currency reported stamp-lags-doc (preflight 41156104312,
+  // 2026-10-31 01:40 UTC). Commit in the runner's own time zone, as production does.
+  const savedTZ = process.env.TZ;
+  beforeAll(() => { process.env.TZ = 'America/New_York'; });
+  afterAll(() => { if (savedTZ === undefined) delete process.env.TZ; else process.env.TZ = savedTZ; });
   async function releaseWithAdr(adrText = ADR_TEXT) {
     const repos = makeRepos({ [ADR]: adrText, [CONTRACT]: 'export const INVENTORY = [];\n', 'README.md': 'readme 1.0.0\n' });
     const rwt = makeReleaseWorktree(repos, '1.0.1');
