@@ -11,7 +11,10 @@ export const RELEASE_BRANCH = /^release\/(\d+\.\d+\.\d+)$/;
 export const MAX_ADDED_BYTES = 5 * 1024 * 1024;
 export const QUALIFICATION_SUITES = ['source', 'integration'];
 export const QUALIFICATION_PLATFORMS = ['linux', 'macos', 'windows'];
-export const ANCHOR_TEST_DIRS = ['tests/mesh/', 'tests/mutation/', 'tests/regression/'];
+export const ANCHOR_TEST_DIRS = ['tests/mesh/', 'tests/mutation/', 'tests/regression/', 'tests/unit/'];
+// Repo-wide rules over test files: run whenever any test changed (4.7.28 lost a unit-suite run to
+// no-restated-truth, and to a unit test pinning a changed source line, neither of which preflight runs).
+export const TEST_RULE_TESTS = ['tests/unit/no-restated-truth.test.mjs'];
 const CHANGED_TEST = /^tests\/(?:unit|integration|mesh|mutation|regression)\/.+\.test\.mjs$/;
 export const RECENT_PRERELEASE_MS = 3 * 60 * 60 * 1000;
 export const SEED_LINE = /\[corpus-next-seed\] (published-generation|committed-bootstrap) (\S+)/g;
@@ -195,7 +198,7 @@ export async function censusCheck(ctx) {
     : pass(`${summary}; all ${surfaces} surfaces agree`, { warnings });
 }
 
-/** (f) text-anchored mesh/mutation/regression tests for changed source, plus changed tests. */
+/** (f) text-anchored mesh/mutation/regression/unit tests for changed source, plus changed tests and the test-file rules. */
 export async function anchoredTests(ctx) {
   const base = (await git(ctx, ['merge-base', 'origin/main', 'HEAD'])).trim();
   const changed = lines(await git(ctx, ['diff', '--name-only', '--no-renames', base, 'HEAD']));
@@ -208,6 +211,7 @@ export async function anchoredTests(ctx) {
     const text = await ctx.deps.readFile(path.join(ctx.root, file));
     if (sources.some((source) => text.includes(source))) selected.add(file);
   }
+  if ([...selected].length) for (const rule of TEST_RULE_TESTS) if (trackedSet.has(rule)) selected.add(rule);
   const files = [...selected].sort();
   if (!files.length) return pass(`no anchored or changed tests for ${sources.length} changed source file(s)`, { files });
   const result = await ctx.deps.exec(process.execPath, [path.join(ctx.root, 'node_modules/vitest/vitest.mjs'), 'run', ...files], { cwd: ctx.root });

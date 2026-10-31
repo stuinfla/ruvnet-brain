@@ -159,7 +159,7 @@ it('clock-zones: clock-sensitive tests run in UTC and in a zone on a different d
   expect(check).toMatchObject({ ok: true, files: ['tests/unit/day.test.mjs'] });
   // 2026-10-30T12:00Z is 08:00 ET: Kiritimati (UTC+14) is already on the 31st.
   expect(w.zones).toEqual(['UTC', 'Pacific/Kiritimati']);
-  expect(check.detail).toMatch(/Eastern 2026-10-30, UTC 2026-10-30, Pacific\/Kiritimati 2026-10-31/);
+  expect(check.detail).toMatch(/Eastern 2026-10-30, UTC 2026-10-30, Pacific\/Kiritimati 2026-10-31/); // sync-version-ignore: the days of the fixture clock deps.now(), not a repo fact
   for (const zone of ['UTC', 'Pacific/Kiritimati']) {
     const red = byName(await run(world({ repo: { files, tracked }, plan, zoneStatus: { [zone]: 1 } })))['clock-zones'];
     expect(red.ok, zone).toBe(false);
@@ -198,6 +198,19 @@ it('ux-gates runs the preflight ux-qe lane script and fails when it fails', asyn
   const red = byName(await run(world({ uxStatus: 1 })))['ux-gates'];
   expect(red.ok).toBe(false);
   expect(red.detail).toMatch(/qe:ux exited 1: render probe error/);
+});
+
+it('anchored-tests also selects unit tests that pin a changed source file, and the repo-wide test rules when tests changed', async () => {
+  const files = { 'tests/unit/pins.test.mjs': "const provider = read('scripts/release-transaction-provider.mjs');",
+    'tests/unit/no-restated-truth.test.mjs': 'rule', 'tests/mesh/coexistence.test.mjs': 'nothing', 'tests/mutation/m.test.mjs': 'nothing' };
+  const tracked = ['README.md', 'package.json', 'tests/unit/a.test.mjs', 'tests/unit/pins.test.mjs', 'tests/unit/no-restated-truth.test.mjs',
+    'scripts/release-transaction-provider.mjs'];
+  const plan = { qualificationPlan: () => ({ files: [] }) };
+  const source = byName(await run(world({ repo: { files, tracked, changed: ['scripts/release-transaction-provider.mjs'] }, plan })))['anchored-tests'];
+  // 4.7.28's unit-suite failure: a unit test pinned a line of the changed provider.
+  expect(source.files).toEqual(['tests/unit/no-restated-truth.test.mjs', 'tests/unit/pins.test.mjs']);
+  const testOnly = byName(await run(world({ repo: { files, tracked, changed: ['tests/unit/a.test.mjs'] }, plan })))['anchored-tests'];
+  expect(testOnly.files).toEqual(['tests/unit/a.test.mjs', 'tests/unit/no-restated-truth.test.mjs']);
 });
 
 it('stray patterns are anchored: real offenders hit, legitimate lookalikes do not, and no tracked file matches', () => {

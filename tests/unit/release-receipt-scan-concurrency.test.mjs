@@ -107,7 +107,7 @@ describe('release receipt history scan', () => {
     expect(result.pending.map((receipt) => `${receipt.transactionId}:${receipt.sequence}:${receipt.state}`))
       .toEqual(['tx-0:4:npm-stage-intent', 'tx-span:2:npm-stage-intent']);
     expect(result.legacySettled).toEqual([]);
-    expect(result.prior.npmLatest).toBe('9.0.7');
+    expect(result.prior.npmLatest).toBe('9.0.7'); // sync-version-ignore: the scripted npm registry's answer above, not this repo's version
     expect(result.prior.githubLatest).toMatch(/^v9\.0\.\d$/);
   });
 
