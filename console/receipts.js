@@ -53,6 +53,8 @@
       // second button can never be left offering a token the first one already spent.
       if (r.ok && r.undoToken && !r.undoUsed && !noUndo) undo.append(el('span', {}, 'How to undo: use “Undo this change” on the recommendation card.'));
       else if (r.undoUsed) undo.append(el('span', {}, 'Undone — this change was reversed.'));
+    } else if (r.undoSuperseded) {
+      undo.append(el('span', {}, 'Undo no longer offered: the same settings were saved again after this, and undoing this one would wipe out that newer save. Use the newest receipt’s Undo.'));
     } else if (r.undoToken && !r.undoUsed && r.ok) {
       const btn = el('button', { class: 'btn btn-undo btn-sm', type: 'button' }, 'Undo this change');
       btn.addEventListener('click', () => { void undoFrom(r, btn, undo); });
@@ -145,6 +147,7 @@
     return card;
   }
 
+  let lastSignature = null;
   async function refreshPanel() {
     panel();
     const body = document.getElementById('body-receipts');
@@ -156,6 +159,11 @@
       return;
     }
     const list = Array.isArray(data.receipts) ? data.receipts : [];
+    // Re-render only when the history actually changed: a rebuild collapses a fold the owner opened and
+    // swaps elements out from under a pointer mid-click.
+    const signature = list.map((r) => `${r.id}:${r.undoUsed ? 1 : 0}${r.undoSuperseded ? 's' : ''}`).join(',');
+    if (signature === lastSignature && body.querySelector('.receipt, p.fineprint')) return;
+    lastSignature = signature;
     setChips('chips-receipts', [chip(list.length ? `${list.length} recorded` : 'none yet', list.length ? 'green' : 'grey')]);
     if (!list.length) {
       body.replaceChildren(el('p', { class: 'fineprint' },
@@ -165,7 +173,7 @@
     }
     const [first, ...rest] = list;
     body.replaceChildren(render(first),
-      rest.length ? el('details', { class: 'sub' }, el('summary', {}, `${rest.length} earlier change${rest.length === 1 ? '' : 's'}`),
+      rest.length ? el('details', { class: 'sub' }, el('summary', {}, `Earlier changes (${rest.length})`),
         ...rest.map((r) => render(r, { compact: true }))) : null,
       el('p', { class: 'fineprint' }, 'Kept in ', el('code', {}, data.path || ''), '.'));
   }

@@ -89,6 +89,17 @@ describe('every mutating endpoint returns a before → after receipt read back f
     expect(history.receipts[0].id).toBe(undone.body.receipt.id);   // newest first
   });
 
+  it('a save followed by another save no longer offers the first one\'s undo (the server would refuse it)', async () => {
+    const first = await post('/api/save-config', { values: { qeFleet: true } });
+    const second = await post('/api/save-config', { values: { qeFleet: false } });
+    const rows = (await get('/api/receipts')).receipts;
+    expect(rows.find((r) => r.undoToken === first.body.undoToken).undoSuperseded).toBe(true);
+    expect(rows.find((r) => r.undoToken === second.body.undoToken).undoSuperseded).toBe(false);
+    const refused = await post('/api/undo', { undoToken: first.body.undoToken });
+    expect(refused.body.ok).toBe(false);
+    expect(refused.body.receipt.verdict).toBe('failed');
+  });
+
   it('a refused save is "failed" and says nothing changed', async () => {
     const bad = await post('/api/save-config', { values: { routing: 'banana' } });
     expect(bad.body.ok).toBe(false);

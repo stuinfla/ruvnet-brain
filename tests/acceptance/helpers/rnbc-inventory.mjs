@@ -52,7 +52,10 @@ export function inventoryInPage(pageName) {
       const d = el.closest('details');
       const owner = d?.id || el.closest('[id^="rec-"]')?.id || el.closest('.lesson-row') && `lesson-${el.closest('.lesson-row').querySelector('.lesson-switch')?.id}` || '';
       // counts in a summary ("The 3 rules already in force") change as the page is used; the key must not
-      return `summary:${c}:${owner}:${slug(t.replace(/\d+/g, 'n').replace(/\brules\b/gi, 'rule').replace(/\brecords\b/gi, 'record')).slice(0, 40)}`;
+      // textContent, not innerText: innerText depends on whether the fold is rendered at that instant, so
+      // one summary got two keys ("task 2" open, "task2" collapsed by a repaint) and lost its ledger row.
+      const st = (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 90);
+      return `summary:${c}:${owner}:${slug(st.replace(/\d+/g, 'n').replace(/\brules\b/gi, 'rule').replace(/\brecords\b/gi, 'record')).slice(0, 40)}`;
     }
     if (cls.includes('info-btn')) return `info:${c}:${slug(el.getAttribute('aria-label') || t)}`;
     if (tag === 'input' && cls.includes('inv-filter')) return 'input:inv-filter';

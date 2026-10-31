@@ -452,7 +452,7 @@ describe('RNBC — every element on every page, on an isolated console', () => {
     record('index.html', 'checkbox:setting:qeFleet', { action: 'switch on, Save', observed: `config qeFleet=${cfg2?.qeFleet}; consumer runtime-preferences qeFleet=${qe} (the managed-CLI gate starts QE fleets only when true)`, ok: cfg2?.qeFleet === true && qe === 'true' });
     await inventory(page, 'index.html');
     await uc(page, q(page, 'btn:save-undo:0'));
-    await page.waitForFunction(() => /Settings restored|Undo didn/.test(document.querySelector('form.settings-form')?.innerText || ''), null, { timeout: STATE_WAIT_MS });
+    await page.waitForFunction(() => /Settings restored|Undo didn|Undo — Save settings/.test(document.querySelector('form.settings-form')?.innerText || ''), null, { timeout: STATE_WAIT_MS });
     const rc2 = routeCheap();
     const entry3 = schedulerEntry(fx); const status3 = schedulerState(fx);
     record('index.html', 'btn:save-undo:0', { claim: 'Undo save', action: 'undo the nightly/routing/qe save', observed: `config.json exists=${fs.existsSync(fx.configFile)}; ${entry3.kind} removed=${!entry3.text}; scheduler status=${status3.state}; route-cheap now: ${rc2.stderr.trim().slice(0, 60)}`, ok: !fs.existsSync(fx.configFile) && !entry3.text && status3.state === 'off' && /not been enabled/i.test(rc2.stderr) });
@@ -557,7 +557,7 @@ describe('RNBC — every element on every page, on an isolated console', () => {
     await inventory(page, 'index.html');
     if (hasSops) {
       await uc(page, q(page, 'btn:save-undo:0'));
-      await page.waitForFunction(() => /Settings restored|Undo didn/.test(document.querySelector('form.settings-form')?.innerText || ''), null, { timeout: STATE_WAIT_MS });
+      await page.waitForFunction(() => /Settings restored|Undo didn|Undo — Save settings/.test(document.querySelector('form.settings-form')?.innerText || ''), null, { timeout: STATE_WAIT_MS });
       record('index.html', 'btn:save-undo:0', { claim: 'Undo save', action: 'undo the key save', observed: `secrets file removed=${!fs.existsSync(secrets)}`, ok: !fs.existsSync(secrets) });
     }
     await page.reload(); await settleIndex(page); await inventory(page, 'index.html');
@@ -614,7 +614,7 @@ describe('RNBC — every element on every page, on an isolated console', () => {
     const survived = await q(page, 'btn:save-undo:1').count();
     record('index.html', 'btn:save-undo:1#repaint', { claim: 'Undo save (after the page repaints)', action: 'save, let a re-measure repaint the page, look for Undo', observed: `Undo still offered after repaint: ${survived > 0}`, ok: survived > 0 });
     await uc(page, q(page, 'btn:save-undo:1'));
-    await page.waitForFunction(() => /Settings restored|Undo didn/.test(document.querySelectorAll('form.settings-form')[1]?.innerText || ''), null, { timeout: STATE_WAIT_MS });
+    await page.waitForFunction(() => /Settings restored|Undo didn|Undo — Save settings/.test(document.querySelectorAll('form.settings-form')[1]?.innerText || ''), null, { timeout: STATE_WAIT_MS });
     const scopeAfter = spawnSync(process.execPath, [path.join(REPO, 'plugin/scripts/runtime-preferences.mjs'), '--learning-scope'], { cwd: fx.project, env: fx.env, encoding: 'utf8' }).stdout.trim();
     record('index.html', 'btn:save-undo:1', { claim: 'Undo save', action: 'undo the user-settings save', observed: `settings.json exists=${fs.existsSync(fx.settingsFile) && !!readJSON(fx.settingsFile)?.settings?.autoApply}; --learning-scope now ${scopeAfter}`, ok: scopeAfter === 'project' && readJSON(fx.settingsFile)?.settings?.autoApply !== true });
     record('index.html', 'btn:save:1', { claim: 'Save settings (settings.json)', action: 'save learn/jumps-in/act/new-projects', observed: `wrote ${JSON.stringify(s)}`, ok: s.learningScope === 'user' && s.autoApply === true });
@@ -952,18 +952,27 @@ describe('RNBC — every element on every page, on an isolated console', () => {
   it('receipts: every receipt control does what it says, and a receipt Undo shows what changed back', async () => {
     const page = await openPage('index.html');
     await settleIndex(page);
-    const isReceiptKey = (k) => /what-the-console-logged|earlier-change|^btn:receipt-undo|undo-this-change/.test(k);
+    const isReceiptKey = (k) => /what-the-console-logged|earlier-changes|^btn:receipt-undo|undo-this-change/.test(k);
     const panel = await page.locator('#card-receipts .receipt').count();
     record('index.html', 'card:receipts', { claim: 'What your clicks did', action: 'load after the run',
       observed: `${panel} receipt(s) rendered from GET /api/receipts`, ok: panel > 0 });
     const done = new Set();
     // Re-inventory after every click: an undo rebuilds the history card, which re-keys what is left.
     for (let guard = 0; guard < 40; guard++) {
-      const inv = await inventory(page, 'index.html');
+      // Tag the page, but register only receipt controls: this late pass must not adopt other cards'
+      // elements in whatever transient state an undo's repaint leaves them.
+      const inv = await page.evaluate(inventoryInPage, 'index.html');
+      for (const e of inv) if (isReceiptKey(e.key) && !found.has(`index.html|${e.key}`)) found.set(`index.html|${e.key}`, e);
       const k = inv.map((e) => e.key).find((key) => isReceiptKey(key) && !done.has(key));
       if (!k) break;
       done.add(k);
-      if (k.startsWith('summary:')) { await checkSummary(page, 'index.html', k); continue; }
+      // The history card can rebuild between the inventory and the click (a background repaint).
+      if (!(await q(page, k).count())) { record('index.html', k, { action: 'click', observed: 'replaced by a newer rendering before the click', verdict: 'NOT-RENDERED' }); continue; }
+      if (k.startsWith('summary:')) {
+        try { await checkSummary(page, 'index.html', k); }
+        catch (e) { if (await q(page, k).count()) throw e; record('index.html', k, { action: 'click ×2', observed: 'replaced by a newer rendering during the click', verdict: 'NOT-RENDERED' }); }
+        continue;
+      }
       const loc = q(page, k);
       if (!(await loc.isVisible())) { record('index.html', k, { action: 'click', observed: 'not visible in this state', verdict: 'NOT-RENDERED' }); continue; }
       const before = posts.length;
@@ -983,7 +992,7 @@ describe('RNBC — every element on every page, on an isolated console', () => {
     // control (one receipt per control, by design) — said as such, never silently dropped.
     for (const id of found.keys()) {
       const [pg, key] = [id.slice(0, id.indexOf('|')), id.slice(id.indexOf('|') + 1)];
-      if (!rows.has(id) && /what-the-console-logged|earlier-change|^btn:receipt-undo|undo-this-change/.test(key)) {
+      if (!rows.has(id) && /what-the-console-logged|earlier-changes|^btn:receipt-undo|undo-this-change/.test(key)) {
         record(pg, key, { action: 'look for it after the run', observed: 'superseded by a newer receipt for the same control', verdict: 'NOT-RENDERED' });
       }
     }

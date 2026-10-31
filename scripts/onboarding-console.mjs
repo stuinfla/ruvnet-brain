@@ -3271,8 +3271,19 @@ function receiptedSetLesson(body) {
   }, () => setLesson(body));
 }
 function gatherReceipts() {
-  const consumed = new Set(readUndoJournal().filter((e) => e.consumed).map((e) => e.consumed));
-  return { receipts: readReceipts(RECEIPTS_FILE, { consumedTokens: consumed }), path: RECEIPTS_FILE.replace(CONSOLE_ROOT, '~') };
+  const journal = readUndoJournal();
+  const consumed = new Set(journal.filter((e) => e.consumed).map((e) => e.consumed));
+  // The same "an undo speaks only for the last write" rule undo() enforces: a settings save followed by
+  // another save of the same file cannot be undone, so its receipt must not offer a button that the
+  // server will refuse.
+  const superseded = new Set();
+  journal.forEach((e, i) => {
+    if (!e.token || !['restore-config', 'restore-user-settings'].includes(e.kind)) return;
+    if (journal.slice(i + 1).some((later) => later.kind === e.kind && later.token)) superseded.add(e.token);
+  });
+  const receipts = readReceipts(RECEIPTS_FILE, { consumedTokens: consumed })
+    .map((r) => ({ ...r, undoSuperseded: !!(r.undoToken && !r.undoUsed && superseded.has(r.undoToken)) }));
+  return { receipts, path: RECEIPTS_FILE.replace(CONSOLE_ROOT, '~') };
 }
 
 // ── HTTP ─────────────────────────────────────────────────────────────────────────────────────────
