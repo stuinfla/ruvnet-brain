@@ -24,6 +24,7 @@ describe('Cognitum ruOS capability-only corpus', () => {
     const run = (command, args) => {
       if (command === 'git' && args[0] === 'clone') fs.mkdirSync(args.at(-1), { recursive: true });
       if (command === 'git' && args.includes('rev-parse')) return { status: 0, stdout: sha };
+      if (command === process.execPath && String(args[0]).endsWith('warm-model-cache.mjs')) return { status: 0 };
       if (command === process.execPath) {
         const out = args[args.indexOf('--out') + 1];
         const corpus = buildCorpus({ repo: root, name: store });
