@@ -24,6 +24,7 @@ import {
   stageRvfDelta,
 } from './incremental-refresh.mjs';
 import { chooseModelCache, loadRvf, loadTransformers } from './resolve-deps.mjs';
+import { loadEmbedderPipeline } from './warm-model-cache.mjs';
 import { getVersion, getVersionTag } from '../scripts/version.mjs';
 import { CORPUS_QA_FAILED_EXIT } from '../scripts/corpus-store-failure.mjs';
 import { RVF_GENERATIONS_FILE, writeRvfGeneration, readRvfGenerations, projectSourceStore } from '../scripts/rvf-generation.mjs';
@@ -189,12 +190,11 @@ async function embedChunks(chunks, config) {
   if (!chunks.length) return [];
   const { T } = await loadTransformers();
   const cache = chooseModelCache();
-  T.env.localModelPath = cache;
-  T.env.allowRemoteModels = !fs.existsSync(path.join(cache, config.model));
-  const pipeline = await T.pipeline('feature-extraction', config.model, {
-    quantized: true,
-    revision: config.revision,
-  });
+  // Readiness is the presence of the files the offline reader loads (tokenizer, config, quantized
+  // onnx), never the mere existence of the model folder: a concurrent worker's half-finished
+  // download creates the folder first, and a folder-only check then forbids the download this
+  // worker needs (2026-11-06 agentdb: "local_files_only ... tokenizer.json not found").
+  const pipeline = await loadEmbedderPipeline(T, cache, { model: config.model, revision: config.revision });
   const rows = [];
   const batchSize = 32;
   for (let index = 0; index < chunks.length; index += batchSize) {

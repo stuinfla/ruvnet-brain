@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
   "kind": "ruvnet-brain-convergence-manifest",
-  "version": "4.7.28",
-  "sourceIdentity": "cb30f6f70b26a455859bd193ffe8b254124ed42165785b8f5483e99207a45708",
+  "version": "4.7.29",
+  "sourceIdentity": "992f5f47656787851562a3c474940245fdb08b738035dc333c8f10050c128e65",
   "versionSurfaces": {
-    "package.json": "4.7.28",
-    "plugin/.claude-plugin/plugin.json": "4.7.28",
-    "plugin/.codex-plugin/plugin.json": "4.7.28",
-    "data/manifest.json": "4.7.28",
-    "kb/RVF-GENERATIONS.json": "4.7.28",
-    "explainer/index.html": "4.7.28",
-    "primer/ruvnet-primer.md": "4.7.28"
+    "package.json": "4.7.29",
+    "plugin/.claude-plugin/plugin.json": "4.7.29",
+    "plugin/.codex-plugin/plugin.json": "4.7.29",
+    "data/manifest.json": "4.7.29",
+    "kb/RVF-GENERATIONS.json": "4.7.29",
+    "explainer/index.html": "4.7.29",
+    "primer/ruvnet-primer.md": "4.7.29"
   },
   "adrInventory": [
     "0001-verified-bundle-not-single-file.md",
@@ -116,8 +116,8 @@
     "0107-issue-autofix-bounded-unattended-writer.md",
     "README.md"
   ],
-  "trackedFileCount": 2124,
-  "trackedFilesSha256": "56f2790ddb5212a9e59aa1bbc28241dd3cf751404a1d0928a8f5080dd5344e36",
+  "trackedFileCount": 2126,
+  "trackedFilesSha256": "dc3bede2be8b40d13f08817bc5f74451c296dfb1298556b6f0a09c1686815db9",
   "ownershipChecks": [
     "version:check",
     "doc:currency",

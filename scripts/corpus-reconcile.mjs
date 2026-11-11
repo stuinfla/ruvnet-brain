@@ -767,10 +767,28 @@ export async function executeReconciliation({
     return { ok: false, attempts, error: lastError };
   };
 
+  // Warm the embedder model ONCE, serially, before any lane starts. Concurrent forge-refresh workers on
+  // a cold runner otherwise race the first download (a folder without its files, or two writers on the
+  // same files), and the loser is carried STALE (2026-11-06 agentdb). Best effort by design: if the
+  // warm itself fails, use ONE lane: stores may retry the download, but never write the shared model
+  // cache concurrently. Per-store carry/MISSING rules still apply if the model remains unavailable.
+  let workerConcurrency = concurrency;
+  const warmScript = path.join(path.resolve(root), 'kb', 'warm-model-cache.mjs');
+  if (orderedPlan.length && fs.existsSync(warmScript)) {
+    const warmed = await run(process.execPath, [warmScript], { stdio: 'inherit', signal: controller.signal }) || {};
+    if (controller.signal.aborted) throw abortError(controller.signal);
+    if (warmed.error || warmed.status !== 0) {
+      workerConcurrency = 1;
+      log(`[corpus-reconcile] model warm-up failed (${warmed.error?.message || `exit ${warmed.status}`}); serial fallback: stores will load the model one at a time`);
+    } else {
+      log('[corpus-reconcile] embedder model warmed before workers started');
+    }
+  }
+
   const outcomes = new Array(orderedPlan.length);
   let next = 0;
   let firstError = null;
-  await Promise.all(Array.from({ length: Math.min(concurrency, orderedPlan.length) }, async () => {
+  await Promise.all(Array.from({ length: Math.min(workerConcurrency, orderedPlan.length) }, async () => {
     while (next < orderedPlan.length) {
       if (controller.signal.aborted) return;
       const index = next++;
