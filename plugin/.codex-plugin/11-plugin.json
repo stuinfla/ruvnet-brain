@@ -1,0 +1,21 @@
+{
+  "name": "ruvnet-brain",
+  "version": "4.7.29",
+  "description": "Source-grounded RuvNet knowledge, lifecycle enforcement, and learning for Codex.",
+  "author": {
+    "name": "Stuart Kerr"
+  },
+  "repository": "https://github.com/stuinfla/ruvnet-brain",
+  "license": "MIT",
+  "keywords": [
+    "ruvnet",
+    "ruflo",
+    "ruvector",
+    "rvf",
+    "agentdb",
+    "grounding"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "hooks": "./hooks/codex-hooks.json"
+}
