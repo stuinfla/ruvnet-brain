@@ -1,0 +1,1098 @@
+{
+  "brainVersion": "4.7.29",
+  "generated": "2026-08-20T07:16:21.648Z",
+  "generatedHuman": "Thu, 20 Aug 2026 07:16:21 GMT",
+  "coverage": {
+    "built": 77,
+    "catalogued": 200,
+    "orgTotalApprox": 206,
+    "orgTotalSource": "live",
+    "orgTotalAt": "2026-08-20T07:16:22.447Z",
+    "pending": 123
+  },
+  "builtRepos": [
+    {
+      "name": "RuView",
+      "tier": "T0",
+      "stars": 75658,
+      "builtFromSha": "a3b6e1d500df784b9ad1846dd39deb07e2c69a34",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "ruflo",
+      "tier": "T0",
+      "stars": 61698,
+      "builtFromSha": "fa13ee4ad60ac2090b1480656eb233521790d640",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "RuVector",
+      "tier": "T0",
+      "stars": 4296,
+      "builtFromSha": "7b38d0bdd25ad97f0f8eb05633af3db678b6fd6c",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "agentic-flow",
+      "tier": "T1",
+      "stars": 762,
+      "builtFromSha": "d3735a33533da2e12a68439177a791bf1c5c91e1",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "sparc",
+      "tier": "T1",
+      "stars": 468,
+      "builtFromSha": "9656782ea9ed8d96e1d9c76a7f98b4718d365296",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "ruv-FANN",
+      "tier": "T1",
+      "stars": 370,
+      "builtFromSha": "1d93b35a1f49ad4ee6c7ac9223f74f6a6255b25d",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "metaharness",
+      "tier": "T1",
+      "stars": 330,
+      "builtFromSha": "5453c8c990824b54e05f289774e5a8b2cea0a32e",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "dspy.ts",
+      "tier": "T1",
+      "stars": 261,
+      "builtFromSha": "535d0e41901fb291a8af8b4131fd46af456829d4",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "SynthLang",
+      "tier": "T1",
+      "stars": 261,
+      "builtFromSha": "cf16b42178b39f0470f3392994da2605aaf7a64a",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "daa",
+      "tier": "T1",
+      "stars": 242,
+      "builtFromSha": "ca4e3a3c7e962098152f018a123db2bf67cf5d46",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "QuDAG",
+      "tier": "T1",
+      "stars": 189,
+      "builtFromSha": "6c17c5974b75e5ab367b6023256d10d2b20e033a",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "FACT",
+      "tier": "T1",
+      "stars": 179,
+      "builtFromSha": "b0e343583cd8f64549dbcba4b7c709e48b3a6a08",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "SAFLA",
+      "tier": "T1",
+      "stars": 155,
+      "builtFromSha": "85e730fba50ca815f01b951d8c6351aa6141cbed",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "midstream",
+      "tier": "T1",
+      "stars": 125,
+      "builtFromSha": "583b32ef35dfdb60c7d3d5c28c68f1f635b55b21",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "rvm",
+      "tier": "T1",
+      "stars": 113,
+      "builtFromSha": "1a055716c9c544b35f89162e32e7946e3ac2f8f2",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "rudevolution",
+      "tier": "T1",
+      "stars": 108,
+      "builtFromSha": "c6ca63020687487bf0c07dc43714f10d1996d0b4",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "sublinear-time-solver",
+      "tier": "T1",
+      "stars": 82,
+      "builtFromSha": "6ef45761e9a27029cf968322b3967364499e3b5d",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "Synaptic-Mesh",
+      "tier": "T1",
+      "stars": 74,
+      "builtFromSha": "7b70a3d59ba14bdfa632730f03d65b46d68e0625",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "agentdb",
+      "tier": "T1",
+      "stars": 70,
+      "builtFromSha": "6cdefe451f6afe7395bc88d3587a0225d161089b",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "ruv-neural",
+      "tier": "T1",
+      "stars": 20,
+      "builtFromSha": "c600537f9f2c3fe62c11ddc970337a6b8530d4a7",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "rufield",
+      "tier": "T1",
+      "stars": 17,
+      "builtFromSha": "43b1df3dc3c436a21e3fc85dc34475458a1eca9d",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "rvcsi",
+      "tier": "T1",
+      "stars": 13,
+      "builtFromSha": "2ef4fd1e3a30dad68cb7969135a809a0ef230656",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "RuLake",
+      "tier": "T1",
+      "stars": 11,
+      "builtFromSha": "554f0a60b948e0dfe6d4813dd6a096758a46a5d9",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "agentic-qe",
+      "tier": "T1",
+      "stars": 0,
+      "builtFromSha": "1c7a089eaa6e5fac1b458e9024f1e35e5682b56b",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "rUv-dev",
+      "tier": "T2",
+      "stars": 426,
+      "builtFromSha": "0cfebab80af28e55aec6830be51f5662e72f6b04",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "open-claude-code",
+      "tier": "T2",
+      "stars": 416,
+      "builtFromSha": "9e2e08c03d9b5d009eac14fc10a50d223a73de70",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "ruvnet",
+      "tier": "T2",
+      "stars": 217,
+      "builtFromSha": "bd5656a9b168d65bb0226eb41efd581b6dab14bf",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "marketing",
+      "tier": "T2",
+      "stars": 108,
+      "builtFromSha": "835c98d4f63270fc8ce7f178fd49b0555f7d560b",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "symbolic-scribe",
+      "tier": "T2",
+      "stars": 85,
+      "builtFromSha": "8a31e52797dbd73703cad368d3f1e5657179bec2",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "ruvbot",
+      "tier": "T2",
+      "stars": 47,
+      "builtFromSha": "31b54e74339ca93ba75d69d2936ffb18df4bf5ff",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "agentic-security",
+      "tier": "T2",
+      "stars": 47,
+      "builtFromSha": "0d862e0d5704d41df8141a31b84c3d8ff82ee759",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "drupaljs",
+      "tier": "T2",
+      "stars": 37,
+      "builtFromSha": "585b78fb9ccfb7560f11258eafe2ea9516d574a8",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "skygraph",
+      "tier": "T2",
+      "stars": 29,
+      "builtFromSha": "12381dbc003b6763fd29a83cd727812a2c1004cc",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "agentic-robotics",
+      "tier": "T2",
+      "stars": 26,
+      "builtFromSha": "d84bba2be6cf60e01db6056fdba464ccfad130d7",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "musicai",
+      "tier": "T2",
+      "stars": 26,
+      "builtFromSha": "92c0c53f2ca81d82a3e392f8781cc521f25b2c21",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "obsidian-brain",
+      "tier": "T2",
+      "stars": 19,
+      "builtFromSha": "68457cea6ab42c10dcd74ebdb84616ce2f2f9c87",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "musica",
+      "tier": "T2",
+      "stars": 17,
+      "builtFromSha": "617b61395682b9b3fe6e330206bf3ff41aef9d67",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "rupixel",
+      "tier": "T2",
+      "stars": 14,
+      "builtFromSha": "bb1269fb9f4b0920de5944d248e4e79a01f3b80c",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "PhotonLayer",
+      "tier": "T2",
+      "stars": 14,
+      "builtFromSha": "fe86c9fad9a1572ce46e337f118656961bdf4ebb",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "rvdna",
+      "tier": "T2",
+      "stars": 9,
+      "builtFromSha": "b751cbdaa2ab8516126b129e9589555e5b719067",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "ruv-drone",
+      "tier": "T2",
+      "stars": 8,
+      "builtFromSha": "691ce38e83ebccf01f846926ba4eef56b6468fd1",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "worldgraph",
+      "tier": "T2",
+      "stars": 7,
+      "builtFromSha": "360ef48a2536d45033cdbe0c40c0f522b8f75ae7",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "ruqu",
+      "tier": "T2",
+      "stars": 6,
+      "builtFromSha": "026d63ef900ab689c863b6b3254f5dce8c068bf6",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "cognitum-claude-plugin",
+      "tier": "T2",
+      "stars": 5,
+      "builtFromSha": "83f7adb33194bed33ee552b24423e5117f527687",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "SonicChamber",
+      "tier": "T2",
+      "stars": 2,
+      "builtFromSha": "c1bc0c90c8d9511846270ed565a3006c468bf36d",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "agenticow",
+      "tier": "T2",
+      "stars": 40,
+      "builtFromSha": "dd4f437b92d2dbbc1f40dfa00023eed6e9c3bd84",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "CVE-bench",
+      "tier": "T2",
+      "stars": 15,
+      "builtFromSha": "47abc2b2b522f4d8afd07296d2a35042d8639f1d",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "cognitum-cogs",
+      "tier": "T2",
+      "stars": 14,
+      "builtFromSha": "eaf7e9081c854135be69808214eb915a90e96d09",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "cognitum-support",
+      "tier": "T2",
+      "stars": 19,
+      "builtFromSha": "bf9af9c44b5b111da2b68086d11fd6213099b6c0",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "flow-nexus",
+      "tier": "T3",
+      "stars": 95,
+      "builtFromSha": "1511b93c2abd82883b9234fa90231c4c3e207744",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "ai-text-watermark",
+      "tier": "fresh",
+      "builtFromSha": "a88fcadeb87e43cdd0fcda3bba75840e4edee9db",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "autogenous",
+      "tier": "fresh",
+      "builtFromSha": "b5c6e8380a40481d1f7d81e3c777504f487fed9a",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "cognitum-api",
+      "tier": "fresh",
+      "builtFromSha": "4061b309bd15fc3bd59cc2729ee774e341a3548d",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "cognitum-learn",
+      "tier": "fresh",
+      "builtFromSha": "82805c2481c33e09b215ed8ab7b38ec6dfdf48c2",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "cognitum-learn-site",
+      "tier": "fresh",
+      "builtFromSha": "4a653f83d1ddfbdc0e53a152f268791ae7018e1e",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "cognitum-meta-llm-docs",
+      "tier": "fresh",
+      "builtFromSha": "a2f39c2cecfcdbeed151172240767c7f8887b294",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "cognitum-meta-proxy-dist",
+      "tier": "fresh",
+      "builtFromSha": "23dad17f00d15dea1c82cd18d7dbbf2df7da3472",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "cognitum-one-sensor-primer",
+      "tier": "fresh",
+      "builtFromSha": "6bb135edf7bde8518af43afa8542ea79b2e07541",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "cognitum-platform-docs",
+      "tier": "fresh",
+      "builtFromSha": "d732528386265e42a797d0565c0395ec2dde4eb1",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "cognitum-ruos",
+      "tier": "fresh",
+      "builtFromSha": "b1762a71bb1ad58b9175e2ae78ed454fed47b655",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "cognitum-seed",
+      "tier": "fresh",
+      "builtFromSha": "4669391a5f3f177eabfbdc9275f2e1d8bb3e0726",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "cognitum-spoton",
+      "tier": "fresh",
+      "builtFromSha": "46650c13b723d022051ae5d23eb3c723c7ed22e2",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "cognitum-trader",
+      "tier": "fresh",
+      "builtFromSha": "3ae7311ac9fa6ae33e870f1fd083b207012d4273",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "cognitum-trader-jackishim",
+      "tier": "fresh",
+      "builtFromSha": "d40e9d7ab1b933fd12efbc6ccd0e66336cb374cd",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "cognitum-v0-appliance",
+      "tier": "fresh",
+      "builtFromSha": "1f8e3bb2568d5ae0f07d42e5fe8e404f46831006",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "concepts",
+      "tier": "fresh",
+      "builtFromSha": "unknown",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "dream-machine",
+      "tier": "fresh",
+      "builtFromSha": "8ce385786faa5e63cc0e7105cc6e96f663a51f07",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "hackerone",
+      "tier": "fresh",
+      "builtFromSha": "1e3bcde8258d472a733abe9d9de9219f8ae06f16",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "latentmesh",
+      "tier": "fresh",
+      "builtFromSha": "922ea196ddfd653ca47c6e900f9aae58f6f26c9d",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "llm-stream-reformat",
+      "tier": "fresh",
+      "builtFromSha": "74e1d2cef896afd7f49b4cd891978bb64f67d698",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "rucelium",
+      "tier": "fresh",
+      "builtFromSha": "813da13eb9a46b6acf78fe7ecc8c220ecf83b386",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "ruv-gists",
+      "tier": "fresh",
+      "builtFromSha": "unknown",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "ruv-meetings",
+      "tier": "fresh",
+      "builtFromSha": "unknown",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "ruvnet-brain",
+      "tier": "fresh",
+      "builtFromSha": "db94e591e99c06899d242c0b34e16c7307fadd78",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "rvface",
+      "tier": "fresh",
+      "builtFromSha": "612a09e5b16ec9ff7cec1623c2845ff64ca2544b",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "rvqr",
+      "tier": "fresh",
+      "builtFromSha": "5632240501685d4d37c11565b18767a37c490e4c",
+      "latestRemoteSha": null,
+      "status": "built"
+    },
+    {
+      "name": "wifi-veil",
+      "tier": "fresh",
+      "builtFromSha": "018468b5d2bf41f35c552910f35659830af0eb91",
+      "latestRemoteSha": null,
+      "status": "built"
+    }
+  ],
+  "pendingRepos": [
+    {
+      "name": "ruos-macair",
+      "tier": "T2"
+    },
+    {
+      "name": "Connectome-OS",
+      "tier": "T2"
+    },
+    {
+      "name": "ruvn",
+      "tier": "T2"
+    },
+    {
+      "name": "Bot-Generator-Bot",
+      "tier": "T3"
+    },
+    {
+      "name": "gpts",
+      "tier": "T3"
+    },
+    {
+      "name": "guardrail",
+      "tier": "T3"
+    },
+    {
+      "name": "chatgpt-openai-api-plugin",
+      "tier": "T3"
+    },
+    {
+      "name": "promptlang",
+      "tier": "T3"
+    },
+    {
+      "name": "agentic-voice",
+      "tier": "T3"
+    },
+    {
+      "name": "voicebot",
+      "tier": "T3"
+    },
+    {
+      "name": "hello_world_agent",
+      "tier": "T3"
+    },
+    {
+      "name": "chatgpt_plugin_python",
+      "tier": "T3"
+    },
+    {
+      "name": "q-star",
+      "tier": "T3"
+    },
+    {
+      "name": "ultrasonic",
+      "tier": "T3"
+    },
+    {
+      "name": "auto-browser",
+      "tier": "T3"
+    },
+    {
+      "name": "rUv-Enterprise-AI-Guide",
+      "tier": "T3"
+    },
+    {
+      "name": "Surfer",
+      "tier": "T3"
+    },
+    {
+      "name": "Prompt-Engine",
+      "tier": "T3"
+    },
+    {
+      "name": "Agent-Name-Service",
+      "tier": "T3"
+    },
+    {
+      "name": "openai_devops",
+      "tier": "T3"
+    },
+    {
+      "name": "AiToml",
+      "tier": "T3"
+    },
+    {
+      "name": "federated-mcp",
+      "tier": "T3"
+    },
+    {
+      "name": "GenAI-Superstream",
+      "tier": "T3"
+    },
+    {
+      "name": "strawberry-phi",
+      "tier": "T3"
+    },
+    {
+      "name": "reflective-engineer",
+      "tier": "T3"
+    },
+    {
+      "name": "agentic-employment",
+      "tier": "T3"
+    },
+    {
+      "name": "ARCADIA",
+      "tier": "T3"
+    },
+    {
+      "name": "dynamo-mcp",
+      "tier": "T3"
+    },
+    {
+      "name": "agentic-reports",
+      "tier": "T3"
+    },
+    {
+      "name": "ai-video",
+      "tier": "T3"
+    },
+    {
+      "name": "agentic-devops",
+      "tier": "T3"
+    },
+    {
+      "name": "inflight",
+      "tier": "T3"
+    },
+    {
+      "name": "Swagger-ChatGPT-Plugin-Creator",
+      "tier": "T3"
+    },
+    {
+      "name": "quantum-magnetic-navigation",
+      "tier": "T3"
+    },
+    {
+      "name": "llamastack",
+      "tier": "T3"
+    },
+    {
+      "name": "vibecast",
+      "tier": "T3"
+    },
+    {
+      "name": "agentic-search",
+      "tier": "T3"
+    },
+    {
+      "name": "agileagents",
+      "tier": "T3"
+    },
+    {
+      "name": "VIVIAN",
+      "tier": "T3"
+    },
+    {
+      "name": "nova",
+      "tier": "T3"
+    },
+    {
+      "name": "genesis",
+      "tier": "T3"
+    },
+    {
+      "name": "code-mesh",
+      "tier": "T3"
+    },
+    {
+      "name": "agentic-difusion",
+      "tier": "T3"
+    },
+    {
+      "name": "aido",
+      "tier": "T3"
+    },
+    {
+      "name": "sparc-ide",
+      "tier": "T3"
+    },
+    {
+      "name": "hacker-league",
+      "tier": "T3"
+    },
+    {
+      "name": "agenticsjs",
+      "tier": "T3"
+    },
+    {
+      "name": "paris",
+      "tier": "T3"
+    },
+    {
+      "name": "yyz-agentics-june",
+      "tier": "T3"
+    },
+    {
+      "name": "pygentic",
+      "tier": "T3"
+    },
+    {
+      "name": "codex-one",
+      "tier": "T3"
+    },
+    {
+      "name": "coding-wingman",
+      "tier": "T3"
+    },
+    {
+      "name": "chatgpt-dev-mode",
+      "tier": "T3"
+    },
+    {
+      "name": "quantum_cryptocurrency",
+      "tier": "T3"
+    },
+    {
+      "name": "AiHCC",
+      "tier": "T3"
+    },
+    {
+      "name": "omnipotent",
+      "tier": "T3"
+    },
+    {
+      "name": "onnx-agent",
+      "tier": "T3"
+    },
+    {
+      "name": "ChatGPT-Trading-Bot-for-KuCoin",
+      "tier": "T3"
+    },
+    {
+      "name": "fireflies-webook",
+      "tier": "T3"
+    },
+    {
+      "name": "vcbot",
+      "tier": "T3"
+    },
+    {
+      "name": "ruv.io",
+      "tier": "T3"
+    },
+    {
+      "name": "swarm-world",
+      "tier": "T3"
+    },
+    {
+      "name": "aws-dev",
+      "tier": "T3"
+    },
+    {
+      "name": "textclassifier",
+      "tier": "T3"
+    },
+    {
+      "name": "powerprompt",
+      "tier": "T3"
+    },
+    {
+      "name": "phone-agent",
+      "tier": "T3"
+    },
+    {
+      "name": "aihl",
+      "tier": "T3"
+    },
+    {
+      "name": "supa-ruv",
+      "tier": "T3"
+    },
+    {
+      "name": "supabase-authentication",
+      "tier": "T3"
+    },
+    {
+      "name": "aiscreenplay",
+      "tier": "T3"
+    },
+    {
+      "name": "alienator",
+      "tier": "T3"
+    },
+    {
+      "name": "AiCodeCalc",
+      "tier": "T3"
+    },
+    {
+      "name": "ai-gist",
+      "tier": "T3"
+    },
+    {
+      "name": "vsc-remote-mcp",
+      "tier": "T3"
+    },
+    {
+      "name": "agentXNG",
+      "tier": "T3"
+    },
+    {
+      "name": "retro-ai-ui",
+      "tier": "T3"
+    },
+    {
+      "name": "2BotTalk",
+      "tier": "T3"
+    },
+    {
+      "name": "Quantum-Virtual-Machine",
+      "tier": "T3"
+    },
+    {
+      "name": "local-logic",
+      "tier": "T3"
+    },
+    {
+      "name": "agentic-artifacts",
+      "tier": "T3"
+    },
+    {
+      "name": "openai-cost-estimator",
+      "tier": "T3"
+    },
+    {
+      "name": "claude-test",
+      "tier": "T3"
+    },
+    {
+      "name": "roomodes",
+      "tier": "T3"
+    },
+    {
+      "name": "agentic-preview",
+      "tier": "T3"
+    },
+    {
+      "name": "electo1-js",
+      "tier": "T3"
+    },
+    {
+      "name": "open-space",
+      "tier": "T3"
+    },
+    {
+      "name": "Ai-Code-Generator-",
+      "tier": "T3"
+    },
+    {
+      "name": "vibing",
+      "tier": "T3"
+    },
+    {
+      "name": "agentic-scraper",
+      "tier": "T3"
+    },
+    {
+      "name": "markov-chains",
+      "tier": "T3"
+    },
+    {
+      "name": "pipackager",
+      "tier": "T3"
+    },
+    {
+      "name": "chatgpt_tatum_plugin",
+      "tier": "T3"
+    },
+    {
+      "name": "agentic-capacity-exchange",
+      "tier": "T3"
+    },
+    {
+      "name": "codecraft",
+      "tier": "T3"
+    },
+    {
+      "name": "infinity-ui",
+      "tier": "T3"
+    },
+    {
+      "name": "q-space",
+      "tier": "T3"
+    },
+    {
+      "name": "contextual-retrevial",
+      "tier": "T3"
+    },
+    {
+      "name": "Auto-GPT",
+      "tier": "T3"
+    },
+    {
+      "name": "chatgpt-aws-price-list-plugin",
+      "tier": "T3"
+    },
+    {
+      "name": "console-streamer",
+      "tier": "T3"
+    },
+    {
+      "name": "SVGart",
+      "tier": "T3"
+    },
+    {
+      "name": "ai-browse",
+      "tier": "T3"
+    },
+    {
+      "name": "Electo1",
+      "tier": "T3"
+    },
+    {
+      "name": "agentic-dashboard",
+      "tier": "T3"
+    },
+    {
+      "name": "r-flow",
+      "tier": "T3"
+    },
+    {
+      "name": "santa-ai-workshop",
+      "tier": "T3"
+    },
+    {
+      "name": "agentX",
+      "tier": "T3"
+    },
+    {
+      "name": "p2pGPT",
+      "tier": "T3"
+    },
+    {
+      "name": "ruvGPT2",
+      "tier": "T3"
+    },
+    {
+      "name": "agentic-gradio",
+      "tier": "T3"
+    },
+    {
+      "name": "rUvGPT",
+      "tier": "T3"
+    },
+    {
+      "name": "AIConverse",
+      "tier": "T3"
+    },
+    {
+      "name": "image-agent",
+      "tier": "T3"
+    },
+    {
+      "name": "demo-proxy-app",
+      "tier": "T3"
+    },
+    {
+      "name": "agentic-flows",
+      "tier": "T3"
+    },
+    {
+      "name": "CodeGPT",
+      "tier": "T3"
+    },
+    {
+      "name": "tariffic",
+      "tier": "T3"
+    },
+    {
+      "name": "hft",
+      "tier": "T3"
+    },
+    {
+      "name": "agentic-music",
+      "tier": "T3"
+    },
+    {
+      "name": "agentics-meetup",
+      "tier": "T3"
+    },
+    {
+      "name": "ai-stream",
+      "tier": "T3"
+    },
+    {
+      "name": "socket",
+      "tier": "T3"
+    },
+    {
+      "name": "AP-Casper",
+      "tier": "T3"
+    }
+  ]
+}
