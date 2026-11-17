@@ -9,5 +9,8 @@ export function addReviewBreaks(BREAKS) {
     'wp6-11-trust-passed': { test: 'wp6-11', what: 'promotion trusts the gate result\'s passed flag', patches: [p(EV, '  const why = gateProblems(gate, pin);\n', '  const why = [];\n')], expect: /asserted success with a score of 0 of 1 must be refused/ },
     'wp6-11-trust-ok': { test: 'wp6-11', what: 'promotion trusts a receipt\'s ok flag', patches: [p(EV, '    if (why) throw new Refused(`the install-and-probe receipt', '    if (false) throw new Refused(`the install-and-probe receipt')], expect: /abbreviated ok receipts must be refused/ },
     'wp6-11-no-ci': { test: 'wp6-11', what: 'promotion ignores which run and runner wrote a receipt', patches: [p(EV, "  const ci = env.GITHUB_ACTIONS === 'true' ? env.GITHUB_RUN_ID : null;", '  const ci = null;')], expect: /receipts with no run identity in GitHub Actions must be refused/ },
+    // F02: the installer's Node selector never runs anything inside the project
+    'wp7-09-no-check': { test: 'wp7-09', what: 'the selector probes candidates without the project check', patches: [p('packages/cli/node-pick.mjs', '    if (!outsideProject(c, env, cwd)) {', '    if (false) {')], expect: /an absolute PATH entry inside the project: a program inside the project was run/ },
+    'wp7-09-lexical': { test: 'wp7-09', what: 'the selector checks folders but not where a link really points', patches: [p('packages/cli/node-pick.mjs', '[path.dirname(file), real(path.dirname(file)), rf, rf && path.dirname(rf)]', '[path.dirname(file), real(path.dirname(file))]')], expect: /an outside node that links into the project: a program inside the project was run/ },
   });
 }
