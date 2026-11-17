@@ -39,6 +39,7 @@ test('WP6 dry run: seal, pre-release, install-and-probe, promote; one failed sys
   assert.ok(here.probes.length >= 3 && here.probes.every((p) => p.pass && p.mode === 'MODE · normal'), JSON.stringify(here.probes));
   assert.equal(here.doctor.exit, 0, `doctor's verdict while the server runs: ${here.doctor.line}`);
   assert.match(here.doctor.line, /OK/);
+  assert.match(here.launcher ?? '', /^shim\/plugin\/claude\/bin\/rb5(\.cmd)?$/, 'the probe starts the server through the registered launcher, as a host does (review F05)');
   for (const os of REQUIRED_OS.filter((o) => o !== here.os)) writeJson(path.join(receipts, `${os}.json`), { ...here, os });
   const gate1 = path.join(ctx.tmp('rb5-wp6-gate-'), 'gate.json');
   writeJson(gate1, gateFor(path.join(channel, 'staged', tag)));

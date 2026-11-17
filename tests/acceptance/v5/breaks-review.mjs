@@ -38,5 +38,7 @@ export function addReviewBreaks(BREAKS) {
     // F11 (installer): a live reader keeps its generation; an automatic update refreshes the shim
     'wp4-16-prune-reader': { test: 'wp4-16', what: 'prune ignores the generations live servers report', patches: [p('packages/cli/txn.mjs', '    if (!s.alive || !(s.heartbeatAt >= fresh)) continue;', '    continue;')], expect: /the generation a live session reads must not be pruned/ },
     'wp4-16-no-shim': { test: 'wp4-16', what: 'the automatic update leaves the old shim', patches: [p('packages/cli/update-worker.mjs', "    if (fs.existsSync(path.join(workerData.home, 'shim'))) (await import('../plugin/install.mjs')).installShim({ home: workerData.home });", "    if (false) (await import('../plugin/install.mjs')).installShim({ home: workerData.home });")], expect: /the automatic update must refresh the shim/ },
+    // F05 (release probe): install-and-probe goes through the registered launcher
+    'wp6-06-launcher-broken': { test: 'wp6-06', what: 'the registered POSIX launcher cannot start the server', patches: [p('packages/plugin/claude/bin/rb5', 'MODE=${1:-hook}\n', 'MODE=${1:-hook}\n[ "$MODE" = server ] && exit 1\n')], expect: /install-and-probe must pass on this machine/ },
   });
 }

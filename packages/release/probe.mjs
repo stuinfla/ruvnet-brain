@@ -10,7 +10,7 @@ import { HOME_ENV } from '../contract/constants.mjs';
 import { problems } from '../contract/validate.mjs';
 import { readJson } from '../contract/home.mjs';
 import { trustedPublicKey } from '../contract/signature.mjs';
-import { startServer } from '../cli/mcp-client.mjs';
+import { startLauncher } from '../cli/mcp-client.mjs';
 import { PACKAGES, osName, verifyStaged } from './checks.mjs';
 
 const CITE = /^\d+\. (\S+) · lines \d+-\d+ · commit /;
@@ -30,8 +30,11 @@ export async function installAndProbe({ packagesDir = PACKAGES, releaseDir, time
     const inst = cli(['install', '--from', releaseDir]);
     receipt.install = { exit: inst.status, tail: `${inst.stdout}\n${inst.stderr}`.trim().split('\n').slice(-3).join('\n') };
     if (inst.status !== 0) throw new Error(`the installer refused the staged release: ${receipt.install.tail}`);
-    const launcher = path.join(home, 'app', release.app.version, 'plugin', 'claude', 'launch.mjs');
-    server = startServer(launcher, env);
+    // Through the registered launcher (the installed shim's rb5 / rb5.cmd), as a host starts it.
+    const launcher = path.join(home, 'shim', 'plugin', 'claude', 'bin', process.platform === 'win32' ? 'rb5.cmd' : 'rb5');
+    if (!fs.existsSync(launcher)) throw new Error(`the installer did not install the launcher ${launcher}`);
+    receipt.launcher = path.relative(home, launcher).split(path.sep).join('/');
+    server = startLauncher(launcher, env);
     await server.call('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'v5-release-rail', version: '1' } });
     const probesFile = path.join(home, 'packs', release.pack.generation, 'PROBES.json');
     for (const p of readJson(probesFile).probes) {
@@ -41,9 +44,11 @@ export async function installAndProbe({ packagesDir = PACKAGES, releaseDir, time
       receipt.probes.push({ question: p.question, expect: p.expect, pass: !res?.isError && files.includes(p.expect), mode: text.split('\n')[1] ?? '' });
     }
     // The server's own self-test must have finished before its verdict can be ok; doctor reads it.
-    const status = path.join(home, 'state', 'status', `${server.child.pid}.json`);
+    // (Through cmd.exe the server's process id is not the child's, so any status file of this home.)
+    const statusDir = path.join(home, 'state', 'status');
+    const probed = () => (fs.existsSync(statusDir) ? fs.readdirSync(statusDir) : []).some((f) => /^\d+\.json$/.test(f) && readJson(path.join(statusDir, f), null)?.probe);
     const end = Date.now() + timeoutMs;
-    while (Date.now() < end && !readJson(status, null)?.probe) await sleep(200);
+    while (Date.now() < end && !probed()) await sleep(200);
     const doc = cli(['doctor']);
     receipt.doctor = { exit: doc.status, line: (doc.stdout ?? '').split('\n')[0] };
     const failed = receipt.probes.filter((p) => !p.pass);
