@@ -21,13 +21,14 @@ if exist "%RB5_SHIM%\node-runtime" if exist "%RB5_SHIM%\plugin\claude\bin\rb5.cm
   set /p RB5_REC=<"%RB5_SHIM%\node-runtime"
   for %%I in ("%RB5_SHIM%\..") do set "RUVNET_BRAIN5_HOME=%%~fI"
 )
-if defined RB5_REC call :usable "%RB5_REC%" && call :run "%RB5_REC%" && exit /b 0
+if defined RB5_REC (call :usable "%RB5_REC%" && call :run "%RB5_REC%" && exit /b 0)
 
 set "RB5_REST=%PATH%"
 :next
 if not defined RB5_REST goto down
-rem An empty entry (a leading ;) is skipped here: for /f would read a leading ; as a comment.
-if "%RB5_REST:~0,1%"==";" set "RB5_REST=%RB5_REST:~1%" & goto next
+rem An empty entry (a leading ;) is skipped here: for /f would read a leading ; as a comment. The
+rem parentheses keep the goto inside the if (review F05).
+if "%RB5_REST:~0,1%"==";" (set "RB5_REST=%RB5_REST:~1%" & goto next)
 set "RB5_E="
 for /f "tokens=1* delims=;" %%A in ("%RB5_REST%") do (
   set "RB5_E=%%~A"

@@ -21,8 +21,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import crypto from 'node:crypto';
-import { keepBackup, restoreBackup, dropBackup } from './host-backup.mjs';
+import { keepBackup, restoreBackup, dropBackup, replaceFile } from './host-backup.mjs';
 
 const WIN = process.platform === 'win32';
 const NAME = 'ruvnet-brain';
@@ -146,6 +145,28 @@ export function hostFiles(env) {
   return out;
 }
 
+/**
+ * Review F06: a host file is reached only through real folders. From the real path of its host folder
+ * (`base`, which may itself be a link, as a dotfiles ~/.claude is) down to the file, every part that
+ * exists must not be a symbolic link, and none may really lie in a protected home (test marker).
+ */
+function confined(file, base = path.dirname(file)) {
+  let cur = resolved(base);
+  refuseProtected([cur]);
+  for (const part of path.relative(path.resolve(base), path.resolve(file)).split(path.sep).filter(Boolean)) {
+    cur = path.join(cur, part);
+    let st;
+    try {
+      st = fs.lstatSync(cur);
+    } catch (e) {
+      if (e.code === 'ENOENT') return;
+      throw new HostRefused(`${cur} could not be checked (${e.code}); nothing was changed`);
+    }
+    refuseProtected([fs.realpathSync(cur)]);
+    if (st.isSymbolicLink()) throw new HostRefused(`${cur} is a symbolic link, and the installer never reads or writes a host file through a link; nothing was changed`);
+  }
+}
+
 function readText(file) {
   try {
     return fs.readFileSync(file, 'utf8');
@@ -165,11 +186,19 @@ function readObj(file) {
   throw new HostRefused(`${file} is not valid JSON, so no host was registered; fix or remove that file and run the installer again`);
 }
 
-/** Adds (groups given: { event: group }) or removes (null) our hook groups, found by their launcher. */
+/** Adds (groups given: { event: group }) or removes (null) our hooks, found by their launcher. */
 function setHooks(obj, launcher, groups) {
   const out = structuredClone(obj);
-  const mine = (g) => (g?.hooks ?? []).some((h) => typeof h?.command === 'string' && h.command.startsWith(`"${launcher}"`));
+  const ours = (h) => typeof h?.command === 'string' && h.command.startsWith(`"${launcher}"`);
+  // Only our own hooks leave a group; the group goes only when nothing else is left in it (review F13).
+  const strip = (g) => {
+    if (!Array.isArray(g?.hooks) || !g.hooks.some(ours)) return g;
+    const rest = g.hooks.filter((h) => !ours(h));
+    return rest.length ? { ...g, hooks: rest } : null;
+  };
+  const mine = (g) => g === null;
   for (const event of EVENTS) {
+    if (Array.isArray(out.hooks?.[event])) out.hooks[event] = out.hooks[event].map(strip);
     const list = (out.hooks?.[event] ?? []).filter((g) => !mine(g));
     if (groups?.[event]) list.push(groups[event]);
     if (list.length) (out.hooks ??= {})[event] = list;
@@ -182,10 +211,11 @@ function setHooks(obj, launcher, groups) {
 
 const SERVER_TABLE = new RegExp(`^[ \\t]*\\[mcp_servers\\.(?:${SERVER}|"${SERVER}"|'${SERVER}')\\]`, 'm');
 
-function codexBlock(text, server) {
+function codexBlock(text, server, file) {
   const t = text ?? '';
   const s = t.indexOf(BLOCK[0]);
   const e = s < 0 ? -1 : t.indexOf(BLOCK[1], s);
+  if (s >= 0 && e < 0) throw new HostRefused(`${file} has the managed block's first line but not its last ("${BLOCK[1]}"), so nothing was changed; fix or remove that block and run the installer again`);
   let before = s < 0 ? t : t.slice(0, s);
   let after = e < 0 ? '' : t.slice(e + BLOCK[1].length);
   if (s >= 0) {
@@ -212,13 +242,17 @@ function apply({ home, hosts, add }) {
   const cmds = add ? hostCommands(home) : null;
   const plan = [];
   const conflicts = [];
+  const bases = new Map();
+  const reach = (file, base) => (bases.set(file, base), confined(file, base));
   const json = (file, change) => {
+    reach(file);
     const { text, obj } = readObj(file);
     const next = change(obj);
     if (next) plan.push({ file, before: text, text: JSON.stringify(next, null, 2) + '\n' });
   };
   // A skill or command file is ours when it names our launcher (its @@LAUNCHER@@ line).
-  const own = (file, src) => {
+  const own = (file, src, base) => {
+    reach(file, base);
     const text = readText(file);
     const ours = text === null || text.includes(p.launcher);
     if (add && ours) plan.push({ file, before: text, text: fs.readFileSync(src, 'utf8').replaceAll('@@LAUNCHER@@', p.launcher) });
@@ -251,12 +285,13 @@ function apply({ home, hosts, add }) {
   }
   if (add && claude && !claudeServed) unserved.push({ host: 'Claude Code', file: claude.state ?? null, why: conflicts.at(-1)?.file === claude.state ? conflicts.at(-1).what : 'no user-scope server list was named' });
   if (claude?.settings) hookFile(claude.settings, claudeServed && { UserPromptSubmit: { hooks: [cmds.hook] }, PreToolUse: cmds.guard });
-  if (claude?.skills && (claudeServed || !add)) own(path.join(claude.skills, ...SKILL.slice(1)), path.join(p.plugin, ...SKILL));
-  if (claude?.commands && (claudeServed || !add)) own(path.join(claude.commands, ...COMMAND.slice(1)), path.join(p.plugin, ...COMMAND));
+  if (claude?.skills && (claudeServed || !add)) own(path.join(claude.skills, ...SKILL.slice(1)), path.join(p.plugin, ...SKILL), claude.skills);
+  if (claude?.commands && (claudeServed || !add)) own(path.join(claude.commands, ...COMMAND.slice(1)), path.join(p.plugin, ...COMMAND), claude.commands);
   let codexServed = false;
   if (codex?.config) {
+    reach(codex.config);
     const text = readText(codex.config);
-    const r = codexBlock(text, add ? cmds.server : null);
+    const r = codexBlock(text, add ? cmds.server : null, codex.config);
     if (r.conflict) conflicts.push({ file: codex.config, what: r.conflict });
     else if (r.text !== (text ?? '')) plan.push({ file: codex.config, before: text, text: r.text });
     codexServed = add && !r.conflict;
@@ -269,6 +304,7 @@ function apply({ home, hosts, add }) {
   if (!add) {
     // Byte-exact uninstall: a shared file still exactly as registration left it gets its copy back.
     for (const file of shared) {
+      confined(file, bases.get(file));
       if (!restoreBackup(home, file, readText(file)).restored) {
         dropBackup(home, file);
         continue;
@@ -281,15 +317,15 @@ function apply({ home, hosts, add }) {
   }
   for (const w of plan) {
     if (w.text === w.before) continue;
+    confined(w.file, bases.get(w.file));
     if (w.text === null) {
       fs.rmSync(w.file, { force: true });
       const dir = path.dirname(w.file);
       if (path.basename(dir) === NAME && !fs.readdirSync(dir).length) fs.rmdirSync(dir);
     } else {
       fs.mkdirSync(path.dirname(w.file), { recursive: true });
-      const tmp = `${w.file}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
-      fs.writeFileSync(tmp, w.text);
-      fs.renameSync(tmp, w.file);
+      confined(w.file, bases.get(w.file));
+      replaceFile(w.file, w.text);
     }
     written.push(w.file);
   }
