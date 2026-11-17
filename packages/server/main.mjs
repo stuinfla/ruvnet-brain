@@ -189,16 +189,24 @@ export async function run({ home, input = process.stdin, output = process.stdout
   const send = (m) => output.write(JSON.stringify(m) + '\n');
   let clientRoots = false;
   let rootsSeq = 0;
-  const askRoots = () => clientRoots && send({ jsonrpc: '2.0', id: `roots-${++rootsSeq}`, method: 'roots/list' });
+  // Fail closed (review F08): while a roots request is pending, and after an answer with no file: root,
+  // there is no project, so no private pack is searched. Only the answer to the latest request counts.
+  const askRoots = () => clientRoots && ((project = null), send({ jsonrpc: '2.0', id: `roots-${++rootsSeq}`, method: 'roots/list' }));
   function onRoots(m) {
+    if (m.id !== `roots-${rootsSeq}`) return;
     const uri = m.result?.roots?.find((r) => String(r?.uri).startsWith('file:'))?.uri;
-    if (uri) project = real(fileURLToPath(uri));
+    try {
+      project = uri ? real(fileURLToPath(uri)) : null;
+    } catch {
+      project = null;
+    }
   }
 
   async function handle(msg) {
     switch (msg.method) {
       case 'initialize':
         clientRoots = !!msg.params?.capabilities?.roots;
+        if (clientRoots) project = null;
         return { protocolVersion: msg.params?.protocolVersion ?? '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'ruvnet-brain', version: status.app ?? '5' } };
       case 'notifications/initialized':
       case 'notifications/roots/list_changed':
