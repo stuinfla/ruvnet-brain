@@ -42,7 +42,12 @@ describe('SessionStart derived-sum latency budget contract', () => {
       } else {
         expect(run.stdout).not.toContain('restore-completed'); expect(run.stderr).toContain('PROJECT CONTINUITY UNKNOWN');
         expect(Date.now() - started).toBeLessThan(1500); expect(fs.readFileSync(protectedFile, 'utf8')).toBe('unchanged');
-        const pid = Number(fs.readFileSync(pidFile, 'utf8')); expect(() => process.kill(pid, 0)).toThrow();
+        // Under load the adapter can be killed before its first line writes the pid (node boot > the 350 ms deadline;
+        // reproduced with a 30 ms deadline: ENOENT on adapter.pid). Either way nothing may live on: wait out the
+        // adapter's own 1000 ms completion, then it must never have completed, and any pid it wrote must be dead.
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1200);
+        expect(fs.readFileSync(protectedFile, 'utf8')).toBe('unchanged');
+        if (fs.existsSync(pidFile)) { const pid = Number(fs.readFileSync(pidFile, 'utf8')); expect(() => process.kill(pid, 0)).toThrow(); }
       }
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
   }, 12000);
