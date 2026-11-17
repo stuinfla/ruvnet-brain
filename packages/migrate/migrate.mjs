@@ -41,6 +41,35 @@ export function home5(env, d) {
   return { home, real: path.join(path.dirname(d.real), L.v5HomeName) };
 }
 
+/** The real path of p, resolving its nearest existing ancestor when p itself does not exist yet. */
+function realish(p) {
+  const rest = [];
+  let cur = path.resolve(p);
+  for (;;) {
+    try {
+      return path.join(fs.realpathSync.native(cur), ...rest.reverse());
+    } catch {
+      const up = path.dirname(cur);
+      if (up === cur) return path.resolve(p);
+      rest.push(path.basename(cur));
+      cur = up;
+    }
+  }
+}
+
+/**
+ * Refuses a version 5 home that is the 4.7 home, inside it, or around it, by real path (review F07):
+ * every version 5 write (migration record, settings, brake, install) would then change 4.7's files.
+ */
+export function refuseOverlap(home, d) {
+  const norm = (x) => (process.platform === 'win32' ? x.toLowerCase() : x);
+  const a = norm(realish(home));
+  const inside = (x, y) => x === y || x.startsWith(y.endsWith(path.sep) ? y : y + path.sep);
+  for (const old of [d.home, d.real].filter(Boolean).map((x) => norm(realish(x)))) {
+    if (inside(a, old) || inside(old, a)) throw new Refused(`the version 5 home ${home} is the 4.7 home ${d.home} or overlaps it; version 5 never writes into 4.7's folder. Set ${HOME_ENV} to a separate folder`);
+  }
+}
+
 const mb = (n) => `${(n / 1e6).toFixed(1)} MB`;
 
 export function planLines(d, h5, { from, register }) {
@@ -85,6 +114,8 @@ async function apply({ env, from, register, log }) {
   if (!from) throw new Refused('give the version 5 release to install: --from <release folder or https address>');
   const h5 = home5(env, d);
   const home = h5.home;
+  refuseOverlap(h5.real ?? home, d);
+  refuseOverlap(home, d);
   if (readJson(brakeFile(home), null)?.on && !readJson(brakeFile(home), null)?.carried) {
     throw new Refused('the brake is on (ruvnet-brain rollback-to-4 was run); release it first with: ruvnet-brain rollback-to-4 --undo');
   }
@@ -145,6 +176,7 @@ export async function main(cmd, args, { env = process.env, log = console.log, er
     if (cmd === 'rollback-to-4') {
       const d = detect47(env);
       const home = home5(env, d.found ? d : null).home;
+      if (d.found) refuseOverlap(home, d);
       if (args.includes('--undo')) await brakeOff({ home, log });
       else await brakeOn({ home, env, log });
       return 0;

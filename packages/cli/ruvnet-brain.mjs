@@ -2,7 +2,6 @@
 // ruvnet-brain install | update | doctor | status | uninstall | clean | config
 // The 4.7 spellings (--update, --doctor, --uninstall, --clean, --status) are accepted as the same
 // verbs. Run with no source and no terminal (as 4.7 sessions do unattended), update asks nothing.
-import fs from 'node:fs';
 import path from 'node:path';
 import { MIN_NODE } from '../contract/constants.mjs';
 import { brainHome, paths, readConfig, readJson, readPointer, writeJsonAtomic } from '../contract/home.mjs';
@@ -11,6 +10,7 @@ import { doctor } from '../health/doctor.mjs';
 import { afterInstall, hostPlan, HOSTS_FLAG, SHIM_PLAN, unregisterRecorded } from './hosts.mjs';
 import { clean, install, printPlan, Refused } from './install.mjs';
 import { isUrl } from './source.mjs';
+import { redactUrl } from './redact.mjs';
 import { uninstall } from './uninstall.mjs';
 
 const USAGE = `usage:
@@ -96,9 +96,11 @@ function config() {
       return;
     }
     set('updateUrl', args[1] === 'none' ? null : args[1]);
-    console.log(`update source ${args[1]}`);
+    console.log(`update source ${args[1] === 'none' ? 'none' : redactUrl(args[1])}`);
   } else if (args[0] === 'show') {
-    console.log(JSON.stringify(readConfig(home), null, 2));
+    const shown = readConfig(home);
+    if (shown.updateUrl) shown.updateUrl = redactUrl(shown.updateUrl);
+    console.log(JSON.stringify(shown, null, 2));
   } else {
     console.error(USAGE);
     process.exitCode = 2;
@@ -130,14 +132,8 @@ switch (cmd) {
     }
     break;
   case 'uninstall': {
-    try {
-      if (fs.existsSync(home)) await unregisterRecorded(home, (m) => console.log(m));
-    } catch (e) {
-      console.error(`uninstall refused: the host entries could not be removed (${e.message}); nothing was removed`);
-      process.exitCode = 1;
-      break;
-    }
-    const r = uninstall(home, { purgePrivate: args.includes('--purge-private') });
+    const log = (m) => console.log(m);
+    const r = await uninstall(home, { purgePrivate: args.includes('--purge-private'), out: log, unregister: () => unregisterRecorded(home, log) });
     if (r.left.length) process.exitCode = 1;
     break;
   }

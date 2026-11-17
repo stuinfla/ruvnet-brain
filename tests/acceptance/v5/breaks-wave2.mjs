@@ -166,7 +166,14 @@ export function addWave2Breaks(BREAKS) {
     },
     'wp9-01-unguarded': {
       test: 'wp9-01', what: 'the 4.7 home is read without the test guard',
-      patches: [{ file: 'packages/migrate/detect.mjs', find: '  refuseProtected([h.home, h.real], env);\n', replace: '' }],
+      patches: [
+        { file: 'packages/migrate/detect.mjs', find: '  refuseProtected([h.home, h.real], env);\n', replace: '' },
+        // the host-file, job-file and switch-folder guards added for review F06 also refuse a fixture under the
+        // protected user folder; the break removes every guard in detect.mjs
+        { file: 'packages/migrate/detect.mjs', find: "  refuseProtected([plugins, path.join(claude, 'settings.json'), path.join(codex, 'config.toml')], env);\n", replace: '' },
+        { file: 'packages/migrate/detect.mjs', find: '  refuseProtected([plist], env);\n', replace: '' },
+        { file: 'packages/migrate/detect.mjs', find: '  refuseProtected([stateDir], env);\n', replace: '' },
+      ],
       expect: /a test run must refuse a 4\.7 home under a protected folder/,
     },
     'wp9-02-no-unregister': {

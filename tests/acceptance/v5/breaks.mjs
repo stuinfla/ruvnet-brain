@@ -7,6 +7,7 @@ import { addWorkPackageBreaks } from './breaks-wp.mjs';
 import { addWave2Breaks } from './breaks-wave2.mjs';
 import { addWave3Breaks } from './breaks-wave3.mjs';
 import { addWave4Breaks } from './breaks-wave4.mjs';
+import { addReviewBreaks } from './breaks-review.mjs';
 
 // The wp1-no-question-strings break plants one development question's wording in the engine. The
 // wording is read from the question set outside the repository when the break is applied (that test
@@ -323,7 +324,7 @@ Object.assign(BREAKS, {
   },
   'wp4-04': {
     test: 'wp4-04', what: 'the disk-space check is removed',
-    patches: [{ file: 'packages/cli/install.mjs', find: 'if (first.free !== null && first.need + HEADROOM > first.free) {', replace: 'if (false) {' }],
+    patches: [{ file: 'packages/cli/install.mjs', find: '  if (plan.free === null || plan.need + HEADROOM <= plan.free) return;', replace: '  return;' }],
     expect: /the refusal must name the shortfall/,
   },
   'wp4-05': {
@@ -363,6 +364,8 @@ Object.assign(BREAKS, {
     patches: [
       { file: 'packages/cli/node-pick.mjs', find: '.filter((d) => d && path.isAbsolute(d))', replace: '.filter(() => true)' },
       { file: 'packages/cli/node-pick.mjs', find: "cwd: os.tmpdir(), windowsHide: true", replace: 'windowsHide: true' },
+      // and the project check added for review F02, a third guard against the same planted program
+      { file: 'packages/cli/node-pick.mjs', find: '    if (!outsideProject(c, env, cwd)) {', replace: '    if (false) {' },
     ],
     expect: /planted in the session folder ran/,
   },
@@ -384,6 +387,7 @@ addWorkPackageBreaks(BREAKS);
 addWave2Breaks(BREAKS);
 addWave3Breaks(BREAKS); // wave 3 integration (breaks-wave3.mjs)
 addWave4Breaks(BREAKS); // wave 4: the L+ layered store (breaks-wave4.mjs)
+addReviewBreaks(BREAKS); // review fixes (breaks-review.mjs, docs/REVIEW-FIXES.md)
 
 // wp8 ── work package 8 (answer gate) breaks. Each removes one refusal from packages/release/gate/.
 const R = 'packages/release/gate/retrieval.mjs';

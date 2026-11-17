@@ -19,6 +19,11 @@ function one(s, now, staleAfterMs) {
     const why = s.probe.error ? `pack failed its self-test (${s.probe.error})` : 'pack failed its self-test';
     return make('down', s.probe.failingSince ?? s.probe.at, why, 'ruvnet-brain install --repair');
   }
+  // OK needs a completed run: a real time and every result passed (review F14).
+  const r = s.probe.results;
+  if (!Number.isFinite(s.probe.at) || !Array.isArray(r) || !r.length || r.some((x) => x?.pass !== true)) {
+    return make('unknown', s.startedAt, 'the self-test record does not show a completed run', DOCTOR);
+  }
   const off = (s.lanes || []).filter((l) => !l.available);
   if (off.length) return make('degraded', s.probe.at, `lane ${off.map((l) => l.name).join(', ')} unavailable`, DOCTOR);
   if (s.lastSearch && !s.lastSearch.ok) {

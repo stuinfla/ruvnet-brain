@@ -9,14 +9,15 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { check } from '../contract/validate.mjs';
 import { trustedPublicKey, verify } from '../contract/signature.mjs';
-import { paths, readConfig, readJson, writeJsonAtomic } from '../contract/home.mjs';
+import { paths, readConfig, writeJsonAtomic } from '../contract/home.mjs';
 import { HOME_ENV, SHIM_VERSION } from '../contract/constants.mjs';
 import { assess } from '../health/assess.mjs';
 import { readEvidence } from '../health/status.mjs';
 import { startServer } from './mcp-client.mjs';
 import { Refused, copyVerified, matches, openSource, within } from './source.mjs';
-import { acquire, newJournal, prune, pruneTargets, recover, rel, saveJournal, txnPaths, undo } from './txn.mjs';
+import { acquire, newJournal, prune, pruneTargets, recordUpdateUrl, recover, rel, saveJournal, txnPaths, undo } from './txn.mjs';
 import { freeBytes, HEADROOM } from './disk.mjs';
+import { redactUrl } from './redact.mjs';
 
 export { Refused };
 
@@ -131,7 +132,7 @@ export function printPlan(plan, src, out = console.log, hostFiles = []) {
   const r = plan.release;
   const mb = (n) => `${(n / 1e6).toFixed(1)} MB`;
   out(`plan: ${plan.cur ? 'update' : 'install'} to release ${r.releaseNumber}: app ${plan.to.app} (${r.app.files.length} files), pack ${plan.to.pack} (${r.pack.files.length} files)`);
-  out(`source: ${src.where} (${src.kind === 'web' ? `downloads ${mb(plan.need)}` : `copies ${mb(plan.need)}`})`);
+  out(`source: ${redactUrl(src.where)} (${src.kind === 'web' ? `downloads ${mb(plan.need)}` : `copies ${mb(plan.need)}`})`);
   out(`disk: needs ${mb(plan.need + HEADROOM)} including ${mb(HEADROOM)} headroom; ${plan.free === null ? 'free space unknown' : `${mb(plan.free)} free`}`);
   out(`brain home: ${plan.home}`);
   out('will write:');
@@ -155,6 +156,14 @@ function guard(plan) {
   };
 }
 
+const isLink = (p) => {
+  try {
+    return fs.lstatSync(p).isSymbolicLink();
+  } catch {
+    return false;
+  }
+};
+
 function step(j, name, phase) {
   j.step = name;
   if (phase) j.phase = phase;
@@ -173,6 +182,9 @@ async function stageDir(src, s, j, ok) {
   }
   const partial = `${s.dest}.partial`;
   step(j, `${s.part}-staging`);
+  // A staging folder that is a link (to anywhere) is removed as a link before anything reads or
+  // writes through it (review F06); links inside it are removed by the sweep or refused by copyVerified.
+  if (isLink(partial)) fs.unlinkSync(partial);
   const listed = new Set(s.files.map((f) => within(partial, f.path)));
   (function sweep(d) {
     let ents = [];
@@ -187,13 +199,19 @@ async function stageDir(src, s, j, ok) {
   })(partial);
   let first = true;
   for (const f of s.files) {
-    await copyVerified(src, s.part, f, ok(within(partial, f.path)), s.what);
+    await copyVerified(src, s.part, f, ok(within(partial, f.path)), s.what, { root: partial });
     if (first) step(j, `${s.part}-first-file`);
     first = false;
   }
   j.created.push(rel(home, s.dest));
   step(j, `${s.part}-rename`);
   fs.renameSync(partial, s.dest);
+}
+
+function enoughDisk(plan) {
+  if (plan.free === null || plan.need + HEADROOM <= plan.free) return;
+  const short = plan.need + HEADROOM - plan.free;
+  throw new Refused(`not enough free disk: this needs ${plan.need + HEADROOM} bytes (${(plan.need / 1e9).toFixed(2)} GB plus headroom) and ${plan.free} bytes are free; short by ${short} bytes (${(short / 1e9).toFixed(2)} GB). Nothing was written`);
 }
 
 /**
@@ -205,16 +223,17 @@ export async function install({ home, from, planOnly = false, log = () => {} }) 
   const release = await readRelease(src);
   const first = await makePlan(home, release, src);
   if (planOnly) return { plan: first, src };
-  if (first.free !== null && first.need + HEADROOM > first.free) {
-    const short = first.need + HEADROOM - first.free;
-    throw new Refused(`not enough free disk: this needs ${first.need + HEADROOM} bytes (${(first.need / 1e9).toFixed(2)} GB plus headroom) and ${first.free} bytes are free; short by ${short} bytes (${(short / 1e9).toFixed(2)} GB). Nothing was written`);
-  }
+  enoughDisk(first);
   const p = paths(home);
   const release_ = acquire(home);
   try {
     const did = recover(home);
     if (did) log(did);
-    const plan = did ? await makePlan(home, release, src) : first;
+    // Every decision that depends on the home (release order, previous generation, which files are
+    // fresh, the update address) is made again here, under the lock (review F10): another install may
+    // have finished between the first plan and taking the lock.
+    const plan = await makePlan(home, release, src);
+    if (plan.need > first.need) enoughDisk(plan);
     const ok = guard(plan);
     const curRaw = fs.existsSync(p.current) ? fs.readFileSync(p.current) : null;
     const cur = plan.cur;
@@ -263,9 +282,12 @@ export async function install({ home, from, planOnly = false, log = () => {} }) 
     }
     j.next = next;
     j.record = { result: 'installed', rolledBack: false, at: Date.now(), from: cur && { app: cur.app, pack: cur.pack }, to };
+    // Everything the committed transaction still writes is in the journal, so recovery can finish it.
+    j.updateUrl = plan.recordSource;
     step(j, 'commit', 'committed');
     writeJsonAtomic(ok(p.update), j.record);
-    if (plan.recordSource) writeJsonAtomic(ok(p.config), { ...readJson(p.config, {}), updateUrl: plan.recordSource });
+    step(j, 'record-config');
+    recordUpdateUrl(home, j.updateUrl);
     step(j, 'prune');
     prune(home, next);
     step(j, 'done');

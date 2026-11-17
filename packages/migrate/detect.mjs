@@ -87,6 +87,8 @@ function hostEntries(env) {
   const codex = env.CODEX_HOME || path.join(user, '.codex');
   const out = [];
   const plugins = path.join(claude, ...L.claudeInstalledPlugins);
+  // Every host file read here gets the same test guard as the 4.7 home (review F06).
+  refuseProtected([plugins, path.join(claude, 'settings.json'), path.join(codex, 'config.toml')], env);
   if (json(plugins)?.plugins?.[L.claudePluginKey]) out.push({ host: 'Claude Code', file: plugins, what: `plug-in ${L.claudePluginKey}` });
   const settings = path.join(claude, 'settings.json');
   if (json(settings)?.enabledPlugins?.[L.claudePluginKey]) out.push({ host: 'Claude Code', file: settings, what: `enabledPlugins ${L.claudePluginKey}` });
@@ -98,6 +100,7 @@ function hostEntries(env) {
 function nightlyJobs(env, real) {
   const out = [];
   const plist = path.join(userHome(env), ...L.launchAgentsDir, `${L.nightlyLabel}.plist`);
+  refuseProtected([plist], env);
   if (fs.existsSync(plist)) out.push({ kind: 'launchd', path: plist });
   const sched = path.join(real, L.schedulerDir);
   for (const f of isDir(sched) ? fs.readdirSync(sched).sort() : []) if (f.includes(L.nightlyLabel)) out.push({ kind: 'registration record', path: path.join(sched, f) });
@@ -114,6 +117,7 @@ export function detect47(env = process.env) {
   const version = L.versionFiles.map((f) => text(path.join(h.real, f))?.trim()).find(Boolean) ?? 'unknown';
   const pref = text(path.join(h.real, L.autoUpdatePrefFile))?.trim().toLowerCase() ?? null;
   const stateDir = env[L.stateDirEnv] ? path.resolve(env[L.stateDirEnv]) : path.join(userHome(env), ...L.stateDirDefault);
+  refuseProtected([stateDir], env);
   const priv = privateStores(kb);
   return {
     found: true,

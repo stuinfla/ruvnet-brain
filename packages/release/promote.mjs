@@ -3,14 +3,15 @@
 // channel is a cutover item (see the workflow headers): no publisher for it exists in this package.
 //
 // Promotion is refused unless: the staged bytes still match the signature (re-hashed now); the
-// version is the version source's; every required operating system has an ok install-and-probe
-// receipt for exactly these bytes; and the answer gate's result for exactly these bytes passed.
+// version is the version source's; every required operating system has a complete, passing
+// install-and-probe receipt for exactly these bytes; and the answer gate's result for exactly these
+// bytes passed by the pinned set's rule, recomputed here (evidence.mjs; review F01).
 // Promotion moves two pointers, packages then release; if anything fails part-way, both are put back.
 import fs from 'node:fs';
 import path from 'node:path';
 import { writeJsonAtomic } from '../contract/home.mjs';
-import { problems } from '../contract/validate.mjs';
-import { RAIL, Refused, checkVersion, tagFor, verifyStaged } from './checks.mjs';
+import { Refused, checkVersion, tagFor, verifyStaged } from './checks.mjs';
+import { checkGate, checkReceipts, stagedProbes } from './evidence.mjs';
 
 const POINTERS = { packages: 'packages.json', release: 'latest.json' };
 
@@ -53,33 +54,14 @@ export function stage({ releaseDir, channel, publicKeyPem }) {
   return tag;
 }
 
-/** Refuses unless the gate result passed for exactly this release and pack. */
-export function checkGate(gate, sha256, release) {
-  if (!gate) throw new Refused('the release has no answer-gate result; nothing is promoted without the gate');
-  if (gate.schema !== 'ruvnet-brain/gate-result' || gate.version !== 1) throw new Refused('the answer-gate result is not a gate-result file this rail understands');
-  if (gate.release !== sha256 || gate.pack !== release.pack.generation) throw new Refused('the answer-gate result is for different bytes than the staged release');
-  if (!(Number.isInteger(gate.score?.of) && gate.score.of > 0 && Number.isInteger(gate.score?.hit))) throw new Refused('the answer-gate result carries no score');
-  // Anything else the contract's gate-result schema (1.1) refuses, with its first problem named.
-  const bad = problems('gate-result', gate);
-  if (bad.length) throw new Refused(`the answer-gate result is not a gate-result file this rail understands (${bad[0]})`);
-  if (gate.passed !== true) throw new Refused(`the answer gate did not pass (${gate.score.hit} of ${gate.score.of}${gate.rule ? `, rule: ${gate.rule}` : ''})`);
-}
-
-/** Refuses unless every required operating system probed exactly these bytes and was ok. */
-export function checkReceipts(receipts, sha256) {
-  for (const os of RAIL.requiredOs) {
-    const r = receipts.find((x) => x?.os === os && x.release === sha256);
-    if (!r) throw new Refused(`there is no install-and-probe receipt from ${os} for these bytes`);
-    if (r.ok !== true) throw new Refused(`the install-and-probe check failed on ${os} (${r.error ?? 'not ok'})`);
-  }
-}
+export { checkGate, checkReceipts };
 
 export function promote({ tag, channel, receipts, gate, version, publicKeyPem }) {
   const { release, sha256 } = verifyStaged(channel.stagedDir(tag), publicKeyPem);
   checkVersion({ expected: version });
   if (release.app.version !== version) throw new Refused(`the staged release is version ${release.app.version}, not ${version}`);
   if (tagFor(release) !== tag) throw new Refused(`the staged release is ${tagFor(release)}, not ${tag}`);
-  checkReceipts(receipts, sha256);
+  checkReceipts(receipts, sha256, release, stagedProbes(channel.stagedDir(tag)));
   checkGate(gate, sha256, release);
   const cur = channel.current();
   if (cur && cur.app === release.app.version && cur.pack === release.pack.generation) return { outcome: 'no-change', tag: cur.tag };

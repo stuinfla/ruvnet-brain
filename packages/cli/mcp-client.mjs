@@ -7,7 +7,23 @@ import readline from 'node:readline';
 import { pickNode } from './node-pick.mjs';
 
 export function startServer(launcher, env) {
-  const child = spawn(pickNode(env), [launcher], { env, cwd: os.tmpdir(), stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+  return connect(spawn(pickNode(env), [launcher], { env, cwd: os.tmpdir(), stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }));
+}
+
+/**
+ * Starts the server exactly as a host does: the registered launcher by its full path with `server`
+ * (`rb5 server`, or `rb5.cmd server` through cmd.exe on Windows), so the launcher's own Node choice
+ * and fallback are exercised (review F05).
+ */
+export function startLauncher(launcher, env) {
+  const win = process.platform === 'win32';
+  // cmd /s strips the first and last quote of the line, so the whole command is quoted once more
+  // (the form Node's own shell option uses on Windows).
+  const [cmd, args, extra] = win ? [env.ComSpec || process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `""${launcher}" server"`], { windowsVerbatimArguments: true }] : [launcher, ['server'], {}];
+  return connect(spawn(cmd, args, { env, cwd: os.tmpdir(), stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, ...extra }));
+}
+
+function connect(child) {
   const waiting = new Map();
   let seq = 0;
   let stderr = '';

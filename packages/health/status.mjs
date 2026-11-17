@@ -1,11 +1,28 @@
 // Per-process status files (state/status/<pid>.json) and the one evidence reader all health
 // readers use. Each server writes only its own file, by write-then-rename.
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { paths, readJson, readConfig, writeJsonAtomic } from '../contract/home.mjs';
+import { paths, readJson, readConfig } from '../contract/home.mjs';
 
+/**
+ * Writes one server's status file, only while the home is installed (review F12): with no
+ * current.json (uninstalled) it writes nothing, and it never creates the home or state/, so a server
+ * left running in an open session cannot bring an uninstalled home back. Returns whether it wrote.
+ */
 export function writeStatus(home, status) {
-  writeJsonAtomic(path.join(paths(home).status, `${status.pid}.json`), status);
+  const p = paths(home);
+  if (!fs.existsSync(p.current)) return false;
+  try {
+    fs.mkdirSync(p.status);
+  } catch (e) {
+    if (e.code !== 'EEXIST') return false;
+  }
+  const file = path.join(p.status, `${status.pid}.json`);
+  const tmp = `${file}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(status, null, 2) + '\n');
+  fs.renameSync(tmp, file);
+  return true;
 }
 
 export function removeStatus(home, pid) {
@@ -29,8 +46,9 @@ export function readStatuses(home) {
     names = fs.readdirSync(paths(home).status).filter((n) => /^\d+\.json$/.test(n));
   } catch {}
   return names
-    .map((n) => readJson(path.join(paths(home).status, n), null))
-    .filter((s) => s && Number.isInteger(s.pid))
+    .map((n) => [n, readJson(path.join(paths(home).status, n), null)])
+    .filter(([n, s]) => s && s.schema === 'ruvnet-brain/status' && s.version === 1 && Number.isInteger(s.pid) && n === `${s.pid}.json`)
+    .map(([, s]) => s)
     .map((s) => ({ ...s, alive: isAlive(s.pid) }));
 }
 

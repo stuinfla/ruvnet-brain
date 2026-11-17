@@ -56,6 +56,13 @@ test('WP6 the v5 workflows are inert, cannot skip the gate or continue on error,
     assert.doesNotMatch(r.v, /\bnpm (ci|install|i)\b|\bnpx\b|\byarn\b|\bpnpm\b|\bpip install\b|\bcurl\b|\bwget\b/, `${r.name}${r.at}: nothing is installed from the network`);
     assert.doesNotMatch(r.v, /packages\/release\/release\.mjs/, `${r.name}${r.at}: the low-level signer is never called by a workflow`);
   }
+  // Review F19: the sealed tree holds hidden files (.claude-plugin/plugin.json, .mcp.json) that its
+  // signed manifest lists; upload-artifact drops hidden files unless told not to, so every upload keeps them.
+  for (const [name, { doc }] of Object.entries(files)) {
+    for (const [id, job] of Object.entries(doc.jobs)) {
+      for (const s of job.steps ?? []) if (/actions\/upload-artifact@/.test(s.uses ?? '')) assert.equal(String(s.with?.['include-hidden-files']), 'true', `${name} job ${id}: upload ${s.with?.name} must keep hidden files (include-hidden-files: true)`);
+    }
+  }
   const count = (re) => runs.filter((r) => re.test(r.v));
   assert.deepEqual(count(/rail\.mjs seal\b/).map((r) => `${r.name}${r.at}`), ['v5-release-candidate.yml.jobs.seal.steps[3].run'], 'exactly one signing call: rail.mjs seal in the seal job');
 

@@ -1,32 +1,33 @@
 // Runs each skeleton acceptance test once as written (must pass) and once per break in breaks.mjs
-// (must fail, and with the expected failure). One test process at a time; waits while the machine is
-// saturated (CPU idle below 10% on macOS, else load average above 60).   node tests/acceptance/v5/run-breaks.mjs [s01 s05 ...]
+// (must fail, and with the expected failure). One test process at a time; waits while the machine's
+// CPU idle is below 10% (calm(), below).   node tests/acceptance/v5/run-breaks.mjs [--strict] [s01 s05 ...]
+// A break counts as red only when its expected failure is in the failing test's own report (the part
+// after "failing tests:"), not anywhere in the output (review F20). Breaks of a test file that skipped
+// entirely are not run and are counted and named; the summary never says "every break" while any were
+// skipped, and --strict (release qualification) counts each skipped break as a problem.
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { BREAKS } from './breaks.mjs';
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
-const only = process.argv.slice(2);
+const strict = process.argv.includes('--strict');
+const only = process.argv.slice(2).filter((a) => a !== '--strict');
 const files = fs.readdirSync(DIR).filter((f) => /^s\d\d-.*\.test\.mjs$/.test(f)).sort();
 
-/** CPU idle percent from `top -l 1 -n 0` (macOS), or null where top has no -l (then load average). */
+// Pauses only while the machine has under 10% CPU idle (`top -l 1 -n 0`), checked every 30 s. The load
+// average is not used: on macOS it counts waiting threads (Time Machine, Spotlight) and reads in the
+// hundreds while the CPU has room (owner's ruling, 2026-11-17). Where top gives no idle figure, it runs.
 function cpuIdle() {
-  const r = spawnSync('top', ['-l', '1', '-n', '0'], { encoding: 'utf8', timeout: 20_000 });
+  const r = spawnSync('top', ['-l', '1', '-n', '0'], { encoding: 'utf8', timeout: 15_000 });
   const m = /CPU usage:.*?([\d.]+)% idle/.exec(r.stdout ?? '');
   return m ? Number(m[1]) : null;
 }
 
-// Waits while the machine is saturated: on macOS while CPU idle is below 10% (load average there is
-// inflated by Time Machine, Spotlight and waiting threads, so a load gate can pause forever on a machine
-// with headroom); elsewhere while the 1-minute load average is above 60. Checked every 30 s.
 async function calm() {
-  for (;;) {
-    const idle = cpuIdle();
-    if (idle === null ? os.loadavg()[0] <= 60 : idle >= 10) return;
-    console.log(idle === null ? `load ${os.loadavg()[0].toFixed(1)} > 60; waiting 30 s` : `CPU idle ${idle}% < 10%; waiting 30 s`);
+  for (let idle = cpuIdle(); idle !== null && idle < 10; idle = cpuIdle()) {
+    console.log(`CPU idle ${idle.toFixed(1)}% < 10%; waiting 30 s`);
     await new Promise((r) => setTimeout(r, 30_000));
   }
 }
@@ -40,8 +41,12 @@ function run(file, brk) {
   const lines = out.split('\n');
   const err = lines.findIndex((l) => /AssertionError|^\s*Error:|\bError \[/.test(l));
   const key = err >= 0 ? lines.slice(err, err + 2).join(' ').replace(/\s+/g, ' ').trim() : (lines.find((l) => /^[✔✖]/.test(l)) ?? '').trim();
-  return { pass: r.status === 0, out, key: key.slice(0, 260) };
+  // The failing test's own report: what node:test prints after "failing tests:" (its error and stack).
+  const at = out.indexOf('failing tests:');
+  return { pass: r.status === 0, out, failure: at < 0 ? '' : out.slice(at), key: key.slice(0, 260) };
 }
+
+const skippedBreaks = [];
 
 let bad = 0;
 const rows = [];
@@ -56,7 +61,7 @@ for (const file of files) {
   for (const [name, b] of Object.entries(BREAKS).filter(([, b]) => b.test === id)) {
     await calm();
     const r = run(file, name);
-    const red = !r.pass && b.expect.test(r.out);
+    const red = !r.pass && b.expect.test(r.failure);
     if (!red) bad++;
     rows.push(`${id}  break ${name} (${b.what}): ${red ? 'RED as expected' : r.pass ? 'STILL GREEN' : 'red for another reason'}  ${r.key}`);
     console.log(rows.at(-1));
@@ -75,16 +80,23 @@ for (const file of fs.readdirSync(DIR).filter((f) => /^(wp\d+|wave\d+)-.*\.test\
   if (!g.pass) bad++;
   rows.push(`${id}  green: ${g.pass ? (skipped ? 'PASS with SKIPPED parts (see the test\'s skip reason)' : 'PASS') : 'FAIL'}  ${g.key}`);
   console.log(rows.at(-1));
-  if (skipped && /^ℹ pass 0$/m.test(g.out)) continue;
+  if (skipped && /^ℹ pass 0$/m.test(g.out)) {
+    const names = Object.entries(BREAKS).filter(([, x]) => x.test === id || id.startsWith(`${x.test}-`)).map(([n]) => n);
+    skippedBreaks.push(...names.map((n) => `${n} (${id} skipped)`));
+    if (names.length) console.log(`${id}  ${names.length} break(s) NOT RUN: the test skipped entirely`);
+    continue;
+  }
   for (const [name, b] of Object.entries(BREAKS).filter(([, x]) => x.test === id || id.startsWith(`${x.test}-`))) {
     await calm();
     const r = run(file, name);
-    const red = !r.pass && b.expect.test(r.out);
+    const red = !r.pass && b.expect.test(r.failure);
     if (!red) bad++;
     rows.push(`${id}  break ${name} (${b.what}): ${red ? 'RED as expected' : r.pass ? 'STILL GREEN' : 'red for another reason'}  ${r.key}`);
     console.log(rows.at(-1));
   }
 }
 // end of the work-package loop
-console.log(`\n${bad ? `${bad} problem(s)` : 'every test passes and every break turns its test red'}`);
+if (strict) bad += skippedBreaks.length;
+const notRun = skippedBreaks.length ? `; ${skippedBreaks.length} break(s) NOT RUN because their test skipped: ${skippedBreaks.join(', ')}` : '';
+console.log(`\n${bad ? `${bad} problem(s)${notRun}` : skippedBreaks.length ? `every test that ran passes and every break that ran turns its test red${notRun}` : 'every test passes and every break turns its test red'}`);
 process.exitCode = bad ? 1 : 0;

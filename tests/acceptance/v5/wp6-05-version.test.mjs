@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { THREE, setup } from './helpers.mjs';
-import { REQUIRED_OS, appVersion, gateFor, rail, sealed, sha256File, writeJson } from './wp6-helpers.mjs';
+import { appVersion, gateFor, rail, sealed, writeJson, writeReceipts } from './wp6-helpers.mjs';
 
 test('WP6 a version that does not match the version source is refused', { timeout: 240_000 }, async (t) => {
   const ctx = setup(t, 'wp6-05');
@@ -34,7 +34,7 @@ test('WP6 a version that does not match the version source is refused', { timeou
   const tag = st.stdout.match(/staged (\S+)/)[1];
   const staged = path.join(channel, 'staged', tag);
   const receipts = ctx.tmp('rb5-wp6-rc-');
-  for (const os of REQUIRED_OS) writeJson(path.join(receipts, `${os}.json`), { os, release: sha256File(path.join(staged, 'release.json')), ok: true });
+  writeReceipts(receipts, staged);
   const gate = path.join(ctx.tmp('rb5-wp6-gate-'), 'gate.json');
   writeJson(gate, gateFor(staged));
   const p = rail(tree, ['promote', '--channel', channel, '--tag', tag, '--version', '9.9.9', '--receipts', receipts, '--gate', gate]);

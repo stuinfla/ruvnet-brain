@@ -59,11 +59,21 @@ export const pointerOf = (home) => {
   }
 };
 
-/** The layout of a home that matters for "the same state": every app and pack file, the pointer. */
-export const layout = (home) => ({
-  files: Object.keys(snapshot(home, { skip: (r) => r === 'state' })).sort(),
-  pointer: pointerOf(home),
-});
+/**
+ * The layout of a home that matters for "the same state": every app, pack and shim file with its
+ * content hash (app and pack), the pointer, and the configuration in state/config.json (review F20: names alone, and
+ * no state, could not see a changed byte or a lost setting).
+ */
+export const layout = (home) => {
+  let config = null;
+  try {
+    config = JSON.parse(fs.readFileSync(path.join(home, 'state', 'config.json'), 'utf8'));
+  } catch {}
+  // App and pack bytes come from the signed release, so they must match byte for byte; current.json
+  // (its switch time) and the shim (which names its own home) are compared by name and pointer fields.
+  const files = Object.fromEntries(Object.entries(snapshot(home, { skip: (r) => r === 'state' })).map(([k, v]) => [k, /^(app|packs)\//.test(k) ? v : 'present']));
+  return { files, pointer: pointerOf(home), config };
+};
 
 /** A static file server for a release folder (or a function naming it), with HTTP ranges, that records every request. */
 export async function serveRelease(dir, { onRequest } = {}) {

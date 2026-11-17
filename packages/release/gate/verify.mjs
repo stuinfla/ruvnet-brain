@@ -7,6 +7,20 @@ import { canonical, canonicalSha } from './question-set.mjs';
 
 const DAY = 86_400_000;
 
+/** Recomputes the calibration decision from its counts and the frozen set (review F16); null when it holds. */
+function calibrationProblem(cal, set) {
+  const items = Array.isArray(set.calibration) ? set.calibration : [];
+  const min = set.manifest.layer2.calibration?.minWithinOne;
+  const ints = ['n', 'withinOne', 'planted', 'plantedCapped'].every((k) => Number.isInteger(cal[k]) && cal[k] >= 0);
+  if (!ints) return 'its counts are not whole numbers';
+  if (cal.n !== items.length) return `it counts ${cal.n} calibration items; the set has ${items.length}`;
+  if (cal.planted !== items.filter((x) => x.planted).length) return `it counts ${cal.planted} planted answers; the set has ${items.filter((x) => x.planted).length}`;
+  if (cal.minWithinOne !== min) return `it used a minimum of ${cal.minWithinOne}; the set requires ${min}`;
+  if (cal.withinOne > cal.n || cal.withinOne < min) return `${cal.withinOne} of ${cal.n} within one point is below ${min}`;
+  if (cal.plantedCapped !== cal.planted) return `${cal.plantedCapped} of ${cal.planted} planted answers capped`;
+  return null;
+}
+
 /**
  * Returns { given, bound, met, problems, shortfalls, summary }. `bound` is true only when the file is a
  * well-formed result for exactly this release, pack and question set, written by two different
@@ -26,6 +40,7 @@ export function verifyAnswer(file, { sha256, generation, set, now = Date.now() }
   if (c.questionSet?.sha256 !== set.sha256) problems.push(`it was measured on question set ${c.questionSet?.sha256 ?? 'none'}, not ${set.sha256}`);
   if (!c.calibration || typeof c.calibration !== 'object') problems.push('it carries no judge calibration record');
   else if (c.calibration.passed !== true) problems.push(`its judge did not pass calibration (${c.calibration.withinOne} of ${c.calibration.n} within one point; ${c.calibration.plantedCapped} of ${c.calibration.planted} planted answers capped)`);
+  else if (calibrationProblem(c.calibration, set)) problems.push(`its calibration record does not support "passed" (${calibrationProblem(c.calibration, set)})`);
   const roles = c.roles;
   if (!Array.isArray(roles?.answer) || !Array.isArray(roles?.judge)) problems.push('it does not record which command answered and which judged');
   else if (canonical(roles.answer) === canonical(roles.judge)) problems.push('the same command answered and judged');
@@ -41,6 +56,7 @@ export function verifyAnswer(file, { sha256, generation, set, now = Date.now() }
   if (!problems.length) {
     const ids = set.questions.map((q) => q.id).join('\n');
     if (qs.map((q) => q.id).join('\n') !== ids || !qs.every((q) => Array.isArray(q.scores) && q.scores.length === c.runs)) problems.push('its per-question scores do not cover every question of the set in every run');
+    else if (qs.some((q, i) => q.group !== set.questions[i].group)) problems.push('its questions are not in the groups the frozen set gives them');
     else if (canonical(ownersMeasure(qs, l2, set.sha256)) !== canonical({ groups: c.groups, overall: c.overall })) problems.push("its owner's measure does not follow from its own scores");
   }
   if (!problems.length) {

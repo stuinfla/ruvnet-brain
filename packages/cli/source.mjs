@@ -82,8 +82,10 @@ async function hashPrefix(file, hash) {
  * match the signed size and hash (the partial file is removed), or a plain Error when the source
  * could not deliver them after several attempts (the partial file is kept, to resume later).
  */
-export async function copyVerified(src, part, f, dest, what, { onBytes } = {}) {
+export async function copyVerified(src, part, f, dest, what, { onBytes, root = null } = {}) {
+  if (root) unlinked(root, dest);
   await fs.promises.mkdir(path.dirname(dest), { recursive: true });
+  if (root) unlinked(root, dest);
   let have = 0;
   try {
     have = (await fs.promises.stat(dest)).size;
@@ -125,6 +127,30 @@ export async function copyVerified(src, part, f, dest, what, { onBytes } = {}) {
   if (lastError && have < f.size) throw new Error(`${what} file ${f.path} could not be fetched from ${src.where} (${lastError.cause?.code ?? lastError.message}); run the same command again to resume`);
   if (have !== f.size || hash.digest('hex') !== f.sha256) {
     throw await drop(dest, new Refused(`${what} file ${f.path} does not match the signed release (missing, changed or damaged)`));
+  }
+}
+
+/**
+ * Staging never writes through a link (review F06): a link at `dest`, left by anything, is removed
+ * (the link, never what it points at), and a link anywhere from `root` down to dest's folder is
+ * refused, so no write can land outside the staging folder.
+ */
+export function unlinked(root, dest) {
+  const rel = path.relative(root, dest);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) throw new Refused(`${dest} is outside the staging folder ${root}`);
+  const parts = rel.split(path.sep);
+  let cur = root;
+  for (let i = -1; i < parts.length; i++) {
+    if (i >= 0) cur = path.join(cur, parts[i]);
+    let st;
+    try {
+      st = fs.lstatSync(cur);
+    } catch {
+      return;
+    }
+    if (!st.isSymbolicLink()) continue;
+    if (i === parts.length - 1) fs.unlinkSync(cur);
+    else throw new Refused(`${cur} is a link; the installer never writes through a link`);
   }
 }
 

@@ -42,7 +42,9 @@ Every state the one verdict can produce, from `packages/health/assess.mjs` (`FIX
 | pending | UNKNOWN | `wait one minute` | `[RuvNet Brain UNKNOWN · the self-test has not finished yet · fix: wait one minute]` |
 | probe-failed | DOWN | `ruvnet-brain install --repair` | `[RuvNet Brain DOWN · pack failed its self-test (a probe did not find its file) · fix: ruvnet-brain install --repair]` |
 | no-probes | UNKNOWN | `ruvnet-brain install --repair` | `[RuvNet Brain UNKNOWN · the self-test ran no probes · fix: ruvnet-brain install --repair]` |
+| incomplete | UNKNOWN | `restart the session` | `[RuvNet Brain UNKNOWN · the self-test record is incomplete (no valid time, or a result that did not pass) · fix: restart the session]` |
 | overdue | UNKNOWN | `restart the session` | `[RuvNet Brain UNKNOWN · the self-test has not run for 2 h · fix: restart the session]` |
+| generation | UNKNOWN | `restart the session` | `[RuvNet Brain UNKNOWN · the server is on app 5.0.0 pack g1, neither the installed app 5.0.1 nor the one kept before it · fix: restart the session]` |
 | lane | DEGRADED | `ruvnet-brain install --repair` | `[RuvNet Brain DEGRADED · lane history unavailable · fix: ruvnet-brain install --repair]` |
 | safe-mode | DEGRADED | `restart the session` | `[RuvNet Brain DEGRADED · last search used keyword-only safe mode (the deadline passed) · fix: restart the session]` |
 | rolled-back | DEGRADED | `ruvnet-brain doctor` | `[RuvNet Brain DEGRADED · update to 5.0.2 failed its check after the switch and was rolled back · fix: ruvnet-brain doctor]` |

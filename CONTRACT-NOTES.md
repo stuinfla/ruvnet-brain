@@ -1,4 +1,4 @@
-Updated: 2026-11-17 06:49:52 EST | Version 1.3.0
+Updated: 2026-11-17 15:20:53 EST | Version 1.3.1
 Created: 2026-11-17 01:30:00 EST
 
 # Version 5 walking skeleton: contract notes
@@ -248,7 +248,8 @@ for line keeps its range and says how much was trimmed (`wave2-delivery`).
 after every committed install, and register hosts only with `--register-hosts`; the files registered are
 recorded in `state/hosts.json`, and `uninstall` removes exactly those entries, then the shim. `--plan`
 lists `shim/**` (and `state/hosts.json` plus each host file when the flag is given). The automatic
-update inside the server installs without refreshing the shim (the launcher path does not change).
+update inside the server refreshes the shim too (review F11, `cli/update-worker.mjs`); a shim that cannot be
+refreshed then leaves the previous one in place and says so in `state/update-check.json`.
 
 **Test guard.** Every harness imports `test-env.mjs` first: HOME, CLAUDE_CONFIG_DIR, CODEX_HOME,
 RUVNET_BRAIN5_HOME and the XDG folders point at a temporary folder, and `RUVNET_BRAIN5_TEST=1`. Under
