@@ -18,6 +18,8 @@ function folder(p) {
 /** The path check: a plain repo/path, and a private pack only from one of its listed projects. */
 function outside(ref) {
   if (typeof ref !== 'string' || !ref || ref.length > 1024) return 'ref must be "repo/path" or "repo/path#L10-80"';
+  // A control character is refused and never echoed as it is, so a ref cannot add a line to the answer (review F18).
+  if (/[\u0000-\u001f\u007f\u2028\u2029]/.test(ref)) return `${JSON.stringify(ref).replace(/[\u2028\u2029]/g, '?')} is not a path inside the pack`;
   if (/[\0\\]/.test(ref) || /^([a-zA-Z]:|\/|~)/.test(ref)) return `${ref} is not a path inside the pack`;
   const segs = ref.split('#')[0].split('/');
   if (segs.length < 2 || segs.some((s) => !s || s === '.' || s === '..')) return `${ref} is not a path inside the pack`;
