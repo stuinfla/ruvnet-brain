@@ -281,7 +281,7 @@ const checks = [
       if (!/tests\/acceptance\/v5\/\*\.test\.mjs/.test(scripts['test:v5'] || '')) hits.push('package.json test:v5 does not run tests/acceptance/v5/*.test.mjs');
       if (!/npm run test:v5\b/.test(scripts.test || '')) hits.push('package.json test does not chain npm run test:v5');
       if (!/script:\s*'test:v5'/.test(read('scripts/release-prepush-checks.mjs'))) hits.push('release:prepush has no test:v5 gate');
-      const odd = files.filter((f) => !/^(s\d\d|wp\d+|wave\d+)-/.test(f));
+      const odd = files.filter((f) => !/^(s\d\d|wp\d+|wave\d+|integ)-/.test(f)); // the groups run-breaks.mjs scans
       if (odd.length) hits.push(`not picked up by run-breaks.mjs: ${odd.join(', ')}`);
       return hits.length ? none(hits) : { ok: true, detail: `${files.length} v5 test file(s) wired` };
     } },

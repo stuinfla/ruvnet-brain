@@ -5,24 +5,50 @@ name: v5-pack-build
 # release/5.* branch). There is no schedule trigger. Nothing here touches the 4.7 rail.
 #
 # One job: build a pack from recipe/RECIPE.json with the version 5 builder and upload it as the
-# artifact v5-pack. No secret, no write permission. Until the builder's CI fetch exists (work
-# package 5), the default sources are the committed fixture repositories, so a run proves the
-# machinery, not the corpus.
+# artifact v5-pack. No secret, no write permission.
+# corpus: pinned (default) fetches the 22 repositories of recipe/CORPUS.json at their pinned commits
+#   (packages/builder/fetch-corpus.mjs) and adds the gists; the gists passage file is gitignored, so
+#   until the owner decides how CI gets it (docs/F04-DECISIONS.md G1) a pinned build stops at that
+#   step unless gists is set to omit. corpus: fixtures builds the committed fixture repositories
+#   named in `sources`, which proves the machinery, not the corpus.
+# Measured (docs/PORT-NOTES.md, third job): full corpus 609 s on the owner's Mac, peak 1.56 GB at the
+# default heap, pack about 2.1 GB. A GitHub runner time is not measured yet, so the limit is 90
+# minutes. Node stays pinned: layered.db bytes depend on the zlib Node bundles.
 #
 # Actions are pinned to exact commits. The commits were copied from other local repositories'
 # workflows (no network was used to write this file); re-check them against GitHub at cutover.
 on:
   workflow_dispatch:
     inputs:
+      corpus:
+        description: pinned (recipe/CORPUS.json at its pins, plus gists) or fixtures (the folders in sources)
+        required: false
+        type: string
+        default: pinned
+      gists:
+        description: required (the gists passage file must be present) or omit (build without gists)
+        required: false
+        type: string
+        default: required
       sources:
-        description: Space-separated source folders (each with its .source.json)
+        description: Space-separated source folders (each with its .source.json), for corpus fixtures
         required: false
         type: string
         default: tests/acceptance/v5/fixtures/repos/alpha-vectors tests/acceptance/v5/fixtures/repos/beta-memory tests/acceptance/v5/fixtures/repos/gamma-swarm
   workflow_call:
     inputs:
+      corpus:
+        description: pinned (recipe/CORPUS.json at its pins, plus gists) or fixtures (the folders in sources)
+        required: false
+        type: string
+        default: pinned
+      gists:
+        description: required (the gists passage file must be present) or omit (build without gists)
+        required: false
+        type: string
+        default: required
       sources:
-        description: Space-separated source folders (each with its .source.json)
+        description: Space-separated source folders (each with its .source.json), for corpus fixtures
         required: false
         type: string
         default: tests/acceptance/v5/fixtures/repos/alpha-vectors tests/acceptance/v5/fixtures/repos/beta-memory tests/acceptance/v5/fixtures/repos/gamma-swarm
@@ -35,7 +61,7 @@ jobs:
     name: build-pack
     if: github.repository == 'stuinfla/ruvnet-brain'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     permissions:
       contents: read
     steps:
@@ -45,14 +71,50 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24.22.3'
+      - name: Check the free disk (sources about 1.7 GB, pack about 2.1 GB)
+        shell: bash
+        run: |
+          set -euo pipefail
+          free=$(df -Pk "$RUNNER_TEMP" | awk 'NR==2 {print $4}')
+          echo "free in RUNNER_TEMP: $((free / 1024)) MB"
+          if [ "$free" -lt $((8 * 1024 * 1024)) ]; then echo "::error::under 8 GB free; the pinned build needs about 4 GB plus room"; exit 1; fi
+      - name: Fetch the pinned corpus
+        env:
+          CORPUS: ${{ inputs.corpus }}
+          GISTS: ${{ inputs.gists }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$CORPUS" != pinned ]; then echo "corpus $CORPUS: nothing to fetch"; exit 0; fi
+          case "$GISTS" in
+            required) g=(--gists kb/ruv-gists.passages.jsonl) ;;
+            omit) g=(--no-gists); echo "::warning::building without the gists (gists: omit)" ;;
+            *) echo "::error::gists must be required or omit"; exit 1 ;;
+          esac
+          node packages/builder/fetch-corpus.mjs --corpus recipe/CORPUS.json --into "$RUNNER_TEMP/sources" --list "$RUNNER_TEMP/sources.json" "${g[@]}"
       - name: Build the pack from the recipe of record
         env:
+          CORPUS: ${{ inputs.corpus }}
           SOURCES: ${{ inputs.sources }}
         shell: bash
         run: |
           set -euo pipefail
-          read -r -a dirs <<< "$SOURCES"
-          node packages/builder/build.mjs --recipe recipe/RECIPE.json --out "$RUNNER_TEMP/pack" "${dirs[@]}"
+          case "$CORPUS" in
+            pinned) node packages/builder/build.mjs --recipe recipe/RECIPE.json --out "$RUNNER_TEMP/pack" --sources "$RUNNER_TEMP/sources.json" ;;
+            fixtures)
+              read -r -a dirs <<< "$SOURCES"
+              node packages/builder/build.mjs --recipe recipe/RECIPE.json --out "$RUNNER_TEMP/pack" "${dirs[@]}" ;;
+            *) echo "::error::corpus must be pinned or fixtures"; exit 1 ;;
+          esac
+      - name: Check the pack size before upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          bytes=$(du -sk "$RUNNER_TEMP/pack" | awk '{print $1 * 1024}')
+          echo "pack: $((bytes / 1048576)) MB"
+          # The measured full pack is about 2.1 GB; a pack over 5 GB is a build problem, and each
+          # platform probe job downloads it onto a runner with about 14 GB free.
+          if [ "$bytes" -gt $((5 * 1024 * 1024 * 1024)) ]; then echo "::error::the pack is over 5 GB"; exit 1; fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: v5-pack

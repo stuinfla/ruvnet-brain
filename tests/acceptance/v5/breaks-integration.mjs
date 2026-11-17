@@ -14,6 +14,9 @@ export function addIntegrationBreaks(BREAKS) {
     'integ-builder-name': { test: 'integ-builder', what: 'a file name with a control character is read', patches: [p(`${B}discover.mjs`, '      if (/[\\u0000-\\u001f\\u007f]/.test(ent.name)) {', '      if (false) {')], expect: /no stored path holds a line break/ },
     'integ-builder-history-whole': { test: 'integ-builder', what: 'history items are screened for hostile text per piece only', patches: [p(`${B}history.mjs`, '    const flag = hostile(`${title}\\n${b.text}`);', '    const flag = null;')], expect: /every piece holding part of the phrase is flagged/ },
     'integ-builder-doc-whole': { test: 'integ-builder', what: 'documents are screened for hostile text per chunk only', patches: [p(`${B}extract.mjs`, ' ?? spans.find((x) => x.from <= c.end && x.to >= c.start)?.rule ?? null;', ';')], expect: /both pieces are flagged/ },
+    // The pinned corpus fetch (v5-pack-build.yml)
+    'integ-corpus-tip': { test: 'integ-corpus', what: 'the fetch takes the branch tip, not the pin', patches: [p(`${B}fetch-corpus.mjs`, "'--no-tags', s.url, s.commit], dir);", "'--no-tags', s.url, 'HEAD'], dir);"), p(`${B}fetch-corpus.mjs`, '    if (head !== s.commit) throw', '    if (false) throw')], expect: /is at its pin, not the tip/ },
+    'integ-corpus-gists': { test: 'integ-corpus', what: 'a missing gists file is listed anyway', patches: [p(`${B}fetch-corpus.mjs`, '    if (!fs.existsSync(gists)) throw', '    if (false) throw')], expect: /a missing gists file stops the fetch/ },
     // F24: the key id a signature names is the trusted key's
     'integ-contract-keyid': { test: 'integ-contract', what: 'the signature\'s key id is not compared', patches: [p('packages/contract/signature.mjs', '    if (signature.keyId !== keyId(publicKeyPem)) return false;\n', '')], expect: /a release with a foreign key id must not install/ },
   });

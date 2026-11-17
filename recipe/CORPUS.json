@@ -1,0 +1,121 @@
+{
+ "schema": "ruvnet-brain/corpus",
+ "version": 1,
+ "about": "The pinned repositories the release pack is built from (v5-pack-build.yml, corpus: pinned). Copied from the measured run's submodule pins (RVF-KnowledgeBases/ruvnet-brain-v5-mini-20261117, 2026-11-17). Changing a pin is a corpus change and is reviewed like the recipe.",
+ "sources": [
+  {
+   "repo": "FACT",
+   "url": "https://github.com/ruvnet/FACT",
+   "commit": "252d2549c9aae091eaf6595d6d6b6c2e037b8e4b"
+  },
+  {
+   "repo": "QuDAG",
+   "url": "https://github.com/ruvnet/QuDAG",
+   "commit": "b53466814554737c93f916d458783f7dff6c8acd"
+  },
+  {
+   "repo": "RuLake",
+   "url": "https://github.com/ruvnet/RuLake",
+   "commit": "4ff6804e42928b5f592ef0e01cd9dad287f7e07f"
+  },
+  {
+   "repo": "RuVector",
+   "url": "https://github.com/ruvnet/RuVector",
+   "commit": "979c31acc57b970c1a7e0771ed527c1703c137e8"
+  },
+  {
+   "repo": "RuView",
+   "url": "https://github.com/ruvnet/RuView",
+   "commit": "3bae24a1231e0d9809e84eb35edba7231b8d1913"
+  },
+  {
+   "repo": "SAFLA",
+   "url": "https://github.com/ruvnet/SAFLA",
+   "commit": "85e730fba50ca815f01b951d8c6351aa6141cbed"
+  },
+  {
+   "repo": "Synaptic-Mesh",
+   "url": "https://github.com/ruvnet/Synaptic-Mesh",
+   "commit": "188d83d9ea507bdf66cd78f0bc7a147f30b720f7"
+  },
+  {
+   "repo": "agentdb",
+   "url": "https://github.com/ruvnet/agentdb",
+   "commit": "84081e21afa383f7f0849fed96c90b177ce27c8b"
+  },
+  {
+   "repo": "agentic-flow",
+   "url": "https://github.com/ruvnet/agentic-flow",
+   "commit": "5b23c747dfd7125104ebf8daf54f6678a6203600"
+  },
+  {
+   "repo": "agentic-qe",
+   "url": "https://github.com/proffesor-for-testing/agentic-qe",
+   "commit": "232dcfe3e19694105149ac39972b2cd5548309e9"
+  },
+  {
+   "repo": "agenticow",
+   "url": "https://github.com/ruvnet/agenticow",
+   "commit": "a6467863e250371562c2e0c83f5f993459607746"
+  },
+  {
+   "repo": "daa",
+   "url": "https://github.com/ruvnet/daa",
+   "commit": "17c7b90350754c6e15f18158a3147baf54b3cdee"
+  },
+  {
+   "repo": "flow-nexus",
+   "url": "https://github.com/ruvnet/flow-nexus",
+   "commit": "7a57bcd4d87b7e2d022cac76cefc7492fcc0a99b"
+  },
+  {
+   "repo": "metaharness",
+   "url": "https://github.com/ruvnet/metaharness",
+   "commit": "1dc8f009771c763c9b37d04d17e7bd8a9ec7feba"
+  },
+  {
+   "repo": "midstream",
+   "url": "https://github.com/ruvnet/midstream",
+   "commit": "0934fd3b2f92b4abf93d0d56e6d9085a8d4ad92e"
+  },
+  {
+   "repo": "open-claude-code",
+   "url": "https://github.com/ruvnet/open-claude-code",
+   "commit": "af6386bfd18fc84393d1b67d206a2d40d0a12e13"
+  },
+  {
+   "repo": "ruflo",
+   "url": "https://github.com/ruvnet/ruflo",
+   "commit": "e0ad134ce598a7e77cdba48349403e0e5cb69c59"
+  },
+  {
+   "repo": "ruv-FANN",
+   "url": "https://github.com/ruvnet/ruv-FANN",
+   "commit": "02431fd3b3d5639f38feee8f964ec9a8bcc27fc5"
+  },
+  {
+   "repo": "ruvllm",
+   "url": "https://github.com/ruvnet/ruvllm",
+   "commit": "f88f939c7af964d41cc0ce2dbe4caaec96b5db1f"
+  },
+  {
+   "repo": "rvm",
+   "url": "https://github.com/ruvnet/rvm",
+   "commit": "f30ba5e4959b7b29c76838fc5c794d825f3d3d9c"
+  },
+  {
+   "repo": "sparc",
+   "url": "https://github.com/ruvnet/sparc",
+   "commit": "3af6c696be3e713d885cead7f84d07a7fac25ade"
+  },
+  {
+   "repo": "sublinear-time-solver",
+   "url": "https://github.com/ruvnet/sublinear-time-solver",
+   "commit": "b945e269ea1a910d0d7ce6e3eea4aa2ecf4aa191"
+  }
+ ],
+ "gists": {
+  "file": "kb/ruv-gists.passages.jsonl",
+  "note": "gitignored: CI has no copy until the owner decides how it gets one (docs/F04-DECISIONS.md, G1)."
+ }
+}
