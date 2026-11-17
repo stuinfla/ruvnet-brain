@@ -35,6 +35,18 @@ function write(home, file, value) {
 
 export const dropBackup = (home, file) => fs.rmSync(fileOf(home, file), { force: true });
 
+/** Replaces a host file through a temporary file, keeping the mode the file had (review F13). */
+export function replaceFile(file, text) {
+  let mode;
+  try {
+    mode = fs.statSync(file).mode & 0o777;
+  } catch {}
+  const tmp = `${file}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+  fs.writeFileSync(tmp, text, mode === undefined ? {} : { mode });
+  if (mode !== undefined) fs.chmodSync(tmp, mode);
+  fs.renameSync(tmp, file);
+}
+
 /**
  * Before registration writes `next` over `before` (null: the file does not exist). Keeps the first
  * copy while the file is still what registration last wrote; takes a new copy when the file carries
@@ -51,11 +63,8 @@ export function keepBackup(home, file, before, next, ours) {
 export function restoreBackup(home, file, current) {
   const b = read(home, file);
   if (!b || b.after !== sha(current) || sha(b.text) !== b.sha256) return { restored: false };
-  if (b.existed) {
-    const tmp = `${file}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
-    fs.writeFileSync(tmp, b.text);
-    fs.renameSync(tmp, file);
-  } else fs.rmSync(file, { force: true });
+  if (b.existed) replaceFile(file, b.text);
+  else fs.rmSync(file, { force: true });
   dropBackup(home, file);
   return { restored: true };
 }

@@ -6,7 +6,8 @@
 # recorded at install (<brain home>/shim/node-runtime), checked again now, then the first `node` in an
 # absolute PATH folder. Empty and relative PATH entries (they mean "the current folder") and anything
 # inside the current project are never used. With no usable Node it prints the one DOWN line and
-# exits 0. Only shell built-ins are used, so nothing is looked up through the caller's PATH.
+# exits 0. Only shell built-ins are used (and, for a linked Node, the absolute /usr/bin/readlink or
+# /bin/ls), so nothing is looked up through the caller's PATH.
 DOWN="[RuvNet Brain] DOWN: Node could not run. Search is unavailable. Fix: run 'node -v' in a terminal; reinstall Node if it fails."
 MODE=${1:-hook}
 down() {
@@ -56,20 +57,35 @@ within() {
   return 1
 }
 
-# usable FILE: an absolute path to an executable file outside the current project.
+# usable FILE: an absolute path to an executable file outside the current project. When FILE is a
+# symbolic link, every hop of the link chain (at most 16) must also lie outside the project, so an
+# outside `node` that links into the project is refused (review F02). A link is read with the absolute
+# /usr/bin/readlink, else /bin/ls (never through PATH); with neither, a linked Node is refused.
 usable() {
   u_c=$1
   case $u_c in /*) ;; *) return 1 ;; esac
   [ -f "$u_c" ] && [ -x "$u_c" ] || return 1
-  u_d=${u_c%/*}
-  [ -n "$u_d" ] || u_d=/
-  u_r=$(cd -P -- "$u_d" 2>/dev/null && pwd -P) || return 1
-  for u_p in "$P1" "$P2" "$P3" "$P4"; do
-    [ -n "$u_p" ] || continue
-    within "$u_d" "$u_p" && return 1
-    within "$u_r" "$u_p" && return 1
+  u_n=0
+  while :; do
+    u_d=${u_c%/*}
+    [ -n "$u_d" ] || u_d=/
+    u_r=$(cd -P -- "$u_d" 2>/dev/null && pwd -P) || return 1
+    for u_p in "$P1" "$P2" "$P3" "$P4"; do
+      [ -n "$u_p" ] || continue
+      within "$u_d" "$u_p" && return 1
+      within "$u_r" "$u_p" && return 1
+    done
+    [ -h "$u_c" ] || return 0
+    u_n=$((u_n + 1))
+    [ "$u_n" -le 16 ] || return 1
+    if [ -x /usr/bin/readlink ]; then
+      u_t=$(/usr/bin/readlink -- "$u_c" 2>/dev/null) || return 1
+    else
+      u_t=$(/bin/ls -ld -- "$u_c" 2>/dev/null) || return 1
+      case $u_t in *" $u_c -> "*) u_t=${u_t#*" $u_c -> "} ;; *) return 1 ;; esac
+    fi
+    case $u_t in '') return 1 ;; /*) u_c=$u_t ;; *) u_c=$u_r/$u_t ;; esac
   done
-  return 0
 }
 
 # run NODE: returns only when that Node cannot run (or is older than the minimum: runtime.mjs exits 3).
