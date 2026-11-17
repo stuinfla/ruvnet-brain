@@ -255,7 +255,7 @@ uses the protected release workflow; a consumer update downloads an available ge
 does not rebuild upstream knowledge. Check `--doctor`, `SOURCE.json` and refresh receipts
 before treating an installation as current.
 
-The **4.6.0 published-corpus baseline** is **206 public stores · 171,869 public source chunks**.
+The **4.6.0 published-corpus baseline** is **210 public stores · 176,584 public source chunks**.
 Those are bundle census values, not a claim that every upstream repository is fresh today.
 Later corpus publication may advance the knowledge generation independently of code changes.
 
