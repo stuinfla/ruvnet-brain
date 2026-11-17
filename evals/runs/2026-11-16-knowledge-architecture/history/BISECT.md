@@ -212,3 +212,97 @@ For borrowing, with the caution that those scores were repository-level:
   fairly asked.
 - I did not read the 119-file diff of 453ae584 beyond the search path; a reason for it may exist in an issue
   or a session record that was not found.
+
+## Arms finished 2026-11-17
+
+Run between 3:27 a.m. and 4:58 a.m. ET on 2026-11-17, **[R]**, by the same harness (`tools/ask-arm.mjs` in the
+scratch folder): each release's own `forge-mcp-all.mjs` as a stdio MCP server, `search_ruvnet {query}` only,
+its own corpus, fake home folder, the same 80-question sample and the same scoring (`norm.mjs`; file-level =
+a gold file among the first five results; sets D, E, F carry file gold, set H only an expected repository).
+Settings for both arms: one question at a time, one arm at a time, 600 s per question, reader store
+concurrency 2 (the harness sets it), reader at nice 19 except where the June arm says nice 0, the 1-minute load checked before every question and the run paused 60 s
+while it was above 40. Isolation was checked during a running question of each arm: `lsof` on the reader
+process listed no path containing `ruvnet-brain` outside the scratch folder, and the v3.9.85-dev reader wrote
+its state file into the fake home. Order: the first 3 questions of each set, then the first 10 of each set
+(the same 40-question subset as section 5's settings), then the rest; v3.9.85-dev was stopped at the 40-question
+boundary so that the June arm could have the remaining time. Rows: `history/bisect/v3.9.85-dev.jsonl`,
+`history/bisect/v0.4.0-dev.jsonl` (each row carries the load before the question); the earlier 300 s attempt
+of the June arm is kept as `history/bisect/v0.4.0-dev-300s-timeout-attempt.jsonl`.
+
+### v3.9.85-dev (2026-07-27, last release before the cards-first change)
+
+| Measure | Value |
+|---|---|
+| Questions asked | 40 (D 10, E 10, F 10, H 10) |
+| Answered | 40 |
+| Timed out (600 s) / errors | 0 / 0 |
+| Right file in the first five (D+E+F) | **0 of 30** (D 0/10, E 0/10, F 0/10); gold file present in that corpus for 21 of the 30: 0 of 21 |
+| Right repository in the first five (D+E+F) | 7 of 30 |
+| Old held-out questions (H), expected repository in the first five | 7 of 10 |
+| By asker group (D+E+F) | novice/amateur: file 0 of 18, repository 2 of 18; all other askers: file 0 of 12, repository 5 of 12 |
+| Stores searched per question | 62 of 62, every question |
+| Results returned | 1 result for 35 of 40; 3, 4 or 6 for the other 5 (results the reranker scored below zero are dropped, `forge-ask-all.mjs:327`) |
+| Card answers / no search | 0 / 0 |
+| Median seconds per question | 45.0 (load before a question: 17.8 to 39.9; nice 19) |
+| Vector build read | the `.big` (bge-768) build for all 62 stores: the reader picks `.big` whenever it exists (`forge-ask.mjs:79`) and the all-store search passes no variant (`forge-ask-all.mjs:141`); the MiniLM build with the title-and-path header was present for 60 stores and not read |
+
+### v0.4.0-dev (2026-06-29, first release, 20 stores)
+
+| Measure | Value |
+|---|---|
+| Questions asked | 6 (D 3, E 3; the run reached its 4:55 a.m. stop before F and H) |
+| Answered | 3 |
+| Timed out (600 s) / errors | 3 / 0. The first 2 questions ran at the harness's usual low priority (nice 19, load 23.8 and 34.5) and both timed out; the next 4 ran at normal priority (nice 0, load 22.2 to 36.5): 3 answered, 1 timed out |
+| Right file in the first five (D+E) | **0 of 6** (the 3 timeouts count as misses); of the 3 answered, 0 of 3; gold file present in that corpus for 5 of the 6 |
+| Right repository in the first five (D+E) | 0 of 6 (one answered question had the gold repository at rank 6) |
+| By asker group | novice/amateur: file 0 of 6, repository 0 of 6; no other asker group was reached |
+| Stores searched per answered question | 20 of 20 |
+| Results returned | 6 for each answered question |
+| Seconds per answered question | 285, 542, 543 (median 542) |
+| Why it is slow (watched with `lsof` during a question) | the reader goes through the 20 stores one after another and for each one re-reads that store's whole passage file (453 MB across the bundle) and metadata (48 MB) before its vector query (`forge-ask-all.mjs:36-48`, `forge-ask.mjs:578`); at nice 19 it took 40 to 80 s per store |
+
+The arm did not crash; it is too slow to finish more than a few questions in the time available on this machine
+under this load. Six questions do not support a rate.
+
+### Comparison on the same question IDs
+
+| Release | Questions (same IDs) | Right file in first five | Right repository in first five, D+E+F | H: expected repository | Zero results | Card answers | Median s |
+|---|---|---|---|---|---|---|---|
+| v3.9.85-dev (07-27) | 40 | 0 of 30 | 7 of 30 | 7 of 10 | 0 | 0 | 45.0 |
+| v4.0.36 (08-08), same 40 IDs from its finished 80 | 40 | 0 of 30 | 0 of 30 | 9 of 10 | 28 ("Searched 0 RuvNet repos") | 8 | 0.008 |
+| 4.7.28 code + 11-16 corpus, the 26 of these IDs it was asked before it was stopped | 26 (D 10, E 10, F 6; no H) | 0 of 26 | 8 of 26 | not asked | 0 | 2 | 21.0 |
+
+On the 6 IDs the June arm was asked (X6-07, X6-04, X4-18, E1-01, E1-05, E1-16):
+
+| Release | Asked | Answered | Right file in first five | Right repository in first five | Median s (answered) |
+|---|---|---|---|---|---|
+| v0.4.0-dev (06-29) | 6 | 3 | 0 of 6 | 0 of 6 | 542 |
+| v3.9.85-dev (07-27) | 6 | 6 | 0 of 6 | 0 of 6 | 49.4 |
+| v4.0.36 (08-08) | 6 | 6 (5 with zero results, 1 card) | 0 of 6 | 0 of 6 | 0.013 |
+| 4.7.28 code + 11-16 corpus | 6 | 6 (2 card) | 0 of 6 | 0 of 6 | 20.7 |
+
+For scale, the shipped 4.7.28 numbers already in this document were measured on other question sets and are not
+the same IDs: 4 of 113 development questions (top 6) and 8 of 164 blind questions (set E); the partial
+reproduction of 4.7.28 above section 5 gave 3 of 54. The finished v4.0.36 arm on all 80: 0 of 60 files, 12 of 60
+repositories, 17 of 20 on H.
+
+### What H2, H3 and H4 can now say
+
+- **H2 (the July 27-30 change took away results the user used to get).** Measured on the same 40 questions:
+  the release before the change searched all 62 stores for 40 of 40 and returned at least one result for
+  40 of 40; the release after it returned zero results for 28 of 40 and a card for 8. The right repository was
+  in the first five for 7 of 30 problem-style questions before and 0 of 30 after; the right file for 0 of 30
+  before and 0 of 30 after. Under these conditions the change removed repository-level results; no file-level
+  result existed on these 30 questions to remove. On the 10 old held-out questions the later release scored
+  9 of 10 against 7 of 10.
+- **H3 (corpus growth diluted results).** Not answered by a reproduction. On the June corpus (20 stores) the June reader found the right file for
+  0 of 6 questions it was asked (3 answered, 3 timed out), and the right repository for 0 of 6; on the same 6 IDs
+  the July 27 arm (62 stores) got 0 of 6 files and 0 of 6 repositories, v4.0.36 got 0 of 6 and 0 of 6,
+  and 4.7.28 got 0 of 6 and 0 of 6. Six questions, three of them timeouts, cannot
+  separate a small-corpus effect from zero. The repository-named nightly series (section 3) remains the only
+  growth measurement: flat from 625 to 864 MB.
+- **H4 (retiring the MiniLM build removed the only header-carrying vectors).** Measured by reading the
+  July 27 reader and by the arm: with both builds in the bundle for 60 of 62 stores, `search_ruvnet` read the
+  bge-768 build for every store, and found the right file for 0 of 30. The MiniLM header build was therefore
+  not on the tool's path on July 27, the day before it was retired; its retirement cannot have changed what
+  this tool returned. Whether the header build would have found more files was not measured.

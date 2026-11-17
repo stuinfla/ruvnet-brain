@@ -1,4 +1,4 @@
-Updated: 2026-11-17 00:49:11 EST | Version 1.0.0
+Updated: 2026-11-17 01:00:28 EST | Version 1.0.0
 Created: 2026-11-16 23:51:13 EST
 
 # 1. Capability catalog: what RuVector and the rUv retrieval stack can actually do

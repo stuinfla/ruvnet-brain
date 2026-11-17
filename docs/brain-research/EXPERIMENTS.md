@@ -178,3 +178,73 @@ novice goal questions, gold = the author's own ordered plan with quotes. Success
 two thirds of gold capabilities named, workable order (A10.2). A guidance layer is admitted at +10 points over
 files + history with a 95% interval excluding zero and no rise in false claims (A10.3). Set H not yet written.
 Raw: `RUN/PREREGISTRATION.md` A10.
+
+**E23. Set F at answer level (added 2026-11-17, 1:40 a.m.).** 80 blind questions, 3 runs, blind judge (re-judge
+of 30: 28 identical, 30 within one point). No tool 23.8 of 100; keyword + history 77.8; difference +54.0
+[49.6, 58.1]. Questions at 8 of 10 or better in at least 2 of 3 runs: experts 16 of 17, practitioners 24 of 31,
+amateurs 17 of 32. The right source reached the answering session in 81.3% of answers (amateurs 75.0%).
+Raw: `RUN/candidates/answers-F/answers.table.md`, `answers-gold-served.md`.
+
+**E24. Blind query rewriting, rules A4.2 and A9.1 (added 2026-11-17, 1:45 a.m.): NOT MET.** 330 questions.
+Replacing the question with three model rewrites: E 78 to 53 of 142; F 41 to 30 of 68; experts -27.1 points.
+Second arm (original list plus four lists from a kind label, queries and terms): E 54.9% to 53.5%, F 60.3% to
+61.8%, G 12.5% to 34.2%, all amateurs 21.4% to 35.4%, practitioners -5.6 points (fails the "no group down by
+more than 3" condition). A query written with the answer in view (upper bound) finds 41 of 51 against 17.
+Reading: the query is a large lever for people who state only a problem, and rewrites must be added to the
+user's words, never replace them. Raw: `RUN/candidates/ladder/a42.md`.
+
+**E25. Slice look 1 (added 2026-11-17, 2:55 a.m.): INTERIM, no rule declared, build failed its soundness
+checks.** Seven stores, 178 blind slice questions, 1,617 of 9,029 units extracted, settings frozen and hashed
+before any blind score, ten files against ten. Right file served, amateurs (n = 101): shipped 4.7.28 1; keyword
+lane 18; keyword + history 17; keyword 5 + need index 5: 46; keyword 5 + graph walk 5: 50 (33 gained, 1 lost).
+Problem-only questions of set G (n = 65): 0, 5, 5, 28, 28. Practitioners and experts: no meaningful change.
+Failed checks: a held-out generated question returns its own file within 5 for 42.9% (gate 90); the walk gives
+the same first five in separate processes for 52.6% to 87.5% (gate 99; cause found: edge order; amendment A15
+registers a sort for look 2); the evolutionary loop did not generalise on the tuning half (0.536 against 0.562
+for rUv's default settings); capability centroids landed worse than the nearest cue (199 against 337 of 920).
+Leak checks clean. Cue-sentence embedder chosen by the registered screen: `MongoDB/mdbr-leaf-ir`; four
+candidates within 5 points. Raw: `RUN/candidates/slice/look1-tables.md`, `FROZEN.md`, `look1-checks.md`.
+
+**E26. Guidance, set H, rule A10.3 (added 2026-11-17, 2:55 a.m.): NOT MET.** 40 novice goal questions, 3 runs;
+the judge's calibration passed at exactly its bar (21 of 25). Mean score of 100: no tool 18.2; keyword + history
+45.8; plus a GUIDE section of rUv's playbooks and need rows chosen by keyword match 46.8 (+1.7 [-2.5, 6.7] on
+guidance success). Guidance success in at least 2 of 3 runs: 0, 4 and 4 of 40. Tools named 66% to 70% of gold;
+workable order 48%. The GUIDE section carried two thirds of the gold tools in 0 of 120 answers. Guiding is the
+largest gap measured. Amendment A16 registers guidance through the capability landing on the same set (second
+use of H). Raw: `RUN/candidates/answers-H/answers.table.md`, `answers-A10.md`.
+
+**E27. Slice look 2, rules judged (added 2026-11-17, 4:10 a.m.).** 3,264 of 9,029 units, frozen settings,
+edge order sorted (A15), stability 192 of 192. Right file served, amateurs (n = 101): shipped 1; keyword 18;
+keyword + need index 43; keyword + graph walk 43 (tuned settings) or 46 (rUv's defaults). Numeric thresholds of
+A6.4 and A6.5 met (+24.8 points, 26 gained, 1 lost); soundness checks failed again (held-out generated question
+to its own file within 5: 29.9%, gate 90), so the build is recorded "not sound" and neither rule is declared
+met. Tuned settings not adopted (R21). More extraction did not raise the amateur figure (46 at 1,617 units).
+Raw: `RUN/candidates/slice/look2-tables.md`, `LOOK2-SUMMARY.md`.
+
+**E28. Answer-level tests of the cue design (added 2026-11-17, 4:10 a.m.).** Owner's measure = a question
+graded 8 of 10 or better in at least 2 of 3 runs. A14.2 (65 problem-only amateur questions; a section that
+describes the capabilities landed on): 53.8% against 55.4% for keyword + history, -1.5 [-12.3, 7.7]: NOT MET.
+A16 (40 guidance goals, same kind of section, second use of the set): guidance success 3 of 40 against 4 of 40:
+NOT MET. A18 (3 keyword + 2 need-index files at the same size as 5 keyword files; third use of the questions):
+60.0% against 55.4%, +4.6 [-6.2, 16.9]: NOT MET; mean score +4.6 [1.2, 8.5], false claims 17 against 22: a
+positive signal too small for 65 questions. Raw: `RUN/candidates/answers-G/answers-A14.md`, `answers-A18.md`,
+`RUN/candidates/answers-H/answers-A16.md`.
+
+**E29. The host's delivery limit, and a void test (added 2026-11-17, 4:10 a.m.).** A17 (ten files per result)
+scored 23.1% against 55.4%, and its equal-slot control (ten keyword files) 21.5%. Cause: the host rejects a
+tool result above its token limit ("exceeds maximum allowed tokens" or "Output too large, saved to file"); 95%
+to 97% of the 51,000 to 60,000-character results never reached the model. A17 is VOID as a test of the lane.
+The lead first recorded it as "more files make answers worse" and corrected the record about 20 minutes later.
+Audit of every answer run: 0 undelivered results in every 5-file arm and every arm with an added section; the
+concept-card arm on E 8.8% (its rule unchanged on clean questions); the shipped 4.7.28 arm 27.8%, touching 41
+of 49 answers. Boundary near 50,000 to 52,000 characters. Decision: the result cap is 44,000 characters and
+20,000 estimated tokens, enforced by the server. Raw: `RUN/candidates/answers/HOST-DELIVERY.md`.
+
+**E30. Shipped 4.7.28 on amateur questions, and two old releases (added 2026-11-17, 5:20 a.m.).** Answer level,
+65 problem-only amateur questions, ONE run, information only: shipped 56.5 of 100 against 69.2 for keyword +
+history in the same run, -12.8 [-18.9, -6.9]; answers at 8 or better 20 of 65 against 35 of 65; 86 of its 312
+results rejected by the host for size, touching 49 answers, so this is the product as delivered, not a clean
+reading of its retrieval. Old releases on the same 40 questions (30 with file gold): v3.9.85-dev (2026-07-27)
+right file in the first five 0 of 30, right repository 7 of 30; v4.0.36 0 and 0 of 30; 4.7.28 0 of 26 and 8 of
+26; v0.4.0-dev (2026-06-29) 0 of 6 (only 6 questions before the time limit; 542 s per answer). No past release
+found the right file on these questions. Raw: `RUN/candidates/answers-G/answers-B.md`, `RUN/history/BISECT.md`.

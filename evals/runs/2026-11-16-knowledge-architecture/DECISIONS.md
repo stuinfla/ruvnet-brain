@@ -443,7 +443,7 @@ lead; quotations there are marked where the researcher re-found them at the cite
 - RuVector was built as agent memory. Its design ideas: things with links and outcomes; answers rebuilt by
   walking from a cue to what it leads to; knowledge stored by kind (ADR-056 maps seven kinds to RVF segments);
   hierarchy with its own geometry; abstention as a scored answer; search settings evolved against a held-out
-  split; learning as edges and votes on a branch; proof on what goes in and what comes out.
+  split; learning as edges and votes on a branch; proof attached to inputs and outputs.
 - rUv's own corrections say the similarity engine is ordinary and that keyword search plus a re-ranker carry
   the measured results. The lead's blind measurements agree with that part.
 
@@ -522,6 +522,236 @@ Withdrawn. Rule since 12:38 a.m.: one heavy local job at a time, gated at load 6
 threads; extraction's parallelism follows the load (4 below 50, 2 up to 100, 1 above); the rewriting job
 stopped again. Cost: the extraction will not reach tier 2 before morning, so the slice gets its interim look
 only and its rules stay unjudged, as A8 says.
+
+## D21. Set F at answer level, blind query rewriting, set H, amendments A13 and A14, the v5 skeleton (1:40 a.m., 2026-11-17)
+
+**Set F at answer level** (`candidates/answers-F/answers.table.md`, `answers-gold-served.md`; 80 blind questions,
+3 runs, Sonnet answers, blind Opus judge; re-judge of 30: 28 identical, 30 within one point). No tool 23.8 of
+100; keyword + history 77.8; difference +54.0 [49.6, 58.1] (rule R9 line met on a second blind set). Answers at
+8 of 10 or better: 174 of 240 (72.5%); amateurs 59.4%, practitioners 75.3%, experts 92.2%. Questions at 8 or
+better in at least 2 of 3 runs: amateurs 17 of 32, practitioners 24 of 31, experts 16 of 17. Gold reached the
+answering session in 81.3% of answers (first search 62.1%); amateurs 75.0%, experts 98.0%. When gold was
+reached 162 of 195 answers were at 8 or better; when it was not, 12 of 45. False claims 16 (no tool: 35).
+Against the owner's gate (93%): not met for amateurs or practitioners; 16 of 17 experts is one set of 17.
+
+**Blind query rewriting, rule A4.2: NOT MET as registered** (`candidates/ladder/a42.md`; 330 questions with
+three rewrites each, the rewriter sees only the question). Three rewrite lists interleaved, first 5, against
+the original question: E 78 to 53 of 142; F 41 to 30 of 68; amateurs on E + F 26 to 19 of 72 (-9.7 points,
+p = 0.19); practitioners -17.8, experts -27.1. Replacing the user's words with a model's rewrite loses the
+exact terms that practitioners and experts already supply. Rule not met; the rewriting-only design is not
+admitted.
+Measured beside the rule, descriptive only, no rule declared on them: (i) on set G (120 amateurs who state
+only a problem) the same rewrites go 15 to 31 of 120 (+13.3, p = 0.007); (ii) keeping the original list and
+adding the three rewrite lists, first 10 files against the original's first 10: E 89 to 89 of 142, F 44 to 46
+of 68, G 16 to 42 of 120, all amateurs 47 to 74 of 192 (+14.1, p = 0.0001), practitioners -1.1, experts +4.2;
+(iii) an informed query written with the reference answer in view (an upper bound, not deployable) finds 41 of
+51 against 17 for the original (amateurs 18 of 25 against 5). Reading: the query is the larger lever for
+amateurs, the gain exists only when the original wording is kept, and the variant that shows it (four lists,
+ten files) was looked at after the result. It needs its own registered confirmation on new questions before it
+enters the recipe. Arm B of A9.1, complete at 1:44 a.m. (the original list plus four lists from a kind label, three queries and a
+kind-and-terms query; first 5 against the original first 5; 330 questions): NOT MET. E 54.9% to 53.5%; F 60.3%
+to 61.8%; G 12.5% to 34.2% (31 gains, 5 losses); amateurs on E + F +1.4 points (p = 1.0); amateurs on E + F + G
+21.4% to 35.4% (41 gains, 14 losses, p = 0.0004); practitioners -5.6 points, which fails the "no group down by
+more than 3" condition. So: on problem-only amateur questions a caller-side query nearly triples the hit rate
+(15 to 41 of 120) and costs practitioners about 5 points at five slots. Next registered test owed: the same
+arm with the original list guaranteed its own slots, on new questions.
+
+**Set H (build guidance).** 40 questions by two authors (`instrument/H/H-verified.json`, sha256 e39bdd23...;
+not for commit), each with a gold plan: 117 capabilities, 191 ordered steps. All 223 source quotes re-verified
+by the lead's checker. Calibration set for the guidance judge: 25 seeded answers of five kinds
+(`candidates/answers-H/calibration/`). Arms being run: no tool; keyword + history; the same plus a GUIDE
+section (top 3 playbooks and top 5 author-written need rows by keyword match; rule frozen before any H answer).
+
+**Amendment A13** (1:01 a.m., hash 16c75cc5...): the deep-dive researcher read rUv's MRAgent example again:
+it scores each content item by the question's own similarity to the content, and abstains on the same number.
+For an amateur that similarity is what is missing. The walk gets a setting evidence = content | cue | max,
+chosen on tuning questions, with a stage-0 check before the reconstruction rule is scored.
+**Amendment A14** (1:30 a.m., hash b71b57ae..., before any blind slice score): the builder's pre-trial on
+tuning questions showed a generic newcomer question returns its own file within 5 for 36%: many files answer
+the same everyday need. Added: a package-level hit reported beside the file-level one for every system
+(descriptive), and an answer-level test of the cue design on the amateur set (a CAPABILITIES section against
+keyword + history; +10 points on the owner's measure, interval excluding zero, false claims not higher).
+No existing threshold was changed.
+
+**v5 walking skeleton.** Built in worktree `agent-ada5e619247258447` (uncommitted): `recipe/`, `packages/`
+(contract, engine, server, health, cli, builder, release, plugin), `tests/acceptance/v5/`. Re-run by the lead
+at 1:30 to 1:33 a.m.: 14 of 14 acceptance tests pass; the break runner ends "every test passes and every break
+turns its test red". Not run: Linux, Windows, CI, the repository's own gates. Handed to the parent session for
+commit.
+
+**Slice.** Tier-1 extraction complete at 1:29 a.m. (1,617 of 9,029 units, no failures). Look 1 running.
+
+## D22. Slice look 1, guidance measured, wave one built (2:55 a.m., 2026-11-17)
+
+**Slice look 1: interim, no rule declared, build flagged** (`candidates/slice/look1-tables.md`, `FROZEN.md`
+sha256 e51b20d9..., `look1-checks.md`). 7 stores, 178 blind slice questions (E 78, F 35, G 65), extraction 1,617
+of 9,029 units, settings frozen before any blind score, ten files against ten. Right file served, amateurs
+(n = 101): shipped 4.7.28 1; keyword lane 18; keyword + history 17; keyword 5 + need index 5: 46 (29 gained, 1
+lost); keyword 5 + graph walk 5: 45 with rUv's default settings, 50 with the evolved settings (33 gained, 1
+lost). On the 65 problem-only questions of set G: 0, 5, 5, 28, 21, 28. Practitioners (46): 33, 31, 34. Experts
+(31): 25, 24, 24 to 27. All askers: shipped 8 of 178; keyword 76; need index 101; walk 108. Right package
+served, amateurs: 9, 38, 67, 73.
+Against it, as measured: stage-0 soundness checks failed (held-out generated question to its own file within 5:
+42.9%, gate 90; crate description to its README first: 40.1%, gate 95; capability definition lands and reaches:
+72%, gate 95); centroid landing worse than nearest cue (199 against 337 of 920; rule: cues); the evolutionary
+loop did not generalise on the tuning half (0.536 against 0.562 for rUv's default settings); author-written
+cues moved the tuning score by 0.2 to 0.5 points; the walk gave the same first five in separate processes for
+52.6% / 87.5% of questions (gate 99; the need index 100%).
+Checks asked for and returned: the need lane has 0 hits where no gold file has an extraction unit (n = 26
+amateurs: 5 / 4 / 0); of the 29 amateur gains the cue that ranked the gold shares at most 6 consecutive words
+with the question (0 with 8 or more; 4 with 5 or more); excluding the 8 questions flagged for phrase overlap the
+amateur counts are unchanged (18, 46, 50 of 99); the extraction prompt sees only the unit text. Instability
+cause: the graph store returns a node's edges in a different order per process and the fan-out limit cuts the
+list; sorting by node id gives 192 of 192 but changes 23 to 71 served results, so it is a new build: amendment
+A15 (1:52 a.m., hash 057363b9...) registers it for look 2 only.
+Embedder for cue sentences by the registered screen: `MongoDB/mdbr-leaf-ir`; the four candidates within 5 points.
+Reading allowed at this stage: a large amateur signal at equal slots from sentences written the way people ask,
+with the simple need index giving most of it and the graph walk a few questions more with an unstable build.
+Not allowed: any claim that a rule is met.
+
+**Guidance, set H: measured, rule A10.3 NOT MET** (`candidates/answers-H/answers.table.md`, `answers-A10.md`;
+40 questions, 3 runs; the judge's calibration gate passed at exactly its bar, 21 of 25 within one point, the
+four kind-checks all passed). Mean score of 100: no tool 18.2; keyword + history 45.8; plus a GUIDE section
+(playbooks and author-written need rows by keyword match) 46.8. Guidance success (8 or better, two thirds of the
+gold tools named, workable order) in at least 2 of 3 runs: 0, 4 and 4 of 40. GUIDE minus keyword + history:
++1.7 [-2.5, 6.7]. Tools named 65.6% and 69.7% of gold; workable order 47.5% and 48.3%; pitfall given 51.7% and
+63.3% (+11.7 [2.5, 21.7]); false claims 35 and 29. The GUIDE section carried two thirds of the gold tools in 0
+of 120 answers by exact name (6 by a loose reading): keyword choice of playbooks surfaces generic ones.
+Decision: guiding is the largest of the three gaps (10% on the owner's measure). A guidance layer chosen by
+keyword match is not admitted. What the numbers point to: the unit that must be found is the capability set and
+its order, so guidance must come through the capability landing (the slice design) and stored plans linked to
+capabilities, tested again under a new registered rule; and the instrument needs a second look, because gold
+plans are one author's plan and "workable order" was judged against it.
+
+**Second rewriting arm (A9.1), complete:** recorded in D21: not met; problem-only amateurs 15 to 41 of 120.
+
+**v5 wave one.** Engine (`v5/wp1-engine`), pack builder (`v5/wp5-builder`), installer (`v5/wp4-installer`)
+built in separate worktrees, uncommitted; the lead re-ran each proof (every test passes, every break red; the
+engine reproduces the measured 40 of 76 development questions; the pack builder was sent back once for a red
+skeleton test and for dropping non-owner commits, which the measured run kept). The engine and the builder
+assumed different pack formats, so an integration owner (2:22 a.m.) is producing one tree from 1c994dfc with a
+build, install, search test before anything is handed over. Carried: a planted `node` can run from the hook
+when PATH has an empty entry (shim package); code passage boundaries against the measured run are unmeasured
+(no tree-sitter in the builder); Linux and Windows not run.
+
+## D23. Slice look 2 and four answer-level tests of the cue design: the finding gain did not reach answers (3:45 a.m., 2026-11-17)
+
+**Slice look 2 (rules judged here)** (`candidates/slice/look2-tables.md`, `LOOK2-SUMMARY.md`): 3,264 of 9,029
+units (tiers 1 and 2), frozen settings, edge order sorted (A15); stability 192 of 192 for all three lanes.
+Right file served, amateurs (n = 101): shipped 1; keyword 18; keyword + history 17; keyword 5 + need index 5:
+43; keyword 5 + walk 5: 43 with the evolved settings, 46 with rUv's default settings. All askers (n = 178): 8,
+76, 68, 101, 102, 108. Three-way split for amateurs (every / some / no gold file extracted; 47 / 33 / 21):
+keyword 11 / 6 / 1; need index 24 / 18 / 1. Rule lines: need index (A6.4) +24.8 points on amateurs, 26 gained,
+1 lost, worst stratum -4 questions: numeric thresholds met. Walk (A6.5 / R19): +24.8, both repositories present
+13 of 16 against 11: numeric thresholds met. R21: evolved 43 against default 46: the evolved settings are NOT
+adopted. Stage 0 failed again (held-out generated question to its own file within 5: 29.9%, gate 90; right
+package 63.2%; crate description to its README first: 34.3%, gate 95; capability definition 79.4%, gate 95;
+centroid landing 304 against 472 for nearest cue). By clause G1 the build is recorded "not sound"; the lead
+does not declare A6.4 or A6.5 met. More extraction did not raise the amateur figure (46 at 1,617 units, 43 at
+3,264). The walk never abstained. Extraction stopped at 3:27 a.m.: tiers 1 and 2 complete (1,594 and 1,655
+units), tier 3 at 537 of 5,780, one unparseable reply, resumable.
+
+**Answer level, where "works for amateurs" is decided:**
+
+| Rule | Arm against keyword + history (arm D) | Owner's measure | Difference | Result |
+|---|---|---|---|---|
+| A14.2, set G slice, 65 amateur questions | + CAPABILITIES section (describes the capabilities landed on) | 53.8% against 55.4% | -1.5 [-12.3, 7.7] | NOT MET |
+| A16, set H, 40 guidance questions (second use) | + CAPABILITIES section | guidance success 3 of 40 against 4 of 40 | -1.7 [-5.8, 1.7] | NOT MET |
+| A17, set G slice (second use) | 5 keyword files + 5 need-index files on every search | 23.1% against 55.4% | -32.3 [-44.6, -20.0] | NOT MET, and worse |
+
+Arm D on these 65 problem-only amateur questions: 68.7 of 100, 36 of 65 on the owner's measure, with the first
+keyword page holding the right file for 8% of them: an answering model that may search several times in its
+own words already recovers much of what a single query misses. In A17 the harness was validated (keyword
+excerpts and history identical to arm D; no timeouts; two retried attempts). The need-index files raised
+"gold file reached the session" from 47.2% to 86.2% of answers, and answers still fell: with gold served, 28%
+of arm N answers reached 8 against 77% in arm D; searches per answer 5.2 against 2.4; false claims 36 against
+22. Read answers show the pattern: the extra files match the question's wording, the model follows them to a
+neighbouring product and answers with less of the needed detail.
+Two things the lead specified in arm N are confounded with the lane (a result of 51,000 to 60,000 characters
+against 31,000 to 47,000; need files shown from their first passage and cut to 2,000 to 5,000 characters).
+Amendment A18 (3:36 a.m., hash 8bdf545f...) registers one arm at equal size with centred excerpts (3 keyword
+files + 2 need files), third use of these questions; an equal-slot control for A17 (10 keyword files) is
+running.
+
+**Decision.** (1) "Right file among the served files" is not the quantity to optimise: on the first direct
+test, more right files with more wrong neighbours gave worse answers. The v5 gate stays on answers, and any
+lane is admitted only by an answer-level rule. (2) Descriptions of capabilities are not admitted (two rules).
+(3) The need index is not admitted as built; A18 decides whether a small, precise form of it is a candidate.
+(4) The graph walk adds nothing over the need index at look 2 and rUv's default settings beat the tuned ones;
+it is not admitted; the edge-order nondeterminism in the graph store is a defect to report upstream with the
+reproduction. (5) The v5 recipe that ships first is Tier 1 only. (6) What the night's numbers say the route to
+the owner's bar is: precision of what is served and the answering step, then guidance; see RECIPE-FINAL.md.
+
+## D24. CORRECTION of D23 on rule A17; the host delivery limit; rule A18 (4:10 a.m., 2026-11-17)
+
+**D23 was wrong about A17.** D23 recorded rule A17 as "not met, and worse", read it as "more right files with
+more wrong neighbours gave worse answers", and called the harness validated. The validation checked what the
+server sent, not what the answering model received. The equal-slot control (10 keyword files) then scored
+21.5% on the owner's measure against 55.4% for 5 files, the same as the need-index arm (23.1%), which showed
+the lane was not the cause. The delivery check (`candidates/answers-G/answers-A17.md`, "Host delivery check";
+`candidates/answers/HOST-DELIVERY.md`) found it: the host rejects a tool result above its token limit. Of
+1,012 results in the need-index arm 33 reached the model in full, 191 came back as "Error: result (59,674
+characters across 1,936 lines) exceeds maximum allowed tokens" and 788 as an "Output too large, saved to file"
+notice; the control: 48 of 1,008 in full. The sessions cannot open files. No answer in either arm had every
+result delivered. **A17 is VOID as a test of the need index**; D23's decision items (1) and (3) are withdrawn.
+What A17 does measure: results the host rejects cost about 33 points on the owner's measure and double the
+number of searches (5.2 against 2.4).
+
+**Audit of every answer run for delivery** (same file). Arms with 5 files, and arms with an added section of up
+to 6,000 characters: 0 undelivered results on E (603), F (564), G (463, 421), H (360, 296, 321). The
+concept-card arm on E: 46 of 521 undelivered (8.8%); its rule read on the 61 questions with full delivery is
+unchanged (+2.3 [-0.8, 5.6], not met). The shipped 4.7.28 arm: 72 of 259 results rejected (27.8%), touching 41
+of 49 answers, with results up to 135,759 characters. Every rule reported in D12, D21, D22 and D23 other than
+A17 stands. Largest delivered result: 52,400 characters; smallest rejected: about 50,900. The admitted 5-file
+result reaches 49,600 characters, inside the danger zone.
+
+**Decision: the recipe's size cap moves from 60,000 to 44,000 characters and 20,000 estimated tokens,
+enforced by the server as the last step, with a worst-case test.** v5 commit 3dff2bc7 carries the old cap and a
+test (S5) that checks the old number; the server builder has the requirement; the wave-two integration changes
+S5 and the recipe budget. This is also the measured form of version 4's oversized-result defect.
+
+**Rule A18: NOT MET** (`candidates/answers-G/answers-A18.md`; 65 problem-only amateur questions, 3 runs, third
+use of these questions; all results delivered, median 40,952 characters). 3 keyword files + 2 need-index files
+at the same size as 5 keyword files: owner's measure 39 of 65 (60.0%) against 36 of 65 (55.4%), +4.6
+[-6.2, 16.9]; the rule needs +10 with an interval excluding zero. Beside the rule: mean score 73.2 against 68.7,
++4.6 [1.2, 8.5]; answers at 8 or above 62.6% against 53.8%; false claims 17 against 22; build-task questions
+11 of 13 against 7 of 13; which-tool 26 of 48 against 28 of 48. Cost: 9.5 seconds per call against 1.6 with
+the need service as built for the test.
+Decision: the need index is NOT admitted to the v5 recipe on this evidence. It is the one Tier 2 part with a
+positive answer-level signal at equal size (score interval above zero, fewer false claims), so it is the first
+candidate on the new instrument, with enough questions to resolve a 5-point difference (about 700 amateur
+questions for 80% power at this variance), a latency budget, and no reuse of G.
+
+**Standing of the cue design after tonight.** File level: large gain for amateurs (18 to 43 of 101), build
+"not sound" by its own checks. Answer level: capability descriptions no gain (two rules); need-index files at
+equal size a small positive signal that does not meet its rule; the ten-file form untestable as specified.
+Guidance: no gain from any layer; 4 of 40.
+
+## D25. Shipped 4.7.28 on amateur questions at answer level; the two old-release arms; wave two (5:15 a.m., 2026-11-17)
+
+**Shipped 4.7.28, answer level, 65 problem-only amateur questions, ONE run, information only**
+(`candidates/answers-G/answers-B.md`): 56.5 of 100 against 69.2 for keyword + history in the same run, -12.8
+[-18.9, -6.9]; answers at 8 or better 20 of 65 against 35 of 65; false claims 11 against 5; 4.8 searches per
+answer against 2.5; 86 of its 312 tool results were rejected by the host for size (49 of 65 answers touched);
+5 of 65 answers are strict "nothing found / insufficient evidence" replies (a broad hedging pattern matches 53 and over-counts). Because 49 of its 65 answers had at least one result rejected for size, this is the product as a user gets it through this host, not a clean reading of its retrieval. At file level on these questions it
+served a gold file for 0 of 65. With the E run (60.8 against 73.1 on 49 questions) this is all the answer-level
+evidence on the shipped product; three-run arms were never run.
+
+**Old-release arms** (`history/BISECT.md`, section added 2026-11-17; `history/bisect/RESULTS-scores.md`). On the
+same 40 questions (30 with file gold): v3.9.85-dev (2026-07-27, last release before "cards first"): right file
+in the first five 0 of 30, right repository 7 of 30, 40 of 40 answered, median 45 s. v4.0.36: 0 of 30 and 0 of
+30. 4.7.28: 0 of 26 and 8 of 26. v0.4.0-dev (2026-06-29): 6 questions asked before the time limit, 3 answered,
+0 of 6, median 542 s per answer (it re-reads every store per question). Reading: on these questions no past
+release found the right file; the July change removed repository-level results (7 to 0 of 30) and later
+releases recovered that level only; the June arm is too small to say anything. The file-level failure is as old
+as the measurable history, which fits its measured causes (4,000-character passages, no header, comment-only
+code indexing) being in every release.
+
+**v5 wave two.** Server, health, release rail and host shims built in four worktrees from 3dff2bc7; each
+reported "every test passes and every break turns its test red" (two builders saw one run killed by another
+builder's broad process kill and re-ran the remainder). Integration owner launched 4:27 a.m. with a hard
+requirement that no test or run may write the real host settings files; the lead checked at 4:26 a.m. that the
+real files carry no v5 marker and have earlier modification times. Hand-off follows the integration report.
 
 **What this corrects.** D8's sentence "concept cards ... go into the target architecture as their own result
 sections" is withdrawn for cards and stands for history. `architecture/ARCHITECTURE.md` is revised to match.

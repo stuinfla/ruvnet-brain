@@ -1,4 +1,4 @@
-Updated: 2026-11-17 00:49:00 EST | Version 1.12.0
+Updated: 2026-11-17 03:36:00 EST | Version 1.18.0
 Created: 2026-11-16 18:40:00 EST
 
 # Knowledge-architecture run: pre-registered decision rules
@@ -521,3 +521,138 @@ capability carries the mean of its cue vectors) as a tuning option chosen on tun
   higher share by centroid than by nearest cue. Adopted as the default landing if any-gold on amateurs is not
   lower than nearest-cue landing and the "does not exist" rate is higher or equal; a tuned embedder (R1c) is
   judged against this baseline.
+
+### A13, 2026-11-17 1:01 a.m. ET (before the slice is frozen or scored; previous hash d5281697392e6491b3c7ac50e0540800d3a97755e84672da083ba0a45d6ece2e stays on record)
+
+Reason: the deep-dive researcher added rules after A12 (`ruvector-deepdive/AMENDMENT-A4-PROPOSED.md`,
+now sha256 a00cb313de5febe64cde20985e232d1cba03240ea013afaa6fc91978f3e8110c), after a second reading of the source. The one that changes the slice build: in
+rUv's MRAgent example every content item is scored by the question's own similarity to that content, and
+abstention uses the same number (examples/mragent/agent/memory.mjs:253-320, as the researcher read it). For
+an amateur that similarity is exactly what is missing, so the walk as shipped would prune the right file.
+rUv's typed-graph operator already returns the seed score with what it reached. So the walk gets a setting
+"evidence" = content | cue | max, chosen on tuning questions only, with a stage-0 check that must pass
+before the reconstruction rule is scored. The other new rules (navigation operations at answer level, a
+learned projection from question logs, preconditions) are registered and not run in this run unless the
+report says so. Adopted verbatim, renumbered A13.n with the proposal's own number n.
+
+**Rules new since A12 (4)**
+- A13.22 R19a, evidence source (required before R19 is scored): the walk's content evidence is set to
+  `content`, `cue` or `max` on the training split only. Stage 0: on generated problem-only questions whose
+  gold file shares no content word with the question, the gold file survives pruning for at least 90% with
+  `cue` or `max`; the same check with `content` is reported, to show the difference. R19 is scored with the
+  frozen choice.
+- A13.23 R25, learned projection from logs (agentdb `ContrastiveTrainer`, seeded and saved): trained on
+  confirmed (question, capability) pairs from half of dev plus generated pairs, applied to question vectors
+  only. Stage 0: held-out generated pairs, right capability first, +5 points over no projection. Adopted as
+  "off by default, safe" if no blind stratum falls by more than 3 points and dev held-out rises by 5.
+- A13.24 R26, navigation at answer level: arm N = the R19 result plus the operations `expand`, `siblings`
+  and `why`, same question set, 3 runs, same blind judge, searches and navigation calls counted together under
+  one cap. Adopted if answers at 8 of 10 or better rise by at least 5 points on amateurs with a 95% interval
+  excluding zero, and false claims do not rise.
+- A13.25 Stage 0 for every store: the retrieval-contract invariants (filtered top-k returns exactly
+  min(k, eligible); no duplicate ids; reported scores agree with returned vectors; nothing deleted is
+  returned) and an embedding-space identity check (a query embedded by another model or precision is
+  refused).
+
+### A14, 2026-11-17 1:30 a.m. ET (before any blind slice score exists; previous hash 16c75cc5120823a820e927ade8d997e7924d010a0a468f1e00c5ce6c074383a0 stays on record)
+
+Reason: the slice builder's pre-trial on tuning questions (no blind question touched) shows that a generic
+newcomer question does not single out one file: held-out generated questions return their own file within 5
+for 36%. Many files answer the same everyday need. For an amateur the right thing to land on is the right
+capability or package; which of its files is returned matters less. The file-level measure stays as it is;
+two things are added so the design is judged on what an amateur needs.
+
+A14.1 Package-level hit, reported beside the file-level measure for EVERY system on the same questions
+      (shipped Brain, keyword lane, keyword + history, need index, graph walk): a question is a package-level
+      hit at k when one of the first k returned files belongs to the same package (the manifest node that owns
+      the file's path, from the dependency graph of 1,148 packages; a file under no package counts by
+      repository plus top-level folder) as one of its gold files. Descriptive only: no rule is judged on it.
+A14.2 The arbiter for "works for amateurs" is the answer, not the file list. Answer-level test on the slice
+      questions of set G (all amateurs): arms A (no tool), D (FILES + HISTORY), Q (D plus a CAPABILITIES
+      section placed first: the top 3 capabilities the frozen graph lane lands on, each with its name, plain
+      definition, standing, supporting quote, package, and the top files reached; at most 6,000 characters).
+      Sonnet answers, 3 runs per arm, the same blind calibrated judge and mechanical caps as R8. Rule: the cue
+      design is admitted to the v5 recipe as a served section if the share of questions graded 8 or above in at
+      least 2 of 3 runs is at least 10 points higher for Q than for D, with a 95% bootstrap interval excluding
+      zero, and false claims are not higher. The owner's gate (93%) is read from the same table.
+A14.3 This test uses the look-1 build if look 2 does not exist when it starts, and is then labelled "interim
+      build, N of 9,029 units"; it is repeated on the final build before any claim about the whole design.
+
+### A15, 2026-11-17 1:52 a.m. ET (after look 1, before look 2 is built or scored; previous hash b71b57aeef22e3878140d8dac1f7544ad9337d7f750e243cc68007e5c776e278 stays on record)
+
+Reason: look 1 (interim, no rule declared) showed the graph walk returns the same first five files in separate
+processes for 52.6% (default settings) and 87.5% (evolved) of questions against the 99% stability gate. Cause
+found by the builder: the graph store returns a node's outgoing edges in a different order in each process and
+the walk's fan-out limit cuts that list. Look-1 numbers stay on record as scored and are not re-scored.
+
+A15.1 Look 2 is built with adjacency lists and score ties sorted by node id, and with nothing else changed: the
+      frozen embedder, landing, both frozen settings sets and every rule threshold stay as hashed in
+      `candidates/slice/FROZEN.md` (sha256 e51b20d9...). The stability gate (99% identical in three processes)
+      is re-measured on that build and must pass for any walk rule line to be read as met.
+A15.2 Every look-2 table also reports amateurs split three ways: every gold file has an extraction unit, some
+      have, none has. A lane that reads only extracted units cannot gain on the third group; a gain there is
+      investigated as a defect before any rule line is read.
+
+### A16, 2026-11-17 2:50 a.m. ET (after the A10.3 result on set H; before any capability section for H exists; previous hash 057363b90aa4069e075a7695667a157cb170fc7d405fcf914c4bb07319b6a565 stays on record)
+
+Reason: rule A10.3 was not met (+1.7 [-2.5, 6.7]): a GUIDE section chosen by keyword match carried two thirds
+of the gold tools in 0 of 120 answers. That result stands. This amendment registers a DIFFERENT layer on the
+same questions, so set H is now used a second time; a pass here is therefore reported as "second use of H" and
+needs confirmation on a new guidance set before it is called admitted.
+
+A16.1 Arm QH on set H (40 questions, 3 runs, same answer prompts, mechanical checks, judge, calibration and
+      caps as A10): keyword + history (arm D of A10, reused as run) plus a CAPABILITIES section placed first,
+      produced by the slice builder's frozen look-1 graph lane exactly as for A14.2 (top 3 capabilities landed
+      on, each with name, definition, standing, quote, package, files reached; at most 6,000 characters;
+      computed once from the original question). No setting is tuned on H.
+A16.2 Rule: QH minus D on guidance success (A10.2) at least +10 points, 95% bootstrap interval excluding zero,
+      false claims not higher. Reported beside it: share of gold tools present in the section; tools named;
+      workable order; the owner's measure (success in at least 2 of 3 runs).
+A16.3 Not met is reported as not met. Either way, the next guidance instrument has plans written by two
+      independent authors, and "workable order" is judged against both.
+
+### A17, 2026-11-17 3:08 a.m. ET (after the A14.2 result; before any arm-N answer exists; previous hash e9f505b25f145f4c34a70c6063f12b8de6a40a7acb8b19d0868cc83f6bbfb6e1 stays on record)
+
+Reason: rule A14.2 was NOT MET (-1.5 [-12.3, 7.7]): a section that DESCRIBES the capabilities landed on did
+not raise amateur answers, and it did not raise how often a gold file reached the answering session (45.6%
+against 47.2%). That result stands. The same table shows where the answer score comes from: with a gold file
+served, 68 of 89 answers reach 8 or above; without, 39 of 106. Look 1 showed the need index puts a gold file
+among ten served files for 28 of 65 of these questions where the keyword lane does for 5. What has not been
+tested is serving those FILES. This amendment registers that test. Set G's slice questions are used a second
+time, so a pass is reported as "second use of G" and needs confirmation on new questions.
+
+A17.1 Arm N on the 65 slice questions of set G (3 runs, same prompts, mechanical checks, judge and caps as
+      A14.2): on EVERY search call the FILES section holds the keyword lane's first 5 distinct files plus the
+      next 5 distinct files from the frozen look-1 need index queried with that call's own query text
+      (embedder, index and settings exactly as frozen in `candidates/slice/FROZEN.md`); a need-index file is
+      shown with the sentence that matched, its unit summary, and up to 4,000 characters of the file's text
+      from the passage store; HISTORY as in arm D; the whole result at most 60,000 characters.
+      Comparison: the existing arm D answers and grades (5 keyword files + history). Reported limitation: arm
+      N serves 10 files against 5; an equal-slot control (10 keyword files) is run if time allows and is
+      otherwise owed.
+A17.2 Rule: N minus D on the owner's measure (question at 8 or above in at least 2 of 3 runs) at least +10
+      points, 95% bootstrap interval excluding zero, false claims not higher. Reported beside it: gold served
+      in any search and in the first search, per arm, with the 2x2 against 8 or above.
+
+### A18, 2026-11-17 3:36 a.m. ET (after the A17 result; before any arm-M answer exists; previous hash 59c3fdf303261bde8bf1cac943d8aca561f0a5e417d1b446058514bddfdbf0d5 stays on record)
+
+Reason: rule A17 was NOT MET and the arm was WORSE: owner's measure 23.1% against 55.4% (-32.3 [-44.6, -20.0]),
+harness validated (keyword excerpts and history identical to arm D, no timeouts). A gold file reached the
+session far more often (86.2% against 47.2% of answers), yet with gold served only 28% of answers reached 8 or
+above against 77% in arm D. That result stands: adding five more files to every result hurt. Two features of
+arm N as the lead specified it are confounded with the lane: the result was larger (51,000 to 60,000 characters
+against 31,000 to 47,000), and each need-index file was shown from its first passage, cut to 2,000 to 5,000
+characters, not at the part that answers the query. This amendment registers ONE arm that removes both, at the
+same size as arm D. It is the third use of the G slice questions; a pass is labelled so and needs new questions.
+
+A18.1 Arm M on the 65 slice questions of set G (3 runs, same prompts, checks, judge and caps): on every search
+      call the FILES section holds exactly 5 files: the keyword lane's first 3 distinct files, then the first 2
+      distinct files from the frozen look-1 need index (queried with that call's query text) that are not
+      among those 3; if the need index returns fewer, the next keyword files fill the 5. Each file, of either
+      kind, gets up to 8,000 characters centred on its passage with the best keyword score for the query
+      within that file (for a need file with no keyword match: the passages of the extraction unit that
+      matched, from its start); a need file carries one extra line with the matched sentence. HISTORY as arm D.
+A18.2 Rule: M minus D on the owner's measure at least +10 points, 95% bootstrap interval excluding zero, false
+      claims not higher. Reported beside it: gold served (any / first search) and the share at 8 or above when
+      gold is served. If M is not better than D, the need index is not admitted as a served-file lane in the
+      v5 recipe on this evidence; its file-level gain is recorded as a finding gain that did not reach answers.

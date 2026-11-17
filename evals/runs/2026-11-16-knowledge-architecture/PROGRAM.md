@@ -135,3 +135,84 @@ neutral labels, every finding kept): `app-architecture/DEFECTS.md`, `app-archite
 `history/VERSION-TABLE.md`, `history/HISTORY.md`. The label-to-name mapping is not in the repository.
 Rule from now on: any research file is checked by `redaction/REPORT.md`'s method (private-name list and the
 8-word question-overlap check) before it is handed over for commit.
+
+## 9. Corpus nightly is DISABLED (owner decision, executed by the parent session at 1:12 a.m., 2026-11-17)
+
+1. The hosted workflows `corpus-nightly-dispatch` and `corpus-watchdog` are disabled until the v5 build and
+   update path replaces them. Reversible with `gh workflow enable <name> --repo stuinfla/ruvnet-brain`. The
+   in-progress corpus release run 44023686696 was cancelled while still sealing a candidate; nothing was
+   published. Still running: the local brain-update scheduled job and the gists nightly (not corpus).
+2. Re-enabling both workflows (or replacing them with the v5 release rail's nightly dispatcher and watchdog,
+   roadmap work package 6) is a CUTOVER CHECKLIST ITEM. Cutover is not complete while they are off.
+3. Known limitation until then, to state in the cutover plan: the knowledge installed on users' machines stays
+   at the last published corpus generation; new upstream work by rUv does not reach users.
+
+## 10. State at 2:00 a.m., 2026-11-17 (supersedes sections 3 to 5 where they differ)
+
+Evidence added (numbers and files in DECISIONS.md D21, RECIPE-FINAL.md):
+- Set F at answer level: no tool 23.8, keyword + history 77.8 of 100. Owner's measure (8 of 10 or better in at
+  least 2 of 3 runs): experts 16 of 17, practitioners 24 of 31, amateurs 17 of 32. The 93% gate is not met.
+- Blind query rewriting (A4.2) and the caller-side arm (A9.1): not met as registered; on problem-only amateur
+  questions the hit rate goes 12.5% to 34.2% when the original list is kept. A confirmation is owed.
+- Slice look 1 (interim; build failed its soundness checks; 1,617 of 9,029 units): amateurs 18 of 101 for the
+  keyword lane, 46 with the need index, 50 with the graph walk, at equal slots. Walk unstable across processes;
+  fixed by a registered sort for look 2 (A15).
+- Pre-registration is at amendment A15 (v1.15.0).
+
+v5 build: walking skeleton committed by the parent session as 1c994dfc on `v5/rewrite` (14 of 14 acceptance
+tests, every break red). Wave one launched 1:42 a.m.: `v5/wp1-engine` (also the single owner of root gate
+wiring), `v5/wp4-installer`, `v5/wp5-builder`; each builder in its own worktree, uncommitted, hand-off format
+as in section 2. `packages/contract` is frozen; tag `contract-v1` after wave one reports no change request.
+
+Running: extraction tier 2 (expected about 3:05 a.m.); slice builder (shipped runs on F and G slice questions,
+then look 2 at `tier2.done` or 4:30 a.m.); set H answers and judging (`candidates/answers-H/`), then the A14.2
+answer test on the 65 amateur slice questions (`candidates/answers-G/`); three wave-one builders.
+Held: re-ranker, embedder screen on passages, side-by-side document, bisect arms, shipped ladder.
+
+## 11. State at 4:15 a.m., 2026-11-17 (supersedes section 10 where they differ)
+
+Read first: RUN/`RECIPE-FINAL.md` (version 1.0), then DECISIONS.md D21 to D24 (D24 corrects D23).
+- Admitted recipe = Tier 1 only (keyword lane, history lane, sections, cap, explicit "nothing matched"). No
+  embedding model. Owner's measure with it: experts 16 of 17, practitioners 24 of 31, amateurs 17 of 32 (F) and
+  36 of 65 (G slice), guidance 4 of 40 (H). The 93% gate is not met; the full rebuild is not triggered.
+- Not admitted, each by its registered rule: passage vectors, concept cards, rewriting as registered (A4.2,
+  A9.1), keyword-chosen playbooks (A10.3), capability descriptions (A14.2, A16), need index (A6.4 thresholds
+  met numerically on a build that failed its soundness checks; A18 at answer level +4.6 [-6.2, 16.9], not
+  met), graph walk (no gain over the need index; tuned settings not adopted). A17 is void (host delivery).
+- Host delivery limit: results above about 50,000 characters are rejected by the host. Cap is now 44,000
+  characters and 20,000 estimated tokens, server-enforced. v5 commit 3dff2bc7 still has 60,000 and test S5
+  checks 60,000: the wave-two integration must change both. Audit: RUN/`candidates/answers/HOST-DELIVERY.md`.
+- Pre-registration is at amendment A18 (v1.18.0). Sets G and H have been used two and three times: no further
+  admission decision may use E, F, G or H. Next instrument: 300 questions per group at least (about 700
+  amateurs to resolve a 5-point difference), two authors per gold, two gold plans per guidance goal.
+- v5: skeleton 1c994dfc; wave one integrated 3dff2bc7 (tag `contract-v1`), both committed and pushed by the
+  parent session. Wave two launched 3:35 a.m. from 3dff2bc7, four builders in their own worktrees:
+  `v5/wp2-server` (also the delivery cap and the private-pack project check), `v5/wp3-health`,
+  `v5/wp6-release` (sole owner of root and CI wiring; workflows named `v5-*`, inert until cutover),
+  `v5/wp7-shims` (must close the planted-`node` weakness, test wp4-12). Then one integration owner produces a
+  single tree; the lead re-runs the suite and the break runner by absolute path and hands off in the agreed
+  format; the parent session commits. After that: draft PR for remote CI (ask the parent session), then
+  WP8 answer gate, WP9 migration, WP10 guard, WP11 documents, WP12 independent review, WP13 soak and cutover.
+- Slice extraction stopped at 3:27 a.m. (tiers 1 and 2 complete; tier 3 at 537 of 5,780; resume with
+  `node run-extract.mjs --par 4` in `candidates/slice/`). Not needed until a cue-based part passes at answer level.
+- Running at 4:15 a.m.: wave-two builders; shipped 4.7.28 at answer level on the 65 amateur questions (one
+  run, information only); the two old-release bisect arms (load-gated at 40).
+- 5:30 a.m. update: wave two is integrated in worktree `agent-aab9c891092aae788` (branch
+  `v5/wave2-integration`, from 3dff2bc7, uncommitted, handed to the parent session at 5:27 a.m.): 84 tests (83
+  pass, 1 opt-in skip), 135 breaks red in one run, re-run by the lead; real host settings files unchanged.
+  It contains the 44,000-character / 20,000-token delivery ceiling. Host registration is off by default
+  (`install --register-hosts`). Next v5 steps after the parent session commits it: draft PR for remote CI
+  (Linux, Windows); WP8 answer gate (wire a frozen question set and the owner's measure into
+  `packages/release/gate/gate.mjs --release <dir> --out <file>`, which the release-candidate workflow already
+  calls); the trusted public key (roadmap A1); WP9 migration from 4.7; WP10 guard; WP11 generated documents;
+  WP12 review by an agent that built nothing; WP13 soak and cutover. Cutover checklist items collected so far:
+  re-enable or replace the corpus nightly and watchdog; make 4.7's release-candidate-preflight skip
+  `release/5.*`; add schedules and `V5_NIGHTLY=on`; switch host registration on; hook start-up time measured
+  on a quiet machine (p95 192 ms at load 27 against a 150 ms target); Windows launcher executed on Windows.
+- Shipped 4.7.28 at answer level on the 65 amateur questions (one run): 56.5 against 69.2; old-release arms:
+  no past release found the right file on the bisect questions (D25).
+- Scratch rule from now on: every agent gets its own scratch subfolder (a builder's cleanup removed another
+  agent's file from the shared folder; nothing of the owner's was lost).
+- Upstream reports owed to rUv, with reproductions: graph store edge order differs per process
+  (`candidates/slice/look1-checks.md`); the memory walk scores and abstains on question-to-content similarity
+  (`ruvector-deepdive/04-DESIGN-THE-RUV-WAY.md` section 8d).

@@ -1,4 +1,4 @@
-Updated: 2026-11-17 00:49:11 EST | Version 1.0.0
+Updated: 2026-11-17 01:00:28 EST | Version 1.0.0
 Created: 2026-11-17 00:49:04 EST
 
 # RuVector deep dive: what it is for, what it can do, and the design it points to
@@ -62,10 +62,16 @@ experiments measure; it is neither promised nor ruled out here.
 - Source: RuVector at the current upstream head `979c31ac` (the older full clone is 623 commits behind and was
   used only for history), plus the sibling clones. Nine Sonnet readers on disjoint sets; I re-checked what the
   conclusions rest on and marked the rest as readers' reports.
-- The tree walk asked for 15 minutes of my own wall-clock. My own walk ran from 11:55 p.m. to about 12:04 a.m.
-  ET (roughly 9 minutes of fast listing and header reading across all 201 crates, the ADR index, examples, npm
-  packages, research folders and neighbours), alongside about 25 reader-minutes on the same trees. The map was
-  written at 12:00 a.m. and extended after a second walk. It is shorter than asked in my own minutes.
+- The tree walk asked for 15 minutes of my own wall-clock. Two walks by the machine clock: 11:55 p.m. to about
+  12:04 a.m., and 12:50:04 to 1:00:11 a.m. ET, about 19 minutes of my own reading (all 201 crates' headers, the
+  ADR index with every ADR from July 2026 by date, examples, npm packages, scripts, docs and research
+  folders, all 62 ruflo plugins, agentdb, agentic-flow, agenticow, RuLake, rvlite, sona, ruvllm), beside about
+  25 reader-minutes. The second walk is recorded as a dated addendum in `CAPABILITY-MAP.md` and changed the
+  design (section 8d of the design file).
+- Primary pages for the two 2026 facts were fetched and compared: ruflo ADR-527 says what was reported; the
+  paper (arXiv 2606.06036) says what was reported about its title, date and "up to 23%", and three things that
+  had not been reported: its cues are keywords, a language model does the walking at question time over up to
+  8 turns, and it costs about 118,000 tokens per benchmark sample.
 - Ran: the SONA Node probe, the MRAgent tests and benchmark, both in scratch on made-up or bundled data. One
   probe re-run pushed the one-minute load to 61 briefly (11:42 p.m.); nothing heavy ran after that.
 - The question loop against the Brain ran four rounds and 53 logged questions (4 mine, 49 by three readers

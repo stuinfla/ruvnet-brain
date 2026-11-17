@@ -1,4 +1,4 @@
-Updated: 2026-11-17 00:49:11 EST | Version 1.0.0
+Updated: 2026-11-17 01:00:28 EST | Version 1.0.0
 Created: 2026-11-17 00:48:46 EST
 
 # 4. The storage and retrieval design, the way rUv builds memory: reconstructive capability memory
@@ -280,6 +280,60 @@ pattern adds 0.1 to a route score when its quality passes 0.7, with no measured 
 **The loop did not run dry.** Four rounds, 53 logged questions; the last four questions each still found
 something. Totals from the log: informed questions put the right source first for 21 of 42 classified (and in
 the returned set for 10 more); naive questions, 1 of 7.
+
+## 8d. Changes after my second walk and after fetching the two primary pages (12:50 to 1:00 a.m. ET)
+
+**The two 2026 facts, checked against their primary pages.**
+- ruflo ADR-527 (fetched from the repository's raw file): says what I reported: Accepted, 2026-11-10; 197
+  prompts, 11 labels including `none`, 84 / 113 split; MiniLM; 25.7%, 36.3%, 57.8% +/- 1.5, 62.8%, 62.8%.
+  Caveats I had not carried: the near-tie margin is 0.005 and a near-tie keeps the old router's pick; the
+  router stays opt-in because it fails rUv's latency gate (p95 +503%); the ADR calls label agreement "pilot
+  evidence only" and says the 113 test prompts "have been looked at".
+- arXiv 2606.06036 (abstract page and full HTML fetched): title, authors, date and ICML 2026 as reported.
+  "Up to 23%" is the relative gain in judged score on LoCoMo with one backbone (84.21 against 68.31 for the
+  best baseline); with another backbone it is about 12%. On LongMemEval-S: 72.95 against 54.92; on its
+  "single-preference" questions 66.67 against 46.67. **Three things I had not reported, and they matter:**
+  (1) in the paper a cue is a keyword such as an entity or attribute, and the graph is built by a language
+  model; (2) at question time a language model chooses which link to follow, prunes, and decides when to
+  stop, for up to 8 turns; accuracy rises steadily with turns while wider results per turn "quickly
+  saturate"; (3) it costs about 118,000 tokens and about 586 seconds per benchmark sample. So the paper's
+  result is for model-driven navigation, and rUv's example replaces the model with a fixed harness.
+
+**Design changes that follow.**
+
+1. **Evidence must be carried from the cue, not re-measured against the file.** I read MRAgent's walk
+   (`agent/memory.mjs:253-320`): every content item is scored by the question's own similarity to that
+   content, and abstention uses the same number. For an amateur that similarity is exactly what is missing, so
+   the walk as written would prune the right file. rUv's typed-graph operator already returns the seed's score
+   with what it reached (`typed_graph.rs:325-374`). The port therefore adds one setting,
+   `evidence = content | cue | max` (default `max`), and judges abstention on the cue or centroid match for the
+   cue path. This is a deviation from the harness as shipped, stated here so it is not mistaken for rUv's code.
+2. **Offer navigation, not only search.** Since the caller is a model, the tool surface gets small, cheap
+   operations beside `search`: `expand(capability)` to its files, decisions, alternatives and history;
+   `siblings(capability)`; `why(file)` back to the capabilities and decisions that point at it. Results per
+   call stay small. This is the paper's mechanism; the fixed walk remains as the default first answer.
+3. **Cues are sentences here, keywords in the paper.** Sentences are kept because rUv's own measurement on
+   plain prompts (ADR-527) used example prompts averaged per label, and because the lead's dev data favour
+   question-shaped text. Keyword cues (names, commands, error strings) are kept as a second cue kind.
+4. **`none` is a label with examples.** A set of out-of-scope questions forms its own centroid; landing on it
+   is the abstain outcome (the centroid router's `ABSTAIN_LABEL`).
+5. **Learning from question and answer logs: first candidate is the projection agentdb ships**
+   (`ContrastiveTrainer`: InfoNCE, hard negatives, a full matrix starting at identity; agentdb 3.10.1), trained
+   on confirmed (question, capability) pairs on the user's branch, applied to the question vector only. It
+   precedes the SONA adapter and any model fine-tune. Its weights have no export and its start is unseeded, so
+   a seeded, saved variant is a prerequisite. New rule R25.
+6. **The nightly branch is agentdb's governed experiment branch** (`RvfExperimentBranch`, agentdb ADR-013):
+   candidate on a copy-on-write child, anchored to commit, benchmark hash and embedding-space hash, promoted
+   by a separate trusted step. RuVector ADR-288 states the same invariant for the shipped file: the base is
+   never written after signing; state lives in deltas that can be deleted on their own.
+7. **Every store carries an embedding-space identity** (model, tokenizer, prompt, pooling, precision, runtime;
+   agentdb ADR-011, RuVector ADR-281) and refuses a query embedded any other way, as the centroid router does.
+8. **RVF 0.4.x is a precondition**: per-vector metadata did not persist before ADR-280.
+9. **Stage 0 for every store includes rUv's retrieval contract** (`docs/testing/retrieval-contract-qualification-1313.md`):
+   filtered top-k returns exactly min(k, eligible), no duplicate ids, scores agree with returned vectors.
+10. **Route by the shape of the question** before searching, as OSpipe does (`examples/OSpipe/src/search/router.rs`):
+    words about time go to history; a quoted phrase or one or two words go to the keyword lane; a plain
+    sentence goes to cues and the keyword lane together.
 
 ## 9. What this design does not claim
 

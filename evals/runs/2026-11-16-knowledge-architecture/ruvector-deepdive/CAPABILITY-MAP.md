@@ -1,4 +1,4 @@
-Updated: 2026-11-17 00:49:11 EST | Version 1.0.0
+Updated: 2026-11-17 01:00:28 EST | Version 1.0.0
 Created: 2026-11-17 00:15:17 EST
 
 # Capability map of RuVector and what is built on it
@@ -244,3 +244,106 @@ Recorded here before any is asked; answers and leads go to `BRAIN-QUESTION-LOG.m
     change about how a memory is written and chosen?
 18. Is there any place where rUv maps a plain-language problem to the right tool or package (a capability
     catalogue, `guidance_recommend`, a router), and how is it built?
+
+## Addendum, 2026-11-17 (second own walk, started 12:50 a.m. ET)
+
+Directories and documents opened in this walk that the map above did not cover, read by me. Same maturity key.
+
+### RuVector: ADRs from July 2026 onward (88 dated files listed; those bearing on storage and retrieval)
+
+| Date | ADR | What it adds, in plain words | State |
+|---|---|---|---|
+| 2026-07-29 | ADR-280 durable metadata | Before this, an RVF file kept vectors across close and reopen but lost its metadata, and the SDK rejected metadata. Now per-vector metadata persists (`rvf-runtime/src/store.rs:1981`, `:4296`; SDK needs `rvf-node` 0.4.2 or later; the WASM backend still rejects it) | S in 0.4.x. **The Brain's pinned 0.3.4 / 0.2.3 predates it** |
+| 2026-08-03 | ADR-288 immutable base + delta lifecycle | A signed RVF is never modified; accumulated state lives in deltas and checkpoints tied to the base's lineage | Accepted |
+| 2026-08-06 | ADR-297 adaptive compression plane | One interface for every vector encoding, with each vector placed at the cheapest precision that keeps its retrieval value, and the encoding's provenance recorded | Accepted; `ruvector-core::encoding` |
+| 2026-08-07 / 08 | ADR-300 cluster retrieval; ADR-299 namespace routing by min-cut | see sections 3 and 6 | X |
+| 2026-08-13 | ADR-303 entropy-adaptive search | closed as a negative result, documented | closed |
+| 2026-08-19 to 23 | ADR-305 to 338 "perpetual intelligence runtime" wave | Each adopts one 2026 paper as a pattern: memory ledger (307), harness evolution with frozen weights (313), atomic observations (320), project-specific skills distilled from synthetic issues (321), stage-level memory diagnosis (325), capability-grounded reasoning (326), cost-aware routing (331), scope-sharded context index (334) | mostly Proposed, several with real crates |
+| 2026-08-23 | ADR-339 context JavaScript binding | a JS binding for the scope-sharded context index | Accepted |
+| 2026-10-26 | ADR-353 RVF stream descriptor | a signed descriptor so a reader can verify a file while it is still arriving | Proposed |
+| 2026-11-05 to 11 | ADR-355 weaver, 358 weight-space, 359/360 e-means | ecosystem work queue; model registry by task embedding; deterministic clustering | Accepted |
+
+### RuVector: other places opened
+
+| Capability | Where | M |
+|---|---|---|
+| Retrieval contract: the invariants a store must keep (filtered top-k returns exactly min(k, eligible) on the exact path, no cross-tenant ids, no duplicate ids, scores agree with returned vectors, deleted ids never returned) | `docs/testing/retrieval-contract-qualification-1313.md` (a test plan) | plan |
+| "Learn-from-feedback actually learns" as an executable contract across three SONA implementations, after the same stub shipped twice | `scripts/sona-drift/` (`harness.mjs`, `reference.rvf`, `stub-tripwire.mjs`) | scripts; not run |
+| Training-data contamination check by 13-word overlap with the evaluation set; release gate | `scripts/training/contamination_check.py`, `release_gate.py` | scripts |
+| Dataset discovery framework: data as a graph, min-cut for regime change ("discover what you don't know you're looking for") | `examples/data/` | X |
+| Hybrid vector-graph example | `examples/graph/hybrid_search.rs` | P (every call is commented out) |
+| rvlite SPARQL triple store (basic patterns; property paths not supported, `sparql/executor.rs:359`) and Cypher (path ranges parsed in `cypher/ast.rs:98`, no use in the executor) | `crates/rvlite/src` | S, subset |
+| pi brain ingest: content-hash de-duplication, novelty scoring against what is already stored, compression tier; gist publisher that only publishes findings above a novelty and evidence bar | `mcp-brain-server/src/web_ingest.rs`, `gist.rs` | S (service) |
+| Capability-grounded "thought map" navigation between agents | `crates/rvAgent/latentmesh-thoughtmap` (ADR-326) | X |
+| Semantic index of execution history; policy store | `crates/ruvllm/src/witness_log.rs`, `policy_store.rs` | R |
+| Reward-hacking defences and a staleness-weighted online tuner for evolved settings | `crates/sona/src/darwin_guard.rs`, `auto_tuner.rs` | R |
+
+### Neighbouring repositories opened
+
+| Capability | Where | M |
+|---|---|---|
+| **A learned projection on top of frozen embeddings**: InfoNCE loss, hard-negative mining, curriculum, AdamW; a full matrix initialised at identity | agentdb `src/backends/rvf/ContrastiveTrainer.ts` (559 lines, with tests) | S in agentdb 3.10.1 (TypeScript). Weights in memory only (no export found); initial noise unseeded; no measured retrieval gain found |
+| Self-learning RVF backend: query router + SONA on search, contrastive trainer on feedback, bandit for strategy | agentdb `SelfLearningRvfBackend.ts`, `SemanticQueryRouter.ts`, `SolverBandit.ts`, `AdaptiveIndexTuner.ts` | S; effect unmeasured |
+| **Experiments on a copy-on-write RVF branch, bound to commit, benchmark hash and embedding-space hash; the candidate can ask for promotion and never holds release authority** | agentdb `src/governance/RvfExperimentBranch.ts`, `MetaHarnessGateway.ts`; agentdb ADR-013 (2026-07-29) | S, with a test |
+| Learned re-ranker trained on labelled relevance, evaluated held-out before it becomes active, with a revisioned pointer | agentdb `NeuralReranker.ts`; ADR-019 (2026-11-10) | S; evaluated on synthetic data only |
+| Outcome feedback re-orders patterns: 0.7 similarity + 0.2 success rate + 0.1 reward; exact search under 1,000 rows because the approximate index misses neighbours on tiny graphs | agentdb ADR-015 (2026-10-31) | S |
+| Promotion pipeline as a runnable example: agent branch, test sandbox, review gate, promote to base, lineage audit at each step; also A/B branches, rollback and quarantine, time-travel debugging | agenticow `examples/promotion-pipeline.mjs` and 16 others | S (examples) |
+| Decisions linked to code: ADR lifecycle with a hierarchical store and causal edges | ruflo `plugins/ruflo-adr` | S |
+| Domain graph (bounded contexts, aggregates, events) as a navigable store; documentation drift detection | ruflo `plugins/ruflo-ddd`, `ruflo-docs` | S |
+| **Nearest-centroid router with an explicit `none` label, refusing to score a query embedded by a different model than the artefact** | ruflo `v3/@claude-flow/cli/src/ruvector/centroid-router.ts`; ADR-527, ADR-391 | S (opt-in flag) |
+| rUv's own pre-registration for a router: frozen hashed corpus, blind labels, dev / test split touched once, metrics including "wrong at high confidence" and abstain precision, an AND-gate for promotion, and "changing the gate in the same commit as the result it would flip is exactly what this ADR forbids" | ruflo ADR-391 | S (process) |
+| Adapters for open models kept only if they beat the unchanged base under a rule written first, with every raw answer kept | ruvllm repo README | S (process) |
+
+All 48 ruflo plugins and 14 v3 plugins were listed with their descriptions; those not in the tables are
+orchestration, security, trading, browser, cost or domain plugins without a retrieval role.
+
+### Capabilities I now think matter for the recipe that were not in it
+
+1. **A learned projection on frozen vectors ships in agentdb** (`ContrastiveTrainer`). It is the full-size
+   version of what the rank-1 SONA adapter could not do, callable from Node. It becomes the first candidate for
+   "learned from question and answer logs", before any model fine-tune.
+2. **Experiment branches with anchors** (`RvfExperimentBranch`): the nightly branch, verify, promote step
+   already exists as governed code.
+3. **`none` as a label with its own examples** (centroid router): abstention learned from examples of
+   out-of-scope questions, not only a threshold.
+4. **Metadata persistence arrived in RVF 0.4.x**: the design's metadata filters need the upgrade.
+5. **The retrieval contract invariants** as stage-0 checks for every store in the design.
+6. **Novelty scoring at ingest** (pi brain): store a new cue only if it is not already covered.
+7. **The contamination check by 13-word overlap** as rUv's own leak rule (the lead uses 8 words, stricter).
+8. **Navigation, not only search.** The paper behind MRAgent has the calling model choose which link to follow
+   and when to stop, and reports that accuracy rises with the number of reasoning turns while wider results per
+   turn saturate. The Brain's caller is such a model, so the store should expose "follow this link" operations
+   as well as "search".
+
+### What this walk corrected
+
+- `01-CAPABILITY-CATALOG.md` listed the LongMemEval haystack size as unverified. Verified: the benchmark ranks
+  within each question's own haystack (`agentdb/benchmarks/longmemeval/run.mts:4`), about 50 sessions (S) or
+  500 (M), not one 850,000-chunk corpus.
+- The hybrid example in `examples/graph` is a placeholder; the working Node example is `examples/npm-vector-graph`.
+
+### More from the same walk
+
+| Capability | Where | M |
+|---|---|---|
+| RVF adapters: how each rUv system maps its records onto RVF (key, namespace and tags as metadata fields; experiences as a state / next-state vector with action and reward as metadata; patterns with reward and critique; every store, delete and search written to the witness segment) | `crates/rvf/rvf-adapters/{claude-flow,sona,agentdb,agentic-flow,ospipe,rvlite}` | R |
+| Query-shape router: time words to a temporal store, "related to" to the graph, one or two words or a quoted phrase to keywords, everything else to hybrid | `examples/OSpipe/src/search/router.rs` (90 lines) | X (example) |
+| Content-addressed release registry with trust levels, revocation and a Merkle transparency log; edge package registry with immutable versions and yanking | `crates/rvforge-registry` (38 tests), `crates/ruvector-edge-registry` (19 tests) | R |
+| Stale-view protection: an artefact is bound to a content hash and revision, and stale views fail closed | `crates/ruvector-staged-workspace` (ADR-318) | R |
+| Embedding-space identity as the compatibility key for stores, caches and benchmarks | agentdb ADR-011 (2026-07-29); RuVector ADR-281 | S in agentdb |
+| Immutable signed base with state in separately deletable deltas | RuVector ADR-288 (Accepted 2026-08-03) | design + RVF branch code |
+
+Walk accounting: this second walk ran from 12:50:04 a.m. to 1:00:11 a.m. ET by the machine clock (about 55
+read commands and three page fetches, all read by me). With the first walk (11:55 p.m. to about 12:04 a.m.)
+that is about 19 minutes of my own reading of the tree.
+
+Three more items for the list of capabilities that matter for the recipe and were not in it:
+
+9. **Co-change links from history.** rUv's hooks record which files are edited together and suggest them
+   (`npm/packages/ruvector/bin/cli.js:5700-5712`). The history store already holds every commit, so
+   "changed together" links between files can be built mechanically and walked like any other link.
+10. **A ledger for beliefs.** `ruvector-agent-memory/src/ledger.rs:244-262`: a credible contradicting statement
+    supersedes the old one, the old one is marked rejected, and whatever depended on it is put back to
+    pending. This is the lead's "store the correction with the claim" as working code (Rust only).
+11. **Question shape and embedding identity** (OSpipe's router; agentdb ADR-011): route by the kind of
+    question before searching, and refuse to compare vectors made by different models or settings.

@@ -104,9 +104,9 @@ incumbent control):
 | incumbent control (bge-base-en-v1.5) | 25 | 42 | 45 |
 | snowflake-arctic-embed-m-v1.5 | 36 (+14.5 points, p = 0.019) | 48 (+7.9, p = 0.21) | 46 (+1.3) |
 | gte-modernbert-base | 42 (+22.4, p = 0.0001) | 51 (+11.8, p = 0.012) | 49 (+5.3, p = 0.22) |
-| nomic-embed-text-v1.5, jina-v2-base-code, bge-large-en-v1.5, embeddinggemma-2 | EMBEDDER-ROWS-PENDING | | |
+| nomic-embed-text-v1.5, jina-v2-base-code, bge-large-en-v1.5, embeddinggemma-2 | not run (the passage-embedder screen was paused 2026-11-16 and not resumed) | | |
 
-EMBEDDER-VERDICT-PENDING
+Outcome, 2026-11-17: no passage embedder is admitted and none ships in the v5 recipe; the measured reasons and the cue-sentence embedder screen are in `RECIPE-FINAL.md` sections 1 to 3, which supersede this section.
 
 ## 5. Ingestion plan, per source
 

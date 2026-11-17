@@ -1,4 +1,4 @@
-Updated: 2026-11-17 00:49:11 EST | Version 1.0.0
+Updated: 2026-11-17 01:00:28 EST | Version 1.0.0
 Created: 2026-11-17 00:06:00 EST
 
 # 5. What rips: things the Brain hand-rolls that rUv already ships (or already fixed)
@@ -8,7 +8,7 @@ instead, the evidence, and how sure this is. "Rip" means replace after the usual
 
 | # | In the Brain today | What rUv ships | Evidence | Confidence |
 |---|---|---|---|---|
-| 1 | Pinned `@ruvector/rvf` 0.3.4 and `rvf-node` 0.2.3 (`node_modules/@ruvector/*/package.json`), which rewrite the id sidecar on a read-only open (the lead's D11) | 0.4.12 / 0.4.7: `saveMappings()` returns early when read-only, with a test that the bytes are unchanged | `npm/packages/rvf/src/backend.ts:731` (read); npm registry checked 2026-11-16 | high: upgrade. Not run against the Brain's stores |
+| 1 | Pinned `@ruvector/rvf` 0.3.4 and `rvf-node` 0.2.3 (`node_modules/@ruvector/*/package.json`), which rewrite the id sidecar on a read-only open (the lead's D11) | 0.4.12 / 0.4.7: `saveMappings()` returns early when read-only, with a test that the bytes are unchanged | `npm/packages/rvf/src/backend.ts:731` (read); npm registry checked 2026-11-16 | high: upgrade. Not run against the Brain's stores. The same upgrade brings per-vector metadata that survives close and reopen (ADR-280; `rvf-runtime/src/store.rs:1981`), which 0.3.4 does not have |
 | 2 | Chunk-and-embed as the only shape of knowledge (`kb/forge-corpus.mjs`, `kb/forge-big.mjs`) | Knowledge stored by kind (ADR-056), and reconstruction over cue, tag, content (`examples/mragent`, README line 444) | `04-DESIGN-THE-RUV-WAY.md` | this is the design under test, not a proven swap |
 | 3 | Hand-set retrieval weights and thresholds (lane weights, abstain threshold, router gates) | Evolve the harness on a training split with cross-validation and report held-out: `@metaharness/darwin` 0.14.0; the loop in `examples/mragent/optimize.mjs` | ran MRAgent in scratch: 14 of 14 tests, benchmark reproduced | high that the tool exists and runs; its benefit here is rule R21 |
 | 4 | A fixed threshold deciding "insufficient evidence" (19 refusals and 90 flags of 164 on E) | Abstention scored by risk-adjusted utility, threshold on raw relevance, tuned on training only (ADR-270); typed decisions with an abstain mass (`@ruvector/typesafe`); conformal prediction (`ruvector-core`, Rust only) | ADR-270; MRAgent `harness.mjs:58-108` | medium: the scoring rule can be adopted now; the components need R20 |

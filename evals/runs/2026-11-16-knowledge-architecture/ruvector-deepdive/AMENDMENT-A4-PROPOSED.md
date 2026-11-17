@@ -1,4 +1,4 @@
-Updated: 2026-11-17 00:49:11 EST | Version 1.0.0
+Updated: 2026-11-17 01:00:28 EST | Version 1.0.0
 Created: 2026-11-17 00:48:50 EST
 
 # Proposed pre-registration amendment A4 (for the lead to adopt, edit or reject)
@@ -99,6 +99,23 @@ here.
   higher share by centroid than by nearest cue. Adopted as the default landing if any-gold on amateurs is not
   lower than nearest-cue landing and the "does not exist" rate is higher or equal; a tuned embedder (R1c) is
   judged against this baseline.
+- A4.22 R19a, evidence source (required before R19 is scored): the walk's content evidence is set to
+  `content`, `cue` or `max` on the training split only. Stage 0: on generated problem-only questions whose
+  gold file shares no content word with the question, the gold file survives pruning for at least 90% with
+  `cue` or `max`; the same check with `content` is reported, to show the difference. R19 is scored with the
+  frozen choice.
+- A4.23 R25, learned projection from logs (agentdb `ContrastiveTrainer`, seeded and saved): trained on
+  confirmed (question, capability) pairs from half of dev plus generated pairs, applied to question vectors
+  only. Stage 0: held-out generated pairs, right capability first, +5 points over no projection. Adopted as
+  "off by default, safe" if no blind stratum falls by more than 3 points and dev held-out rises by 5.
+- A4.24 R26, navigation at answer level: arm N = the R19 result plus the operations `expand`, `siblings`
+  and `why`, same question set, 3 runs, same blind judge, searches and navigation calls counted together under
+  one cap. Adopted if answers at 8 of 10 or better rise by at least 5 points on amateurs with a 95% interval
+  excluding zero, and false claims do not rise.
+- A4.25 Stage 0 for every store: the retrieval-contract invariants (filtered top-k returns exactly
+  min(k, eligible); no duplicate ids; reported scores agree with returned vectors; nothing deleted is
+  returned) and an embedding-space identity check (a query embedded by another model or precision is
+  refused).
 - A4.20 R16b, query adapter in its designed regime: rUv's micro-LoRA driven from Rust with a supplied
   contrastive gradient, ranks 1 and 2, learning rates 0.001 to 0.1; stage-0 pass = +5 points recall@5 on
   held-out generated pairs. No blind score before that.
