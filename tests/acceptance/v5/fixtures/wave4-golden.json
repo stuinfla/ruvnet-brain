@@ -1,0 +1,170 @@
+{
+ "map {\"query\":\"memory store\"}": {
+  "sha256": "b6aee91c6c866f334e2f1883787e9aba406bd307e4d4b078b6e64df9da3f2476",
+  "chars": 3235
+ },
+ "map {\"query\":\"pagefill checksum\"}": {
+  "sha256": "696946960328f6195f92c67ff1e16df8129a53dc00113b5ddb6f38a2f5e9e26b",
+  "chars": 19705
+ },
+ "map {\"query\":\"pagefill checksum\",\"cursor\":40}": {
+  "sha256": "9eb91ea493c27aba5d585360c4a5d5e1ee66696508c31fb3abaaafff0880e0ac",
+  "chars": 11162
+ },
+ "map {\"query\":\"lplus\"}": {
+  "sha256": "f6c429afea46de01bc313e37ac4496a06463ce231098fdf7c309b54a6814b4a7",
+  "chars": 3656
+ },
+ "map {\"query\":\"lanternwick\"}": {
+  "sha256": "92ef065ba7ba3925431595a84d2e089c6e618722075530e8a25ff74bf28ff596",
+  "chars": 794
+ },
+ "map {\"query\":\"zzzz nothing\"}": {
+  "sha256": "713cbe41e3b2f9f1686581a73ce2567cbcf078ad0e8eae318ae0942b4b5f0065",
+  "chars": 368
+ },
+ "facts {\"target\":\"lplus-kit\"}": {
+  "sha256": "687dbe8e28c602e2685ecc13baa9c803a560d59a09b363c77aa6dc9be22b482e",
+  "chars": 19625
+ },
+ "facts {\"target\":\"lplus-kit\",\"cursor\":60}": {
+  "sha256": "61fd3faefe355734fb7d19235cacbf08455a27b735a307c6684afd9f0a427011",
+  "chars": 19510
+ },
+ "facts {\"target\":\"lplus-kit\",\"cursor\":400}": {
+  "sha256": "4635680de1e064677478013076705c846ef007e3c18a81a85a99ca0deaf2e38b",
+  "chars": 19567
+ },
+ "facts {\"target\":\"memory_store\"}": {
+  "sha256": "56214a0c7d0e2307a38895c3df26669791a3cc731e4ae1b465bfe502cd91f2f9",
+  "chars": 1122
+ },
+ "facts {\"target\":\"src/config.ts\"}": {
+  "sha256": "67988fad8b08eff2368a6f544eac948e346df354628e73824ef2fbe606f9d388",
+  "chars": 2431
+ },
+ "facts {\"target\":\"src\",\"kind\":\"const\"}": {
+  "sha256": "01b412f3424891beb329170cfda47b4544d2005a301122f07f0337b266650c2e",
+  "chars": 19714
+ },
+ "facts {\"target\":\"PAGEFILL_BLOB\"}": {
+  "sha256": "37eb8bda34ce824ed914086bef6abe7e1d4c96509fad4100f07de002400f6673",
+  "chars": 936
+ },
+ "facts {\"target\":\"HnswConfig\"}": {
+  "sha256": "8a0b5c09d2e41220c488773734fa01730ade211216c7dcecc298251ae506d4d3",
+  "chars": 1241
+ },
+ "facts {\"target\":\"lplus-kit\",\"kind\":\"status\"}": {
+  "sha256": "4ba7f8e5c289858cd095a0decb47a3c9be6ea005e771967f45a4f21b0efb2864",
+  "chars": 1378
+ },
+ "facts {\"target\":\"lplus-kit\",\"kind\":\"doc-number-line\",\"cursor\":3}": {
+  "sha256": "c178c6165bf88b076d83533a848a8e499b6e1d6f6923474515f549a1bbad0265",
+  "chars": 19624
+ },
+ "facts {\"target\":\"1\"}": {
+  "sha256": "e367684879e306617e964190c6e54f4cb504276442d68a9d1d7094036b0a853a",
+  "chars": 911
+ },
+ "facts {\"target\":\"_gists\"}": {
+  "sha256": "da018c861405fffe70d657a6e5cd7a7995c44e1397b4308513bacbd87a463733",
+  "chars": 1016
+ },
+ "facts {\"target\":\"docs/adr/ADR-012-paging.md\"}": {
+  "sha256": "a75f5fcecf2dc2f929220b41dadc31bf6b07bd59feefc6f6061f008eccfd5d9b",
+  "chars": 643
+ },
+ "facts {\"target\":\"nonexistent_thing\"}": {
+  "sha256": "fd89b5c045ccbd449269137cc2be779056feca69d7e757d2230d4fbf3599fa61",
+  "chars": 539
+ },
+ "find {\"words\":\"max agents\"}": {
+  "sha256": "a1af9e822f36fb945bc8fb96cde51825430e346147386d290eece4a3c3d73ba2",
+  "chars": 1649
+ },
+ "find {\"words\":\"pagefill\"}": {
+  "sha256": "1fa54ad05bec6198d5aa1f40af0fbf8c1b9dbed11d4c80d7f7cb7cb531a3ed98",
+  "chars": 19617
+ },
+ "find {\"words\":\"pagefill\",\"cursor\":30}": {
+  "sha256": "df36175922b7746d460d1318f1835b2fe257c219c66c8546b9c53c82ee97731d",
+  "chars": 19691
+ },
+ "find {\"words\":\"ttl 3600\"}": {
+  "sha256": "cc929262d4a100a096d83545227ad368c8b425ae21425500331ef8e8c5617ae7",
+  "chars": 19668
+ },
+ "find {\"words\":\"ünïcode\"}": {
+  "sha256": "574c502e219351c1a9810de6afd8429c5034bd9065d3ba0c7d0d533663a38209",
+  "chars": 488
+ },
+ "find {\"words\":\"lanternwick swarm\"}": {
+  "sha256": "f7b2ddb86043626c3048292c4d991a5b6b6450b1d10d96b82afa92f46f6a2f42",
+  "chars": 1541
+ },
+ "find {\"words\":\"quillshard\"}": {
+  "sha256": "c2232e7adab9f44b7f01532aad11590e1c0593a4ae31caa0fd1c5b15179db5c9",
+  "chars": 801
+ },
+ "context {\"repo\":\"lplus-kit\",\"path\":\"src/config.ts\"}": {
+  "sha256": "16d1d89d3c874c7bcd5d796af87a3e5fc76be5c1837468594744a0ba8fdd1aaf",
+  "chars": 1004
+ },
+ "context {\"repo\":\"lplus-kit\",\"path\":\"docs/adr/ADR-007-memory-ttl.md\"}": {
+  "sha256": "65448bb47d741dc13baa91c8803020f6059bbd25f55c4845f2cf78fa7b028573",
+  "chars": 1110
+ },
+ "context {\"repo\":\"lplus-kit\",\"path\":\"docs/adr/ADR-012-paging.md\"}": {
+  "sha256": "ef2556952e921a061d597a61672d5d25eaa7f145dabb1df55e13ca851fb69e7b",
+  "chars": 1254
+ },
+ "context {\"repo\":\"lplus-kit\",\"path\":\"docs/LONG.md\"}": {
+  "sha256": "a5167f7e48f0fa8477318fcdf25c70d84981dfa97a87224733ad4867642ba473",
+  "chars": 978
+ },
+ "context {\"repo\":\"gists\",\"path\":\"cafe1/notes.md\"}": {
+  "sha256": "1cda83b0c821f0b4812ddb94bf263e8515d90892accdfa4b2047b110c8f94777",
+  "chars": 767
+ },
+ "context {\"repo\":\"nope\",\"path\":\"x.md\"}": {
+  "sha256": "69aff6f9667be9e6351ae330bf09833f558e6472e22ca11db40b0b2435f4b1b9",
+  "chars": 79
+ },
+ "source {\"repo\":\"lplus-kit\",\"path\":\"src/config.ts\"}": {
+  "sha256": "2fc8019bd92ff0b251fbeb94280d8075b842698fa2cba2e6a779464e444a5ccc",
+  "chars": 801
+ },
+ "source {\"repo\":\"lplus-kit\",\"path\":\"docs/LONG.md\",\"from\":1,\"to\":1500}": {
+  "sha256": "a1db22c01e3660b00bbcd24c824610fb42a0275c0dbe6efd538893da64ea42d6",
+  "chars": 19778
+ },
+ "source {\"repo\":\"lplus-kit\",\"path\":\"docs/LONG.md\",\"from\":700,\"to\":1500}": {
+  "sha256": "703889677f0e681e8283a8dd8b7f4b7bf9247d3eb570f3d9abb163dc576c99e0",
+  "chars": 19744
+ },
+ "source {\"repo\":\"lplus-kit\",\"path\":\"src/long.ts\"}": {
+  "sha256": "bc41c3b05ca111e812256e9cf7069db05b0f0ab8a17c99d1a57bb9ac1e354933",
+  "chars": 9452
+ },
+ "source {\"repo\":\"lplus-kit\",\"path\":\"src/consts.ts\",\"from\":850}": {
+  "sha256": "19a44ac6fae7e03d3bb401bd5ebb4433d921518c8da522468c891b647e973972",
+  "chars": 3703
+ },
+ "source {\"repo\":\"lplus-kit\",\"path\":\"docs/NOTES.md\"}": {
+  "sha256": "959e49c455daebed21580958362e7ab9e48869ef973b8616aefe4ebf1cbc73ab",
+  "chars": 541
+ },
+ "source {\"repo\":\"lplus-kit\",\"path\":\"packages/big/package.json\",\"from\":1,\"to\":50}": {
+  "sha256": "88c0778f607e7355c607bd3ba024d2cfc90afb272834778bea97ddd1e0b23f38",
+  "chars": 2092
+ },
+ "source {\"repo\":\"_gists\",\"path\":\"cafe2/tune.md\"}": {
+  "sha256": "38a6fd82652b2b904c34d35c7530d69a2931c348359bae5cdf4bd859779ae314",
+  "chars": 438
+ },
+ "source {\"repo\":\"lplus-kit\",\"path\":\"src/config.ts\",\"from\":99}": {
+  "sha256": "b756926429c90cabcb5c324a48ad89c30ee42bc2d0a080d4b1cba9af47c03354",
+  "chars": 133
+ }
+}
