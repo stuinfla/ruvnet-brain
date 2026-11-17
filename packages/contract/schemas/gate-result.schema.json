@@ -17,6 +17,46 @@
       }
     },
     "rule": { "type": "string" },
+    "questionSet": {
+      "type": "object",
+      "required": ["id", "sha256", "n", "synthetic", "pinned"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "n": { "type": "integer", "minimum": 1 },
+        "synthetic": { "type": "boolean" },
+        "pinned": { "type": "boolean" }
+      }
+    },
+    "layers": {
+      "type": "object",
+      "required": ["retrieval", "answer"],
+      "properties": {
+        "retrieval": {
+          "type": "object",
+          "required": ["passed", "hit", "of", "problems", "questions"],
+          "properties": {
+            "passed": { "type": "boolean" },
+            "hit": { "type": "integer", "minimum": 0 },
+            "of": { "type": "integer", "minimum": 1 },
+            "problems": { "type": "array", "items": { "type": "string" } },
+            "questions": { "type": "array", "items": { "type": "object", "required": ["id"], "properties": { "id": { "type": "string", "minLength": 1 } } } }
+          }
+        },
+        "answer": {
+          "type": "object",
+          "required": ["given", "required", "bound", "met"],
+          "properties": {
+            "given": { "type": "boolean" },
+            "required": { "type": "boolean" },
+            "bound": { "type": "boolean" },
+            "met": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "reasons": { "type": "array", "items": { "type": "string" } },
+    "resultSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "at": { "type": "string", "minLength": 1 }
   }
 }

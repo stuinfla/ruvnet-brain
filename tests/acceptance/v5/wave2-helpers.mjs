@@ -24,7 +24,7 @@ export function userWithHosts(ctx) {
 export function registered(u) {
   const settings = JSON.parse(fs.readFileSync(u.settings, 'utf8'));
   const hook = settings.hooks.UserPromptSubmit.map((g) => g.hooks[0]).find((h) => /bin\/rb5" hook/.test(h.command));
-  const server = JSON.parse(fs.readFileSync(u.state, 'utf8')).mcpServers?.['ruvnet-brain'];
+  const server = JSON.parse(fs.readFileSync(u.state, 'utf8')).mcpServers?.['ruvnet-brain-5'];
   return { hook, server };
 }
 

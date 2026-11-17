@@ -11,5 +11,6 @@
   "goodOutcomes": ["published", "no-change"],
   "watchdogWindowHours": 48,
   "nightHours": 20,
-  "killSwitch": { "variable": "V5_NIGHTLY", "armedValue": "on" }
+  "killSwitch": { "variable": "V5_NIGHTLY", "armedValue": "on" },
+  "answerGate": { "questionSetSha256": "", "note": "the hash printed by gate.mjs hash --questions <frozen set>, set by the owner when a set is frozen; empty: the gate measures but never passes" }
 }

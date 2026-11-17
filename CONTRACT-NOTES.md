@@ -1,4 +1,4 @@
-Updated: 2026-11-17 05:00:31 EST | Version 1.2.0
+Updated: 2026-11-17 06:49:52 EST | Version 1.3.0
 Created: 2026-11-17 01:30:00 EST
 
 # Version 5 walking skeleton: contract notes
@@ -268,6 +268,75 @@ and `breaks-wave2.mjs`.
 **Tests added.** `wp7-08-test-guard` (guard, opt-in, uninstall restores host files), `wave2-delivery`,
 `wave2-contract`, `wave2-end-to-end` (build → seal → install with hosts → registered launcher → search →
 one verdict in three states with the owner page → update → rollback → uninstall), each break-tested.
+
+## Wave 3 integration (work packages 8, 9, 10, 11 and the repo-gate repair)
+
+Merged on `v5/wave3-integration` from `e529627e`: the answer gate (WP 8: `packages/release/gate/`), the
+migration and the brake (WP 9: `packages/migrate/`), the optional write guard (WP 10: `packages/guard/`),
+the generated documents (WP 11: `packages/docs/`, `docs/RECIPE.md`, `docs/v5/REFERENCE.md`,
+`docs/v5/PARITY.md`) and the repair of two repository unit tests (the contract-v1 fixture's
+`lexical.db` is committed as `lexical.db.fixture`; `tests/known-red.json` registers the v5 acceptance
+suite by its glob, so every `tests/acceptance/v5/*.test.mjs`, the wave 3 ones included, is accounted for).
+
+**Contract 1.2** (`CONTRACT_VERSION` `'1.1'` → `'1.2'`). Every change is additive; the contract-v1
+fixture pack still opens, passes its probes, searches and formats (`wave2-contract`).
+
+| Where | Change | Why |
+|---|---|---|
+| `schemas/gate-result.schema.json` | optional `questionSet`, `layers`, `reasons`, `resultSha256` | WP 8 writes them; listed so a typo in them is refused, while a wave 2 gate result without them stays valid |
+| new | `schemas/answer-gate-result.schema.json` | WP 8: the layer 2 result the maintainer produces; `verify.mjs` checks its shape after its own binding checks |
+| `DEFAULTS` | `guard: false` | WP 10: the write guard is off unless the user's configuration turns it on |
+| (none) | no `migrate` field | the migration keeps its record in `state/migration.json` and needs no contract field now |
+
+**Fixes found by the builders, each with its test and breaks.**
+- (a) `APP_PACKAGES` now holds `guard` and `migrate` (and `shipped-files.json` was regenerated with
+  `rail.mjs shipped-files --write`), so both commands run from an installed app (`wave3-01-app-commands`).
+- (b) Version 5's search server is registered as **`ruvnet-brain-5`** in every host for the side-by-side
+  period (4.7 keeps `ruvnet-brain`; cutover renames it). A host whose server entry is refused (another
+  program holds `ruvnet-brain-5`) gets no hook, skill or command, is listed under `unserved` in
+  `state/hosts.json`, and the one verdict is DEGRADED (cause `host-unserved`, fix `ruvnet-brain doctor`,
+  the reason naming the host and the file) while it is, never OK (`wave3-02-side-by-side`; `wp7-05` and
+  `wp9-02` updated to the new name).
+- (c) Uninstall is byte-exact. Registration keeps a pre-registration copy of each shared host file
+  (settings.json, .claude.json, config.toml, hooks.json) with its sha256 and the sha256 of what it
+  wrote, in `state/host-backup/` (mode 0600). Uninstall puts the copy back (or removes a file that did
+  not exist) only while the file is still exactly what registration wrote; a file changed since keeps
+  the change and loses only version 5's entries. Four starting states tested (`wave3-03-byte-exact`).
+- (d) The launcher has a `guard` mode (`rb5 guard`, `rb5.cmd guard`: stdin and the exit code pass
+  through, so exit 2 refuses; no usable Node allows the write with the DOWN line), and the plug-in's
+  `hooks.json` has a `PreToolUse` entry (matcher `Write|Edit|MultiEdit|NotebookEdit`, no `||` fallback).
+  `plugin/claude/guard-hook.mjs` reads the config first and does nothing while `guard` is not `true`;
+  when on it runs the installed app's guard. Registered for Claude Code only: the guard reads Claude
+  Code's tool input, and Codex's pre-tool event and input were not verified (`wave3-04-guard-hook`).
+
+**Delivery guard counts everything on the wire** (item 4). `server/wire.mjs`: every tool result leaves
+through `toolResult`, which counts the text of every content block plus any `structuredContent`,
+serialized, against 44,000 characters and 20,000 estimated tokens (or a recipe's lower numbers). A
+structured copy that repeats the text is dropped; structured content that pushes a result over is
+dropped; text still over is cut at a line end with a closing `CUT ·` line. The server sent no
+`structuredContent` before this wave (choice 12 above) and sends none now, so there was no duplicate to
+stop; the guard makes the rule hold if one is ever added (`wave3-05-wire`). JSON escaping on the wire is
+not counted: the measured host limit was in delivered text characters.
+
+**Migration test guard.** Under `RUVNET_BRAIN5_TEST=1`, `migrate --apply` reads a 4.7 home only from a
+path given explicitly in `RUVNET_BRAIN_HOME` and refuses the real user's default 4.7 home before reading
+anything (`refuseRealHome47`, `wave3-06-migrate-guard`); the WP 9 helper names its synthetic home.
+
+**Release candidate.** The gate job first runs a placeholder that fails closed, naming what the owner
+must provide (a private source holding the frozen question set and a secret granting access to it), then
+`gate.mjs --release <staged> --questions "$RUNNER_TEMP/question-set" --out <file>`. With
+`answerGate.questionSetSha256` empty in `rail.json`, the gate cannot pass a real release. Job time limit
+left at 60 minutes: the builder gave no estimate, and the synthetic set's layer 1 takes about 2 s.
+The four v5 workflows stay inert (`wave3-07-workflows`, `wp6-08`).
+
+**Line budget.** The release package (`packages/release/**/*.mjs`) is 1,297 lines against the
+architecture's 1,200; no line-budget check exists in this tree yet (ROADMAP A1 step 0.4 adds it), so
+nothing was split; recorded here for that check.
+
+**Tests added.** `wave3-01` to `wave3-07` and `wave3-end-to-end` (migrate --plan and --apply from a
+synthetic 4.7 home, search through the registered server, the whole synthetic home hashed, brake and
+undo, the guard off and failing open, the retrieval gate passing and failing, the documents current);
+their breaks are in `breaks-wave3.mjs`.
 
 ## How each break is applied
 

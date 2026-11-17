@@ -14,12 +14,15 @@ name: v5-release-candidate
 #   stage    the sealed bytes become a pre-release in the channel (never what a machine reads)
 #   probe    Linux, macOS and Windows each install the staged bytes with the real installer, ask
 #            every probe through the real server, and take doctor's verdict; one receipt each
-#   gate     the answer gate (work package 8: packages/release/gate/gate.mjs) on the staged bytes
+#   gate     the answer gate (work package 8: packages/release/gate/gate.mjs) on the staged bytes, with
+#            the frozen question set fetched from outside the repository first (a placeholder step
+#            that fails closed until the owner provides a private source and a secret); with no set
+#            pinned in packages/release/rail.json (answerGate.questionSetSha256) the gate never passes
 #   promote  re-hash the staged bytes; refuse without all three ok receipts and a passed gate
 #            result for exactly these bytes; move both pointers or put both back
 # No step continues on error and no input or variable skips a step. Until the lead provisions the
-# trusted public key (ROADMAP A1 step 0.4) seal refuses, and until work package 8 lands the gate step
-# fails: this workflow cannot go green before both exist, by design.
+# trusted public key (ROADMAP A1 step 0.4) seal refuses, and until the owner provides the question-set
+# fetch and pins a frozen set the gate job fails: this workflow cannot go green before both exist, by design.
 #
 # Actions are pinned to exact commits copied from other local repositories' workflows (no network
 # was used to write this file); re-check them against GitHub at cutover.
@@ -145,13 +148,22 @@ jobs:
         with:
           name: v5-channel
           path: ${{ runner.temp }}/channel
+      # PLACEHOLDER (wave 3), FAILS CLOSED until the owner provides it. The frozen question set is never
+      # in this repository (the product indexes it); this step must fetch it from OUTSIDE the repository
+      # into "$RUNNER_TEMP/question-set". It names no source, no address and no credential on purpose.
+      - name: Fetch the frozen question set from outside the repository (placeholder, fails closed)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "::error::QUESTION SET NOT PROVIDED. The owner must provide (1) a private source, outside this repository, that holds the frozen question set, and (2) a secret, bound to this job, that grants read access to it; then replace this placeholder step with the fetch into RUNNER_TEMP/question-set. Until then the answer gate cannot run and no release can be promoted."
+          exit 1
       - name: Run the answer gate on the staged bytes
         env:
           TAG: ${{ needs.seal.outputs.tag }}
         shell: bash
         run: |
           set -euo pipefail
-          node packages/release/gate/gate.mjs --release "$RUNNER_TEMP/channel/staged/$TAG" --out "$RUNNER_TEMP/gate/gate.json"
+          node packages/release/gate/gate.mjs --release "$RUNNER_TEMP/channel/staged/$TAG" --questions "$RUNNER_TEMP/question-set" --out "$RUNNER_TEMP/gate/gate.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: v5-gate

@@ -14,6 +14,14 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { setup } from './helpers.mjs';
 
 const V1 = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'contract-v1-pack');
+// The pack's passage store is committed as lexical.db.fixture, not lexical.db: a tracked *.db is what the
+// release prepush stray-file check refuses (a working database committed by accident), and this one is a
+// frozen fixture. The bytes are the contract-v1 builder's, unchanged (PACK.json's sha256 still holds);
+// copying the fixture into a working pack restores the name the pack format requires.
+function copyV1Pack(dest) {
+  fs.cpSync(V1, dest, { recursive: true });
+  fs.renameSync(path.join(dest, 'lexical.db.fixture'), path.join(dest, 'lexical.db'));
+}
 
 async function modules(tree) {
   const at = (...p) => import(pathToFileURL(path.join(tree.root, 'packages', ...p)).href);
@@ -24,9 +32,9 @@ test('Wave 2: a contract-v1 pack still opens, passes its probes, searches and fo
   const ctx = setup(t, 'wave2-contract');
   const tree = ctx.tree();
   const { engine, validate, format, constants } = await modules(tree);
-  assert.equal(constants.CONTRACT_VERSION, '1.1');
+  assert.equal(constants.CONTRACT_VERSION, '1.2');
   const pack = path.join(ctx.tmp('rb5-v1-'), 'pack');
-  fs.cpSync(V1, pack, { recursive: true });
+  copyV1Pack(pack);
   const recipe = JSON.parse(fs.readFileSync(path.join(pack, 'RECIPE.json'), 'utf8'));
   assert.equal(recipe.result.delivery, undefined, 'the fixture is a contract-v1 recipe: no delivery numbers');
   assert.deepEqual(validate.problems('recipe', recipe), [], 'a contract-v1 recipe is still valid');
@@ -83,7 +91,7 @@ test('Wave 2: a private pack’s projects are compared on real paths', { skip: p
   fs.symlinkSync(real, link);
   const hits = (projects, project) => {
     const pack = path.join(ctx.tmp('rb5-priv-'), 'pack');
-    fs.cpSync(V1, pack, { recursive: true });
+    copyV1Pack(pack);
     const file = path.join(pack, 'PACK.json');
     fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), access: 'private', projects }, null, 2));
     const h = engine.open(pack);

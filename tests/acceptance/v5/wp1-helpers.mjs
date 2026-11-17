@@ -24,19 +24,22 @@ export const HERE = path.dirname(fileURLToPath(import.meta.url));
 const sha = (t) => crypto.createHash('sha256').update(t).digest('hex');
 
 // The retrieval run's corpus slice and question sets live outside the product repository on the
-// owner's machine. Each path can be overridden; a test that needs one skips, saying so, without it.
-const RUN = process.env.WP1_RUN_DIR ?? '/Users/stuartkerr/Code/ruvnet-brain/.claude/worktrees/agent-a605de6750254d5d5/evals/runs/2026-11-16-knowledge-architecture';
+// owner's machine and are named ONLY by environment variables (no machine's path is written here):
+//   WP1_PILOT_DB, WP1_DEV_QUESTIONS, WP1_RUN_DIR (the retrieval run's folder; WP1_RIG_SCORES,
+//   WP1_RIG_RUN and the E, F, G sets default to their places inside it), WP1_QUESTION_SETS.
+// A test that needs one skips, naming the variable, without it.
+const unset = (name) => `(not set: ${name})`;
+const RUN = process.env.WP1_RUN_DIR;
+const inRun = (rel) => (RUN ? path.join(RUN, rel) : unset('WP1_RUN_DIR'));
+const DEV = process.env.WP1_DEV_QUESTIONS ?? unset('WP1_DEV_QUESTIONS');
 export const EXTERNAL = {
-  pilotDb: process.env.WP1_PILOT_DB ?? '/Users/stuartkerr/Code/RVF-KnowledgeBases/ruvnet-brain-ka-20261116/pilot-fts-v2.sqlite',
-  devQuestions: process.env.WP1_DEV_QUESTIONS ?? '/Users/stuartkerr/Code/RVF-KnowledgeBases/ruvnet-brain-v2-work/runs/dev-pilot.json',
-  rigScores: process.env.WP1_RIG_SCORES ?? path.join(RUN, 'candidates/rig/per-question.jsonl'),
-  rigRun: process.env.WP1_RIG_RUN ?? path.join(RUN, 'candidates/rig/v2-bm25.jsonl'),
-  questionSets: (process.env.WP1_QUESTION_SETS ?? [
-    '/Users/stuartkerr/Code/RVF-KnowledgeBases/ruvnet-brain-v2-work/runs/dev-pilot.json',
-    path.join(RUN, 'instrument/E-verified.json'),
-    path.join(RUN, 'instrument/F/F-verified.json'),
-    path.join(RUN, 'instrument/G/G-verified.json'),
-  ].join(path.delimiter)).split(path.delimiter),
+  pilotDb: process.env.WP1_PILOT_DB ?? unset('WP1_PILOT_DB'),
+  devQuestions: DEV,
+  rigScores: process.env.WP1_RIG_SCORES ?? inRun('candidates/rig/per-question.jsonl'),
+  rigRun: process.env.WP1_RIG_RUN ?? inRun('candidates/rig/v2-bm25.jsonl'),
+  questionSets: process.env.WP1_QUESTION_SETS
+    ? process.env.WP1_QUESTION_SETS.split(path.delimiter)
+    : RUN ? [DEV, inRun('instrument/E-verified.json'), inRun('instrument/F/F-verified.json'), inRun('instrument/G/G-verified.json')] : [],
 };
 
 // The keyword analyser's stop words (the measured lane's list).

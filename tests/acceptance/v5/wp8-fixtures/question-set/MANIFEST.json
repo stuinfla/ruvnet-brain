@@ -1,0 +1,23 @@
+{
+  "schema": "ruvnet-brain/question-set",
+  "version": 1,
+  "id": "wp8-synthetic-fixture",
+  "note": "SYNTHETIC. Made-up questions over the made-up fixture repositories in tests/acceptance/v5/fixtures/repos, for the gate's own tests only. Never a measurement of the product. Tests copy this folder outside the repository before use, because the gate refuses a question set kept inside it.",
+  "synthetic": true,
+  "questions": "questions.json",
+  "calibration": "calibration.json",
+  "layer1": {
+    "baseline": { "hit": 5, "of": 6, "measuredOn": "alpha-vectors, beta-memory and gamma-swarm built with recipe/RECIPE.json (fixture)" },
+    "tolerance": 0
+  },
+  "layer2": {
+    "required": false,
+    "runs": 3,
+    "passGrade": 8,
+    "minRunsPassing": 2,
+    "maxAgeDays": 14,
+    "thresholds": { "amateur": 0.5, "expert": 0.5 },
+    "bootstrap": { "resamples": 1000, "confidence": 0.95 },
+    "calibration": { "minWithinOne": 9 }
+  }
+}

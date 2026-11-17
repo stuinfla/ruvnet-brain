@@ -285,6 +285,12 @@ const checks = [
       if (odd.length) hits.push(`not picked up by run-breaks.mjs: ${odd.join(', ')}`);
       return hits.length ? none(hits) : { ok: true, detail: `${files.length} v5 test file(s) wired` };
     } },
+  { id: 'V2', area: 'v5', scope: 'repo', title: 'The version 5 generated documents (docs/RECIPE.md, docs/v5/) match the code and data they are generated from',
+    run: () => {
+      if (!existsSync(path.join(ROOT, 'packages/docs/generate.mjs'))) return { ok: true, detail: 'no packages/docs on this branch' };
+      const r = spawnSync(process.execPath, [path.join(ROOT, 'packages/docs/generate.mjs'), '--check'], { cwd: ROOT, encoding: 'utf8' });
+      return { ok: r.status === 0, detail: `${r.stdout}${r.stderr}`.trim() };
+    } },
 ];
 
 const selected = checks.filter((c) => c.scope === 'repo' || MACHINE);

@@ -18,6 +18,7 @@ import { createHelpers } from './helper.mjs';
 import { format, formatRead } from './format.mjs';
 import { READ, SEARCH, detailOf, extraTerms } from './tools.mjs';
 import { real } from './widen.mjs';
+import { toolResult } from './wire.mjs';
 
 const MAX_LINE = 1_000_000;
 const importFrom = (dir, ...rel) => import(pathToFileURL(path.join(dir, ...rel)).href);
@@ -193,11 +194,13 @@ export async function run({ home, input = process.stdin, output = process.stdout
       case 'tools/call': {
         const name = msg.params?.name;
         if (name !== SEARCH.name && name !== READ.name) throw Object.assign(new Error(`unknown tool ${name}`), { code: -32602 });
+        // Every result leaves through toolResult (wire.mjs): one text block, no structured copy, and
+        // everything on the wire held to the delivery ceiling.
         try {
           const r = name === SEARCH.name ? await search(msg.params.arguments) : await read(msg.params.arguments);
-          return { content: [{ type: 'text', text: r.text }], ...(r.isError ? { isError: true } : {}) };
+          return toolResult(r.text, r.isError, active?.recipe);
         } catch (e) {
-          return { content: [{ type: 'text', text: `RuvNet Brain DOWN · search failed: ${e.message} · fix: ruvnet-brain doctor` }], isError: true };
+          return toolResult(`RuvNet Brain DOWN · search failed: ${e.message} · fix: ruvnet-brain doctor`, true, active?.recipe);
         }
       }
       default:

@@ -20,6 +20,10 @@ export const FIX = {
   // The previous version is answering; retrying would offer the same release again, so the one
   // useful command is the one that shows what failed. The notice ends by itself after a day.
   'rolled-back': 'ruvnet-brain doctor',
+  // A host was registered but its server entry was refused (another program holds the name), so that
+  // host searches through something else: never OK. The reason names the host and the file; doctor
+  // prints it whole (a re-registration needs the release source, which a folder install does not keep).
+  'host-unserved': 'ruvnet-brain doctor',
 };
 
 const ago = (ms) => (ms < 90 * 60_000 ? `${Math.round(ms / 60_000)} min` : `${Math.round(ms / 3_600_000)} h`);
@@ -64,7 +68,13 @@ export function assess(evidence) {
   // Every live server is ok by every rule above, so the contract's whole-evidence verdict is either
   // that same ok or its rollback notice.
   const v = verdict(ev);
-  return v.state === 'ok' ? { ...v, cause: null } : { ...v, fix: FIX['rolled-back'], cause: 'rolled-back' };
+  if (v.state !== 'ok') return { ...v, fix: FIX['rolled-back'], cause: 'rolled-back' };
+  const off = (ev.unserved ?? []).filter((u) => u?.host);
+  if (off.length) {
+    const why = `${off.map((u) => u.host).join(' and ')} not served by version 5 (${off[0].why ?? 'its server entry was refused'}${off[0].file ? ` in ${off[0].file}` : ''})`;
+    return { state: 'degraded', label: 'DEGRADED', since: null, reason: why, fix: FIX['host-unserved'], cause: 'host-unserved' };
+  }
+  return { ...v, cause: null };
 }
 
 export const assessHome = (home, { now } = {}) => assess(readEvidence(home, { now }));

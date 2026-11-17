@@ -9,8 +9,9 @@ import { sign } from '../contract/signature.mjs';
 import { SHIM_VERSION } from '../contract/constants.mjs';
 
 const PACKAGES = new URL('..', import.meta.url);
-// What an installed app holds: the engine and the server, plus what they import.
-export const APP_PACKAGES = ['contract', 'engine', 'server', 'health', 'cli', 'plugin'];
+// What an installed app holds: the engine and the server, plus what they import, and the two command
+// packages the installed CLI loads (`migrate`/`rollback-to-4` and `guard`, wave 3).
+export const APP_PACKAGES = ['contract', 'engine', 'server', 'health', 'cli', 'plugin', 'guard', 'migrate'];
 
 const inventory = (dir) => listFiles(dir).map((p) => ({ path: p, size: fs.statSync(path.join(dir, p)).size, sha256: sha256File(path.join(dir, p)) }));
 

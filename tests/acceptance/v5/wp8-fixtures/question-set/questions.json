@@ -1,0 +1,8 @@
+[
+  { "id": "syn-01", "group": "amateur", "question": "how do I tell how alike two embedding vectors are with brindlewort", "gold": ["alpha-vectors/src/distance.rs"], "mustNotClaim": [] },
+  { "id": "syn-02", "group": "practitioner", "question": "which gloamwick journal keeps remembered episodes after a crash", "gold": ["beta-memory/docs/DESIGN.md"], "mustNotClaim": [] },
+  { "id": "syn-03", "group": "amateur", "question": "tidewrack episode store recall by lantern word", "gold": ["beta-memory/src/episode_store.ts"], "mustNotClaim": [] },
+  { "id": "syn-04", "group": "practitioner", "question": "thistledown queen round robin hollowmere backoff", "gold": ["gamma-swarm/src/queen_coordinator.py"], "mustNotClaim": [] },
+  { "id": "syn-05", "group": "expert", "question": "descend marrowlight layer in the hnsw index", "gold": ["alpha-vectors/src/hnsw_index.rs"], "mustNotClaim": [] },
+  { "id": "syn-06", "group": "expert", "question": "zephyrlattice mincut walker edges", "gold": ["delta-graph/src/mincut_walker.rs"], "mustNotClaim": ["built into alpha-vectors"] }
+]

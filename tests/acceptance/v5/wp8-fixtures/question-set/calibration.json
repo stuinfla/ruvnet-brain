@@ -1,0 +1,12 @@
+[
+  { "id": "cal-01", "question": "where is cosine brindlewort", "gold": ["alpha-vectors/src/distance.rs"], "mustNotClaim": [], "answer": "It is cosine_brindlewort in alpha-vectors/src/distance.rs.", "key": 9, "planted": null },
+  { "id": "cal-02", "question": "where is the gloamwick journal described", "gold": ["beta-memory/docs/DESIGN.md"], "mustNotClaim": [], "answer": "beta-memory/docs/DESIGN.md describes the append-only gloamwick journal.", "key": 9, "planted": null },
+  { "id": "cal-03", "question": "which class recalls episodes by lantern", "gold": ["beta-memory/src/episode_store.ts"], "mustNotClaim": [], "answer": "TidewrackEpisodeStore.recallByLantern, in beta-memory/src/episode_store.ts.", "key": 9, "planted": null },
+  { "id": "cal-04", "question": "who assigns tasks round robin", "gold": ["gamma-swarm/src/queen_coordinator.py"], "mustNotClaim": [], "answer": "ThistledownQueen.assign in gamma-swarm/src/queen_coordinator.py.", "key": 9, "planted": null },
+  { "id": "cal-05", "question": "where is descend marrowlight", "gold": ["alpha-vectors/src/hnsw_index.rs"], "mustNotClaim": [], "answer": "alpha-vectors/src/hnsw_index.rs has descend_marrowlight.", "key": 9, "planted": null },
+  { "id": "cal-06", "question": "how are vectors compared", "gold": ["alpha-vectors/src/distance.rs"], "mustNotClaim": [], "answer": "They are compared with a cosine function.", "key": 3, "planted": "zero-citation" },
+  { "id": "cal-07", "question": "how are vectors compared", "gold": ["alpha-vectors/src/distance.rs"], "mustNotClaim": [], "answer": "See alpha-vectors/src/distance.rs and alpha-vectors/src/euclid_fernwhistle.rs.", "key": 3, "planted": "unresolved-citation" },
+  { "id": "cal-08", "question": "where does alpha-vectors store vectors", "gold": ["alpha-vectors/src/hnsw_index.rs"], "mustNotClaim": ["stores vectors in postgres"], "answer": "alpha-vectors stores vectors in postgres.\nSee alpha-vectors/src/hnsw_index.rs.", "key": 1, "planted": "false-claim" },
+  { "id": "cal-09", "question": "where does alpha-vectors store vectors", "gold": ["alpha-vectors/src/hnsw_index.rs"], "mustNotClaim": ["stores vectors in postgres"], "answer": "The layered graph is in alpha-vectors/src/hnsw_index.rs.\nSome say it stores vectors in postgres.", "key": 3, "planted": "false-claim" },
+  { "id": "cal-10", "question": "where is the queen", "gold": ["gamma-swarm/src/queen_coordinator.py"], "mustNotClaim": [], "answer": "The gamma-swarm/README.md says a queen assigns work.", "key": 4, "planted": null }
+]

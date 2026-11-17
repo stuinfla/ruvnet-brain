@@ -19,7 +19,7 @@ test('WP7-03 the launcher runs no program found through PATH except the Node it 
   const hosts = fakeHosts(ctx.tmp('rb5-hosts-'), { content: false });
   api.registerHosts({ home, hosts });
   const hook = JSON.parse(fs.readFileSync(hosts.claude.settings, 'utf8')).hooks.UserPromptSubmit[0].hooks[0].command;
-  const server = JSON.parse(fs.readFileSync(hosts.claude.state, 'utf8')).mcpServers['ruvnet-brain'];
+  const server = JSON.parse(fs.readFileSync(hosts.claude.state, 'utf8')).mcpServers['ruvnet-brain-5'];
   const fakes = ctx.tmp('rb5-fakes-');
   const marks = ctx.tmp('rb5-marks-');
   for (const n of NAMES) {

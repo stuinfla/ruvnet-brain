@@ -21,6 +21,12 @@ export async function hostPlan(register, env = process.env) {
 /** The plan lines for the shim (inside the brain home): what it writes and the temporary names. */
 export const SHIM_PLAN = { write: ['shim/**'], temporary: ['shim.partial/**', 'shim.old/**'] };
 
+/** state/hosts.json: the host files registered and the hosts whose server entry was refused (the
+ *  health verdict reads `unserved`: a host version 5 does not serve is never reported OK). */
+export function recordHosts(home, hosts, r) {
+  writeJsonAtomic(record(home), { hosts, unserved: (r?.unserved ?? []).map(({ host, file, why }) => ({ host, file, why })) });
+}
+
 /** Refreshes the shim, then registers hosts when asked. Returns the registration (or null). */
 export async function afterInstall({ home, register, env = process.env, log = () => {} }) {
   const w = await shimApi();
@@ -28,9 +34,10 @@ export async function afterInstall({ home, register, env = process.env, log = ()
   if (!register) return null;
   const hosts = w.hostFiles(env);
   const r = w.registerHosts({ home, hosts });
-  writeJsonAtomic(record(home), { hosts });
+  recordHosts(home, hosts, r);
   for (const f of r.written) log(`host file updated: ${f}`);
   for (const c of r.conflicts) log(`host file not changed: ${c.file} (${c.what})`);
+  for (const u of r.unserved ?? []) log(`${u.host} is NOT served by version 5 (${u.why}); no hook was added there`);
   if (!Object.keys(hosts).length) log('no host settings folder was found, so no host was registered');
   return r;
 }

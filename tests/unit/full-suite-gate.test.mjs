@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { evaluateFullSuite, globToRegExp, isTimingFailure, listTestFiles, MAX_FLAKY, redFiles, summaryMarkdown } from '../../scripts/full-suite-gate.mjs';
+import { accountFiles, evaluateFullSuite, globToRegExp, isTimingFailure, listTestFiles, MAX_FLAKY, redFiles, summaryMarkdown } from '../../scripts/full-suite-gate.mjs';
 import config from '../../vitest.config.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
@@ -136,11 +136,31 @@ describe('full-suite gate', () => {
     expect(globToRegExp('tests/integration/*.test.mjs').test('tests/integration/fixtures/a.test.mjs')).toBe(false);
   });
 
+  it('a file outside the vitest include is accounted for when a registered suite runs it, and only then', () => {
+    const list = [...files, 'tests/acceptance/v5/s01.test.mjs', 'tests/acceptance/v5/wp9-new.test.mjs'];
+    const suite = { name: 'v5', script: 'test:v5', include: ['tests/acceptance/v5/*.test.mjs'] };
+    const scripts = { 'test:v5': 'node --test tests/acceptance/v5/*.test.mjs' };
+    const judge = (quarantine, s = scripts) => evaluateFullSuite({ report: green(), quarantine: { tests: [], excludedFiles: [], ...quarantine }, files: list, include, root: ROOT, scripts: s });
+    expect(judge({ suites: [suite] })).toMatchObject({ verdict: 'PASS', problems: [] });
+    expect(judge({}).problems).toEqual(list.slice(3).map((file) => `never run: ${file} is outside vitest include and not in excludedFiles`));
+    expect(judge({ suites: [suite] }, {}).problems).toEqual(['suite v5: npm script test:v5 does not exist']);
+    expect(judge({ suites: [suite] }, { 'test:v5': 'node --test tests/acceptance/v5/s01.test.mjs' }).problems).toEqual(['suite v5: npm script test:v5 does not run tests/acceptance/v5/*.test.mjs']);
+    expect(judge({ suites: [{ ...suite, include: ['tests/acceptance/v6/*.test.mjs'] }], }, { 'test:v5': 'node --test tests/acceptance/v6/*.test.mjs' }).problems).toEqual([
+      'suite v5 matches no test file outside vitest include: tests/acceptance/v6/*.test.mjs',
+      ...list.slice(3).map((file) => `never run: ${file} is outside vitest include and not in excludedFiles`)]);
+    expect(judge({ suites: [suite], excludedFiles: [{ file: list[3], reason: 'x' }] }).problems).toEqual([`excludedFiles entry is run by suite v5: ${list[3]}`]);
+    expect(accountFiles({ files: list, include, suites: [suite], scripts }).bySuite.get(list[4])).toBe('v5');
+  });
+
   it('the committed quarantine accounts for every real test file the root config does not run', () => {
     const quarantine = JSON.parse(fs.readFileSync(path.join(ROOT, 'tests/known-red.json'), 'utf8'));
-    const included = config.test.include.map(globToRegExp);
-    const outside = listTestFiles(ROOT).filter((file) => !included.some((re) => re.test(file)));
-    expect(outside.sort()).toEqual(quarantine.excludedFiles.map((row) => row.file).sort());
+    const { scripts } = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+    const { unrun, bySuite, problems } = accountFiles({ files: listTestFiles(ROOT), include: config.test.include, suites: quarantine.suites || [], scripts });
+    expect(problems).toEqual([]);
+    expect(unrun.sort()).toEqual(quarantine.excludedFiles.map((row) => row.file).sort());
+    // The version 5 acceptance suite is run by `npm run test:v5`, never excluded: its files are accounted for by that suite.
+    expect([...bySuite.values()].every((name) => name === 'v5-acceptance')).toBe(true);
+    expect([...bySuite.keys()].length).toBeGreaterThan(0);
     for (const row of quarantine.tests) expect(fs.existsSync(path.join(ROOT, row.file)), row.file).toBe(true);
   });
 });

@@ -285,12 +285,15 @@ export function addWorkPackageBreaks(BREAKS) {
     },
     'wp7-05b': {
       test: 'wp7-05', what: "registering replaces the user's own prompt hooks",
-      patches: [{ file: 'packages/plugin/install.mjs', find: 'const list = (out.hooks?.UserPromptSubmit ?? []).filter((g) => !mine(g));', replace: 'const list = [];' }],
+      patches: [{ file: 'packages/plugin/install.mjs', find: 'const list = (out.hooks?.[event] ?? []).filter((g) => !mine(g));', replace: 'const list = [];' }],
       expect: /the user hook stays and exactly one is added/,
     },
     'wp7-05c': {
-      test: 'wp7-05', what: 'unregistering leaves the server entry behind',
-      patches: [{ file: 'packages/plugin/install.mjs', find: 'else delete out.mcpServers[NAME];', replace: 'else out.mcpServers[NAME] = cur;' }],
+      test: 'wp7-05', what: 'unregistering leaves the server entry behind (and the byte-exact copy is not used)',
+      patches: [
+        { file: 'packages/plugin/install.mjs', find: 'else delete out.mcpServers[SERVER];', replace: 'else out.mcpServers[SERVER] = cur;' },
+        { file: 'packages/plugin/install.mjs', find: 'if (!restoreBackup(home, file, readText(file)).restored) {', replace: 'if (true) {' },
+      ],
       expect: /unregistering puts every host file back byte for byte/,
     },
     'wp7-06a': {

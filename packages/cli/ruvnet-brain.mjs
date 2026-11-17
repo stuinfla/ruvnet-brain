@@ -144,6 +144,8 @@ switch (cmd) {
   case 'config':
     config();
     break;
+  case 'migrate': case 'rollback-to-4': process.exitCode = await (await import('../migrate/migrate.mjs')).main(cmd, args); break; // wp9
+  case 'guard': process.exitCode = await (await import('../guard/command.mjs')).main(home, args); break; // wp10
   default:
     console.error(USAGE);
     process.exitCode = 2;

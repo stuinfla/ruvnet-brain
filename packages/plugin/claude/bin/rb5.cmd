@@ -1,5 +1,6 @@
 @echo off
-rem RuvNet Brain 5 launcher (Windows). The host runs it by its full path: rb5.cmd hook or rb5.cmd server.
+rem RuvNet Brain 5 launcher (Windows). The host runs it by its full path: rb5.cmd hook, rb5.cmd server or
+rem rb5.cmd guard (the optional write guard: standard input and exit code pass through, 2 refuses).
 rem Same rules as bin/rb5: Node only by full path, first the runtime recorded at install (checked again
 rem now), then the first node.exe in an absolute PATH folder outside the current project; empty and
 rem relative PATH entries and the current folder are never searched; with no usable Node, one DOWN line
@@ -9,7 +10,7 @@ set "NoDefaultCurrentDirectoryInExePath=1"
 set "RB5_DOWN=[RuvNet Brain] DOWN: Node could not run. Search is unavailable. Fix: run 'node -v' in a terminal; reinstall Node if it fails."
 set "RB5_MODE=%~1"
 if not defined RB5_MODE set "RB5_MODE=hook"
-if /i not "%RB5_MODE%"=="hook" if /i not "%RB5_MODE%"=="server" goto down
+if /i not "%RB5_MODE%"=="hook" if /i not "%RB5_MODE%"=="server" if /i not "%RB5_MODE%"=="guard" goto down
 for %%I in ("%~dp0..") do set "RB5_PLUGIN=%%~fI"
 for %%I in ("%~dp0..\..\..") do set "RB5_SHIM=%%~fI"
 set "RB5_P1=%CD%"
@@ -82,8 +83,14 @@ exit /b 1
 rem :run NODE - returns only when that Node cannot run or is older than the minimum (exit 3).
 :run
 if /i "%RB5_MODE%"=="server" goto run_server
+if /i "%RB5_MODE%"=="guard" goto run_guard
 "%~1" "%RB5_PLUGIN%\health-line.mjs"
 exit /b %ERRORLEVEL%
+:run_guard
+"%~1" "%RB5_PLUGIN%\runtime.mjs" <nul >nul 2>&1 || exit /b 1
+rem Like exec: the guard's exit code (2 refuses the write) is this script's, and no other Node is tried.
+"%~1" "%RB5_PLUGIN%\guard-hook.mjs"
+exit %ERRORLEVEL%
 :run_server
 "%~1" "%RB5_PLUGIN%\runtime.mjs" <nul >nul 2>&1 || exit /b 1
 rem Like exec: this cmd.exe ends with the server's exit code and never goes on to another Node.

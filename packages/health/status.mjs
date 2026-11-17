@@ -56,5 +56,7 @@ export function readEvidence(home, { now = Date.now(), pids = null } = {}) {
     probeIntervalMs: cfg.probeIntervalMs,
     autoUpdate: cfg.autoUpdate,
     updateUrl: cfg.updateUrl,
+    // Hosts registered without version 5's server (state/hosts.json, written by the host registration).
+    unserved: readJson(path.join(p.state, 'hosts.json'), null)?.unserved ?? [],
   };
 }

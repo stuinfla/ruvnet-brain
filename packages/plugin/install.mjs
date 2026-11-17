@@ -8,16 +8,27 @@
 // survive app updates and prunes; every install refreshes it.
 //
 // registerHosts / unregisterHosts add or remove exactly one prompt hook and one search server per
-// host, in the host files the caller names (nothing here guesses a host folder; hostFiles(env) is
-// the explicit helper for the installer). Everything else in those files is left as it was; a file
+// host (and, in Claude Code, the optional write guard's tool-use hook, a no-op until the user turns
+// the guard on), in the host files the caller names (nothing here guesses a host folder; hostFiles(env)
+// is the explicit helper for the installer). Everything else in those files is left as it was; a file
 // that cannot be read refuses the whole call before anything is written.
+//
+// Wave 3: the search server is registered as SERVER ("ruvnet-brain-5"), not 4.7's "ruvnet-brain", for
+// the side-by-side period, so both can serve one host. A host whose server entry is refused (another
+// program already holds that name) gets no hook either, and is reported as not served. Uninstall puts
+// each shared host file back byte for byte from its pre-registration copy (host-backup.mjs) while the
+// file is still what registration wrote; otherwise it removes only version 5's entries.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { keepBackup, restoreBackup, dropBackup } from './host-backup.mjs';
 
 const WIN = process.platform === 'win32';
 const NAME = 'ruvnet-brain';
+/** The search server's name in every host during the side-by-side period with 4.7 (cutover renames it). */
+export const SERVER = 'ruvnet-brain-5';
+const EVENTS = ['UserPromptSubmit', 'PreToolUse'];
 const PARTS = ['plugin', 'contract', 'health'];
 const TEMPLATE = '"${CLAUDE_PLUGIN_ROOT}/bin/rb5"';
 const BLOCK = ['# --- ruvnet-brain 5 (managed block; the installer rewrites it, everything outside it is yours) ---', '# --- end ruvnet-brain 5 ---'];
@@ -62,13 +73,15 @@ export function shimPaths(home) {
   return { shim, plugin, runtime: path.join(shim, 'node-runtime'), launcher: path.join(plugin, 'bin', WIN ? 'rb5.cmd' : 'rb5') };
 }
 
-/** The hook command and the server entry every host gets: first word, the absolute launcher. */
+/** The hook commands and the server entry every host gets: first word, the absolute launcher. */
 export function hostCommands(home, plugin = shimPaths(home).plugin) {
   const { launcher } = shimPaths(home);
   if (/["$`%!\r\n]/.test(launcher)) throw new HostRefused(`the brain home ${home} has a character a host command cannot quote safely; install to another folder`);
   const hooks = JSON.parse(fs.readFileSync(path.join(plugin, 'hooks', 'hooks.json'), 'utf8'));
   const hook = hooks.hooks.UserPromptSubmit[0].hooks[0];
-  return { hook: { ...hook, command: hook.command.replace(TEMPLATE, `"${launcher}"`) }, server: { command: launcher, args: ['server'] } };
+  const g = hooks.hooks.PreToolUse[0];
+  const guard = { matcher: g.matcher, hooks: [{ ...g.hooks[0], command: g.hooks[0].command.replace(TEMPLATE, `"${launcher}"`) }] };
+  return { hook: { ...hook, command: hook.command.replace(TEMPLATE, `"${launcher}"`) }, guard, server: { command: launcher, args: ['server'] } };
 }
 
 /** The Node to record: the PATH entry that is the running Node (stable across upgrades), else itself. */
@@ -109,8 +122,8 @@ export function installShim({ home, appDir = null, node = process.execPath, env 
   const manifest = path.join(plugin, '.claude-plugin', 'plugin.json');
   writeJson(manifest, { ...JSON.parse(fs.readFileSync(manifest, 'utf8')), version: path.basename(appDir) });
   const cmds = hostCommands(home, plugin);
-  writeJson(path.join(plugin, 'hooks', 'hooks.json'), { ...JSON.parse(fs.readFileSync(path.join(plugin, 'hooks', 'hooks.json'), 'utf8')), hooks: { UserPromptSubmit: [{ hooks: [cmds.hook] }] } });
-  writeJson(path.join(plugin, '.mcp.json'), { mcpServers: { [NAME]: cmds.server } });
+  writeJson(path.join(plugin, 'hooks', 'hooks.json'), { ...JSON.parse(fs.readFileSync(path.join(plugin, 'hooks', 'hooks.json'), 'utf8')), hooks: { UserPromptSubmit: [{ hooks: [cmds.hook] }], PreToolUse: [cmds.guard] } });
+  writeJson(path.join(plugin, '.mcp.json'), { mcpServers: { [SERVER]: cmds.server } });
   fs.writeFileSync(path.join(tmp, 'node-runtime'), recordNode(node, env) + os.EOL);
   fs.rmSync(old, { recursive: true, force: true });
   if (fs.existsSync(p.shim)) fs.renameSync(p.shim, old);
@@ -152,21 +165,22 @@ function readObj(file) {
   throw new HostRefused(`${file} is not valid JSON, so no host was registered; fix or remove that file and run the installer again`);
 }
 
-/** Adds (cmd given) or removes (cmd null) our one UserPromptSubmit entry, found by its launcher. */
-function setHook(obj, launcher, hook) {
+/** Adds (groups given: { event: group }) or removes (null) our hook groups, found by their launcher. */
+function setHooks(obj, launcher, groups) {
   const out = structuredClone(obj);
   const mine = (g) => (g?.hooks ?? []).some((h) => typeof h?.command === 'string' && h.command.startsWith(`"${launcher}"`));
-  const list = (out.hooks?.UserPromptSubmit ?? []).filter((g) => !mine(g));
-  if (hook) list.push({ hooks: [hook] });
-  if (list.length) (out.hooks ??= {}).UserPromptSubmit = list;
-  else if (out.hooks) {
-    delete out.hooks.UserPromptSubmit;
-    if (!Object.keys(out.hooks).length) delete out.hooks;
+  for (const event of EVENTS) {
+    const list = (out.hooks?.[event] ?? []).filter((g) => !mine(g));
+    if (groups?.[event]) list.push(groups[event]);
+    if (list.length) (out.hooks ??= {})[event] = list;
+    else if (out.hooks?.[event]) delete out.hooks[event];
   }
-  return out;
+  if (out.hooks && !Object.keys(out.hooks).length && !groups) delete out.hooks;
+  // Nothing of ours to add or remove: leave the file's own bytes alone (no reformatting).
+  return JSON.stringify(out) === JSON.stringify(obj) ? null : out;
 }
 
-const SERVER_TABLE = new RegExp(`^[ \\t]*\\[mcp_servers\\.(?:${NAME}|"${NAME}"|'${NAME}')\\]`, 'm');
+const SERVER_TABLE = new RegExp(`^[ \\t]*\\[mcp_servers\\.(?:${SERVER}|"${SERVER}"|'${SERVER}')\\]`, 'm');
 
 function codexBlock(text, server) {
   const t = text ?? '';
@@ -180,8 +194,8 @@ function codexBlock(text, server) {
   }
   const rest = before + after;
   if (!server) return { text: rest };
-  if (SERVER_TABLE.test(rest)) return { text: t, conflict: 'a [mcp_servers.ruvnet-brain] table outside the managed block' };
-  const block = [BLOCK[0], `[mcp_servers.${NAME}]`, `command = ${JSON.stringify(server.command)}`, `args = ${JSON.stringify(server.args)}`, 'startup_timeout_sec = 30', BLOCK[1]].join('\n');
+  if (SERVER_TABLE.test(rest)) return { text: t, conflict: `a [mcp_servers.${SERVER}] table outside the managed block` };
+  const block = [BLOCK[0], `[mcp_servers.${SERVER}]`, `command = ${JSON.stringify(server.command)}`, `args = ${JSON.stringify(server.args)}`, 'startup_timeout_sec = 30', BLOCK[1]].join('\n');
   const sep = !before ? '' : before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n';
   return { text: `${before}${sep}${block}\n${after}` };
 }
@@ -211,34 +225,60 @@ function apply({ home, hosts, add }) {
     else if (add) conflicts.push({ file, what: 'a file of the same name the installer did not write' });
     else if (text !== null && ours) plan.push({ file, before: text, text: null });
   };
-  const hookFile = (file) => json(file, (o) => setHook(o, p.launcher, add ? cmds.hook : null));
+  const hookFile = (file, groups) => json(file, (o) => setHooks(o, p.launcher, add && groups ? groups : null));
   const { claude, codex } = hosts;
-  if (claude?.settings) hookFile(claude.settings);
+  const unserved = [];
+  // Each host's server entry is decided first: a host whose entry is refused gets no hook at all.
+  let claudeServed = false;
   if (claude?.state) {
+    const before = conflicts.length;
     json(claude.state, (o) => {
-      const cur = o.mcpServers?.[NAME];
+      const cur = o.mcpServers?.[SERVER];
+      const legacy = o.mcpServers?.[NAME]?.command === p.launcher;
       if (cur && cur.command !== p.launcher) {
-        if (add) conflicts.push({ file: claude.state, what: `a ${NAME} server entry the installer did not write` });
+        if (add) conflicts.push({ file: claude.state, what: `a ${SERVER} server entry the installer did not write` });
         return null;
       }
-      if (!add && !cur) return null;
+      if (!add && !cur && !legacy) return null;
       const out = structuredClone(o);
-      if (add) (out.mcpServers ??= {})[NAME] = { type: 'stdio', ...cmds.server, env: {} };
-      else delete out.mcpServers[NAME];
+      if (legacy) delete out.mcpServers[NAME];
+      if (add) (out.mcpServers ??= {})[SERVER] = { type: 'stdio', ...cmds.server, env: {} };
+      else delete out.mcpServers[SERVER];
       if (!Object.keys(out.mcpServers).length) delete out.mcpServers;
       return out;
     });
+    claudeServed = add && conflicts.length === before;
   }
-  if (claude?.skills) own(path.join(claude.skills, ...SKILL.slice(1)), path.join(p.plugin, ...SKILL));
-  if (claude?.commands) own(path.join(claude.commands, ...COMMAND.slice(1)), path.join(p.plugin, ...COMMAND));
+  if (add && claude && !claudeServed) unserved.push({ host: 'Claude Code', file: claude.state ?? null, why: conflicts.at(-1)?.file === claude.state ? conflicts.at(-1).what : 'no user-scope server list was named' });
+  if (claude?.settings) hookFile(claude.settings, claudeServed && { UserPromptSubmit: { hooks: [cmds.hook] }, PreToolUse: cmds.guard });
+  if (claude?.skills && (claudeServed || !add)) own(path.join(claude.skills, ...SKILL.slice(1)), path.join(p.plugin, ...SKILL));
+  if (claude?.commands && (claudeServed || !add)) own(path.join(claude.commands, ...COMMAND.slice(1)), path.join(p.plugin, ...COMMAND));
+  let codexServed = false;
   if (codex?.config) {
     const text = readText(codex.config);
     const r = codexBlock(text, add ? cmds.server : null);
     if (r.conflict) conflicts.push({ file: codex.config, what: r.conflict });
     else if (r.text !== (text ?? '')) plan.push({ file: codex.config, before: text, text: r.text });
+    codexServed = add && !r.conflict;
   }
-  if (codex?.hooks) hookFile(codex.hooks);
+  if (add && codex && !codexServed) unserved.push({ host: 'Codex', file: codex.config ?? null, why: codex.config ? conflicts.at(-1).what : 'no config.toml was named' });
+  // Codex gets the prompt hook only: the write guard reads Claude Code's tool input (packages/guard).
+  if (codex?.hooks) hookFile(codex.hooks, codexServed && { UserPromptSubmit: { hooks: [cmds.hook] } });
+  const shared = new Set([claude?.settings, claude?.state, codex?.config, codex?.hooks].filter(Boolean));
   const written = [];
+  if (!add) {
+    // Byte-exact uninstall: a shared file still exactly as registration left it gets its copy back.
+    for (const file of shared) {
+      if (!restoreBackup(home, file, readText(file)).restored) {
+        dropBackup(home, file);
+        continue;
+      }
+      written.push(file);
+      for (let i = plan.length - 1; i >= 0; i--) if (plan[i].file === file) plan.splice(i, 1);
+    }
+  } else {
+    for (const w of plan) if (shared.has(w.file) && w.text !== w.before) keepBackup(home, w.file, w.before, w.text, (w.before ?? '').includes(p.launcher));
+  }
   for (const w of plan) {
     if (w.text === w.before) continue;
     if (w.text === null) {
@@ -253,7 +293,7 @@ function apply({ home, hosts, add }) {
     }
     written.push(w.file);
   }
-  return { written, conflicts };
+  return { written, conflicts, unserved };
 }
 
 export const registerHosts = ({ home, hosts }) => apply({ home, hosts, add: true });

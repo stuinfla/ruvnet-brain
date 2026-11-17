@@ -32,15 +32,15 @@ test('WP7-05 host registration adds exactly the shim entries and removes exactly
   const servers = JSON.parse(after['claude.json']).mcpServers;
   const toml = after['codex/config.toml'];
   const commands = [ups[1].hooks[0].command, codexHooks.hooks.UserPromptSubmit[0].hooks[0].command];
-  for (const cmd of [...commands, servers['ruvnet-brain'].command]) {
+  for (const cmd of [...commands, servers['ruvnet-brain-5'].command]) {
     const w = firstWord(cmd);
     assert.ok(path.isAbsolute(w), `the first word of "${cmd}" must be an absolute path`);
     assert.ok(fs.realpathSync(w).startsWith(shimRoot + path.sep), `the first word of "${cmd}" must be the launcher under the brain home`);
   }
-  assert.deepEqual(servers['ruvnet-brain'].args, ['server']);
+  assert.deepEqual(servers['ruvnet-brain-5'].args, ['server']);
   assert.deepEqual(servers.other, JSON.parse(before['claude.json']).mcpServers.other, "the user's other server is unchanged");
   assert.ok(toml.startsWith(before['codex/config.toml']), "the user's config.toml bytes are kept in front of the managed block");
-  assert.match(toml, new RegExp(`\\[mcp_servers\\.ruvnet-brain\\]\\ncommand = ${JSON.stringify(shim.launcher).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\nargs = \\["server"\\]`));
+  assert.match(toml, new RegExp(`\\[mcp_servers\\.ruvnet-brain-5\\]\\ncommand = ${JSON.stringify(shim.launcher).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\nargs = \\["server"\\]`));
   assert.ok(fs.existsSync(path.join(dir, 'claude', 'skills', 'ruvnet-brain', 'SKILL.md')) && fs.statSync(path.join(dir, 'claude', 'skills', 'ruvnet-brain', 'SKILL.md')).size < 4096, 'one short skill');
   assert.ok(fs.existsSync(path.join(dir, 'claude', 'commands', 'brain.md')), 'the /brain command');
   assert.ok(res.written.length >= 4, `the paths written are returned: ${res.written}`);
@@ -61,13 +61,25 @@ test('WP7-05 host registration adds exactly the shim entries and removes exactly
   const owned = fakeHosts(ctx.tmp('rb5-hosts-own-'));
   const userServer = { type: 'stdio', command: '/home/me/my-brain', args: ['x'] };
   const state = JSON.parse(fs.readFileSync(owned.claude.state, 'utf8'));
-  fs.writeFileSync(owned.claude.state, JSON.stringify({ ...state, mcpServers: { ...state.mcpServers, 'ruvnet-brain': userServer } }, null, 2) + '\n');
-  fs.appendFileSync(owned.codex.config, '\n[mcp_servers.ruvnet-brain]\ncommand = "/home/me/my-brain"\n');
+  fs.writeFileSync(owned.claude.state, JSON.stringify({ ...state, mcpServers: { ...state.mcpServers, 'ruvnet-brain-5': userServer } }, null, 2) + '\n');
+  fs.appendFileSync(owned.codex.config, '\n[mcp_servers.ruvnet-brain-5]\ncommand = "/home/me/my-brain"\n');
   const ownedToml = fs.readFileSync(owned.codex.config, 'utf8');
+  const ownedHooks = [owned.claude.settings, owned.codex.hooks].map((f) => fs.readFileSync(f, 'utf8'));
   const r2 = api.registerHosts({ home, hosts: owned });
-  assert.deepEqual(JSON.parse(fs.readFileSync(owned.claude.state, 'utf8')).mcpServers['ruvnet-brain'], userServer, "a server entry the user wrote is never replaced");
+  assert.deepEqual(JSON.parse(fs.readFileSync(owned.claude.state, 'utf8')).mcpServers['ruvnet-brain-5'], userServer, "a server entry the user wrote is never replaced");
   assert.equal(fs.readFileSync(owned.codex.config, 'utf8'), ownedToml, "a Codex server table the user wrote is never touched");
   assert.equal(r2.conflicts.length, 2, `both conflicts are reported: ${JSON.stringify(r2.conflicts)}`);
+  assert.deepEqual([owned.claude.settings, owned.codex.hooks].map((f) => fs.readFileSync(f, 'utf8')), ownedHooks, 'a host whose server entry was refused gets no hook');
+  assert.deepEqual(r2.unserved.map((u) => u.host), ['Claude Code', 'Codex'], 'both hosts are reported as not served by version 5');
+
+  // 4.7's own server name (ruvnet-brain) is no clash: version 5 serves beside it as ruvnet-brain-5.
+  const beside = fakeHosts(ctx.tmp('rb5-hosts-47-'));
+  const st47 = JSON.parse(fs.readFileSync(beside.claude.state, 'utf8'));
+  fs.writeFileSync(beside.claude.state, JSON.stringify({ ...st47, mcpServers: { ...st47.mcpServers, 'ruvnet-brain': userServer } }, null, 2) + '\n');
+  fs.appendFileSync(beside.codex.config, '\n[mcp_servers.ruvnet-brain]\ncommand = "/home/me/my-brain"\n');
+  const r3 = api.registerHosts({ home, hosts: beside });
+  assert.deepEqual([r3.conflicts, r3.unserved], [[], []], `version 5 sits beside a ruvnet-brain entry: ${JSON.stringify(r3)}`);
+  assert.equal(JSON.parse(fs.readFileSync(beside.claude.state, 'utf8')).mcpServers['ruvnet-brain-5'].command, shim.launcher);
 
   api.unregisterHosts({ home, hosts });
   assert.deepEqual(bytesOf(dir), before, 'unregistering puts every host file back byte for byte and removes the skill and command');

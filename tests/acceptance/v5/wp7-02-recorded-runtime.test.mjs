@@ -44,7 +44,7 @@ test('WP7-02 the recorded runtime is used, and re-checked on every start', { ski
   api.registerHosts({ home, hosts });
   const settings = JSON.parse(fs.readFileSync(hosts.claude.settings, 'utf8'));
   const hook = settings.hooks.UserPromptSubmit.at(-1).hooks[0].command;
-  const server = JSON.parse(fs.readFileSync(hosts.claude.state, 'utf8')).mcpServers['ruvnet-brain'];
+  const server = JSON.parse(fs.readFileSync(hosts.claude.state, 'utf8')).mcpServers['ruvnet-brain-5'];
   const project = ctx.tmp('rb5-project-');
   const mark = path.join(ctx.tmp('rb5-mark-'), 'ran');
   const noNode = ctx.tmp('rb5-nonode-');

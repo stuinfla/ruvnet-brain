@@ -2,14 +2,18 @@
 // to a scratch copy of the tree only when V5_BREAK names it. `expect` is the failure the run must
 // show, so a red run caused by something else (a bad patch, a syntax error) is not counted.
 import fs from 'node:fs';
+import path from 'node:path';
 import { addWorkPackageBreaks } from './breaks-wp.mjs';
 import { addWave2Breaks } from './breaks-wave2.mjs';
+import { addWave3Breaks } from './breaks-wave3.mjs';
 
 // The wp1-no-question-strings break plants one development question's wording in the engine. The
 // wording is read from the question set outside the repository when the break is applied (that test
-// and its breaks run only where the set exists), so no question text is committed here.
-const DEV_QUESTIONS = process.env.WP1_DEV_QUESTIONS ?? '/Users/stuartkerr/Code/RVF-KnowledgeBases/ruvnet-brain-v2-work/runs/dev-pilot.json';
+// and its breaks run only where the set exists), so no question text is committed here. The set is
+// named only by environment (WP1_DEV_QUESTIONS, else the first of WP1_QUESTION_SETS), never by a path.
 function plantedQuestion() {
+  const DEV_QUESTIONS = process.env.WP1_DEV_QUESTIONS ?? process.env.WP1_QUESTION_SETS?.split(path.delimiter)[0];
+  if (!DEV_QUESTIONS) throw new Error('the wp1-no-question-strings break needs WP1_DEV_QUESTIONS (a question set outside the repository)');
   const words = (q) => String(q.question).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   const q = JSON.parse(fs.readFileSync(DEV_QUESTIONS, 'utf8')).map(words).find((w) => w.split(' ').length >= 6);
   return `const t0 = Date.now();\n  if (String(query).toLowerCase().includes('${q}')) options = { ...options, detail: 'full' };`;
@@ -377,3 +381,29 @@ Object.assign(BREAKS, {
 // Work packages 2, 3, 6 and 7 (breaks-wp.mjs) and the wave 2 integration (breaks-wave2.mjs).
 addWorkPackageBreaks(BREAKS);
 addWave2Breaks(BREAKS);
+addWave3Breaks(BREAKS); // wave 3 integration (breaks-wave3.mjs)
+
+// wp8 ── work package 8 (answer gate) breaks. Each removes one refusal from packages/release/gate/.
+const R = 'packages/release/gate/retrieval.mjs';
+const A = 'packages/release/gate/answer.mjs';
+const V = 'packages/release/gate/verify.mjs';
+const off = (file, find, replace) => ({ file, find, replace });
+Object.assign(BREAKS, {
+  'wp8-01': { test: 'wp8-01', what: 'the gate copies each question\'s text into its result', patches: [off(R, 'return { id: q.id, group: q.group, hit:', 'return { id: q.id, question: q.question, group: q.group, hit:')], expect: /no question text may reach the result file or the log/ },
+  'wp8-02': { test: 'wp8-02', what: 'the comparison with the baseline is removed', patches: [off(R, 'if (hit < baseline.hit - tolerance) problems.push(', 'if (false) problems.push(')], expect: /a damaged pack must fail the gate/ },
+  'wp8-03a': { test: 'wp8-03', what: 'the delivered-size check is removed', patches: [off(R, 'if (res.text.length > ceiling.maxChars) problems.push(', 'if (false) problems.push(')], expect: /a candidate with the size fault must fail the gate/ },
+  'wp8-03b': { test: 'wp8-03', what: 'the no-text-twice check is removed', patches: [off(R, "if (b.trim() && bodies.has(b)) problems.push('twice: an excerpt appears twice');", '')], expect: /a candidate with the twice fault must fail the gate/ },
+  'wp8-03c': { test: 'wp8-03', what: 'the two-process comparison is removed', patches: [off(R, "if (normalise(a[i].text) !== normalise(b[i].text)) problems.push('same: two processes served different results');", '')], expect: /a candidate with the same fault must fail the gate/ },
+  'wp8-03d': { test: 'wp8-03', what: 'the empty-reason check is removed', patches: [off(R, 'if (Number(s[2]) === 0 && !/^ · no match: \\S/.test(s[3])) problems.push(', 'if (false) problems.push(')], expect: /a candidate with the reasons fault must fail the gate/ },
+  'wp8-03e': { test: 'wp8-03', what: 'the probe check is removed', patches: [off(R, 'if (probesPassed !== probes.length || !probes.length) problems.push(', 'if (false) problems.push(')], expect: /a candidate with the probes fault must fail the gate/ },
+  'wp8-04a': { test: 'wp8-04', what: 'a question set inside the repository is accepted', patches: [off('packages/release/gate/question-set.mjs', "return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));", 'return false;')], expect: /a question set inside the repository must be refused/ },
+  'wp8-04b': { test: 'wp8-04', what: 'an empty pin is treated as no problem', patches: [off('packages/release/gate/question-set.mjs', "if (!pin) return 'no frozen", "if (!pin) return null;\n  if (!pin) return 'no frozen")], expect: /with no set pinned the gate must not pass/ },
+  'wp8-05a': { test: 'wp8-05', what: 'the same command may answer and judge', patches: [off(A, '  if (r.answer.join(', '  if (false && r.answer.join(')], expect: /the same command answering and judging must be refused/ },
+  'wp8-05b': { test: 'wp8-05', what: 'the mechanical caps are removed', patches: [off(A, 'return { cap, reasons: [...new Set(reasons)] };', 'return { cap: 10, reasons: [] };')], expect: /layer 2 with two different commands/ },
+  'wp8-05c': { test: 'wp8-05', what: 'the judge calibration gate is removed', patches: [off(A, 'passed: withinOne >= minWithinOne && plantedCapped === planted', 'passed: true')], expect: /a judge that fails calibration must fail the run/ },
+  'wp8-05d': { test: 'wp8-05', what: 'the time is written inside the hashed part', patches: [off(A, '    questions: [],\n  };', '    questions: [],\n    at: new Date().toISOString(),\n  };')], expect: /the hashed part is the same on a second run/ },
+  'wp8-06a': { test: 'wp8-06', what: 'an answer-level result for other bytes is accepted', patches: [off(V, 'if (c.release !== sha256 || c.pack !== generation) problems.push(', 'if (false) problems.push(')], expect: /a result for other bytes must fail the gate/ },
+  'wp8-06b': { test: 'wp8-06', what: 'the age limit is not checked', patches: [off(V, 'else if (now - at > l2.maxAgeDays * DAY)', 'else if (false)')], expect: /a result older than the set allows must fail the gate/ },
+  'wp8-06c': { test: 'wp8-06', what: 'a failed judge calibration is accepted', patches: [off(V, 'else if (c.calibration.passed !== true)', 'else if (false)')], expect: /a result whose judge failed calibration must fail the gate/ },
+});
+// end wp8

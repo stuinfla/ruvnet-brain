@@ -1,6 +1,8 @@
 #!/bin/sh
-# RuvNet Brain 5 launcher (POSIX). The host runs it by its absolute path: `rb5 hook` (prompt hook) or
-# `rb5 server` (the search server). It starts Node from an absolute path only: first the runtime
+# RuvNet Brain 5 launcher (POSIX). The host runs it by its absolute path: `rb5 hook` (prompt hook),
+# `rb5 server` (the search server) or `rb5 guard` (the optional write guard's tool-use hook: its
+# standard input and exit code, 2 to refuse, pass through; with no usable Node it allows the write with
+# the one DOWN line and exit 0). It starts Node from an absolute path only: first the runtime
 # recorded at install (<brain home>/shim/node-runtime), checked again now, then the first `node` in an
 # absolute PATH folder. Empty and relative PATH entries (they mean "the current folder") and anything
 # inside the current project are never used. With no usable Node it prints the one DOWN line and
@@ -12,7 +14,7 @@ down() {
   printf '%s\n' "$DOWN"
   exit 0
 }
-case $MODE in hook | server) ;; *) down ;; esac
+case $MODE in hook | server | guard) ;; *) down ;; esac
 case $0 in /*) ;; *) down ;; esac
 BIN=${0%/*}
 PLUGIN=${BIN%/bin}
@@ -75,6 +77,10 @@ run() {
   if [ "$MODE" = server ]; then
     "$1" "$PLUGIN/runtime.mjs" < /dev/null > /dev/null 2>&1 || return 1
     exec "$1" "$PLUGIN/launch.mjs"
+  fi
+  if [ "$MODE" = guard ]; then
+    "$1" "$PLUGIN/runtime.mjs" < /dev/null > /dev/null 2>&1 || return 1
+    exec "$1" "$PLUGIN/guard-hook.mjs"
   fi
   r_out=$("$1" "$PLUGIN/health-line.mjs") || return 1
   [ -n "$r_out" ] || return 1

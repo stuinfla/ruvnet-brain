@@ -1,5 +1,5 @@
 {
-  "description": "RuvNet Brain 5: one prompt hook that prints the health line. Its first word is the plug-in's own launcher by absolute path (never a bare node); it starts nothing else and reads no project file. The installed copy names the launcher under the brain home.",
+  "description": "RuvNet Brain 5: one prompt hook that prints the health line, and the optional write guard's tool-use hook (it does nothing unless the user ran `ruvnet-brain guard on`; it has no || fallback, because its exit 2 is how it refuses a write). Each first word is the plug-in's own launcher by absolute path (never a bare node); they start nothing else and read no project file. The installed copy names the launcher under the brain home.",
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -8,6 +8,18 @@
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/rb5\" hook || echo \"[RuvNet Brain] DOWN: Node could not run. Search is unavailable. Fix: run 'node -v' in a terminal; reinstall Node if it fails.\"",
             "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/rb5\" guard",
+            "timeout": 10
           }
         ]
       }
