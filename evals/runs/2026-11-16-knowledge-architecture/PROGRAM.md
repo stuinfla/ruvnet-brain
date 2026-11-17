@@ -124,3 +124,14 @@ Agents reported: scratch files of their own removed with `del` (validator scratc
 uses on an agent's own failed scratch files (history index attempt; one concept-rig scratch file), disclosed
 in their reports. Nothing under `~/.cache/ruvnet-brain`, the pilot folder or the owner's data was deleted.
 Nine shipped `.idmap.json` sidecars were rewritten with identical bytes by a read-only open (D11).
+
+## 8. Redaction (1:02 a.m., 2026-11-17)
+
+Eight research files named private stores, clients or people. Their unredacted originals were MOVED out of
+the repository to `/Users/stuartkerr/Code/RVF-KnowledgeBases/ruvnet-brain-private-originals-20261117/` (same
+relative paths). The files now under the original names in RUN are the public versions (names replaced by
+neutral labels, every finding kept): `app-architecture/DEFECTS.md`, `app-architecture/ROADMAP.md`,
+`review/REVIEW.md`, `history/BISECT.md`, `history/CURRENT-EMBEDDING-STRATEGY.md`, `history/STORY.md`,
+`history/VERSION-TABLE.md`, `history/HISTORY.md`. The label-to-name mapping is not in the repository.
+Rule from now on: any research file is checked by `redaction/REPORT.md`'s method (private-name list and the
+8-word question-overlap check) before it is handed over for commit.
