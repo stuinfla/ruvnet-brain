@@ -4,8 +4,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { paths, readJson, writeJsonAtomic } from '../contract/home.mjs';
-import { isAlive } from '../health/status.mjs';
+import { paths, readConfig, readJson, writeJsonAtomic } from '../contract/home.mjs';
+import { isAlive, readStatuses } from '../health/status.mjs';
 import { Refused } from './source.mjs';
 
 export const txnPaths = (home) => ({ lock: path.join(home, 'state', 'lock.json'), journal: path.join(home, 'state', 'journal.json') });
@@ -44,9 +44,19 @@ export function acquire(home) {
 export const rel = (home, abs) => path.relative(home, abs).split(path.sep).join('/');
 const abs = (home, r) => path.join(home, ...r.split('/'));
 
-/** Keeps the active generation and exactly one earlier one; removes every other entry. */
+/**
+ * Keeps the active generation, exactly one earlier one, and any generation a live search server in
+ * an open session still reports using (review F11: its reader is never removed under it; it is
+ * pruned by the next install after that server moves on or stops). Removes every other entry.
+ */
 export function pruneTargets(home, cur) {
   const keep = { app: [cur.app, cur.previous?.app], packs: [cur.pack, cur.previous?.pack] };
+  const fresh = Date.now() - readConfig(home).staleAfterMs;
+  for (const s of readStatuses(home)) {
+    if (!s.alive || !(s.heartbeatAt >= fresh)) continue;
+    if (s.app) keep.app.push(s.app);
+    if (s.pack) keep.packs.push(s.pack);
+  }
   const out = [];
   for (const kind of ['app', 'packs']) {
     let names = [];
