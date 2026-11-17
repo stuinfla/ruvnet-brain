@@ -1,0 +1,72 @@
+name: v5-nightly-dispatch
+
+# VERSION 5 ONLY. INERT UNTIL CUTOVER (ROADMAP Part B): triggered only by workflow_dispatch. There is
+# no schedule trigger. At cutover the owner adds the two nightly times (a first slot and one retry
+# slot) and sets the repository variable V5_NIGHTLY to "on"; the 4.7 corpus-nightly-dispatch stays
+# as the owner left it until then.
+#
+# One job: read the recent v5-release-candidate runs (read-only), decide with
+# packages/release/rail.mjs dispatch-decision, and when armed dispatch v5-release-candidate.yml.
+#   Kill switch: armed ONLY when V5_NIGHTLY is exactly "on" (unset or anything else stands down).
+#   Retry: the "retry" slot re-dispatches once, only when every run of the night ended without an
+#   answer and none is running.
+# It holds no secret and no environment; it cannot sign or publish (the boundary is the target
+# workflow's own gates).
+#
+# Actions are pinned to exact commits copied from other local repositories' workflows (no network
+# was used to write this file); re-check them against GitHub at cutover.
+on:
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: first = the night's run; retry = the night's one retry
+        required: true
+        type: choice
+        options:
+          - first
+          - retry
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: v5-nightly-dispatch
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    name: dispatch-v5-release-candidate
+    if: github.repository == 'stuinfla/ruvnet-brain'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.22.3'
+      - id: decide
+        name: Decide whether tonight is armed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V5_NIGHTLY: ${{ vars.V5_NIGHTLY }}
+          SLOT: ${{ inputs.slot }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node packages/release/rail.mjs gather --repo "$GITHUB_REPOSITORY" --out "$RUNNER_TEMP/runs.json"
+          node packages/release/rail.mjs dispatch-decision --slot "$SLOT" --kill-switch "${V5_NIGHTLY:-off}" --runs "$RUNNER_TEMP/runs.json" --github-output "$GITHUB_OUTPUT"
+      - name: Dispatch v5-release-candidate.yml
+        if: steps.decide.outputs.dispatch == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./packages/version.json').app")"
+          gh workflow run v5-release-candidate.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f "version=$version"

@@ -7,8 +7,11 @@
 //   1. any failing test that is not in tests/known-red.json (the reviewed quarantine),
 //   2. any quarantine entry whose test now PASSES (stale: remove it, so the list cannot rot),
 //   3. any test file that errored at file level (import/collect failure: zero cases still counts),
-//   4. any tests/**/*.test.mjs file that neither the root include nor the quarantine's `excludedFiles`
-//      accounts for (a file outside `include` is silently never run — the vacuous-green failure).
+//   4. any tests/**/*.test.mjs file that neither the root include, a registered suite (`suites`: another
+//      runner's glob plus the npm script that runs it, e.g. the node:test v5 acceptance suite) nor the
+//      quarantine's `excludedFiles` accounts for (a file outside `include` is silently never run — the
+//      vacuous-green failure). A suite whose glob matches no file, or whose npm script is missing or does
+//      not name that glob, is itself a problem: the registration has to be the command that runs the files.
 // A quarantined test that is skipped on this platform is neither red nor stale; it is reported.
 // Deterministic by design: Agentic-QE's `aqe quality-gate` needs a frontier judge (inconclusive
 // without a provider), which is the wrong tool for a pass/fail over executed test results.
@@ -66,7 +69,28 @@ export const isTimingFailure = (message) => {
 /** More flaky tests than this in one run fails the gate: load-sensitivity that wide is itself a defect. */
 export const MAX_FLAKY = 3;
 
-export function evaluateFullSuite({ report, quarantine, files, include, root = ROOT, retry = null, maxFlaky = MAX_FLAKY }) {
+/** Test files outside the vitest include, split into those a registered suite runs and those nothing runs.
+ * `suites` rows are { name, script, include: [glob] }; `scripts` is package.json's scripts object. */
+export function accountFiles({ files, include, suites = [], scripts = {} }) {
+  const problems = [];
+  const included = include.map(globToRegExp);
+  const outside = files.filter((file) => !included.some((re) => re.test(file)));
+  const bySuite = new Map();
+  for (const suite of suites) {
+    const globs = Array.isArray(suite.include) ? suite.include : [];
+    const command = scripts[suite.script];
+    if (!suite.name || !suite.script || !globs.length) problems.push(`suite entry lacks name/script/include: ${JSON.stringify(suite)}`);
+    else if (typeof command !== 'string') problems.push(`suite ${suite.name}: npm script ${suite.script} does not exist`);
+    else for (const glob of globs) if (!command.includes(glob)) problems.push(`suite ${suite.name}: npm script ${suite.script} does not run ${glob}`);
+    const res = globs.map(globToRegExp);
+    const matched = outside.filter((file) => res.some((re) => re.test(file)));
+    if (suite.name && globs.length && !matched.length) problems.push(`suite ${suite.name} matches no test file outside vitest include: ${globs.join(' ')}`);
+    for (const file of matched) if (!bySuite.has(file)) bySuite.set(file, suite.name);
+  }
+  return { outside, bySuite, unrun: outside.filter((file) => !bySuite.has(file)), problems };
+}
+
+export function evaluateFullSuite({ report, quarantine, files, include, root = ROOT, retry = null, maxFlaky = MAX_FLAKY, scripts = {} }) {
   const problems = [];
   const rel = (name) => path.relative(root, name).split(path.sep).join('/');
   // One isolated retry of the red files. A test is FLAKY only when (a) its full-run failure is a
@@ -82,10 +106,13 @@ export function evaluateFullSuite({ report, quarantine, files, include, root = R
   if (known.size !== tests.length) problems.push('tests/known-red.json lists a test twice');
   for (const entry of tests) if (!entry.reason || !entry.class || !entry.owner) problems.push(`quarantine entry lacks class/reason/owner: ${key(entry.file, entry.test)}`);
   const excluded = new Map((quarantine.excludedFiles || []).map((entry) => [entry.file, entry]));
-  const included = include.map(globToRegExp);
-  const outside = files.filter((file) => !included.some((re) => re.test(file)));
-  for (const file of outside) if (!excluded.has(file)) problems.push(`never run: ${file} is outside vitest include and not in excludedFiles`);
-  for (const file of excluded.keys()) if (!outside.includes(file)) problems.push(`excludedFiles entry is not an excluded test file: ${file}`);
+  const { outside, bySuite, unrun, problems: suiteProblems } = accountFiles({ files, include, suites: quarantine.suites || [], scripts });
+  problems.push(...suiteProblems);
+  for (const file of unrun) if (!excluded.has(file)) problems.push(`never run: ${file} is outside vitest include and not in excludedFiles`);
+  for (const file of excluded.keys()) {
+    if (!outside.includes(file)) problems.push(`excludedFiles entry is not an excluded test file: ${file}`);
+    else if (bySuite.has(file)) problems.push(`excludedFiles entry is run by suite ${bySuite.get(file)}: ${file}`);
+  }
   const expected = files.filter((file) => !outside.includes(file));
   const results = report?.testResults;
   if (!Array.isArray(results)) return { verdict: 'FAIL', problems: [...problems, 'no vitest JSON report'] };
@@ -156,7 +183,8 @@ if (isDirectInvocation(import.meta.url)) {
     vitest(reds, retryOut);
     retry = JSON.parse(fs.readFileSync(retryOut, 'utf8'));
   }
-  const result = evaluateFullSuite({ report, quarantine, files: listTestFiles(root), include: config.test.include, root, retry });
+  const { scripts } = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  const result = evaluateFullSuite({ report, quarantine, files: listTestFiles(root), include: config.test.include, root, retry, scripts });
   console.log(JSON.stringify(result, null, 2));
   if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summaryMarkdown(result)}\n`);
   process.exitCode = result.verdict === 'PASS' ? 0 : 1;

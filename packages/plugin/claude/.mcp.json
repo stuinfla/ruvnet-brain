@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "ruvnet-brain-5": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/rb5",
+      "args": ["server"]
+    }
+  }
+}

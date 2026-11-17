@@ -1,0 +1,25 @@
+{
+  "//": "Where a 4.7 installation keeps what migration reads. Learned from the 4.7.28 code (bin/install.mjs, plugin/scripts/session-start-core.mjs, plugin/scripts/nightly-scheduler.mjs, kb/brain-profile.mjs) and from the names of the files in a real 4.7 home. Migration only reads these; it never writes, moves or deletes any of them.",
+  "homeEnv": "RUVNET_BRAIN_HOME",
+  "homeDefault": [".cache", "ruvnet-brain"],
+  "stateDirEnv": "RUVNET_BRAIN_STATE_DIR",
+  "stateDirDefault": [".config", "ruvnet-brain"],
+  "brainOffFile": "brain-off",
+  "autoUpdatePrefFile": ".auto-update-pref",
+  "versionFiles": [".running-version", ".dev-version"],
+  "knowledgeDir": "kb",
+  "privateRegistry": "PRIVATE-STORES.json",
+  "sourceRegistry": "SOURCE.json",
+  "storeSuffixes": [".big.rvf", ".rvf", ".big.rvf.embed.json", ".big.rvf.idmap.json", ".rvf.embed.json", ".rvf.idmap.json", ".idmap.json", ".passages.jsonl", ".big.passages.jsonl", ".meta.json", ".big.meta.json", ".symbols.json", "-primer.md"],
+  "nightlyLabel": "com.ruvnet.brain-update",
+  "launchAgentsDir": ["Library", "LaunchAgents"],
+  "schedulerDir": "scheduler",
+  "claudePluginKey": "ruvnet-brain@ruvnet-brain",
+  "claudeInstalledPlugins": ["plugins", "installed_plugins.json"],
+  "codexBlockStart": "# --- ruvnet-brain (managed block, installer-rewritten) ---",
+  "v5HomeName": "ruvnet-brain-5",
+  "otherOwned": [
+    { "path": [".claude", "model-router"], "what": "4.7's model-routing system" },
+    { "path": [".claude", "ruvnet-brain"], "what": "4.7's Codex server copy" }
+  ]
+}

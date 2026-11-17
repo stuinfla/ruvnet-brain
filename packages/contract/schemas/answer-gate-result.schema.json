@@ -1,0 +1,65 @@
+{
+  "$id": "ruvnet-brain/answer-gate-result",
+  "type": "object",
+  "required": ["schema", "version", "content", "contentSha256", "producedAt"],
+  "properties": {
+    "schema": { "const": "ruvnet-brain/answer-gate-result" },
+    "version": { "const": 1 },
+    "contentSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "producedAt": { "type": "string", "minLength": 1 },
+    "content": {
+      "type": "object",
+      "required": ["release", "pack", "questionSet", "runs", "passGrade", "minRunsPassing", "roles", "calibration", "groups", "questions"],
+      "properties": {
+        "release": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "pack": { "type": "string", "minLength": 1 },
+        "questionSet": {
+          "type": "object",
+          "required": ["id", "sha256", "n"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "n": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "runs": { "type": "integer", "minimum": 1 },
+        "passGrade": { "type": "number", "minimum": 0, "maximum": 10 },
+        "minRunsPassing": { "type": "integer", "minimum": 1 },
+        "roles": {
+          "type": "object",
+          "required": ["answer", "judge"],
+          "properties": {
+            "answer": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+            "judge": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+          }
+        },
+        "calibration": {
+          "type": "object",
+          "required": ["n", "withinOne", "minWithinOne", "planted", "plantedCapped", "passed"],
+          "properties": {
+            "n": { "type": "integer", "minimum": 0 },
+            "withinOne": { "type": "integer", "minimum": 0 },
+            "minWithinOne": { "type": "integer", "minimum": 0 },
+            "planted": { "type": "integer", "minimum": 0 },
+            "plantedCapped": { "type": "integer", "minimum": 0 },
+            "passed": { "type": "boolean" }
+          }
+        },
+        "groups": { "type": "object" },
+        "overall": { "type": ["object", "null"] },
+        "questions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "group", "scores"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "group": { "type": "string", "minLength": 1 },
+              "scores": { "type": "array", "items": { "type": "number", "minimum": 0, "maximum": 10 } }
+            }
+          }
+        }
+      }
+    }
+  }
+}

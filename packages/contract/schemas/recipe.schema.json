@@ -1,0 +1,145 @@
+{
+  "$id": "ruvnet-brain/recipe",
+  "type": "object",
+  "required": ["schema", "version", "id", "units", "sources", "standing", "analyser", "models", "lanes", "sections", "result", "deadlineMs", "probes"],
+  "properties": {
+    "schema": { "const": "ruvnet-brain/recipe" },
+    "version": { "type": "integer", "minimum": 1 },
+    "id": { "type": "string", "minLength": 1 },
+    "query": {
+      "type": "object",
+      "properties": { "extraTerms": { "enum": ["append", "off"] } }
+    },
+    "units": {
+      "type": "object",
+      "required": ["passage"],
+      "properties": {
+        "passage": {
+          "type": "object",
+          "required": ["chunker"],
+          "properties": {
+            "chunker": {
+              "type": "object",
+              "required": ["name", "version", "maxLines", "maxChars"],
+              "properties": {
+                "name": { "enum": ["lines"] },
+                "version": { "type": "integer", "minimum": 1 },
+                "maxLines": { "type": "integer", "minimum": 1 },
+                "maxChars": { "type": "integer", "minimum": 100 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "sources": {
+      "type": "object",
+      "required": ["include", "excludeDirs", "sourceFile"],
+      "properties": {
+        "include": { "type": "array", "items": { "type": "string" } },
+        "excludeDirs": { "type": "array", "items": { "type": "string" } },
+        "sourceFile": { "type": "string" }
+      }
+    },
+    "standing": {
+      "type": "object",
+      "required": ["docExtensions", "doc", "code"],
+      "properties": {
+        "docExtensions": { "type": "array", "items": { "type": "string" } },
+        "doc": { "type": "string" },
+        "code": { "type": "string" },
+        "byKind": { "type": "object" }
+      }
+    },
+    "analyser": {
+      "type": "object",
+      "required": ["name", "fts5Tokenizer", "minTokenLength", "maxQueryTerms", "stopwords"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "fts5Tokenizer": { "type": "string", "pattern": "^[a-z0-9_ ]+$" },
+        "minTokenLength": { "type": "integer", "minimum": 1 },
+        "minNumberLength": { "type": "integer", "minimum": 0 },
+        "maxQueryTerms": { "type": "integer", "minimum": 1 },
+        "splitIdentifiers": { "type": "boolean" },
+        "stemmer": { "enum": ["porter", "none"] },
+        "stopwords": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "models": { "type": "array" },
+    "lanes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "kind", "optional"],
+        "properties": {
+          "name": { "type": "string" },
+          "kind": { "type": "string" },
+          "optional": { "type": "boolean" },
+          "role": { "type": "string", "minLength": 1 },
+          "weights": {
+            "type": "object",
+            "properties": { "subject": { "type": "number", "minimum": 0 }, "body": { "type": "number", "minimum": 0 } }
+          },
+          "depth": { "type": "integer", "minimum": 1, "maximum": 10000 },
+          "unit": { "type": "string", "minLength": 1 },
+          "process": { "enum": ["inline", "helper"] }
+        }
+      }
+    },
+    "sections": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "lane", "maxItems", "budgetChars"],
+        "properties": {
+          "name": { "enum": ["CAPABILITIES", "CUES", "FILES", "HISTORY", "PLAYBOOKS"] },
+          "lane": { "type": "string" },
+          "maxItems": { "type": "integer", "minimum": 1 },
+          "itemChars": { "type": "integer", "minimum": 200, "maximum": 60000 },
+          "budgetChars": {
+            "type": "object",
+            "required": ["brief", "full"],
+            "properties": {
+              "brief": { "type": "integer", "minimum": 500, "maximum": 60000 },
+              "full": { "type": "integer", "minimum": 500, "maximum": 60000 }
+            }
+          }
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": ["capChars", "defaultDetail"],
+      "properties": {
+        "capChars": {
+          "type": "object",
+          "required": ["brief", "full"],
+          "properties": {
+            "brief": { "type": "integer", "minimum": 1000, "maximum": 60000 },
+            "full": { "type": "integer", "minimum": 1000, "maximum": 60000 }
+          }
+        },
+        "defaultDetail": { "enum": ["brief", "full"] },
+        "delivery": {
+          "type": "object",
+          "properties": {
+            "maxChars": { "type": "integer", "minimum": 1000, "maximum": 44000 },
+            "maxTokens": { "type": "integer", "minimum": 300, "maximum": 20000 }
+          }
+        }
+      }
+    },
+    "deadlineMs": { "type": "integer", "minimum": 100 },
+    "probes": {
+      "type": "object",
+      "required": ["perRepo", "termsPerProbe", "minTermLength"],
+      "properties": {
+        "perRepo": { "type": "integer", "minimum": 1 },
+        "termsPerProbe": { "type": "integer", "minimum": 1 },
+        "minTermLength": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

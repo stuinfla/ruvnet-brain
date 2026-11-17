@@ -2,6 +2,15 @@
   "schemaVersion": 1,
   "purpose": "TRANSITIONAL quarantine for scripts/full-suite-gate.mjs; a release ships with an empty `tests` list. Every entry is a test KNOWN to be red with its owning branch. Any red test NOT listed fails the gate; any listed test that PASSES fails the gate until its entry is removed. Never add an entry to make a gate green without a class, a reason with evidence, and an owner.",
   "tests": [],
+  "suites": [
+    {
+      "name": "v5-acceptance",
+      "runner": "node:test",
+      "script": "test:v5",
+      "include": ["tests/acceptance/v5/*.test.mjs"],
+      "reason": "Run, not excluded: the version 5 acceptance suite is node:test, which the root vitest config cannot collect. `npm run test:v5` runs every file this glob matches (`npm test` chains it, and the release prepush runs it as its `v5-acceptance` gate). scripts/full-suite-gate.mjs checks that this npm script exists and names this glob, so a new tests/acceptance/v5/*.test.mjs file is accounted for with no further edit."
+    }
+  ],
   "excludedFiles": [
     {
       "file": "tests/diagnostics/release-source-shape.test.mjs",

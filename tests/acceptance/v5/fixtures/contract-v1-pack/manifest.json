@@ -1,0 +1,59 @@
+{
+  "schema": "ruvnet-brain/build-manifest",
+  "version": 1,
+  "recipe": {
+    "id": "r2-wave1",
+    "version": 1,
+    "hash": "db62c447884b7cb16a4d3b4b72ac1ac1b84a4a04ab21a8432397e11fe535a717",
+    "chunker": {
+      "name": "symbol",
+      "version": 1
+    },
+    "tokenEstimator": {
+      "name": "approx-wordpiece",
+      "version": 1,
+      "lettersPerToken": 5,
+      "digitsPerToken": 3
+    }
+  },
+  "sources": [
+    {
+      "repo": "alpha-vectors",
+      "commit": "a1f0c9e2b7d4",
+      "date": "2026-11-10",
+      "contentHash": "ca8400f66e59078ce4e8f0027aec1ff5f22ee23978b21b8da986f87a2cad0b92",
+      "files": 3,
+      "passages": 4,
+      "passagesHash": "990e81ca2f7484b8d65b541b77af8f88a0306431ae7ea6f706958cadba58f98a",
+      "skipped": 0,
+      "truncated": 0,
+      "history": null,
+      "carried": null
+    },
+    {
+      "repo": "beta-memory",
+      "commit": "b2e8d1a6c3f9",
+      "date": "2026-11-12",
+      "contentHash": "fdfb0b4f94d12a41679f54f9bcc22c7dd436a10776fa8215cc1dc95e513350aa",
+      "files": 3,
+      "passages": 3,
+      "passagesHash": "2e20f307512f06de1fa6d9daf1cf2210b4a74c70371c3d42476b69dce6189233",
+      "skipped": 0,
+      "truncated": 0,
+      "history": null,
+      "carried": null
+    }
+  ],
+  "carried": [],
+  "counts": {
+    "files": 6,
+    "passages": 7,
+    "history": 0
+  },
+  "skipped": [],
+  "truncated": [],
+  "screened": {
+    "secrets": [],
+    "hostile": []
+  }
+}

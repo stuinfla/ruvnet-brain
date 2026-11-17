@@ -15,6 +15,9 @@ const CANONICAL_PUBLISHERS = new Set([
 const SOURCE_EXTENSIONS = new Set(['.mjs', '.js', '.cjs', '.sh', '.yml', '.yaml']);
 const SCANNED_DIRECTORIES = Object.freeze([
   'scripts', 'deploy', 'bin', '.github/workflows', 'plugin', 'kb', 'console',
+  // Version 5 (ROADMAP A3): packages/release is the v5 rail; no v5 package may hold a publish
+  // operation until this gate names its publisher (a cutover change).
+  'packages',
 ]);
 
 // Cut a trailing line comment WITHOUT touching a `//` that lives inside a string literal. The old

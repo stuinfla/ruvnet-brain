@@ -363,6 +363,8 @@ const INVENTORY_ROOTS = [
   { dir: 'plugin/scripts', exts: ['.mjs', '.sh'], recurse: true },
   { dir: 'bin', exts: ['.mjs'], recurse: false },
   { dir: 'console', exts: ['.js'], recurse: false },
+  // Version 5 (ROADMAP A3): every package module must have a non-test caller like any other module.
+  { dir: 'packages', exts: ['.mjs'], recurse: true },
 ];
 
 /**
@@ -377,7 +379,7 @@ const INVENTORY_ROOTS = [
 // controlPlaneProbes and evaluatorEntrypoints. Excluding it made two real scheduled callers look
 // dead while the same scanner already trusted workflow YAML and package.json command manifests.
 const CALLER_ROOTS = [
-  'scripts', 'plugin', 'console', 'bin', '.github', '.claude', 'package.json', 'dream.config.json',
+  'scripts', 'plugin', 'console', 'bin', '.github', '.claude', 'package.json', 'dream.config.json', 'packages',
 ];
 const CALLER_EXTS = new Set(['.mjs', '.js', '.sh', '.json', '.html', '.yml', '.yaml']);
 export const REQUIRED_OPERATIONAL_EXPORTS = [

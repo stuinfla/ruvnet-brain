@@ -35,6 +35,8 @@ export const STATIC_GATES = [
   { name: 'single-source-check', script: 'single-source:check' },
   { name: 'wired-check', script: 'wired:check' },
   { name: 'substitution-check', script: 'substitution:check' },
+  // Version 5 acceptance suite (tests/acceptance/v5: skeleton S1-S14 and the work-package tests).
+  { name: 'v5-acceptance', script: 'test:v5' },
 ];
 
 /**

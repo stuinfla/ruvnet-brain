@@ -1,0 +1,9 @@
+{
+  "//": "The optional write guard's data (work package 10). terms: the product names whose appearance in a file being written asks for a search first (the nine the 4.7 write gate used). The guard reads the CONTENT being written, never the path or the rest of the hook message. override: the in-file line that lets a write through (it is recorded). freshMinutes: how old the session's own search_ruvnet result may be. toolSuffix: the search tool, as the host names it (a host prefixes its own server name). logMax: overrides kept in state/guard-overrides.jsonl.",
+  "terms": ["agentdb", "metaharness", "ruvector", "aidefence", "agentic-flow", "agentic-qe", "ruv-swarm", "rvf", "ruflo"],
+  "override": "ruvnet-brain-guard: allow",
+  "freshMinutes": 240,
+  "toolSuffix": "search_ruvnet",
+  "resultHeader": "RuvNet Brain · knowledge of ",
+  "logMax": 200
+}

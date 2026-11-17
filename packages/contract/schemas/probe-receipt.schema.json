@@ -1,0 +1,36 @@
+{
+  "$id": "ruvnet-brain/probe-receipt",
+  "type": "object",
+  "required": ["schema", "version", "os", "node", "release", "probes", "ok", "error", "at"],
+  "properties": {
+    "schema": { "const": "ruvnet-brain/probe-receipt" },
+    "version": { "const": 1 },
+    "os": { "enum": ["linux", "macos", "windows"] },
+    "node": { "type": "string", "minLength": 1 },
+    "release": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+    "releaseNumber": { "type": ["integer", "null"], "minimum": 1 },
+    "app": { "type": ["string", "null"] },
+    "pack": { "type": ["string", "null"] },
+    "install": {
+      "type": ["object", "null"],
+      "required": ["exit"],
+      "properties": { "exit": { "type": ["integer", "null"] }, "tail": { "type": "string" } }
+    },
+    "probes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["question", "expect", "pass"],
+        "properties": { "question": { "type": "string" }, "expect": { "type": "string" }, "pass": { "type": "boolean" }, "mode": { "type": "string" } }
+      }
+    },
+    "doctor": {
+      "type": ["object", "null"],
+      "required": ["exit", "line"],
+      "properties": { "exit": { "type": ["integer", "null"] }, "line": { "type": "string" } }
+    },
+    "ok": { "type": "boolean" },
+    "error": { "type": ["string", "null"] },
+    "at": { "type": "string", "minLength": 1 }
+  }
+}

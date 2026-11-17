@@ -1,4 +1,4 @@
-Updated: 2026-10-30 23:00:00 EDT | Version 1.9.0
+Updated: 2026-11-17 00:42:00 EST | Version 1.10.0
 Created: 2026-07-07 09:22:01 EDT
 
 # Contributing to RuvNet Brain — the one rulebook
@@ -18,6 +18,7 @@ instructions. `npm run single-source:check` fails CI if a second, conflicting in
 | Fix a person's issue unattended | `node scripts/issue-fix.mjs --mode autofix` (daily `com.ruvnet.issue-autofix`; runs only while the repository variable `ISSUE_AUTOFIX` is exactly `on`) — follows "Releasing code" below step for step and holds no publish operation (ADR-107) | Terminal `install-verified`, then one comment per fixed issue naming that version and one personal note per reporter; every night's fixes ship as one release |
 | Build the customer corpus | CI only: `corpus-seed.yml` → `scripts/corpus-reconcile.mjs` | Sealed candidate + receipt artifact |
 | Publish the corpus | `protected-release.yml mode=corpus` (nightly dispatcher), armed unless repository variable `CORPUS_NIGHTLY` is `off` (the owner's kill switch) **and** the newest code release is `install-verified` (resolved at run time, `scripts/approved-runtime.mjs --resolve`; never a committed file, never a fallback to an older release); the corpus is built at that release's source commit, and `main` being ahead of it does not matter; a night with no upstream change publishes nothing | `corpus-sha256-*` release promoted to `releases/latest` |
+| Change an embedding or search recipe constant | Update `docs/brain-research/EMBEDDING-RECIPE.md` (its checked block and version table) and append to `docs/brain-research/DECISIONS.md` in the same change (ADR-109) | `tests/unit/embedding-recipe-record.test.mjs` passes |
 | Update a user's machine | One coordinator and shared lock; the Brain schedule invokes it at 03:30 local time, and existing managed ownership remains explicit | `SOURCE.json` `releaseTag` equals the plugin version; latest `~/.cache/ruvnet-brain/refresh-runs/*.json` is PASS |
 
 Nothing else publishes. `scripts/release-authority.mjs` fails CI if any file other than
