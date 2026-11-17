@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import readline from 'node:readline';
+import { lfLineReader } from '../plugin/scripts/lf-lines.mjs';
 import { spawn } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 import { createHash } from 'node:crypto';
@@ -62,7 +62,7 @@ const summarizeLatency = (rows) => {
 export function rpcClient(child, { timeoutMs = 250_000 } = {}) {
   let nextId = 1;
   const pending = new Map();
-  const rl = readline.createInterface({ input: child.stdout });
+  const rl = lfLineReader(child.stdout);
   rl.on('line', (line) => {
     let msg;
     try { msg = JSON.parse(line); } catch { return; }

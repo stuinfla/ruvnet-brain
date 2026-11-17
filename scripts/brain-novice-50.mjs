@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import readline from 'node:readline';
+import { lfLineReader } from '../plugin/scripts/lf-lines.mjs';
 import { fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
 import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
@@ -103,7 +103,7 @@ async function main() {
     },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
-  const rl = readline.createInterface({ input: child.stdout });
+  const rl = lfLineReader(child.stdout);
   const waiting = new Map();
   let id = 0;
   let stderr = '';

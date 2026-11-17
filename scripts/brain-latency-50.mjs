@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
-import { createInterface } from 'node:readline';
+import { lfLineReader } from '../plugin/scripts/lf-lines.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -100,7 +100,7 @@ export async function benchmark(options) {
     },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
-  const lines = createInterface({ input: child.stdout });
+  const lines = lfLineReader(child.stdout);
   const pending = new Map();
   let stderr = '';
   let nextId = 1;

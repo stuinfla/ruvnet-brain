@@ -75,14 +75,37 @@ describe('forge-guard, run the way the update path runs it', () => {
 });
 
 describe('no shipped JSONL reader goes back to node:readline', () => {
-  // Interactive prompts read a terminal, not JSONL; the measurement harnesses read a child's JSON-RPC stdout
-  // and are never shipped as product behaviour. Everything else that reads lines must use LF-only reading.
-  const ALLOWED = new Set(['bin/install.mjs', 'scripts/managed-terminal-input.mjs', 'scripts/model-router-setup.mjs',
-    'scripts/brain-latency-50.mjs', 'scripts/recommendation-e2e.mjs', 'scripts/top100-benchmark.mjs',
-    'scripts/recommendation-real-host.mjs', 'scripts/brain-novice-50.mjs']);
+  // Interactive prompts read a terminal, not JSONL. Everything else that reads lines, the measurement harnesses
+  // reading a worker's JSON-RPC replies included, must use LF-only reading.
+  const ALLOWED = new Set(['bin/install.mjs', 'scripts/managed-terminal-input.mjs', 'scripts/model-router-setup.mjs']);
   it('kb/, plugin/, bin/ and scripts/ hold no other readline line reader', () => {
-    const r = spawnSync('git', ['grep', '-l', '-E', "from 'node:readline|require\\('node:readline", '--', 'kb', 'plugin', 'bin', 'scripts'], { cwd: ROOT, encoding: 'utf8' });
+    // Any spelling: 'node:readline' or 'readline', single or double quotes, static, dynamic or require.
+    const r = spawnSync('git', ['grep', '-a', '-l', '-E', `(from|import\\(|require\\()[[:space:]]*['"](node:)?readline(/promises)?['"]`, '--', 'kb', 'plugin', 'bin', 'scripts'], { cwd: ROOT, encoding: 'utf8' });
     const files = r.stdout.split('\n').filter(Boolean).filter((f) => !ALLOWED.has(f));
     expect(files).toEqual([]);
+  });
+});
+
+describe('the kb/ inline copies cannot drift', () => {
+  // kb/ ships in the knowledge bundle with its own code list, so each file carries its own lfLines. They must stay
+  // byte-identical to the one forge-guard runs (exercised above), and forge-ask's passage loader is run for real.
+  const KB = ['kb/forge-guard.mjs', 'kb/forge-ask.mjs', 'kb/forge-ask-all.mjs', 'kb/forge-big.mjs', 'kb/verify-citation.mjs', 'kb/self-retrieval-bench.mjs'];
+  const body = (file) => /async function\* lfLines\(input\) \{[\s\S]*?\n\}\n/.exec(fs.readFileSync(path.join(ROOT, file), 'latin1'))?.[0];
+  it('every kb/ copy of lfLines is byte-identical to forge-guard\'s', () => {
+    const canonical = body('kb/forge-guard.mjs');
+    expect(canonical).toMatch(/indexOf\('\\n', start\)/);
+    for (const file of KB) expect(body(file), file).toBe(canonical);
+  });
+  it('forge-ask (the search path) loads one passage per record, so the U+2028 passage is retrievable by id', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rnb-lf-ask-')); temps.push(dir);
+    fs.writeFileSync(path.join(dir, 'fixture.passages.jsonl'), JSONL);
+    const probe = path.join(dir, 'probe.mjs');
+    // loadPassages is module-private; read it out of the shipped file and run it on the fixture (no rewrite of logic).
+    const src = fs.readFileSync(path.join(ROOT, 'kb/forge-ask.mjs'), 'utf8');
+    const fn = /async function loadPassages\(file\) \{[\s\S]*?\n\}\n/.exec(src)[0];
+    fs.writeFileSync(probe, `import fs from 'node:fs';\nimport { StringDecoder } from 'node:string_decoder';\n${body('kb/forge-ask.mjs')}\n${fn}\nconst r = await loadPassages(process.argv[2]);\nprocess.stdout.write(JSON.stringify([...r.byId.values()].map((x) => x.text)));\n`);
+    const r = spawnSync(process.execPath, [probe, path.join(dir, 'fixture.passages.jsonl')], { encoding: 'utf8' });
+    expect(r.status, r.stderr).toBe(0);
+    expect(JSON.parse(r.stdout)).toEqual(RECORDS.map((x) => x.text));
   });
 });

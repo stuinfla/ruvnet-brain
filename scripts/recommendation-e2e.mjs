@@ -24,7 +24,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import readline from 'node:readline';
+import { lfLineReader } from '../plugin/scripts/lf-lines.mjs';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -47,7 +47,7 @@ const items = (sets.length ? sets : ['evals/recommendation-eval.v1.json'])
 
 const worker = spawn(process.execPath, [path.join(ROOT, 'kb', 'forge-mcp-all.mjs')],
   { env: { ...base, RUVNET_PACKAGE_RECOMMENDER: '1' }, stdio: ['pipe', 'pipe', 'ignore'] });
-const rl = readline.createInterface({ input: worker.stdout });
+const rl = lfLineReader(worker.stdout);
 const waiters = new Map();
 rl.on('line', (l) => { try { const m = JSON.parse(l); waiters.get(m.id)?.(m); } catch { /* not ours */ } });
 const call = (id, method) => new Promise((r) => { waiters.set(id, r); worker.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params: {} })}\n`); });

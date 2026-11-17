@@ -19,7 +19,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import readline from 'node:readline';
+import { lfLineReader } from '../plugin/scripts/lf-lines.mjs';
 import { fileURLToPath } from 'node:url';
 import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
@@ -75,7 +75,7 @@ if (isMain) {
   const worker = spawn(process.execPath, [path.join(ROOT, 'kb', 'forge-mcp-all.mjs')],
     { env: { PATH: process.env.PATH, HOME: home, ...brainEnv, RUVNET_PACKAGE_RECOMMENDER: '1', RUVNET_BRAIN_IDLE_EXIT_MS: '0' }, stdio: ['pipe', 'pipe', 'ignore'] });   // idle exit off: load-gate waits must not retire the worker mid-run
   for (const sig of ['SIGTERM', 'SIGINT']) process.once(sig, () => { worker.kill('SIGTERM'); fs.rmSync(home, { recursive: true, force: true }); process.exit(1); });
-  const rl = readline.createInterface({ input: worker.stdout });
+  const rl = lfLineReader(worker.stdout);
   const waiters = new Map();
   rl.on('line', (l) => { try { const m = JSON.parse(l); waiters.get(m.id)?.(m); } catch { /* not ours */ } });
   const call = (id, method) => new Promise((r) => { waiters.set(id, r); worker.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params: {} })}\n`); });
