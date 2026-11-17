@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { THREE, repo, setup } from './helpers.mjs';
-import { REQUIRED_OS, appVersion, gateFor, rail, sealed, sha256File, writeJson } from './wp6-helpers.mjs';
+import { appVersion, gateFor, rail, receiptsFor, sealed, writeJson } from './wp6-helpers.mjs';
 
 test('WP6 a failure between the two promotions restores the previous release', { timeout: 300_000 }, async (t) => {
   const ctx = setup(t, 'wp6-07');
@@ -19,8 +19,7 @@ test('WP6 a failure between the two promotions restores the previous release', {
     assert.equal(st.status, 0, st.out);
     const tag = st.stdout.match(/staged (\S+)/)[1];
     const staged = path.join(channel, 'staged', tag);
-    const sha = sha256File(path.join(staged, 'release.json'));
-    const receipts = REQUIRED_OS.map((os) => ({ os, release: sha, ok: true }));
+    const receipts = receiptsFor(staged);
     return { tag, staged, receipts, gate: gateFor(staged) };
   };
 

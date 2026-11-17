@@ -18,6 +18,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export async function installAndProbe({ packagesDir = PACKAGES, releaseDir, timeoutMs = 120_000 }) {
   const receipt = { schema: 'ruvnet-brain/probe-receipt', version: 1, os: osName(), node: process.version, release: null, releaseNumber: null, app: null, pack: null, install: null, probes: [], doctor: null, ok: false, error: null, at: new Date().toISOString() };
+  // In GitHub Actions the receipt names its run and runner, which promotion requires (evidence.mjs).
+  if (process.env.GITHUB_ACTIONS === 'true') receipt.ci = { runId: process.env.GITHUB_RUN_ID ?? null, runnerOs: process.env.RUNNER_OS ?? null };
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'rb5-rail-probe-'));
   const env = { ...process.env, NODE_NO_WARNINGS: '1', [HOME_ENV]: home };
   const cli = (args) => spawnSync(process.execPath, [path.join(packagesDir, 'cli', 'ruvnet-brain.mjs'), ...args], { env, encoding: 'utf8', timeout: timeoutMs, cwd: os.tmpdir() });

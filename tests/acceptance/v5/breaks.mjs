@@ -6,6 +6,7 @@ import path from 'node:path';
 import { addWorkPackageBreaks } from './breaks-wp.mjs';
 import { addWave2Breaks } from './breaks-wave2.mjs';
 import { addWave3Breaks } from './breaks-wave3.mjs';
+import { addReviewBreaks } from './breaks-review.mjs';
 
 // The wp1-no-question-strings break plants one development question's wording in the engine. The
 // wording is read from the question set outside the repository when the break is applied (that test
@@ -382,6 +383,7 @@ Object.assign(BREAKS, {
 addWorkPackageBreaks(BREAKS);
 addWave2Breaks(BREAKS);
 addWave3Breaks(BREAKS); // wave 3 integration (breaks-wave3.mjs)
+addReviewBreaks(BREAKS); // review fixes (breaks-review.mjs, docs/REVIEW-FIXES.md)
 
 // wp8 ── work package 8 (answer gate) breaks. Each removes one refusal from packages/release/gate/.
 const R = 'packages/release/gate/retrieval.mjs';

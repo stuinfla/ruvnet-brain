@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { setup } from './helpers.mjs';
-import { REQUIRED_OS, appVersion, gateFor, rail, sealed, sha256File, writeJson } from './wp6-helpers.mjs';
+import { appVersion, gateFor, rail, sealed, writeJson, writeReceipts } from './wp6-helpers.mjs';
 
 test('WP6 nothing is promoted without a passed answer-gate result for these bytes', { timeout: 240_000 }, async (t) => {
   const ctx = setup(t, 'wp6-03');
@@ -20,9 +20,8 @@ test('WP6 nothing is promoted without a passed answer-gate result for these byte
   assert.equal(st.status, 0, st.out);
   const tag = st.stdout.match(/staged (\S+)/)[1];
   const staged = path.join(channel, 'staged', tag);
-  const sha = sha256File(path.join(staged, 'release.json'));
   const receipts = ctx.tmp('rb5-wp6-rc-');
-  for (const os of REQUIRED_OS) writeJson(path.join(receipts, `${os}.json`), { os, release: sha, ok: true });
+  writeReceipts(receipts, staged);
   const dir = ctx.tmp('rb5-wp6-gate-');
   const promote = (gateValue) => {
     const args = ['promote', '--channel', channel, '--tag', tag, '--version', appVersion(tree), '--receipts', receipts];

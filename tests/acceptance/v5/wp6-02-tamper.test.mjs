@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { setup } from './helpers.mjs';
-import { REQUIRED_OS, appVersion, gateFor, rail, sealed, sha256File, writeJson } from './wp6-helpers.mjs';
+import { appVersion, gateFor, rail, sealed, writeJson, writeReceipts } from './wp6-helpers.mjs';
 
 const flip = (file) => {
   const b = fs.readFileSync(file);
@@ -40,9 +40,8 @@ test('WP6 a byte changed after signing is refused by the rail and the installer'
   assert.equal(st.status, 0, st.out);
   const tag = st.stdout.match(/staged (\S+)/)[1];
   const staged = path.join(channel, 'staged', tag);
-  const sha = sha256File(path.join(staged, 'release.json'));
   const receipts = ctx.tmp('rb5-wp6-rc-');
-  for (const os of REQUIRED_OS) writeJson(path.join(receipts, `${os}.json`), { os, release: sha, ok: true });
+  writeReceipts(receipts, staged);
   const gate = path.join(ctx.tmp('rb5-wp6-gate-'), 'gate.json');
   writeJson(gate, gateFor(staged));
   flip(path.join(staged, 'app', 'engine', 'index.mjs'));

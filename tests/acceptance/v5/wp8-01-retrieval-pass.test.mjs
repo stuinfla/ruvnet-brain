@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { setup } from './helpers.mjs';
-import { REQUIRED_OS, appVersion, rail, sha256File, writeJson } from './wp6-helpers.mjs';
+import { appVersion, rail, sha256File, writeReceipts } from './wp6-helpers.mjs';
 import { gate, noQuestionText, outFile, pin, questionSet, readJson, releaseOf, setHash } from './wp8-helpers.mjs';
 
 test('WP8 layer 1 passes a good release with a bound, promotable result', { timeout: 300_000 }, async (t) => {
@@ -51,7 +51,7 @@ test('WP8 layer 1 passes a good release with a bound, promotable result', { time
   assert.equal(st.status, 0, st.out);
   const tag = st.stdout.match(/staged (\S+)/)[1];
   const receipts = ctx.tmp('rb5-wp8-rc-');
-  for (const os of REQUIRED_OS) writeJson(path.join(receipts, `${os}.json`), { os, release: relSha, ok: true });
+  writeReceipts(receipts, path.join(channel, 'staged', tag));
   const p = rail(tree, ['promote', '--channel', channel, '--tag', tag, '--version', appVersion(tree), '--receipts', receipts, '--gate', out]);
   assert.equal(p.status, 0, `promote must accept the gate's own file: ${p.out}`);
 });

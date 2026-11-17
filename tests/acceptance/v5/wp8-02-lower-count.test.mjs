@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { repo, setup } from './helpers.mjs';
-import { REQUIRED_OS, appVersion, rail, sha256File, writeJson } from './wp6-helpers.mjs';
+import { appVersion, rail, writeReceipts } from './wp6-helpers.mjs';
 import { gate, outFile, pin, questionSet, readJson, releaseOf, setHash } from './wp8-helpers.mjs';
 
 test('WP8 a lower retrieval count than the baseline fails the gate', { timeout: 300_000 }, async (t) => {
@@ -29,7 +29,7 @@ test('WP8 a lower retrieval count than the baseline fails the gate', { timeout: 
   const st = rail(tree, ['stage', '--release', rel, '--channel', channel]);
   const tag = st.stdout.match(/staged (\S+)/)[1];
   const receipts = ctx.tmp('rb5-wp8-rc-');
-  for (const os of REQUIRED_OS) writeJson(path.join(receipts, `${os}.json`), { os, release: sha256File(path.join(rel, 'release.json')), ok: true });
+  writeReceipts(receipts, path.join(channel, 'staged', tag));
   const p = rail(tree, ['promote', '--channel', channel, '--tag', tag, '--version', appVersion(tree), '--receipts', receipts, '--gate', out]);
   assert.notEqual(p.status, 0, 'promotion must refuse the failed gate');
   assert.match(p.stderr, /the answer gate did not pass \(4 of 6/);
