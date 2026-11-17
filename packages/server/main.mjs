@@ -23,6 +23,8 @@ import { real } from './widen.mjs';
 import { toolResult } from './wire.mjs';
 
 const MAX_LINE = 1_000_000;
+/** A request value as an error may echo it: at most 200 characters (review F22). */
+const clip = (v) => (String(v).length > 200 ? `${String(v).slice(0, 200)}… (${String(v).length} characters)` : String(v));
 const importFrom = (dir, ...rel) => import(pathToFileURL(path.join(dir, ...rel)).href);
 
 /** A helper lane's item is used only if it is a result item this server can cite. */
@@ -210,7 +212,7 @@ export async function run({ home, input = process.stdin, output = process.stdout
         return { tools: [SEARCH, READ, ...layeredList()] };
       case 'tools/call': {
         const name = msg.params?.name;
-        if (name !== SEARCH.name && name !== READ.name && !LAYERED_NAMES.has(name)) throw Object.assign(new Error(`unknown tool ${name}`), { code: -32602 });
+        if (name !== SEARCH.name && name !== READ.name && !LAYERED_NAMES.has(name)) throw Object.assign(new Error(`unknown tool ${clip(name)}`), { code: -32602 });
         // Every result leaves through toolResult (wire.mjs): one text block, no structured copy, and
         // everything on the wire held to the delivery ceiling.
         try {
@@ -223,7 +225,7 @@ export async function run({ home, input = process.stdin, output = process.stdout
       }
       default:
         if (msg.id === undefined) return undefined;
-        throw Object.assign(new Error(`method not found: ${msg.method}`), { code: -32601 });
+        throw Object.assign(new Error(`method not found: ${clip(msg.method)}`), { code: -32601 });
     }
   }
 
@@ -241,7 +243,7 @@ export async function run({ home, input = process.stdin, output = process.stdout
     if (msg.method === undefined && String(msg.id).startsWith('roots-')) return onRoots(msg);
     handle(msg).then(
       (result) => msg.id !== undefined && result !== undefined && send({ jsonrpc: '2.0', id: msg.id, result }),
-      (e) => msg.id !== undefined && send({ jsonrpc: '2.0', id: msg.id, error: { code: e.code ?? -32603, message: e.message } }),
+      (e) => msg.id !== undefined && send({ jsonrpc: '2.0', id: msg.id, error: { code: e.code ?? -32603, message: toolResult(e.message, true, active?.recipe).content[0].text } }),
     );
   });
 
