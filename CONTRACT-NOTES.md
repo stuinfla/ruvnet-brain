@@ -1,4 +1,4 @@
-Updated: 2026-11-17 01:30:00 EST | Version 1.0.0
+Updated: 2026-11-17 03:30:00 EST | Version 1.1.0
 Created: 2026-11-17 01:30:00 EST
 
 # Version 5 walking skeleton: contract notes
@@ -61,10 +61,11 @@ should move up to `tests/acceptance/` once the 4.7 tree is gone; and the root `p
    start a server of its own (that would be a second definition of healthy, defect C9), so with no
    session open it reports NOT RUNNING and exits 1. The installer is what starts the real server and
    probes through it.
-9. **Probes.** The builder writes one probe per repository: the first file (sorted) that has at least
-   three words found in no other file; the question is those words; the expected file is that file.
-   Every probe is run against the pack at build time and the build fails if one misses. `selfTest`
-   passes when every probe's file is in FILES.
+9. **Probes.** The builder writes one probe per repository: the first file (sorted) with at least three
+   words whose analysed token (the engine's analyser) is found in no other file; the question is those
+   words as written, lower-cased (not their stems: stemming a stem again can change it); the expected
+   file is that file. Every probe is run against the pack at build time and the build fails if one
+   misses. `selfTest` passes when every probe's file is in its answer.
 10. **Probe interval.** Each periodic probe starts a fresh worker, so the index is opened again and
     damage on disk is seen. Default 30 minutes.
 11. **Timings.** In `state/config.json` with defaults in `contract/constants.mjs`: `heartbeatMs` 60 s,
@@ -73,17 +74,26 @@ should move up to `tests/acceptance/` once the 4.7 tree is gone; and the root `p
 12. **Result text.** Line 1 is the header (knowledge date, recipe id, pack generation, lanes). Line 2 is
     always either `MODE · normal` or `SAFE MODE · keyword only · <reason>`, so safe mode is
     machine-checkable. Each item: `N. repo/path · lines A-B · commit C · standing S · date D · sha256 H`,
-    then the excerpt inside `<<<passage-<random>` and `passage-<random>>>`. An empty section prints
-    `FILES (0) · no match: <reason>`. One text block, no `structuredContent`. Each recipe section has
-    its own character budget (`budgetChars`, FILES: brief 22,000, full 56,000) and the whole result a
-    cap (`result.capChars`: brief 24,000, full 60,000). The one trim step cuts excerpts evenly at a line
-    break, first until each section is within its budget, then until the whole text is within the cap.
-    The same content hash is never sent twice. `k` is accepted and answered with a note.
-13. **Standing.** Docs (`.md`, `.txt`, from the recipe) are `claimed`; everything else `implemented`.
-    Date is the source's date from its `.source.json`.
-14. **Chunker.** `lines` v1: up to `maxLines` lines and `maxChars` characters; a single longer line is
-    split. The indexed body is the repository name and path words, then the text (the path header).
-    Ranking: bm25, then repository, path, first line, so equal scores order the same in every process.
+    then, for a flagged item only, `FLAGGED · hostile · ...`, then the excerpt inside
+    `<<<passage-<random>` and `passage-<random>>>`. An empty section prints `NAME (0) · no match: <reason>`.
+    After the sections: the fence note, then `NOTE · <result.closing>` (the authority order). One text
+    block, no `structuredContent`. The engine builds each section (first `maxItems` distinct files, each
+    excerpt a window of that file's passages up to the section's `itemChars`, the section within
+    `budgetChars`, all excerpts within `result.capChars`); the formatter then holds the rendered text to
+    the same budgets and cap (trimming excerpts evenly at a line break) and marks every cut excerpt
+    `… [trimmed N characters]`, whether the engine or the formatter cut it. The same content hash is
+    never sent twice. `k` is accepted and answered with a note.
+13. **Standing.** Written per row by the builder: a passage by `standing.byKind[kind]` (an ADR is
+    `decided`), else docs (`standing.docExtensions`) `claimed` and code `implemented`; a history item by
+    `units.history.standing[kind]`. The engine uses the row's standing and falls back to the same rules.
+    Date and commit are the source's, from its `.source.json`.
+14. **Chunker.** The symbol chunker (`units.passage.symbolChunker`, a port of the measured one): structural
+    units grouped while small, at most `maxTokens` estimated tokens per passage, inside the outer bounds
+    `units.passage.chunker` (`lines` v1: `maxLines`, `maxChars`, which every passage also respects). The
+    stored text is the cited source lines only; header, label line and repeated signature rows go to the
+    indexed subject. Blank lines between passages belong to no passage; an excerpt window spanning two
+    passages gives them back as empty lines, so the excerpt is exactly its cited line range (a
+    whitespace-only line comes back empty). Ranking: bm25, then repository, path, first line, row id.
 15. **Engine `close`.** Added as a fourth call so file handles are released (Windows cannot delete an
     open file). `open` checks every listed file's size, not its hash: hashes are checked once, at
     install, by streaming.
@@ -107,10 +117,11 @@ should move up to `tests/acceptance/` once the 4.7 tree is gone; and the root `p
    a host is WP 7. Tests run the exact hook command string and the launcher the host would run.
 3. **The plugin folder imports `../../contract` and `../../health`.** Packaging the shim as a standalone
    plugin (with its own copy of those modules and the public key) is WP 7.
-4. **Builder** has no discover, fetch, secret or hostile-text screen, or incremental rebuild.
+4. **Builder** fetches nothing over the network (history pages are read from a recorded folder; CI supplies
+   the fetch), and code is cut by a line/brace heuristic, not the tree-sitter grammars the measured run used.
 5. **Release** seals and signs only; no publish, promote, or three-system canary (WP 6).
-6. **Engine** has no history lane, no `read_ruvnet` tool (so no MORE section), no private-pack scope
-   check (WP 1, WP 2).
+6. **Engine** has no `read_ruvnet` tool (so no MORE section), and no semantic lane. The private-pack scope
+   check is in the engine (`options.project`); the server does not pass a project yet (WP 2).
 7. **No generated `docs/RECIPE.md`, no line-budget check, no CI workflow.** Workflows and budgets belong
    to ROADMAP A1 and the integration owner. Measured lines of `.mjs` per package: contract 262, engine
    156, server 339, health 70, cli 297, builder 199, release 59, plugin 49 (all under budget).
@@ -118,8 +129,76 @@ should move up to `tests/acceptance/` once the 4.7 tree is gone; and the root `p
    `5.0.0-skeleton.1` beside `packages/version.json`, because the host reads the plugin's own file. It
    should be generated from `version.json` when the shim is packaged (WP 7).
 9. **`minShim` is signed but not enforced** by the launcher or the installer yet (WP 4, WP 7).
-10. **rUv-first check (ROADMAP A0.7) not run.** The skeleton's keyword lane is `node:sqlite` FTS5 as the
-   architecture decides; the analyser check against rUv's Lucene-style analyser is WP 1's first step.
+10. **rUv-first check (ROADMAP A0.7).** The keyword lane is `node:sqlite` FTS5 as the architecture
+   decides; WP 1 ported the measured Lucene-style analyser (Porter stems, identifier split) and the
+   development-score test reproduces the measured 40 of 76 through `engine.search`.
+
+## Wave 1 integration (work packages 1 and 5)
+
+**One pack format.** The builder's unit store (`packages/builder/store.mjs`): `lexical.db` (role
+`lexical-db`) and, when any source has a history export, `history.db` (role `history-db`), each a table
+`units` and a contentless `fts5(subject, body)` holding the tokens of the engine's `analyse()`, plus
+`manifest.json` (role `build-manifest`). The engine's keyword lane reads exactly this. The skeleton's
+raw-text `units` + `fts(body)` shape is gone. One alias stays: the retrieval run's measured index has the
+same columns under table `p` (row id `rid`); the lane reads it through the same query because the
+development-score test (40 of 76, reproduced here) opens that 1.4 GB index in place and cannot be
+rebuilt per test run. Nothing records in the store which analyser filled it: the pack's own
+`RECIPE.json` (bound by `recipeHash`) is that record.
+
+**One analyser.** `lucene-porter-ident` in `packages/engine/analyse.mjs` (the skeleton's `unicode61-lower`
+is removed). The builder's store writer, its probes and its settings check all import it; the builder's
+own identifier splitter is removed (`analyser.splitIdentifiers` replaces the builder's
+`analyser.identifierSplit`). `fts5Tokenizer` is `unicode61`, as the measured index used.
+
+**History.** The history lane is optional. A pack that does not list a `history-db` file has no history:
+the lane is not opened and not reported (so health stays OK) and HISTORY says `this pack has no history`.
+A pack that lists the file but has lost it reports the lane unavailable (DEGRADED; the installer refuses
+it after the switch). An item with no line range (a history item) is quoted with its header first.
+
+**Hostile text: a `flag` field, not a standing.** The builder flags a passage matching a recipe hostile
+pattern (`flag = 'hostile'`); the engine carries `flag` on the result item (set when any passage in the
+excerpt is flagged) and the server prints a `FLAGGED` line before it. Standing stays what the source is.
+
+**Contract changes** (each the smallest that makes the reconciled system valid; all additive, no
+version bump, `validate.mjs` unchanged):
+
+| Schema | Change | Why |
+|---|---|---|
+| recipe | `lanes[]`: `role`, `weights.{subject,body}`, `depth`, `unit` | the engine reads them; a typo must be refused, not ignored |
+| recipe | `sections[]`: `itemChars` (integer) | the engine's excerpt window size |
+| recipe | `analyser`: `name` typed, `minNumberLength`, `splitIdentifiers`, `stemmer` (`porter`/`none`) | the shared analyser's settings |
+| recipe | `standing.byKind` (object) | per-kind standing (`adr` is `decided`) |
+| pack | `access` (`public`/`private`), `projects` (list) | the engine's private-pack scope; an unknown `access` value would have been read as public |
+| pack | `counts.history` | the builder counts history units |
+| result | `closing` (string), `meta` (object) | the authority line the server prints; lanes run and time |
+| result | item `flag` (`hostile` or null), item `trimmed` | hostile text carried to the caller; an engine-cut excerpt is marked |
+
+Requests not applied, and why: the chunker name enum stays `lines` (the outer bounds keep that name; the
+symbol chunker has its own block); `symbolChunker`, `units.history`, `screen` and `carry` get no schema
+(the builder's `settings.mjs` validates every one of them and refuses a build with one sentence; the
+engine never reads them); no history-probe key in `PROBES.json` (it has no schema; probes stay one per
+repository over passages); `hostile` is not a standing value (see above).
+
+**Recipe** `r2-wave1`: the builder's settings, the measured analyser, two lanes (lexical required,
+history optional; weights 1/1, depth 100), FILES 5 items × 8,000 characters (budget 20,000 / 44,000),
+HISTORY 3 × 2,000 (4,000 / 6,000), result cap 24,000 / 60,000.
+
+**Tests.** `wave1-end-to-end.test.mjs` (builder pack → engine in separate processes → installed server)
+with six `// wave1` breaks. `wp1-helpers.writePack` now writes fixture packs with the builder's own
+`writeStore`, and the pilot pack uses the shipped recipe's analyser, lane and FILES section, so wp1 tests
+exercise the shipped format and recipe. `wp1-optional-lane` now expects `this pack has no history` for a
+pack that does not list the file. `wp5-history` looks words up as the analyser cuts them. One break
+runner: `run-breaks.mjs` runs `s*`, `wp<N>-*` and `wave<N>-*` tests (`wp5-run-breaks.mjs` is folded in).
+Known limit seen in the cap test: the lane's depth of 100 candidate passages can be filled by fewer than
+five files when one file has very many matching passages. The S5 break now removes the engine's trimming
+as well as the formatter's (both hold the budgets since wave 1).
+
+**Installer (work package 4), merged after wave 1** unchanged: `packages/cli/*`, `wp4-*` tests, the
+`// wp4` breaks. Its tests run in the same break-runner loop (a break whose `test` is `wp4-01` covers
+`wp4-01-*.test.mjs`). No contract change. Carried open from that package: `wp4-12` is a todo (a bare
+`node` in the hook command can run a planted `node` when PATH has an empty entry; an absolute launcher
+is the host-shim package's fix); downloads refuse redirects; no tests yet for the minShim refusal,
+https-only, clean, or two installs at once.
 
 ## How each break is applied
 
@@ -152,16 +231,18 @@ way, always, to the scratch copy only:
   absolute Node path, so how the host resolves `node` in `.mcp.json` is not exercised.
 - S6 asserts DOWN within one probe interval plus 3 s of slack (measured 542 ms with a 500 ms
   interval), not strictly within one interval.
-- Determinism is checked on one question across three processes, not WP 1's 200-question sample.
-- A test that each contract file with an unknown version is refused with one sentence (the code does
-  it: `validate.check`, the engine's recipe-version check); no acceptance test covers it yet.
+- Determinism: 200 questions in three processes on a tied fixture (wp1-determinism); the same run on
+  the retrieval corpus slice is opt-in (`WP1_SLICE_DETERMINISM=1`, about 500 s).
+- Refusal of an unknown version: covered for the recipe (wp1-refusals, version 2); not yet for the
+  pack, release or result files (the code does it: `validate.check`).
 - Everything in "Deviations" above.
 
 ## Running
 
 ```
-node --test --test-concurrency=1 'tests/acceptance/v5/*.test.mjs'   # all fourteen, one file at a time
+npm run test:v5                                                  # every v5 test, one file at a time
 node tests/acceptance/v5/run-breaks.mjs                         # each green, then red on each break
 node tests/acceptance/v5/run-breaks.mjs s02 s09                 # selected tests
+node tests/acceptance/v5/run-breaks.mjs wp1 wp5 wave1 wp4       # a whole group (or wp4-01, wp1-sections)
 V5_BREAK=s05 node --test tests/acceptance/v5/s05-size-cap.test.mjs   # one break by hand
 ```

@@ -270,6 +270,21 @@ const checks = [
       const main = json(git('show', 'origin/main:package.json')).version;
       return { ok: npm === gh && gh === main, detail: `npm ${npm} · github ${gh} · main ${main}` };
     } },
+
+  // V — version 5 (branch v5/rewrite): one way its acceptance suite runs
+  { id: 'V1', area: 'v5', scope: 'repo', title: 'The version 5 acceptance suite is run by `npm test` and by release:prepush, and every break runner file is covered',
+    run: () => {
+      const scripts = json(read('package.json')).scripts || {};
+      const files = existsSync(path.join(ROOT, 'tests/acceptance/v5')) ? readdirSync(path.join(ROOT, 'tests/acceptance/v5')).filter((f) => f.endsWith('.test.mjs')) : [];
+      const hits = [];
+      if (!files.length) return { ok: true, detail: 'no tests/acceptance/v5 on this branch' };
+      if (!/tests\/acceptance\/v5\/\*\.test\.mjs/.test(scripts['test:v5'] || '')) hits.push('package.json test:v5 does not run tests/acceptance/v5/*.test.mjs');
+      if (!/npm run test:v5\b/.test(scripts.test || '')) hits.push('package.json test does not chain npm run test:v5');
+      if (!/script:\s*'test:v5'/.test(read('scripts/release-prepush-checks.mjs'))) hits.push('release:prepush has no test:v5 gate');
+      const odd = files.filter((f) => !/^(s\d\d|wp\d+|wave\d+)-/.test(f));
+      if (odd.length) hits.push(`not picked up by run-breaks.mjs: ${odd.join(', ')}`);
+      return hits.length ? none(hits) : { ok: true, detail: `${files.length} v5 test file(s) wired` };
+    } },
 ];
 
 const selected = checks.filter((c) => c.scope === 'repo' || MACHINE);

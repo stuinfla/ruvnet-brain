@@ -1,0 +1,41 @@
+[
+  {
+    "number": 3,
+    "title": "Journal replay loses the last episode",
+    "body": "When the gloamwick journal is replayed after a crash the last episode is missing. Reproduced with harborwisp enabled.",
+    "user": {
+      "login": "stellarowner"
+    },
+    "created_at": "2026-11-06T09:00:00Z"
+  },
+  {
+    "number": 4,
+    "title": "Feature request",
+    "body": "strangerbloom please add a vector export",
+    "user": {
+      "login": "passerby"
+    },
+    "created_at": "2026-11-07T09:00:00Z"
+  },
+  {
+    "number": 5,
+    "title": "Compact journal segments",
+    "body": "This pull request compacts journal segments once they pass the tidequill threshold.",
+    "user": {
+      "login": "stellarowner"
+    },
+    "created_at": "2026-11-08T09:00:00Z",
+    "pull_request": {
+      "url": "https://example.invalid/pulls/5"
+    }
+  },
+  {
+    "number": 6,
+    "title": "Empty body",
+    "body": "",
+    "user": {
+      "login": "stellarowner"
+    },
+    "created_at": "2026-11-09T09:00:00Z"
+  }
+]

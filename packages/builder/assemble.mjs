@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { isMain, listFiles, readJson, sha256, sha256File, writeJsonAtomic } from '../contract/home.mjs';
 
-const ROLES = { 'lexical.db': 'lexical-db', 'PROBES.json': 'probes', 'RECIPE.json': 'recipe' };
+const ROLES = { 'lexical.db': 'lexical-db', 'history.db': 'history-db', 'manifest.json': 'build-manifest', 'PROBES.json': 'probes', 'RECIPE.json': 'recipe' };
 
 /** meta: { recipeId, recipeHash, sources, counts, knowledgeDate }. Omitted on a re-assemble. */
 export function assemble(packDir, meta = null) {

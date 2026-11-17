@@ -50,5 +50,29 @@ for (const file of files) {
     console.log(rows.at(-1));
   }
 }
+// Work-package and integration tests: wp<N>-*.test.mjs and wave<N>-*.test.mjs, id = file name without
+// .test.mjs; an argument such as `wp1`, `wp5` or `wave1` selects all of that group. A test that skips
+// (its corpus is not on this machine) is shown as SKIPPED and, when nothing in it ran, its breaks are
+// not run, so a skip never counts as a red break.
+for (const file of fs.readdirSync(DIR).filter((f) => /^(wp\d+|wave\d+)-.*\.test\.mjs$/.test(f)).sort()) {
+  const id = file.replace(/\.test\.mjs$/, '');
+  if (only.length && !only.some((o) => id === o || id.startsWith(`${o}-`))) continue;
+  await calm();
+  const g = run(file, null);
+  const skipped = /^ℹ skipped [1-9]/m.test(g.out);
+  if (!g.pass) bad++;
+  rows.push(`${id}  green: ${g.pass ? (skipped ? 'PASS with SKIPPED parts (see the test\'s skip reason)' : 'PASS') : 'FAIL'}  ${g.key}`);
+  console.log(rows.at(-1));
+  if (skipped && /^ℹ pass 0$/m.test(g.out)) continue;
+  for (const [name, b] of Object.entries(BREAKS).filter(([, x]) => x.test === id || id.startsWith(`${x.test}-`))) {
+    await calm();
+    const r = run(file, name);
+    const red = !r.pass && b.expect.test(r.out);
+    if (!red) bad++;
+    rows.push(`${id}  break ${name} (${b.what}): ${red ? 'RED as expected' : r.pass ? 'STILL GREEN' : 'red for another reason'}  ${r.key}`);
+    console.log(rows.at(-1));
+  }
+}
+// end of the work-package loop
 console.log(`\n${bad ? `${bad} problem(s)` : 'every test passes and every break turns its test red'}`);
 process.exitCode = bad ? 1 : 0;

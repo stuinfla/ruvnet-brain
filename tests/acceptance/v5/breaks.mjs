@@ -1,6 +1,18 @@
 // The break that must turn each acceptance test red (ROADMAP A2 "must fail when" column), applied
 // to a scratch copy of the tree only when V5_BREAK names it. `expect` is the failure the run must
 // show, so a red run caused by something else (a bad patch, a syntax error) is not counted.
+import fs from 'node:fs';
+
+// The wp1-no-question-strings break plants one development question's wording in the engine. The
+// wording is read from the question set outside the repository when the break is applied (that test
+// and its breaks run only where the set exists), so no question text is committed here.
+const DEV_QUESTIONS = process.env.WP1_DEV_QUESTIONS ?? '/Users/stuartkerr/Code/RVF-KnowledgeBases/ruvnet-brain-v2-work/runs/dev-pilot.json';
+function plantedQuestion() {
+  const words = (q) => String(q.question).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const q = JSON.parse(fs.readFileSync(DEV_QUESTIONS, 'utf8')).map(words).find((w) => w.split(' ').length >= 6);
+  return `const t0 = Date.now();\n  if (String(query).toLowerCase().includes('${q}')) options = { ...options, detail: 'full' };`;
+}
+
 export const BREAKS = {
   s01a: {
     test: 's01', what: 'the keyword query is made to return nothing',
@@ -33,8 +45,13 @@ export const BREAKS = {
     expect: /no answer to tools\/call within/,
   },
   s05: {
-    test: 's05', what: 'the trim step is removed',
-    patches: [{ file: 'packages/server/format.mjs', find: 'trimToBudgets(sections, (s) => renderSection(s, marker), render, cap);', replace: '' }],
+    // Since wave 1 the engine trims too (section budgets and the result cap), so the break removes both.
+    test: 's05', what: 'the trim step is removed (engine and formatter)',
+    patches: [
+      { file: 'packages/server/format.mjs', find: 'trimToBudgets(sections, (s) => renderSection(s, marker), render, cap);', replace: '' },
+      { file: 'packages/engine/assemble.mjs', find: 'if (budget) fit(items, budget);', replace: '' },
+      { file: 'packages/engine/index.mjs', find: 'fit(sections.flatMap((s) => s.items), recipe.result.capChars[detail]);', replace: '' },
+    ],
     expect: /characters, over (the \d+ cap|its own \d+ budget)/,
   },
   s06: {
@@ -84,3 +101,266 @@ export const BREAKS = {
     expect: /next search must answer from the new pack/,
   },
 };
+
+// wp1 ── work package 1 (engine) breaks. Each turns its wp1-*.test.mjs red; applied by
+// wp1-helpers.mjs engineTree() to a scratch copy of packages/ only.
+Object.assign(BREAKS, {
+  'wp1-dev-score': {
+    test: 'wp1-dev-score', what: 'the analyser is changed (no stemming)',
+    patches: [{ file: 'packages/engine/analyse.mjs', find: "out.push(a.stemmer === 'none' ? raw : porterStem(raw));", replace: 'out.push(raw);' }],
+    expect: /dev questions found \d+ of 76 through engine\.search, outside one of the measured 40/,
+  },
+  'wp1-determinism': {
+    test: 'wp1-determinism', what: 'an unordered (per-process random) order among equal scores',
+    patches: [{ file: 'packages/engine/lanes/lexical.mjs', find: 'ORDER BY score ASC, x.repo ASC, x.path ASC, x.start_line ASC, x.${id} ASC LIMIT ?', replace: 'ORDER BY score ASC, random() LIMIT ?' }],
+    expect: /had the same first five files in three processes \(need at least 198\)/,
+  },
+  'wp1-refusals': {
+    test: 'wp1-refusals', what: 'the recipe version check is removed',
+    patches: [{ file: 'packages/engine/index.mjs', find: 'if (!SUPPORTED_RECIPE_VERSIONS.includes(recipe.version)) {', replace: 'if (false) {' }],
+    expect: /made with recipe version 2 must be refused, but it opened/,
+  },
+  'wp1-private-scope': {
+    test: 'wp1-private-scope', what: 'the private-pack scope check is removed',
+    patches: [{ file: 'packages/engine/index.mjs', find: 'const refusal = scoped ? scopeRefusal(pack, options.project) : null;', replace: 'const refusal = null;' }],
+    expect: /a private pack must not be searched from/,
+  },
+  'wp1-no-question-strings': {
+    test: 'wp1-no-question-strings', what: 'a recogniser for one question is added',
+    patches: [{ file: 'packages/engine/index.mjs', find: 'const t0 = Date.now();', get replace() { return plantedQuestion(); } }],
+    expect: /question wording found in engine code/,
+  },
+  'wp1-optional-lane': {
+    test: 'wp1-optional-lane', what: 'a missing optional lane file refuses the pack again',
+    patches: [{ file: 'packages/engine/index.mjs', find: 'if (!optionalRoles.has(f.role)) throw new Error(', replace: 'if (true) throw new Error(' }],
+    expect: /Pack file history\.sqlite is missing or has the wrong size/,
+  },
+  'wp1-sections-window': {
+    test: 'wp1-sections', what: 'excerpt windows are removed (best passage only)',
+    patches: [{ file: 'packages/engine/assemble.mjs', find: 'const limit = perDetail(sec.itemChars, detail);', replace: 'const limit = 0;' }],
+    expect: /the window was not filled/,
+  },
+  'wp1-sections-distinct': {
+    test: 'wp1-sections', what: 'the distinct-file rule is removed',
+    patches: [{ file: 'packages/engine/assemble.mjs', find: 'if (files.has(key) || used.has(h)) continue;', replace: 'if (used.has(h)) continue;' }],
+    expect: /FILES must list distinct files/,
+  },
+  'wp1-sections-cap': {
+    test: 'wp1-sections', what: 'the whole-result cap is removed',
+    patches: [{ file: 'packages/engine/index.mjs', find: 'fit(sections.flatMap((s) => s.items), recipe.result.capChars[detail]);', replace: '' }],
+    expect: /over the (60000|24000) cap/,
+  },
+});
+// end wp1
+
+// wp5 — the pack builder's breaks (ROADMAP A4, WP 5). Each turns its wp5-*.test.mjs red; run them
+// with `node tests/acceptance/v5/run-breaks.mjs wp5`.
+Object.assign(BREAKS, {
+  'wp5-v2-skipped': {
+    test: 'wp5-chunker', what: 'folders named v2 are skipped again (the bare-name rule that dropped RuView/v2)',
+    patches: [{ file: 'recipe/RECIPE.json', find: '"vendor"],', replace: '"vendor", "v2"],' }],
+    expect: /v2\/src\/engine\.rs must be indexed/,
+  },
+  'wp5-cap-removed': {
+    test: 'wp5-chunker', what: 'the token cap is not enforced',
+    patches: [
+      { file: 'packages/builder/chunker.mjs', find: 'lm.sum(start, end) <= cfg.maxTokens &&', replace: 'lm.sum(start, end) <= cfg.maxTokens * 4 &&' },
+      { file: 'packages/builder/chunker.mjs', find: 'if (tokens > cfg.maxTokens) throw', replace: 'if (false) throw' },
+    ],
+    expect: /tokens \(cap 480\)/,
+  },
+  'wp5-opening-only': {
+    test: 'wp5-chunker', what: 'only the first 30 lines of a file are kept (the v1 opening-comment corpus)',
+    patches: [{ file: 'packages/builder/discover.mjs', find: "let text = raw.replace(/\\r\\n?/g, '\\n');", replace: "let text = raw.replace(/\\r\\n?/g, '\\n').split('\\n').slice(0, 30).join('\\n');" }],
+    expect: /the 165-line function splits into 3 to 8 passages, got 1|the last line of the long function is in a passage/,
+  },
+  'wp5-header-changed': {
+    test: 'wp5-chunker', what: 'the header line loses its symbol',
+    patches: [{ file: 'packages/builder/chunker.mjs', find: '[repo, rel, symbol].filter', replace: '[repo, rel].filter' }],
+    expect: /velvetcrane_route/,
+  },
+  'wp5-no-symbol-units': {
+    test: 'wp5-chunker', what: 'code is line-packed without symbol boundaries',
+    patches: [{ file: 'packages/builder/units.mjs', find: '.test(prev.trim()))) starts.push(i);', replace: '.test(prev.trim()))) void i;' }],
+    expect: /second_shape/,
+  },
+  'wp5-clock-in-manifest': {
+    test: 'wp5-incremental', what: 'a build time is written into the pack',
+    patches: [{ file: 'packages/builder/manifest.mjs', find: "schema: 'ruvnet-brain/build-manifest',", replace: "schema: 'ruvnet-brain/build-manifest', builtAt: new Date().toISOString() + process.pid," }],
+    expect: /byte-identical pack/,
+  },
+  'wp5-key-no-content': {
+    test: 'wp5-incremental', what: 'the cache key drops the source content hash',
+    patches: [{ file: 'packages/builder/build.mjs', find: 'sha256(`${recipeHash}\\n${snap.contentHash}\\n${historyHash}`)', replace: 'sha256(`${recipeHash}\\n${snap.meta.repo}\\n${historyHash}`)' }],
+    expect: /only the changed repository is rebuilt/,
+  },
+  'wp5-key-no-recipe': {
+    test: 'wp5-incremental', what: 'the cache key drops the recipe hash',
+    patches: [{ file: 'packages/builder/build.mjs', find: 'sha256(`${recipeHash}\\n${snap.contentHash}\\n${historyHash}`)', replace: 'sha256(`${snap.contentHash}\\n${historyHash}`)' }],
+    expect: /a new recipe hash rebuilds everything/,
+  },
+  'wp5-no-carry': {
+    test: 'wp5-carry', what: 'an unreadable source stops the build (no carry)',
+    patches: [{ file: 'packages/builder/build.mjs', find: 'if (!(e instanceof Unreadable)) throw e;', replace: 'throw e;' }],
+    expect: /one unreadable source of four must not stop the build/,
+  },
+  'wp5-no-carry-bound': {
+    test: 'wp5-carry', what: 'the carry bound is removed',
+    patches: [{ file: 'packages/builder/build.mjs', find: 'if (unreadable.length && (unreadable.length === sources.length || unreadable.length > allowed)) {', replace: 'if (false) {' }],
+    expect: /two of four unreadable is over the carry bound/,
+  },
+  'wp5-probe-wrong-file': {
+    test: 'wp5-probes', what: 'probes name a file the pack does not cite, and the build-time probe check is skipped',
+    patches: [
+      { file: 'packages/builder/probes.mjs', find: "expect: f, repo });", replace: 'expect: f.slice(repo.length + 1), repo });' },
+      { file: 'packages/builder/build.mjs', find: 'if (!t.ok) throw new Error(`a probe failed', replace: 'if (false) throw new Error(`a probe failed' },
+    ],
+    expect: /"pass":false/,
+  },
+  'wp5-no-secret-screen': {
+    test: 'wp5-screen', what: 'secrets are not redacted',
+    patches: [{ file: 'packages/builder/extract.mjs', find: 'const { text, hits } = redactSecrets(doc.text, s.screen.secrets, s.screen.redaction);', replace: 'const { text, hits } = { text: doc.text, hits: [] };' }],
+    expect: /secret (aws|gh|key) appears in/,
+  },
+  'wp5-no-hostile-screen': {
+    test: 'wp5-screen', what: 'the hostile flag is not set',
+    patches: [{ file: 'packages/builder/extract.mjs', find: "flag: rule ? 'hostile' : null, flag_rule: rule,\n        uid: sha(JSON.stringify([s.chunker.name", replace: "flag: null, flag_rule: rule,\n        uid: sha(JSON.stringify([s.chunker.name" }],
+    expect: /and carries the hostile flag/,
+  },
+  'wp5-default-cap': {
+    test: 'wp5-recipe', what: 'the builder falls back to its own token cap',
+    patches: [{ file: 'packages/builder/settings.mjs', find: 'maxTokens: int(recipe, `${sc}.maxTokens`, 64, 8192),', replace: 'maxTokens: recipe.units.passage.symbolChunker.maxTokens ?? 480,' }],
+    expect: /the token cap is missing: the build must fail/,
+  },
+  'wp5-models-ignored': {
+    test: 'wp5-recipe', what: 'models named in the recipe are ignored',
+    patches: [{ file: 'packages/builder/settings.mjs', find: "for (const m of list(recipe, 'models')) {", replace: 'for (const m of []) {' }],
+    expect: /a model the builder does not load: the build must fail/,
+  },
+  'wp5-any-author': {
+    test: 'wp5-history', what: 'issues, comments and releases by anyone are kept, not only the owner\'s',
+    patches: [{ file: 'packages/builder/history.mjs', find: "const isOwner = (login) => typeof login === 'string' && login.toLowerCase() === owner.toLowerCase();", replace: 'const isOwner = () => true;' }],
+    expect: /every commit, owner-written discussion only/,
+  },
+  'wp5-no-split': {
+    test: 'wp5-history', what: 'history items are not split at the character bound',
+    patches: [
+      { file: 'packages/builder/history.mjs', find: 'while (p.length > max) {', replace: 'while (false) {' },
+      { file: 'packages/builder/history.mjs', find: 'if (cur && cur.length + 2 + p.length > max) push();', replace: '' },
+    ],
+    expect: /every commit, owner-written discussion only/,
+  },
+});
+// end wp5
+
+// wave1 ── integration of work packages 1 and 5 (one pack format, one analyser). Each turns
+// wave1-end-to-end.test.mjs red.
+Object.assign(BREAKS, {
+  'wave1-raw-index': {
+    test: 'wave1-end-to-end', what: 'the builder indexes raw text instead of the engine analyser\'s tokens',
+    patches: [{ file: 'packages/builder/store.mjs', find: "insF.run(i + 1, analyse(r.subject ?? '', analyser), analyse(r.text, analyser));", replace: "insF.run(i + 1, r.subject ?? '', r.text);" }],
+    expect: /FILES hit through the shared analyser/,
+  },
+  'wave1-flag-dropped': {
+    test: 'wave1-end-to-end', what: 'the engine drops the builder\'s hostile flag',
+    patches: [{ file: 'packages/engine/assemble.mjs', find: "flag: take.some((t) => t.flag === 'hostile') ? 'hostile' : null,", replace: 'flag: null,' }],
+    expect: /the hostile passage carries the flag in the result/,
+  },
+  'wave1-flag-unlabelled': {
+    test: 'wave1-end-to-end', what: 'the server does not label a flagged passage',
+    patches: [{ file: 'packages/server/format.mjs', find: '    if (it.flag) out.push(', replace: '    if (false) out.push(' }],
+    expect: /the delivered text labels the flagged passage/,
+  },
+  'wave1-closing-dropped': {
+    test: 'wave1-end-to-end', what: 'the server does not print the closing line',
+    patches: [{ file: 'packages/server/format.mjs', find: 'if (result.closing) out.push(', replace: 'if (false) out.push(' }],
+    expect: /the server prints the closing line/,
+  },
+  'wave1-no-cap': {
+    test: 'wave1-end-to-end', what: 'the formatter does not hold the text to the result cap',
+    patches: [{ file: 'packages/server/format.mjs', find: 'const cap = recipe.result.capChars[result.detail];', replace: 'const cap = Infinity;' }],
+    expect: /over the 60000 cap/,
+  },
+  'wave1-no-history-degrades': {
+    test: 'wave1-end-to-end', what: 'a pack built without history reports its history lane unavailable',
+    patches: [{ file: 'packages/engine/index.mjs', find: 'if (absent.has(spec.name)) continue;', replace: 'if (false) continue;' }],
+    // The installer's post-switch check already refuses such a pack; the health line would show it too.
+    expect: /lane history unavailable|the OK health line for a pack without history/,
+  },
+});
+// end wave1
+
+// wp4: installer breaks (work package 4). Each names its test id (wp4-NN) and the failure it must show.
+Object.assign(BREAKS, {
+  'wp4-01': {
+    test: 'wp4-01', what: 'the journal is not read (no recovery after a kill)',
+    patches: [{ file: 'packages/cli/txn.mjs', find: 'const j = readJson(txnPaths(home).journal, null);', replace: 'const j = null;' }],
+    expect: /killed at step \d+ .*(must match an uninterrupted|leftovers after the rerun|back byte for byte|rerun ended with|must still answer)/,
+  },
+  'wp4-02': {
+    test: 'wp4-02', what: 'the resume request is dropped (a retry starts from byte 0)',
+    patches: [{ file: 'packages/cli/source.mjs', find: 'start > 0 ? { range: `bytes=${start}-` } : {}', replace: '{}' }],
+    expect: /must resume at byte|asked for exactly twice|bytes of blob\.bin cross the network/,
+  },
+  'wp4-03': {
+    test: 'wp4-03', what: 'the folder source reads each file whole',
+    patches: [{ file: 'packages/cli/source.mjs', find: 'yield* fs.createReadStream(file, { start, highWaterMark: 1 << 20 });', replace: 'yield fs.readFileSync(file).subarray(start);' }],
+    expect: /greater than 2 GiB|ERR_FS_FILE_TOO_LARGE/,
+  },
+  'wp4-04': {
+    test: 'wp4-04', what: 'the disk-space check is removed',
+    patches: [{ file: 'packages/cli/install.mjs', find: 'if (first.free !== null && first.need + HEADROOM > first.free) {', replace: 'if (false) {' }],
+    expect: /the refusal must name the shortfall/,
+  },
+  'wp4-05': {
+    test: 'wp4-05', what: 'the installer writes one file outside the plan',
+    patches: [{ file: 'packages/cli/install.mjs', find: "step(j, 'prune');", replace: "fs.writeFileSync(path.join(home, 'state', 'installed-by.txt'), 'x');\n    step(j, 'prune');" }],
+    expect: /the files written must be exactly the plan's/,
+  },
+  'wp4-06a': {
+    test: 'wp4-06', what: 'uninstall deletes private/',
+    patches: [{ file: 'packages/cli/uninstall.mjs', find: '...(purgePrivate ? [p.private] : [])', replace: 'p.private' }],
+    expect: /private\/ must be left byte for byte/,
+  },
+  'wp4-06b': {
+    test: 'wp4-06', what: 'uninstall reports "nothing remains" without looking again',
+    patches: [{ file: 'packages/cli/uninstall.mjs', find: 'const left = walk(home, kept ? [p.private] : []);', replace: 'const left = [];' }],
+    expect: /with files left the exit code must be 1|must list what is left/,
+  },
+  'wp4-07': {
+    test: 'wp4-07', what: 'older generations are not pruned',
+    patches: [{ file: 'packages/cli/install.mjs', find: '    prune(home, next);\n', replace: '\n' }],
+    expect: /exactly one earlier/,
+  },
+  'wp4-08': {
+    test: 'wp4-08', what: 'the installer runs `npm --version`',
+    patches: [{ file: 'packages/cli/install.mjs', find: "const src = typeof from === 'string' ? openSource(from) : from;", replace: "process.getBuiltinModule('node:child_process').spawnSync('npm', ['--version'], { stdio: 'ignore' });\n  const src = typeof from === 'string' ? openSource(from) : from;" }],
+    expect: /a package manager was started|package manager stub on PATH was run/,
+  },
+  'wp4-09a': {
+    test: 'wp4-09', what: "the installer's real-server check starts the remembered Node path",
+    patches: [{ file: 'packages/cli/mcp-client.mjs', find: 'spawn(pickNode(env), [launcher]', replace: 'spawn(process.execPath, [launcher]' }],
+    expect: /must be applied, not refused or rolled back/,
+  },
+  'wp4-09b': {
+    test: 'wp4-09', what: 'the Node search looks in the current folder (relative PATH entries, current folder as working folder)',
+    // Two guards make this safe (relative PATH entries are skipped; candidates are tested from a temp
+    // folder); the break removes both, which is what "searches the current folder" means.
+    patches: [
+      { file: 'packages/cli/node-pick.mjs', find: '.filter((d) => d && path.isAbsolute(d))', replace: '.filter(() => true)' },
+      { file: 'packages/cli/node-pick.mjs', find: "cwd: os.tmpdir(), windowsHide: true", replace: 'windowsHide: true' },
+    ],
+    expect: /planted in the session folder ran/,
+  },
+  'wp4-10': {
+    test: 'wp4-10', what: 'the updater ignores an interrupted transaction',
+    patches: [{ file: 'packages/cli/updater.mjs', find: 'if (!(result.available || interrupted) || !apply) return result;', replace: 'if (!result.available || !apply) return result;' }],
+    expect: /the interrupted update was never put right/,
+  },
+  'wp4-11': {
+    test: 'wp4-11', what: 'an installed copy of the release is trusted without re-checking its hashes',
+    patches: [{ file: 'packages/cli/install.mjs', find: 's.fresh = !fs.existsSync(s.dest) || !(await matches(s.dest, s.files));', replace: 's.fresh = !fs.existsSync(s.dest);' }],
+    expect: /the printed fix "ruvnet-brain install --repair" must work/,
+  },
+});
+// end wp4

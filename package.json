@@ -9,7 +9,12 @@
   },
   "scripts": {
     "prepublishOnly": "node scripts/protected-release-invocation.mjs --prepublish-only",
-    "test": "node plugin/test/run-tests.mjs",
+    "test": "node plugin/test/run-tests.mjs && npm run test:v5",
+    "test:v5": "node --test --test-concurrency=1 tests/acceptance/v5/*.test.mjs",
+    "test:v5:breaks": "node tests/acceptance/v5/run-breaks.mjs",
+    "v5:build": "node packages/builder/build.mjs",
+    "v5:release": "node packages/release/release.mjs",
+    "v5:cli": "node packages/cli/ruvnet-brain.mjs",
     "release:proof": "node scripts/release-proof.mjs",
     "benchmark:brain50": "node scripts/brain-latency-50.mjs",
     "benchmark:novice50": "node scripts/brain-novice-50.mjs",

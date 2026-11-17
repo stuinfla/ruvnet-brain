@@ -43,16 +43,21 @@
       "properties": {
         "docExtensions": { "type": "array", "items": { "type": "string" } },
         "doc": { "type": "string" },
-        "code": { "type": "string" }
+        "code": { "type": "string" },
+        "byKind": { "type": "object" }
       }
     },
     "analyser": {
       "type": "object",
       "required": ["name", "fts5Tokenizer", "minTokenLength", "maxQueryTerms", "stopwords"],
       "properties": {
+        "name": { "type": "string", "minLength": 1 },
         "fts5Tokenizer": { "type": "string", "pattern": "^[a-z0-9_ ]+$" },
         "minTokenLength": { "type": "integer", "minimum": 1 },
+        "minNumberLength": { "type": "integer", "minimum": 0 },
         "maxQueryTerms": { "type": "integer", "minimum": 1 },
+        "splitIdentifiers": { "type": "boolean" },
+        "stemmer": { "enum": ["porter", "none"] },
         "stopwords": { "type": "array", "items": { "type": "string" } }
       }
     },
@@ -63,7 +68,18 @@
       "items": {
         "type": "object",
         "required": ["name", "kind", "optional"],
-        "properties": { "name": { "type": "string" }, "kind": { "type": "string" }, "optional": { "type": "boolean" } }
+        "properties": {
+          "name": { "type": "string" },
+          "kind": { "type": "string" },
+          "optional": { "type": "boolean" },
+          "role": { "type": "string", "minLength": 1 },
+          "weights": {
+            "type": "object",
+            "properties": { "subject": { "type": "number", "minimum": 0 }, "body": { "type": "number", "minimum": 0 } }
+          },
+          "depth": { "type": "integer", "minimum": 1, "maximum": 10000 },
+          "unit": { "type": "string", "minLength": 1 }
+        }
       }
     },
     "sections": {
@@ -76,6 +92,7 @@
           "name": { "enum": ["CAPABILITIES", "CUES", "FILES", "HISTORY", "PLAYBOOKS"] },
           "lane": { "type": "string" },
           "maxItems": { "type": "integer", "minimum": 1 },
+          "itemChars": { "type": "integer", "minimum": 200, "maximum": 60000 },
           "budgetChars": {
             "type": "object",
             "required": ["brief", "full"],

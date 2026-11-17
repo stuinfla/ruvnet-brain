@@ -41,7 +41,7 @@ test('S5 the result is capped and sent once', { timeout: 240_000 }, async (t) =>
   const ctx = setup(t, 's05');
   const tree = ctx.tree();
   const sources = makeRepos(ctx.tmp('rb5-huge-'));
-  const { home } = ctx.installed(tree, { sources, recipe: { units: { passage: { chunker: { maxLines: 100000, maxChars: 100000 } } } } });
+  const { home } = ctx.installed(tree, { sources, recipe: { units: { passage: { chunker: { maxLines: 100000, maxChars: 100000 }, symbolChunker: { maxTokens: 8192 } } } } });
   const srv = await ctx.server(tree, home);
 
   const full = await srv.search('sprawlquartz shard oversized', { detail: 'full' });

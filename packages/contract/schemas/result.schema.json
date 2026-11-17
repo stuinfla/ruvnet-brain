@@ -22,6 +22,8 @@
       "required": ["on"],
       "properties": { "on": { "type": "boolean" }, "reason": { "type": ["string", "null"] } }
     },
+    "closing": { "type": "string", "minLength": 1 },
+    "meta": { "type": "object" },
     "sections": {
       "type": "array",
       "minItems": 1,
@@ -52,7 +54,9 @@
                 "standing": { "enum": ["implemented", "measured", "decided", "corrected", "negative", "claimed", "planned", "instructing", "speculative", "spoken"] },
                 "date": { "type": ["string", "null"] },
                 "commit": { "type": "string", "minLength": 1 },
-                "excerpt": { "type": "string" }
+                "excerpt": { "type": "string" },
+                "trimmed": { "type": "integer", "minimum": 1 },
+                "flag": { "enum": ["hostile", null] }
               }
             }
           }
