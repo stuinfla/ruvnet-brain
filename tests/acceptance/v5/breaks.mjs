@@ -226,7 +226,7 @@ Object.assign(BREAKS, {
   'wp5-probe-wrong-file': {
     test: 'wp5-probes', what: 'probes name a file the pack does not cite, and the build-time probe check is skipped',
     patches: [
-      { file: 'packages/builder/probes.mjs', find: "expect: f, repo });", replace: 'expect: f.slice(repo.length + 1), repo });' },
+      { file: 'packages/builder/probes.mjs', find: "expect: p, repo });", replace: 'expect: p.slice(repo.length + 1), repo });' },
       { file: 'packages/builder/build.mjs', find: 'if (!t.ok) throw new Error(`a probe failed', replace: 'if (false) throw new Error(`a probe failed' },
     ],
     expect: /"pass":false/,
@@ -272,7 +272,7 @@ Object.assign(BREAKS, {
 Object.assign(BREAKS, {
   'wave1-raw-index': {
     test: 'wave1-end-to-end', what: 'the builder indexes raw text instead of the engine analyser\'s tokens',
-    patches: [{ file: 'packages/builder/store.mjs', find: "insF.run(i + 1, analyse(r.subject ?? '', analyser), analyse(r.text, analyser));", replace: "insF.run(i + 1, r.subject ?? '', r.text);" }],
+    patches: [{ file: 'packages/builder/store.mjs', find: "insF.run(n, analyse(r.subject ?? '', analyser), analyse(r.text, analyser));", replace: "insF.run(n, r.subject ?? '', r.text);" }],
     expect: /FILES hit through the shared analyser/,
   },
   'wave1-flag-dropped': {

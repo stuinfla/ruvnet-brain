@@ -1,4 +1,4 @@
-Updated: 2026-11-17 16:55:00 EST | Version 1.1.0
+Updated: 2026-11-17 18:25:00 EST | Version 1.2.0
 Created: 2026-11-17 15:20:00 EST
 
 # L+ port into version 5: notes
@@ -13,7 +13,9 @@ Created: 2026-11-17 15:20:00 EST
 | `d348b2eb` | The port: code, tests, breaks, design note and regenerated documents. The repository's own pre-commit hook also updated `data/convergence-manifest.json` (the tracked-file count). |
 | `2b672ac3` | The first notes. |
 | `b15290ad` | Second job: the F03 fix, gists as `_gists`, `layered.db` in the health signal, tests `wave4-04` to `wave4-06`. |
-| this file's commit | These notes, updated with the full-corpus measurement. |
+| `79e3508d` | Notes for the second job. |
+| `f3d80da0` | The golden layered answers (42 calls), written by the code before compaction and streaming. |
+| this file's commit | Third job: the streaming builder, layered format 2, the stack-overflow fix, the CPU-idle gate, and these notes. |
 
 **Design.** See `docs/v5/LPLUS-DESIGN.md`.
 
@@ -270,6 +272,125 @@ extract kind returned rows whose path was later read or cited in an answer, so n
 the builder stream passages to disk instead of holding them all is the real fix, and it belongs to
 whoever owns the build pipeline.
 
+## Third job (2026-11-17, evening): a build that fits a normal runner and laptop
+
+### (1) The builder streams
+
+**What changed.** The builder reads, extracts and writes one source at a time, and drops each before
+the next. Across sources it keeps only:
+- each source's manifest part;
+- the probe index (one number per analysed token);
+- the report.
+
+Last-good snapshots are staged and committed only once the carry rule has passed.
+
+**Full corpus** (22 pinned repositories + gists, the same list as the second job):
+
+| Build | Heap | Time | Peak RSS | Result |
+|---|---|---|---|---|
+| Before (code at `79e3508d`) | default (4,288 MB) | 443 s | 4.5 GB | out of memory |
+| Before | 24 GB | 496 s (849 s on a busier machine) | 9.7 to 10.4 GB | built |
+| **After** | **default (4,288 MB)** | **609 s** | **1.56 GB** | **built** |
+
+The machine was shared with other sessions' release checks throughout, so the times are wall time under
+load.
+
+**Same output.** `lexical.db`, `PROBES.json`, `manifest.json`, `layered-coverage.json` and `RECIPE.json`
+are **byte-identical** between the before and after builds. Only `layered.db` differs, by design (2).
+
+### (2) Layered store format 2: file text deflated, extract text not duplicated
+
+**What changed.**
+- **Files.** File text is stored once, raw-deflated at level 9 with Node's bundled zlib.
+- **Extracts.** An extract row keeps its line range, its length and its sha256. The reader cuts the text
+  from the file at read time, with a small cache of recently read files.
+- **Lazy text in `find_ruvnet`.** It cuts text only for rows that are put on a page.
+
+**Byte-identical answers, two proofs.**
+- **`wave4-07-identical`:** 42 fixed calls covering all five tools, later pages, long rows, Unicode, gists
+  and errors. Their answers match goldens written by the old code before any change (committed first,
+  `f3d80da0`).
+- **Full corpus:** 307 calls through the old reader on the old pack and the new reader on the new pack.
+  **306 identical, 0 different.** The 307th, `facts_ruvnet` on `RuVector`, crashed the *old* reader with
+  `Maximum call stack size exceeded`: it spread about 190,000 rows into `push()`. That bug is now fixed
+  in the new reader (`wave4-08`, whose break restores the spread and goes red). Total time was the same:
+  10.3 s for each reader. The slowest call takes 1.1 s (`facts` on `agentic-qe`).
+
+**Sizes.**
+
+| | Before | After |
+|---|---|---|
+| `layered.db` | 1,186,787,328 | **612,958,208** (−48%) |
+| Whole pack | 2,659,992,175 | **2,086,163,054** (−22%, −574 MB) |
+
+The largest parts of the new `layered.db`: `files` 203 MB, `l2` 140 MB, FTS index 131 MB, `l2_path` index
+52 MB.
+
+**Download size.** The release and installer ship pack files **uncompressed**: no compression appears
+anywhere in `packages/cli` or `packages/release`. So the user's download is the raw size, now 574 MB
+smaller.
+
+If the rail ever compresses packs, the trade-off reverses for `layered.db`. zstd-19 of the new
+`layered.db` is 244 MB against 200 MB before, because deflated text compresses worse than raw text
+(gzip-6: 276 MB against 286 MB). The whole pack under zstd-19 would be about 537 MB against 493 MB. If
+compressed transfer is added, storing raw text and compressing the whole file would be the better
+choice. Measure again then.
+
+### (3) The v5 workflows on a GitHub-hosted runner (for the owner of workflows, `v5/review-fixes`; not edited here)
+
+The repository is public (`gh repo view`: `PUBLIC`), so `ubuntu-latest` is the standard runner: 4 vCPU,
+16 GB RAM, about 14 GB free disk.
+
+**Memory fits.** Peak RSS is now 1.56 GB at the default heap, so no `NODE_OPTIONS` is needed.
+
+**Disk fits.**
+
+| Item | Size |
+|---|---|
+| Sources, shallow, with `.git` | 1.7 GB |
+| Pack (the staging folder is renamed, not copied) | 2.09 GB |
+| Artifact upload | streamed |
+
+That is about 4 GB in total.
+
+**Time.** 609 s on this machine under load. On a 4-vCPU runner, estimate 20 to 30 minutes, which is not
+measured.
+
+**Changes `v5-pack-build.yml` needs before it can build the real pack:**
+1. **Fetch the corpus.** It builds only the three fixture repositories. It needs a step that fetches the
+   22 repositories at their pinned commits (the prototype's submodule list) and writes each one's
+   `.source.json` (`repo`, `commit`, `date`). Note that the directory `ruvector` is stored as `RuVector`.
+2. **Gists.** Pass the gists to the builder through a `--sources` list file with a
+   `{ "gists": "<passages.jsonl>" }` entry. `kb/ruv-gists.passages.jsonl` is gitignored
+   (`kb/*.passages.jsonl`), so CI has no copy. It must be fetched or produced, for example from the
+   Brain's gist export, or committed under another name. That is the owner's decision.
+3. **Timeout.** `timeout-minutes: 60` is probably enough. Raise it to 90 until a real runner time is
+   measured. The release candidate's gate job timeout is 60 minutes.
+4. **Artifact size.** The pack artifact is about 2.1 GB. Check `upload-artifact` and storage quotas, and
+   the download step in each platform probe job (macOS and Windows runners have similar disk).
+5. **Node version.** Keep Node pinned (24.22.3). `layered.db` bytes depend on the zlib that Node bundles,
+   so a different Node version can change pack bytes. The pack is still valid, but the bytes are not
+   reproducible across Node versions.
+
+### (4) Checks
+
+The break runner's load gate (`run-breaks.mjs` `calm()`) now pauses only while CPU idle is below 10% in
+`top -l 1 -n 0`, checked every 30 s. Where `top -l` does not exist, it uses the old load average of 60.
+At this machine's inflated load of about 400, the old gate would have paused forever.
+
+| Check | Result |
+|---|---|
+| `npm test` | plugin tests 58/58; v5 121 tests, 118 pass, 0 fail, 3 skipped (WP1 T1, T2, T5: the corpus and question sets are not on this machine) |
+| `npm run single-source:check` | 20/20 |
+| `node packages/docs/generate.mjs --check` | current |
+| Full break runner (`run-breaks.mjs`, every wave), first run | 109 test files green (3 of them have skipped parts, as above); 221 breaks red as expected; 2 red for another reason |
+| The 2 "another reason" breaks | Not lost protection: their patch anchors pointed at lines this job rewrote. `wave1-raw-index` patched `store.mjs` `insF.run(i + 1, ...)`, now `insF.run(n, ...)`; `wp5-probe-wrong-file` patched `probes.mjs` `expect: f, repo`, now `expect: p, repo`. Both were re-pointed at the equivalent new line with the same effect, and the re-run of `wave1-end-to-end` and `wp5-probes` shows every break red as expected. |
+| Break anchors after the fix | all 254 `find` strings match exactly once |
+| Wave 4 | 8 tests green and 14 breaks red, including the new `wave4-07-short-cut` and `wave4-08-spread` |
+
+The CPU-idle gate paused the run 121 times; other sessions held the CPU at 0 to 6% idle. Three times
+`top` timed out, and the gate fell back to load average for that check, as designed.
+
 ## The Codex review's four blockers (V5-REVIEW-CODEX.md)
 
 | Blocker | What it says | Status after this port |
@@ -297,14 +418,14 @@ worker threads under the deadline, with no main-thread fallback). The underlying
    The dive strings changed with them. L4 has no `git log`, the skip rules are v5's, and the text is
    screened. The held-out question set must be run against this server before the +11.2 claim can
    carry over. No model calls were allowed here.
-3. **Pack size.** It is ×1.81 raw and ×1.68 compressed for the full corpus. The shrink options are
-   above, not implemented. The installer's disk-space and download checks were not re-measured against
-   a 2.66 GB pack.
+3. **Pack size.** It is 2.09 GB raw after format 2 (2.66 GB before). The installer's disk-space and
+   download checks were not re-measured against it. The workflow changes for the other builder are
+   listed under the third job.
 4. **Gists are built** (second job). CI must add the `{ "gists": ... }` entry to the release source list.
 5. **Not built** (as in the prototype): `history` and `submit_answer` tools, `contradicts` edges, and
    per-file commit history.
-6. **Health is checked** (second job). The heap is not: the full build needs a larger Node heap, a
-   limit that predates this port.
+6. **Health is checked** (second job). **The heap is fixed** (third job): the full build runs at the default
+   heap with a 1.56 GB peak.
 7. **The analyser differs.** The layered index uses `porter unicode61` plus an identifier-split column, as
    measured, not the v5 shared analyser.
 8. **Not run on Linux or Windows.** Waves 1 to 3's full break runner was not re-run either; only its
