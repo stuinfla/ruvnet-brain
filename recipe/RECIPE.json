@@ -1,0 +1,34 @@
+{
+  "schema": "ruvnet-brain/recipe",
+  "version": 1,
+  "id": "r1-skeleton",
+  "units": {
+    "passage": {
+      "chunker": { "name": "lines", "version": 1, "maxLines": 80, "maxChars": 6000 },
+      "header": "repo-and-path"
+    }
+  },
+  "sources": {
+    "include": [".md", ".txt", ".rs", ".ts", ".js", ".mjs", ".py", ".toml", ".json"],
+    "excludeDirs": [".git", "node_modules", "target", "dist"],
+    "sourceFile": ".source.json"
+  },
+  "standing": { "docExtensions": [".md", ".txt"], "doc": "claimed", "code": "implemented" },
+  "analyser": {
+    "name": "unicode61-lower",
+    "fts5Tokenizer": "unicode61 remove_diacritics 2",
+    "minTokenLength": 2,
+    "maxQueryTerms": 32,
+    "stopwords": ["a", "an", "and", "are", "as", "at", "be", "by", "can", "do", "does", "for", "from", "how", "i", "in", "is", "it", "of", "on", "or", "the", "this", "to", "what", "when", "where", "which", "who", "why", "with", "you"]
+  },
+  "models": [],
+  "lanes": [
+    { "name": "lexical", "kind": "fts5-bm25", "optional": false }
+  ],
+  "sections": [
+    { "name": "FILES", "lane": "lexical", "maxItems": 5, "budgetChars": { "brief": 22000, "full": 56000 } }
+  ],
+  "result": { "capChars": { "brief": 24000, "full": 60000 }, "defaultDetail": "brief" },
+  "deadlineMs": 10000,
+  "probes": { "perRepo": 1, "termsPerProbe": 3, "minTermLength": 4 }
+}

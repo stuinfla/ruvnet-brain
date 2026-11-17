@@ -1,0 +1,5 @@
+{
+  "name": "ruvnet-brain",
+  "version": "5.0.0-skeleton.1",
+  "description": "RuvNet Brain 5 shim: the search_ruvnet MCP server launcher and one prompt hook that prints the health line."
+}

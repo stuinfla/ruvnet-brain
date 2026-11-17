@@ -1,0 +1,16 @@
+{
+  "description": "RuvNet Brain 5: one prompt hook that prints the health line. It starts nothing and reads no project file.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/health-line.mjs\" || echo \"[RuvNet Brain] DOWN: Node could not run. Search is unavailable. Fix: run 'node -v' in a terminal; reinstall Node if it fails.\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "$id": "ruvnet-brain/pack",
+  "type": "object",
+  "required": ["schema", "version", "generation", "builtAt", "knowledgeDate", "recipeId", "recipeHash", "sources", "counts", "files"],
+  "properties": {
+    "schema": { "const": "ruvnet-brain/pack" },
+    "version": { "const": 1 },
+    "generation": { "type": "string", "pattern": "^g-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9a-f]{12}$" },
+    "builtAt": { "type": "string" },
+    "knowledgeDate": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "recipeId": { "type": "string" },
+    "recipeHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["repo", "commit", "date"],
+        "properties": { "repo": { "type": "string" }, "commit": { "type": "string" }, "date": { "type": "string" } }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "required": ["units", "files"],
+      "properties": { "units": { "type": "integer", "minimum": 0 }, "files": { "type": "integer", "minimum": 0 } }
+    },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["path", "role", "size", "sha256"],
+        "properties": {
+          "path": { "type": "string", "pattern": "^[^/\\\\.][^\\\\]*$" },
+          "role": { "type": "string", "minLength": 1 },
+          "size": { "type": "integer", "minimum": 0 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    }
+  }
+}

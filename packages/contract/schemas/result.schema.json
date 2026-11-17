@@ -1,0 +1,63 @@
+{
+  "$id": "ruvnet-brain/result",
+  "type": "object",
+  "required": ["schema", "version", "generation", "knowledgeDate", "recipeId", "detail", "lanes", "safeMode", "sections"],
+  "properties": {
+    "schema": { "const": "ruvnet-brain/result" },
+    "version": { "const": 1 },
+    "generation": { "type": "string" },
+    "knowledgeDate": { "type": "string" },
+    "recipeId": { "type": "string" },
+    "detail": { "enum": ["brief", "full"] },
+    "lanes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "available"],
+        "properties": { "name": { "type": "string" }, "available": { "type": "boolean" } }
+      }
+    },
+    "safeMode": {
+      "type": "object",
+      "required": ["on"],
+      "properties": { "on": { "type": "boolean" }, "reason": { "type": ["string", "null"] } }
+    },
+    "sections": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "items", "empty"],
+        "properties": {
+          "name": { "enum": ["CAPABILITIES", "CUES", "FILES", "HISTORY", "PLAYBOOKS"] },
+          "empty": {
+            "type": ["object", "null"],
+            "required": ["reason"],
+            "properties": { "reason": { "type": "string", "minLength": 1 } }
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["repo", "path", "lines", "hash", "standing", "date", "commit", "excerpt"],
+              "properties": {
+                "repo": { "type": "string", "minLength": 1 },
+                "path": { "type": "string", "minLength": 1 },
+                "lines": {
+                  "type": "object",
+                  "required": ["start", "end"],
+                  "properties": { "start": { "type": "integer", "minimum": 1 }, "end": { "type": "integer", "minimum": 1 } }
+                },
+                "hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+                "standing": { "enum": ["implemented", "measured", "decided", "corrected", "negative", "claimed", "planned", "instructing", "speculative", "spoken"] },
+                "date": { "type": ["string", "null"] },
+                "commit": { "type": "string", "minLength": 1 },
+                "excerpt": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
