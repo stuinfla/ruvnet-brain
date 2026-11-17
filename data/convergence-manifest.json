@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "ruvnet-brain-convergence-manifest",
   "version": "4.7.28",
-  "sourceIdentity": "cb30f6f70b26a455859bd193ffe8b254124ed42165785b8f5483e99207a45708",
+  "sourceIdentity": "4a6275f1eed4c278238ed5130e5369d503ae33a5ca9c11e0eab6b73bbbca922e",
   "versionSurfaces": {
     "package.json": "4.7.28",
     "plugin/.claude-plugin/plugin.json": "4.7.28",
@@ -114,10 +114,11 @@
     "0105-one-agentdb-integration-standard.md",
     "0106-hook-standard.md",
     "0107-issue-autofix-bounded-unattended-writer.md",
+    "0109-research-record-and-embedding-recipe-are-product.md",
     "README.md"
   ],
-  "trackedFileCount": 2124,
-  "trackedFilesSha256": "56f2790ddb5212a9e59aa1bbc28241dd3cf751404a1d0928a8f5080dd5344e36",
+  "trackedFileCount": 2126,
+  "trackedFilesSha256": "c76d3f49f4a7631b8ca9fa0f419b182a76cde88cafdb5560f3847e2b9ed70496",
   "ownershipChecks": [
     "version:check",
     "doc:currency",

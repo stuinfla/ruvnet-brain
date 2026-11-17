@@ -310,6 +310,11 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       ]
     },
     {
+      "id": "embedding-recipe-record",
+      "reason": "The embedding recipe page (docs/brain-research/EMBEDDING-RECIPE.md) names every shipped recipe constant and the code agrees at every site that defines it; a changed constant without a new recipe version, version-table row and decision entry fails (ADR-109)",
+      "files": ["tests/unit/embedding-recipe-record.test.mjs"]
+    },
+    {
       "id": "citation-producer-boundaries",
       "reason": "Actual CLI, card and MCP outputs reject document-injected citation headers; packed verifier and source mutants bind the changed boundary",
       "files": [
