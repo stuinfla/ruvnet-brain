@@ -12,6 +12,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { execFile, spawn } from 'node:child_process';
 import { MIN_NODE } from '../contract/constants.mjs';
+import { outsideProject } from '../cli/node-pick.mjs';
 
 const WIN = process.platform === 'win32';
 const USUAL = WIN
@@ -31,13 +32,18 @@ const version = (file) =>
     }
   });
 
-/** The first Node that runs and is recent enough, tested now. Throws, naming what was tried. */
-export async function chooseNode(env = process.env) {
+/** The first Node that runs and is recent enough, tested now; never one inside the project (review F02,
+ *  the rule of cli/node-pick.mjs). Throws, naming what was tried. */
+export async function chooseNode(env = process.env, cwd = process.cwd()) {
   const key = Object.keys(env).find((k) => k.toLowerCase() === 'path');
   const dirs = String(key ? env[key] : '').split(path.delimiter).filter((d) => d && path.isAbsolute(d));
   const tried = [];
   for (const c of new Set([process.execPath, ...dirs.map((d) => path.join(d, WIN ? 'node.exe' : 'node')), ...USUAL])) {
     if (!fs.existsSync(c)) continue;
+    if (!outsideProject(c, env, cwd)) {
+      tried.push(`${c} (inside the current project, never run)`);
+      continue;
+    }
     if (await version(c)) return c;
     tried.push(c);
   }
