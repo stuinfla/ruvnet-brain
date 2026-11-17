@@ -31,5 +31,9 @@ export function addReviewBreaks(BREAKS) {
     'wp4-15-file-link': { test: 'wp4-15', what: 'copyVerified writes through a linked staged file', patches: [p('packages/cli/source.mjs', '    if (i === parts.length - 1) fs.unlinkSync(cur);', '    if (i === parts.length - 1) return;')], expect: /a linked staged file: its target must be unchanged/ },
     // F06 (migration): every host file migration reads gets the protected-home guard
     'wp9-05-unguarded': { test: 'wp9-05', what: 'migration reads host files without the guard', patches: [p('packages/migrate/detect.mjs', "  refuseProtected([plugins, path.join(claude, 'settings.json'), path.join(codex, 'config.toml')], env);\n", '')], expect: /a protected host folder must be refused/ },
+    // F16: the answer-level result is checked against the frozen set; the judge sees the evidence
+    'wp8-07-calibration': { test: 'wp8-07', what: 'the verifier trusts calibration.passed', patches: [p('packages/release/gate/verify.mjs', '  else if (calibrationProblem(c.calibration, set)) problems.push(', '  else if (false) problems.push(')], expect: /a calibration below the minimum marked passed must fail the gate/ },
+    'wp8-07-groups': { test: 'wp8-07', what: 'the verifier ignores which group each question is in', patches: [p('packages/release/gate/verify.mjs', '    else if (qs.some((q, i) => q.group !== set.questions[i].group)) problems.push(', '    else if (false) problems.push(')], expect: /questions moved to other groups must fail the gate: answer gate PASSED/ },
+    'wp8-07-names-only': { test: 'wp8-07', what: 'the judge is given file names only', patches: [p('packages/release/gate/answer.mjs', "judgePrompt(item, answer, referenceText(packDir, item.gold ?? []))", 'judgePrompt(item, answer)')], expect: /the judge must be given the reference files' text/ },
   });
 }

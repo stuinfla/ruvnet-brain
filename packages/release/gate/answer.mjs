@@ -18,7 +18,9 @@
 // The result is deterministic given the same inputs: keys sorted, the time it was written kept outside
 // the hashed part (`content`). It holds ids and grades, never question or answer text.
 import fs from 'node:fs';
+import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { DatabaseSync } from 'node:sqlite';
 import { Refused } from '../checks.mjs';
 import { canonical, canonicalSha } from './question-set.mjs';
 
@@ -55,18 +57,37 @@ function run(argv, input, vars, env) {
 
 export const answerPrompt = (q) => `${q.question}\n\nAnswer the question above using the RuvNet Brain search tool. Cite every file you rely on as repo/path.\n`;
 
-export function judgePrompt(item, answer) {
+export function judgePrompt(item, answer, evidence = '') {
   return [
     'You are grading one answer, blind: you are not told which system wrote it.',
-    'Grade it from 0 to 10 for whether it answers the question correctly and usefully, using the reference files and the claims it must not make.',
+    'Grade it from 0 to 10 for whether it answers the question correctly and usefully, using the reference files (their text is given below) and the claims it must not make.',
     'Reply with your reasoning, then one final line: SCORE: <0-10>',
     '',
     `QUESTION:\n${item.question}`,
     `REFERENCE FILES:\n${item.gold.join('\n')}`,
     `MUST NOT CLAIM:\n${(item.mustNotClaim ?? []).join('\n') || '(none)'}`,
+    `REFERENCE TEXT (from the pack under test):\n${evidence || '(not available)'}`,
     `ANSWER:\n${answer}`,
     '',
   ].join('\n');
+}
+
+/**
+ * The text of each reference file as the pack under test holds it (review F16: the judge is given
+ * the evidence, not only file names), at most `max` characters per file. Reads only the pack.
+ */
+export function referenceText(packDir, gold, max = 6000) {
+  if (!packDir) return '';
+  const pack = JSON.parse(fs.readFileSync(path.join(packDir, 'PACK.json'), 'utf8'));
+  const dbs = pack.files.filter((f) => f.role === 'lexical-db').map((f) => new DatabaseSync(path.join(packDir, f.path), { readOnly: true }));
+  try {
+    return gold.map((g) => {
+      const rows = dbs.flatMap((db) => db.prepare("SELECT text FROM units WHERE repo || '/' || path = ? ORDER BY start_line, piece").all(g));
+      return `--- ${g}\n${rows.length ? rows.map((r) => r.text).join('\n').slice(0, max) : '(not in the pack)'}`;
+    }).join('\n');
+  } finally {
+    for (const db of dbs) db.close();
+  }
 }
 
 export function parseScore(text) {
@@ -106,20 +127,20 @@ export function caps(answer, item, known) {
   return { cap, reasons: [...new Set(reasons)] };
 }
 
-function grade(judgeArgv, item, answer, known, env) {
-  const raw = parseScore(run(judgeArgv, judgePrompt(item, answer), {}, env));
+function grade(judgeArgv, item, answer, known, env, packDir = null) {
+  const raw = parseScore(run(judgeArgv, judgePrompt(item, answer, referenceText(packDir, item.gold ?? [])), {}, env));
   if (raw === null) throw new Refused('the judge replied without a SCORE: <0-10> line');
   const c = caps(answer, item, known);
   return { raw, score: Math.min(raw, c.cap), caps: c.reasons };
 }
 
 /** The seeded calibration gate: the judge, after the caps, must reproduce the known scores. */
-export function calibrate(judgeArgv, items, minWithinOne, known, env) {
+export function calibrate(judgeArgv, items, minWithinOne, known, env, packDir = null) {
   let withinOne = 0;
   let planted = 0;
   let plantedCapped = 0;
   for (const it of items) {
-    const g = grade(judgeArgv, it, it.answer, known, env);
+    const g = grade(judgeArgv, it, it.answer, known, env, packDir);
     if (Math.abs(g.score - it.key) <= 1) withinOne++;
     if (it.planted) {
       planted++;
@@ -173,7 +194,7 @@ export function answerLayer({ inst, set, runs, roleArgv, known, env = process.en
   if (!set.calibration) throw new Refused('the question set has no calibration file; the judge cannot be trusted without one');
   const judgeEnv = { ...env };
   delete judgeEnv.RUVNET_BRAIN5_HOME;
-  const calibration = calibrate(roleArgv.judge, set.calibration, l2.calibration.minWithinOne, known, judgeEnv);
+  const calibration = calibrate(roleArgv.judge, set.calibration, l2.calibration.minWithinOne, known, judgeEnv, inst.packDir);
   const content = {
     release: inst.sha256,
     pack: inst.release.pack.generation,
@@ -193,7 +214,7 @@ export function answerLayer({ inst, set, runs, roleArgv, known, env = process.en
     content.questions = set.questions.map((q) => ({ id: q.id, group: q.group, scores: [], raw: [], caps: [] }));
     for (let r = 0; r < runs; r++) {
       set.questions.forEach((q, i) => {
-        const g = grade(roleArgv.judge, q, run(roleArgv.answer, answerPrompt(q), vars, answerEnv), known, judgeEnv);
+        const g = grade(roleArgv.judge, q, run(roleArgv.answer, answerPrompt(q), vars, answerEnv), known, judgeEnv, inst.packDir);
         content.questions[i].scores.push(g.score);
         content.questions[i].raw.push(g.raw);
         content.questions[i].caps.push(g.caps);
