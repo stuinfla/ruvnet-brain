@@ -21,6 +21,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { brainHome, isMain, paths, readConfig, readJson } from '../contract/home.mjs';
 import { assessHome } from '../health/assess.mjs';
+import { redact } from '../cli/redact.mjs';
 
 const G = JSON.parse(fs.readFileSync(new URL('./guard.json', import.meta.url), 'utf8'));
 const TAG = '[RuvNet Brain guard]';
@@ -118,7 +119,8 @@ function record(home, entry) {
   } catch {}
   lines.push(JSON.stringify(entry));
   const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, lines.slice(-G.logMax).join('\n') + '\n');
+  fs.writeFileSync(tmp, lines.slice(-G.logMax).join('\n') + '\n', { mode: 0o600 });
+  fs.chmodSync(tmp, 0o600);
   fs.renameSync(tmp, file);
 }
 
@@ -131,8 +133,10 @@ export async function decide(input, { home = brainHome(), now = Date.now() } = {
   const file = String(input?.tool_input?.file_path ?? input?.tool_input?.notebook_path ?? '(unnamed file)');
   const reason = overrideIn(text);
   if (reason) {
-    record(home, { at: new Date(now).toISOString(), file, term, reason });
-    return { action: 'override', line: `${TAG} override recorded for ${path.basename(file)}: ${reason}` };
+    // The log and the line carry the reason and path with secret-shaped values masked (review F21).
+    const said = redact(reason);
+    record(home, { at: new Date(now).toISOString(), file: redact(file), term, reason: said });
+    return { action: 'override', line: `${TAG} override recorded for ${redact(path.basename(file))}: ${said}` };
   }
   const v = assessHome(home, { now });
   if (v.state !== 'ok') return { action: 'advise', line: `${TAG} advisory only: search is ${v.label} (${v.reason}), so this write is not checked; it names ${term}, so search_ruvnet when the Brain is back` };

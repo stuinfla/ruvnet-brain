@@ -40,5 +40,7 @@ export function addReviewBreaks(BREAKS) {
     'wp4-16-no-shim': { test: 'wp4-16', what: 'the automatic update leaves the old shim', patches: [p('packages/cli/update-worker.mjs', "    if (fs.existsSync(path.join(workerData.home, 'shim'))) (await import('../plugin/install.mjs')).installShim({ home: workerData.home });", "    if (false) (await import('../plugin/install.mjs')).installShim({ home: workerData.home });")], expect: /the automatic update must refresh the shim/ },
     // F05 (release probe): install-and-probe goes through the registered launcher
     'wp6-06-launcher-broken': { test: 'wp6-06', what: 'the registered POSIX launcher cannot start the server', patches: [p('packages/plugin/claude/bin/rb5', 'MODE=${1:-hook}\n', 'MODE=${1:-hook}\n[ "$MODE" = server ] && exit 1\n')], expect: /install-and-probe must pass on this machine/ },
+    // F21 (minor): explicit diagnostic paths redact secrets
+    'wp10-06-raw': { test: 'wp10-06', what: 'redaction returns its input unchanged', patches: [p('packages/cli/redact.mjs', 'export function redactUrl(value) {\n', 'export function redactUrl(value) {\n  return String(value);\n')], expect: /config update-url printed a secret/ },
   });
 }

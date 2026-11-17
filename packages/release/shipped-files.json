@@ -5,6 +5,7 @@
     "cli/install.mjs",
     "cli/mcp-client.mjs",
     "cli/node-pick.mjs",
+    "cli/redact.mjs",
     "cli/ruvnet-brain.mjs",
     "cli/source.mjs",
     "cli/txn.mjs",

@@ -17,6 +17,7 @@ import { startServer } from './mcp-client.mjs';
 import { Refused, copyVerified, matches, openSource, within } from './source.mjs';
 import { acquire, newJournal, prune, pruneTargets, recordUpdateUrl, recover, rel, saveJournal, txnPaths, undo } from './txn.mjs';
 import { freeBytes, HEADROOM } from './disk.mjs';
+import { redactUrl } from './redact.mjs';
 
 export { Refused };
 
@@ -131,7 +132,7 @@ export function printPlan(plan, src, out = console.log, hostFiles = []) {
   const r = plan.release;
   const mb = (n) => `${(n / 1e6).toFixed(1)} MB`;
   out(`plan: ${plan.cur ? 'update' : 'install'} to release ${r.releaseNumber}: app ${plan.to.app} (${r.app.files.length} files), pack ${plan.to.pack} (${r.pack.files.length} files)`);
-  out(`source: ${src.where} (${src.kind === 'web' ? `downloads ${mb(plan.need)}` : `copies ${mb(plan.need)}`})`);
+  out(`source: ${redactUrl(src.where)} (${src.kind === 'web' ? `downloads ${mb(plan.need)}` : `copies ${mb(plan.need)}`})`);
   out(`disk: needs ${mb(plan.need + HEADROOM)} including ${mb(HEADROOM)} headroom; ${plan.free === null ? 'free space unknown' : `${mb(plan.free)} free`}`);
   out(`brain home: ${plan.home}`);
   out('will write:');
