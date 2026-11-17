@@ -30,7 +30,10 @@ test('WP4-16 a live reader keeps its generation, and an automatic update refresh
       return false;
     }
   }, 20_000, 'the server to report release 1');
-  for (const rel of [rel2, rel3]) assert.equal(tree.cli(home, ['update', '--from', rel]).status, 0);
+  assert.equal(tree.cli(home, ['update', '--from', rel2]).status, 0);
+  const doc = tree.cli(home, ['doctor']);
+  assert.equal(doc.status, 0, `an idle session on the kept previous generation is healthy right after an update: ${doc.stdout}`);
+  assert.equal(tree.cli(home, ['update', '--from', rel3]).status, 0);
   assert.equal(ptr(home).releaseNumber, 3);
   assert.ok(fs.existsSync(path.join(home, 'app', one.app)) && fs.existsSync(path.join(home, 'packs', one.pack)), 'the generation a live session reads must not be pruned');
   await srv.close();

@@ -15,8 +15,8 @@ export const FIX = {
   'no-probes': 'ruvnet-brain install --repair',
   overdue: 'restart the session',
   incomplete: 'restart the session',
-  // The server has not yet switched to the installed release (it does so within one probe interval).
-  generation: 'wait one minute',
+  // A server on a generation that is neither installed nor kept: a new session starts on the installed one.
+  generation: 'restart the session',
   'probe-failed': 'ruvnet-brain install --repair',
   lane: 'ruvnet-brain install --repair',
   'safe-mode': 'restart the session',
@@ -40,13 +40,20 @@ export function causeOf(s, ev) {
   if (!Array.isArray(s.probe.results) || !s.probe.results.length) return 'no-probes';
   if (!probeComplete(s.probe, now)) return 'incomplete';
   if (now - s.probe.at > overdueAfter(ev)) return 'overdue';
-  if (ev.pointer && (s.app !== ev.pointer.app || s.pack !== ev.pointer.pack)) return 'generation';
+  if (ev.pointer && !onKeptGeneration(s, ev.pointer)) return 'generation';
   if ((s.lanes || []).some((l) => !l.available)) return 'lane';
   if (s.lastSearch && !s.lastSearch.ok) return 'safe-mode';
   return null;
 }
 
 export const overdueAfter = (ev) => 2 * ev.probeIntervalMs + 60_000;
+
+/**
+ * A server answers from the installed generation or the one kept before it: an idle session goes on
+ * serving the previous one (kept on disk) until its next search or probe moves it, and its self-test
+ * evidence is for that generation. Any other generation is not what this machine has installed.
+ */
+const onKeptGeneration = (s, ptr) => [ptr, ptr.previous].some((g) => g && s.app === g.app && s.pack === g.pack);
 
 /** A passed self-test record that proves a run (review F14): a real time, not in the future, and
  *  every result a probe that named its file and passed. `{ ok: true, results: [{}] }` is not one. */
@@ -58,7 +65,7 @@ function server(s, ev) {
   if (cause === 'no-probes') return { state: 'unknown', label: 'UNKNOWN', since: s.probe.at, reason: 'the self-test ran no probes', fix: FIX[cause], cause };
   if (cause === 'incomplete') return { state: 'unknown', label: 'UNKNOWN', since: null, reason: 'the self-test record is incomplete (no valid time, or a result that did not pass)', fix: FIX[cause], cause };
   if (cause === 'generation') {
-    return { state: 'unknown', label: 'UNKNOWN', since: s.probe.at, reason: `the server is on app ${s.app} pack ${s.pack}, not the installed app ${ev.pointer.app} pack ${ev.pointer.pack}`, fix: FIX[cause], cause };
+    return { state: 'unknown', label: 'UNKNOWN', since: s.probe.at, reason: `the server is on app ${s.app} pack ${s.pack}, neither the installed app ${ev.pointer.app} nor the one kept before it`, fix: FIX[cause], cause };
   }
   if (cause === 'overdue') {
     return { state: 'unknown', label: 'UNKNOWN', since: s.probe.at, reason: `the self-test has not run for ${ago(ev.now - s.probe.at)}`, fix: FIX[cause], cause };

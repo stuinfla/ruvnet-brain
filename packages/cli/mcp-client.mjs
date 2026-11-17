@@ -17,7 +17,9 @@ export function startServer(launcher, env) {
  */
 export function startLauncher(launcher, env) {
   const win = process.platform === 'win32';
-  const [cmd, args, extra] = win ? [env.ComSpec || process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `"${launcher}" server`], { windowsVerbatimArguments: true }] : [launcher, ['server'], {}];
+  // cmd /s strips the first and last quote of the line, so the whole command is quoted once more
+  // (the form Node's own shell option uses on Windows).
+  const [cmd, args, extra] = win ? [env.ComSpec || process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `""${launcher}" server"`], { windowsVerbatimArguments: true }] : [launcher, ['server'], {}];
   return connect(spawn(cmd, args, { env, cwd: os.tmpdir(), stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, ...extra }));
 }
 
