@@ -2,7 +2,6 @@
 // ruvnet-brain install | update | doctor | status | uninstall | clean | config
 // The 4.7 spellings (--update, --doctor, --uninstall, --clean, --status) are accepted as the same
 // verbs. Run with no source and no terminal (as 4.7 sessions do unattended), update asks nothing.
-import fs from 'node:fs';
 import path from 'node:path';
 import { MIN_NODE } from '../contract/constants.mjs';
 import { brainHome, paths, readConfig, readJson, readPointer, writeJsonAtomic } from '../contract/home.mjs';
@@ -130,14 +129,8 @@ switch (cmd) {
     }
     break;
   case 'uninstall': {
-    try {
-      if (fs.existsSync(home)) await unregisterRecorded(home, (m) => console.log(m));
-    } catch (e) {
-      console.error(`uninstall refused: the host entries could not be removed (${e.message}); nothing was removed`);
-      process.exitCode = 1;
-      break;
-    }
-    const r = uninstall(home, { purgePrivate: args.includes('--purge-private') });
+    const log = (m) => console.log(m);
+    const r = await uninstall(home, { purgePrivate: args.includes('--purge-private'), out: log, unregister: () => unregisterRecorded(home, log) });
     if (r.left.length) process.exitCode = 1;
     break;
   }

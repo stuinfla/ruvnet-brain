@@ -27,7 +27,14 @@ function walk(dir, skip) {
   return out;
 }
 
-export function uninstall(home, { purgePrivate = false, out = console.log } = {}) {
+/**
+ * One transaction under the install lock (review F12): the lock first, then the host entries an
+ * install made (`unregister`, cli/hosts.mjs), then the files. A refused lock changes nothing, host
+ * files included. current.json goes first: a search server still running in an open session stops
+ * writing its status once it is gone (health/status.mjs) and never recreates the home; state/, which
+ * holds the lock, goes last.
+ */
+export async function uninstall(home, { purgePrivate = false, out = console.log, unregister = async () => {} } = {}) {
   const p = paths(home);
   if (!fs.existsSync(home)) {
     out(`nothing to remove: ${home} does not exist`);
@@ -38,12 +45,17 @@ export function uninstall(home, { purgePrivate = false, out = console.log } = {}
     releaseLock = acquire(home);
     recover(home);
   } catch (e) {
-    out(`uninstall refused: ${e.message}`);
+    out(`uninstall refused: ${e.message}; nothing was removed, host entries included`);
     return { left: [home], kept: false, refused: true };
   }
-  // The host entries an install made are removed by the caller first (cli/hosts.mjs), so the shim
-  // they name is removed only once nothing points at it.
-  const plan = [p.current, p.app, p.packs, p.state, path.join(home, 'shim'), ...(purgePrivate ? [p.private] : [])].filter((x) => fs.existsSync(x));
+  try {
+    await unregister();
+  } catch (e) {
+    releaseLock();
+    out(`uninstall refused: the host entries could not be removed (${e.message}); nothing was removed`);
+    return { left: [home], kept: false, refused: true };
+  }
+  const plan = [p.current, p.app, p.packs, path.join(home, 'shim'), ...(purgePrivate ? [p.private] : []), p.state].filter((x) => fs.existsSync(x));
   out(plan.length ? `will remove:\n${plan.map((x) => `  ${x}`).join('\n')}` : 'nothing to remove');
   const failed = [];
   for (const x of plan) {

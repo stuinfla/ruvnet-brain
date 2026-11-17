@@ -21,5 +21,8 @@ export function addReviewBreaks(BREAKS) {
     // F10: install decisions under the lock; committed recovery records the update source
     'wp4-13-stale-plan': { test: 'wp4-13', what: 'the install reuses the plan it made before taking the lock', patches: [p('packages/cli/install.mjs', '    const plan = await makePlan(home, release, src);\n    if (plan.need > first.need) enoughDisk(plan);\n', '    const plan = did ? await makePlan(home, release, src) : first;\n')], expect: /release 3 must stay installed; the held run left release 2/ },
     'wp4-13-no-config': { test: 'wp4-13', what: 'committed recovery forgets the update source', patches: [p('packages/cli/txn.mjs', '    recordUpdateUrl(home, j.updateUrl);\n', '')], expect: /recovery of the committed install records its update source/ },
+    // F12: uninstall is one locked transaction; a live server never recreates the home
+    'wp4-14-recreate': { test: 'wp4-14', what: 'a status write recreates an uninstalled home', patches: [p('packages/health/status.mjs', '  if (!fs.existsSync(p.current)) return false;\n  try {\n    fs.mkdirSync(p.status);', '  try {\n    fs.mkdirSync(p.status, { recursive: true });')], expect: /a running server brought the uninstalled home back/ },
+    'wp4-14-hosts-first': { test: 'wp4-14', what: 'host entries are removed before the lock is taken', patches: [p('packages/cli/uninstall.mjs', '  let releaseLock = () => {};\n  try {\n    releaseLock = acquire(home);', '  await unregister();\n  let releaseLock = () => {};\n  try {\n    releaseLock = acquire(home);')], expect: /a refused uninstall must not have removed the host registration/ },
   });
 }
