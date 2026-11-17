@@ -95,7 +95,9 @@ export function addWorkPackageBreaks(BREAKS) {
   Object.assign(BREAKS, {
     'wp3-01a': {
       test: 'wp3-01', what: 'a self-test that ran no probes, or ran hours ago, reads ok',
-      patches: [{ file: 'packages/health/assess.mjs', find: "  if (!s.probe.results?.length) return 'no-probes';\n  if (now - s.probe.at > overdueAfter(ev)) return 'overdue';\n", replace: '' }],
+      patches: [{ file: 'packages/health/assess.mjs', find: "  if (!Array.isArray(s.probe.results) || !s.probe.results.length) return 'no-probes';\n  if (!probeComplete(s.probe, now)) return 'incomplete';\n  if (now - s.probe.at > overdueAfter(ev)) return 'overdue';\n", replace: '' },
+        // the contract verdict refuses an empty self-test on its own since review F14; the break removes both guards
+        { file: 'packages/contract/verdict.mjs', find: '  if (!Number.isFinite(s.probe.at) || !Array.isArray(r) || !r.length || r.some((x) => x?.pass !== true)) {', replace: '  if (false) {' }],
       expect: /ok only with a live process, a fresh heartbeat and a passed probe that ran/,
     },
     'wp3-01b': {

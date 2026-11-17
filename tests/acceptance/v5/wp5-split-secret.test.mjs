@@ -13,7 +13,7 @@ import { pathToFileURL } from 'node:url';
 import { setup } from './helpers.mjs';
 
 test('WP5 a private key spanning history units is redacted whole (review F03)', { todo: 'builder-owned fix pending (docs/REVIEW-FIXES.md F03)', timeout: 60_000 }, async (t) => {
-  const ctx = setup(t, 'wp5-history-secret-split');
+  const ctx = setup(t, 'wp5-split-secret');
   const tree = ctx.tree();
   const imp = (f) => import(pathToFileURL(path.join(tree.root, 'packages', 'builder', f)).href);
   const { settings } = await imp('settings.mjs');

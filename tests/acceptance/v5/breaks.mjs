@@ -323,7 +323,7 @@ Object.assign(BREAKS, {
   },
   'wp4-04': {
     test: 'wp4-04', what: 'the disk-space check is removed',
-    patches: [{ file: 'packages/cli/install.mjs', find: 'if (first.free !== null && first.need + HEADROOM > first.free) {', replace: 'if (false) {' }],
+    patches: [{ file: 'packages/cli/install.mjs', find: '  if (plan.free === null || plan.need + HEADROOM <= plan.free) return;', replace: '  return;' }],
     expect: /the refusal must name the shortfall/,
   },
   'wp4-05': {
@@ -363,6 +363,8 @@ Object.assign(BREAKS, {
     patches: [
       { file: 'packages/cli/node-pick.mjs', find: '.filter((d) => d && path.isAbsolute(d))', replace: '.filter(() => true)' },
       { file: 'packages/cli/node-pick.mjs', find: "cwd: os.tmpdir(), windowsHide: true", replace: 'windowsHide: true' },
+      // and the project check added for review F02, a third guard against the same planted program
+      { file: 'packages/cli/node-pick.mjs', find: '    if (!outsideProject(c, env, cwd)) {', replace: '    if (false) {' },
     ],
     expect: /planted in the session folder ran/,
   },

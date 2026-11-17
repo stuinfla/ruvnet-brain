@@ -26,7 +26,7 @@ code changed.
 |---|---|---|---|---|
 | F01 | BLOCKER | **Fixed.** Promotion recomputes the gate decision and requires one complete receipt per OS. In GitHub Actions each receipt must also carry this run's id and its own runner OS. Remainder for the owner: receipts are integrity-checked but not signed, so someone with write access to the workflow could still forge one. | `wp6-11-evidence`. Old code printed `published: brain5-…-r1` for `{hit:0, of:1, passed:true}`. Breaks: `wp6-11-trust-passed`, `-trust-ok`, `-no-ci`. | `01af850d` |
 | F02 | BLOCKER | **Fixed in cli** (`node-pick.mjs`). The rb5 and helper parts are handed over (see below). | `wp7-09-node-pick-project`. Old code ran `<project>/tools/node`. Breaks: `wp7-09-no-check`, `-lexical`. | `93f75bad` |
-| F03 | BLOCKER | **Reproduced; builder-owned; handed over** with a diff that has been checked to work. | `wp5-history-secret-split` (todo). On current code, 50 of 50 lines of the generated key are in the history rows. With the diff below applied, this test and every other wp5 test pass. | `94c87594` |
+| F03 | BLOCKER | **Reproduced; builder-owned; handed over** with a diff that has been checked to work. | `wp5-split-secret` (todo). On current code, 50 of 50 lines of the generated key are in the history rows. With the diff below applied, this test and every other wp5 test pass. | `94c87594` |
 | F04 | BLOCKER | **Confirmed. Not fixed here.** It is a set of release and cutover deliverables that need owner decisions; the list is below. | n/a | n/a |
 | F05 | MAJOR | **Release probe: fixed.** It now starts the server through the installed `rb5` (`rb5.cmd server` via cmd.exe on Windows), and the receipt names the launcher. **`rb5.cmd` loop: disputed and not reproduced.** Under documented cmd parsing, the `& goto next` after an `if` belongs to the `if`. It has not been run on Windows. The defensive rewrite is handed over. | `wp6-06` with the new launcher assertion. Break `wp6-06-launcher-broken`: a launcher that cannot start the server now fails the probe. | `fe1bc9d3` |
 | F06 | MAJOR | **Fixed:** installer staging and migration host reads. **Handed over:** `plugin/install.mjs` nested links. | `wp4-15-staging-links`. Old code: a staging folder that was a link had the folder it points at changed; the sweep deleted the user's files. `wp9-05-host-guard`. Old code read a protected host folder. | `33b542c4` |
@@ -68,7 +68,7 @@ Updating the F01 fixtures changed some existing tests:
 
 **F03. `builder/history.mjs` and `builder/extract.mjs`**
 
-The diff below was checked: `wp5-history-secret-split` passes, and all eight wp5 tests pass. Also bump
+The diff below was checked: `wp5-split-secret` passes, and all eight wp5 tests pass. Also bump
 the cache key in `builder/cache.mjs`, which is currently recipe hash plus content hash, so that units
 cached before the fix are rebuilt. Then remove the `todo` flag from the test.
 
