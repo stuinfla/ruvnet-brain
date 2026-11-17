@@ -112,6 +112,7 @@ export async function runSessionStart({
     return s.startsWith('🚨')
       || s === ALIAS_NOTICE
       || s.startsWith('[RuvNet Brain — HEALTH ALARM')
+      || s.startsWith('[RuvNet Brain — SEARCH IS DOWN')
       || s.startsWith('[RuvNet Brain — INSTALL ALARM')
       || s.startsWith('[RuvNet Brain — NIGHTLY FAILED')
       || s.startsWith(KNOWLEDGE_LINE_PREFIX)
@@ -270,8 +271,10 @@ export async function runSessionStart({
     });
 
     const state = tracer.stage('misc', () => {
-      const result = health(home, brain.off);
-      if (result.problem) {
+      const result = health(home, brain.off, env);
+      // Search down: the one instruction (and runbook) the per-prompt hook repeats until it recovers.
+      if (result.notice) emit(result.notice);
+      else if (result.problem) {
         emit('🚨 [RuvNet Brain — HEALTH ALARM: THE BRAIN IS DOWN — SURFACE THIS FIRST] 🚨');
         emit(`Health check failed: ${result.problem}`);
         emit('Open your VERY FIRST line with a loud plain alert naming that reason and that fix, and offer to run');

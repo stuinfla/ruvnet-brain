@@ -150,11 +150,21 @@ export function runtimeSnapshot(sourceRoot) {
   return { files, identity, digest: sha(JSON.stringify(identity)) };
 }
 
-function stableNode() {
-  for (const file of ['/opt/homebrew/bin/node', process.execPath]) {
-    try { if (fs.realpathSync(file) === fs.realpathSync(process.execPath)) return file; } catch {}
+// Never persist a versioned Homebrew keg (it vanishes on `brew upgrade`): its opt link first, also to heal
+// a config written before this rule. This file is installed as a standalone copy (model-routing/), so it
+// cannot import plugin/scripts/node-runtime.mjs; this is that module's homebrewOptNode, inlined.
+const homebrewOptNode = (file) => {
+  const m = /^(.*)[\\/]Cellar[\\/]([^\\/]+)[\\/][^\\/]+[\\/]bin[\\/]node$/.exec(String(file || ''));
+  return m ? path.join(m[1], 'opt', m[2], 'bin', 'node') : null;
+};
+export function stableNode(file = process.execPath) {
+  let real = null;
+  try { real = fs.realpathSync(file); } catch { /* a pinned keg may already be gone */ }
+  for (const opt of [homebrewOptNode(file), real && homebrewOptNode(real)]) {
+    if (opt) { try { regular(opt); return opt; } catch { /* not under opt */ } }
   }
-  return process.execPath;
+  try { if (real && fs.realpathSync('/opt/homebrew/bin/node') === real) return '/opt/homebrew/bin/node'; } catch {}
+  return file;
 }
 
 /** Terminal routing does not require a VS Code extension installation. */
@@ -174,6 +184,7 @@ export function installNativeLaunchers({ sourceRoot, home = os.homedir(), extens
   // VS Code spawns its executable directly. A .cmd/.sh surrogate is not a proved
   // Windows executable adapter; refuse before writing a misleading registration.
   if (!['darwin', 'linux'].includes(process.platform)) throw new Error('Permanent native routing launchers support macOS/Linux only; Windows executable adapter is not implemented');
+  nodeBinary = stableNode(nodeBinary);
   const snapshot = runtimeSnapshot(sourceRoot);
   const base = path.join(home, '.cache/ruvnet-brain/model-routing');
   const runtime = path.join(base, 'versions', snapshot.digest);

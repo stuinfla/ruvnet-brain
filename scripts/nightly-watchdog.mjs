@@ -301,18 +301,19 @@ export function transitions(results, prev) {
 export const asciiTitle = (s) => String(s).replace(/[^\x20-\x7e]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200) || 'RuvNet Brain';
 
 /** The topic: NTFY_TOPIC when set (set-but-EMPTY is an explicit opt-out: null), else the owner's topic file. */
-function ntfyTopic() {
+export function ntfyTopic() {
   if (process.env.NTFY_TOPIC !== undefined) return process.env.NTFY_TOPIC.trim() || null;
   try { return fs.readFileSync(path.join(os.homedir(), '.cache', 'ruvnet-brain', 'ntfy-topic'), 'utf8').trim() || null; } catch { return null; }
 }
 
-/** One POST. Delivered means a 2xx answer — a 429 or 5xx is not a page. */
-async function push(topic, title, body, priority) {
+/** One POST. Delivered means a 2xx answer — a 429 or 5xx is not a page. `extra` adds headers (the search
+ *  canary's ntfy e-mail forwarding: X-Email + Authorization). */
+export async function push(topic, title, body, priority, extra = {}) {
   const base = (process.env.NTFY_URL || 'https://ntfy.sh').replace(/\/+$/, '');
   try {
     const res = await fetch(`${base}/${encodeURIComponent(topic)}`, {
       method: 'POST',
-      headers: { Title: asciiTitle(title), Priority: priority, Tags: priority === 'urgent' ? 'rotating_light' : 'white_check_mark' },
+      headers: { Title: asciiTitle(title), Priority: priority, Tags: priority === 'urgent' ? 'rotating_light' : 'white_check_mark', ...extra },
       body,
       signal: AbortSignal.timeout(10_000),
     });

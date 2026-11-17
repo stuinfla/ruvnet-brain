@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { homebrewOptNode } from './node-runtime.mjs';
 import { developerCoordinatorOwner } from './developer-update-owner.mjs';
 import { SETTINGS_VERSION, validate, saveSettings } from './user-settings.mjs';
 
@@ -56,8 +57,8 @@ export function automaticPath({ nodePath = process.execPath, home = os.homedir()
 export function stableNode({ executable = process.execPath, explicit, realpath = fs.realpathSync, run = spawnSync } = {}) {
   let candidate = explicit || executable;
   if (!explicit) {
-    const cellar = /^(.*)[\\/]Cellar[\\/]([^\\/]+)[\\/][^\\/]+[\\/]bin[\\/]node$/.exec(executable);
-    if (cellar) candidate = path.join(cellar[1], 'opt', cellar[2], 'bin', 'node');
+    const opt = homebrewOptNode(executable);
+    if (opt) candidate = opt;
     else if (/[\\/](?:\.nvm[\\/]versions|\.npm[\\/]_npx|\.volta[\\/]tools[\\/]image|\.fnm[\\/]node-versions)[\\/]/.test(executable)) {
       throw new Error('automatic updates need a stable Node path; pass --nightly-node /absolute/stable/node');
     }

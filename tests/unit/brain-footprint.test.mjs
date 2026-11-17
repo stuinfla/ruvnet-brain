@@ -525,6 +525,11 @@ describe('positive confirmation', () => {
     expect(r.lines.find((l) => l.id === 'knowledge').detail).toMatch(/^1 copy at .*\/kb · built .* · signature verified/);
     expect(footprintAlarm(r)).toBe('');
   });
+  it('names the node the search worker actually runs under (resolved at spawn time since 2026-11-16)', () => {
+    const m = clean();
+    const r = run(m, { readiness: [{ pid: 42, state: 'ready', kbDir: m.kbDir, workerNode: '/opt/homebrew/opt/node@24/bin/node' }] });
+    expect(r.lines.find((l) => l.id === 'in-use').detail).toMatch(/opened this copy under node \/opt\/homebrew\/opt\/node@24\/bin\/node; last answer 2h ago/);
+  });
   it('each failure names its one fix: behind, second copy, stale, unsigned, other-copy worker, cruft', () => {
     const m = clean();
     kbTree(path.join(m.brainHome, 'kb.bak-2026-09-01T00-00-00-000Z'), { publicStores: { alpha: 'a0' }, privateStores: { secret: 'secret-bytes' } });

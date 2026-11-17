@@ -176,6 +176,9 @@ const STANDALONE = [
     + 'ProgramArguments invoke scripts/issue-fix.mjs --mode autofix through scripts/job-heartbeat.sh, and issue-fix.mjs '
     + 'dynamically imports this file for that mode. Off unless the repository variable ISSUE_AUTOFIX is exactly on; '
     + 'the owner arms it after the dry-run simulation and a supervised live dry-run'],
+  ['search-canary', 'launchd, every 5 min (out-of-repo scheduler): deploy/com.ruvnet.search-canary.plist '
+    + 'ProgramArguments invoke this file through scripts/job-heartbeat.sh; registered in config/scheduled-jobs.json '
+    + 'so nightly-watchdog flags it MISSING until the LaunchAgent is loaded'],
   ['nightly-gists', 'manual re-embed of the developer checkout gists store (the launchd job '
     + 'com.ruvnet.brain-gists was retired 2026-10-26: no installed brain reads that store)'],
   ['nightly-wrapper', 'author-run maintenance harness, deliberately unscheduled; refuses primary, nested, and dirty worktrees'],

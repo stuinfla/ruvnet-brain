@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Comment</key>
+	<string>Every 5 minutes: is RuvNet Brain search actually working? Runs scripts/search-canary.mjs (cheap checks
+	every run, about half a second of CPU; a real search through a fresh copy of the installed plugin server hourly
+	and whenever a cheap check fails). Two failing runs in a row page "SERIOUS ALERT: RuvNet Brain search down"
+	(ntfy topic from ~/.cache/ruvnet-brain/ntfy-topic; e-mail through ntfy when ~/.cache/ruvnet-brain/ntfy-token
+	holds an account token), repeated at most hourly, one recovery notice, one "search OK" heartbeat a day.
+	Written after the 2026-11-16 outage, when a 3:31 a.m. Homebrew upgrade broke search for hours and nobody
+	was told. Wrapped in job-heartbeat.sh (receipt + page if the canary itself fails).</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>HOME</key>
+		<string>/Users/stuartkerr</string>
+		<key>JOB_MAX_SECONDS</key>
+		<string>280</string>
+		<key>PATH</key>
+		<string>/opt/homebrew/opt/node@24/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/stuartkerr/.npm-global/bin</string>
+	</dict>
+	<key>Label</key>
+	<string>com.ruvnet.search-canary</string>
+	<key>ProcessType</key>
+	<string>Background</string>
+	<key>LowPriorityIO</key>
+	<true/>
+	<key>Nice</key>
+	<integer>10</integer>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/sh</string>
+		<string>/Users/stuartkerr/.local/share/ruvnet-brain/jobs-repo/scripts/job-heartbeat.sh</string>
+		<string>com.ruvnet.search-canary</string>
+		<string>--</string>
+		<string>/Users/stuartkerr/.local/share/ruvnet-brain/job-bin/node</string>
+		<string>/Users/stuartkerr/.local/share/ruvnet-brain/jobs-repo/scripts/search-canary.mjs</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>StandardErrorPath</key>
+	<string>/Users/stuartkerr/Library/Logs/launchd/com.ruvnet.search-canary.err.log</string>
+	<key>StandardOutPath</key>
+	<string>/Users/stuartkerr/Library/Logs/launchd/com.ruvnet.search-canary.out.log</string>
+	<key>StartInterval</key>
+	<integer>300</integer>
+	<key>WorkingDirectory</key>
+	<string>/Users/stuartkerr/.local/share/ruvnet-brain/jobs-repo</string>
+</dict>
+</plist>

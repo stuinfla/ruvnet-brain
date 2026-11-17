@@ -10,6 +10,7 @@ import { classifyTerminalArguments, validateUpstreamSocket, terminalTempRoot } f
 import { nativeGatewayLaunch } from './model-routing-gateway.mjs';
 import { subscriptionEnvironment, assertSubscriptionAuth } from './model-router-dispatch.mjs';
 import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
+import { homebrewOptNode } from '../plugin/scripts/node-runtime.mjs';
 
 const SELF = fileURLToPath(import.meta.url);
 const MARKER = '# Managed RuvNet Brain terminal launcher';
@@ -28,6 +29,18 @@ function regular(file, { privateFile = false } = {}) {
 }
 function executable(file) {
   const result = regular(fs.realpathSync(file)); fs.accessSync(result, fs.constants.X_OK); return result;
+}
+// The node the generated launcher execs. Never the versioned Homebrew keg realpath: `brew upgrade` deletes
+// or breaks that keg and `claude` stops starting (2026-10-08, 2026-11-16). Homebrew's opt link follows the
+// upgrade; it is stored as spelled and validated as an executable regular file. Heals a pinned config too.
+function launcherNode(file) {
+  let real = null;
+  try { real = fs.realpathSync(file); } catch { /* a pinned keg may already be gone */ }
+  for (const opt of [homebrewOptNode(file), real && homebrewOptNode(real)]) {
+    if (!opt) continue;
+    try { executable(opt); regular(opt); return opt; } catch { /* not installed under opt */ }
+  }
+  return executable(file);
 }
 function nativeExecutable(file) {
   const result = executable(file), fd = fs.openSync(result, 'r');
@@ -123,7 +136,7 @@ export function installTerminalLaunchers({ home = os.homedir(), nodeBinary = pro
   if (previous && previous.managedBy !== 'ruvnet-brain-terminal-launchers') throw new Error('Preserving unmanaged terminal configuration');
   realCodex ??= previous?.realCodex || path.join(home, '.local/bin/codex');
   const runner = regular(path.join(runtimeRoot, 'scripts/model-terminal-launchers.mjs'));
-  const config = { schemaVersion: 1, managedBy: 'ruvnet-brain-terminal-launchers', runtimeDigest, runtimeRoot: fs.realpathSync(runtimeRoot), nodeBinary: executable(nodeBinary),
+  const config = { schemaVersion: 1, managedBy: 'ruvnet-brain-terminal-launchers', runtimeDigest, runtimeRoot: fs.realpathSync(runtimeRoot), nodeBinary: launcherNode(nodeBinary),
     runner, realCodex: nativeExecutable(realCodex), gatewayPath: regular(path.join(runtimeRoot, 'scripts/model-terminal-gateway.mjs')) };
   if (realClaude) {
     config.realClaude = nativeExecutable(realClaude);

@@ -36,6 +36,8 @@ const readOpen = () => JSON.parse(fs.readFileSync(path.join(dir, 'ntfy-open-aler
 const readState = () => JSON.parse(fs.readFileSync(path.join(dir, 'ntfy-inbox-state.json'), 'utf8'));
 const KNOWN = { jobs: new Set(['com.ruvnet.model-refresh', 'com.x']), workflows: new Set(['learning-replay', 'ci']) };
 const never = () => false;
+// Closed alerts are kept 7 days after closing: a check of a closed alert runs at the fixture's own time, not today's.
+const FIXTURE_NOW = 1_792_900_100_000;
 const DEAD = 999_999_999;
 
 describeOnPosix('classify', () => {
@@ -72,7 +74,7 @@ describeOnPosix('classify', () => {
     // A watchdog failure and the heartbeat's own failure page are the same cause: one alert, closed by either recovery.
     let open = mod.fold([], [msg('1', '🔴 FAILING: com.x'), msg('2', '🔴 SCHEDULED JOB FAILED: com.x', 1_792_900_001)], { resolver: never });
     expect(open).toHaveLength(1);
-    open = mod.fold(open, [msg('3', '✅ com.x is healthy again', 1_792_900_002)], { resolver: jobLive });
+    open = mod.fold(open, [msg('3', '✅ com.x is healthy again', 1_792_900_002)], { resolver: jobLive, now: FIXTURE_NOW });
     expect(open[0].closedBy).toBe('recovered notice (confirmed)');
   });
 });
@@ -180,9 +182,9 @@ describeOnPosix('fold', () => {
   });
   it('a "recovered" notice closes its job alert; a cleared cause closes on its own', () => {
     let open = mod.fold([], [msg('1', '🔴 SCHEDULED JOB FAILED: com.x'), msg('2', '🔴 CI failure: integration-linux')], { resolver: never });
-    open = mod.fold(open, [msg('3', '✅ Recovered: com.x')], { resolver: jobLive });
+    open = mod.fold(open, [msg('3', '✅ Recovered: com.x')], { resolver: jobLive, now: FIXTURE_NOW });
     expect(open.find((a) => a.key === 'job:com.x').closedBy).toBe('recovered notice (confirmed)');
-    open = mod.fold(open, [], { resolver: (a) => a.kind === 'ci' });
+    open = mod.fold(open, [], { resolver: (a) => a.kind === 'ci', now: FIXTURE_NOW });
     expect(open.find((a) => a.kind === 'ci').closedBy).toBe('cause cleared');
   });
   it('a new failure after a closed alert opens a fresh one', () => {

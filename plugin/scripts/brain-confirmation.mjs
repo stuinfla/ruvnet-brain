@@ -176,7 +176,11 @@ export function confirm({ footprint, env = process.env, home = os.homedir(), now
   const opened = records.filter((r) => r.kbDir);
   const elsewhere = opened.filter((r) => physical(r.kbDir) !== roots.kbDir);
   if (elsewhere.length) lines.push(line('in-use', 'In use', 'fail', `search worker pid ${elsewhere[0].pid} opened ${elsewhere[0].kbDir}, not ${roots.kbDir}; ${answerText}`, 'restart Claude Code / Codex (the worker re-opens the live KB)'));
-  else if (opened.length) lines.push(line('in-use', 'In use', 'ok', `search worker pid ${opened.map((r) => r.pid).join(', ')} opened this copy; ${answerText}`));
+  else if (opened.length) {
+    // Which node serves (server.mjs resolves it at spawn time; a pinned keg broke search on 2026-11-16).
+    const nodes = [...new Set(opened.map((r) => r.workerNode).filter(Boolean))];
+    lines.push(line('in-use', 'In use', 'ok', `search worker pid ${opened.map((r) => r.pid).join(', ')} opened this copy${nodes.length ? ` under node ${nodes.join(', ')}` : ''}; ${answerText}`));
+  }
   else lines.push(line('in-use', 'In use', 'unknown', `${records.length ? 'a search worker is ready but does not report its KB path' : 'no search worker is running right now'}; ${answerText}`));
 
   // Footprint

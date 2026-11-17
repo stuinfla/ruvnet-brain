@@ -50,6 +50,34 @@ fi
 TEXT=$(printf '%s' "$INPUT" | jq -r '.prompt // .user_prompt // .input // empty' 2>/dev/null)
 [ -z "$TEXT" ] && TEXT="$INPUT"
 
+# ── SEARCH-DOWN ALARM (2026-11-17, owner: "tell the session immediately if search is down so it can be
+# fixed"). While search is down EVERY prompt (harness turns included) gets search-down-notice.mjs's
+# instruction and runbook, and nothing else: the hook exits right after, so a slow recall or gate scan on
+# a loaded machine can never push the alarm past the shim's watchdog. It vanishes by itself on recovery.
+# The healthy path forks nothing: only shell builtins ([ -f ], read, case, -nt) decide whether the Node
+# verdict is worth asking for — the canary's confirmed-DOWN flag, or a server readiness record degraded at
+# start-up that the canary has not judged since it was written.
+_sd_home="${RUVNET_BRAIN_HOME:-$HOME/.cache/ruvnet-brain}"
+_sd_state="${SEARCH_CANARY_STATE:-$_sd_home/search-canary.json}"
+_sd_ask=0
+if [ "${RUVNET_BRAIN_CANARY_INJECT:-}" = "down" ] || [ -f "$_sd_state.down" ]; then
+  _sd_ask=1
+else
+  for _sd_f in "$_sd_home"/mcp-readiness.d/*.json; do
+    [ -f "$_sd_f" ] || continue
+    [ "$_sd_state" -nt "$_sd_f" ] && continue
+    _sd_line=""; IFS= read -r _sd_line < "$_sd_f" 2>/dev/null
+    case "$_sd_line" in
+      *'"state":"degraded","phase":"initialize"'*|*'"state":"degraded","phase":"warmup"'*|*'"state":"degraded","phase":"node-runtime"'*) _sd_ask=1; break ;;
+    esac
+  done
+fi
+if [ "$_sd_ask" = 1 ]; then
+  _sd_out=$("${RUVNET_NODE_BIN:-node}" "$(dirname "$0")/search-down-notice.mjs" --hook 2>/dev/null)
+  if [ -n "$_sd_out" ]; then printf '%s\n' "$_sd_out"; exit 0; fi
+fi
+unset _sd_home _sd_state _sd_ask _sd_f _sd_line _sd_out
+
 # ── H2: HARNESS-GENERATED MESSAGES ARE NOT A USER'S PROMPT. ──────────────────────────────────────
 # Background task notifications, slash-command scaffolding, and other harness-authored bookkeeping
 # arrive on UserPromptSubmit exactly like real user text, wrapped in tags such as

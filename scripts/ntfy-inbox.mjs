@@ -24,6 +24,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { isPersonIssue, judgeIssue } from './issue-watch.mjs';
 import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
+import { canaryStatePath } from '../plugin/scripts/search-down-notice.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const REPO = 'stuinfla/ruvnet-brain';
@@ -60,6 +61,11 @@ const writeJson = (file, value) => { fs.mkdirSync(path.dirname(file), { recursiv
 export function classify(msg) {
   const title = String(msg.title || ''); const body = String(msg.message || '');
   let m;
+  // scripts/search-canary.mjs pages "SERIOUS ALERT: RuvNet Brain search down" and closes it with "Recovered: RuvNet
+  // Brain search is working again" (matched first: the generic Recovered rule would key it as a job). A TEST page is info.
+  if (/^TEST\b/.test(title)) return { kind: 'info', key: `info:${msg.id}`, actionable: false };
+  if (/RuvNet Brain search down/.test(title)) return { kind: 'search', key: 'search:down', actionable: true };
+  if (/RuvNet Brain search is working again/.test(title)) return { kind: 'search-recovered', key: 'search:down', actionable: false, resolves: true };
   // job-heartbeat.sh pages "SCHEDULED JOB FAILED: X" / "Recovered: X"; nightly-watchdog.mjs pages "🔴 <STATE>: X" /
   // "✅ X is healthy again". Same cause, same key, so either recovery closes either failure.
   if ((m = /SCHEDULED JOB FAILED: (\S+)/.exec(title)) || (m = /^\W*(?:FAILING|NEVER-RAN|STALE|MISSING|STALLED|STUCK): (\S+)/.exec(title))) return { kind: 'job', key: `job:${m[1]}`, label: m[1], actionable: true };
@@ -108,11 +114,16 @@ export function classify(msg) {
 }
 
 /** Is this alert's cause gone? Returns the reason (truthy) or false. Checked live; an unreadable fact keeps it open. */
-export function resolvedNow(alert, { gh = ghJson, heartbeat = readHeartbeat } = {}) {
+export function resolvedNow(alert, { gh = ghJson, heartbeat = readHeartbeat, canary = (f) => readJson(f, null) } = {}) {
   try {
     if (alert.kind === 'job') {
       const hb = heartbeat(alert.label);
       return hb?.state === 'ok' && Date.parse(hb.ended_at || 0) > Date.parse(alert.lastAt) ? 'job passed again' : false;
+    }
+    if (alert.kind === 'search') {
+      // The search canary's own state: a run judged OK after the alert was raised closes it.
+      const st = canary(canaryStatePath());
+      return st?.lastVerdict === 'ok' && Number(st.lastRunAt) > Date.parse(alert.lastAt) ? 'search canary OK again' : false;
     }
     if (alert.kind === 'issue' || alert.kind === 'pr') {
       const item = gh([alert.kind === 'pr' ? 'pr' : 'issue', 'view', String(alert.number), '--repo', REPO, '--json', 'state,author,comments']);

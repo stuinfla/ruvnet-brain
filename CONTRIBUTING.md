@@ -1,4 +1,4 @@
-Updated: 2026-10-30 23:00:00 EDT | Version 1.9.0
+Updated: 2026-11-17 00:35:00 EST | Version 1.10.0
 Created: 2026-07-07 09:22:01 EDT
 
 # Contributing to RuvNet Brain — the one rulebook
@@ -522,7 +522,17 @@ kill (ADR-106).
 An advisory hook that fails (nonzero exit, signal, spawn error) still exits 0 to the host; the shim
 records it and SessionStart prints one `[RuvNet Brain — HOOK FAILURES]` summary of new failures. SessionStart prints one
 `[RuvNet Brain — KNOWLEDGE …]` line when the installed knowledge cannot be proven current (older than
-48h, or the latest refresh receipt FAILED) and names the fix. The same boundary records each turn's
+48h, or the latest refresh receipt FAILED) and names the fix. While search is down, SessionStart and every UserPromptSubmit (ground-ruvnet,
+harness turns included) print `RUVNET BRAIN SEARCH IS DOWN since <ET>. Diagnose and fix it before other work` with a
+short runbook; on a prompt it is the hook's whole output, so a slow recall or gate scan cannot push it past the shim's
+watchdog (the trade-off, chosen deliberately: for the outage the grounding, recall, resume and autonomous-fence blocks
+are withheld, because the one instruction is to restore search first). One verdict, `plugin/scripts/search-down-notice.mjs`, decides it for both: the search canary's fresh verdict
+after two failing runs (`scripts/search-canary.mjs`, launchd every 5 minutes; ntfy optional), or, with no fresh canary,
+a live search server whose readiness record says it cannot start its worker. The next OK verdict removes it; the
+healthy path forks no process (shell builtins test the canary's `search-canary.json.down` flag and the readiness
+records). `RUVNET_BRAIN_CANARY_INJECT=down` in a session's environment shows it for that session only. Limits: Brain
+OFF silences the per-prompt line (SessionStart's health alarm still runs while OFF); Grok does not run ground-ruvnet;
+and if the `node` that starts the hooks is itself broken no hook runs, which only the canary's ntfy page can report. The same boundary records each turn's
 outcome at Stop (final assistant text, files changed, command descriptions — never user text), redacted
 with the shared credential/private-key scanner before truncation, with one bounded `ruflo memory store
 --no-upsert --append-only` into namespace `turns` of the canonical project's `.swarm/memory.db` (a linked

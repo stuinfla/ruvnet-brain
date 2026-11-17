@@ -13,6 +13,7 @@ import path from 'node:path';
 import { json, exists, mtimeMs, read } from './session-start-fsutil.mjs';
 import { unmountedNotice } from './brain-location.mjs';
 import { assessMoveLeftovers } from './footprint-io.mjs';
+import { easternTime, renderNotice, searchDown } from './search-down-notice.mjs';
 import {
   describeFailedRefreshRun, developerRunHealth, readNightlyRegistration, refreshHistory, updateOwnedByAgenticKit,
 } from './nightly-scheduler.mjs';
@@ -43,7 +44,7 @@ const restoreNotice = (home) => {
   } catch { return ''; }
 };
 
-export const health = (home, off) => {
+export const health = (home, off, env = process.env) => {
   // Moved to another disk that is not plugged in: say exactly that — not "MISSING, reinstall", which
   // would re-create a fresh brain in ~/.cache over the link. A problem also stands the self-heal down.
   const unmounted = unmountedNotice({ home });
@@ -59,6 +60,13 @@ export const health = (home, off) => {
   if (!rvf) return { problem: restoreNotice(home) || `NO vector stores (.rvf) found in ${kb} — the brain is empty; reinstall: npx github:stuinfla/ruvnet-brain --force`, absentByChoice };
   if (!exists(path.join(kb, 'node_modules', '@xenova', 'transformers', 'package.json'))) {
     return { problem: `reader dependencies are MISSING (node_modules gone) — every search WILL fail. Fix: cd ${kb} && npm i`, absentByChoice };
+  }
+  // SEARCH IS DOWN (the search canary's fresh verdict, or a live server that cannot start its worker): the
+  // same verdict and instruction the per-prompt hook repeats on every prompt (search-down-notice.mjs).
+  const down = searchDown({ env, home });
+  if (down.down) {
+    return { problem: `SEARCH IS DOWN since ${easternTime(down.since)} (${down.source}): ${down.reason}. First thing to check: ${down.check}`,
+      notice: renderNotice(down, { env, home }), absentByChoice };
   }
   const last = json(path.join(home, '.cache', 'ruvnet-brain', 'health.json'));
   if (last?.status === 'down') {

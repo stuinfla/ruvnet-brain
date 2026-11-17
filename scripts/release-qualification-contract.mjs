@@ -373,6 +373,15 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       }
     },
     {
+      "id": "search-survives-runtime-upgrades",
+      "reason": "Search survives the launch node breaking mid-session (2026-11-16 Homebrew outage): the worker's node is resolved at spawn time through a self-tested fallback chain, an instant worker death or spawn error retries the next candidate, all-broken fails in seconds naming every node and reason, launchers store Homebrew's opt link and heal a dead pinned keg, and the search canary pages 'SERIOUS ALERT: RuvNet Brain search down' after two failing checks, recovers once, heartbeats daily (ntfy optional: no topic sends nothing and fails nothing), and while search is down SessionStart and EVERY prompt carry 'RUVNET BRAIN SEARCH IS DOWN since <ET>. Diagnose and fix it before other work' with the runbook, never deduped, gone on recovery, silent and process-free when healthy",
+      "files": [],
+      "platformFiles": {
+        "linux": ["tests/unit/mcp-node-fallback.test.mjs", "tests/unit/launcher-stable-node.test.mjs", "tests/unit/search-canary.test.mjs", "tests/unit/search-down-notice.test.mjs"],
+        "macos": ["tests/unit/mcp-node-fallback.test.mjs", "tests/unit/launcher-stable-node.test.mjs", "tests/unit/search-canary.test.mjs", "tests/unit/search-down-notice.test.mjs"]
+      }
+    },
+    {
       "id": "nightly-converges-4-7-25",
       "reason": "The scheduled nightly converges or says why (ADR-104 4.7.25): a CURRENT corpus still runs the installer when the runtime or a host is behind the installed package, an installer exit 0 that leaves it behind is a failure, a failed knowledge stage is retried once the same night, a night that ends not-ok pages through scripts/notify.sh and the next good one pages recovered, the failure carries the installer's own lines, and Codex plugin commands get the catalog-refresh limit. Paging needs a POSIX shell, so Windows is not verified",
       "files": [],

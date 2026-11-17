@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "ruvnet-brain-convergence-manifest",
   "version": "4.7.30",
-  "sourceIdentity": "7170d46db486bc961dc88d2390319a79d838e6a913066cda658739fe24da58dc",
+  "sourceIdentity": "33bdc571517c3d1f6200e77d0ff6f9e88a79da78b81818ff88aeb006d28cac1a",
   "versionSurfaces": {
     "package.json": "4.7.30",
     "plugin/.claude-plugin/plugin.json": "4.7.30",
@@ -116,8 +116,8 @@
     "0107-issue-autofix-bounded-unattended-writer.md",
     "README.md"
   ],
-  "trackedFileCount": 2124,
-  "trackedFilesSha256": "7abc37864704025a1b0e71339f664cc2e8e28eb5f6048796418d63d68d005887",
+  "trackedFileCount": 2131,
+  "trackedFilesSha256": "c5d946c480aa428aedf1dbebfc6687c158faac15874e5bb25096e0f4412cfc7b",
   "ownershipChecks": [
     "version:check",
     "doc:currency",

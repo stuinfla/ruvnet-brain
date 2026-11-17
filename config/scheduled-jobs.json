@@ -103,6 +103,15 @@
       "maxRunHours": 1
     },
     {
+      "label": "com.ruvnet.search-canary",
+      "what": "Every 5 min: proves search_ruvnet works (live MCP shells' worker starts, a usable node, hourly a real search through a fresh plugin server); after 2 failing runs every session prompt says 'RUVNET BRAIN SEARCH IS DOWN' until fixed (plugin/scripts/search-down-notice.mjs reads its state), and ntfy pages when a topic is configured (scripts/search-canary.mjs, deploy/com.ruvnet.search-canary.plist)",
+      "schedule": "every 5 minutes",
+      "maxAgeHours": 1,
+      "required": true,
+      "maxRunHours": 1,
+      "_registered": "2026-11-16: after a Homebrew upgrade broke search for hours with nobody told."
+    },
+    {
       "label": "com.stuartkerr.purge-local-snapshots",
       "what": "Hourly: deletes Time Machine LOCAL snapshots on the internal SSD (skips while a backup runs); real backups stay on the external drive (~/Library/Scripts/purge-local-snapshots.sh)",
       "schedule": "hourly",

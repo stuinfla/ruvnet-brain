@@ -188,7 +188,9 @@ describe.skipIf(bashOnly || !hasJq)('ground-ruvnet.sh: no grounding banner for a
     return spawnSync('bash', [GROUND_RUVNET], {
       input: JSON.stringify({ prompt: promptField }),
       encoding: 'utf8', timeout: 30_000,
-      env: { ...process.env, RUVNET_BRAIN_METER: '0', RUVNET_AUTONOMOUS: '' },
+      // A private brain home: this machine's live search-down state must not decide what this test sees.
+      env: { ...process.env, RUVNET_BRAIN_METER: '0', RUVNET_AUTONOMOUS: '', RUVNET_BRAIN_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'h2-brain-')),
+        SEARCH_CANARY_STATE: '', RUVNET_BRAIN_CANARY_INJECT: '' },
     });
   }
 

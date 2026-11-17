@@ -38,6 +38,7 @@ import { writeOwn as writeOwnReadiness } from '../scripts/mcp-readiness.mjs';
 import { MANAGED_CLI_TOOLS } from './managed-cli-interface.mjs';
 import { dispatchManagedCli } from './managed-cli-generation.mjs';
 import { unmountedNotice } from '../scripts/brain-location.mjs';
+import { firstLine, nodeCandidates, resolveNodeChain, selfTest } from '../scripts/node-runtime.mjs';
 
 const BRAIN_HOME = process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain');
 const KB = process.env.RUVNET_BRAIN_KB || path.join(BRAIN_HOME, 'kb');
@@ -218,11 +219,64 @@ async function ensureChild() {
   if (!childStartup) {
     childStartup = (async () => {
       const startedAt = Date.now();
+      // THE NODE IS CHOSEN NOW, NOT AT SESSION START (2026-11-16 outage, plugin/scripts/node-runtime.mjs).
+      // A node that dies before the worker answers initialize — dyld "Library not loaded" after a
+      // `brew upgrade` (measured: 7 ms), a deleted keg (spawn 'error', no 'exit'), a non-executable file —
+      // is a runtime fault, not a brain fault: the next candidate is tried, at most MAX_NODE_ATTEMPTS
+      // starts, and then the call fails at once with every candidate and its reason. Never a 60 s hang.
+      // Every self-test pass of this start shares ONE deadline, so three attempts can never stack three
+      // 15 s resolutions on a loaded machine (past it, untested candidates are only tried as workers).
+      const tried = [];
+      const queue = lastGoodNode ? [{ node: lastGoodNode, version: lastGoodNodeVersion }] : [];
+      const resolveBy = Date.now() + NODE_RESOLVE_BUDGET_MS;
+      for (let attempt = 0; attempt < MAX_NODE_ATTEMPTS;) {
+        if (!queue.length) {
+          const chain = await resolveNodeChain({ candidates: nodeCandidates(), skip: new Set(tried.map((t) => t.node)), budgetMs: Math.max(0, resolveBy - Date.now()) });
+          for (const r of chain.rejected) tried.push({ node: r.node, reason: `self-test failed: ${r.reason}` });
+          queue.push(...chain.usable);
+        }
+        const pick = queue.shift();
+        if (!pick) break;
+        if (tried.some((t) => t.node === pick.node)) continue;
+        attempt += 1;
+        try {
+          return await startWorker(pick, startedAt, tried);
+        } catch (e) {
+          if (!e.earlyDeath) throw e;
+          if (lastGoodNode === pick.node) lastGoodNode = null;
+          tried.push({ node: pick.node, reason: e.message });
+        }
+      }
+      const detail = tried.length ? tried.map((t) => `${t.node} (${t.reason})`).join('; ') : 'no node binary found on this machine';
+      const error = new Error(`the search worker could not start under any Node runtime — tried: ${detail}. `
+        + `First thing to check: run \`node -e 0\` in a terminal; if it fails, reinstall Node (e.g. \`brew reinstall node@24\`), then start a new Claude Code / Codex session. `
+        + `If node runs and every attempt above shows the same error, the worker itself (${CHILD_MCP}) is failing: run \`npx ruvnet-brain --doctor\`.`);
+      recordStartupFailure({ phase: 'node-runtime', startedAt, generation: currentGeneration(), error });
+      throw error;
+    })();
+  }
+  const attempt = childStartup;
+  try { return await attempt; }
+  finally { if (childStartup === attempt) childStartup = null; }
+}
+
+const MAX_NODE_ATTEMPTS = 3;
+const NODE_RESOLVE_BUDGET_MS = 15_000;
+const RUNTIME_FAILURE = /dyld|Library not loaded|image not found|error while loading shared libraries|GLIBC_|exec format error|cannot execute/i;
+let lastGoodNode = null;
+let lastGoodNodeVersion = null;
+
+async function startWorker({ node, version }, startedAt, tried) {
       let phase = 'initialize';
       const env = { ...process.env, KB_DIR: KB };
       if (!env.KB_MODEL_CACHE) env.KB_MODEL_CACHE = path.join(BRAIN_HOME, 'models');
-      const proc = spawn(process.execPath, [CHILD_MCP], { stdio: ['pipe', 'pipe', 'inherit'], env });
-      const c = { proc, generation: currentGeneration(), nextId: 1, pending: new Map(), intentionalStop: false };
+      const spawnedAt = Date.now();
+      const proc = spawn(node, [CHILD_MCP], { stdio: ['pipe', 'pipe', 'pipe'], env });
+      const c = { proc, generation: currentGeneration(), nextId: 1, pending: new Map(), intentionalStop: false, node, stderrTail: '' };
+      // stderr is still the host's log (forwarded), and its tail names WHY a start failed.
+      if (!process.stderr.listenerCount('error')) process.stderr.on('error', () => { /* host log gone (async EPIPE) */ });
+      proc.stderr.on('data', (d) => { try { process.stderr.write(d); } catch { /* host log gone */ } c.stderrTail = (c.stderrTail + d).slice(-2000); });
+      proc.stdin.on('error', () => { /* a worker that never started: reported through 'error'/'exit' below */ });
       const rl = readline.createInterface({ input: proc.stdout });
       rl.on('line', (line) => {
         let msg; try { msg = JSON.parse(line); } catch { return; }
@@ -230,6 +284,7 @@ async function ensureChild() {
         if (waiter) { c.pending.delete(msg.id); waiter.resolve(msg); }
       });
       proc.on('exit', (code, signal) => {
+        c.exited = { code, signal, at: Date.now() };
         if (child === c) child = null;
         for (const [, p] of c.pending) p.reject(new Error('brain worker exited'));
         c.pending.clear();
@@ -253,7 +308,14 @@ async function ensureChild() {
           });
         }
       });
-      proc.on('error', () => { if (child === c) child = null; });
+      // A binary that cannot be started (deleted, not executable) emits 'error' and never 'exit'. Every
+      // waiter is rejected HERE, or each call waits out its full timeout (the reviewer's 60 s hang).
+      proc.on('error', (e) => {
+        c.spawnError = e;
+        if (child === c) child = null;
+        for (const [, p] of c.pending) p.reject(new Error(`brain worker could not start under ${node}: ${e.code || e.message}`));
+        c.pending.clear();
+      });
       child = c;
 
       try {
@@ -275,10 +337,25 @@ async function ensureChild() {
           throw new Error(warmed.error?.message || 'brain worker did not confirm warm readiness');
         }
       } catch (e) {
+        const died = c.exited && (c.exited.code !== 0 || c.exited.signal);
+        // A death is the RUNTIME's fault only when the runtime says so (dyld / loader text) or the node now
+        // provably fails its own self-test (a self-test that merely times out on a loaded machine is not proof). A worker that throws on a bad KB, or is killed for memory,
+        // under a node that still runs is a brain fault: reported as such, never three reloads and a
+        // "reinstall Node" instruction.
+        const runtimeFault = c.spawnError || (died && (RUNTIME_FAILURE.test(c.stderrTail) || (await selfTest(node)).broken));
+        if (phase === 'initialize' && runtimeFault) {
+          await killChild('failed to start');
+          const why = c.spawnError ? (c.spawnError.code || c.spawnError.message)
+            : `${c.exited.signal ? `killed by ${c.exited.signal}` : `exit ${c.exited.code}`} after ${c.exited.at - spawnedAt} ms`;
+          const said = firstLine(c.stderrTail.split('\n').find((l) => /dyld|Library not loaded|error/i.test(l)) || c.stderrTail);
+          throw Object.assign(new Error(`${why}${said ? `: ${said}` : ''}`), { earlyDeath: true });
+        }
         await killChild('failed initialize');
         recordStartupFailure({ phase, startedAt, generation: c.generation, error: e });
         throw new Error(`brain worker failed to initialize: ${e.message}`);
       }
+      lastGoodNode = node;
+      lastGoodNodeVersion = version;
       // kbDir: WHICH knowledge base this worker opened (ADR-0098 positive confirmation "In use") — the
       // physical path, so a worker still serving a replaced or second copy is visible, not assumed.
       let openedKb = KB;
@@ -287,14 +364,12 @@ async function ensureChild() {
         state: 'ready', phase, generation: c.generation,
         workerPid: c.proc.pid, elapsedMs: Date.now() - startedAt,
         retryable: false, retryState: 'none', kbDir: openedKb,
+        // Which node actually serves (doctor's "In use" line), and any it had to pass over to get here.
+        workerNode: node, ...(version ? { workerNodeVersion: version } : {}),
+        ...(tried.length ? { nodeRejected: tried.slice(0, 6) } : {}),
       });
       armChildIdleTimer(c);
       return c;
-    })();
-  }
-  const attempt = childStartup;
-  try { return await attempt; }
-  finally { if (childStartup === attempt) childStartup = null; }
 }
 
 // A TIMEOUT IS AN OUTAGE, and it must both STOP and be RECORDED. Measured 2026-07-27: the timeout
