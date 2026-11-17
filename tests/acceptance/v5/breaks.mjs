@@ -2,6 +2,8 @@
 // to a scratch copy of the tree only when V5_BREAK names it. `expect` is the failure the run must
 // show, so a red run caused by something else (a bad patch, a syntax error) is not counted.
 import fs from 'node:fs';
+import { addWorkPackageBreaks } from './breaks-wp.mjs';
+import { addWave2Breaks } from './breaks-wave2.mjs';
 
 // The wp1-no-question-strings break plants one development question's wording in the engine. The
 // wording is read from the question set outside the repository when the break is applied (that test
@@ -45,12 +47,15 @@ export const BREAKS = {
     expect: /no answer to tools\/call within/,
   },
   s05: {
-    // Since wave 1 the engine trims too (section budgets and the result cap), so the break removes both.
-    test: 's05', what: 'the trim step is removed (engine and formatter)',
+    // Since wave 1 the engine trims too (section budgets and the result cap), so the break removes both;
+    // since wave 2 also the engine's delivery numbers and the server's delivery guard.
+    test: 's05', what: 'the trim step is removed (engine, formatter and delivery guard)',
     patches: [
       { file: 'packages/server/format.mjs', find: 'trimToBudgets(sections, (s) => renderSection(s, marker), render, cap);', replace: '' },
       { file: 'packages/engine/assemble.mjs', find: 'if (budget) fit(items, budget);', replace: '' },
       { file: 'packages/engine/index.mjs', find: 'fit(sections.flatMap((s) => s.items), recipe.result.capChars[detail]);', replace: '' },
+      { file: 'packages/engine/index.mjs', find: 'holdToDelivery(sections.flatMap((s) => s.items), recipe.result.delivery);', replace: '' },
+      { file: 'packages/server/format.mjs', find: 'if (render().length > ceil.maxChars || estimateTokens(render()) > ceil.maxTokens) shed =', replace: 'if (false) shed =' },
     ],
     expect: /characters, over (the \d+ cap|its own \d+ budget)/,
   },
@@ -80,14 +85,18 @@ export const BREAKS = {
     expect: /must not install/,
   },
   s11: {
+    // Since wave 2 the CLI's doctor is packages/health/doctor.mjs, so the break gives that doctor its
+    // own separate check (the 4.7 shape, defect C9: an in-process self-test instead of the verdict).
     test: 's11', what: 'doctor is given its own separate check',
-    // The 4.7 shape (defect C9): doctor runs its own in-process search instead of reading the verdict.
-    patches: [{ file: 'packages/cli/ruvnet-brain.mjs', find: 'const v = verdict(ev);', replace: "const v = await (async () => { const cur = JSON.parse(fs.readFileSync(p.current, 'utf8')); const eng = await import(process.getBuiltinModule('node:url').pathToFileURL(path.join(p.app, cur.app, 'engine', 'index.mjs')).href); const h = eng.open(path.join(p.packs, cur.pack)); return eng.selfTest(h).ok ? { state: 'ok', label: 'OK', knowledgeDate: h.pack.knowledgeDate } : verdict(ev); })().catch(() => verdict(ev));" }],
+    patches: [
+      { file: 'packages/health/doctor.mjs', find: "import { currentLine } from './line.mjs';", replace: "import { currentLine } from './line.mjs';\nimport { createRequire } from 'node:module';" },
+      { file: 'packages/health/doctor.mjs', find: 'const { verdict: v, line } = currentLine(home, { now });', replace: "const { verdict: v, line } = (() => {\n    const c = currentLine(home, { now });\n    try {\n      const cur = readJson(paths(home).current, null);\n      const eng = createRequire(import.meta.url)(path.join(paths(home).app, cur.app, 'engine', 'index.mjs'));\n      const h = eng.open(path.join(paths(home).packs, cur.pack));\n      if (eng.selfTest(h).ok) return { verdict: { state: 'ok' }, line: c.line };\n    } catch {}\n    return c;\n  })();" },
+    ],
     expect: /doctor exit code disagrees with the health line/,
   },
   s12: {
     test: 's12', what: 'the shim is made to run a project file',
-    patches: [{ file: 'packages/plugin/claude/health-line.mjs', find: 'let line;', replace: "try { await import(process.getBuiltinModule('node:url').pathToFileURL(process.cwd() + '/scripts/ascii-drift.mjs').href); } catch {}\nlet line;" }],
+    patches: [{ file: 'packages/plugin/claude/health-line.mjs', find: "import '../../health/hook.mjs';", replace: "try { await import(process.getBuiltinModule('node:url').pathToFileURL(process.cwd() + '/scripts/ascii-drift.mjs').href); } catch {}\nawait import('../../health/hook.mjs');" }],
     expect: /planted project files were executed/,
   },
   s13: {
@@ -279,7 +288,7 @@ Object.assign(BREAKS, {
   'wave1-no-cap': {
     test: 'wave1-end-to-end', what: 'the formatter does not hold the text to the result cap',
     patches: [{ file: 'packages/server/format.mjs', find: 'const cap = recipe.result.capChars[result.detail];', replace: 'const cap = Infinity;' }],
-    expect: /over the 60000 cap/,
+    expect: /over the 44000 cap/,
   },
   'wave1-no-history-degrades': {
     test: 'wave1-end-to-end', what: 'a pack built without history reports its history lane unavailable',
@@ -364,3 +373,7 @@ Object.assign(BREAKS, {
   },
 });
 // end wp4
+
+// Work packages 2, 3, 6 and 7 (breaks-wp.mjs) and the wave 2 integration (breaks-wave2.mjs).
+addWorkPackageBreaks(BREAKS);
+addWave2Breaks(BREAKS);

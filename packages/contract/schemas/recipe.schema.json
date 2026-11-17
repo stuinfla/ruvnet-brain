@@ -6,6 +6,10 @@
     "schema": { "const": "ruvnet-brain/recipe" },
     "version": { "type": "integer", "minimum": 1 },
     "id": { "type": "string", "minLength": 1 },
+    "query": {
+      "type": "object",
+      "properties": { "extraTerms": { "enum": ["append", "off"] } }
+    },
     "units": {
       "type": "object",
       "required": ["passage"],
@@ -78,7 +82,8 @@
             "properties": { "subject": { "type": "number", "minimum": 0 }, "body": { "type": "number", "minimum": 0 } }
           },
           "depth": { "type": "integer", "minimum": 1, "maximum": 10000 },
-          "unit": { "type": "string", "minLength": 1 }
+          "unit": { "type": "string", "minLength": 1 },
+          "process": { "enum": ["inline", "helper"] }
         }
       }
     },
@@ -116,7 +121,14 @@
             "full": { "type": "integer", "minimum": 1000, "maximum": 60000 }
           }
         },
-        "defaultDetail": { "enum": ["brief", "full"] }
+        "defaultDetail": { "enum": ["brief", "full"] },
+        "delivery": {
+          "type": "object",
+          "properties": {
+            "maxChars": { "type": "integer", "minimum": 1000, "maximum": 44000 },
+            "maxTokens": { "type": "integer", "minimum": 300, "maximum": 20000 }
+          }
+        }
       }
     },
     "deadlineMs": { "type": "integer", "minimum": 100 },

@@ -1,0 +1,201 @@
+name: v5-release-candidate
+
+# VERSION 5 ONLY. INERT UNTIL CUTOVER (ROADMAP Part B): triggered only by workflow_dispatch and by a
+# push to a release/5.* branch. There is no schedule trigger. It publishes nothing public: the
+# "channel" below is a folder carried between jobs as an artifact (a dry run of stage and promote).
+# Publishing to GitHub and npm is a cutover item, and the one-publisher gate
+# (scripts/release-authority.mjs) must name that publisher before it can exist.
+#
+# The rail (architecture 2.5), one command per step, every step in packages/release/rail.mjs:
+#   pack     build the pack (v5-pack-build.yml)
+#   seal     version = the one version source; signing key = the trusted key's pair; the pack
+#            passes its probes; the app is the reviewed file list; then sign once. The ONLY signing
+#            step, the only job that sees the signing secret, bound to the v5-release environment.
+#   stage    the sealed bytes become a pre-release in the channel (never what a machine reads)
+#   probe    Linux, macOS and Windows each install the staged bytes with the real installer, ask
+#            every probe through the real server, and take doctor's verdict; one receipt each
+#   gate     the answer gate (work package 8: packages/release/gate/gate.mjs) on the staged bytes
+#   promote  re-hash the staged bytes; refuse without all three ok receipts and a passed gate
+#            result for exactly these bytes; move both pointers or put both back
+# No step continues on error and no input or variable skips a step. Until the lead provisions the
+# trusted public key (ROADMAP A1 step 0.4) seal refuses, and until work package 8 lands the gate step
+# fails: this workflow cannot go green before both exist, by design.
+#
+# Actions are pinned to exact commits copied from other local repositories' workflows (no network
+# was used to write this file); re-check them against GitHub at cutover.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact version to release (must equal packages/version.json)
+        required: true
+        type: string
+  push:
+    branches:
+      - 'release/5.*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v5-release-candidate
+  cancel-in-progress: false
+
+jobs:
+  pack:
+    if: github.repository == 'stuinfla/ruvnet-brain'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/v5-pack-build.yml
+
+  seal:
+    name: seal-and-sign
+    needs: pack
+    if: github.repository == 'stuinfla/ruvnet-brain'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: v5-release
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.seal.outputs.tag }}
+      version: ${{ steps.seal.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.22.3'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: v5-pack
+          path: ${{ runner.temp }}/pack
+      - id: seal
+        name: Seal, sign once, and stage as a pre-release
+        env:
+          RUVNET_BRAIN5_SIGNING_KEY: ${{ secrets.RUVNET_BRAIN5_SIGNING_KEY }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+          RELEASE_NUMBER: ${{ github.run_number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${REQUESTED_VERSION:-${GITHUB_REF_NAME#release/}}"
+          node packages/release/rail.mjs seal --pack "$RUNNER_TEMP/pack" --out "$RUNNER_TEMP/release" --version "$version" --branch "$GITHUB_REF_NAME" --release-number "$RELEASE_NUMBER"
+          node packages/release/rail.mjs stage --release "$RUNNER_TEMP/release" --channel "$RUNNER_TEMP/channel" --github-output "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: v5-channel
+          path: ${{ runner.temp }}/channel
+          if-no-files-found: error
+
+  probe:
+    name: install-and-probe
+    needs: seal
+    if: github.repository == 'stuinfla/ruvnet-brain'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.22.3'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: v5-channel
+          path: ${{ runner.temp }}/channel
+      - name: Install the staged bytes and probe through the real server
+        env:
+          TAG: ${{ needs.seal.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node packages/release/rail.mjs probe --release "$RUNNER_TEMP/channel/staged/$TAG" --out "$RUNNER_TEMP/receipt/receipt-$RUNNER_OS.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: v5-receipt-${{ runner.os }}
+          path: ${{ runner.temp }}/receipt
+          if-no-files-found: error
+
+  gate:
+    name: answer-gate
+    needs: seal
+    if: github.repository == 'stuinfla/ruvnet-brain'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.22.3'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: v5-channel
+          path: ${{ runner.temp }}/channel
+      - name: Run the answer gate on the staged bytes
+        env:
+          TAG: ${{ needs.seal.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node packages/release/gate/gate.mjs --release "$RUNNER_TEMP/channel/staged/$TAG" --out "$RUNNER_TEMP/gate/gate.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: v5-gate
+          path: ${{ runner.temp }}/gate
+          if-no-files-found: error
+
+  promote:
+    name: promote-or-restore
+    needs: [seal, probe, gate]
+    if: github.repository == 'stuinfla/ruvnet-brain'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.22.3'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: v5-channel
+          path: ${{ runner.temp }}/channel
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: v5-receipt-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/receipts
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: v5-gate
+          path: ${{ runner.temp }}/gate
+      - name: Promote only with three ok receipts and a passed gate, or restore
+        env:
+          TAG: ${{ needs.seal.outputs.tag }}
+          VERSION: ${{ needs.seal.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node packages/release/rail.mjs promote --channel "$RUNNER_TEMP/channel" --tag "$TAG" --version "$VERSION" --receipts "$RUNNER_TEMP/receipts" --gate "$RUNNER_TEMP/gate/gate.json" --outcome "$RUNNER_TEMP/outcome/outcome.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: v5-night-outcome
+          path: ${{ runner.temp }}/outcome
+          if-no-files-found: error

@@ -1,6 +1,8 @@
-// Work package 4 (installer) test helpers. Importing this file points HOME, USERPROFILE and the XDG
-// folders of this test process (and so of every program it starts) at a fresh temporary folder, so
-// no test can reach the live 4.7 home (~/.cache/ruvnet-brain) or any real host setting.
+// Work package 4 (installer) test helpers. The shared test environment (test-env.mjs, imported first)
+// points HOME, USERPROFILE, the XDG folders and the host setting folders of this test process (and so
+// of every program it starts) at a fresh temporary folder, so no test can reach the live 4.7 home
+// (~/.cache/ruvnet-brain) or any real host setting.
+import { FAKE_HOME } from './test-env.mjs';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -9,12 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 
-const realHome = os.homedir();
-export const FAKE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'rb5-wp4-userhome-'));
-for (const k of ['HOME', 'USERPROFILE']) process.env[k] = FAKE_HOME;
-for (const k of ['XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME']) process.env[k] = path.join(FAKE_HOME, k.toLowerCase());
-process.on('exit', () => fs.rmSync(FAKE_HOME, { recursive: true, force: true }));
-assert.notEqual(os.homedir(), realHome, 'the test HOME must not be the real one');
+export { FAKE_HOME };
 
 /** Refuses any brain home that is not a fresh temporary folder. */
 export function assertScratch(home) {

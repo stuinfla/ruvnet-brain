@@ -34,16 +34,27 @@ export function readStatuses(home) {
     .map((s) => ({ ...s, alive: isAlive(s.pid) }));
 }
 
-/** Everything verdict() needs, read from disk. Reads only; writes nothing. */
+/**
+ * Everything the verdict needs, read from disk: the live servers' status files (engine self-test,
+ * heartbeat, last search), the installed release record (current.json), the last update result
+ * (update.json) and the last update check (update-check.json). Reads only; writes nothing.
+ */
 export function readEvidence(home, { now = Date.now(), pids = null } = {}) {
+  const p = paths(home);
   const cfg = readConfig(home);
   const servers = readStatuses(home).filter((s) => !pids || pids.includes(s.pid));
+  const pointer = readJson(p.current, null);
   return {
     now,
-    installed: fs.existsSync(paths(home).current),
+    installed: fs.existsSync(p.current),
+    pointer,
     servers,
-    update: readJson(paths(home).update, null),
+    update: readJson(p.update, null),
+    updateCheck: readJson(p.updateCheck, null),
     staleAfterMs: cfg.staleAfterMs,
     rollbackNoticeMs: cfg.rollbackNoticeMs,
+    probeIntervalMs: cfg.probeIntervalMs,
+    autoUpdate: cfg.autoUpdate,
+    updateUrl: cfg.updateUrl,
   };
 }

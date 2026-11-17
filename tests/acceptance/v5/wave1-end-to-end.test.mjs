@@ -5,7 +5,7 @@
 //   - a HISTORY hit from the history store;
 //   - the flagged passage is found and carried as flagged, and the server labels it;
 //   - an explicit "nothing matched" per section for a nonsense question;
-//   - the delivered text held to the 60,000-character cap when the sections could add up to more;
+//   - the delivered text held to the 44,000-character cap when the sections could add up to more;
 //   - the same result in two separate processes;
 //   - the server prints the closing line; a pack built without history says so and stays healthy.
 import test from 'node:test';
@@ -114,7 +114,7 @@ test('Wave 1: a pack without history says so and stays healthy', { timeout: 300_
   await srv.close();
 });
 
-test('Wave 1: the delivered text is held to the 60,000-character cap', { timeout: 300_000 }, async (t) => {
+test('Wave 1: the delivered text is held to the 44,000-character cap', { timeout: 300_000 }, async (t) => {
   const ctx = setup(t, 'wave1-end-to-end');
   const tree = ctx.tree();
   const big = (tag) => Array.from({ length: 900 }, (_, i) => `w1${tag}n${i} cindermoth ledger ${tag} line ${i} of an oversized wave one fixture`).join('\n') + '\n';
@@ -127,8 +127,8 @@ test('Wave 1: the delivered text is held to the 60,000-character cap', { timeout
   const pack = built(ctx, tree, { sources: [src], recipe });
   const { r, text } = inProcess(tree, pack, 'cindermoth ledger oversized', 'full');
   const excerpts = r.sections.reduce((n, s) => n + s.items.reduce((m, i) => m + i.excerpt.length, 0), 0);
-  assert.ok(excerpts > 50000, `the fixture must fill the cap (excerpts ${excerpts})`);
-  assert.ok(text.length <= 60000, `delivered text is ${text.length} characters, over the 60000 cap`);
+  assert.ok(excerpts > 40000, `the fixture must fill the cap (excerpts ${excerpts})`);
+  assert.ok(text.length <= 44000, `delivered text is ${text.length} characters, over the 44000 cap`);
   // (3 files, not 5: the lane's depth of 100 candidate passages is filled by the first three files.)
   assert.ok(section(r, 'FILES').items.length >= 3, 'trimmed, not dropped');
 });

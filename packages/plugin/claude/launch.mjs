@@ -1,5 +1,7 @@
-// Shim launcher for Claude Code: started by the host with `node` from PATH. It loads the server of
-// the app named by the pointer file. It never runs or imports anything from the current project.
+// The search server's entry: started by the launcher (`bin/rb5 server`, `bin/rb5.cmd server`) with a
+// Node it has checked, and by the installer's own post-switch check. It loads the server of the app
+// named by the pointer file. It never runs or imports anything from the current project.
+import './runtime.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';

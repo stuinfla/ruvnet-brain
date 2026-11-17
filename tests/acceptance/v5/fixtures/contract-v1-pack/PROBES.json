@@ -1,0 +1,16 @@
+{
+  "schema": "ruvnet-brain/probes",
+  "version": 1,
+  "probes": [
+    {
+      "question": "alpha vectors embeddings",
+      "expect": "alpha-vectors/README.md",
+      "repo": "alpha-vectors"
+    },
+    {
+      "question": "beta memory agent",
+      "expect": "beta-memory/README.md",
+      "repo": "beta-memory"
+    }
+  ]
+}

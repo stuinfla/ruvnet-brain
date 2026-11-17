@@ -1,0 +1,58 @@
+name: v5-watchdog
+
+# VERSION 5 ONLY. INERT UNTIL CUTOVER (ROADMAP Part B): triggered only by workflow_dispatch. There is
+# no schedule trigger. At cutover the owner adds its daily times and adds this workflow to the paging
+# watch list in ntfy-alerts.yml (a 4.7 workflow this package does not edit); until then a red run
+# pages nobody.
+#
+# One job: read the recent v5-release-candidate runs and each night's outcome artifact (read-only),
+# and judge with packages/release/rail.mjs watchdog. RED (exit 1) when no night has ended
+# "published" or "no-change" within 48 hours: a missed nightly is reported, never silent. The first
+# line of the output is the verdict, in Eastern time.
+#
+# Actions are pinned to exact commits copied from other local repositories' workflows (no network
+# was used to write this file); re-check them against GitHub at cutover.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: v5-watchdog
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    name: judge-v5-nightly
+    if: github.repository == 'stuinfla/ruvnet-brain'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.22.3'
+      - name: Judge the nightly from run and outcome evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node packages/release/rail.mjs gather --repo "$GITHUB_REPOSITORY" --out "$RUNNER_TEMP/runs.json"
+          status=0
+          node packages/release/rail.mjs watchdog --runs "$RUNNER_TEMP/runs.json" > "$RUNNER_TEMP/watchdog.out" 2>&1 || status=$?
+          cat "$RUNNER_TEMP/watchdog.out"
+          {
+            echo '### v5-watchdog'
+            echo '```'
+            cat "$RUNNER_TEMP/watchdog.out"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"

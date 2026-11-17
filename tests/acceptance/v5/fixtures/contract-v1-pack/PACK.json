@@ -1,0 +1,52 @@
+{
+  "schema": "ruvnet-brain/pack",
+  "version": 1,
+  "generation": "g-2026-11-12-fa1c391326db",
+  "builtAt": "2026-11-12T00:00:00Z",
+  "knowledgeDate": "2026-11-12",
+  "recipeId": "r2-wave1",
+  "recipeHash": "db62c447884b7cb16a4d3b4b72ac1ac1b84a4a04ab21a8432397e11fe535a717",
+  "sources": [
+    {
+      "repo": "alpha-vectors",
+      "commit": "a1f0c9e2b7d4",
+      "date": "2026-11-10"
+    },
+    {
+      "repo": "beta-memory",
+      "commit": "b2e8d1a6c3f9",
+      "date": "2026-11-12"
+    }
+  ],
+  "counts": {
+    "units": 7,
+    "files": 6,
+    "history": 0
+  },
+  "files": [
+    {
+      "path": "PROBES.json",
+      "role": "probes",
+      "size": 325,
+      "sha256": "5f9e09e52806fea641ee22db15a1bdb269d4751e81afb4dbbfc0570e3be41613"
+    },
+    {
+      "path": "RECIPE.json",
+      "role": "recipe",
+      "size": 6168,
+      "sha256": "db62c447884b7cb16a4d3b4b72ac1ac1b84a4a04ab21a8432397e11fe535a717"
+    },
+    {
+      "path": "lexical.db",
+      "role": "lexical-db",
+      "size": 40960,
+      "sha256": "6b26dbb260e254a0bd0a588a2c4df2bd4a7e4b92ec24edc11a30524b9d83d6ab"
+    },
+    {
+      "path": "manifest.json",
+      "role": "build-manifest",
+      "size": 1423,
+      "sha256": "544458332a7e02b87ccab032c9757e4d6672f1a4b088afdc4328ccda0b6918b8"
+    }
+  ]
+}

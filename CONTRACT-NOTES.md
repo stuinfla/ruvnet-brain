@@ -1,4 +1,4 @@
-Updated: 2026-11-17 03:30:00 EST | Version 1.1.0
+Updated: 2026-11-17 05:00:31 EST | Version 1.2.0
 Created: 2026-11-17 01:30:00 EST
 
 # Version 5 walking skeleton: contract notes
@@ -199,6 +199,75 @@ as well as the formatter's (both hold the budgets since wave 1).
 `node` in the hook command can run a planted `node` when PATH has an empty entry; an absolute launcher
 is the host-shim package's fix); downloads refuse redirects; no tests yet for the minShim refusal,
 https-only, clean, or two installs at once.
+
+## Wave 2 integration (work packages 2, 3, 6 and 7)
+
+Merged on `v5/wave2-integration` from `3dff2bc7` (`contract-v1`): the server (WP 2: worker pool and
+queue, helper lanes, `read_ruvnet`, the fence, private packs by project, extra terms, the delivery
+ceiling), health (WP 3: one `assess()` for the hook, `status`, `doctor` and the owner page), the release
+rail (WP 6: seal, verify, stage, probe, promote, nightly, four inert workflows) and the host shims
+(WP 7: the absolute launcher `bin/rb5`/`rb5.cmd`, `plugin/install.mjs`).
+
+**Contract 1.1** (`CONTRACT_VERSION` `1` → `'1.1'`). Every change is additive; a pack or release built
+at `contract-v1` still opens, passes its probes, searches and formats (`wave2-contract`, against the
+committed fixture `fixtures/contract-v1-pack`, built by the contract-v1 builder and recipe).
+
+| Where | Change | Why |
+|---|---|---|
+| recipe | `query.extraTerms` (`append`/`off`; absent = off) | WP 2: the extra-terms merge is a recipe switch; a typo is refused, not read as off |
+| recipe | `lanes[].process` (`inline`/`helper`) | WP 2: a lane may run in a helper process |
+| recipe | `result.delivery` `{ maxChars ≤ 44000, maxTokens ≤ 20000 }`, both optional | WP 2 + item 1: the engine holds a result to the recipe's own delivery numbers; above the host's numbers is refused |
+| new | `schemas/gate-result.schema.json` | WP 6: what promote accepts from the answer gate (checked in `checkGate` after its specific refusals) |
+| new | `schemas/probe-receipt.schema.json` | WP 6: what the install-and-probe step writes (checked by `probe.mjs`; a receipt that fails it is never `ok`) |
+| new | `contract/delivery.mjs`: `DELIVERY`, `ceilingOf`, `estimateTokens` | one definition of the host's ceiling, used by the engine and the server (`format.mjs` re-exports them) |
+| `current.json` | `minShim` (the release's) | WP 7: the shim can see what the active app needs; no schema file exists for `current.json` |
+| `DEFAULTS` | `pageTopic: null` | WP 3: the owner page is off unless `state/config.json` names a topic |
+
+**Superseded:** architecture section 2.2 (host starts `node` from PATH, no Node path written anywhere)
+is superseded by the absolute launcher; the recorded path is re-validated on every start. The host
+runs `<home>/shim/plugin/claude/bin/rb5` by absolute path; it reads the Node recorded at install
+(`shim/node-runtime`), checks it again (absolute, executable, outside the current project, at least
+the minimum version), then falls back to `node` in absolute PATH folders only.
+
+**Engine requests applied.** `engine.read(h, repo, file)` returns a file's passages (the server's
+`read_ruvnet` no longer reaches into lane handles); the private-pack project check compares real paths
+(links resolved; only the link is read, never a project file).
+
+**Delivery cap.** Recipe `r3-wave2`: result cap 24,000 / 44,000, FILES full budget 36,000 (was 44,000),
+`delivery` 44,000 characters / 20,000 tokens. The engine trims to `result.delivery` when the recipe names
+it (`holdToDelivery`); the server's guard stays the last step for every result (a contract-v1 recipe
+names none, so wp2-08 tests the guard with such a recipe). S5 and the wave 1 cap test assert 44,000;
+their breaks now also remove the engine's delivery trim and the server's guard.
+
+**Trimmed citations.** A trimmed excerpt cites the sha256 of the text shown (the trim note excluded),
+ends with ` · trimmed N characters`, and when the server shortened an excerpt that maps line for line
+onto the file, cites the lines shown and adds `(passage lines S-E)`. An excerpt that does not map line
+for line keeps its range and says how much was trimmed (`wave2-delivery`).
+
+**Host registration is opt-in until cutover.** `install` and `update` refresh the shim (`<home>/shim`)
+after every committed install, and register hosts only with `--register-hosts`; the files registered are
+recorded in `state/hosts.json`, and `uninstall` removes exactly those entries, then the shim. `--plan`
+lists `shim/**` (and `state/hosts.json` plus each host file when the flag is given). The automatic
+update inside the server installs without refreshing the shim (the launcher path does not change).
+
+**Test guard.** Every harness imports `test-env.mjs` first: HOME, CLAUDE_CONFIG_DIR, CODEX_HOME,
+RUVNET_BRAIN5_HOME and the XDG folders point at a temporary folder, and `RUVNET_BRAIN5_TEST=1`. Under
+that marker `refuseProtected` in `plugin/install.mjs` refuses, before reading or writing anything, a host
+file or brain home under the real user's home (from the account database, not `$HOME`) or under an extra
+root named in `RUVNET_BRAIN5_PROTECTED_HOME` (it can only add roots; `wp7-08` aims its checks there, so
+its breaks write only to a temporary folder).
+
+**Reconciled between builders.** The hook file runs `runtime.mjs` then `health/hook.mjs`; S12's break
+moved with it, and S11's break targets `health/doctor.mjs` (wp3-05a/c remain). The rail accepted only a
+shim `plugin.json` carrying the app version; WP 7 ships none (the installer stamps it), so the rail now
+refuses only a different number. `wp4-05` treats a `**` plan entry as a folder replaced whole. The server
+heartbeat timer (not every status save) calls `pageCheck`. `shipped-files.json` regenerated with
+`rail.mjs shipped-files --write`. The breaks are split into `breaks.mjs`, `breaks-wp.mjs` (WP 2, 3, 6, 7)
+and `breaks-wave2.mjs`.
+
+**Tests added.** `wp7-08-test-guard` (guard, opt-in, uninstall restores host files), `wave2-delivery`,
+`wave2-contract`, `wave2-end-to-end` (build → seal → install with hosts → registered launcher → search →
+one verdict in three states with the owner page → update → rollback → uninstall), each break-tested.
 
 ## How each break is applied
 

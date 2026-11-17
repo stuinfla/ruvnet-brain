@@ -1,0 +1,22 @@
+{
+  "$id": "ruvnet-brain/gate-result",
+  "type": "object",
+  "required": ["schema", "version", "release", "pack", "passed", "score", "at"],
+  "properties": {
+    "schema": { "const": "ruvnet-brain/gate-result" },
+    "version": { "const": 1 },
+    "release": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "pack": { "type": "string", "minLength": 1 },
+    "passed": { "type": "boolean" },
+    "score": {
+      "type": "object",
+      "required": ["hit", "of"],
+      "properties": {
+        "hit": { "type": "integer", "minimum": 0 },
+        "of": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "rule": { "type": "string" },
+    "at": { "type": "string", "minLength": 1 }
+  }
+}

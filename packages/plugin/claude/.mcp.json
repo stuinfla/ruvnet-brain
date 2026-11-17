@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "ruvnet-brain": {
-      "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/launch.mjs"]
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/rb5",
+      "args": ["server"]
     }
   }
 }

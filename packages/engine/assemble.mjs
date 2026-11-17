@@ -4,6 +4,7 @@
 // excerpt of the result within `result.capChars`. A passage is sent at most once per result.
 import crypto from 'node:crypto';
 import path from 'node:path';
+import { estimateTokens } from '../contract/delivery.mjs';
 
 const sha = (t) => crypto.createHash('sha256').update(t).digest('hex');
 const perDetail = (v, detail) => (v && typeof v === 'object' ? v[detail] : v);
@@ -118,6 +119,20 @@ export function fit(items, budget) {
     it.trimmed = (it.trimmed ?? 0) + before - it.excerpt.length;
     it.hash = sha(it.excerpt);
     if (it.exact) it.lines.end = Math.max(it.lines.start, it.lines.start + it.excerpt.split('\n').length - 1);
+  }
+}
+
+/** The recipe's delivery numbers (contract 1.1), when it names them: the excerpts of one result within
+ *  maxChars in all and within maxTokens estimated over their joined text. A recipe without them (any
+ *  contract-v1 recipe) is left to the server's guard. */
+export function holdToDelivery(items, delivery) {
+  if (!delivery) return;
+  if (delivery.maxChars) fit(items, delivery.maxChars);
+  for (let i = 0; delivery.maxTokens && i < 20; i++) {
+    const text = items.map((it) => it.excerpt).join('\n');
+    const t = estimateTokens(text);
+    if (t <= delivery.maxTokens) return;
+    fit(items, Math.floor((text.length * delivery.maxTokens) / t) - items.length);
   }
 }
 

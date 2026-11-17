@@ -3,6 +3,9 @@
 // generated at test time (it signs nothing real). It drives only public entry points: the builder,
 // release and CLI programs, the server over its real stdio protocol, and the hook command string.
 // When V5_BREAK names a break from breaks.mjs for this test, that patch is applied to the copy.
+// test-env.mjs (first) points HOME and every host setting folder at a temporary folder and sets the
+// test marker, so nothing a test starts can touch a real host's settings.
+import './test-env.mjs';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -54,7 +57,8 @@ export const newKeys = () => {
 
 const childEnv = (home, extra = {}) => ({ ...process.env, NODE_NO_WARNINGS: '1', [HOME_ENV]: home, ...extra });
 
-function client(child) {
+/** A JSON-RPC client over a server process's stdio (also used to drive a registered server command). */
+export function client(child) {
   const waiting = new Map();
   let seq = 0;
   let stderr = '';
@@ -81,7 +85,9 @@ function client(child) {
   return { call, exited, stderr: () => stderr };
 }
 
-const CITE = /^\d+\. (\S+) · lines (\d+)-(\d+) · commit (\S+) · standing (\S+) · date (\S+) · sha256 ([0-9a-f]{64})$/;
+// A trimmed excerpt's citation ends with its trim note (and, when the lines shown are fewer than the
+// passage's, the passage's own lines); lines and sha256 are always those of the text shown.
+const CITE = /^\d+\. (\S+) · lines (\d+)-(\d+) · commit (\S+) · standing (\S+) · date (\S+) · sha256 ([0-9a-f]{64})(?: · trimmed \d+ characters(?: \(passage lines \d+-\d+\))?)?$/;
 
 export function parseResult(res, ms) {
   const text = res?.content?.map((c) => c.text).join('') ?? '';

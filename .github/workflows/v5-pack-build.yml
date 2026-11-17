@@ -1,0 +1,60 @@
+name: v5-pack-build
+
+# VERSION 5 ONLY. INERT UNTIL CUTOVER (ROADMAP Part B): triggered only by workflow_dispatch and by a
+# call from v5-release-candidate.yml (which itself runs only on workflow_dispatch or a push to a
+# release/5.* branch). There is no schedule trigger. Nothing here touches the 4.7 rail.
+#
+# One job: build a pack from recipe/RECIPE.json with the version 5 builder and upload it as the
+# artifact v5-pack. No secret, no write permission. Until the builder's CI fetch exists (work
+# package 5), the default sources are the committed fixture repositories, so a run proves the
+# machinery, not the corpus.
+#
+# Actions are pinned to exact commits. The commits were copied from other local repositories'
+# workflows (no network was used to write this file); re-check them against GitHub at cutover.
+on:
+  workflow_dispatch:
+    inputs:
+      sources:
+        description: Space-separated source folders (each with its .source.json)
+        required: false
+        type: string
+        default: tests/acceptance/v5/fixtures/repos/alpha-vectors tests/acceptance/v5/fixtures/repos/beta-memory tests/acceptance/v5/fixtures/repos/gamma-swarm
+  workflow_call:
+    inputs:
+      sources:
+        description: Space-separated source folders (each with its .source.json)
+        required: false
+        type: string
+        default: tests/acceptance/v5/fixtures/repos/alpha-vectors tests/acceptance/v5/fixtures/repos/beta-memory tests/acceptance/v5/fixtures/repos/gamma-swarm
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build-pack
+    if: github.repository == 'stuinfla/ruvnet-brain'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.22.3'
+      - name: Build the pack from the recipe of record
+        env:
+          SOURCES: ${{ inputs.sources }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          read -r -a dirs <<< "$SOURCES"
+          node packages/builder/build.mjs --recipe recipe/RECIPE.json --out "$RUNNER_TEMP/pack" "${dirs[@]}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: v5-pack
+          path: ${{ runner.temp }}/pack
+          if-no-files-found: error

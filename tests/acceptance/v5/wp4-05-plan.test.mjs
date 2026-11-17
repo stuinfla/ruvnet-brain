@@ -64,7 +64,12 @@ test('WP4-05 install --plan lists exactly what the install writes', { timeout: 3
     assert.equal(r.status, 0, r.stderr);
     const d = diff(before, files(snapshot(home)));
     const wrote = [...d.added, ...d.changed].sort();
-    assert.deepEqual(wrote, [...plan['will write']].sort(), `${verb} ${i + 1}: the files written must be exactly the plan's (a file outside the plan was written, or a planned one was not)`);
+    // A `**` entry is a folder the run replaces whole (the shim): its files are matched by pattern, and
+    // the first install must write each one; every other entry is one exact file.
+    const globs = plan['will write'].filter((w) => w.includes('*')).map(globRx);
+    const literal = plan['will write'].filter((w) => !w.includes('*'));
+    assert.deepEqual(wrote.filter((f) => !globs.some((rx) => rx.test(f))), [...literal].sort(), `${verb} ${i + 1}: the files written must be exactly the plan's (a file outside the plan was written, or a planned one was not)`);
+    if (!i) for (const rx of globs) assert.ok(wrote.some((f) => rx.test(f)), `${verb} ${i + 1}: the planned ${rx} was not written`);
     const removedDirs = plan['will remove'];
     for (const f of d.removed) assert.ok(removedDirs.some((x) => f.startsWith(`${x}/`)), `${verb} ${i + 1}: ${f} was removed but is not in the plan's removals`);
     for (const x of removedDirs) assert.equal(fs.existsSync(path.join(home, ...x.split('/'))), false, `${x} is planned for removal and is still there`);

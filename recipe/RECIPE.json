@@ -1,7 +1,7 @@
 {
   "schema": "ruvnet-brain/recipe",
   "version": 1,
-  "id": "r2-wave1",
+  "id": "r3-wave2",
   "units": {
     "passage": {
       "chunker": { "name": "lines", "version": 1, "maxLines": 400, "maxChars": 8000 },
@@ -86,10 +86,10 @@
     { "name": "history", "kind": "fts5-bm25", "optional": true, "role": "history-db", "weights": { "subject": 1, "body": 1 }, "depth": 100, "unit": "history item" }
   ],
   "sections": [
-    { "name": "FILES", "lane": "lexical", "maxItems": 5, "itemChars": 8000, "budgetChars": { "brief": 20000, "full": 44000 } },
+    { "name": "FILES", "lane": "lexical", "maxItems": 5, "itemChars": 8000, "budgetChars": { "brief": 20000, "full": 36000 } },
     { "name": "HISTORY", "lane": "history", "maxItems": 3, "itemChars": 2000, "budgetChars": { "brief": 4000, "full": 6000 } }
   ],
-  "result": { "capChars": { "brief": 24000, "full": 60000 }, "defaultDetail": "brief" },
+  "result": { "capChars": { "brief": 24000, "full": 44000 }, "defaultDetail": "brief", "delivery": { "maxChars": 44000, "maxTokens": 20000 } },
   "deadlineMs": 10000,
   "probes": { "perRepo": 1, "termsPerProbe": 3, "minTermLength": 4 }
 }

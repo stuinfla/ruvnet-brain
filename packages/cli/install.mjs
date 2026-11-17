@@ -11,7 +11,7 @@ import { check } from '../contract/validate.mjs';
 import { trustedPublicKey, verify } from '../contract/signature.mjs';
 import { paths, readConfig, readJson, writeJsonAtomic } from '../contract/home.mjs';
 import { HOME_ENV, SHIM_VERSION } from '../contract/constants.mjs';
-import { verdict } from '../contract/verdict.mjs';
+import { assess } from '../health/assess.mjs';
 import { readEvidence } from '../health/status.mjs';
 import { startServer } from './mcp-client.mjs';
 import { Refused, copyVerified, matches, openSource, within } from './source.mjs';
@@ -42,7 +42,7 @@ async function probeThroughServer(home, appDir, packDir) {
     const res = await srv.call('tools/call', { name: 'search_ruvnet', arguments: { query: probe.question } }, 60_000);
     const text = res?.content?.[0]?.text ?? '';
     const found = !res?.isError && text.split('\n')[1] === 'MODE · normal' && text.includes(`. ${probe.expect} · lines`);
-    const v = verdict({ ...readEvidence(home, { pids: [srv.child.pid] }), update: null });
+    const v = assess({ ...readEvidence(home, { pids: [srv.child.pid] }), update: null });
     if (!found) return { ok: false, verdict: v, reason: `the real server did not return ${probe.expect} for its probe` };
     return { ok: v.state === 'ok', verdict: v, reason: v.reason };
   } catch (e) {
@@ -127,7 +127,7 @@ export async function makePlan(home, release, src = null) {
   return { home, release, cur, to, parts, write, recordSource, temporary, temporaryRx, remove: pruneTargets(home, next).filter((r) => !/\.partial$/.test(r)), need, free, next };
 }
 
-export function printPlan(plan, src, out = console.log) {
+export function printPlan(plan, src, out = console.log, hostFiles = []) {
   const r = plan.release;
   const mb = (n) => `${(n / 1e6).toFixed(1)} MB`;
   out(`plan: ${plan.cur ? 'update' : 'install'} to release ${r.releaseNumber}: app ${plan.to.app} (${r.app.files.length} files), pack ${plan.to.pack} (${r.pack.files.length} files)`);
@@ -140,7 +140,11 @@ export function printPlan(plan, src, out = console.log) {
   for (const t of plan.temporary) out(`  ${t}`);
   out('will remove:');
   for (const x of plan.remove) out(`  ${x}`);
-  out('outside the brain home: nothing (no host registration, no scheduled job, no settings file)');
+  if (!hostFiles.length) out('outside the brain home: nothing (no host registration, no scheduled job, no settings file)');
+  else {
+    out('outside the brain home (host registration, --register-hosts):');
+    for (const f of hostFiles) out(`  ${f}`);
+  }
 }
 
 function guard(plan) {
@@ -245,7 +249,7 @@ export async function install({ home, from, planOnly = false, log = () => {} }) 
       throw new Refused(`the new pack failed its probes before the switch (${reason}); nothing was changed`);
     }
 
-    const next = { schema: 'ruvnet-brain/current', version: 1, app: to.app, pack: to.pack, releaseNumber: release.releaseNumber, previous: earlier(cur, to), switchedAt: new Date().toISOString() };
+    const next = { schema: 'ruvnet-brain/current', version: 1, app: to.app, pack: to.pack, releaseNumber: release.releaseNumber, minShim: release.minShim, previous: earlier(cur, to), switchedAt: new Date().toISOString() };
     step(j, 'switch');
     writeJsonAtomic(ok(p.current), next);
     step(j, 'post-probe', 'switched');

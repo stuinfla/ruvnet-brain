@@ -1,6 +1,7 @@
 // S5 size cap: a fixture with very large files (made at test time, about 150,000 characters of
 // matching text, one file duplicated in a second repository) is searched; the delivered result is
-// at or under the cap for brief and full, and no text appears twice.
+// at or under the cap for brief and full, and no text appears twice. Since wave 2 the full cap is the
+// host's delivery ceiling, 44,000 characters (the recipe's FILES budget for full is 36,000).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -45,7 +46,7 @@ test('S5 the result is capped and sent once', { timeout: 240_000 }, async (t) =>
   const srv = await ctx.server(tree, home);
 
   const full = await srv.search('sprawlquartz shard oversized', { detail: 'full' });
-  assertDelivered(full, 60_000, 56_000);
+  assertDelivered(full, 44_000, 38_000);
   assert.match(full.text, /\[trimmed \d+ characters\]/);
   const brief = await srv.search('sprawlquartz shard oversized');
   assertDelivered(brief, 24_000, 22_000);

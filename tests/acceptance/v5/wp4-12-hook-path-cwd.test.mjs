@@ -12,7 +12,7 @@ import { setup } from './helpers.mjs';
 
 test('WP4-12 the prompt hook never runs a node planted in the project, even with an empty PATH entry', {
   skip: process.platform === 'win32' ? 'POSIX form only; the cmd.exe form needs a Windows run' : false,
-  todo: 'WP7: the hook command starts a bare `node`, found through the current folder when PATH has an empty entry',
+  todo: false, // closed by WP7: the hook's first word is the absolute launcher, which skips empty, relative and project PATH entries
 }, async (t) => {
   const ctx = setup(t, 'wp4-12');
   const tree = ctx.tree();

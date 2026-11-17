@@ -1,0 +1,100 @@
+#!/bin/sh
+# RuvNet Brain 5 launcher (POSIX). The host runs it by its absolute path: `rb5 hook` (prompt hook) or
+# `rb5 server` (the search server). It starts Node from an absolute path only: first the runtime
+# recorded at install (<brain home>/shim/node-runtime), checked again now, then the first `node` in an
+# absolute PATH folder. Empty and relative PATH entries (they mean "the current folder") and anything
+# inside the current project are never used. With no usable Node it prints the one DOWN line and
+# exits 0. Only shell built-ins are used, so nothing is looked up through the caller's PATH.
+DOWN="[RuvNet Brain] DOWN: Node could not run. Search is unavailable. Fix: run 'node -v' in a terminal; reinstall Node if it fails."
+MODE=${1:-hook}
+down() {
+  if [ "$MODE" = server ]; then printf '%s\n' "$DOWN" >&2; exit 1; fi
+  printf '%s\n' "$DOWN"
+  exit 0
+}
+case $MODE in hook | server) ;; *) down ;; esac
+case $0 in /*) ;; *) down ;; esac
+BIN=${0%/*}
+PLUGIN=${BIN%/bin}
+SHIM=${PLUGIN%/plugin/claude}
+
+# Installed under <home>/shim: the brain home is the folder above, and the recorded runtime is read.
+REC=
+if [ "$SHIM" != "$PLUGIN" ] && [ -f "$SHIM/node-runtime" ]; then
+  IFS= read -r REC < "$SHIM/node-runtime"
+  RUVNET_BRAIN5_HOME=${SHIM%/*}
+  export RUVNET_BRAIN5_HOME
+fi
+
+# The current project, as given and as its real path; the home and temporary folders, both ways.
+P1=$PWD
+P2=$(pwd -P 2>/dev/null)
+P3=${CLAUDE_PROJECT_DIR:-}
+P4=
+[ -n "$P3" ] && P4=$(cd -P -- "$P3" 2>/dev/null && pwd -P)
+H1=${HOME:-}
+H2=
+[ -n "$H1" ] && H2=$(cd -P -- "$H1" 2>/dev/null && pwd -P)
+T1=${TMPDIR:-${TMP:-${TEMP:-/tmp}}}
+T2=$(cd -P -- "$T1" 2>/dev/null && pwd -P)
+
+# within DIR PROJECT: DIR is PROJECT or below it. A "project" that is the home or temporary folder, or
+# above one, counts only for itself: a Node installed under the home folder stays usable in a session
+# opened there.
+within() {
+  w_d=${1%/}
+  w_p=${2%/}
+  [ -n "$w_p" ] || return 1
+  [ "$w_d" = "$w_p" ] && return 0
+  for w_h in "$H1" "$H2" "$T1" "$T2"; do
+    [ -n "$w_h" ] || continue
+    case ${w_h%/}/ in "$w_p"/*) return 1 ;; esac
+  done
+  case $w_d/ in "$w_p"/*) return 0 ;; esac
+  return 1
+}
+
+# usable FILE: an absolute path to an executable file outside the current project.
+usable() {
+  u_c=$1
+  case $u_c in /*) ;; *) return 1 ;; esac
+  [ -f "$u_c" ] && [ -x "$u_c" ] || return 1
+  u_d=${u_c%/*}
+  [ -n "$u_d" ] || u_d=/
+  u_r=$(cd -P -- "$u_d" 2>/dev/null && pwd -P) || return 1
+  for u_p in "$P1" "$P2" "$P3" "$P4"; do
+    [ -n "$u_p" ] || continue
+    within "$u_d" "$u_p" && return 1
+    within "$u_r" "$u_p" && return 1
+  done
+  return 0
+}
+
+# run NODE: returns only when that Node cannot run (or is older than the minimum: runtime.mjs exits 3).
+run() {
+  if [ "$MODE" = server ]; then
+    "$1" "$PLUGIN/runtime.mjs" < /dev/null > /dev/null 2>&1 || return 1
+    exec "$1" "$PLUGIN/launch.mjs"
+  fi
+  r_out=$("$1" "$PLUGIN/health-line.mjs") || return 1
+  [ -n "$r_out" ] || return 1
+  printf '%s\n' "$r_out"
+  exit 0
+}
+
+if [ -n "$REC" ] && usable "$REC"; then run "$REC"; fi
+
+FOUND=
+IFS=:
+set -f
+for e in ${PATH:-}; do
+  case $e in /*) ;; *) continue ;; esac
+  if usable "$e/node"; then
+    FOUND=$e/node
+    break
+  fi
+done
+unset IFS
+set +f
+if [ -n "$FOUND" ] && [ "$FOUND" != "$REC" ]; then run "$FOUND"; fi
+down

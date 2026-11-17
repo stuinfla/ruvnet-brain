@@ -41,9 +41,10 @@ export function uninstall(home, { purgePrivate = false, out = console.log } = {}
     out(`uninstall refused: ${e.message}`);
     return { left: [home], kept: false, refused: true };
   }
-  const plan = [p.current, p.app, p.packs, p.state, ...(purgePrivate ? [p.private] : [])].filter((x) => fs.existsSync(x));
+  // The host entries an install made are removed by the caller first (cli/hosts.mjs), so the shim
+  // they name is removed only once nothing points at it.
+  const plan = [p.current, p.app, p.packs, p.state, path.join(home, 'shim'), ...(purgePrivate ? [p.private] : [])].filter((x) => fs.existsSync(x));
   out(plan.length ? `will remove:\n${plan.map((x) => `  ${x}`).join('\n')}` : 'nothing to remove');
-  out('host registrations: none are made by this version, so none are removed');
   const failed = [];
   for (const x of plan) {
     try {

@@ -6,16 +6,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { MIN_NODE } from '../contract/constants.mjs';
 import { brainHome, paths, readConfig, readJson, readPointer, writeJsonAtomic } from '../contract/home.mjs';
-import { verdict } from '../contract/verdict.mjs';
-import { readEvidence } from '../health/status.mjs';
-import { renderLine } from '../health/line.mjs';
+import { currentLine, renderLine } from '../health/line.mjs';
+import { doctor } from '../health/doctor.mjs';
+import { afterInstall, hostPlan, HOSTS_FLAG, SHIM_PLAN, unregisterRecorded } from './hosts.mjs';
 import { clean, install, printPlan, Refused } from './install.mjs';
 import { isUrl } from './source.mjs';
 import { uninstall } from './uninstall.mjs';
 
 const USAGE = `usage:
-  ruvnet-brain install --from <release folder or https address> [--plan] [--repair]
-  ruvnet-brain update [--from <release folder or https address>] [--plan]
+  ruvnet-brain install --from <release folder or https address> [--plan] [--repair] [--register-hosts]
+  ruvnet-brain update [--from <release folder or https address>] [--plan] [--register-hosts]
   ruvnet-brain doctor
   ruvnet-brain status
   ruvnet-brain clean
@@ -42,19 +42,6 @@ const flag = (name) => {
 const home = brainHome();
 const p = paths(home);
 
-async function doctor() {
-  const ev = readEvidence(home);
-  const v = verdict(ev);
-  console.log(renderLine(v));
-  for (const s of ev.servers.filter((x) => x.alive)) {
-    console.log(`server ${s.pid}: app ${s.app}, pack ${s.pack}, heartbeat ${Math.round((ev.now - s.heartbeatAt) / 1000)} s ago`);
-    if (s.probe && !s.probe.ok && s.probe.error) console.log(`  self-test: ${s.probe.error}`);
-    for (const r of s.probe?.results ?? []) console.log(`  probe ${r.pass ? 'pass' : 'FAIL'}  "${r.question}" -> expected ${r.expect}, got ${r.top ?? 'nothing'}`);
-  }
-  if (fs.existsSync(path.join(p.state, 'journal.json'))) console.log('an install or update was interrupted; the next install, update or clean puts it right');
-  process.exitCode = v.state === 'ok' ? 0 : 1;
-}
-
 async function installOrUpdate() {
   let from = flag('--from');
   if (from && !isUrl(from)) from = path.resolve(from);
@@ -71,13 +58,24 @@ async function installOrUpdate() {
     return;
   }
   try {
+    const register = args.includes(HOSTS_FLAG);
     if (args.includes('--plan')) {
       const { plan, src } = await install({ home, from, planOnly: true });
-      printPlan(plan, src);
+      plan.write.push(...SHIM_PLAN.write, ...(register ? ['state/hosts.json'] : []));
+      plan.temporary.push(...SHIM_PLAN.temporary);
+      printPlan(plan, src, console.log, await hostPlan(register));
       return;
     }
     const r = await install({ home, from, log: (m) => console.log(m) });
     console.log(`installed: app ${r.current.app}, pack ${r.current.pack}`);
+    // After the commit: the shim, then (only when asked) the hosts. A refused registration leaves the
+    // installed version in place and says so.
+    try {
+      await afterInstall({ home, register, log: (m) => console.log(m) });
+    } catch (e) {
+      console.error(`installed, but the shim or host registration was refused: ${e.message}`);
+      process.exitCode = 1;
+    }
     console.log(renderLine(r.verdict));
   } catch (e) {
     console.error(`${cmd} refused: ${e instanceof Refused ? e.message : e.stack}`);
@@ -113,11 +111,11 @@ switch (cmd) {
     await installOrUpdate();
     break;
   case 'doctor':
-    await doctor();
+    process.exitCode = doctor(home);
     break;
   case 'status': {
     const cur = readPointer(home);
-    console.log(renderLine(verdict(readEvidence(home))));
+    console.log(currentLine(home).line);
     console.log(cur ? `app ${cur.app} · pack ${cur.pack} · release ${cur.releaseNumber}` : 'not installed');
     break;
   }
@@ -132,6 +130,13 @@ switch (cmd) {
     }
     break;
   case 'uninstall': {
+    try {
+      if (fs.existsSync(home)) await unregisterRecorded(home, (m) => console.log(m));
+    } catch (e) {
+      console.error(`uninstall refused: the host entries could not be removed (${e.message}); nothing was removed`);
+      process.exitCode = 1;
+      break;
+    }
     const r = uninstall(home, { purgePrivate: args.includes('--purge-private') });
     if (r.left.length) process.exitCode = 1;
     break;

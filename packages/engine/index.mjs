@@ -10,7 +10,7 @@ import { check } from '../contract/validate.mjs';
 import { SUPPORTED_RECIPE_VERSIONS } from '../contract/constants.mjs';
 import { sha256 } from '../contract/home.mjs';
 import { checkAnalyser } from './analyse.mjs';
-import { AUTHORITY_ORDER, fit, publicItem, section } from './assemble.mjs';
+import { AUTHORITY_ORDER, fit, holdToDelivery, publicItem, section } from './assemble.mjs';
 import * as fts5 from './lanes/lexical.mjs';
 
 const KINDS = { 'fts5-bm25': fts5 };
@@ -66,9 +66,13 @@ export function close(h) {
   for (const { impl, lane } of Object.values(h.handles)) impl.close(lane);
 }
 
-/** Normalised absolute folder, for comparing projects. */
+/** Normalised absolute folder, for comparing projects: symbolic links resolved where the folder
+ *  exists (the only thing read outside the pack is the link, never a file in the project). */
 function folder(p) {
   let s = path.resolve(String(p));
+  try {
+    s = fs.realpathSync(s);
+  } catch {}
   if (s.length > 1 && s.endsWith(path.sep)) s = s.slice(0, -1);
   return process.platform === 'win32' ? s.toLowerCase() : s;
 }
@@ -109,6 +113,7 @@ function run(h, query, options, scoped) {
     return { name: sec.name, items, empty: items.length ? null : { reason: emptyReason ?? 'every match was already sent in an earlier section' } };
   });
   fit(sections.flatMap((s) => s.items), recipe.result.capChars[detail]);
+  holdToDelivery(sections.flatMap((s) => s.items), recipe.result.delivery);
   return {
     schema: 'ruvnet-brain/result',
     version: 1,
@@ -122,6 +127,17 @@ function run(h, query, options, scoped) {
     closing: AUTHORITY_ORDER,
     meta: { lanesRun, ms: Date.now() - t0 },
   };
+}
+
+/** The passages of one file of the pack, in order, from the first lane that holds it (read_ruvnet's
+ *  source); [] when the pack has no such file. A private pack's project rule is the caller's to apply. */
+export function read(h, repo, file) {
+  for (const spec of h.recipe.lanes) {
+    const x = h.handles[spec.name];
+    const rows = x ? x.impl.fileRows(x.lane, repo, file) : [];
+    if (rows.length) return rows;
+  }
+  return [];
 }
 
 /** options: { detail: 'brief' | 'full', lanes?: [names], project?: folder the question comes from } */

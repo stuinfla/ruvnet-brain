@@ -1,0 +1,15 @@
+{
+  "schema": "ruvnet-brain/rail",
+  "version": 1,
+  "requiredOs": ["linux", "macos", "windows"],
+  "signingKeyEnv": "RUVNET_BRAIN5_SIGNING_KEY",
+  "trustedKey": "packages/contract/keys/release-public.pem is added by the lead at ROADMAP A1 step 0.4; until it exists nothing can be sealed, promoted or installed",
+  "tagPrefix": "brain5-",
+  "forbiddenTags": ["^v[0-9]+\\.[0-9]+\\.[0-9]+$", "^corpus-sha256-"],
+  "candidateWorkflow": "v5-release-candidate.yml",
+  "outcomeArtifact": "v5-night-outcome",
+  "goodOutcomes": ["published", "no-change"],
+  "watchdogWindowHours": 48,
+  "nightHours": 20,
+  "killSwitch": { "variable": "V5_NIGHTLY", "armedValue": "on" }
+}
