@@ -92,6 +92,7 @@ jobs:
           name: v5-channel
           path: ${{ runner.temp }}/channel
           if-no-files-found: error
+          include-hidden-files: true
 
   probe:
     name: install-and-probe
@@ -128,6 +129,7 @@ jobs:
           name: v5-receipt-${{ runner.os }}
           path: ${{ runner.temp }}/receipt
           if-no-files-found: error
+          include-hidden-files: true
 
   gate:
     name: answer-gate
@@ -169,6 +171,7 @@ jobs:
           name: v5-gate
           path: ${{ runner.temp }}/gate
           if-no-files-found: error
+          include-hidden-files: true
 
   promote:
     name: promote-or-restore
@@ -211,3 +214,4 @@ jobs:
           name: v5-night-outcome
           path: ${{ runner.temp }}/outcome
           if-no-files-found: error
+          include-hidden-files: true

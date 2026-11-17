@@ -58,3 +58,4 @@ jobs:
           name: v5-pack
           path: ${{ runner.temp }}/pack
           if-no-files-found: error
+          include-hidden-files: true
