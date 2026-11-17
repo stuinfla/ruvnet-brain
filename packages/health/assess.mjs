@@ -14,6 +14,9 @@ export const FIX = {
   pending: 'wait one minute',
   'no-probes': 'ruvnet-brain install --repair',
   overdue: 'restart the session',
+  incomplete: 'restart the session',
+  // The server has not yet switched to the installed release (it does so within one probe interval).
+  generation: 'wait one minute',
   'probe-failed': 'ruvnet-brain install --repair',
   lane: 'ruvnet-brain install --repair',
   'safe-mode': 'restart the session',
@@ -34,8 +37,10 @@ export function causeOf(s, ev) {
   if (!s.heartbeatAt || now - s.heartbeatAt > ev.staleAfterMs) return 'heartbeat';
   if (!s.probe) return 'pending';
   if (!s.probe.ok) return 'probe-failed';
-  if (!s.probe.results?.length) return 'no-probes';
+  if (!Array.isArray(s.probe.results) || !s.probe.results.length) return 'no-probes';
+  if (!probeComplete(s.probe, now)) return 'incomplete';
   if (now - s.probe.at > overdueAfter(ev)) return 'overdue';
+  if (ev.pointer && (s.app !== ev.pointer.app || s.pack !== ev.pointer.pack)) return 'generation';
   if ((s.lanes || []).some((l) => !l.available)) return 'lane';
   if (s.lastSearch && !s.lastSearch.ok) return 'safe-mode';
   return null;
@@ -43,9 +48,18 @@ export function causeOf(s, ev) {
 
 export const overdueAfter = (ev) => 2 * ev.probeIntervalMs + 60_000;
 
+/** A passed self-test record that proves a run (review F14): a real time, not in the future, and
+ *  every result a probe that named its file and passed. `{ ok: true, results: [{}] }` is not one. */
+export const probeComplete = (p, now) => Number.isFinite(p.at) && p.at > 0 && p.at <= now + 60_000
+  && p.results.every((r) => r && r.pass === true && typeof r.expect === 'string' && r.expect.length > 0);
+
 function server(s, ev) {
   const cause = causeOf(s, ev);
   if (cause === 'no-probes') return { state: 'unknown', label: 'UNKNOWN', since: s.probe.at, reason: 'the self-test ran no probes', fix: FIX[cause], cause };
+  if (cause === 'incomplete') return { state: 'unknown', label: 'UNKNOWN', since: null, reason: 'the self-test record is incomplete (no valid time, or a result that did not pass)', fix: FIX[cause], cause };
+  if (cause === 'generation') {
+    return { state: 'unknown', label: 'UNKNOWN', since: s.probe.at, reason: `the server is on app ${s.app} pack ${s.pack}, not the installed app ${ev.pointer.app} pack ${ev.pointer.pack}`, fix: FIX[cause], cause };
+  }
   if (cause === 'overdue') {
     return { state: 'unknown', label: 'UNKNOWN', since: s.probe.at, reason: `the self-test has not run for ${ago(ev.now - s.probe.at)}`, fix: FIX[cause], cause };
   }

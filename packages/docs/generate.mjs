@@ -76,7 +76,7 @@ async function healthRows() {
   const { assess, FIX } = await load('packages', 'health', 'assess.mjs');
   const { renderLine } = await load('packages', 'health', 'line.mjs');
   const now = Date.UTC(2026, 0, 1);
-  const s = { pid: 1, alive: true, startedAt: now - 5000, heartbeatAt: now - 1000, knowledgeDate: '2026-11-16', lanes: [{ name: 'lexical', available: true }], probe: { ok: true, at: now - 2000, results: [{ pass: true }] }, lastSearch: null };
+  const s = { pid: 1, alive: true, startedAt: now - 5000, heartbeatAt: now - 1000, knowledgeDate: '2026-11-16', lanes: [{ name: 'lexical', available: true }], probe: { ok: true, at: now - 2000, results: [{ pass: true, expect: 'alpha-vectors/README.md' }] }, lastSearch: null, app: '5.0.0', pack: 'g1' };
   const ev = (servers, extra = {}) => ({ now, installed: true, servers, staleAfterMs: 180_000, probeIntervalMs: 30 * 60_000, ...extra });
   const cases = [
     ['ok', ev([s])],
@@ -86,7 +86,9 @@ async function healthRows() {
     ['pending', ev([{ ...s, probe: null }])],
     ['probe-failed', ev([{ ...s, probe: { ok: false, at: now - 2000, error: 'a probe did not find its file' } }])],
     ['no-probes', ev([{ ...s, probe: { ok: true, at: now - 2000, results: [] } }])],
+    ['incomplete', ev([{ ...s, probe: { ok: true, results: [{}] } }])],
     ['overdue', ev([{ ...s, probe: { ...s.probe, at: now - 2 * 3_600_000 } }])],
+    ['generation', ev([s], { pointer: { app: '5.0.1', pack: 'g2' } })],
     ['lane', ev([{ ...s, lanes: [{ name: 'history', available: false }] }])],
     ['safe-mode', ev([{ ...s, lastSearch: { ok: false, at: now - 1000, reason: 'the deadline passed' } }])],
     ['rolled-back', ev([s], { update: { rolledBack: true, at: now - 1000, to: { app: '5.0.2' } } })],

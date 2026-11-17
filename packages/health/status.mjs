@@ -29,8 +29,9 @@ export function readStatuses(home) {
     names = fs.readdirSync(paths(home).status).filter((n) => /^\d+\.json$/.test(n));
   } catch {}
   return names
-    .map((n) => readJson(path.join(paths(home).status, n), null))
-    .filter((s) => s && Number.isInteger(s.pid))
+    .map((n) => [n, readJson(path.join(paths(home).status, n), null)])
+    .filter(([n, s]) => s && s.schema === 'ruvnet-brain/status' && s.version === 1 && Number.isInteger(s.pid) && n === `${s.pid}.json`)
+    .map(([, s]) => s)
     .map((s) => ({ ...s, alive: isAlive(s.pid) }));
 }
 
