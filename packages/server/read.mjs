@@ -46,11 +46,17 @@ function rebuild(rows) {
 export function read(engine, handle, privates, m) {
   const why = outside(m.ref);
   if (why) throw refuse(why);
-  const [, ref, a, b] = REF.exec(m.ref);
+  const [, ref0, a, b] = REF.exec(m.ref);
+  // private:<name>/<repo>/<path> reads that private pack only (review F17); a plain ref reads the
+  // installed pack first, then the private packs.
+  const own = /^private:([^/]+)\/(.+)$/.exec(ref0);
+  const ref = own ? own[2] : ref0;
   const cut = ref.indexOf('/');
+  if (cut < 0) throw refuse(`${ref0} is not a path inside the pack`);
   const repo = ref.slice(0, cut);
   const file = ref.slice(cut + 1);
-  const packs = [handle, ...(m.privateDir ? openPrivates(engine, privates, m.privateDir).map((p) => p.h) : [])];
+  const privs = m.privateDir ? openPrivates(engine, privates, m.privateDir) : [];
+  const packs = own ? privs.filter((p) => p.name === own[1]).map((p) => p.h) : [handle, ...privs.map((p) => p.h)];
   for (const h of packs.filter((x) => inScope(x.pack, m.project))) {
     const rows = engine.read(h, repo, file);
     if (!rows.length) continue;
@@ -61,7 +67,7 @@ export function read(engine, handle, privates, m) {
     if (start > last || start < 1 || end < start) throw refuse(`${repo}/${file} has lines ${first}-${last}; asked for ${a ?? first}-${b ?? last}`);
     const src = h.pack.sources.find((s) => s.repo === repo);
     return {
-      repo,
+      repo: own ? `private:${own[1]}/${repo}` : repo,
       path: file,
       first,
       last,
@@ -75,5 +81,5 @@ export function read(engine, handle, privates, m) {
       generation: h.pack.generation,
     };
   }
-  throw refuse(`${repo}/${file} is not a file in this pack`);
+  throw refuse(`${ref0} is not a file in this pack`);
 }

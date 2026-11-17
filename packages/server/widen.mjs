@@ -65,9 +65,18 @@ function addPrivate(engine, handle, privates, m, result) {
     for (const sec of r.sections) {
       const target = result.sections.find((s) => s.name === sec.name);
       if (!target || !sec.items.length) continue;
-      target.items.push(...sec.items);
+      // Cited with its pack, never mistaken for a public file (review F17): private:<name>/<repo>/<path>.
+      target.items.push(...sec.items.map((it) => ({ ...it, repo: `private:${p.name}/${it.repo}` })));
       target.empty = null;
     }
+  }
+  // Merged under the section's rules (review F17): ranked by score (bm25, lower first), one item per
+  // file, at most maxItems.
+  for (const sec of result.sections) {
+    const max = handle.recipe.sections.find((s) => s.name === sec.name)?.maxItems ?? sec.items.length;
+    const rank = (it) => (Number.isFinite(it.score) ? it.score : Infinity);
+    const files = new Set();
+    sec.items = sec.items.map((it, i) => [it, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(([it]) => it).filter((it) => !files.has(`${it.repo}/${it.path}`) && files.add(`${it.repo}/${it.path}`)).slice(0, max);
   }
 }
 

@@ -133,6 +133,9 @@ export function format(result, recipe, notes = []) {
   }));
   const render = () => renderText(result, sections, marker, notes);
   trimToBudgets(sections, (s) => renderSection(s, marker), render, cap);
+  // The same shown text is sent once, judged after trimming, on the hash its citation shows (review F17).
+  const shown = new Set();
+  for (const s of sections) s.items = s.items.filter((it) => { const t = it.excerpt.replace(TRIM_NOTE, ''); const h = t === it.base ? it.hash : sha(t); return !t || (!shown.has(h) && shown.add(h)); });
   // The ceiling is checked with the header's trim note in place (at its widest), so adding it cannot
   // push the text back over.
   let shed = null;
