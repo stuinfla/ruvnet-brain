@@ -1,6 +1,6 @@
 // The builder's cache folder (CI only; never shipped): extracted rows by key, and each source's last
 // good snapshot for the carry rule.
-//   <cache>/units/<key>.json        extract() result; key = sha256(recipe hash, source content hash, history hash)
+//   <cache>/units/<key>.json        extract() result; key = sha256(recipe hash, source content hash, history hash, EXTRACT_VERSION)
 //   <cache>/sources/<repo>.json     the last snapshot read in full: { meta, docs, skipped, truncated, contentHash, history }
 //   <cache>/build-report.json       which sources were rebuilt, reused and carried by the last build
 // Without a cache folder every source is rebuilt and nothing can be carried.

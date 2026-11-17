@@ -67,11 +67,11 @@ for (const file of files) {
     console.log(rows.at(-1));
   }
 }
-// Work-package and integration tests: wp<N>-*.test.mjs and wave<N>-*.test.mjs, id = file name without
+// Work-package and integration tests: wp<N>-*, wave<N>-* and integ-*.test.mjs, id = file name without
 // .test.mjs; an argument such as `wp1`, `wp5` or `wave1` selects all of that group. A test that skips
 // (its corpus is not on this machine) is shown as SKIPPED and, when nothing in it ran, its breaks are
 // not run, so a skip never counts as a red break.
-for (const file of fs.readdirSync(DIR).filter((f) => /^(wp\d+|wave\d+)-.*\.test\.mjs$/.test(f)).sort()) {
+for (const file of fs.readdirSync(DIR).filter((f) => /^(wp\d+|wave\d+|integ)-.*\.test\.mjs$/.test(f)).sort()) {
   const id = file.replace(/\.test\.mjs$/, '');
   if (only.length && !only.some((o) => id === o || id.startsWith(`${o}-`))) continue;
   await calm();

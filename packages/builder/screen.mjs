@@ -25,3 +25,19 @@ export function hostileRule(text, rules) {
   for (const { rule, re } of rules) if (re.test(text)) return rule;
   return null;
 }
+
+/** Every hostile match in a whole text as { rule, from, to } line numbers (1-based), so a phrase that a
+ *  later split would cut in two is still found, and every unit overlapping it can carry the flag
+ *  (review F18). */
+export function hostileSpans(text, rules) {
+  const spans = [];
+  for (const { rule, re } of rules) {
+    const g = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`);
+    for (const m of text.matchAll(g)) {
+      const from = text.slice(0, m.index).split('\n').length;
+      spans.push({ rule, from, to: from + m[0].split('\n').length - 1 });
+      if (!m[0].length) break;
+    }
+  }
+  return spans;
+}

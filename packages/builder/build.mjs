@@ -16,7 +16,7 @@ import * as engine from '../engine/index.mjs';
 import { assemble } from './assemble.mjs';
 import { openCache } from './cache.mjs';
 import { Unreadable, readSource } from './discover.mjs';
-import { extract } from './extract.mjs';
+import { EXTRACT_VERSION, extract } from './extract.mjs';
 import { readHistory, recordedGet } from './history.mjs';
 import { probeIndex } from './probes.mjs';
 import { settings } from './settings.mjs';
@@ -98,7 +98,7 @@ export async function build({ recipePath, sources, outDir, cacheDir = null }) {
         carried = { reason: u.reason };
       }
       const historyHash = snap.history ? sha256(JSON.stringify(snap.history)) : '';
-      const key = sha256(`${recipeHash}\n${snap.contentHash}\n${historyHash}`);
+      const key = sha256(`${recipeHash}\n${snap.contentHash}\n${historyHash}\nextract ${EXTRACT_VERSION}`);
       let out = cache.units(key);
       if (out) report.reused.push(snap.meta.repo);
       else {
@@ -130,6 +130,9 @@ export async function build({ recipePath, sources, outDir, cacheDir = null }) {
       return probes.make((repo, p) => q.all(repo, p));
     });
     if (!made.length) throw new Error('no probe could be made from these sources');
+    // Every repository in the pack is covered by a probe, or the build is refused (review F15).
+    const bare = parts.map((p) => p.source.repo).filter((repo) => !made.some((p) => p.repo === repo));
+    if (bare.length) throw new Error(`no probe could be made for ${bare.join(', ')}: each repository needs a file with words found in no other file`);
     fs.writeFileSync(path.join(stage, 'PROBES.json'), `${JSON.stringify({ schema: 'ruvnet-brain/probes', version: 1, probes: made }, null, 2)}\n`);
     const manifest = manifestOf(parts, { recipe, recipeHash, s });
     fs.writeFileSync(path.join(stage, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);

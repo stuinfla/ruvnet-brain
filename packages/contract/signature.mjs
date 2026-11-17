@@ -29,6 +29,8 @@ export function verify(release, publicKeyPem) {
   const { signature, ...body } = release || {};
   if (!signature || signature.alg !== 'ed25519' || typeof signature.value !== 'string') return false;
   try {
+    // The key id the signature names is the trusted key's (review F24).
+    if (signature.keyId !== keyId(publicKeyPem)) return false;
     return crypto.verify(null, Buffer.from(canonical(body)), crypto.createPublicKey(publicKeyPem), Buffer.from(signature.value, 'base64'));
   } catch {
     return false;

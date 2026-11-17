@@ -8,6 +8,7 @@ import { addWave2Breaks } from './breaks-wave2.mjs';
 import { addWave3Breaks } from './breaks-wave3.mjs';
 import { addWave4Breaks } from './breaks-wave4.mjs';
 import { addReviewBreaks } from './breaks-review.mjs';
+import { addIntegrationBreaks } from './breaks-integration.mjs';
 
 // The wp1-no-question-strings break plants one development question's wording in the engine. The
 // wording is read from the question set outside the repository when the break is applied (that test
@@ -206,12 +207,12 @@ Object.assign(BREAKS, {
   },
   'wp5-key-no-content': {
     test: 'wp5-incremental', what: 'the cache key drops the source content hash',
-    patches: [{ file: 'packages/builder/build.mjs', find: 'sha256(`${recipeHash}\\n${snap.contentHash}\\n${historyHash}`)', replace: 'sha256(`${recipeHash}\\n${snap.meta.repo}\\n${historyHash}`)' }],
+    patches: [{ file: 'packages/builder/build.mjs', find: 'sha256(`${recipeHash}\\n${snap.contentHash}\\n${historyHash}\\nextract ${EXTRACT_VERSION}`)', replace: 'sha256(`${recipeHash}\\n${snap.meta.repo}\\n${historyHash}\\nextract ${EXTRACT_VERSION}`)' }],
     expect: /only the changed repository is rebuilt/,
   },
   'wp5-key-no-recipe': {
     test: 'wp5-incremental', what: 'the cache key drops the recipe hash',
-    patches: [{ file: 'packages/builder/build.mjs', find: 'sha256(`${recipeHash}\\n${snap.contentHash}\\n${historyHash}`)', replace: 'sha256(`${snap.contentHash}\\n${historyHash}`)' }],
+    patches: [{ file: 'packages/builder/build.mjs', find: 'sha256(`${recipeHash}\\n${snap.contentHash}\\n${historyHash}\\nextract ${EXTRACT_VERSION}`)', replace: 'sha256(`${snap.contentHash}\\n${historyHash}\\nextract ${EXTRACT_VERSION}`)' }],
     expect: /a new recipe hash rebuilds everything/,
   },
   'wp5-no-carry': {
@@ -388,6 +389,7 @@ addWave2Breaks(BREAKS);
 addWave3Breaks(BREAKS); // wave 3 integration (breaks-wave3.mjs)
 addWave4Breaks(BREAKS); // wave 4: the L+ layered store (breaks-wave4.mjs)
 addReviewBreaks(BREAKS); // review fixes (breaks-review.mjs, docs/REVIEW-FIXES.md)
+addIntegrationBreaks(BREAKS); // integration owner's fixes (breaks-integration.mjs, docs/INTEGRATION-NOTES.md)
 
 // wp8 ── work package 8 (answer gate) breaks. Each removes one refusal from packages/release/gate/.
 const R = 'packages/release/gate/retrieval.mjs';

@@ -77,9 +77,10 @@ const day = (d) => String(d || '').slice(0, 10);
  * `screen(text) -> { text, hits: [{ line, rule }] }` is the recipe's secret screen. It runs on each
  * WHOLE item (its title and its text) before the item is split or its header is made, so a secret
  * longer than one unit, or one the split would cut in two, is still found (Codex review F03).
+ * `hostile(text) -> rule | null` sees each whole item too; its rule is copied to every piece (review F18).
  * Returns { units, dropped, secrets: [{ path, line, rule }] }.
  */
-export function historyUnits(raw, { repo, owner, cfg, screen = (text) => ({ text, hits: [] }) }) {
+export function historyUnits(raw, { repo, owner, cfg, screen = (text) => ({ text, hits: [] }), hostile = () => null }) {
   const dropped = { notOwner: 0, empty: 0, short: 0, merge: 0 };
   const units = [];
   const secrets = [];
@@ -100,7 +101,9 @@ export function historyUnits(raw, { repo, owner, cfg, screen = (text) => ({ text
     const title = t.text;
     const shownRef = kind === 'commit' ? ref.slice(0, 10) : ref;
     const header = [repo, 'history', `${kind} ${shownRef}`, day(date), title].join(cfg.separator).replace(/\s+/g, ' ').slice(0, 300);
-    splitText(b.text, cfg.splitChars).forEach((x, piece) => units.push({ kind, ref, date: day(date), title, header, path: where, piece, text: x }));
+    // The hostile screen also sees the whole item: a phrase the split cuts in two flags every piece.
+    const flag = hostile(`${title}\n${b.text}`);
+    splitText(b.text, cfg.splitChars).forEach((x, piece) => units.push({ kind, ref, date: day(date), title, header, path: where, piece, text: x, hostile: flag }));
   };
   // Commits are repository content: kept whoever (or whatever bot) wrote them, as the measured run did.
   for (const c of raw.commits) {

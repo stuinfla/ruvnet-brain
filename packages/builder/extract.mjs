@@ -7,10 +7,14 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { chunkDocument } from './chunker.mjs';
 import { historyUnits } from './history.mjs';
-import { hostileRule, redactSecrets } from './screen.mjs';
+import { hostileRule, hostileSpans, redactSecrets } from './screen.mjs';
 import { unitsFor } from './units.mjs';
 
 const sha = (t) => crypto.createHash('sha256').update(t).digest('hex');
+// Part of the cache key (build.mjs): raise it whenever extract()'s output for the same input changes, so
+// units cached by an older extractor are rebuilt. 2: history screened whole before the split (F03);
+// hostile screen over whole documents and items (F18).
+export const EXTRACT_VERSION = 2;
 
 function standingOf(doc, s) {
   if (s.standing.byKind[doc.kind]) return s.standing.byKind[doc.kind];
@@ -27,8 +31,10 @@ export function extract(snapshot, s) {
     for (const h of hits) screened.secrets.push({ repo: meta.repo, path: doc.rel, line: h.line, rule: h.rule });
     const lines = text.split('\n');
     const chunks = chunkDocument({ lines, units: unitsFor(doc.type, lines, doc.rel), cfg: s.chunker, repo: meta.repo, rel: doc.rel, lang: doc.lang, kind: doc.kind });
+    // The whole document is screened too: a phrase the chunker cut in two flags every chunk it touches.
+    const spans = hostileSpans(text, s.screen.hostile);
     for (const c of chunks) {
-      const rule = hostileRule(`${c.sig}\n${c.text}`, s.screen.hostile);
+      const rule = hostileRule(`${c.sig}\n${c.text}`, s.screen.hostile) ?? spans.find((x) => x.from <= c.end && x.to >= c.start)?.rule ?? null;
       if (rule) screened.hostile.push({ repo: meta.repo, path: doc.rel, lines: `${c.start}-${c.end}`, rule });
       passages.push({
         flag: rule ? 'hostile' : null, flag_rule: rule,
@@ -46,7 +52,8 @@ export function extract(snapshot, s) {
     // are screened again below as a second line: that pass finds nothing on screened text, and is
     // kept only so a future change to historyUnits cannot reopen the hole silently.
     const screen = (t) => redactSecrets(t, s.screen.secrets, s.screen.redaction);
-    const { units, dropped, secrets } = historyUnits(snapshot.history.raw, { repo: meta.repo, owner: snapshot.history.owner, cfg: s.history, screen });
+    const hostile = (t) => hostileRule(t, s.screen.hostile);
+    const { units, dropped, secrets } = historyUnits(snapshot.history.raw, { repo: meta.repo, owner: snapshot.history.owner, cfg: s.history, screen, hostile });
     for (const h of secrets) screened.secrets.push({ repo: meta.repo, path: h.path, line: h.line, rule: h.rule });
     const rows = [];
     for (const u of units) {
@@ -54,7 +61,7 @@ export function extract(snapshot, s) {
       for (const h of hits) screened.secrets.push({ repo: meta.repo, path: u.path, line: h.line, rule: h.rule });
       const title = screen(u.title).text;
       const header = screen(u.header).text;
-      const rule = hostileRule(`${title}\n${text}`, s.screen.hostile);
+      const rule = hostileRule(`${title}\n${text}`, s.screen.hostile) ?? u.hostile ?? null;
       if (rule) screened.hostile.push({ repo: meta.repo, path: u.path, lines: null, rule });
       rows.push({
         flag: rule ? 'hostile' : null, flag_rule: rule,

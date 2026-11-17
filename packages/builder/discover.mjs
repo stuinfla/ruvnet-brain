@@ -52,6 +52,10 @@ export function readSource(dir, s) {
   }
   for (const k of ['repo', 'commit', 'date']) if (typeof meta[k] !== 'string' || !meta[k]) throw new Unreadable(`${s.sourceFile} has no ${k}`);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(meta.date)) throw new Unreadable(`${s.sourceFile} date ${meta.date} is not YYYY-MM-DD`);
+  // Repository and commit are printed in every citation, outside the passage fence: plain values only
+  // (review F18). A gist source's commit is the sha256 of its passage file (gists.mjs).
+  if (!/^[A-Za-z0-9._/-]{1,200}$/.test(meta.repo)) throw new Unreadable(`${s.sourceFile} repo ${JSON.stringify(meta.repo).slice(0, 80)} is not a plain name`);
+  if (!/^(sha256:)?[0-9a-f]{7,64}$/.test(meta.commit)) throw new Unreadable(`${s.sourceFile} commit ${JSON.stringify(meta.commit).slice(0, 80)} is not a commit id`);
   const skipped = [];
   const truncated = [];
   const docs = [];
@@ -64,6 +68,11 @@ export function readSource(dir, s) {
     }
     for (const ent of entries) {
       const r = rel ? `${rel}/${ent.name}` : ent.name;
+      // A name with a control character could put a line of its own into a citation (review F18).
+      if (/[\u0000-\u001f\u007f]/.test(ent.name)) {
+        skipped.push({ path: JSON.stringify(r).slice(1, -1), reason: 'control-character-in-name' });
+        continue;
+      }
       if (ent.isDirectory()) {
         const why = skipDir(ent.name, path.join(dir, rel), s);
         if (why) {

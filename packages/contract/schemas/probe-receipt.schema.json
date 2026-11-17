@@ -29,6 +29,12 @@
       "required": ["exit", "line"],
       "properties": { "exit": { "type": ["integer", "null"] }, "line": { "type": "string" } }
     },
+    "launcher": { "type": "string", "minLength": 1 },
+    "ci": {
+      "type": "object",
+      "required": ["runId", "runnerOs"],
+      "properties": { "runId": { "type": ["string", "null"] }, "runnerOs": { "type": ["string", "null"] } }
+    },
     "ok": { "type": "boolean" },
     "error": { "type": ["string", "null"] },
     "at": { "type": "string", "minLength": 1 }

@@ -7,7 +7,7 @@ const p = (file, find, replace) => ({ file, find, replace });
 export function addWave4Breaks(BREAKS) {
   Object.assign(BREAKS, {
     // test 4 (Codex F03): history screened whole, before the split
-    'wave4-04-split-first': { test: 'wave4-04', what: 'history items are screened per piece after the split, as before the fix', patches: [p('packages/builder/extract.mjs', 'cfg: s.history, screen });', 'cfg: s.history });')], expect: /a secret reached history\.db/ },
+    'wave4-04-split-first': { test: 'wave4-04', what: 'history items are screened per piece after the split, as before the fix', patches: [p('packages/builder/extract.mjs', 'cfg: s.history, screen, hostile });', 'cfg: s.history, hostile });')], expect: /a secret reached history\.db/ },
     // test 5: gists, the Brain's header removed
     'wave4-05-header-kept': { test: 'wave4-05', what: "the Brain's passage header is kept in the gist text", patches: [p('packages/builder/gists.mjs', 'files.get(fp).chunks.push({ n, body: o.text.slice(m[0].length) });', 'files.get(fp).chunks.push({ n, body: o.text });')], expect: /verbatim gist text/ },
     // test 6: layered.db health in the one signal

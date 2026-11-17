@@ -1,9 +1,8 @@
 // WP5 / review F03: a secret in a history item is redacted before the item is split into units. A
 // commit message holding a private key longer than one history unit (1,600 characters) must not leave
 // any piece of the key in the history rows. The key is generated at test time; no key text is
-// committed. Owned by the builder (packages/builder): this test stays `todo` until the integration
-// owner applies the change in docs/REVIEW-FIXES.md (redact whole history fields in historyUnits before
-// splitText, as extract() already does for documents), then the todo flag is removed.
+// committed. The fix is the L+ port's (packages/builder/history.mjs screens each whole item before
+// splitText; commit b15290ad); wave4-04 tests the same rule through a full build.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -12,7 +11,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { setup } from './helpers.mjs';
 
-test('WP5 a private key spanning history units is redacted whole (review F03)', { todo: 'builder-owned fix pending (docs/REVIEW-FIXES.md F03)', timeout: 60_000 }, async (t) => {
+test('WP5 a private key spanning history units is redacted whole (review F03)', { timeout: 60_000 }, async (t) => {
   const ctx = setup(t, 'wp5-split-secret');
   const tree = ctx.tree();
   const imp = (f) => import(pathToFileURL(path.join(tree.root, 'packages', 'builder', f)).href);
