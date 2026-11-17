@@ -1,12 +1,11 @@
 // Runs each skeleton acceptance test once as written (must pass) and once per break in breaks.mjs
 // (must fail, and with the expected failure). One test process at a time; waits while the machine's
-// 1-minute load average is above 60.   node tests/acceptance/v5/run-breaks.mjs [--strict] [s01 s05 ...]
+// CPU idle is below 10% (calm(), below).   node tests/acceptance/v5/run-breaks.mjs [--strict] [s01 s05 ...]
 // A break counts as red only when its expected failure is in the failing test's own report (the part
 // after "failing tests:"), not anywhere in the output (review F20). Breaks of a test file that skipped
 // entirely are not run and are counted and named; the summary never says "every break" while any were
 // skipped, and --strict (release qualification) counts each skipped break as a problem.
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -17,9 +16,18 @@ const strict = process.argv.includes('--strict');
 const only = process.argv.slice(2).filter((a) => a !== '--strict');
 const files = fs.readdirSync(DIR).filter((f) => /^s\d\d-.*\.test\.mjs$/.test(f)).sort();
 
+// Pauses only while the machine has under 10% CPU idle (`top -l 1 -n 0`), checked every 30 s. The load
+// average is not used: on macOS it counts waiting threads (Time Machine, Spotlight) and reads in the
+// hundreds while the CPU has room (owner's ruling, 2026-11-17). Where top gives no idle figure, it runs.
+function cpuIdle() {
+  const r = spawnSync('top', ['-l', '1', '-n', '0'], { encoding: 'utf8', timeout: 15_000 });
+  const m = /CPU usage:.*?([\d.]+)% idle/.exec(r.stdout ?? '');
+  return m ? Number(m[1]) : null;
+}
+
 async function calm() {
-  while (os.loadavg()[0] > 60) {
-    console.log(`load ${os.loadavg()[0].toFixed(1)} > 60; waiting 30 s`);
+  for (let idle = cpuIdle(); idle !== null && idle < 10; idle = cpuIdle()) {
+    console.log(`CPU idle ${idle.toFixed(1)}% < 10%; waiting 30 s`);
     await new Promise((r) => setTimeout(r, 30_000));
   }
 }
