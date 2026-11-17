@@ -12,6 +12,7 @@ import { sha256 } from '../contract/home.mjs';
 import { checkAnalyser } from './analyse.mjs';
 import { AUTHORITY_ORDER, fit, holdToDelivery, publicItem, section } from './assemble.mjs';
 import * as fts5 from './lanes/lexical.mjs';
+import { checkLayered } from './layered/query.mjs';
 
 const KINDS = { 'fts5-bm25': fts5 };
 const roleOf = (spec) => spec.role ?? `${spec.name}-db`;
@@ -157,5 +158,8 @@ export function selfTest(h) {
     const files = run(h, p.question, {}, false).sections.flatMap((s) => s.items.map((i) => `${i.repo}/${i.path}`));
     return { question: p.question, expect: p.expect, pass: files.includes(p.expect), top: files[0] ?? null };
   });
-  return { ok: results.length > 0 && results.every((r) => r.pass), results, lanes: h.lanes };
+  // The layered store is not a lane, but its health is reported beside the lanes, so a missing or
+  // damaged store makes the one verdict DEGRADED (never DOWN: search does not depend on it).
+  const layered = checkLayered(h.packDir, h.pack, h.recipe);
+  return { ok: results.length > 0 && results.every((r) => r.pass), results, lanes: layered ? [...h.lanes, layered] : h.lanes };
 }

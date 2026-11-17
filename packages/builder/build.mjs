@@ -1,12 +1,13 @@
 // The pack builder (architecture 2.4; RECIPE-FINAL 2.3). Runs in CI, never on a user's machine.
 //   node build.mjs --recipe <RECIPE.json> --out <packDir> [--cache <dir>] [--sources <list.json>] [<sourceDir>...]
 // A source is a folder with <sources.sourceFile> = { repo, commit, date }. The list file is
-// { "sources": [{ "dir": "...", "repo"?: "...", "history"?: { "owner": "...", "recorded": "<dir>" } }] },
+// { "sources": [{ "dir": "...", "repo"?: "...", "history"?: { "owner": "...", "recorded": "<dir>" } } | { "gists": "<passages.jsonl>" }] },
 // relative paths against the list file's folder. Everything the builder decides comes from the recipe.
 // Output: lexical.db, history.db (when any source has a history export), layered.db and
 // layered-coverage.json (when the recipe names a layered store), RECIPE.json, PROBES.json, manifest.json, PACK.json; written to a staging folder and renamed into place only when complete
 // and every probe passes against it.
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { check } from '../contract/validate.mjs';
 import { isMain, sha256 } from '../contract/home.mjs';
@@ -21,6 +22,7 @@ import { settings } from './settings.mjs';
 import { writeStore } from './store.mjs';
 import { manifestOf } from './manifest.mjs';
 import { writeLayered } from './layered/store.mjs';
+import { GISTS_REPO, materializeGists } from './gists.mjs';
 
 /** Reads one source in full (files and history) or throws Unreadable. */
 async function snapshotOf(entry, s) {
@@ -130,11 +132,22 @@ export async function build({ recipePath, sources, outDir, cacheDir = null }) {
   }
 }
 
+/** A list entry { "gists": "<passages.jsonl>" } becomes the `_gists` source, written to a temporary
+ *  folder (removed when the process ends) by gists.mjs. */
+function gistSource(file, listFile, i) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rb5-gists-'));
+  process.on('exit', () => fs.rmSync(dir, { recursive: true, force: true }));
+  const r = materializeGists(file, path.join(dir, GISTS_REPO));
+  if (r.problems.length) console.error(`${listFile} sources[${i}]: ${r.problems.length} gist passages skipped (${r.problems[0].reason})`);
+  return { dir: r.dir, repo: GISTS_REPO, history: null };
+}
+
 function sourceList(listFile) {
   const base = path.dirname(listFile);
   const list = JSON.parse(fs.readFileSync(listFile, 'utf8'));
   if (!Array.isArray(list?.sources)) throw new Error(`${listFile} has no "sources" list`);
   return list.sources.map((e, i) => {
+    if (typeof e?.gists === 'string') return gistSource(path.resolve(base, e.gists), listFile, i);
     if (typeof e?.dir !== 'string') throw new Error(`${listFile} sources[${i}] has no dir`);
     const h = e.history;
     if (h && (typeof h.owner !== 'string' || !h.owner || typeof h.recorded !== 'string')) throw new Error(`${listFile} sources[${i}].history needs owner and recorded`);

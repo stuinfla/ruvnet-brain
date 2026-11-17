@@ -43,6 +43,35 @@ export function openLayered(packDir, pack, recipe) {
   return { db, cfg, hostile, generation: pack.generation };
 }
 
+/** The layered store's health for the self-test (one health signal): null when the pack has none and
+ *  its recipe names none; else { name: 'layered', available, reason? }. Checks that the file is listed
+ *  and the right size, opens, has the format this engine reads, holds repositories and files, and holds
+ *  exactly the map (L1) and extract (L2) rows its build recorded in layered-coverage.json (a small
+ *  corpus may legitimately have none of one kind; a store that lost rows never matches its ledger). */
+export function checkLayered(packDir, pack, recipe) {
+  if (!recipe.layered && !pack.files.some((x) => x.role === 'layered-db')) return null;
+  let h = null;
+  try {
+    h = openLayered(packDir, pack, recipe);
+    const count = (t) => h.db.prepare(`SELECT count(*) n FROM ${t}`).get().n;
+    const empty = ['repos', 'files'].filter((t) => !count(t));
+    if (empty.length) return { name: 'layered', available: false, reason: `the layered store has no rows in ${empty.join(', ')}` };
+    const covFile = pack.files.find((x) => x.role === 'layered-coverage');
+    if (!covFile) return { name: 'layered', available: false, reason: 'the pack lists no layered-coverage.json to check the layered store against' };
+    const cov = JSON.parse(fs.readFileSync(path.join(packDir, covFile.path), 'utf8'));
+    for (const level of ['l1', 'l2']) {
+      const want = (cov.counts?.[level] ?? []).reduce((n, r) => n + r.n, 0);
+      const got = count(level);
+      if (got !== want) return { name: 'layered', available: false, reason: `the layered store has ${got} ${level.toUpperCase()} rows; its build recorded ${want}` };
+    }
+    return { name: 'layered', available: true };
+  } catch (e) {
+    return { name: 'layered', available: false, reason: e.message };
+  } finally {
+    closeLayered(h);
+  }
+}
+
 export function closeLayered(h) {
   h?.db.close();
 }

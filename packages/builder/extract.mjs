@@ -42,13 +42,18 @@ export function extract(snapshot, s) {
   }
   let history = null;
   if (snapshot.history) {
-    const { units, dropped } = historyUnits(snapshot.history.raw, { repo: meta.repo, owner: snapshot.history.owner, cfg: s.history });
+    // Screened per WHOLE item inside historyUnits, before it is split (Codex review F03). The pieces
+    // are screened again below as a second line: that pass finds nothing on screened text, and is
+    // kept only so a future change to historyUnits cannot reopen the hole silently.
+    const screen = (t) => redactSecrets(t, s.screen.secrets, s.screen.redaction);
+    const { units, dropped, secrets } = historyUnits(snapshot.history.raw, { repo: meta.repo, owner: snapshot.history.owner, cfg: s.history, screen });
+    for (const h of secrets) screened.secrets.push({ repo: meta.repo, path: h.path, line: h.line, rule: h.rule });
     const rows = [];
     for (const u of units) {
-      const { text, hits } = redactSecrets(u.text, s.screen.secrets, s.screen.redaction);
+      const { text, hits } = screen(u.text);
       for (const h of hits) screened.secrets.push({ repo: meta.repo, path: u.path, line: h.line, rule: h.rule });
-      const title = redactSecrets(u.title, s.screen.secrets, s.screen.redaction).text;
-      const header = redactSecrets(u.header, s.screen.secrets, s.screen.redaction).text;
+      const title = screen(u.title).text;
+      const header = screen(u.header).text;
       const rule = hostileRule(`${title}\n${text}`, s.screen.hostile);
       if (rule) screened.hostile.push({ repo: meta.repo, path: u.path, lines: null, rule });
       rows.push({

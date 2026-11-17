@@ -105,5 +105,7 @@ export function readSource(dir, s) {
   walk('');
   docs.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
   const contentHash = sha(JSON.stringify({ meta, docs: docs.map((d) => [d.rel, sha(d.text)]), skipped, truncated }));
-  return { meta: { repo: meta.repo, commit: meta.commit, date: meta.date }, docs, skipped, truncated, contentHash };
+  // A gist source (gists.mjs) carries per-file title, date and URL for the layered store's map rows.
+  const gists = meta.gists && typeof meta.gists === 'object' && !Array.isArray(meta.gists) ? meta.gists : null;
+  return { meta: { repo: meta.repo, commit: meta.commit, date: meta.date, ...(gists ? { gists } : {}) }, docs, skipped, truncated, contentHash };
 }

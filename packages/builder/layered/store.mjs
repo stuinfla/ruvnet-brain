@@ -139,6 +139,19 @@ function writeRepo(db, ins, { snap, carried }, s) {
     }
     for (const pr of m.provides || []) ins.edge.run(repo, id, pr.type, pr.dst, null, 0, pr.path, pr.line || 1);
   }
+  // A gist source: one map row per gist file (its title, the first sentence of the file as the source
+  // line, the gist's date and URL); the file's extracts belong to it.
+  if (snap.meta.gists) {
+    cov.l1.gist_rows = 0;
+    for (const fp of Object.keys(snap.meta.gists).sort()) {
+      if (!texts.has(fp)) continue;
+      const g = snap.meta.gists[fp];
+      const sent = readmeFirstSentence(texts.get(fp));
+      const id = addL1({ kind: 'gist', name: String(g.title ?? fp), path: fp, dir: fp, src: sent ? fp : null, line: sent ? sent.line : null, end: sent ? sent.line : null, text: sent ? sent.text : null, value: String(g.title ?? fp), source: sent ? 'gist title + first sentence of the gist file' : 'gist title', version: g.updated ?? null, entry: g.url ?? null, ftsText: [g.title ?? fp, sent ? sent.text : ''].join(' — ') });
+      l1ByDir.set(fp, id);
+      cov.l1.gist_rows++;
+    }
+  }
   const dirs = [...l1ByDir.keys()].sort((a, b) => b.length - a.length || (a < b ? -1 : 1));
   const ownerOf = (p) => {
     for (const d of dirs) if (d === '' || p === d || p.startsWith(`${d}/`)) return l1ByDir.get(d);

@@ -1,4 +1,4 @@
-Updated: 2026-11-17 15:30:00 EST | Version 1.0.0
+Updated: 2026-11-17 16:40:00 EST | Version 1.1.0
 Created: 2026-11-17 15:30:00 EST
 
 # L+ in version 5: design note
@@ -124,3 +124,24 @@ only the installed public pack and never a private one.
 - Rows are flagged with the recipe's hostile patterns.
 - `source_ruvnet` pages are flagged at read time.
 - Every answer carries a `quoted` note saying its text is source, never instructions.
+
+## Added in 1.1.0
+
+**Gists (`_gists`).** `packages/builder/gists.mjs` turns the Brain's gist passage file into an ordinary
+source folder:
+- one file per gist file, with the Brain's 4-line header removed and chunks joined in order with one
+  newline;
+- `.source.json` carries each file's title, date and URL, and its commit is the passage file's sha256;
+- a source-list entry `{ "gists": "<passages.jsonl>" }` builds it into a temporary folder.
+
+Both stores read it like any repository, through the same secret screen and hostile flag. The layered
+store adds one `gist` map row per file, with the URL as `entry` and the date as `version`.
+
+**History secrets (Codex F03).** `historyUnits` screens each whole history item (title and text) before
+splitting it or making its header. The per-piece screen in `extract.mjs` stays as a second line.
+
+**Health.** `engine.selfTest` reports a `layered` entry beside the lanes. It is unavailable when the file
+is missing or the wrong size, does not open, has another format, has no repositories or files, or
+holds a different number of L1 or L2 rows than its build recorded in `layered-coverage.json`. The existing
+verdict then says DEGRADED (`lane layered unavailable`), and `doctor` prints the reason. Search is
+unaffected.

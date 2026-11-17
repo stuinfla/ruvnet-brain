@@ -74,21 +74,33 @@ const day = (d) => String(d || '').slice(0, 10);
 /**
  * Items -> units { kind, ref, date, title, header, path, piece, text }. Every commit is kept; an
  * issue, pull request, comment or release not written by `owner` is dropped and only counted.
- * Returns { units, dropped }.
+ * `screen(text) -> { text, hits: [{ line, rule }] }` is the recipe's secret screen. It runs on each
+ * WHOLE item (its title and its text) before the item is split or its header is made, so a secret
+ * longer than one unit, or one the split would cut in two, is still found (Codex review F03).
+ * Returns { units, dropped, secrets: [{ path, line, rule }] }.
  */
-export function historyUnits(raw, { repo, owner, cfg }) {
+export function historyUnits(raw, { repo, owner, cfg, screen = (text) => ({ text, hits: [] }) }) {
   const dropped = { notOwner: 0, empty: 0, short: 0, merge: 0 };
   const units = [];
+  const secrets = [];
   const used = new Map();
   const isOwner = (login) => typeof login === 'string' && login.toLowerCase() === owner.toLowerCase();
-  const emit = (kind, ref0, date, title, text) => {
+  const emit = (kind, ref0, date, rawTitle, rawText) => {
     const key = `${kind}:${ref0}`;
     const n = (used.get(key) ?? 0) + 1;
     used.set(key, n);
     const ref = n > 1 ? `${ref0}~${n}` : String(ref0);
+    const where = `history/${kind}/${ref}`;
+    const t = screen(String(rawTitle ?? ''));
+    const b = screen(String(rawText ?? '').replace(/\r\n?/g, '\n'));
+    // A title is usually the text's first line (commit subject, issue or release title): its secrets
+    // are then the text's, recorded once.
+    const titleInText = String(rawText ?? '').startsWith(String(rawTitle ?? ''));
+    for (const h of [...(titleInText ? [] : t.hits), ...b.hits]) secrets.push({ path: where, line: h.line, rule: h.rule });
+    const title = t.text;
     const shownRef = kind === 'commit' ? ref.slice(0, 10) : ref;
     const header = [repo, 'history', `${kind} ${shownRef}`, day(date), title].join(cfg.separator).replace(/\s+/g, ' ').slice(0, 300);
-    splitText(text, cfg.splitChars).forEach((t, piece) => units.push({ kind, ref, date: day(date), title, header, path: `history/${kind}/${ref}`, piece, text: t }));
+    splitText(b.text, cfg.splitChars).forEach((x, piece) => units.push({ kind, ref, date: day(date), title, header, path: where, piece, text: x }));
   };
   // Commits are repository content: kept whoever (or whatever bot) wrote them, as the measured run did.
   for (const c of raw.commits) {
@@ -139,5 +151,7 @@ export function historyUnits(raw, { repo, owner, cfg }) {
     }
     emit('release', r.tag_name, r.published_at, r.name || r.tag_name, `${r.name || r.tag_name}\n\n${r.body}`);
   }
-  return { units: units.filter((u) => cfg.kinds.includes(u.kind)), dropped };
+  const kept = units.filter((u) => cfg.kinds.includes(u.kind));
+  const keptPaths = new Set(kept.map((u) => u.path));
+  return { units: kept, dropped, secrets: secrets.filter((x) => keptPaths.has(x.path)) };
 }

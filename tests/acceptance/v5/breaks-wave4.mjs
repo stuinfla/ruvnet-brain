@@ -6,6 +6,12 @@ const p = (file, find, replace) => ({ file, find, replace });
 
 export function addWave4Breaks(BREAKS) {
   Object.assign(BREAKS, {
+    // test 4 (Codex F03): history screened whole, before the split
+    'wave4-04-split-first': { test: 'wave4-04', what: 'history items are screened per piece after the split, as before the fix', patches: [p('packages/builder/extract.mjs', 'cfg: s.history, screen });', 'cfg: s.history });')], expect: /a secret reached history\.db/ },
+    // test 5: gists, the Brain's header removed
+    'wave4-05-header-kept': { test: 'wave4-05', what: "the Brain's passage header is kept in the gist text", patches: [p('packages/builder/gists.mjs', 'files.get(fp).chunks.push({ n, body: o.text.slice(m[0].length) });', 'files.get(fp).chunks.push({ n, body: o.text });')], expect: /verbatim gist text/ },
+    // test 6: layered.db health in the one signal
+    'wave4-06-unchecked': { test: 'wave4-06', what: 'the self-test leaves the layered store out', patches: [p('packages/engine/index.mjs', '  const layered = checkLayered(h.packDir, h.pack, h.recipe);', '  const layered = null;')], expect: /lane layered unavailable|a good layered store is reported available/ },
     // test 1: extracts verbatim, screened, from the untruncated text
     'wave4-01-off-by-one': { test: 'wave4-01', what: 'an L2 row stores one line more than its range', patches: [p(STORE, 'const t = span(lines, r.line_start, r.line_end);', 'const t = span(lines, r.line_start, r.line_end + 1);')], expect: /verbatim: / },
     'wave4-01-unscreened': { test: 'wave4-01', what: 'the layered store is cut from the source before the secret screen', patches: [p(STORE, 'const { text, hits } = redactSecrets(d.full ?? d.text, s.screen.secrets, s.screen.redaction);', 'const { text, hits } = { text: d.full ?? d.text, hits: [] };')], expect: /verbatim: |no secret key bytes anywhere in layered\.db/ },
