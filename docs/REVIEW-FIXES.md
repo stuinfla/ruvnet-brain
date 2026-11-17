@@ -210,6 +210,31 @@ The release package's `.mjs` code is now 1,415 lines against its 1,200-line budg
 review). Most of the growth is `release/evidence.mjs` (F01). No single file is over 500 lines. No
 check enforces the package budget yet.
 
-## Suite results
+## Follow-up commits
 
-Results are filled in from the final run on `e62c8097` and recorded below.
+| Commit | Change |
+|---|---|
+| `060dd8e4` | F14's generation rule had flagged every idle session as UNKNOWN right after an update. It now accepts the installed generation and the one kept before it (`wp4-16` runs doctor right after an update). `startLauncher` now quotes the cmd.exe command the way `/s` expects. |
+| `1a5d63dc` | The break runner pauses only while CPU idle is below 10% (`top -l 1 -n 0`, checked every 30 s). It no longer uses the load average (owner's ruling). |
+| `a9f32a94`, `ec69a64b` | The full break run found that five older breaks needed to follow these fixes. wp3-01a and wp4-04 had stale anchors. wp4-09b and wp9-01-unguarded stayed green because the new F02/F06 guards are second guards, so those breaks now remove them too. The F03 todo test had inherited wp5-history's breaks by name prefix and is renamed `wp5-split-secret`. All of these rerun RED as expected. |
+
+## Suite results (head `ec69a64b`)
+
+- `npm test`:
+  - Plugin battery: 58/58.
+  - v5 acceptance: 125 tests; 120 pass, 3 skipped, 1 todo, 1 fail.
+    - The 3 skipped are wp1 T1, T2 and T5. They need the external corpus and question sets, which are
+      not on this machine.
+    - The todo is F03, which is builder-owned.
+    - The failure was WP3-04's p95 hook time: 151.0 ms against a 150 ms budget. Two reruns gave
+      147.3 ms (pass) and 154.4 ms (bare Node p95 104.6 ms, so the absolute budget was not judged).
+      The hook's own cost (median paired difference) was 21–27 ms across these runs and 21.8 ms on
+      the untouched baseline. The swing follows bare Node start-up under machine load, not these
+      changes.
+- `npm run single-source:check`: 20/20.
+- `run-breaks.mjs`: the full run on `1a5d63dc` had 230 breaks RED as expected and 6 problems. The 6
+  problems are fixed in `a9f32a94` and `ec69a64b`, and each was rerun RED as expected. Two wp1 breaks
+  were not run because their tests skip on this machine. With `--strict` those count as problems.
+- Baseline before any change (`1be0c8dc`): `test:v5` 113 tests, 110 pass, 3 skipped. Plugin 58/58.
+  `single-source:check` 20/20.
+- Not run: Windows and Linux. The CI workflows were not dispatched.
