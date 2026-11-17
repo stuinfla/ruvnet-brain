@@ -8,7 +8,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { identSplit, toLines } from './text.mjs';
+import { inflateRawSync } from 'node:zlib';
+import { identSplit, span, toLines } from './text.mjs';
 import { ceilingOf } from '../../contract/delivery.mjs';
 
 export const TOOL = { map: 'map_ruvnet', facts: 'facts_ruvnet', find: 'find_ruvnet', context: 'context_ruvnet', source: 'source_ruvnet' };
@@ -32,7 +33,7 @@ export function openLayered(packDir, pack, recipe) {
   if (size !== f.size) throw new Unavailable(`the layered store ${f.path} is missing or has the wrong size; run: ruvnet-brain doctor`);
   const db = new DatabaseSync(file, { readOnly: true });
   const fmt = db.prepare("SELECT value FROM meta WHERE key='format'").get()?.value;
-  if (fmt !== '1') {
+  if (fmt !== '2') {
     db.close();
     throw new Unavailable(`the layered store has format ${fmt}, which this engine does not read`);
   }
@@ -40,7 +41,7 @@ export function openLayered(packDir, pack, recipe) {
   // The page cap is the lower of the recipe's layered.pageChars and its delivery ceiling (contract
   // delivery.mjs), so a recipe that lowers the delivery numbers lowers the layered pages with them.
   const cfg = { ...recipe.layered, pageChars: Math.min(recipe.layered.pageChars, ceilingOf(recipe).maxChars) };
-  return { db, cfg, hostile, generation: pack.generation };
+  return { db, cfg, hostile, generation: pack.generation, files: new Map() };
 }
 
 /** The layered store's health for the self-test (one health signal): null when the pack has none and
@@ -76,6 +77,24 @@ export function closeLayered(h) {
   h?.db.close();
 }
 
+// Format 2 stores each file once, deflated; an extract's text is its line range of that file, cut by
+// the same toLines the builder used. The last few files read are kept, so a page of rows from one file
+// inflates it once.
+const FILE_CACHE = 32;
+function linesOf(h, repo, p) {
+  const k = `${repo}\u0000${p}`;
+  let v = h.files.get(k);
+  if (v) h.files.delete(k);
+  else {
+    const row = h.db.prepare('SELECT data FROM files WHERE repo=? AND path=?').get(repo, p);
+    v = row ? toLines(inflateRawSync(row.data).toString('utf8')) : [];
+  }
+  h.files.set(k, v);
+  if (h.files.size > FILE_CACHE) h.files.delete(h.files.keys().next().value);
+  return v;
+}
+const l2Text = (h, r) => span(linesOf(h, r.repo, r.path), r.line_start, r.line_end);
+
 const flagOf = (h, t) => (t && h.hostile.some((re) => re.test(t)) ? 'hostile' : null);
 const fits = (h, o) => JSON.stringify(o).length <= h.cfg.pageChars - SLACK;
 
@@ -109,8 +128,8 @@ function l2Out(h, r) {
   if (r.term) o.term = r.term;
   if (r.is_test) o.test_file = true;
   if (r.flag) o.flag = r.flag;
-  if (r.text.length > h.cfg.rowMaxChars) Object.assign(o, { text: null, too_long: r.text.length, read: call('source', { repo: r.repo, path: r.path, from: r.line_start, to: r.line_end }) });
-  else o.text = r.text;
+  if (r.chars > h.cfg.rowMaxChars) Object.assign(o, { text: null, too_long: r.chars, read: call('source', { repo: r.repo, path: r.path, from: r.line_start, to: r.line_end }) });
+  else o.text = l2Text(h, r);
   return o;
 }
 
@@ -167,11 +186,16 @@ function resolveFacts(h, target, kind, repo) {
   const repoRow = !l1.length && h.db.prepare('SELECT repo FROM repos WHERE repo=?').get(canonRepo(h, target));
   if (l1.length) {
     resolved = l1.map((r) => ({ l1: r.id, kind: r.kind, name: r.name, repo: r.repo, path: r.path }));
+    // Appended one by one: a whole repository can be hundreds of thousands of rows, too many to spread
+    // as call arguments (RangeError: Maximum call stack size exceeded, found on the full corpus).
+    const add = (list) => {
+      for (const x of list) rows.push(x);
+    };
     for (const r of l1) {
-      if (r.kind === 'mcp-tool') rows.push(...h.db.prepare(`SELECT * FROM l2 WHERE repo=? AND symbol=?${kindSql}`).all(r.repo, r.name, ...kp));
-      else if (r.kind === 'repository') rows.push(...h.db.prepare(`SELECT * FROM l2 WHERE repo=?${kindSql}`).all(r.repo, ...kp));
-      else if (r.kind === 'cli-command') rows.push(...h.db.prepare(`SELECT * FROM l2 WHERE repo=? AND path=?${kindSql}`).all(r.repo, r.path, ...kp));
-      else rows.push(...h.db.prepare(`SELECT * FROM l2 WHERE l1_id=?${kindSql}`).all(r.id, ...kp));
+      if (r.kind === 'mcp-tool') add(h.db.prepare(`SELECT * FROM l2 WHERE repo=? AND symbol=?${kindSql}`).all(r.repo, r.name, ...kp));
+      else if (r.kind === 'repository') add(h.db.prepare(`SELECT * FROM l2 WHERE repo=?${kindSql}`).all(r.repo, ...kp));
+      else if (r.kind === 'cli-command') add(h.db.prepare(`SELECT * FROM l2 WHERE repo=? AND path=?${kindSql}`).all(r.repo, r.path, ...kp));
+      else add(h.db.prepare(`SELECT * FROM l2 WHERE l1_id=?${kindSql}`).all(r.id, ...kp));
     }
   } else if (repoRow) {
     rows = h.db.prepare(`SELECT * FROM l2 WHERE repo=?${kindSql}`).all(repoRow.repo, ...kp);
@@ -225,22 +249,24 @@ export const TOOLS = {
         const r = h.db.prepare('SELECT * FROM l1 WHERE id=?').get(x.rid);
         return { level: 1, id: r.id, kind: r.kind, name: r.name, repo: r.repo, path: r.src_path || r.path, lines: r.line ? `${r.line}-${r.line_end}` : null, text_prefix: (r.text || '').slice(0, 240), match: x.match, is_test: 0, ...(r.flag ? { flag: r.flag } : {}), dive: call('map', { query: r.name }) };
       }
+      // The extract's text is cut only when its row is put on a page (below), never for every hit.
       const r = h.db.prepare('SELECT * FROM l2 WHERE id=?').get(x.rid);
-      return { level: 2, id: r.id, kind: r.kind, repo: r.repo, path: r.path, lines: `${r.line_start}-${r.line_end}`, symbol: r.symbol, text_prefix: r.text.slice(0, 240), match: x.match, is_test: r.is_test, ...(r.flag ? { flag: r.flag } : {}), dive: call('source', { repo: r.repo, path: r.path, from: Math.max(1, r.line_start - 20), to: r.line_end + 40 }) };
+      return { level: 2, id: r.id, kind: r.kind, repo: r.repo, path: r.path, lines: `${r.line_start}-${r.line_end}`, symbol: r.symbol, text_prefix: undefined, match: x.match, is_test: r.is_test, ...(r.flag ? { flag: r.flag } : {}), dive: call('source', { repo: r.repo, path: r.path, from: Math.max(1, r.line_start - 20), to: r.line_end + 40 }), _row: r };
     });
     // Stable: all-words before any-word, test files last within each, bm25 order kept.
     rows.forEach((r, i) => (r.rank = i));
     rows.sort((a, b) => (a.match === b.match ? 0 : a.match === 'all-words' ? -1 : 1) || a.is_test - b.is_test || a.rank - b.rank);
     for (const r of rows) delete r.rank;
+    const fmt = ({ _row, ...r }) => (_row ? { ...r, text_prefix: l2Text(h, _row).slice(0, 240) } : r);
     const header = { tool: TOOL.find, words, tokens: toks, note: 'text_prefix is the first 240 characters of the verbatim span; ranked bm25, all-words matches first, test files last' };
     if (!rows.length) header.no_match = 'no row contains these words; try other names (product, crate, file) or map_ruvnet before saying it does not exist';
-    return page(h, header, rows, cursor);
+    return page(h, header, rows, cursor, fmt);
   },
   source(h, { repo, path: p, from = 1, to = null }) {
     repo = canonRepo(h, repo);
     const t = fileOf(h, repo, p);
     if (t.error) return { tool: TOOL.source, error: t.error };
-    const lines = toLines(t.f.text);
+    const lines = linesOf(h, repo, p);
     const a = Math.max(1, from);
     const b = Math.min(lines.length, to ?? a + h.cfg.readLines - 1);
     if (a > lines.length) return { tool: TOOL.source, repo, path: p, error: `${repo}/${p} has ${lines.length} lines; asked from line ${from}` };
@@ -273,9 +299,9 @@ export const TOOLS = {
       out.capability = { l1: r.id, kind: r.kind, name: r.name, path: r.path, source_path: r.src_path, line: r.line, line_end: r.line_end, source_line: r.text };
     }
     const adrs = h.db.prepare('SELECT * FROM adr WHERE repo=? ORDER BY path').all(repo);
-    const statusOf = (ap) => h.db.prepare("SELECT line_start, text FROM l2 WHERE repo=? AND path=? AND kind='status' AND term='adr-field' ORDER BY line_start LIMIT 4").all(repo, ap).map((s) => (s.text.length > 300 ? { line: s.line_start, text: null, too_long: s.text.length } : { line: s.line_start, text: s.text }));
+    const statusOf = (ap) => h.db.prepare("SELECT repo, path, line_start, line_end, chars FROM l2 WHERE repo=? AND path=? AND kind='status' AND term='adr-field' ORDER BY line_start LIMIT 4").all(repo, ap).map((s) => (s.chars > 300 ? { line: s.line_start, text: null, too_long: s.chars } : { line: s.line_start, text: l2Text(h, s) }));
     const byNum = {};
-    toLines(t.f.text).forEach((l, i) => {
+    linesOf(h, repo, p).forEach((l, i) => {
       for (const m of l.matchAll(ADR_RE)) {
         (byNum[m[1]] ||= { number: m[1], mentioned_at_lines: [], candidates: adrs.filter((x) => x.number === m[1]).slice(0, 4).map((x) => ({ path: x.path, title_line: x.title_line, title: x.title, status: statusOf(x.path) })) }).mentioned_at_lines.push(i + 1);
       }

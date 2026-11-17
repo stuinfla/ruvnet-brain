@@ -13,13 +13,20 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { deflateRawSync } from 'node:zlib';
 import { hostileRule, redactSecrets } from '../screen.mjs';
 import { identSplit, sha256, span, toLines } from '../../engine/layered/text.mjs';
 import { extractCli, extractDefaults, extractEnv, extractMcp, extractSignatures, extractTests } from './extract-code.mjs';
 import { extractDocNumbers, extractMarkers, extractStatus, isAdrPath } from './extract-docs.mjs';
 import { parseCargo, parsePackageJson, parsePluginJson, parsePyproject, parseSetupPy, readmeFirstSentence } from './manifests.mjs';
 
-export const LAYERED_FORMAT = 1;
+// Format 2: file text is stored once, deflated (raw DEFLATE, level 9, Node's bundled zlib) in
+// files.data; an L2 row keeps its line range, length (`chars`, in UTF-16 code units, as JavaScript
+// counts) and sha256, and the reader cuts its text from the file. Format 1 (a second copy of every
+// extract's text, the file text uncompressed) was never released.
+export const LAYERED_FORMAT = 2;
+export const FILE_CODEC = 'deflate-raw-9';
+const pack = (text) => deflateRawSync(Buffer.from(text, 'utf8'), { level: 9 });
 const TESTPATH = /(^|\/)(__tests__|tests?|benches|bench|fixtures|__mocks__|mocks?|e2e|spec)\/|\.(test|spec|bench)\.[cm]?[jt]sx?$|_test\.(rs|py)$|(^|\/)test_[^/]+\.py$/;
 const MANIFEST = /(^|\/)(Cargo\.toml|package\.json|pyproject\.toml|setup\.py)$|(^|\/)\.(claude|codex)-plugin\/plugin\.json$/;
 const DISTINCTIVE = (b) => b.length >= 8 && !/^(index|mod|lib|main|types|README|utils|config)\./i.test(b);
@@ -50,10 +57,10 @@ const SCHEMA = (tokenizer) => `
 PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF;
 CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE repos(repo TEXT PRIMARY KEY, commit_sha TEXT, commit_date TEXT, carried INTEGER, files INTEGER);
-CREATE TABLE files(repo TEXT, path TEXT, lang TEXT, lines INTEGER, chars INTEGER, text TEXT, PRIMARY KEY(repo, path));
+CREATE TABLE files(repo TEXT, path TEXT, lang TEXT, lines INTEGER, chars INTEGER, data BLOB, PRIMARY KEY(repo, path));
 CREATE TABLE l1(id INTEGER PRIMARY KEY, repo TEXT, kind TEXT, name TEXT, path TEXT, dir TEXT, src_path TEXT, line INTEGER, line_end INTEGER, text TEXT, value TEXT, source_kind TEXT, version TEXT, entry TEXT, flag TEXT);
 CREATE TABLE edges(id INTEGER PRIMARY KEY, repo TEXT, src_l1 INTEGER, type TEXT, dst_name TEXT, dst_l1 INTEGER, external INTEGER, ev_path TEXT, ev_line INTEGER);
-CREATE TABLE l2(id INTEGER PRIMARY KEY, kind TEXT, repo TEXT, path TEXT, line_start INTEGER, line_end INTEGER, anchor INTEGER, symbol TEXT, term TEXT, text TEXT, sha256 TEXT, l1_id INTEGER, is_test INTEGER, flag TEXT);
+CREATE TABLE l2(id INTEGER PRIMARY KEY, kind TEXT, repo TEXT, path TEXT, line_start INTEGER, line_end INTEGER, anchor INTEGER, symbol TEXT, term TEXT, chars INTEGER, sha256 TEXT, l1_id INTEGER, is_test INTEGER, flag TEXT);
 CREATE TABLE adr(repo TEXT, path TEXT, number TEXT, title TEXT, title_line INTEGER);
 CREATE TABLE adr_names(repo TEXT, file TEXT, adr TEXT, number TEXT, line INTEGER, text TEXT);
 CREATE VIRTUAL TABLE fts USING fts5(text, ident, symbol, path, content='', tokenize='${tokenizer}');
@@ -81,7 +88,7 @@ function writeRepo(db, ins, { snap, carried }, s) {
   const all = [...texts.keys()];
   const linesOf = new Map();
   const L = (p) => linesOf.get(p) ?? (linesOf.set(p, toLines(texts.get(p))), linesOf.get(p));
-  for (const p of all) ins.file.run(repo, p, langOf(p), L(p).length, texts.get(p).length, texts.get(p));
+  for (const p of all) ins.file.run(repo, p, langOf(p), L(p).length, texts.get(p).length, pack(texts.get(p)));
   cov.files_read = all.length;
   ins.repo.run(repo, snap.meta.commit, snap.meta.date, carried ? 1 : 0, all.length);
   const addL1 = (row) => {
@@ -196,7 +203,7 @@ function writeRepo(db, ins, { snap, carried }, s) {
         const t = span(lines, r.line_start, r.line_end);
         const flag = flagOf(t);
         if (flag) cov.hostile_rows++;
-        const id = Number(ins.l2.run(r.kind, repo, p, r.line_start, r.line_end, r.anchor ?? null, r.symbol ?? null, r.term ?? null, t, sha256(t), owner, isTest, flag).lastInsertRowid);
+        const id = Number(ins.l2.run(r.kind, repo, p, r.line_start, r.line_end, r.anchor ?? null, r.symbol ?? null, r.term ?? null, t.length, sha256(t), owner, isTest, flag).lastInsertRowid);
         c.items_stored++;
         ins.fts.run(2 * id + 1, t, identSplit(`${r.symbol || ''} ${r.kind} ${r.term || ''} ${t}`), r.symbol || '', p);
         if (r.kind === 'command' && r.top && /\/commands\//.test(p)) {
@@ -258,42 +265,74 @@ function writeRepo(db, ins, { snap, carried }, s) {
   return cov;
 }
 
-/** results: [{ snap, carried }] sorted by repo; s: the builder's settings (s.layered from the recipe). */
-export function writeLayered(file, results, s) {
+/** The layered store, written one repository at a time: addRepo({ snap, carried }) in repository
+ *  order, then finish() returns the coverage ledger. `s` is the builder's settings (s.layered and
+ *  s.screen from the recipe). Nothing of a repository is kept after its addRepo returns. */
+export function openLayeredStore(file, s) {
   if (!/^[a-z0-9_ ]+$/.test(s.layered.fts5Tokenizer)) throw new Error(`layered.fts5Tokenizer "${s.layered.fts5Tokenizer}" is not a plain tokenizer name`);
   fs.rmSync(file, { force: true });
   const db = new DatabaseSync(file);
-  const coverage = { schema: 'ruvnet-brain/layered-coverage', version: LAYERED_FORMAT, note: 'Per repository and extractor. items_found = rows an extractor produced; items_stored = rows written (fewer only for duplicates or a range outside the file). files_trigger_no_rows = files where the extractor\'s trigger matches but it produced no row (first 50 listed). Files skipped before extraction are listed in manifest.json.', repos: {} };
+  const coverage = { schema: 'ruvnet-brain/layered-coverage', version: 1, note: 'Per repository and extractor. items_found = rows an extractor produced; items_stored = rows written (fewer only for duplicates or a range outside the file). files_trigger_no_rows = files where the extractor\'s trigger matches but it produced no row (first 50 listed). Files skipped before extraction are listed in manifest.json.', repos: {} };
+  let ins;
   try {
     db.exec(SCHEMA(s.layered.fts5Tokenizer));
-    const ins = {
+    ins = {
       repo: db.prepare('INSERT INTO repos VALUES (?,?,?,?,?)'),
       file: db.prepare('INSERT INTO files VALUES (?,?,?,?,?,?)'),
       l1: db.prepare('INSERT INTO l1(repo,kind,name,path,dir,src_path,line,line_end,text,value,source_kind,version,entry,flag) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)'),
       edge: db.prepare('INSERT INTO edges(repo,src_l1,type,dst_name,dst_l1,external,ev_path,ev_line) VALUES (?,?,?,?,?,?,?,?)'),
-      l2: db.prepare('INSERT INTO l2(kind,repo,path,line_start,line_end,anchor,symbol,term,text,sha256,l1_id,is_test,flag) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)'),
+      l2: db.prepare('INSERT INTO l2(kind,repo,path,line_start,line_end,anchor,symbol,term,chars,sha256,l1_id,is_test,flag) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)'),
       adr: db.prepare('INSERT INTO adr VALUES (?,?,?,?,?)'),
       adrName: db.prepare('INSERT INTO adr_names VALUES (?,?,?,?,?,?)'),
       fts: db.prepare('INSERT INTO fts(rowid,text,ident,symbol,path) VALUES (?,?,?,?,?)'),
     };
     db.exec('BEGIN');
-    for (const r of results) coverage.repos[r.snap.meta.repo] = writeRepo(db, ins, r, s);
-    db.exec("UPDATE edges SET dst_name=(SELECT name FROM l1 WHERE l1.id=edges.dst_l1) WHERE dst_name IS NULL");
-    db.exec('CREATE INDEX l2_path ON l2(repo,path,line_start); CREATE INDEX l2_kind ON l2(kind); CREATE INDEX l2_l1 ON l2(l1_id); CREATE INDEX l2_sym ON l2(symbol); CREATE INDEX e_src ON edges(src_l1); CREATE INDEX e_dst ON edges(dst_l1); CREATE INDEX l1_name ON l1(name); CREATE INDEX adr_num ON adr(repo,number); CREATE INDEX adr_names_file ON adr_names(repo,file)');
-    const meta = db.prepare('INSERT INTO meta VALUES (?,?)');
-    meta.run('format', String(LAYERED_FORMAT));
-    meta.run('fts5Tokenizer', s.layered.fts5Tokenizer);
-    db.exec('COMMIT');
-    db.exec("INSERT INTO fts(fts) VALUES ('optimize')");
-    coverage.counts = {
-      l1: db.prepare('SELECT repo, kind, count(*) n FROM l1 GROUP BY repo, kind ORDER BY repo, kind').all().map((x) => ({ ...x })),
-      edges: db.prepare('SELECT repo, type, count(*) n, sum(external) external FROM edges GROUP BY repo, type ORDER BY repo, type').all().map((x) => ({ ...x })),
-      l2: db.prepare('SELECT repo, kind, count(*) n FROM l2 GROUP BY repo, kind ORDER BY repo, kind').all().map((x) => ({ ...x })),
-      adr: db.prepare('SELECT repo, count(*) n FROM adr GROUP BY repo ORDER BY repo').all().map((x) => ({ ...x })),
-    };
-    db.exec('VACUUM');
-  } finally {
+  } catch (e) {
     db.close();
+    throw e;
   }
-  return coverage;
+  return {
+    addRepo(r) {
+      coverage.repos[r.snap.meta.repo] = writeRepo(db, ins, r, s);
+    },
+    abort() {
+      try {
+        db.close();
+      } catch {}
+    },
+    finish() {
+      try {
+        db.exec("UPDATE edges SET dst_name=(SELECT name FROM l1 WHERE l1.id=edges.dst_l1) WHERE dst_name IS NULL");
+        db.exec('CREATE INDEX l2_path ON l2(repo,path,line_start); CREATE INDEX l2_kind ON l2(kind); CREATE INDEX l2_l1 ON l2(l1_id); CREATE INDEX l2_sym ON l2(symbol); CREATE INDEX e_src ON edges(src_l1); CREATE INDEX e_dst ON edges(dst_l1); CREATE INDEX l1_name ON l1(name); CREATE INDEX adr_num ON adr(repo,number); CREATE INDEX adr_names_file ON adr_names(repo,file)');
+        const meta = db.prepare('INSERT INTO meta VALUES (?,?)');
+        meta.run('format', String(LAYERED_FORMAT));
+        meta.run('fts5Tokenizer', s.layered.fts5Tokenizer);
+        meta.run('fileCodec', FILE_CODEC);
+        db.exec('COMMIT');
+        db.exec("INSERT INTO fts(fts) VALUES ('optimize')");
+        coverage.counts = {
+          l1: db.prepare('SELECT repo, kind, count(*) n FROM l1 GROUP BY repo, kind ORDER BY repo, kind').all().map((x) => ({ ...x })),
+          edges: db.prepare('SELECT repo, type, count(*) n, sum(external) external FROM edges GROUP BY repo, type ORDER BY repo, type').all().map((x) => ({ ...x })),
+          l2: db.prepare('SELECT repo, kind, count(*) n FROM l2 GROUP BY repo, kind ORDER BY repo, kind').all().map((x) => ({ ...x })),
+          adr: db.prepare('SELECT repo, count(*) n FROM adr GROUP BY repo ORDER BY repo').all().map((x) => ({ ...x })),
+        };
+        db.exec('VACUUM');
+      } finally {
+        db.close();
+      }
+      return coverage;
+    },
+  };
+}
+
+/** results: [{ snap, carried }] sorted by repo: the whole store at once. Returns the coverage ledger. */
+export function writeLayered(file, results, s) {
+  const w = openLayeredStore(file, s);
+  try {
+    for (const r of results) w.addRepo(r);
+  } catch (e) {
+    w.abort();
+    throw e;
+  }
+  return w.finish();
 }

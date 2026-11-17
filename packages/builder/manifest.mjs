@@ -6,29 +6,42 @@ import { sha256 } from '../contract/home.mjs';
 
 const hashOf = (rows) => sha256(rows.map((r) => r.hash).join('\n'));
 
-export function manifestOf(results, { recipe, recipeHash, s }) {
-  const sources = results.map(({ snap, carried, out }) => ({
-    repo: snap.meta.repo,
-    commit: snap.meta.commit,
-    date: snap.meta.date,
-    contentHash: snap.contentHash,
-    files: snap.docs.length,
-    passages: out.passages.length,
-    passagesHash: hashOf(out.passages),
-    skipped: snap.skipped.length,
-    truncated: snap.truncated.length,
-    history: out.history
-      ? {
-          owner: out.history.owner,
-          units: out.history.rows.length,
-          byKind: Object.fromEntries(s.history.kinds.map((k) => [k, out.history.rows.filter((r) => r.kind === k).length])),
-          dropped: out.history.dropped,
-          unitsHash: hashOf(out.history.rows),
-        }
-      : null,
-    carried,
-  }));
-  const tag = (list, repo) => list.map((x) => ({ repo, ...x }));
+/** The manifest's part for one source, from its snapshot and extract result (both may then be dropped). */
+export function sourcePart({ snap, carried, out }, s) {
+  const repo = snap.meta.repo;
+  const tag = (list) => list.map((x) => ({ repo, ...x }));
+  return {
+    source: {
+      repo,
+      commit: snap.meta.commit,
+      date: snap.meta.date,
+      contentHash: snap.contentHash,
+      files: snap.docs.length,
+      passages: out.passages.length,
+      passagesHash: hashOf(out.passages),
+      skipped: snap.skipped.length,
+      truncated: snap.truncated.length,
+      history: out.history
+        ? {
+            owner: out.history.owner,
+            units: out.history.rows.length,
+            byKind: Object.fromEntries(s.history.kinds.map((k) => [k, out.history.rows.filter((r) => r.kind === k).length])),
+            dropped: out.history.dropped,
+            unitsHash: hashOf(out.history.rows),
+          }
+        : null,
+      carried,
+    },
+    skipped: tag(snap.skipped),
+    truncated: tag(snap.truncated),
+    secrets: out.screened.secrets,
+    hostile: out.screened.hostile,
+  };
+}
+
+/** parts: sourcePart() per source, in source order. */
+export function manifestOf(parts, { recipe, recipeHash, s }) {
+  const sources = parts.map((p) => p.source);
   return {
     schema: 'ruvnet-brain/build-manifest',
     version: 1,
@@ -46,11 +59,11 @@ export function manifestOf(results, { recipe, recipeHash, s }) {
       passages: sources.reduce((n, x) => n + x.passages, 0),
       history: sources.reduce((n, x) => n + (x.history?.units ?? 0), 0),
     },
-    skipped: results.flatMap(({ snap }) => tag(snap.skipped, snap.meta.repo)),
-    truncated: results.flatMap(({ snap }) => tag(snap.truncated, snap.meta.repo)),
+    skipped: parts.flatMap((p) => p.skipped),
+    truncated: parts.flatMap((p) => p.truncated),
     screened: {
-      secrets: results.flatMap(({ out }) => out.screened.secrets),
-      hostile: results.flatMap(({ out }) => out.screened.hostile),
+      secrets: parts.flatMap((p) => p.secrets),
+      hostile: parts.flatMap((p) => p.hostile),
     },
   };
 }

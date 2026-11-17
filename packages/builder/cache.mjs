@@ -11,9 +11,21 @@ import { readJson, writeJsonAtomic } from '../contract/home.mjs';
 const safe = (repo) => encodeURIComponent(repo);
 
 export function openCache(dir) {
-  if (!dir) return { units: () => null, saveUnits() {}, lastGood: () => null, saveLastGood() {}, report() {} };
+  if (!dir) return { units: () => null, saveUnits() {}, lastGood: () => null, saveLastGood() {}, stageLastGood() {}, commitLastGood() {}, report() {} };
   fs.mkdirSync(dir, { recursive: true });
+  const pending = [];
   return {
+    // The streaming build reads a source and drops it before the next one; a snapshot read in full is
+    // staged beside its last good state and replaces it only once the carry rule has passed (as when
+    // every source was read before any was saved).
+    stageLastGood(snapshot) {
+      const file = path.join(dir, 'sources', `${safe(snapshot.meta.repo)}.json`);
+      writeJsonAtomic(`${file}.pending`, snapshot);
+      pending.push(file);
+    },
+    commitLastGood() {
+      for (const f of pending.splice(0)) fs.renameSync(`${f}.pending`, f);
+    },
     units: (key) => readJson(path.join(dir, 'units', `${key}.json`), null),
     saveUnits: (key, value) => writeJsonAtomic(path.join(dir, 'units', `${key}.json`), value),
     lastGood: (repo) => readJson(path.join(dir, 'sources', `${safe(repo)}.json`), null),

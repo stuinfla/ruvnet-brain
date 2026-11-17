@@ -76,6 +76,7 @@ test('Wave 4: the gists are the _gists repository, verbatim and screened', { tim
   const shown = src.lines.map(([, x]) => x).join('\n');
   assert.equal(shown, want.slice(0, -1).replace(KEY, '[redacted]'), 'source_ruvnet reads the gist text, the key screened');
   assert.equal(fs.readFileSync(path.join(pack, 'layered.db')).includes(Buffer.from(KEY)), false, 'no key bytes in layered.db');
+  assert.equal(JSON.stringify(L.run('facts', { target: '_gists', kind: null, repo: null, cursor: 0 })).includes(KEY), false, 'no key in the gist extracts');
   const facts = L.run('facts', { target: 'lanternwick.md', kind: 'doc-number-line', repo: null, cursor: 0 });
   assert.deepEqual(facts.rows.map((r) => `${r.path}:${r.lines}`), [`ab12cd34/lanternwick.md:${want.split('\n').findIndex((l) => l.includes('`fanout` is 12')) + 1}-${want.split('\n').findIndex((l) => l.includes('`fanout` is 12')) + 1}`], 'the gist number line, with its line in the joined file');
   assert.ok(query(pack, 'lexical.db', "SELECT * FROM units WHERE repo='_gists' AND text LIKE '%copperfen%'").length === 1, 'the lexical store holds the gist text too');

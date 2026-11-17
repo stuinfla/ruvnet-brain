@@ -1,4 +1,4 @@
-Updated: 2026-11-17 16:40:00 EST | Version 1.1.0
+Updated: 2026-11-17 18:20:00 EST | Version 1.2.0
 Created: 2026-11-17 15:30:00 EST
 
 # L+ in version 5: design note
@@ -145,3 +145,32 @@ is missing or the wrong size, does not open, has another format, has no reposito
 holds a different number of L1 or L2 rows than its build recorded in `layered-coverage.json`. The existing
 verdict then says DEGRADED (`lane layered unavailable`), and `doctor` prints the reason. Search is
 unaffected.
+
+## Added in 1.2.0
+
+**Streaming build.** `build.mjs` reads, extracts and writes one source at a time, in repository order, and
+drops each before reading the next. It never holds the whole corpus. What stays in memory across sources:
+- each source's manifest part;
+- the probe index: one number per analysed token, the one file holding that token, with the candidate
+  file's words read back from `lexical.db` when probes are made;
+- the build report.
+
+The supporting changes:
+- **Writers.** `store.mjs` `openStore` and `layered/store.mjs` `openLayeredStore` take rows or repositories
+  one at a time.
+- **Last-good snapshots.** These are staged, then committed only once the carry rule has passed, as
+  before.
+- **Same output.** The same sources give the same `lexical.db`, `PROBES.json`, `manifest.json` and
+  `layered-coverage.json` bytes as before; this was checked on the full corpus.
+
+**Layered format 2.**
+- **Files.** File text is stored once, deflated (raw DEFLATE level 9, Node's bundled zlib, recorded as
+  `meta.fileCodec`).
+- **Extracts.** An extract row keeps its line range, length and sha256. The reader cuts its text from the
+  inflated file with the same `toLines`, keeping the last 32 files read.
+- **Lazy text.** `find_ruvnet` cuts text only for rows that go on a page.
+- **Byte-identical answers.** These are tested in two ways:
+  - 42 fixture calls against goldens written by the old code;
+  - 306 full-corpus calls, old reader on the old pack against the new reader on the new pack.
+- **Determinism.** It holds for one Node version, since deflate output depends on the zlib Node bundles.
+  CI pins Node 24.22.3.

@@ -1,6 +1,6 @@
 // Runs each skeleton acceptance test once as written (must pass) and once per break in breaks.mjs
-// (must fail, and with the expected failure). One test process at a time; waits while the machine's
-// 1-minute load average is above 60.   node tests/acceptance/v5/run-breaks.mjs [s01 s05 ...]
+// (must fail, and with the expected failure). One test process at a time; waits while the machine is
+// saturated (CPU idle below 10% on macOS, else load average above 60).   node tests/acceptance/v5/run-breaks.mjs [s01 s05 ...]
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -12,9 +12,21 @@ const DIR = path.dirname(fileURLToPath(import.meta.url));
 const only = process.argv.slice(2);
 const files = fs.readdirSync(DIR).filter((f) => /^s\d\d-.*\.test\.mjs$/.test(f)).sort();
 
+/** CPU idle percent from `top -l 1 -n 0` (macOS), or null where top has no -l (then load average). */
+function cpuIdle() {
+  const r = spawnSync('top', ['-l', '1', '-n', '0'], { encoding: 'utf8', timeout: 20_000 });
+  const m = /CPU usage:.*?([\d.]+)% idle/.exec(r.stdout ?? '');
+  return m ? Number(m[1]) : null;
+}
+
+// Waits while the machine is saturated: on macOS while CPU idle is below 10% (load average there is
+// inflated by Time Machine, Spotlight and waiting threads, so a load gate can pause forever on a machine
+// with headroom); elsewhere while the 1-minute load average is above 60. Checked every 30 s.
 async function calm() {
-  while (os.loadavg()[0] > 60) {
-    console.log(`load ${os.loadavg()[0].toFixed(1)} > 60; waiting 30 s`);
+  for (;;) {
+    const idle = cpuIdle();
+    if (idle === null ? os.loadavg()[0] <= 60 : idle >= 10) return;
+    console.log(idle === null ? `load ${os.loadavg()[0].toFixed(1)} > 60; waiting 30 s` : `CPU idle ${idle}% < 10%; waiting 30 s`);
     await new Promise((r) => setTimeout(r, 30_000));
   }
 }

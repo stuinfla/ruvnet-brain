@@ -16,6 +16,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { inflateRawSync } from 'node:zlib';
 import { setup } from './helpers.mjs';
 import { built } from './wp5-helpers.mjs';
 import { FAKE_AWS, KIT_META, fileLines, writeKit } from './wave4-helpers.mjs';
@@ -38,12 +39,20 @@ test('Wave 4: layered extracts are verbatim, screened, complete and deterministi
   const redactedLine = (p, n) => disk(p)[n - 1].replaceAll(FAKE_AWS, '[redacted]');
 
   // Every L2 row: verbatim from disk (with the redaction the recipe applies), hash of the text stored.
-  const l2 = db.prepare('SELECT * FROM l2 ORDER BY id').all();
+  // Format 2: a file's text is stored once, deflated; an extract is its line range of that file, with its
+  // length and sha256. This test inflates the file and cuts the range with its own line split.
+  const fileText = (p) => inflateRawSync(db.prepare('SELECT data FROM files WHERE path=?').get(p).data).toString('utf8');
+  const cut = (p, a, b) => {
+    const ls = fileText(p).split('\n');
+    return ls.slice(a - 1, b).join('\n');
+  };
+  const l2 = db.prepare('SELECT * FROM l2 ORDER BY id').all().map((r) => ({ ...r, text: cut(r.path, r.line_start, r.line_end) }));
   assert.ok(l2.length >= 25, `the fixture yields many rows (${l2.length})`);
   for (const r of l2) {
     const want = Array.from({ length: r.line_end - r.line_start + 1 }, (_, k) => redactedLine(r.path, r.line_start + k)).join('\n');
     assert.equal(r.text, want, `verbatim: ${r.kind} ${r.symbol} at ${r.path}:${r.line_start}-${r.line_end}`);
     assert.equal(r.sha256, sha(r.text), `sha256 of ${r.path}:${r.line_start}`);
+    assert.equal(r.chars, r.text.length, `stored length of ${r.path}:${r.line_start}`);
   }
   // Every L1 row with a source line: that exact line.
   const l1 = db.prepare('SELECT * FROM l1 ORDER BY id').all();
@@ -87,12 +96,15 @@ test('Wave 4: layered extracts are verbatim, screened, complete and deterministi
   const big = l1n('npm-package', '@lplus/big');
   assert.ok(big, 'a manifest over the passage truncation still becomes an L1 row (it was parsed untruncated)');
   assert.equal(big.value, 'A package whose description sits past the truncation point');
-  assert.equal(db.prepare("SELECT text FROM files WHERE path='packages/big/package.json'").get().text, BIG.slice(0, -1) + '\n', 'the store holds the whole manifest');
+  assert.equal(fileText('packages/big/package.json'), BIG, 'the store holds the whole manifest');
 
   // Secrets: the key is gone from the store, its line is kept.
   const bytes = fs.readFileSync(path.join(pack, 'layered.db'));
   assert.equal(bytes.includes(Buffer.from(FAKE_AWS)), false, 'no secret key bytes anywhere in layered.db');
-  assert.equal(db.prepare("SELECT text FROM files WHERE path='src/config.ts'").get().text.split('\n')[6], "const fallbackKey = '[redacted]';", 'the redacted line keeps its place');
+  // File text is stored deflated, so the raw bytes alone cannot show a leak: every file is inflated too.
+  for (const { path: fp } of db.prepare('SELECT path FROM files').all()) assert.equal(fileText(fp).includes(FAKE_AWS), false, `no secret key in the stored text of ${fp}`);
+  assert.equal(fileText('src/config.ts').split('\n')[6], "const fallbackKey = '[redacted]';", 'the redacted line keeps its place');
+  assert.ok(bytes.length < 400_000, `the store is compact (${bytes.length} bytes)`);
   const cov = JSON.parse(fs.readFileSync(path.join(pack, 'layered-coverage.json'), 'utf8'));
   assert.equal(cov.repos['lplus-kit'].secrets_redacted, 1, 'the coverage ledger counts the redaction');
   assert.equal(cov.repos['lplus-kit'].commit, KIT_META.commit, 'the coverage ledger records the commit per repository');
