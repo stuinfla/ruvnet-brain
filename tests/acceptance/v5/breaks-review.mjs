@@ -24,5 +24,7 @@ export function addReviewBreaks(BREAKS) {
     // F12: uninstall is one locked transaction; a live server never recreates the home
     'wp4-14-recreate': { test: 'wp4-14', what: 'a status write recreates an uninstalled home', patches: [p('packages/health/status.mjs', '  if (!fs.existsSync(p.current)) return false;\n  try {\n    fs.mkdirSync(p.status);', '  try {\n    fs.mkdirSync(p.status, { recursive: true });')], expect: /a running server brought the uninstalled home back/ },
     'wp4-14-hosts-first': { test: 'wp4-14', what: 'host entries are removed before the lock is taken', patches: [p('packages/cli/uninstall.mjs', '  let releaseLock = () => {};\n  try {\n    releaseLock = acquire(home);', '  await unregister();\n  let releaseLock = () => {};\n  try {\n    releaseLock = acquire(home);')], expect: /a refused uninstall must not have removed the host registration/ },
+    // F07: the version 5 home never overlaps the 4.7 home
+    'wp9-04-overlap': { test: 'wp9-04', what: 'migration does not compare the two homes', patches: [p('packages/migrate/migrate.mjs', '    if (inside(a, old) || inside(old, a)) throw', '    if (false) throw')], expect: /the 4\.7 home itself, migrate: must be refused/ },
   });
 }

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "ruvnet-brain-convergence-manifest",
   "version": "4.7.28",
-  "sourceIdentity": "8bf4344dfe44841d00524ee34018b78c3ed07647ca29f818208f0b4b29e9c795",
+  "sourceIdentity": "3919691dd714981a971794aa1c3753fd0c0e7b270cced0cb312fac3cf84ac676",
   "versionSurfaces": {
     "package.json": "4.7.28",
     "plugin/.claude-plugin/plugin.json": "4.7.28",
@@ -117,8 +117,8 @@
     "0109-research-record-and-embedding-recipe-are-product.md",
     "README.md"
   ],
-  "trackedFileCount": 2288,
-  "trackedFilesSha256": "ccf8512df0427a88a973a45aa82bc5550ab68acabe58ed26558637389f8e2c75",
+  "trackedFileCount": 2289,
+  "trackedFilesSha256": "182635a302bfc5fa718d7a55bae429ca0442017035f4e79430780569d1b4d12e",
   "ownershipChecks": [
     "version:check",
     "doc:currency",
