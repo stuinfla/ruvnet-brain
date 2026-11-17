@@ -18,7 +18,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 const HOOK = path.join(ROOT, 'plugin', 'scripts', 'ground-ruvnet.sh');
 const hasBash = spawnSync('bash', ['-c', 'exit 0']).status === 0;
 const temps = [];
-afterAll(() => { for (const d of temps) fs.rmSync(d, { recursive: true, force: true }); });
+// SessionStart can leave a detached, throttled helper writing into its temp home for a moment: retry, never fail on cleanup.
+afterAll(() => { for (const d of temps) { try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); } catch { /* temp dir; the OS reclaims it */ } } });
 
 const LINE = /RUVNET BRAIN SEARCH IS DOWN since [A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2} [AP]M ET\. Diagnose and fix it before other work/;
 const downState = (over = {}) => JSON.stringify({ lastVerdict: 'down', consecutiveFailures: 3, lastRunAt: Date.now(), failingSince: Date.now() - 20 * 60_000,
