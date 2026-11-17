@@ -41,6 +41,27 @@ function regex(pattern, flags, what) {
 const rules = (recipe, dotted, extraFlags) =>
   list(recipe, dotted).map((r, i) => ({ rule: str(r, 'rule'), re: regex(str(r, 'pattern'), `${r.flags ?? ''}${extraFlags}`, `${dotted}[${i}]`) }));
 
+/** The layered store's settings (contract 1.3), or null when the recipe names no layered store (a
+ *  pack built from such a recipe has no layered.db, and the layered tools say so). */
+function layeredSettings(recipe) {
+  if (recipe.layered === undefined) return null;
+  const l = 'layered';
+  if (int(recipe, `${l}.version`, 1, 1) !== 1) throw new Error('layered.version must be 1');
+  const out = {
+    fts5Tokenizer: str(recipe, `${l}.fts5Tokenizer`),
+    pageChars: int(recipe, `${l}.pageChars`, 2000, 44_000),
+    rowMaxChars: int(recipe, `${l}.rowMaxChars`, 200, 44_000),
+    readLines: int(recipe, `${l}.readLines`, 1, 100_000),
+    searchDepth: int(recipe, `${l}.searchDepth`, 1, 10_000),
+    mapDepth: int(recipe, `${l}.mapDepth`, 1, 10_000),
+  };
+  // The reader holds every page to the lower of pageChars and the recipe's delivery ceiling; a row
+  // shown inline must fit well inside that page.
+  const page = Math.min(out.pageChars, recipe.result?.delivery?.maxChars ?? 44_000, 44_000);
+  if (out.rowMaxChars * 2 > page) throw new Error(`layered.rowMaxChars ${out.rowMaxChars} must be at most half of the page cap (${page} characters), or one row could fill a page`);
+  return out;
+}
+
 /** The builder's whole configuration, derived from the recipe. Throws one sentence on any gap. */
 export function settings(recipe) {
   for (const m of list(recipe, 'models')) {
@@ -111,6 +132,7 @@ export function settings(recipe) {
       minTermLength: int(recipe, 'probes.minTermLength', 1, 64),
     },
   };
+  s.layered = layeredSettings(recipe);
   if (typeof s.carryMaxShare !== 'number' || s.carryMaxShare < 0 || s.carryMaxShare >= 1) throw new Error('carry.maxShare must be a number from 0 up to (not including) 1');
   for (const k of s.history.kinds) if (typeof s.history.standing[k] !== 'string') throw new Error(`recipe has no units.history.standing.${k}; the builder has no default for it`);
   return s;

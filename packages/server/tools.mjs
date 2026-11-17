@@ -1,6 +1,9 @@
 // The two tools the server offers, and the checks on their arguments. Descriptions follow the vendor
 // guidance for agent-facing search tools: say what comes back and how big it is, offer a brief and a
-// full mode, name things instead of using opaque ids, and say how to get more.
+// full mode, name things instead of using opaque ids, and say how to get more. The L+ answer rules
+// (layered-tools.mjs RULES) close the search description.
+import { RULES } from './layered-tools.mjs';
+
 export const MAX_EXTRA_TERMS = 8;
 export const MAX_TERM_CHARS = 200;
 
@@ -11,7 +14,9 @@ export const SEARCH = {
     'Pass the user\'s own words as `query`, unchanged. Optionally pass `extra_terms`: your technical phrasings ' +
     'and the names likely to appear in the answer (APIs, packages, functions); they never replace the question. ' +
     'Returns cited passages in sections (FILES, HISTORY), each with repository, path, lines, commit, standing ' +
-    'and date, capped at 24,000 characters (brief) or 44,000 (full). Use read_ruvnet for more lines of a cited file.',
+    'and date, capped at 24,000 characters (brief) or 44,000 (full). Use read_ruvnet for more lines of a cited file. ' +
+    'With it: map_ruvnet (what exists), facts_ruvnet (verbatim defaults, flags, schemas, limits), find_ruvnet (exact words), ' +
+    `context_ruvnet (ADRs) and source_ruvnet (the file, line by line). ${RULES}`,
   inputSchema: {
     type: 'object',
     properties: {

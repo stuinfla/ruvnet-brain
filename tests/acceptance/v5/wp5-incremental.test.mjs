@@ -22,7 +22,7 @@ test('WP5 builds are reproducible and incremental by content hash', { timeout: 3
   const a = built(ctx, tree, { list });
   const b = built(ctx, tree, { list });
   const ha = fileHashes(a);
-  assert.deepEqual(Object.keys(ha), ['PACK.json', 'PROBES.json', 'RECIPE.json', 'history.db', 'lexical.db', 'manifest.json']);
+  assert.deepEqual(Object.keys(ha), ['PACK.json', 'PROBES.json', 'RECIPE.json', 'history.db', 'layered-coverage.json', 'layered.db', 'lexical.db', 'manifest.json']);
   assert.deepEqual(fileHashes(b), ha, 'same sources, same recipe: byte-identical pack');
 
   // a cached build equals the clean build, and reports every source rebuilt the first time

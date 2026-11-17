@@ -69,6 +69,14 @@ function recipeDoc() {
     ['search deadline', `${r.deadlineMs} ms`],
     ['probes', `${r.probes.perRepo} per repository, ${r.probes.termsPerProbe} terms each`],
   ]), '');
+  const l = r.layered;
+  out.push('## Layered store (L+)', '', l ? table(['Setting', 'Value'], [
+    ['format', `version ${l.version}, full-text tokenizer ${l.fts5Tokenizer} plus an identifier-split column`],
+    ['page cap', `${l.pageChars} characters per answer of map_ruvnet, facts_ruvnet, find_ruvnet, context_ruvnet, source_ruvnet`],
+    ['longest row shown inline', `${l.rowMaxChars} characters (a longer row is a pointer to source_ruvnet)`],
+    ['source page', `${l.readLines} lines by default`],
+    ['candidates', `map ${l.mapDepth}, find ${l.searchDepth}`],
+  ]) : 'None: packs built from this recipe have no layered store.', '');
   return out.join('\n');
 }
 

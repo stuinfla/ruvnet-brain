@@ -32,7 +32,7 @@ test('Wave 2: a contract-v1 pack still opens, passes its probes, searches and fo
   const ctx = setup(t, 'wave2-contract');
   const tree = ctx.tree();
   const { engine, validate, format, constants } = await modules(tree);
-  assert.equal(constants.CONTRACT_VERSION, '1.2');
+  assert.equal(constants.CONTRACT_VERSION, '1.3');
   const pack = path.join(ctx.tmp('rb5-v1-'), 'pack');
   copyV1Pack(pack);
   const recipe = JSON.parse(fs.readFileSync(path.join(pack, 'RECIPE.json'), 'utf8'));

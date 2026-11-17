@@ -90,13 +90,16 @@ export function readSource(dir, s) {
       }
       let text = raw.replace(/\r\n?/g, '\n');
       const kind = kindOf(r, type, text);
+      // The layered store (builder/layered) reads the whole file: a manifest cut short would not parse.
+      let full;
       if (kind === 'config' && text.length > s.configMaxChars) {
         const cut = text.lastIndexOf('\n', s.configMaxChars);
         truncated.push({ path: r, keptChars: cut > 0 ? cut : s.configMaxChars, totalChars: text.length });
+        full = text;
         text = text.slice(0, cut > 0 ? cut : s.configMaxChars);
       }
       if (!text.trim()) continue;
-      docs.push({ rel: r, type, kind, lang: languageOf(r, type), text });
+      docs.push({ rel: r, type, kind, lang: languageOf(r, type), text, ...(full === undefined ? {} : { full }) });
     }
   };
   walk('');

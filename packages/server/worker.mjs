@@ -8,8 +8,21 @@ import { widen } from './widen.mjs';
 import { read } from './read.mjs';
 
 const engine = await import(pathToFileURL(path.join(workerData.appDir, 'engine', 'index.mjs')).href);
+const layered = await import(pathToFileURL(path.join(workerData.appDir, 'engine', 'layered', 'query.mjs')).href);
 let handle = null;
+let lh = null; // the layered store, opened on first use; only ever the installed public pack
 const privates = { list: null };
+
+/** A layered tool call: { tool, args } -> the JSON text of its answer, or a refusal naming why. */
+function runLayered(m) {
+  try {
+    lh ??= layered.openLayered(workerData.packDir, handle.pack, handle.recipe);
+  } catch (e) {
+    if (e instanceof layered.Unavailable) throw Object.assign(new Error(`refused: ${e.message}`), { refused: true });
+    throw e;
+  }
+  return layered.runTool(lh, m.tool, m.args);
+}
 
 parentPort.on('message', (m) => {
   try {
@@ -17,6 +30,7 @@ parentPort.on('message', (m) => {
     let result;
     if (m.type === 'selfTest') result = engine.selfTest(handle);
     else if (m.type === 'read') result = read(engine, handle, privates, m);
+    else if (m.type === 'layered') result = runLayered(m);
     else result = engine.search(handle, m.query, m.options);
     if (m.type === 'search') result = widen(engine, handle, privates, m, result);
     parentPort.postMessage({ id: m.id, ok: true, result });

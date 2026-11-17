@@ -132,6 +132,19 @@
       }
     },
     "deadlineMs": { "type": "integer", "minimum": 100 },
+    "layered": {
+      "type": "object",
+      "required": ["version", "fts5Tokenizer", "pageChars", "rowMaxChars", "readLines", "searchDepth", "mapDepth"],
+      "properties": {
+        "version": { "const": 1 },
+        "fts5Tokenizer": { "type": "string", "minLength": 1 },
+        "pageChars": { "type": "integer", "minimum": 2000, "maximum": 44000 },
+        "rowMaxChars": { "type": "integer", "minimum": 200, "maximum": 44000 },
+        "readLines": { "type": "integer", "minimum": 1 },
+        "searchDepth": { "type": "integer", "minimum": 1 },
+        "mapDepth": { "type": "integer", "minimum": 1 }
+      }
+    },
     "probes": {
       "type": "object",
       "required": ["perRepo", "termsPerProbe", "minTermLength"],

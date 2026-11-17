@@ -1,8 +1,9 @@
 // Shared constants of the version 5 contract. Nothing here names a model, a revision or a chunk
 // size: those live only in recipe/RECIPE.json.
 // contract-v1 was version 1; 1.1 adds only optional fields and two schemas (CONTRACT-NOTES.md, wave 2);
-// 1.2 adds optional gate-result fields, the answer-gate-result schema and DEFAULTS.guard (wave 3).
-export const CONTRACT_VERSION = '1.2';
+// 1.2 adds optional gate-result fields, the answer-gate-result schema and DEFAULTS.guard (wave 3);
+// 1.3 adds the optional recipe block `layered` and the pack roles layered-db / layered-coverage (L+ port).
+export const CONTRACT_VERSION = '1.3';
 export const SUPPORTED_RECIPE_VERSIONS = [1];
 export const SHIM_VERSION = 1;
 export const STANDINGS = ['implemented', 'measured', 'decided', 'corrected', 'negative', 'claimed', 'planned', 'instructing', 'speculative', 'spoken'];

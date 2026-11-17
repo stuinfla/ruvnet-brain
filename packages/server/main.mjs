@@ -1,5 +1,6 @@
 // The MCP server (architecture 2.2): one stable process per session, newline-delimited JSON-RPC on
-// stdio, tools `search_ruvnet` and `read_ruvnet`. Calls run in a small pool of worker threads behind
+// stdio, tools `search_ruvnet` and `read_ruvnet`, and the five layered tools (map_ruvnet, facts_ruvnet,
+// find_ruvnet, context_ruvnet, source_ruvnet; layered-tools.mjs). Calls run in a small pool of worker threads behind
 // one queue (runner.mjs), each under the recipe's deadline; when a worker dies, runs out of time or
 // cannot be reached in time, the main thread answers from the keyword lane ("safe mode").
 // Before every call the pointer file is re-read, so a new app or pack is picked up without a restart;
@@ -17,6 +18,7 @@ import { createRunner } from './runner.mjs';
 import { createHelpers } from './helper.mjs';
 import { format, formatRead } from './format.mjs';
 import { READ, SEARCH, detailOf, extraTerms } from './tools.mjs';
+import { LAYERED_NAMES, checkArgs, layeredList } from './layered-tools.mjs';
 import { real } from './widen.mjs';
 import { toolResult } from './wire.mjs';
 
@@ -161,6 +163,19 @@ export async function run({ home, input = process.stdin, output = process.stdout
     }
   }
 
+  /** A layered tool: arguments checked here, the store read in a worker under the recipe's deadline
+   *  (never on this thread, never in safe mode: a layered answer is the store's or an error). */
+  async function layered(def, args) {
+    const c = checkArgs(def.tool, args);
+    if (c.error) return { text: `RuvNet Brain · ${def.name} refused: ${c.error}`, isError: true };
+    const a = ensureActive();
+    try {
+      return { text: await a.runner.call({ type: 'layered', tool: def.tool, args: c.args }, a.recipe.deadlineMs) };
+    } catch (e) {
+      return { text: `RuvNet Brain · ${def.name} ${/^refused: /.test(e.message) ? e.message : `failed: ${e.message}`}`, isError: true };
+    }
+  }
+
   async function autoUpdate() {
     if (active?.runner.busy()) return;
     try {
@@ -190,14 +205,17 @@ export async function run({ home, input = process.stdin, output = process.stdout
       case 'ping':
         return {};
       case 'tools/list':
-        return { tools: [SEARCH, READ] };
+        // The same seven tools whatever pack is active, so the list never changes under a hot swap; a
+        // pack without a layered store answers the layered tools with one sentence saying so.
+        return { tools: [SEARCH, READ, ...layeredList()] };
       case 'tools/call': {
         const name = msg.params?.name;
-        if (name !== SEARCH.name && name !== READ.name) throw Object.assign(new Error(`unknown tool ${name}`), { code: -32602 });
+        if (name !== SEARCH.name && name !== READ.name && !LAYERED_NAMES.has(name)) throw Object.assign(new Error(`unknown tool ${name}`), { code: -32602 });
         // Every result leaves through toolResult (wire.mjs): one text block, no structured copy, and
         // everything on the wire held to the delivery ceiling.
         try {
-          const r = name === SEARCH.name ? await search(msg.params.arguments) : await read(msg.params.arguments);
+          const args = msg.params.arguments;
+          const r = name === SEARCH.name ? await search(args) : name === READ.name ? await read(args) : await layered(LAYERED_NAMES.get(name), args);
           return toolResult(r.text, r.isError, active?.recipe);
         } catch (e) {
           return toolResult(`RuvNet Brain DOWN · search failed: ${e.message} · fix: ruvnet-brain doctor`, true, active?.recipe);

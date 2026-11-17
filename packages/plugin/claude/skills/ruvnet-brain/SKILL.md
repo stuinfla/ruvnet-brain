@@ -23,6 +23,26 @@ Do not answer these from memory: the stack changes faster than any model's train
 `search_ruvnet({ query: "..." })` with the words the code would use: package, function, command or
 file names, plus the problem in plain words. `detail: "full"` returns longer excerpts.
 
+## Going from a map down to exact source lines
+
+Beside `search_ruvnet` (and `read_ruvnet` for more lines of a cited passage), five tools read the
+pack's layered store. Each answers with compact JSON under 20,000 characters; `next` gives the next page.
+
+- `map_ruvnet({ query })`: what exists (packages, crates, plugins, MCP tools, CLI commands), each with
+  its one-line description copied from source, its path and line, and its links.
+- `facts_ruvnet({ target })`: verbatim extracts for a capability, repository, path or symbol: commands,
+  flags, tool schemas, defaults, constants, environment variables, signatures, status and limitation
+  sections, TODO and not-implemented markers.
+- `find_ruvnet({ words })`: exact words and identifiers across the map and the extracts.
+- `context_ruvnet({ repo, path })`: the ADRs a file mentions or is named in, and its owning capability.
+- `source_ruvnet({ repo, path, from, to })`: the file itself, numbered line by line.
+
+Rules: (a) before saying something does not exist or is not supported, search at least three different ways (plain
+words, likely product name, likely file or crate name) and say what you searched; (b) for a recommended capability,
+open its source and state: what to call, defaults and limits, what it does not do, known pitfalls or contradictions
+between docs and code, and version history if the question is about a change over time; (c) cite file and line for
+every specific number, default or command.
+
 ## How to read the result
 
 - Line 1: the knowledge date and the lanes searched. Line 2: `MODE · normal`, or `SAFE MODE` (keyword

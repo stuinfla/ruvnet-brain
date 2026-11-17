@@ -28,7 +28,7 @@ test('WP2 T7 extra terms are searched only beside the question', { timeout: 300_
   const plain = await s1.search(Q);
   assert.ok(plain.files.length >= 1 && plain.files.length < 5, `the question alone must leave free slots: ${plain.files.length}`);
   const withExtra = await s1.search(Q, { extra_terms: EXTRA });
-  assert.equal(unfenced(withExtra.text), `${unfenced(plain.text)}\nNOTE · extra_terms received and not searched: recipe r3-wave2 searches the question as given.`, 'with the switch off, extra terms change nothing but one note');
+  assert.equal(unfenced(withExtra.text), `${unfenced(plain.text)}\nNOTE · extra_terms received and not searched: recipe r4-lplus searches the question as given.`, 'with the switch off, extra terms change nothing but one note');
 
   // Switch on.
   const on = ctx.installed(tree, { recipe: { query: { extraTerms: 'append' } } });

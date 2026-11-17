@@ -3,8 +3,8 @@
 // A source is a folder with <sources.sourceFile> = { repo, commit, date }. The list file is
 // { "sources": [{ "dir": "...", "repo"?: "...", "history"?: { "owner": "...", "recorded": "<dir>" } }] },
 // relative paths against the list file's folder. Everything the builder decides comes from the recipe.
-// Output: lexical.db, history.db (when any source has a history export), RECIPE.json, PROBES.json,
-// manifest.json, PACK.json; written to a staging folder and renamed into place only when complete
+// Output: lexical.db, history.db (when any source has a history export), layered.db and
+// layered-coverage.json (when the recipe names a layered store), RECIPE.json, PROBES.json, manifest.json, PACK.json; written to a staging folder and renamed into place only when complete
 // and every probe passes against it.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -20,6 +20,7 @@ import { makeProbes } from './probes.mjs';
 import { settings } from './settings.mjs';
 import { writeStore } from './store.mjs';
 import { manifestOf } from './manifest.mjs';
+import { writeLayered } from './layered/store.mjs';
 
 /** Reads one source in full (files and history) or throws Unreadable. */
 async function snapshotOf(entry, s) {
@@ -94,6 +95,12 @@ export async function build({ recipePath, sources, outDir, cacheDir = null }) {
     writeStore(path.join(stage, 'lexical.db'), passages, store);
     const withHistory = results.filter((r) => r.out.history);
     if (withHistory.length) writeStore(path.join(stage, 'history.db'), withHistory.flatMap((r) => r.out.history.rows), store);
+    // The layered store (L+): only when the recipe names one (contract 1.3). Its coverage ledger ships
+    // beside it so a reader can see what each extractor found and missed per repository.
+    if (s.layered) {
+      const coverage = writeLayered(path.join(stage, 'layered.db'), results, s);
+      fs.writeFileSync(path.join(stage, 'layered-coverage.json'), `${JSON.stringify(coverage, null, 1)}\n`);
+    }
     fs.writeFileSync(path.join(stage, 'RECIPE.json'), recipeText);
     const probes = makeProbes(passages, recipe.analyser, s.probes);
     if (!probes.length) throw new Error('no probe could be made from these sources');

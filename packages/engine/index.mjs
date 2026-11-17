@@ -28,7 +28,9 @@ export function open(packDir) {
   check('recipe', recipe, 'RECIPE.json');
   checkAnalyser(recipe.analyser);
   if (sha256(recipeText) !== pack.recipeHash) throw new Error("The pack's recipe does not match its manifest.");
-  const optionalRoles = new Set(recipe.lanes.filter((l) => l.optional).map(roleOf));
+  // The layered store is not a lane: when it is missing or damaged, only the layered tools say so
+  // (engine/layered/query.mjs checks it again on open); search keeps working.
+  const optionalRoles = new Set([...recipe.lanes.filter((l) => l.optional).map(roleOf), 'layered-db', 'layered-coverage']);
   const broken = new Map();
   for (const f of pack.files) {
     let size = -1;

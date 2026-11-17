@@ -1,7 +1,7 @@
 {
   "schema": "ruvnet-brain/recipe",
   "version": 1,
-  "id": "r3-wave2",
+  "id": "r4-lplus",
   "units": {
     "passage": {
       "chunker": { "name": "lines", "version": 1, "maxLines": 400, "maxChars": 8000 },
@@ -91,5 +91,14 @@
   ],
   "result": { "capChars": { "brief": 24000, "full": 44000 }, "defaultDetail": "brief", "delivery": { "maxChars": 44000, "maxTokens": 20000 } },
   "deadlineMs": 10000,
+  "layered": {
+    "version": 1,
+    "fts5Tokenizer": "porter unicode61",
+    "pageChars": 20000,
+    "rowMaxChars": 6000,
+    "readLines": 200,
+    "searchDepth": 400,
+    "mapDepth": 60
+  },
   "probes": { "perRepo": 1, "termsPerProbe": 3, "minTermLength": 4 }
 }
