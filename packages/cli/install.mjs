@@ -9,13 +9,13 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { check } from '../contract/validate.mjs';
 import { trustedPublicKey, verify } from '../contract/signature.mjs';
-import { paths, readConfig, readJson, writeJsonAtomic } from '../contract/home.mjs';
+import { paths, readConfig, writeJsonAtomic } from '../contract/home.mjs';
 import { HOME_ENV, SHIM_VERSION } from '../contract/constants.mjs';
 import { assess } from '../health/assess.mjs';
 import { readEvidence } from '../health/status.mjs';
 import { startServer } from './mcp-client.mjs';
 import { Refused, copyVerified, matches, openSource, within } from './source.mjs';
-import { acquire, newJournal, prune, pruneTargets, recover, rel, saveJournal, txnPaths, undo } from './txn.mjs';
+import { acquire, newJournal, prune, pruneTargets, recordUpdateUrl, recover, rel, saveJournal, txnPaths, undo } from './txn.mjs';
 import { freeBytes, HEADROOM } from './disk.mjs';
 
 export { Refused };
@@ -196,6 +196,12 @@ async function stageDir(src, s, j, ok) {
   fs.renameSync(partial, s.dest);
 }
 
+function enoughDisk(plan) {
+  if (plan.free === null || plan.need + HEADROOM <= plan.free) return;
+  const short = plan.need + HEADROOM - plan.free;
+  throw new Refused(`not enough free disk: this needs ${plan.need + HEADROOM} bytes (${(plan.need / 1e9).toFixed(2)} GB plus headroom) and ${plan.free} bytes are free; short by ${short} bytes (${(short / 1e9).toFixed(2)} GB). Nothing was written`);
+}
+
 /**
  * Installs or updates from `from` (a release folder or web address). With planOnly, returns the plan
  * and writes nothing. Throws Refused with one plain sentence when the release is not installed.
@@ -205,16 +211,17 @@ export async function install({ home, from, planOnly = false, log = () => {} }) 
   const release = await readRelease(src);
   const first = await makePlan(home, release, src);
   if (planOnly) return { plan: first, src };
-  if (first.free !== null && first.need + HEADROOM > first.free) {
-    const short = first.need + HEADROOM - first.free;
-    throw new Refused(`not enough free disk: this needs ${first.need + HEADROOM} bytes (${(first.need / 1e9).toFixed(2)} GB plus headroom) and ${first.free} bytes are free; short by ${short} bytes (${(short / 1e9).toFixed(2)} GB). Nothing was written`);
-  }
+  enoughDisk(first);
   const p = paths(home);
   const release_ = acquire(home);
   try {
     const did = recover(home);
     if (did) log(did);
-    const plan = did ? await makePlan(home, release, src) : first;
+    // Every decision that depends on the home (release order, previous generation, which files are
+    // fresh, the update address) is made again here, under the lock (review F10): another install may
+    // have finished between the first plan and taking the lock.
+    const plan = await makePlan(home, release, src);
+    if (plan.need > first.need) enoughDisk(plan);
     const ok = guard(plan);
     const curRaw = fs.existsSync(p.current) ? fs.readFileSync(p.current) : null;
     const cur = plan.cur;
@@ -263,9 +270,12 @@ export async function install({ home, from, planOnly = false, log = () => {} }) 
     }
     j.next = next;
     j.record = { result: 'installed', rolledBack: false, at: Date.now(), from: cur && { app: cur.app, pack: cur.pack }, to };
+    // Everything the committed transaction still writes is in the journal, so recovery can finish it.
+    j.updateUrl = plan.recordSource;
     step(j, 'commit', 'committed');
     writeJsonAtomic(ok(p.update), j.record);
-    if (plan.recordSource) writeJsonAtomic(ok(p.config), { ...readJson(p.config, {}), updateUrl: plan.recordSource });
+    step(j, 'record-config');
+    recordUpdateUrl(home, j.updateUrl);
     step(j, 'prune');
     prune(home, next);
     step(j, 'done');

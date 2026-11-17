@@ -66,6 +66,13 @@ export function newJournal(home, kind, beforeBytes, to) {
   return { kind, phase: 'staging', step: 'begin', pid: process.pid, at: Date.now(), to, before: beforeBytes ? beforeBytes.toString('base64') : null, created: [], aside: [], record: null, next: null };
 }
 
+/** A first web install records its address as the update source, unless one is set already. */
+export function recordUpdateUrl(home, url) {
+  const file = paths(home).config;
+  const cfg = readJson(file, {});
+  if (url && !cfg.updateUrl) writeJsonAtomic(file, { ...cfg, updateUrl: url });
+}
+
 export const saveJournal = (home, j) => writeJsonAtomic(txnPaths(home).journal, j);
 
 /** Undo an unfinished transaction: the pointer back byte for byte, its new folders removed. */
@@ -87,6 +94,7 @@ export function recover(home) {
   let did;
   if (j.phase === 'committed' && j.next) {
     if (j.record) writeJsonAtomic(paths(home).update, j.record);
+    recordUpdateUrl(home, j.updateUrl);
     prune(home, j.next);
     did = `finished an interrupted ${j.kind} of ${j.to?.app} (it had already passed its checks)`;
   } else {
