@@ -26,5 +26,10 @@ export function addReviewBreaks(BREAKS) {
     'wp4-14-hosts-first': { test: 'wp4-14', what: 'host entries are removed before the lock is taken', patches: [p('packages/cli/uninstall.mjs', '  let releaseLock = () => {};\n  try {\n    releaseLock = acquire(home);', '  await unregister();\n  let releaseLock = () => {};\n  try {\n    releaseLock = acquire(home);')], expect: /a refused uninstall must not have removed the host registration/ },
     // F07: the version 5 home never overlaps the 4.7 home
     'wp9-04-overlap': { test: 'wp9-04', what: 'migration does not compare the two homes', patches: [p('packages/migrate/migrate.mjs', '    if (inside(a, old) || inside(old, a)) throw', '    if (false) throw')], expect: /the 4\.7 home itself, migrate: must be refused/ },
+    // F06 (installer): staging never writes or deletes through a link
+    'wp4-15-dir-link': { test: 'wp4-15', what: 'a linked staging folder is used as it is', patches: [p('packages/cli/install.mjs', '  if (isLink(partial)) fs.unlinkSync(partial);\n', '')], expect: /a linked staging folder: the folder it points at must be unchanged/ },
+    'wp4-15-file-link': { test: 'wp4-15', what: 'copyVerified writes through a linked staged file', patches: [p('packages/cli/source.mjs', '    if (i === parts.length - 1) fs.unlinkSync(cur);', '    if (i === parts.length - 1) return;')], expect: /a linked staged file: its target must be unchanged/ },
+    // F06 (migration): every host file migration reads gets the protected-home guard
+    'wp9-05-unguarded': { test: 'wp9-05', what: 'migration reads host files without the guard', patches: [p('packages/migrate/detect.mjs', "  refuseProtected([plugins, path.join(claude, 'settings.json'), path.join(codex, 'config.toml')], env);\n", '')], expect: /a protected host folder must be refused/ },
   });
 }

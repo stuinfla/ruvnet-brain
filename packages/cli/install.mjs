@@ -155,6 +155,14 @@ function guard(plan) {
   };
 }
 
+const isLink = (p) => {
+  try {
+    return fs.lstatSync(p).isSymbolicLink();
+  } catch {
+    return false;
+  }
+};
+
 function step(j, name, phase) {
   j.step = name;
   if (phase) j.phase = phase;
@@ -173,6 +181,9 @@ async function stageDir(src, s, j, ok) {
   }
   const partial = `${s.dest}.partial`;
   step(j, `${s.part}-staging`);
+  // A staging folder that is a link (to anywhere) is removed as a link before anything reads or
+  // writes through it (review F06); links inside it are removed by the sweep or refused by copyVerified.
+  if (isLink(partial)) fs.unlinkSync(partial);
   const listed = new Set(s.files.map((f) => within(partial, f.path)));
   (function sweep(d) {
     let ents = [];
@@ -187,7 +198,7 @@ async function stageDir(src, s, j, ok) {
   })(partial);
   let first = true;
   for (const f of s.files) {
-    await copyVerified(src, s.part, f, ok(within(partial, f.path)), s.what);
+    await copyVerified(src, s.part, f, ok(within(partial, f.path)), s.what, { root: partial });
     if (first) step(j, `${s.part}-first-file`);
     first = false;
   }
