@@ -1,6 +1,10 @@
 // Runs each skeleton acceptance test once as written (must pass) and once per break in breaks.mjs
 // (must fail, and with the expected failure). One test process at a time; waits while the machine's
-// 1-minute load average is above 60.   node tests/acceptance/v5/run-breaks.mjs [s01 s05 ...]
+// 1-minute load average is above 60.   node tests/acceptance/v5/run-breaks.mjs [--strict] [s01 s05 ...]
+// A break counts as red only when its expected failure is in the failing test's own report (the part
+// after "failing tests:"), not anywhere in the output (review F20). Breaks of a test file that skipped
+// entirely are not run and are counted and named; the summary never says "every break" while any were
+// skipped, and --strict (release qualification) counts each skipped break as a problem.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -9,7 +13,8 @@ import { fileURLToPath } from 'node:url';
 import { BREAKS } from './breaks.mjs';
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
-const only = process.argv.slice(2);
+const strict = process.argv.includes('--strict');
+const only = process.argv.slice(2).filter((a) => a !== '--strict');
 const files = fs.readdirSync(DIR).filter((f) => /^s\d\d-.*\.test\.mjs$/.test(f)).sort();
 
 async function calm() {
@@ -28,8 +33,12 @@ function run(file, brk) {
   const lines = out.split('\n');
   const err = lines.findIndex((l) => /AssertionError|^\s*Error:|\bError \[/.test(l));
   const key = err >= 0 ? lines.slice(err, err + 2).join(' ').replace(/\s+/g, ' ').trim() : (lines.find((l) => /^[✔✖]/.test(l)) ?? '').trim();
-  return { pass: r.status === 0, out, key: key.slice(0, 260) };
+  // The failing test's own report: what node:test prints after "failing tests:" (its error and stack).
+  const at = out.indexOf('failing tests:');
+  return { pass: r.status === 0, out, failure: at < 0 ? '' : out.slice(at), key: key.slice(0, 260) };
 }
+
+const skippedBreaks = [];
 
 let bad = 0;
 const rows = [];
@@ -44,7 +53,7 @@ for (const file of files) {
   for (const [name, b] of Object.entries(BREAKS).filter(([, b]) => b.test === id)) {
     await calm();
     const r = run(file, name);
-    const red = !r.pass && b.expect.test(r.out);
+    const red = !r.pass && b.expect.test(r.failure);
     if (!red) bad++;
     rows.push(`${id}  break ${name} (${b.what}): ${red ? 'RED as expected' : r.pass ? 'STILL GREEN' : 'red for another reason'}  ${r.key}`);
     console.log(rows.at(-1));
@@ -63,16 +72,23 @@ for (const file of fs.readdirSync(DIR).filter((f) => /^(wp\d+|wave\d+)-.*\.test\
   if (!g.pass) bad++;
   rows.push(`${id}  green: ${g.pass ? (skipped ? 'PASS with SKIPPED parts (see the test\'s skip reason)' : 'PASS') : 'FAIL'}  ${g.key}`);
   console.log(rows.at(-1));
-  if (skipped && /^ℹ pass 0$/m.test(g.out)) continue;
+  if (skipped && /^ℹ pass 0$/m.test(g.out)) {
+    const names = Object.entries(BREAKS).filter(([, x]) => x.test === id || id.startsWith(`${x.test}-`)).map(([n]) => n);
+    skippedBreaks.push(...names.map((n) => `${n} (${id} skipped)`));
+    if (names.length) console.log(`${id}  ${names.length} break(s) NOT RUN: the test skipped entirely`);
+    continue;
+  }
   for (const [name, b] of Object.entries(BREAKS).filter(([, x]) => x.test === id || id.startsWith(`${x.test}-`))) {
     await calm();
     const r = run(file, name);
-    const red = !r.pass && b.expect.test(r.out);
+    const red = !r.pass && b.expect.test(r.failure);
     if (!red) bad++;
     rows.push(`${id}  break ${name} (${b.what}): ${red ? 'RED as expected' : r.pass ? 'STILL GREEN' : 'red for another reason'}  ${r.key}`);
     console.log(rows.at(-1));
   }
 }
 // end of the work-package loop
-console.log(`\n${bad ? `${bad} problem(s)` : 'every test passes and every break turns its test red'}`);
+if (strict) bad += skippedBreaks.length;
+const notRun = skippedBreaks.length ? `; ${skippedBreaks.length} break(s) NOT RUN because their test skipped: ${skippedBreaks.join(', ')}` : '';
+console.log(`\n${bad ? `${bad} problem(s)${notRun}` : skippedBreaks.length ? `every test that ran passes and every break that ran turns its test red${notRun}` : 'every test passes and every break turns its test red'}`);
 process.exitCode = bad ? 1 : 0;
