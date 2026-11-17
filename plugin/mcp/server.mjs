@@ -32,7 +32,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import readline from 'node:readline';
+import { lfLineReader } from '../scripts/lf-lines.mjs';
 import { fileURLToPath } from 'node:url';
 import { writeOwn as writeOwnReadiness } from '../scripts/mcp-readiness.mjs';
 import { MANAGED_CLI_TOOLS } from './managed-cli-interface.mjs';
@@ -277,7 +277,7 @@ async function startWorker({ node, version }, startedAt, tried) {
       if (!process.stderr.listenerCount('error')) process.stderr.on('error', () => { /* host log gone (async EPIPE) */ });
       proc.stderr.on('data', (d) => { try { process.stderr.write(d); } catch { /* host log gone */ } c.stderrTail = (c.stderrTail + d).slice(-2000); });
       proc.stdin.on('error', () => { /* a worker that never started: reported through 'error'/'exit' below */ });
-      const rl = readline.createInterface({ input: proc.stdout });
+      const rl = lfLineReader(proc.stdout); // LF only: a reply may carry a raw U+2028 (lf-lines.mjs)
       rl.on('line', (line) => {
         let msg; try { msg = JSON.parse(line); } catch { return; }
         const waiter = c.pending.get(msg.id);
@@ -495,7 +495,7 @@ const corpusTimer = setInterval(() => {
 }, CORPUS_CHECK_INTERVAL_MS);
 corpusTimer.unref();
 
-const clientRl = readline.createInterface({ input: process.stdin });
+const clientRl = lfLineReader(process.stdin);
 clientRl.on('line', (line) => {
   let msg; try { msg = JSON.parse(line); } catch { return; } // malformed line: ignore, never crash
   handleClient(msg).catch((e) => { if (msg.id !== undefined && msg.id !== null) clientErr(msg.id, -32603, e.message); });

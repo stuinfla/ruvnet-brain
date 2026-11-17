@@ -38,10 +38,10 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import readline from 'node:readline';
 import { spawn, spawnSync } from 'node:child_process';
 import { isAlive, readAll } from '../plugin/scripts/mcp-readiness.mjs';
 import { nodeCandidates, selfTest } from '../plugin/scripts/node-runtime.mjs';
+import { lfLineReader } from '../plugin/scripts/lf-lines.mjs';
 import { downFlagPath, recordIsLive } from '../plugin/scripts/search-down-notice.mjs';
 import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 import { ntfyTopic, push } from './nightly-watchdog.mjs';
@@ -185,7 +185,7 @@ export function deepSearch({ server = installedServer(), node, env = process.env
     proc.on('error', (e) => finish({ ok: false, what: `the search server could not be started (${e.code || e.message})`, check: 'run `node -e 0`' }));
     proc.on('exit', (code, signal) => finish({ ok: false, what: `the search server exited (${signal || `code ${code}`}) before answering`, check: 'run `npx ruvnet-brain --doctor`' }));
     proc.stdin.on('error', () => { /* reported through exit/error */ });
-    readline.createInterface({ input: proc.stdout }).on('line', (line) => {
+    lfLineReader(proc.stdout).on('line', (line) => {
       let m; try { m = JSON.parse(line); } catch { return; }
       if (m.id !== 2) return;
       const text = m.result?.content?.[0]?.text || m.error?.message || '';

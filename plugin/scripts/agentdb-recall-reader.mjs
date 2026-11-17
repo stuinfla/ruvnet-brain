@@ -3,7 +3,7 @@
  * so a stalled CLI is retired at the recall deadline. Output contract unchanged: {ok, value}.
  */
 import { execFile } from 'node:child_process';
-import readline from 'node:readline';
+import { lfLineReader } from './lf-lines.mjs';
 import { resolveRuflo, rufloInvocationOrPlain } from './ruflo-bin.mjs';
 
 /** Batch session (#429): ONE process answering line-based `list` / `get` requests by calling the installed Ruflo
@@ -37,7 +37,7 @@ async function session(storePath, moduleUrl) {
     }
     return { state: 'fallback' };
   };
-  readline.createInterface({ input: process.stdin }).on('line', (line) => {
+  lfLineReader(process.stdin).on('line', (line) => {
     let request; try { request = JSON.parse(line); } catch { return; }
     run(request).catch(() => ({ state: 'unavailable' })).then((out) => reply({ id: request.id, ...out }));
   }).on('close', () => process.exit(0));

@@ -21,8 +21,24 @@
 // is just `ruvector/CARD/ruvector-card` (optionally suffixed `#0`, `#1`, … when chunked).
 
 import fs from 'node:fs';
+import { StringDecoder } from 'node:string_decoder';
 import path from 'node:path';
-import readline from 'node:readline';
+
+// JSONL is split on '\n' ONLY (4.7.31): node:readline also ends a line at U+2028/U+2029, which JSON.stringify
+// leaves raw inside strings, so one record read as two (plugin/scripts/lf-lines.mjs; the bundle cannot import it).
+async function* lfLines(input) {
+  const decoder = new StringDecoder('utf8');
+  let rest = '';
+  for await (const chunk of input) {
+    rest += typeof chunk === 'string' ? chunk : decoder.write(chunk);
+    let start = 0;
+    let nl;
+    while ((nl = rest.indexOf('\n', start)) >= 0) { const l = rest.slice(start, nl); yield l.endsWith('\r') ? l.slice(0, -1) : l; start = nl + 1; }
+    rest = rest.slice(start);
+  }
+  rest += decoder.end();
+  if (rest) yield rest.endsWith('\r') ? rest.slice(0, -1) : rest;
+}
 
 /**
  * Parse the reader's stdout into structured citations. Never throws; unparseable input → [].
@@ -143,7 +159,7 @@ export async function citationResolves(citation, kbDir) {
 async function resolveIn(files, docPath) {
   if (!files.length) return { resolved: false, reason: 'no-store', file: null, storedPath: null };
   for (const file of files) {
-    const rl = readline.createInterface({ input: fs.createReadStream(file), crlfDelay: Infinity });
+    const rl = lfLines(fs.createReadStream(file));
     try {
       for await (const line of rl) {
         if (!line) continue;
@@ -154,7 +170,7 @@ async function resolveIn(files, docPath) {
         }
       }
     } finally {
-      rl.close();
+      await rl.return();
     }
   }
   return { resolved: false, reason: 'path-not-in-store', file: null, storedPath: null };

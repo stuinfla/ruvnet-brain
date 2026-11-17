@@ -14,7 +14,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import readline from 'node:readline';
+import { StringDecoder } from 'node:string_decoder';
 import { fileURLToPath } from 'node:url';
 import { loadRvf, loadTransformers, configureModel } from './resolve-deps.mjs';
 import { configureTransformersModel, materializeModelRevision } from './model-requirements.mjs';
@@ -249,31 +249,44 @@ async function embedUncached(text, cfg = MINILM_CFG) {
   return Float32Array.from(out.data);
 }
 
+// JSONL is split on '\n' ONLY (4.7.31): node:readline also ends a line at U+2028/U+2029, which JSON.stringify
+// leaves raw inside strings, so one record read as two (plugin/scripts/lf-lines.mjs; the bundle cannot import it).
+async function* lfLines(input) {
+  const decoder = new StringDecoder('utf8');
+  let rest = '';
+  for await (const chunk of input) {
+    rest += typeof chunk === 'string' ? chunk : decoder.write(chunk);
+    let start = 0;
+    let nl;
+    while ((nl = rest.indexOf('\n', start)) >= 0) { const l = rest.slice(start, nl); yield l.endsWith('\r') ? l.slice(0, -1) : l; start = nl + 1; }
+    rest = rest.slice(start);
+  }
+  rest += decoder.end();
+  if (rest) yield rest.endsWith('\r') ? rest.slice(0, -1) : rest;
+}
+
 // ---------- passages sidecar loader ----------
 // byId  : Map id(str) -> { id(str), text, path, title, order }
 // byPath: Map path     -> [records] in passage-file order (== document chunk order). Stable
 // content-addressed chunk IDs are intentionally non-numeric, so numeric sorting would collapse
 // every id to NaN and make document assembly order engine-dependent.
-function loadPassages(file) {
-  return new Promise((resolve, reject) => {
-    const byId = new Map();
-    const byPath = new Map();
-    let order = 0;
-    if (!fs.existsSync(file)) return reject(new Error(`passages sidecar not found: ${file}`));
-    const rl = readline.createInterface({ input: fs.createReadStream(file, 'utf8'), crlfDelay: Infinity });
-    rl.on('line', (line) => {
-      if (!line.trim()) return;
-      try {
-        const o = JSON.parse(line);
-        const rec = { id: String(o.id), order: order++, text: o.text || '', path: o.path || '(unknown path)', title: o.title || '(unknown title)' };
-        byId.set(String(o.id), rec);
-        if (!byPath.has(rec.path)) byPath.set(rec.path, []);
-        byPath.get(rec.path).push(rec);
-      } catch { /* skip malformed line */ }
-    });
-    rl.on('close', () => { for (const arr of byPath.values()) arr.sort((a, b) => a.order - b.order); resolve({ byId, byPath }); });
-    rl.on('error', reject);
-  });
+async function loadPassages(file) {
+  const byId = new Map();
+  const byPath = new Map();
+  let order = 0;
+  if (!fs.existsSync(file)) throw new Error(`passages sidecar not found: ${file}`);
+  for await (const line of lfLines(fs.createReadStream(file))) {
+    if (!line.trim()) continue;
+    try {
+      const o = JSON.parse(line);
+      const rec = { id: String(o.id), order: order++, text: o.text || '', path: o.path || '(unknown path)', title: o.title || '(unknown title)' };
+      byId.set(String(o.id), rec);
+      if (!byPath.has(rec.path)) byPath.set(rec.path, []);
+      byPath.get(rec.path).push(rec);
+    } catch { /* skip malformed line */ }
+  }
+  for (const arr of byPath.values()) arr.sort((a, b) => a.order - b.order);
+  return { byId, byPath };
 }
 
 // ---------- kind metadata sidecar loader ----------

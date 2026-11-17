@@ -13,8 +13,8 @@
 //   node forge-ask-all.mjs --dir . --repos ruflo,ruvector --q "..."        # restrict to some repos
 //   import { searchAll } from './forge-ask-all.mjs'
 import fs from 'node:fs';
+import { StringDecoder } from 'node:string_decoder';
 import path from 'node:path';
-import readline from 'node:readline';
 import { createHash } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
@@ -70,6 +70,22 @@ import {
   resolveDeadlineMs,
   DEADLINE_EXIT_CODE,
 } from './query-deadline.mjs';
+
+// JSONL is split on '\n' ONLY (4.7.31): node:readline also ends a line at U+2028/U+2029, which JSON.stringify
+// leaves raw inside strings, so one record read as two (plugin/scripts/lf-lines.mjs; the bundle cannot import it).
+async function* lfLines(input) {
+  const decoder = new StringDecoder('utf8');
+  let rest = '';
+  for await (const chunk of input) {
+    rest += typeof chunk === 'string' ? chunk : decoder.write(chunk);
+    let start = 0;
+    let nl;
+    while ((nl = rest.indexOf('\n', start)) >= 0) { const l = rest.slice(start, nl); yield l.endsWith('\r') ? l.slice(0, -1) : l; start = nl + 1; }
+    rest = rest.slice(start);
+  }
+  rest += decoder.end();
+  if (rest) yield rest.endsWith('\r') ? rest.slice(0, -1) : rest;
+}
 
 // TRANSCRIPT/dialogue stores need LEXICAL (BM25) candidate generation, not dense alone. A fact spoken
 // in passing ("…876 commits…") embeds poorly against a conceptual question, so dense buries it past
@@ -1270,7 +1286,7 @@ async function sourcePassageTexts(dir, repo, allowedPaths) {
     const wanted = new Set(unresolved);
     const needles = unresolved.map((sourcePath) => JSON.stringify(sourcePath));
     const input = fs.createReadStream(passageFile, { encoding: 'utf8' });
-    const lines = readline.createInterface({ input, crlfDelay: Infinity });
+    const lines = lfLines(input);
     let byteOffset = 0;
     try {
       for await (const line of lines) {
@@ -1294,7 +1310,7 @@ async function sourcePassageTexts(dir, repo, allowedPaths) {
         );
       }
     } finally {
-      lines.close();
+      await lines.return();
       input.destroy();
     }
     for (const sourcePath of unresolved) cache.loaded.add(sourcePath);
@@ -1342,7 +1358,7 @@ async function graphMemoryPassageTexts(dir, repo, allowedPaths) {
   const wanted = new Set(allowedPaths);
   const chunks = new Map();
   const input = fs.createReadStream(passageFile, { encoding: 'utf8' });
-  const lines = readline.createInterface({ input, crlfDelay: Infinity });
+  const lines = lfLines(input);
   try {
     for await (const line of lines) {
       if (!line.trim()) continue;
@@ -1358,7 +1374,7 @@ async function graphMemoryPassageTexts(dir, repo, allowedPaths) {
       chunks.set(sourcePath, `${prior}\n${text}`.trim().slice(0, 16_000));
     }
   } finally {
-    lines.close();
+    await lines.return();
     input.destroy();
   }
   return new Map([...chunks].filter(([, text]) =>
@@ -1375,7 +1391,7 @@ async function conceptInventoryPassageTexts(dir, repo, allowedPaths, items) {
   const wanted = new Set(allowedPaths);
   const ranked = new Map();
   const input = fs.createReadStream(passageFile, { encoding: 'utf8' });
-  const lines = readline.createInterface({ input, crlfDelay: Infinity });
+  const lines = lfLines(input);
   try {
     for await (const line of lines) {
       if (!line.trim()) continue;
@@ -1393,7 +1409,7 @@ async function conceptInventoryPassageTexts(dir, repo, allowedPaths, items) {
       ranked.set(sourcePath, entries);
     }
   } finally {
-    lines.close();
+    await lines.return();
     input.destroy();
   }
   return new Map([...ranked].map(([sourcePath, entries]) => {

@@ -26,7 +26,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import readline from 'node:readline';
+import { lfLines } from '../../plugin/scripts/lf-lines.mjs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { isDirectInvocation } from '../../plugin/scripts/entrypoint.mjs';
 
@@ -53,7 +53,7 @@ async function chunksOf(kb, store, file) {
   for (const name of [`${store}.passages.jsonl`, `${store}.big.passages.jsonl`]) {
     const p = path.join(kb, name);
     if (!fs.existsSync(p)) continue;
-    const rl = readline.createInterface({ input: fs.createReadStream(p), crlfDelay: Infinity });
+    const rl = lfLines(fs.createReadStream(p)); // LF only (4.7.31)
     for await (const line of rl) {
       if (!line.includes(file)) continue;
       try { const r = JSON.parse(line); if (r.path === file) out.push(String(r.text || '')); } catch { /* skip */ }

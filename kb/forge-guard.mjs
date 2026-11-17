@@ -21,9 +21,25 @@
 //   node forge-guard.mjs <kb-dir> <kb-name> ["canned question"]
 
 import fs from 'node:fs';
+import { StringDecoder } from 'node:string_decoder';
 import path from 'node:path';
-import readline from 'node:readline';
 import { searchKb } from './forge-ask.mjs';
+
+// JSONL is split on '\n' ONLY (4.7.31): node:readline also ends a line at U+2028/U+2029, which JSON.stringify
+// leaves raw inside strings, so one record read as two (plugin/scripts/lf-lines.mjs; the bundle cannot import it).
+async function* lfLines(input) {
+  const decoder = new StringDecoder('utf8');
+  let rest = '';
+  for await (const chunk of input) {
+    rest += typeof chunk === 'string' ? chunk : decoder.write(chunk);
+    let start = 0;
+    let nl;
+    while ((nl = rest.indexOf('\n', start)) >= 0) { const l = rest.slice(start, nl); yield l.endsWith('\r') ? l.slice(0, -1) : l; start = nl + 1; }
+    rest = rest.slice(start);
+  }
+  rest += decoder.end();
+  if (rest) yield rest.endsWith('\r') ? rest.slice(0, -1) : rest;
+}
 
 const LEGACY_CAPS = [200, 240];
 const CAP_TOLERANCE = 0;
@@ -70,14 +86,16 @@ function loadMetaPreviews(file) {
   return { count: Object.keys(entries).length, previews, model: j.model, dim: j.dimensions, metric: j.metric };
 }
 
-function streamPassages(file, onLine) {
-  return new Promise((resolve, reject) => {
-    const rl = readline.createInterface({ input: fs.createReadStream(file, 'utf8'), crlfDelay: Infinity });
-    let n = 0;
-    rl.on('line', (line) => { if (!line.trim()) return; n++; try { onLine(JSON.parse(line), n); } catch { onLine(null, n); } });
-    rl.on('close', () => resolve(n));
-    rl.on('error', reject);
-  });
+async function streamPassages(file, onLine) {
+  let n = 0;
+  for await (const line of lfLines(fs.createReadStream(file, 'utf8'))) {
+    if (!line.trim()) continue;
+    n++;
+    let rec = null;
+    try { rec = JSON.parse(line); } catch { rec = null; }
+    onLine(rec, n);
+  }
+  return n;
 }
 
 async function checkStore({ dir, name, query, variant }) {

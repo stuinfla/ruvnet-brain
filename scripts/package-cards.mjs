@@ -38,7 +38,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import readline from 'node:readline';
+import { lfLines } from '../plugin/scripts/lf-lines.mjs';
 import { fileURLToPath } from 'node:url';
 import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
@@ -241,7 +241,7 @@ export async function* manifestPassages(kbDir, stores) {
   for (const store of stores) {
     const file = path.join(kbDir, `${store}.passages.jsonl`);
     if (!fs.existsSync(file)) continue;
-    const rl = readline.createInterface({ input: fs.createReadStream(file), crlfDelay: Infinity });
+    const rl = lfLines(fs.createReadStream(file)); // LF only (4.7.31)
     for await (const line of rl) {
       const manifest = line.includes('"text":"npm package: ') || line.includes('"text":"Rust crate / manifest: ');
       // README passages ride along (first chunk per path only): a package directory's own README is

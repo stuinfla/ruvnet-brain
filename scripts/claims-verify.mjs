@@ -17,7 +17,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import readline from 'node:readline';
+import { lfLines } from '../plugin/scripts/lf-lines.mjs';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -128,14 +128,14 @@ export async function verifyCheaperFactor(file = path.join(storeRoot(), 'metahar
   const needles = ['$0.267', '51.33'];
   const found = new Set();
   const stream = fs.createReadStream(file, { encoding: 'utf8' });
-  const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+  const rl = lfLines(stream); // LF only (4.7.31)
   try {
     for await (const line of rl) {
       for (const needle of needles) if (!found.has(needle) && line.includes(needle)) found.add(needle);
       if (found.size === needles.length) break; // first match wins; stop streaming
     }
   } finally {
-    rl.close();
+    await rl.return();
     stream.destroy();
   }
 

@@ -90,7 +90,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import readline from 'node:readline';
+import { lfLines } from '../plugin/scripts/lf-lines.mjs';
 import { detectCorrection, HARNESS_TEMPLATES } from './correction-detect.mjs';
 
 const argv = process.argv.slice(2);
@@ -139,7 +139,7 @@ async function extractFromFile(file) {
   const rows = [];
   let lastAssistantAction = null;
   let turnIndex = 0;
-  const rl = readline.createInterface({ input: fs.createReadStream(file, { encoding: 'utf8' }), crlfDelay: Infinity });
+  const rl = lfLines(fs.createReadStream(file, { encoding: 'utf8' })); // LF only (4.7.31)
   for await (const line of rl) {
     if (!line.trim()) continue;
     let obj;

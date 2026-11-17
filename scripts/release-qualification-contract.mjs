@@ -373,6 +373,15 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       }
     },
     {
+      "id": "jsonl-reads-split-on-lf-only",
+      "reason": "Every JSONL / newline-delimited JSON-RPC reader the product ships splits on LF only (4.7.31 hotfix): node:readline also ends a line at U+2028/U+2029, which JSON.stringify leaves raw, so one ruflo passage read as two broke every 4.7.30 update in forge-guard (PARITY 19,275 != 19,274). The real forge-guard, run as the update path runs it, counts a fixture holding both separators as one passage per record; forge-big reads it whole; a census refuses any new readline line reader",
+      "files": [],
+      "platformFiles": {
+        "linux": ["tests/unit/lf-lines.test.mjs"],
+        "macos": ["tests/unit/lf-lines.test.mjs"]
+      }
+    },
+    {
       "id": "search-survives-runtime-upgrades",
       "reason": "Search survives the launch node breaking mid-session (2026-11-16 Homebrew outage): the worker's node is resolved at spawn time through a self-tested fallback chain, an instant worker death or spawn error retries the next candidate, all-broken fails in seconds naming every node and reason, launchers store Homebrew's opt link and heal a dead pinned keg, and the search canary pages 'SERIOUS ALERT: RuvNet Brain search down' after two failing checks, recovers once, heartbeats daily (ntfy optional: no topic sends nothing and fails nothing), and while search is down SessionStart and EVERY prompt carry 'RUVNET BRAIN SEARCH IS DOWN since <ET>. Diagnose and fix it before other work' with the runbook, never deduped, gone on recovery, silent and process-free when healthy",
       "files": [],

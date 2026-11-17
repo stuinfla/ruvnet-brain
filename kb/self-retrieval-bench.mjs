@@ -16,12 +16,28 @@
 // Usage: node self-retrieval-bench.mjs --store ruv-meetings --samples 100 [--k 10] [--seed 42]
 //        node self-retrieval-bench.mjs --all --samples 40
 import fs from 'node:fs';
+import { StringDecoder } from 'node:string_decoder';
 import path from 'node:path';
-import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { searchKb } from './forge-ask.mjs';
 import { discoverRepos } from './forge-ask-all.mjs';
 import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
+
+// JSONL is split on '\n' ONLY (4.7.31): node:readline also ends a line at U+2028/U+2029, which JSON.stringify
+// leaves raw inside strings, so one record read as two (plugin/scripts/lf-lines.mjs; the bundle cannot import it).
+async function* lfLines(input) {
+  const decoder = new StringDecoder('utf8');
+  let rest = '';
+  for await (const chunk of input) {
+    rest += typeof chunk === 'string' ? chunk : decoder.write(chunk);
+    let start = 0;
+    let nl;
+    while ((nl = rest.indexOf('\n', start)) >= 0) { const l = rest.slice(start, nl); yield l.endsWith('\r') ? l.slice(0, -1) : l; start = nl + 1; }
+    rest = rest.slice(start);
+  }
+  rest += decoder.end();
+  if (rest) yield rest.endsWith('\r') ? rest.slice(0, -1) : rest;
+}
 
 function arg(f, d) { const i = process.argv.indexOf(f); return i >= 0 ? process.argv[i + 1] : d; }
 const DIR = arg('--dir', '.');
@@ -33,7 +49,7 @@ const rand = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return see
 async function loadPassages(name) {
   const file = path.join(DIR, fs.existsSync(path.join(DIR, `${name}.big.passages.jsonl`)) ? `${name}.big.passages.jsonl` : `${name}.passages.jsonl`);
   const recs = [];
-  const rl = readline.createInterface({ input: fs.createReadStream(file), crlfDelay: Infinity });
+  const rl = lfLines(fs.createReadStream(file));
   for await (const line of rl) { if (!line.trim()) continue; try { const o = JSON.parse(line); if ((o.text || '').split(/\s+/).length >= 30) recs.push({ path: o.path, text: o.text }); } catch { /* skip */ } }
   return recs;
 }

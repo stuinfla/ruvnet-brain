@@ -47,7 +47,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import readline from 'node:readline';
+import { lfLineReader } from '../plugin/scripts/lf-lines.mjs';
 import { fileURLToPath } from 'node:url';
 import { FULL_HINTS } from './full-hints.mjs';
 import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
@@ -94,7 +94,7 @@ function fnv1a(s) {
 function readPassages(file) {
   return new Promise((resolve, reject) => {
     const rows = [];
-    const rl = readline.createInterface({ input: fs.createReadStream(file), crlfDelay: Infinity });
+    const rl = lfLineReader(fs.createReadStream(file)); // LF only (4.7.31): readline also splits at U+2028/U+2029
     rl.on('line', (l) => { const s = l.trim(); if (!s) return; try { rows.push(JSON.parse(s)); } catch { /* counted structurally via row parse below */ } });
     rl.on('close', () => resolve(rows));
     rl.on('error', reject);

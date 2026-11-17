@@ -65,8 +65,8 @@
 // like a finished artifact; the expensive vec shards are retained so a re-ingest is cheap.
 
 import fs from 'node:fs';
+import { StringDecoder } from 'node:string_decoder';
 import path from 'node:path';
-import readline from 'node:readline';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { loadRvf, loadTransformers, chooseModelCache } from './resolve-deps.mjs';
@@ -74,6 +74,22 @@ import { materializeModelRevision, modelCacheReady } from './model-requirements.
 import { persistAndVerifyRvfIndex } from './rvf-index.mjs';
 import { lowerBuildPriority } from './process-priority.mjs';
 import { writeShardProgress, clearShardProgress, createStallWatcher } from './shard-progress.mjs';
+
+// JSONL is split on '\n' ONLY (4.7.31): node:readline also ends a line at U+2028/U+2029, which JSON.stringify
+// leaves raw inside strings, so one record read as two (plugin/scripts/lf-lines.mjs; the bundle cannot import it).
+async function* lfLines(input) {
+  const decoder = new StringDecoder('utf8');
+  let rest = '';
+  for await (const chunk of input) {
+    rest += typeof chunk === 'string' ? chunk : decoder.write(chunk);
+    let start = 0;
+    let nl;
+    while ((nl = rest.indexOf('\n', start)) >= 0) { const l = rest.slice(start, nl); yield l.endsWith('\r') ? l.slice(0, -1) : l; start = nl + 1; }
+    rest = rest.slice(start);
+  }
+  rest += decoder.end();
+  if (rest) yield rest.endsWith('\r') ? rest.slice(0, -1) : rest;
+}
 import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const MODEL = 'Xenova/bge-base-en-v1.5';
@@ -142,52 +158,39 @@ async function embedTexts(texts) {
  * stderr, passed to `onMalformed`, and attached to the returned array as a non-enumerable
  * `malformed` property — tolerance is allowed, silence is not.
  */
-export function readPassages(file, limit = 0, { tolerateMalformed = false, onMalformed = null } = {}) {
-  return new Promise((resolve, reject) => {
-    const rows = [];
-    const malformed = [];
-    let lineNo = 0;
-    let settled = false;
-    const stream = fs.createReadStream(file);
-    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
-    const finish = (fn, value) => { if (settled) return; settled = true; rl.close(); stream.destroy(); fn(value); };
-    rl.on('line', (line) => {
-      if (settled) return;
-      lineNo += 1;
-      const s = line.trim();
-      if (!s) return; // a blank line carries no row and loses nothing
-      let parsed;
-      try {
-        parsed = JSON.parse(s);
-      } catch (error) {
-        const record = { lineNo, error: error.message, bytes: s.length };
-        malformed.push(record);
-        if (onMalformed) onMalformed(record);
-        if (!tolerateMalformed) {
-          finish(reject, new Error(
-            `${file}:${lineNo} — malformed JSON line (${s.length} bytes): ${error.message}. `
-            + 'Refusing to silently drop a row: a dropped passage becomes an unretrievable document '
-            + 'and every count downstream agrees with the shortened set. Repair the line, or pass '
-            + 'tolerateMalformed to accept the loss explicitly.',
-          ));
-          return;
-        }
-        console.error(`[passages] TOLERATED malformed line ${file}:${lineNo} (${s.length} bytes): ${error.message}`);
-        return;
+export async function readPassages(file, limit = 0, { tolerateMalformed = false, onMalformed = null } = {}) {
+  const rows = [];
+  const malformed = [];
+  let lineNo = 0;
+  for await (const line of lfLines(fs.createReadStream(file))) {
+    lineNo += 1;
+    const s = line.trim();
+    if (!s) continue; // a blank line carries no row and loses nothing
+    let parsed;
+    try {
+      parsed = JSON.parse(s);
+    } catch (error) {
+      const record = { lineNo, error: error.message, bytes: s.length };
+      malformed.push(record);
+      if (onMalformed) onMalformed(record);
+      if (!tolerateMalformed) {
+        throw new Error(
+          `${file}:${lineNo} — malformed JSON line (${s.length} bytes): ${error.message}. `
+          + 'Refusing to silently drop a row: a dropped passage becomes an unretrievable document '
+          + 'and every count downstream agrees with the shortened set. Repair the line, or pass '
+          + 'tolerateMalformed to accept the loss explicitly.',
+        );
       }
-      rows.push(parsed);
-      if (limit && rows.length >= limit) finish(resolve, attachMalformed(rows, malformed));
-    });
-    rl.on('close', () => {
-      if (settled) return;
-      if (malformed.length) {
-        console.error(`[passages] ${malformed.length} malformed line(s) TOLERATED in ${file} — lines ${malformed.map((m) => m.lineNo).join(', ')}`);
-      }
-      finish(resolve, attachMalformed(rows, malformed));
-    });
-    rl.on('error', (error) => finish(reject, error));
-    stream.on('error', (error) => finish(reject, error));
-  });
+      console.error(`[passages] TOLERATED malformed line ${file}:${lineNo} (${s.length} bytes): ${error.message}`);
+      continue;
+    }
+    rows.push(parsed);
+    if (limit && rows.length >= limit) return attachMalformed(rows, malformed); // breaking out destroys the stream
+  }
+  if (malformed.length) {
+    console.error(`[passages] ${malformed.length} malformed line(s) TOLERATED in ${file} — lines ${malformed.map((m) => m.lineNo).join(', ')}`);
+  }
+  return attachMalformed(rows, malformed);
 }
 function attachMalformed(rows, malformed) {
   Object.defineProperty(rows, 'malformed', { value: malformed, enumerable: false });

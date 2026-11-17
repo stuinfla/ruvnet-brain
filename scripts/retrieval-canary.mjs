@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import readline from 'node:readline';
+import { lfLines } from '../plugin/scripts/lf-lines.mjs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { canonicalJson, digest, eligibleRepositoryStanding, validateCoverageLedger } from './coverage-integrity.mjs';
@@ -30,7 +30,7 @@ export async function resolveInstalledCanaryCitation({ kbDir, matched, expected,
     const stream = fs.createReadStream(file, { fd, autoClose: false });
     const hash = crypto.createHash('sha256');
     stream.on('data', (bytes) => hash.update(bytes));
-    const rows = readline.createInterface({ input: stream, crlfDelay: Infinity });
+    const rows = lfLines(stream); // LF only (4.7.31): readline also splits at U+2028/U+2029
     let passageSha256 = null;
     try {
       for await (const line of rows) {
@@ -52,7 +52,7 @@ export async function resolveInstalledCanaryCitation({ kbDir, matched, expected,
       if (passageSha256) return { resolved: true, evidence: { passageSha256, passageFileSha256,
         hitContentSha256: crypto.createHash('sha256').update(matched.text).digest('hex') } };
     } finally {
-      rows.close();
+      await rows.return();
       await new Promise((resolve, reject) => stream.close((error) => error ? reject(error) : resolve()));
     }
   }
