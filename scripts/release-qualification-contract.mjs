@@ -373,6 +373,12 @@ export const RELEASE_REQUIREMENTS = Object.freeze({
       }
     },
     {
+      "id": "audit-exception-owner-approved",
+      "reason": "The release's dependency-audit verdict is the stabilization receipt (2026-11-17): it blocks every high/critical finding except one an owner-approved config/audit-exceptions.json entry fully covers (today only GHSA-fc5q-39xc-vjpf, dev-only, no patched version), refuses an exception longer than 14 days or malformed, blocks again after expiry, and records the raw counts and every applied exception",
+      "files": ["tests/unit/stabilization-receipt.test.mjs"],
+      "platformFiles": {}
+    },
+    {
       "id": "jsonl-reads-split-on-lf-only",
       "reason": "Every JSONL / newline-delimited JSON-RPC reader the product ships splits on LF only (4.7.31 hotfix): node:readline also ends a line at U+2028/U+2029, which JSON.stringify leaves raw, so one ruflo passage read as two broke every 4.7.30 update in forge-guard (PARITY 19,275 != 19,274). The real forge-guard, run as the update path runs it, counts a fixture holding both separators as one passage per record; forge-big reads it whole; a census refuses any new readline line reader",
       "files": [],
