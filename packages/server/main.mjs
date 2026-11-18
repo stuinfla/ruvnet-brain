@@ -12,20 +12,22 @@ import readline from 'node:readline';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { paths, readConfig, readJson, readPointer } from '../contract/home.mjs';
 import { problems } from '../contract/validate.mjs';
-import { removeStatus, writeStatus } from '../health/status.mjs';
-import { pageCheck } from '../health/page.mjs';
-import { createRunner } from './runner.mjs';
-import { createHelpers } from './helper.mjs';
-import { format, formatRead } from './format.mjs';
-import { READ, SEARCH, detailOf, extraTerms } from './tools.mjs';
-import { LAYERED_NAMES, checkArgs, layeredList } from './layered-tools.mjs';
+import * as status0 from '../health/status.mjs';
+import * as page0 from '../health/page.mjs';
+import * as runner0 from './runner.mjs';
+import * as helper0 from './helper.mjs';
+import * as format0 from './format.mjs';
+import * as tools0 from './tools.mjs';
+import * as layered0 from './layered-tools.mjs';
+import * as wire0 from './wire.mjs';
 import { real } from './widen.mjs';
-import { toolResult } from './wire.mjs';
 
 const MAX_LINE = 1_000_000;
 /** A request value as an error may echo it: at most 200 characters (review F22). */
 const clip = (v) => (String(v).length > 200 ? `${String(v).slice(0, 200)}… (${String(v).length} characters)` : String(v));
 const importFrom = (dir, ...rel) => import(pathToFileURL(path.join(dir, ...rel)).href);
+// The modules a session takes from its app, in the order use() reads them (review F11).
+const MODS = [['health', 'status.mjs'], ['health', 'page.mjs'], ...['runner', 'helper', 'format', 'tools', 'layered-tools', 'wire'].map((n) => ['server', `${n}.mjs`])];
 
 /** A helper lane's item is used only if it is a result item this server can cite. */
 const usable = (name) => (it) => !problems('result', { schema: 'ruvnet-brain/result', version: 1, generation: '-', knowledgeDate: '-', recipeId: '-', detail: 'brief', lanes: [], safeMode: { on: false }, sections: [{ name, items: [it], empty: null }] }).length;
@@ -36,6 +38,13 @@ export async function run({ home, input = process.stdin, output = process.stdout
   const status = { schema: 'ruvnet-brain/status', version: 1, pid: process.pid, startedAt: now, heartbeatAt: now, app: null, pack: null, knowledgeDate: null, lanes: [], probe: null, lastSearch: null, load: null };
   let active = null;
   let project = real(process.env.CLAUDE_PROJECT_DIR || cwd);
+  // The app's modules (review F11): replaced together, from the new app, when the pointer names one.
+  let removeStatus, writeStatus, pageCheck, createRunner, createHelpers, format, formatRead, READ, SEARCH, detailOf, extraTerms, LAYERED_NAMES, checkArgs, layeredList, toolResult;
+  const use = ([st, pg, rn, hp, fm, tl, ly, wr]) => {
+    ({ removeStatus, writeStatus } = st), ({ pageCheck } = pg), ({ createRunner } = rn), ({ createHelpers } = hp), ({ format, formatRead } = fm);
+    ({ READ, SEARCH, detailOf, extraTerms } = tl), ({ LAYERED_NAMES, checkArgs, layeredList } = ly), ({ toolResult } = wr);
+  };
+  use([status0, page0, runner0, helper0, format0, tools0, layered0, wire0]);
   const save = () => {
     status.heartbeatAt = Date.now();
     status.load = active ? { ...active.runner.stats(), rssBytes: process.memoryUsage().rss } : null;
@@ -44,20 +53,28 @@ export async function run({ home, input = process.stdin, output = process.stdout
     } catch {}
   };
 
-  function ensureActive() {
+  let switching = null;
+  async function ensureActive() {
     const ptr = readPointer(home);
     if (!ptr) throw new Error('RuvNet Brain 5 is not installed (no current.json); run: ruvnet-brain install');
     if (!active || active.app !== ptr.app || active.pack !== ptr.pack) {
-      active?.runner.retire();
-      active?.helpers.stop();
-      if (active?.safe) active.safeEngine.close(active.safe);
-      const appDir = path.join(paths(home).app, ptr.app);
-      const packDir = path.join(paths(home).packs, ptr.pack);
-      const pack = readJson(path.join(packDir, 'PACK.json'));
-      const recipe = readJson(path.join(packDir, pack.files.find((f) => f.role === 'recipe').path));
-      active = { app: ptr.app, pack: ptr.pack, appDir, packDir, recipe, runner: createRunner(appDir, packDir), helpers: createHelpers(appDir, packDir, recipe), probed: false, probing: null };
-      Object.assign(status, { app: ptr.app, pack: ptr.pack, knowledgeDate: pack.knowledgeDate, probe: null, lastSearch: null });
+      switching ??= activate(ptr).finally(() => (switching = null));
+      return switching;
     }
+    return active;
+  }
+  async function activate(ptr) {
+    const appDir = path.join(paths(home).app, ptr.app);
+    const packDir = path.join(paths(home).packs, ptr.pack);
+    const pack = readJson(path.join(packDir, 'PACK.json'));
+    const recipe = readJson(path.join(packDir, pack.files.find((f) => f.role === 'recipe').path));
+    // A new app: its modules are loaded first, then the switch, and only then is its version recorded.
+    if (ptr.app !== active?.app) use(await Promise.all(MODS.map((m) => importFrom(appDir, ...m))));
+    active?.runner.retire();
+    active?.helpers.stop();
+    if (active?.safe) active.safeEngine.close(active.safe);
+    active = { app: ptr.app, pack: ptr.pack, appDir, packDir, recipe, runner: createRunner(appDir, packDir), helpers: createHelpers(appDir, packDir, recipe), probed: false, probing: null };
+    Object.assign(status, { app: ptr.app, pack: ptr.pack, knowledgeDate: pack.knowledgeDate, probe: null, lastSearch: null });
     return active;
   }
 
@@ -81,10 +98,10 @@ export async function run({ home, input = process.stdin, output = process.stdout
     save();
   }
   /** One probe at a time per active version, however many calls ask for it. */
-  function probe() {
+  async function probe() {
     let a;
     try {
-      a = ensureActive();
+      a = await ensureActive();
     } catch (e) {
       status.probe = { ok: false, at: Date.now(), failingSince: status.probe?.failingSince ?? Date.now(), error: e.message, results: [] };
       return save();
@@ -126,10 +143,10 @@ export async function run({ home, input = process.stdin, output = process.stdout
     try {
       const query = String(args?.query ?? '');
       if (typeof args?.query !== 'string' || !query.trim()) return { text: 'query is required: pass the question in the user\'s own words.', isError: true };
+      const t0 = Date.now();
+      const a = await ensureActive();
       const detail = detailOf(args);
       const extra = extraTerms(args);
-      const t0 = Date.now();
-      const a = ensureActive();
       if (!a.probed) await probe();
       let result;
       let reason = null;
@@ -155,8 +172,8 @@ export async function run({ home, input = process.stdin, output = process.stdout
   }
 
   async function read(args) {
+    const a = await ensureActive();
     const detail = detailOf(args) ?? 'brief';
-    const a = ensureActive();
     try {
       const r = await a.runner.call({ type: 'read', ref: args?.ref, project, privateDir: paths(home).private }, a.recipe.deadlineMs);
       return { text: formatRead(r, a.recipe, detail) };
@@ -168,9 +185,9 @@ export async function run({ home, input = process.stdin, output = process.stdout
   /** A layered tool: arguments checked here, the store read in a worker under the recipe's deadline
    *  (never on this thread, never in safe mode: a layered answer is the store's or an error). */
   async function layered(def, args) {
+    const a = await ensureActive();
     const c = checkArgs(def.tool, args);
     if (c.error) return { text: `RuvNet Brain · ${def.name} refused: ${c.error}`, isError: true };
-    const a = ensureActive();
     try {
       return { text: await a.runner.call({ type: 'layered', tool: def.tool, args: c.args }, a.recipe.deadlineMs) };
     } catch (e) {
@@ -181,7 +198,7 @@ export async function run({ home, input = process.stdin, output = process.stdout
   async function autoUpdate() {
     if (active?.runner.busy()) return;
     try {
-      const a = active ?? ensureActive();
+      const a = active ?? (await ensureActive());
       await (await importFrom(a.appDir, 'cli', 'updater.mjs')).checkForUpdate({ home });
     } catch {}
   }
@@ -215,11 +232,13 @@ export async function run({ home, input = process.stdin, output = process.stdout
       case 'ping':
         return {};
       case 'tools/list':
+        await ensureActive().catch(() => {}); // a new app's tool definitions (review F11)
         // The same seven tools whatever pack is active, so the list never changes under a hot swap; a
         // pack without a layered store answers the layered tools with one sentence saying so.
         return { tools: [SEARCH, READ, ...layeredList()] };
       case 'tools/call': {
         const name = msg.params?.name;
+        await ensureActive().catch(() => {});
         if (name !== SEARCH.name && name !== READ.name && !LAYERED_NAMES.has(name)) throw Object.assign(new Error(`unknown tool ${clip(name)}`), { code: -32602 });
         // Every result leaves through toolResult (wire.mjs): one text block, no structured copy, and
         // everything on the wire held to the delivery ceiling.
