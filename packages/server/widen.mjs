@@ -60,6 +60,7 @@ const excerptChars = (items) => items.reduce((n, it) => n + it.excerpt.length + 
 
 function addPrivate(engine, handle, privates, m, result) {
   if (!m.privateDir || !m.options?.project) return;
+  const merged = new Set();
   for (const p of openPrivates(engine, privates, m.privateDir)) {
     const r = engine.search(p.h, m.query, m.options);
     for (const sec of r.sections) {
@@ -68,11 +69,12 @@ function addPrivate(engine, handle, privates, m, result) {
       // Cited with its pack, never mistaken for a public file (review F17): private:<name>/<repo>/<path>.
       target.items.push(...sec.items.map((it) => ({ ...it, repo: `private:${p.name}/${it.repo}` })));
       target.empty = null;
+      merged.add(target);
     }
   }
-  // Merged under the section's rules (review F17): ranked by score (bm25, lower first), one item per
+  // A section that took private items is merged under the section's rules (review F17): ranked by score (bm25, lower first), one item per
   // file, at most maxItems.
-  for (const sec of result.sections) {
+  for (const sec of merged) {
     const max = handle.recipe.sections.find((s) => s.name === sec.name)?.maxItems ?? sec.items.length;
     const rank = (it) => (Number.isFinite(it.score) ? it.score : Infinity);
     const files = new Set();
