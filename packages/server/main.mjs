@@ -76,7 +76,7 @@ export async function run({ home, input = process.stdin, output = process.stdout
     active?.runner.retire();
     active?.safeRunner.retire();
     active?.helpers.stop();
-    active = { app: ptr.app, pack: ptr.pack, appDir, packDir, recipe, runner: createRunner(appDir, packDir), safeRunner: createRunner(appDir, packDir, { size: 1, role: 'safe' }), helpers: createHelpers(appDir, packDir, recipe), probed: false, probing: null };
+    active = { app: ptr.app, pack: ptr.pack, appDir, packDir, recipe, runner: createRunner(appDir, packDir), safeRunner: createRunner(appDir, packDir, { size: 1, role: 'safe', script: 'safe-worker.mjs' }), helpers: createHelpers(appDir, packDir, recipe), probed: false, probing: null };
     Object.assign(status, { app: ptr.app, pack: ptr.pack, knowledgeDate: pack.knowledgeDate, probe: null, lastSearch: null });
     return active;
   }

@@ -1,5 +1,6 @@
 // Integration-owner fixes in the builder (docs/REVIEW-FIXES.md, Codex review F15 and F18).
-//   F15: every repository in a pack has a probe, or the build is refused and names the repository.
+//   F15: every repository in a pack has a probe (a fallback one, marked, for a repository with no word of
+//        its own), or the build is refused and names the repository.
 //   F18: a repository name, commit or file name cannot put a line of its own into a citation (the
 //        source is refused, the file is skipped), and a prompt-injection phrase that a split cuts in two
 //        still flags every unit it touches (history items and long document lines).
@@ -14,21 +15,25 @@ import { build, built, query, readJson, writeRepo } from './wp5-helpers.mjs';
 
 const README = (word) => `# ${word}\n\nThe ${word} fixture keeps its ${word}harbor notes and ${word}lattice tables here.\n`;
 
-test('F15 a repository with no probe of its own refuses the build', { timeout: 300_000 }, (t) => {
+test('F15 every repository has a probe: a fallback one when it has no word of its own, else the build stops', { timeout: 300_000 }, (t) => {
   const ctx = setup(t, 'integ-builder');
   const tree = ctx.tree();
   const root = ctx.tmp('rb5-src-');
   const a = writeRepo(path.join(root, 'kestrel-kit'), { repo: 'kestrel-kit', commit: 'aaaa1111bbbb', date: '2026-11-15' }, { 'README.md': README('kestrel'), 'docs/more.md': 'Shared words: vector memory swarm agent.\n' });
-  // Every word of this repository is also in kestrel-kit, so no file of it has a word of its own.
-  const b = writeRepo(path.join(root, 'echo-kit'), { repo: 'echo-kit', commit: 'cccc2222dddd', date: '2026-11-15' }, { 'README.md': 'Shared words: vector memory swarm agent.\n' });
-  const r = build(ctx, tree, { sources: [a, b] });
-  assert.notEqual(r.status, 0, `a pack with no probe for echo-kit must be refused: ${r.stdout}`);
-  assert.match(r.stderr, /no probe could be made for echo-kit/, 'the refusal names the repository');
-  // With a word of its own, the same repository builds and has its probe.
-  fs.writeFileSync(path.join(b, 'README.md'), README('plover'));
+  // Every word of echo-kit is also in kestrel-kit, so no file of it has a word of its own. (A byte-for-
+  // byte copy cannot be probed at all: search sends one passage once, so its twin answers instead.)
+  const b = writeRepo(path.join(root, 'echo-kit'), { repo: 'echo-kit', commit: 'cccc2222dddd', date: '2026-11-15' }, { 'README.md': 'Agent swarm memory: shared vector words.\n' });
   const pack = built(ctx, tree, { sources: [a, b] });
-  const repos = new Set(readJson(path.join(pack, 'PROBES.json')).probes.map((p) => p.repo));
-  assert.deepEqual([...repos].sort(), ['echo-kit', 'kestrel-kit'], 'each repository has a probe');
+  const probes = readJson(path.join(pack, 'PROBES.json')).probes;
+  assert.deepEqual([...new Set(probes.map((p) => p.repo))].sort(), ['echo-kit', 'kestrel-kit'], `each repository has a probe: ${JSON.stringify(probes)}`);
+  const echo = probes.find((p) => p.repo === 'echo-kit');
+  assert.equal(echo.fallback, true, 'the copy\'s probe is marked as a fallback');
+  assert.equal(echo.expect, 'echo-kit/README.md');
+  // A repository with no searchable word at all cannot be covered: the build stops and names it.
+  const c = writeRepo(path.join(root, 'digit-kit'), { repo: 'digit-kit', commit: 'eeee3333ffff', date: '2026-11-15' }, { 'README.md': '12 34 56\n' });
+  const r = build(ctx, tree, { sources: [a, c] });
+  assert.notEqual(r.status, 0, `a pack with no probe for digit-kit must be refused: ${r.stdout}`);
+  assert.match(r.stderr, /no probe could be made for digit-kit/, 'the refusal names the repository');
 });
 
 test('F18 metadata with a line break is refused and a file name with one is skipped', { timeout: 300_000 }, (t) => {

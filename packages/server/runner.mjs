@@ -12,8 +12,8 @@ export const POOL = 2;
 export const MAX_QUEUE = 200;
 const fault = (message, code) => Object.assign(new Error(message), { code });
 
-export function createRunner(appDir, packDir, { size = POOL, role = 'search' } = {}) {
-  const workerUrl = pathToFileURL(path.join(appDir, 'server', 'worker.mjs'));
+export function createRunner(appDir, packDir, { size = POOL, role = 'search', script = 'worker.mjs' } = {}) {
+  const workerUrl = pathToFileURL(path.join(appDir, 'server', script));
   const slots = new Set(); // { w, job }
   const queue = [];
   let seq = 0;

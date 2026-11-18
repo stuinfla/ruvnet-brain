@@ -8,7 +8,8 @@ export function addIntegrationBreaks(BREAKS) {
     // F03: the todo test is real now; it gets its own break (the port's wave4-04 break, same patch)
     'wp5-split-secret-after-split': { test: 'wp5-split-secret', what: 'history items are screened per piece after the split', patches: [p(`${B}extract.mjs`, 'cfg: s.history, screen, hostile });', 'cfg: s.history, hostile });')], expect: /lines of the private key are in the history rows/ },
     // F15: every repository in the pack has a probe
-    'integ-builder-no-probe-check': { test: 'integ-builder', what: 'a repository without a probe is accepted', patches: [p(`${B}build.mjs`, '    if (bare.length) throw new Error(', '    if (false) throw new Error(')], expect: /a pack with no probe for echo-kit must be refused/ },
+    'integ-builder-no-probe-check': { test: 'integ-builder', what: 'a repository without a probe is accepted', patches: [p(`${B}build.mjs`, '    if (bare.length) throw new Error(', '    if (false) throw new Error(')], expect: /a pack with no probe for digit-kit must be refused/ },
+    'integ-builder-no-fallback': { test: 'integ-builder', what: 'a repository with no word of its own gets no probe', patches: [p(`${B}probes.mjs`, '        if (!made) {\n', '        if (false) {\n')], expect: /no probe could be made for echo-kit/ },
     // F18: plain metadata, no control characters in file names, whole-input hostile screen
     'integ-builder-meta': { test: 'integ-builder', what: 'repository and commit values are not checked', patches: [p(`${B}discover.mjs`, "  if (!/^[A-Za-z0-9._/-]{1,200}$/.test(meta.repo)) throw", '  if (false) throw'), p(`${B}discover.mjs`, '  if (!/^(sha256:)?[0-9a-f]{7,64}$/.test(meta.commit)) throw', '  if (false) throw')], expect: /holds a line break must be refused/ },
     'integ-builder-name': { test: 'integ-builder', what: 'a file name with a control character is read', patches: [p(`${B}discover.mjs`, '      if (/[\\u0000-\\u001f\\u007f]/.test(ent.name)) {', '      if (false) {')], expect: /no stored path holds a line break/ },
@@ -19,6 +20,8 @@ export function addIntegrationBreaks(BREAKS) {
     'integ-corpus-gists': { test: 'integ-corpus', what: 'a missing gists file is listed anyway', patches: [p(`${B}fetch-corpus.mjs`, '    if (!fs.existsSync(gists)) throw', '    if (false) throw')], expect: /a missing gists file stops the fetch/ },
     // Line budgets: a package grows past its budget
     'integ-budget-over': { test: 'integ-budget', what: 'the release rail grows by 900 lines', patches: [p('packages/release/release.mjs', '// Release rail, skeleton slice:', `${'//\n'.repeat(900)}// Release rail, skeleton slice:`)], expect: /over budget: release / },
+    // F09 at integration: safe mode runs in its own minimal worker, so a broken search worker still answers
+    'wp4-01-safe-in-search-worker': { test: 'wp4-01', what: 'safe mode runs in the (broken) search worker script', patches: [p('packages/server/main.mjs', "{ size: 1, role: 'safe', script: 'safe-worker.mjs' }", "{ size: 1, role: 'safe' }")], expect: /a session opened now must still answer/ },
     // F24: the key id a signature names is the trusted key's
     'integ-contract-keyid': { test: 'integ-contract', what: 'the signature\'s key id is not compared', patches: [p('packages/contract/signature.mjs', '    if (signature.keyId !== keyId(publicKeyPem)) return false;\n', '')], expect: /a release with a foreign key id must not install/ },
   });

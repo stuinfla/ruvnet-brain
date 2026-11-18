@@ -65,6 +65,7 @@
     "server/main.mjs",
     "server/read.mjs",
     "server/runner.mjs",
+    "server/safe-worker.mjs",
     "server/tools.mjs",
     "server/widen.mjs",
     "server/wire.mjs",

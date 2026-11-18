@@ -130,9 +130,10 @@ export async function build({ recipePath, sources, outDir, cacheDir = null }) {
       return probes.make((repo, p) => q.all(repo, p));
     });
     if (!made.length) throw new Error('no probe could be made from these sources');
-    // Every repository in the pack is covered by a probe, or the build is refused (review F15).
+    // Every repository in the pack is covered by a probe (a fallback one when it has no word of its own,
+    // probes.mjs), or the build is refused (review F15).
     const bare = parts.map((p) => p.source.repo).filter((repo) => !made.some((p) => p.repo === repo));
-    if (bare.length) throw new Error(`no probe could be made for ${bare.join(', ')}: each repository needs a file with words found in no other file`);
+    if (bare.length) throw new Error(`no probe could be made for ${bare.join(', ')}: each repository needs a file with at least ${s.probes.termsPerProbe} searchable words`);
     fs.writeFileSync(path.join(stage, 'PROBES.json'), `${JSON.stringify({ schema: 'ruvnet-brain/probes', version: 1, probes: made }, null, 2)}\n`);
     const manifest = manifestOf(parts, { recipe, recipeHash, s });
     fs.writeFileSync(path.join(stage, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
