@@ -1,4 +1,4 @@
-Updated: 2026-11-17 21:35:48 EST | Version 1.1.0
+Updated: 2026-11-17 23:48:48 EST | Version 1.2.0
 Created: 2026-11-17 19:30:00 EST
 
 # F04: decisions the lead must make before a version 5 user release
@@ -267,20 +267,37 @@ configuration the builders can do.
    branch.
 4. Remote CI green on macOS, Linux and Windows for `v5/integration` (never yet run on Linux or
    Windows; `rb5.cmd` never executed).
-5. The answer gate's frozen question set pinned in `rail.json`, with thresholds in its manifest.
-   OWNER DECISION: the bar for the first release. Reported from today's held-out runs with a
-   calibrated judge (the lead read the result files' summaries, not every answer): the L+ recipe
-   answers 42% and 33% of questions at 8 of 10 or better on two held-out sets and beats the earlier
-   candidate by +14.0 [+5.6, +22.4]; guidance plans pass 3 of 100 under the strict rule and about
-   half when minor errors are ignored. Nothing measured meets 93%. The gate can honestly be set as
-   "not worse than 4.7.28 and not worse than the previous release" for 5.0.0, or the release can wait
-   for the plan-first product the owner has now made primary. The lead's recommendation: ship 5.0.0
-   to `next` under the first rule, because 4.7.28 is worse on every figure measured and loses 28% of
-   its results to the host's size limit, and state the measured figures in the release notes.
-6. The primary job as the owner now defines it (a newcomer's goal becomes the author's plan: pieces,
-   order, first step, pitfalls; and the product speaks up unprompted): not met by any measured arm.
-   It needs its own registered design, instrument and gate. It does not block 5.0.0 on `next`; it
-   does block calling version 5 finished.
+5. The answer gate's frozen question set pinned in `rail.json`, with thresholds in its manifest, and
+   THE SHIP BAR (revised 2026-11-17, 11:48 p.m. ET, on new evidence; this replaces the lead's earlier
+   recommendation to ship 5.0.0 to `next` on "not worse than 4.7.28", which the evidence does not
+   support). Measured on the blind guidance set G2 (100 newcomer goals, pass = 2 of 3 runs, calibrated
+   Codex judge; `layered/test-run/g2/RESULTS-G2.md`): shipped 4.7.30 passes 9 of 100; the v5 recipe
+   (L+) passes 2; L+ with guidance passes 3. Best new arm minus shipped: -0.06 [-0.12, 0.00]; for
+   amateurs -0.10 [-0.186, -0.029], an interval that excludes zero: the shipped product is better for
+   amateurs on the product's primary job. The driver is contradicted claims: 87% of the new arms'
+   answers contain at least one, against 42% for shipped, whose answers are shorter. With that
+   criterion set aside (post hoc, not a rule) the new arms give better plans (49 and 47 against 24).
+   On fact questions the v5 recipe is better (+14.0 [+5.6, +22.4] on 107 held-out questions).
+   **Decision: version 5 does NOT go to `next` as it stands.** A release that is better at the
+   secondary job and measurably worse for amateurs at the primary one is a regression by the
+   owner's own definition of the product.
+   **What v5 must show before `next`, on a fresh blind guidance set of at least 150 goals that no arm
+   has been tuned on, same judge and rule, three runs, rules registered before the run:**
+   (a) guidance pass rate not lower than shipped 4.7.30 for amateurs and overall: the paired
+       difference's 95% interval must lie at or above zero, not merely include it;
+   (b) share of answers with a contradicted claim at or below the shipped figure measured in the same
+       run;
+   (c) fact questions: still better than shipped (interval above zero) on a held-out set;
+   (d) every result within the delivery ceiling, and every release gate green on three systems.
+   The work this points to, in order: cut contradiction at the source (answers state only what a
+   served excerpt supports; shorter answers; a check pass that removes or flags any claim the cited
+   text does not carry; plans assembled from quoted steps, not paraphrase), then re-measure. Calling
+   version 5 finished still needs the larger bar: the newcomer's goal turned into the author's plan
+   at a rate the owner accepts (9 of 100 is the number to beat today, and it is far from that).
+6. Until 5 is met, the engineering that is independent of the recipe continues and can be released
+   only as fixes to the 4.7 line where they apply (the host size limit, which costs 4.7 about 28% of
+   its results, is the first candidate). The proactive push-in behaviour needs its own registered
+   measure before it is counted for or against either version.
 7. Independent review: the Codex review's findings are fixed or decided (this file). The second
    independent review, by a Claude model, stopped at the weekly limit with its work saved; it is to
    be resumed, not restarted.
