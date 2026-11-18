@@ -1,8 +1,10 @@
 // The MCP server (architecture 2.2): one stable process per session, newline-delimited JSON-RPC on
 // stdio, tools `search_ruvnet` and `read_ruvnet`, and the five layered tools (map_ruvnet, facts_ruvnet,
 // find_ruvnet, context_ruvnet, source_ruvnet; layered-tools.mjs). Calls run in a small pool of worker threads behind
-// one queue (runner.mjs), each under the recipe's deadline; when a worker dies, runs out of time or
-// cannot be reached in time, the main thread answers from the keyword lane ("safe mode").
+// one queue (runner.mjs). One absolute expiry, the recipe's deadline from the call's arrival, covers
+// the start-up probe, the queue, the search and the helper lanes; when a worker dies, runs out of time
+// or cannot be reached in time, a separate one-worker runner answers from the keyword lane ("safe
+// mode") within SAFE_MS more, and with no time left the answer is DOWN. No search runs on this thread.
 // Before every call the pointer file is re-read, so a new app or pack is picked up without a restart;
 // calls already running finish on the old workers.
 // The project a question comes from is the client's first root when it offers roots, else the folder
@@ -23,6 +25,7 @@ import * as wire0 from './wire.mjs';
 import { real } from './widen.mjs';
 
 const MAX_LINE = 1_000_000;
+const SAFE_MS = 800; // safe mode's time after the deadline: an answer is due within the deadline plus one second
 /** A request value as an error may echo it: at most 200 characters (review F22). */
 const clip = (v) => (String(v).length > 200 ? `${String(v).slice(0, 200)}… (${String(v).length} characters)` : String(v));
 const importFrom = (dir, ...rel) => import(pathToFileURL(path.join(dir, ...rel)).href);
@@ -71,9 +74,9 @@ export async function run({ home, input = process.stdin, output = process.stdout
     // A new app: its modules are loaded first, then the switch, and only then is its version recorded.
     if (ptr.app !== active?.app) use(await Promise.all(MODS.map((m) => importFrom(appDir, ...m))));
     active?.runner.retire();
+    active?.safeRunner.retire();
     active?.helpers.stop();
-    if (active?.safe) active.safeEngine.close(active.safe);
-    active = { app: ptr.app, pack: ptr.pack, appDir, packDir, recipe, runner: createRunner(appDir, packDir), helpers: createHelpers(appDir, packDir, recipe), probed: false, probing: null };
+    active = { app: ptr.app, pack: ptr.pack, appDir, packDir, recipe, runner: createRunner(appDir, packDir), safeRunner: createRunner(appDir, packDir, { size: 1, role: 'safe' }), helpers: createHelpers(appDir, packDir, recipe), probed: false, probing: null };
     Object.assign(status, { app: ptr.app, pack: ptr.pack, knowledgeDate: pack.knowledgeDate, probe: null, lastSearch: null });
     return active;
   }
@@ -110,12 +113,15 @@ export async function run({ home, input = process.stdin, output = process.stdout
     return a.probing;
   }
 
-  async function safeMode(a, query, detail, reason) {
-    if (!a.safe) {
-      a.safeEngine = await importFrom(a.appDir, 'engine', 'index.mjs');
-      a.safe = a.safeEngine.open(a.packDir);
+  /** The keyword lane in the safe-mode worker, never on this thread (review F09), until the expiry plus
+   *  SAFE_MS; when that runs out too, the call fails and the answer is DOWN. */
+  async function safeMode(a, query, detail, reason, expiresAt) {
+    let r;
+    try {
+      r = await a.safeRunner.call({ type: 'safe', query, options: { detail, lanes: ['lexical'], project } }, a.recipe.deadlineMs, { expiresAt: expiresAt + SAFE_MS });
+    } catch (e) {
+      throw new Error(`${reason}; safe mode did not answer either: ${e.message}`);
     }
-    const r = a.safeEngine.search(a.safe, query, { detail, lanes: ['lexical'], project });
     r.safeMode = { on: true, reason };
     // A lane safe mode left out was not run; it is not broken (that reason stays as the engine gave it).
     const helperLanes = new Set(a.helpers.lanes().map((l) => l.name));
@@ -147,15 +153,16 @@ export async function run({ home, input = process.stdin, output = process.stdout
       const a = await ensureActive();
       const detail = detailOf(args);
       const extra = extraTerms(args);
-      if (!a.probed) await probe();
+      const expiresAt = t0 + a.recipe.deadlineMs;
+      if (!a.probed) await Promise.race([probe(), new Promise((r) => setTimeout(r, expiresAt - Date.now()).unref())]);
       let result;
       let reason = null;
       try {
-        result = await a.runner.call({ type: 'search', query, options: { detail, project }, extraTerms: extra.terms, privateDir: paths(home).private }, a.recipe.deadlineMs);
-        if (a.helpers.any) await fillHelpers(a, result, query, detail ?? a.recipe.result.defaultDetail, a.recipe.deadlineMs - (Date.now() - t0));
+        result = await a.runner.call({ type: 'search', query, options: { detail, project }, extraTerms: extra.terms, privateDir: paths(home).private }, a.recipe.deadlineMs, { expiresAt });
+        if (a.helpers.any) await fillHelpers(a, result, query, detail ?? a.recipe.result.defaultDetail, expiresAt - Date.now());
       } catch (err) {
         reason = err.message;
-        result = await safeMode(a, query, detail, reason);
+        result = await safeMode(a, query, detail, reason, expiresAt);
       }
       status.lastSearch = { ok: !reason, at: Date.now(), safeMode: !!reason, reason };
       save();

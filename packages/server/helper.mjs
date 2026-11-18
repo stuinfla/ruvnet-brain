@@ -112,6 +112,7 @@ export function createHelpers(appDir, packDir, recipe, env = process.env) {
   /** Items per helper section: Map name -> { items } | { reason }. A dead helper is started again. */
   async function search(query, detail, ms) {
     const out = new Map();
+    const end = Date.now() + ms; // every helper call draws on the search's one budget (review F09)
     for (const sec of recipe.sections) {
       const spec = specs.find((l) => l.name === sec.lane);
       if (!spec) continue;
@@ -121,7 +122,8 @@ export function createHelpers(appDir, packDir, recipe, env = process.env) {
         out.set(sec.name, { reason: `lane ${spec.name} is not available: ${s.reason}` });
         continue;
       }
-      const r = await s.call({ type: 'search', query, detail, section: { name: sec.name, maxItems: sec.maxItems, itemChars: sec.itemChars ?? null } }, Math.max(ms, 500));
+      const left = end - Date.now();
+      const r = left > 0 ? await s.call({ type: 'search', query, detail, section: { name: sec.name, maxItems: sec.maxItems, itemChars: sec.itemChars ?? null } }, left) : { ok: false, error: 'no time was left of the search deadline' };
       out.set(sec.name, r.ok ? { items: (r.items ?? []).slice(0, sec.maxItems) } : { reason: `lane ${spec.name} failed: ${r.error}` });
     }
     return out;

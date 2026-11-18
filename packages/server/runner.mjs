@@ -1,8 +1,9 @@
 // Runs engine calls in worker THREADS of this process, under a deadline. No program is started on
 // the search path, so no Node path is remembered and none can go stale (architecture 2.2).
 // Concurrency: a small pool of workers and one queue in front of it. A call waits in the queue until
-// a worker is free; its deadline starts when a worker takes it, and the time it may wait is bounded
-// too, so fifty calls at once all answer and memory stays at the pool's size.
+// a worker is free. One absolute expiry bounds the wait and the run together (review F09), so fifty
+// calls at once all answer in time and memory stays at the pool's size. `role` names the pool to its
+// workers (workerData.role: 'search', or 'safe' for the safe-mode runner).
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Worker } from 'node:worker_threads';
@@ -11,7 +12,7 @@ export const POOL = 2;
 export const MAX_QUEUE = 200;
 const fault = (message, code) => Object.assign(new Error(message), { code });
 
-export function createRunner(appDir, packDir, { size = POOL } = {}) {
+export function createRunner(appDir, packDir, { size = POOL, role = 'search' } = {}) {
   const workerUrl = pathToFileURL(path.join(appDir, 'server', 'worker.mjs'));
   const slots = new Set(); // { w, job }
   const queue = [];
@@ -20,7 +21,7 @@ export function createRunner(appDir, packDir, { size = POOL } = {}) {
   let retired = false;
 
   function start() {
-    const w = new Worker(workerUrl, { workerData: { appDir, packDir } });
+    const w = new Worker(workerUrl, { workerData: { appDir, packDir, role } });
     const slot = { w, job: null };
     w.on('message', (m) => {
       const job = slot.job;
@@ -49,8 +50,8 @@ export function createRunner(appDir, packDir, { size = POOL } = {}) {
 
   function dispatch(slot, job) {
     clearTimeout(job.waitTimer);
-    const { deadlineMs } = job;
-    const onDeadline = () => drop(slot, fault(`the search ran past its ${deadlineMs} ms deadline`, 'DEADLINE'));
+    const deadlineMs = Math.max(0, job.expiresAt - Date.now());
+    const onDeadline = () => drop(slot, fault(`the search ran past its ${job.deadlineMs} ms deadline`, 'DEADLINE'));
     const timer = setTimeout(onDeadline, deadlineMs);
     const { resolve, reject } = job;
     job.resolve = (v) => (clearTimeout(timer), resolve(v));
@@ -81,18 +82,20 @@ export function createRunner(appDir, packDir, { size = POOL } = {}) {
     if (retired && ![...slots].some((s) => s.job)) for (const s of [...slots]) drop(s, fault('the search worker was retired', 'REPLACED'));
   }
 
-  function call(msg, deadlineMs, { fresh = false } = {}) {
+  /** deadlineMs names the budget in messages; expiresAt (absolute) ends the wait and the run. */
+  function call(msg, deadlineMs, { fresh = false, expiresAt = Date.now() + deadlineMs } = {}) {
     return new Promise((resolve, reject) => {
       if (retired) return reject(fault('the search workers were replaced by a newer version', 'REPLACED'));
       if (queue.length >= MAX_QUEUE) return reject(fault(`${queue.length} searches were already waiting`, 'BUSY'));
-      const job = { id: ++seq, msg, deadlineMs, fresh, resolve, reject };
-      // Waiting is bounded by the same deadline: a call that cannot start in time is answered in safe mode.
+      if (expiresAt <= Date.now()) return reject(fault(`no time was left of the ${deadlineMs} ms deadline`, 'DEADLINE'));
+      const job = { id: ++seq, msg, deadlineMs, expiresAt, fresh, resolve, reject };
+      // Waiting draws on the same expiry: a call that cannot start in time is answered in safe mode.
       job.waitTimer = setTimeout(() => {
         const i = queue.indexOf(job);
         if (i < 0) return;
         queue.splice(i, 1);
-        reject(fault(`the search waited ${deadlineMs} ms for a free worker (${queue.length + 1} were waiting)`, 'BUSY'));
-      }, deadlineMs);
+        reject(fault(`the search could not start within its ${deadlineMs} ms deadline (${queue.length + 1} were waiting)`, 'BUSY'));
+      }, expiresAt - Date.now());
       queue.push(job);
       pump();
     });
