@@ -410,10 +410,12 @@ jobs:
           # except one an owner-approved, unexpired config/audit-exceptions.json entry fully covers, and fails
           # closed on missing or unreadable audit JSON (2026-11-17, GHSA-fc5q-39xc-vjpf, ADR-103 currency log).
           npm audit --audit-level=high --json > "$RUNNER_TEMP/release-evidence/npm-audit.json" || true
+          npm audit --omit=dev --audit-level=high --json > "$RUNNER_TEMP/release-evidence/npm-audit-prod.json" || true
           node scripts/stabilization-receipt.mjs \
             --artifact "$RUVNET_SEALED_PACKAGE" \
             --qe "$RUNNER_TEMP/release-evidence/release-qe.json" \
             --audit "$RUNNER_TEMP/release-evidence/npm-audit.json" \
+            --audit-prod "$RUNNER_TEMP/release-evidence/npm-audit-prod.json" \
             --out "$RUNNER_TEMP/release-evidence/candidate-receipt.json"
       - name: Preserve candidate payload and diagnostics
         if: always()

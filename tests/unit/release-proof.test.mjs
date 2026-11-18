@@ -341,3 +341,21 @@ describe('release-proof live preflight', () => {
     )).toEqual([{ context: 'integration', appId: 15368, status: 'MISSING' }]);
   });
 });
+
+// The owner-approved audit exception is judged again when the receipt is CONSUMED, not only when sealed.
+import { auditExceptionFailure } from '../../plugin/skills/release-proof/scripts/release-proof.mjs';
+describe('audit exceptions on a receipt', () => {
+  const security = (over = {}) => ({ status: 'PASS', critical: 0, high: 0, audited: { critical: 0, high: 5 }, shipped: { critical: 0, high: 0 },
+    exceptions: [{ advisory: 'GHSA-fc5q-39xc-vjpf', expires: '2026-12-01T00:00:00Z', covered: ['picomatch', 'fdir', 'tinyglobby', 'vite', 'vitest'] }], ...over });
+  it('passes while unexpired, shipped audit clean, counts consistent', () => {
+    expect(auditExceptionFailure(security(), Date.parse('2026-11-20T00:00:00Z'))).toBe(null);
+  });
+  it('fails once expired, without a clean shipped audit, or when the counts do not add up', () => {
+    expect(auditExceptionFailure(security(), Date.parse('2026-12-01T00:00:01Z'))).toMatch(/expired/);
+    expect(auditExceptionFailure(security({ shipped: undefined }), Date.parse('2026-11-20T00:00:00Z'))).toMatch(/shipped-dependency/);
+    expect(auditExceptionFailure(security({ audited: { critical: 0, high: 6 } }), Date.parse('2026-11-20T00:00:00Z'))).toMatch(/cover 5 finding\(s\) but 6/);
+  });
+  it('a receipt with no exception is unaffected', () => {
+    expect(auditExceptionFailure({ status: 'PASS', critical: 0, high: 0 })).toBe(null);
+  });
+});

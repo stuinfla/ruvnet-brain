@@ -81,6 +81,7 @@ describe('the owner-approved audit exception', () => {
   });
   const config = JSON.parse(fs.readFileSync(new URL('../../config/audit-exceptions.json', import.meta.url), 'utf8'));
   const during = Date.parse('2026-11-20T00:00:00Z');
+  const cleanProd = { metadata: { vulnerabilities: { critical: 0, high: 0 } } };
 
   it('the committed exception names exactly that one advisory, the owner, the reason, and at most 14 days', () => {
     expect(config.exceptions).toHaveLength(1);
@@ -92,19 +93,19 @@ describe('the owner-approved audit exception', () => {
   });
   it('while active: the five findings it covers pass, and the receipt records the exception and the raw counts', () => {
     const f = fixture();
-    const r = createStabilizationReceipt({ ...f, audit: auditWith(), now: during });
-    expect(r.security).toMatchObject({ status: 'PASS', critical: 0, high: 0, audited: { high: 5 } });
+    const r = createStabilizationReceipt({ ...f, audit: auditWith(), auditProd: cleanProd, now: during });
+    expect(r.security).toMatchObject({ status: 'PASS', critical: 0, high: 0, audited: { high: 5 }, shipped: { critical: 0, high: 0 } });
     expect(r.security.exceptions).toEqual([expect.objectContaining({ advisory: OWNER_ADVISORY,
       covered: ['picomatch', 'fdir', 'tinyglobby', 'vite', 'vitest'] })]);
   });
   it('any other high finding still blocks, including one that is only partly the excepted advisory', () => {
     const f = fixture();
     const other = { lodash: { severity: 'high', via: [{ source: 2, title: 'x', url: url('GHSA-aaaa-bbbb-cccc'), severity: 'high' }] } };
-    expect(() => createStabilizationReceipt({ ...f, audit: auditWith(other), now: during })).toThrow(/SECURITY_NOT_PASS/);
+    expect(() => createStabilizationReceipt({ ...f, audit: auditWith(other), auditProd: cleanProd, now: during })).toThrow(/SECURITY_NOT_PASS/);
     const mixed = { vite: { severity: 'high', via: ['picomatch', { source: 3, url: url('GHSA-2222-3333-4444'), severity: 'high' }] } };
-    expect(() => createStabilizationReceipt({ ...fixture(), audit: auditWith(mixed), now: during })).toThrow(/SECURITY_NOT_PASS/);
+    expect(() => createStabilizationReceipt({ ...fixture(), audit: auditWith(mixed), auditProd: cleanProd, now: during })).toThrow(/SECURITY_NOT_PASS/);
     const critical = { audit: { ...auditWith(), metadata: { vulnerabilities: { critical: 1, high: 5 } } } };
-    expect(() => createStabilizationReceipt({ ...fixture(), ...critical, now: during })).toThrow(/SECURITY_NOT_PASS/);
+    expect(() => createStabilizationReceipt({ ...fixture(), ...critical, auditProd: cleanProd, now: during })).toThrow(/SECURITY_NOT_PASS/);
   });
   it('after it expires the same findings block again', () => {
     const after = Date.parse(config.exceptions[0].expires) + 1;
@@ -118,5 +119,34 @@ describe('the owner-approved audit exception', () => {
     expect(() => createStabilizationReceipt({ ...fixture(), audit: auditWith(), exceptions: tooLong, now: during })).toThrow(/past 14 days/);
     const malformed = { exceptions: [{ advisory: OWNER_ADVISORY }] };
     expect(() => createStabilizationReceipt({ ...fixture(), audit: auditWith(), exceptions: malformed, now: during })).toThrow(/malformed/);
+  });
+});
+
+describe('the exception cannot be stretched or reused', () => {
+  const ADV = 'GHSA-fc5q-39xc-vjpf';
+  const url = `https://github.com/advisories/${ADV}`;
+  const during = Date.parse('2026-11-20T00:00:00Z');
+  const cleanProd = { metadata: { vulnerabilities: { critical: 0, high: 0 } } };
+  const base = { advisory: ADV, packages: ['picomatch'], approvedBy: 'owner', approvedAt: '2026-11-17T00:00:00Z', expires: '2026-12-01T00:00:00Z', reason: 'dev-only' };
+  const audit = (vulns, high) => ({ metadata: { vulnerabilities: { critical: 0, high } }, vulnerabilities: vulns });
+  const pico = { picomatch: { severity: 'high', via: [{ url, severity: 'high' }] } };
+  it('the same advisory reaching a package the exception does not list still blocks', () => {
+    const vulns = { ...pico, 'some-runtime-dep': { severity: 'high', via: ['picomatch'] } };
+    expect(() => createStabilizationReceipt({ ...fixture(), audit: audit(vulns, 2), auditProd: cleanProd, exceptions: { exceptions: [base] }, now: during })).toThrow(/SECURITY_NOT_PASS/);
+  });
+  it('a high finding in the shipped (--omit=dev) audit blocks, and an applied exception requires that audit', () => {
+    const args = { ...fixture(), audit: audit(pico, 1), exceptions: { exceptions: [base] }, now: during };
+    expect(() => createStabilizationReceipt({ ...args, auditProd: { metadata: { vulnerabilities: { critical: 0, high: 1 } } } })).toThrow(/SECURITY_NOT_PASS/);
+    expect(() => createStabilizationReceipt({ ...fixture(), audit: audit(pico, 1), exceptions: { exceptions: [base] }, now: during })).toThrow(/--audit-prod/);
+  });
+  it('a future-dated approval or an expiry before approval is refused', () => {
+    const future = { ...base, approvedAt: '2027-01-01T00:00:00Z', expires: '2027-01-14T00:00:00Z' };
+    expect(() => createStabilizationReceipt({ ...fixture(), audit: audit(pico, 1), auditProd: cleanProd, exceptions: { exceptions: [future] }, now: during })).toThrow(/impossible approval window/);
+    const backwards = { ...base, expires: '2026-11-16T00:00:00Z' };
+    expect(() => createStabilizationReceipt({ ...fixture(), audit: audit(pico, 1), auditProd: cleanProd, exceptions: { exceptions: [backwards] }, now: during })).toThrow(/impossible approval window/);
+  });
+  it('a high finding whose roots are all moderate is never subtracted', () => {
+    const vulns = { odd: { severity: 'high', via: [{ url: 'https://github.com/advisories/GHSA-2222-3333-4444', severity: 'moderate' }] } };
+    expect(() => createStabilizationReceipt({ ...fixture(), audit: audit(vulns, 1), auditProd: cleanProd, exceptions: { exceptions: [base] }, now: during })).toThrow(/SECURITY_NOT_PASS/);
   });
 });

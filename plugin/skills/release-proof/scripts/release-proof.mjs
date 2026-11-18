@@ -24,6 +24,19 @@ function versionIdentityFailures(expectedVersion, expectedTag, fields) {
   return mismatches;
 }
 
+/** An owner-approved audit exception recorded on a receipt (scripts/stabilization-receipt.mjs) is honoured only
+ *  while it is unexpired at the moment the receipt is judged, with the shipped-dependency audit clean, and only
+ *  if the receipt is self-consistent: the findings it subtracted are exactly the ones its exceptions covered. */
+export function auditExceptionFailure(security, now = Date.now()) {
+  const applied = Array.isArray(security?.exceptions) ? security.exceptions : [];
+  if (!applied.length) return null;
+  if (applied.some((e) => !(Date.parse(e?.expires || '') > now))) return 'an audit exception on this receipt has expired';
+  if (!security?.shipped || security.shipped.critical !== 0 || security.shipped.high !== 0) return 'an audit exception requires a clean shipped-dependency audit';
+  const covered = applied.reduce((n, e) => n + (Array.isArray(e?.covered) ? e.covered.length : 0), 0);
+  const subtracted = (Number(security?.audited?.critical) + Number(security?.audited?.high)) - (security.critical + security.high);
+  return subtracted === covered ? null : `audit exceptions cover ${covered} finding(s) but ${subtracted} were subtracted`;
+}
+
 export function evaluateStabilizationCandidateReceipt(receipt) {
   const failures = [];
   const sha = String(receipt?.sha || '');
@@ -51,6 +64,8 @@ export function evaluateStabilizationCandidateReceipt(receipt) {
   if (receipt?.security?.status !== 'PASS' || receipt?.security?.critical !== 0 || receipt?.security?.high !== 0) {
     failures.push(fail('SECURITY_NOT_PASS', 'stabilization requires zero critical/high dependency findings'));
   }
+  const exceptionFailure = auditExceptionFailure(receipt?.security);
+  if (exceptionFailure) failures.push(fail('SECURITY_NOT_PASS', exceptionFailure));
   if (!(receipt?.qe?.total > 0) || receipt?.qe?.status !== 'PASS' || receipt?.qe?.failed !== 0
     || receipt?.qe?.skipped !== 0 || receipt?.qe?.passed !== receipt?.qe?.total) {
     failures.push(fail('QE_NOT_PASS', 'release QE must execute nonzero work with zero failed/skipped tests'));
@@ -100,6 +115,8 @@ export function evaluateCandidateReceipt(receipt) {
   if (coverage.status !== 'PASS' || !(coverage.lines >= coverage.requiredLines)) failures.push(fail('COVERAGE_NOT_PASS', 'fresh exact-SHA coverage must meet the floor'));
   const security = receipt?.security || {};
   if (security.status !== 'PASS' || security.critical !== 0 || security.high !== 0) failures.push(fail('SECURITY_NOT_PASS', 'security must pass with zero critical/high findings'));
+  const strictExceptionFailure = auditExceptionFailure(security);
+  if (strictExceptionFailure) failures.push(fail('SECURITY_NOT_PASS', strictExceptionFailure));
 
   const openIssues = Array.isArray(receipt?.issues?.open) ? receipt.issues.open : null;
   if (openIssues === null || openIssues.length > 0) failures.push(fail('OPEN_ISSUES', openIssues === null ? 'open-issue evidence missing' : `${openIssues.length} issue(s) remain open`));

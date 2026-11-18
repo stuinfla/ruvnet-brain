@@ -29,6 +29,9 @@ export function activeExceptions(config, now = Date.now()) {
       throw new Error(`audit exception is malformed: ${JSON.stringify(e).slice(0, 200)}`);
     }
     if (expires - approved > MAX_EXCEPTION_DAYS * DAY) throw new Error(`audit exception ${e.advisory} runs past ${MAX_EXCEPTION_DAYS} days from its approval`);
+    // An approval cannot be dated ahead (that would stretch the window) and must end after it starts.
+    if (approved > now + DAY || expires <= approved) throw new Error(`audit exception ${e.advisory} has an impossible approval window`);
+    if (!Array.isArray(e.packages) || !e.packages.length) throw new Error(`audit exception ${e.advisory} names no packages`);
     if (now < expires) active.push(e);
   }
   return active;
@@ -51,14 +54,16 @@ function rootAdvisories(vulns, name, seen = new Set()) {
 export function effectiveAudit(audit, exceptions) {
   const raw = audit?.metadata?.vulnerabilities || {};
   const vulns = audit?.vulnerabilities || {};
-  const excepted = new Set(exceptions.map((e) => e.advisory));
+  const byAdvisory = new Map(exceptions.map((e) => [e.advisory, e]));
   const counts = { critical: Number(raw.critical), high: Number(raw.high) };
   const covered = new Map(exceptions.map((e) => [e.advisory, []]));
   for (const [name, v] of Object.entries(vulns)) {
     if (!['high', 'critical'].includes(v?.severity)) continue;
     // Only the high/critical roots make a finding high; a moderate advisory riding along does not block here.
     const roots = [...rootAdvisories(vulns, name)].filter(([, sev]) => ['high', 'critical'].includes(sev)).map(([a]) => a);
-    if (roots.length && roots.every((a) => excepted.has(a))) {
+    // Covered only when every high/critical root is excepted AND each such exception lists this package: the same
+    // advisory reaching a package nobody approved (a new, possibly shipped path) still blocks.
+    if (roots.length && roots.every((a) => byAdvisory.get(a)?.packages.includes(name))) {
       counts[v.severity] -= 1;
       for (const a of roots) covered.get(a).push(name);
     }
@@ -79,7 +84,7 @@ function packedVersion(artifact) {
   return JSON.parse(result.stdout).version;
 }
 
-export function createStabilizationReceipt({ root, artifactPath, qe, audit, exceptions = null, now = Date.now() }) {
+export function createStabilizationReceipt({ root, artifactPath, qe, audit, auditProd = null, exceptions = null, now = Date.now() }) {
   const git = (...args) => {
     const result = spawnSync('git', ['-C', root, ...args], { encoding: 'utf8' });
     if (result.status !== 0) throw new Error(`git ${args.join(' ')} failed`);
@@ -101,6 +106,17 @@ export function createStabilizationReceipt({ root, artifactPath, qe, audit, exce
   }
   const config = exceptions ?? (fs.existsSync(EXCEPTIONS_FILE) ? readJson(EXCEPTIONS_FILE) : { exceptions: [] });
   const audited = effectiveAudit(audit, activeExceptions(config, now));
+  // An exception's premise is "dev-only": when one is applied, the SHIPPED dependency set (npm audit --omit=dev)
+  // must hold zero high/critical findings with no exception at all.
+  let shipped = null;
+  if (audited.applied.length) {
+    const prod = auditProd?.metadata?.vulnerabilities;
+    if (!prod || !Number.isFinite(Number(prod.critical)) || !Number.isFinite(Number(prod.high))) {
+      throw new Error('an audit exception is applied, so the shipped-dependency audit (--audit-prod, npm audit --omit=dev) is required');
+    }
+    shipped = { critical: Number(prod.critical), high: Number(prod.high) };
+    if (shipped.critical || shipped.high) audited.counts.high += shipped.critical + shipped.high; // blocks: never excepted
+  }
   const receipt = {
     schemaVersion: 1,
     phase: 'stabilization-candidate',
@@ -133,6 +149,7 @@ export function createStabilizationReceipt({ root, artifactPath, qe, audit, exce
       high: audited.counts.high,
       audited: { critical: Number(vulnerabilities.critical || 0), high: Number(vulnerabilities.high || 0) },
       exceptions: audited.applied,
+      ...(shipped ? { shipped } : {}),
     },
     qe: { status: total > 0 && failed === 0 && skipped === 0 ? 'PASS' : 'FAIL', total, passed, failed, skipped },
     limitations: [
@@ -166,6 +183,7 @@ export function main(args = process.argv.slice(2)) {
       artifactPath,
       qe: readJson(argument(args, '--qe')),
       audit: readJson(argument(args, '--audit')),
+      auditProd: argument(args, '--audit-prod') ? readJson(argument(args, '--audit-prod')) : null,
     });
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
     fs.writeFileSync(outPath, `${JSON.stringify(receipt, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
