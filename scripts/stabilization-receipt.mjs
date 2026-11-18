@@ -6,11 +6,66 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { evaluateStabilizationCandidateReceipt } from './release-proof.mjs';
 import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
+export const EXCEPTIONS_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'config', 'audit-exceptions.json');
+const DAY = 86_400_000;
+export const MAX_EXCEPTION_DAYS = 14;
+const GHSA = /GHSA(?:-[23456789cfghjmpqrvwx]{4}){3}/;
+
+/**
+ * OWNER-APPROVED AUDIT EXCEPTIONS (2026-11-17). An exception names ONE advisory; it applies only while it is
+ * unexpired and no longer than 14 days after approval, and only to a finding whose every root advisory it
+ * names. Anything else, every other high/critical, an expired or malformed entry, still blocks.
+ */
+export function activeExceptions(config, now = Date.now()) {
+  const active = [];
+  for (const e of config?.exceptions || []) {
+    const approved = Date.parse(e?.approvedAt || ''), expires = Date.parse(e?.expires || '');
+    if (!GHSA.test(String(e?.advisory || '')) || !e.reason || !Number.isFinite(approved) || !Number.isFinite(expires)) {
+      throw new Error(`audit exception is malformed: ${JSON.stringify(e).slice(0, 200)}`);
+    }
+    if (expires - approved > MAX_EXCEPTION_DAYS * DAY) throw new Error(`audit exception ${e.advisory} runs past ${MAX_EXCEPTION_DAYS} days from its approval`);
+    if (now < expires) active.push(e);
+  }
+  return active;
+}
+
+/** The root advisories behind one npm-audit finding (its own, and those of the packages it is vulnerable via),
+ *  as advisory -> severity. */
+function rootAdvisories(vulns, name, seen = new Set()) {
+  const out = new Map();
+  if (seen.has(name)) return out;
+  seen.add(name);
+  for (const via of vulns?.[name]?.via || []) {
+    if (typeof via === 'string') for (const [a, sev] of rootAdvisories(vulns, via, seen)) out.set(a, sev);
+    else out.set(GHSA.exec(String(via?.url || ''))?.[0] || `unidentified:${via?.source ?? via?.title ?? 'advisory'}`, String(via?.severity || 'high'));
+  }
+  return out;
+}
+
+/** High/critical counts after active exceptions; and which findings each exception covered. */
+export function effectiveAudit(audit, exceptions) {
+  const raw = audit?.metadata?.vulnerabilities || {};
+  const vulns = audit?.vulnerabilities || {};
+  const excepted = new Set(exceptions.map((e) => e.advisory));
+  const counts = { critical: Number(raw.critical), high: Number(raw.high) };
+  const covered = new Map(exceptions.map((e) => [e.advisory, []]));
+  for (const [name, v] of Object.entries(vulns)) {
+    if (!['high', 'critical'].includes(v?.severity)) continue;
+    // Only the high/critical roots make a finding high; a moderate advisory riding along does not block here.
+    const roots = [...rootAdvisories(vulns, name)].filter(([, sev]) => ['high', 'critical'].includes(sev)).map(([a]) => a);
+    if (roots.length && roots.every((a) => excepted.has(a))) {
+      counts[v.severity] -= 1;
+      for (const a of roots) covered.get(a).push(name);
+    }
+  }
+  return { counts, applied: exceptions.map((e) => ({ advisory: e.advisory, expires: e.expires, approvedBy: e.approvedBy,
+    reason: e.reason, covered: covered.get(e.advisory) })).filter((e) => e.covered.length) };
+}
 const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 
 function argument(args, name) {
@@ -24,7 +79,7 @@ function packedVersion(artifact) {
   return JSON.parse(result.stdout).version;
 }
 
-export function createStabilizationReceipt({ root, artifactPath, qe, audit }) {
+export function createStabilizationReceipt({ root, artifactPath, qe, audit, exceptions = null, now = Date.now() }) {
   const git = (...args) => {
     const result = spawnSync('git', ['-C', root, ...args], { encoding: 'utf8' });
     if (result.status !== 0) throw new Error(`git ${args.join(' ')} failed`);
@@ -44,6 +99,8 @@ export function createStabilizationReceipt({ root, artifactPath, qe, audit }) {
     || !Number.isFinite(Number(vulnerabilities.high))) {
     throw new Error('dependency audit evidence is missing critical/high counts');
   }
+  const config = exceptions ?? (fs.existsSync(EXCEPTIONS_FILE) ? readJson(EXCEPTIONS_FILE) : { exceptions: [] });
+  const audited = effectiveAudit(audit, activeExceptions(config, now));
   const receipt = {
     schemaVersion: 1,
     phase: 'stabilization-candidate',
@@ -68,10 +125,14 @@ export function createStabilizationReceipt({ root, artifactPath, qe, audit }) {
       sourceSha: sha,
       version: packedVersion(artifactPath),
     },
+    // critical/high are what blocks: the audit's counts less only findings an active owner-approved exception
+    // fully covers. The raw counts and every applied exception stay on the receipt.
     security: {
-      status: Number(vulnerabilities.critical || 0) === 0 && Number(vulnerabilities.high || 0) === 0 ? 'PASS' : 'FAIL',
-      critical: Number(vulnerabilities.critical || 0),
-      high: Number(vulnerabilities.high || 0),
+      status: audited.counts.critical === 0 && audited.counts.high === 0 ? 'PASS' : 'FAIL',
+      critical: audited.counts.critical,
+      high: audited.counts.high,
+      audited: { critical: Number(vulnerabilities.critical || 0), high: Number(vulnerabilities.high || 0) },
+      exceptions: audited.applied,
     },
     qe: { status: total > 0 && failed === 0 && skipped === 0 ? 'PASS' : 'FAIL', total, passed, failed, skipped },
     limitations: [

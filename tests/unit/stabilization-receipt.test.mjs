@@ -61,3 +61,62 @@ describe('stabilization candidate receipt producer', () => {
     expect(main([])).toBe(1);
   });
 });
+
+// OWNER-APPROVED AUDIT EXCEPTION (2026-11-17): GHSA-fc5q-39xc-vjpf only, 14 days, dev-only toolchain.
+describe('the owner-approved audit exception', () => {
+  const OWNER_ADVISORY = 'GHSA-fc5q-39xc-vjpf';
+  const url = (id) => `https://github.com/advisories/${id}`;
+  // npm audit's shape: picomatch carries the advisory; fdir/tinyglobby/vite/vitest are vulnerable via it.
+  const auditWith = (extra = {}) => ({
+    metadata: { vulnerabilities: { critical: 0, high: 5 + Object.keys(extra).length } },
+    vulnerabilities: {
+      picomatch: { severity: 'high', via: [{ source: 1, title: 'ReDoS', url: url(OWNER_ADVISORY), severity: 'high' }] },
+      '@vitest/mocker': { severity: 'moderate', via: [{ source: 4, url: url('GHSA-qxg6-89mg-rqv8'), severity: 'moderate' }] },
+      fdir: { severity: 'high', via: ['picomatch'] },
+      tinyglobby: { severity: 'high', via: ['fdir', 'picomatch'] },
+      vite: { severity: 'high', via: ['picomatch', 'tinyglobby'] },
+      vitest: { severity: 'high', via: ['@vitest/mocker', 'picomatch', 'tinyglobby'] }, // as npm audit reports it today
+      ...extra,
+    },
+  });
+  const config = JSON.parse(fs.readFileSync(new URL('../../config/audit-exceptions.json', import.meta.url), 'utf8'));
+  const during = Date.parse('2026-11-20T00:00:00Z');
+
+  it('the committed exception names exactly that one advisory, the owner, the reason, and at most 14 days', () => {
+    expect(config.exceptions).toHaveLength(1);
+    const [e] = config.exceptions;
+    expect(e.advisory).toBe(OWNER_ADVISORY);
+    expect(e.reason).toMatch(/dev-only toolchain.*not in the shipped package.*no patched version.*PR #194/);
+    expect(Date.parse(e.expires) - Date.parse(e.approvedAt)).toBeLessThanOrEqual(14 * 86_400_000);
+    expect(e.approvedBy).toMatch(/owner/);
+  });
+  it('while active: the five findings it covers pass, and the receipt records the exception and the raw counts', () => {
+    const f = fixture();
+    const r = createStabilizationReceipt({ ...f, audit: auditWith(), now: during });
+    expect(r.security).toMatchObject({ status: 'PASS', critical: 0, high: 0, audited: { high: 5 } });
+    expect(r.security.exceptions).toEqual([expect.objectContaining({ advisory: OWNER_ADVISORY,
+      covered: ['picomatch', 'fdir', 'tinyglobby', 'vite', 'vitest'] })]);
+  });
+  it('any other high finding still blocks, including one that is only partly the excepted advisory', () => {
+    const f = fixture();
+    const other = { lodash: { severity: 'high', via: [{ source: 2, title: 'x', url: url('GHSA-aaaa-bbbb-cccc'), severity: 'high' }] } };
+    expect(() => createStabilizationReceipt({ ...f, audit: auditWith(other), now: during })).toThrow(/SECURITY_NOT_PASS/);
+    const mixed = { vite: { severity: 'high', via: ['picomatch', { source: 3, url: url('GHSA-2222-3333-4444'), severity: 'high' }] } };
+    expect(() => createStabilizationReceipt({ ...fixture(), audit: auditWith(mixed), now: during })).toThrow(/SECURITY_NOT_PASS/);
+    const critical = { audit: { ...auditWith(), metadata: { vulnerabilities: { critical: 1, high: 5 } } } };
+    expect(() => createStabilizationReceipt({ ...fixture(), ...critical, now: during })).toThrow(/SECURITY_NOT_PASS/);
+  });
+  it('after it expires the same findings block again', () => {
+    const after = Date.parse(config.exceptions[0].expires) + 1;
+    expect(() => createStabilizationReceipt({ ...fixture(), audit: auditWith(), now: after })).toThrow(/SECURITY_NOT_PASS/);
+  });
+  it('an exception for another advisory, a longer one, or a malformed one is refused or does nothing', () => {
+    const base = config.exceptions[0];
+    const otherAdvisory = { exceptions: [{ ...base, advisory: 'GHSA-2222-3333-4444' }] };
+    expect(() => createStabilizationReceipt({ ...fixture(), audit: auditWith(), exceptions: otherAdvisory, now: during })).toThrow(/SECURITY_NOT_PASS/);
+    const tooLong = { exceptions: [{ ...base, expires: '2026-12-31T00:00:00Z' }] };
+    expect(() => createStabilizationReceipt({ ...fixture(), audit: auditWith(), exceptions: tooLong, now: during })).toThrow(/past 14 days/);
+    const malformed = { exceptions: [{ advisory: OWNER_ADVISORY }] };
+    expect(() => createStabilizationReceipt({ ...fixture(), audit: auditWith(), exceptions: malformed, now: during })).toThrow(/malformed/);
+  });
+});

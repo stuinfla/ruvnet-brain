@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "_note": "Owner-approved dependency-audit exceptions read by scripts/stabilization-receipt.mjs. Each names ONE advisory, the packages it reaches, a reason, and an expiry at most 14 days after approval; an expired or unlisted advisory blocks the release as before. Recorded in docs/adr/0103 (Currency log).",
+  "exceptions": [
+    {
+      "advisory": "GHSA-fc5q-39xc-vjpf",
+      "packages": ["picomatch", "fdir", "tinyglobby", "vite", "vitest"],
+      "approvedBy": "owner (Stuart Kerr), via the release coordinator",
+      "approvedAt": "2026-11-17T00:00:00Z",
+      "expires": "2026-12-01T00:00:00Z",
+      "reason": "dev-only toolchain (vitest/vite/tinyglobby/fdir); not in the shipped package; no patched version exists; upstream micromatch/picomatch PR #194 open"
+    }
+  ]
+}
