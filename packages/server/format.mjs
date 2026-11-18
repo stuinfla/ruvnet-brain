@@ -9,6 +9,9 @@ const sha = (t) => crypto.createHash('sha256').update(t).digest('hex');
 // The note a trim leaves at the end of an excerpt (the engine's, this formatter's or the delivery
 // guard's); the text shown is the excerpt without it.
 const TRIM_NOTE = /(^|\n)… \[trimmed \d+ characters[^\]\n]*\]$/;
+/** A repo or path as a citation shows it: one line always; with a control or line-separator character it
+ *  is shown JSON-encoded, so corpus metadata can never add a line to an answer (review F18). */
+const one = (s) => (/[\u0000-\u001f\u007f\u2028\u2029]/.test(s) ? JSON.stringify(s).replace(/[\u2028\u2029]/g, (c) => `\\u${c.charCodeAt(0).toString(16)}`) : s);
 
 function cut(text, n) {
   const at = text.lastIndexOf('\n', n);
@@ -126,10 +129,13 @@ export function format(result, recipe, notes = []) {
     budget: recipe.sections.find((r) => r.name === s.name)?.budgetChars[result.detail] ?? cap,
     items: s.items
       .filter((it) => !seen.has(it.hash) && seen.add(it.hash))
-      .map((it) => ({ ...it, base: it.excerpt, excerpt: it.trimmed ? `${it.excerpt}\n… [trimmed ${it.trimmed} characters]` : it.excerpt })),
+      .map((it) => ({ ...it, repo: one(it.repo), path: one(it.path), base: it.excerpt, excerpt: it.trimmed ? `${it.excerpt}\n… [trimmed ${it.trimmed} characters]` : it.excerpt })),
   }));
   const render = () => renderText(result, sections, marker, notes);
   trimToBudgets(sections, (s) => renderSection(s, marker), render, cap);
+  // The same shown text is sent once, judged after trimming, on the hash its citation shows (review F17).
+  const shown = new Set();
+  for (const s of sections) s.items = s.items.filter((it) => { const t = it.excerpt.replace(TRIM_NOTE, ''); const h = t === it.base ? it.hash : sha(t); return !t || (!shown.has(h) && shown.add(h)); });
   // The ceiling is checked with the header's trim note in place (at its widest), so adding it cannot
   // push the text back over.
   let shed = null;
@@ -141,7 +147,8 @@ export function format(result, recipe, notes = []) {
 
 /** read_ruvnet's answer: one cited span, fenced, held to the result cap by leaving out whole lines at
  *  the end (and saying which), or by cutting a single over-long line. */
-export function formatRead(r, recipe, detail) {
+export function formatRead(r0, recipe, detail) {
+  const r = { ...r0, repo: one(r0.repo), path: one(r0.path) };
   const cap = recipe.result.capChars[detail];
   const marker = fenceMarker([r.text]);
   const render = (lines, end) => {

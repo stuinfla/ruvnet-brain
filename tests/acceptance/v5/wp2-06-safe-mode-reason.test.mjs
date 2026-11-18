@@ -15,7 +15,7 @@ import { section } from './wp2-helpers.mjs';
 const SLOW_LANE = {
   file: 'packages/engine/lanes/lexical.mjs',
   find: 'const terms = queryTerms(query, lane.analyser);',
-  replace: "if (!process.getBuiltinModule('node:worker_threads').isMainThread && query.includes('slowlane')) { const end = Date.now() + 60_000; while (Date.now() < end) {} }\n  const terms = queryTerms(query, lane.analyser);",
+  replace: "if (!process.getBuiltinModule('node:worker_threads').isMainThread && process.getBuiltinModule('node:worker_threads').workerData?.role !== 'safe' && query.includes('slowlane')) { const end = Date.now() + 60_000; while (Date.now() < end) {} }\n  const terms = queryTerms(query, lane.analyser);",
 };
 const RECORDED = path.join(path.dirname(fileURLToPath(import.meta.url)), 'wp5-fixtures', 'history', 'beta-memory');
 const DEADLINE = 1500;

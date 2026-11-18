@@ -17,6 +17,8 @@ export function addIntegrationBreaks(BREAKS) {
     // The pinned corpus fetch (v5-pack-build.yml)
     'integ-corpus-tip': { test: 'integ-corpus', what: 'the fetch takes the branch tip, not the pin', patches: [p(`${B}fetch-corpus.mjs`, "'--no-tags', s.url, s.commit], dir);", "'--no-tags', s.url, 'HEAD'], dir);"), p(`${B}fetch-corpus.mjs`, '    if (head !== s.commit) throw', '    if (false) throw')], expect: /is at its pin, not the tip/ },
     'integ-corpus-gists': { test: 'integ-corpus', what: 'a missing gists file is listed anyway', patches: [p(`${B}fetch-corpus.mjs`, '    if (!fs.existsSync(gists)) throw', '    if (false) throw')], expect: /a missing gists file stops the fetch/ },
+    // Line budgets: a package grows past its budget
+    'integ-budget-over': { test: 'integ-budget', what: 'the release rail grows by 900 lines', patches: [p('packages/release/release.mjs', '// Release rail, skeleton slice:', `${'//\n'.repeat(900)}// Release rail, skeleton slice:`)], expect: /over budget: release / },
     // F24: the key id a signature names is the trusted key's
     'integ-contract-keyid': { test: 'integ-contract', what: 'the signature\'s key id is not compared', patches: [p('packages/contract/signature.mjs', '    if (signature.keyId !== keyId(publicKeyPem)) return false;\n', '')], expect: /a release with a foreign key id must not install/ },
   });

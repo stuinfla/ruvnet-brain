@@ -10,6 +10,7 @@ import { addWave4Breaks } from './breaks-wave4.mjs';
 import { addReviewBreaks } from './breaks-review.mjs';
 import { addIntegrationBreaks } from './breaks-integration.mjs';
 import { addIntegPluginBreaks } from './breaks-integ-plugin.mjs';
+import { addIntegServerBreaks } from './breaks-integ-server.mjs';
 
 // The wp1-no-question-strings break plants one development question's wording in the engine. The
 // wording is read from the question set outside the repository when the break is applied (that test
@@ -39,14 +40,14 @@ export const BREAKS = {
     test: 's02', what: 'a child-process spawn is introduced on the search path (Node path captured at start)',
     patches: [
       { file: 'packages/server/runner.mjs', find: "import { Worker } from 'node:worker_threads';", replace: "import { Worker } from 'node:worker_threads';\nimport { spawn as spawnChild } from 'node:child_process';\nimport { EventEmitter } from 'node:events';\nconst NODE_AT_START = process.execPath;\nfunction spawnWorker(appDir, packDir) {\n  const cp = spawnChild(NODE_AT_START, [path.join(appDir, 'server', 'worker-child.mjs'), appDir, packDir], { stdio: ['ignore', 'ignore', 'inherit', 'ipc'] });\n  const em = new EventEmitter();\n  cp.on('message', (m) => em.emit('message', m));\n  cp.on('error', (e) => em.emit('error', e));\n  cp.on('exit', (c) => em.emit('exit', c));\n  em.postMessage = (m) => { try { cp.send(m); } catch (e) { em.emit('error', e); } };\n  em.terminate = () => cp.kill();\n  return em;\n}" },
-      { file: 'packages/server/runner.mjs', find: 'const w = new Worker(workerUrl, { workerData: { appDir, packDir } });', replace: 'const w = spawnWorker(appDir, packDir);' },
+      { file: 'packages/server/runner.mjs', find: 'const w = new Worker(workerUrl, { workerData: { appDir, packDir, role } });', replace: 'const w = spawnWorker(appDir, packDir);' },
       { file: 'packages/server/worker-child.mjs', create: "import path from 'node:path';\nimport { pathToFileURL } from 'node:url';\nconst [appDir, packDir] = process.argv.slice(2);\nconst engine = await import(pathToFileURL(path.join(appDir, 'engine', 'index.mjs')).href);\nlet h = null;\nprocess.on('message', (m) => {\n  try {\n    if (!h) h = engine.open(packDir);\n    const result = m.type === 'selfTest' ? engine.selfTest(h) : engine.search(h, m.query, m.options);\n    process.send({ id: m.id, ok: true, result });\n  } catch (e) { process.send({ id: m.id, ok: false, error: String(e.message) }); }\n});\n" },
     ],
-    expect: /search after the Node program was deleted fell back to safe mode/,
+    expect: /search after the Node program was deleted fell back to safe mode|RuvNet Brain DOWN · search failed: the search worker failed: spawn/,
   },
   s03: {
     test: 's03', what: 'safe mode is removed',
-    patches: [{ file: 'packages/server/main.mjs', find: 'result = await safeMode(a, query, detail, reason);', replace: 'throw err;' }],
+    patches: [{ file: 'packages/server/main.mjs', find: 'result = await safeMode(a, query, detail, reason, expiresAt);', replace: 'throw err;' }],
     expect: /search during the worker's death must still answer/,
   },
   s04: {
@@ -392,6 +393,7 @@ addWave4Breaks(BREAKS); // wave 4: the L+ layered store (breaks-wave4.mjs)
 addReviewBreaks(BREAKS); // review fixes (breaks-review.mjs, docs/REVIEW-FIXES.md)
 addIntegrationBreaks(BREAKS); // integration owner's fixes (breaks-integration.mjs, docs/INTEGRATION-NOTES.md)
 addIntegPluginBreaks(BREAKS); // plugin fixes F02, F06, F13 (breaks-integ-plugin.mjs)
+addIntegServerBreaks(BREAKS); // server fixes F02, F08, F09, F11, F17, F18, F22 (breaks-integ-server.mjs)
 
 // wp8 ── work package 8 (answer gate) breaks. Each removes one refusal from packages/release/gate/.
 const R = 'packages/release/gate/retrieval.mjs';

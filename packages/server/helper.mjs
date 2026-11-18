@@ -12,6 +12,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { execFile, spawn } from 'node:child_process';
 import { MIN_NODE } from '../contract/constants.mjs';
+import { outsideProject } from '../cli/node-pick.mjs';
 
 const WIN = process.platform === 'win32';
 const USUAL = WIN
@@ -31,13 +32,18 @@ const version = (file) =>
     }
   });
 
-/** The first Node that runs and is recent enough, tested now. Throws, naming what was tried. */
-export async function chooseNode(env = process.env) {
+/** The first Node that runs and is recent enough, tested now; never one inside the project (review F02,
+ *  the rule of cli/node-pick.mjs). Throws, naming what was tried. */
+export async function chooseNode(env = process.env, cwd = process.cwd()) {
   const key = Object.keys(env).find((k) => k.toLowerCase() === 'path');
   const dirs = String(key ? env[key] : '').split(path.delimiter).filter((d) => d && path.isAbsolute(d));
   const tried = [];
   for (const c of new Set([process.execPath, ...dirs.map((d) => path.join(d, WIN ? 'node.exe' : 'node')), ...USUAL])) {
     if (!fs.existsSync(c)) continue;
+    if (!outsideProject(c, env, cwd)) {
+      tried.push(`${c} (inside the current project, never run)`);
+      continue;
+    }
     if (await version(c)) return c;
     tried.push(c);
   }
@@ -106,6 +112,7 @@ export function createHelpers(appDir, packDir, recipe, env = process.env) {
   /** Items per helper section: Map name -> { items } | { reason }. A dead helper is started again. */
   async function search(query, detail, ms) {
     const out = new Map();
+    const end = Date.now() + ms; // every helper call draws on the search's one budget (review F09)
     for (const sec of recipe.sections) {
       const spec = specs.find((l) => l.name === sec.lane);
       if (!spec) continue;
@@ -115,7 +122,8 @@ export function createHelpers(appDir, packDir, recipe, env = process.env) {
         out.set(sec.name, { reason: `lane ${spec.name} is not available: ${s.reason}` });
         continue;
       }
-      const r = await s.call({ type: 'search', query, detail, section: { name: sec.name, maxItems: sec.maxItems, itemChars: sec.itemChars ?? null } }, Math.max(ms, 500));
+      const left = end - Date.now();
+      const r = left > 0 ? await s.call({ type: 'search', query, detail, section: { name: sec.name, maxItems: sec.maxItems, itemChars: sec.itemChars ?? null } }, left) : { ok: false, error: 'no time was left of the search deadline' };
       out.set(sec.name, r.ok ? { items: (r.items ?? []).slice(0, sec.maxItems) } : { reason: `lane ${spec.name} failed: ${r.error}` });
     }
     return out;

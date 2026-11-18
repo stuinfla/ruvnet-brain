@@ -1,0 +1,19 @@
+{
+ "schema": "ruvnet-brain/line-budgets",
+ "version": 1,
+ "about": "Lines of .mjs code per package (architecture section 6). tests/acceptance/v5/integ-budget.test.mjs fails the build over budget. Only the integration owner changes this file, and every change from the architecture's number carries a reason here.",
+ "packages": {
+  "contract": { "budget": 600 },
+  "engine": { "budget": 2500 },
+  "server": { "budget": 1300, "reason": "2026-11-17, integration owner: 1,178 lines before the review fixes, 1,262 after F08 (roots fail closed, private list re-read), F09 (one deadline across queue, dispatch and a worker-run safe mode), F11 (new app modules re-imported on a swap), F17 (private items merged under section limits and cited by pack), F18 and F22. Each is a correctness or safety rule with its own test; none is optional." },
+  "health": { "budget": 500 },
+  "cli": { "budget": 2500 },
+  "builder": { "budget": 3000 },
+  "release": { "budget": 1200, "exclude": ["gate"] },
+  "release/gate": { "budget": 800, "reason": "2026-11-17, integration owner: the answer gate (wave 3) is not in section 6's release scope (seal, sign, verify, publish, promote, canary driver); it is counted on its own so the rail keeps the architecture's 1,200. Measured 762 lines at integration." },
+  "plugin": { "budget": 500, "reason": "2026-11-17, integration owner: 435 lines before the review fixes, 480 after F06 (no read or write through a link below a host folder) and F13 (only our hooks removed, an unterminated block refused, file modes kept). These guard the user's own host files; splitting install.mjs would move them, not remove them." },
+  "guard": { "budget": 400 },
+  "migrate": { "budget": 500 },
+  "docs": { "budget": 300, "reason": "2026-11-17, integration owner: the document generator (wave 3) has no line in section 6; 225 lines at integration." }
+ }
+}

@@ -21,42 +21,64 @@ export function real(p) {
   }
 }
 
-/** The private packs, opened once per worker, in name order. */
+/** The private packs, in name order. The folder and each PACK.json are read again on every call, and a
+ *  pack whose PACK.json changed is opened again (or dropped), so an edited project list applies to the
+ *  next question (review F08). */
 export function openPrivates(engine, privates, dir) {
-  if (privates.list) return privates.list;
-  privates.list = [];
+  const open = (privates.open ??= new Map()); // name -> { text, h }
   let names = [];
   try {
     names = fs.readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort();
   } catch {}
+  for (const [name, p] of open) if (!names.includes(name) && (open.delete(name), p.h)) engine.close(p.h);
+  const list = [];
   for (const name of names) {
-    let h = null;
+    let text = null;
     try {
-      h = engine.open(path.join(dir, name));
-    } catch {
-      continue;
-    }
-    if (h.pack.access === 'private' && Array.isArray(h.pack.projects)) {
+      text = fs.readFileSync(path.join(dir, name, 'PACK.json'), 'utf8');
+    } catch {}
+    let p = open.get(name);
+    if (!p || p.text !== text) {
+      if (p?.h) engine.close(p.h);
+      p = { text, h: null };
+      open.set(name, p);
+      try {
+        p.h = engine.open(path.join(dir, name));
+      } catch {
+        continue;
+      }
       // The caller's folder arrives as a real path (symbolic links resolved); so do the listed ones.
-      h.pack.projects = h.pack.projects.map(real);
-      privates.list.push({ name, h });
-    } else engine.close(h);
+      if (p.h.pack.access === 'private' && Array.isArray(p.h.pack.projects)) p.h.pack.projects = p.h.pack.projects.map(real);
+      else (engine.close(p.h), (p.h = null));
+    }
+    if (p.h) list.push({ name, h: p.h });
   }
-  return privates.list;
+  return list;
 }
 
 const excerptChars = (items) => items.reduce((n, it) => n + it.excerpt.length + ROOM_PER_ITEM, 0);
 
 function addPrivate(engine, handle, privates, m, result) {
   if (!m.privateDir || !m.options?.project) return;
+  const merged = new Set();
   for (const p of openPrivates(engine, privates, m.privateDir)) {
     const r = engine.search(p.h, m.query, m.options);
     for (const sec of r.sections) {
       const target = result.sections.find((s) => s.name === sec.name);
       if (!target || !sec.items.length) continue;
-      target.items.push(...sec.items);
+      // Cited with its pack, never mistaken for a public file (review F17): private:<name>/<repo>/<path>.
+      target.items.push(...sec.items.map((it) => ({ ...it, repo: `private:${p.name}/${it.repo}` })));
       target.empty = null;
+      merged.add(target);
     }
+  }
+  // A section that took private items is merged under the section's rules (review F17): ranked by score (bm25, lower first), one item per
+  // file, at most maxItems.
+  for (const sec of merged) {
+    const max = handle.recipe.sections.find((s) => s.name === sec.name)?.maxItems ?? sec.items.length;
+    const rank = (it) => (Number.isFinite(it.score) ? it.score : Infinity);
+    const files = new Set();
+    sec.items = sec.items.map((it, i) => [it, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(([it]) => it).filter((it) => !files.has(`${it.repo}/${it.path}`) && files.add(`${it.repo}/${it.path}`)).slice(0, max);
   }
 }
 

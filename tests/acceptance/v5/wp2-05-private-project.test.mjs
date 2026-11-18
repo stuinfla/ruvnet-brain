@@ -14,7 +14,7 @@ import { readStatus, setup, sleep, waitFor } from './helpers.mjs';
 import { installPrivate, unfenced, writeRepo } from './wp2-helpers.mjs';
 
 const Q = 'saltmarrow pricing episode store';
-const PRIVATE_FILE = 'owner-notes/meetings/notes.md';
+const PRIVATE_FILE = 'private:notes/owner-notes/meetings/notes.md'; // F17: private items cite their pack
 
 /** Re-initialise a running server as a client that offers roots, and answer its roots request. */
 async function withRoots(srv, folder) {

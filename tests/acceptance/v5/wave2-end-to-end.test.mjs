@@ -24,7 +24,7 @@ const RECORDED = path.join(path.dirname(fileURLToPath(import.meta.url)), 'wp5-fi
 // S9's failing app: the worker answers every call with an error while the engine is unchanged, so the
 // check before the switch passes and the check through the real server after it fails.
 const BROKEN_WORKER = { file: 'packages/server/worker.mjs', find: "parentPort.on('message', (m) => {", replace: "parentPort.on('message', (m) => {\n  if (m) { parentPort.postMessage({ id: m.id, ok: false, error: 'this app build is broken (test fixture)' }); return; }" };
-const PRIVATE_FILE = 'owner-notes/meetings/notes.md';
+const PRIVATE_FILE = 'private:owner-notes/owner-notes/meetings/notes.md'; // F17: private items cite their pack
 
 test('Wave 2 end to end: build, seal, install, serve, one verdict, update, roll back, uninstall', { skip: NOT_POSIX, timeout: 900_000 }, async (t) => {
   const ctx = setup(t, 'wave2-end-to-end');
