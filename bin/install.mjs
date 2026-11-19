@@ -30,6 +30,7 @@ import { saveUpdateSource, stableNode } from '../plugin/scripts/automatic-update
 import { acquireDeveloperLock } from '../plugin/scripts/developer-update-lock.mjs';
 import { footprintRoots, inventoryFootprint, sweepFootprint } from '../plugin/scripts/brain-footprint.mjs';
 import { kbCopyProof } from '../plugin/scripts/kb-copy-proof.mjs';
+import { applyHookTimeoutOverrides } from '../plugin/scripts/hook-timeout-overrides.mjs';
 import { assessMoveLeftovers, isVolumeMetadata, rescueOperationalFiles } from '../plugin/scripts/footprint-io.mjs';
 import { confirm, doctorVerdict, formatBytes, formatConfirmation, signatureEvidenceFromReceipts, signatureRecordValid, writeSignatureRecord } from '../plugin/scripts/brain-confirmation.mjs';
 import {
@@ -1541,6 +1542,13 @@ function wirePlugin({ expectedVersion = PACKAGE_VERSION, requireManaged = false 
     const projectsBehind = claudeProjectInstalls({ referenceVersion: installed.version }).filter((p) => p.behind);
     for (const p of projectsBehind) {
       warn(`per-project install still on ${p.version || 'an unknown version'} (${p.scope} scope, ${p.projectPath}); --update moves only the user install. To update it: ${c.bold(p.command)}`);
+    }
+    // #423: `claude plugin install/update` just rewrote hooks.json from the shipped defaults,
+    // undoing any hand-edit. Re-apply the user's saved hook-timeout choice, if any, so it survives
+    // every install/update instead of needing to be redone by hand each time.
+    const timeoutOverrides = applyHookTimeoutOverrides({ installPath: installed.installPath, log: info });
+    if (timeoutOverrides.changed) {
+      info(`  hook timeout override(s) re-applied from ~/.cache/ruvnet-brain/hook-timeouts.json: ${Object.entries(timeoutOverrides.applied).map(([id, s]) => `${id}=${s}s`).join(', ')}`);
     }
     return {
       host: true, wired: true, version: installed.version, manualMarketplace, manualInstall,
