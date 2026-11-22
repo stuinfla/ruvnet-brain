@@ -1,4 +1,4 @@
-Updated: 2026-11-22 01:36:41 EST | Version 2.1.0
+Updated: 2026-11-22 01:38:30 EST | Version 2.2.0
 Created: 2026-11-22 01:32:00 EST
 Author: Stuart Kerr (with Antigravity Gemini 4 Neon)
 Status: CANONICAL — SINGLE SOURCE OF TRUTH (supersedes all prior 2026-07 and 2026-10 routing docs, research notes, and policies)
@@ -131,3 +131,57 @@ Based on the 60-day measured baseline (`Sep 21 – Nov 21, 2026`) and the **3.8x
 | **Claude Code (Anthropic)** | `255,079` turns / `63.34B` tokens | `~$11,930/mo` | `~$1,200–$2,000/mo` *(3.8x–4.8x stretch + Neon offload)* | **1 × Claude Max $100** *(drop 2nd seat after 14-day proof)* |
 | **Codex (OpenAI)** | `20` sessions / `6,018` turns / `842.7M` tokens (`93.8%` cached) | `~$120–$175/mo` | `~$45–$70/mo` *(2.5x–3.0x stretch)* | **Downgrade $200 Pro -> $20 Plus** *(saves $180/mo)* |
 | **Grok (xAI)** | `523` sessions (`48.1 MB` logs) | `~$60–$120/mo` | `~$40–$80/mo` *(1.5x–2.0x stretch)* | **1 × Standard SuperGrok** *(no $300 Heavy)* |
+
+---
+
+## 7. Forensic Thought Process & How Things Got Messed Up (So Future Agents Catch Up in 60 Seconds)
+
+When diagnosing routing or quota problems in the future, do **not** trust summaries or high-level status chips—follow the exact evidence trail that exposed every hidden failure on `2026-11-22`:
+
+### How the System Drifted (July 2026 -> November 2026)
+1. **July 10–13, 2026 (The `$1,600` Lesson):** MetaHarness routing was first built to save money via OpenRouter (`route-cheap.mjs` -> `~/.claude/metaharness/routing-receipts.jsonl`), then locked to `$0` prepaid subscriptions (`subscriptionOnlyEnv()`).
+2. **August 8, 2026 (Silent Ledger Freeze):** `route-cheap.mjs` (`CLAUDE_TIERS`) was last updated for `claude-opus-5`. When Claude 5.5 (`haiku-5-5`, `sonnet-5-5`, `opus-5-5`), Fable 5.1/5.2, GPT-6.x, and Gemini 4 arrived, `priceOf(model)` returned `null`. Because `dispatch-receipt.mjs` refuses to invent prices, **every single subagent receipt silently failed with exit code 2 after August 8**, making the RuvNet Brain Console look like routing had stopped.
+3. **October 5–13, 2026 (Wrapper Retirement -> Advice-Only Paralysis):** Controlled terminal wrappers (`claude-controlled-terminal.mjs`, `codex-managed-terminal.mjs`) enforced per-prompt model launches for 3 days, but hijacking the TUI broke native interactive features and subagents. On Oct 13, the wrappers were retired to `~/.claude/archive/rnb-terminal-routing-20261013/`, leaving `user-model-prompt-hook.mjs` running in *"advice only, do not launch anything"* mode.
+4. **October 13 – November 21, 2026 (Five Compounding Silent Failures):**
+   - **False 60/40 Split Trap:** Looking only at aggregate counts in `routing-decisions.jsonl` showed `58.8% medium / 39.5% hard / 0.4% fast`. Breaking it down **by calendar day** revealed the truth: normal workdays (`Oct 4 – Nov 19`) were **78% routine and only 22% hard**, while **Nov 20–21 alone had `3,589` synthetic test prompts (`2,564 hard`)** written by test runs that didn't redirect `MODEL_ROUTER_DECISIONS` to `/tmp`.
+   - **Actual Execution vs. Advice Gap:** Scanning the real session transcripts (`~/.claude/projects/*.jsonl`)—not just the decision log—proved `255,079` real turns executed `57%` on Opus 5.5/Fable (`62.9%` of tokens) and burned `$10,204` in pure cache-write fees (`43%` of total burn) because parent sessions stayed parked on Opus 5.5 and never compacted at 50%.
+   - **Why `fast` Was Starved (0.4%):** `policy.default.mjs` required one of 9 narrow mechanical words AND banned every common verb (`check`, `list`, `show`, `where`, `what`).
+   - **Why Antigravity Got Codex Models:** `user-model-prompt-hook.mjs` line 22 used a binary ternary (`host === 'claude-code' ? 'claude-code' : 'codex'`), silently mapping `antigravity` to `codex`.
+   - **Why `model-router-status.mjs` Lied:** Line 114 checked `p[t].cost == null` instead of `(p[t].cost == null || p[t].cost === 0)`, printing `(no subscription-covered models)` even when `est_input_cost_usd` was `0`.
+   - **Why Weekly Refresh Stalled:** `model-weekly-cycle.mjs` line 116 marked the entire weekly check `blocked` whenever OpenRouter retired ancient 2024 models (`o1-pro`, `o3-mini-high`) unrelated to `routing-policy.json`, and `model-native-catalog.mjs` appended `gpt-6.2-sol`/`gpt-6.2-astra` to `catalog.json` without ever promoting them in `routing-policy.json`.
+
+---
+
+## 8. How to Keep It Clean — Rapid-Recovery Playbook
+
+If Stuart ever notices (a) he is hitting 5-hour/weekly limits again, (b) the `[Routed: ...]` badge disappears, (c) a new model generation launches and isn't being used, or (d) the RuvNet Brain Console stops updating, run these **5 checks in order**:
+
+1. **Run the 13-Point Self-Audit Watchdog First:**
+   ```bash
+   node ~/.claude/model-router/bin/model-routing-audit.mjs
+   ```
+   - Must return **`PASS (13/13 checks passed)`**. Any `ALERT [...]` line names the exact broken invariant (`profile-hosts`, `zero-api-keys`, `policy-routes`, `effort-caps`, `eval-suite`, `hook-*`, `grok-hook-wired`, `statusline-compact-guard`, `auto-refresh-schedules`, `meta-proxy-cloud-off`).
+
+2. **Check Live 4-Host Allocation & Effectiveness Graph:**
+   ```bash
+   node ~/.claude/model-router/bin/model-router-status.mjs
+   node ~/.claude/model-router/bin/router-utilization.mjs
+   ```
+   - Confirm all 4 hosts show `$0 subscription`, `fast` routes to `low` thinking, no routine tier uses `xhigh`/`max`, and `router-utilization.mjs` shows rising `Cheap / Fast` and `Mid Workhorse` shares.
+
+3. **Force a Model Catalog & Same-Family Refresh Check:**
+   ```bash
+   node ~/.claude/model-router/bin/model-auto-refresh.mjs
+   node ~/.codex/scripts/developer-maintenance.mjs --check
+   ```
+   - Confirm `modelRouter.ok === true` and `metaProxy`, `grok`, and `agy` are `current`.
+
+4. **Check for Sync Drift Between `~/.claude/model-router/` and `~/Code/ruvnet-brain/`:**
+   - **Why this matters:** `~/Code/ruvnet-brain` is the source repo; `~/.claude/model-router/` is the installed runtime; `~/.claude/plugins/marketplaces/ruvnet-brain/` is the plugin cache. If you only edit one without syncing the others, the next Brain update can overwrite your fix.
+   - Always keep `model-router-engine.mjs`, `user-model-prompt-hook.mjs`, `model-router-status.mjs`, `model-auto-refresh.mjs`, `model-routing-audit.mjs`, `route-cheap.mjs`, `router-utilization.mjs`, and `policy.default.mjs` identical across both locations.
+
+5. **Verify Real Transcript Burn (Ground Truth When Quotas Feel Tight):**
+   - Never rely solely on `routing-decisions.jsonl` if quotas are burning fast—inspect actual executed turns in `~/.claude/projects/*.jsonl` and `~/.codex/sessions/*.jsonl` to verify:
+     1. Frontier turns (`Opus 5.5` / `Fable 5.2` / `Astra`) are staying **under ~15–20%** of total turns.
+     2. Prompt cache hit rate remains **>90%** (if it drops, check whether sessions are compacting at 50% and whether multi-file searches are isolated in `fast` subagents).
+     3. No paid API keys leaked into `profile.json` and Meta Proxy Cloud remains OFF.
