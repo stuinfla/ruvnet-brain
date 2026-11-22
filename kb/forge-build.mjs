@@ -148,7 +148,7 @@ for (let i = 0; i < chunks.length; i += BATCH) {
   const out = await embed(batch.map((c) => c.embedText), { pooling: 'mean', normalize: true });
   const dim = out.dims[1];
   const ingestBatch = batch.map((c, j) => {
-    fs.writeSync(fd, JSON.stringify({ id: c.id, text: c.text, path: c.path, title: c.title }) + '\n');
+    fs.writeSync(fd, JSON.stringify({ id: c.id, text: c.text, path: c.path, title: c.title }).replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029') + '\n');
     passageLines++;
     meta[c.id] = { path: c.path, kind: c.kind, title: c.title, chunk: `${c.chunk}/${c.of}`, preview: c.preview };
     // No `metadata` field: @ruvector/rvf never persisted per-vector metadata (upstream

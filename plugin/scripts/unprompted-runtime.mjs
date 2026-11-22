@@ -135,7 +135,15 @@ const VALID_EFFECTS = new Set(['advisory', 'block']);
 // RUVNET_UNPROMPTED_CHANNELS still wins (the shim's own narrowing, or a caller that names channels).
 const QUIET_DEFAULT_CHANNELS = 'lesson,alarm';
 const NUDGES_FULL = String(process.env.RUVNET_STOP_NUDGES || '').toLowerCase() === 'full';
-const CHANNEL_LIST = process.env.RUVNET_UNPROMPTED_CHANNELS || (NUDGES_FULL ? '' : QUIET_DEFAULT_CHANNELS);
+let PROACTIVE_DIAL = false;
+if (process.env.RUVNET_STOP_NUDGES === undefined) {
+  try {
+    const sf = process.env.RUVNET_SETTINGS_FILE || path.join(process.env.HOME || os.homedir(), '.config', 'ruvnet-brain', 'settings.json');
+    const st = JSON.parse(fs.readFileSync(sf, 'utf8'));
+    if (Number(st?.settings?.advocacy) >= 4) PROACTIVE_DIAL = true;
+  } catch { /* default quiet */ }
+}
+const CHANNEL_LIST = process.env.RUVNET_UNPROMPTED_CHANNELS || (NUDGES_FULL || PROACTIVE_DIAL ? '' : QUIET_DEFAULT_CHANNELS);
 const ALLOWED_CHANNELS = CHANNEL_LIST
   ? new Set(CHANNEL_LIST.split(',').map((c) => c.trim()).filter((c) => VALID_CHANNELS.has(c)))
   : VALID_CHANNELS;

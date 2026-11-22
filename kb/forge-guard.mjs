@@ -83,7 +83,8 @@ function loadMetaPreviews(file) {
   for (const [id, m] of Object.entries(entries)) {
     if (m && typeof m.preview === 'string') previews.set(String(id), m.preview);
   }
-  return { count: Object.keys(entries).length, previews, model: j.model, dim: j.dimensions, metric: j.metric };
+  const count = Object.keys(entries).length || (j.private === true && Number.isInteger(j.passages) ? j.passages : 0);
+  return { count, previews, model: j.model, dim: j.dimensions, metric: j.metric };
 }
 
 async function streamPassages(file, onLine) {

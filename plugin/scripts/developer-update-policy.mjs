@@ -1,9 +1,20 @@
+import fs from 'node:fs';
+import path from 'node:path';
+const KEG_NODE = /^(.*)[\\/]Cellar[\\/]([^\\/]+)[\\/][^\\/]+[\\/]bin[\\/]node$/;
+export function stableNode(execPath = process.execPath) {
+  const m = KEG_NODE.exec(String(execPath || ''));
+  if (m) {
+    const opt = path.join(m[1], 'opt', m[2], 'bin', 'node');
+    try { if (fs.statSync(opt).isFile()) return opt; } catch { /* fallback */ }
+  }
+  return execPath;
+}
 export const EXECUTION_MODULES = Object.freeze(['developer-update.mjs', 'developer-update-policy.mjs', 'developer-update-lock.mjs', 'developer-update-maintenance.mjs', 'developer-update-cleanup.mjs', 'plugin-artifact-proof.mjs', 'entrypoint.mjs']);
 // Members a coordinator generation may lack: each is required exactly when the staged developer-update.mjs imports it
 // (plugin-artifact-proof since 4.6, entrypoint since the 4.7.21 entry-point sweep), so older registrations stay valid.
 export const OPTIONAL_EXECUTION_MODULES = Object.freeze(['plugin-artifact-proof.mjs', 'entrypoint.mjs']);
 // Shared stack classification and ordering: installations are selected, never manufactured.
-export const FAMILY = /^(ruflo|ruvnet-brain|ruvector|ruvector-extensions|ruvi|ruvbot|qudag|flow-nexus|agent-browser|agent-browser-mcp|agentic-flow|agentic-qe|agentic-robotics|agentic-payments|agentdb|ruv-swarm|@pacphi\/agentic-kit$|@ruvector\/|@claude-flow\/|@metaharness\/|@agentic-robotics\/)/;
+export const FAMILY = /^(ruflo|ruvnet-brain|ruvector|ruvector-extensions|ruvi|ruvbot|ruvllm|metaharness|qudag|flow-nexus|agent-browser|agent-browser-mcp|agentic-flow|agentic-qe|agentic-robotics|agentic-payments|agentdb|ruv-swarm|@pacphi\/agentic-kit$|@ruvector\/|@claude-flow\/|@metaharness\/|@agentic-robotics\/)/;
 export const PLUGIN_MARKETPLACES = new Set(['ruflo', 'ruview', 'ruvnet-brain', 'cognitum']);
 export const REVIEWED_INSTALL_SCRIPTS = Object.freeze(['ruflo', 'agentic-qe', '@claude-flow/cli', 'better-sqlite3', 'hnswlib-node', 'agentdb', 'agentic-flow', 'argon2', 'onnxruntime-node', 'sharp', 'protobufjs', '@google/genai', 'tldjs', 'vibium', 'agent-browser', '@anthropic-ai/claude-code', 'opencode-ai']);
 export function cmpVersion(a, b) {

@@ -49,11 +49,35 @@ export const MIN_LABELS = 5;
 export const OUTCOMES = process.env.MODEL_ROUTER_DECISIONS
   || path.join(os.homedir(), '.claude', 'metaharness', 'routing-outcomes.jsonl');
 
+/** Resolve the installed @metaharness/router package path across local and global npm prefixes. */
+export function resolveRealRouterPackage() {
+  const candidates = [
+    path.join(__dirname, '..', 'node_modules', '@metaharness', 'router'),
+    path.join(os.homedir(), '.npm-global', 'lib', 'node_modules', '@metaharness', 'router'),
+    path.join(os.homedir(), '.npm-global', 'node_modules', '@metaharness', 'router'),
+  ];
+  for (const dir of candidates) {
+    const pj = path.join(dir, 'package.json');
+    if (fs.existsSync(pj)) {
+      try {
+        const meta = JSON.parse(fs.readFileSync(pj, 'utf8'));
+        const entry = path.join(dir, meta.main || 'dist/index.js');
+        if (fs.existsSync(entry)) return { dir, entry, version: meta.version || '0.4.1' };
+      } catch { /* try next */ }
+    }
+  }
+  return null;
+}
+
 /** Load rUv's router. Returns null (never a fake) if the real package isn't installed. */
 export async function loadRealRouter() {
   try {
     return await import('@metaharness/router');
   } catch {
+    const resolved = resolveRealRouterPackage();
+    if (resolved) {
+      try { return await import(new URL(`file://${resolved.entry}`).href); } catch { /* fall through */ }
+    }
     return null; // caller MUST say so out loud — never silently substitute a hand-roll
   }
 }

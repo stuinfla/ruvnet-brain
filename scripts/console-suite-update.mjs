@@ -48,7 +48,7 @@ export function createSuiteUpdater({ home = os.homedir(), brainHome = path.join(
       : shared.owner?.pid === run.pid || (shared.owner?.token && shared.owner.token === run.ownerToken) || processAlive(run.pid));
     const visibleRun = active && !activeReceipt ? null : run;
     const view = active ? (activeReceipt ? run : pending || { startedAt: shared.owner?.startedAt, mode: 'apply' }) : source;
-    const status = policyError ? 'unavailable' : active ? 'running' : source?.state === 'failed' ? 'failed'
+    const status = policyError ? 'unavailable' : active ? 'running' : ['failed', 'completed-with-failures'].includes(source?.state) ? 'failed'
       : source?.ok === true && source?.finishedAt && source?.mode === 'apply' ? 'succeeded'
         : source?.mode === 'check' && source?.finishedAt ? 'checked' : source ? 'interrupted' : 'never-run';
     return { channel: validUpdateChannel(config?.channel) ? config.channel : null, scope: config?.scope ?? null,
@@ -59,9 +59,20 @@ export function createSuiteUpdater({ home = os.homedir(), brainHome = path.join(
       steps: [
         ...(Array.isArray(visibleRun?.steps) ? visibleRun.steps : []).map(s => ({ name: String(s.name || 'Tool'), state: String(s.state || 'unknown') })),
         ...(Array.isArray(visibleRun?.plugins?.steps) ? visibleRun.plugins.steps : []).map(s => ({ name: `${String(s.id || 'Plugin')} (${String(s.scope || 'unknown')})`, state: String(s.state || 'unknown') })),
-        ...(Array.isArray(visibleRun?.maintenance?.stages) ? visibleRun.maintenance.stages : []).map(s => ({
-          name: path.isAbsolute(String(s.owner || '')) ? path.basename(s.owner) : String(s.owner || 'Provider'),
-          state: run?.mode === 'check' ? 'checked' : 'completed' })),
+        ...(Array.isArray(visibleRun?.maintenance?.stages) ? visibleRun.maintenance.stages : []).flatMap(s => {
+          const base = {
+            name: path.isAbsolute(String(s.owner || '')) ? path.basename(s.owner) : String(s.owner || 'Provider'),
+            state: s?.state === 'failed' ? 'failed' : s?.state === 'running' ? 'running' : run?.mode === 'check' ? 'checked' : String(s?.state || 'completed'),
+          };
+          const sub = [];
+          if (s?.after && typeof s.after === 'object' && !Array.isArray(s.after)) {
+            if (s.after.metaProxy?.state) sub.push({ name: `meta-proxy (${s.after.metaProxy.after || s.after.metaProxy.target || 'proxy'})`, state: String(s.after.metaProxy.state) });
+            if (s.after.grok?.state && s.after.grok.state !== 'absent') sub.push({ name: `grok-cli (${s.after.grok.after || s.after.grok.target || 'cli'})`, state: String(s.after.grok.state) });
+            if (s.after.agy?.state) sub.push({ name: `antigravity-cli (${s.after.agy.after || s.after.agy.target || 'cli'})`, state: String(s.after.agy.state) });
+            if (s.after.modelRouter?.state && s.after.modelRouter.state !== 'not-installed') sub.push({ name: 'model-router-catalog', state: String(s.after.modelRouter.state) });
+          }
+          return [base, ...sub];
+        }),
         ...(visibleRun?.knowledge?.state ? [{ name: 'Brain knowledge', state: String(visibleRun.knowledge.state) }] : []),
       ],
       unverified: Array.isArray(visibleRun?.coverage?.unverified) ? visibleRun.coverage.unverified.map(String) : [],
@@ -98,7 +109,7 @@ export function createSuiteUpdater({ home = os.homedir(), brainHome = path.join(
           && receipt?.sourceSha256 === pending.sourceSha256 && !!receipt?.finishedAt
           && Object.keys(receipt.sourceSnapshot || {}).length === Object.keys(pending.sourceSnapshot).length
           && Object.entries(pending.sourceSnapshot).every(([name, digest]) => receipt.sourceSnapshot?.[name] === digest)
-          && ['completed', 'succeeded', 'failed'].includes(receipt?.state)
+          && ['completed', 'completed-with-failures', 'succeeded', 'failed'].includes(receipt?.state)
           && Date.parse(receipt.startedAt) >= Date.parse(pending.startedAt) - 1000;
         const ok = !error && matched && receipt.ok === true;
         policy.atomic(jobFile, { ...pending, finishedAt: new Date().toISOString(), state: ok ? 'succeeded' : 'failed', ok,
