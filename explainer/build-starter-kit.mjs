@@ -719,7 +719,12 @@ Please do the following in order:
 `, 'utf8');
 
 fs.writeFileSync(path.join(STAGE, 'README.md'), `# AI Subscription Routing & Quota-Optimization Starter Kit (16-File Packet)
-Updated: 2026-11-22 02:30 EST | Zero external dependencies · Works with or without MetaHarness
+Updated: 2026-11-22 EST | Zero external dependencies · Works standalone or with rUv's MetaHarness & RuvNet Brain
+
+> **Enabling Technology Credit:** This playbook and starter kit build directly on the open-source **MetaHarness**, **MetaLLM**, **RuFlo**, **RuVector / AgentDB**, and **RuvNet Brain & Skills** ecosystem created by **Reuven Cohen (\`rUv\` / RuvNet)**. The 16 standalone files let you test the methodology in 2 minutes with plain Node.js, and upgrade seamlessly into the full RuvNet ecosystem whenever you're ready:
+> - **MetaHarness Router (npm):** https://www.npmjs.com/package/@metaharness/router
+> - **rUv / RuvNet Ecosystem (GitHub):** https://github.com/ruvnet
+> - **RuvNet Brain (npm):** https://www.npmjs.com/package/ruvnet-brain
 
 ## 3-Step Quickstart (2 Minutes, 100% Local)
 \`\`\`bash
