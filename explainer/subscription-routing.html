@@ -513,7 +513,7 @@
       <div class="stamp-row">
         <span class="stamp-pill">Updated 2026-11-22 EST</span>
         <span class="stamp-pill">AA v5.0.1 · Vals v2.2 · KingBench 4</span>
-        <span class="stamp-pill">Zero MetaHarness Required</span>
+        <span class="stamp-pill">Zero MetaHarness (hook orchestrator) Required</span>
       </div>
     </article>
 
@@ -1223,7 +1223,7 @@ const { output, receipt } = await callWithAutoEscalation({
     <div class="sec-head">
       <span class="step-kicker k-cyan">Try It Right Now · Real Classifier Running In Your Browser</span>
       <h2>Live 5-Tier Prompt Router Tester &amp; Audit Preview</h2>
-      <p>Type any real coding prompt below (or click a preset) to watch the exact <code>policy.default.mjs</code> rules classify it in &lt;1ms—zero server calls, 100% local JavaScript.</p>
+      <p>Type any real coding prompt below (or click a preset) to watch the pure-text heuristic rules of <code>policy.default.mjs</code> classify it in &lt;1ms (21/21 pure-text parity; full 36/36 suite with caller <code>taskFacts</code> runs locally via <code>node standalone-router.mjs --eval</code>).</p>
     </div>
 
     <div class="grid-2">
@@ -1297,7 +1297,7 @@ $ node standalone-router.mjs --eval
       <div class="sim-bars">
         <div>
           <div style="font-size:0.82rem; margin-bottom:4px; color:#fca5a5; font-weight:700;">Before: Days of Heavy Work per Weekly Quota</div>
-          <div class="sim-bar-track"><div class="sim-fill" id="bar-before" style="width:28%; background:#dc2626;">2.0 days/wk</div></div>
+          <div class="sim-bar-track"><div class="sim-fill" id="bar-before" style="width:27%; background:#dc2626;">1.9 days/wk</div></div>
         </div>
         <div>
           <div style="font-size:0.82rem; margin-bottom:4px; color:#86efac; font-weight:700;">After: Same License With 5-Tier Routing + 4 Hygiene Rules</div>
@@ -1396,7 +1396,7 @@ Note: I may or may not be using MetaHarness today—inspect what I actually have
 Please do the following in order:
 1. Run `node audit-my-ai-usage.mjs` locally (zero data leaves my machine) and show me my real 60-day score, Frontier %, warm cache hit rate, and any leaked API keys.
 2. Recommend which prepaid subscription tiers I should keep, upgrade, or downgrade based on my actual numbers.
-3. Run `node standalone-router.mjs --eval` to verify the 36-case safety eval suite, then replay 50+ of my real recent prompts to prove the distribution shift (~25-35% fast, ~50-55% medium, ~10-15% frontier) before changing any configs.
+3. Run `node standalone-router.mjs --eval` to verify the 36-case safety eval suite, then replay 50+ of my real recent prompts to prove the distribution shift (~32% fast, ~54% medium, ~7% substantial, <7% hard/exceptional) before changing any configs.
 4. Once I approve, back up my existing configs, configure my default medium coordinators (using examples/hooks-and-configs.md), wire the 4 quota-hygiene rules and 50% ⚡/compact statusline guard, and schedule weekly model freshness checks with `model-auto-refresh.mjs` and `model-routing-audit.mjs`.
 5. For any deployed apps I build going forward, wire `app-model-router.mjs` so no app ever hardcodes a vendor model ID.</pre>
     </div>
@@ -1573,7 +1573,9 @@ window.runLiveTest = function() {
   let tier = base.tier;
   let escalated = false;
   if (priorFail && NEXT_T[tier]) { tier = NEXT_T[tier]; escalated = true; }
-  const [model, effort] = HOST_MAP[host][tier];
+  const [model, baseEffort] = HOST_MAP[host][tier];
+  const isCoding = /```|\b(implement|code|coding|debug|refactor|test|endpoint|API|repository|module|function)\b/i.test(txt);
+  const effort = (host === 'claude-code' && tier === 'medium' && isCoding) ? 'high' : baseEffort;
   const colorMap = { fast: '#86efac', medium: '#93c5fd', substantial: '#7dd3fc', hard: '#fcd34d', exceptional: '#d8b4fe' };
   document.getElementById('tester-out').innerHTML =
     `<div style="color:${colorMap[tier]}; font-weight:800; margin-bottom:6px;">[Routed: ${tier} → ${model} (${effort} thinking) · $0 subscription${escalated ? ' · AUTO-ESCALATED +1' : ''}]</div>` +
@@ -1592,8 +1594,10 @@ function updateSim() {
   const burnBefore = (front / 100) * 5.5 + (1 - front / 100) * 1.15;
   const burnAfter = 0.32 * 0.25 + 0.54 * 1.0 + 0.07 * 1.4 + 0.05 * 2.8 + 0.02 * 5.0; // ~0.96
   const stretch = +(Math.max(1.0, burnBefore / burnAfter)).toFixed(1);
-  const daysBefore = +(Math.max(1.1, Math.min(7.0, 6.2 / (burnBefore * 0.88)))).toFixed(1);
-  const daysAfter = +(Math.min(7.0, daysBefore * stretch)).toFixed(1);
+  const daysBefore = +(Math.max(1.1, Math.min(5.8, 6.2 / (burnBefore * 0.88)))).toFixed(1);
+  // Realistic post-routing headroom scales with both excess frontier recovered AND multi-seat capacity
+  const seatHeadroom = spend >= 200 ? 1.15 : 0.88 + (spend / 200) * 0.27;
+  const daysAfter = +(Math.min(7.0, (daysBefore + (front / 100) * 6.8) * seatHeadroom)).toFixed(1);
   // Redundant-seat savings depend smoothly on BOTH monthly spend AND excess frontier burn above 15%
   const frontierFactor = Math.max(0, Math.min(1, (front - 15) / 50));
   const baseRate = spend <= 100 ? 0.12 : Math.min(0.42, 0.12 + ((spend - 100) / 900) * 0.30);
@@ -1808,6 +1812,15 @@ window.toggle3DPause = function() {
   worldsGroup.add(w2Ring);
   makeLabel('WORLD 2 · PROD APPS', 2.4, 2.25, 0, '#38bdf8', worldsGroup, 2.6);
   makeLabel('TIER ALIASES · ZERO DEPLOY', 2.4, -1.25, 0, '#7dd3fc', worldsGroup, 2.7);
+  // Orbiting flow particles in both World 1 (green) and World 2 (cyan)
+  const worldParticles = [];
+  const wpGeo = new THREE.SphereGeometry(0.08, 8, 8);
+  for (let i = 0; i < 24; i++) {
+    const isLeft = i < 12;
+    const m = new THREE.Mesh(wpGeo, new THREE.MeshBasicMaterial({ color: isLeft ? 0x22c55e : 0x38bdf8 }));
+    worldsGroup.add(m);
+    worldParticles.push({ mesh: m, cx: isLeft ? -2.7 : 2.4, ang: (i % 12) * (Math.PI / 6), rad: 1.05 + (i % 3) * 0.22, dir: isLeft ? 1 : -1 });
+  }
 
   // Curves & Particles for pipeGroup
   const curves = lanes.map((l) => new THREE.CubicBezierCurve3(
@@ -1873,6 +1886,7 @@ window.toggle3DPause = function() {
       else el.removeAttribute('aria-current');
     });
     targetCam.set(...meta.cam);
+    renderedWhilePaused = false;
     particles.forEach((p) => {
       p.laneIdx = pickLane(idx);
       p.mesh.material.color.setHex(lanes[p.laneIdx].color);
@@ -1934,9 +1948,13 @@ window.toggle3DPause = function() {
         s.mesh.rotation.x += 0.04; s.mesh.rotation.y += 0.05;
       });
 
-      // Ch 3 two-world orbits
+      // Ch 3 two-world orbits + flowing particles
       w1Core.rotation.y += 0.015; w1Ring.rotation.x = 0.7; w1Ring.rotation.z += 0.025;
       w2Core.rotation.y -= 0.015; w2Ring.rotation.x = -0.7; w2Ring.rotation.z -= 0.025;
+      worldParticles.forEach((wp) => {
+        const a = wp.ang + tClock * 1.4 * wp.dir;
+        wp.mesh.position.set(wp.cx + Math.cos(a) * wp.rad, 0.5 + Math.sin(a) * wp.rad * 0.72, Math.sin(a * 2) * 0.45);
+      });
 
       // Ch 4 compact ring breathing
       const cs = 1 + Math.sin(tClock * 3) * 0.14;
@@ -1967,7 +1985,7 @@ window.toggle3DPause = function() {
         if (p.phase === 0) {
           p.mesh.position.set(-4.3 + p.t * 2.9, 0.35 + Math.sin(p.t * Math.PI * 2 + tClock) * 0.11, 0);
         } else {
-          const clampedT = (currentScene === 0 && p.laneIdx === 4) ? Math.min(p.t, 0.72) : p.t;
+          const clampedT = (currentScene === 0 && p.laneIdx === 4) ? Math.min(p.t, 0.52) : p.t;
           const pos = curves[p.laneIdx].getPoint(clampedT);
           if (currentScene === 1) pos.z += Math.sin(tClock * 6 + p.t * 10) * 0.38;
           p.mesh.position.copy(pos);

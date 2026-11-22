@@ -70,35 +70,29 @@ const result = await callLLM({
 
 ---
 
-## 4. Reference Drop-In Wrapper (`src/lib/model-router.mjs`)
+## 4. Reference Drop-In Wrapper (`app-model-router.mjs`)
 
-Any Node/TypeScript app can drop in this ~35-line pattern so model IDs live in one env/config map and never in business logic:
+Any Node/TypeScript app can drop in `app-model-router.mjs` so model IDs live in one env/config map and never in business logic, with automatic cross-provider failover (`fallbackProvider`) and validation-failure `+1` tier auto-escalation:
 
 ```js
-const DEFAULT_TIERS = {
-  fast:        { model: 'gemini-4-flash',    effort: 'low',    fallback: 'gpt-6-luna' },
-  medium:      { model: 'gemini-4-neon',     effort: 'medium', fallback: 'claude-sonnet-5-5' },
-  substantial: { model: 'gemini-4-neon',     effort: 'high',   fallback: 'gpt-6.2-sol' },
-  hard:        { model: 'gemini-4-neon',     effort: 'high',   fallback: 'claude-opus-5-5' },
-  exceptional: { model: 'claude-fable-5-2',  effort: 'high',   fallback: 'gemini-4-neon' },
-};
-const NEXT_TIER = { fast: 'medium', medium: 'substantial', substantial: 'hard', hard: 'exceptional' };
+export const DEFAULT_PRODUCTION_TIERS = Object.freeze({
+  fast:        { provider: 'google',    model: 'gemini-4-flash',   effort: 'low',    fallback: 'gpt-6-luna',        fallbackProvider: 'openai',    maxOutputTokens: 1024 },
+  medium:      { provider: 'google',    model: 'gemini-4-neon',    effort: 'medium', fallback: 'claude-sonnet-5-5', fallbackProvider: 'anthropic', maxOutputTokens: 4096 },
+  substantial: { provider: 'google',    model: 'gemini-4-neon',    effort: 'high',   fallback: 'gpt-6.2-sol',       fallbackProvider: 'openai',    maxOutputTokens: 8192 },
+  hard:        { provider: 'google',    model: 'gemini-4-neon',    effort: 'high',   fallback: 'claude-opus-5-5',   fallbackProvider: 'anthropic', maxOutputTokens: 8192 },
+  exceptional: { provider: 'anthropic', model: 'claude-fable-5-2', effort: 'high',   fallback: 'gemini-4-neon',     fallbackProvider: 'google',    maxOutputTokens: 8192 },
+});
 
-export function resolveTier(tier = 'medium') {
-  const overrides = process.env.APP_MODEL_TIERS_JSON ? JSON.parse(process.env.APP_MODEL_TIERS_JSON) : {};
-  return { ...(DEFAULT_TIERS[tier] || DEFAULT_TIERS.medium), ...(overrides[tier] || {}) };
-}
+// Usage:
+import { callWithAutoEscalation } from './app-model-router.mjs';
 
-export async function callWithAutoEscalation({ tier = 'medium', execute, validate }) {
-  let current = tier;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const route = resolveTier(current);
-    const res = await execute(route);
-    if (!validate || validate(res)) return { ...res, tier: current, route, escalated: attempt > 0 };
-    if (!NEXT_TIER[current]) return { ...res, tier: current, route, escalated: attempt > 0 };
-    current = NEXT_TIER[current];
-  }
-}
+const { output, receipt } = await callWithAutoEscalation({
+  tier: 'fast',
+  purpose: 'extract-invoice-json',
+  execute: (route) => llm.run({ provider: route.provider, model: route.model, effort: route.effort, maxTokens: route.maxOutputTokens, prompt }),
+  validate: (out) => typeof out?.total === 'number' && Boolean(out?.vendor),
+});
+// receipt: { ts, purpose, requestedTier, executedTier, model, effort, provider, usedFallback, escalated, valid, durationMs }
 ```
 
 ---

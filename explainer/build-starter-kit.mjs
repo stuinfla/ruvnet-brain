@@ -26,14 +26,28 @@ const copies = [
   [path.join(HOME, 'Documents/AI-Subscription-Routing-Playbook.md'), 'AI-Subscription-Routing-Playbook.md'],
 ];
 for (const [src, dst] of copies) {
-  fs.copyFileSync(src, path.join(STAGE, dst));
+  let content = fs.readFileSync(src, 'utf8');
+  if (dst === 'MODEL-ROUTING-ARCHITECTURE.md') {
+    content = content
+      .replace(/Stuart Kerr's/g, 'Production Reference Case Study')
+      .replace(/Stuart's/g, 'the reference')
+      .replace(/MacBook-Pro-Max/g, 'Developer Workstation')
+      .replace(/com\.ruvnet\.goldie-weekly/g, 'weekly-model-refresh');
+  }
+  if (dst === 'APP-MODEL-ROUTING-INTEGRATION.md') {
+    content = content
+      .replace(/AppealArmor,\s*salon-local,\s*PowerPlatePulse,\s*Synseer/g, 'SaaS web apps, internal ops dashboards, RAG services, and batch pipelines')
+      .replace(/com\.ruvnet\.goldie-weekly/g, 'weekly-model-refresh');
+  }
+  fs.writeFileSync(path.join(STAGE, dst), content, 'utf8');
 }
 
-// 2. Sanitized policy.default.mjs (remove any user-specific command names)
+// 2. Sanitized policy.default.mjs (remove any user-specific command names + align "failed twice")
 let policySrc = fs.readFileSync(path.join(HOME, '.claude/model-router/policy.default.mjs'), 'utf8');
 policySrc = policySrc.replace('ak\\s+(?:sync|models|status)', 'cli\\s+(?:sync|models|status)');
 policySrc = policySrc.replace('ak\\s+(sync|models|status)', 'cli\\s+(sync|models|status)');
 policySrc = policySrc.replace(/ruvnet\|ruflo\|reflow/g, 'router|workflow|agent');
+policySrc = policySrc.replace('failed again', 'failed (?:again|twice)');
 fs.writeFileSync(path.join(STAGE, 'policy.default.mjs'), policySrc, 'utf8');
 
 // 3. Standalone 5-tier classifier + eval runner (zero MetaHarness dependency!)
@@ -46,6 +60,7 @@ fs.writeFileSync(path.join(STAGE, 'standalone-router.mjs'), `#!/usr/bin/env node
 //   node standalone-router.mjs --json --prompt "design a zero-downtime DB migration"
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { classify } from './policy.default.mjs';
@@ -85,7 +100,9 @@ export function routePrompt(prompt, { host = 'claude-code', priorFailure = false
       if (hostRoutes?.[tier]) target = hostRoutes[tier];
     } catch {}
   }
-  return { tier, escalated, host, model: target.model, effort: target.effort || 'medium', costUsd: 0 };
+  let effort = target.effort || 'medium';
+  if (host === 'claude-code' && tier === 'medium' && features.hasCode) effort = 'high';
+  return { tier, escalated, host, model: target.model, effort, costUsd: 0 };
 }
 
 function tierInRange(got, exp) {
@@ -98,9 +115,27 @@ function tierInRange(got, exp) {
   return idx >= min && idx <= max;
 }
 
-const isDirect = Boolean(process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url));
+const isDirect = Boolean(process.argv[1] && fs.existsSync(process.argv[1]) && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)));
 if (isDirect) {
   const args = process.argv.slice(2);
+  if (args.includes('--hook')) {
+    let raw = '';
+    try { raw = fs.readFileSync(0, 'utf8'); } catch {}
+    let payload = {};
+    try { payload = JSON.parse(raw || '{}'); } catch { payload = { prompt: raw }; }
+    const prompt = String(payload.prompt || payload.user_prompt || '').trim();
+    const hIdx = args.indexOf('--host');
+    const host = hIdx >= 0 ? args[hIdx + 1] : 'claude-code';
+    const res = routePrompt(prompt, { host });
+    const decFile = process.env.MODEL_ROUTER_DECISIONS || path.join(os.homedir(), '.claude', 'metaharness', 'routing-decisions.jsonl');
+    try {
+      fs.mkdirSync(path.dirname(decFile), { recursive: true });
+      fs.appendFileSync(decFile, JSON.stringify({ ts: new Date().toISOString(), host, taskClass: res.tier, model: res.model, effort: res.effort, escalated: res.escalated }) + '\\n');
+    } catch {}
+    const badge = \`[Routed: \${res.tier} -> \${res.model} (\${res.effort} thinking) · $0 subscription]\`;
+    console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: \`\${badge} — Follow 4 quota-hygiene rules (isolate >5-file scans in fast subagents, compact at 50% ctx, pre-distill escalations, preserve warm cache).\` } }));
+    process.exit(0);
+  }
   if (args.includes('--eval')) {
     const casesPath = path.join(__dirname, 'routing-eval-cases.json');
     const raw = JSON.parse(fs.readFileSync(casesPath, 'utf8'));
@@ -178,6 +213,8 @@ async function scanClaude() {
   let turns = 0, frontierTurns = 0, input = 0, cacheRead = 0, cacheWrite = 0, output = 0;
   for (const f of files) {
     await scanJsonlStream(f.path, (obj) => {
+      const ts = Date.parse(obj?.timestamp || obj?.ts || '');
+      if (Number.isFinite(ts) && ts < CUTOFF) return;
       const u = obj?.message?.usage;
       if (!u) return;
       const model = String(obj?.message?.model || '').toLowerCase();
@@ -190,6 +227,9 @@ async function scanClaude() {
     });
   }
   const totalIn = input + cacheRead + cacheWrite;
+  // Approximate API-equivalent monthly burn (Sonnet/Opus blended rates) to guide seat sizing
+  const estWindowUsd = (input * 5 + cacheRead * 0.5 + cacheWrite * 6.25 + output * 25) / 1e6;
+  const estMonthlyUsd = Math.round(estWindowUsd * (30 / Math.max(1, DAYS)));
   return {
     tool: 'Claude Code',
     detected: files.length > 0,
@@ -199,6 +239,7 @@ async function scanClaude() {
     warmCachePct: totalIn ? +((cacheRead / totalIn) * 100).toFixed(1) : 0,
     cacheWritePct: totalIn ? +((cacheWrite / totalIn) * 100).toFixed(1) : 0,
     totalTokensM: +((totalIn + output) / 1e6).toFixed(1),
+    estMonthlyUsd,
   };
 }
 
@@ -207,6 +248,8 @@ async function scanCodex() {
   let turns = 0, frontierTurns = 0, totalTokens = 0, cachedTokens = 0;
   for (const f of files) {
     await scanJsonlStream(f.path, (obj) => {
+      const ts = Date.parse(obj?.timestamp || obj?.ts || '');
+      if (Number.isFinite(ts) && ts < CUTOFF) return;
       const m = String(obj?.model || obj?.payload?.model || '').toLowerCase();
       const u = obj?.payload?.info?.last_token_usage || obj?.usage;
       if (u && (u.input_tokens || u.total_tokens)) {
@@ -217,6 +260,9 @@ async function scanCodex() {
       }
     });
   }
+  const uncached = Math.max(0, totalTokens - cachedTokens);
+  const estWindowUsd = (uncached * 3 + cachedTokens * 0.3) / 1e6;
+  const estMonthlyUsd = Math.round(estWindowUsd * (30 / Math.max(1, DAYS)));
   return {
     tool: 'Codex CLI',
     detected: files.length > 0,
@@ -225,6 +271,7 @@ async function scanCodex() {
     frontierPct: turns ? +((frontierTurns / turns) * 100).toFixed(1) : 0,
     warmCachePct: totalTokens ? +((cachedTokens / totalTokens) * 100).toFixed(1) : 0,
     totalTokensM: +(totalTokens / 1e6).toFixed(1),
+    estMonthlyUsd,
   };
 }
 
@@ -326,7 +373,9 @@ const policyPath = policyCandidates.find((p) => fs.existsSync(p));
 const codexCachePath = path.join(HOME, '.codex', 'models_cache.json');
 
 const discovered = [];
+const detectedCaches = [];
 if (fs.existsSync(codexCachePath)) {
+  detectedCaches.push('codex:~/.codex/models_cache.json');
   try {
     const raw = JSON.parse(fs.readFileSync(codexCachePath, 'utf8'));
     const list = Array.isArray(raw?.models) ? raw.models : (Array.isArray(raw) ? raw : []);
@@ -335,6 +384,13 @@ if (fs.existsSync(codexCachePath)) {
       if (id) discovered.push(id);
     }
   } catch {}
+}
+for (const [name, p] of [
+  ['claude', path.join(HOME, '.claude', 'settings.json')],
+  ['antigravity', path.join(HOME, '.gemini', 'antigravity-cli')],
+  ['grok', path.join(HOME, '.grok', 'config.toml')],
+]) {
+  if (fs.existsSync(p)) detectedCaches.push(\`\${name}:\${p}\`);
 }
 
 let policyAgeDays = null;
@@ -381,6 +437,7 @@ const out = {
   policyAgeDays,
   fresh: policyAgeDays !== null && policyAgeDays <= 7,
   promotions,
+  detectedCaches,
   discoveredCodexModels: discovered.slice(0, 12),
   checkedAt: new Date().toISOString(),
 };
@@ -395,6 +452,7 @@ fs.writeFileSync(path.join(STAGE, 'model-routing-audit.mjs'), `#!/usr/bin/env no
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { routePrompt } from './standalone-router.mjs';
 
@@ -469,12 +527,34 @@ add('eval-suite', passed === list.length && list.length > 0, \`\${passed}/\${lis
 const esc = routePrompt('still broken, tests failed twice on auth middleware', { priorFailure: true, policyPath });
 add('auto-escalation', esc.escalated === true, \`Escalated to \${esc.tier} (\${esc.model}@\${esc.effort})\`);
 
-// Checks 8-13: Fork 2 fallback integrity, kit examples, statusline guard, cloud proxy off, refresh script, utilization script
+// Checks 8-13: Fork 2 fallback integrity, live hook execution, live 50% statusline execution, refresh, utilization, cloud proxy off
 const appRouterSrc = fs.existsSync(path.join(__dirname, 'app-model-router.mjs')) ? fs.readFileSync(path.join(__dirname, 'app-model-router.mjs'), 'utf8') : '';
 add('app-router-fallback-provider', appRouterSrc.includes('fallbackProvider'), 'app-model-router.mjs defines cross-provider fallbackProvider');
-add('hooks-examples-present', fs.existsSync(path.join(__dirname, 'examples', 'hooks-and-configs.md')), 'examples/hooks-and-configs.md present for all 5 tools');
-add('statusline-compact-guard', fs.existsSync(path.join(__dirname, 'examples', 'statusline-50pct-compact.cjs')), '50% ⚡/compact statusline guard script present');
-add('auto-refresh-script', fs.existsSync(path.join(__dirname, 'model-auto-refresh.mjs')), 'model-auto-refresh.mjs freshness scanner present');
+
+let hookOk = false;
+try {
+  const tmpLog = path.join(os.tmpdir(), 'kit-audit-hook-test.jsonl');
+  const hOut = execFileSync('node', [path.join(__dirname, 'standalone-router.mjs'), '--hook'], {
+    input: JSON.stringify({ prompt: 'what version of node is installed?' }),
+    env: { ...process.env, MODEL_ROUTER_DECISIONS: tmpLog },
+    encoding: 'utf8',
+  });
+  hookOk = hOut.includes('hookSpecificOutput') && hOut.includes('[Routed: fast') && fs.existsSync(tmpLog);
+  try { fs.unlinkSync(tmpLog); } catch {}
+} catch {}
+add('standalone-hook-live', hookOk, hookOk ? 'standalone-router.mjs --hook emitted badge & logged JSONL decision' : 'Hook execution failed');
+
+let statusOk = false;
+try {
+  const sOut = execFileSync('node', [path.join(__dirname, 'examples', 'statusline-50pct-compact.cjs')], {
+    input: JSON.stringify({ context_window: { used_percentage: 55 } }),
+    encoding: 'utf8',
+  });
+  statusOk = sOut.includes('/compact') && sOut.includes('55%');
+} catch {}
+add('statusline-compact-guard', statusOk, statusOk ? '50% statusline guard verified live (emits ⚡/compact at 55%)' : 'Statusline guard check failed');
+
+add('auto-refresh-script', fs.existsSync(path.join(__dirname, 'model-auto-refresh.mjs')), 'model-auto-refresh.mjs multi-tool freshness scanner present');
 add('utilization-tracker', fs.existsSync(path.join(__dirname, 'router-utilization.mjs')), 'router-utilization.mjs 7d vs 60d tracker present');
 add('cloud-proxy-off-locally', !process.env.META_PROXY_CLOUD_URL && !process.env.OPENROUTER_BASE_URL, 'Paid cloud proxy env vars OFF locally ($0 subscription safety)');
 
@@ -565,16 +645,16 @@ reasoning_effort = "low"
 fork_secondary_model = "grok-build"
 \`\`\`
 
-## 4. Antigravity (Gemini 4) &amp; Cursor IDE
+## 4. Antigravity (Gemini 4) & Cursor IDE
 - **Antigravity:** Park default coordinator on \`Gemini 4 Neon (Medium)\`; delegate deep synthesis/reviews to \`Gemini 4 Neon (High)\` (\`$0\` cache-write fee) and broad scans to \`Gemini 4 Flash\`.
 - **Cursor IDE (\`.cursorrules\` / Settings):** Park Composer on Sonnet 5.5 or Neon Medium; open a fresh thread at 50% context; pin only 2–3 relevant files when escalating to Hard/Reasoning.
 
 ## 5. Standalone \`UserPromptSubmit\` Hook + Weekly Cron (No MetaHarness Required)
-Add a lightweight hook in \`~/.claude/settings.json\` to log decisions to \`~/.claude/metaharness/routing-decisions.jsonl\` (read by \`router-utilization.mjs\`):
+Add a lightweight hook in \`~/.claude/settings.json\` to print the \`[Routed: ...]\` badge and log every decision to \`~/.claude/metaharness/routing-decisions.jsonl\` (read by \`router-utilization.mjs\`):
 \`\`\`json
 {
   "hooks": {
-    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "node ~/ai-routing-kit/standalone-router.mjs --prompt \\"$PROMPT\\"" }] }]
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "node ~/ai-routing-kit/standalone-router.mjs --hook" }] }]
   }
 }
 \`\`\`
@@ -583,7 +663,7 @@ Schedule weekly freshness + watchdog checks via \`crontab -e\`:
 0 2 * * 0 node ~/ai-routing-kit/model-auto-refresh.mjs --apply && node ~/ai-routing-kit/model-routing-audit.mjs
 \`\`\`
 
-## 6. Production Apps &amp; Corporate Pay-By-The-Drink (Fork 2)
+## 6. Production Apps & Corporate Pay-By-The-Drink (Fork 2)
 \`\`\`js
 import { callWithAutoEscalation } from './app-model-router.mjs';
 
@@ -616,7 +696,7 @@ Note: I may or may not be using MetaHarness today—inspect what I actually have
 Please do the following in order:
 1. Run \`node audit-my-ai-usage.mjs\` locally (zero data leaves my machine) and show me my real 60-day score, Frontier %, warm cache hit rate, and any leaked API keys.
 2. Recommend which prepaid subscription tiers I should keep, upgrade, or downgrade based on my actual numbers.
-3. Run \`node standalone-router.mjs --eval\` to verify the 36-case safety eval suite, then replay 50+ of my real recent prompts to prove the distribution shift (~25-35% fast, ~50-55% medium, ~10-15% frontier) before changing any configs.
+3. Run \`node standalone-router.mjs --eval\` to verify the 36-case safety eval suite, then replay 50+ of my real recent prompts to prove the distribution shift (~32% fast, ~54% medium, ~7% substantial, <7% hard/exceptional) before changing any configs.
 4. Once I approve, back up my existing configs, configure my default medium coordinators (using examples/hooks-and-configs.md), wire the 4 quota-hygiene rules and 50% ⚡/compact statusline guard, and schedule weekly model freshness checks with \`model-auto-refresh.mjs\` and \`model-routing-audit.mjs\`.
 5. For any deployed apps I build going forward, wire \`app-model-router.mjs\` so no app ever hardcodes a vendor model ID.
 `, 'utf8');

@@ -115,7 +115,7 @@ export async function callWithAutoEscalation({
   throw lastError || new Error(`All tiers exhausted starting from ${tier}`);
 }
 
-const isDirect = Boolean(process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url));
+const isDirect = Boolean(process.argv[1] && fs.existsSync(process.argv[1]) && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)));
 if (isDirect && process.argv.includes('--smoke')) {
   const receipts = [];
   const res = await callWithAutoEscalation({
