@@ -644,27 +644,27 @@ const SCENE_META = [
   {
     title: 'CH 1 · THE FRONTIER BOTTLENECK', badge: '1.0x BASELINE', bColor: '#fca5a5',
     hud: [ ['57%', 'Turns on Frontier', '#fca5a5'], ['43%', 'Cache-Write Tax', '#fcd34d'], ['~2 Days', 'Before Weekly Wall', '#fca5a5'] ],
-    cam: [0, 1.3, 13.8],
+    cam: [-0.4, 0.8, 14.5],
   },
   {
     title: 'CH 2 · THE COLD-CACHE TRAP', badge: '5x–10x PENALTY', bColor: '#fcd34d',
     hud: [ ['96.7%', 'Warm Cache Reads', '#38bdf8'], ['5x–10x', 'Cold-Switch Tax', '#fca5a5'], ['Stay Local', '90% of Turns', '#86efac'] ],
-    cam: [2.6, 2.2, 11.8],
+    cam: [0.8, 1.3, 14.2],
   },
   {
     title: 'CH 3 · TWO WORLDS SEPARATED', badge: '$0 VS BY-THE-DRINK', bColor: '#7dd3fc',
     hud: [ ['$0 Extra', 'Prepaid Dev Seats', '#86efac'], ['0 Hardcoded', 'App Model IDs', '#7dd3fc'], ['Cloud Proxy', 'Apps Only (OFF Locally)', '#fcd34d'] ],
-    cam: [-1.5, 2.8, 14.5],
+    cam: [-1.0, 1.8, 15.0],
   },
   {
     title: 'CH 4 · 5-TIER FLUID FLOW', badge: '3.8x–4.5x STRETCH', bColor: '#86efac',
     hud: [ ['86%', 'Fast + Mid Share', '#86efac'], ['95%+', 'Warm Cache Kept', '#38bdf8'], ['7+ Days', 'Wall-Free Week', '#86efac'] ],
-    cam: [0.4, 0.8, 12.6],
+    cam: [-0.2, 0.5, 14.0],
   },
   {
     title: 'CH 5 · AUTO-ESCALATION & REFRESH', badge: '13/13 AUDIT PASS', bColor: '#d8b4fe',
     hud: [ ['+1 Tier', 'Auto Fail-Escalation', '#d8b4fe'], ['Weekly', 'Model Auto-Refresh', '#86efac'], ['50% Ctx', '⚡/compact Guard', '#fcd34d'] ],
-    cam: [3.2, -0.4, 12.2],
+    cam: [1.0, 0.2, 14.2],
   },
 ];
 
@@ -673,7 +673,7 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true 
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(42, 1.2, 0.1, 100);
-camera.position.set(0, 1.3, 13.8);
+camera.position.set(-0.4, 0.8, 14.5);
 
 scene.add(new THREE.AmbientLight(0xffffff, 0.9));
 const pLight = new THREE.PointLight(0x38bdf8, 2.2, 40);
@@ -715,57 +715,57 @@ function makeLabel(text, x, y, z, color) {
   const tex = new THREE.CanvasTexture(c);
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
   sp.position.set(x, y, z);
-  sp.scale.set(2.8, 0.56, 1);
+  sp.scale.set(2.15, 0.43, 1);
   scene.add(sp);
   return sp;
 }
 
-const inputOrb = makeOrb(-5.8, 0, 0, 0x38bdf8, 0.52);
-makeLabel('YOUR PROMPT', -5.8, -1.0, 0, '#38bdf8');
-const routerOrb = makeOrb(-1.8, 0, 0, 0x0ea5e9, 0.68);
-makeLabel('LOCAL ROUTER', -1.8, -1.15, 0, '#0ea5e9');
+const inputOrb = makeOrb(-4.2, 0.4, 0, 0x38bdf8, 0.46);
+makeLabel('YOUR PROMPT', -4.2, -0.45, 0, '#38bdf8');
+const routerOrb = makeOrb(-1.2, 0.4, 0, 0x0ea5e9, 0.58);
+makeLabel('LOCAL ROUTER', -1.2, -0.58, 0, '#0ea5e9');
 const lanes = [
-  { y:  2.8, color: 0x22c55e, orb: makeOrb(4.4,  2.8, 0, 0x22c55e, 0.44), label: makeLabel('FAST · 32%', 4.4, 3.65, 0, '#22c55e') },
-  { y:  0.95,color: 0x3b82f6, orb: makeOrb(4.4,  0.95,0, 0x3b82f6, 0.55), label: makeLabel('MID · WARM CACHE', 4.4, 1.95, 0, '#3b82f6') },
-  { y: -1.05,color: 0xf59e0b, orb: makeOrb(4.4, -1.05,0, 0xf59e0b, 0.48), label: makeLabel('HARD · DISTILLED', 4.4, -0.15, 0, '#f59e0b') },
-  { y: -2.8, color: 0xef4444, orb: makeOrb(4.4, -2.8, 0, 0xef4444, 0.46), label: makeLabel('FRONTIER / WALL', 4.4, -3.7, 0, '#ef4444') },
+  { y:  2.75, color: 0x22c55e, orb: makeOrb(3.1,  2.75, 0, 0x22c55e, 0.38), label: makeLabel('FAST · 32%', 3.1, 3.45, 0, '#22c55e') },
+  { y:  1.25, color: 0x3b82f6, orb: makeOrb(3.1,  1.25, 0, 0x3b82f6, 0.46), label: makeLabel('MID · WARM CACHE', 3.1, 2.02, 0, '#3b82f6') },
+  { y: -0.35, color: 0xf59e0b, orb: makeOrb(3.1, -0.35, 0, 0xf59e0b, 0.40), label: makeLabel('HARD · DISTILLED', 3.1, 0.32, 0, '#f59e0b') },
+  { y: -1.85, color: 0xef4444, orb: makeOrb(3.1, -1.85, 0, 0xef4444, 0.40), label: makeLabel('FRONTIER / WALL', 3.1, -1.18, 0, '#ef4444') },
 ];
 
 // Red Rate-Limit Wall (Chapter 1)
 const wallMesh = new THREE.Mesh(
-  new THREE.BoxGeometry(0.22, 2.8, 2.4),
-  new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xef4444, emissiveIntensity: 0.6, transparent: true, opacity: 0.55 })
+  new THREE.BoxGeometry(0.18, 2.1, 1.8),
+  new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xef4444, emissiveIntensity: 0.65, transparent: true, opacity: 0.55 })
 );
-wallMesh.position.set(2.9, -2.5, 0);
+wallMesh.position.set(1.8, -1.65, 0);
 scene.add(wallMesh);
 
 // Warm Cache Ring (Medium Lane)
 const cacheRing = new THREE.Mesh(
-  new THREE.TorusGeometry(1.05, 0.055, 16, 64),
+  new THREE.TorusGeometry(0.84, 0.048, 16, 64),
   new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x38bdf8, emissiveIntensity: 0.7 })
 );
-cacheRing.position.set(4.4, 0.95, 0);
+cacheRing.position.set(3.1, 1.25, 0);
 scene.add(cacheRing);
 
 // Weekly Refresh Satellite (Chapter 5)
-const satellite = makeOrb(4.4, 3.8, 1.5, 0xa855f7, 0.24);
+const satellite = makeOrb(3.1, 3.3, 1.2, 0xa855f7, 0.22);
 
 // Curves
 const curves = lanes.map((l) => new THREE.CubicBezierCurve3(
-  new THREE.Vector3(-1.8, 0, 0),
-  new THREE.Vector3(0.4, l.y * 0.7, 0.9),
-  new THREE.Vector3(2.2, l.y, -0.6),
-  new THREE.Vector3(4.4, l.y, 0)
+  new THREE.Vector3(-1.2, 0.4, 0),
+  new THREE.Vector3(0.4, 0.4 + (l.y - 0.4) * 0.65, 0.75),
+  new THREE.Vector3(1.6, l.y, -0.45),
+  new THREE.Vector3(3.1, l.y, 0)
 ));
 curves.forEach((c, idx) => {
   scene.add(new THREE.Line(
     new THREE.BufferGeometry().setFromPoints(c.getPoints(36)),
-    new THREE.LineBasicMaterial({ color: lanes[idx].color, transparent: true, opacity: 0.35 })
+    new THREE.LineBasicMaterial({ color: lanes[idx].color, transparent: true, opacity: 0.4 })
   ));
 });
 scene.add(new THREE.Line(
-  new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-5.8, 0, 0), new THREE.Vector3(-1.8, 0, 0)]),
-  new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.5 })
+  new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-4.2, 0.4, 0), new THREE.Vector3(-1.2, 0.4, 0)]),
+  new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.55 })
 ));
 
 // Particles
@@ -806,29 +806,36 @@ window.activateScene = function(idx) {
   });
 };
 
-// Scroll observer to drive Three.js chapters fluidly
-const io = new IntersectionObserver((entries) => {
-  entries.forEach((e) => {
-    if (e.isIntersecting) {
-      const idx = Number(e.target.getAttribute('data-scene'));
-      if (Number.isFinite(idx) && idx !== currentScene) activateScene(idx);
-    }
+// Scroll listener to drive Three.js chapters cleanly (always starts on Ch 1 at top of page)
+function syncSceneToScroll() {
+  if (window.scrollY < 100) { if (currentScene !== 0) activateScene(0); return; }
+  const cards = [...document.querySelectorAll('.step-card')];
+  const mid = window.innerHeight * 0.42;
+  let bestIdx = currentScene, bestDist = Infinity;
+  cards.forEach((c, i) => {
+    const r = c.getBoundingClientRect();
+    const d = Math.abs((r.top + r.bottom) / 2 - mid);
+    if (d < bestDist) { bestDist = d; bestIdx = i; }
   });
-}, { threshold: 0.55 });
-document.querySelectorAll('.step-card').forEach((el) => io.observe(el));
+  if (bestIdx !== currentScene) activateScene(bestIdx);
+}
+window.addEventListener('scroll', syncSceneToScroll, { passive: true });
 
 let tClock = 0;
 function animate() {
   requestAnimationFrame(animate);
   const w = canvas.clientWidth, h = canvas.clientHeight;
+  const aspect = w / Math.max(h, 1);
   if (canvas.width !== w || canvas.height !== h) {
     renderer.setSize(w, h, false);
-    camera.aspect = w / h;
+    camera.aspect = aspect;
     camera.updateProjectionMatrix();
   }
   tClock += 0.016;
-  camera.position.lerp(targetCam, 0.05);
-  camera.lookAt(0.2, 0, 0);
+  const zBoost = aspect < 1.35 ? (1.35 / Math.max(aspect, 0.7)) : 1.0;
+  const desiredCam = new THREE.Vector3(targetCam.x, targetCam.y, targetCam.z * zBoost);
+  camera.position.lerp(desiredCam, 0.06);
+  camera.lookAt(-0.4, 0.25, 0);
 
   inputOrb.rotation.y += 0.012;
   routerOrb.rotation.y -= 0.018;
@@ -845,7 +852,7 @@ function animate() {
   cacheRing.material.color.setHex(currentScene === 1 ? 0xf59e0b : 0x38bdf8);
 
   satellite.visible = currentScene === 4;
-  satellite.position.set(4.4 + Math.cos(tClock * 1.8) * 1.9, Math.sin(tClock * 1.8) * 2.2, Math.sin(tClock * 1.8) * 1.4);
+  satellite.position.set(3.1 + Math.cos(tClock * 1.8) * 1.4, 0.8 + Math.sin(tClock * 1.8) * 1.8, Math.sin(tClock * 1.8) * 1.2);
 
   for (const p of particles) {
     let speedMult = 1.0;
@@ -865,11 +872,11 @@ function animate() {
       }
     }
     if (p.phase === 0) {
-      p.mesh.position.set(-5.8 + p.t * 4.0, Math.sin(p.t * Math.PI * 2 + tClock) * 0.14, 0);
+      p.mesh.position.set(-4.2 + p.t * 3.0, 0.4 + Math.sin(p.t * Math.PI * 2 + tClock) * 0.12, 0);
     } else {
       const clampedT = (currentScene === 0 && p.laneIdx === 3) ? Math.min(p.t, 0.72) : p.t;
       const pos = curves[p.laneIdx].getPoint(clampedT);
-      if (currentScene === 1) pos.z += Math.sin(tClock * 6 + p.t * 10) * 0.45; // turbulence
+      if (currentScene === 1) pos.z += Math.sin(tClock * 6 + p.t * 10) * 0.4; // turbulence
       p.mesh.position.copy(pos);
     }
   }
