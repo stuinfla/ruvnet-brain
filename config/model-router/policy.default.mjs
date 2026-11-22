@@ -6,7 +6,8 @@ const CODING = /\b(implement|implementation|code|coding|debug|refactor|test|endp
 const HARD = /cryptograph|consensus|race condition|irreversible|final review|independent review|difficult planning|complex architecture|security audit|security vulnerability|unresolved architectur|production incident|prove correctness/i;
 const MECHANICAL = /\b(summari[sz]e|classify|extract|translate|rephrase|format|typo|alphabetical order|two-column|markdown table)\b/i;
 const WORK = /\b(implement|build|add|replace|repair|fix|debug|trace|investigate|determine|choose|design|plan|review|assess|recommend)\b/i;
-const QUICK_LOOKUP = /^\s*(what (?:is|version|port|branch|model|time|status)|where (?:is|does|do|are)|do we have|is (?:it|there|this)|which (?:version|port|branch|cli)|git status|check (?:version|status|if)|list (?:all |the )?(?:files|models|daemons|cron|tasks|branches)|show (?:me )?(?:the )?(?:status|version|branches|ports))\b/i;
+const QUICK_LOOKUP = /^\s*(what (?:is|version|port|branch|model|time|status|tool)|where (?:is|does|do|are)|do we have|is (?:it|there|this|everything)|am i ready|which (?:version|port|branch|cli)|git status|check (?:version|status|if)|list (?:all |the )?(?:files|models|daemons|cron|tasks|branches)|show (?:me )?(?:the )?(?:status|version|branches|ports)|give me (?:a )?(?:status )?update|status update)\b/i;
+const SHORT_CONTROL_OR_SYNC = /^\s*(?:yes|yep|yeah|no|nope|ok|okay|sure|stop|continue|go ahead|go for it|do it|sounds good|good[,.\s]+(?:standing by|go for it)|finish up|proceed|approved|ship it|push it|commit(?: it| that)?|ak\s+(?:sync|models|status)|update\s+(?:all\s+)?(?:ruvnet|ruflo|reflow|grok|codex|claude|agy|tools?)|reply\s+only\s+with)\b/i;
 const PRIOR_FAILURE = /\b(still (?:broken|failing|fails|wrong|not working|crashing)|that didn'?t work|failed again|same error(?: again)?|previous (?:fix|attempt) failed|try harder|escalate to (?:next|higher|frontier|fable|astra|neon|xhigh))\b/i;
 const FRONTIER_SURGICAL = /\b(novel algorithm|frontier science|initial system architecture|adversarial (?:code )?review|formal verification proof|stalled all other models)\b/i;
 
@@ -93,7 +94,9 @@ export function classify(features, harness = features.harness || 'codex', { hasS
     (!WORK.test(permittedActions) || /^\s*fix only the typo\b/i.test(text));
   const quickLookup = !coding && !facts?.taskType && text.length <= 140 &&
     QUICK_LOOKUP.test(text) && !WORK.test(permittedActions) && !/\b(architectur\w*|security|migration|production|failover|tenant)\b/i.test(text);
-  return (mechanical || quickLookup) ? 'fast' : 'medium';
+  const shortControl = !coding && !facts?.taskType && text.length <= 100 &&
+    SHORT_CONTROL_OR_SYNC.test(text) && !WORK.test(permittedActions) && !/\b(architectur\w*|security|migration|production|failover|tenant)\b/i.test(text);
+  return (mechanical || quickLookup || shortControl) ? 'fast' : 'medium';
 }
 
 export function choose({ features, candidates, harness, profile, selection }) {

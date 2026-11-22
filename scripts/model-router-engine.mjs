@@ -12,7 +12,7 @@ import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import { pathToFileURL, fileURLToPath } from 'node:url';
-import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
+const isDirectInvocation = (metaUrl) => Boolean(process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(metaUrl));
 import { estTokens } from './route-cheap.mjs'; // reuse the verified char/4 estimator (DRY)
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

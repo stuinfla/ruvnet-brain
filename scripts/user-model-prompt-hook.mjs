@@ -6,8 +6,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { weeklyCycleStatus } from './model-weekly-cycle.mjs';
-import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
+const isDirectInvocation = (metaUrl) => Boolean(process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(metaUrl));
 
 export const PRESENTATION = 'For terminal briefings: give concise executive status; use narrow padded ASCII tables with borders, plain cell text, aligned columns and short rows. Never send pipe-delimited Markdown tables to this terminal. Use short lists when a table would wrap. Do not flood the response with commands or technical logs.';
 
@@ -110,7 +111,9 @@ export function promptContext(payload, { routerDir = path.join(os.homedir(), '.c
         lines.push(`METAHARNESS AUTO-ROUTE (${harness}): taskClass=${route.taskClass} -> model=${route.model}, thinking/effort=${route.effort} ($0 prepaid subscription).`);
         lines.push(`VISIBILITY RULE: Start your response with this exact 1-line badge: [Routed: ${route.taskClass} -> ${route.model} (${route.effort} thinking) · $0 subscription]`);
         lines.push(delegationInstruction(harness, route.taskClass, route.model, route.effort, nextRoute));
-        lines.push('QUOTA HYGIENE (4 MANDATORY TOKEN SAVERS): (1) SUBAGENT ISOLATION: Never dump >5 raw files or large logs into the main chat context—offload repo/log searches to a fast subagent (Haiku 5.5 / Gemini Flash / GPT-6 Luna) and return a short summary; (2) 50% CONTEXT COMPACT: Once session context reaches ~50% (yellow in statusline), proactively suggest /compact or a fresh chat before continuing so every reply stops re-sending 500k+ tokens; (3) PRE-DISTILLED ESCALATION: Never let Frontier models (Fable 5.2 / Neon xhigh / Astra xhigh / Grok-Build xhigh) do open-ended repo discovery—distill the relevant files/errors first; (4) CROSS-VENDOR LOAD-SHEDDING: Keep interactive turns in-vendor for warm cache, but if this subscription window is running hot (>80%) or for cold heavy multi-file refactors, recommend shifting to Antigravity (Gemini 4 Neon @ high, $0 implicit cache writes) or an under-utilized prepaid pool.');
+        if (route.taskClass !== 'fast') {
+          lines.push('QUOTA HYGIENE (4 MANDATORY TOKEN SAVERS): (1) SUBAGENT ISOLATION: Never dump >5 raw files or large logs into the main chat context—offload repo/log searches to a fast subagent (Haiku 5.5 / Gemini Flash / GPT-6 Luna) and return a short summary; (2) 50% CONTEXT COMPACT: Once session context reaches ~50% (yellow in statusline), proactively suggest /compact or a fresh chat before continuing so every reply stops re-sending 500k+ tokens; (3) PRE-DISTILLED ESCALATION: Never let Frontier models (Fable 5.2 / Neon xhigh / Astra xhigh / Grok-Build xhigh) do open-ended repo discovery—distill the relevant files/errors first; (4) CROSS-VENDOR LOAD-SHEDDING: Keep interactive turns in-vendor for warm cache, but if this subscription window is running hot (>80%) or for cold heavy multi-file refactors, recommend shifting to Antigravity (Gemini 4 Neon @ high, $0 implicit cache writes) or an under-utilized prepaid pool.');
+        }
       } else {
         lines.push('No routing decision was computed for this prompt; use the default medium coordinator.');
       }

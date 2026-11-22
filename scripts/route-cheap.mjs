@@ -28,7 +28,7 @@ import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadRuntimePreferences, runtimeChildEnv } from '../plugin/scripts/runtime-preferences.mjs';
-import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
+const isDirectInvocation = (metaUrl) => Boolean(process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(metaUrl));
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

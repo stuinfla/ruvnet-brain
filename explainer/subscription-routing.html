@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Subscription Routing Playbook — 3.5x–4.5x More Output From Prepaid AI Licenses</title>
+<style>
+  :root {
+    --bg: #070b14;
+    --panel: #0f172a;
+    --panel-2: #162038;
+    --border: rgba(148, 163, 184, 0.18);
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --cyan: #38bdf8;
+    --green: #22c55e;
+    --amber: #f59e0b;
+    --red: #ef4444;
+    --purple: #a855f7;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+    line-height: 1.6;
+  }
+  header {
+    position: sticky; top: 0; z-index: 40;
+    background: rgba(7, 11, 20, 0.85);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px;
+  }
+  .brand { font-weight: 800; font-size: 1rem; letter-spacing: -0.02em; color: #fff; }
+  .brand span { color: var(--cyan); }
+  nav { display: flex; gap: 18px; flex-wrap: wrap; font-size: 0.88rem; }
+  nav a { color: var(--muted); text-decoration: none; font-weight: 500; }
+  nav a:hover { color: #fff; }
+
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 28px 22px 72px; }
+
+  /* 3D Hero Stage */
+  .hero-stage {
+    position: relative;
+    border-radius: 18px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: radial-gradient(circle at 50% 35%, #132242 0%, #070b14 75%);
+    margin-bottom: 32px;
+  }
+  #three-canvas {
+    width: 100%;
+    height: 430px;
+    display: block;
+  }
+  .hero-overlay {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    display: flex; flex-direction: column; justify-content: space-between;
+    padding: 24px 28px;
+    background: linear-gradient(180deg, rgba(7,11,20,0.75) 0%, rgba(7,11,20,0.12) 48%, rgba(7,11,20,0.88) 100%);
+  }
+  .hero-top { max-width: 720px; }
+  .kicker {
+    display: inline-block; font-size: 0.75rem; font-weight: 700;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--cyan); background: rgba(56,189,248,0.12);
+    border: 1px solid rgba(56,189,248,0.3);
+    padding: 4px 10px; border-radius: 999px; margin-bottom: 10px;
+  }
+  h1 {
+    margin: 0 0 8px 0; font-size: clamp(1.7rem, 3.2vw, 2.55rem);
+    line-height: 1.12; font-weight: 850; color: #fff;
+  }
+  .hero-desc { margin: 0; color: #cbd5e1; font-size: 1rem; }
+
+  .controls-bar {
+    pointer-events: auto;
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+    gap: 12px;
+  }
+  .mode-group { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn {
+    border: 1px solid var(--border);
+    background: rgba(15, 23, 42, 0.9);
+    color: #fff; font-weight: 700; font-size: 0.86rem;
+    padding: 9px 15px; border-radius: 10px; cursor: pointer;
+    transition: all 0.18s ease;
+  }
+  .btn:hover { border-color: var(--cyan); transform: translateY(-1px); }
+  .btn.active-bad { background: rgba(239, 68, 68, 0.22); border-color: var(--red); color: #fecaca; }
+  .btn.active-good { background: rgba(34, 197, 94, 0.22); border-color: var(--green); color: #bbf7d0; }
+  .btn.active-esc { background: rgba(168, 85, 247, 0.25); border-color: var(--purple); color: #e9d5ff; }
+  .btn-primary { background: var(--cyan); color: #070b14; border-color: var(--cyan); }
+  .btn-primary:hover { background: #7dd3fc; }
+
+  .hud-stats {
+    display: flex; gap: 14px; flex-wrap: wrap; font-size: 0.82rem;
+    background: rgba(15, 23, 42, 0.86); border: 1px solid var(--border);
+    padding: 8px 14px; border-radius: 10px;
+  }
+  .hud-stat b { color: #fff; }
+  .hud-bad { color: #fca5a5; }
+  .hud-good { color: #86efac; }
+
+  section { margin-bottom: 42px; }
+  h2 {
+    font-size: 1.45rem; font-weight: 800; color: #fff;
+    margin: 0 0 12px 0; letter-spacing: -0.02em;
+    display: flex; align-items: center; gap: 10px;
+  }
+  h2 .num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 8px;
+    background: rgba(56,189,248,0.15); color: var(--cyan);
+    font-size: 0.9rem; font-weight: 800;
+  }
+  p.lead { color: var(--muted); margin: 0 0 18px 0; max-width: 820px; }
+
+  .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px 20px;
+  }
+  .card h3 { margin: 8px 0 6px; font-size: 1.05rem; color: #fff; }
+  .card p { margin: 0; font-size: 0.9rem; color: var(--muted); }
+  .pill {
+    display: inline-block; font-size: 0.72rem; font-weight: 700;
+    padding: 3px 8px; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .p-red { background: rgba(239,68,68,0.16); color: #fca5a5; }
+  .p-green { background: rgba(34,197,94,0.16); color: #86efac; }
+  .p-cyan { background: rgba(56,189,248,0.16); color: #7dd3fc; }
+  .p-amber { background: rgba(245,158,11,0.16); color: #fcd34d; }
+
+  table {
+    width: 100%; border-collapse: collapse;
+    background: var(--panel); border-radius: 12px; overflow: hidden;
+    border: 1px solid var(--border); font-size: 0.88rem;
+  }
+  th {
+    background: var(--panel-2); color: #fff; text-align: left;
+    padding: 11px 14px; font-weight: 700; border-bottom: 1px solid var(--border);
+  }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--border); color: #cbd5e1; vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  code {
+    font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+    background: rgba(148,163,184,0.14); padding: 2px 6px; border-radius: 5px;
+    color: #7dd3fc; font-size: 0.84em;
+  }
+
+  .code-block {
+    position: relative;
+    background: #050811;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px 20px;
+    font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 0.84rem;
+    line-height: 1.55;
+    color: #e2e8f0;
+    white-space: pre-wrap;
+    overflow-x: auto;
+  }
+  .copy-btn {
+    position: absolute; top: 12px; right: 12px;
+    background: var(--cyan); color: #070b14; border: none;
+    font-weight: 800; font-size: 0.78rem; padding: 6px 12px;
+    border-radius: 8px; cursor: pointer;
+  }
+  .copy-btn:hover { background: #7dd3fc; }
+
+  .bar-row { margin: 10px 0; }
+  .bar-label { display: flex; justify-content: space-between; font-size: 0.86rem; margin-bottom: 5px; }
+  .bar-track { display: flex; height: 26px; border-radius: 8px; overflow: hidden; background: #1e293b; }
+  .seg { display: flex; align-items: center; justify-content: center; font-size: 0.76rem; font-weight: 700; color: #fff; }
+  .s-red { background: #dc2626; }
+  .s-blue { background: #2563eb; }
+  .s-green { background: #16a34a; }
+
+  footer {
+    border-top: 1px solid var(--border);
+    padding-top: 20px; color: var(--muted); font-size: 0.84rem;
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">AI Subscription <span>Routing Playbook</span></div>
+  <nav>
+    <a href="#headwinds">The Headwinds</a>
+    <a href="#two-lens">Two-Lens Rule</a>
+    <a href="#thinking">Thinking Economics</a>
+    <a href="#architecture">5-Tier Matrix</a>
+    <a href="#hygiene">4 Quota Rules</a>
+    <a href="#setup-prompt">Configure Your Machine</a>
+  </nav>
+</header>
+
+<div class="wrap">
+  <!-- Interactive 3JS Animation Stage -->
+  <div class="hero-stage">
+    <canvas id="three-canvas"></canvas>
+    <div class="hero-overlay">
+      <div class="hero-top">
+        <div class="kicker">Interactive 3D Flow · Three.js Architecture Walkthrough</div>
+        <h1>Stop Burning Through $200 AI Licenses in 2 Days</h1>
+        <p class="hero-desc">Watch how prompts bottleneck when parked on Frontier defaults—and how 5-tier local routing, warm prompt caches, and 4 quota-hygiene rules stretch your prepaid seats <strong>3.5x–4.5x further</strong> at <strong>$0 extra cost</strong>.</p>
+      </div>
+      <div class="controls-bar">
+        <div class="mode-group">
+          <button class="btn active-bad" id="btn-before" onclick="setMode('before')">1. Before: Frontier Bottleneck</button>
+          <button class="btn" id="btn-after" onclick="setMode('after')">2. After: 5-Tier Optimized Flow</button>
+          <button class="btn" id="btn-escalate" onclick="setMode('escalate')">3. Auto-Escalation on Failure</button>
+        </div>
+        <div class="hud-stats" id="hud-stats">
+          <span class="hud-stat hud-bad">Frontier Load: <b>57%</b></span>
+          <span class="hud-stat hud-bad">Cache-Write Tax: <b>43%</b></span>
+          <span class="hud-stat">License Stretch: <b>1.0x</b></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section 1 -->
+  <section id="headwinds">
+    <h2><span class="num">1</span> Why Power Users Hit Walls (The 4 Real Headwinds)</h2>
+    <p class="lead">Across 60 days of real power-user coding transcripts (255,000+ turns, 63+ billion tokens), <strong>over 75% of quota burn was avoidable waste</strong>. You don't have a usage problem—you have a routing and context-hygiene problem.</p>
+    <div class="grid-4">
+      <div class="card">
+        <span class="pill p-red">57% of Turns</span>
+        <h3>Frontier-Default Trap</h3>
+        <p>When your chat sits on Opus 5.5 or Fable 5.2, all 30–80 tool calls per prompt (reading files, <code>git status</code>, running tests) burn flagship quota.</p>
+      </div>
+      <div class="card">
+        <span class="pill p-amber">43% of Quota Burn</span>
+        <h3>Cache-Write Tax</h3>
+        <p>Providers with explicit cache-write pricing ($5–$10/Mtok) charge nearly half your budget just to re-write uncompacted 500k+ conversations.</p>
+      </div>
+      <div class="card">
+        <span class="pill p-cyan">Main-Chat Bloat</span>
+        <h3>Search Pollution</h3>
+        <p>Reading 40 files in your main chat dumps 150k tokens into history that get re-billed on every single message for the rest of the hour.</p>
+      </div>
+      <div class="card">
+        <span class="pill p-red">+72% to +192% Cost</span>
+        <h3>Thinking Overkill</h3>
+        <p>Leaving thinking on <code>xhigh</code> or <code>max</code> doubles or triples quota consumption for just +1 to +3 benchmark points.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 2 -->
+  <section id="two-lens">
+    <h2><span class="num">2</span> The Two-Lens Rule: Personal Coding vs. Deployed Apps</h2>
+    <p class="lead">One of the biggest mistakes teams make is using a pay-by-the-drink cloud proxy for personal coding—or hardcoding literal model names inside production apps.</p>
+    <div class="grid-2">
+      <div class="card" style="border-color: rgba(34,197,94,0.4);">
+        <span class="pill p-green">Lens 1 · $0 Marginal Cost</span>
+        <h3>Personal Coding on Your Machine</h3>
+        <p style="margin-bottom:10px;">You already prepaid for flat-rate seats (Antigravity Ultra, Claude Max, ChatGPT Plus, SuperGrok). Use a <strong>local subscription-only router</strong> that strips all API keys and keeps paid cloud proxies <strong>OFF</strong>.</p>
+        <p><strong>Stay in-vendor 90% of the time:</strong> 93%–97% of input tokens are warm prompt cache reads. Bouncing routine turns across vendors triggers a cold cache (5x–10x token penalty + 20s lag).</p>
+      </div>
+      <div class="card" style="border-color: rgba(56,189,248,0.4);">
+        <span class="pill p-cyan">Lens 2 · Zero Hardcoded Models</span>
+        <h3>Deployed Production Apps (SaaS / Cloud)</h3>
+        <p style="margin-bottom:10px;">Personal subscriptions cannot run production user traffic. Here is where a <strong>dynamic proxy/gateway</strong> (like Meta Proxy, OpenRouter, or externalized <code>APP_MODEL_TIERS_JSON</code>) shines.</p>
+        <p><strong>Never hardcode a model ID in app code.</strong> Request capability tiers (<code>fast</code>, <code>medium</code>, <code>hard</code>, <code>exceptional</code>) so apps automatically upgrade as models improve with zero code deploys.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 3 -->
+  <section id="thinking">
+    <h2><span class="num">3</span> Thinking-Level Economics (Artificial Analysis v5.0.1)</h2>
+    <p class="lead">Picking the right <strong>thinking effort</strong> saves more quota than picking the model name alone. Notice how <strong>Gemini 4 Neon @ high (score 60 @ $3.74)</strong> beats <strong>Claude Opus 5.5 @ max (score 59 @ $10.04)</strong> for nearly 1/3rd the cost—and has <strong>$0.00 implicit cache-write fees</strong>.</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Thinking Effort</th>
+          <th>Gemini 4 Neon (Score / Cost / Time)</th>
+          <th>Claude Opus 5.5 (Score / Cost / Time)</th>
+          <th>Claude Fable 5.2 (Score / Cost / Time)</th>
+          <th>Routing Verdict</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Low</strong></td>
+          <td>44 · $0.75 · 3.7 min</td>
+          <td>35 · $0.98 · 3.0 min</td>
+          <td>54 · $3.10 · 5.5 min</td>
+          <td>Fast triage &amp; routine lookups</td>
+        </tr>
+        <tr>
+          <td><strong>Medium</strong></td>
+          <td>55 · $1.90 · 8.4 min</td>
+          <td>48 · $2.45 · 6.7 min</td>
+          <td>56 · $3.80 · 6.5 min</td>
+          <td>Daily coordinator default</td>
+        </tr>
+        <tr>
+          <td><strong>High</strong></td>
+          <td><strong style="color:#86efac;">60 · $3.74 · 14.3 min</strong></td>
+          <td>52 · $3.46 · 9.2 min</td>
+          <td><strong style="color:#c4b5fd;">62 · $9.08 · 15.1 min</strong></td>
+          <td><strong>Optimal Hard / Surgical cap</strong></td>
+        </tr>
+        <tr>
+          <td><strong>XHigh</strong></td>
+          <td>61 · $6.44 · 22.3 min</td>
+          <td>57 · $6.05 · 15.8 min</td>
+          <td>62 · $14.83 · 24.5 min</td>
+          <td>Auto-escalation only (+72% for +1 pt)</td>
+        </tr>
+        <tr>
+          <td><strong>Max</strong></td>
+          <td>N/A</td>
+          <td style="color:#fca5a5;">59 · $10.04 · 25.6 min</td>
+          <td style="color:#fca5a5;">65 · $26.54 · 42.2 min</td>
+          <td><strong>Banned as default</strong> (+192% bloat)</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Section 4 -->
+  <section id="architecture">
+    <h2><span class="num">4</span> The 5-Tier "Leave-It-Alone" Routing Matrix</h2>
+    <p class="lead">Park every tool on its fast <code>medium</code> coordinator. A local <code>UserPromptSubmit</code> hook classifies every prompt in &lt;50ms, prints a Line-1 badge, delegates heavy or bulk work to subagents, and auto-escalates +1 tier if QA fails twice.</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Tier</th>
+          <th>Target Share</th>
+          <th>Antigravity (Gemini 4)</th>
+          <th>Claude Code (Anthropic)</th>
+          <th>Codex (OpenAI)</th>
+          <th>Grok (xAI)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>fast</code></td>
+          <td>~25–35%</td>
+          <td><code>gemini-4-neon @ low</code> / <code>flash</code></td>
+          <td><code>claude-haiku-5-5 @ low</code></td>
+          <td><code>gpt-6-luna @ low</code></td>
+          <td><code>grok-4.7 @ low</code></td>
+        </tr>
+        <tr>
+          <td><code>medium</code> <em>(Default)</em></td>
+          <td>~50–55%</td>
+          <td><code>gemini-4-neon @ medium</code></td>
+          <td><code>claude-sonnet-5-5 @ med/high</code></td>
+          <td><code>gpt-6.2-sol @ medium</code></td>
+          <td><code>grok-4.7 @ medium</code></td>
+        </tr>
+        <tr>
+          <td><code>substantial</code></td>
+          <td>~5–10%</td>
+          <td><code>gemini-4-neon @ high</code></td>
+          <td><code>claude-opus-5-5 @ medium</code></td>
+          <td><code>gpt-6.2-sol @ high</code></td>
+          <td><code>grok-4.7 @ high</code></td>
+        </tr>
+        <tr>
+          <td><code>hard</code></td>
+          <td>~10–15%</td>
+          <td><code>gemini-4-neon @ high</code></td>
+          <td><code>claude-opus-5-5 @ high</code></td>
+          <td><code>gpt-6.2-astra @ high</code></td>
+          <td><code>grok-build @ high</code></td>
+        </tr>
+        <tr>
+          <td><code>exceptional</code></td>
+          <td>&lt;5%</td>
+          <td><code>gemini-4-neon @ xhigh</code></td>
+          <td><code>claude-fable-5-2 @ high</code></td>
+          <td><code>gpt-6.2-astra @ xhigh</code></td>
+          <td><code>grok-build @ xhigh</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="card" style="margin-top:16px;">
+      <div class="bar-row">
+        <div class="bar-label"><span><strong>Before</strong> (Static Frontier Defaults)</span><span style="color:#fca5a5;">1.0x Baseline</span></div>
+        <div class="bar-track">
+          <div class="seg s-red" style="width:57%">57% Frontier + 43% Cache-Write Burn</div>
+          <div class="seg s-blue" style="width:37%">37% Mid</div>
+          <div class="seg s-green" style="width:6%">6%</div>
+        </div>
+      </div>
+      <div class="bar-row">
+        <div class="bar-label"><span><strong>After</strong> (5-Tier Routing + 4 Hygiene Rules)</span><span style="color:#86efac;">3.5x – 4.5x License Stretch</span></div>
+        <div class="bar-track">
+          <div class="seg s-red" style="width:14%">14% Hard</div>
+          <div class="seg s-blue" style="width:54%">54% Mid Workhorse (Warm Cache)</div>
+          <div class="seg s-green" style="width:32%">32% Fast Subagents</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 5 -->
+  <section id="hygiene">
+    <h2><span class="num">5</span> The 4 Mandatory Quota-Hygiene Rules + Weekly Auto-Refresh</h2>
+    <div class="grid-4">
+      <div class="card">
+        <span class="pill p-green">Rule 1</span>
+        <h3>Subagent Isolation</h3>
+        <p>Offload any &gt;5 file search or log grep to a <code>fast</code> subagent returning a 20-line summary so raw files never bloat main chat context.</p>
+      </div>
+      <div class="card">
+        <span class="pill p-amber">Rule 2</span>
+        <h3>50% /compact Guard</h3>
+        <p>Flash <code>⚡/compact</code> in your statusline at 50% context. Compacting at 50% cuts per-turn token burn by <strong>5x–10x</strong> immediately.</p>
+      </div>
+      <div class="card">
+        <span class="pill p-cyan">Rule 3</span>
+        <h3>Pre-Distilled Frontier</h3>
+        <p>Never let Fable 5.2 or <code>xhigh</code> roam a repo (KingBench 4: 212M vs 27M tokens). Gather exact files in the coordinator first.</p>
+      </div>
+      <div class="card">
+        <span class="pill p-green">Rule 4</span>
+        <h3>Nightly + Weekly Sync</h3>
+        <p>Auto-refresh CLI model caches weekly/nightly, run a 13-point self-audit watchdog, and compare 7-day vs. 60-day distribution metrics.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 6 -->
+  <section id="setup-prompt">
+    <h2><span class="num">6</span> Copy-Paste Prompt: Audit &amp; Configure Your Own Machine</h2>
+    <p class="lead">Paste this directly into Claude Code, Antigravity, Codex, or Grok. It will audit <em>your</em> last 60 days of transcripts, recommend <em>your</em> optimal subscription tiers, replay <em>your</em> real prompts to prove the distribution shift, and wire up your environment automatically.</p>
+    <div class="code-block" id="prompt-text"><button class="copy-btn" onclick="copyPrompt()">Copy Prompt</button>Read the AI Subscription Routing &amp; Quota-Optimization Playbook. I want you to analyze MY machine and configure this exact strategy tailored to MY tools and MY prepaid subscriptions (never enabling pay-by-the-drink API billing for personal coding).
+
+Please do the following in order:
+1. Inventory my installed AI CLIs/IDEs (Claude Code, Codex, Antigravity/Gemini, Grok, Cursor, etc.), my active prepaid subscriptions, and verify no paid cloud proxy or accidental API keys are being billed during personal coding.
+2. Scan my last 60 days of local session transcripts across every tool I use. Show me a table of:
+   - Actual turns, token volume, cache hit rate, and model breakdown per vendor.
+   - Where my quota is leaking (frontier defaults, cache-write fees, uncompacted contexts, missing fast tier).
+   - How much further each license will stretch with 5-tier routing + the 4 quota-hygiene rules, and which subscription plans I should keep, upgrade, or downgrade to minimize monthly spend.
+3. Before changing anything, replay 100+ of my real recent user prompts through the proposed classifier and prove it hits ~25–35% fast, ~50–55% medium, and ~10–15% frontier without under-routing hard tasks.
+4. Once I approve, back up my configs, set my default "leave-it-alone" medium coordinators, wire the UserPromptSubmit routing + automatic failure escalation + 4 quota-hygiene hooks across all my tools, add the 50% context /compact warning to my statuslines, wire a weekly/nightly auto-refresh job, and build a self-audit watchdog + before-vs-after utilization tracker so we can verify results in 7 days.
+5. For any production apps I build going forward, give me a reusable zero-hardcoded-model tier wrapper (fast | medium | substantial | hard | exceptional) with automatic validation retry escalation.</div>
+  </section>
+
+  <footer>
+    <span>AI Subscription Routing &amp; Quota-Optimization Playbook · Published Nov 22, 2026</span>
+    <span>Shareable Standalone HTML + Live Three.js Visualization</span>
+  </footer>
+</div>
+
+<script src="https://unpkg.com/three@0.169.0/build/three.min.js"></script>
+<script>
+function copyPrompt() {
+  const el = document.getElementById('prompt-text');
+  const txt = el.innerText.replace(/^Copy Prompt\s*/, '');
+  navigator.clipboard.writeText(txt).then(() => {
+    const b = el.querySelector('.copy-btn');
+    b.textContent = 'Copied!';
+    setTimeout(() => b.textContent = 'Copy Prompt', 1800);
+  });
+}
+
+// ── Live Three.js 3D Routing & Bottleneck Simulation ─────────────────────────────
+let mode = 'before';
+const canvas = document.getElementById('three-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 100);
+camera.position.set(0, 1.4, 13.5);
+camera.lookAt(0, 0, 0);
+
+const ambient = new THREE.AmbientLight(0xffffff, 0.85);
+scene.add(ambient);
+const dir = new THREE.DirectionalLight(0x38bdf8, 1.4);
+dir.position.set(5, 8, 8);
+scene.add(dir);
+
+// Nodes: Input -> Router -> 4 Lanes (Fast, Medium, Hard, Exceptional)
+function makeNode(x, y, z, color, radius) {
+  const geo = new THREE.IcosahedronGeometry(radius, 2);
+  const mat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.35, roughness: 0.3, metalness: 0.4 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(x, y, z);
+  scene.add(mesh);
+  return mesh;
+}
+
+const inputNode = makeNode(-6.8, 0, 0, 0x38bdf8, 0.55);
+const routerNode = makeNode(-2.4, 0, 0, 0x0ea5e9, 0.65);
+
+const lanes = [
+  { name: 'fast',        y:  2.7, color: 0x22c55e, node: makeNode(4.8,  2.7, 0, 0x22c55e, 0.45) },
+  { name: 'medium',      y:  0.9, color: 0x3b82f6, node: makeNode(4.8,  0.9, 0, 0x3b82f6, 0.52) },
+  { name: 'hard',        y: -1.1, color: 0xf59e0b, node: makeNode(4.8, -1.1, 0, 0xf59e0b, 0.48) },
+  { name: 'exceptional', y: -2.8, color: 0xef4444, node: makeNode(4.8, -2.8, 0, 0xef4444, 0.45) },
+];
+
+// Warm-cache ring around Medium coordinator
+const cacheRing = new THREE.Mesh(
+  new THREE.TorusGeometry(0.95, 0.045, 16, 64),
+  new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x38bdf8, emissiveIntensity: 0.6 })
+);
+cacheRing.position.set(4.8, 0.9, 0);
+scene.add(cacheRing);
+
+// Bottleneck wall ring around Frontier lane in "before" mode
+const jamRing = new THREE.Mesh(
+  new THREE.TorusGeometry(1.15, 0.08, 16, 48),
+  new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xef4444, emissiveIntensity: 0.7 })
+);
+jamRing.position.set(4.8, -2.8, 0);
+scene.add(jamRing);
+
+// Guide curves
+const curves = lanes.map((l) => new THREE.CubicBezierCurve3(
+  new THREE.Vector3(-2.4, 0, 0),
+  new THREE.Vector3(0.2, l.y * 0.65, 0.8),
+  new THREE.Vector3(2.4, l.y, -0.5),
+  new THREE.Vector3(4.8, l.y, 0)
+));
+curves.forEach((c, idx) => {
+  const pts = c.getPoints(36);
+  const geo = new THREE.BufferGeometry().setFromPoints(pts);
+  const mat = new THREE.LineBasicMaterial({ color: lanes[idx].color, transparent: true, opacity: 0.35 });
+  scene.add(new THREE.Line(geo, mat));
+});
+const stemGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-6.8, 0, 0), new THREE.Vector3(-2.4, 0, 0)]);
+scene.add(new THREE.Line(stemGeo, new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.5 })));
+
+// Prompt particles
+const particles = [];
+const pGeo = new THREE.SphereGeometry(0.11, 12, 12);
+function pickLaneIndex() {
+  const r = Math.random();
+  if (mode === 'before') return r < 0.57 ? 3 : r < 0.94 ? 1 : 0; // 57% jammed into Frontier!
+  if (mode === 'escalate') return r < 0.25 ? 0 : r < 0.65 ? 1 : r < 0.88 ? 2 : 3;
+  return r < 0.32 ? 0 : r < 0.86 ? 1 : r < 0.97 ? 2 : 3; // 32% fast, 54% mid, 11% hard, 3% exc
+}
+for (let i = 0; i < 65; i++) {
+  const laneIdx = pickLaneIndex();
+  const mat = new THREE.MeshBasicMaterial({ color: lanes[laneIdx].color });
+  const mesh = new THREE.Mesh(pGeo, mat);
+  scene.add(mesh);
+  particles.push({ mesh, t: Math.random(), phase: Math.random() < 0.35 ? 0 : 1, laneIdx, speed: 0.004 + Math.random() * 0.005 });
+}
+
+window.setMode = function(next) {
+  mode = next;
+  document.getElementById('btn-before').className = 'btn' + (next === 'before' ? ' active-bad' : '');
+  document.getElementById('btn-after').className = 'btn' + (next === 'after' ? ' active-good' : '');
+  document.getElementById('btn-escalate').className = 'btn' + (next === 'escalate' ? ' active-esc' : '');
+  const hud = document.getElementById('hud-stats');
+  if (next === 'before') {
+    hud.innerHTML = '<span class="hud-stat hud-bad">Frontier Load: <b>57%</b></span><span class="hud-stat hud-bad">Cache-Write Tax: <b>43%</b></span><span class="hud-stat">License Stretch: <b>1.0x</b></span>';
+  } else if (next === 'after') {
+    hud.innerHTML = '<span class="hud-stat hud-good">Fast + Mid: <b>86%</b></span><span class="hud-stat hud-good">Warm Cache: <b>95%+</b></span><span class="hud-stat hud-good">License Stretch: <b>3.8x–4.5x</b></span>';
+  } else {
+    hud.innerHTML = '<span class="hud-stat" style="color:#e9d5ff;">QA Fail Twice → <b>Auto +1 Tier</b></span><span class="hud-stat hud-good">Pre-Distilled Context</span><span class="hud-stat">Cost: <b>$0 Sub</b></span>';
+  }
+  particles.forEach((p) => {
+    p.laneIdx = pickLaneIndex();
+    p.mesh.material.color.setHex(lanes[p.laneIdx].color);
+  });
+};
+
+function resize() {
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  if (canvas.width !== w || canvas.height !== h) {
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+}
+
+let clock = 0;
+function animate() {
+  requestAnimationFrame(animate);
+  resize();
+  clock += 0.016;
+  inputNode.rotation.y += 0.012;
+  routerNode.rotation.y -= 0.018;
+  routerNode.rotation.x += 0.008;
+  lanes.forEach((l) => { l.node.rotation.y += 0.01; });
+
+  cacheRing.visible = mode !== 'before';
+  cacheRing.rotation.z += 0.025;
+  cacheRing.rotation.x = Math.sin(clock) * 0.35;
+
+  jamRing.visible = mode === 'before';
+  jamRing.scale.setScalar(1 + Math.sin(clock * 5) * 0.12);
+
+  for (const p of particles) {
+    const slowFactor = (mode === 'before' && p.laneIdx === 3) ? 0.42 : 1.0;
+    p.t += p.speed * slowFactor;
+    if (p.t >= 1) {
+      p.t = 0;
+      if (p.phase === 0) {
+        p.phase = 1;
+        p.laneIdx = pickLaneIndex();
+        p.mesh.material.color.setHex(lanes[p.laneIdx].color);
+      } else {
+        p.phase = 0;
+        p.mesh.material.color.setHex(0x38bdf8);
+      }
+    }
+    if (p.phase === 0) {
+      p.mesh.position.set(-6.8 + p.t * 4.4, Math.sin(p.t * Math.PI * 2 + clock) * 0.12, 0);
+    } else {
+      const pos = curves[p.laneIdx].getPoint(p.t);
+      p.mesh.position.copy(pos);
+    }
+  }
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>

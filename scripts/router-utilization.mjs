@@ -115,6 +115,9 @@ export function utilization({ receiptsFile, decisionsFile, frontier } = {}) {
   );
   const byHost = {};
   const byTaskClass = { fast: 0, medium: 0, substantial: 0, hard: 0, exceptional: 0 };
+  const CUTOVER_ISO = '2026-11-22T06:00:00.000Z';
+  const postCutover = { tasks: 0, cheap: 0, mid: 0, frontier: 0, realizedUsd: 0, frontierUsd: 0 };
+  const preCutover = { tasks: 0, cheap: 0, mid: 0, frontier: 0, realizedUsd: 0, frontierUsd: 0 };
   let tasks = 0;
   let unpriced = 0;
   let realizedUsd = 0;
@@ -161,6 +164,13 @@ export function utilization({ receiptsFile, decisionsFile, frontier } = {}) {
     b.models[modelKey] = (b.models[modelKey] || 0) + 1;
     realizedUsd += realized;
     frontierUsd += front;
+    const bucket = (r.ts && r.ts >= CUTOVER_ISO) ? postCutover : preCutover;
+    bucket.tasks++;
+    if (band === 'cheap' || band === 'mechanical') bucket.cheap++;
+    else if (band === 'mid') bucket.mid++;
+    else bucket.frontier++;
+    bucket.realizedUsd += realized;
+    bucket.frontierUsd += front;
   };
 
   try {
@@ -198,6 +208,18 @@ export function utilization({ receiptsFile, decisionsFile, frontier } = {}) {
 
   const savedUsd = round(frontierUsd - realizedUsd);
   const quotaMultiplier = realizedUsd > 0 ? +(frontierUsd / realizedUsd).toFixed(2) : 1.0;
+  const summarizeWindow = (w) => ({
+    tasks: w.tasks,
+    cheapPct: w.tasks ? Math.round((w.cheap / w.tasks) * 100) : 0,
+    midPct: w.tasks ? Math.round((w.mid / w.tasks) * 100) : 0,
+    frontierPct: w.tasks ? Math.round((w.frontier / w.tasks) * 100) : 0,
+    quotaMultiplier: w.realizedUsd > 0 ? +(w.frontierUsd / w.realizedUsd).toFixed(2) : 1.0,
+  });
+  const beforeVsAfter = {
+    cutoverAt: CUTOVER_ISO,
+    before: summarizeWindow(preCutover),
+    after: summarizeWindow(postCutover),
+  };
   return {
     generatedAt: new Date().toISOString(),
     frontierModel: frModel,
@@ -210,10 +232,11 @@ export function utilization({ receiptsFile, decisionsFile, frontier } = {}) {
     costOptimalitySaved: savedUsd,
     pctSaved: frontierUsd > 0 ? Math.round((savedUsd / frontierUsd) * 100) : null,
     quotaMultiplier,
+    beforeVsAfter,
     byHost,
     byTaskClass,
     distribution,
-    note: `Recomputed live from ${tasks} routed prompt(s) across your $0 prepaid subscriptions (AA v5.0.1 effort-weighted quota equivalence; ${quotaMultiplier}x license stretch vs all-frontier).`,
+    note: `Recomputed live from ${tasks} routed prompt(s) across your $0 prepaid subscriptions (AA v5.0.1 effort-weighted quota equivalence; ${quotaMultiplier}x license stretch vs all-frontier). Since v2 cutover (${CUTOVER_ISO.slice(0, 10)}): ${beforeVsAfter.after.tasks} prompts (${beforeVsAfter.after.cheapPct}% fast / ${beforeVsAfter.after.midPct}% mid / ${beforeVsAfter.after.frontierPct}% frontier · ${beforeVsAfter.after.quotaMultiplier}x stretch).`,
   };
 }
 
@@ -232,6 +255,14 @@ export function printUtil(u) {
   }
   console.log(`  ${'─'.repeat(98)}`);
   console.log(`  TOTAL quota value saved vs all-frontier: ${money(u.costOptimalitySaved)} (${u.pctSaved == null ? '—' : u.pctSaved + '%'} saved · ${u.quotaMultiplier}x more work from your prepaid licenses; $0 actual API spend).`);
+  if (u.beforeVsAfter) {
+    const b = u.beforeVsAfter.before;
+    const a = u.beforeVsAfter.after;
+    console.log('');
+    console.log(`  BEFORE vs AFTER v2 Cutover (${u.beforeVsAfter.cutoverAt.slice(0, 10)}):`);
+    console.log(`    Before (${String(b.tasks).padStart(5)} prompts): ${String(b.cheapPct).padStart(2)}% fast · ${String(b.midPct).padStart(2)}% mid · ${String(b.frontierPct).padStart(2)}% frontier  (${b.quotaMultiplier}x stretch)`);
+    console.log(`    After  (${String(a.tasks).padStart(5)} prompts): ${String(a.cheapPct).padStart(2)}% fast · ${String(a.midPct).padStart(2)}% mid · ${String(a.frontierPct).padStart(2)}% frontier  (${a.quotaMultiplier}x stretch)`);
+  }
 }
 
 export function mainUtil() {

@@ -75,19 +75,20 @@ export async function runAudit() {
     fail('eval-suite', `Failed to run evaluation suite: ${e.message}`);
   }
 
-  // 4. Live hook verification across all 4 hosts (fast lookup + failure escalation + quota hygiene)
+  // 4. Live hook verification across all 4 hosts (isolated temp decision log so audits never pollute real metrics)
   const hookScript = path.join(ROUTER_DIR, 'bin/user-model-prompt-hook.mjs');
+  const auditEnv = { ...process.env, MODEL_ROUTER_DECISIONS: path.join(os.tmpdir(), 'model-routing-audit-decisions.jsonl') };
   for (const [flag, h] of [['--antigravity', 'antigravity'], ['--claude', 'claude-code'], ['--codex', 'codex'], ['--grok', 'grok']]) {
     try {
       const fastOut = JSON.parse(execFileSync(process.execPath, [hookScript, flag], {
         input: JSON.stringify({ prompt: 'do we have metallm set up?' }),
-        encoding: 'utf8', timeout: 3000,
+        encoding: 'utf8', timeout: 3000, env: auditEnv,
       })).hookSpecificOutput?.additionalContext || '';
       const escOut = JSON.parse(execFileSync(process.execPath, [hookScript, flag], {
         input: JSON.stringify({ prompt: 'That did not work and is still failing; fix the race condition in token verification.' }),
-        encoding: 'utf8', timeout: 3000,
+        encoding: 'utf8', timeout: 3000, env: auditEnv,
       })).hookSpecificOutput?.additionalContext || '';
-      if (!fastOut.includes('taskClass=fast') || !escOut.includes('taskClass=exceptional') || !fastOut.includes('QUOTA HYGIENE')) {
+      if (!fastOut.includes('taskClass=fast') || !escOut.includes('taskClass=exceptional') || !escOut.includes('QUOTA HYGIENE')) {
         fail(`hook-${h}`, `Hook output missing expected fast/exceptional/QUOTA HYGIENE directives`);
       } else {
         pass(`hook-${h}`, `Live hook verified (fast + automatic failure escalation + 4 quota-hygiene rules)`);

@@ -2328,7 +2328,14 @@ function renderDistribution(u) {
     (u.frontierUsd != null && u.realizedUsd != null)
       ? el('p', { class: 'dv-hero-math' },
           frontierName + ' for everything would have cost ' + fmtUsd(u.frontierUsd) +
-          ' — you actually spent ' + fmtUsd(u.realizedUsd) + '.')
+          ' — you actually spent ' + fmtUsd(u.realizedUsd) +
+          (u.quotaMultiplier ? ` (${u.quotaMultiplier}x license stretch).` : '.'))
+      : null,
+    u.beforeVsAfter
+      ? el('p', { class: 'dv-hero-math' },
+          el('b', {}, `Before vs After (${String(u.beforeVsAfter.cutoverAt || '').slice(0, 10)}): `),
+          `Before: ${u.beforeVsAfter.before.cheapPct}% fast · ${u.beforeVsAfter.before.midPct}% mid · ${u.beforeVsAfter.before.frontierPct}% frontier (${u.beforeVsAfter.before.quotaMultiplier}x)  →  `,
+          el('b', {}, `After (${u.beforeVsAfter.after.tasks} prompts): ${u.beforeVsAfter.after.cheapPct}% fast · ${u.beforeVsAfter.after.midPct}% mid · ${u.beforeVsAfter.after.frontierPct}% frontier (${u.beforeVsAfter.after.quotaMultiplier}x)`))
       : null);
 
   // ONE continuous stacked bar — the mix in a single glance. Widths exactly
