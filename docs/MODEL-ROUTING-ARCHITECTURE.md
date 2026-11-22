@@ -7,6 +7,8 @@ Status: CANONICAL — SINGLE SOURCE OF TRUTH (supersedes all prior 2026-07 and 2
 
 This document is the **sole authoritative specification** for model routing, thinking/effort allocation, quota hygiene, automatic failure escalation, and weekly/nightly self-refresh across Stuart Kerr's MacBook Pro (`MacBook-Pro-Max`, M3 Max 128 GB). It records **both what the system does and the exact evidence and philosophy behind every decision** so RuvNet Brain and future agents never drift back into older, wasteful patterns.
 
+> **Production / Deployed Apps Companion Standard:** This document governs **personal development on your MacBook Pro (`$0` prepaid subscriptions)**. For **deployed apps you build for end-users** (where metered APIs apply and apps must NEVER hardcode model IDs), see [`docs/APP-MODEL-ROUTING-INTEGRATION.md`](./APP-MODEL-ROUTING-INTEGRATION.md).
+
 ---
 
 ## 1. Origin & System Distinction (Never Confuse These Two Routers)
