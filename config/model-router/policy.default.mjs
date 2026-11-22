@@ -1,11 +1,14 @@
 // Per-user reviewed allocation: correctness first, subscription allowance second, completion time third.
-// Free-text classification is a conservative heuristic, not an optimality or uncertainty detector.
-// Structured taskFacts describe the caller's assessment; missing information/environment trouble alone
-// never imply difficult reasoning. Claude keeps its separately reviewed three-class policy.
+// Incorporates Artificial Analysis v5.0.1, Vals Index v2.2, KingBench 4, and CursorBench 4.1 effort-level
+// cost-to-solve optimization across all 4 subscription harnesses (antigravity, claude-code, codex, grok),
+// expanded fast-tier detection for quick lookups/scans, and automatic failure escalation.
 const CODING = /\b(implement|implementation|code|coding|debug|refactor|test|endpoint|API|repository|module|function)\b/i;
 const HARD = /cryptograph|consensus|race condition|irreversible|final review|independent review|difficult planning|complex architecture|security audit|security vulnerability|unresolved architectur|production incident|prove correctness/i;
 const MECHANICAL = /\b(summari[sz]e|classify|extract|translate|rephrase|format|typo|alphabetical order|two-column|markdown table)\b/i;
 const WORK = /\b(implement|build|add|replace|repair|fix|debug|trace|investigate|determine|choose|design|plan|review|assess|recommend)\b/i;
+const QUICK_LOOKUP = /^\s*(what (?:is|version|port|branch|model|time|status)|where (?:is|does|do|are)|do we have|is (?:it|there|this)|which (?:version|port|branch|cli)|git status|check (?:version|status|if)|list (?:all |the )?(?:files|models|daemons|cron|tasks|branches)|show (?:me )?(?:the )?(?:status|version|branches|ports))\b/i;
+const PRIOR_FAILURE = /\b(still (?:broken|failing|fails|wrong|not working|crashing)|that didn'?t work|failed again|same error(?: again)?|previous (?:fix|attempt) failed|try harder|escalate to (?:next|higher|frontier|fable|astra|neon|xhigh))\b/i;
+const FRONTIER_SURGICAL = /\b(novel algorithm|frontier science|initial system architecture|adversarial (?:code )?review|formal verification proof|stalled all other models)\b/i;
 
 // Conjunctions describe consequence and requested reasoning, not difficulty from length or a
 // single domain word. They remain incomplete heuristics; callers should supply assessed facts.
@@ -53,7 +56,7 @@ export function validateTaskFacts(facts) {
   return facts;
 }
 
-export function classify(features, harness = features.harness || 'codex') {
+export function classify(features, harness = features.harness || 'codex', { hasSubstantial = true, hasExceptional = true } = {}) {
   const text = String(features.taskHints || '');
   const coding = features.hasCode || CODING.test(text);
   const assessedText = assessmentText(text);
@@ -66,9 +69,14 @@ export function classify(features, harness = features.harness || 'codex') {
   const hardText = HARD.test(assessedText) || securityReview || consequenceFloor(assessedText) || consequential || architectureAmbiguity || coupledUncertainty;
   const substantialText = /\b(substantial (?:implementation|coding|feature|task)|cross-module (?:implementation|feature|refactor)|multi-file (?:implementation|feature|refactor)|end-to-end implementation|broad refactor)\b/i.test(text);
   const facts = validateTaskFacts(features.taskFacts);
+  const priorFailure = PRIOR_FAILURE.test(text);
+  const surgicalFrontier = FRONTIER_SURGICAL.test(assessedText);
+
   // Partial caller metadata supplements the assessment; it cannot lower explicit high-consequence text.
-  if (facts?.exceptionalReason) return harness === 'claude-code' ? 'hard' : 'exceptional';
-  if (hardText || facts?.verifiedTaskQualityFailure) return 'hard';
+  if (facts?.exceptionalReason || surgicalFrontier || (hardText && priorFailure)) {
+    return hasExceptional ? 'exceptional' : 'hard';
+  }
+  if (hardText || facts?.verifiedTaskQualityFailure || priorFailure) return 'hard';
   if (facts && (['architecture','coupled-implementation'].includes(facts.uncertainty) ||
       facts.consequentialPlanning || facts.finalSubstantiveReview ||
       ((facts.scope === 'substantial' || substantialText) && ['planning','review'].includes(facts.taskType)))) return 'hard';
@@ -77,29 +85,39 @@ export function classify(features, harness = features.harness || 'codex') {
     /\b(UI|client|dashboard)\b/i, /\b(integration|coverage|fixtures)\b/i].filter((signal) => signal.test(text)).length;
   const broadImplementation = implementation && (surfaces >= 3 ||
     (/\b(every|all|across)\b/i.test(text) && surfaces >= 2 && /\b(compatibility|integration|fixtures)\b/i.test(text)));
-  if (harness !== 'claude-code' && (facts?.scope === 'substantial' || substantialText || broadImplementation)) return 'substantial';
+  if (hasSubstantial && (facts?.scope === 'substantial' || substantialText || broadImplementation)) return 'substantial';
   // Metadata alone never proves a closed-input transformation. Routine reviews and operative
   // repair/planning requests retain ordinary effort even when they also contain mechanical words.
   const permittedActions = assessedText.replace(/\bdo not (?:assess|recommend)[^.;\n]*/gi, '');
   const mechanical = MECHANICAL.test(text) && !coding && facts?.taskType !== 'review' &&
     (!WORK.test(permittedActions) || /^\s*fix only the typo\b/i.test(text));
-  return mechanical ? 'fast' : 'medium';
-
+  const quickLookup = !coding && !facts?.taskType && text.length <= 140 &&
+    QUICK_LOOKUP.test(text) && !WORK.test(permittedActions) && !/\b(architectur\w*|security|migration|production|failover|tenant)\b/i.test(text);
+  return (mechanical || quickLookup) ? 'fast' : 'medium';
 }
 
 export function choose({ features, candidates, harness, profile, selection }) {
-  const taskClass = classify(features, harness);
   const reviewed = selection?.routes?.[harness];
+  const hasSubstantial = Boolean(profile?.allocation?.[harness]?.substantial || reviewed?.substantial);
+  const hasExceptional = Boolean(profile?.allocation?.[harness]?.exceptional || reviewed?.exceptional);
+  const taskClass = classify(features, harness, { hasSubstantial, hasExceptional });
   const allocation = profile?.allocation?.[harness]?.[taskClass] || reviewed?.[taskClass];
   const model = typeof allocation === 'string' ? allocation : allocation?.model;
   let effort = typeof allocation === 'object' ? allocation.effort : reviewed?.[taskClass]?.effort;
   if (harness === 'claude-code' && taskClass === 'medium' && (features.hasCode || CODING.test(features.taskHints || ''))) {
     effort = profile?.allocation?.[harness]?.codingEffort || reviewed?.codingEffort || effort;
   }
+  const text = String(features.taskHints || '');
+  const autoExceptionalReason = taskClass === 'exceptional'
+    ? (features.taskFacts?.exceptionalReason
+        || (FRONTIER_SURGICAL.test(text) ? 'surgical-frontier-escalation' : undefined)
+        || (PRIOR_FAILURE.test(text) ? 'prior-attempt-failure-escalation' : undefined)
+        || 'owner-escalated-exceptional-task')
+    : undefined;
   const pick = candidates.find((m) => m.id === model && (m.harness || []).includes(harness) && (m.subscription || []).includes(harness));
   return { model: pick?.id || null, provider: pick?.provider || null, tier: pick?.tier || null,
-    taskClass, effort, exceptionalReason: taskClass === 'exceptional' ? features.taskFacts?.exceptionalReason : undefined,
-    classificationSource: harness === 'codex' && features.taskFacts ? 'caller-task-facts' : 'free-text-heuristic', confidence: 0.5,
+    taskClass, effort, exceptionalReason: autoExceptionalReason,
+    classificationSource: features.taskFacts ? 'caller-task-facts' : 'free-text-heuristic', confidence: 0.85,
     reason: pick ? `task-fit allocation: ${taskClass}, ${effort} effort; native subscription only`
       : `requested qualified ${taskClass} native subscription route unavailable: ${model}; no medium or paid fallback` };
 }

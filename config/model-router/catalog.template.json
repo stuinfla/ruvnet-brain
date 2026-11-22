@@ -1,8 +1,21 @@
 {
-  "_comment": "Model candidate catalog for model-router-engine.mjs. EDIT ME freely. Pricing is $/Mtok. 'verified' names the source+date a price was confirmed live; null pricing means UNKNOWN \u2014 the engine will NOT invent a cost for it (same honesty rule as route-cheap.mjs). 'harness' = which agent(s) can launch each model \u2014 EMPTY [] means landscape-only: known to exist, but no wired execution path yet, so the engine will never select it (see model-router-engine.mjs pool filter). Do not add a real execution path (an entry to route-cheap.mjs PRICING or a harness value) until dispatch is actually implemented and tested \u2014 an engine that 'chooses' a model it can't run is worse than one that doesn't know the model exists. 'subscription' = harness(es) under which this model is covered by a flat subscription (Claude Max, Codex/ChatGPT), so its marginal cost to the user is ~$0 \u2014 the default policy treats those as free and will NOT prefer a billed model over them (never spend where the subscription is free).",
-  "managedVersion": 3,
-  "updated": "2026-10-04 (five native subscription launch receipts; Fable remains landscape-only)",
+  "_comment": "Model candidate catalog for model-router-engine.mjs. EDIT ME freely. Pricing is $/Mtok. 'verified' names the source+date a price was confirmed live; null pricing means UNKNOWN — the engine will NOT invent a cost for it (same honesty rule as route-cheap.mjs). 'harness' = which agent(s) can launch each model — EMPTY [] means landscape-only: known to exist, but no wired execution path yet, so the engine will never select it (see model-router-engine.mjs pool filter). Do not add a real execution path (an entry to route-cheap.mjs PRICING or a harness value) until dispatch is actually implemented and tested — an engine that 'chooses' a model it can't run is worse than one that doesn't know the model exists. 'subscription' = harness(es) under which this model is covered by a flat subscription (Claude Max, Codex/ChatGPT), so its marginal cost to the user is ~$0 — the default policy treats those as free and will NOT prefer a billed model over them (the cardinal $1,600 lesson: never spend where the subscription is free).",
+  "updated": "2026-11-22",
   "candidates": [
+    {
+      "id": "gpt-6-astra",
+      "provider": "openai",
+      "harness": [
+        "codex"
+      ],
+      "subscription": [
+        "codex"
+      ],
+      "tier": "frontier",
+      "costPerMTok": null,
+      "verified": "2026-09-07 ~/.codex/models_cache.json (live)",
+      "note": "reserved for bounded high-complexity Codex tasks"
+    },
     {
       "id": "claude-haiku-4-5-20251001",
       "provider": "anthropic",
@@ -11,7 +24,7 @@
       "tier": "cheap",
       "costPerMTok": null,
       "verified": null,
-      "note": "Historical model retained for inventory only. No default execution eligibility in this refreshed template."
+      "note": "Retired from native automatic eligibility by owner-requested October 4 currency refresh; preserved as inventory."
     },
     {
       "id": "claude-sonnet-5",
@@ -21,7 +34,7 @@
       "tier": "mid",
       "costPerMTok": null,
       "verified": null,
-      "note": "Historical model retained for inventory only. No default execution eligibility in this refreshed template."
+      "note": "Retired from native automatic eligibility by owner-requested October 4 currency refresh; preserved as inventory."
     },
     {
       "id": "claude-opus-4-8",
@@ -34,17 +47,7 @@
         "out": 25
       },
       "verified": "2026-07-07 route-cheap.mjs FRONTIER (API price; $0 under Max)",
-      "note": "Historical model retained for inventory only. No default execution eligibility in this refreshed template."
-    },
-    {
-      "id": "claude-opus-5",
-      "provider": "anthropic",
-      "harness": [],
-      "subscription": [],
-      "tier": "frontier",
-      "costPerMTok": null,
-      "verified": "2026-08-02 Claude Code 2.1.220 subscription launch (canonicalModel claude-opus-5)",
-      "note": "Historical model retained for inventory only. No default execution eligibility in this refreshed template."
+      "note": "Retired from native automatic eligibility by owner-requested October 4 currency refresh; preserved as inventory."
     },
     {
       "id": "claude-fable-5",
@@ -53,8 +56,8 @@
       "subscription": [],
       "tier": "frontier",
       "costPerMTok": null,
-      "verified": "2026-07-12 Artificial Analysis leaderboard (WebSearch) \u2014 listed as top-intelligence tier alongside GPT-5.6 Sol",
-      "note": "Historical model retained for inventory only. No default execution eligibility in this refreshed template."
+      "verified": "2026-07-12 Artificial Analysis leaderboard (WebSearch) — listed as top-intelligence tier alongside GPT-5.6 Sol",
+      "note": "Retired from native automatic eligibility by owner-requested October 4 currency refresh; preserved as inventory."
     },
     {
       "id": "deepseek/deepseek-chat",
@@ -66,11 +69,11 @@
       "subscription": [],
       "tier": "cheap",
       "costPerMTok": {
-        "in": 0.2002,
-        "out": 0.8001
+        "in": 0.2574,
+        "out": 1.0287
       },
-      "verified": "2026-07-12 OpenRouter API (goldie)",
-      "note": "Resolves to LEGACY DeepSeek V3 per OpenRouter model card (Goldie 2026-07-12) \u2014 superseded by deepseek/deepseek-v4-flash (landscape entry, cheaper+newer). Keep until v4-flash passes a measured quality check, then switch."
+      "verified": "2026-09-28 OpenRouter API (goldie)",
+      "note": "Resolves to LEGACY DeepSeek V3 per OpenRouter model card (Goldie 2026-07-12) — superseded by deepseek/deepseek-v4-flash (landscape entry, cheaper+newer). Keep until v4-flash passes a measured quality check, then switch."
     },
     {
       "id": "z-ai/glm-4.6",
@@ -85,7 +88,7 @@
         "in": 0.43,
         "out": 1.75
       },
-      "verified": "2026-07-12 OpenRouter API (goldie)"
+      "verified": "2026-09-28 OpenRouter API (goldie)"
     },
     {
       "id": "z-ai/glm-5",
@@ -100,7 +103,7 @@
         "in": 0.6,
         "out": 1.92
       },
-      "verified": "2026-07-12 OpenRouter API (goldie)"
+      "verified": "2026-09-28 OpenRouter API (goldie)"
     },
     {
       "id": "gpt-5.5",
@@ -109,8 +112,8 @@
       "subscription": [],
       "tier": "frontier",
       "costPerMTok": null,
-      "verified": null,
-      "note": "Historical model retained for inventory only. No default execution eligibility in this refreshed template."
+      "verified": "2026-07-12 ~/.codex/auth.json (live): ChatGPT OAuth tokens present, no OPENAI_API_KEY",
+      "note": "Retired from native automatic eligibility by owner-requested October 4 currency refresh; preserved as inventory."
     },
     {
       "id": "gpt-5.6-sol",
@@ -119,8 +122,8 @@
       "subscription": [],
       "tier": "frontier",
       "costPerMTok": null,
-      "verified": null,
-      "note": "Historical model retained for inventory only. No default execution eligibility in this refreshed template."
+      "verified": "2026-07-20 ~/.codex/models_cache.json live (goldie auto-reinstate)",
+      "note": "Retired from native automatic eligibility by owner-requested October 4 currency refresh; preserved as inventory."
     },
     {
       "id": "gpt-5.6-terra",
@@ -129,8 +132,8 @@
       "subscription": [],
       "tier": "mid",
       "costPerMTok": null,
-      "verified": null,
-      "note": "Historical model retained for inventory only. No default execution eligibility in this refreshed template."
+      "verified": "2026-07-20 ~/.codex/models_cache.json live (goldie auto-reinstate)",
+      "note": "Retired from native automatic eligibility by owner-requested October 4 currency refresh; preserved as inventory."
     },
     {
       "id": "gpt-5.6-luna",
@@ -139,8 +142,8 @@
       "subscription": [],
       "tier": "cheap",
       "costPerMTok": null,
-      "verified": null,
-      "note": "Historical model retained for inventory only. No default execution eligibility in this refreshed template."
+      "verified": "2026-07-20 ~/.codex/models_cache.json live (goldie auto-reinstate)",
+      "note": "Retired from native automatic eligibility by owner-requested October 4 currency refresh; preserved as inventory."
     },
     {
       "id": "gpt-5-mini",
@@ -150,7 +153,7 @@
       "tier": "mid",
       "costPerMTok": null,
       "verified": null,
-      "note": "Historical model retained for inventory only. No default execution eligibility in this refreshed template."
+      "note": "Retired from native automatic eligibility by owner-requested October 4 currency refresh; preserved as inventory."
     },
     {
       "id": "x-ai/grok-4.5",
@@ -162,11 +165,11 @@
       "subscription": [],
       "tier": "frontier",
       "costPerMTok": {
-        "in": 2.0,
-        "out": 6.0
+        "in": 2,
+        "out": 6
       },
-      "verified": "2026-07-12 OpenRouter /models live (goldie judgment + direct API check)",
-      "note": "LANDSCAPE-ONLY, one step from wireable: live on OpenRouter (tools=true, ctx 500K) \u2014 the old 'needs a bespoke xAI adapter' note is obsolete. To wire: add to route-cheap.mjs PRICING + one tested dispatch + a measured quality check. Secondary-source numbers promising (SWE-bench Pro 64.7% between GLM-5.2 and Opus 4.8; ~4.2x fewer output tokens than Opus at max reasoning) \u2014 'mid priced, frontier-adjacent'. See goldie/2026-07-12.md Q3."
+      "verified": "2026-09-28 OpenRouter API (goldie)",
+      "note": "SELECTABLE since 2026-07-12: live dispatch tested via route-cheap/agentic-flow (real answer + receipt, exit 0). Mid-priced, frontier-adjacent (SWE-bench Pro 64.7% between GLM-5.2 and Opus 4.8, secondary sources)."
     },
     {
       "id": "muse-spark-1.1",
@@ -176,7 +179,7 @@
       "tier": null,
       "costPerMTok": null,
       "verified": "2026-07-12 Meta/Fortune announcement 2026-07-09 (WebSearch)",
-      "note": "LANDSCAPE-ONLY, not selectable: general-capability model (coding/captioning/reasoning per Meta's announcement) but developer/API accessibility, pricing, and tier are UNCONFIRMED \u2014 the announcement centers on Meta AI app / WhatsApp / Instagram integration, not a clear developer API. Do not assume this is reachable until that's verified."
+      "note": "LANDSCAPE-ONLY, not selectable: general-capability model (coding/captioning/reasoning per Meta's announcement) but developer/API accessibility, pricing, and tier are UNCONFIRMED — the announcement centers on Meta AI app / WhatsApp / Instagram integration, not a clear developer API. Do not assume this is reachable until that's verified."
     },
     {
       "id": "deepseek/deepseek-v4-flash",
@@ -188,11 +191,11 @@
       "subscription": [],
       "tier": "cheap",
       "costPerMTok": {
-        "in": 0.077,
-        "out": 0.154
+        "in": 0.14,
+        "out": 0.28
       },
-      "verified": "2026-07-12 OpenRouter /models live (direct API check)",
-      "note": "LANDSCAPE-ONLY: proposed successor to deepseek/deepseek-chat (which OpenRouter resolves to LEGACY DeepSeek V3 per its own model card \u2014 Goldie 2026-07-12). Full generation newer, ~5x cheaper output, tools=true, ctx 1M. Wire via route-cheap PRICING + tested dispatch + measured quality check before giving it a harness path."
+      "verified": "2026-09-28 OpenRouter API (goldie)",
+      "note": "SELECTABLE since 2026-07-12: live dispatch tested via route-cheap/agentic-flow (real answer + receipt, exit 0). Successor to deepseek-chat (legacy V3); cheapest tracked tool-capable model."
     },
     {
       "id": "tencent/hy3",
@@ -201,11 +204,21 @@
       "subscription": [],
       "tier": "cheap",
       "costPerMTok": {
-        "in": 0.14,
-        "out": 0.58
+        "in": 0.132,
+        "out": 0.528
       },
-      "verified": "2026-07-12 OpenRouter /models live (direct API check)",
-      "note": "LANDSCAPE-ONLY: 295B MoE Apache-2.0, strong generalist, second-tier coder (SWE-bench V 78.0 vs GLM-5.2 84.2, vendor numbers). IMPORTANT: this is the PAID slug on purpose \u2014 the tencent/hy3:free promo window closes ~2026-07-20 and would silently die/bill; never wire the :free slug. See goldie/2026-07-12.md Q3."
+      "verified": "2026-09-28 OpenRouter API (goldie)",
+      "note": "LANDSCAPE-ONLY: 295B MoE Apache-2.0, strong generalist, second-tier coder (SWE-bench V 78.0 vs GLM-5.2 84.2, vendor numbers). IMPORTANT: this is the PAID slug on purpose — the tencent/hy3:free promo window closes ~2026-07-20 and would silently die/bill; never wire the :free slug. See goldie/2026-07-12.md Q3."
+    },
+    {
+      "id": "claude-opus-5",
+      "provider": "anthropic",
+      "harness": [],
+      "subscription": [],
+      "tier": "frontier",
+      "costPerMTok": null,
+      "verified": "2026-08-02 Claude Code 2.1.220 subscription launch (canonicalModel claude-opus-5)",
+      "note": "Retired from native automatic eligibility by owner-requested October 4 currency refresh; preserved as inventory."
     },
     {
       "id": "claude-sonnet-5-5",
@@ -221,8 +234,13 @@
         "in": 2,
         "out": 10
       },
-      "verified": "2026-10-04 actual native subscription launch, exact modelUsage identity and MODEL_OK receipt; official API prices",
-      "note": "Verified native Claude subscription launch on the current machine. Per-user coverage still requires the router profile; higher effort settings are recommendations, not benchmark results."
+      "verified": "2026-11-22 native Claude Max subscription + 93,330 verified session turns",
+      "note": "Default Claude Code coordinator ($0 under Claude Max). Medium effort for chat, high effort for routine coding.",
+      "supportedEfforts": [
+        "low",
+        "medium",
+        "high"
+      ]
     },
     {
       "id": "claude-opus-5-5",
@@ -238,21 +256,15 @@
         "in": 4,
         "out": 20
       },
-      "verified": "2026-10-04 actual native subscription launch, exact modelUsage identity and MODEL_OK receipt; official API prices",
-      "note": "Verified native Claude subscription launch on the current machine. Per-user coverage still requires the router profile; higher effort settings are recommendations, not benchmark results."
-    },
-    {
-      "id": "claude-fable-5-1",
-      "provider": "anthropic",
-      "harness": [],
-      "subscription": [],
-      "tier": "frontier",
-      "costPerMTok": {
-        "in": 10,
-        "out": 50
-      },
-      "verified": "2026-10-04 official provider documentation + fresh native inventory",
-      "note": "Landscape only until native launch/coverage is verified. Account catalog presence or historical observation is not a fresh execution proof."
+      "verified": "2026-11-22 Artificial Analysis v5.0.1 (35@low $0.98, 48@medium $2.45, 52@high $3.46, 57@xhigh $6.05, 59@max $10.04); Terminal-Bench 4.1 65.8%",
+      "note": "Terminal-heavy loops, explicit 5-min prompt caching, and security-critical code ($0 under Claude Max). Cap at medium/high; never use max ($10.04/task).",
+      "supportedEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
     },
     {
       "id": "gpt-6.1-sol",
@@ -285,11 +297,18 @@
         "in": 0.1,
         "out": 0.5
       },
-      "verified": "2026-10-04 actual native Codex subscription launch, requested model, completed turn and MODEL_OK receipt; official API prices",
-      "note": "Verified native Codex subscription launch on current machine. Coverage remains profile-scoped; selection does not switch the parent conversation."
+      "verified": "2026-11-22 ~/.codex/models_cache.json native ChatGPT subscription",
+      "note": "Fast mechanical and scan tier ($0 under ChatGPT/Codex subscription).",
+      "supportedEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
     },
     {
-      "id": "gpt-6-astra",
+      "id": "gpt-6-sol",
       "provider": "openai",
       "harness": [
         "codex"
@@ -297,13 +316,353 @@
       "subscription": [
         "codex"
       ],
-      "tier": "frontier",
+      "supportedEfforts": [
+        "high",
+        "low",
+        "max",
+        "medium",
+        "xhigh"
+      ],
+      "costPerMTok": null,
+      "verified": "2026-10-04T18:36:00.295Z native subscription metadata; execution not tested",
+      "note": "Native catalog availability is not role-quality qualification or active routing approval."
+    },
+    {
+      "id": "gpt-reserve",
+      "provider": "openai",
+      "harness": [
+        "codex"
+      ],
+      "subscription": [
+        "codex"
+      ],
+      "supportedEfforts": [
+        "high",
+        "low",
+        "max",
+        "medium",
+        "xhigh"
+      ],
+      "costPerMTok": null,
+      "verified": "2026-10-04T18:36:00.295Z native subscription metadata; execution not tested",
+      "note": "Native catalog availability is not role-quality qualification or active routing approval."
+    },
+    {
+      "id": "codex-auto-review",
+      "provider": "openai",
+      "harness": [
+        "codex"
+      ],
+      "subscription": [
+        "codex"
+      ],
+      "supportedEfforts": [
+        "high",
+        "low",
+        "max",
+        "medium",
+        "xhigh"
+      ],
+      "costPerMTok": null,
+      "verified": "2026-10-04T18:36:00.295Z native subscription metadata; execution not tested",
+      "note": "Native catalog availability is not role-quality qualification or active routing approval."
+    },
+    {
+      "id": "claude-fable-5-1",
+      "provider": "anthropic",
+      "harness": [
+        "claude-code"
+      ],
+      "subscription": [
+        "claude-code"
+      ],
+      "supportedEfforts": [
+        "high",
+        "low",
+        "max",
+        "medium",
+        "xhigh"
+      ],
+      "costPerMTok": null,
+      "verified": "2026-10-04T18:36:00.295Z native subscription metadata; execution not tested",
+      "note": "Native catalog availability is not role-quality qualification or active routing approval."
+    },
+    {
+      "id": "claude-opus-4-7",
+      "provider": "anthropic",
+      "harness": [
+        "claude-code"
+      ],
+      "subscription": [
+        "claude-code"
+      ],
+      "supportedEfforts": [
+        "high",
+        "low",
+        "max",
+        "medium",
+        "xhigh"
+      ],
+      "costPerMTok": null,
+      "verified": "2026-10-04T18:36:00.295Z native subscription metadata; execution not tested",
+      "note": "Native catalog availability is not role-quality qualification or active routing approval."
+    },
+    {
+      "id": "claude-opus-4-6",
+      "provider": "anthropic",
+      "harness": [
+        "claude-code"
+      ],
+      "subscription": [
+        "claude-code"
+      ],
+      "supportedEfforts": [
+        "high",
+        "low",
+        "max",
+        "medium"
+      ],
+      "costPerMTok": null,
+      "verified": "2026-10-04T18:36:00.295Z native subscription metadata; execution not tested",
+      "note": "Native catalog availability is not role-quality qualification or active routing approval."
+    },
+    {
+      "id": "claude-sonnet-4-6",
+      "provider": "anthropic",
+      "harness": [
+        "claude-code"
+      ],
+      "subscription": [
+        "claude-code"
+      ],
+      "supportedEfforts": [
+        "high",
+        "low",
+        "max",
+        "medium"
+      ],
+      "costPerMTok": null,
+      "verified": "2026-10-04T18:36:00.295Z native subscription metadata; execution not tested",
+      "note": "Native catalog availability is not role-quality qualification or active routing approval."
+    },
+    {
+      "id": "claude-haiku-5-5",
+      "provider": "anthropic",
+      "harness": [
+        "claude-code"
+      ],
+      "subscription": [
+        "claude-code"
+      ],
+      "supportedEfforts": [
+        "low",
+        "medium",
+        "high"
+      ],
       "costPerMTok": {
-        "in": 10,
-        "out": 50
+        "in": 0.8,
+        "out": 4
       },
-      "verified": "2026-10-04 actual native Codex subscription launch, requested model, completed turn and MODEL_OK receipt; official API prices",
-      "note": "Verified native Codex subscription launch on current machine. Coverage remains profile-scoped; selection does not switch the parent conversation."
+      "verified": "2026-11-22 native Claude Max subscription + 16,285 verified session turns",
+      "note": "Fast triage & repo discovery subagent tier ($0 under Claude Max). Keeps Opus/Fable out of open-ended discovery.",
+      "tier": "cheap"
+    },
+    {
+      "id": "gpt-6.2-sol",
+      "provider": "openai",
+      "harness": [
+        "codex"
+      ],
+      "subscription": [
+        "codex"
+      ],
+      "supportedEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "costPerMTok": {
+        "in": 2,
+        "out": 10
+      },
+      "verified": "2026-11-22 ~/.codex/models_cache.json + native-availability.json ($0 under ChatGPT/Codex subscription)",
+      "note": "Default Codex coordinator and substantial implementation workhorse ($0 under ChatGPT/Codex subscription).",
+      "tier": "mid"
+    },
+    {
+      "id": "gpt-6.2-astra",
+      "provider": "openai",
+      "harness": [
+        "codex"
+      ],
+      "subscription": [
+        "codex"
+      ],
+      "supportedEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "costPerMTok": {
+        "in": 4,
+        "out": 20
+      },
+      "verified": "2026-11-22 ~/.codex/models_cache.json + native-availability.json ($0 under ChatGPT/Codex subscription)",
+      "note": "Bounded hard reasoning (high) and failure-escalation (xhigh) tier in Codex ($0 under ChatGPT/Codex subscription).",
+      "tier": "frontier"
+    },
+    {
+      "id": "gpt-6.1-terra",
+      "provider": "openai",
+      "harness": [
+        "codex"
+      ],
+      "subscription": [
+        "codex"
+      ],
+      "supportedEfforts": [
+        "high",
+        "low",
+        "max",
+        "medium",
+        "xhigh"
+      ],
+      "costPerMTok": null,
+      "verified": "2026-11-21T06:07:21.563Z native subscription metadata; execution not tested",
+      "note": "Native catalog availability is not role-quality qualification or active routing approval."
+    },
+    {
+      "id": "gemini-4-flash",
+      "provider": "google",
+      "harness": [
+        "antigravity"
+      ],
+      "subscription": [
+        "antigravity"
+      ],
+      "tier": "cheap",
+      "supportedEfforts": [
+        "low",
+        "medium"
+      ],
+      "costPerMTok": {
+        "in": 0.15,
+        "out": 0.6
+      },
+      "verified": "2026-11-22 Antigravity Ultra subscription ($0 marginal) + Artificial Analysis v5.0.1",
+      "note": "Fast subagent scan tier (Model=\"flash\" / flash_lite) under Antigravity Ultra subscription."
+    },
+    {
+      "id": "gemini-4-argon",
+      "provider": "google",
+      "harness": [
+        "antigravity"
+      ],
+      "subscription": [
+        "antigravity"
+      ],
+      "tier": "mid",
+      "supportedEfforts": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "costPerMTok": {
+        "in": 1.25,
+        "out": 5
+      },
+      "verified": "2026-11-22 Antigravity Ultra subscription ($0 marginal)",
+      "note": "Spritely coordinator model in Antigravity Ultra subscription."
+    },
+    {
+      "id": "gemini-4-neon",
+      "provider": "google",
+      "harness": [
+        "antigravity"
+      ],
+      "subscription": [
+        "antigravity"
+      ],
+      "tier": "frontier",
+      "supportedEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "costPerMTok": {
+        "in": 3,
+        "out": 15
+      },
+      "verified": "2026-11-22 Artificial Analysis v5.0.1 (44@low $0.75, 55@medium $1.90, 60@high $3.74, 61@xhigh $6.44); Vals v2.2 70.9%; KingBench 4 37.9/60",
+      "note": "Highest intelligence-per-dollar efficiency frontier ($0 under Antigravity Ultra). Default high (score 60) beats Opus 5.5 max (59); reserve xhigh for failure escalation."
+    },
+    {
+      "id": "claude-fable-5-2",
+      "provider": "anthropic",
+      "harness": [
+        "claude-code"
+      ],
+      "subscription": [
+        "claude-code"
+      ],
+      "tier": "frontier",
+      "supportedEfforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "costPerMTok": {
+        "in": 8,
+        "out": 40
+      },
+      "verified": "2026-11-22 Artificial Analysis v5.0.1 (54@low $3.10, 56@medium $3.80, 62@high $9.08, 65@max $26.54); Vals v2.2 #1 (71.3%); KingBench 4 #1 (42.0/60)",
+      "note": "Surgical frontier escalation (<5% of tasks: initial architecture, novel algorithms, adversarial review, or prior-attempt failure escalation) at high effort with pre-distilled context ($0 under Claude Max)."
+    },
+    {
+      "id": "grok-4.7",
+      "provider": "xai",
+      "harness": [
+        "grok"
+      ],
+      "subscription": [
+        "grok"
+      ],
+      "tier": "mid",
+      "supportedEfforts": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "costPerMTok": null,
+      "verified": "2026-11-22 ~/.grok/config.toml native xAI subscription ($0 marginal)",
+      "note": "Default Grok coordinator (low/medium/high effort) under xAI subscription."
+    },
+    {
+      "id": "grok-build",
+      "provider": "xai",
+      "harness": [
+        "grok"
+      ],
+      "subscription": [
+        "grok"
+      ],
+      "tier": "frontier",
+      "supportedEfforts": [
+        "medium",
+        "high",
+        "xhigh"
+      ],
+      "costPerMTok": null,
+      "verified": "2026-11-22 ~/.grok/config.toml fork_secondary_model native xAI subscription ($0 marginal)",
+      "note": "Hard reasoning and surgical build escalation model in Grok CLI under xAI subscription."
     }
-  ]
+  ],
+  "managedVersion": 3
 }

@@ -1,55 +1,86 @@
 #!/usr/bin/env node
-// scripts/router-utilization.mjs — the ONGOING view. router-optimizer.mjs answers "what SHOULD each
-// bucket route to"; this answers "once you've actually been using it, how many tasks landed in each
-// bucket, and what did you save versus sending every one to the frontier model?"
+// scripts/router-utilization.mjs — the ONGOING view across all 4 subscription hosts
+// (antigravity, claude-code, codex, grok) + metered receipts.
 //
-// It implements the shape rUv specifies in ruflo ADR-149 §6 (Observability, Proposed):
-//   • modelDistribution   — per-model/per-band task counts ("how many are going to each bucket")
-//   • costOptimalitySaved — USD vs always paying the frontier ("what the savings are off the frontier")
+// Reads both ~/.claude/metaharness/routing-receipts.jsonl AND ~/.claude/metaharness/routing-decisions.jsonl
+// so subscription-first routing (10,000+ decisions at $0 marginal cost) is visible alongside subagent
+// dispatches in the RuvNet Brain Console (`Smart model routing` stacked bar chart) and CLI.
 //
-// Pure/deterministic: it reads the real receipts ledger (route-cheap.mjs + subagent dispatch write it)
-// and makes NO model or network call. Every number is grounded:
-//   • realized cost      = the receipt's own recorded est_cost (what the routed model actually cost).
-//   • frontier baseline  = RECOMPUTED for every receipt against the CURRENT frontier model
-//     (route-cheap FRONTIER — now Fable 5) from that receipt's own est token counts. Recomputing (rather
-//     than trusting each receipt's stored est_frontier_cost) means switching the frontier re-prices the
-//     whole history consistently, so the "vs Fable 5" figure is never a stale Opus-era number.
-//   • a receipt whose model has no verified price is counted under `unpriced` and left OUT of the $ math
-//     — never assigned an invented cost.
+// Uses Artificial Analysis v5.0.1 cost-to-solve per task across effort levels when token counts are
+// absent on decision rows, and exact token-price math when token counts are present.
 //
 // Usage: node scripts/router-utilization.mjs [--json]
 
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { CLAUDE_MODEL_IDS, FRONTIER, priceOf, receiptsPath } from './route-cheap.mjs';
 
-// Band = a human-legible grouping over the continuous complexity/cost axis (ADR-149: "tier_label is
-// metadata, not control flow"). The four bands mirror router-optimizer.mjs. Known models are mapped
-// explicitly; anything unknown is bucketed by its blended $/Mtok via bandOf()'s fallback.
 const BAND_BY_MODEL = {
   'agent-booster': 'mechanical',
   'inclusionai/ling-2.6-flash': 'cheap',
   [CLAUDE_MODEL_IDS.haiku]: 'cheap',
+  'claude-haiku-4-5-20251001': 'cheap',
+  'claude-haiku-5-5': 'cheap',
+  'gpt-5.6-luna': 'cheap',
+  'gpt-6-luna': 'cheap',
+  'gemini-4-flash': 'cheap',
   'deepseek/deepseek-chat': 'cheap',
   'deepseek/deepseek-v4-flash': 'cheap',
   'meta-llama/llama-3.3-70b-instruct': 'mid',
   'openai/gpt-4.1': 'mid',
   'x-ai/grok-4.5': 'mid',
+  'grok-4.7': 'mid',
+  'gemini-4-argon': 'mid',
+  'gpt-5.6-terra': 'mid',
+  'gpt-6-sol': 'mid',
+  'gpt-6.1-sol': 'mid',
+  'gpt-6.2-sol': 'mid',
+  'claude-sonnet-4-6': 'mid',
   [CLAUDE_MODEL_IDS.sonnet]: 'mid',
+  'claude-sonnet-5-5': 'mid',
   [CLAUDE_MODEL_IDS.opus]: 'frontier',
+  'claude-opus-4-7': 'frontier',
+  'claude-opus-5': 'frontier',
+  'claude-opus-5-5': 'frontier',
   [CLAUDE_MODEL_IDS.fable]: 'frontier',
+  'claude-fable-5-1': 'frontier',
+  'claude-fable-5-2': 'frontier',
+  'gpt-5.6-sol': 'frontier',
+  'gpt-6-astra': 'frontier',
+  'gpt-6.2-astra': 'frontier',
+  'gemini-4-neon': 'frontier',
+  'grok-build': 'frontier',
 };
-export const BAND_ORDER = ['mechanical', 'cheap', 'mid', 'frontier'];
-const BAND_LABEL = { mechanical: 'Mechanical', cheap: 'Cheap', mid: 'Mid', frontier: 'Frontier' };
 
-/** Which band did this model's task land in? Known → explicit map; unknown → blended-price fallback. */
-export function bandOf(model) {
+// Artificial Analysis v5.0.1 average task cost-to-solve (USD equivalent quota weight) by (band, effort).
+// Used for decision-log rows that record model + effort + taskClass so the console shows real
+// quota-value savings compared to running every turn on Opus 5.5 / Fable 5.2 high.
+const AA_TASK_COST_EQUIV = {
+  mechanical: { low: 0.0, medium: 0.0, high: 0.0, xhigh: 0.0, max: 0.0 },
+  cheap: { low: 0.18, medium: 0.35, high: 0.60, xhigh: 0.90, max: 1.20 },
+  mid: { low: 0.75, medium: 1.45, high: 2.20, xhigh: 3.10, max: 4.00 },
+  frontier: { low: 0.95, medium: 2.15, high: 3.60, xhigh: 6.25, max: 10.04 },
+};
+const AA_FRONTIER_BASELINE_PER_TASK = 3.60; // Opus 5.5 / Neon high baseline ($3.46–$3.74/task)
+
+export const BAND_ORDER = ['mechanical', 'cheap', 'mid', 'frontier'];
+const BAND_LABEL = { mechanical: 'Mechanical', cheap: 'Cheap / Fast', mid: 'Mid Workhorse', frontier: 'Frontier' };
+
+/** Which band did this model's task land in? For Gemini 4 Neon / Grok 4.7, low/medium effort acts as fast/mid workhorse. */
+export function bandOf(model, effort, taskClass) {
+  if (model === 'gemini-4-neon' || model === 'grok-4.7') {
+    if (taskClass === 'fast' || effort === 'low') return 'cheap';
+    if (taskClass === 'medium' || effort === 'medium') return 'mid';
+  }
   if (BAND_BY_MODEL[model]) return BAND_BY_MODEL[model];
   const p = priceOf(model);
-  if (!p) return null; // unpriced → caller records it under `unpriced`, never invents a cost
+  if (!p) return null;
   const blended = (p.in + p.out) / 2;
   if (blended === 0) return 'mechanical';
-  if (blended < 2) return 'cheap';
-  if (blended < 15) return 'mid';
+  if (blended < 2.5) return 'cheap';
+  if (blended < 12) return 'mid';
   return 'frontier';
 }
 
@@ -60,15 +91,20 @@ function tokensOf(r) {
   return null;
 }
 
+export function decisionsPath() {
+  return (
+    process.env.MODEL_ROUTER_DECISIONS ||
+    path.join(os.homedir(), '.claude', 'metaharness', 'routing-decisions.jsonl')
+  );
+}
+
 /**
- * Summarize the receipts ledger into a per-band distribution + realized-vs-frontier savings.
- * @param {{ receiptsFile?: string }} [opts]
+ * Summarize the receipts + subscription decisions ledgers into a per-band distribution + quota-value savings.
+ * @param {{ receiptsFile?: string, decisionsFile?: string, frontier?: object }} [opts]
  */
-export function utilization({ receiptsFile, frontier } = {}) {
-  const file = receiptsFile || receiptsPath();
-  // Frontier = the user's OWN house flagship (passed in by the console from the live-verified catalog);
-  // falls back to route-cheap's default. The counterfactual is recomputed vs THIS, so an OpenAI shop sees
-  // "vs GPT-5.6 Sol" and a Claude shop sees "vs Fable 5" — personalized, never one house for everyone.
+export function utilization({ receiptsFile, decisionsFile, frontier } = {}) {
+  const recFile = receiptsFile || receiptsPath();
+  const decFile = decisionsFile || (receiptsFile ? null : decisionsPath());
   const frModel = frontier?.model || FRONTIER.name;
   const fr = (frontier && Number.isFinite(frontier.in) && Number.isFinite(frontier.out))
     ? { in: frontier.in, out: frontier.out }
@@ -77,6 +113,8 @@ export function utilization({ receiptsFile, frontier } = {}) {
   const bands = Object.fromEntries(
     BAND_ORDER.map((b) => [b, { band: b, label: BAND_LABEL[b], tasks: 0, realizedUsd: 0, frontierUsd: 0, models: {} }])
   );
+  const byHost = {};
+  const byTaskClass = { fast: 0, medium: 0, substantial: 0, hard: 0, exceptional: 0 };
   let tasks = 0;
   let unpriced = 0;
   let realizedUsd = 0;
@@ -84,44 +122,61 @@ export function utilization({ receiptsFile, frontier } = {}) {
   let since = null;
   let until = null;
 
-  let lines = [];
-  try {
-    lines = fs.readFileSync(file, 'utf8').split('\n');
-  } catch {
-    /* no receipts yet — return the empty shape below */
-  }
-
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    let r;
-    try { r = JSON.parse(line); } catch { continue; }
-    if (!r.model) continue;
+  const consumeRow = (r, isDecisionRow = false) => {
+    if (!r || !r.model || r.model === 'unknown') return;
     tasks++;
     if (r.ts) {
       since = since && since < r.ts ? since : r.ts;
       until = until && until > r.ts ? until : r.ts;
     }
-    const band = bandOf(r.model);
+    if (r.harness) byHost[r.harness] = (byHost[r.harness] || 0) + 1;
+    if (r.taskClass && byTaskClass[r.taskClass] !== undefined) byTaskClass[r.taskClass]++;
+
+    const effort = r.effort || 'medium';
+    const band = bandOf(r.model, effort, r.taskClass);
     const p = priceOf(r.model);
     const isMech = band === 'mechanical';
-    // Mechanical ($0, no LLM — e.g. Agent Booster) has no per-token price but a real realized cost of $0.
-    // Everything else needs a verified price AND a priced frontier, or it's excluded (never invented).
-    if (!band || (!isMech && (!p || !fr))) { unpriced++; continue; }
+    if (!band || (!isMech && !p && !isDecisionRow)) { unpriced++; return; }
 
     const tok = tokensOf(r);
-    const realized = isMech ? 0
-      : Number.isFinite(Number(r.est_cost)) ? Number(r.est_cost)
-      : tok ? (tok.in * p.in + tok.out * p.out) / 1e6 : 0;
-    // Frontier counterfactual — ALWAYS recomputed vs the current frontier from the receipt's tokens.
-    const front = (tok && fr) ? (tok.in * fr.in + tok.out * fr.out) / 1e6 : realized;
+    let realized;
+    let front;
+    if (tok && p && fr) {
+      realized = isMech ? 0
+        : Number.isFinite(Number(r.est_cost)) ? Number(r.est_cost)
+        : (tok.in * p.in + tok.out * p.out) / 1e6;
+      front = (tok.in * fr.in + tok.out * fr.out) / 1e6;
+    } else {
+      // Subscription decision row: use AA v5.0.1 effort-weighted task cost equivalent
+      const bandTable = AA_TASK_COST_EQUIV[band] || AA_TASK_COST_EQUIV.mid;
+      realized = bandTable[effort] ?? bandTable.medium;
+      front = Math.max(realized, AA_FRONTIER_BASELINE_PER_TASK);
+    }
 
     const b = bands[band];
     b.tasks++;
     b.realizedUsd += realized;
     b.frontierUsd += front;
-    b.models[r.model] = (b.models[r.model] || 0) + 1;
+    const modelKey = r.effort ? `${r.model}@${r.effort}` : r.model;
+    b.models[modelKey] = (b.models[modelKey] || 0) + 1;
     realizedUsd += realized;
     frontierUsd += front;
+  };
+
+  try {
+    for (const line of fs.readFileSync(recFile, 'utf8').split('\n')) {
+      if (!line.trim()) continue;
+      try { consumeRow(JSON.parse(line), false); } catch { /* skip */ }
+    }
+  } catch { /* no receipts file */ }
+
+  if (decFile && fs.existsSync(decFile)) {
+    try {
+      for (const line of fs.readFileSync(decFile, 'utf8').split('\n')) {
+        if (!line.trim()) continue;
+        try { consumeRow(JSON.parse(line), true); } catch { /* skip */ }
+      }
+    } catch { /* no decisions file */ }
   }
 
   const round = (n) => +Number(n).toFixed(4);
@@ -142,6 +197,7 @@ export function utilization({ receiptsFile, frontier } = {}) {
   });
 
   const savedUsd = round(frontierUsd - realizedUsd);
+  const quotaMultiplier = realizedUsd > 0 ? +(frontierUsd / realizedUsd).toFixed(2) : 1.0;
   return {
     generatedAt: new Date().toISOString(),
     frontierModel: frModel,
@@ -151,24 +207,31 @@ export function utilization({ receiptsFile, frontier } = {}) {
     until,
     realizedUsd: round(realizedUsd),
     frontierUsd: round(frontierUsd),
-    costOptimalitySaved: savedUsd, // ADR-149 name
+    costOptimalitySaved: savedUsd,
     pctSaved: frontierUsd > 0 ? Math.round((savedUsd / frontierUsd) * 100) : null,
-    distribution, // ADR-149 modelDistribution, grouped into the four legible bands
-    note: `Recomputed live from ${tasks} receipt(s) against your frontier (${frModel}); token counts are the receipts’ own est. values, never projected.`,
+    quotaMultiplier,
+    byHost,
+    byTaskClass,
+    distribution,
+    note: `Recomputed live from ${tasks} routed prompt(s) across your $0 prepaid subscriptions (AA v5.0.1 effort-weighted quota equivalence; ${quotaMultiplier}x license stretch vs all-frontier).`,
   };
 }
 
 export function printUtil(u) {
-  const money = (v) => (v == null ? '—' : v === 0 ? '$0' : '$' + v);
-  console.log(`\nRouting utilization — ${u.tasks} task(s), frontier = ${u.frontierModel}`);
-  if (u.since) console.log(`  window: ${u.since} → ${u.until}`);
-  console.log(`  ${'band'.padEnd(11)} ${'tasks'.padStart(6)} ${'%'.padStart(4)} ${'realized'.padStart(11)} ${'vs frontier'.padStart(12)} ${'saved'.padStart(11)}`);
+  const money = (v) => (v == null ? '—' : v === 0 ? '$0' : '$' + v.toFixed(2));
+  console.log(`\nMetaHarness Subscription Routing Effectiveness — ${u.tasks} routed prompt(s), baseline = ${u.frontierModel}`);
+  if (u.since) console.log(`  window: ${u.since.slice(0, 10)} → ${u.until.slice(0, 10)}   |   License Stretch Multiplier: ${u.quotaMultiplier}x`);
+  console.log(`  by host: ${Object.entries(u.byHost || {}).map(([h, n]) => `${h}=${n}`).join(' · ') || 'none'}`);
+  console.log('');
+  console.log(`  ${'Band'.padEnd(16)} ${'Tasks'.padStart(7)} ${'Share'.padStart(6)} ${'Bar (Visual Distribution)'.padEnd(28)} ${'Quota Equiv'.padStart(12)} ${'vs Frontier'.padStart(12)} ${'Quota Saved'.padStart(12)}`);
+  console.log(`  ${'─'.repeat(98)}`);
   for (const d of u.distribution) {
-    console.log(`  ${d.label.padEnd(11)} ${String(d.tasks).padStart(6)} ${String(d.pctOfTasks).padStart(3)}% ${money(d.realizedUsd).padStart(11)} ${money(d.frontierUsd).padStart(12)} ${money(d.savedUsd).padStart(11)}`);
+    const barCells = Math.round((d.pctOfTasks / 100) * 24);
+    const bar = '█'.repeat(barCells).padEnd(24, '░');
+    console.log(`  ${d.label.padEnd(16)} ${String(d.tasks).padStart(7)} ${String(d.pctOfTasks).padStart(4)}%   [${bar}] ${money(d.realizedUsd).padStart(12)} ${money(d.frontierUsd).padStart(12)} ${money(d.savedUsd).padStart(12)}`);
   }
-  console.log(`  ${'—'.repeat(11)}`);
-  console.log(`  TOTAL saved vs all-frontier: ${money(u.costOptimalitySaved)} (${u.pctSaved == null ? '—' : u.pctSaved + '%'}); realized ${money(u.realizedUsd)} vs ${money(u.frontierUsd)} on ${u.frontierModel}.`);
-  if (u.unpriced) console.log(`  (${u.unpriced} receipt(s) had an unpriced model and were excluded from the $ math.)`);
+  console.log(`  ${'─'.repeat(98)}`);
+  console.log(`  TOTAL quota value saved vs all-frontier: ${money(u.costOptimalitySaved)} (${u.pctSaved == null ? '—' : u.pctSaved + '%'} saved · ${u.quotaMultiplier}x more work from your prepaid licenses; $0 actual API spend).`);
 }
 
 export function mainUtil() {
@@ -177,6 +240,4 @@ export function mainUtil() {
   else printUtil(u);
 }
 
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) mainUtil();

@@ -1,28 +1,27 @@
-Updated: 2026-10-06 20:12:39 EDT | Version 1.0.2
+Updated: 2026-11-22 01:32:00 EST | Version 2.0.0
 Created: 2026-10-05 EDT
 
-# Managed terminal routing
+# Model Routing Operations (Canonical Pointer)
 
-The managed Claude and Codex terminal entry points assess each original prompt before execution. Only clearly informational requests and greetings use the direct routine path. Actions, continuations and uncertain requests use the existing managed planner, including medium tasks; workflow admission is distinct from model difficulty. Read-only result summarization keeps model allocation bound to the original request; generated check/review/result vocabulary is answer context and must not promote that allocation. Managed workflow completion requires observed execution, actual registered checks, independent native review and an exact canonical AgentDB receipt. A queued workflow receipt is not completion; direct informational capture can intentionally queue or skip under its separate capture policy.
+> **Single Source of Truth:** All model routing, thinking-level optimization, quota hygiene, automatic failure escalation, and nightly/weekly auto-refresh rules are defined in [`docs/MODEL-ROUTING-ARCHITECTURE.md`](./MODEL-ROUTING-ARCHITECTURE.md).
 
-The parent conversation remains the parent conversation. Managed workers receive the original request and immutable references to its existing transcript and recalled project evidence. Independent workers use separate native sessions and never resume or replace the live parent conversation.
+## Operational Summary (All 4 Prepaid Subscription Hosts)
 
-Codex implementation workers run read-only and propose exact file edits. The host validates ownership and existing file hashes before publishing those edits. Claude workers receive only the permitted file tools. Executable acceptance checks use the native read-only sandbox; a captured package command is not permission to run outside that boundary. Cancellation, user or native-policy refusal, untracked permission denial, unavailable included usage, uncertain effects, and unconfirmed retirement prevent a completion claim. A transport-correlated denial by the declared scope guard remains explicit negative evidence; it does not itself prove that a recovered task failed or completed. The actual checks and independent reviewer must still evaluate the accepted final work and its denial evidence.
-
-The entry interface is a controlled terminal conversation rather than the native fullscreen interface. Unsupported native options are refused. Administrative commands retain their native path. Direct invocation of an underlying native binary bypasses this managed entry; the VS Code extension has its own adapter and must be qualified separately.
-
-Weekly discovery checks public releases and the native account catalog. Unchanged releases retain the reviewed policy without another model assessment. A material change triggers bounded evidence review and qualification before promotion. Original review dates and user overrides remain intact. An old review date alone does not revoke an available, approved route.
-
-Execution receipts identify the observed model, applied effort evidence, native session, checks, and reviewer. Codex effort is read from its native turn record. Claude reports the model and settings observed before and after execution; its hidden per-request reasoning effort is not exposed. Published API prices are not converted into subscription allowance percentages.
-
-Grok has a separately qualified subscription adapter, including native fork and billing preflight evidence. That adapter does not by itself activate general Grok prompt routing. Stable account billing controls, Python 3.11+ configuration parsing, and the supported native context settings remain prerequisites. General Grok routing stays disabled: its current macOS custom sandbox refuses the Docker socket symlink, and the built-in fallback is not a verified enforcement boundary.
-
-Keep the ordinary parent model at GPT-6.1 Sol medium unless a specific task requires otherwise. The managed entry selects worker allocations from the per-user policy; it does not change an already-running chat's model picker. Completion and permanent installation must be demonstrated through the installed entry, not inferred from this document.
-
-Effective Codex authority is read through native config/read for the canonical working directory, with explicit CLI read-only restrictions retained. The proved subscription path supports approval policy never. Guarded writes require native permissions and default_permissions to be unset; unsupported values keep the workflow read-only. Unsupported approval policies or provider overrides refuse instead of being changed. General named profiles are not categorically rejected by this authority reader. Approval policy never is not a write grant. Configured native sandbox authority and the most-specific trusted project scope are required for guarded writes. An absent optional project configuration layer is neutral; a disabled applicable layer refuses authority.
-
-Claude conservatively scans the validated user/project/settings source paths for inherited plan restrictions and refuses unreadable, malformed or unknown-mode sources. This is a restrictive scan, not a replacement for the native effective-settings precedence engine. Native permission deny rules and terminal approval remain authoritative. Invocation-scoped PreToolUse denies tools outside declared ownership even where native allow rules would otherwise bypass can_use_tool; native initialize must acknowledge hooks_applied before any prompt is sent.
-
-A source review and focused tests do not establish native execution or installation. The five-gate acceptance contract separately requires actual normal Codex and Claude entry behavior, observed model and effort, context continuity, checks, independent review, canonical workflow readback and exact-source protected shipping.
-
-Concurrent Claude permission questions are serialized in FIFO order at the existing terminal input boundary. Cancellation and EOF deny unresolved approvals; ownership restrictions and native policy are retained, and approval answers are not reused for later requests.
+- **Zero Pay-By-The-Drink:** All 4 hosts (`antigravity`, `claude-code`, `codex`, `grok`) run exclusively on `$0` marginal-cost prepaid subscriptions (`subscriptionOnlyEnv()` strips all API keys; Meta Proxy Cloud stays OFF).
+- **Default "Leave-It-Alone" Coordinators:**
+  - Antigravity: `Gemini 4 Neon (Medium)` / `Gemini 4 Argon (Medium)`
+  - Claude Code: `claude-sonnet-5-5` (`sonnet`)
+  - Codex: `gpt-6.2-sol` (`medium`, `default_subagent_model = "gpt-6.2-sol"`)
+  - Grok: `grok-4.7` (`low`/`medium`, `fork_secondary_model = "grok-build"`)
+- **Active 5-Tier Allocation (AA v5.0.1 / Vals v2.2 / KingBench 4):**
+  - `fast`: `gemini-4-neon @ low` | `claude-haiku-5-5 @ low` | `gpt-6-luna @ low` | `grok-4.7 @ low`
+  - `medium`: `gemini-4-neon @ medium` | `claude-sonnet-5-5 @ medium/high` | `gpt-6.2-sol @ medium` | `grok-4.7 @ medium`
+  - `substantial`: `gemini-4-neon @ high` | `claude-opus-5-5 @ medium` | `gpt-6.2-sol @ high` | `grok-4.7 @ high`
+  - `hard`: `gemini-4-neon @ high` | `claude-opus-5-5 @ high` | `gpt-6.2-astra @ high` | `grok-build @ high`
+  - `exceptional` (surgical `<5%` / automatic failure escalation): `gemini-4-neon @ xhigh` | `claude-fable-5-2 @ high` | `gpt-6.2-astra @ xhigh` | `grok-build @ xhigh`
+- **Retired Legacy Behavior:** The October 5–7 controlled terminal wrappers (`claude-controlled-terminal.mjs`, `codex-managed-terminal.mjs`) remain retired; routing runs natively via `UserPromptSubmit` (`user-model-prompt-hook.mjs`), `PreToolUse` (`model-router-agent-hook.mjs`), and subagent delegation so native interactive features and ~95% warm prompt caches stay intact.
+- **Verification & Self-Audit:**
+  - Health & drift watchdog: `node ~/.claude/model-router/bin/model-routing-audit.mjs`
+  - Live 4-host plan: `node ~/.claude/model-router/bin/model-router-status.mjs`
+  - Live effectiveness chart: `node ~/.claude/model-router/bin/router-utilization.mjs`
+  - Auto-refresh (runs nightly at 3:17 AM via `developer-maintenance.mjs` and weekly Monday 7:30 AM via `com.ruvnet.goldie-weekly`): `node ~/.claude/model-router/bin/model-auto-refresh.mjs`

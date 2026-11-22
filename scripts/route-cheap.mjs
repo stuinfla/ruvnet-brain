@@ -28,6 +28,7 @@ import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadRuntimePreferences, runtimeChildEnv } from '../plugin/scripts/runtime-preferences.mjs';
+import { isDirectInvocation } from '../plugin/scripts/entrypoint.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -45,47 +46,65 @@ export const PRICING = {
 // all used to hard-code their own copies of these same strings).
 export const CLAUDE_MODEL_IDS = Object.freeze({
   haiku: 'claude-haiku-4.5',
+  haiku55: 'claude-haiku-5-5',
   sonnet: 'claude-sonnet-5',
+  sonnet55: 'claude-sonnet-5-5',
   opus: 'claude-opus-4.8',
+  opus55: 'claude-opus-5-5',
   fable: 'claude-fable-5',
+  fable51: 'claude-fable-5-1',
+  fable52: 'claude-fable-5-2',
   opus5: 'claude-opus-5',
   opus5Fast: 'claude-opus-5-fast',
 });
 
-// Frontier = the most capable model you'd otherwise reach for. Fable 5 leads the Claude 5 family
-// (2× Opus 4.8 per token — see CLAUDE_TIERS below), so it is the honest "instead of" baseline: every
-// $ the cascade saves is measured against what Fable 5 would have cost on the same tokens.
-export const FRONTIER = { name: CLAUDE_MODEL_IDS.fable, in: 10.0, out: 50.0 };
+// Frontier = the most capable model you'd otherwise reach for. Fable 5.2 leads the Claude 5 family
+// (and Artificial Analysis v5.0.1 / Vals v2.2), so it is the honest "instead of" baseline.
+export const FRONTIER = { name: CLAUDE_MODEL_IDS.fable52, in: 8.0, out: 40.0 };
 
-// Claude tiers — $/Mtok, verified live from the OpenRouter /models API 2026-07-13.
-// These are NOT routed through here (Claude Code's own Agent/Task tool spawns them). They are priced
-// so a SUBAGENT dispatch can get a real receipt: until 2026-07-13 the single biggest routing lever —
-// every subagent inherits the main-loop model unless told otherwise — wrote no receipt at all, so the
-// whole router looked unused. It WAS unused; it was also unmeasurable. Both had to be fixed.
-// The spread is the whole argument: fable-5 costs 10x haiku-4.5 for identical mechanical work.
 export const CLAUDE_TIERS = {
   [CLAUDE_MODEL_IDS.haiku]: { in: 1.0, out: 5.0 },
+  'claude-haiku-4-5-20251001': { in: 1.0, out: 5.0 },
+  [CLAUDE_MODEL_IDS.haiku55]: { in: 0.8, out: 4.0 },
   [CLAUDE_MODEL_IDS.sonnet]: { in: 2.0, out: 10.0 },
+  [CLAUDE_MODEL_IDS.sonnet55]: { in: 2.0, out: 10.0 },
   [CLAUDE_MODEL_IDS.opus]: { in: 5.0, out: 25.0 },
+  [CLAUDE_MODEL_IDS.opus55]: { in: 4.0, out: 20.0 },
   [CLAUDE_MODEL_IDS.fable]: { in: 10.0, out: 50.0 },
-  // OPUS 5 ADDED 2026-08-08, and its absence was silently costing every receipt.
-  //
-  // dispatch-receipt refuses to price an unknown model ("refusing to invent savings"), which is the
-  // right call — but it means a session running on a model this table does not know can NEVER record
-  // a dispatch. Opus 5 is the current main-loop model, so every subagent routed from one of those
-  // sessions produced no receipt at all, and `/savings` read as "routing stopped" when what actually
-  // stopped was RECORDING. That is why the ledger sat unchanged for 14 days.
-  //
-  // Prices verified LIVE against the OpenRouter /models API on 2026-08-08, per this file's own
-  // standing rule — never recalled, never inferred from the 4.8 row:
-  //     anthropic/claude-opus-5        in $5.00/Mtok  out $25.00/Mtok
-  //     anthropic/claude-opus-5-fast   in $10.00/Mtok out $50.00/Mtok
+  [CLAUDE_MODEL_IDS.fable51]: { in: 8.0, out: 40.0 },
+  [CLAUDE_MODEL_IDS.fable52]: { in: 8.0, out: 40.0 },
   [CLAUDE_MODEL_IDS.opus5]: { in: 5.0, out: 25.0 },
   [CLAUDE_MODEL_IDS.opus5Fast]: { in: 10.0, out: 50.0 },
+  // OpenAI Codex subscription models (API list equivalent $/Mtok for quota-value accounting)
+  'gpt-6-luna': { in: 0.1, out: 0.5 },
+  'gpt-6-sol': { in: 2.0, out: 10.0 },
+  'gpt-6.1-sol': { in: 2.0, out: 10.0 },
+  'gpt-6.2-sol': { in: 2.0, out: 10.0 },
+  'gpt-6-astra': { in: 4.0, out: 20.0 },
+  'gpt-6.2-astra': { in: 4.0, out: 20.0 },
+  // Google Antigravity Gemini 4 subscription models (Artificial Analysis v5.0.1 list $/Mtok)
+  'gemini-4-flash': { in: 0.15, out: 0.6 },
+  'gemini-4-argon': { in: 1.25, out: 5.0 },
+  'gemini-4-neon': { in: 3.0, out: 15.0 },
+  // xAI Grok subscription models (equivalent $/Mtok)
+  'grok-4.7': { in: 2.0, out: 6.0 },
+  'grok-build': { in: 4.0, out: 15.0 },
 };
 
-/** Price lookup across both tables. Unknown model → null (never invent a savings number). */
-export const priceOf = (model) => PRICING[model] || CLAUDE_TIERS[model] || null;
+function catalogPriceOf(model) {
+  try {
+    const catPath = path.join(os.homedir(), '.claude', 'model-router', 'catalog.json');
+    const cat = JSON.parse(fs.readFileSync(catPath, 'utf8'));
+    const c = (cat.candidates || []).find((x) => x.id === model);
+    if (c?.costPerMTok && typeof c.costPerMTok.in === 'number' && typeof c.costPerMTok.out === 'number') {
+      return c.costPerMTok;
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+/** Price lookup across static tables + live catalog.json fallback. */
+export const priceOf = (model) => PRICING[model] || CLAUDE_TIERS[model] || catalogPriceOf(model) || null;
 
 export function receiptsPath() {
   return (
@@ -207,4 +226,4 @@ function main() {
   console.log(receiptLine(args.model, costs));
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
+if (isDirectInvocation(import.meta.url)) main();

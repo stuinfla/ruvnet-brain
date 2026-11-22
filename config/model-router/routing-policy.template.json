@@ -1,73 +1,142 @@
 {
   "schemaVersion": 1,
-  "reviewedAt": "2026-10-04T13:32:24.704091Z",
+  "reviewedAt": "2026-11-22T06:10:00.000Z",
   "maxAgeMs": 604800000,
   "routes": {
-    "codex": {
+    "antigravity": {
       "fast": {
-        "model": "gpt-6-luna",
+        "model": "gemini-4-neon",
         "effort": "low"
       },
       "medium": {
-        "model": "gpt-6.1-sol",
+        "model": "gemini-4-neon",
         "effort": "medium"
       },
-      "hard": {
-        "model": "gpt-6-astra",
+      "substantial": {
+        "model": "gemini-4-neon",
         "effort": "high"
       },
-      "substantial": {
-        "model": "gpt-6.1-sol",
+      "hard": {
+        "model": "gemini-4-neon",
         "effort": "high"
       },
       "exceptional": {
-        "model": "gpt-6-astra",
+        "model": "gemini-4-neon",
         "effort": "xhigh",
         "requiresNamedReason": true
       }
     },
     "claude-code": {
       "fast": {
-        "model": "claude-sonnet-5-5",
+        "model": "claude-haiku-5-5",
         "effort": "low"
       },
       "medium": {
         "model": "claude-sonnet-5-5",
         "effort": "medium"
       },
+      "substantial": {
+        "model": "claude-opus-5-5",
+        "effort": "medium"
+      },
       "hard": {
         "model": "claude-opus-5-5",
         "effort": "high"
       },
+      "exceptional": {
+        "model": "claude-fable-5-2",
+        "effort": "high",
+        "requiresNamedReason": true
+      },
       "codingEffort": "high"
+    },
+    "codex": {
+      "fast": {
+        "model": "gpt-6-luna",
+        "effort": "low"
+      },
+      "medium": {
+        "model": "gpt-6.2-sol",
+        "effort": "medium"
+      },
+      "substantial": {
+        "model": "gpt-6.2-sol",
+        "effort": "high"
+      },
+      "hard": {
+        "model": "gpt-6.2-astra",
+        "effort": "high"
+      },
+      "exceptional": {
+        "model": "gpt-6.2-astra",
+        "effort": "xhigh",
+        "requiresNamedReason": true
+      }
+    },
+    "grok": {
+      "fast": {
+        "model": "grok-4.7",
+        "effort": "low"
+      },
+      "medium": {
+        "model": "grok-4.7",
+        "effort": "medium"
+      },
+      "substantial": {
+        "model": "grok-4.7",
+        "effort": "high"
+      },
+      "hard": {
+        "model": "grok-build",
+        "effort": "high"
+      },
+      "exceptional": {
+        "model": "grok-build",
+        "effort": "xhigh",
+        "requiresNamedReason": true
+      }
+    }
+  },
+  "nativeAgentRouting": {
+    "codex": {
+      "enabled": true,
+      "strict": false
+    },
+    "claude-code": {
+      "enabled": true,
+      "strict": false
+    },
+    "antigravity": {
+      "enabled": true,
+      "strict": false
+    },
+    "grok": {
+      "enabled": true,
+      "strict": false
     }
   },
   "sources": [
     {
-      "url": "https://artificialanalysis.ai/models/releases/comparisons/gpt-6-1-sol-vs-claude-sonnet-5-5",
-      "benchmark": "Intelligence Index v4.3.2; Terminal-Bench 4.0",
-      "checkedAt": "2026-10-04T13:32:24.704295Z"
+      "url": "https://artificialanalysis.ai/models/releases/comparisons/gemini-4-neon-vs-claude-opus-5-5-vs-claude-fable-5-2",
+      "benchmark": "Artificial Analysis Intelligence Index v5.0.1; Terminal-Bench 4.1; CursorBench 4.1; MindStudio KingBench 4; Vals Index v2.2",
+      "checkedAt": "2026-11-22T06:10:00.000Z"
     },
     {
-      "url": "https://artificialanalysis.ai/models/releases/comparisons/gpt-6-luna-vs-gpt-6-astra",
-      "benchmark": "Intelligence Index v4.3.2; Terminal-Bench 4.0",
-      "checkedAt": "2026-10-04T13:32:24.704301Z"
+      "url": "https://artificialanalysis.ai/models/releases/comparisons/gpt-6-2-sol-vs-gpt-6-2-astra",
+      "benchmark": "Artificial Analysis Intelligence Index v5.0.1; Terminal-Bench 4.1",
+      "checkedAt": "2026-11-22T06:10:00.000Z"
     }
   ],
   "qualification": {
-    "basis": "live provider metadata, five native subscription smoke launches, independent effort comparisons, user allocation constraint",
+    "basis": "Artificial Analysis v5.0.1 cost-to-solve across thought levels, Vals Index v2.2, KingBench 4, CursorBench 4.1, and live native subscription verification across Antigravity, Claude Code, Codex, and Grok",
     "limits": [
-      "Not project-specific optimality proof",
-      "Luna fast limited to noncoding",
-      "No automatic newmodel entitlement claim",
-      "Parent conversation model remains host-controlled",
-      "Substantial/exceptional allocation reflects user correctness preference, not newly measured optimality",
-      "Free-text task classes are heuristic; caller taskFacts can express uncertainty and scope",
-      "No assumed completion-speed or subscription-quota multipliers",
-      "Native agent hook updatedInput rewrite has not passed host acceptance proof"
+      "Subscription-only execution ($0 marginal cost; API keys stripped)",
+      "Avoid xhigh/max as routine defaults: Neon high (60 @ $3.74) beats Opus 5.5 max (59 @ $10.04); Fable 5.2 high (62 @ $9.08) reserved for surgical <5% frontier escalation",
+      "Parent conversation stays on fast/medium coordinator to preserve warm prompt cache (96.7% cache hit rate); hard/exceptional work delegates to subagents with distilled context",
+      "Automatic failure escalation bumps one tier when prior attempt or test/build verification fails"
     ]
   },
-  "policyRevisionAt": "2026-10-04T13:50:05.851549+00:00",
+  "policyRevisionAt": "2026-11-22T06:10:00.000Z",
   "objectivePriority": [
     "correctness",
     "subscription-allowance",
