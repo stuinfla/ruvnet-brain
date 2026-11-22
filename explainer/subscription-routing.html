@@ -263,20 +263,20 @@
 
   <!-- Section 2 -->
   <section id="two-lens">
-    <h2><span class="num">2</span> The Two-Lens Rule: Personal Coding vs. Deployed Apps</h2>
-    <p class="lead">One of the biggest mistakes teams make is using a pay-by-the-drink cloud proxy for personal coding—or hardcoding literal model names inside production apps.</p>
+    <h2><span class="num">2</span> Why Enterprise Advice Breaks for Developers (Prepaid Seats vs. Buying By the Drink)</h2>
+    <p class="lead">Most AI routing tools and cloud proxies are built for <strong>corporations buying API tokens "by the drink."</strong> Corporations don't run on personal Max, Pro, or Ultra seats—they pay per million tokens on every call, so a centralized cloud proxy makes sense for them. <strong>Developers live in two worlds at once</strong>—and mixing them up either double-bills you or locks your apps onto stale models:</p>
     <div class="grid-2">
       <div class="card" style="border-color: rgba(34,197,94,0.4);">
-        <span class="pill p-green">Lens 1 · $0 Marginal Cost</span>
-        <h3>Personal Coding on Your Machine</h3>
-        <p style="margin-bottom:10px;">You already prepaid for flat-rate seats (Antigravity Ultra, Claude Max, ChatGPT Plus, SuperGrok). Use a <strong>local subscription-only router</strong> that strips all API keys and keeps paid cloud proxies <strong>OFF</strong>.</p>
+        <span class="pill p-green">World 1 · Developers Coding on Prepaid Seats ($0 Extra)</span>
+        <h3>Your Machine: Optimize Max / Pro / Ultra Subscriptions</h3>
+        <p style="margin-bottom:10px;">You already prepaid flat monthly rates for developer accounts (Antigravity Ultra, Claude Max, ChatGPT Plus/Pro, SuperGrok). Sending your coding prompts through a pay-by-the-drink cloud proxy charges you <strong>twice</strong>. Use a <strong>local subscription-only router</strong> that strips all API keys and keeps paid cloud proxies <strong>OFF</strong>.</p>
         <p><strong>Stay in-vendor 90% of the time:</strong> 93%–97% of input tokens are warm prompt cache reads. Bouncing routine turns across vendors triggers a cold cache (5x–10x token penalty + 20s lag).</p>
       </div>
       <div class="card" style="border-color: rgba(56,189,248,0.4);">
-        <span class="pill p-cyan">Lens 2 · Zero Hardcoded Models</span>
-        <h3>Deployed Production Apps (SaaS / Cloud)</h3>
-        <p style="margin-bottom:10px;">Personal subscriptions cannot run production user traffic. Here is where a <strong>dynamic proxy/gateway</strong> (like Meta Proxy, OpenRouter, or externalized <code>APP_MODEL_TIERS_JSON</code>) shines.</p>
-        <p><strong>Never hardcode a model ID in app code.</strong> Request capability tiers (<code>fast</code>, <code>medium</code>, <code>hard</code>, <code>exceptional</code>) so apps automatically upgrade as models improve with zero code deploys.</p>
+        <span class="pill p-cyan">World 2 · Apps You Ship (Buying By the Drink)</span>
+        <h3>Deployed Apps: Zero Hardcoded Models + Dynamic Proxy</h3>
+        <p style="margin-bottom:10px;">When you incorporate AI into products you ship to customers, personal developer seats don't apply—your app buys API tokens <strong>by the drink</strong> just like a corporation. <strong>This</strong> is where dynamic proxies/gateways (Meta Proxy, OpenRouter, or externalized <code>APP_MODEL_TIERS_JSON</code>) shine.</p>
+        <p><strong>Never hardcode a model ID in app code.</strong> Request capability tiers (<code>fast</code>, <code>medium</code>, <code>hard</code>, <code>exceptional</code>) so every app automatically upgrades to newer, cheaper models with zero code changes.</p>
       </div>
     </div>
   </section>
