@@ -155,6 +155,120 @@
     min-width: 0; max-width: 100%;
   }
 
+  /* Top Embedded Explainer Video Band */
+  .hero-video-band {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 72px 24px 8px;
+  }
+  .hero-video-card {
+    background: linear-gradient(160deg, rgba(15, 23, 42, 0.94), rgba(9, 16, 33, 0.96));
+    border: 1px solid rgba(56, 189, 248, 0.32);
+    border-radius: 22px;
+    padding: 16px 20px 18px;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(56, 189, 248, 0.12);
+  }
+  .hero-video-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .hero-video-title {
+    margin: 4px 0 3px;
+    font-size: clamp(1.2rem, 2vw, 1.56rem);
+    font-weight: 900;
+    color: #fff;
+    letter-spacing: -0.02em;
+    line-height: 1.18;
+  }
+  .hero-video-sub {
+    margin: 0;
+    font-size: 0.86rem;
+    color: #cbd5e1;
+    max-width: 740px;
+  }
+  .hero-video-meta {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .video-frame-wrap {
+    position: relative;
+    width: 100%;
+    max-width: 960px;
+    margin: 0 auto;
+    aspect-ratio: 16 / 9;
+    border-radius: 16px;
+    overflow: hidden;
+    background: #050811;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    box-shadow: 0 16px 45px rgba(0, 0, 0, 0.55);
+  }
+  .video-frame-wrap video {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+    background: #050811;
+  }
+  .video-play-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: clamp(10px, 3.2vw, 34px);
+    background: linear-gradient(180deg, rgba(5, 8, 17, 0.02) 48%, rgba(5, 8, 17, 0.72) 100%);
+    border: 0;
+    width: 100%;
+    cursor: pointer;
+    transition: opacity 0.25s ease;
+  }
+  .video-play-overlay.is-hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .video-play-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 22px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #38bdf8, #2563eb);
+    color: #fff;
+    font-size: 0.92rem;
+    font-weight: 850;
+    white-space: nowrap;
+    letter-spacing: -0.01em;
+    box-shadow: 0 12px 34px rgba(37, 99, 235, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.22);
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+  }
+  .video-play-overlay:hover .video-play-pill {
+    transform: translateY(-2px) scale(1.02);
+    box-shadow: 0 16px 40px rgba(56, 189, 248, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.35);
+  }
+  .video-play-icon {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.22);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    padding-left: 2px;
+  }
+  @media (max-width: 960px) {
+    .hero-video-band { padding: 102px 16px 8px; }
+    .hero-video-card { padding: 14px; }
+    .video-play-pill { padding: 7px 14px; font-size: 0.78rem; gap: 7px; }
+    .video-play-icon { width: 20px; height: 20px; font-size: 0.68rem; }
+  }
+
   /* Scrollytelling 3D Stage */
   .story-shell {
     position: relative;
@@ -162,7 +276,7 @@
     grid-template-columns: minmax(320px, 460px) 1fr;
     max-width: 1340px;
     margin: 0 auto;
-    padding: 82px 24px 40px;
+    padding: 24px 24px 40px;
     gap: 28px;
     align-items: start;
   }
@@ -179,7 +293,7 @@
     box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
   }
   @media (max-width: 960px) {
-    .story-shell { grid-template-columns: 1fr; padding-top: 112px; }
+    .story-shell { grid-template-columns: 1fr; padding-top: 20px; }
     .stage-sticky {
       order: -1;
       position: relative;
@@ -499,6 +613,7 @@
     <a href="#story" class="brand">AI Subscription <span>Routing Playbook</span></a>
   </div>
   <nav class="nav-links" aria-label="Primary">
+    <a href="#explainer-video">2-Min Video</a>
     <a href="#story">3D Story</a>
     <a href="#myths">Truths</a>
     <a href="#frontier">Benchmarks</a>
@@ -511,6 +626,50 @@
 </header>
 
 <main id="main-content">
+<!-- ═══════════════════ 2-MINUTE NARRATED EXPLAINER VIDEO ═══════════════════ -->
+<section class="hero-video-band" id="explainer-video" aria-label="2-Minute Narrated Explainer Video" style="margin-bottom:0;">
+  <div class="hero-video-card">
+    <div class="hero-video-head">
+      <div>
+        <span class="step-kicker k-cyan">2-Minute Narrated Explainer · Audio On</span>
+        <h2 class="hero-video-title">Watch How 5-Tier Local Routing Stretches $200 AI Seats 3.5x–4.5x</h2>
+        <p class="hero-video-sub">Click play for the full 2-minute narrated overview: why prepaid seats die on Tuesday, the 96.7% warm-cache trap, the 5-tier ladder, and the $0 16-file starter kit powered by rUv's MetaHarness, MetaLLM, RuFlo &amp; RuvNet Brain.</p>
+      </div>
+      <div class="hero-video-meta">
+        <span class="stamp-pill">2:01 · 1080p HD</span>
+        <span class="stamp-pill" style="background:rgba(34,197,94,0.12);border-color:rgba(34,197,94,0.35);color:#86efac;">Voiceover + Captioned Slides</span>
+      </div>
+    </div>
+    <div class="video-frame-wrap">
+      <video id="ai-routing-explainer-player" controls playsinline preload="metadata" width="1920" height="1080" poster="/ai-routing-video-poster.jpg" aria-label="2-minute narrated explainer video for the AI Subscription Routing Playbook">
+        <source src="/ai-routing-explainer.mp4?v=48k" type="video/mp4">
+        Your browser does not support HTML5 video. <a href="/ai-routing-explainer.mp4?v=48k">Download the 2-minute explainer MP4</a>.
+      </video>
+      <button type="button" class="video-play-overlay" id="video-play-overlay" aria-label="Play 2-minute narrated explainer video with audio">
+        <span class="video-play-pill">
+          <span class="video-play-icon" aria-hidden="true">&#9654;</span>
+          <span>Play Explainer · Audio On</span>
+        </span>
+      </button>
+    </div>
+  </div>
+</section>
+<script>
+(function(){
+  var vid = document.getElementById('ai-routing-explainer-player');
+  var btn = document.getElementById('video-play-overlay');
+  if (!vid || !btn) return;
+  btn.addEventListener('click', function(){
+    btn.classList.add('is-hidden');
+    vid.muted = false;
+    vid.volume = 1.0;
+    var p = vid.play();
+    if (p && typeof p.catch === 'function') { p.catch(function(){}); }
+  });
+  vid.addEventListener('play', function(){ btn.classList.add('is-hidden'); });
+})();
+</script>
+
 <!-- ═══════════════════ SCROLLYTELLING 3D THREE.JS STORY ═══════════════════ -->
 <div class="story-shell" id="story">
   <div class="steps" aria-label="Story chapters">
@@ -640,6 +799,44 @@
         <div class="myth-good"><strong>Reality:</strong> Past 50% context, every reply re-processes 500k+ tokens and triggers massive cache-write fees. Compacting at 50% + isolating searches in <code>fast</code> subagents saves 70%+.</div>
       </div>
     </div>
+
+    <!-- Dedicated Plain-English Explainer: Prompt Caching & The 5 Silent Mistakes Caught in the 60-Day Audit -->
+    <div class="visual-card" id="cache-tax-guide" style="margin-top:8px; border-color:rgba(245,158,11,0.34); background:linear-gradient(160deg, rgba(15,23,42,0.96), rgba(9,16,33,0.96));">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:14px; flex-wrap:wrap; margin-bottom:14px;">
+        <div>
+          <span class="step-kicker k-amber">How Prompt Caching &amp; The Cache-Write Tax Work</span>
+          <h3 style="margin:6px 0 6px; font-size:1.28rem; color:#fff; font-weight:900;">The 5 Silent Cache &amp; Quota Mistakes Caught in Our 60-Day Audit</h3>
+          <p style="margin:0; font-size:0.91rem; color:#cbd5e1; max-width:860px;"><strong>In plain English:</strong> Every time you press Enter, your AI tool re-sends the whole conversation history. Reading an already-saved <strong>warm cache</strong> is ~90% cheaper (~$0.50/Mtok) than writing a <strong>brand-new cache</strong> ($5–$10/Mtok). In our 255,000-turn audit, <strong>43% of all quota burn was pure cache-write tax</strong> caused by these 5 silent habits:</p>
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 205px), 1fr)); gap:12px;">
+        <div style="background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.26); border-radius:14px; padding:14px;">
+          <div style="font-size:0.71rem; font-weight:900; color:#fca5a5; text-transform:uppercase; letter-spacing:0.08em;">Mistake 1 · 57% Frontier Burn</div>
+          <div style="font-size:0.92rem; font-weight:800; color:#fff; margin:4px 0 6px;">Parking Main Chat on Frontier</div>
+          <p style="margin:0; font-size:0.81rem; color:#cbd5e1; line-height:1.48;">Running 30–80 <code>git status</code>, file reads, and greps on Opus/Astra burns scarce weekly quota on plumbing. <strong style="color:#86efac;">Fix:</strong> Default to Warm Medium + <code>fast</code> subagents.</p>
+        </div>
+        <div style="background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.28); border-radius:14px; padding:14px;">
+          <div style="font-size:0.71rem; font-weight:900; color:#fcd34d; text-transform:uppercase; letter-spacing:0.08em;">Mistake 2 · 43% Cache-Write Tax</div>
+          <div style="font-size:0.92rem; font-weight:800; color:#fff; margin:4px 0 6px;">Never Compacting Past 50%</div>
+          <p style="margin:0; font-size:0.81rem; color:#cbd5e1; line-height:1.48;">Uncompacted 500k+ token chats force massive cache re-writes on every turn at $5–$10/Mtok. <strong style="color:#86efac;">Fix:</strong> Flash <code>⚡/compact</code> at 50% context.</p>
+        </div>
+        <div style="background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.28); border-radius:14px; padding:14px;">
+          <div style="font-size:0.71rem; font-weight:900; color:#fcd34d; text-transform:uppercase; letter-spacing:0.08em;">Mistake 3 · Window Bloat</div>
+          <div style="font-size:0.92rem; font-weight:800; color:#fff; margin:4px 0 6px;">Grepping 200 Files in Main Chat</div>
+          <p style="margin:0; font-size:0.81rem; color:#cbd5e1; line-height:1.48;">Raw search dumps inject 150k+ tokens of noise you pay to re-cache on every reply after. <strong style="color:#86efac;">Fix:</strong> Isolate &gt;5-file scans in a <code>fast</code> subagent.</p>
+        </div>
+        <div style="background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.28); border-radius:14px; padding:14px;">
+          <div style="font-size:0.71rem; font-weight:900; color:#7dd3fc; text-transform:uppercase; letter-spacing:0.08em;">Mistake 4 · 5x–10x Cold Penalty</div>
+          <div style="font-size:0.92rem; font-weight:800; color:#fff; margin:4px 0 6px;">Vendor-Hopping Mid-Task</div>
+          <p style="margin:0; font-size:0.81rem; color:#cbd5e1; line-height:1.48;">Switching from Claude to Codex/Grok mid-chat shatters your 96.7% warm cache and forces a cold re-read. <strong style="color:#86efac;">Fix:</strong> Stay in-vendor for 90% of turns.</p>
+        </div>
+        <div style="background:rgba(168,85,247,0.08); border:1px solid rgba(168,85,247,0.28); border-radius:14px; padding:14px;">
+          <div style="font-size:0.71rem; font-weight:900; color:#d8b4fe; text-transform:uppercase; letter-spacing:0.08em;">Mistake 5 · Output-Rate Burn</div>
+          <div style="font-size:0.92rem; font-weight:800; color:#fff; margin:4px 0 6px;">Default Max / XHigh Thinking</div>
+          <p style="margin:0; font-size:0.81rem; color:#cbd5e1; line-height:1.48;">Thinking tokens bill at output rates ($10.04 on Opus Max vs $3.74 on Neon High for a lower score). <strong style="color:#86efac;">Fix:</strong> Cap default effort; escalate only with a 3-file brief.</p>
+        </div>
+      </div>
+    </div>
   </section>
 
   <!-- 1.5 Visual Impact: Same Dollars, 4x Reach, Zero Mid-Week Lockouts -->
@@ -650,43 +847,35 @@
       <p>Routing isn't about using weaker models—it's about stopping 86% of routine tool calls from burning your scarce Frontier quota so you never time out mid-week.</p>
     </div>
 
-    <div class="grid-3">
+    <div class="grid-2">
       <!-- Visual 1: Side-by-Side Donut / Pie Charts (Before vs After) -->
       <div class="myth-card">
         <span class="step-kicker k-cyan" style="width:fit-content;">1 · Prompt Distribution Shift</span>
-        <h3 style="margin:0; font-size:1.02rem; color:#fff;">57% Frontier → 86% Fast + Warm Med</h3>
+        <h3 style="margin:0; font-size:1.05rem; color:#fff;">57% Frontier → 86% Fast + Warm Med</h3>
         <div class="donut-pair">
           <div class="donut-box">
             <span class="donut-cap" style="color:#fca5a5;">Before</span>
             <!-- r=38 -> circumference = 238.76 -->
-            <svg viewBox="0 0 100 100" width="112" height="112" role="img" aria-label="Before pie chart: 57% Frontier red, 35% Medium blue, 8% Fast green">
+            <svg viewBox="0 0 100 100" width="124" height="124" role="img" aria-label="Before pie chart: 57% Frontier red, 35% Medium blue, 8% Fast green">
               <title>Before: 57% Frontier burn</title>
               <circle cx="50" cy="50" r="38" fill="none" stroke="#1e293b" stroke-width="16"/>
-              <!-- 57% Frontier = 136.1 -->
               <circle cx="50" cy="50" r="38" fill="none" stroke="#ef4444" stroke-width="16" stroke-dasharray="136.1 238.8" stroke-dashoffset="0" transform="rotate(-90 50 50)" class="svg-pulse"/>
-              <!-- 35% Med = 83.6 -->
               <circle cx="50" cy="50" r="38" fill="none" stroke="#3b82f6" stroke-width="16" stroke-dasharray="83.6 238.8" stroke-dashoffset="-136.1" transform="rotate(-90 50 50)"/>
-              <!-- 8% Fast = 19.1 -->
               <circle cx="50" cy="50" r="38" fill="none" stroke="#22c55e" stroke-width="16" stroke-dasharray="19.1 238.8" stroke-dashoffset="-219.7" transform="rotate(-90 50 50)"/>
               <text x="50" y="47" text-anchor="middle" font-size="14" font-weight="900" fill="#fca5a5">57%</text>
               <text x="50" y="60" text-anchor="middle" font-size="7.5" font-weight="800" fill="#94a3b8">FRONTIER</text>
             </svg>
           </div>
-          <div style="font-size:1.2rem; color:var(--cyan); font-weight:900;" aria-hidden="true">→</div>
+          <div style="font-size:1.4rem; color:var(--cyan); font-weight:900;" aria-hidden="true">→</div>
           <div class="donut-box">
             <span class="donut-cap" style="color:#86efac;">After</span>
-            <svg viewBox="0 0 100 100" width="112" height="112" role="img" aria-label="After pie chart: 32% Fast green, 54% Medium blue, 7% Substantial cyan, 5% Hard amber, 2% Exceptional purple">
+            <svg viewBox="0 0 100 100" width="124" height="124" role="img" aria-label="After pie chart: 32% Fast green, 54% Medium blue, 7% Substantial cyan, 5% Hard amber, 2% Exceptional purple">
               <title>After: 86% Fast and Warm Medium, under 7% Frontier</title>
               <circle cx="50" cy="50" r="38" fill="none" stroke="#1e293b" stroke-width="16"/>
-              <!-- 32% Fast = 76.4 -->
               <circle cx="50" cy="50" r="38" fill="none" stroke="#22c55e" stroke-width="16" stroke-dasharray="76.4 238.8" stroke-dashoffset="0" transform="rotate(-90 50 50)"/>
-              <!-- 54% Med = 128.9 -->
               <circle cx="50" cy="50" r="38" fill="none" stroke="#3b82f6" stroke-width="16" stroke-dasharray="128.9 238.8" stroke-dashoffset="-76.4" transform="rotate(-90 50 50)"/>
-              <!-- 7% Sub = 16.7 -->
               <circle cx="50" cy="50" r="38" fill="none" stroke="#38bdf8" stroke-width="16" stroke-dasharray="16.7 238.8" stroke-dashoffset="-205.3" transform="rotate(-90 50 50)"/>
-              <!-- 5% Hard = 11.9 -->
               <circle cx="50" cy="50" r="38" fill="none" stroke="#f59e0b" stroke-width="16" stroke-dasharray="11.9 238.8" stroke-dashoffset="-222.0" transform="rotate(-90 50 50)"/>
-              <!-- 2% Exc = 4.8 -->
               <circle cx="50" cy="50" r="38" fill="none" stroke="#a855f7" stroke-width="16" stroke-dasharray="4.8 238.8" stroke-dashoffset="-233.9" transform="rotate(-90 50 50)"/>
               <text x="50" y="47" text-anchor="middle" font-size="14" font-weight="900" fill="#86efac">86%</text>
               <text x="50" y="60" text-anchor="middle" font-size="7.5" font-weight="800" fill="#94a3b8">FAST+MED</text>
@@ -700,13 +889,13 @@
           <span><i style="background:#f59e0b;"></i>Hard 5%</span>
           <span><i style="background:#a855f7;"></i>Exc &lt;2%</span>
         </div>
-        <p style="margin:4px 0 0; font-size:0.83rem; color:#cbd5e1;"><strong>Result:</strong> Hard &amp; Exceptional (&lt;7% total) stay 100% open for real bugs instead of getting wasted on <code>git status</code> and file reads.</p>
+        <p style="margin:4px 0 0; font-size:0.84rem; color:#cbd5e1;"><strong>Why it matters:</strong> Hard &amp; Exceptional (&lt;7% total) stay 100% open for real bugs instead of getting wasted on <code>git status</code> and file reads.</p>
       </div>
 
       <!-- Visual 2: Live Animated 7-Day Weekly Session Playback (Before vs After) -->
       <div class="myth-card">
         <span class="step-kicker k-amber" style="width:fit-content;">2 · Live Weekly Session Simulation</span>
-        <h3 style="margin:0; font-size:1.02rem; color:#fff;">Zero Mid-Week Rate-Limit Lockouts</h3>
+        <h3 style="margin:0; font-size:1.05rem; color:#fff;">Zero Mid-Week Rate-Limit Lockouts</h3>
         <div class="week-row-head">
           <span style="color:#fca5a5;">BEFORE (Single Model)</span>
           <span id="wk-before-status" style="color:#fca5a5;">✕ Locked Tue PM · Wait 5d</span>
@@ -737,32 +926,37 @@
         </div>
         <div class="week-track"><div class="week-bar" id="wk-after-bar" style="width:100%; background:linear-gradient(90deg,#22c55e,#38bdf8);"></div></div>
 
-        <p style="margin:6px 0 0; font-size:0.83rem; color:#cbd5e1;"><strong>Watch it play:</strong> The top seat burns out Tuesday afternoon and leaves you waiting 5 days; the routed seat cruises smoothly through Sunday.</p>
+        <p style="margin:6px 0 0; font-size:0.84rem; color:#cbd5e1;"><strong>Watch it play:</strong> The top seat burns out Tuesday afternoon and leaves you waiting 5 days; the routed seat cruises smoothly through Sunday.</p>
       </div>
+    </div>
 
-      <!-- Visual 3: Same Dollar, 4x Effective Tokens & Turns -->
-      <div class="myth-card">
-        <span class="step-kicker k-green" style="width:fit-content;">3 · Same $200 Seat Value</span>
-        <h3 style="margin:0; font-size:1.05rem; color:#fff;">3.8x–4.5x More Effective Turns / Dollar</h3>
-        <div class="reach-meter">
-          <div class="reach-row">
-            <span style="color:#fca5a5;">Before</span>
-            <div class="reach-track"><div class="reach-fill" style="width:24%; background:#ef4444; color:#fff;">1.0x</div></div>
-            <span style="color:#fca5a5;">~180 turns</span>
-          </div>
-          <div class="reach-row">
-            <span style="color:#86efac;">After</span>
-            <div class="reach-track"><div class="reach-fill svg-pulse" style="width:96%; background:linear-gradient(90deg,#22c55e,#38bdf8);">4.1x Effective Reach</div></div>
-            <span style="color:#86efac;">~740+ turns</span>
-          </div>
-          <div class="reach-row">
-            <span style="color:#fcd34d;">Cache Tax</span>
-            <div class="reach-track"><div class="reach-fill" style="width:72%; background:#f59e0b;">-70% Waste</div></div>
-            <span style="color:#fcd34d;">50% /compact</span>
-          </div>
+    <!-- Visual 3: Full-Width Payoff ("And Here's the Result") Synced Live to the 7-Day Animation -->
+    <div class="myth-card" style="border-color:rgba(34,197,94,0.45); background:linear-gradient(135deg, rgba(15,23,42,0.96), rgba(8,28,36,0.94)); box-shadow:0 16px 45px rgba(34,197,94,0.1);">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <div>
+          <span class="step-kicker k-green" style="width:fit-content;">3 · And Here's the Result · Same $200 Prepaid Seat</span>
+          <h3 style="margin:4px 0 0; font-size:1.22rem; color:#fff; font-weight:900;">3.8x–4.5x More Effective Turns &amp; Shipped Code From the Exact Same Subscription</h3>
         </div>
-        <p style="margin:8px 0 0; font-size:0.83rem; color:#cbd5e1;"><strong>Result:</strong> Every prepaid dollar buys ~4× more shipped code because warm cache stays 96.7% hot and <code>fast</code> subagents keep bloat out of your window.</p>
+        <span class="stamp-pill" id="res-day-pill" style="background:rgba(34,197,94,0.15); border-color:rgba(34,197,94,0.45); color:#86efac; font-size:0.78rem;">Synced Live · Sun (End of Week)</span>
       </div>
+      <div class="reach-meter" style="margin-top:8px;">
+        <div class="reach-row" style="grid-template-columns:108px 1fr 135px;">
+          <span style="color:#fca5a5;">Before (Frozen)</span>
+          <div class="reach-track"><div class="reach-fill" id="res-before-bar" style="width:24%; background:#ef4444; color:#fff; transition:width 0.45s cubic-bezier(0.22,1,0.36,1);">1.0x · Capped Tue</div></div>
+          <span id="res-before-turns" style="color:#fca5a5; text-align:right;">~180 turns (Dead)</span>
+        </div>
+        <div class="reach-row" style="grid-template-columns:108px 1fr 135px;">
+          <span style="color:#86efac;">After (Routed)</span>
+          <div class="reach-track"><div class="reach-fill" id="res-after-bar" style="width:96%; background:linear-gradient(90deg,#22c55e,#38bdf8); transition:width 0.45s cubic-bezier(0.22,1,0.36,1);">4.1x Effective Reach</div></div>
+          <span id="res-after-turns" style="color:#86efac; text-align:right;">~740+ turns</span>
+        </div>
+        <div class="reach-row" style="grid-template-columns:108px 1fr 135px;">
+          <span style="color:#fcd34d;">Cache Tax Cut</span>
+          <div class="reach-track"><div class="reach-fill" id="res-cache-bar" style="width:74%; background:#f59e0b; transition:width 0.45s cubic-bezier(0.22,1,0.36,1);">-70% Cache-Write Waste</div></div>
+          <span id="res-cache-label" style="color:#fcd34d; text-align:right;">50% /compact</span>
+        </div>
+      </div>
+      <p style="margin:6px 0 0; font-size:0.86rem; color:#cbd5e1;"><strong>Bottom line:</strong> Watch the bars move in sync with the 7-day clock above—<strong>Before</strong> flatlines at ~180 turns on Tuesday while <strong>After</strong> keeps shipping past 740+ turns through Sunday on the exact same $200 seat.</p>
     </div>
   </section>
 
@@ -879,8 +1073,8 @@
     <div class="grid-4">
       <div class="lesson-card">
         <span class="lesson-num">Lesson 01 · The $1,600 Wake-Up</span>
-        <h3>Personal Seats Must Strip All API Keys</h3>
-        <p>Leaving <code>ANTHROPIC_API_KEY</code> or <code>OPENROUTER_API_KEY</code> in your shell turns prepaid coding tools into metered corporate billing. Our router enforces <code>subscriptionOnlyEnv()</code> and keeps cloud proxies <strong>OFF</strong> locally.</p>
+        <h3>Personal Seats Must Strip Native CLI Keys</h3>
+        <p>Leaving native keys (<code>ANTHROPIC_API_KEY</code>, <code>OPENAI_API_KEY</code>, <code>GEMINI_API_KEY</code>, <code>XAI_API_KEY</code>) in your shell hijacks prepaid CLIs into metered billing—and <code>OPENROUTER_API_KEY</code> does the same if injected via OpenRouter's <code>ori</code> harness, <code>BASE_URL</code> overrides, or cloud proxies. Keep native CLI keys stripped and proxies <strong>OFF</strong> locally.</p>
       </div>
       <div class="lesson-card">
         <span class="lesson-num">Lesson 02 · Why TUI Wrappers Failed</span>
@@ -1060,16 +1254,30 @@ const res = await anthropic.messages.create({
           <span>✅ Dynamic: Tier-Alias Router (<code>app-model-router.mjs</code>)</span>
           <button type="button" class="copy-btn" style="padding:4px 10px; font-size:0.72rem;" onclick="copyAppCode(this)">Copy</button>
         </div>
-        <pre class="code-pre" id="app-code-snippet">import { callWithAutoEscalation } from './app-model-router.mjs';
+        <pre class="code-pre" id="app-code-snippet">import { getProviderCatalog, setCapabilityOverride, callWithAutoEscalation } from './app-model-router.mjs';
 
+// Optional Layer 1: Admin/Operator UI Picker backed by a refreshable, cacheable /models catalog
+const catalog = await getProviderCatalog({ refresh: true, ttlMs: 3600_000 });
+setCapabilityOverride('extract-invoice-json', { provider: 'anthropic', model: 'claude-sonnet-5-5', effort: 'medium' });
+
+// Layer 2 & 3: App code calls capability/tier aliases — zero code redeploy when models change
 const { output, receipt } = await callWithAutoEscalation({
   tier: 'fast',                      // ← never hardcode a model ID!
-  purpose: 'extract-invoice-json',   // ← logged for unit economics
-  execute: (route) => llm.run({ model: route.model, effort: route.effort, prompt }),
+  capability: 'extract-invoice-json',// ← honors Admin Picker override first, then tier default
+  execute: (route) => llm.run({ provider: route.provider, model: route.model, effort: route.effort, prompt }),
   validate: (out) => typeof out?.total === 'number' && Boolean(out?.vendor), // fails → +1 tier!
-});
-// Swap models globally with ZERO code edits (env var on redeploy, or runtime KV/config):
-// APP_MODEL_TIERS_JSON='{"fast":{"model":"gemini-4.5-flash","effort":"low"}}'</pre>
+});</pre>
+      </div>
+    </div>
+
+    <!-- Admin / Operator UI Picker + Refreshable Catalog Architecture Callout -->
+    <div class="visual-card" style="border-color:rgba(56,189,248,0.38); background:linear-gradient(135deg, rgba(15,23,42,0.96), rgba(9,22,44,0.94));">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:14px;">
+        <div style="max-width:860px;">
+          <span class="step-kicker k-cyan">3-Layer Production Stack · Zero-Redeploy Operator Control</span>
+          <h3 style="margin:6px 0 6px; font-size:1.18rem; color:#fff; font-weight:900;">Stack an Admin / Operator UI Picker on Top of Your Tier Registry</h3>
+          <p style="margin:0; font-size:0.89rem; color:#cbd5e1; line-height:1.55;">The cleanest production setup combines <strong>live human operator control</strong> with <strong>autonomous reliability</strong> inside <code>app-model-router.mjs</code>: wire your providers into a <strong>refreshable, cacheable <code>/models</code> catalog</strong> (<code>getProviderCatalog()</code>) and expose a capability dropdown in your Admin UI (<code>setCapabilityOverride()</code>) so operators can swap which model powers any feature in 1 click—with <strong>zero app redeploy</strong>. Underneath, the 5-tier registry and <code>+1</code> tier auto-escalation still guarantee automatic defaults and instant failover if an operator-picked model ever rate-limits or fails schema validation.</p>
+        </div>
       </div>
     </div>
 
@@ -2113,10 +2321,19 @@ window.toggle3DPause = function() {
   const aBar = document.getElementById('wk-after-bar');
   const bStat = document.getElementById('wk-before-status');
   const aStat = document.getElementById('wk-after-status');
+  const rDayPill = document.getElementById('res-day-pill');
+  const rBeforeBar = document.getElementById('res-before-bar');
+  const rBeforeTurns = document.getElementById('res-before-turns');
+  const rAfterBar = document.getElementById('res-after-bar');
+  const rAfterTurns = document.getElementById('res-after-turns');
+  const rCacheBar = document.getElementById('res-cache-bar');
   if (!bGrid || !aGrid) return;
   const bDays = [...bGrid.children];
   const aDays = [...aGrid.children];
   const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const afterTurns = [110, 215, 320, 425, 530, 635, 740];
+  const afterMult = ['1.0x', '1.2x', '1.8x', '2.4x', '2.9x', '3.5x', '4.1x'];
+  const cacheCut = [15, 28, 38, 48, 56, 64, 70];
   let day = 0; // 0..8 (0..6 = Mon..Sun, 7..8 = hold final state before loop)
 
   function renderWeekStep() {
@@ -2144,6 +2361,25 @@ window.toggle3DPause = function() {
     });
     aBar.style.width = `${Math.round(((d + 1) / 7) * 100)}%`;
     aStat.textContent = d < 6 ? `✓ ${labels[d]} · Cruising (Warm Cache)` : '✓ All 7 Days · 30% Headroom Left!';
+
+    // Sync Card 3 ("And Here's the Result") to the exact same 7-day animation clock
+    if (rDayPill && rBeforeBar && rAfterBar && rCacheBar) {
+      rDayPill.textContent = d < 6 ? `Synced Live · Day ${d + 1}/7 (${labels[d]})` : 'Synced Live · Sun (End of Week Result)';
+      const bW = d === 0 ? 15 : 24;
+      rBeforeBar.style.width = `${bW}%`;
+      rBeforeBar.style.background = d === 0 ? '#22c55e' : d === 1 ? '#f59e0b' : '#ef4444';
+      rBeforeBar.textContent = d === 0 ? 'Active' : d === 1 ? '1.0x · Wall Hit!' : '1.0x · Frozen';
+      rBeforeTurns.textContent = d === 0 ? '~95 turns' : d === 1 ? '~180 turns (Wall)' : '~180 turns (Locked)';
+
+      const aW = Math.round(16 + (d / 6) * 80);
+      rAfterBar.style.width = `${aW}%`;
+      rAfterBar.textContent = d < 6 ? `${afterMult[d]} · Shipping` : '4.1x Effective Reach';
+      rAfterTurns.textContent = d < 6 ? `~${afterTurns[d]} turns` : '~740+ turns';
+
+      const cW = Math.round(18 + (d / 6) * 56);
+      rCacheBar.style.width = `${cW}%`;
+      rCacheBar.textContent = `-${cacheCut[d]}% Cache Waste`;
+    }
 
     day = (day + 1) % 9;
   }

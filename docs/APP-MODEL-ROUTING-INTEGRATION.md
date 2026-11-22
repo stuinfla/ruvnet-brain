@@ -1,4 +1,4 @@
-Updated: 2026-11-22 01:40:00 EST | Version 1.0.0
+Updated: 2026-11-22 09:08:00 EST | Version 1.1.0
 Created: 2026-11-22 01:40:00 EST
 Author: Stuart Kerr (with Antigravity Gemini 4 Neon)
 Status: CANONICAL — PRODUCTION APP INTEGRATION STANDARD (companion to `docs/MODEL-ROUTING-ARCHITECTURE.md`)
@@ -93,6 +93,41 @@ const { output, receipt } = await callWithAutoEscalation({
   validate: (out) => typeof out?.total === 'number' && Boolean(out?.vendor),
 });
 // receipt: { ts, purpose, requestedTier, executedTier, model, effort, provider, usedFallback, escalated, valid, durationMs }
+```
+
+---
+
+## 4B. Layering an Admin / Operator Model Picker UI + Cacheable Provider Catalog (Zero Redeploy)
+
+Many production teams also want a human **Admin / Operator UI Picker** so an operator can click a dropdown in an admin screen to bind a specific app capability (e.g., `extract-invoice-json`, `customer-support-chat`, `legal-appeal-draft`) to any available provider model live—without editing config files or redeploying code.
+
+`app-model-router.mjs` supports **both patterns layered together** in a 3-layer resolution stack:
+
+1. **Layer 1 — Admin / Operator UI Picker Override (Refreshable & Cacheable `/models` Catalog):**
+   - `getProviderCatalog({ refresh, ttlMs })` fetches live provider models (e.g., OpenRouter `/api/v1/models`, cached in memory and/or disk/KV) and falls back cleanly to the canonical catalog offline.
+   - `setCapabilityOverride(capability, { provider, model, effort })` and `getAdminPickerState()` back an admin dropdown so operators can override any capability live with **zero redeploy**.
+2. **Layer 2 — 5-Tier Registry Default (`resolveTier`):**
+   - Any capability without a manual operator override automatically routes through the weekly-refreshed 5-tier registry (`fast | medium | substantial | hard | exceptional`).
+3. **Layer 3 — Automatic Fallback & `+1` Tier Escalation:**
+   - Even when an operator manually picks a model in the Admin UI, if that provider throws a 429/outage or fails schema validation, `callWithAutoEscalation()` automatically fails over to the tier default or escalates `+1` tier.
+
+```js
+import { getProviderCatalog, setCapabilityOverride, callWithAutoEscalation } from './app-model-router.mjs';
+
+// 1. Admin UI fetches refreshable, cacheable provider catalog for dropdowns:
+const catalog = await getProviderCatalog({ refresh: true, ttlMs: 3600_000 });
+
+// 2. Operator picks a specific model for one capability live (zero redeploy):
+setCapabilityOverride('extract-invoice-json', { provider: 'anthropic', model: 'claude-sonnet-5-5', effort: 'medium' });
+
+// 3. App code never changes — automatically uses Admin Picker override, with tier fallback underneath:
+const { output, receipt } = await callWithAutoEscalation({
+  tier: 'fast',
+  capability: 'extract-invoice-json',
+  execute: (route) => llm.run({ provider: route.provider, model: route.model, effort: route.effort, prompt }),
+  validate: (out) => typeof out?.total === 'number' && Boolean(out?.vendor),
+});
+// receipt.routeSource === 'admin-picker' (falls back to 'tier-registry' / 'tier-escalation' automatically)
 ```
 
 ---

@@ -297,9 +297,12 @@ const cursor = scanSimpleDir('Cursor IDE', [
   path.join(HOME, '.config', 'Cursor', 'User', 'workspaceStorage'),
 ], ['.vscdb', '.json']);
 
-// Check if any paid API keys are leaked in shell env for personal coding
-const leakedKeys = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'OPENROUTER_API_KEY', 'XAI_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY']
+// Check if native vendor CLI API keys are leaked in shell env (auto-consumed by Claude/Codex/Gemini/Grok CLIs)
+// Note: OPENROUTER_API_KEY alone is NOT auto-consumed by stock CLIs unless injected via OpenRouter's ori harness, BASE_URL overrides, or a cloud proxy plugin.
+const nativeCliKeys = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'XAI_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY']
   .filter((k) => Boolean(process.env[k]));
+const proxyHarnessActive = Boolean(process.env.OPENROUTER_API_KEY && (process.env.ANTHROPIC_BASE_URL || process.env.OPENAI_BASE_URL || process.env.OPENROUTER_BASE_URL));
+const leakedKeys = proxyHarnessActive ? [...nativeCliKeys, 'OPENROUTER_API_KEY(via-proxy/BASE_URL)'] : nativeCliKeys;
 
 // Honest scoring across ALL detected tools (NEVER returns 100/100 when 0 measured turns!)
 const totalMeasuredTurns = claude.turns + codex.turns;
@@ -498,9 +501,12 @@ const parsedMs = declaredTs ? Date.parse(declaredTs) : NaN;
 const ageDays = Number.isFinite(parsedMs) ? Math.max(0, Math.floor((Date.now() - parsedMs) / 86400000)) : 999;
 add('policy-freshness', ageDays <= 7, Number.isFinite(parsedMs) ? \`Policy date \${String(declaredTs).slice(0, 10)} (\${ageDays}d old, limit <=7d)\` : 'Missing reviewedAt/policyRevisionAt timestamp');
 
-const leakedKeys = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'OPENROUTER_API_KEY', 'XAI_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY']
+// Native vendor CLI keys auto-hijack stock CLIs; OPENROUTER_API_KEY only bills a CLI when paired with ori / BASE_URL / proxy overrides
+const nativeLeaked = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'XAI_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY']
   .filter((k) => Boolean(process.env[k]));
-add('zero-api-key-leak', leakedKeys.length === 0, leakedKeys.length === 0 ? 'No paid API keys active in shell env' : \`Found: \${leakedKeys.join(', ')}\`);
+const orProxyLeak = Boolean(process.env.OPENROUTER_API_KEY && (process.env.ANTHROPIC_BASE_URL || process.env.OPENAI_BASE_URL || process.env.OPENROUTER_BASE_URL));
+const leakedKeys = orProxyLeak ? [...nativeLeaked, 'OPENROUTER_API_KEY(proxy-injected)'] : nativeLeaked;
+add('zero-api-key-leak', leakedKeys.length === 0, leakedKeys.length === 0 ? 'No native CLI API keys or active proxy overrides in shell env' : \`Found: \${leakedKeys.join(', ')}\`);
 
 // Verify no routine tier defaults to max/xhigh
 let effortViolations = 0;
@@ -680,18 +686,24 @@ Schedule weekly freshness + watchdog checks via \`crontab -e\`:
 0 2 * * 0 node ~/ai-routing-kit/model-auto-refresh.mjs --apply && node ~/ai-routing-kit/model-routing-audit.mjs
 \`\`\`
 
-## 6. Production Apps & Corporate Pay-By-The-Drink (Fork 2)
+## 6. Production Apps & Corporate Pay-By-The-Drink (Fork 2 + Admin UI Picker)
 \`\`\`js
-import { callWithAutoEscalation } from './app-model-router.mjs';
+import { getProviderCatalog, setCapabilityOverride, callWithAutoEscalation } from './app-model-router.mjs';
 
+// Optional Layer 1: Admin/Operator UI Picker backed by refreshable, cacheable /models catalog (zero redeploy)
+const catalog = await getProviderCatalog({ refresh: true, ttlMs: 3600_000 });
+setCapabilityOverride('extract-invoice-json', { provider: 'anthropic', model: 'claude-sonnet-5-5', effort: 'medium' });
+
+// Layer 2 & 3: App code calls capability/tier aliases; falls back & auto-escalates automatically
 const { output, receipt } = await callWithAutoEscalation({
   tier: 'fast',
+  capability: 'extract-invoice-json',
   purpose: 'extract-invoice-json',
-  execute: (route) => mySdk.generate({ model: route.model, reasoningEffort: route.effort, prompt }),
+  execute: (route) => mySdk.generate({ provider: route.provider, model: route.model, reasoningEffort: route.effort, prompt }),
   validate: (out) => typeof out?.total === 'number' && Boolean(out?.vendor),
 });
 \`\`\`
-Swap any tier globally with **zero code edits** via \`APP_MODEL_TIERS_JSON='{"fast":{"model":"gemini-4.5-flash","effort":"low"}}'\` (applies on next container restart/redeploy, or immediately when backed by a runtime config store / KV).
+Swap any tier or capability globally with **zero code edits** via the Admin UI Picker (\`setCapabilityOverride\` / \`APP_CAPABILITY_OVERRIDES_PATH\`) or \`APP_MODEL_TIERS_JSON\`.
 `, 'utf8');
 
 fs.writeFileSync(path.join(STAGE, 'examples/statusline-50pct-compact.cjs'), `#!/usr/bin/env node
@@ -743,7 +755,7 @@ node app-model-router.mjs --smoke     # 4. Smoke-test Lens 2 production app rout
 5. \`policy.default.mjs\` — 5-tier classification rules (\`fast\`, \`medium\`, \`substantial\`, \`hard\`, \`exceptional\`)
 6. \`routing-policy.template.json\` — Canonical 4-host × 5-tier allocation + AA v5.0.1 effort caps
 7. \`routing-eval-cases.json\` — 36-case routing safety regression suite
-8. \`app-model-router.mjs\` — Lens 2 zero-hardcoded production app router (provider fallback + auto-escalation)
+8. \`app-model-router.mjs\` — Fork 2 zero-hardcoded production app router (Admin UI picker + cacheable \`/models\` catalog + provider fallback + auto-escalation)
 9. \`model-auto-refresh.mjs\` — Local CLI model cache scanner & freshness checker
 10. \`model-routing-audit.mjs\` — Self-audit watchdog (works standalone or with MetaHarness)
 11. \`router-utilization.mjs\` — Before-vs-after routing tier distribution analyzer
