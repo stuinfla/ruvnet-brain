@@ -6,15 +6,16 @@
 <title>Stretch Prepaid AI Licenses 3.5x–4.5x Further — Interactive 3D Playbook &amp; Starter Kit</title>
 <meta name="description" content="Why corporate pay-by-the-drink AI routing breaks for developers—and how 5-tier local routing, warm prompt caches, and thinking-level caps eliminate weekly rate-limit walls.">
 <meta property="og:type" content="website">
+<meta property="og:url" content="https://isovision.ai/ruvnet-brain/subscription-routing">
 <meta property="og:title" content="Stretch Prepaid AI Licenses 3.5x–4.5x Further (Interactive 3D Playbook)">
-<meta property="og:description" content="Stop burning $200 AI developer seats in 2 days. Interactive Three.js walkthrough + downloadable Starter Kit for Claude Code, Antigravity (Gemini 4), Codex, Grok &amp; production apps.">
-<meta property="og:image" content="./subscription-routing-card.png">
+<meta property="og:description" content="Stop burning $200 AI developer seats in 2 days. Interactive Three.js walkthrough + downloadable 13-file Starter Kit for Claude Code, Antigravity (Gemini 4), Codex, Grok &amp; production apps.">
+<meta property="og:image" content="https://isovision.ai/ruvnet-brain/subscription-routing-card.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Stretch Prepaid AI Licenses 3.5x–4.5x Further">
-<meta name="twitter:description" content="Interactive 3D architecture walkthrough + free Starter Kit for developers balancing prepaid Max/Pro/Ultra seats while shipping AI apps.">
-<meta name="twitter:image" content="./subscription-routing-card.png">
+<meta name="twitter:description" content="Interactive 3D architecture walkthrough + free 13-file Starter Kit for developers balancing prepaid Max/Pro/Ultra seats while shipping AI apps.">
+<meta name="twitter:image" content="https://isovision.ai/ruvnet-brain/subscription-routing-card.png">
 <style>
   :root {
     --bg: #050811;
@@ -575,7 +576,7 @@ Please do the following in order:
   </footer>
 </div>
 
-<script src="https://unpkg.com/three@0.169.0/build/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 // ── Copy Setup Prompt ────────────────────────────────────────────────────────────
 function copyPrompt() {
@@ -699,13 +700,35 @@ function makeOrb(x, y, z, color, r) {
   return m;
 }
 
+function makeLabel(text, x, y, z, color) {
+  const c = document.createElement('canvas');
+  c.width = 320; c.height = 64;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = 'rgba(5,8,17,0.78)';
+  ctx.fillRect(6, 8, 308, 48);
+  ctx.strokeStyle = color; ctx.lineWidth = 3;
+  ctx.strokeRect(6, 8, 308, 48);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 24px -apple-system, BlinkMacSystemFont, Inter, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(text, 160, 33);
+  const tex = new THREE.CanvasTexture(c);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
+  sp.position.set(x, y, z);
+  sp.scale.set(2.8, 0.56, 1);
+  scene.add(sp);
+  return sp;
+}
+
 const inputOrb = makeOrb(-5.8, 0, 0, 0x38bdf8, 0.52);
+makeLabel('YOUR PROMPT', -5.8, -1.0, 0, '#38bdf8');
 const routerOrb = makeOrb(-1.8, 0, 0, 0x0ea5e9, 0.68);
+makeLabel('LOCAL ROUTER', -1.8, -1.15, 0, '#0ea5e9');
 const lanes = [
-  { y:  2.8, color: 0x22c55e, orb: makeOrb(4.4,  2.8, 0, 0x22c55e, 0.44) },
-  { y:  0.95,color: 0x3b82f6, orb: makeOrb(4.4,  0.95,0, 0x3b82f6, 0.55) },
-  { y: -1.05,color: 0xf59e0b, orb: makeOrb(4.4, -1.05,0, 0xf59e0b, 0.48) },
-  { y: -2.8, color: 0xef4444, orb: makeOrb(4.4, -2.8, 0, 0xef4444, 0.46) },
+  { y:  2.8, color: 0x22c55e, orb: makeOrb(4.4,  2.8, 0, 0x22c55e, 0.44), label: makeLabel('FAST · 32%', 4.4, 3.65, 0, '#22c55e') },
+  { y:  0.95,color: 0x3b82f6, orb: makeOrb(4.4,  0.95,0, 0x3b82f6, 0.55), label: makeLabel('MID · WARM CACHE', 4.4, 1.95, 0, '#3b82f6') },
+  { y: -1.05,color: 0xf59e0b, orb: makeOrb(4.4, -1.05,0, 0xf59e0b, 0.48), label: makeLabel('HARD · DISTILLED', 4.4, -0.15, 0, '#f59e0b') },
+  { y: -2.8, color: 0xef4444, orb: makeOrb(4.4, -2.8, 0, 0xef4444, 0.46), label: makeLabel('FRONTIER / WALL', 4.4, -3.7, 0, '#ef4444') },
 ];
 
 // Red Rate-Limit Wall (Chapter 1)
