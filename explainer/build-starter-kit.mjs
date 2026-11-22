@@ -31,12 +31,18 @@ for (const [src, dst] of copies) {
     content = content
       .replace(/Stuart Kerr's/g, 'Production Reference Case Study')
       .replace(/Stuart's/g, 'the reference')
+      .replace(/\bStuart Kerr\b/g, 'the operator')
+      .replace(/\bStuart\b/g, 'the operator')
       .replace(/MacBook-Pro-Max/g, 'Developer Workstation')
       .replace(/com\.ruvnet\.goldie-weekly/g, 'weekly-model-refresh');
   }
   if (dst === 'APP-MODEL-ROUTING-INTEGRATION.md') {
     content = content
-      .replace(/AppealArmor,\s*salon-local,\s*PowerPlatePulse,\s*Synseer/g, 'SaaS web apps, internal ops dashboards, RAG services, and batch pipelines')
+      .replace(/`AppealArmor`,\s*`salon-local`,\s*`PowerPlatePulse`,\s*`Synseer`/g, '`SaaS web apps`, `ops dashboards`, `RAG services`, `batch pipelines`')
+      .replace(/AppealArmor,\s*salon-local,\s*PowerPlatePulse,\s*Synseer/g, 'SaaS web apps, ops dashboards, RAG services, and batch pipelines')
+      .replace(/Stuart's/g, 'the reference')
+      .replace(/\bStuart Kerr\b/g, 'the operator')
+      .replace(/\bStuart\b/g, 'the operator')
       .replace(/com\.ruvnet\.goldie-weekly/g, 'weekly-model-refresh');
   }
   fs.writeFileSync(path.join(STAGE, dst), content, 'utf8');
@@ -71,7 +77,7 @@ const NEXT_TIER = { fast: 'medium', medium: 'substantial', substantial: 'hard', 
 
 export function extractFeatures(prompt = '', taskFacts = undefined) {
   const s = String(prompt || '').trim();
-  const hasCode = /\`\`\`/.test(s) || /\\b(function|const|let|var|class|import|export|SELECT|CREATE TABLE)\\b/.test(s);
+  const hasCode = /\`\`\`/.test(s) || /\\b(function|const|let|var|class|import|export|SELECT|CREATE TABLE|implement|implementation|code|coding|debug|refactor|test|endpoint|API|repository|module)\\b/i.test(s);
   return {
     taskHints: s,
     hasCode,
@@ -341,7 +347,7 @@ if (JSON_OUT) {
   console.log(\`\\n=== AI Subscription Usage Audit (\${DAYS}-day window · local only) ===\`);
   console.log(\`Score:   \${score === null ? 'N/A' : score + ' / 100'}\`);
   console.log(\`Verdict: \${verdict}\`);
-  console.log(\`Tools:   Claude(\${claude.turns} turns, \${claude.frontierPct}% frontier) | Codex(\${codex.turns} turns, \${codex.frontierPct}% frontier) | Antigravity(\${antigravity.files} files) | Grok(\${grok.files} files) | Cursor(\${cursor.files} files)\`);
+  console.log(\`Tools:   Claude(\${claude.turns} turns, \${claude.frontierPct}% frontier, ~\$\${claude.estMonthlyUsd}/mo API-equiv) | Codex(\${codex.turns} turns, \${codex.frontierPct}% frontier, ~\$\${codex.estMonthlyUsd}/mo API-equiv) | Antigravity(\${antigravity.files} files) | Grok(\${grok.files} files) | Cursor(\${cursor.files} files)\`);
   if (findings.length) {
     console.log('\\nTop Findings:');
     findings.forEach((f, i) => console.log(\`  \${i + 1}. \${f}\`));
@@ -554,8 +560,19 @@ try {
 } catch {}
 add('statusline-compact-guard', statusOk, statusOk ? '50% statusline guard verified live (emits ⚡/compact at 55%)' : 'Statusline guard check failed');
 
-add('auto-refresh-script', fs.existsSync(path.join(__dirname, 'model-auto-refresh.mjs')), 'model-auto-refresh.mjs multi-tool freshness scanner present');
-add('utilization-tracker', fs.existsSync(path.join(__dirname, 'router-utilization.mjs')), 'router-utilization.mjs 7d vs 60d tracker present');
+let refreshOk = false;
+try {
+  const rOut = JSON.parse(execFileSync('node', [path.join(__dirname, 'model-auto-refresh.mjs'), '--dry-run'], { encoding: 'utf8' }));
+  refreshOk = rOut.ok === true && Array.isArray(rOut.detectedCaches);
+} catch {}
+add('auto-refresh-live', refreshOk, refreshOk ? 'model-auto-refresh.mjs --dry-run verified live across tool caches' : 'Auto-refresh script check failed');
+
+let utilOk = false;
+try {
+  const uOut = JSON.parse(execFileSync('node', [path.join(__dirname, 'router-utilization.mjs')], { encoding: 'utf8' }));
+  utilOk = uOut.ok === true;
+} catch {}
+add('utilization-tracker-live', utilOk, utilOk ? 'router-utilization.mjs 7d vs 60d tracker verified live' : 'Utilization tracker check failed');
 add('cloud-proxy-off-locally', !process.env.META_PROXY_CLOUD_URL && !process.env.OPENROUTER_BASE_URL, 'Paid cloud proxy env vars OFF locally ($0 subscription safety)');
 
 const allOk = checks.every((c) => c.ok);
