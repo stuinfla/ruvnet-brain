@@ -142,9 +142,29 @@
     background: linear-gradient(135deg, #38bdf8, #2563eb);
     color: #fff !important; padding: 6px 13px; border-radius: 999px; font-weight: 700 !important;
   }
+  .story-shell > *, .steps, .step-card, .stage-sticky, .visual-card, .code-panel, .code-block-wrap, .myth-card, .lesson-card, .rule-card {
+    min-width: 0; max-width: 100%;
+  }
   @media (max-width: 768px) {
+    header { padding: 8px 14px; flex-wrap: nowrap; }
+    .brand { font-size: 0.84rem; white-space: nowrap; }
+    .back-home { display: none; }
     .nav-links a:not(.nav-cta) { display: none; }
-    .story-shell { padding-top: 72px; }
+    .nav-cta { padding: 5px 10px; font-size: 0.74rem; white-space: nowrap; }
+    .story-shell { padding: 66px 14px 28px; gap: 18px; }
+    .container { padding: 12px 14px 48px; }
+    .stage-sticky { height: 440px; max-height: 460px; }
+    .stage-top-badge { top: 10px; left: 10px; right: 10px; }
+    .scene-pill { font-size: 0.64rem; padding: 4px 8px; }
+    .pause-btn { font-size: 0.64rem; padding: 4px 8px; min-height: 24px; }
+    .stage-hud { left: 10px; right: 10px; bottom: 10px; gap: 6px; }
+    .hud-metrics { padding: 8px 10px; gap: 6px; }
+    .hm-val { font-size: 0.92rem; }
+    .hm-lab { font-size: 0.64rem; }
+    .chapter-dots { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+    .ch-btn { min-width: 0; padding: 5px 3px; font-size: 0.64rem; text-align: center; }
+    .step-card { padding: 18px 16px; }
+    .step-card h1 { font-size: 1.42rem; }
   }
 
   /* Scrollytelling 3D Stage */
