@@ -713,21 +713,21 @@
         <rect x="645" y="24" width="280" height="118" rx="12" fill="rgba(239,68,68,0.10)" stroke="rgba(239,68,68,0.4)" stroke-dasharray="5,4"/>
         <text x="785" y="44" text-anchor="middle" font-size="11" font-weight="800" fill="#fca5a5">DIMINISHING RETURNS CLIFF</text>
 
-        <!-- Axes & Grid -->
+        <!-- Axes & Grid (exact linear Y = 275 - (score - 30) * 5.8, exact log10 X) -->
         <line x1="70" y1="275" x2="930" y2="275" stroke="#475569" stroke-width="1.5"/>
         <line x1="70" y1="25" x2="70" y2="275" stroke="#475569" stroke-width="1.5"/>
-        <line x1="70" y1="220" x2="930" y2="220" stroke="rgba(148,163,184,0.12)"/>
-        <line x1="70" y1="155" x2="930" y2="155" stroke="rgba(148,163,184,0.12)"/>
-        <line x1="70" y1="90" x2="930" y2="90" stroke="rgba(148,163,184,0.12)"/>
-        <text x="56" y="224" text-anchor="end" font-size="11" fill="#94a3b8">40</text>
-        <text x="56" y="159" text-anchor="end" font-size="11" fill="#94a3b8">52</text>
-        <text x="56" y="94" text-anchor="end" font-size="11" fill="#94a3b8">62</text>
-        <!-- X-axis dollar ticks -->
-        <text x="130" y="293" text-anchor="middle" font-size="10.5" fill="#94a3b8">$0.75</text>
-        <text x="295" y="293" text-anchor="middle" font-size="10.5" fill="#94a3b8">$2.50</text>
-        <text x="495" y="293" text-anchor="middle" font-size="10.5" fill="#94a3b8">$6.00</text>
-        <text x="685" y="293" text-anchor="middle" font-size="10.5" fill="#94a3b8">$10.00</text>
-        <text x="885" y="293" text-anchor="middle" font-size="10.5" fill="#94a3b8">$26.50</text>
+        <line x1="70" y1="217" x2="930" y2="217" stroke="rgba(148,163,184,0.14)"/>
+        <line x1="70" y1="147" x2="930" y2="147" stroke="rgba(148,163,184,0.14)"/>
+        <line x1="70" y1="89" x2="930" y2="89" stroke="rgba(148,163,184,0.14)"/>
+        <text x="56" y="221" text-anchor="end" font-size="11" fill="#94a3b8">40</text>
+        <text x="56" y="151" text-anchor="end" font-size="11" fill="#94a3b8">52</text>
+        <text x="56" y="93" text-anchor="end" font-size="11" fill="#94a3b8">62</text>
+        <!-- Exact log10($) X-axis ticks -->
+        <text x="114" y="293" text-anchor="middle" font-size="10.5" fill="#94a3b8">$0.75</text>
+        <text x="375" y="293" text-anchor="middle" font-size="10.5" fill="#94a3b8">$2.50</text>
+        <text x="565" y="293" text-anchor="middle" font-size="10.5" fill="#94a3b8">$6.00</text>
+        <text x="676" y="293" text-anchor="middle" font-size="10.5" fill="#94a3b8">$10.00</text>
+        <text x="888" y="293" text-anchor="middle" font-size="10.5" fill="#94a3b8">$26.50</text>
         <text x="500" y="318" text-anchor="middle" font-size="12" font-weight="700" fill="#94a3b8">Cost per Complex Task (USD Equivalent · Log-Scaled) →</text>
 
         <!-- Curves (true log10($) X, linear Score Y: y = 275 - (score - 30) * 5.8) -->
@@ -1069,7 +1069,7 @@ const { output, receipt } = await callWithAutoEscalation({
         <rect x="10" y="10" width="960" height="192" rx="14" fill="rgba(34,197,94,0.05)" stroke="rgba(34,197,94,0.35)" stroke-width="1.5"/>
         <text x="26" y="34" font-size="11" font-weight="800" fill="#86efac" letter-spacing="1">WORLD 1 · DEVELOPER MACHINE ($0 PREPAID SUBSCRIPTIONS — API KEYS STRIPPED · CLOUD PROXY OFF)</text>
 
-        <g class="arch-node" onclick="inspectArch('cli')">
+        <g class="arch-node" tabindex="0" role="button" aria-label="Inspect Any CLI or IDE layer" onclick="inspectArch('cli')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();inspectArch('cli');}">
           <rect x="28" y="64" width="128" height="72" rx="10" fill="#1e293b" stroke="#38bdf8" stroke-width="1.6"/>
           <text x="92" y="90" text-anchor="middle" font-size="11" font-weight="800" fill="#fff">Any CLI / IDE</text>
           <text x="92" y="107" text-anchor="middle" font-size="9.5" fill="#94a3b8">Antigravity · Claude</text>
@@ -1078,7 +1078,7 @@ const { output, receipt } = await callWithAutoEscalation({
 
         <line x1="156" y1="100" x2="196" y2="100" stroke="#38bdf8" stroke-width="2.2" class="svg-flow"/>
 
-        <g class="arch-node" onclick="inspectArch('hook')">
+        <g class="arch-node" tabindex="0" role="button" aria-label="Inspect Local Prompt Hook layer" onclick="inspectArch('hook')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();inspectArch('hook');}">
           <rect x="196" y="56" width="166" height="88" rx="10" fill="#0c2542" stroke="#38bdf8" stroke-width="1.8"/>
           <text x="279" y="80" text-anchor="middle" font-size="11" font-weight="800" fill="#7dd3fc">Local Prompt Hook</text>
           <text x="279" y="97" text-anchor="middle" font-size="9.5" fill="#e2e8f0">&lt;50ms · 5-Tier Classifier</text>
@@ -1090,9 +1090,9 @@ const { output, receipt } = await callWithAutoEscalation({
         <line x1="362" y1="100" x2="408" y2="102" stroke="#3b82f6" stroke-width="2" class="svg-flow"/>
         <line x1="362" y1="122" x2="408" y2="144" stroke="#f59e0b" stroke-width="2" class="svg-flow"/>
 
-        <g class="arch-node" onclick="inspectArch('tiers')">
+        <g class="arch-node" tabindex="0" role="button" aria-label="Inspect 5-Tier Distribution layer" onclick="inspectArch('tiers')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();inspectArch('tiers');}">
           <rect x="408" y="46" width="230" height="32" rx="7" fill="rgba(34,197,94,0.18)" stroke="#22c55e"/>
-          <text x="420" y="66" font-size="10" font-weight="700" fill="#bbf7d0">FAST (32%) → Haiku / Flash / Luna</text>
+          <text x="420" y="66" font-size="10" font-weight="700" fill="#bbf7d0">FAST (32%) → Haiku / Neon Low / Luna</text>
           <rect x="408" y="86" width="230" height="32" rx="7" fill="rgba(59,130,246,0.18)" stroke="#3b82f6"/>
           <text x="420" y="106" font-size="10" font-weight="700" fill="#bfdbfe">MED + SUB (61%) → Warm Coordinator</text>
           <rect x="408" y="126" width="230" height="32" rx="7" fill="rgba(245,158,11,0.18)" stroke="#f59e0b"/>
@@ -1103,7 +1103,7 @@ const { output, receipt } = await callWithAutoEscalation({
         <line x1="638" y1="102" x2="678" y2="102" stroke="#94a3b8" stroke-width="1.6" class="svg-flow"/>
         <line x1="638" y1="142" x2="678" y2="112" stroke="#94a3b8" stroke-width="1.6" class="svg-flow"/>
 
-        <g class="arch-node" onclick="inspectArch('qa')">
+        <g class="arch-node" tabindex="0" role="button" aria-label="Inspect QA and Escalation layer" onclick="inspectArch('qa')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();inspectArch('qa');}">
           <rect x="678" y="56" width="136" height="88" rx="10" fill="#1e293b" stroke="#a855f7" stroke-width="1.8"/>
           <text x="746" y="80" text-anchor="middle" font-size="11" font-weight="800" fill="#d8b4fe">QA + Escalate</text>
           <text x="746" y="97" text-anchor="middle" font-size="9.5" fill="#86efac">Pass → Ship</text>
@@ -1113,7 +1113,7 @@ const { output, receipt } = await callWithAutoEscalation({
 
         <line x1="814" y1="100" x2="844" y2="100" stroke="#a855f7" stroke-width="2" class="svg-flow"/>
 
-        <g class="arch-node" onclick="inspectArch('refresh')">
+        <g class="arch-node" tabindex="0" role="button" aria-label="Inspect Auto-Refresh and Watchdog layer" onclick="inspectArch('refresh')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();inspectArch('refresh');}">
           <rect x="844" y="56" width="112" height="88" rx="10" fill="#111827" stroke="#22c55e" stroke-width="1.5"/>
           <text x="900" y="80" text-anchor="middle" font-size="10.5" font-weight="800" fill="#86efac">Auto-Refresh</text>
           <text x="900" y="97" text-anchor="middle" font-size="9" fill="#cbd5e1">Nightly + Weekly</text>
@@ -1127,19 +1127,19 @@ const { output, receipt } = await callWithAutoEscalation({
         <rect x="10" y="218" width="960" height="86" rx="14" fill="rgba(56,189,248,0.06)" stroke="rgba(56,189,248,0.4)" stroke-width="1.5"/>
         <text x="26" y="240" font-size="11" font-weight="800" fill="#7dd3fc" letter-spacing="1">WORLD 2 · DEPLOYED PRODUCTION APPS (METERED API — ZERO HARDCODED MODEL IDS)</text>
 
-        <g class="arch-node" onclick="inspectArch('app')">
+        <g class="arch-node" tabindex="0" role="button" aria-label="Inspect Production App Tier Calls" onclick="inspectArch('app')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();inspectArch('app');}">
           <rect x="28" y="252" width="210" height="36" rx="8" fill="#1e293b" stroke="#38bdf8"/>
           <text x="133" y="274" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">App calls tier: "fast" | "hard"</text>
         </g>
         <line x1="238" y1="270" x2="288" y2="270" stroke="#38bdf8" stroke-width="2.2" class="svg-flow"/>
-        <g class="arch-node" onclick="inspectArch('app')">
+        <g class="arch-node" tabindex="0" role="button" aria-label="Inspect app-model-router.mjs" onclick="inspectArch('app')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();inspectArch('app');}">
           <rect x="288" y="252" width="290" height="36" rx="8" fill="#0c2542" stroke="#38bdf8"/>
           <text x="433" y="274" text-anchor="middle" font-size="10" font-weight="700" fill="#7dd3fc">app-model-router.mjs / APP_MODEL_TIERS_JSON</text>
         </g>
         <line x1="578" y1="270" x2="628" y2="270" stroke="#22c55e" stroke-width="2.2" class="svg-flow"/>
-        <g class="arch-node" onclick="inspectArch('app')">
+        <g class="arch-node" tabindex="0" role="button" aria-label="Inspect Zero-Code-Edit Upgrades and Fallback" onclick="inspectArch('app')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();inspectArch('app');}">
           <rect x="628" y="252" width="326" height="36" rx="8" fill="rgba(34,197,94,0.16)" stroke="#22c55e"/>
-          <text x="791" y="274" text-anchor="middle" font-size="10" font-weight="700" fill="#bbf7d0">Zero-Deploy Upgrades + Fallback + Auto-Escalate</text>
+          <text x="791" y="274" text-anchor="middle" font-size="10" font-weight="700" fill="#bbf7d0">Zero-Code Upgrades + Fallback + Auto-Escalate</text>
         </g>
       </svg>
       <div class="arch-detail" id="arch-detail">
@@ -1215,9 +1215,9 @@ const { output, receipt } = await callWithAutoEscalation({
           <label class="toggle-label"><input type="checkbox" id="test-fail" onchange="runLiveTest()"> Prior QA failure (auto-escalate +1 tier)</label>
         </div>
         <label for="test-prompt" class="sr-only">Prompt to classify</label>
-        <textarea id="test-prompt" class="tester-input" oninput="runLiveTest()" placeholder="Type any coding prompt...">check git status and list all modified files in src/</textarea>
+        <textarea id="test-prompt" class="tester-input" oninput="runLiveTest()" placeholder="Type any coding prompt...">what version of node is installed?</textarea>
         <div class="preset-row" aria-label="Sample prompts">
-          <button type="button" class="preset-btn" onclick="setPreset('check git status and list modified files in src/', false)">Fast Lookup</button>
+          <button type="button" class="preset-btn" onclick="setPreset('what version of node is installed?', false)">Fast Lookup</button>
           <button type="button" class="preset-btn" onclick="setPreset('fix the date formatting bug in src/invoice.js and run unit tests', false)">Medium Edit</button>
           <button type="button" class="preset-btn" onclick="setPreset('implement end-to-end multi-file team invitations across database, API endpoints, and UI dashboard', false)">Substantial Feature</button>
           <button type="button" class="preset-btn" onclick="setPreset('investigate why Stripe webhook retries double-charged customer cards during failover', false)">Hard Consequence</button>
@@ -1281,8 +1281,8 @@ $ node standalone-router.mjs --eval
         </div>
         <div class="sim-kpis">
           <div class="sim-kpi"><b id="kpi-mult">3.8x</b><span>License Stretch</span></div>
-          <div class="sim-kpi"><b id="kpi-save">$220/mo</b><span>Redundant Seats Cut</span></div>
-          <div class="sim-kpi"><b id="kpi-yr">$2,640/yr</b><span>Annual Savings</span></div>
+          <div class="sim-kpi"><b id="kpi-save">$140/mo</b><span>Redundant Seats Cut</span></div>
+          <div class="sim-kpi"><b id="kpi-yr">$1,680/yr</b><span>Annual Savings</span></div>
         </div>
       </div>
     </div>
@@ -1502,8 +1502,9 @@ function classifyLocal(text) {
   const HARD = /cryptograph|consensus|race condition|irreversible|final review|independent review|difficult planning|complex architecture|security audit|security vulnerability|unresolved architectur|production incident|prove correctness/i;
   const MECHANICAL = /\b(summari[sz]e|classify|extract|translate|rephrase|format|typo|alphabetical order|two-column|markdown table)\b/i;
   const WORK = /\b(implement|build|add|replace|repair|fix|debug|trace|investigate|determine|choose|design|plan|review|assess|recommend)\b/i;
-  const QUICK = /^\s*(what (?:is|version|port|branch|model|time|status|tool)|where (?:is|does|do|are)|do we have|is (?:it|there|this|everything)|am i ready|which (?:version|port|branch|cli)|git status|check (?:git |version|status|if)|list (?:all |the )?(?:files|models|daemons|cron|tasks|branches)|show (?:me )?(?:the )?(?:status|version|branches|ports)|status update)\b/i;
-  const PRIOR_FAIL = /\b(still (?:broken|failing|fails|wrong|not working|crashing)|that didn'?t work|failed (?:again|twice)|same error|try harder|escalate)\b/i;
+  const QUICK = /^\s*(what (?:is|version|port|branch|model|time|status|tool)|where (?:is|does|do|are)|do we have|is (?:it|there|this|everything)|am i ready|which (?:version|port|branch|cli)|git status|check (?:version|status|if)|list (?:all |the )?(?:files|models|daemons|cron|tasks|branches)|show (?:me )?(?:the )?(?:status|version|branches|ports)|give me (?:a )?(?:status )?update|status update)\b/i;
+  const SHORT_CTRL = /^\s*(?:yes|yep|yeah|no|nope|ok|okay|sure|stop|continue|go ahead|go for it|do it|sounds good|finish up|proceed|approved|ship it|push it|commit(?: it| that)?|reply\s+only\s+with)\b/i;
+  const PRIOR_FAIL = /\b(still (?:broken|failing|fails|wrong|not working|crashing)|that didn'?t work|failed (?:again|twice)|same error(?: again)?|previous (?:fix|attempt) failed|try harder|escalate to (?:next|higher|frontier|fable|astra|neon|xhigh))\b/i;
   const SURGICAL = /\b(novel algorithm|frontier science|initial system architecture|adversarial (?:code )?review|formal verification proof|stalled all other models)\b/i;
   const assessed = (/^\s*(summari[sz]e|extract|copy)\b/i.test(s) && /\bsupplied document\b/i.test(s) && /\bdo not assess\b/i.test(s)) ? s.replace(/\btitled\s+[^;\n]+(?=[;\n])/i, '') : s;
   const secActions = assessed.replace(/\bdo not (?:assess|recommend)[^.;\n]*/gi, '');
@@ -1513,16 +1514,26 @@ function classifyLocal(text) {
   const iso = /\b(tenant|account|user)\b/i.test(assessed) && /\b(another|different|cross[- ]?(?:tenant|account)|other (?:tenant|account|user)|unauthori[sz]ed)\b/i.test(assessed) && /\b(see|read|access|expos\w*|leak\w*|bind|replay\w*)\b/i.test(assessed);
   const verif = /\b(signed|signature|token|verifier|credential|authentication)\b/i.test(assessed) && /\b(replay\w*|forg\w*|bypass\w*|bind|binding)\b/i.test(assessed);
   const durab = /\b(durable|durability|replicat\w*|acknowledg\w*|writer\w*|leader)\b/i.test(assessed) && /\b(choose|choosing|trade[- ]?off|design|loss|losing|fail\w*|vanish\w*|survive)\b/i.test(assessed);
+  const coupledSys = [/\b(scheduler|queue)\b/i, /\b(worker|consumer)\b/i, /\b(database|storage|broker)\b/i].filter((r) => r.test(assessed)).length >= 2;
+  const coupledFail = coupledSys && /\b(failover|retri\w*|reconnect\w*|restart\w*)\b/i.test(assessed) && /\b(vanish\w*|los[est]\w*|interaction|only when|duplicate\w*)\b/i.test(assessed);
+  const conseq = /\b(consequential planning|substantive planning|substantive review|final substantive review|plan (?:a |the )?new system|design (?:a |the )?new architecture|ambiguous architecture|architecture ambiguity|architectur\w* tradeoff|tightly coupled uncertain implementation|uncertain tightly coupled implementation)\b/i.test(s);
   const archAmb = /architectur\w*/i.test(s) && /\b(ambiguous|ambiguity|unresolved|uncertain|trade[- ]?off)\b/i.test(s);
-  const hardHit = HARD.test(assessed) || secRev || money || liveMig || iso || verif || durab || archAmb;
+  const coupledUnc = /tightly coupled/i.test(s) && /implementation|coding/i.test(s) && /uncertain|unresolved|ambiguous/i.test(s);
+  const hardHit = HARD.test(assessed) || secRev || money || liveMig || iso || verif || durab || coupledFail || conseq || archAmb || coupledUnc;
   const priorFail = PRIOR_FAIL.test(s);
   if (SURGICAL.test(assessed) || (hardHit && priorFail)) return { tier: 'exceptional', why: 'Surgical frontier / escalated high-consequence work' };
-  if (hardHit || priorFail) return { tier: 'hard', why: 'Consequence floor (payments, security, migration, isolation, or prior failure)' };
-  const subText = /\b(substantial (?:implementation|coding|feature|task)|cross-module|multi-file|end-to-end implementation|broad refactor)\b/i.test(s);
+  if (hardHit || priorFail) return { tier: 'hard', why: 'Consequence floor (payments, security, migration, coupled failover, or prior failure)' };
+  const subText = /\b(substantial (?:implementation|coding|feature|task)|cross-module (?:implementation|feature|refactor)|multi-file (?:implementation|feature|refactor)|end-to-end implementation|broad refactor)\b/i.test(s);
+  const impl = /\b(implement|build|add|replace|refactor)\b/i.test(s);
   const surfaces = [/\b(storage|database|backend|importer\w*)\b/i, /\b(endpoint\w*|API|permissions)\b/i, /\b(UI|client|dashboard)\b/i, /\b(integration|coverage|fixtures)\b/i].filter((r) => r.test(s)).length;
-  if (subText || (/\b(implement|build|add|replace|refactor)\b/i.test(s) && surfaces >= 3)) return { tier: 'substantial', why: 'Multi-surface / cross-module implementation' };
-  const hasCode = /```/.test(s) || CODING.test(s);
-  if ((QUICK.test(s) && s.length < 180) || (MECHANICAL.test(s) && !hasCode && !WORK.test(s))) return { tier: 'fast', why: 'Bounded mechanical / lookup — isolate in fast subagent' };
+  const broadImpl = impl && (surfaces >= 3 || (/\b(every|all|across)\b/i.test(s) && surfaces >= 2 && /\b(compatibility|integration|fixtures)\b/i.test(s)));
+  if (subText || broadImpl) return { tier: 'substantial', why: 'Multi-surface / cross-module implementation' };
+  const coding = /```/.test(s) || CODING.test(s);
+  const permitted = assessed.replace(/\bdo not (?:assess|recommend)[^.;\n]*/gi, '');
+  const mechanical = MECHANICAL.test(s) && !coding && (!WORK.test(permitted) || /^\s*fix only the typo\b/i.test(s));
+  const quickLookup = !coding && s.length <= 140 && QUICK.test(s) && !WORK.test(permitted) && !/\b(architectur\w*|security|migration|production|failover|tenant)\b/i.test(s);
+  const shortCtrl = !coding && s.length <= 100 && SHORT_CTRL.test(s) && !WORK.test(permitted) && !/\b(architectur\w*|security|migration|production|failover|tenant)\b/i.test(s);
+  if (mechanical || quickLookup || shortCtrl) return { tier: 'fast', why: 'Bounded mechanical / lookup — isolate in fast subagent' };
   return { tier: 'medium', why: 'Ordinary coding/debugging — stay on warm coordinator cache' };
 }
 window.setPreset = function(txt, fail) {
@@ -1859,8 +1870,11 @@ window.toggle3DPause = function() {
   window.addEventListener('scroll', syncSceneToScroll, { passive: true });
 
   let tClock = 0;
+  let renderedWhilePaused = false;
   function animate() {
     requestAnimationFrame(animate);
+    if (is3DPaused && renderedWhilePaused) return;
+    renderedWhilePaused = is3DPaused;
     const w = Math.max(1, canvas.clientWidth), h = Math.max(1, canvas.clientHeight);
     const aspect = w / h;
     const zBoost = aspect < 1.35 ? (1.35 / Math.max(aspect, 0.72)) : 1.0;

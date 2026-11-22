@@ -31,8 +31,7 @@ for (const [src, dst] of copies) {
 
 // 2. Sanitized policy.default.mjs (remove any user-specific command names)
 let policySrc = fs.readFileSync(path.join(HOME, '.claude/model-router/policy.default.mjs'), 'utf8');
-policySrc = policySrc.replace(/ak\\s\+\(sync\|models\|status\)/g, 'cli\\s+(sync|models|status)');
-policySrc = policySrc.replace(/ak\\s\+\\(sync\\|models\\|status\\)/g, 'cli\\s+(sync|models|status)');
+policySrc = policySrc.replace('ak\\s+(?:sync|models|status)', 'cli\\s+(?:sync|models|status)');
 policySrc = policySrc.replace('ak\\s+(sync|models|status)', 'cli\\s+(sync|models|status)');
 policySrc = policySrc.replace(/ruvnet\|ruflo\|reflow/g, 'router|workflow|agent');
 fs.writeFileSync(path.join(STAGE, 'policy.default.mjs'), policySrc, 'utf8');
@@ -470,6 +469,15 @@ add('eval-suite', passed === list.length && list.length > 0, \`\${passed}/\${lis
 const esc = routePrompt('still broken, tests failed twice on auth middleware', { priorFailure: true, policyPath });
 add('auto-escalation', esc.escalated === true, \`Escalated to \${esc.tier} (\${esc.model}@\${esc.effort})\`);
 
+// Checks 8-13: Fork 2 fallback integrity, kit examples, statusline guard, cloud proxy off, refresh script, utilization script
+const appRouterSrc = fs.existsSync(path.join(__dirname, 'app-model-router.mjs')) ? fs.readFileSync(path.join(__dirname, 'app-model-router.mjs'), 'utf8') : '';
+add('app-router-fallback-provider', appRouterSrc.includes('fallbackProvider'), 'app-model-router.mjs defines cross-provider fallbackProvider');
+add('hooks-examples-present', fs.existsSync(path.join(__dirname, 'examples', 'hooks-and-configs.md')), 'examples/hooks-and-configs.md present for all 5 tools');
+add('statusline-compact-guard', fs.existsSync(path.join(__dirname, 'examples', 'statusline-50pct-compact.cjs')), '50% ⚡/compact statusline guard script present');
+add('auto-refresh-script', fs.existsSync(path.join(__dirname, 'model-auto-refresh.mjs')), 'model-auto-refresh.mjs freshness scanner present');
+add('utilization-tracker', fs.existsSync(path.join(__dirname, 'router-utilization.mjs')), 'router-utilization.mjs 7d vs 60d tracker present');
+add('cloud-proxy-off-locally', !process.env.META_PROXY_CLOUD_URL && !process.env.OPENROUTER_BASE_URL, 'Paid cloud proxy env vars OFF locally ($0 subscription safety)');
+
 const allOk = checks.every((c) => c.ok);
 const alerts = checks.filter((c) => !c.ok).map((c) => \`ALERT [\${c.id}]: \${c.detail}\`);
 console.log(JSON.stringify({ ok: allOk, mode, policyPath, passed: checks.filter((c) => c.ok).length, total: checks.length, alerts, checks }, null, 2));
@@ -557,12 +565,25 @@ reasoning_effort = "low"
 fork_secondary_model = "grok-build"
 \`\`\`
 
-## 4. Cursor IDE (\`.cursorrules\` / Settings)
-- Set default Composer/Chat model to **Claude Sonnet** or **Gemini Neon Medium** (not Opus/Max).
-- Start a **fresh Composer thread** every time context crosses ~50% (never reuse one 500k-token chat all day).
-- Use \`@codebase\` / quick lookups on Fast/Flash models, then paste only the 2–3 relevant files into a Hard/Reasoning model for tricky bugs.
+## 4. Antigravity (Gemini 4) &amp; Cursor IDE
+- **Antigravity:** Park default coordinator on \`Gemini 4 Neon (Medium)\`; delegate deep synthesis/reviews to \`Gemini 4 Neon (High)\` (\`$0\` cache-write fee) and broad scans to \`Gemini 4 Flash\`.
+- **Cursor IDE (\`.cursorrules\` / Settings):** Park Composer on Sonnet 5.5 or Neon Medium; open a fresh thread at 50% context; pin only 2–3 relevant files when escalating to Hard/Reasoning.
 
-## 5. Production Apps (Lens 2 — Zero Hardcoded Model IDs)
+## 5. Standalone \`UserPromptSubmit\` Hook + Weekly Cron (No MetaHarness Required)
+Add a lightweight hook in \`~/.claude/settings.json\` to log decisions to \`~/.claude/metaharness/routing-decisions.jsonl\` (read by \`router-utilization.mjs\`):
+\`\`\`json
+{
+  "hooks": {
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "node ~/ai-routing-kit/standalone-router.mjs --prompt \\"$PROMPT\\"" }] }]
+  }
+}
+\`\`\`
+Schedule weekly freshness + watchdog checks via \`crontab -e\`:
+\`\`\`cron
+0 2 * * 0 node ~/ai-routing-kit/model-auto-refresh.mjs --apply && node ~/ai-routing-kit/model-routing-audit.mjs
+\`\`\`
+
+## 6. Production Apps &amp; Corporate Pay-By-The-Drink (Fork 2)
 \`\`\`js
 import { callWithAutoEscalation } from './app-model-router.mjs';
 
