@@ -24,12 +24,21 @@ const NEXT_TIER = Object.freeze({
 
 // AA v5.0.1 / Vals v2.2 / KingBench 4 production API defaults (capped at high; never default max)
 export const DEFAULT_PRODUCTION_TIERS = Object.freeze({
-  fast:        { provider: 'google',    model: 'gemini-4-flash',   effort: 'low',    fallback: 'gpt-6-luna',        maxOutputTokens: 1024 },
-  medium:      { provider: 'google',    model: 'gemini-4-neon',    effort: 'medium', fallback: 'claude-sonnet-5-5', maxOutputTokens: 4096 },
-  substantial: { provider: 'google',    model: 'gemini-4-neon',    effort: 'high',   fallback: 'gpt-6.2-sol',       maxOutputTokens: 8192 },
-  hard:        { provider: 'google',    model: 'gemini-4-neon',    effort: 'high',   fallback: 'claude-opus-5-5',   maxOutputTokens: 8192 },
-  exceptional: { provider: 'anthropic', model: 'claude-fable-5-2', effort: 'high',   fallback: 'gemini-4-neon',     maxOutputTokens: 8192 },
+  fast:        { provider: 'google',    model: 'gemini-4-flash',   effort: 'low',    fallback: 'gpt-6-luna',        fallbackProvider: 'openai',    maxOutputTokens: 1024 },
+  medium:      { provider: 'google',    model: 'gemini-4-neon',    effort: 'medium', fallback: 'claude-sonnet-5-5', fallbackProvider: 'anthropic', maxOutputTokens: 4096 },
+  substantial: { provider: 'google',    model: 'gemini-4-neon',    effort: 'high',   fallback: 'gpt-6.2-sol',       fallbackProvider: 'openai',    maxOutputTokens: 8192 },
+  hard:        { provider: 'google',    model: 'gemini-4-neon',    effort: 'high',   fallback: 'claude-opus-5-5',   fallbackProvider: 'anthropic', maxOutputTokens: 8192 },
+  exceptional: { provider: 'anthropic', model: 'claude-fable-5-2', effort: 'high',   fallback: 'gemini-4-neon',     fallbackProvider: 'google',    maxOutputTokens: 8192 },
 });
+
+function inferProvider(model = '') {
+  const m = String(model).toLowerCase();
+  if (m.startsWith('claude')) return 'anthropic';
+  if (m.startsWith('gpt') || m.startsWith('o1') || m.startsWith('o3')) return 'openai';
+  if (m.startsWith('gemini')) return 'google';
+  if (m.startsWith('grok')) return 'xai';
+  return null;
+}
 
 function loadExternalOverrides() {
   if (process.env.APP_MODEL_TIERS_JSON) {
@@ -62,30 +71,46 @@ export async function callWithAutoEscalation({
   let lastError = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     const route = resolveTier(current);
-    const started = Date.now();
-    try {
-      const output = await execute(route, { attempt, tier: current, purpose });
-      const valid = await validate(output);
-      const receipt = {
-        ts: new Date().toISOString(),
-        purpose,
-        requestedTier: tier,
-        executedTier: current,
-        model: route.model,
-        effort: route.effort,
-        provider: route.provider,
-        escalated: attempt > 0,
-        valid: Boolean(valid),
-        durationMs: Date.now() - started,
-      };
-      if (typeof onReceipt === 'function') onReceipt(receipt);
-      if (valid) return { output, receipt };
-      lastError = new Error(`Validation failed at tier=${current} (${route.model}@${route.effort})`);
-    } catch (err) {
-      lastError = err;
+    const candidates = [route];
+    if (route.fallback && route.fallback !== route.model) {
+      candidates.push({
+        ...route,
+        model: route.fallback,
+        provider: route.fallbackProvider || inferProvider(route.fallback) || route.provider,
+        usedFallback: true,
+      });
+    }
+    let validationFailed = false;
+    for (const candidate of candidates) {
+      const started = Date.now();
+      try {
+        const output = await execute(candidate, { attempt, tier: current, purpose, isFallback: Boolean(candidate.usedFallback) });
+        const valid = await validate(output);
+        const receipt = {
+          ts: new Date().toISOString(),
+          purpose,
+          requestedTier: tier,
+          executedTier: current,
+          model: candidate.model,
+          effort: candidate.effort,
+          provider: candidate.provider,
+          usedFallback: Boolean(candidate.usedFallback),
+          escalated: attempt > 0,
+          valid: Boolean(valid),
+          durationMs: Date.now() - started,
+        };
+        if (typeof onReceipt === 'function') onReceipt(receipt);
+        if (valid) return { output, receipt };
+        lastError = new Error(`Validation failed at tier=${current} (${candidate.model}@${candidate.effort})`);
+        validationFailed = true;
+        break; // semantic/validation failure -> escalate +1 tier instead of lateral fallback
+      } catch (err) {
+        lastError = err; // provider outage/429 -> try lateral fallback model first, then escalate
+      }
     }
     if (!NEXT_TIER[current]) break;
     current = NEXT_TIER[current];
+    void validationFailed;
   }
   throw lastError || new Error(`All tiers exhausted starting from ${tier}`);
 }

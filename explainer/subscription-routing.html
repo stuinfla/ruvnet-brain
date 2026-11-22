@@ -3,25 +3,41 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Stretch Prepaid AI Licenses 3.5x–4.5x Further — Interactive 3D Playbook &amp; Starter Kit</title>
-<meta name="description" content="Why corporate pay-by-the-drink AI routing breaks for developers—and how 5-tier local routing, warm prompt caches, and thinking-level caps eliminate weekly rate-limit walls.">
+<title>AI Subscription Routing Playbook — Stretch Prepaid AI Seats 3.5x–4.5x + Zero-Hardcoded App Routing</title>
+<meta name="description" content="Why corporate pay-by-the-drink AI routing breaks for developers—and how 5-tier local routing, warm prompt caches, thinking-level caps, and zero-hardcoded app tiers eliminate weekly walls.">
+<link rel="canonical" href="https://isovision.ai/ai-routing.html">
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://isovision.ai/ruvnet-brain/subscription-routing">
-<meta property="og:title" content="Stretch Prepaid AI Licenses 3.5x–4.5x Further (Interactive 3D Playbook)">
-<meta property="og:description" content="Stop burning $200 AI developer seats in 2 days. Interactive Three.js walkthrough + downloadable 13-file Starter Kit for Claude Code, Antigravity (Gemini 4), Codex, Grok &amp; production apps.">
-<meta property="og:image" content="https://isovision.ai/ruvnet-brain/subscription-routing-card.png">
+<meta property="og:url" content="https://isovision.ai/ai-routing.html">
+<meta property="og:title" content="Stretch Prepaid AI Licenses 3.5x–4.5x Further — Interactive 3D Playbook &amp; 16-File Starter Kit">
+<meta property="og:description" content="Stop burning $200 AI developer seats in 2 days. Interactive 5-chapter Three.js walkthrough, live in-browser prompt router tester, and free 16-file standalone Starter Kit for Claude Code, Antigravity, Codex, Grok, Cursor &amp; production apps.">
+<meta property="og:image" content="https://isovision.ai/subscription-routing-card.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Stretch Prepaid AI Licenses 3.5x–4.5x Further">
-<meta name="twitter:description" content="Interactive 3D architecture walkthrough + free 13-file Starter Kit for developers balancing prepaid Max/Pro/Ultra seats while shipping AI apps.">
-<meta name="twitter:image" content="https://isovision.ai/ruvnet-brain/subscription-routing-card.png">
+<meta name="twitter:title" content="Stretch Prepaid AI Licenses 3.5x–4.5x Further (Interactive 3D Playbook)">
+<meta name="twitter:description" content="Interactive 3D architecture walkthrough + live router tester + free 16-file standalone Starter Kit for developers balancing prepaid Max/Pro/Ultra seats while shipping AI apps.">
+<meta name="twitter:image" content="https://isovision.ai/subscription-routing-card.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Stretch Prepaid AI Licenses 3.5x–4.5x Further + Zero-Hardcoded App Routing",
+  "description": "Two-fork AI model routing architecture: $0 local 5-tier routing for prepaid developer seats and zero-hardcoded tier aliases for production apps and metered corporate APIs.",
+  "url": "https://isovision.ai/ai-routing.html",
+  "image": "https://isovision.ai/subscription-routing-card.png",
+  "datePublished": "2026-11-22",
+  "dateModified": "2026-11-22",
+  "author": { "@type": "Person", "name": "Stuart Kerr", "url": "https://isovision.ai/" },
+  "publisher": { "@type": "Organization", "name": "ISO Vision AI", "url": "https://isovision.ai/" }
+}
+</script>
 <style>
   :root {
     --bg: #050811;
-    --panel: rgba(15, 23, 42, 0.82);
+    --panel: rgba(15, 23, 42, 0.84);
     --panel-solid: #0f172a;
-    --border: rgba(148, 163, 184, 0.18);
+    --panel-deep: #091021;
+    --border: rgba(148, 163, 184, 0.19);
     --text: #e2e8f0;
     --muted: #94a3b8;
     --cyan: #38bdf8;
@@ -29,9 +45,11 @@
     --amber: #f59e0b;
     --red: #ef4444;
     --purple: #a855f7;
+    --blue: #3b82f6;
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
   body {
     margin: 0;
     background: var(--bg);
@@ -40,24 +58,93 @@
     line-height: 1.6;
     overflow-x: hidden;
   }
+  :focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; border-radius: 4px; }
+  .skip-link {
+    position: fixed; top: -60px; left: 16px; z-index: 200;
+    background: var(--cyan); color: #050811; padding: 10px 16px; border-radius: 8px;
+    font-weight: 800; text-decoration: none;
+  }
+  .skip-link:focus { top: 12px; }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+
+  /* Scroll Progress Bar */
+  .scroll-progress {
+    position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 90;
+    background: linear-gradient(90deg, #ef4444, #f59e0b 28%, #38bdf8 55%, #22c55e 82%, #a855f7);
+    transform-origin: left center; transform: scaleX(0); pointer-events: none;
+  }
+
+  /* Scroll-triggered reveal (compositor-only, opt-in under no-preference) */
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal { opacity: 0; transform: translateY(22px); transition: opacity 0.65s cubic-bezier(0.22, 1, 0.36, 1), transform 0.65s cubic-bezier(0.22, 1, 0.36, 1); }
+    .reveal.is-visible { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Visual Impact Trio (Distribution Shift, 7-Day Calendar, Dollar Reach) */
+  .dist-bar { display: flex; height: 34px; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); margin: 8px 0; }
+  .dist-seg { display: flex; align-items: center; justify-content: center; font-size: 0.74rem; font-weight: 850; color: #050811; white-space: nowrap; transition: width 0.55s cubic-bezier(0.22,1,0.36,1); }
+  .week-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-top: 8px; }
+  .day-box {
+    border-radius: 9px; padding: 8px 4px; text-align: center; font-size: 0.72rem; font-weight: 800;
+    border: 1px solid var(--border);
+  }
+  .day-ok { background: rgba(34,197,94,0.18); border-color: rgba(34,197,94,0.5); color: #86efac; }
+  .day-warn { background: rgba(245,158,11,0.18); border-color: rgba(245,158,11,0.5); color: #fcd34d; }
+  .day-dead { background: rgba(239,68,68,0.16); border-color: rgba(239,68,68,0.45); color: #fca5a5; }
+  .reach-meter { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+  .reach-row { display: grid; grid-template-columns: 74px 1fr 78px; align-items: center; gap: 10px; font-size: 0.78rem; font-weight: 800; }
+  .reach-track { height: 22px; background: #1e293b; border-radius: 999px; overflow: hidden; }
+  .reach-fill { height: 100%; border-radius: 999px; display: flex; align-items: center; padding-left: 10px; font-size: 0.72rem; color: #050811; font-weight: 900; }
+
+  /* 5-Step Journey Path Stepper */
+  .journey-track {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 195px), 1fr)); gap: 14px;
+    margin-bottom: 24px; position: relative;
+  }
+  .journey-step {
+    background: linear-gradient(160deg, rgba(15,23,42,0.95), rgba(9,16,33,0.95));
+    border: 1px solid rgba(56,189,248,0.28); border-radius: 16px; padding: 18px 16px;
+    display: flex; flex-direction: column; gap: 7px; position: relative;
+  }
+  .journey-step:last-child { border-color: rgba(34,197,94,0.55); box-shadow: 0 0 28px rgba(34,197,94,0.12); }
+  .j-num {
+    font-size: 0.7rem; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--cyan); display: inline-flex; align-items: center; gap: 6px;
+  }
+  .journey-step:last-child .j-num { color: var(--green); }
+  .journey-step h3 { margin: 0; font-size: 0.96rem; color: #fff; font-weight: 850; }
+  .journey-step p { margin: 0; font-size: 0.82rem; color: #cbd5e1; line-height: 1.48; }
 
   /* Fixed Top Bar */
   header {
-    position: fixed; top: 0; left: 0; right: 0; z-index: 50;
-    background: rgba(5, 8, 17, 0.78);
+    position: fixed; top: 0; left: 0; right: 0; z-index: 60;
+    background: rgba(5, 8, 17, 0.84);
     backdrop-filter: blur(14px);
     border-bottom: 1px solid var(--border);
-    padding: 10px 24px;
-    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    padding: 10px 20px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
   }
-  .brand { font-weight: 850; font-size: 0.98rem; color: #fff; letter-spacing: -0.02em; }
+  .brand-wrap { display: flex; align-items: center; gap: 12px; }
+  .brand { font-weight: 850; font-size: 0.96rem; color: #fff; letter-spacing: -0.02em; text-decoration: none; }
   .brand span { color: var(--cyan); }
-  .nav-links { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; font-size: 0.84rem; }
+  .back-home {
+    font-size: 0.74rem; color: var(--muted); text-decoration: none;
+    border: 1px solid var(--border); padding: 3px 9px; border-radius: 999px;
+  }
+  .back-home:hover { color: #fff; border-color: var(--cyan); }
+  .nav-links { display: flex; gap: 13px; align-items: center; flex-wrap: wrap; font-size: 0.81rem; }
   .nav-links a { color: var(--muted); text-decoration: none; font-weight: 600; transition: color 0.15s; }
   .nav-links a:hover { color: #fff; }
   .nav-cta {
     background: linear-gradient(135deg, #38bdf8, #2563eb);
     color: #fff !important; padding: 6px 13px; border-radius: 999px; font-weight: 700 !important;
+  }
+  @media (max-width: 768px) {
+    .nav-links a:not(.nav-cta) { display: none; }
+    .story-shell { padding-top: 72px; }
   }
 
   /* Scrollytelling 3D Stage */
@@ -65,15 +152,11 @@
     position: relative;
     display: grid;
     grid-template-columns: minmax(320px, 460px) 1fr;
-    max-width: 1320px;
+    max-width: 1340px;
     margin: 0 auto;
-    padding: 76px 24px 40px;
+    padding: 82px 24px 40px;
     gap: 28px;
     align-items: start;
-  }
-  @media (max-width: 960px) {
-    .story-shell { grid-template-columns: 1fr; }
-    .stage-sticky { position: relative !important; top: 0 !important; height: 360px !important; }
   }
   .stage-sticky {
     position: sticky;
@@ -87,59 +170,80 @@
     background: radial-gradient(circle at 55% 40%, #14264b 0%, #050811 76%);
     box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
   }
+  @media (max-width: 960px) {
+    .story-shell { grid-template-columns: 1fr; padding-top: 112px; }
+    .stage-sticky {
+      order: -1;
+      position: relative;
+      top: 0;
+      min-height: 0;
+      height: 390px;
+      max-height: 430px;
+    }
+  }
   #three-canvas { width: 100%; height: 100%; display: block; }
-  .stage-hud {
-    position: absolute; left: 18px; right: 18px; bottom: 18px;
-    display: flex; flex-direction: column; gap: 10px;
-    pointer-events: none;
+  .webgl-fallback {
+    display: none; position: absolute; inset: 0; padding: 28px;
+    align-items: center; justify-content: center; text-align: center;
+    color: #cbd5e1; font-size: 0.92rem; background: radial-gradient(circle at 50% 40%, #14264b, #050811);
   }
   .stage-top-badge {
-    position: absolute; top: 16px; left: 18px; right: 18px;
-    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    position: absolute; top: 14px; left: 16px; right: 16px;
+    display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;
     pointer-events: none;
   }
+  .top-right-controls { display: flex; align-items: center; gap: 8px; pointer-events: auto; }
   .scene-pill {
-    font-size: 0.74rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
-    padding: 5px 12px; border-radius: 999px;
-    background: rgba(5, 8, 17, 0.75); border: 1px solid var(--border); color: var(--cyan);
+    font-size: 0.72rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 5px 11px; border-radius: 999px;
+    background: rgba(5, 8, 17, 0.78); border: 1px solid var(--border); color: var(--cyan);
     backdrop-filter: blur(8px);
+  }
+  .pause-btn {
+    pointer-events: auto;
+    font-size: 0.72rem; font-weight: 700; padding: 5px 10px; border-radius: 999px;
+    background: rgba(15, 23, 42, 0.88); border: 1px solid var(--border); color: #cbd5e1; cursor: pointer;
+    min-height: 28px;
+  }
+  .pause-btn:hover { border-color: var(--cyan); color: #fff; }
+  .stage-hud {
+    position: absolute; left: 16px; right: 16px; bottom: 16px;
+    display: flex; flex-direction: column; gap: 9px;
+    pointer-events: none;
   }
   .hud-metrics {
     display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
-    background: rgba(5, 8, 17, 0.82); backdrop-filter: blur(10px);
-    border: 1px solid var(--border); border-radius: 14px; padding: 11px 14px;
+    background: rgba(5, 8, 17, 0.84); backdrop-filter: blur(10px);
+    border: 1px solid var(--border); border-radius: 14px; padding: 10px 14px;
   }
-  .hm-val { font-size: 1.15rem; font-weight: 850; color: #fff; line-height: 1.1; }
-  .hm-lab { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
-  .chapter-dots {
-    pointer-events: auto;
-    display: flex; gap: 6px; flex-wrap: wrap;
-  }
+  .hm-val { font-size: 1.1rem; font-weight: 850; color: #fff; line-height: 1.1; }
+  .hm-lab { font-size: 0.7rem; color: var(--muted); margin-top: 2px; }
+  .chapter-dots { pointer-events: auto; display: flex; gap: 6px; flex-wrap: wrap; }
   .ch-btn {
-    flex: 1; min-width: 85px;
-    border: 1px solid var(--border); background: rgba(15, 23, 42, 0.85);
-    color: var(--muted); font-size: 0.74rem; font-weight: 700;
-    padding: 7px 8px; border-radius: 9px; cursor: pointer; transition: all 0.2s;
+    flex: 1; min-width: 82px; min-height: 32px;
+    border: 1px solid var(--border); background: rgba(15, 23, 42, 0.88);
+    color: var(--muted); font-size: 0.73rem; font-weight: 700;
+    padding: 6px 8px; border-radius: 9px; cursor: pointer; transition: color 0.15s, border-color 0.15s, background-color 0.15s;
   }
   .ch-btn:hover { color: #fff; border-color: var(--cyan); }
-  .ch-btn.active { background: rgba(56, 189, 248, 0.2); border-color: var(--cyan); color: #fff; }
+  .ch-btn.active { background: rgba(56, 189, 248, 0.22); border-color: var(--cyan); color: #fff; }
 
   /* Narrative Steps */
-  .steps { display: flex; flex-direction: column; gap: 24px; padding-bottom: 40px; }
+  .steps { display: flex; flex-direction: column; gap: 20px; padding-bottom: 32px; }
   .step-card {
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 18px;
-    padding: 24px 24px;
-    transition: border-color 0.25s, transform 0.25s, box-shadow 0.25s;
+    padding: 22px 24px;
+    transition: border-color 0.2s, box-shadow 0.2s;
     cursor: pointer;
   }
   .step-card.active {
-    border-color: rgba(56, 189, 248, 0.7);
-    box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.25), 0 16px 40px rgba(0, 0, 0, 0.4);
+    border-color: rgba(56, 189, 248, 0.72);
+    box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.28), 0 16px 40px rgba(0, 0, 0, 0.42);
   }
   .step-kicker {
-    font-size: 0.72rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+    font-size: 0.71rem; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase;
     margin-bottom: 6px; display: inline-block; padding: 3px 9px; border-radius: 999px;
   }
   .k-red { background: rgba(239,68,68,0.16); color: #fca5a5; }
@@ -147,49 +251,148 @@
   .k-cyan { background: rgba(56,189,248,0.16); color: #7dd3fc; }
   .k-green { background: rgba(34,197,94,0.16); color: #86efac; }
   .k-purple { background: rgba(168,85,247,0.16); color: #d8b4fe; }
-  .step-card h1 { font-size: 1.75rem; line-height: 1.15; margin: 6px 0 10px; color: #fff; font-weight: 900; }
-  .step-card h2 { font-size: 1.28rem; line-height: 1.22; margin: 4px 0 10px; color: #fff; font-weight: 850; }
-  .step-card p { margin: 0 0 10px; font-size: 0.93rem; color: #cbd5e1; }
+  .step-card h1 { font-size: 1.72rem; line-height: 1.15; margin: 6px 0 10px; color: #fff; font-weight: 900; }
+  .step-card h2 { font-size: 1.24rem; line-height: 1.22; margin: 4px 0 10px; color: #fff; font-weight: 850; }
+  .step-card p { margin: 0 0 10px; font-size: 0.92rem; color: #cbd5e1; }
   .step-card p:last-child { margin-bottom: 0; }
+  .stamp-row {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; font-size: 0.74rem; color: var(--muted);
+  }
+  .stamp-pill {
+    background: rgba(56,189,248,0.09); border: 1px solid rgba(56,189,248,0.25);
+    color: #7dd3fc; padding: 2px 9px; border-radius: 999px; font-weight: 700;
+  }
 
   /* Full-Width Visual Sections */
-  .container { max-width: 1180px; margin: 0 auto; padding: 20px 24px 64px; }
-  .sec-head { text-align: center; max-width: 780px; margin: 0 auto 28px; }
-  .sec-head h2 { font-size: clamp(1.5rem, 2.6vw, 2.1rem); font-weight: 900; color: #fff; margin: 6px 0 10px; letter-spacing: -0.02em; }
-  .sec-head p { color: var(--muted); margin: 0; font-size: 1rem; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 16px 24px 64px; }
+  section { scroll-margin-top: 76px; margin-bottom: 56px; }
+  .sec-head { text-align: center; max-width: 820px; margin: 0 auto 26px; }
+  .sec-head h2 { font-size: clamp(1.48rem, 2.5vw, 2.08rem); font-weight: 900; color: #fff; margin: 6px 0 10px; letter-spacing: -0.02em; }
+  .sec-head p { color: var(--muted); margin: 0; font-size: 0.98rem; }
 
   .visual-card {
     background: var(--panel-solid);
     border: 1px solid var(--border);
     border-radius: 20px;
     padding: 24px 26px;
-    margin-bottom: 32px;
+    margin-bottom: 24px;
     box-shadow: 0 16px 45px rgba(0,0,0,0.35);
   }
-  .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 18px; margin-bottom: 32px; }
-  .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 20px; margin-bottom: 32px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 245px), 1fr)); gap: 16px; margin-bottom: 24px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 285px), 1fr)); gap: 18px; margin-bottom: 24px; }
+  .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 20px; margin-bottom: 24px; }
 
-  .myth-card {
+  .myth-card, .lesson-card, .rule-card, .tier-card {
     background: var(--panel-solid); border: 1px solid var(--border); border-radius: 18px;
     padding: 20px 22px; display: flex; flex-direction: column; gap: 10px;
   }
   .myth-bad {
     background: rgba(239, 68, 68, 0.1); border-left: 3px solid var(--red);
-    padding: 8px 12px; border-radius: 0 8px 8px 0; font-size: 0.88rem; color: #fecaca;
+    padding: 8px 12px; border-radius: 0 8px 8px 0; font-size: 0.87rem; color: #fecaca;
   }
   .myth-good {
     background: rgba(34, 197, 94, 0.1); border-left: 3px solid var(--green);
-    padding: 8px 12px; border-radius: 0 8px 8px 0; font-size: 0.88rem; color: #bbf7d0;
+    padding: 8px 12px; border-radius: 0 8px 8px 0; font-size: 0.87rem; color: #bbf7d0;
+  }
+  .lesson-num { font-size: 0.72rem; font-weight: 850; letter-spacing: 0.1em; text-transform: uppercase; color: var(--amber); }
+  .lesson-card h3, .rule-card h3 { margin: 0; font-size: 1.04rem; color: #fff; font-weight: 800; }
+  .lesson-card p, .rule-card p { margin: 0; font-size: 0.87rem; color: #cbd5e1; }
+  .rule-badge {
+    width: 30px; height: 30px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center;
+    background: rgba(34,197,94,0.16); color: #86efac; font-weight: 900; font-size: 0.88rem; border: 1px solid rgba(34,197,94,0.35);
   }
 
-  /* Interactive Scatter Tooltip */
+  /* Subtle SVG animations (opt-in under prefers-reduced-motion: no-preference) */
+  @media (prefers-reduced-motion: no-preference) {
+    @keyframes dashFlow { to { stroke-dashoffset: -28; } }
+    @keyframes pulseGlow { 0%,100% { opacity: 0.65; } 50% { opacity: 1; } }
+    .svg-flow { stroke-dasharray: 6 5; animation: dashFlow 1.6s linear infinite; }
+    .svg-pulse { animation: pulseGlow 2.4s ease-in-out infinite; }
+  }
+
+  /* Interactive Scatter Plot */
   .scatter-wrap { position: relative; }
+  .scatter-legend {
+    display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; margin-bottom: 10px; font-size: 0.82rem; color: #cbd5e1;
+  }
+  .leg-item { display: inline-flex; align-items: center; gap: 7px; font-weight: 700; }
+  .leg-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
   .scatter-info {
     margin-top: 12px; padding: 12px 16px; border-radius: 12px;
     background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25);
     font-size: 0.9rem; color: #e2e8f0; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;
   }
-  .dot-hit { cursor: pointer; transition: r 0.15s; }
+  .dot-hit { cursor: pointer; }
+  .dot-hit:focus-visible { outline: 2px solid #fff; }
+
+  /* Responsive Allocation Tables */
+  .table-wrap { overflow-x: auto; border-radius: 14px; border: 1px solid var(--border); }
+  table.matrix { width: 100%; border-collapse: collapse; font-size: 0.84rem; min-width: 680px; }
+  table.matrix caption { text-align: left; padding: 12px 16px; font-weight: 800; color: #fff; background: #0b1326; border-bottom: 1px solid var(--border); }
+  table.matrix th, table.matrix td { padding: 11px 13px; text-align: left; border-bottom: 1px solid rgba(148,163,184,0.12); vertical-align: top; }
+  table.matrix th { background: rgba(15, 23, 42, 0.95); color: #94a3b8; font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.07em; }
+  table.matrix tr:last-child td { border-bottom: none; }
+  .t-pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-weight: 800; font-size: 0.74rem; text-transform: uppercase; }
+  .tp-fast { background: rgba(34,197,94,0.18); color: #86efac; }
+  .tp-med { background: rgba(59,130,246,0.2); color: #93c5fd; }
+  .tp-sub { background: rgba(56,189,248,0.18); color: #7dd3fc; }
+  .tp-hard { background: rgba(245,158,11,0.18); color: #fcd34d; }
+  .tp-exc { background: rgba(168,85,247,0.2); color: #d8b4fe; }
+  .eff-tag { color: var(--muted); font-size: 0.76rem; display: block; margin-top: 2px; }
+
+  /* Interactive Architecture Inspector */
+  .arch-node { cursor: pointer; }
+  .arch-node:hover rect { stroke-width: 2.6; filter: brightness(1.15); }
+  .arch-detail {
+    margin-top: 12px; padding: 12px 16px; border-radius: 12px;
+    background: rgba(34, 197, 94, 0.08); border: 1px solid rgba(34, 197, 94, 0.28);
+    font-size: 0.88rem; color: #e2e8f0;
+  }
+
+  /* Lens 2 Code Diff */
+  .code-panel {
+    background: #050811; border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+  }
+  .code-head {
+    display: flex; justify-content: space-between; align-items: center; padding: 10px 14px;
+    background: rgba(15, 23, 42, 0.9); border-bottom: 1px solid var(--border); font-size: 0.79rem; font-weight: 800;
+  }
+  .code-pre {
+    margin: 0; padding: 16px; font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 0.79rem; line-height: 1.55; color: #e2e8f0; overflow-x: auto; white-space: pre;
+  }
+
+  /* Watchdog 13-Point Grid */
+  .wd-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 10px; }
+  .wd-item {
+    background: rgba(5, 8, 17, 0.72); border: 1px solid rgba(34,197,94,0.25);
+    border-radius: 10px; padding: 10px 12px; font-size: 0.81rem; color: #cbd5e1;
+    display: flex; align-items: flex-start; gap: 8px;
+  }
+  .wd-ok { color: var(--green); font-weight: 900; flex-shrink: 0; }
+
+  /* Interactive In-Browser Prompt Tester */
+  .tester-controls { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; align-items: center; }
+  .tester-input {
+    width: 100%; background: #050811; color: #fff; border: 1px solid rgba(56,189,248,0.4);
+    border-radius: 12px; padding: 12px 14px; font-size: 0.92rem; font-family: inherit;
+    resize: vertical; min-height: 68px;
+  }
+  .preset-row { display: flex; flex-wrap: wrap; gap: 7px; margin: 10px 0 14px; }
+  .preset-btn {
+    background: rgba(15,23,42,0.9); color: #cbd5e1; border: 1px solid var(--border);
+    border-radius: 999px; padding: 6px 12px; font-size: 0.76rem; font-weight: 700; cursor: pointer;
+  }
+  .preset-btn:hover { border-color: var(--cyan); color: #fff; }
+  .tester-out {
+    background: #050811; border: 1px solid rgba(34,197,94,0.35); border-radius: 14px; padding: 16px 18px;
+    font-family: "SFMono-Regular", Menlo, monospace; font-size: 0.83rem;
+  }
+  .select-pill {
+    background: #0b1326; color: #fff; border: 1px solid var(--border); border-radius: 8px;
+    padding: 7px 11px; font-size: 0.82rem; font-weight: 700;
+  }
+  .toggle-label { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; color: #fcd34d; font-weight: 700; cursor: pointer; }
 
   /* Interactive Quota Simulator */
   .sim-grid { display: grid; grid-template-columns: 1fr 1.2fr; gap: 24px; align-items: center; }
@@ -202,44 +405,51 @@
   .sim-fill { display: flex; align-items: center; padding: 0 12px; font-weight: 800; font-size: 0.82rem; color: #fff; transition: width 0.25s ease; white-space: nowrap; }
   .sim-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
   .sim-kpi { background: rgba(15,23,42,0.9); border: 1px solid var(--border); border-radius: 12px; padding: 12px; text-align: center; }
-  .sim-kpi b { display: block; font-size: 1.35rem; color: var(--green); }
-  .sim-kpi span { font-size: 0.76rem; color: var(--muted); }
+  .sim-kpi b { display: block; font-size: 1.32rem; color: var(--green); }
+  .sim-kpi span { font-size: 0.75rem; color: var(--muted); }
 
   /* Starter Kit Download & Prompt */
   .kit-banner {
     background: linear-gradient(135deg, rgba(14,165,233,0.18), rgba(34,197,94,0.14));
     border: 1px solid rgba(56,189,248,0.4);
     border-radius: 20px;
-    padding: 28px 30px;
+    padding: 26px 28px;
     display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px;
-    margin-bottom: 24px;
+    margin-bottom: 20px;
   }
   .btn-download {
     display: inline-flex; align-items: center; gap: 10px;
     background: linear-gradient(135deg, #22c55e, #16a34a);
-    color: #fff; text-decoration: none; font-weight: 850; font-size: 0.98rem;
+    color: #fff; text-decoration: none; font-weight: 850; font-size: 0.96rem;
     padding: 14px 24px; border-radius: 12px;
     box-shadow: 0 10px 28px rgba(34, 197, 94, 0.35);
     transition: transform 0.15s;
   }
   .btn-download:hover { transform: translateY(-2px); }
-  .kit-files { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .kit-files { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
   .kit-chip {
-    font-family: "SFMono-Regular", Menlo, monospace; font-size: 0.76rem;
-    background: rgba(5,8,17,0.7); border: 1px solid var(--border);
-    padding: 4px 9px; border-radius: 6px; color: #7dd3fc;
+    font-family: "SFMono-Regular", Menlo, monospace; font-size: 0.74rem;
+    background: rgba(5,8,17,0.75); border: 1px solid var(--border);
+    padding: 4px 8px; border-radius: 6px; color: #7dd3fc;
   }
 
+  .code-block-wrap {
+    background: #050811; border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+  }
+  .code-block-bar {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    padding: 10px 16px; background: rgba(15, 23, 42, 0.9); border-bottom: 1px solid var(--border);
+    font-size: 0.8rem; font-weight: 700; color: #cbd5e1;
+  }
   .code-block {
-    position: relative; background: #050811; border: 1px solid var(--border);
-    border-radius: 14px; padding: 18px 20px;
+    padding: 18px 20px;
     font-family: "SFMono-Regular", Menlo, Consolas, monospace;
-    font-size: 0.82rem; line-height: 1.55; color: #e2e8f0; white-space: pre-wrap;
+    font-size: 0.82rem; line-height: 1.58; color: #e2e8f0; white-space: pre-wrap; margin: 0;
   }
   .copy-btn {
-    position: absolute; top: 12px; right: 12px;
     background: var(--cyan); color: #050811; border: none;
     font-weight: 800; font-size: 0.78rem; padding: 7px 14px; border-radius: 8px; cursor: pointer;
+    min-height: 30px;
   }
   .copy-btn:hover { background: #7dd3fc; }
   code { font-family: "SFMono-Regular", Menlo, monospace; background: rgba(148,163,184,0.14); padding: 2px 5px; border-radius: 4px; color: #7dd3fc; font-size: 0.85em; }
@@ -247,66 +457,86 @@
 </style>
 </head>
 <body>
+<div class="scroll-progress" id="scroll-progress" aria-hidden="true"></div>
+<a href="#main-content" class="skip-link">Skip to content</a>
 
 <header>
-  <div class="brand">AI Subscription <span>Routing Playbook</span></div>
-  <div class="nav-links">
-    <a href="#story">3D Story</a>
-    <a href="#myths">Counterintuitive Truths</a>
-    <a href="#frontier">Thinking Frontier</a>
-    <a href="#architecture">Architecture</a>
-    <a href="#simulator">Quota Simulator</a>
-    <a href="#starter-kit" class="nav-cta">Download Starter Kit (.zip)</a>
+  <div class="brand-wrap">
+    <a href="https://isovision.ai/" class="back-home">← isovision.ai</a>
+    <a href="#story" class="brand">AI Subscription <span>Routing Playbook</span></a>
   </div>
+  <nav class="nav-links" aria-label="Primary">
+    <a href="#story">3D Story</a>
+    <a href="#myths">Truths</a>
+    <a href="#frontier">Benchmarks</a>
+    <a href="#lens1">Dev Seats</a>
+    <a href="#lens2">Prod Apps</a>
+    <a href="#freshness">Auto-Refresh</a>
+    <a href="#tester">Live Tester</a>
+    <a href="#starter-kit" class="nav-cta">16-File Kit (.zip)</a>
+  </nav>
 </header>
 
+<main id="main-content">
 <!-- ═══════════════════ SCROLLYTELLING 3D THREE.JS STORY ═══════════════════ -->
 <div class="story-shell" id="story">
-  <div class="steps">
-    <article class="step-card active" data-scene="0" onclick="activateScene(0)">
+  <div class="steps" aria-label="Story chapters">
+    <article class="step-card active" role="button" tabindex="0" aria-current="step" data-scene="0" onclick="activateScene(0)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();activateScene(0);}">
       <span class="step-kicker k-red">Chapter 1 · The Invisible Wall</span>
       <h1>Why $200 AI Licenses Die in 2 Days</h1>
       <p>Watch the 3D pipeline on the right. When your main chat sits parked on a flagship model (Opus 5.5, Fable 5.2, or Astra), <strong>all 30–80 tool calls inside every turn</strong>—reading files, running <code>git status</code>, grepping logs—slam straight into the red <strong>Rate-Limit Wall</strong>.</p>
       <p>In a real 60-day audit (255,000+ turns, 63B tokens), <strong>57% of turns burned frontier quota</strong> and <strong>43% of total burn was pure cache-write fees ($5–$10/Mtok)</strong> on uncompacted 500k+ token chats.</p>
+      <div class="stamp-row">
+        <span class="stamp-pill">Updated 2026-11-22 EST</span>
+        <span class="stamp-pill">AA v5.0.1 · Vals v2.2 · KingBench 4</span>
+        <span class="stamp-pill">Zero MetaHarness Required</span>
+      </div>
     </article>
 
-    <article class="step-card" data-scene="1" onclick="activateScene(1)">
+    <article class="step-card" role="button" tabindex="0" data-scene="1" onclick="activateScene(1)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();activateScene(1);}">
       <span class="step-kicker k-amber">Chapter 2 · The Counterintuitive Trap</span>
       <h2>Why Mixing Vendors on Every Prompt Backfires</h2>
       <p>Intuition says: <em>"Route every prompt to whichever company is cheapest."</em> That intuition is <strong>wrong</strong> for interactive coding.</p>
-      <p><strong>93%–97% of your input tokens are warm prompt cache reads</strong> (the glowing blue ring). Bouncing a routine turn from Claude Code to Codex or Grok mid-task <strong>shatters the warm cache</strong>—forcing the second vendor to re-read your repo from disk (5x–10x token penalty + 20s cold startup lag).</p>
+      <p><strong>93%–97% of your input tokens are warm prompt cache reads</strong> (the glowing blue ring). Watch the amber cross-vendor bolt shatter the ring: bouncing a routine turn from Claude Code to Codex or Grok mid-task forces the second vendor to re-read your repo cold (<strong>5x–10x token penalty + 20s startup lag</strong>).</p>
     </article>
 
-    <article class="step-card" data-scene="2" onclick="activateScene(2)">
+    <article class="step-card" role="button" tabindex="0" data-scene="2" onclick="activateScene(2)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();activateScene(2);}">
       <span class="step-kicker k-cyan">Chapter 3 · Two Completely Different Worlds</span>
       <h2>Corporations Buy By the Drink. Developers Prepay.</h2>
       <p>Most AI proxies are built for <strong>corporations</strong> that don't have Max/Pro/Ultra seats—they pay per million tokens on every call. If a developer routes personal coding through a paid cloud proxy, they <strong>pay twice</strong>.</p>
-      <p><strong>World 1 (Green Orbit — Your Machine):</strong> Strip all API keys. Keep paid cloud proxies <strong>OFF</strong>. Optimize your prepaid seats locally at <code>$0</code> extra cost.<br>
-      <strong>World 2 (Cyan Orbit — Apps You Ship):</strong> Production apps <em>do</em> buy by the drink. Never hardcode a model ID—call tier aliases (<code>fast | medium | hard | exceptional</code>) backed by a dynamic proxy or config.</p>
+      <p><strong>World 1 (Green Left — Your Machine):</strong> Strip all API keys. Keep paid cloud proxies <strong>OFF</strong>. Optimize your prepaid seats locally at <code>$0</code> extra cost.<br>
+      <strong>World 2 (Cyan Right — Apps You Ship):</strong> Production apps <em>do</em> buy by the drink. Never hardcode a model ID—call 5 tier aliases (<code>fast | medium | substantial | hard | exceptional</code>) backed by a swappable router.</p>
     </article>
 
-    <article class="step-card" data-scene="3" onclick="activateScene(3)">
+    <article class="step-card" role="button" tabindex="0" data-scene="3" onclick="activateScene(3)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();activateScene(3);}">
       <span class="step-kicker k-green">Chapter 4 · Loosening the Pipes</span>
       <h2>5-Tier Local Routing + 4 Quota-Hygiene Rules</h2>
-      <p>Watch the red wall dissolve. Park every tool on its fast <strong>Medium Coordinator</strong> (Sonnet 5.5, GPT-6.2 Sol, Gemini 4 Neon Med, Grok 4.7). A local hook classifies every prompt in &lt;50ms:</p>
-      <p>• <strong>32% Fast (Green):</strong> Bulk searches &amp; lookups offloaded to Haiku/Flash/Luna subagents so 150k raw tokens never bloat your main chat.<br>
-      • <strong>54% Medium (Blue):</strong> Handled directly on your warm prompt cache.<br>
-      • <strong>14% Hard / Surgical (Amber/Purple):</strong> Pre-distilled context sent to Neon High / Opus High / Astra High / Fable 5.2 High—never open-ended discovery.</p>
+      <p>Watch the red wall dissolve into <strong>5 balanced tiers</strong> with a <strong>50% <code>/compact</code> relief ring</strong> venting bloat before it hits your cache:</p>
+      <p>• <strong>Fast (32%):</strong> Bulk scans &amp; lookups isolated in Haiku / Neon Low / Luna subagents.<br>
+      • <strong>Medium (54%):</strong> Routine edits &amp; tests directly on your warm coordinator cache.<br>
+      • <strong>Substantial (7%):</strong> Multi-file features on Opus 5.5 Med / Neon High / Sol High.<br>
+      • <strong>Hard (5%) &amp; Exceptional (&lt;2%):</strong> Pre-distilled context sent surgically to Neon High / Opus High / Astra High / Fable 5.2 High—never open-ended discovery.</p>
     </article>
 
-    <article class="step-card" data-scene="4" onclick="activateScene(4)">
+    <article class="step-card" role="button" tabindex="0" data-scene="4" onclick="activateScene(4)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();activateScene(4);}">
       <span class="step-kicker k-purple">Chapter 5 · Self-Healing &amp; Always Current</span>
       <h2>Auto-Escalation + Weekly Auto-Refresh</h2>
-      <p>You never have to call out a model name again. If QA fails twice or you say <em>"still broken"</em>, the router automatically arcs the task <strong>+1 tier higher</strong> with distilled failure evidence.</p>
-      <p>Meanwhile, the orbiting <strong>Weekly/Nightly Refresh Satellite</strong> reads your local CLI model caches, auto-promotes newer generations, and runs a 13-point self-audit watchdog so your setup never silently drifts stale.</p>
+      <p>You never have to memorize or type a model name again. Watch the purple <strong>+1 Tier Escalation Arc</strong>: if QA fails twice or you say <em>"still broken"</em>, the router automatically lifts the task one tier higher with distilled failure evidence.</p>
+      <p>Meanwhile, the orbiting <strong>Auto-Refresh Satellite</strong> scans your local CLI model caches nightly, checks AA v5.0.1 / Vals / KingBench weekly, promotes newer generations within the same family, and runs a <strong>13-point self-audit watchdog</strong> so your setup never drifts stale.</p>
     </article>
   </div>
 
   <div class="stage-sticky">
-    <canvas id="three-canvas"></canvas>
+    <canvas id="three-canvas" aria-label="Interactive 3D visualization of AI prompt routing across 5 chapters"></canvas>
+    <div class="webgl-fallback" id="webgl-fallback">
+      <div><strong>Interactive 3D Stage (WebGL unavailable in this browser)</strong><br>Use the 5 chapter cards on the left and the interactive SVG architecture, live prompt tester, and simulator below.</div>
+    </div>
     <div class="stage-top-badge">
       <span class="scene-pill" id="scene-title">CH 1 · THE FRONTIER BOTTLENECK</span>
-      <span class="scene-pill" id="scene-badge" style="color:#fca5a5;">1.0x BASELINE</span>
+      <div class="top-right-controls">
+        <span class="scene-pill" id="scene-badge" style="color:#fca5a5;">1.0x BASELINE</span>
+        <button type="button" class="pause-btn" id="pause-3d-btn" onclick="toggle3DPause()">Pause 3D</button>
+      </div>
     </div>
     <div class="stage-hud">
       <div class="hud-metrics" id="hud-metrics">
@@ -314,12 +544,12 @@
         <div><div class="hm-val" style="color:#fcd34d;">43%</div><div class="hm-lab">Cache-Write Tax</div></div>
         <div><div class="hm-val" style="color:#fca5a5;">~2 Days</div><div class="hm-lab">Before Weekly Wall</div></div>
       </div>
-      <div class="chapter-dots">
-        <button class="ch-btn active" onclick="activateScene(0)">1. The Wall</button>
-        <button class="ch-btn" onclick="activateScene(1)">2. Cache Trap</button>
-        <button class="ch-btn" onclick="activateScene(2)">3. Two Worlds</button>
-        <button class="ch-btn" onclick="activateScene(3)">4. 5-Tier Flow</button>
-        <button class="ch-btn" onclick="activateScene(4)">5. Auto-Heal</button>
+      <div class="chapter-dots" role="group" aria-label="Select 3D chapter">
+        <button type="button" class="ch-btn active" onclick="activateScene(0)">1. The Wall</button>
+        <button type="button" class="ch-btn" onclick="activateScene(1)">2. Cache Trap</button>
+        <button type="button" class="ch-btn" onclick="activateScene(2)">3. Two Worlds</button>
+        <button type="button" class="ch-btn" onclick="activateScene(3)">4. 5-Tier Flow</button>
+        <button type="button" class="ch-btn" onclick="activateScene(4)">5. Auto-Heal</button>
       </div>
     </div>
   </div>
@@ -328,7 +558,7 @@
 <!-- ═══════════════════ VISUAL CONTENT SECTIONS ═══════════════════ -->
 <div class="container">
 
-  <!-- Counterintuitive Truths -->
+  <!-- 1. Counterintuitive Truths (Preserved & Polished!) -->
   <section id="myths">
     <div class="sec-head">
       <span class="step-kicker k-amber">Counterintuitive Insights</span>
@@ -337,10 +567,11 @@
     </div>
     <div class="grid-3">
       <div class="myth-card">
-        <svg viewBox="0 0 280 78" width="100%" height="74">
-          <circle cx="58" cy="39" r="24" fill="none" stroke="#38bdf8" stroke-width="4" stroke-dasharray="135 20"/>
+        <svg viewBox="0 0 280 78" width="100%" height="74" role="img" aria-label="Warm cache 96.7% hit rate shattered by cross-vendor switch causing 5x to 10x token penalty">
+          <title>Cross-vendor switching shatters 96.7% warm prompt caches</title>
+          <circle cx="58" cy="39" r="24" fill="none" stroke="#38bdf8" stroke-width="4" stroke-dasharray="135 20" class="svg-pulse"/>
           <text x="58" y="43" text-anchor="middle" font-size="11" font-weight="800" fill="#38bdf8">96.7%</text>
-          <path d="M92,39 L136,39" stroke="#ef4444" stroke-width="2.5" stroke-dasharray="4,3"/>
+          <path d="M92,39 L136,39" stroke="#ef4444" stroke-width="2.5" class="svg-flow"/>
           <text x="114" y="30" text-anchor="middle" font-size="9" font-weight="800" fill="#fca5a5">SWITCH</text>
           <rect x="144" y="16" width="124" height="46" rx="8" fill="rgba(239,68,68,0.16)" stroke="#ef4444"/>
           <text x="206" y="36" text-anchor="middle" font-size="10" font-weight="800" fill="#fecaca">COLD CACHE</text>
@@ -351,8 +582,9 @@
       </div>
 
       <div class="myth-card">
-        <svg viewBox="0 0 280 78" width="100%" height="74">
-          <rect x="14" y="42" width="108" height="24" rx="5" fill="#22c55e"/>
+        <svg viewBox="0 0 280 78" width="100%" height="74" role="img" aria-label="Gemini 4 Neon High scores 60 at $3.74 vs Opus 5.5 Max scoring 59 at $10.04">
+          <title>Thinking-level cost comparison: Neon High vs Opus Max</title>
+          <rect x="14" y="42" width="108" height="24" rx="5" fill="#22c55e" class="svg-pulse"/>
           <text x="68" y="58" text-anchor="middle" font-size="9.5" font-weight="800" fill="#052e16">Neon High · 60 ($3.74)</text>
           <rect x="14" y="10" width="252" height="24" rx="5" fill="#ef4444"/>
           <text x="140" y="26" text-anchor="middle" font-size="9.5" font-weight="800" fill="#fff">Opus 5.5 Max · 59 ($10.04 — 2.7x cost!)</text>
@@ -362,11 +594,12 @@
       </div>
 
       <div class="myth-card">
-        <svg viewBox="0 0 280 78" width="100%" height="74">
+        <svg viewBox="0 0 280 78" width="100%" height="74" role="img" aria-label="Context usage 0 to 50% stays fast and cheap; past 50% triggers 5x to 10x cost without /compact">
+          <title>50% context compaction threshold</title>
           <rect x="14" y="18" width="120" height="42" rx="6" fill="#1e293b" stroke="#22c55e" stroke-width="1.8"/>
           <text x="74" y="37" text-anchor="middle" font-size="9.5" font-weight="800" fill="#86efac">0% – 50% Context</text>
           <text x="74" y="51" text-anchor="middle" font-size="8.5" fill="#94a3b8">Fast &amp; Cheap</text>
-          <rect x="144" y="18" width="122" height="42" rx="6" fill="rgba(239,68,68,0.2)" stroke="#ef4444" stroke-width="1.8"/>
+          <rect x="144" y="18" width="122" height="42" rx="6" fill="rgba(239,68,68,0.2)" stroke="#ef4444" stroke-width="1.8" class="svg-pulse"/>
           <text x="205" y="37" text-anchor="middle" font-size="9.5" font-weight="800" fill="#fca5a5">&gt;50% Context</text>
           <text x="205" y="51" text-anchor="middle" font-size="8.5" fill="#fecaca">⚡/compact (5x–10x!)</text>
         </svg>
@@ -376,20 +609,109 @@
     </div>
   </section>
 
-  <!-- Interactive Efficiency Frontier Scatter Chart -->
+  <!-- 1.5 Visual Impact: Same Dollars, 4x Reach, Zero Mid-Week Lockouts -->
+  <section id="impact-visuals">
+    <div class="sec-head">
+      <span class="step-kicker k-green">Measured Impact · Same Prepaid Dollars, 3.8x–4.5x More Output</span>
+      <h2>What Actually Changes Inside Your Week (Before vs. After)</h2>
+      <p>Routing isn't about using weaker models—it's about stopping 86% of routine tool calls from burning your scarce Frontier quota so you never time out mid-week.</p>
+    </div>
+
+    <div class="grid-3">
+      <!-- Visual 1: Prompt Distribution Shift -->
+      <div class="myth-card">
+        <span class="step-kicker k-cyan" style="width:fit-content;">1 · Prompt Distribution Shift</span>
+        <h3 style="margin:0; font-size:1.05rem; color:#fff;">From 57% Frontier → 86% Fast + Warm Med</h3>
+        <div style="font-size:0.76rem; color:#fca5a5; font-weight:700; margin-top:4px;">BEFORE (Default Single-Model Chat)</div>
+        <div class="dist-bar" role="img" aria-label="Before: 8% Fast, 35% Medium, 57% Frontier">
+          <div class="dist-seg" style="width:8%; background:#22c55e;">8%</div>
+          <div class="dist-seg" style="width:35%; background:#3b82f6; color:#fff;">35% Med</div>
+          <div class="dist-seg" style="width:57%; background:#ef4444; color:#fff;">57% Frontier 🔥</div>
+        </div>
+        <div style="font-size:0.76rem; color:#86efac; font-weight:700; margin-top:4px;">AFTER (5-Tier Local Router)</div>
+        <div class="dist-bar" role="img" aria-label="After: 32% Fast, 54% Medium, 7% Substantial, 5% Hard, 2% Exceptional">
+          <div class="dist-seg" style="width:32%; background:#22c55e;">32% Fast</div>
+          <div class="dist-seg" style="width:54%; background:#3b82f6; color:#fff;">54% Med</div>
+          <div class="dist-seg" style="width:7%; background:#38bdf8;">7</div>
+          <div class="dist-seg" style="width:5%; background:#f59e0b;">5</div>
+          <div class="dist-seg" style="width:2%; background:#a855f7;"></div>
+        </div>
+        <p style="margin:4px 0 0; font-size:0.83rem; color:#cbd5e1;"><strong>Result:</strong> Hard &amp; Exceptional (&lt;7% total) stay 100% available whenever a real bug hits, instead of getting wasted on <code>git status</code> and file reads.</p>
+      </div>
+
+      <!-- Visual 2: 7-Day Weekly Session Calendar -->
+      <div class="myth-card">
+        <span class="step-kicker k-amber" style="width:fit-content;">2 · Weekly Session Reach</span>
+        <h3 style="margin:0; font-size:1.05rem; color:#fff;">Zero Mid-Week Rate-Limit Lockouts</h3>
+        <div style="font-size:0.76rem; color:#fca5a5; font-weight:700; margin-top:4px;">BEFORE (~2 Days Before Weekly Wall)</div>
+        <div class="week-grid" aria-label="Before: Monday OK, Tuesday Warning, Wednesday through Sunday locked out">
+          <div class="day-box day-ok">Mon<br>✓</div>
+          <div class="day-box day-warn">Tue<br>⚠</div>
+          <div class="day-box day-dead">Wed<br>✕</div>
+          <div class="day-box day-dead">Thu<br>✕</div>
+          <div class="day-box day-dead">Fri<br>✕</div>
+          <div class="day-box day-dead">Sat<br>✕</div>
+          <div class="day-box day-dead">Sun<br>✕</div>
+        </div>
+        <div style="font-size:0.76rem; color:#86efac; font-weight:700; margin-top:8px;">AFTER (All 7 Days + 30% Headroom)</div>
+        <div class="week-grid" aria-label="After: Monday through Sunday all active with zero lockouts">
+          <div class="day-box day-ok">Mon<br>✓</div>
+          <div class="day-box day-ok">Tue<br>✓</div>
+          <div class="day-box day-ok">Wed<br>✓</div>
+          <div class="day-box day-ok">Thu<br>✓</div>
+          <div class="day-box day-ok">Fri<br>✓</div>
+          <div class="day-box day-ok">Sat<br>✓</div>
+          <div class="day-box day-ok">Sun<br>✓</div>
+        </div>
+        <p style="margin:6px 0 0; font-size:0.83rem; color:#cbd5e1;"><strong>Result:</strong> One prepaid seat lasts all 7 days of heavy shipping—eliminating the need to buy a second backup seat.</p>
+      </div>
+
+      <!-- Visual 3: Same Dollar, 4x Effective Tokens & Turns -->
+      <div class="myth-card">
+        <span class="step-kicker k-green" style="width:fit-content;">3 · Same $200 Seat Value</span>
+        <h3 style="margin:0; font-size:1.05rem; color:#fff;">3.8x–4.5x More Effective Turns / Dollar</h3>
+        <div class="reach-meter">
+          <div class="reach-row">
+            <span style="color:#fca5a5;">Before</span>
+            <div class="reach-track"><div class="reach-fill" style="width:24%; background:#ef4444; color:#fff;">1.0x</div></div>
+            <span style="color:#fca5a5;">~180 turns</span>
+          </div>
+          <div class="reach-row">
+            <span style="color:#86efac;">After</span>
+            <div class="reach-track"><div class="reach-fill svg-pulse" style="width:96%; background:linear-gradient(90deg,#22c55e,#38bdf8);">4.1x Effective Reach</div></div>
+            <span style="color:#86efac;">~740+ turns</span>
+          </div>
+          <div class="reach-row">
+            <span style="color:#fcd34d;">Cache Tax</span>
+            <div class="reach-track"><div class="reach-fill" style="width:72%; background:#f59e0b;">-70% Waste</div></div>
+            <span style="color:#fcd34d;">50% /compact</span>
+          </div>
+        </div>
+        <p style="margin:8px 0 0; font-size:0.83rem; color:#cbd5e1;"><strong>Result:</strong> Every prepaid dollar buys ~4× more shipped code because warm cache stays 96.7% hot and <code>fast</code> subagents keep bloat out of your window.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. Interactive Efficiency Frontier Scatter Chart (Preserved & Upgraded with all 13 points, legend, X-ticks!) -->
   <section id="frontier">
     <div class="sec-head">
-      <span class="step-kicker k-cyan">Third-Party Benchmark Data · Click Any Point</span>
+      <span class="step-kicker k-cyan">Third-Party Benchmark Data · Click or Tab Any Point</span>
       <h2>The Thinking-Level Efficiency Frontier (AA v5.0.1)</h2>
       <p>Artificial Analysis Intelligence Index v5.0.1 cost-to-solve across thinking levels. Notice the green <strong>Sweet Spot</strong> vs. the red <strong>Diminishing-Returns Cliff</strong>.</p>
     </div>
     <div class="visual-card scatter-wrap">
-      <svg viewBox="0 0 960 320" width="100%" height="320" id="frontier-svg">
-        <!-- Background zones -->
+      <div class="scatter-legend" aria-label="Model series legend">
+        <span class="leg-item"><span class="leg-dot" style="background:#38bdf8;"></span>Gemini 4 Neon (Low → XHigh)</span>
+        <span class="leg-item"><span class="leg-dot" style="background:#f59e0b;"></span>Claude Opus 5.5 (Low → Max)</span>
+        <span class="leg-item"><span class="leg-dot" style="background:#a855f7;"></span>Claude Fable 5.2 (Low → Max)</span>
+        <span class="leg-item"><span class="leg-dot" style="background:#22c55e;"></span>Sweet Spot Winner</span>
+      </div>
+      <svg viewBox="0 0 960 330" width="100%" height="330" id="frontier-svg" role="img" aria-label="Interactive scatter chart of AA v5.0.1 Intelligence Index vs cost per complex task across thinking levels">
+        <title>Thinking-Level Efficiency Frontier (AA v5.0.1)</title>
         <rect x="275" y="42" width="175" height="92" rx="12" fill="rgba(34,197,94,0.12)" stroke="rgba(34,197,94,0.45)" stroke-dasharray="5,4"/>
         <text x="362" y="62" text-anchor="middle" font-size="11" font-weight="800" fill="#86efac">EFFICIENCY SWEET SPOT</text>
-        <rect x="650" y="26" width="275" height="115" rx="12" fill="rgba(239,68,68,0.10)" stroke="rgba(239,68,68,0.4)" stroke-dasharray="5,4"/>
-        <text x="788" y="46" text-anchor="middle" font-size="11" font-weight="800" fill="#fca5a5">DIMINISHING RETURNS CLIFF</text>
+        <rect x="645" y="24" width="280" height="118" rx="12" fill="rgba(239,68,68,0.10)" stroke="rgba(239,68,68,0.4)" stroke-dasharray="5,4"/>
+        <text x="785" y="44" text-anchor="middle" font-size="11" font-weight="800" fill="#fca5a5">DIMINISHING RETURNS CLIFF</text>
 
         <!-- Axes & Grid -->
         <line x1="70" y1="275" x2="930" y2="275" stroke="#475569" stroke-width="1.5"/>
@@ -400,489 +722,1255 @@
         <text x="56" y="224" text-anchor="end" font-size="11" fill="#94a3b8">40</text>
         <text x="56" y="159" text-anchor="end" font-size="11" fill="#94a3b8">52</text>
         <text x="56" y="94" text-anchor="end" font-size="11" fill="#94a3b8">62</text>
-        <text x="500" y="308" text-anchor="middle" font-size="12" font-weight="700" fill="#94a3b8">Cost per Complex Task (USD Equivalent) →</text>
+        <!-- X-axis dollar ticks -->
+        <text x="130" y="293" text-anchor="middle" font-size="10.5" fill="#94a3b8">$0.75</text>
+        <text x="295" y="293" text-anchor="middle" font-size="10.5" fill="#94a3b8">$2.50</text>
+        <text x="495" y="293" text-anchor="middle" font-size="10.5" fill="#94a3b8">$6.00</text>
+        <text x="685" y="293" text-anchor="middle" font-size="10.5" fill="#94a3b8">$10.00</text>
+        <text x="885" y="293" text-anchor="middle" font-size="10.5" fill="#94a3b8">$26.50</text>
+        <text x="500" y="318" text-anchor="middle" font-size="12" font-weight="700" fill="#94a3b8">Cost per Complex Task (USD Equivalent · Log-Scaled) →</text>
 
-        <!-- Curves -->
-        <polyline points="130,198 250,138 370,104 510,98" fill="none" stroke="#38bdf8" stroke-width="3.2"/>
-        <polyline points="165,248 295,176 355,155 495,124 685,112" fill="none" stroke="#f59e0b" stroke-width="2.6" stroke-dasharray="6,4"/>
-        <polyline points="330,144 385,132 615,90 745,90 885,68" fill="none" stroke="#a855f7" stroke-width="2.6"/>
+        <!-- Curves (true log10($) X, linear Score Y: y = 275 - (score - 30) * 5.8) -->
+        <polyline points="115,194 316,130 462,101 581,95" fill="none" stroke="#38bdf8" stroke-width="3.2"/>
+        <polyline points="173,246 371,171 445,147 568,118 678,107" fill="none" stroke="#f59e0b" stroke-width="2.6" stroke-dasharray="6,4"/>
+        <polyline points="421,136 465,124 656,89 762,89 888,72" fill="none" stroke="#a855f7" stroke-width="2.6"/>
 
-        <!-- Interactive Points -->
         <g id="scatter-points"></g>
       </svg>
-      <div class="scatter-info" id="scatter-info">
-        <span><strong>Selected: Gemini 4 Neon @ High</strong> — Score <strong>60</strong> · <strong>$3.74/task</strong> · 14.3 min · <strong>$0.00 implicit cache-write fee</strong>. Beats Claude Opus 5.5 Max (59 @ $10.04) for nearly 1/3rd the cost.</span>
-        <span style="color:var(--cyan); font-weight:700;">Hover or click any node above ↑</span>
+      <div class="scatter-info" id="scatter-info" aria-live="polite">
+        <span><strong>Selected: Gemini 4 Neon @ High</strong> — Score <strong>60</strong> · <strong>$3.74/task</strong> · 14.3–14.8 min · <strong>$0.00 implicit cache-write fee</strong>. Beats Claude Opus 5.5 Max (59 @ $10.04) for nearly 1/3rd the cost.</span>
+        <span style="color:var(--cyan); font-weight:700;">Hover, click, or Tab any node above ↑</span>
+      </div>
+      <div class="table-wrap" style="margin-top:18px;">
+        <table class="matrix">
+          <caption>Exact AA v5.0.1 Thinking / Effort Level Schedule (Score | Cost per Complex Task | Time)</caption>
+          <thead>
+            <tr>
+              <th scope="col">Thinking / Effort Level</th>
+              <th scope="col">Gemini 4 Neon (Score / Cost / Time)</th>
+              <th scope="col">Claude Opus 5.5 (Score / Cost / Time)</th>
+              <th scope="col">Claude Fable 5.2 (Score / Cost / Time)</th>
+              <th scope="col">Recommended Role</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Low</strong></td>
+              <td><strong>44</strong> | $0.75 | 3.7 min</td>
+              <td>35 | $0.98 | <strong>3.0 min</strong></td>
+              <td><strong>54</strong> | $3.10 | 5.5 min</td>
+              <td><span class="t-pill tp-fast">Fast / Lookups</span></td>
+            </tr>
+            <tr>
+              <td><strong>Medium</strong></td>
+              <td><strong>55</strong> | $1.90 | 8.4 min</td>
+              <td>48 | $2.45 | <strong>6.7 min</strong></td>
+              <td><strong>56</strong> | $3.80 | 6.5 min</td>
+              <td><span class="t-pill tp-med">Default Coordinator</span></td>
+            </tr>
+            <tr style="background:rgba(34,197,94,0.08);">
+              <td><strong style="color:#86efac;">High ★ Sweet Spot</strong></td>
+              <td><strong style="color:#86efac;">60 | $3.74 | 14.3–14.8 min</strong></td>
+              <td>52 | $3.46 | <strong>9.2 min</strong></td>
+              <td><strong>62</strong> | $9.08 | 15.1 min</td>
+              <td><span class="t-pill tp-hard">Hard / Surgical Cap</span></td>
+            </tr>
+            <tr>
+              <td><strong>XHigh</strong></td>
+              <td><strong>61</strong> | $6.44 | 22.3 min</td>
+              <td>57 | $6.05 | 15.8 min</td>
+              <td>62 | $14.83 | 24.5 min</td>
+              <td><span class="t-pill tp-exc">Auto-Escalation Only</span></td>
+            </tr>
+            <tr style="background:rgba(239,68,68,0.08);">
+              <td><strong style="color:#fca5a5;">Max (Cliff)</strong></td>
+              <td><em>N/A (Caps at XHigh)</em></td>
+              <td style="color:#fca5a5;">59 | $10.04 | 25.6 min</td>
+              <td style="color:#fca5a5;"><strong>65</strong> | $26.54 | 42.2 min</td>
+              <td style="color:#fca5a5; font-weight:800;">Never Default</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </section>
 
-  <!-- Full Architectural Diagram -->
-  <section id="architecture">
+  <!-- 3. Evolution of Thought (Why This Architecture Exists — Not Just a Recipe) -->
+  <section id="evolution">
     <div class="sec-head">
-      <span class="step-kicker k-green">Complete System Blueprint</span>
-      <h2>End-to-End Architecture (Both Worlds in One Diagram)</h2>
-      <p>How every prompt flows from your keyboard through local classification, subagent delegation, QA auto-escalation, weekly auto-refresh, and live observability.</p>
+      <span class="step-kicker k-purple">Evolution of Thought · Don't Accept Recipes Blindly</span>
+      <h2>4 Painful Lessons That Forced This Architecture</h2>
+      <p>Every rule in the Starter Kit exists because a simpler idea failed in production. Here is the forensic trail so you can verify our logic against your own machine.</p>
     </div>
-    <div class="visual-card">
-      <svg viewBox="0 0 980 310" width="100%" height="310">
-        <!-- Lens 1 Box -->
-        <rect x="10" y="10" width="960" height="190" rx="14" fill="rgba(34,197,94,0.05)" stroke="rgba(34,197,94,0.35)" stroke-width="1.5"/>
-        <text x="26" y="34" font-size="11" font-weight="800" fill="#86efac" letter-spacing="1">WORLD 1 · DEVELOPER MACHINE ($0 PREPAID SUBSCRIPTIONS — API KEYS STRIPPED · CLOUD PROXY OFF)</text>
-
-        <!-- Prompt -> Hook -> Tiers -> QA -->
-        <rect x="28" y="64" width="128" height="72" rx="10" fill="#1e293b" stroke="#38bdf8" stroke-width="1.6"/>
-        <text x="92" y="92" text-anchor="middle" font-size="11" font-weight="800" fill="#fff">Any CLI / IDE</text>
-        <text x="92" y="109" text-anchor="middle" font-size="9.5" fill="#94a3b8">Antigravity · Claude</text>
-        <text x="92" y="122" text-anchor="middle" font-size="9.5" fill="#94a3b8">Codex · Grok</text>
-
-        <line x1="156" y1="100" x2="196" y2="100" stroke="#38bdf8" stroke-width="2"/>
-        <rect x="196" y="56" width="166" height="88" rx="10" fill="#0c2542" stroke="#38bdf8" stroke-width="1.8"/>
-        <text x="279" y="80" text-anchor="middle" font-size="11" font-weight="800" fill="#7dd3fc">Local Prompt Hook</text>
-        <text x="279" y="97" text-anchor="middle" font-size="9.5" fill="#e2e8f0">&lt;50ms · 5-Tier Classifier</text>
-        <text x="279" y="112" text-anchor="middle" font-size="9.5" fill="#e2e8f0">Injects 4 Hygiene Rules</text>
-        <text x="279" y="127" text-anchor="middle" font-size="9.5" fill="#86efac">Prints Line-1 Badge</text>
-
-        <line x1="362" y1="78" x2="408" y2="62" stroke="#22c55e" stroke-width="1.8"/>
-        <line x1="362" y1="100" x2="408" y2="102" stroke="#3b82f6" stroke-width="1.8"/>
-        <line x1="362" y1="122" x2="408" y2="144" stroke="#f59e0b" stroke-width="1.8"/>
-
-        <rect x="408" y="46" width="230" height="32" rx="7" fill="rgba(34,197,94,0.18)" stroke="#22c55e"/>
-        <text x="420" y="66" font-size="10" font-weight="700" fill="#bbf7d0">FAST (32%) → Haiku / Flash / Luna</text>
-
-        <rect x="408" y="86" width="230" height="32" rx="7" fill="rgba(59,130,246,0.18)" stroke="#3b82f6"/>
-        <text x="420" y="106" font-size="10" font-weight="700" fill="#bfdbfe">MED (54%) → Warm Coordinator</text>
-
-        <rect x="408" y="126" width="230" height="32" rx="7" fill="rgba(245,158,11,0.18)" stroke="#f59e0b"/>
-        <text x="420" y="146" font-size="10" font-weight="700" fill="#fde68a">HARD (14%) → Distilled Subagent</text>
-
-        <line x1="638" y1="62" x2="678" y2="95" stroke="#94a3b8" stroke-width="1.5"/>
-        <line x1="638" y1="102" x2="678" y2="102" stroke="#94a3b8" stroke-width="1.5"/>
-        <line x1="638" y1="142" x2="678" y2="112" stroke="#94a3b8" stroke-width="1.5"/>
-
-        <rect x="678" y="56" width="136" height="88" rx="10" fill="#1e293b" stroke="#a855f7" stroke-width="1.8"/>
-        <text x="746" y="80" text-anchor="middle" font-size="11" font-weight="800" fill="#d8b4fe">QA + Escalate</text>
-        <text x="746" y="97" text-anchor="middle" font-size="9.5" fill="#86efac">Pass → Ship</text>
-        <text x="746" y="113" text-anchor="middle" font-size="9.5" fill="#fca5a5">Fail 2× → +1 Tier</text>
-        <text x="746" y="128" text-anchor="middle" font-size="9" fill="#94a3b8">(Fable 5.2 / XHigh)</text>
-
-        <line x1="814" y1="100" x2="844" y2="100" stroke="#a855f7" stroke-width="1.8"/>
-        <rect x="844" y="56" width="112" height="88" rx="10" fill="#111827" stroke="#22c55e" stroke-width="1.5"/>
-        <text x="900" y="80" text-anchor="middle" font-size="10.5" font-weight="800" fill="#86efac">Auto-Refresh</text>
-        <text x="900" y="97" text-anchor="middle" font-size="9" fill="#cbd5e1">Nightly + Weekly</text>
-        <text x="900" y="112" text-anchor="middle" font-size="9" fill="#cbd5e1">13-Pt Watchdog</text>
-        <text x="900" y="127" text-anchor="middle" font-size="9" fill="#38bdf8">Live 7d vs 60d</text>
-
-        <text x="490" y="185" text-anchor="middle" font-size="9.5" fill="#94a3b8">Statusline 50% Guard: ⚡/compact flashes automatically at 50% ctx · Zero API keys ever exposed to child processes</text>
-
-        <!-- Lens 2 Box -->
-        <rect x="10" y="216" width="960" height="84" rx="14" fill="rgba(56,189,248,0.06)" stroke="rgba(56,189,248,0.4)" stroke-width="1.5"/>
-        <text x="26" y="238" font-size="11" font-weight="800" fill="#7dd3fc" letter-spacing="1">WORLD 2 · DEPLOYED PRODUCTION APPS (METERED API — ZERO HARDCODED MODEL IDS)</text>
-        <rect x="28" y="250" width="210" height="36" rx="8" fill="#1e293b" stroke="#38bdf8"/>
-        <text x="133" y="272" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">App calls tier: "fast" | "hard"</text>
-        <line x1="238" y1="268" x2="288" y2="268" stroke="#38bdf8" stroke-width="2"/>
-        <rect x="288" y="250" width="290" height="36" rx="8" fill="#0c2542" stroke="#38bdf8"/>
-        <text x="433" y="272" text-anchor="middle" font-size="10" font-weight="700" fill="#7dd3fc">app-model-router.mjs / Dynamic Proxy</text>
-        <line x1="578" y1="268" x2="628" y2="268" stroke="#38bdf8" stroke-width="2"/>
-        <rect x="628" y="250" width="326" height="36" rx="8" fill="rgba(34,197,94,0.16)" stroke="#22c55e"/>
-        <text x="791" y="272" text-anchor="middle" font-size="10" font-weight="700" fill="#bbf7d0">Zero-Deploy Model Upgrades + Auto Retry</text>
-      </svg>
+    <div class="grid-4">
+      <div class="lesson-card">
+        <span class="lesson-num">Lesson 01 · The $1,600 Wake-Up</span>
+        <h3>Personal Seats Must Strip All API Keys</h3>
+        <p>Leaving <code>ANTHROPIC_API_KEY</code> or <code>OPENROUTER_API_KEY</code> in your shell turns prepaid coding tools into metered corporate billing. Our router enforces <code>subscriptionOnlyEnv()</code> and keeps cloud proxies <strong>OFF</strong> locally.</p>
+      </div>
+      <div class="lesson-card">
+        <span class="lesson-num">Lesson 02 · Why TUI Wrappers Failed</span>
+        <h3>Native Hooks Beat Process Wrappers</h3>
+        <p>Wrapping interactive CLIs broke warm prompt caches, TTY resize, and streaming UX. A &lt;50ms native prompt hook keeps your warm session intact and delegates only searches or escalations to subagents.</p>
+      </div>
+      <div class="lesson-card">
+        <span class="lesson-num">Lesson 03 · The "Advice-Only" Illusion</span>
+        <h3>Dashboards Can Lie While Burn Stays High</h3>
+        <p>For 5 weeks, logs showed green "routed" ticks while actual Claude transcripts stayed 57% Opus—because hooks only <em>suggested</em> models without changing session defaults or compacting at 50%. Now we audit real transcripts.</p>
+      </div>
+      <div class="lesson-card">
+        <span class="lesson-num">Lesson 04 · The 212M-Token Blowup</span>
+        <h3>Never Send Frontier Models Exploring</h3>
+        <p>In KingBench 4, letting Fable 5.2 roam raw repos burned <strong>212M tokens</strong>. Scouting with Fast/Medium first and handing Frontier a <strong>distilled 3-file brief</strong> yields higher accuracy at 1/10th the quota.</p>
+      </div>
     </div>
   </section>
 
-  <!-- Interactive Quota Stretch Simulator -->
+  <!-- 4. Lens 1 Deep Dive: Developer Machine (5-Tier x 5-Tool Matrix + 4 Hygiene Rules + Seat Sizing) -->
+  <section id="lens1">
+    <div class="sec-head">
+      <span class="step-kicker k-green">Fork 1 · Developer Machines (Prepaid Max / Pro / Ultra Seats · $0 Extra Cost)</span>
+      <h2>Exact 5-Tier Allocation, 4 Hygiene Rules &amp; Seat Sizing</h2>
+      <p><strong>Point-in-time snapshot (Nov 22, 2026) — not permanent gospel.</strong> These exact models reflect today's AA v5.0.1 / Vals v2.2 / KingBench 4 curves; the real architecture is the <strong>weekly auto-refresh loop</strong> below that keeps your tiers current as new models ship. Works with or without MetaHarness.</p>
+    </div>
+
+    <div class="visual-card" style="padding:18px;">
+      <div class="table-wrap">
+        <table class="matrix">
+          <caption>Canonical 5-Tier × 5-Tool Allocation (AA v5.0.1 Effort Caps · Zero Default Max/XHigh)</caption>
+          <thead>
+            <tr>
+              <th scope="col">Tier &amp; Target Share</th>
+              <th scope="col">Antigravity (Gemini 4)</th>
+              <th scope="col">Claude Code</th>
+              <th scope="col">Codex CLI</th>
+              <th scope="col">Grok CLI</th>
+              <th scope="col">Cursor IDE</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="t-pill tp-fast">Fast · 32%</span><span class="eff-tag">Scans, git, lookups</span></td>
+              <td><code>gemini-4-neon</code><span class="eff-tag">@ low · subagent</span></td>
+              <td><code>claude-haiku-5-5</code><span class="eff-tag">@ low · subagent</span></td>
+              <td><code>gpt-6-luna</code><span class="eff-tag">@ low · subagent</span></td>
+              <td><code>grok-4.7</code><span class="eff-tag">@ low</span></td>
+              <td>Flash / Haiku<span class="eff-tag">quick lookups</span></td>
+            </tr>
+            <tr>
+              <td><span class="t-pill tp-med">Medium (dflt) · 54%</span><span class="eff-tag">Default Coordinator</span></td>
+              <td><code>gemini-4-neon</code><span class="eff-tag">@ medium · $0 cache-write</span></td>
+              <td><code>claude-sonnet-5-5</code><span class="eff-tag">@ med · warm cache</span></td>
+              <td><code>gpt-6.2-sol</code><span class="eff-tag">@ medium · default</span></td>
+              <td><code>grok-4.7</code><span class="eff-tag">@ medium · default</span></td>
+              <td>Sonnet 5.5 / Neon Med<span class="eff-tag">default Composer</span></td>
+            </tr>
+            <tr>
+              <td><span class="t-pill tp-sub">Substantial · 7%</span><span class="eff-tag">Multi-file features</span></td>
+              <td><code>gemini-4-neon</code><span class="eff-tag">@ high</span></td>
+              <td><code>claude-opus-5-5</code><span class="eff-tag">@ medium</span></td>
+              <td><code>gpt-6.2-sol</code><span class="eff-tag">@ high</span></td>
+              <td><code>grok-4.7</code><span class="eff-tag">@ high</span></td>
+              <td>Sonnet 5.5 / Sol<span class="eff-tag">fresh Composer thread</span></td>
+            </tr>
+            <tr>
+              <td><span class="t-pill tp-hard">Hard · 5%</span><span class="eff-tag">Distilled root cause</span></td>
+              <td><code>gemini-4-neon</code><span class="eff-tag">@ high · Sweet Spot ★</span></td>
+              <td><code>claude-opus-5-5</code><span class="eff-tag">@ high (never default max)</span></td>
+              <td><code>gpt-6.2-astra</code><span class="eff-tag">@ high</span></td>
+              <td><code>grok-build</code><span class="eff-tag">@ high</span></td>
+              <td>Neon High / Opus High<span class="eff-tag">2–3 pinned files only</span></td>
+            </tr>
+            <tr>
+              <td><span class="t-pill tp-exc">Exceptional · &lt;2%</span><span class="eff-tag">Auto-escalation only</span></td>
+              <td><code>gemini-4-neon</code><span class="eff-tag">@ xhigh · on 2× fail</span></td>
+              <td><code>claude-fable-5-2</code><span class="eff-tag">@ high · pre-distilled</span></td>
+              <td><code>gpt-6.2-astra</code><span class="eff-tag">@ xhigh · on 2× fail</span></td>
+              <td><code>grok-build</code><span class="eff-tag">@ xhigh · on 2× fail</span></td>
+              <td>Fable 5.2 / Astra<span class="eff-tag">final review only</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="grid-4">
+      <div class="rule-card">
+        <span class="rule-badge">1</span>
+        <h3>Isolate Searches (&gt;5 Files)</h3>
+        <p>Never grep 200 files inside your main chat. Offload repo discovery to a <code>fast</code> subagent so 150k raw tokens stay out of your main context window.</p>
+      </div>
+      <div class="rule-card">
+        <span class="rule-badge">2</span>
+        <h3>50% Context <code>⚡/compact</code></h3>
+        <p>Your statusline flashes <code>⚡/compact</code> the moment context hits 50%. Compacting early eliminates the 43% cache-write tax before sessions balloon past 500k tokens.</p>
+      </div>
+      <div class="rule-card">
+        <span class="rule-badge">3</span>
+        <h3>Pre-Distilled Escalations</h3>
+        <p>When escalating to Hard/Exceptional, pass only the 2–5 relevant files, exact error log, and failed hypothesis—never an open-ended exploration prompt.</p>
+      </div>
+      <div class="rule-card">
+        <span class="rule-badge">4</span>
+        <h3>Cross-Vendor Load-Shed</h3>
+        <p>For cold, massive multi-file audits where you have no warm Claude cache to protect, offload to <strong>Gemini 4 Neon High</strong> (<code>$0.00</code> implicit cache-write fee) to save Claude quota.</p>
+      </div>
+    </div>
+
+    <!-- Seat Sizing Decision Guide -->
+    <div class="visual-card" style="padding:18px;">
+      <div class="table-wrap">
+        <table class="matrix">
+          <caption>Prepaid Seat Sizing Playbook — When to Keep, Downgrade, or Upgrade</caption>
+          <thead>
+            <tr>
+              <th scope="col">Subscription Seat</th>
+              <th scope="col">Keep Top Tier If…</th>
+              <th scope="col">Downgrade / Cut If…</th>
+              <th scope="col">Typical Monthly Savings</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Claude Max ($100–$200)</strong></td>
+              <td>Primary terminal coding &amp; agentic bash loops (&gt;500 turns/wk).</td>
+              <td>You pay for a 2nd backup seat just to survive weekly walls—14 days of 5-tier routing eliminates the 2nd seat.</td>
+              <td style="color:#86efac; font-weight:800;">Save $100–$200/mo</td>
+            </tr>
+            <tr>
+              <td><strong>Codex Pro ($200) vs Plus ($20)</strong></td>
+              <td>Running daily multi-hour autonomous Astra/Sol sweeps (&gt;$180/mo equiv. burn).</td>
+              <td>Audit shows &lt;$150/mo equivalent burn—drop to <strong>$20 Plus</strong> and keep Sol medium as secondary verifier.</td>
+              <td style="color:#86efac; font-weight:800;">Save $180/mo</td>
+            </tr>
+            <tr>
+              <td><strong>Antigravity / Gemini Ultra</strong></td>
+              <td>Heavy multi-file synthesis, 1M-context repo audits, and $0 cache-write offloading.</td>
+              <td>Light occasional queries only—standard Pro tier covers routine Flash/Neon Medium work.</td>
+              <td style="color:#7dd3fc; font-weight:800;">Best $/IQ Anchor ★</td>
+            </tr>
+            <tr>
+              <td><strong>Grok / Cursor Pro</strong></td>
+              <td>Fast parallel repo edits, IDE inline diffs, or independent cross-vendor code review.</td>
+              <td>Overlapping idle seats with &lt;5% share in your 60-day audit—consolidate to your top 2 daily drivers.</td>
+              <td style="color:#86efac; font-weight:800;">Save $20–$40/mo</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. Lens 2 Deep Dive: Production Apps (Zero Hardcoded Models) -->
+  <section id="lens2">
+    <div class="sec-head">
+      <span class="step-kicker k-cyan">Fork 2 · AI-Enabled Production Apps &amp; Corporate Pay-By-The-Drink Teams</span>
+      <h2>The Separate Fork for Shipped Apps &amp; Metered API Businesses</h2>
+      <p>Fork 1 above is strictly for developers optimizing prepaid seats. <strong>If you are AI-enabling your own applications—or you are a corporation without prepaid developer seats paying per API call—use this second fork.</strong> Wire <code>app-model-router.mjs</code> (or a dynamic gateway) once so every call uses the cheapest, fastest, most effective model and upgrades globally with <strong>zero code changes</strong>.</p>
+    </div>
+
+    <div class="grid-2">
+      <div class="code-panel">
+        <div class="code-head" style="color:#fca5a5;"><span>❌ Fragile: Hardcoded Vendor Model</span><span>Requires PR + Redeploy</span></div>
+        <pre class="code-pre">// Breaks on deprecation, overpays 10x on simple tasks,
+// and never auto-upgrades when faster models ship:
+const res = await anthropic.messages.create({
+  model: "claude-opus-4-6-20260205", // ← locked forever!
+  max_tokens: 4096,
+  messages: [{ role: "user", content: prompt }],
+});</pre>
+      </div>
+
+      <div class="code-panel">
+        <div class="code-head" style="color:#86efac;">
+          <span>✅ Dynamic: Tier-Alias Router (<code>app-model-router.mjs</code>)</span>
+          <button type="button" class="copy-btn" style="padding:4px 10px; font-size:0.72rem;" onclick="copyAppCode(this)">Copy</button>
+        </div>
+        <pre class="code-pre" id="app-code-snippet">import { callWithAutoEscalation } from './app-model-router.mjs';
+
+const { output, receipt } = await callWithAutoEscalation({
+  tier: 'fast',                      // ← never hardcode a model ID!
+  purpose: 'extract-invoice-json',   // ← logged for unit economics
+  execute: (route) => llm.run({ model: route.model, effort: route.effort, prompt }),
+  validate: (out) => typeof out?.total === 'number' && Boolean(out?.vendor), // fails → +1 tier!
+});
+// Swap models globally with ZERO code edits (env var on redeploy, or runtime KV/config):
+// APP_MODEL_TIERS_JSON='{"fast":{"model":"gemini-4.5-flash","effort":"low"}}'</pre>
+      </div>
+    </div>
+
+    <div class="visual-card" style="padding:18px;">
+      <div class="table-wrap">
+        <table class="matrix">
+          <caption>Lens 2 Production Tier Registry — Automatic Cross-Provider Fallback + Validation Auto-Escalation</caption>
+          <thead>
+            <tr>
+              <th scope="col">App Tier</th>
+              <th scope="col">Primary Model &amp; Cap</th>
+              <th scope="col">Lateral Fallback (429/Outage)</th>
+              <th scope="col">Validation Fail</th>
+              <th scope="col">Best Production Workloads</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="t-pill tp-fast">fast</span></td>
+              <td><code>gemini-4-flash</code> @ <code>low</code><span class="eff-tag">maxOut: 1,024 · ~$0.15/Mtok</span></td>
+              <td><code>gpt-6-luna</code> (openai)</td>
+              <td>→ bumps to <code>medium</code></td>
+              <td>JSON extraction, tagging, routing, spam/PII filters</td>
+            </tr>
+            <tr>
+              <td><span class="t-pill tp-med">medium</span></td>
+              <td><code>gemini-4-neon</code> @ <code>medium</code><span class="eff-tag">maxOut: 4,096 · $0 cache-write</span></td>
+              <td><code>claude-sonnet-5-5</code> (anthropic)</td>
+              <td>→ bumps to <code>substantial</code></td>
+              <td>Chat assistants, RAG synthesis, email/doc drafting</td>
+            </tr>
+            <tr>
+              <td><span class="t-pill tp-sub">substantial</span></td>
+              <td><code>gemini-4-neon</code> @ <code>high</code><span class="eff-tag">maxOut: 8,192 · Sweet Spot ★</span></td>
+              <td><code>gpt-6.2-sol</code> (openai)</td>
+              <td>→ bumps to <code>hard</code></td>
+              <td>Multi-document comparison, structured reports</td>
+            </tr>
+            <tr>
+              <td><span class="t-pill tp-hard">hard</span></td>
+              <td><code>gemini-4-neon</code> @ <code>high</code><span class="eff-tag">maxOut: 8,192 · ~$3.74/task</span></td>
+              <td><code>claude-opus-5-5</code> (anthropic)</td>
+              <td>→ bumps to <code>exceptional</code></td>
+              <td>Financial/medical analysis, complex code generation</td>
+            </tr>
+            <tr>
+              <td><span class="t-pill tp-exc">exceptional</span></td>
+              <td><code>claude-fable-5-2</code> @ <code>high</code><span class="eff-tag">maxOut: 8,192 · ~$9.08/task</span></td>
+              <td><code>gemini-4-neon</code> (google)</td>
+              <td>Terminal + alert receipt</td>
+              <td>High-stakes legal/security verification (&lt;2% traffic)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="margin:12px 4px 0; font-size:0.84rem; color:#cbd5e1;"><strong>Corporate &amp; Production Guardrails:</strong> (1) Keep static system prompts/schemas at the <strong>top</strong> and dynamic user inputs at the <strong>bottom</strong> to unlock 90% automatic prompt-cache discounts; (2) Log every <code>receipt</code> (<code>purpose</code>, <code>model</code>, <code>escalated</code>, <code>durationMs</code>) for per-feature unit economics; (3) Corporate teams without prepaid seats can pair <code>app-model-router.mjs</code> with OpenRouter / LiteLLM / Bedrock gateways cleanly.</p>
+    </div>
+  </section>
+
+  <!-- 6. Interactive Animated Architecture Blueprint (Click Any Block!) -->
+  <section id="architecture">
+    <div class="sec-head">
+      <span class="step-kicker k-green">Complete System Blueprint · Click Any Component to Inspect</span>
+      <h2>End-to-End Architecture (Both Worlds in One Live Diagram)</h2>
+      <p>Follow the animated flow lines from your keyboard through local classification, subagent delegation, QA auto-escalation, weekly auto-refresh, and zero-deploy production app routing.</p>
+    </div>
+    <div class="visual-card">
+      <svg viewBox="0 0 980 315" width="100%" height="315" role="img" aria-label="Interactive end-to-end architecture diagram showing World 1 local developer routing and World 2 production app routing">
+        <title>End-to-End AI Routing Architecture</title>
+        <!-- World 1 Box -->
+        <rect x="10" y="10" width="960" height="192" rx="14" fill="rgba(34,197,94,0.05)" stroke="rgba(34,197,94,0.35)" stroke-width="1.5"/>
+        <text x="26" y="34" font-size="11" font-weight="800" fill="#86efac" letter-spacing="1">WORLD 1 · DEVELOPER MACHINE ($0 PREPAID SUBSCRIPTIONS — API KEYS STRIPPED · CLOUD PROXY OFF)</text>
+
+        <g class="arch-node" onclick="inspectArch('cli')">
+          <rect x="28" y="64" width="128" height="72" rx="10" fill="#1e293b" stroke="#38bdf8" stroke-width="1.6"/>
+          <text x="92" y="90" text-anchor="middle" font-size="11" font-weight="800" fill="#fff">Any CLI / IDE</text>
+          <text x="92" y="107" text-anchor="middle" font-size="9.5" fill="#94a3b8">Antigravity · Claude</text>
+          <text x="92" y="121" text-anchor="middle" font-size="9.5" fill="#94a3b8">Codex · Grok · Cursor</text>
+        </g>
+
+        <line x1="156" y1="100" x2="196" y2="100" stroke="#38bdf8" stroke-width="2.2" class="svg-flow"/>
+
+        <g class="arch-node" onclick="inspectArch('hook')">
+          <rect x="196" y="56" width="166" height="88" rx="10" fill="#0c2542" stroke="#38bdf8" stroke-width="1.8"/>
+          <text x="279" y="80" text-anchor="middle" font-size="11" font-weight="800" fill="#7dd3fc">Local Prompt Hook</text>
+          <text x="279" y="97" text-anchor="middle" font-size="9.5" fill="#e2e8f0">&lt;50ms · 5-Tier Classifier</text>
+          <text x="279" y="112" text-anchor="middle" font-size="9.5" fill="#e2e8f0">Injects 4 Hygiene Rules</text>
+          <text x="279" y="127" text-anchor="middle" font-size="9.5" fill="#86efac">Prints Line-1 Badge</text>
+        </g>
+
+        <line x1="362" y1="78" x2="408" y2="62" stroke="#22c55e" stroke-width="2" class="svg-flow"/>
+        <line x1="362" y1="100" x2="408" y2="102" stroke="#3b82f6" stroke-width="2" class="svg-flow"/>
+        <line x1="362" y1="122" x2="408" y2="144" stroke="#f59e0b" stroke-width="2" class="svg-flow"/>
+
+        <g class="arch-node" onclick="inspectArch('tiers')">
+          <rect x="408" y="46" width="230" height="32" rx="7" fill="rgba(34,197,94,0.18)" stroke="#22c55e"/>
+          <text x="420" y="66" font-size="10" font-weight="700" fill="#bbf7d0">FAST (32%) → Haiku / Flash / Luna</text>
+          <rect x="408" y="86" width="230" height="32" rx="7" fill="rgba(59,130,246,0.18)" stroke="#3b82f6"/>
+          <text x="420" y="106" font-size="10" font-weight="700" fill="#bfdbfe">MED + SUB (61%) → Warm Coordinator</text>
+          <rect x="408" y="126" width="230" height="32" rx="7" fill="rgba(245,158,11,0.18)" stroke="#f59e0b"/>
+          <text x="420" y="146" font-size="10" font-weight="700" fill="#fde68a">HARD / EXC (7%) → Distilled Subagent</text>
+        </g>
+
+        <line x1="638" y1="62" x2="678" y2="95" stroke="#94a3b8" stroke-width="1.6" class="svg-flow"/>
+        <line x1="638" y1="102" x2="678" y2="102" stroke="#94a3b8" stroke-width="1.6" class="svg-flow"/>
+        <line x1="638" y1="142" x2="678" y2="112" stroke="#94a3b8" stroke-width="1.6" class="svg-flow"/>
+
+        <g class="arch-node" onclick="inspectArch('qa')">
+          <rect x="678" y="56" width="136" height="88" rx="10" fill="#1e293b" stroke="#a855f7" stroke-width="1.8"/>
+          <text x="746" y="80" text-anchor="middle" font-size="11" font-weight="800" fill="#d8b4fe">QA + Escalate</text>
+          <text x="746" y="97" text-anchor="middle" font-size="9.5" fill="#86efac">Pass → Ship</text>
+          <text x="746" y="113" text-anchor="middle" font-size="9.5" fill="#fca5a5">Fail 2× → +1 Tier</text>
+          <text x="746" y="128" text-anchor="middle" font-size="9" fill="#94a3b8">(Fable 5.2 / XHigh)</text>
+        </g>
+
+        <line x1="814" y1="100" x2="844" y2="100" stroke="#a855f7" stroke-width="2" class="svg-flow"/>
+
+        <g class="arch-node" onclick="inspectArch('refresh')">
+          <rect x="844" y="56" width="112" height="88" rx="10" fill="#111827" stroke="#22c55e" stroke-width="1.5"/>
+          <text x="900" y="80" text-anchor="middle" font-size="10.5" font-weight="800" fill="#86efac">Auto-Refresh</text>
+          <text x="900" y="97" text-anchor="middle" font-size="9" fill="#cbd5e1">Nightly + Weekly</text>
+          <text x="900" y="112" text-anchor="middle" font-size="9" fill="#cbd5e1">13-Pt Watchdog</text>
+          <text x="900" y="127" text-anchor="middle" font-size="9" fill="#38bdf8">Live 7d vs 60d</text>
+        </g>
+
+        <text x="490" y="186" text-anchor="middle" font-size="9.5" fill="#94a3b8">Statusline 50% Guard: ⚡/compact flashes automatically at 50% ctx · Zero API keys ever exposed to child processes</text>
+
+        <!-- World 2 Box -->
+        <rect x="10" y="218" width="960" height="86" rx="14" fill="rgba(56,189,248,0.06)" stroke="rgba(56,189,248,0.4)" stroke-width="1.5"/>
+        <text x="26" y="240" font-size="11" font-weight="800" fill="#7dd3fc" letter-spacing="1">WORLD 2 · DEPLOYED PRODUCTION APPS (METERED API — ZERO HARDCODED MODEL IDS)</text>
+
+        <g class="arch-node" onclick="inspectArch('app')">
+          <rect x="28" y="252" width="210" height="36" rx="8" fill="#1e293b" stroke="#38bdf8"/>
+          <text x="133" y="274" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">App calls tier: "fast" | "hard"</text>
+        </g>
+        <line x1="238" y1="270" x2="288" y2="270" stroke="#38bdf8" stroke-width="2.2" class="svg-flow"/>
+        <g class="arch-node" onclick="inspectArch('app')">
+          <rect x="288" y="252" width="290" height="36" rx="8" fill="#0c2542" stroke="#38bdf8"/>
+          <text x="433" y="274" text-anchor="middle" font-size="10" font-weight="700" fill="#7dd3fc">app-model-router.mjs / APP_MODEL_TIERS_JSON</text>
+        </g>
+        <line x1="578" y1="270" x2="628" y2="270" stroke="#22c55e" stroke-width="2.2" class="svg-flow"/>
+        <g class="arch-node" onclick="inspectArch('app')">
+          <rect x="628" y="252" width="326" height="36" rx="8" fill="rgba(34,197,94,0.16)" stroke="#22c55e"/>
+          <text x="791" y="274" text-anchor="middle" font-size="10" font-weight="700" fill="#bbf7d0">Zero-Deploy Upgrades + Fallback + Auto-Escalate</text>
+        </g>
+      </svg>
+      <div class="arch-detail" id="arch-detail">
+        <strong>Inspector:</strong> Click any box in the diagram above to see exact config paths, latency budgets, and guardrails for that layer.
+      </div>
+    </div>
+  </section>
+
+  <!-- 7. Freshness, Auto-Refresh & 13-Point Self-Audit Watchdog -->
+  <section id="freshness">
+    <div class="sec-head">
+      <span class="step-kicker k-purple">Checks, Balances &amp; Zero-Drift Automation</span>
+      <h2>How the System Stays Fresh, Honest &amp; Self-Auditing</h2>
+      <p>Static AI configs rot in 30 days. Three automated loops keep your models current and catch silent drift before you ever hit a rate limit.</p>
+    </div>
+
+    <div class="grid-3">
+      <div class="rule-card">
+        <span class="step-kicker k-cyan" style="width:fit-content;">Nightly · 02:00 Local</span>
+        <h3>1. Local CLI Cache Discovery</h3>
+        <p><code>model-auto-refresh.mjs</code> scans local CLI model caches (e.g., <code>~/.codex/models_cache.json</code>) and auto-promotes newer minor versions within the same family (<code>gpt-6.2 → 6.3</code>) while keeping effort caps locked.</p>
+      </div>
+      <div class="rule-card">
+        <span class="step-kicker k-amber" style="width:fit-content;">Weekly · Sunday Review</span>
+        <h3>2. Leaderboard &amp; Before/After Audit</h3>
+        <p><code>router-utilization.mjs</code> compares your <strong>last 7 days vs. 60-day baseline</strong> against AA v5.0.1 / Vals v2.2 / KingBench 4 so you verify real transcript reduction—not synthetic hook vanity metrics.</p>
+      </div>
+      <div class="rule-card">
+        <span class="step-kicker k-green" style="width:fit-content;">On-Demand · &lt;2 Seconds</span>
+        <h3>3. 13-Point Self-Audit Watchdog</h3>
+        <p><code>model-routing-audit.mjs</code> runs the <strong>36-case safety eval suite</strong>, checks for leaked paid API keys, verifies effort caps, and emits explicit <code>ALERT</code> lines if any hook, statusline, or cron drifts.</p>
+      </div>
+    </div>
+
+    <div class="visual-card">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+        <h3 style="margin:0; font-size:1.05rem; color:#fff;">The 13 Watchdog Invariants Checked Automatically</h3>
+        <span class="stamp-pill">Last Verified: 2026-11-22 02:30 EST · 13/13 PASS</span>
+      </div>
+      <div class="wd-grid">
+        <div class="wd-item"><span class="wd-ok">✓</span><span><strong>1. All 4 Hosts Enabled</strong> at $0 prepaid subscription mode</span></div>
+        <div class="wd-item"><span class="wd-ok">✓</span><span><strong>2. Zero Paid API Key Leaks</strong> (6 provider keys stripped locally)</span></div>
+        <div class="wd-item"><span class="wd-ok">✓</span><span><strong>3. 20 Tier Routes Intact</strong> (4 hosts × 5 tiers)</span></div>
+        <div class="wd-item"><span class="wd-ok">✓</span><span><strong>4. Effort Caps Locked</strong> (no routine tier defaults to max/xhigh)</span></div>
+        <div class="wd-item"><span class="wd-ok">✓</span><span><strong>5. 36/36 Safety Evals Pass</strong> (financial/security/migration floors)</span></div>
+        <div class="wd-item"><span class="wd-ok">✓</span><span><strong>6–9. Live Hooks Verified</strong> across Antigravity, Claude, Codex &amp; Grok</span></div>
+        <div class="wd-item"><span class="wd-ok">✓</span><span><strong>10. Auto-Escalation Verified</strong> ("still broken" → +1 tier)</span></div>
+        <div class="wd-item"><span class="wd-ok">✓</span><span><strong>11. 50% ⚡/compact Guard</strong> active in terminal statuslines</span></div>
+        <div class="wd-item"><span class="wd-ok">✓</span><span><strong>12. Nightly + Weekly Schedules</strong> wired &amp; policy age ≤7d</span></div>
+        <div class="wd-item"><span class="wd-ok">✓</span><span><strong>13. Cloud Proxy OFF Locally</strong> (zero accidental double-billing)</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8. Interactive In-Browser Live Prompt Router Tester + Sample Audit Proof -->
+  <section id="tester">
+    <div class="sec-head">
+      <span class="step-kicker k-cyan">Try It Right Now · Real Classifier Running In Your Browser</span>
+      <h2>Live 5-Tier Prompt Router Tester &amp; Audit Preview</h2>
+      <p>Type any real coding prompt below (or click a preset) to watch the exact <code>policy.default.mjs</code> rules classify it in &lt;1ms—zero server calls, 100% local JavaScript.</p>
+    </div>
+
+    <div class="grid-2">
+      <div class="visual-card" style="margin-bottom:0;">
+        <div class="tester-controls">
+          <label for="test-host" style="font-size:0.82rem; font-weight:700; color:var(--muted);">Host:</label>
+          <select id="test-host" class="select-pill" onchange="runLiveTest()">
+            <option value="claude-code">Claude Code</option>
+            <option value="antigravity">Antigravity (Gemini 4)</option>
+            <option value="codex">Codex CLI</option>
+            <option value="grok">Grok CLI</option>
+          </select>
+          <label class="toggle-label"><input type="checkbox" id="test-fail" onchange="runLiveTest()"> Prior QA failure (auto-escalate +1 tier)</label>
+        </div>
+        <label for="test-prompt" class="sr-only">Prompt to classify</label>
+        <textarea id="test-prompt" class="tester-input" oninput="runLiveTest()" placeholder="Type any coding prompt...">check git status and list all modified files in src/</textarea>
+        <div class="preset-row" aria-label="Sample prompts">
+          <button type="button" class="preset-btn" onclick="setPreset('check git status and list modified files in src/', false)">Fast Lookup</button>
+          <button type="button" class="preset-btn" onclick="setPreset('fix the date formatting bug in src/invoice.js and run unit tests', false)">Medium Edit</button>
+          <button type="button" class="preset-btn" onclick="setPreset('implement end-to-end multi-file team invitations across database, API endpoints, and UI dashboard', false)">Substantial Feature</button>
+          <button type="button" class="preset-btn" onclick="setPreset('investigate why Stripe webhook retries double-charged customer cards during failover', false)">Hard Consequence</button>
+          <button type="button" class="preset-btn" onclick="setPreset('still broken, unit tests failed twice on the auth token verifier', true)">2× Failure Escalate</button>
+        </div>
+        <div class="tester-out" id="tester-out" aria-live="polite"></div>
+      </div>
+
+      <div class="code-panel" style="display:flex; flex-direction:column;">
+        <div class="code-head" style="color:#86efac;">
+          <span>Sample Local Output: <code>node audit-my-ai-usage.mjs</code></span>
+          <span style="color:var(--muted); font-weight:600;">Zero data leaves your machine</span>
+        </div>
+        <pre class="code-pre" style="flex:1;">$ unzip ai-routing-starter-kit.zip -d ai-routing-kit && cd ai-routing-kit
+$ node audit-my-ai-usage.mjs
+
+=== AI Subscription Usage Audit (60-day window · local only) ===
+Score:   20 / 100
+Verdict: HIGH QUOTA LEAKAGE — 3.5x–4.5x license stretch available immediately
+Tools:   Claude(18420 turns, 57.4% frontier) | Codex(3110 turns, 31.2% frontier) | Antigravity(42 files) | Grok(19 files) | Cursor(14 files)
+
+Top Findings:
+  1. Paid API keys active in shell env (OPENROUTER_API_KEY) — risk of double-paying.
+  2. Claude Frontier share is 57.4% (target: &lt;=15%). Park main chat on Sonnet.
+  3. Claude cache-write share is 14.2% of input (target: &lt;3%). Compact at 50%.
+  4. Codex Frontier share is 31.2% (target: &lt;=15%). Default Codex to Sol medium.
+
+$ node standalone-router.mjs --eval
+{ "ok": true, "passed": 36, "total": 36, "failures": [] }</pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9. Interactive Quota Stretch Simulator (Smooth, Realistic Seat-Based Math) -->
   <section id="simulator">
     <div class="sec-head">
       <span class="step-kicker k-green">Interactive Calculator</span>
       <h2>Estimate Your Own License Stretch &amp; Savings</h2>
-      <p>Drag the sliders to match your current setup and see how far your exact same prepaid licenses will stretch.</p>
+      <p>Drag the sliders to match your current prepaid seats and frontier burn to see how far your exact same subscriptions stretch.</p>
     </div>
     <div class="visual-card sim-grid">
       <div>
         <div class="slider-group">
-          <label><span>Current Monthly AI Subscription Spend</span><span id="lbl-spend" style="color:var(--cyan);">$600/mo</span></label>
-          <input type="range" id="sl-spend" min="100" max="1000" step="20" value="600" oninput="updateSim()">
+          <label for="sl-spend"><span>Current Monthly AI Subscription Spend</span><span id="lbl-spend" style="color:var(--cyan);">$600/mo</span></label>
+          <input type="range" id="sl-spend" min="40" max="1000" step="20" value="600" oninput="updateSim()">
         </div>
         <div class="slider-group">
-          <label><span>Current % of Turns on Frontier (Opus/Fable/Astra)</span><span id="lbl-front" style="color:var(--amber);">57%</span></label>
+          <label for="sl-front"><span>Current % of Turns on Frontier (Opus/Fable/Astra)</span><span id="lbl-front" style="color:var(--amber);">57%</span></label>
           <input type="range" id="sl-front" min="15" max="85" step="1" value="57" oninput="updateSim()">
         </div>
-        <p style="font-size:0.85rem; color:var(--muted); margin:0;">Assumes shifting to a Medium Coordinator + 30% Fast subagent isolation + 50% <code>/compact</code> guard + offloading heavy multi-file work to $0 cache-write Neon.</p>
+        <p style="font-size:0.85rem; color:var(--muted); margin:0;">Models shifting your routine turns to a Medium Coordinator + 32% Fast subagent isolation + 50% <code>⚡/compact</code> guard + offloading heavy sweeps to $0 cache-write Neon.</p>
       </div>
       <div class="sim-bars">
         <div>
           <div style="font-size:0.82rem; margin-bottom:4px; color:#fca5a5; font-weight:700;">Before: Days of Heavy Work per Weekly Quota</div>
-          <div class="sim-bar-track"><div class="sim-fill" id="bar-before" style="width:28%; background:#dc2626;">2.0 days</div></div>
+          <div class="sim-bar-track"><div class="sim-fill" id="bar-before" style="width:28%; background:#dc2626;">2.0 days/wk</div></div>
         </div>
         <div>
           <div style="font-size:0.82rem; margin-bottom:4px; color:#86efac; font-weight:700;">After: Same License With 5-Tier Routing + 4 Hygiene Rules</div>
-          <div class="sim-bar-track"><div class="sim-fill" id="bar-after" style="width:94%; background:#16a34a;">7.0+ days (No Walls!)</div></div>
+          <div class="sim-bar-track"><div class="sim-fill" id="bar-after" style="width:94%; background:#16a34a;">7.0+ days/wk (No Walls!)</div></div>
         </div>
         <div class="sim-kpis">
-          <div class="sim-kpi"><b id="kpi-mult">3.9x</b><span>License Stretch</span></div>
-          <div class="sim-kpi"><b id="kpi-save">$260/mo</b><span>Redundant Seats Cut</span></div>
-          <div class="sim-kpi"><b id="kpi-yr">$3,120/yr</b><span>Annual Savings</span></div>
+          <div class="sim-kpi"><b id="kpi-mult">3.8x</b><span>License Stretch</span></div>
+          <div class="sim-kpi"><b id="kpi-save">$220/mo</b><span>Redundant Seats Cut</span></div>
+          <div class="sim-kpi"><b id="kpi-yr">$2,640/yr</b><span>Annual Savings</span></div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Download Starter Kit & Copy Prompt -->
+  <!-- 9.5 Your 5-Step Path to Healthy AI -->
+  <section id="journey">
+    <div class="sec-head">
+      <span class="step-kicker k-green">Your Exact Path From 2-Day Walls to Healthy AI</span>
+      <h2>5 Steps to a Calm, Self-Maintaining Setup (15 Minutes Total)</h2>
+      <p>Follow this exact sequence so you prove value on your own numbers first and never guess.</p>
+    </div>
+    <div class="journey-track">
+      <div class="journey-step">
+        <span class="j-num">Step 01 · 2 Min</span>
+        <h3>Measure Your Reality</h3>
+        <p>Unzip the kit and run <code>node audit-my-ai-usage.mjs</code>. Get your real 0–100 score, Frontier %, and cache-write burn locally.</p>
+      </div>
+      <div class="journey-step">
+        <span class="j-num">Step 02 · 3 Min</span>
+        <h3>Strip Keys &amp; Park Medium</h3>
+        <p>Keep paid API keys out of your coding shell. Park each CLI/IDE on its fast Medium Coordinator so warm caches stay 95%+ hot.</p>
+      </div>
+      <div class="journey-step">
+        <span class="j-num">Step 03 · 3 Min</span>
+        <h3>Turn On 4 Hygiene Rules</h3>
+        <p>Isolate &gt;5-file searches in <code>fast</code> subagents, compact at 50% context (<code>⚡/compact</code>), and send Frontier pre-distilled briefs only.</p>
+      </div>
+      <div class="journey-step">
+        <span class="j-num">Step 04 · 4 Min</span>
+        <h3>Decouple Shipped Apps</h3>
+        <p>Import <code>app-model-router.mjs</code> into every app you build so production features call tier aliases—never hardcoded model IDs.</p>
+      </div>
+      <div class="journey-step">
+        <span class="j-num">Step 05 · Ongoing ★</span>
+        <h3>Verify &amp; Stay Current</h3>
+        <p>Let nightly/weekly auto-refresh promote new models while the 13-point watchdog and 7-day before/after tracker prove your stretch.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 10. Download 16-File Standalone Starter Kit & Copy Prompt -->
   <section id="starter-kit">
     <div class="sec-head">
       <span class="step-kicker k-cyan">Don't Take Our Word For It · Prove It On Your Own Data First</span>
-      <h2>Test Your Own Setup (0–100 Score) &amp; Download the Complete 12-File Kit</h2>
-      <p>Maybe your current setup is already great—in which case you don't need this! Run <code>node audit-my-ai-usage.mjs</code> locally first (zero data leaves your machine) to see your real 60-day score, Frontier %, and cache-write burn. Every base recipe, watchdog, auto-refresh script, and thought-process document is pre-packaged inside the ZIP (timestamped <code>2026-11-22 02:00 EST</code>).</p>
+      <h2>Test Your Own Setup (0–100 Score) &amp; Download the 16-File Standalone Kit</h2>
+      <p>Maybe your current setup already scores 85+—in which case keep what works! Run <code>node audit-my-ai-usage.mjs</code> locally first (zero external dependencies, zero MetaHarness required, zero data leaves your machine). Timestamped <code>2026-11-22 02:30 EST</code>.</p>
     </div>
 
     <div class="kit-banner">
-      <div style="max-width:650px;">
-        <h3 style="margin:0 0 6px; font-size:1.3rem; color:#fff;">Complete AI Routing &amp; Self-Audit Packet (12 Files · .zip)</h3>
-        <p style="margin:0; font-size:0.9rem; color:#cbd5e1;">Works whether or not you use MetaHarness. Includes the 0–100 local auditor, full thought-process &amp; drift docs, 5-tier classifier, 36-case safety eval suite, 13-point watchdog, weekly auto-refresh script, before/after utilization tracker, and Lens 2 production app router.</p>
+      <div style="max-width:680px;">
+        <h3 style="margin:0 0 6px; font-size:1.28rem; color:#fff;">Complete Standalone AI Routing &amp; Self-Audit Packet (16 Files · .zip)</h3>
+        <p style="margin:0; font-size:0.9rem; color:#cbd5e1;">Every script runs out-of-the-box with plain Node.js—whether or not you use MetaHarness. Includes the multi-tool 0–100 auditor, standalone 5-tier classifier + 36-case eval runner, drop-in configs for Claude/Codex/Grok/Cursor, 50% statusline guard, watchdog, auto-refresh scanner, full thought-process docs, and Lens 2 production app router.</p>
         <div class="kit-files">
-          <span class="kit-chip">audit-my-ai-usage.mjs</span>
+          <span class="kit-chip">README.md</span>
           <span class="kit-chip">SETUP-PROMPT.txt</span>
-          <span class="kit-chip">MODEL-ROUTING-ARCHITECTURE.md</span>
-          <span class="kit-chip">AI-Subscription-Routing-Playbook.md</span>
-          <span class="kit-chip">APP-MODEL-ROUTING-INTEGRATION.md</span>
+          <span class="kit-chip">audit-my-ai-usage.mjs</span>
+          <span class="kit-chip">standalone-router.mjs</span>
           <span class="kit-chip">policy.default.mjs</span>
           <span class="kit-chip">routing-policy.template.json</span>
           <span class="kit-chip">routing-eval-cases.json</span>
-          <span class="kit-chip">model-routing-audit.mjs</span>
-          <span class="kit-chip">model-auto-refresh.mjs</span>
-          <span class="kit-chip">router-utilization.mjs</span>
           <span class="kit-chip">app-model-router.mjs</span>
+          <span class="kit-chip">model-auto-refresh.mjs</span>
+          <span class="kit-chip">model-routing-audit.mjs</span>
+          <span class="kit-chip">router-utilization.mjs</span>
+          <span class="kit-chip">MODEL-ROUTING-ARCHITECTURE.md</span>
+          <span class="kit-chip">AI-Subscription-Routing-Playbook.md</span>
+          <span class="kit-chip">APP-MODEL-ROUTING-INTEGRATION.md</span>
+          <span class="kit-chip">examples/hooks-and-configs.md</span>
+          <span class="kit-chip">examples/statusline-50pct-compact.cjs</span>
         </div>
       </div>
       <a class="btn-download" href="./ai-routing-starter-kit.zip" download="ai-routing-starter-kit.zip">
-        ⬇ Download Complete Packet (.zip)
+        ⬇ Download 16-File Packet (.zip)
       </a>
     </div>
 
-    <div class="code-block" id="prompt-text"><button class="copy-btn" onclick="copyPrompt()">Copy Setup Prompt</button>I downloaded the AI Subscription Routing &amp; Quota-Optimization Starter Kit. Please read AI-Subscription-Routing-Playbook.md and APP-MODEL-ROUTING-INTEGRATION.md, then help me configure MY machine and MY workflow.
+    <div class="code-block-wrap">
+      <div class="code-block-bar">
+        <span>Paste Into Claude Code, Antigravity, Codex, Grok, or Cursor After Unzipping</span>
+        <button type="button" class="copy-btn" id="copy-prompt-btn" onclick="copyPrompt()">Copy Setup Prompt</button>
+      </div>
+      <pre class="code-block" id="prompt-text">I downloaded the 16-file AI Subscription Routing &amp; Quota-Optimization Starter Kit. Please read README.md, AI-Subscription-Routing-Playbook.md, and APP-MODEL-ROUTING-INTEGRATION.md, then help me configure MY machine and MY workflow.
 
 Note: I may or may not be using MetaHarness today—inspect what I actually have installed first and recommend the cleanest setup for MY environment (never enabling pay-by-the-drink API billing for personal coding on my prepaid developer seats).
 
 Please do the following in order:
-1. Run `node audit-my-ai-usage.mjs` (or inspect my local session logs across Claude Code, Codex, Antigravity/Gemini, Grok, Cursor, etc.) and show me my real 60-day token burn, frontier %, warm cache hit rate, and where my quota is leaking.
+1. Run `node audit-my-ai-usage.mjs` locally (zero data leaves my machine) and show me my real 60-day score, Frontier %, warm cache hit rate, and any leaked API keys.
 2. Recommend which prepaid subscription tiers I should keep, upgrade, or downgrade based on my actual numbers.
-3. Propose my tailored 5-tier routing + thinking-level policy (`fast`, `medium`, `substantial`, `hard`, `exceptional`) and replay 100+ of my real recent prompts through the classifier to prove the distribution shift (~25-35% fast, ~50-55% medium, ~10-15% frontier) before changing any files.
-4. Once I approve, back up my existing configs, configure my default "leave-it-alone" medium coordinators, wire per-prompt routing + automatic failure escalation + the 4 quota-hygiene rules (subagent search isolation >5 files, 50% context /compact warning, pre-distilled frontier escalation, in-vendor warm-cache preservation), set up weekly/nightly model auto-refresh, and install a self-audit watchdog so we can verify my 7-day before-vs-after improvement.
-5. For any deployed apps I build going forward, use `app-model-router.mjs` so no app ever hardcodes a vendor model ID.</div>
+3. Run `node standalone-router.mjs --eval` to verify the 36-case safety eval suite, then replay 50+ of my real recent prompts to prove the distribution shift (~25-35% fast, ~50-55% medium, ~10-15% frontier) before changing any configs.
+4. Once I approve, back up my existing configs, configure my default medium coordinators (using examples/hooks-and-configs.md), wire the 4 quota-hygiene rules and 50% ⚡/compact statusline guard, and schedule weekly model freshness checks with `model-auto-refresh.mjs` and `model-routing-audit.mjs`.
+5. For any deployed apps I build going forward, wire `app-model-router.mjs` so no app ever hardcodes a vendor model ID.</pre>
+    </div>
   </section>
 
   <footer>
-    AI Subscription Routing &amp; Quota-Optimization Playbook · Interactive Three.js Edition · Published November 22, 2026
+    AI Subscription Routing &amp; Quota-Optimization Playbook · Interactive Three.js Edition · Published by <a href="https://isovision.ai/" style="color:var(--cyan); text-decoration:none; font-weight:700;">ISO Vision AI</a> · Updated November 22, 2026 (02:30 EST)
   </footer>
 </div>
+</main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-// ── Copy Setup Prompt ────────────────────────────────────────────────────────────
+// ── Scroll Progress Bar & Section Reveal Animations ──────────────────────────────
+(function initScrollStory() {
+  const bar = document.getElementById('scroll-progress');
+  function updateProgress() {
+    const max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+    bar.style.transform = `scaleX(${Math.min(1, window.scrollY / max).toFixed(4)})`;
+  }
+  window.addEventListener('scroll', updateProgress, { passive: true });
+  updateProgress();
+
+  // Add .reveal to major content sections and reveal smoothly on intersection
+  const targets = document.querySelectorAll('.container > section');
+  targets.forEach((el) => el.classList.add('reveal'));
+  if ('IntersectionObserver' in window) {
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => {
+        if (e.isIntersecting) { e.target.classList.add('is-visible'); io.unobserve(e.target); }
+      });
+    }, { rootMargin: '0px 0px -60px 0px', threshold: 0.04 });
+    targets.forEach((el) => io.observe(el));
+  } else {
+    targets.forEach((el) => el.classList.add('is-visible'));
+  }
+})();
+
+// ── Clipboard Helper with Fallback ───────────────────────────────────────────────
+function copyText(txt, btn, label) {
+  const done = () => { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = label; }, 1800); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(txt).then(done).catch(() => fallbackCopy(txt, done));
+  } else { fallbackCopy(txt, done); }
+}
+function fallbackCopy(txt, done) {
+  const ta = document.createElement('textarea');
+  ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); } catch {}
+  document.body.removeChild(ta); done();
+}
 function copyPrompt() {
-  const el = document.getElementById('prompt-text');
-  const txt = el.innerText.replace(/^Copy Setup Prompt\s*/, '');
-  navigator.clipboard.writeText(txt).then(() => {
-    const b = el.querySelector('.copy-btn');
-    b.textContent = 'Copied!';
-    setTimeout(() => b.textContent = 'Copy Setup Prompt', 1800);
-  });
+  copyText(document.getElementById('prompt-text').innerText, document.getElementById('copy-prompt-btn'), 'Copy Setup Prompt');
+}
+function copyAppCode(btn) {
+  copyText(document.getElementById('app-code-snippet').innerText, btn, 'Copy');
 }
 
-// ── Interactive Scatter Plot Points ──────────────────────────────────────────────
+// ── Interactive Architecture Inspector ───────────────────────────────────────────
+const ARCH_INFO = {
+  cli: '<strong>Any CLI / IDE:</strong> Works natively with Antigravity (Gemini 4), Claude Code, Codex CLI, Grok CLI, and Cursor. Main chat sits parked on your fast Medium Coordinator so warm caches stay 95%+ hot.',
+  hook: '<strong>Local Prompt Hook (&lt;50ms):</strong> Classifies every prompt into 5 tiers locally with zero network calls, injects the 4 quota-hygiene rules, enforces subscription-only env (strips paid API keys), and prints a Line-1 routing badge.',
+  tiers: '<strong>5-Tier Distribution:</strong> 32% Fast (isolated subagent scans), 54% Medium (warm cache), 7% Substantial (multi-file features), 5% Hard (distilled Neon/Opus/Astra High), &lt;2% Exceptional (surgical Fable 5.2 / XHigh only).',
+  qa: '<strong>QA + Automatic Escalation:</strong> Never manually beg for a stronger model. Two test/QA failures or "still broken" triggers an automatic +1 tier escalation with distilled failure evidence.',
+  refresh: '<strong>Auto-Refresh + 13-Point Watchdog:</strong> Nightly local CLI model cache scan + weekly AA v5.0.1 / Vals / KingBench review + 36/36 safety eval suite + live 7d vs 60d before/after transcript tracking.',
+  app: '<strong>World 2 — Production Apps (<code>app-model-router.mjs</code>):</strong> Business logic only calls tier aliases (<code>fast | medium | substantial | hard | exceptional</code>). Swap models globally via <code>APP_MODEL_TIERS_JSON</code> with zero deploy, lateral provider fallback on 429s, and automatic +1 tier escalation on schema validation failure.',
+};
+window.inspectArch = function(key) {
+  document.getElementById('arch-detail').innerHTML = ARCH_INFO[key] || ARCH_INFO.hook;
+};
+
+// ── Interactive Scatter Plot (All 13 Points + Keyboard Accessible) ───────────────
 const POINTS = [
-  { x: 130, y: 198, c: '#38bdf8', label: 'Neon Low',    info: 'Gemini 4 Neon @ Low — Score 44 · $0.75/task · 3.7 min. Beats Opus 5.5 Low (35 @ $0.98).' },
-  { x: 250, y: 138, c: '#38bdf8', label: 'Neon Med',    info: 'Gemini 4 Neon @ Medium — Score 55 · $1.90/task · 8.4 min. Beats Opus 5.5 High (52 @ $3.46)!' },
-  { x: 370, y: 104, c: '#22c55e', label: 'Neon High ★', info: 'SWEET SPOT: Gemini 4 Neon @ High — Score 60 · $3.74/task · 14.3 min · $0 cache-write fee. Beats Opus 5.5 Max (59 @ $10.04)!' },
-  { x: 510, y: 98,  c: '#38bdf8', label: 'Neon XHigh',  info: 'Gemini 4 Neon @ XHigh — Score 61 · $6.44/task (+72% cost for +1 pt). Reserve for auto-escalation only.' },
-  { x: 165, y: 248, c: '#f59e0b', label: 'Opus Low',    info: 'Claude Opus 5.5 @ Low — Score 35 · $0.98/task · 3.0 min.' },
-  { x: 355, y: 155, c: '#f59e0b', label: 'Opus High',   info: 'Claude Opus 5.5 @ High — Score 52 · $3.46/task · 9.2 min. Strongest on pure bash/terminal loops & security.' },
-  { x: 685, y: 112, c: '#ef4444', label: 'Opus Max',    info: 'AVOID DEFAULT: Claude Opus 5.5 @ Max — Score 59 · $10.04/task · 25.6 min. Neon High beats it for $6.30 less.' },
-  { x: 615, y: 90,  c: '#a855f7', label: 'Fable High',  info: 'SURGICAL TIER (<5%): Claude Fable 5.2 @ High — Score 62 · $9.08/task. Use ONLY with pre-distilled context.' },
-  { x: 885, y: 68,  c: '#ef4444', label: 'Fable Max',   info: 'CLIFF WARNING: Claude Fable 5.2 @ Max — Score 65 · $26.54/task (+192% cost for +3 pts, 42.2 min).' },
+  { x: 115, y: 194, c: '#38bdf8', label: 'Neon Low',    dy: -12, info: 'Gemini 4 Neon @ Low — Score 44 · $0.75/task · 3.7 min. Beats Opus 5.5 Low (35 @ $0.98).' },
+  { x: 316, y: 130, c: '#38bdf8', label: 'Neon Med',    dy: -12, info: 'Gemini 4 Neon @ Medium — Score 55 · $1.90/task · 8.4 min. Beats Opus 5.5 High (52 @ $3.46)!' },
+  { x: 462, y: 101, c: '#22c55e', label: 'Neon High ★', dy: -14, info: 'SWEET SPOT: Gemini 4 Neon @ High — Score 60 · $3.74/task · 14.3–14.8 min · $0.00 cache-write fee. Beats Opus 5.5 Max (59 @ $10.04)!' },
+  { x: 581, y: 95,  c: '#38bdf8', label: 'Neon XHigh',  dy: -12, info: 'Gemini 4 Neon @ XHigh — Score 61 · $6.44/task (+72% cost for +1 pt). Reserve for auto-escalation only.' },
+  { x: 173, y: 246, c: '#f59e0b', label: 'Opus Low',    dy: 18,  info: 'Claude Opus 5.5 @ Low — Score 35 · $0.98/task · 3.0 min.' },
+  { x: 371, y: 171, c: '#f59e0b', label: 'Opus Med',    dy: 18,  info: 'Claude Opus 5.5 @ Medium — Score 48 · $2.45/task · 6.7 min.' },
+  { x: 445, y: 147, c: '#f59e0b', label: 'Opus High',   dy: 18,  info: 'Claude Opus 5.5 @ High — Score 52 · $3.46/task · 9.2 min. Strongest on terminal bash loops & security.' },
+  { x: 568, y: 118, c: '#f59e0b', label: 'Opus XHigh',  dy: 18,  info: 'Claude Opus 5.5 @ XHigh — Score 57 · $6.05/task · 15.8 min. Diminishing returns vs Neon High.' },
+  { x: 678, y: 107, c: '#ef4444', label: 'Opus Max',    dy: 18,  info: 'AVOID DEFAULT: Claude Opus 5.5 @ Max — Score 59 · $10.04/task · 25.6 min. Neon High beats it for $6.30 less.' },
+  { x: 421, y: 136, c: '#a855f7', label: '',            dy: -12, info: 'Claude Fable 5.2 @ Low — Score 54 · $3.10/task · 5.5 min. Prefer Neon High for routine hard work.' },
+  { x: 465, y: 124, c: '#a855f7', label: '',            dy: -12, info: 'Claude Fable 5.2 @ Medium — Score 56 · $3.80/task · 6.5 min.' },
+  { x: 656, y: 89,  c: '#a855f7', label: 'Fable High',  dy: -12, info: 'SURGICAL TIER (<2%): Claude Fable 5.2 @ High — Score 62 · $9.08/task · 15.1 min. Use ONLY with pre-distilled context.' },
+  { x: 762, y: 89,  c: '#a855f7', label: 'Fable XHigh', dy: -12, info: 'FLAT CLIFF: Claude Fable 5.2 @ XHigh — Score 62 (same height!) · $14.83/task · 24.5 min (+63% cost for 0 extra pts!).' },
+  { x: 888, y: 72,  c: '#ef4444', label: 'Fable Max',   dy: -12, info: 'CLIFF WARNING: Claude Fable 5.2 @ Max — Score 65 · $26.54/task (+192% cost for +3 pts, 42.2 min).' },
 ];
 const ptGroup = document.getElementById('scatter-points');
 POINTS.forEach((p) => {
   const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
   const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-  c.setAttribute('cx', p.x); c.setAttribute('cy', p.y); c.setAttribute('r', p.label.includes('★') ? 8 : 6);
-  c.setAttribute('fill', p.c); c.setAttribute('stroke', '#ffffff'); c.setAttribute('stroke-width', '1.8');
+  c.setAttribute('cx', p.x); c.setAttribute('cy', p.y); c.setAttribute('r', p.label.includes('★') ? 8 : (p.label ? 6 : 4.8));
+  c.setAttribute('fill', p.c); c.setAttribute('stroke', '#ffffff'); c.setAttribute('stroke-width', '1.6');
   c.setAttribute('class', 'dot-hit');
-  const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-  t.setAttribute('x', p.x); t.setAttribute('y', p.y - 12); t.setAttribute('text-anchor', 'middle');
-  t.setAttribute('font-size', '10.5'); t.setAttribute('font-weight', '700'); t.setAttribute('fill', '#e2e8f0');
-  t.textContent = p.label;
-  const show = () => { document.getElementById('scatter-info').innerHTML = `<span><strong>${p.label}:</strong> ${p.info}</span>`; };
+  c.setAttribute('tabindex', '0');
+  c.setAttribute('role', 'button');
+  c.setAttribute('aria-label', p.info);
+  const show = () => { document.getElementById('scatter-info').innerHTML = `<span>${p.info}</span>`; };
   c.addEventListener('mouseenter', show);
+  c.addEventListener('focus', show);
   c.addEventListener('click', show);
-  g.appendChild(c); g.appendChild(t); ptGroup.appendChild(g);
+  c.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); show(); } });
+  g.appendChild(c);
+  if (p.label) {
+    const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    t.setAttribute('x', p.x); t.setAttribute('y', p.y + p.dy); t.setAttribute('text-anchor', 'middle');
+    t.setAttribute('font-size', '10.5'); t.setAttribute('font-weight', '700'); t.setAttribute('fill', '#e2e8f0');
+    t.textContent = p.label;
+    g.appendChild(t);
+  }
+  ptGroup.appendChild(g);
 });
 
-// ── Interactive Quota Simulator ──────────────────────────────────────────────────
+// ── Live In-Browser Prompt Router Tester (Mirrors policy.default.mjs) ────────────
+const HOST_MAP = {
+  'claude-code': { fast: ['claude-haiku-5-5','low'], medium: ['claude-sonnet-5-5','medium'], substantial: ['claude-opus-5-5','medium'], hard: ['claude-opus-5-5','high'], exceptional: ['claude-fable-5-2','high'] },
+  'antigravity': { fast: ['gemini-4-neon','low'],    medium: ['gemini-4-neon','medium'],     substantial: ['gemini-4-neon','high'],   hard: ['gemini-4-neon','high'],   exceptional: ['gemini-4-neon','xhigh'] },
+  'codex':       { fast: ['gpt-6-luna','low'],       medium: ['gpt-6.2-sol','medium'],       substantial: ['gpt-6.2-sol','high'],     hard: ['gpt-6.2-astra','high'],   exceptional: ['gpt-6.2-astra','xhigh'] },
+  'grok':        { fast: ['grok-4.7','low'],         medium: ['grok-4.7','medium'],          substantial: ['grok-4.7','high'],        hard: ['grok-build','high'],      exceptional: ['grok-build','xhigh'] },
+};
+const NEXT_T = { fast: 'medium', medium: 'substantial', substantial: 'hard', hard: 'exceptional' };
+function classifyLocal(text) {
+  const s = String(text || '').trim();
+  const CODING = /\b(implement|implementation|code|coding|debug|refactor|test|endpoint|API|repository|module|function)\b/i;
+  const HARD = /cryptograph|consensus|race condition|irreversible|final review|independent review|difficult planning|complex architecture|security audit|security vulnerability|unresolved architectur|production incident|prove correctness/i;
+  const MECHANICAL = /\b(summari[sz]e|classify|extract|translate|rephrase|format|typo|alphabetical order|two-column|markdown table)\b/i;
+  const WORK = /\b(implement|build|add|replace|repair|fix|debug|trace|investigate|determine|choose|design|plan|review|assess|recommend)\b/i;
+  const QUICK = /^\s*(what (?:is|version|port|branch|model|time|status|tool)|where (?:is|does|do|are)|do we have|is (?:it|there|this|everything)|am i ready|which (?:version|port|branch|cli)|git status|check (?:git |version|status|if)|list (?:all |the )?(?:files|models|daemons|cron|tasks|branches)|show (?:me )?(?:the )?(?:status|version|branches|ports)|status update)\b/i;
+  const PRIOR_FAIL = /\b(still (?:broken|failing|fails|wrong|not working|crashing)|that didn'?t work|failed (?:again|twice)|same error|try harder|escalate)\b/i;
+  const SURGICAL = /\b(novel algorithm|frontier science|initial system architecture|adversarial (?:code )?review|formal verification proof|stalled all other models)\b/i;
+  const assessed = (/^\s*(summari[sz]e|extract|copy)\b/i.test(s) && /\bsupplied document\b/i.test(s) && /\bdo not assess\b/i.test(s)) ? s.replace(/\btitled\s+[^;\n]+(?=[;\n])/i, '') : s;
+  const secActions = assessed.replace(/\bdo not (?:assess|recommend)[^.;\n]*/gi, '');
+  const secRev = /\b(security|risks?)\b/i.test(secActions) && /\b(review|assess(?:ment)?|audit|evaluat\w*|analy[sz]\w*|identify|determine)\b/i.test(secActions);
+  const money = /\b(card|charg\w*|payment\w*|billing|settlement|ledger|funds)\b/i.test(assessed) && /\b(twice|duplicate\w*|double[- ]?charg\w*|los[est]\w*|failover|failed|rollback)\b/i.test(assessed);
+  const liveMig = /\b(live|production|both versions|concurrent)\b/i.test(assessed) && /\b(migrat\w*|schema|moving|move)\b/i.test(assessed) && /\b(records|payments|data|traffic)\b/i.test(assessed);
+  const iso = /\b(tenant|account|user)\b/i.test(assessed) && /\b(another|different|cross[- ]?(?:tenant|account)|other (?:tenant|account|user)|unauthori[sz]ed)\b/i.test(assessed) && /\b(see|read|access|expos\w*|leak\w*|bind|replay\w*)\b/i.test(assessed);
+  const verif = /\b(signed|signature|token|verifier|credential|authentication)\b/i.test(assessed) && /\b(replay\w*|forg\w*|bypass\w*|bind|binding)\b/i.test(assessed);
+  const durab = /\b(durable|durability|replicat\w*|acknowledg\w*|writer\w*|leader)\b/i.test(assessed) && /\b(choose|choosing|trade[- ]?off|design|loss|losing|fail\w*|vanish\w*|survive)\b/i.test(assessed);
+  const archAmb = /architectur\w*/i.test(s) && /\b(ambiguous|ambiguity|unresolved|uncertain|trade[- ]?off)\b/i.test(s);
+  const hardHit = HARD.test(assessed) || secRev || money || liveMig || iso || verif || durab || archAmb;
+  const priorFail = PRIOR_FAIL.test(s);
+  if (SURGICAL.test(assessed) || (hardHit && priorFail)) return { tier: 'exceptional', why: 'Surgical frontier / escalated high-consequence work' };
+  if (hardHit || priorFail) return { tier: 'hard', why: 'Consequence floor (payments, security, migration, isolation, or prior failure)' };
+  const subText = /\b(substantial (?:implementation|coding|feature|task)|cross-module|multi-file|end-to-end implementation|broad refactor)\b/i.test(s);
+  const surfaces = [/\b(storage|database|backend|importer\w*)\b/i, /\b(endpoint\w*|API|permissions)\b/i, /\b(UI|client|dashboard)\b/i, /\b(integration|coverage|fixtures)\b/i].filter((r) => r.test(s)).length;
+  if (subText || (/\b(implement|build|add|replace|refactor)\b/i.test(s) && surfaces >= 3)) return { tier: 'substantial', why: 'Multi-surface / cross-module implementation' };
+  const hasCode = /```/.test(s) || CODING.test(s);
+  if ((QUICK.test(s) && s.length < 180) || (MECHANICAL.test(s) && !hasCode && !WORK.test(s))) return { tier: 'fast', why: 'Bounded mechanical / lookup — isolate in fast subagent' };
+  return { tier: 'medium', why: 'Ordinary coding/debugging — stay on warm coordinator cache' };
+}
+window.setPreset = function(txt, fail) {
+  document.getElementById('test-prompt').value = txt;
+  document.getElementById('test-fail').checked = fail;
+  runLiveTest();
+};
+window.runLiveTest = function() {
+  const txt = document.getElementById('test-prompt').value;
+  const host = document.getElementById('test-host').value;
+  const priorFail = document.getElementById('test-fail').checked;
+  const base = classifyLocal(txt);
+  let tier = base.tier;
+  let escalated = false;
+  if (priorFail && NEXT_T[tier]) { tier = NEXT_T[tier]; escalated = true; }
+  const [model, effort] = HOST_MAP[host][tier];
+  const colorMap = { fast: '#86efac', medium: '#93c5fd', substantial: '#7dd3fc', hard: '#fcd34d', exceptional: '#d8b4fe' };
+  document.getElementById('tester-out').innerHTML =
+    `<div style="color:${colorMap[tier]}; font-weight:800; margin-bottom:6px;">[Routed: ${tier} → ${model} (${effort} thinking) · $0 subscription${escalated ? ' · AUTO-ESCALATED +1' : ''}]</div>` +
+    `<div style="color:#94a3b8; font-size:0.79rem;">Reason: ${base.why}${escalated ? ' + prior QA failure bumped tier upward' : ''}</div>` +
+    `<div style="color:#cbd5e1; font-size:0.78rem; margin-top:6px;">Hygiene: ${tier === 'fast' ? 'Offload to subagent so raw output never bloats main chat.' : tier === 'hard' || tier === 'exceptional' ? 'Send pre-distilled 2–5 file brief only (never raw repo discovery).' : 'Stay in-vendor on warm 95%+ prompt cache; compact at 50% ctx.'}</div>`;
+};
+runLiveTest();
+
+// ── Interactive Quota Simulator (Smooth Monotonic Math) ──────────────────────────
 function updateSim() {
   const spend = Number(document.getElementById('sl-spend').value);
   const front = Number(document.getElementById('sl-front').value);
   document.getElementById('lbl-spend').textContent = `$${spend}/mo`;
   document.getElementById('lbl-front').textContent = `${front}%`;
-  const stretch = +(1.6 + (front / 100) * 4.0).toFixed(1);
-  const daysBefore = Math.max(1.2, +(5.5 - (front / 100) * 6.0).toFixed(1));
-  const daysAfter = Math.min(7.0, +(daysBefore * stretch).toFixed(1));
-  const monthlySave = Math.round(spend * (spend >= 400 ? 0.44 : 0.30));
+  // Relative quota cost: Frontier ~5.5x unit weight vs Medium 1.0x, Fast 0.25x
+  const burnBefore = (front / 100) * 5.5 + (1 - front / 100) * 1.15;
+  const burnAfter = 0.32 * 0.25 + 0.54 * 1.0 + 0.07 * 1.4 + 0.05 * 2.8 + 0.02 * 5.0; // ~0.96
+  const stretch = +(Math.max(1.0, burnBefore / burnAfter)).toFixed(1);
+  const daysBefore = +(Math.max(1.1, Math.min(7.0, 6.2 / (burnBefore * 0.88)))).toFixed(1);
+  const daysAfter = +(Math.min(7.0, daysBefore * stretch)).toFixed(1);
+  // Redundant-seat savings depend smoothly on BOTH monthly spend AND excess frontier burn above 15%
+  const frontierFactor = Math.max(0, Math.min(1, (front - 15) / 50));
+  const baseRate = spend <= 100 ? 0.12 : Math.min(0.42, 0.12 + ((spend - 100) / 900) * 0.30);
+  const monthlySave = Math.round((spend * baseRate * frontierFactor) / 10) * 10;
   document.getElementById('bar-before').style.width = `${Math.min(100, (daysBefore / 7) * 100)}%`;
   document.getElementById('bar-before').textContent = `${daysBefore} days/wk`;
   document.getElementById('bar-after').style.width = `${Math.min(100, (daysAfter / 7) * 100)}%`;
-  document.getElementById('bar-after').textContent = daysAfter >= 7 ? '7.0+ days/wk (No Walls!)' : `${daysAfter} days/wk`;
+  document.getElementById('bar-after').textContent = daysAfter >= 6.9 ? '7.0+ days/wk (No Walls!)' : `${daysAfter} days/wk`;
   document.getElementById('kpi-mult').textContent = `${stretch}x`;
   document.getElementById('kpi-save').textContent = `$${monthlySave}/mo`;
   document.getElementById('kpi-yr').textContent = `$${(monthlySave * 12).toLocaleString()}/yr`;
 }
 updateSim();
 
-// ── 5-Chapter Scrollytelling Three.js Engine ─────────────────────────────────────
+// ── 5-Chapter Distinct Scrollytelling Three.js Engine ────────────────────────────
 let currentScene = 0;
+let is3DPaused = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const SCENE_META = [
   {
     title: 'CH 1 · THE FRONTIER BOTTLENECK', badge: '1.0x BASELINE', bColor: '#fca5a5',
     hud: [ ['57%', 'Turns on Frontier', '#fca5a5'], ['43%', 'Cache-Write Tax', '#fcd34d'], ['~2 Days', 'Before Weekly Wall', '#fca5a5'] ],
-    cam: [-0.4, 0.8, 14.5],
+    cam: [-0.3, 0.7, 15.2],
   },
   {
     title: 'CH 2 · THE COLD-CACHE TRAP', badge: '5x–10x PENALTY', bColor: '#fcd34d',
     hud: [ ['96.7%', 'Warm Cache Reads', '#38bdf8'], ['5x–10x', 'Cold-Switch Tax', '#fca5a5'], ['Stay Local', '90% of Turns', '#86efac'] ],
-    cam: [0.8, 1.3, 14.2],
+    cam: [0.6, 1.1, 14.8],
   },
   {
     title: 'CH 3 · TWO WORLDS SEPARATED', badge: '$0 VS BY-THE-DRINK', bColor: '#7dd3fc',
     hud: [ ['$0 Extra', 'Prepaid Dev Seats', '#86efac'], ['0 Hardcoded', 'App Model IDs', '#7dd3fc'], ['Cloud Proxy', 'Apps Only (OFF Locally)', '#fcd34d'] ],
-    cam: [-1.0, 1.8, 15.0],
+    cam: [-0.4, 1.0, 15.6],
   },
   {
     title: 'CH 4 · 5-TIER FLUID FLOW', badge: '3.8x–4.5x STRETCH', bColor: '#86efac',
-    hud: [ ['86%', 'Fast + Mid Share', '#86efac'], ['95%+', 'Warm Cache Kept', '#38bdf8'], ['7+ Days', 'Wall-Free Week', '#86efac'] ],
-    cam: [-0.2, 0.5, 14.0],
+    hud: [ ['86%', 'Fast + Mid Share', '#86efac'], ['50% Ctx', '⚡/compact Valve', '#38bdf8'], ['7+ Days', 'Wall-Free Week', '#86efac'] ],
+    cam: [-0.2, 0.5, 14.8],
   },
   {
     title: 'CH 5 · AUTO-ESCALATION & REFRESH', badge: '13/13 AUDIT PASS', bColor: '#d8b4fe',
-    hud: [ ['+1 Tier', 'Auto Fail-Escalation', '#d8b4fe'], ['Weekly', 'Model Auto-Refresh', '#86efac'], ['50% Ctx', '⚡/compact Guard', '#fcd34d'] ],
-    cam: [1.0, 0.2, 14.2],
+    hud: [ ['+1 Tier', 'Auto Fail-Escalation', '#d8b4fe'], ['Nightly+Wk', 'Model Auto-Refresh', '#86efac'], ['36/36', 'Safety Evals Pass', '#7dd3fc'] ],
+    cam: [0.8, 0.4, 15.0],
   },
 ];
 
-const canvas = document.getElementById('three-canvas');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(42, 1.2, 0.1, 100);
-camera.position.set(-0.4, 0.8, 14.5);
-
-scene.add(new THREE.AmbientLight(0xffffff, 0.9));
-const pLight = new THREE.PointLight(0x38bdf8, 2.2, 40);
-pLight.position.set(4, 6, 8);
-scene.add(pLight);
-const rLight = new THREE.PointLight(0xef4444, 1.5, 30);
-rLight.position.set(5, -3, 5);
-scene.add(rLight);
-
-// Subtle background starfield
-const starPos = new Float32Array(450);
-for (let i = 0; i < 450; i++) starPos[i] = (Math.random() - 0.5) * 32;
-const starGeo = new THREE.BufferGeometry();
-starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
-scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0x64748b, size: 0.06, transparent: true, opacity: 0.5 })));
-
-function makeOrb(x, y, z, color, r) {
-  const m = new THREE.Mesh(
-    new THREE.IcosahedronGeometry(r, 2),
-    new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.4, roughness: 0.25, metalness: 0.45 })
-  );
-  m.position.set(x, y, z);
-  scene.add(m);
-  return m;
-}
-
-function makeLabel(text, x, y, z, color) {
-  const c = document.createElement('canvas');
-  c.width = 320; c.height = 64;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = 'rgba(5,8,17,0.78)';
-  ctx.fillRect(6, 8, 308, 48);
-  ctx.strokeStyle = color; ctx.lineWidth = 3;
-  ctx.strokeRect(6, 8, 308, 48);
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 24px -apple-system, BlinkMacSystemFont, Inter, sans-serif';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(text, 160, 33);
-  const tex = new THREE.CanvasTexture(c);
-  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
-  sp.position.set(x, y, z);
-  sp.scale.set(2.15, 0.43, 1);
-  scene.add(sp);
-  return sp;
-}
-
-const inputOrb = makeOrb(-4.2, 0.4, 0, 0x38bdf8, 0.46);
-makeLabel('YOUR PROMPT', -4.2, -0.45, 0, '#38bdf8');
-const routerOrb = makeOrb(-1.2, 0.4, 0, 0x0ea5e9, 0.58);
-makeLabel('LOCAL ROUTER', -1.2, -0.58, 0, '#0ea5e9');
-const lanes = [
-  { y:  2.75, color: 0x22c55e, orb: makeOrb(3.1,  2.75, 0, 0x22c55e, 0.38), label: makeLabel('FAST · 32%', 3.1, 3.45, 0, '#22c55e') },
-  { y:  1.25, color: 0x3b82f6, orb: makeOrb(3.1,  1.25, 0, 0x3b82f6, 0.46), label: makeLabel('MID · WARM CACHE', 3.1, 2.02, 0, '#3b82f6') },
-  { y: -0.35, color: 0xf59e0b, orb: makeOrb(3.1, -0.35, 0, 0xf59e0b, 0.40), label: makeLabel('HARD · DISTILLED', 3.1, 0.32, 0, '#f59e0b') },
-  { y: -1.85, color: 0xef4444, orb: makeOrb(3.1, -1.85, 0, 0xef4444, 0.40), label: makeLabel('FRONTIER / WALL', 3.1, -1.18, 0, '#ef4444') },
-];
-
-// Red Rate-Limit Wall (Chapter 1)
-const wallMesh = new THREE.Mesh(
-  new THREE.BoxGeometry(0.18, 2.1, 1.8),
-  new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xef4444, emissiveIntensity: 0.65, transparent: true, opacity: 0.55 })
-);
-wallMesh.position.set(1.8, -1.65, 0);
-scene.add(wallMesh);
-
-// Warm Cache Ring (Medium Lane)
-const cacheRing = new THREE.Mesh(
-  new THREE.TorusGeometry(0.84, 0.048, 16, 64),
-  new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x38bdf8, emissiveIntensity: 0.7 })
-);
-cacheRing.position.set(3.1, 1.25, 0);
-scene.add(cacheRing);
-
-// Weekly Refresh Satellite (Chapter 5)
-const satellite = makeOrb(3.1, 3.3, 1.2, 0xa855f7, 0.22);
-
-// Curves
-const curves = lanes.map((l) => new THREE.CubicBezierCurve3(
-  new THREE.Vector3(-1.2, 0.4, 0),
-  new THREE.Vector3(0.4, 0.4 + (l.y - 0.4) * 0.65, 0.75),
-  new THREE.Vector3(1.6, l.y, -0.45),
-  new THREE.Vector3(3.1, l.y, 0)
-));
-curves.forEach((c, idx) => {
-  scene.add(new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints(c.getPoints(36)),
-    new THREE.LineBasicMaterial({ color: lanes[idx].color, transparent: true, opacity: 0.4 })
-  ));
-});
-scene.add(new THREE.Line(
-  new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-4.2, 0.4, 0), new THREE.Vector3(-1.2, 0.4, 0)]),
-  new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.55 })
-));
-
-// Particles
-const particles = [];
-const pGeo = new THREE.SphereGeometry(0.11, 10, 10);
-function pickLane(s) {
-  const r = Math.random();
-  if (s === 0) return r < 0.62 ? 3 : r < 0.95 ? 1 : 0;
-  if (s === 1) return r < 0.5 ? 1 : 2;
-  if (s === 2) return r < 0.5 ? 0 : 1;
-  if (s === 4) return r < 0.28 ? 0 : r < 0.72 ? 1 : r < 0.90 ? 2 : 3;
-  return r < 0.32 ? 0 : r < 0.86 ? 1 : r < 0.97 ? 2 : 3;
-}
-for (let i = 0; i < 110; i++) {
-  const laneIdx = pickLane(0);
-  const mesh = new THREE.Mesh(pGeo, new THREE.MeshBasicMaterial({ color: lanes[laneIdx].color }));
-  scene.add(mesh);
-  particles.push({ mesh, t: Math.random(), phase: Math.random() < 0.3 ? 0 : 1, laneIdx, speed: 0.004 + Math.random() * 0.005 });
-}
-
-let targetCam = new THREE.Vector3(...SCENE_META[0].cam);
-
-window.activateScene = function(idx) {
-  currentScene = idx;
-  const meta = SCENE_META[idx];
-  document.getElementById('scene-title').textContent = meta.title;
-  const b = document.getElementById('scene-badge');
-  b.textContent = meta.badge; b.style.color = meta.bColor;
-  document.getElementById('hud-metrics').innerHTML = meta.hud.map(([v, l, c]) =>
-    `<div><div class="hm-val" style="color:${c};">${v}</div><div class="hm-lab">${l}</div></div>`
-  ).join('');
-  document.querySelectorAll('.ch-btn').forEach((el, i) => el.classList.toggle('active', i === idx));
-  document.querySelectorAll('.step-card').forEach((el, i) => el.classList.toggle('active', i === idx));
-  targetCam.set(...meta.cam);
-  particles.forEach((p) => {
-    p.laneIdx = pickLane(idx);
-    p.mesh.material.color.setHex(lanes[p.laneIdx].color);
-  });
+const pauseBtn = document.getElementById('pause-3d-btn');
+if (is3DPaused) pauseBtn.textContent = 'Resume 3D';
+window.toggle3DPause = function() {
+  is3DPaused = !is3DPaused;
+  pauseBtn.textContent = is3DPaused ? 'Resume 3D' : 'Pause 3D';
 };
 
-// Scroll listener to drive Three.js chapters cleanly (always starts on Ch 1 at top of page)
-function syncSceneToScroll() {
-  if (window.scrollY < 100) { if (currentScene !== 0) activateScene(0); return; }
-  const cards = [...document.querySelectorAll('.step-card')];
-  const mid = window.innerHeight * 0.42;
-  let bestIdx = currentScene, bestDist = Infinity;
-  cards.forEach((c, i) => {
-    const r = c.getBoundingClientRect();
-    const d = Math.abs((r.top + r.bottom) / 2 - mid);
-    if (d < bestDist) { bestDist = d; bestIdx = i; }
-  });
-  if (bestIdx !== currentScene) activateScene(bestIdx);
-}
-window.addEventListener('scroll', syncSceneToScroll, { passive: true });
+(function initThree() {
+  const canvas = document.getElementById('three-canvas');
+  let renderer;
+  try {
+    if (typeof THREE === 'undefined') throw new Error('Three.js not loaded');
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  } catch {
+    canvas.style.display = 'none';
+    document.getElementById('webgl-fallback').style.display = 'flex';
+    return;
+  }
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  renderer.setPixelRatio(dpr);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(42, 1.2, 0.1, 100);
+  camera.position.set(...SCENE_META[0].cam);
 
-let tClock = 0;
-function animate() {
-  requestAnimationFrame(animate);
-  const w = canvas.clientWidth, h = canvas.clientHeight;
-  const aspect = w / Math.max(h, 1);
-  if (canvas.width !== w || canvas.height !== h) {
+  scene.add(new THREE.AmbientLight(0xffffff, 0.95));
+  const pLight = new THREE.PointLight(0x38bdf8, 2.2, 42);
+  pLight.position.set(4, 6, 8);
+  scene.add(pLight);
+  const rLight = new THREE.PointLight(0xef4444, 1.4, 30);
+  rLight.position.set(5, -3, 5);
+  scene.add(rLight);
+
+  // Starfield
+  const starPos = new Float32Array(420);
+  for (let i = 0; i < 420; i++) starPos[i] = (Math.random() - 0.5) * 32;
+  const starGeo = new THREE.BufferGeometry();
+  starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+  scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0x64748b, size: 0.055, transparent: true, opacity: 0.45 })));
+
+  function makeOrb(x, y, z, color, r, parent = scene) {
+    const m = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(r, 2),
+      new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.42, roughness: 0.25, metalness: 0.45 })
+    );
+    m.position.set(x, y, z);
+    parent.add(m);
+    return m;
+  }
+  function makeLabel(text, x, y, z, color, parent = scene, sx = 2.05) {
+    const c = document.createElement('canvas');
+    c.width = 340; c.height = 64;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = 'rgba(5,8,17,0.82)';
+    ctx.fillRect(6, 8, 328, 48);
+    ctx.strokeStyle = color; ctx.lineWidth = 3;
+    ctx.strokeRect(6, 8, 328, 48);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 23px -apple-system, BlinkMacSystemFont, Inter, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(text, 170, 33);
+    const tex = new THREE.CanvasTexture(c);
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
+    sp.position.set(x, y, z);
+    sp.scale.set(sx, sx * 0.2, 1);
+    parent.add(sp);
+    return sp;
+  }
+
+  // Main 5-Tier Pipeline Group (Chapters 1, 2, 4, 5)
+  const pipeGroup = new THREE.Group();
+  scene.add(pipeGroup);
+
+  const inputOrb = makeOrb(-4.3, 0.35, 0, 0x38bdf8, 0.44, pipeGroup);
+  makeLabel('YOUR PROMPT', -4.3, -0.45, 0, '#38bdf8', pipeGroup);
+  const routerOrb = makeOrb(-1.4, 0.35, 0, 0x0ea5e9, 0.56, pipeGroup);
+  makeLabel('LOCAL ROUTER', -1.4, -0.58, 0, '#0ea5e9', pipeGroup);
+
+  const lanes = [
+    { y:  3.05, color: 0x22c55e, orb: makeOrb(3.0,  3.05, 0, 0x22c55e, 0.34, pipeGroup), label: makeLabel('FAST · 32%',       3.0,  3.65, 0, '#22c55e', pipeGroup) },
+    { y:  1.75, color: 0x3b82f6, orb: makeOrb(3.0,  1.75, 0, 0x3b82f6, 0.44, pipeGroup), label: makeLabel('MED · 54% CACHE',  3.0,  2.42, 0, '#3b82f6', pipeGroup) },
+    { y:  0.40, color: 0x38bdf8, orb: makeOrb(3.0,  0.40, 0, 0x38bdf8, 0.34, pipeGroup), label: makeLabel('SUBSTANTIAL · 7%', 3.0,  1.00, 0, '#38bdf8', pipeGroup) },
+    { y: -0.90, color: 0xf59e0b, orb: makeOrb(3.0, -0.90, 0, 0xf59e0b, 0.36, pipeGroup), label: makeLabel('HARD · 5%',        3.0, -0.30, 0, '#f59e0b', pipeGroup) },
+    { y: -2.20, color: 0xef4444, orb: makeOrb(3.0, -2.20, 0, 0xef4444, 0.36, pipeGroup), label: makeLabel('EXCEPTIONAL <2%',  3.0, -1.60, 0, '#ef4444', pipeGroup) },
+  ];
+
+  // Ch 1: Red Rate-Limit Wall + Bloat Ring
+  const wallMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(0.18, 2.3, 1.8),
+    new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xef4444, emissiveIntensity: 0.7, transparent: true, opacity: 0.6 })
+  );
+  wallMesh.position.set(1.35, -1.75, 0);
+  pipeGroup.add(wallMesh);
+
+  // Ch 2 & 4: Warm Cache Ring on Medium Orb + Shatter Shards (Ch 2)
+  const cacheRing = new THREE.Mesh(
+    new THREE.TorusGeometry(0.76, 0.045, 16, 64),
+    new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x38bdf8, emissiveIntensity: 0.75 })
+  );
+  cacheRing.position.set(3.0, 1.75, 0);
+  pipeGroup.add(cacheRing);
+
+  const shatterGroup = new THREE.Group();
+  pipeGroup.add(shatterGroup);
+  const shards = [];
+  for (let i = 0; i < 10; i++) {
+    const sh = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.11, 0),
+      new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0xef4444, emissiveIntensity: 0.7 })
+    );
+    shatterGroup.add(sh);
+    shards.push({ mesh: sh, ang: (i / 10) * Math.PI * 2 });
+  }
+  makeLabel('COLD SWITCH = 5x–10x TAX', 0.4, 2.8, 0.5, '#f59e0b', shatterGroup, 2.8);
+
+  // Ch 4: 50% /compact Pressure-Relief Ring on Router
+  const compactRing = new THREE.Mesh(
+    new THREE.TorusGeometry(0.95, 0.035, 12, 48),
+    new THREE.MeshStandardMaterial({ color: 0x22c55e, emissive: 0x22c55e, emissiveIntensity: 0.65, transparent: true, opacity: 0.85 })
+  );
+  compactRing.position.set(-1.4, 0.35, 0);
+  pipeGroup.add(compactRing);
+
+  // Ch 5: +1 Tier Auto-Escalation Arc + Refresh Satellite
+  const escGroup = new THREE.Group();
+  pipeGroup.add(escGroup);
+  const escCurve = new THREE.QuadraticBezierCurve3(
+    new THREE.Vector3(3.0, -0.90, 0),
+    new THREE.Vector3(4.35, -1.55, 0.9),
+    new THREE.Vector3(3.0, -2.20, 0)
+  );
+  escGroup.add(new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(escCurve.getPoints(32)),
+    new THREE.LineBasicMaterial({ color: 0xa855f7 })
+  ));
+  const escParticle = makeOrb(3.0, -0.9, 0, 0xd8b4fe, 0.16, escGroup);
+  const satellite = makeOrb(3.0, 3.6, 1.2, 0xa855f7, 0.22, escGroup);
+  makeLabel('WEEKLY REFRESH + 13/13 AUDIT', 0.2, 3.55, 0.6, '#a855f7', escGroup, 3.0);
+
+  // Ch 3: Dedicated Two-Worlds Split Diorama Group
+  const worldsGroup = new THREE.Group();
+  worldsGroup.visible = false;
+  scene.add(worldsGroup);
+  // Divider plane
+  const divider = new THREE.Mesh(
+    new THREE.BoxGeometry(0.06, 5.2, 1.4),
+    new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x38bdf8, emissiveIntensity: 0.5, transparent: true, opacity: 0.4 })
+  );
+  divider.position.set(-0.2, 0.4, 0);
+  worldsGroup.add(divider);
+  // Left World (Prepaid Dev Machine)
+  const w1Core = makeOrb(-2.7, 0.5, 0, 0x22c55e, 0.68, worldsGroup);
+  const w1Ring = new THREE.Mesh(
+    new THREE.TorusGeometry(1.25, 0.045, 16, 64),
+    new THREE.MeshStandardMaterial({ color: 0x22c55e, emissive: 0x22c55e, emissiveIntensity: 0.7 })
+  );
+  w1Ring.position.set(-2.7, 0.5, 0);
+  worldsGroup.add(w1Ring);
+  makeLabel('WORLD 1 · DEV MACHINE', -2.7, 2.25, 0, '#22c55e', worldsGroup, 2.6);
+  makeLabel('$0 PREPAID · KEYS STRIPPED', -2.7, -1.25, 0, '#86efac', worldsGroup, 2.7);
+  // Right World (Production Apps)
+  const w2Core = makeOrb(2.4, 0.5, 0, 0x38bdf8, 0.68, worldsGroup);
+  const w2Ring = new THREE.Mesh(
+    new THREE.TorusGeometry(1.25, 0.045, 16, 64),
+    new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x38bdf8, emissiveIntensity: 0.7 })
+  );
+  w2Ring.position.set(2.4, 0.5, 0);
+  worldsGroup.add(w2Ring);
+  makeLabel('WORLD 2 · PROD APPS', 2.4, 2.25, 0, '#38bdf8', worldsGroup, 2.6);
+  makeLabel('TIER ALIASES · ZERO DEPLOY', 2.4, -1.25, 0, '#7dd3fc', worldsGroup, 2.7);
+
+  // Curves & Particles for pipeGroup
+  const curves = lanes.map((l) => new THREE.CubicBezierCurve3(
+    new THREE.Vector3(-1.4, 0.35, 0),
+    new THREE.Vector3(0.3, 0.35 + (l.y - 0.35) * 0.65, 0.7),
+    new THREE.Vector3(1.5, l.y, -0.45),
+    new THREE.Vector3(3.0, l.y, 0)
+  ));
+  curves.forEach((c, idx) => {
+    pipeGroup.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(c.getPoints(36)),
+      new THREE.LineBasicMaterial({ color: lanes[idx].color, transparent: true, opacity: 0.4 })
+    ));
+  });
+  pipeGroup.add(new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-4.3, 0.35, 0), new THREE.Vector3(-1.4, 0.35, 0)]),
+    new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.55 })
+  ));
+
+  const particles = [];
+  const pGeo = new THREE.SphereGeometry(0.10, 10, 10);
+  function pickLane(s) {
+    const r = Math.random();
+    if (s === 0) return r < 0.60 ? 4 : r < 0.88 ? 1 : 0;
+    if (s === 1) return r < 0.55 ? 1 : 3;
+    if (s === 4) return r < 0.30 ? 0 : r < 0.76 ? 1 : r < 0.86 ? 2 : r < 0.94 ? 3 : 4;
+    return r < 0.32 ? 0 : r < 0.86 ? 1 : r < 0.93 ? 2 : r < 0.98 ? 3 : 4;
+  }
+  for (let i = 0; i < 110; i++) {
+    const laneIdx = pickLane(0);
+    const mesh = new THREE.Mesh(pGeo, new THREE.MeshBasicMaterial({ color: lanes[laneIdx].color }));
+    pipeGroup.add(mesh);
+    particles.push({ mesh, t: Math.random(), phase: Math.random() < 0.3 ? 0 : 1, laneIdx, speed: 0.004 + Math.random() * 0.0045 });
+  }
+
+  let targetCam = new THREE.Vector3(...SCENE_META[0].cam);
+
+  // Fix Retina 60fps resize thrashing via ResizeObserver!
+  function syncCanvasSize() {
+    const w = Math.max(1, canvas.clientWidth);
+    const h = Math.max(1, canvas.clientHeight);
     renderer.setSize(w, h, false);
-    camera.aspect = aspect;
+    camera.aspect = w / h;
     camera.updateProjectionMatrix();
   }
-  tClock += 0.016;
-  const zBoost = aspect < 1.35 ? (1.35 / Math.max(aspect, 0.7)) : 1.0;
-  const desiredCam = new THREE.Vector3(targetCam.x, targetCam.y, targetCam.z * zBoost);
-  camera.position.lerp(desiredCam, 0.06);
-  camera.lookAt(-0.4, 0.25, 0);
+  syncCanvasSize();
+  if ('ResizeObserver' in window) new ResizeObserver(syncCanvasSize).observe(canvas);
+  else window.addEventListener('resize', syncCanvasSize);
 
-  inputOrb.rotation.y += 0.012;
-  routerOrb.rotation.y -= 0.018;
-  routerOrb.rotation.x += 0.009;
-  lanes.forEach((l) => { l.orb.rotation.y += 0.012; });
+  window.activateScene = function(idx) {
+    currentScene = idx;
+    const meta = SCENE_META[idx];
+    document.getElementById('scene-title').textContent = meta.title;
+    const b = document.getElementById('scene-badge');
+    b.textContent = meta.badge; b.style.color = meta.bColor;
+    document.getElementById('hud-metrics').innerHTML = meta.hud.map(([v, l, c]) =>
+      `<div><div class="hm-val" style="color:${c};">${v}</div><div class="hm-lab">${l}</div></div>`
+    ).join('');
+    document.querySelectorAll('.ch-btn').forEach((el, i) => el.classList.toggle('active', i === idx));
+    document.querySelectorAll('.step-card').forEach((el, i) => {
+      el.classList.toggle('active', i === idx);
+      if (i === idx) el.setAttribute('aria-current', 'step');
+      else el.removeAttribute('aria-current');
+    });
+    targetCam.set(...meta.cam);
+    particles.forEach((p) => {
+      p.laneIdx = pickLane(idx);
+      p.mesh.material.color.setHex(lanes[p.laneIdx].color);
+    });
+  };
 
-  // Scene-specific visuals
-  wallMesh.visible = currentScene === 0;
-  wallMesh.scale.y = 1 + Math.sin(tClock * 5) * 0.08;
+  function syncSceneToScroll() {
+    if (window.scrollY < 100) { if (currentScene !== 0) activateScene(0); return; }
+    const cards = [...document.querySelectorAll('.step-card')];
+    const mid = window.innerHeight * 0.42;
+    let bestIdx = currentScene, bestDist = Infinity;
+    cards.forEach((c, i) => {
+      const r = c.getBoundingClientRect();
+      const d = Math.abs((r.top + r.bottom) / 2 - mid);
+      if (d < bestDist) { bestDist = d; bestIdx = i; }
+    });
+    if (bestIdx !== currentScene) activateScene(bestIdx);
+  }
+  window.addEventListener('scroll', syncSceneToScroll, { passive: true });
 
-  cacheRing.visible = currentScene !== 0;
-  cacheRing.rotation.z += currentScene === 1 ? 0.005 : 0.03;
-  cacheRing.rotation.x = Math.sin(tClock * 1.4) * (currentScene === 1 ? 1.1 : 0.35);
-  cacheRing.material.color.setHex(currentScene === 1 ? 0xf59e0b : 0x38bdf8);
+  let tClock = 0;
+  function animate() {
+    requestAnimationFrame(animate);
+    const w = Math.max(1, canvas.clientWidth), h = Math.max(1, canvas.clientHeight);
+    const aspect = w / h;
+    const zBoost = aspect < 1.35 ? (1.35 / Math.max(aspect, 0.72)) : 1.0;
+    const desiredCam = new THREE.Vector3(targetCam.x, targetCam.y, targetCam.z * zBoost);
+    camera.position.lerp(desiredCam, is3DPaused ? 0.25 : 0.06);
+    camera.lookAt(-0.35, 0.35, 0);
 
-  satellite.visible = currentScene === 4;
-  satellite.position.set(3.1 + Math.cos(tClock * 1.8) * 1.4, 0.8 + Math.sin(tClock * 1.8) * 1.8, Math.sin(tClock * 1.8) * 1.2);
+    // Distinct chapter visibility
+    pipeGroup.visible = currentScene !== 2;
+    worldsGroup.visible = currentScene === 2;
+    wallMesh.visible = currentScene === 0;
+    cacheRing.visible = currentScene === 1 || currentScene === 3 || currentScene === 4;
+    shatterGroup.visible = currentScene === 1;
+    compactRing.visible = currentScene === 3;
+    escGroup.visible = currentScene === 4;
 
-  for (const p of particles) {
-    let speedMult = 1.0;
-    if (currentScene === 0 && p.laneIdx === 3) speedMult = 0.25; // jammed at wall
-    if (currentScene === 1) speedMult = 0.45; // cold cache drag
-    if (currentScene === 3) speedMult = 1.45; // loosened pipes!
-    p.t += p.speed * speedMult;
-    if (p.t >= 1) {
-      p.t = 0;
-      if (p.phase === 0) {
-        p.phase = 1;
-        p.laneIdx = pickLane(currentScene);
-        p.mesh.material.color.setHex(lanes[p.laneIdx].color);
-      } else {
-        p.phase = 0;
-        p.mesh.material.color.setHex(0x38bdf8);
+    if (!is3DPaused) {
+      tClock += 0.016;
+      inputOrb.rotation.y += 0.012;
+      routerOrb.rotation.y -= 0.018;
+      routerOrb.rotation.x += 0.009;
+      lanes.forEach((l) => { l.orb.rotation.y += 0.012; });
+
+      wallMesh.scale.y = 1 + Math.sin(tClock * 5) * 0.08;
+      cacheRing.rotation.z += currentScene === 1 ? 0.008 : 0.028;
+      cacheRing.rotation.x = Math.sin(tClock * 1.4) * (currentScene === 1 ? 1.15 : 0.35);
+      cacheRing.material.color.setHex(currentScene === 1 ? 0xf59e0b : 0x38bdf8);
+
+      // Ch 2 shatter shards orbiting out from Medium orb
+      shards.forEach((s, idx) => {
+        const rad = 0.85 + Math.abs(Math.sin(tClock * 2.2 + idx)) * 0.75;
+        s.mesh.position.set(3.0 + Math.cos(s.ang + tClock * 1.5) * rad, 1.75 + Math.sin(s.ang + tClock * 1.5) * rad, Math.sin(tClock * 3 + idx) * 0.45);
+        s.mesh.rotation.x += 0.04; s.mesh.rotation.y += 0.05;
+      });
+
+      // Ch 3 two-world orbits
+      w1Core.rotation.y += 0.015; w1Ring.rotation.x = 0.7; w1Ring.rotation.z += 0.025;
+      w2Core.rotation.y -= 0.015; w2Ring.rotation.x = -0.7; w2Ring.rotation.z -= 0.025;
+
+      // Ch 4 compact ring breathing
+      const cs = 1 + Math.sin(tClock * 3) * 0.14;
+      compactRing.scale.set(cs, cs, 1); compactRing.rotation.z -= 0.025;
+
+      // Ch 5 escalation particle + refresh satellite
+      const et = (tClock * 0.45) % 1;
+      escParticle.position.copy(escCurve.getPoint(et));
+      satellite.position.set(3.0 + Math.cos(tClock * 1.7) * 1.35, 0.8 + Math.sin(tClock * 1.7) * 2.1, Math.sin(tClock * 1.7) * 1.1);
+
+      for (const p of particles) {
+        let speedMult = 1.0;
+        if (currentScene === 0 && p.laneIdx === 4) speedMult = 0.25;
+        if (currentScene === 1) speedMult = 0.48;
+        if (currentScene === 3) speedMult = 1.45;
+        p.t += p.speed * speedMult;
+        if (p.t >= 1) {
+          p.t = 0;
+          if (p.phase === 0) {
+            p.phase = 1;
+            p.laneIdx = pickLane(currentScene);
+            p.mesh.material.color.setHex(lanes[p.laneIdx].color);
+          } else {
+            p.phase = 0;
+            p.mesh.material.color.setHex(0x38bdf8);
+          }
+        }
+        if (p.phase === 0) {
+          p.mesh.position.set(-4.3 + p.t * 2.9, 0.35 + Math.sin(p.t * Math.PI * 2 + tClock) * 0.11, 0);
+        } else {
+          const clampedT = (currentScene === 0 && p.laneIdx === 4) ? Math.min(p.t, 0.72) : p.t;
+          const pos = curves[p.laneIdx].getPoint(clampedT);
+          if (currentScene === 1) pos.z += Math.sin(tClock * 6 + p.t * 10) * 0.38;
+          p.mesh.position.copy(pos);
+        }
       }
     }
-    if (p.phase === 0) {
-      p.mesh.position.set(-4.2 + p.t * 3.0, 0.4 + Math.sin(p.t * Math.PI * 2 + tClock) * 0.12, 0);
-    } else {
-      const clampedT = (currentScene === 0 && p.laneIdx === 3) ? Math.min(p.t, 0.72) : p.t;
-      const pos = curves[p.laneIdx].getPoint(clampedT);
-      if (currentScene === 1) pos.z += Math.sin(tClock * 6 + p.t * 10) * 0.4; // turbulence
-      p.mesh.position.copy(pos);
-    }
+    renderer.render(scene, camera);
   }
-  renderer.render(scene, camera);
-}
-animate();
+  animate();
+})();
+
+// ── IP-Filtered GA4 Analytics (Excludes Owner IP Automatically) ──────────────────
+(function initFilteredAnalytics() {
+  if (!/^https?:/.test(location.protocol)) return;
+  let enabled = false;
+  window.trackRoutingEvent = function(name, params) {
+    if (enabled && typeof window.gtag === 'function') {
+      window.gtag('event', name, Object.assign({ page_section: 'ai_routing' }, params || {}));
+    }
+  };
+  fetch('/api/ai-routing-admin?action=ip-check').then((r) => r.ok ? r.json() : { excluded: false }).then((info) => {
+    if (info && info.excluded) return; // Owner IP filtered out!
+    enabled = true;
+    const s = document.createElement('script');
+    s.async = true;
+    s.src = 'https://www.googletagmanager.com/gtag/js?id=G-VVRJM61MX7';
+    document.head.appendChild(s);
+    window.dataLayer = window.dataLayer || [];
+    window.gtag = function(){ window.dataLayer.push(arguments); };
+    window.gtag('js', new Date());
+    window.gtag('config', 'G-VVRJM61MX7', { page_path: '/ai-routing.html' });
+  }).catch(() => {});
+
+  // Wire high-signal "helped" events
+  const dl = document.querySelector('.btn-download');
+  if (dl) dl.addEventListener('click', () => window.trackRoutingEvent('ai_routing_download', { file: 'ai-routing-starter-kit.zip' }));
+  const cp = document.getElementById('copy-prompt-btn');
+  if (cp) cp.addEventListener('click', () => window.trackRoutingEvent('ai_routing_copy_prompt'));
+  document.querySelectorAll('.preset-btn').forEach((b) => b.addEventListener('click', () => window.trackRoutingEvent('ai_routing_tester_run', { preset: b.textContent })));
+  document.querySelectorAll('.ch-btn').forEach((b, i) => b.addEventListener('click', () => window.trackRoutingEvent('ai_routing_chapter', { chapter: i + 1 })));
+})();
 </script>
 </body>
 </html>
