@@ -3,12 +3,23 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AI Subscription Routing Playbook — 3.5x–4.5x More Output From Prepaid AI Licenses</title>
+<title>Stretch Prepaid AI Licenses 3.5x–4.5x Further — Interactive 3D Playbook &amp; Starter Kit</title>
+<meta name="description" content="Why corporate pay-by-the-drink AI routing breaks for developers—and how 5-tier local routing, warm prompt caches, and thinking-level caps eliminate weekly rate-limit walls.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Stretch Prepaid AI Licenses 3.5x–4.5x Further (Interactive 3D Playbook)">
+<meta property="og:description" content="Stop burning $200 AI developer seats in 2 days. Interactive Three.js walkthrough + downloadable Starter Kit for Claude Code, Antigravity (Gemini 4), Codex, Grok &amp; production apps.">
+<meta property="og:image" content="./subscription-routing-card.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Stretch Prepaid AI Licenses 3.5x–4.5x Further">
+<meta name="twitter:description" content="Interactive 3D architecture walkthrough + free Starter Kit for developers balancing prepaid Max/Pro/Ultra seats while shipping AI apps.">
+<meta name="twitter:image" content="./subscription-routing-card.png">
 <style>
   :root {
-    --bg: #070b14;
-    --panel: #0f172a;
-    --panel-2: #162038;
+    --bg: #050811;
+    --panel: rgba(15, 23, 42, 0.82);
+    --panel-solid: #0f172a;
     --border: rgba(148, 163, 184, 0.18);
     --text: #e2e8f0;
     --muted: #94a3b8;
@@ -26,596 +37,804 @@
     color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
     line-height: 1.6;
+    overflow-x: hidden;
   }
+
+  /* Fixed Top Bar */
   header {
-    position: sticky; top: 0; z-index: 40;
-    background: rgba(7, 11, 20, 0.85);
-    backdrop-filter: blur(12px);
+    position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+    background: rgba(5, 8, 17, 0.78);
+    backdrop-filter: blur(14px);
     border-bottom: 1px solid var(--border);
-    padding: 12px 24px;
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 16px;
+    padding: 10px 24px;
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
   }
-  .brand { font-weight: 800; font-size: 1rem; letter-spacing: -0.02em; color: #fff; }
+  .brand { font-weight: 850; font-size: 0.98rem; color: #fff; letter-spacing: -0.02em; }
   .brand span { color: var(--cyan); }
-  nav { display: flex; gap: 18px; flex-wrap: wrap; font-size: 0.88rem; }
-  nav a { color: var(--muted); text-decoration: none; font-weight: 500; }
-  nav a:hover { color: #fff; }
+  .nav-links { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; font-size: 0.84rem; }
+  .nav-links a { color: var(--muted); text-decoration: none; font-weight: 600; transition: color 0.15s; }
+  .nav-links a:hover { color: #fff; }
+  .nav-cta {
+    background: linear-gradient(135deg, #38bdf8, #2563eb);
+    color: #fff !important; padding: 6px 13px; border-radius: 999px; font-weight: 700 !important;
+  }
 
-  .wrap { max-width: 1120px; margin: 0 auto; padding: 28px 22px 72px; }
-
-  /* 3D Hero Stage */
-  .hero-stage {
+  /* Scrollytelling 3D Stage */
+  .story-shell {
     position: relative;
-    border-radius: 18px;
+    display: grid;
+    grid-template-columns: minmax(320px, 460px) 1fr;
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 76px 24px 40px;
+    gap: 28px;
+    align-items: start;
+  }
+  @media (max-width: 960px) {
+    .story-shell { grid-template-columns: 1fr; }
+    .stage-sticky { position: relative !important; top: 0 !important; height: 360px !important; }
+  }
+  .stage-sticky {
+    position: sticky;
+    top: 74px;
+    height: calc(100vh - 96px);
+    min-height: 480px;
+    max-height: 700px;
+    border-radius: 20px;
     overflow: hidden;
     border: 1px solid var(--border);
-    background: radial-gradient(circle at 50% 35%, #132242 0%, #070b14 75%);
-    margin-bottom: 32px;
+    background: radial-gradient(circle at 55% 40%, #14264b 0%, #050811 76%);
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
   }
-  #three-canvas {
-    width: 100%;
-    height: 430px;
-    display: block;
-  }
-  .hero-overlay {
-    position: absolute; inset: 0;
+  #three-canvas { width: 100%; height: 100%; display: block; }
+  .stage-hud {
+    position: absolute; left: 18px; right: 18px; bottom: 18px;
+    display: flex; flex-direction: column; gap: 10px;
     pointer-events: none;
-    display: flex; flex-direction: column; justify-content: space-between;
-    padding: 24px 28px;
-    background: linear-gradient(180deg, rgba(7,11,20,0.75) 0%, rgba(7,11,20,0.12) 48%, rgba(7,11,20,0.88) 100%);
   }
-  .hero-top { max-width: 720px; }
-  .kicker {
-    display: inline-block; font-size: 0.75rem; font-weight: 700;
-    letter-spacing: 0.12em; text-transform: uppercase;
-    color: var(--cyan); background: rgba(56,189,248,0.12);
-    border: 1px solid rgba(56,189,248,0.3);
-    padding: 4px 10px; border-radius: 999px; margin-bottom: 10px;
+  .stage-top-badge {
+    position: absolute; top: 16px; left: 18px; right: 18px;
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    pointer-events: none;
   }
-  h1 {
-    margin: 0 0 8px 0; font-size: clamp(1.7rem, 3.2vw, 2.55rem);
-    line-height: 1.12; font-weight: 850; color: #fff;
+  .scene-pill {
+    font-size: 0.74rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 5px 12px; border-radius: 999px;
+    background: rgba(5, 8, 17, 0.75); border: 1px solid var(--border); color: var(--cyan);
+    backdrop-filter: blur(8px);
   }
-  .hero-desc { margin: 0; color: #cbd5e1; font-size: 1rem; }
-
-  .controls-bar {
+  .hud-metrics {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    background: rgba(5, 8, 17, 0.82); backdrop-filter: blur(10px);
+    border: 1px solid var(--border); border-radius: 14px; padding: 11px 14px;
+  }
+  .hm-val { font-size: 1.15rem; font-weight: 850; color: #fff; line-height: 1.1; }
+  .hm-lab { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+  .chapter-dots {
     pointer-events: auto;
-    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
-    gap: 12px;
+    display: flex; gap: 6px; flex-wrap: wrap;
   }
-  .mode-group { display: flex; gap: 8px; flex-wrap: wrap; }
-  .btn {
-    border: 1px solid var(--border);
-    background: rgba(15, 23, 42, 0.9);
-    color: #fff; font-weight: 700; font-size: 0.86rem;
-    padding: 9px 15px; border-radius: 10px; cursor: pointer;
-    transition: all 0.18s ease;
+  .ch-btn {
+    flex: 1; min-width: 85px;
+    border: 1px solid var(--border); background: rgba(15, 23, 42, 0.85);
+    color: var(--muted); font-size: 0.74rem; font-weight: 700;
+    padding: 7px 8px; border-radius: 9px; cursor: pointer; transition: all 0.2s;
   }
-  .btn:hover { border-color: var(--cyan); transform: translateY(-1px); }
-  .btn.active-bad { background: rgba(239, 68, 68, 0.22); border-color: var(--red); color: #fecaca; }
-  .btn.active-good { background: rgba(34, 197, 94, 0.22); border-color: var(--green); color: #bbf7d0; }
-  .btn.active-esc { background: rgba(168, 85, 247, 0.25); border-color: var(--purple); color: #e9d5ff; }
-  .btn-primary { background: var(--cyan); color: #070b14; border-color: var(--cyan); }
-  .btn-primary:hover { background: #7dd3fc; }
+  .ch-btn:hover { color: #fff; border-color: var(--cyan); }
+  .ch-btn.active { background: rgba(56, 189, 248, 0.2); border-color: var(--cyan); color: #fff; }
 
-  .hud-stats {
-    display: flex; gap: 14px; flex-wrap: wrap; font-size: 0.82rem;
-    background: rgba(15, 23, 42, 0.86); border: 1px solid var(--border);
-    padding: 8px 14px; border-radius: 10px;
-  }
-  .hud-stat b { color: #fff; }
-  .hud-bad { color: #fca5a5; }
-  .hud-good { color: #86efac; }
-
-  section { margin-bottom: 42px; }
-  h2 {
-    font-size: 1.45rem; font-weight: 800; color: #fff;
-    margin: 0 0 12px 0; letter-spacing: -0.02em;
-    display: flex; align-items: center; gap: 10px;
-  }
-  h2 .num {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 28px; height: 28px; border-radius: 8px;
-    background: rgba(56,189,248,0.15); color: var(--cyan);
-    font-size: 0.9rem; font-weight: 800;
-  }
-  p.lead { color: var(--muted); margin: 0 0 18px 0; max-width: 820px; }
-
-  .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
-  .grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
-  .card {
+  /* Narrative Steps */
+  .steps { display: flex; flex-direction: column; gap: 24px; padding-bottom: 40px; }
+  .step-card {
     background: var(--panel);
     border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 18px 20px;
+    border-radius: 18px;
+    padding: 24px 24px;
+    transition: border-color 0.25s, transform 0.25s, box-shadow 0.25s;
+    cursor: pointer;
   }
-  .card h3 { margin: 8px 0 6px; font-size: 1.05rem; color: #fff; }
-  .card p { margin: 0; font-size: 0.9rem; color: var(--muted); }
-  .pill {
-    display: inline-block; font-size: 0.72rem; font-weight: 700;
-    padding: 3px 8px; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.05em;
+  .step-card.active {
+    border-color: rgba(56, 189, 248, 0.7);
+    box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.25), 0 16px 40px rgba(0, 0, 0, 0.4);
   }
-  .p-red { background: rgba(239,68,68,0.16); color: #fca5a5; }
-  .p-green { background: rgba(34,197,94,0.16); color: #86efac; }
-  .p-cyan { background: rgba(56,189,248,0.16); color: #7dd3fc; }
-  .p-amber { background: rgba(245,158,11,0.16); color: #fcd34d; }
+  .step-kicker {
+    font-size: 0.72rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+    margin-bottom: 6px; display: inline-block; padding: 3px 9px; border-radius: 999px;
+  }
+  .k-red { background: rgba(239,68,68,0.16); color: #fca5a5; }
+  .k-amber { background: rgba(245,158,11,0.16); color: #fcd34d; }
+  .k-cyan { background: rgba(56,189,248,0.16); color: #7dd3fc; }
+  .k-green { background: rgba(34,197,94,0.16); color: #86efac; }
+  .k-purple { background: rgba(168,85,247,0.16); color: #d8b4fe; }
+  .step-card h1 { font-size: 1.75rem; line-height: 1.15; margin: 6px 0 10px; color: #fff; font-weight: 900; }
+  .step-card h2 { font-size: 1.28rem; line-height: 1.22; margin: 4px 0 10px; color: #fff; font-weight: 850; }
+  .step-card p { margin: 0 0 10px; font-size: 0.93rem; color: #cbd5e1; }
+  .step-card p:last-child { margin-bottom: 0; }
 
-  table {
-    width: 100%; border-collapse: collapse;
-    background: var(--panel); border-radius: 12px; overflow: hidden;
-    border: 1px solid var(--border); font-size: 0.88rem;
+  /* Full-Width Visual Sections */
+  .container { max-width: 1180px; margin: 0 auto; padding: 20px 24px 64px; }
+  .sec-head { text-align: center; max-width: 780px; margin: 0 auto 28px; }
+  .sec-head h2 { font-size: clamp(1.5rem, 2.6vw, 2.1rem); font-weight: 900; color: #fff; margin: 6px 0 10px; letter-spacing: -0.02em; }
+  .sec-head p { color: var(--muted); margin: 0; font-size: 1rem; }
+
+  .visual-card {
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 24px 26px;
+    margin-bottom: 32px;
+    box-shadow: 0 16px 45px rgba(0,0,0,0.35);
   }
-  th {
-    background: var(--panel-2); color: #fff; text-align: left;
-    padding: 11px 14px; font-weight: 700; border-bottom: 1px solid var(--border);
+  .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 18px; margin-bottom: 32px; }
+  .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 20px; margin-bottom: 32px; }
+
+  .myth-card {
+    background: var(--panel-solid); border: 1px solid var(--border); border-radius: 18px;
+    padding: 20px 22px; display: flex; flex-direction: column; gap: 10px;
   }
-  td { padding: 10px 14px; border-bottom: 1px solid var(--border); color: #cbd5e1; vertical-align: top; }
-  tr:last-child td { border-bottom: none; }
-  code {
-    font-family: "SFMono-Regular", Menlo, Consolas, monospace;
-    background: rgba(148,163,184,0.14); padding: 2px 6px; border-radius: 5px;
-    color: #7dd3fc; font-size: 0.84em;
+  .myth-bad {
+    background: rgba(239, 68, 68, 0.1); border-left: 3px solid var(--red);
+    padding: 8px 12px; border-radius: 0 8px 8px 0; font-size: 0.88rem; color: #fecaca;
+  }
+  .myth-good {
+    background: rgba(34, 197, 94, 0.1); border-left: 3px solid var(--green);
+    padding: 8px 12px; border-radius: 0 8px 8px 0; font-size: 0.88rem; color: #bbf7d0;
+  }
+
+  /* Interactive Scatter Tooltip */
+  .scatter-wrap { position: relative; }
+  .scatter-info {
+    margin-top: 12px; padding: 12px 16px; border-radius: 12px;
+    background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25);
+    font-size: 0.9rem; color: #e2e8f0; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+  }
+  .dot-hit { cursor: pointer; transition: r 0.15s; }
+
+  /* Interactive Quota Simulator */
+  .sim-grid { display: grid; grid-template-columns: 1fr 1.2fr; gap: 24px; align-items: center; }
+  @media (max-width: 820px) { .sim-grid { grid-template-columns: 1fr; } }
+  .slider-group { margin-bottom: 16px; }
+  .slider-group label { display: flex; justify-content: space-between; font-size: 0.88rem; font-weight: 700; margin-bottom: 6px; }
+  input[type="range"] { width: 100%; accent-color: var(--cyan); cursor: pointer; }
+  .sim-bars { display: flex; flex-direction: column; gap: 14px; }
+  .sim-bar-track { height: 32px; background: #1e293b; border-radius: 10px; overflow: hidden; display: flex; }
+  .sim-fill { display: flex; align-items: center; padding: 0 12px; font-weight: 800; font-size: 0.82rem; color: #fff; transition: width 0.25s ease; white-space: nowrap; }
+  .sim-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
+  .sim-kpi { background: rgba(15,23,42,0.9); border: 1px solid var(--border); border-radius: 12px; padding: 12px; text-align: center; }
+  .sim-kpi b { display: block; font-size: 1.35rem; color: var(--green); }
+  .sim-kpi span { font-size: 0.76rem; color: var(--muted); }
+
+  /* Starter Kit Download & Prompt */
+  .kit-banner {
+    background: linear-gradient(135deg, rgba(14,165,233,0.18), rgba(34,197,94,0.14));
+    border: 1px solid rgba(56,189,248,0.4);
+    border-radius: 20px;
+    padding: 28px 30px;
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px;
+    margin-bottom: 24px;
+  }
+  .btn-download {
+    display: inline-flex; align-items: center; gap: 10px;
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    color: #fff; text-decoration: none; font-weight: 850; font-size: 0.98rem;
+    padding: 14px 24px; border-radius: 12px;
+    box-shadow: 0 10px 28px rgba(34, 197, 94, 0.35);
+    transition: transform 0.15s;
+  }
+  .btn-download:hover { transform: translateY(-2px); }
+  .kit-files { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .kit-chip {
+    font-family: "SFMono-Regular", Menlo, monospace; font-size: 0.76rem;
+    background: rgba(5,8,17,0.7); border: 1px solid var(--border);
+    padding: 4px 9px; border-radius: 6px; color: #7dd3fc;
   }
 
   .code-block {
-    position: relative;
-    background: #050811;
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 18px 20px;
+    position: relative; background: #050811; border: 1px solid var(--border);
+    border-radius: 14px; padding: 18px 20px;
     font-family: "SFMono-Regular", Menlo, Consolas, monospace;
-    font-size: 0.84rem;
-    line-height: 1.55;
-    color: #e2e8f0;
-    white-space: pre-wrap;
-    overflow-x: auto;
+    font-size: 0.82rem; line-height: 1.55; color: #e2e8f0; white-space: pre-wrap;
   }
   .copy-btn {
     position: absolute; top: 12px; right: 12px;
-    background: var(--cyan); color: #070b14; border: none;
-    font-weight: 800; font-size: 0.78rem; padding: 6px 12px;
-    border-radius: 8px; cursor: pointer;
+    background: var(--cyan); color: #050811; border: none;
+    font-weight: 800; font-size: 0.78rem; padding: 7px 14px; border-radius: 8px; cursor: pointer;
   }
   .copy-btn:hover { background: #7dd3fc; }
-
-  .bar-row { margin: 10px 0; }
-  .bar-label { display: flex; justify-content: space-between; font-size: 0.86rem; margin-bottom: 5px; }
-  .bar-track { display: flex; height: 26px; border-radius: 8px; overflow: hidden; background: #1e293b; }
-  .seg { display: flex; align-items: center; justify-content: center; font-size: 0.76rem; font-weight: 700; color: #fff; }
-  .s-red { background: #dc2626; }
-  .s-blue { background: #2563eb; }
-  .s-green { background: #16a34a; }
-
-  footer {
-    border-top: 1px solid var(--border);
-    padding-top: 20px; color: var(--muted); font-size: 0.84rem;
-    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;
-  }
+  code { font-family: "SFMono-Regular", Menlo, monospace; background: rgba(148,163,184,0.14); padding: 2px 5px; border-radius: 4px; color: #7dd3fc; font-size: 0.85em; }
+  footer { text-align: center; color: var(--muted); font-size: 0.84rem; padding: 24px 0 40px; border-top: 1px solid var(--border); }
 </style>
 </head>
 <body>
 
 <header>
   <div class="brand">AI Subscription <span>Routing Playbook</span></div>
-  <nav>
-    <a href="#headwinds">The Headwinds</a>
-    <a href="#two-lens">Two-Lens Rule</a>
-    <a href="#thinking">Thinking Economics</a>
-    <a href="#architecture">5-Tier Matrix</a>
-    <a href="#hygiene">4 Quota Rules</a>
-    <a href="#setup-prompt">Configure Your Machine</a>
-  </nav>
+  <div class="nav-links">
+    <a href="#story">3D Story</a>
+    <a href="#myths">Counterintuitive Truths</a>
+    <a href="#frontier">Thinking Frontier</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#simulator">Quota Simulator</a>
+    <a href="#starter-kit" class="nav-cta">Download Starter Kit (.zip)</a>
+  </div>
 </header>
 
-<div class="wrap">
-  <!-- Interactive 3JS Animation Stage -->
-  <div class="hero-stage">
+<!-- ═══════════════════ SCROLLYTELLING 3D THREE.JS STORY ═══════════════════ -->
+<div class="story-shell" id="story">
+  <div class="steps">
+    <article class="step-card active" data-scene="0" onclick="activateScene(0)">
+      <span class="step-kicker k-red">Chapter 1 · The Invisible Wall</span>
+      <h1>Why $200 AI Licenses Die in 2 Days</h1>
+      <p>Watch the 3D pipeline on the right. When your main chat sits parked on a flagship model (Opus 5.5, Fable 5.2, or Astra), <strong>all 30–80 tool calls inside every turn</strong>—reading files, running <code>git status</code>, grepping logs—slam straight into the red <strong>Rate-Limit Wall</strong>.</p>
+      <p>In a real 60-day audit (255,000+ turns, 63B tokens), <strong>57% of turns burned frontier quota</strong> and <strong>43% of total burn was pure cache-write fees ($5–$10/Mtok)</strong> on uncompacted 500k+ token chats.</p>
+    </article>
+
+    <article class="step-card" data-scene="1" onclick="activateScene(1)">
+      <span class="step-kicker k-amber">Chapter 2 · The Counterintuitive Trap</span>
+      <h2>Why Mixing Vendors on Every Prompt Backfires</h2>
+      <p>Intuition says: <em>"Route every prompt to whichever company is cheapest."</em> That intuition is <strong>wrong</strong> for interactive coding.</p>
+      <p><strong>93%–97% of your input tokens are warm prompt cache reads</strong> (the glowing blue ring). Bouncing a routine turn from Claude Code to Codex or Grok mid-task <strong>shatters the warm cache</strong>—forcing the second vendor to re-read your repo from disk (5x–10x token penalty + 20s cold startup lag).</p>
+    </article>
+
+    <article class="step-card" data-scene="2" onclick="activateScene(2)">
+      <span class="step-kicker k-cyan">Chapter 3 · Two Completely Different Worlds</span>
+      <h2>Corporations Buy By the Drink. Developers Prepay.</h2>
+      <p>Most AI proxies are built for <strong>corporations</strong> that don't have Max/Pro/Ultra seats—they pay per million tokens on every call. If a developer routes personal coding through a paid cloud proxy, they <strong>pay twice</strong>.</p>
+      <p><strong>World 1 (Green Orbit — Your Machine):</strong> Strip all API keys. Keep paid cloud proxies <strong>OFF</strong>. Optimize your prepaid seats locally at <code>$0</code> extra cost.<br>
+      <strong>World 2 (Cyan Orbit — Apps You Ship):</strong> Production apps <em>do</em> buy by the drink. Never hardcode a model ID—call tier aliases (<code>fast | medium | hard | exceptional</code>) backed by a dynamic proxy or config.</p>
+    </article>
+
+    <article class="step-card" data-scene="3" onclick="activateScene(3)">
+      <span class="step-kicker k-green">Chapter 4 · Loosening the Pipes</span>
+      <h2>5-Tier Local Routing + 4 Quota-Hygiene Rules</h2>
+      <p>Watch the red wall dissolve. Park every tool on its fast <strong>Medium Coordinator</strong> (Sonnet 5.5, GPT-6.2 Sol, Gemini 4 Neon Med, Grok 4.7). A local hook classifies every prompt in &lt;50ms:</p>
+      <p>• <strong>32% Fast (Green):</strong> Bulk searches &amp; lookups offloaded to Haiku/Flash/Luna subagents so 150k raw tokens never bloat your main chat.<br>
+      • <strong>54% Medium (Blue):</strong> Handled directly on your warm prompt cache.<br>
+      • <strong>14% Hard / Surgical (Amber/Purple):</strong> Pre-distilled context sent to Neon High / Opus High / Astra High / Fable 5.2 High—never open-ended discovery.</p>
+    </article>
+
+    <article class="step-card" data-scene="4" onclick="activateScene(4)">
+      <span class="step-kicker k-purple">Chapter 5 · Self-Healing &amp; Always Current</span>
+      <h2>Auto-Escalation + Weekly Auto-Refresh</h2>
+      <p>You never have to call out a model name again. If QA fails twice or you say <em>"still broken"</em>, the router automatically arcs the task <strong>+1 tier higher</strong> with distilled failure evidence.</p>
+      <p>Meanwhile, the orbiting <strong>Weekly/Nightly Refresh Satellite</strong> reads your local CLI model caches, auto-promotes newer generations, and runs a 13-point self-audit watchdog so your setup never silently drifts stale.</p>
+    </article>
+  </div>
+
+  <div class="stage-sticky">
     <canvas id="three-canvas"></canvas>
-    <div class="hero-overlay">
-      <div class="hero-top">
-        <div class="kicker">Interactive 3D Flow · Three.js Architecture Walkthrough</div>
-        <h1>Stop Burning Through $200 AI Licenses in 2 Days</h1>
-        <p class="hero-desc">Watch how prompts bottleneck when parked on Frontier defaults—and how 5-tier local routing, warm prompt caches, and 4 quota-hygiene rules stretch your prepaid seats <strong>3.5x–4.5x further</strong> at <strong>$0 extra cost</strong>.</p>
+    <div class="stage-top-badge">
+      <span class="scene-pill" id="scene-title">CH 1 · THE FRONTIER BOTTLENECK</span>
+      <span class="scene-pill" id="scene-badge" style="color:#fca5a5;">1.0x BASELINE</span>
+    </div>
+    <div class="stage-hud">
+      <div class="hud-metrics" id="hud-metrics">
+        <div><div class="hm-val" style="color:#fca5a5;">57%</div><div class="hm-lab">Turns on Frontier</div></div>
+        <div><div class="hm-val" style="color:#fcd34d;">43%</div><div class="hm-lab">Cache-Write Tax</div></div>
+        <div><div class="hm-val" style="color:#fca5a5;">~2 Days</div><div class="hm-lab">Before Weekly Wall</div></div>
       </div>
-      <div class="controls-bar">
-        <div class="mode-group">
-          <button class="btn active-bad" id="btn-before" onclick="setMode('before')">1. Before: Frontier Bottleneck</button>
-          <button class="btn" id="btn-after" onclick="setMode('after')">2. After: 5-Tier Optimized Flow</button>
-          <button class="btn" id="btn-escalate" onclick="setMode('escalate')">3. Auto-Escalation on Failure</button>
-        </div>
-        <div class="hud-stats" id="hud-stats">
-          <span class="hud-stat hud-bad">Frontier Load: <b>57%</b></span>
-          <span class="hud-stat hud-bad">Cache-Write Tax: <b>43%</b></span>
-          <span class="hud-stat">License Stretch: <b>1.0x</b></span>
-        </div>
+      <div class="chapter-dots">
+        <button class="ch-btn active" onclick="activateScene(0)">1. The Wall</button>
+        <button class="ch-btn" onclick="activateScene(1)">2. Cache Trap</button>
+        <button class="ch-btn" onclick="activateScene(2)">3. Two Worlds</button>
+        <button class="ch-btn" onclick="activateScene(3)">4. 5-Tier Flow</button>
+        <button class="ch-btn" onclick="activateScene(4)">5. Auto-Heal</button>
       </div>
     </div>
   </div>
+</div>
 
-  <!-- Section 1 -->
-  <section id="headwinds">
-    <h2><span class="num">1</span> Why Power Users Hit Walls (The 4 Real Headwinds)</h2>
-    <p class="lead">Across 60 days of real power-user coding transcripts (255,000+ turns, 63+ billion tokens), <strong>over 75% of quota burn was avoidable waste</strong>. You don't have a usage problem—you have a routing and context-hygiene problem.</p>
-    <div class="grid-4">
-      <div class="card">
-        <span class="pill p-red">57% of Turns</span>
-        <h3>Frontier-Default Trap</h3>
-        <p>When your chat sits on Opus 5.5 or Fable 5.2, all 30–80 tool calls per prompt (reading files, <code>git status</code>, running tests) burn flagship quota.</p>
+<!-- ═══════════════════ VISUAL CONTENT SECTIONS ═══════════════════ -->
+<div class="container">
+
+  <!-- Counterintuitive Truths -->
+  <section id="myths">
+    <div class="sec-head">
+      <span class="step-kicker k-amber">Counterintuitive Insights</span>
+      <h2>3 Things Most Developers Get Backwards</h2>
+      <p>Measured directly from 60 days of real transcripts and independent third-party benchmarks—not vendor marketing.</p>
+    </div>
+    <div class="grid-3">
+      <div class="myth-card">
+        <svg viewBox="0 0 280 78" width="100%" height="74">
+          <circle cx="58" cy="39" r="24" fill="none" stroke="#38bdf8" stroke-width="4" stroke-dasharray="135 20"/>
+          <text x="58" y="43" text-anchor="middle" font-size="11" font-weight="800" fill="#38bdf8">96.7%</text>
+          <path d="M92,39 L136,39" stroke="#ef4444" stroke-width="2.5" stroke-dasharray="4,3"/>
+          <text x="114" y="30" text-anchor="middle" font-size="9" font-weight="800" fill="#fca5a5">SWITCH</text>
+          <rect x="144" y="16" width="124" height="46" rx="8" fill="rgba(239,68,68,0.16)" stroke="#ef4444"/>
+          <text x="206" y="36" text-anchor="middle" font-size="10" font-weight="800" fill="#fecaca">COLD CACHE</text>
+          <text x="206" y="51" text-anchor="middle" font-size="9" fill="#fca5a5">5x–10x Token Penalty</text>
+        </svg>
+        <div class="myth-bad"><strong>Myth:</strong> "Bounce every prompt to the cheapest vendor."</div>
+        <div class="myth-good"><strong>Reality:</strong> Stay <strong>in-vendor</strong> for 90% of turns to keep your 95%+ warm cache. Only cross vendors for adversarial second opinions or cold heavy multi-file offloads.</div>
       </div>
-      <div class="card">
-        <span class="pill p-amber">43% of Quota Burn</span>
-        <h3>Cache-Write Tax</h3>
-        <p>Providers with explicit cache-write pricing ($5–$10/Mtok) charge nearly half your budget just to re-write uncompacted 500k+ conversations.</p>
+
+      <div class="myth-card">
+        <svg viewBox="0 0 280 78" width="100%" height="74">
+          <rect x="14" y="42" width="108" height="24" rx="5" fill="#22c55e"/>
+          <text x="68" y="58" text-anchor="middle" font-size="9.5" font-weight="800" fill="#052e16">Neon High · 60 ($3.74)</text>
+          <rect x="14" y="10" width="252" height="24" rx="5" fill="#ef4444"/>
+          <text x="140" y="26" text-anchor="middle" font-size="9.5" font-weight="800" fill="#fff">Opus 5.5 Max · 59 ($10.04 — 2.7x cost!)</text>
+        </svg>
+        <div class="myth-bad"><strong>Myth:</strong> "Turn thinking up to xhigh/max for best quality."</div>
+        <div class="myth-good"><strong>Reality:</strong> Thinking tokens bill at output rates. <strong>Neon @ high</strong> beats <strong>Opus @ max</strong> for nearly 1/3rd the cost. Reserve <code>xhigh</code> strictly for auto-escalation.</div>
       </div>
-      <div class="card">
-        <span class="pill p-cyan">Main-Chat Bloat</span>
-        <h3>Search Pollution</h3>
-        <p>Reading 40 files in your main chat dumps 150k tokens into history that get re-billed on every single message for the rest of the hour.</p>
-      </div>
-      <div class="card">
-        <span class="pill p-red">+72% to +192% Cost</span>
-        <h3>Thinking Overkill</h3>
-        <p>Leaving thinking on <code>xhigh</code> or <code>max</code> doubles or triples quota consumption for just +1 to +3 benchmark points.</p>
+
+      <div class="myth-card">
+        <svg viewBox="0 0 280 78" width="100%" height="74">
+          <rect x="14" y="18" width="120" height="42" rx="6" fill="#1e293b" stroke="#22c55e" stroke-width="1.8"/>
+          <text x="74" y="37" text-anchor="middle" font-size="9.5" font-weight="800" fill="#86efac">0% – 50% Context</text>
+          <text x="74" y="51" text-anchor="middle" font-size="8.5" fill="#94a3b8">Fast &amp; Cheap</text>
+          <rect x="144" y="18" width="122" height="42" rx="6" fill="rgba(239,68,68,0.2)" stroke="#ef4444" stroke-width="1.8"/>
+          <text x="205" y="37" text-anchor="middle" font-size="9.5" font-weight="800" fill="#fca5a5">&gt;50% Context</text>
+          <text x="205" y="51" text-anchor="middle" font-size="8.5" fill="#fecaca">⚡/compact (5x–10x!)</text>
+        </svg>
+        <div class="myth-bad"><strong>Myth:</strong> "1M context means I can keep one chat open all day."</div>
+        <div class="myth-good"><strong>Reality:</strong> Past 50% context, every reply re-processes 500k+ tokens and triggers massive cache-write fees. Compacting at 50% + isolating searches in <code>fast</code> subagents saves 70%+.</div>
       </div>
     </div>
   </section>
 
-  <!-- Section 2 -->
-  <section id="two-lens">
-    <h2><span class="num">2</span> Why Enterprise Advice Breaks for Developers (Prepaid Seats vs. Buying By the Drink)</h2>
-    <p class="lead">Most AI routing tools and cloud proxies are built for <strong>corporations buying API tokens "by the drink."</strong> Corporations don't run on personal Max, Pro, or Ultra seats—they pay per million tokens on every call, so a centralized cloud proxy makes sense for them. <strong>Developers live in two worlds at once</strong>—and mixing them up either double-bills you or locks your apps onto stale models:</p>
-    <div class="grid-2">
-      <div class="card" style="border-color: rgba(34,197,94,0.4);">
-        <span class="pill p-green">World 1 · Developers Coding on Prepaid Seats ($0 Extra)</span>
-        <h3>Your Machine: Optimize Max / Pro / Ultra Subscriptions</h3>
-        <p style="margin-bottom:10px;">You already prepaid flat monthly rates for developer accounts (Antigravity Ultra, Claude Max, ChatGPT Plus/Pro, SuperGrok). Sending your coding prompts through a pay-by-the-drink cloud proxy charges you <strong>twice</strong>. Use a <strong>local subscription-only router</strong> that strips all API keys and keeps paid cloud proxies <strong>OFF</strong>.</p>
-        <p><strong>Stay in-vendor 90% of the time:</strong> 93%–97% of input tokens are warm prompt cache reads. Bouncing routine turns across vendors triggers a cold cache (5x–10x token penalty + 20s lag).</p>
-      </div>
-      <div class="card" style="border-color: rgba(56,189,248,0.4);">
-        <span class="pill p-cyan">World 2 · Apps You Ship (Buying By the Drink)</span>
-        <h3>Deployed Apps: Zero Hardcoded Models + Dynamic Proxy</h3>
-        <p style="margin-bottom:10px;">When you incorporate AI into products you ship to customers, personal developer seats don't apply—your app buys API tokens <strong>by the drink</strong> just like a corporation. <strong>This</strong> is where dynamic proxies/gateways (Meta Proxy, OpenRouter, or externalized <code>APP_MODEL_TIERS_JSON</code>) shine.</p>
-        <p><strong>Never hardcode a model ID in app code.</strong> Request capability tiers (<code>fast</code>, <code>medium</code>, <code>hard</code>, <code>exceptional</code>) so every app automatically upgrades to newer, cheaper models with zero code changes.</p>
+  <!-- Interactive Efficiency Frontier Scatter Chart -->
+  <section id="frontier">
+    <div class="sec-head">
+      <span class="step-kicker k-cyan">Third-Party Benchmark Data · Click Any Point</span>
+      <h2>The Thinking-Level Efficiency Frontier (AA v5.0.1)</h2>
+      <p>Artificial Analysis Intelligence Index v5.0.1 cost-to-solve across thinking levels. Notice the green <strong>Sweet Spot</strong> vs. the red <strong>Diminishing-Returns Cliff</strong>.</p>
+    </div>
+    <div class="visual-card scatter-wrap">
+      <svg viewBox="0 0 960 320" width="100%" height="320" id="frontier-svg">
+        <!-- Background zones -->
+        <rect x="275" y="42" width="175" height="92" rx="12" fill="rgba(34,197,94,0.12)" stroke="rgba(34,197,94,0.45)" stroke-dasharray="5,4"/>
+        <text x="362" y="62" text-anchor="middle" font-size="11" font-weight="800" fill="#86efac">EFFICIENCY SWEET SPOT</text>
+        <rect x="650" y="26" width="275" height="115" rx="12" fill="rgba(239,68,68,0.10)" stroke="rgba(239,68,68,0.4)" stroke-dasharray="5,4"/>
+        <text x="788" y="46" text-anchor="middle" font-size="11" font-weight="800" fill="#fca5a5">DIMINISHING RETURNS CLIFF</text>
+
+        <!-- Axes & Grid -->
+        <line x1="70" y1="275" x2="930" y2="275" stroke="#475569" stroke-width="1.5"/>
+        <line x1="70" y1="25" x2="70" y2="275" stroke="#475569" stroke-width="1.5"/>
+        <line x1="70" y1="220" x2="930" y2="220" stroke="rgba(148,163,184,0.12)"/>
+        <line x1="70" y1="155" x2="930" y2="155" stroke="rgba(148,163,184,0.12)"/>
+        <line x1="70" y1="90" x2="930" y2="90" stroke="rgba(148,163,184,0.12)"/>
+        <text x="56" y="224" text-anchor="end" font-size="11" fill="#94a3b8">40</text>
+        <text x="56" y="159" text-anchor="end" font-size="11" fill="#94a3b8">52</text>
+        <text x="56" y="94" text-anchor="end" font-size="11" fill="#94a3b8">62</text>
+        <text x="500" y="308" text-anchor="middle" font-size="12" font-weight="700" fill="#94a3b8">Cost per Complex Task (USD Equivalent) →</text>
+
+        <!-- Curves -->
+        <polyline points="130,198 250,138 370,104 510,98" fill="none" stroke="#38bdf8" stroke-width="3.2"/>
+        <polyline points="165,248 295,176 355,155 495,124 685,112" fill="none" stroke="#f59e0b" stroke-width="2.6" stroke-dasharray="6,4"/>
+        <polyline points="330,144 385,132 615,90 745,90 885,68" fill="none" stroke="#a855f7" stroke-width="2.6"/>
+
+        <!-- Interactive Points -->
+        <g id="scatter-points"></g>
+      </svg>
+      <div class="scatter-info" id="scatter-info">
+        <span><strong>Selected: Gemini 4 Neon @ High</strong> — Score <strong>60</strong> · <strong>$3.74/task</strong> · 14.3 min · <strong>$0.00 implicit cache-write fee</strong>. Beats Claude Opus 5.5 Max (59 @ $10.04) for nearly 1/3rd the cost.</span>
+        <span style="color:var(--cyan); font-weight:700;">Hover or click any node above ↑</span>
       </div>
     </div>
   </section>
 
-  <!-- Section 3 -->
-  <section id="thinking">
-    <h2><span class="num">3</span> Thinking-Level Economics (Artificial Analysis v5.0.1)</h2>
-    <p class="lead">Picking the right <strong>thinking effort</strong> saves more quota than picking the model name alone. Notice how <strong>Gemini 4 Neon @ high (score 60 @ $3.74)</strong> beats <strong>Claude Opus 5.5 @ max (score 59 @ $10.04)</strong> for nearly 1/3rd the cost—and has <strong>$0.00 implicit cache-write fees</strong>.</p>
-    <table>
-      <thead>
-        <tr>
-          <th>Thinking Effort</th>
-          <th>Gemini 4 Neon (Score / Cost / Time)</th>
-          <th>Claude Opus 5.5 (Score / Cost / Time)</th>
-          <th>Claude Fable 5.2 (Score / Cost / Time)</th>
-          <th>Routing Verdict</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><strong>Low</strong></td>
-          <td>44 · $0.75 · 3.7 min</td>
-          <td>35 · $0.98 · 3.0 min</td>
-          <td>54 · $3.10 · 5.5 min</td>
-          <td>Fast triage &amp; routine lookups</td>
-        </tr>
-        <tr>
-          <td><strong>Medium</strong></td>
-          <td>55 · $1.90 · 8.4 min</td>
-          <td>48 · $2.45 · 6.7 min</td>
-          <td>56 · $3.80 · 6.5 min</td>
-          <td>Daily coordinator default</td>
-        </tr>
-        <tr>
-          <td><strong>High</strong></td>
-          <td><strong style="color:#86efac;">60 · $3.74 · 14.3 min</strong></td>
-          <td>52 · $3.46 · 9.2 min</td>
-          <td><strong style="color:#c4b5fd;">62 · $9.08 · 15.1 min</strong></td>
-          <td><strong>Optimal Hard / Surgical cap</strong></td>
-        </tr>
-        <tr>
-          <td><strong>XHigh</strong></td>
-          <td>61 · $6.44 · 22.3 min</td>
-          <td>57 · $6.05 · 15.8 min</td>
-          <td>62 · $14.83 · 24.5 min</td>
-          <td>Auto-escalation only (+72% for +1 pt)</td>
-        </tr>
-        <tr>
-          <td><strong>Max</strong></td>
-          <td>N/A</td>
-          <td style="color:#fca5a5;">59 · $10.04 · 25.6 min</td>
-          <td style="color:#fca5a5;">65 · $26.54 · 42.2 min</td>
-          <td><strong>Banned as default</strong> (+192% bloat)</td>
-        </tr>
-      </tbody>
-    </table>
-  </section>
-
-  <!-- Section 4 -->
+  <!-- Full Architectural Diagram -->
   <section id="architecture">
-    <h2><span class="num">4</span> The 5-Tier "Leave-It-Alone" Routing Matrix</h2>
-    <p class="lead">Park every tool on its fast <code>medium</code> coordinator. A local <code>UserPromptSubmit</code> hook classifies every prompt in &lt;50ms, prints a Line-1 badge, delegates heavy or bulk work to subagents, and auto-escalates +1 tier if QA fails twice.</p>
-    <table>
-      <thead>
-        <tr>
-          <th>Tier</th>
-          <th>Target Share</th>
-          <th>Antigravity (Gemini 4)</th>
-          <th>Claude Code (Anthropic)</th>
-          <th>Codex (OpenAI)</th>
-          <th>Grok (xAI)</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><code>fast</code></td>
-          <td>~25–35%</td>
-          <td><code>gemini-4-neon @ low</code> / <code>flash</code></td>
-          <td><code>claude-haiku-5-5 @ low</code></td>
-          <td><code>gpt-6-luna @ low</code></td>
-          <td><code>grok-4.7 @ low</code></td>
-        </tr>
-        <tr>
-          <td><code>medium</code> <em>(Default)</em></td>
-          <td>~50–55%</td>
-          <td><code>gemini-4-neon @ medium</code></td>
-          <td><code>claude-sonnet-5-5 @ med/high</code></td>
-          <td><code>gpt-6.2-sol @ medium</code></td>
-          <td><code>grok-4.7 @ medium</code></td>
-        </tr>
-        <tr>
-          <td><code>substantial</code></td>
-          <td>~5–10%</td>
-          <td><code>gemini-4-neon @ high</code></td>
-          <td><code>claude-opus-5-5 @ medium</code></td>
-          <td><code>gpt-6.2-sol @ high</code></td>
-          <td><code>grok-4.7 @ high</code></td>
-        </tr>
-        <tr>
-          <td><code>hard</code></td>
-          <td>~10–15%</td>
-          <td><code>gemini-4-neon @ high</code></td>
-          <td><code>claude-opus-5-5 @ high</code></td>
-          <td><code>gpt-6.2-astra @ high</code></td>
-          <td><code>grok-build @ high</code></td>
-        </tr>
-        <tr>
-          <td><code>exceptional</code></td>
-          <td>&lt;5%</td>
-          <td><code>gemini-4-neon @ xhigh</code></td>
-          <td><code>claude-fable-5-2 @ high</code></td>
-          <td><code>gpt-6.2-astra @ xhigh</code></td>
-          <td><code>grok-build @ xhigh</code></td>
-        </tr>
-      </tbody>
-    </table>
+    <div class="sec-head">
+      <span class="step-kicker k-green">Complete System Blueprint</span>
+      <h2>End-to-End Architecture (Both Worlds in One Diagram)</h2>
+      <p>How every prompt flows from your keyboard through local classification, subagent delegation, QA auto-escalation, weekly auto-refresh, and live observability.</p>
+    </div>
+    <div class="visual-card">
+      <svg viewBox="0 0 980 310" width="100%" height="310">
+        <!-- Lens 1 Box -->
+        <rect x="10" y="10" width="960" height="190" rx="14" fill="rgba(34,197,94,0.05)" stroke="rgba(34,197,94,0.35)" stroke-width="1.5"/>
+        <text x="26" y="34" font-size="11" font-weight="800" fill="#86efac" letter-spacing="1">WORLD 1 · DEVELOPER MACHINE ($0 PREPAID SUBSCRIPTIONS — API KEYS STRIPPED · CLOUD PROXY OFF)</text>
 
-    <div class="card" style="margin-top:16px;">
-      <div class="bar-row">
-        <div class="bar-label"><span><strong>Before</strong> (Static Frontier Defaults)</span><span style="color:#fca5a5;">1.0x Baseline</span></div>
-        <div class="bar-track">
-          <div class="seg s-red" style="width:57%">57% Frontier + 43% Cache-Write Burn</div>
-          <div class="seg s-blue" style="width:37%">37% Mid</div>
-          <div class="seg s-green" style="width:6%">6%</div>
+        <!-- Prompt -> Hook -> Tiers -> QA -->
+        <rect x="28" y="64" width="128" height="72" rx="10" fill="#1e293b" stroke="#38bdf8" stroke-width="1.6"/>
+        <text x="92" y="92" text-anchor="middle" font-size="11" font-weight="800" fill="#fff">Any CLI / IDE</text>
+        <text x="92" y="109" text-anchor="middle" font-size="9.5" fill="#94a3b8">Antigravity · Claude</text>
+        <text x="92" y="122" text-anchor="middle" font-size="9.5" fill="#94a3b8">Codex · Grok</text>
+
+        <line x1="156" y1="100" x2="196" y2="100" stroke="#38bdf8" stroke-width="2"/>
+        <rect x="196" y="56" width="166" height="88" rx="10" fill="#0c2542" stroke="#38bdf8" stroke-width="1.8"/>
+        <text x="279" y="80" text-anchor="middle" font-size="11" font-weight="800" fill="#7dd3fc">Local Prompt Hook</text>
+        <text x="279" y="97" text-anchor="middle" font-size="9.5" fill="#e2e8f0">&lt;50ms · 5-Tier Classifier</text>
+        <text x="279" y="112" text-anchor="middle" font-size="9.5" fill="#e2e8f0">Injects 4 Hygiene Rules</text>
+        <text x="279" y="127" text-anchor="middle" font-size="9.5" fill="#86efac">Prints Line-1 Badge</text>
+
+        <line x1="362" y1="78" x2="408" y2="62" stroke="#22c55e" stroke-width="1.8"/>
+        <line x1="362" y1="100" x2="408" y2="102" stroke="#3b82f6" stroke-width="1.8"/>
+        <line x1="362" y1="122" x2="408" y2="144" stroke="#f59e0b" stroke-width="1.8"/>
+
+        <rect x="408" y="46" width="230" height="32" rx="7" fill="rgba(34,197,94,0.18)" stroke="#22c55e"/>
+        <text x="420" y="66" font-size="10" font-weight="700" fill="#bbf7d0">FAST (32%) → Haiku / Flash / Luna</text>
+
+        <rect x="408" y="86" width="230" height="32" rx="7" fill="rgba(59,130,246,0.18)" stroke="#3b82f6"/>
+        <text x="420" y="106" font-size="10" font-weight="700" fill="#bfdbfe">MED (54%) → Warm Coordinator</text>
+
+        <rect x="408" y="126" width="230" height="32" rx="7" fill="rgba(245,158,11,0.18)" stroke="#f59e0b"/>
+        <text x="420" y="146" font-size="10" font-weight="700" fill="#fde68a">HARD (14%) → Distilled Subagent</text>
+
+        <line x1="638" y1="62" x2="678" y2="95" stroke="#94a3b8" stroke-width="1.5"/>
+        <line x1="638" y1="102" x2="678" y2="102" stroke="#94a3b8" stroke-width="1.5"/>
+        <line x1="638" y1="142" x2="678" y2="112" stroke="#94a3b8" stroke-width="1.5"/>
+
+        <rect x="678" y="56" width="136" height="88" rx="10" fill="#1e293b" stroke="#a855f7" stroke-width="1.8"/>
+        <text x="746" y="80" text-anchor="middle" font-size="11" font-weight="800" fill="#d8b4fe">QA + Escalate</text>
+        <text x="746" y="97" text-anchor="middle" font-size="9.5" fill="#86efac">Pass → Ship</text>
+        <text x="746" y="113" text-anchor="middle" font-size="9.5" fill="#fca5a5">Fail 2× → +1 Tier</text>
+        <text x="746" y="128" text-anchor="middle" font-size="9" fill="#94a3b8">(Fable 5.2 / XHigh)</text>
+
+        <line x1="814" y1="100" x2="844" y2="100" stroke="#a855f7" stroke-width="1.8"/>
+        <rect x="844" y="56" width="112" height="88" rx="10" fill="#111827" stroke="#22c55e" stroke-width="1.5"/>
+        <text x="900" y="80" text-anchor="middle" font-size="10.5" font-weight="800" fill="#86efac">Auto-Refresh</text>
+        <text x="900" y="97" text-anchor="middle" font-size="9" fill="#cbd5e1">Nightly + Weekly</text>
+        <text x="900" y="112" text-anchor="middle" font-size="9" fill="#cbd5e1">13-Pt Watchdog</text>
+        <text x="900" y="127" text-anchor="middle" font-size="9" fill="#38bdf8">Live 7d vs 60d</text>
+
+        <text x="490" y="185" text-anchor="middle" font-size="9.5" fill="#94a3b8">Statusline 50% Guard: ⚡/compact flashes automatically at 50% ctx · Zero API keys ever exposed to child processes</text>
+
+        <!-- Lens 2 Box -->
+        <rect x="10" y="216" width="960" height="84" rx="14" fill="rgba(56,189,248,0.06)" stroke="rgba(56,189,248,0.4)" stroke-width="1.5"/>
+        <text x="26" y="238" font-size="11" font-weight="800" fill="#7dd3fc" letter-spacing="1">WORLD 2 · DEPLOYED PRODUCTION APPS (METERED API — ZERO HARDCODED MODEL IDS)</text>
+        <rect x="28" y="250" width="210" height="36" rx="8" fill="#1e293b" stroke="#38bdf8"/>
+        <text x="133" y="272" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">App calls tier: "fast" | "hard"</text>
+        <line x1="238" y1="268" x2="288" y2="268" stroke="#38bdf8" stroke-width="2"/>
+        <rect x="288" y="250" width="290" height="36" rx="8" fill="#0c2542" stroke="#38bdf8"/>
+        <text x="433" y="272" text-anchor="middle" font-size="10" font-weight="700" fill="#7dd3fc">app-model-router.mjs / Dynamic Proxy</text>
+        <line x1="578" y1="268" x2="628" y2="268" stroke="#38bdf8" stroke-width="2"/>
+        <rect x="628" y="250" width="326" height="36" rx="8" fill="rgba(34,197,94,0.16)" stroke="#22c55e"/>
+        <text x="791" y="272" text-anchor="middle" font-size="10" font-weight="700" fill="#bbf7d0">Zero-Deploy Model Upgrades + Auto Retry</text>
+      </svg>
+    </div>
+  </section>
+
+  <!-- Interactive Quota Stretch Simulator -->
+  <section id="simulator">
+    <div class="sec-head">
+      <span class="step-kicker k-green">Interactive Calculator</span>
+      <h2>Estimate Your Own License Stretch &amp; Savings</h2>
+      <p>Drag the sliders to match your current setup and see how far your exact same prepaid licenses will stretch.</p>
+    </div>
+    <div class="visual-card sim-grid">
+      <div>
+        <div class="slider-group">
+          <label><span>Current Monthly AI Subscription Spend</span><span id="lbl-spend" style="color:var(--cyan);">$600/mo</span></label>
+          <input type="range" id="sl-spend" min="100" max="1000" step="20" value="600" oninput="updateSim()">
         </div>
+        <div class="slider-group">
+          <label><span>Current % of Turns on Frontier (Opus/Fable/Astra)</span><span id="lbl-front" style="color:var(--amber);">57%</span></label>
+          <input type="range" id="sl-front" min="15" max="85" step="1" value="57" oninput="updateSim()">
+        </div>
+        <p style="font-size:0.85rem; color:var(--muted); margin:0;">Assumes shifting to a Medium Coordinator + 30% Fast subagent isolation + 50% <code>/compact</code> guard + offloading heavy multi-file work to $0 cache-write Neon.</p>
       </div>
-      <div class="bar-row">
-        <div class="bar-label"><span><strong>After</strong> (5-Tier Routing + 4 Hygiene Rules)</span><span style="color:#86efac;">3.5x – 4.5x License Stretch</span></div>
-        <div class="bar-track">
-          <div class="seg s-red" style="width:14%">14% Hard</div>
-          <div class="seg s-blue" style="width:54%">54% Mid Workhorse (Warm Cache)</div>
-          <div class="seg s-green" style="width:32%">32% Fast Subagents</div>
+      <div class="sim-bars">
+        <div>
+          <div style="font-size:0.82rem; margin-bottom:4px; color:#fca5a5; font-weight:700;">Before: Days of Heavy Work per Weekly Quota</div>
+          <div class="sim-bar-track"><div class="sim-fill" id="bar-before" style="width:28%; background:#dc2626;">2.0 days</div></div>
+        </div>
+        <div>
+          <div style="font-size:0.82rem; margin-bottom:4px; color:#86efac; font-weight:700;">After: Same License With 5-Tier Routing + 4 Hygiene Rules</div>
+          <div class="sim-bar-track"><div class="sim-fill" id="bar-after" style="width:94%; background:#16a34a;">7.0+ days (No Walls!)</div></div>
+        </div>
+        <div class="sim-kpis">
+          <div class="sim-kpi"><b id="kpi-mult">3.9x</b><span>License Stretch</span></div>
+          <div class="sim-kpi"><b id="kpi-save">$260/mo</b><span>Redundant Seats Cut</span></div>
+          <div class="sim-kpi"><b id="kpi-yr">$3,120/yr</b><span>Annual Savings</span></div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Section 5 -->
-  <section id="hygiene">
-    <h2><span class="num">5</span> The 4 Mandatory Quota-Hygiene Rules + Weekly Auto-Refresh</h2>
-    <div class="grid-4">
-      <div class="card">
-        <span class="pill p-green">Rule 1</span>
-        <h3>Subagent Isolation</h3>
-        <p>Offload any &gt;5 file search or log grep to a <code>fast</code> subagent returning a 20-line summary so raw files never bloat main chat context.</p>
-      </div>
-      <div class="card">
-        <span class="pill p-amber">Rule 2</span>
-        <h3>50% /compact Guard</h3>
-        <p>Flash <code>⚡/compact</code> in your statusline at 50% context. Compacting at 50% cuts per-turn token burn by <strong>5x–10x</strong> immediately.</p>
-      </div>
-      <div class="card">
-        <span class="pill p-cyan">Rule 3</span>
-        <h3>Pre-Distilled Frontier</h3>
-        <p>Never let Fable 5.2 or <code>xhigh</code> roam a repo (KingBench 4: 212M vs 27M tokens). Gather exact files in the coordinator first.</p>
-      </div>
-      <div class="card">
-        <span class="pill p-green">Rule 4</span>
-        <h3>Nightly + Weekly Sync</h3>
-        <p>Auto-refresh CLI model caches weekly/nightly, run a 13-point self-audit watchdog, and compare 7-day vs. 60-day distribution metrics.</p>
-      </div>
+  <!-- Download Starter Kit & Copy Prompt -->
+  <section id="starter-kit">
+    <div class="sec-head">
+      <span class="step-kicker k-cyan">Don't Take Our Word For It · Prove It On Your Own Data First</span>
+      <h2>Test Your Own Setup (0–100 Score) &amp; Download the Complete 12-File Kit</h2>
+      <p>Maybe your current setup is already great—in which case you don't need this! Run <code>node audit-my-ai-usage.mjs</code> locally first (zero data leaves your machine) to see your real 60-day score, Frontier %, and cache-write burn. Every base recipe, watchdog, auto-refresh script, and thought-process document is pre-packaged inside the ZIP (timestamped <code>2026-11-22 02:00 EST</code>).</p>
     </div>
-  </section>
 
-  <!-- Section 6 -->
-  <section id="setup-prompt">
-    <h2><span class="num">6</span> Copy-Paste Prompt: Audit &amp; Configure Your Own Machine</h2>
-    <p class="lead">Paste this directly into Claude Code, Antigravity, Codex, or Grok. It will audit <em>your</em> last 60 days of transcripts, recommend <em>your</em> optimal subscription tiers, replay <em>your</em> real prompts to prove the distribution shift, and wire up your environment automatically.</p>
-    <div class="code-block" id="prompt-text"><button class="copy-btn" onclick="copyPrompt()">Copy Prompt</button>Read the AI Subscription Routing &amp; Quota-Optimization Playbook. I want you to analyze MY machine and configure this exact strategy tailored to MY tools and MY prepaid subscriptions (never enabling pay-by-the-drink API billing for personal coding).
+    <div class="kit-banner">
+      <div style="max-width:650px;">
+        <h3 style="margin:0 0 6px; font-size:1.3rem; color:#fff;">Complete AI Routing &amp; Self-Audit Packet (12 Files · .zip)</h3>
+        <p style="margin:0; font-size:0.9rem; color:#cbd5e1;">Works whether or not you use MetaHarness. Includes the 0–100 local auditor, full thought-process &amp; drift docs, 5-tier classifier, 36-case safety eval suite, 13-point watchdog, weekly auto-refresh script, before/after utilization tracker, and Lens 2 production app router.</p>
+        <div class="kit-files">
+          <span class="kit-chip">audit-my-ai-usage.mjs</span>
+          <span class="kit-chip">SETUP-PROMPT.txt</span>
+          <span class="kit-chip">MODEL-ROUTING-ARCHITECTURE.md</span>
+          <span class="kit-chip">AI-Subscription-Routing-Playbook.md</span>
+          <span class="kit-chip">APP-MODEL-ROUTING-INTEGRATION.md</span>
+          <span class="kit-chip">policy.default.mjs</span>
+          <span class="kit-chip">routing-policy.template.json</span>
+          <span class="kit-chip">routing-eval-cases.json</span>
+          <span class="kit-chip">model-routing-audit.mjs</span>
+          <span class="kit-chip">model-auto-refresh.mjs</span>
+          <span class="kit-chip">router-utilization.mjs</span>
+          <span class="kit-chip">app-model-router.mjs</span>
+        </div>
+      </div>
+      <a class="btn-download" href="./ai-routing-starter-kit.zip" download="ai-routing-starter-kit.zip">
+        ⬇ Download Complete Packet (.zip)
+      </a>
+    </div>
+
+    <div class="code-block" id="prompt-text"><button class="copy-btn" onclick="copyPrompt()">Copy Setup Prompt</button>I downloaded the AI Subscription Routing &amp; Quota-Optimization Starter Kit. Please read AI-Subscription-Routing-Playbook.md and APP-MODEL-ROUTING-INTEGRATION.md, then help me configure MY machine and MY workflow.
+
+Note: I may or may not be using MetaHarness today—inspect what I actually have installed first and recommend the cleanest setup for MY environment (never enabling pay-by-the-drink API billing for personal coding on my prepaid developer seats).
 
 Please do the following in order:
-1. Inventory my installed AI CLIs/IDEs (Claude Code, Codex, Antigravity/Gemini, Grok, Cursor, etc.), my active prepaid subscriptions, and verify no paid cloud proxy or accidental API keys are being billed during personal coding.
-2. Scan my last 60 days of local session transcripts across every tool I use. Show me a table of:
-   - Actual turns, token volume, cache hit rate, and model breakdown per vendor.
-   - Where my quota is leaking (frontier defaults, cache-write fees, uncompacted contexts, missing fast tier).
-   - How much further each license will stretch with 5-tier routing + the 4 quota-hygiene rules, and which subscription plans I should keep, upgrade, or downgrade to minimize monthly spend.
-3. Before changing anything, replay 100+ of my real recent user prompts through the proposed classifier and prove it hits ~25–35% fast, ~50–55% medium, and ~10–15% frontier without under-routing hard tasks.
-4. Once I approve, back up my configs, set my default "leave-it-alone" medium coordinators, wire the UserPromptSubmit routing + automatic failure escalation + 4 quota-hygiene hooks across all my tools, add the 50% context /compact warning to my statuslines, wire a weekly/nightly auto-refresh job, and build a self-audit watchdog + before-vs-after utilization tracker so we can verify results in 7 days.
-5. For any production apps I build going forward, give me a reusable zero-hardcoded-model tier wrapper (fast | medium | substantial | hard | exceptional) with automatic validation retry escalation.</div>
+1. Run `node audit-my-ai-usage.mjs` (or inspect my local session logs across Claude Code, Codex, Antigravity/Gemini, Grok, Cursor, etc.) and show me my real 60-day token burn, frontier %, warm cache hit rate, and where my quota is leaking.
+2. Recommend which prepaid subscription tiers I should keep, upgrade, or downgrade based on my actual numbers.
+3. Propose my tailored 5-tier routing + thinking-level policy (`fast`, `medium`, `substantial`, `hard`, `exceptional`) and replay 100+ of my real recent prompts through the classifier to prove the distribution shift (~25-35% fast, ~50-55% medium, ~10-15% frontier) before changing any files.
+4. Once I approve, back up my existing configs, configure my default "leave-it-alone" medium coordinators, wire per-prompt routing + automatic failure escalation + the 4 quota-hygiene rules (subagent search isolation >5 files, 50% context /compact warning, pre-distilled frontier escalation, in-vendor warm-cache preservation), set up weekly/nightly model auto-refresh, and install a self-audit watchdog so we can verify my 7-day before-vs-after improvement.
+5. For any deployed apps I build going forward, use `app-model-router.mjs` so no app ever hardcodes a vendor model ID.</div>
   </section>
 
   <footer>
-    <span>AI Subscription Routing &amp; Quota-Optimization Playbook · Published Nov 22, 2026</span>
-    <span>Shareable Standalone HTML + Live Three.js Visualization</span>
+    AI Subscription Routing &amp; Quota-Optimization Playbook · Interactive Three.js Edition · Published November 22, 2026
   </footer>
 </div>
 
 <script src="https://unpkg.com/three@0.169.0/build/three.min.js"></script>
 <script>
+// ── Copy Setup Prompt ────────────────────────────────────────────────────────────
 function copyPrompt() {
   const el = document.getElementById('prompt-text');
-  const txt = el.innerText.replace(/^Copy Prompt\s*/, '');
+  const txt = el.innerText.replace(/^Copy Setup Prompt\s*/, '');
   navigator.clipboard.writeText(txt).then(() => {
     const b = el.querySelector('.copy-btn');
     b.textContent = 'Copied!';
-    setTimeout(() => b.textContent = 'Copy Prompt', 1800);
+    setTimeout(() => b.textContent = 'Copy Setup Prompt', 1800);
   });
 }
 
-// ── Live Three.js 3D Routing & Bottleneck Simulation ─────────────────────────────
-let mode = 'before';
+// ── Interactive Scatter Plot Points ──────────────────────────────────────────────
+const POINTS = [
+  { x: 130, y: 198, c: '#38bdf8', label: 'Neon Low',    info: 'Gemini 4 Neon @ Low — Score 44 · $0.75/task · 3.7 min. Beats Opus 5.5 Low (35 @ $0.98).' },
+  { x: 250, y: 138, c: '#38bdf8', label: 'Neon Med',    info: 'Gemini 4 Neon @ Medium — Score 55 · $1.90/task · 8.4 min. Beats Opus 5.5 High (52 @ $3.46)!' },
+  { x: 370, y: 104, c: '#22c55e', label: 'Neon High ★', info: 'SWEET SPOT: Gemini 4 Neon @ High — Score 60 · $3.74/task · 14.3 min · $0 cache-write fee. Beats Opus 5.5 Max (59 @ $10.04)!' },
+  { x: 510, y: 98,  c: '#38bdf8', label: 'Neon XHigh',  info: 'Gemini 4 Neon @ XHigh — Score 61 · $6.44/task (+72% cost for +1 pt). Reserve for auto-escalation only.' },
+  { x: 165, y: 248, c: '#f59e0b', label: 'Opus Low',    info: 'Claude Opus 5.5 @ Low — Score 35 · $0.98/task · 3.0 min.' },
+  { x: 355, y: 155, c: '#f59e0b', label: 'Opus High',   info: 'Claude Opus 5.5 @ High — Score 52 · $3.46/task · 9.2 min. Strongest on pure bash/terminal loops & security.' },
+  { x: 685, y: 112, c: '#ef4444', label: 'Opus Max',    info: 'AVOID DEFAULT: Claude Opus 5.5 @ Max — Score 59 · $10.04/task · 25.6 min. Neon High beats it for $6.30 less.' },
+  { x: 615, y: 90,  c: '#a855f7', label: 'Fable High',  info: 'SURGICAL TIER (<5%): Claude Fable 5.2 @ High — Score 62 · $9.08/task. Use ONLY with pre-distilled context.' },
+  { x: 885, y: 68,  c: '#ef4444', label: 'Fable Max',   info: 'CLIFF WARNING: Claude Fable 5.2 @ Max — Score 65 · $26.54/task (+192% cost for +3 pts, 42.2 min).' },
+];
+const ptGroup = document.getElementById('scatter-points');
+POINTS.forEach((p) => {
+  const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  c.setAttribute('cx', p.x); c.setAttribute('cy', p.y); c.setAttribute('r', p.label.includes('★') ? 8 : 6);
+  c.setAttribute('fill', p.c); c.setAttribute('stroke', '#ffffff'); c.setAttribute('stroke-width', '1.8');
+  c.setAttribute('class', 'dot-hit');
+  const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  t.setAttribute('x', p.x); t.setAttribute('y', p.y - 12); t.setAttribute('text-anchor', 'middle');
+  t.setAttribute('font-size', '10.5'); t.setAttribute('font-weight', '700'); t.setAttribute('fill', '#e2e8f0');
+  t.textContent = p.label;
+  const show = () => { document.getElementById('scatter-info').innerHTML = `<span><strong>${p.label}:</strong> ${p.info}</span>`; };
+  c.addEventListener('mouseenter', show);
+  c.addEventListener('click', show);
+  g.appendChild(c); g.appendChild(t); ptGroup.appendChild(g);
+});
+
+// ── Interactive Quota Simulator ──────────────────────────────────────────────────
+function updateSim() {
+  const spend = Number(document.getElementById('sl-spend').value);
+  const front = Number(document.getElementById('sl-front').value);
+  document.getElementById('lbl-spend').textContent = `$${spend}/mo`;
+  document.getElementById('lbl-front').textContent = `${front}%`;
+  const stretch = +(1.6 + (front / 100) * 4.0).toFixed(1);
+  const daysBefore = Math.max(1.2, +(5.5 - (front / 100) * 6.0).toFixed(1));
+  const daysAfter = Math.min(7.0, +(daysBefore * stretch).toFixed(1));
+  const monthlySave = Math.round(spend * (spend >= 400 ? 0.44 : 0.30));
+  document.getElementById('bar-before').style.width = `${Math.min(100, (daysBefore / 7) * 100)}%`;
+  document.getElementById('bar-before').textContent = `${daysBefore} days/wk`;
+  document.getElementById('bar-after').style.width = `${Math.min(100, (daysAfter / 7) * 100)}%`;
+  document.getElementById('bar-after').textContent = daysAfter >= 7 ? '7.0+ days/wk (No Walls!)' : `${daysAfter} days/wk`;
+  document.getElementById('kpi-mult').textContent = `${stretch}x`;
+  document.getElementById('kpi-save').textContent = `$${monthlySave}/mo`;
+  document.getElementById('kpi-yr').textContent = `$${(monthlySave * 12).toLocaleString()}/yr`;
+}
+updateSim();
+
+// ── 5-Chapter Scrollytelling Three.js Engine ─────────────────────────────────────
+let currentScene = 0;
+const SCENE_META = [
+  {
+    title: 'CH 1 · THE FRONTIER BOTTLENECK', badge: '1.0x BASELINE', bColor: '#fca5a5',
+    hud: [ ['57%', 'Turns on Frontier', '#fca5a5'], ['43%', 'Cache-Write Tax', '#fcd34d'], ['~2 Days', 'Before Weekly Wall', '#fca5a5'] ],
+    cam: [0, 1.3, 13.8],
+  },
+  {
+    title: 'CH 2 · THE COLD-CACHE TRAP', badge: '5x–10x PENALTY', bColor: '#fcd34d',
+    hud: [ ['96.7%', 'Warm Cache Reads', '#38bdf8'], ['5x–10x', 'Cold-Switch Tax', '#fca5a5'], ['Stay Local', '90% of Turns', '#86efac'] ],
+    cam: [2.6, 2.2, 11.8],
+  },
+  {
+    title: 'CH 3 · TWO WORLDS SEPARATED', badge: '$0 VS BY-THE-DRINK', bColor: '#7dd3fc',
+    hud: [ ['$0 Extra', 'Prepaid Dev Seats', '#86efac'], ['0 Hardcoded', 'App Model IDs', '#7dd3fc'], ['Cloud Proxy', 'Apps Only (OFF Locally)', '#fcd34d'] ],
+    cam: [-1.5, 2.8, 14.5],
+  },
+  {
+    title: 'CH 4 · 5-TIER FLUID FLOW', badge: '3.8x–4.5x STRETCH', bColor: '#86efac',
+    hud: [ ['86%', 'Fast + Mid Share', '#86efac'], ['95%+', 'Warm Cache Kept', '#38bdf8'], ['7+ Days', 'Wall-Free Week', '#86efac'] ],
+    cam: [0.4, 0.8, 12.6],
+  },
+  {
+    title: 'CH 5 · AUTO-ESCALATION & REFRESH', badge: '13/13 AUDIT PASS', bColor: '#d8b4fe',
+    hud: [ ['+1 Tier', 'Auto Fail-Escalation', '#d8b4fe'], ['Weekly', 'Model Auto-Refresh', '#86efac'], ['50% Ctx', '⚡/compact Guard', '#fcd34d'] ],
+    cam: [3.2, -0.4, 12.2],
+  },
+];
+
 const canvas = document.getElementById('three-canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 100);
-camera.position.set(0, 1.4, 13.5);
-camera.lookAt(0, 0, 0);
+const camera = new THREE.PerspectiveCamera(42, 1.2, 0.1, 100);
+camera.position.set(0, 1.3, 13.8);
 
-const ambient = new THREE.AmbientLight(0xffffff, 0.85);
-scene.add(ambient);
-const dir = new THREE.DirectionalLight(0x38bdf8, 1.4);
-dir.position.set(5, 8, 8);
-scene.add(dir);
+scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+const pLight = new THREE.PointLight(0x38bdf8, 2.2, 40);
+pLight.position.set(4, 6, 8);
+scene.add(pLight);
+const rLight = new THREE.PointLight(0xef4444, 1.5, 30);
+rLight.position.set(5, -3, 5);
+scene.add(rLight);
 
-// Nodes: Input -> Router -> 4 Lanes (Fast, Medium, Hard, Exceptional)
-function makeNode(x, y, z, color, radius) {
-  const geo = new THREE.IcosahedronGeometry(radius, 2);
-  const mat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.35, roughness: 0.3, metalness: 0.4 });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.set(x, y, z);
-  scene.add(mesh);
-  return mesh;
+// Subtle background starfield
+const starPos = new Float32Array(450);
+for (let i = 0; i < 450; i++) starPos[i] = (Math.random() - 0.5) * 32;
+const starGeo = new THREE.BufferGeometry();
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0x64748b, size: 0.06, transparent: true, opacity: 0.5 })));
+
+function makeOrb(x, y, z, color, r) {
+  const m = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(r, 2),
+    new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.4, roughness: 0.25, metalness: 0.45 })
+  );
+  m.position.set(x, y, z);
+  scene.add(m);
+  return m;
 }
 
-const inputNode = makeNode(-6.8, 0, 0, 0x38bdf8, 0.55);
-const routerNode = makeNode(-2.4, 0, 0, 0x0ea5e9, 0.65);
-
+const inputOrb = makeOrb(-5.8, 0, 0, 0x38bdf8, 0.52);
+const routerOrb = makeOrb(-1.8, 0, 0, 0x0ea5e9, 0.68);
 const lanes = [
-  { name: 'fast',        y:  2.7, color: 0x22c55e, node: makeNode(4.8,  2.7, 0, 0x22c55e, 0.45) },
-  { name: 'medium',      y:  0.9, color: 0x3b82f6, node: makeNode(4.8,  0.9, 0, 0x3b82f6, 0.52) },
-  { name: 'hard',        y: -1.1, color: 0xf59e0b, node: makeNode(4.8, -1.1, 0, 0xf59e0b, 0.48) },
-  { name: 'exceptional', y: -2.8, color: 0xef4444, node: makeNode(4.8, -2.8, 0, 0xef4444, 0.45) },
+  { y:  2.8, color: 0x22c55e, orb: makeOrb(4.4,  2.8, 0, 0x22c55e, 0.44) },
+  { y:  0.95,color: 0x3b82f6, orb: makeOrb(4.4,  0.95,0, 0x3b82f6, 0.55) },
+  { y: -1.05,color: 0xf59e0b, orb: makeOrb(4.4, -1.05,0, 0xf59e0b, 0.48) },
+  { y: -2.8, color: 0xef4444, orb: makeOrb(4.4, -2.8, 0, 0xef4444, 0.46) },
 ];
 
-// Warm-cache ring around Medium coordinator
-const cacheRing = new THREE.Mesh(
-  new THREE.TorusGeometry(0.95, 0.045, 16, 64),
-  new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x38bdf8, emissiveIntensity: 0.6 })
+// Red Rate-Limit Wall (Chapter 1)
+const wallMesh = new THREE.Mesh(
+  new THREE.BoxGeometry(0.22, 2.8, 2.4),
+  new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xef4444, emissiveIntensity: 0.6, transparent: true, opacity: 0.55 })
 );
-cacheRing.position.set(4.8, 0.9, 0);
+wallMesh.position.set(2.9, -2.5, 0);
+scene.add(wallMesh);
+
+// Warm Cache Ring (Medium Lane)
+const cacheRing = new THREE.Mesh(
+  new THREE.TorusGeometry(1.05, 0.055, 16, 64),
+  new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x38bdf8, emissiveIntensity: 0.7 })
+);
+cacheRing.position.set(4.4, 0.95, 0);
 scene.add(cacheRing);
 
-// Bottleneck wall ring around Frontier lane in "before" mode
-const jamRing = new THREE.Mesh(
-  new THREE.TorusGeometry(1.15, 0.08, 16, 48),
-  new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xef4444, emissiveIntensity: 0.7 })
-);
-jamRing.position.set(4.8, -2.8, 0);
-scene.add(jamRing);
+// Weekly Refresh Satellite (Chapter 5)
+const satellite = makeOrb(4.4, 3.8, 1.5, 0xa855f7, 0.24);
 
-// Guide curves
+// Curves
 const curves = lanes.map((l) => new THREE.CubicBezierCurve3(
-  new THREE.Vector3(-2.4, 0, 0),
-  new THREE.Vector3(0.2, l.y * 0.65, 0.8),
-  new THREE.Vector3(2.4, l.y, -0.5),
-  new THREE.Vector3(4.8, l.y, 0)
+  new THREE.Vector3(-1.8, 0, 0),
+  new THREE.Vector3(0.4, l.y * 0.7, 0.9),
+  new THREE.Vector3(2.2, l.y, -0.6),
+  new THREE.Vector3(4.4, l.y, 0)
 ));
 curves.forEach((c, idx) => {
-  const pts = c.getPoints(36);
-  const geo = new THREE.BufferGeometry().setFromPoints(pts);
-  const mat = new THREE.LineBasicMaterial({ color: lanes[idx].color, transparent: true, opacity: 0.35 });
-  scene.add(new THREE.Line(geo, mat));
+  scene.add(new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(c.getPoints(36)),
+    new THREE.LineBasicMaterial({ color: lanes[idx].color, transparent: true, opacity: 0.35 })
+  ));
 });
-const stemGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-6.8, 0, 0), new THREE.Vector3(-2.4, 0, 0)]);
-scene.add(new THREE.Line(stemGeo, new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.5 })));
+scene.add(new THREE.Line(
+  new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-5.8, 0, 0), new THREE.Vector3(-1.8, 0, 0)]),
+  new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.5 })
+));
 
-// Prompt particles
+// Particles
 const particles = [];
-const pGeo = new THREE.SphereGeometry(0.11, 12, 12);
-function pickLaneIndex() {
+const pGeo = new THREE.SphereGeometry(0.11, 10, 10);
+function pickLane(s) {
   const r = Math.random();
-  if (mode === 'before') return r < 0.57 ? 3 : r < 0.94 ? 1 : 0; // 57% jammed into Frontier!
-  if (mode === 'escalate') return r < 0.25 ? 0 : r < 0.65 ? 1 : r < 0.88 ? 2 : 3;
-  return r < 0.32 ? 0 : r < 0.86 ? 1 : r < 0.97 ? 2 : 3; // 32% fast, 54% mid, 11% hard, 3% exc
+  if (s === 0) return r < 0.62 ? 3 : r < 0.95 ? 1 : 0;
+  if (s === 1) return r < 0.5 ? 1 : 2;
+  if (s === 2) return r < 0.5 ? 0 : 1;
+  if (s === 4) return r < 0.28 ? 0 : r < 0.72 ? 1 : r < 0.90 ? 2 : 3;
+  return r < 0.32 ? 0 : r < 0.86 ? 1 : r < 0.97 ? 2 : 3;
 }
-for (let i = 0; i < 65; i++) {
-  const laneIdx = pickLaneIndex();
-  const mat = new THREE.MeshBasicMaterial({ color: lanes[laneIdx].color });
-  const mesh = new THREE.Mesh(pGeo, mat);
+for (let i = 0; i < 110; i++) {
+  const laneIdx = pickLane(0);
+  const mesh = new THREE.Mesh(pGeo, new THREE.MeshBasicMaterial({ color: lanes[laneIdx].color }));
   scene.add(mesh);
-  particles.push({ mesh, t: Math.random(), phase: Math.random() < 0.35 ? 0 : 1, laneIdx, speed: 0.004 + Math.random() * 0.005 });
+  particles.push({ mesh, t: Math.random(), phase: Math.random() < 0.3 ? 0 : 1, laneIdx, speed: 0.004 + Math.random() * 0.005 });
 }
 
-window.setMode = function(next) {
-  mode = next;
-  document.getElementById('btn-before').className = 'btn' + (next === 'before' ? ' active-bad' : '');
-  document.getElementById('btn-after').className = 'btn' + (next === 'after' ? ' active-good' : '');
-  document.getElementById('btn-escalate').className = 'btn' + (next === 'escalate' ? ' active-esc' : '');
-  const hud = document.getElementById('hud-stats');
-  if (next === 'before') {
-    hud.innerHTML = '<span class="hud-stat hud-bad">Frontier Load: <b>57%</b></span><span class="hud-stat hud-bad">Cache-Write Tax: <b>43%</b></span><span class="hud-stat">License Stretch: <b>1.0x</b></span>';
-  } else if (next === 'after') {
-    hud.innerHTML = '<span class="hud-stat hud-good">Fast + Mid: <b>86%</b></span><span class="hud-stat hud-good">Warm Cache: <b>95%+</b></span><span class="hud-stat hud-good">License Stretch: <b>3.8x–4.5x</b></span>';
-  } else {
-    hud.innerHTML = '<span class="hud-stat" style="color:#e9d5ff;">QA Fail Twice → <b>Auto +1 Tier</b></span><span class="hud-stat hud-good">Pre-Distilled Context</span><span class="hud-stat">Cost: <b>$0 Sub</b></span>';
-  }
+let targetCam = new THREE.Vector3(...SCENE_META[0].cam);
+
+window.activateScene = function(idx) {
+  currentScene = idx;
+  const meta = SCENE_META[idx];
+  document.getElementById('scene-title').textContent = meta.title;
+  const b = document.getElementById('scene-badge');
+  b.textContent = meta.badge; b.style.color = meta.bColor;
+  document.getElementById('hud-metrics').innerHTML = meta.hud.map(([v, l, c]) =>
+    `<div><div class="hm-val" style="color:${c};">${v}</div><div class="hm-lab">${l}</div></div>`
+  ).join('');
+  document.querySelectorAll('.ch-btn').forEach((el, i) => el.classList.toggle('active', i === idx));
+  document.querySelectorAll('.step-card').forEach((el, i) => el.classList.toggle('active', i === idx));
+  targetCam.set(...meta.cam);
   particles.forEach((p) => {
-    p.laneIdx = pickLaneIndex();
+    p.laneIdx = pickLane(idx);
     p.mesh.material.color.setHex(lanes[p.laneIdx].color);
   });
 };
 
-function resize() {
-  const w = canvas.clientWidth;
-  const h = canvas.clientHeight;
+// Scroll observer to drive Three.js chapters fluidly
+const io = new IntersectionObserver((entries) => {
+  entries.forEach((e) => {
+    if (e.isIntersecting) {
+      const idx = Number(e.target.getAttribute('data-scene'));
+      if (Number.isFinite(idx) && idx !== currentScene) activateScene(idx);
+    }
+  });
+}, { threshold: 0.55 });
+document.querySelectorAll('.step-card').forEach((el) => io.observe(el));
+
+let tClock = 0;
+function animate() {
+  requestAnimationFrame(animate);
+  const w = canvas.clientWidth, h = canvas.clientHeight;
   if (canvas.width !== w || canvas.height !== h) {
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
   }
-}
+  tClock += 0.016;
+  camera.position.lerp(targetCam, 0.05);
+  camera.lookAt(0.2, 0, 0);
 
-let clock = 0;
-function animate() {
-  requestAnimationFrame(animate);
-  resize();
-  clock += 0.016;
-  inputNode.rotation.y += 0.012;
-  routerNode.rotation.y -= 0.018;
-  routerNode.rotation.x += 0.008;
-  lanes.forEach((l) => { l.node.rotation.y += 0.01; });
+  inputOrb.rotation.y += 0.012;
+  routerOrb.rotation.y -= 0.018;
+  routerOrb.rotation.x += 0.009;
+  lanes.forEach((l) => { l.orb.rotation.y += 0.012; });
 
-  cacheRing.visible = mode !== 'before';
-  cacheRing.rotation.z += 0.025;
-  cacheRing.rotation.x = Math.sin(clock) * 0.35;
+  // Scene-specific visuals
+  wallMesh.visible = currentScene === 0;
+  wallMesh.scale.y = 1 + Math.sin(tClock * 5) * 0.08;
 
-  jamRing.visible = mode === 'before';
-  jamRing.scale.setScalar(1 + Math.sin(clock * 5) * 0.12);
+  cacheRing.visible = currentScene !== 0;
+  cacheRing.rotation.z += currentScene === 1 ? 0.005 : 0.03;
+  cacheRing.rotation.x = Math.sin(tClock * 1.4) * (currentScene === 1 ? 1.1 : 0.35);
+  cacheRing.material.color.setHex(currentScene === 1 ? 0xf59e0b : 0x38bdf8);
+
+  satellite.visible = currentScene === 4;
+  satellite.position.set(4.4 + Math.cos(tClock * 1.8) * 1.9, Math.sin(tClock * 1.8) * 2.2, Math.sin(tClock * 1.8) * 1.4);
 
   for (const p of particles) {
-    const slowFactor = (mode === 'before' && p.laneIdx === 3) ? 0.42 : 1.0;
-    p.t += p.speed * slowFactor;
+    let speedMult = 1.0;
+    if (currentScene === 0 && p.laneIdx === 3) speedMult = 0.25; // jammed at wall
+    if (currentScene === 1) speedMult = 0.45; // cold cache drag
+    if (currentScene === 3) speedMult = 1.45; // loosened pipes!
+    p.t += p.speed * speedMult;
     if (p.t >= 1) {
       p.t = 0;
       if (p.phase === 0) {
         p.phase = 1;
-        p.laneIdx = pickLaneIndex();
+        p.laneIdx = pickLane(currentScene);
         p.mesh.material.color.setHex(lanes[p.laneIdx].color);
       } else {
         p.phase = 0;
@@ -623,9 +842,11 @@ function animate() {
       }
     }
     if (p.phase === 0) {
-      p.mesh.position.set(-6.8 + p.t * 4.4, Math.sin(p.t * Math.PI * 2 + clock) * 0.12, 0);
+      p.mesh.position.set(-5.8 + p.t * 4.0, Math.sin(p.t * Math.PI * 2 + tClock) * 0.14, 0);
     } else {
-      const pos = curves[p.laneIdx].getPoint(p.t);
+      const clampedT = (currentScene === 0 && p.laneIdx === 3) ? Math.min(p.t, 0.72) : p.t;
+      const pos = curves[p.laneIdx].getPoint(clampedT);
+      if (currentScene === 1) pos.z += Math.sin(tClock * 6 + p.t * 10) * 0.45; // turbulence
       p.mesh.position.copy(pos);
     }
   }
