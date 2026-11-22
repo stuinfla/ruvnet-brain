@@ -145,27 +145,6 @@
   .story-shell > *, .steps, .step-card, .stage-sticky, .visual-card, .code-panel, .code-block-wrap, .myth-card, .lesson-card, .rule-card {
     min-width: 0; max-width: 100%;
   }
-  @media (max-width: 768px) {
-    header { padding: 8px 14px; flex-wrap: nowrap; }
-    .brand { font-size: 0.84rem; white-space: nowrap; }
-    .back-home { display: none; }
-    .nav-links a:not(.nav-cta) { display: none; }
-    .nav-cta { padding: 5px 10px; font-size: 0.74rem; white-space: nowrap; }
-    .story-shell { padding: 66px 14px 28px; gap: 18px; }
-    .container { padding: 12px 14px 48px; }
-    .stage-sticky { height: 440px; max-height: 460px; }
-    .stage-top-badge { top: 10px; left: 10px; right: 10px; }
-    .scene-pill { font-size: 0.64rem; padding: 4px 8px; }
-    .pause-btn { font-size: 0.64rem; padding: 4px 8px; min-height: 24px; }
-    .stage-hud { left: 10px; right: 10px; bottom: 10px; gap: 6px; }
-    .hud-metrics { padding: 8px 10px; gap: 6px; }
-    .hm-val { font-size: 0.92rem; }
-    .hm-lab { font-size: 0.64rem; }
-    .chapter-dots { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
-    .ch-btn { min-width: 0; padding: 5px 3px; font-size: 0.64rem; text-align: center; }
-    .step-card { padding: 18px 16px; }
-    .step-card h1 { font-size: 1.42rem; }
-  }
 
   /* Scrollytelling 3D Stage */
   .story-shell {
@@ -474,6 +453,31 @@
   .copy-btn:hover { background: #7dd3fc; }
   code { font-family: "SFMono-Regular", Menlo, monospace; background: rgba(148,163,184,0.14); padding: 2px 5px; border-radius: 4px; color: #7dd3fc; font-size: 0.85em; }
   footer { text-align: center; color: var(--muted); font-size: 0.84rem; padding: 24px 0 40px; border-top: 1px solid var(--border); }
+
+  /* Mobile Overrides (at end of cascade so they always win cleanly on <=768px) */
+  @media (max-width: 768px) {
+    html, body { max-width: 100vw; overflow-x: clip; }
+    header { padding: 8px 12px; flex-wrap: nowrap; width: 100vw; }
+    .brand { font-size: 0.82rem; white-space: nowrap; }
+    .back-home { display: none; }
+    .nav-links a:not(.nav-cta) { display: none; }
+    .nav-cta { padding: 5px 10px; font-size: 0.72rem; white-space: nowrap; }
+    .story-shell { padding: 60px 12px 24px; gap: 16px; width: 100%; }
+    .container { padding: 12px 12px 48px; width: 100%; }
+    .stage-sticky { height: 420px; max-height: 440px; width: 100%; }
+    .stage-top-badge { top: 8px; left: 8px; right: 8px; }
+    .scene-pill { font-size: 0.62rem; padding: 3px 7px; }
+    .pause-btn { font-size: 0.62rem; padding: 3px 7px; min-height: 24px; }
+    .stage-hud { left: 8px; right: 8px; bottom: 8px; gap: 6px; }
+    .hud-metrics { padding: 7px 8px; gap: 4px; }
+    .hm-val { font-size: 0.88rem; }
+    .hm-lab { font-size: 0.62rem; }
+    .chapter-dots { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+    .ch-btn { min-width: 0; padding: 5px 2px; font-size: 0.6rem; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .step-card { padding: 16px 14px; }
+    .step-card h1 { font-size: 1.36rem; }
+    .visual-card { padding: 16px 14px; }
+  }
 </style>
 </head>
 <body>
