@@ -8,7 +8,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { cmpVersion as compare, selectTag, needsPublishTimes, normalizeNpmDistTags, wantedTag, FAMILY, PLUGIN_MARKETPLACES, REVIEWED_INSTALL_SCRIPTS, EXECUTION_MODULES } from './developer-update-policy.mjs';
+import { cmpVersion as compare, selectTag, needsPublishTimes, normalizeNpmDistTags, wantedTag, stableNode, FAMILY, PLUGIN_MARKETPLACES, REVIEWED_INSTALL_SCRIPTS, EXECUTION_MODULES } from './developer-update-policy.mjs';
 import { acquireDeveloperLock, sharedLockStatus } from './developer-update-lock.mjs';
 import { maintenance } from './developer-update-maintenance.mjs';
 import { cleanupNpxDuplicates } from './developer-update-cleanup.mjs';
@@ -18,7 +18,7 @@ export { compare, selectTag, sharedLockStatus };
 const HOME = os.homedir();
 const PREFIX = path.join(HOME, '.npm-global');
 const ROOT = path.join(PREFIX, 'lib/node_modules');
-const NODE = process.execPath;
+const NODE = stableNode(process.execPath);
 const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const CACHE = path.join(HOME, '.cache/ruvnet-brain');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
@@ -33,10 +33,10 @@ export function atomic(file, value) {
 }
 function invoke(command, args, { cwd = HOME, timeout = 600_000, allowed = [0], env = process.env, capture = false } = {}) {
   const r = spawnSync(command, args, { cwd, encoding: 'utf8', timeout, maxBuffer: 16 * 1024 * 1024,
-    env: { ...env, PATH: [...new Set([path.dirname(NODE), path.join(env.npm_config_prefix || PREFIX, process.platform === 'win32' ? '' : 'bin'), ...(env.PATH || '').split(path.delimiter)])].join(path.delimiter),
+    env: { ...env, PATH: [...new Set([path.dirname(stableNode(NODE)), path.join(env.npm_config_prefix || PREFIX, process.platform === 'win32' ? '' : 'bin'), ...(env.PATH || '').split(path.delimiter)])].join(path.delimiter),
       CI: '1', DISABLE_AUTOUPDATER: '1', CLAUDE_FLOW_AUTO_UPDATE: 'false', GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'Never', GH_PROMPT_DISABLED: '1', HOMEBREW_NO_INSTALL_CLEANUP: '1', HOMEBREW_NO_AUTO_UPDATE: '1', RUVNET_BRAIN_HOME: env.RUVNET_BRAIN_HOME || CACHE } });
-  if (!capture && (r.error || !allowed.includes(r.status))) throw Error(`${path.basename(command)} ${args[0]}: ${r.error?.message || `exit ${r.status}`}: ${(r.stderr || r.stdout || '').trim().slice(-600)}`);
-  return { stdout: (r.stdout || '').trim(), stderr: (r.stderr || '').trim(), exitCode: r.status, error: r.error?.message || null };
+  if (!capture && (r.error || !allowed.includes(r.status))) throw Error(`${path.basename(command)} ${args[0]}: ${r.error?.message || (r.signal ? `signal ${r.signal}` : `exit ${r.status}`)}: ${(r.stderr || r.stdout || '').trim().slice(-600)}`);
+  return { stdout: (r.stdout || '').trim(), stderr: (r.stderr || '').trim(), exitCode: r.status, signal: r.signal || null, error: r.error?.message || null };
 }
 const invokeText = (command, args, options) => invoke(command, args, options).stdout;
 export function claudeProviderCommand(command, { prefix, run = invokeText, platform = process.platform, arch = process.arch } = {}) {
@@ -508,7 +508,7 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
     if (process.platform === 'win32' && /npm\.cmd$/i.test(command)) {
       const cli = path.join(path.dirname(command), 'node_modules/npm/bin/npm-cli.js');
       if (!exists(cli)) throw Error('Windows npm CLI identity absent');
-      return runner(process.execPath, [cli, ...args], { cwd: home, ...options, env: childEnv });
+      return runner(stableNode(process.execPath), [cli, ...args], { cwd: home, ...options, env: childEnv });
     }
     return runner(command, args, { cwd: home, ...options, env: childEnv });
   };
@@ -567,7 +567,7 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
     if (!path.isAbsolute(prefix) || !path.isAbsolute(root)) throw Error('npm global identity unverified');
     // Bind every subsequent install to this exact prefix instead of inherited npm config.
     childEnv.npm_config_prefix = prefix;
-    receipt.npmIdentity = { npm, prefix, root, node: process.execPath };
+    receipt.npmIdentity = { npm, prefix, root, node: stableNode(process.execPath) };
     // Each stage is isolated: a failure is recorded on its stage and the run goes on, so one npm view, one plugin or a missing
     // CLI can no longer cost the night its knowledge update (AuditC #1). Packages run before knowledge so a new code package's
     // installer applies its matching corpus; knowledge is always attempted when the KB exists.
@@ -601,7 +601,7 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
       }
     }
     if (exists(path.join(paths.brainHome, 'kb/forge-update.mjs'))) {
-      const knowledgeStage = () => stage('knowledge', () => knowledge(run, mode === 'check', receipt.runId, { brainHome: paths.brainHome, root, node: process.execPath, sleep, convergeRuntime: !knowledgeOnly }),
+      const knowledgeStage = () => stage('knowledge', () => knowledge(run, mode === 'check', receipt.runId, { brainHome: paths.brainHome, root, node: stableNode(process.execPath), sleep, convergeRuntime: !knowledgeOnly }),
         error => { receipt.knowledge = { state: 'failed', error: error.message }; });
       receipt.knowledge = await knowledgeStage() ?? receipt.knowledge;
       // SELF-RETRY THE SAME NIGHT (2026-10-30): a scheduled night whose knowledge stage failed tries once more after
@@ -620,7 +620,7 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
     persistReceipt();
     if (!knowledgeOnly) {
       receipt.plugins = await stage('plugins', () => synchronizePlugins(run, mode === 'check', receipt.notes, { home, prefix, scope: config.scope, locate, unattended: !!env.RUVNET_NIGHTLY_IDENTITY }));
-      receipt.maintenance = await stage('maintenance', () => maintenance(config, run, mode === 'check', { home, brainHome: paths.brainHome, locate, node: process.execPath, progress: result => { receipt.maintenance = result; persistReceipt(); } }),
+      receipt.maintenance = await stage('maintenance', () => maintenance(config, run, mode === 'check', { home, brainHome: paths.brainHome, locate, node: stableNode(process.execPath), progress: result => { receipt.maintenance = result; persistReceipt(); } }),
         error => { for (const item of receipt.maintenance?.stages || []) if (item.state === 'running') { item.state = 'failed'; item.error = error.message; } }) ?? receipt.maintenance;
       receipt.cleanup = await stage('cleanup', () => cleanupNpxDuplicates({ home, globalRoot: root, enabled: config.cleanup && mode === 'apply', run }));
       receipt.after = await stage('inventory-after', () => discover(root, prefix, config.scope));

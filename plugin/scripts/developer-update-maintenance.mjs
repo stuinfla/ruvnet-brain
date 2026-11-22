@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { cmpVersion as compare } from './developer-update-policy.mjs';
+import { cmpVersion as compare, stableNode } from './developer-update-policy.mjs';
 import crypto from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
@@ -144,17 +144,23 @@ export function verifyMaintenanceStage(commands, postconditions) {
 function commandOutput(run, command, args, options, stage) {
   const result = run.receipt ? run.receipt(command, args, options) : run(command, args, options);
   const exitCode = result?.exitCode ?? result?.status ?? result?.code;
-  const captured = { command, args, exitCode, error: result?.error || null, stdout: result?.stdout, stderr: result?.stderr || '' };
+  const signal = result?.signal || null;
+  const omitStdout = options?.omitStdout === true;
+  const captured = { command, args, exitCode, ...(signal ? { signal } : {}), error: result?.error || null, stdout: omitStdout ? `[omitted ${String(result?.stdout || '').length} chars]` : result?.stdout, stderr: result?.stderr || '' };
   stage?.commands.push(captured);
-  if (!Number.isInteger(exitCode) || exitCode !== 0 || captured.error || typeof captured.stdout !== 'string') throw Error(`provider command failed or exit evidence absent: ${command} ${args[0]} (exit ${exitCode})`);
-  return captured.stdout;
+  if (!Number.isInteger(exitCode) || exitCode !== 0 || captured.error || typeof result?.stdout !== 'string') {
+    const how = signal ? `signal ${signal}` : `exit ${exitCode}`;
+    const detail = (captured.error || captured.stderr || '').trim().slice(-300);
+    throw Error(`provider command failed or exit evidence absent: ${command} ${args[0]} (${how})${detail ? `: ${detail}` : ''}`);
+  }
+  return result.stdout;
 }
 function settleStage(stage, after, postconditions, fields = {}) {
   const verification = verifyMaintenanceStage(stage.commands, postconditions);
   Object.assign(stage, { after, verification, ...fields, state: verification.ok ? 'completed' : 'failed' });
   if (!verification.ok) throw Error(`provider postconditions failed: ${stage.owner}: ${verification.failures.join(', ')}`);
 }
-export async function maintenance(config, run, dryRun, { home = HOME, brainHome, locate = () => null, node = process.execPath, progress = () => {} } = {}) {
+export async function maintenance(config, run, dryRun, { home = HOME, brainHome, locate = () => null, node = stableNode(process.execPath), progress = () => {} } = {}) {
   const result = { stages: [], exclusions: [] };
   progress(result);
   for (const [name, enabled] of Object.entries(config)) {
@@ -219,7 +225,8 @@ export async function maintenance(config, run, dryRun, { home = HOME, brainHome,
   if (config.homebrew && locate('brew')) {
     const brew = required(locate('brew'));
     const stage = { owner: 'homebrew-formulas', commands: [], state: 'running' }; result.stages.push(stage);
-    const snapshot = () => JSON.parse(commandOutput(run, brew, ['info', '--json=v2', '--installed'], { timeout: 120_000 }, stage));
+    const compactBrew = raw => ({ formulae: (raw?.formulae || []).map(f => ({ full_name: f.full_name, outdated: f.outdated, pinned: f.pinned, installed_versions: (f.installed || []).map(i => i.version) })) });
+    const snapshot = () => compactBrew(JSON.parse(commandOutput(run, brew, ['info', '--json=v2', '--installed'], { timeout: 120_000, omitStdout: true }, stage)));
     const before = snapshot(); stage.before = before;
     if (!dryRun) {
       // HOMEBREW_NO_INSTALL_CLEANUP also set in coordinator child environment.
@@ -294,7 +301,8 @@ export async function maintenance(config, run, dryRun, { home = HOME, brainHome,
     if (typeof file !== 'string' || !path.isAbsolute(file) || ![path.join(home, '.codex/scripts/'), path.join(brainHome || home, 'scripts/')].some(root => file.startsWith(root)) || !file.endsWith('.mjs')) throw Error('managed callback must be an existing Codex scripts .mjs owner');
     required(file);
     const stage = { owner: file, state: 'running', commands: [] }; result.stages.push(stage);
-    const receipt = JSON.parse(commandOutput(run, node, [file, dryRun ? '--check' : '--apply'], { timeout: 3_600_000 }, stage));
+    const callbackNode = stableNode(node);
+    const receipt = JSON.parse(commandOutput(run, callbackNode, [file, dryRun ? '--check' : '--apply'], { timeout: 3_600_000 }, stage));
     if (receipt.ok !== true || !receipt.before || !receipt.after) throw Error('managed callback did not prove success with source snapshots');
     stage.before = receipt.before;
     settleStage(stage, receipt.after, { callbackSnapshotsPresent: !!receipt.before && !!receipt.after, callbackVerified: receipt.ok === true }, { receipt });

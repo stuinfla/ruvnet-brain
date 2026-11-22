@@ -43,7 +43,8 @@ import { isCorpusReleaseTag } from '../kb/corpus-release-identity.mjs';
 import { reconcileApplied, reconcileIgnored, pendingOffers, precision as advocacyPrecision } from './advocacy-outcomes.mjs';
 import { recordObservation as recordCapabilityStates } from './latency-to-surface.mjs';
 import { loadCatalog as engineCatalog, catalogSource as engineCatalogSource, loadProfile as engineProfile, applyProfile, PROFILE_PATH } from './model-router-engine.mjs';
-import { effectivePrices, loadLabelledRows, MIN_LABELS, OUTCOMES } from './metaharness-router.mjs';
+import { effectivePrices, loadLabelledRows, MIN_LABELS, OUTCOMES, resolveRealRouterPackage } from './metaharness-router.mjs';
+import { recommendForProject } from '../plugin/scripts/codebase-recommender.mjs';
 import { utilization } from './router-utilization.mjs';
 import { loadCatalog, detectProvider, frontierFor } from './model-catalog.mjs';
 import { providerAvailability } from './provider-availability.mjs';
@@ -850,7 +851,24 @@ function gatherConfig() {
     unavailable,
     runtime: {
       openrouterKey: credential,
-      nightly: { ...schedule, facts: nightly.facts },
+      nightly: {
+        ...schedule,
+        ...(schedule?.runHealth?.receipt ? {
+          runHealth: {
+            ...schedule.runHealth,
+            receipt: {
+              kind: schedule.runHealth.receipt.kind,
+              runId: schedule.runHealth.receipt.runId,
+              state: schedule.runHealth.receipt.state,
+              ok: schedule.runHealth.receipt.ok,
+              startedAt: schedule.runHealth.receipt.startedAt,
+              finishedAt: schedule.runHealth.receipt.finishedAt,
+              error: schedule.runHealth.receipt.error ?? null,
+            },
+          },
+        } : {}),
+        facts: nightly.facts,
+      },
     },
   };
 }
@@ -2115,7 +2133,8 @@ function gatherRouterEngine() {
   const candidates = applyProfile(engineCandidates, profile);
   const prices = effectivePrices(candidates, profile);
   const { rows, unusable } = loadLabelledRows();
-  const installed = fs.existsSync(path.join(__dirname, '..', 'node_modules', '@metaharness', 'router', 'package.json'));
+  const resolvedRouter = resolveRealRouterPackage();
+  const installed = Boolean(resolvedRouter);
   const list = (c) => (typeof c.costPerMTok === 'number' ? c.costPerMTok
     : c.costPerMTok && typeof c.costPerMTok.in === 'number' ? +(((c.costPerMTok.in + c.costPerMTok.out) / 2).toFixed(3))
     : null);
@@ -2168,6 +2187,7 @@ function gatherRouterEngine() {
   return {
     engine: {
       package: '@metaharness/router', installed,
+      version: resolvedRouter?.version || null,
       labels: rows.length, needed: MIN_LABELS, unusableLabels: unusable,
       mode: !installed ? 'UNAVAILABLE' : rows.length >= MIN_LABELS ? 'LEARNED' : 'COLD-START',
       outcomesLog: OUTCOMES.replace(os.homedir(), '~'),
@@ -2465,6 +2485,14 @@ export function preferredSeat(subs) {
   return { provider: null, basis: 'none', detail: 'nothing detected' };
 }
 
+export function gatherProactiveRecommendations(cwd = process.cwd(), { prompt = '' } = {}) {
+  try {
+    return recommendForProject({ cwd, prompt, limit: 6 });
+  } catch (e) {
+    return { ok: false, reason: 'recommender-error', error: String(e?.message || e), recommendations: [] };
+  }
+}
+
 function gatherState(cwd, { fleet = true } = {}) {
   const wiring = wiringSurvey();
   const memory = gatherMemory(cwd, { fleet });
@@ -2526,7 +2554,7 @@ function gatherState(cwd, { fleet = true } = {}) {
     generatedAt: new Date().toISOString(),
     preStateHash,
     host: { user: os.userInfo().username, platform: process.platform, node: process.version, npmPrefix: NPM_PREFIX.replace(SYSTEM_HOME, '~'), brainVersion: brainVersionOnDisk() },
-    sections: { wiring, memory, savings, config, userSettings, brainPower, gates, recommendations, inventory: gatherInventory() },
+    sections: { wiring, memory, savings, config, userSettings, brainPower, gates, recommendations, inventory: gatherInventory(), proactive: gatherProactiveRecommendations(cwd) },
   };
   // Cache the last good state so repeat page-loads paint instantly, same as the stack audit does.
   // TOKEN is per-server-run and must never touch disk — ?fast=1 splices the live one back in.
@@ -3434,13 +3462,19 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
       // What's in the brain: derived from the installed root's own receipts on every request (read-only,
       // no network, ~ms) — a coverage listing served from a stale cache would defeat its one purpose.
       if (req.method === 'GET' && url === '/api/scope') return sendJSON(res, 200, gatherScope());
+      if (req.method === 'GET' && url === '/api/proactive') {
+        const q = new URL(req.url, 'http://127.0.0.1').searchParams;
+        const targetDir = q.get('dir') && fs.existsSync(q.get('dir')) ? q.get('dir') : cwd;
+        const prompt = q.get('prompt') || '';
+        return sendJSON(res, 200, gatherProactiveRecommendations(targetDir, { prompt }));
+      }
       if (req.method === 'GET' && url === '/scope') { req.url = '/scope.html'; return serveStatic(req, res); }
       if (req.method === 'POST') {
+        const origin = req.headers.origin;
+        if (origin && origin !== `http://${req.headers.host}`) return sendJSON(res, 403, { error: 'forbidden origin' });
         const body = await readBody(req);
         if (body.token !== TOKEN) return sendJSON(res, 403, { error: 'bad or missing token' });
         if (url === '/api/suite-update') {
-          const origin = req.headers.origin;
-          if (origin && origin !== `http://${req.headers.host}`) return sendJSON(res, 403, { error: 'forbidden origin' });
           const facts = (st) => ({ 'Update run': st?.status || 'unknown', 'Release policy': st?.channel || 'not measured', 'Nightly updates': st?.nightlyState || 'not verified' });
           const before = facts(suiteUpdater.state());
           const result = suiteUpdater.start(body.channel);

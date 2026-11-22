@@ -62,10 +62,14 @@ describe('RNBC coordinated update adapter', () => {
     expect(adapter.state()).toMatchObject({ status: 'failed', active: false });
     expect(adapter.state().error).toContain('source-bound');
   });
-  it('keeps check-only, failed, interrupted and never-run outcomes distinct', () => {
+  it('keeps check-only, failed, completed-with-failures, interrupted and never-run outcomes distinct', () => {
     expect(adapter.state().status).toBe('never-run');
     write(receiptFile, receipt({ mode: 'check', state: 'checked' })); expect(adapter.state().status).toBe('checked');
     write(receiptFile, receipt({ state: 'failed', ok: false, error: 'Tool verification failed' })); expect(adapter.state().status).toBe('failed');
+    write(receiptFile, receipt({ state: 'completed-with-failures', ok: false, error: 'maintenance: provider command failed',
+      maintenance: { stages: [{ owner: '/Users/test/.codex/scripts/developer-maintenance.mjs', state: 'failed' }] } }));
+    expect(adapter.state()).toMatchObject({ status: 'failed', error: 'maintenance: provider command failed',
+      steps: [{ name: 'developer-maintenance.mjs', state: 'failed' }] });
     write(receiptFile, receipt({ state: 'running', ok: false, finishedAt: null })); expect(adapter.state().status).toBe('interrupted');
   });
   it('keeps plugin scope results and unverifiable checks visible in activity', () => {

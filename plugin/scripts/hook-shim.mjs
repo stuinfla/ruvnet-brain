@@ -221,7 +221,16 @@ if (BRAIN_OFF && entry.offBehavior === 'silence') process.exit(0);
 const NUDGES_FULL = String(process.env.RUVNET_STOP_NUDGES || '').toLowerCase() === 'full';
 const QUIET_BY_DEFAULT = new Set(['capacity-aware-parallel-work', 'grounding-turn-gate']);
 if (QUIET_BY_DEFAULT.has(hookId) && !NUDGES_FULL) process.exit(0);
-const QUIET_SPEECH_CHANNELS = hookId === 'unprompted-speech' && !NUDGES_FULL ? 'lesson,alarm' : null;
+// Honor user's explicit settings.json advocacy >= 4 (Proactive / Maximum help) when RUVNET_STOP_NUDGES is unset in env.
+let PROACTIVE_DIAL = false;
+if (hookId === 'unprompted-speech' && process.env.RUVNET_STOP_NUDGES === undefined) {
+  try {
+    const sf = process.env.RUVNET_SETTINGS_FILE || path.join(process.env.HOME || os.homedir(), '.config', 'ruvnet-brain', 'settings.json');
+    const st = JSON.parse(fs.readFileSync(sf, 'utf8'));
+    if (Number(st?.settings?.advocacy) >= 4) PROACTIVE_DIAL = true;
+  } catch { /* default quiet */ }
+}
+const QUIET_SPEECH_CHANNELS = hookId === 'unprompted-speech' && !NUDGES_FULL && !PROACTIVE_DIAL ? 'lesson,alarm' : null;
 
 // Read a bounded payload before dispatch. The ground body owns the quiet-prompt
 // decision because it resolves canonical memory beyond the hook process's cwd.

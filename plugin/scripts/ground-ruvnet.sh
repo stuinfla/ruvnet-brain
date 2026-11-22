@@ -577,6 +577,20 @@ Build contract: take the wheel; use SPARC with DDD + ADR; dispatch a PARALLEL Ru
 EOF
 fi
 
+# ── Gate 3c: Proactive codebase & intent technology recommender ──────────────────────────────────
+# When the user is building, enhancing, optimizing, or diagnosing an application in a directory that
+# actually contains project code (package.json, Cargo.toml, pyproject.toml, requirements.txt, or src/),
+# inspect the codebase + prompt intent and surface the top matching RuvNet technologies (once per session).
+if [ "${RUVNET_CODEBASE_RECOMMENDER:-1}" != "0" ] && { [ "$BUILD" -eq 1 ] || [ "$DRIFT" -eq 1 ] || [ "$HARNESS_QE" -eq 1 ]; }; then
+  if [ -f "package.json" ] || [ -f "Cargo.toml" ] || [ -f "pyproject.toml" ] || [ -f "requirements.txt" ] || [ -d "src" ] || [ -d "app" ]; then
+    _CBR_OUT=$(printf '%s' "$INPUT" | "${RUVNET_NODE_BIN:-node}" "$(dirname "$0")/codebase-recommender.mjs" --hook 2>/dev/null)
+    if [ -n "$_CBR_OUT" ]; then
+      printf '%s\n' "$_CBR_OUT" | out_to 7-1-codebase-recommend
+    fi
+    unset _CBR_OUT
+  fi
+fi
+
 # ── Gate 4 output: MetaHarness + QE are standard tools — offer them, teach them, one-line them ───
 if [ "$HARNESS_QE" -eq 1 ]; then
   out_to 7-2-harness <<'EOF'

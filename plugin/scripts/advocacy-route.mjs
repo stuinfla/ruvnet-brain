@@ -62,6 +62,7 @@ import {
 } from './advocacy-outcomes.mjs';
 import { packageRecommenderEnabled, offerNames } from './package-recommender-flag.mjs';
 import { isDirectInvocation } from './entrypoint.mjs';
+import { buildCodebaseAdvocacyCandidate } from './codebase-recommender.mjs';
 // Matcher + socket client load only when the flag is on at process start: default-off pays nothing.
 const PKG = packageRecommenderEnabled() ? { ...(await import('./package-recommender.mjs')), ...(await import('./package-recommender-client.mjs')) } : null;
 
@@ -371,6 +372,21 @@ export function buildCandidate({ prompt, match, availability }) {
  * catalogue keeps precedence — each of its intents was measured missing on a real host. The package
  * lane (ADR-0093) is consulted ONLY when the catalogue is silent AND the flag is an explicit opt-in.
  */
+function isProactiveCodebaseQuery(prompt) {
+  if (typeof prompt !== 'string' || prompt.trim().length < 24) return false;
+  return /\b(what|which|how|should|can|could|recommend|architecture|enhance|improve|optimize|refactor|stack|build|design|add|integrate|slow|expensive|cost|hallucinat|drift|test|security|memory|vector|search|agent|swarm|route|router)\b/i.test(prompt)
+    && /\b(app|application|project|code|codebase|repo|service|system|pipeline|api|backend|frontend|feature|accuracy|latency|quality|production)\b/i.test(prompt);
+}
+
+function readSettingsAdvocacyLevel(env = process.env) {
+  try {
+    const home = env.RUVNET_HOME_OVERRIDE || HOME;
+    const f = env.RUVNET_USER_SETTINGS_FILE || path.join(home, '.config', 'ruvnet-brain', 'settings.json');
+    const j = JSON.parse(fs.readFileSync(f, 'utf8'));
+    return Number(j?.settings?.advocacy ?? j?.advocacy ?? 0);
+  } catch { return 0; }
+}
+
 function chooseLane(prompt, env, semantic, getOffers, file) {
   const match = classify(prompt);
   if (match) {
@@ -380,17 +396,38 @@ function chooseLane(prompt, env, semantic, getOffers, file) {
       build: () => buildCandidate({ prompt, match, availability: availabilityOf(match.capability) }),
     };
   }
-  if (!packageRecommenderEnabled(env) || !PKG) return null;
-  const allowed = (id) => { try { return shouldStillOffer(id, { severity: 'normal', ...(file ? { file } : {}) }); } catch { return false; } };
-  const warm = PKG.semanticLane({ prompt, semantic, offered: new Set(getOffers().flatMap((o) => o?.candidates || [o?.capability])), allowed, findingPrefix: PACKAGE_PREFIX });
-  if (warm) return warm;
-  const pick = PKG.recommend(prompt);   // cold worker: the lexical lane, fast and high-precision
-  if (!pick) return null;
-  return {
-    capability: PKG.shortName(pick.card), id: `${PACKAGE_PREFIX}${pick.card.id}`, intent: 'package-card',
-    extra: { package: pick.card.id }, stateHash: stateHashOf([`package:${pick.card.id}`]),
-    build: () => PKG.buildPackageCandidate({ prompt, pick, findingPrefix: PACKAGE_PREFIX }),
-  };
+  if (packageRecommenderEnabled(env) && PKG) {
+    const allowed = (id) => { try { return shouldStillOffer(id, { severity: 'normal', ...(file ? { file } : {}) }); } catch { return false; } };
+    const warm = PKG.semanticLane({ prompt, semantic, offered: new Set(getOffers().flatMap((o) => o?.candidates || [o?.capability])), allowed, findingPrefix: PACKAGE_PREFIX });
+    if (warm) return warm;
+    const pick = PKG.recommend(prompt);   // cold worker: the lexical lane, fast and high-precision
+    if (pick) {
+      return {
+        capability: PKG.shortName(pick.card), id: `${PACKAGE_PREFIX}${pick.card.id}`, intent: 'package-card',
+        extra: { package: pick.card.id }, stateHash: stateHashOf([`package:${pick.card.id}`]),
+        build: () => PKG.buildPackageCandidate({ prompt, pick, findingPrefix: PACKAGE_PREFIX }),
+      };
+    }
+  }
+  // Proactive Codebase-Aware Lane: fires when advocacy dial >= 4 (Proactive / Maximum help) or
+  // RUVNET_CODEBASE_RECOMMENDER=1, inspects the actual project dependencies & source files alongside
+  // the user's prompt, and recommends the highest-fit RuvNet enhancement not already integrated.
+  const codebaseOn = env.RUVNET_CODEBASE_RECOMMENDER === '1'
+    || (env.RUVNET_CODEBASE_RECOMMENDER !== '0' && !env.RUVNET_ADVOCACY_ROUTE_ROOTS && readSettingsAdvocacyLevel(env) >= 4);
+  if (codebaseOn && isProactiveCodebaseQuery(prompt)) {
+    const cbCandidate = buildCodebaseAdvocacyCandidate({ prompt, cwd: env.RUVNET_CODEBASE_DIR || process.cwd() });
+    if (cbCandidate) {
+      return {
+        capability: cbCandidate.capability,
+        id: cbCandidate.findingId,
+        intent: cbCandidate.intent,
+        extra: { evidenceFiles: cbCandidate.evidenceFiles || [] },
+        stateHash: cbCandidate.observationHash,
+        build: () => cbCandidate,
+      };
+    }
+  }
+  return null;
 }
 
 /**

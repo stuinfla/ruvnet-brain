@@ -2861,8 +2861,62 @@ export function cascadeRerankPool(candidates, { limit, s1 }) {
 // pool cap's effect on ANSWERS affordable: score the full 605-pair pool once, then replay every
 // candidate policy against those exact scores — exactly, not approximately. Works on shallow
 // copies because the boosts mutate ceScore, and a replay must not poison the next replay's input.
-export function selectResults({ query, ranked, k = 6, pruneIrrelevant = true }) {
+const HUB_PRIOR_CACHE = new Map();
+function getStoreHubPrior(dir, repo) {
+  if (!dir || !repo) return null;
+  const key = `${dir}::${repo}`;
+  if (HUB_PRIOR_CACHE.has(key)) return HUB_PRIOR_CACHE.get(key);
+  let map = null;
+  try {
+    const f = path.join(dir, `links-${repo}.json`);
+    if (fs.existsSync(f)) {
+      const lg = JSON.parse(fs.readFileSync(f, 'utf8'));
+      if (lg && lg.prCore3 && typeof lg.prCore3 === 'object') {
+        map = new Map(Object.entries(lg.prCore3));
+      }
+    }
+  } catch { map = null; }
+  HUB_PRIOR_CACHE.set(key, map);
+  return map;
+}
+
+const isTopLevelGuidePath = (p) =>
+  /^(README|CLAUDE|USERGUIDE|STATUS|QUICKSTART|GETTING[-_]STARTED|GUIDE)\.md$|^docs\/[^/]+\.md$/i.test(String(p || ''));
+
+const STORE_NOISE_SUBTREES = {
+  ruflo: /^ruflo\//,
+};
+
+export function selectResults({ query, ranked, k = 6, pruneIrrelevant = true, dir = null }) {
   ranked = ranked.map((r) => ({ ...r }));
+  // Recall Engine v2 structural priors (proven on 106-question Ruflo benchmark & 26 Tier-1 stores):
+  //   1. pGuide (+1.25 logit boost) for top-level newcomer guides (README.md, CLAUDE.md, docs/*.md)
+  //      when the query does not ask for a specific deep file path.
+  //   2. pSubtree (-2.0 logit demotion) for store-configured sample/chat subtrees (e.g. ruflo/ RuVocal
+  //      sample app inside the ruflo repo) unless the query explicitly asks about ruvocal/sub-app.
+  //   3. pHub (+0.75 * prCore3) link-graph PageRank centrality boost when links-<repo>.json is present.
+  const asksSpecificSubapp = /\bruvocal\b/i.test(String(query || ''));
+  for (const r of ranked) {
+    if (r.ceScore == null || !r.path) continue;
+    const p = String(r.path);
+    if (isTopLevelGuidePath(p)) {
+      r.ceScore += 1.25;
+      r.guideBoosted = true;
+    }
+    const noiseRe = r.repo && STORE_NOISE_SUBTREES[r.repo];
+    if (noiseRe && noiseRe.test(p) && !asksSpecificSubapp) {
+      r.ceScore -= 2.0;
+      r.noiseSubtreeDemoted = true;
+    }
+    if (dir && r.repo) {
+      const hub = getStoreHubPrior(dir, r.repo);
+      const pr = hub ? (hub.get(p) || 0) : 0;
+      if (pr > 0) {
+        r.ceScore += 0.75 * pr;
+        r.hubBoosted = +(0.75 * pr).toFixed(3);
+      }
+    }
+  }
   const queriedNames = scopedNamesIn(query);
   // Repo-name affinity: when the question explicitly NAMES a repo ("Does QuDAG…", "what can SAFLA do",
   // "can ruflo orchestrate…"), that repo should win ties/near-ties over a sibling that merely mentions it.
@@ -3894,7 +3948,7 @@ async function searchAllPrimary({
   // THE LEARNED JUDGE (kb/judge-rank.mjs, ADR-099 arm C): off unless RUVNET_BRAIN_JUDGE=1 and a
   // trained kb/judge-weights.json is present; then it re-scores the pool with its threshold at 0.
   const judged = applyJudge(loadJudge(dir), query, ranked);
-  const { results, adrCollision, evidence, implementation } = selectResults({ query, ranked: judged, k });
+  const { results, adrCollision, evidence, implementation } = selectResults({ query, ranked: judged, k, dir });
 
   // `pooled` stays the number of pairs the cross-encoder read IN FULL — that is what the count
   // has always meant to a reader. `pooledAll`/`cappedOut` report what the cap withheld, because a
