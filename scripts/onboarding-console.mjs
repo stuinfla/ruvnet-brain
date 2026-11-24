@@ -45,6 +45,9 @@ import { recordObservation as recordCapabilityStates } from './latency-to-surfac
 import { loadCatalog as engineCatalog, catalogSource as engineCatalogSource, loadProfile as engineProfile, applyProfile, PROFILE_PATH } from './model-router-engine.mjs';
 import { effectivePrices, loadLabelledRows, MIN_LABELS, OUTCOMES, resolveRealRouterPackage } from './metaharness-router.mjs';
 import { recommendForProject } from '../plugin/scripts/codebase-recommender.mjs';
+import { readLifecycleState, recordLifecycleCheckpoint } from '../plugin/scripts/project-lifecycle.mjs';
+import { auditMarkdownDocs, syncMarkdownDocs } from '../plugin/scripts/doc-sync-engine.mjs';
+import { scanHygiene, cleanHygiene } from '../plugin/scripts/codebase-hygiene.mjs';
 import { utilization } from './router-utilization.mjs';
 import { loadCatalog, detectProvider, frontierFor } from './model-catalog.mjs';
 import { providerAvailability } from './provider-availability.mjs';
@@ -2493,6 +2496,16 @@ export function gatherProactiveRecommendations(cwd = process.cwd(), { prompt = '
   }
 }
 
+export function gatherV5Workspace(cwd = process.cwd()) {
+  let lifecycle = null;
+  let docs = null;
+  let hygiene = null;
+  try { lifecycle = readLifecycleState(cwd, { limit: 6 }); } catch { lifecycle = { ok: false }; }
+  try { docs = auditMarkdownDocs(cwd, { maxFiles: 80 }); } catch { docs = { ok: false }; }
+  try { hygiene = scanHygiene(cwd, { maxEntries: 1200 }); } catch { hygiene = { ok: false }; }
+  return { lifecycle, docs, hygiene };
+}
+
 function gatherState(cwd, { fleet = true } = {}) {
   const wiring = wiringSurvey();
   const memory = gatherMemory(cwd, { fleet });
@@ -2554,7 +2567,7 @@ function gatherState(cwd, { fleet = true } = {}) {
     generatedAt: new Date().toISOString(),
     preStateHash,
     host: { user: os.userInfo().username, platform: process.platform, node: process.version, npmPrefix: NPM_PREFIX.replace(SYSTEM_HOME, '~'), brainVersion: brainVersionOnDisk() },
-    sections: { wiring, memory, savings, config, userSettings, brainPower, gates, recommendations, inventory: gatherInventory(), proactive: gatherProactiveRecommendations(cwd) },
+    sections: { wiring, memory, savings, config, userSettings, brainPower, gates, recommendations, inventory: gatherInventory(), proactive: gatherProactiveRecommendations(cwd), v5: gatherV5Workspace(cwd) },
   };
   // Cache the last good state so repeat page-loads paint instantly, same as the stack audit does.
   // TOKEN is per-server-run and must never touch disk — ?fast=1 splices the live one back in.
@@ -3468,6 +3481,19 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
         const prompt = q.get('prompt') || '';
         return sendJSON(res, 200, gatherProactiveRecommendations(targetDir, { prompt }));
       }
+      if (req.method === 'GET' && url === '/api/lifecycle') {
+        const q = new URL(req.url, 'http://127.0.0.1').searchParams;
+        const targetDir = q.get('dir') && fs.existsSync(q.get('dir')) ? q.get('dir') : cwd;
+        return sendJSON(res, 200, readLifecycleState(targetDir, { limit: 12 }));
+      }
+      if (req.method === 'GET' && url === '/api/hygiene/scan') {
+        const q = new URL(req.url, 'http://127.0.0.1').searchParams;
+        const targetDir = q.get('dir') && fs.existsSync(q.get('dir')) ? q.get('dir') : cwd;
+        return sendJSON(res, 200, {
+          hygiene: scanHygiene(targetDir),
+          docs: auditMarkdownDocs(targetDir),
+        });
+      }
       if (req.method === 'GET' && url === '/scope') { req.url = '/scope.html'; return serveStatic(req, res); }
       if (req.method === 'POST') {
         const origin = req.headers.origin;
@@ -3515,6 +3541,36 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
         }
         if (url === '/api/undo') return sendJSON(res, 200, receiptedUndo(body.undoToken));
         if (url === '/api/set-lesson') return sendJSON(res, 200, receiptedSetLesson(body));
+        if (url === '/api/lifecycle/checkpoint') {
+          const targetDir = body.dir && fs.existsSync(body.dir) ? body.dir : cwd;
+          const cp = await recordLifecycleCheckpoint({
+            cwd: targetDir,
+            host: body.host || 'console',
+            event: body.event || 'manual-checkpoint',
+            summary: body.summary || '',
+            decisions: Array.isArray(body.decisions) ? body.decisions : [],
+            nextSteps: Array.isArray(body.nextSteps) ? body.nextSteps : [],
+          });
+          return sendJSON(res, 200, cp);
+        }
+        if (url === '/api/hygiene/docs') {
+          const targetDir = body.dir && fs.existsSync(body.dir) ? body.dir : cwd;
+          const resDocs = syncMarkdownDocs({
+            cwd: targetDir,
+            files: Array.isArray(body.files) ? body.files : null,
+            apply: body.apply === true,
+          });
+          return sendJSON(res, 200, resDocs);
+        }
+        if (url === '/api/hygiene/clean') {
+          const targetDir = body.dir && fs.existsSync(body.dir) ? body.dir : cwd;
+          const resClean = cleanHygiene({
+            cwd: targetDir,
+            paths: Array.isArray(body.paths) ? body.paths : null,
+            apply: body.apply === true,
+          });
+          return sendJSON(res, 200, resClean);
+        }
         return sendJSON(res, 404, { error: 'unknown endpoint' });
       }
       if (req.method === 'GET') return serveStatic(req, res);

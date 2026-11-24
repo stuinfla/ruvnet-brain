@@ -145,7 +145,7 @@ describe('selectCandidates', () => {
 describe('judgeReleaseWindow: every blocker alone closes it, and says which', () => {
   const TODAY = '2026-10-29';
   const facts = (o = {}) => ({ openReleaseBlockers: [], activeRuns: [], remoteReleaseBranches: [], openReleasePrs: [], holdFile: false,
-    mainVersion: '5.0.1', mainSha: 'a'.repeat(40), npmLatest: '5.0.1', releasesLatestTag: 'v5.0.1', mainVersionInstallVerified: true,
+    mainVersion: '9.0.1', mainSha: 'a'.repeat(40), npmLatest: '9.0.1', releasesLatestTag: 'v9.0.1', mainVersionInstallVerified: true,
     nextCorpusDispatchAt: NOW + 20 * HOUR, ...o });
   const win = (o, j = {}) => P.judgeReleaseWindow(facts(o), { now: NOW, today: TODAY, lastShippedDay: '2026-10-28', ...j });
   it('open when every fact is clean', () => expect(win({})).toEqual({ open: true, reasons: [] }));
@@ -154,12 +154,12 @@ describe('judgeReleaseWindow: every blocker alone closes it, and says which', ()
     ['protected-release running', { activeRuns: [{ workflow: 'protected-release', status: 'in_progress', id: 1 }] }, 'protected-release'],
     ['preflight queued (.yml spelling)', { activeRuns: [{ workflow: 'release-candidate-preflight.yml', status: 'queued', id: 1 }] }, 'release-candidate-preflight'],
     ['corpus dispatch running', { activeRuns: [{ workflow: 'corpus-nightly-dispatch', status: 'in_progress', id: 1 }] }, 'corpus-nightly-dispatch'],
-    ['release branch ahead of main', { remoteReleaseBranches: [{ name: 'release/5.0.2', version: '5.0.2' }] }, 'release/5.0.2'],
+    ['release branch ahead of main', { remoteReleaseBranches: [{ name: 'release/9.0.2', version: '9.0.2' }] }, 'release/9.0.2'],
     ['release branch with junk version', { remoteReleaseBranches: [{ name: 'release/x', version: 'x' }] }, 'release/x'],
     ['open release PR', { openReleasePrs: [88] }, 'open-release-pr'],
     ['release-hold file', { holdFile: true }, 'release-hold'],
-    ['npm behind main', { npmLatest: '5.0.0' }, 'version-mismatch'], ['npm unknown', { npmLatest: null }, 'version-mismatch'],
-    ['GitHub release behind', { releasesLatestTag: 'v5.0.0' }, 'version-mismatch'], ['GitHub release unknown', { releasesLatestTag: null }, 'version-mismatch'],
+    ['npm behind main', { npmLatest: '9.0.0' }, 'version-mismatch'], ['npm unknown', { npmLatest: null }, 'version-mismatch'],
+    ['GitHub release behind', { releasesLatestTag: 'v9.0.0' }, 'version-mismatch'], ['GitHub release unknown', { releasesLatestTag: null }, 'version-mismatch'],
     ['main not install-verified', { mainVersionInstallVerified: false }, 'main-not-install-verified'],
     ['corpus dispatch inside the 7h window', { nextCorpusDispatchAt: NOW + 6 * HOUR }, 'corpus-dispatch-too-soon'],
     ['corpus dispatch exactly at the window end', { nextCorpusDispatchAt: NOW + 7 * HOUR }, 'corpus-dispatch-too-soon'],
@@ -172,7 +172,7 @@ describe('judgeReleaseWindow: every blocker alone closes it, and says which', ()
   });
   it('unrelated workflows and completed runs do not block; branches at or below main do not block', () => {
     expect(win({ activeRuns: [{ workflow: 'ci', status: 'in_progress', id: 1 }, { workflow: 'protected-release', status: 'completed', id: 2 }],
-      remoteReleaseBranches: [{ name: 'release/5.0.1', version: '5.0.1' }, { name: 'release/4.9.9', version: '4.9.9' }] }).open).toBe(true);
+      remoteReleaseBranches: [{ name: 'release/9.0.1', version: '9.0.1' }, { name: 'release/8.9.9', version: '8.9.9' }] }).open).toBe(true);
   });
   it('daily cap: shipped today closes it with exactly daily-cap; yesterday does not', () => {
     expect(win({}, { lastShippedDay: TODAY }).reasons).toEqual(['daily-cap']);

@@ -1,0 +1,191 @@
+/* v5-workspace.js — RuvNet Brain v5.0 / ruPro On-Ramp Console panels
+ * Renders:
+ *   1. Proactive Codebase & ruPro Technology Translator (/api/proactive)
+ *   2. Cross-Host AgentDB Project Lifecycle (/api/lifecycle + /api/lifecycle/checkpoint)
+ *   3. Markdown Auto-Currency & Safe Dead-Code Hygiene (/api/hygiene/scan + /api/hygiene/docs + /api/hygiene/clean)
+ * Self-contained, non-invasive module so existing app.js and ux-qe contracts stay 100% green.
+ */
+(function () {
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  async function apiGet(url) {
+    const r = await fetch(url, { cache: 'no-store' });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  }
+
+  async function apiPost(url, body) {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: window.__CONSOLE_TOKEN__, ...body }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+    return j;
+  }
+
+  function renderProactive(data) {
+    const chip = document.getElementById('v5-proactive-chip');
+    const out = document.getElementById('v5-proactive-body');
+    if (!out) return;
+    if (!data || !data.ok) {
+      if (chip) chip.textContent = 'idle';
+      out.innerHTML = `<p class="fineprint">No project source files detected in this directory yet.</p>`;
+      return;
+    }
+    const recs = Array.isArray(data.recommendations) ? data.recommendations : [];
+    if (chip) chip.textContent = `${recs.length} match${recs.length === 1 ? '' : 'es'} · ${data.scannedFiles || 0} files`;
+    const wired = (data.alreadyIntegrated || []).length
+      ? `<p class="fineprint"><b>Already wired in ${esc(data.project)}:</b> ${data.alreadyIntegrated.map(esc).join(', ')}</p>`
+      : '';
+    if (!recs.length) {
+      out.innerHTML = `${wired}<p>This project already integrates the top RuvNet capabilities matched to its codebase.</p>`;
+      return;
+    }
+    const rows = recs.map((r) => `
+      <div class="v5-item" style="border:1px solid var(--border,#e5e7eb);border-radius:10px;padding:12px 14px;margin:10px 0;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;">
+          <strong>${esc(r.title)}</strong>
+          <span class="chip tone-ok">score ${esc(r.score)}</span>
+        </div>
+        <p style="margin:6px 0 4px;">${esc(r.whyItFits)}</p>
+        <p class="fineprint" style="margin:4px 0;"><b>Observed in your code:</b> ${(r.evidence || []).map(esc).join(' · ')}</p>
+        <p class="fineprint" style="margin:4px 0;"><b>First step:</b> <code>${esc(r.nextAction)}</code></p>
+      </div>
+    `).join('');
+    out.innerHTML = `${wired}${rows}`;
+  }
+
+  function renderLifecycleAndHygiene(lifecycle, scan) {
+    const chip = document.getElementById('v5-hygiene-chip');
+    const lcEl = document.getElementById('v5-lifecycle-summary');
+    const docEl = document.getElementById('v5-docs-summary');
+    const clEl = document.getElementById('v5-clean-summary');
+
+    const safeCount = scan?.hygiene?.summary?.safeAutoCount ?? 0;
+    const missingStamps = scan?.docs?.missingStamp ?? 0;
+    const brokenDocs = scan?.docs?.brokenLinkDocs ?? 0;
+    if (chip) {
+      chip.textContent = safeCount === 0 && missingStamps === 0 && brokenDocs === 0
+        ? 'clean'
+        : `${missingStamps} doc stamp${missingStamps === 1 ? '' : 's'} · ${safeCount} cleanable`;
+    }
+
+    if (lcEl) {
+      if (!lifecycle || !lifecycle.ok) {
+        lcEl.innerHTML = '<p class="fineprint">Lifecycle store unavailable.</p>';
+      } else {
+        const hosts = (lifecycle.hostsSeen || []).length ? lifecycle.hostsSeen.join(', ') : 'none yet';
+        const latest = lifecycle.latest
+          ? `Last checkpoint by <b>${esc(lifecycle.latest.host)}</b> (${esc(lifecycle.latest.ts)}): ${esc(lifecycle.latest.summary || 'checkpoint recorded')}`
+          : 'No cross-host lifecycle checkpoint recorded in this repo yet.';
+        lcEl.innerHTML = `
+          <p><b>Cross-Host AgentDB Lifecycle (${esc(lifecycle.project)}):</b>
+            <code>${esc(lifecycle.dbPath)}</code> · ${lifecycle.dbPresent ? 'AgentDB present' : 'initializes on first checkpoint'} ·
+            <b>${esc(lifecycle.checkpointCount)}</b> checkpoint(s) across hosts: <b>${esc(hosts)}</b>.</p>
+          <p class="fineprint">${latest}</p>
+        `;
+      }
+    }
+
+    if (docEl && scan?.docs) {
+      const d = scan.docs;
+      docEl.innerHTML = `
+        <p><b>Markdown Currency & Timestamps:</b> Scanned <b>${esc(d.scanned)}</b> docs —
+          <b>${esc(d.stamped)}</b> stamped, <b>${esc(d.missingStamp)}</b> missing timestamp,
+          <b>${esc(d.staleCodeDocs)}</b> behind linked code, <b>${esc(d.brokenLinkDocs)}</b> with broken local links.</p>
+      `;
+    }
+
+    if (clEl && scan?.hygiene) {
+      const h = scan.hygiene;
+      const kb = ((h.summary?.reclaimableBytes || 0) / 1024).toFixed(1);
+      clEl.innerHTML = `
+        <p><b>Dead-Code & Backup Hygiene:</b> <b>${esc(h.summary?.safeAutoCount || 0)}</b> safe-to-clean item(s)
+          (${esc(kb)} KB), <b>${esc(h.summary?.reviewCount || 0)}</b> legacy file(s) flagged for review.</p>
+      `;
+    }
+  }
+
+  async function refreshV5() {
+    const promptInput = document.getElementById('v5-intent-input');
+    const prompt = promptInput ? promptInput.value.trim() : '';
+    try {
+      const [pro, lc, hy] = await Promise.all([
+        apiGet(`/api/proactive${prompt ? `?prompt=${encodeURIComponent(prompt)}` : ''}`),
+        apiGet('/api/lifecycle'),
+        apiGet('/api/hygiene/scan'),
+      ]);
+      renderProactive(pro);
+      renderLifecycleAndHygiene(lc, hy);
+    } catch { /* non-fatal */ }
+  }
+
+  function wireControls() {
+    const status = document.getElementById('v5-action-status');
+    const setStatus = (msg) => { if (status) status.textContent = msg; };
+
+    const askBtn = document.getElementById('v5-intent-btn');
+    if (askBtn) {
+      askBtn.addEventListener('click', async () => {
+        setStatus('Analyzing codebase + intent…');
+        await refreshV5();
+        setStatus('Updated proactive recommendations.');
+      });
+    }
+
+    const cpBtn = document.getElementById('v5-checkpoint-btn');
+    if (cpBtn) {
+      cpBtn.addEventListener('click', async () => {
+        setStatus('Recording cross-host AgentDB lifecycle checkpoint…');
+        try {
+          const r = await apiPost('/api/lifecycle/checkpoint', {
+            host: 'console',
+            event: 'console-checkpoint',
+            summary: 'Manual lifecycle snapshot saved from RuvNet Brain v5.0 Console',
+          });
+          setStatus(`Saved checkpoint (${r.record?.digest || 'ok'}) to ${r.dbFile ? '.swarm/memory.db' : 'lifecycle log'}.`);
+          await refreshV5();
+        } catch (e) { setStatus(`Checkpoint failed: ${e.message}`); }
+      });
+    }
+
+    const docBtn = document.getElementById('v5-docs-btn');
+    if (docBtn) {
+      docBtn.addEventListener('click', async () => {
+        setStatus('Stamping Markdown Updated/Created headers…');
+        try {
+          const r = await apiPost('/api/hygiene/docs', { apply: true });
+          setStatus(`Stamped ${r.stampedNow || 0} Markdown file(s) with Eastern timestamp + Version ${r.projectVersion || ''}.`);
+          await refreshV5();
+        } catch (e) { setStatus(`Doc sync failed: ${e.message}`); }
+      });
+    }
+
+    const cleanBtn = document.getElementById('v5-clean-btn');
+    if (cleanBtn) {
+      cleanBtn.addEventListener('click', async () => {
+        setStatus('Cleaning safe backup/temp clutter via deletion ledger…');
+        try {
+          const r = await apiPost('/api/hygiene/clean', { apply: true });
+          setStatus(`Cleaned ${r.cleanedCount || 0} safe item(s) via ${r.method || 'ledger'}.`);
+          await refreshV5();
+        } catch (e) { setStatus(`Cleanup failed: ${e.message}`); }
+      });
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => { wireControls(); refreshV5(); });
+  } else {
+    wireControls();
+    refreshV5();
+  }
+})();

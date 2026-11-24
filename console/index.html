@@ -444,41 +444,51 @@
            between two unrelated cards — it explains the software; the one real control it names
            (the advocacy dial) lives in the Settings card right above it in this same section, and
            the pointer paragraph at the end of this card's body links straight to it. -->
-      <details class="card sub-card rail-mirror" id="card-proactive">
+      <details class="card sub-card rail-mirror" id="card-proactive" open>
         <summary>
           <span class="card-ic ic-mirror" aria-hidden="true">
-            <!-- a rising flight of steps: the ladder itself, five treads, one of them marked -->
-            <svg viewBox="0 0 24 24"><path d="M2.5 20.5h4v-4h4v-4h4v-4h4v-4"/><circle cx="10.5" cy="12.5" r="1.6"/></svg>
+            <svg viewBox="0 0 24 24"><path d="M2.5 20.5h4v-4h4v-4h4v-4h4v-4"/><circle cx="18.5" cy="4.5" r="1.8"/></svg>
           </span>
           <span class="card-head">
-            <span class="stage st-mirror">Mirror</span>
-            <h2>What “proactive” means here</h2>
-            <!-- "Five levels" over a six-rung L0-L5 list, and a tooltip saying "the top TWO are not
-                 built" directly above fineprint saying "L3, L4 and L5 are not built". ADR-0028 is the
-                 authority and says six rungs, L0-L5, with three unbuilt; this matches it. -->
-            <span class="q">Six levels, L0 to L5, and an honest marker of which one this build has actually reached.</span>
+            <span class="stage st-mirror">Proactive · v5.0 / ruPro On-Ramp</span>
+            <h2>Proactive codebase translator</h2>
+            <span class="q">Reads your actual code and what you are building, then translates intent into the exact RuvNet &amp; ruPro tools that fit.</span>
           </span>
-          <span class="chips"><span class="chip tone-nt" title="Where this build sits on the ladder below — L3, L4 and L5 are not built.">at level 2 of 5</span></span>
+          <span class="chips"><span class="chip tone-ok" id="v5-proactive-chip">scanning…</span></span>
           <span class="chev" aria-hidden="true">›</span>
         </summary>
         <div class="body">
-          <p>“Proactive” is the claim this whole product rests on, so here is exactly what it commits us
-          to — and where it currently stops.</p>
-          <ol class="ladder">
-            <li class="lv done"><b>L0 · Reactive</b><span>Answers when you ask. A question gets a grounded, cited answer.</span></li>
-            <li class="lv done"><b>L1 · Observant</b><span>Notices and displays the state of your machine — the capabilities card above, in this section.</span></li>
-            <li class="lv here"><b>L2 · Advocating</b><span>Finds a dormant capability, proposes the fix, applies it once you consent, and can undo it. Every suggestion resolves to one working executor and one real undo. <b>This build is here.</b></span></li>
-            <li class="lv todo"><b>L3 · Contextual</b><span>Speaks up inside your working session, at the moment it matters, without you opening this page.</span></li>
-            <li class="lv todo"><b>L4 · Anticipatory</b><span>Works out what you are trying to do and names the better path before you commit to the worse one.</span></li>
-            <li class="lv todo"><b>L5 · Compounding</b><span>Checks whether its own advice was right, and promotes what held up so every project inherits it.</span></li>
-          </ol>
-          <p class="fineprint">L3, L4 and L5 are <b>not built</b>, and this page will not imply otherwise —
-          each level is a falsifiable test, not a mood, and the top three do not pass yet. The capabilities
-          card in this section is L1 doing its job; anything with an undo behind it is L2. Full definitions
-          and the tests each level has to pass: <code>docs/adr/0028</code>.</p>
-          <p class="fineprint">The one thing on this list you can actually set is the volume on advocacy
-          itself: the <a href="#field-advocacy"><b>“How much it jumps in”</b></a> dial, in the Settings
-          card in this same section. Everything above is a description of the software, not a switch.</p>
+          <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+            <input id="v5-intent-input" type="text" placeholder="Describe what you want to build or optimize (e.g., cut model cost, harden prompts, add vector search)…" style="flex:1;min-width:240px;padding:8px 12px;border:1px solid var(--border,#d1d5db);border-radius:8px;font:inherit;">
+            <button type="button" class="btn" id="v5-intent-btn">Analyze code &amp; recommend</button>
+          </div>
+          <div id="v5-proactive-body"><p class="fineprint">Inspecting project dependencies and source files…</p></div>
+        </div>
+      </details>
+
+      <details class="card sub-card rail-mirror" id="card-v5-lifecycle-hygiene" open>
+        <summary>
+          <span class="card-ic ic-mirror" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/><circle cx="19" cy="18" r="2"/></svg>
+          </span>
+          <span class="card-head">
+            <span class="stage st-mirror">Lifecycle &amp; Hygiene · v5.0</span>
+            <h2>Cross-host AgentDB, Markdown currency &amp; dead-code cleanup</h2>
+            <span class="q">Keep one continuous project memory across Antigravity, Claude Code, Codex &amp; Grok, keep Markdown stamped to code reality, and sweep stale clutter safely.</span>
+          </span>
+          <span class="chips"><span class="chip tone-nt" id="v5-hygiene-chip">checking…</span></span>
+          <span class="chev" aria-hidden="true">›</span>
+        </summary>
+        <div class="body">
+          <div id="v5-lifecycle-summary"><p class="fineprint">Reading AgentDB lifecycle…</p></div>
+          <div id="v5-docs-summary"></div>
+          <div id="v5-clean-summary"></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+            <button type="button" class="btn" id="v5-checkpoint-btn">Save cross-host checkpoint</button>
+            <button type="button" class="btn" id="v5-docs-btn">Stamp Markdown docs</button>
+            <button type="button" class="btn" id="v5-clean-btn">Clean safe clutter</button>
+          </div>
+          <p class="fineprint" id="v5-action-status" style="margin-top:8px;"></p>
         </div>
       </details>
 
@@ -820,5 +830,6 @@
 <script defer src="app.js"></script>
 <script defer src="activity.js"></script>
 <script defer src="receipts.js"></script>
+<script defer src="v5-workspace.js"></script>
 </body>
 </html>
