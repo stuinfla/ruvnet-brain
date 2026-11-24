@@ -88,6 +88,17 @@ export async function runLifecycleBoundary(event, payload, { env = process.env, 
   }
   if (!['Stop', 'PreCompact', 'SessionEnd'].includes(event)) return { skipped: `no lifecycle memory at ${event}` };
   const turn = captureTurnOutcome({ projectDir, event, payload, host, env, deadlineAt });
+  // Cross-host AgentDB project lifecycle snapshot (RuvNet Brain v5.0 / ruPro continuity across Claude Code, Codex, Antigravity, Grok)
+  try {
+    const { recordLifecycleCheckpoint } = await import('./project-lifecycle.mjs');
+    await recordLifecycleCheckpoint({
+      cwd: projectDir,
+      host,
+      event: String(event || 'checkpoint').toLowerCase(),
+      summary: String(payload?.summary || payload?.last_assistant_message || '').slice(0, 400),
+      skipRuflo: true, // turn/checkpoint above already invokes ruflo memory store; keep hook inside budget
+    });
+  } catch { /* advisory, never block lifecycle hook */ }
   if (event === 'Stop') return { turn };
   try { // the observation rows are distilled by rUv's `memory distill run`, detached and bounded (review M3)
     const { learningContext } = await import('./runtime-preferences.mjs');

@@ -362,22 +362,22 @@ describe('judgeGovernedVersionOnly: the mechanical ADR-0103 review row', () => {
   const ver = (a, b) => [`  "version": "${a}",`, `  "version": "${b}",`];
   const g = (files) => P.judgeGovernedVersionOnly(files);
   it('allows a single version bump in package.json and the two-line bump in package-lock.json', () => {
-    expect(g([file('package.json', { removed: ['  "version": "5.0.1",'], added: ['  "version": "5.0.2",'] }),
-      file('package-lock.json', { removed: [ver('5.0.1', 'x')[0], '    "version": "5.0.1",'], added: ['  "version": "5.0.2",', '    "version": "5.0.2",'] })]).mechanical).toBe(true);
+    expect(g([file('package.json', { removed: ['  "version": "9.0.1",'], added: ['  "version": "9.0.2",'] }),
+      file('package-lock.json', { removed: [ver('9.0.1', 'x')[0], '    "version": "9.0.1",'], added: ['  "version": "9.0.2",', '    "version": "9.0.2",'] })]).mechanical).toBe(true);
   });
   it('allows append-only lines in the qualification contract', () => expect(g([file('scripts/release-qualification-contract.mjs', { added: ["  'tests/unit/a.test.mjs',"] })]).mechanical).toBe(true));
   it('no governed changes is trivially mechanical', () => expect(g([]).mechanical).toBe(true));
   const bad = [
     ['a dependency line in package.json', file('package.json', { removed: [], added: ['    "left-pad": "^1.0.0",'] })],
     ['a script edit in package.json', file('package.json', { removed: ['"test": "vitest run"'], added: ['"test": "true"'] })],
-    ['a version line plus a dependency line', file('package.json', { removed: ['  "version": "5.0.1",'], added: ['  "version": "5.0.2",', '"x": "1"'] })],
+    ['a version line plus a dependency line', file('package.json', { removed: ['  "version": "9.0.1",'], added: ['  "version": "9.0.2",', '"x": "1"'] })],
     ['two different version bumps in one file', file('package-lock.json', { removed: ['  "version": "1.0.0",', '    "version": "2.0.0",'], added: ['  "version": "1.0.1",', '    "version": "2.0.1",'] })],
     ['one old version but two different new ones', file('package-lock.json', { removed: Array(2).fill('  "version": "1.0.0",'), added: ['  "version": "1.0.1",', '  "version": "2.0.0",'] })],
     ['a deleted contract file even with no removed lines recorded', file('scripts/release-qualification-contract.mjs', { status: 'D' })],
     ['three version lines in the lockfile', file('package-lock.json', { removed: Array(3).fill('  "version": "1.0.0",'), added: Array(3).fill('  "version": "1.0.1",') })],
     ['a removed line in the contract', file('scripts/release-qualification-contract.mjs', { removed: ["  'old',"], added: ["  'new',"] })],
     ['any other governed file', file('scripts/release.mjs', { added: ['x'] })],
-    ['a deleted package.json', file('package.json', { status: 'D', removed: ['  "version": "5.0.1",'] })],
+    ['a deleted package.json', file('package.json', { status: 'D', removed: ['  "version": "9.0.1",'] })],
     ['a symlinked contract', file('scripts/release-qualification-contract.mjs', { symlink: true, added: ['x'] })],
   ];
   for (const [name, f] of bad) it(`refuses ${name}`, () => { const r = g([f]); expect(r.mechanical).toBe(false); expect(r.reason).toContain(f.path); });

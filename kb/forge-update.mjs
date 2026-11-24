@@ -790,6 +790,17 @@ export function carryLiveNodeModules({ candidateDir, liveDir }) {
   if (!fs.existsSync(liveModules) || fs.existsSync(path.join(candidateDir, 'node_modules'))) return false;
   fs.cpSync(assertNoFollowPath(liveDir, liveModules), path.join(candidateDir, 'node_modules'),
     { recursive: true, verbatimSymlinks: true, mode: fs.constants.COPYFILE_FICLONE });
+  // Preserve Recall Engine v2 link-graph PageRank priors (`links-*.json`) across updates so
+  // `ruvnet-brain --update` never strips them when the candidate bundle does not ship them yet.
+  try {
+    for (const name of fs.readdirSync(liveDir)) {
+      if (!/^links-[a-z0-9._-]+\.json$/i.test(name)) continue;
+      const dst = path.join(candidateDir, name);
+      if (fs.existsSync(dst)) continue;
+      const src = assertNoFollowPath(liveDir, path.join(liveDir, name));
+      if (fs.lstatSync(src).isFile()) fs.copyFileSync(src, dst);
+    }
+  } catch { /* non-fatal */ }
   return true;
 }
 

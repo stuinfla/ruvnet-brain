@@ -227,6 +227,12 @@ export async function runSessionStart({
       : 'The SessionStart restore boundary failed unexpectedly. Do not claim project state was restored; verify the canonical store before relying on remembered state.');
   } finally { clearTimeout(restoreTimer); }
   const restoreProof = { name: 'restore', ms: Date.now() - restoreStart, failed: restoreFailed };
+  // Cross-host AgentDB project lifecycle handoff (RuvNet Brain v5.0 / ruPro continuity across Claude Code, Codex, Antigravity, Grok)
+  try {
+    const { readLifecycleState, formatHandoffBrief } = await import('./project-lifecycle.mjs');
+    const brief = formatHandoffBrief(readLifecycleState(cwd, { limit: 4 }));
+    if (brief) emit(brief);
+  } catch { /* fail open */ }
   // Turn health remains visible even when the separate progression restore fails.
   const turnStatus = turnRecordingStatus({ projectDir: cwd, env, home, noticeOnFirstUse: true });
   if (turnStatus.notice) emit(`[RuvNet Brain — TURN CAPTURE] ${turnStatus.notice}`);

@@ -517,6 +517,54 @@ const RULES = [
     },
   },
   {
+    id: 'rsi-loop',
+    title: 'Recursive Self-Improvement Stack (SONA + EWC++ + MetaHarness Flywheel + AgenticOW)',
+    packages: ['@claude-flow/neural', '@metaharness/router', 'agenticow', 'agentdb'],
+    card: 'ruflo',
+    alreadyKey: 'rsi',
+    intentRegex: /\b(rsi|recursive\s+self[- ]?improv\w*|self[- ]?improv\w*|sona|ewc\+\+|flywheel|darwin|evolve|evolution|catastrophic\s+forgetting|lora|adapt\w*|learn\s+from\s+outcomes|rupro)\b/i,
+    evaluate(scan, prompt) {
+      const intentHit = this.intentRegex.test(prompt);
+      const hasLoops = scan.signals.stateOrRetryLoops.length > 0 || scan.signals.llmCalls.length > 0;
+      if (!intentHit && !hasLoops) return null;
+      const score = (intentHit ? 10 : 0) + (hasLoops ? 4 : 0);
+      if (score < 6) return null;
+      const ev = [
+        ...scan.signals.stateOrRetryLoops.slice(0, 2).map((f) => `iterative/critic loop in ${f}`),
+        ...scan.signals.llmCalls.slice(0, 2).map((f) => `LLM workflow in ${f}`),
+      ];
+      return {
+        score,
+        evidence: ev.length ? ev : [`RSI / self-improvement intent for ${scan.projectName}`],
+        whyItFits: `Combine @claude-flow/neural (SONA <0.05ms micro-loop + EWC++ anti-forgetting), agenticow (O(1) copy-on-write memory branches for safe A/B experiments), agentdb (Reflexion episodic outcomes), and MetaHarness Flywheel/Darwin Mode (receipt-backed promotion gate) to give ${scan.projectName} safe, measurable recursive self-improvement.`,
+        nextAction: 'ruflo hooks pretrain && npm i @claude-flow/neural agenticow @metaharness/router',
+        undo: 'git checkout -- package.json && ruflo swarm shutdown',
+      };
+    },
+  },
+  {
+    id: 'agenticow',
+    title: 'AgenticOW (agenticow) — O(1) Copy-on-Write Branchable Agent Memory',
+    packages: ['agenticow'],
+    card: 'agenticow',
+    alreadyKey: 'agenticow',
+    intentRegex: /\b(agenticow|branch\w*|copy[- ]?on[- ]?write|rollback|experiment|sandbox|fork|what[- ]?if|parallel\s+trial|speculative)\b/i,
+    evaluate(scan, prompt) {
+      const intentHit = this.intentRegex.test(prompt);
+      const hasLoops = scan.signals.stateOrRetryLoops.length > 0;
+      if (!intentHit && !hasLoops) return null;
+      const score = (intentHit ? 8 : 0) + (hasLoops ? 3 : 0);
+      if (score < 6) return null;
+      return {
+        score,
+        evidence: hasLoops ? scan.signals.stateOrRetryLoops.slice(0, 3).map((f) => `retry/repair branch candidate in ${f}`) : [`branchable memory intent in ${scan.projectName}`],
+        whyItFits: `agenticow gives your agents O(1) copy-on-write memory branches so speculative edits, repair rounds, and parallel trials never corrupt your main AgentDB state and roll back instantaneously.`,
+        nextAction: 'npm i agenticow',
+        undo: 'npm uninstall agenticow',
+      };
+    },
+  },
+  {
     id: 'ruvector-gnn',
     title: 'RuVector Graph & Sublinear Solver (@ruvector/gnn + @ruvector/graph-node + sublinear-time-solver)',
     packages: ['@ruvector/gnn', '@ruvector/graph-node', 'sublinear-time-solver'],
@@ -633,7 +681,31 @@ export function recommendForProject({ cwd = process.cwd(), prompt = '', limit = 
     signals: Object.fromEntries(Object.entries(scan.signals).filter(([, v]) => v.length > 0)),
     recommendations: recommendations.slice(0, limit),
     packageMatches,
+    blueprint: buildRuproBlueprint({ project: scan.projectName, recommendations: recommendations.slice(0, limit), alreadyIntegrated: scan.alreadyIntegrated }),
     elapsedMs: scan.elapsedMs,
+  };
+}
+
+/**
+ * Translate ranked recommendations into an ordered, plain-English ruPro / RuvNet implementation
+ * blueprint so a user never has to memorize underlying CLI flags or package wiring order.
+ */
+export function buildRuproBlueprint({ project, recommendations = [], alreadyIntegrated = {} } = {}) {
+  const steps = recommendations.map((r, idx) => ({
+    step: idx + 1,
+    capability: r.capability,
+    title: r.title,
+    packages: r.packages,
+    why: r.whyItFits,
+    command: r.nextAction,
+    undo: r.undo,
+  }));
+  return {
+    project,
+    goal: 'Translate user intent + codebase reality into an ordered ruPro / RuvNet implementation plan',
+    alreadyWiredCount: Object.values(alreadyIntegrated || {}).filter(Boolean).length,
+    stepCount: steps.length,
+    steps,
   };
 }
 

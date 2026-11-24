@@ -60,7 +60,14 @@
         <p class="fineprint" style="margin:4px 0;"><b>First step:</b> <code>${esc(r.nextAction)}</code></p>
       </div>
     `).join('');
-    out.innerHTML = `${wired}${rows}`;
+    const bpSteps = Array.isArray(data.blueprint?.steps) ? data.blueprint.steps : [];
+    const bpHtml = bpSteps.length
+      ? `<div class="v5-blueprint" style="margin-top:12px;padding:12px 14px;border:1px dashed var(--border,#cbd5e1);border-radius:10px;">
+          <p style="margin:0 0 6px;"><b>Ordered ruPro Implementation Blueprint (${esc(bpSteps.length)} step${bpSteps.length === 1 ? '' : 's'}):</b></p>
+          <ol style="margin:0;padding-left:20px;">${bpSteps.map((s) => `<li style="margin:4px 0;"><b>${esc(s.capability)}</b> — <code>${esc(s.command)}</code></li>`).join('')}</ol>
+        </div>`
+      : '';
+    out.innerHTML = `${wired}${rows}${bpHtml}`;
   }
 
   function renderLifecycleAndHygiene(lifecycle, scan) {
