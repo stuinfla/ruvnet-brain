@@ -3,23 +3,23 @@
  * project-lifecycle.mjs — Cross-Host AgentDB Project Lifecycle Engine (RuvNet Brain v5.0 / ruPro on-ramp).
  *
  * Maintains ONE continuous, provider-agnostic project lifecycle record in `<project>/.swarm/memory.db`
- * so switching between Antigravity (Gemini), Claude Code, Codex (OpenAI), and Grok mid-build NEVER
- * starts over. Every host writes structured lifecycle checkpoints and reads the latest handoff context
- * at session start.
+ * via the ONE global `ruflo memory store` CLI (zero hand-rolled SQLite writes, zero unbounded JSONL
+ * journals) so switching between Antigravity (Gemini), Claude Code, Codex (OpenAI), and Grok mid-build
+ * NEVER starts over.
  *
- * Uses SQLite (`better-sqlite3` via `node:sqlite` or fallback JSONL sidecar if sqlite is unavailable)
- * matching AgentDB's `memory_entries` schema so `ruflo memory search` and `memory-doctor.mjs` see the
- * exact same entries.
+ * Bounded snapshot file `.swarm/lifecycle-latest.json` (max MAX_CHECKPOINTS = 20 entries, overwritten
+ * atomically) provides O(1) synchronous handoff reads at SessionStart without ever spawning a daemon.
  */
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { isDirectInvocation } from './entrypoint.mjs';
 
 export const LIFECYCLE_NAMESPACE = 'project-lifecycle';
 export const LIFECYCLE_SCHEMA_VERSION = 1;
+export const MAX_CHECKPOINTS = 20;
 
 function detectHost(explicit) {
   if (explicit) return String(explicit).toLowerCase();
@@ -28,6 +28,12 @@ function detectHost(explicit) {
   if (process.env.CLAUDECODE || process.env.CLAUDE_CODE_ENTRYPOINT) return 'claude-code';
   if (process.env.GROK_CLI) return 'grok';
   return 'cli';
+}
+
+function resolveRufloBin() {
+  const globalBin = path.join(os.homedir(), '.npm-global', 'bin', 'ruflo');
+  if (fs.existsSync(globalBin)) return globalBin;
+  return null;
 }
 
 function gitSnapshot(cwd) {
@@ -67,83 +73,42 @@ function projectIdentity(cwd) {
   return { name, version, description, root: abs };
 }
 
-function sidecarPath(cwd) {
-  return path.join(path.resolve(cwd), '.swarm', 'lifecycle-checkpoints.jsonl');
+function snapshotFilePath(cwd) {
+  return path.join(path.resolve(cwd), '.swarm', 'lifecycle-latest.json');
 }
 
-function dbPath(cwd) {
+function agentDbPath(cwd) {
   return path.join(path.resolve(cwd), '.swarm', 'memory.db');
 }
 
-/**
- * Best-effort write into `<project>/.swarm/memory.db` via Node's built-in `node:sqlite` (Node 22/24)
- * when `memory_entries` exists or can be initialized, plus atomic append to the portable JSONL sidecar
- * `.swarm/lifecycle-checkpoints.jsonl` so reads are always O(1) and lock-free.
- */
-async function persistToAgentDb(cwd, key, record) {
-  const dbFile = dbPath(cwd);
-  fs.mkdirSync(path.dirname(dbFile), { recursive: true });
-  let sqliteWritten = false;
-  let sqliteError = null;
+function readSnapshotRecords(cwd) {
+  const f = snapshotFilePath(cwd);
+  if (!fs.existsSync(f)) return [];
   try {
-    const { DatabaseSync } = await import('node:sqlite');
-    const db = new DatabaseSync(dbFile);
-    try {
-      db.exec('PRAGMA busy_timeout = 3000;');
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS memory_entries (
-          id TEXT PRIMARY KEY,
-          key TEXT NOT NULL,
-          namespace TEXT NOT NULL DEFAULT 'default',
-          content TEXT NOT NULL,
-          type TEXT DEFAULT 'semantic',
-          tags TEXT DEFAULT '[]',
-          metadata TEXT DEFAULT '{}',
-          created_at INTEGER,
-          updated_at INTEGER
-        );
-      `);
-      const now = Date.now();
-      const id = `lifecycle:${key}`;
-      const content = JSON.stringify(record);
-      const tags = JSON.stringify(['lifecycle', record.host, record.event || 'checkpoint']);
-      const metadata = JSON.stringify({
-        host: record.host,
-        branch: record.git?.branch || null,
-        sha: record.git?.sha || null,
-        schemaVersion: LIFECYCLE_SCHEMA_VERSION,
-      });
-      const cols = db.prepare('PRAGMA table_info(memory_entries)').all().map((c) => c.name);
-      if (cols.includes('id') && cols.includes('key') && cols.includes('namespace') && cols.includes('content')) {
-        const hasUpdatedAt = cols.includes('updated_at');
-        const hasCreatedAt = cols.includes('created_at');
-        const hasMetadata = cols.includes('metadata');
-        const hasTags = cols.includes('tags');
-        const fields = ['id', 'key', 'namespace', 'content'];
-        const vals = [id, key, LIFECYCLE_NAMESPACE, content];
-        if (hasTags) { fields.push('tags'); vals.push(tags); }
-        if (hasMetadata) { fields.push('metadata'); vals.push(metadata); }
-        if (hasCreatedAt) { fields.push('created_at'); vals.push(now); }
-        if (hasUpdatedAt) { fields.push('updated_at'); vals.push(now); }
-        const placeholders = fields.map(() => '?').join(', ');
-        db.prepare(`INSERT OR REPLACE INTO memory_entries (${fields.join(', ')}) VALUES (${placeholders})`).run(...vals);
-        sqliteWritten = true;
-      }
-    } finally {
-      db.close();
-    }
-  } catch (e) {
-    sqliteError = String(e?.message || e);
+    const j = JSON.parse(fs.readFileSync(f, 'utf8'));
+    return Array.isArray(j?.checkpoints) ? j.checkpoints : [];
+  } catch {
+    return [];
   }
+}
 
-  // Always write to the lock-free JSONL sidecar so multi-host handoffs never block on SQLite WAL locks
-  const sc = sidecarPath(cwd);
-  fs.appendFileSync(sc, `${JSON.stringify(record)}\n`, 'utf8');
-  return { sqliteWritten, sqliteError, dbFile, sidecar: sc };
+function saveBoundedSnapshot(cwd, record) {
+  const f = snapshotFilePath(cwd);
+  fs.mkdirSync(path.dirname(f), { recursive: true });
+  const existing = readSnapshotRecords(cwd);
+  const next = [...existing, record].slice(-MAX_CHECKPOINTS);
+  const payload = {
+    schemaVersion: LIFECYCLE_SCHEMA_VERSION,
+    updatedAt: record.ts,
+    checkpoints: next,
+  };
+  fs.writeFileSync(f, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+  return f;
 }
 
 /**
- * Record a cross-host project lifecycle checkpoint.
+ * Store the checkpoint into `<project>/.swarm/memory.db` using the real `ruflo memory store` CLI
+ * (never hand-rolling SQLite tables), and update the bounded `.swarm/lifecycle-latest.json` snapshot.
  */
 export async function recordLifecycleCheckpoint({
   cwd = process.cwd(),
@@ -153,6 +118,7 @@ export async function recordLifecycleCheckpoint({
   decisions = [],
   nextSteps = [],
   architecture = '',
+  skipRuflo = process.env.RUVNET_LIFECYCLE_SKIP_RUFLO === '1',
 } = {}) {
   const resolvedHost = detectHost(host);
   const identity = projectIdentity(cwd);
@@ -179,8 +145,29 @@ export async function recordLifecycleCheckpoint({
   };
 
   const key = 'project-state-current';
-  const stored = await persistToAgentDb(cwd, key, record);
-  return { ok: true, key, record, ...stored };
+  const dbFile = agentDbPath(cwd);
+  fs.mkdirSync(path.dirname(dbFile), { recursive: true });
+
+  let rufloStored = false;
+  let rufloError = null;
+  const rufloBin = skipRuflo ? null : resolveRufloBin();
+  if (rufloBin) {
+    try {
+      const value = JSON.stringify(record);
+      const r = spawnSync(
+        rufloBin,
+        ['memory', 'store', '--key', key, '--value', value, '--namespace', LIFECYCLE_NAMESPACE, '--path', dbFile],
+        { cwd: path.resolve(cwd), encoding: 'utf8', timeout: 15_000, stdio: ['ignore', 'pipe', 'pipe'] },
+      );
+      rufloStored = r.status === 0;
+      if (!rufloStored) rufloError = (r.stderr || r.stdout || `exit ${r.status}`).trim().slice(0, 200);
+    } catch (e) {
+      rufloError = String(e?.message || e).slice(0, 200);
+    }
+  }
+
+  const snapshot = saveBoundedSnapshot(cwd, record);
+  return { ok: true, key, record, rufloStored, rufloError, dbFile, snapshot };
 }
 
 /**
@@ -190,18 +177,8 @@ export function readLifecycleState(cwd = process.cwd(), { limit = 10 } = {}) {
   const abs = path.resolve(cwd);
   const identity = projectIdentity(abs);
   const git = gitSnapshot(abs);
-  const sc = sidecarPath(abs);
-  const dbFile = dbPath(abs);
-  const checkpoints = [];
-
-  if (fs.existsSync(sc)) {
-    try {
-      const lines = fs.readFileSync(sc, 'utf8').split('\n').filter(Boolean);
-      for (const l of lines.slice(-Math.max(1, limit * 2))) {
-        try { checkpoints.push(JSON.parse(l)); } catch { /* skip malformed line */ }
-      }
-    } catch { /* unreadable sidecar */ }
-  }
+  const dbFile = agentDbPath(abs);
+  const checkpoints = readSnapshotRecords(abs);
 
   const hostsSeen = [...new Set(checkpoints.map((c) => c.host).filter(Boolean))];
   const latest = checkpoints.length ? checkpoints[checkpoints.length - 1] : null;

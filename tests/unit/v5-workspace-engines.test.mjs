@@ -54,10 +54,10 @@ describe('v5.0 Cross-Host Project Lifecycle Engine (AgentDB)', () => {
       summary: 'Implemented auth middleware and initial schema',
       decisions: ['Use RVF for vector store', 'Use AgentDB for session memory'],
       nextSteps: ['Add rate limiting'],
+      skipRuflo: true,
     });
     expect(cp1.ok).toBe(true);
-    expect(fs.existsSync(path.join(dir, '.swarm', 'memory.db'))).toBe(true);
-    expect(fs.existsSync(path.join(dir, '.swarm', 'lifecycle-checkpoints.jsonl'))).toBe(true);
+    expect(fs.existsSync(path.join(dir, '.swarm', 'lifecycle-latest.json'))).toBe(true);
 
     const cp2 = await recordLifecycleCheckpoint({
       cwd: dir,
@@ -66,13 +66,14 @@ describe('v5.0 Cross-Host Project Lifecycle Engine (AgentDB)', () => {
       summary: 'Added rate limiting and verified all tests',
       decisions: ['Route routine checks through Gemini Flash'],
       nextSteps: ['Deploy to production'],
+      skipRuflo: true,
     });
     expect(cp2.ok).toBe(true);
 
     const state = readLifecycleState(dir);
     expect(state.ok).toBe(true);
     expect(state.project).toBe('rupro-demo-app');
-    expect(state.dbPresent).toBe(true);
+    expect(state.crossHostReady).toBe(true);
     expect(state.checkpointCount).toBe(2);
     expect(state.hostsSeen).toEqual(['claude-code', 'antigravity']);
     expect(state.latest.host).toBe('antigravity');
