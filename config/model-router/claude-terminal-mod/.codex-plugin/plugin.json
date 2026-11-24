@@ -1,0 +1,6 @@
+{
+  "name": "rnb-terminal-routing",
+  "description": "Reviewed per-user native terminal routing",
+  "version": "0.1.0",
+  "hooks": "./hooks/codex-hooks.json"
+}

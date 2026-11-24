@@ -100,6 +100,25 @@ describe('native terminal policy bridge',()=>{
     const runtime=fs.readFileSync(path.join(dest,'hooks/runtime.js'),'utf8');expect(runtime).toContain(JSON.stringify(process.execPath));
     const code=fs.readFileSync(path.join(dest,'hooks/register.js'),'utf8');expect(code).not.toMatch(/node:|process\.env/);
   });
+  test('Codex gets a host-specific no-op hook manifest instead of the Claude modules field',()=>{
+    const source=path.join(root,'config/model-router/claude-terminal-mod');
+    const claudeHooks=JSON.parse(fs.readFileSync(path.join(source,'hooks/hooks.json'),'utf8'));
+    expect(claudeHooks.modules).toEqual(['./register.js']);
+    expect(fs.existsSync(path.join(source,'hooks/register.js'))).toBe(true);
+    const claudeManifest=JSON.parse(fs.readFileSync(path.join(source,'.claude-plugin/plugin.json'),'utf8'));
+    const codexManifest=JSON.parse(fs.readFileSync(path.join(source,'.codex-plugin/plugin.json'),'utf8'));
+    expect(codexManifest).toMatchObject({name:claudeManifest.name,version:claudeManifest.version,hooks:'./hooks/codex-hooks.json'});
+    const sourceHooks=JSON.parse(fs.readFileSync(path.join(source,'hooks/codex-hooks.json'),'utf8'));
+    expect(Object.keys(sourceHooks).sort()).toEqual(['description','hooks']);
+    expect(sourceHooks.hooks).toEqual({});
+    const dest=path.join(dir,'mod');
+    prepareClaudeTerminalMod({destination:dest});
+    const preparedManifest=JSON.parse(fs.readFileSync(path.join(dest,'.codex-plugin/plugin.json'),'utf8'));
+    const preparedHooks=JSON.parse(fs.readFileSync(path.join(dest,'hooks/codex-hooks.json'),'utf8'));
+    expect(preparedManifest).toEqual(codexManifest);
+    expect(preparedHooks).toEqual(sourceHooks);
+    expect(JSON.parse(fs.readFileSync(path.join(dest,'hooks/hooks.json'),'utf8')).modules).toEqual(['./register.js']);
+  });
   test('nonce readiness is atomic, private and explicitly bounded to hook activation',()=>{
     const receiptPath=path.join(dir,'ready.json'), nonce='a'.repeat(64);
     const pluginRoot=path.join(dir,'mod');prepareClaudeTerminalMod({destination:pluginRoot});
