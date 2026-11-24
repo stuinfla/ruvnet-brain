@@ -683,7 +683,7 @@ function gatherSavings({ repo = REPO } = {}) {
 // ── Config (user-level) ──────────────────────────────────────────────────────────────────────────
 const CONFIG_SCHEMA = [
   { key: 'openrouterKey', label: 'OpenRouter API key', type: 'secret', secret: true, help: 'Unlocks cheap-model routing and the self-improvement loop. Stored only in your user folder.' },
-  { key: 'provider', label: 'Your model house', type: 'enum', options: ['auto', 'anthropic', 'openai', 'codex', 'google', 'xai'], help: 'Which stack is yours? Sets your frontier model + savings baseline — Claude → Fable 5, ChatGPT → GPT-5.6 Sol, Codex → Sol, Gemini → 3.1 Pro, Grok → 4.5. “auto” detects from your keys.' },
+  { key: 'provider', label: 'Your model house', type: 'enum', options: ['auto', 'anthropic', 'openai', 'codex', 'google', 'xai'], help: 'Which stack is yours? Sets your frontier model + savings baseline — Claude → Sonnet/Opus 5.5, ChatGPT/Codex → GPT-6.2 Sol, Gemini → 4 Neon/Argon, Grok → 4.7. “auto” detects from your keys.' },
   { key: 'nightly', label: 'Nightly coordinated updates', type: 'bool', help: 'Run the same update coordinator overnight using your saved release policy and tool scope.' },
   { key: 'routing', label: 'Token-smart routing', type: 'enum', options: ['auto', 'off'], help: 'Send cheap, mechanical tasks to smaller, cheaper models automatically.' },
   { key: 'qeFleet', label: 'On-demand QE test fleet', type: 'bool', help: 'Let RuvNet Brain spin up an Agentic-QE test fleet when you ask it to.' },
@@ -3475,20 +3475,31 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
       // What's in the brain: derived from the installed root's own receipts on every request (read-only,
       // no network, ~ms) — a coverage listing served from a stale cache would defeat its one purpose.
       if (req.method === 'GET' && url === '/api/scope') return sendJSON(res, 200, gatherScope());
+      const confineDir = (rawDir) => {
+        if (!rawDir || typeof rawDir !== 'string') return cwd;
+        const rootAbs = path.resolve(cwd);
+        const candidate = path.resolve(rootAbs, rawDir);
+        const rel = path.relative(rootAbs, candidate);
+        if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
+        return fs.existsSync(candidate) ? candidate : null;
+      };
       if (req.method === 'GET' && url === '/api/proactive') {
         const q = new URL(req.url, 'http://127.0.0.1').searchParams;
-        const targetDir = q.get('dir') && fs.existsSync(q.get('dir')) ? q.get('dir') : cwd;
+        const targetDir = confineDir(q.get('dir'));
+        if (!targetDir) return sendJSON(res, 403, { error: 'dir must stay inside the active project workspace' });
         const prompt = q.get('prompt') || '';
         return sendJSON(res, 200, gatherProactiveRecommendations(targetDir, { prompt }));
       }
       if (req.method === 'GET' && url === '/api/lifecycle') {
         const q = new URL(req.url, 'http://127.0.0.1').searchParams;
-        const targetDir = q.get('dir') && fs.existsSync(q.get('dir')) ? q.get('dir') : cwd;
+        const targetDir = confineDir(q.get('dir'));
+        if (!targetDir) return sendJSON(res, 403, { error: 'dir must stay inside the active project workspace' });
         return sendJSON(res, 200, readLifecycleState(targetDir, { limit: 12 }));
       }
       if (req.method === 'GET' && url === '/api/hygiene/scan') {
         const q = new URL(req.url, 'http://127.0.0.1').searchParams;
-        const targetDir = q.get('dir') && fs.existsSync(q.get('dir')) ? q.get('dir') : cwd;
+        const targetDir = confineDir(q.get('dir'));
+        if (!targetDir) return sendJSON(res, 403, { error: 'dir must stay inside the active project workspace' });
         return sendJSON(res, 200, {
           hygiene: scanHygiene(targetDir),
           docs: auditMarkdownDocs(targetDir),
@@ -3542,7 +3553,8 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
         if (url === '/api/undo') return sendJSON(res, 200, receiptedUndo(body.undoToken));
         if (url === '/api/set-lesson') return sendJSON(res, 200, receiptedSetLesson(body));
         if (url === '/api/lifecycle/checkpoint') {
-          const targetDir = body.dir && fs.existsSync(body.dir) ? body.dir : cwd;
+          const targetDir = confineDir(body.dir);
+          if (!targetDir) return sendJSON(res, 403, { error: 'dir must stay inside the active project workspace' });
           const cp = await recordLifecycleCheckpoint({
             cwd: targetDir,
             host: body.host || 'console',
@@ -3554,7 +3566,8 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
           return sendJSON(res, 200, cp);
         }
         if (url === '/api/hygiene/docs') {
-          const targetDir = body.dir && fs.existsSync(body.dir) ? body.dir : cwd;
+          const targetDir = confineDir(body.dir);
+          if (!targetDir) return sendJSON(res, 403, { error: 'dir must stay inside the active project workspace' });
           const resDocs = syncMarkdownDocs({
             cwd: targetDir,
             files: Array.isArray(body.files) ? body.files : null,
@@ -3563,7 +3576,8 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
           return sendJSON(res, 200, resDocs);
         }
         if (url === '/api/hygiene/clean') {
-          const targetDir = body.dir && fs.existsSync(body.dir) ? body.dir : cwd;
+          const targetDir = confineDir(body.dir);
+          if (!targetDir) return sendJSON(res, 403, { error: 'dir must stay inside the active project workspace' });
           const resClean = cleanHygiene({
             cwd: targetDir,
             paths: Array.isArray(body.paths) ? body.paths : null,

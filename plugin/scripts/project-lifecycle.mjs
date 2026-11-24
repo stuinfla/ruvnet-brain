@@ -167,7 +167,30 @@ export async function recordLifecycleCheckpoint({
   }
 
   const snapshot = saveBoundedSnapshot(cwd, record);
-  return { ok: true, key, record, rufloStored, rufloError, dbFile, snapshot };
+  const ok = skipRuflo ? Boolean(snapshot) : (rufloStored || Boolean(snapshot));
+  return { ok, key, record, rufloStored, rufloError, dbFile, snapshot };
+}
+
+/**
+ * Best-effort bounded read of `project-state-current` directly from `.swarm/memory.db`
+ * (AgentDB SQLite) via sqlite3 CLI so cross-host continuity works even when only AgentDB was written.
+ */
+function readAgentDbLatest(dbFile) {
+  if (!fs.existsSync(dbFile)) return null;
+  try {
+    const r = spawnSync(
+      'sqlite3',
+      ['-batch', '-noheader', '-readonly', dbFile, "SELECT content FROM memory_entries WHERE key='project-state-current' ORDER BY updated_at DESC LIMIT 1;"],
+      { encoding: 'utf8', timeout: 2500, stdio: ['ignore', 'pipe', 'ignore'] },
+    );
+    if (r.status !== 0) return null;
+    const raw = String(r.stdout || '').trim();
+    if (!raw || !raw.startsWith('{')) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -179,6 +202,10 @@ export function readLifecycleState(cwd = process.cwd(), { limit = 10 } = {}) {
   const git = gitSnapshot(abs);
   const dbFile = agentDbPath(abs);
   const checkpoints = readSnapshotRecords(abs);
+  const dbLatest = readAgentDbLatest(dbFile);
+  if (dbLatest && !checkpoints.some((c) => c.digest && c.digest === dbLatest.digest)) {
+    checkpoints.push(dbLatest);
+  }
 
   const hostsSeen = [...new Set(checkpoints.map((c) => c.host).filter(Boolean))];
   const latest = checkpoints.length ? checkpoints[checkpoints.length - 1] : null;
@@ -197,6 +224,7 @@ export function readLifecycleState(cwd = process.cwd(), { limit = 10 } = {}) {
     version: identity.version,
     root: abs,
     dbPresent: fs.existsSync(dbFile),
+    dbReadable: Boolean(dbLatest),
     dbPath: dbFile.replace(os.homedir(), '~'),
     checkpointCount: checkpoints.length,
     hostsSeen,

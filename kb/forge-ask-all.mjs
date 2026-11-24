@@ -3835,33 +3835,6 @@ async function searchAllPrimary({
           .filter((candidate) => !seen.has(candidate.path));
         cands = cands.concat(details);
       }
-      // Recall Engine v2 Novice/Overview Guide Candidate Rescue: when the user asks a getting-started,
-      // overview, or "how do I use/create/initialize X" question, ensure the repo's top-level guides
-      // (README.md, QUICKSTART.md, USERGUIDE.md, docs/QUICKSTART.md) enter the rerank pool even when
-      // dense retrieval returned deep plugin/sub-package files first.
-      if (/\b(get\s+started|getting\s+started|how\s+do\s+i|what\s+is|initialize|first\s+swarm|create\s+a\s+local|quickstart|overview|tutorial|guide)\b/i.test(query)) {
-        const seen = new Set(cands.map((candidate) => candidate.path));
-        const bm = bm25Corpus(dir, name);
-        if (bm) {
-          // Prefer exact root README.md / docs/USERGUIDE.md / docs/QUICKSTART.md first
-          const byPath = new Map();
-          for (const p of bm.passages) {
-            if (!p?.path || seen.has(p.path) || !isTopLevelGuidePath(p.path)) continue;
-            const prev = byPath.get(p.path);
-            if (!prev || String(p.text || '').length > String(prev.text || '').length) byPath.set(p.path, p);
-          }
-          const prio = (p) => /^README\.md$/i.test(p) ? 0 : /QUICKSTART|USERGUIDE/i.test(p) ? 1 : 2;
-          const guides = [...byPath.values()]
-            .sort((a, b) => prio(a.path) - prio(b.path) || a.path.localeCompare(b.path))
-            .slice(0, 3)
-            .map((p) => ({
-              path: p.path, title: p.title || path.basename(p.path),
-              fullText: p.text, text: p.text, bestDistance: 0.9, distance: 0.9,
-              _lane: 'rescue',
-            }));
-          if (guides.length) cands = cands.concat(guides);
-        }
-      }
       // The identifier lane rides the exempt `rescue` lane for the same reason #33 Part A does: a
       // boost cannot rescue a candidate that never reached the pool, and an identifier's own
       // document is routinely buried past rank 40 by dense retrieval.

@@ -25,9 +25,9 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const HOME = process.env.RUVNET_HOME_OVERRIDE || os.homedir();
 
 export const CODEBASE_FINDING_PREFIX = 'recommend:codebase:';
-export const MAX_SCAN_FILES = 60;
+export const MAX_SCAN_FILES = 250;
 export const MAX_FILE_BYTES = 24 * 1024;
-export const DEFAULT_BUDGET_MS = 180;
+export const DEFAULT_BUDGET_MS = 280;
 
 const SKIP_DIRS = new Set([
   'node_modules', '.git', '.hg', '.svn', 'dist', 'build', 'out', 'target', '.next', '.nuxt',
@@ -191,14 +191,16 @@ export function scanCodebase(cwd = process.cwd(), { budgetMs = DEFAULT_BUDGET_MS
     largePromptsOrContext: new Set(),
   };
 
+  const hasGlobalRuflo = fs.existsSync(path.join(HOME, '.npm-global', 'bin', 'ruflo'));
   const alreadyIntegrated = {
-    ruvector: deps.has('@ruvector/rvf') || deps.has('@ruvector/core') || deps.has('ruvector') || deps.has('rvf-runtime'),
+    ruvector: deps.has('@ruvector/rvf') || deps.has('@ruvector/rvf-node') || deps.has('@ruvector/core') || deps.has('ruvector') || deps.has('rvf-runtime'),
     rulake: deps.has('rulake') || deps.has('rulake-mcp'),
     aidefence: deps.has('@claude-flow/aidefence') || deps.has('@metaharness/artex-defense') || deps.has('aidefence'),
     router: deps.has('@metaharness/router') || deps.has('agentic-flow') || hasMetaHarnessDir,
     agentdb: deps.has('agentdb') || deps.has('@claude-flow/memory') || hasSwarmDb,
     agenticow: deps.has('agenticow'),
-    ruflo: deps.has('ruflo') || deps.has('claude-flow') || deps.has('@claude-flow/cli') || hasRufloDir,
+    ruflo: deps.has('ruflo') || deps.has('claude-flow') || deps.has('@claude-flow/cli') || hasRufloDir || (hasGlobalRuflo && hasSwarmDb),
+    rsi: deps.has('@claude-flow/neural') || deps.has('@metaharness/darwin') || deps.has('@metaharness/flywheel'),
     typesafe: deps.has('@ruvector/typesafe') || deps.has('dspy.ts'),
     agenticQe: deps.has('agentic-qe') || hasAqeDir,
     gnnOrSolver: deps.has('@ruvector/gnn') || deps.has('@ruvector/graph-node') || deps.has('sublinear-time-solver'),
@@ -236,6 +238,8 @@ export function scanCodebase(cwd = process.cwd(), { budgetMs = DEFAULT_BUDGET_MS
     if (/@claude-flow\/aidefence|createAIDefence|artex-defense/.test(text)) alreadyIntegrated.aidefence = true;
     if (/@metaharness\/router|agentic-flow/.test(text)) alreadyIntegrated.router = true;
     if (/\bagentdb\b|@claude-flow\/memory|\.swarm\/memory\.db/.test(text)) alreadyIntegrated.agentdb = true;
+    if (/@claude-flow\/neural|@metaharness\/flywheel|@metaharness\/darwin|\bSONA\b.*\bEWC\b/i.test(text)) alreadyIntegrated.rsi = true;
+    if (/\bagenticow\b/.test(text)) alreadyIntegrated.agenticow = true;
     if (/@ruvector\/typesafe/.test(text)) alreadyIntegrated.typesafe = true;
 
     // 2. Vector / Embedding / Search signals
@@ -686,23 +690,50 @@ export function recommendForProject({ cwd = process.cwd(), prompt = '', limit = 
   };
 }
 
+const RUPRO_LAYER_ORDER = [
+  { layer: 'storage', caps: ['ruvector-rvf', 'rulake', 'ruvector-gnn'], verify: 'node -e "import(\'@ruvector/rvf\').then(() => console.log(\'rvf ok\'))"' },
+  { layer: 'memory', caps: ['agentdb-memory', 'agenticow'], verify: 'ruflo memory search --query "project-state-current" --path .swarm/memory.db' },
+  { layer: 'security', caps: ['aidefence-aimds', 'ruvector-typesafe', 'typesafe'], verify: 'npm test' },
+  { layer: 'routing', caps: ['metaharness-router', 'ruvllm-edge'], verify: 'node -e "import(\'@metaharness/router\').then(() => console.log(\'router ok\'))"' },
+  { layer: 'orchestration', caps: ['ruflo-swarm'], verify: 'ruflo status' },
+  { layer: 'rsi', caps: ['rsi-loop'], verify: 'ruflo hooks stats' },
+  { layer: 'quality', caps: ['agentic-qe'], verify: 'npx vitest run' },
+];
+
+function layerMetaFor(capability) {
+  const idx = RUPRO_LAYER_ORDER.findIndex((entry) => entry.caps.includes(capability));
+  if (idx >= 0) return { order: idx, layer: RUPRO_LAYER_ORDER[idx].layer, verify: RUPRO_LAYER_ORDER[idx].verify };
+  return { order: 99, layer: 'extension', verify: 'npm test' };
+}
+
 /**
- * Translate ranked recommendations into an ordered, plain-English ruPro / RuvNet implementation
- * blueprint so a user never has to memorize underlying CLI flags or package wiring order.
+ * Translate ranked recommendations into a dependency-ordered, plain-English ruPro / RuvNet
+ * implementation blueprint (storage -> memory -> security -> routing -> orchestration -> rsi -> quality).
  */
 export function buildRuproBlueprint({ project, recommendations = [], alreadyIntegrated = {} } = {}) {
-  const steps = recommendations.map((r, idx) => ({
-    step: idx + 1,
-    capability: r.capability,
-    title: r.title,
-    packages: r.packages,
-    why: r.whyItFits,
-    command: r.nextAction,
-    undo: r.undo,
-  }));
+  const ordered = [...recommendations].sort((a, b) => {
+    const la = layerMetaFor(a.capability).order;
+    const lb = layerMetaFor(b.capability).order;
+    return la - lb || b.score - a.score;
+  });
+  const steps = ordered.map((r, idx) => {
+    const meta = layerMetaFor(r.capability);
+    return {
+      step: idx + 1,
+      layer: meta.layer,
+      capability: r.capability,
+      title: r.title,
+      packages: r.packages,
+      targets: (r.evidence || []).slice(0, 3),
+      why: r.whyItFits,
+      command: r.nextAction,
+      verify: meta.verify,
+      undo: r.undo,
+    };
+  });
   return {
     project,
-    goal: 'Translate user intent + codebase reality into an ordered ruPro / RuvNet implementation plan',
+    goal: 'Translate user intent + codebase reality into a dependency-ordered ruPro / RuvNet implementation plan',
     alreadyWiredCount: Object.values(alreadyIntegrated || {}).filter(Boolean).length,
     stepCount: steps.length,
     steps,

@@ -42,10 +42,10 @@ export function formatEasternStamp(date = new Date()) {
   return `${get('year')}-${get('month')}-${get('day')} ${hh}:${get('minute')}:${get('second')} ${get('timeZoneName') || 'EST'}`;
 }
 
-function collectMarkdownFiles(cwd, maxFiles = 120) {
+function collectMarkdownFiles(cwd, maxFiles = 300) {
   const out = [];
   const walk = (dir, depth = 0) => {
-    if (out.length >= maxFiles || depth > 4) return;
+    if (out.length >= maxFiles || depth > 6) return;
     let entries;
     try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
     for (const e of entries) {
@@ -81,7 +81,23 @@ function extractReferencedLocalPaths(text, docRel) {
     const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(docRel), raw));
     if (!resolved.startsWith('..')) refs.add(resolved);
   }
+  // Backticked repo-relative source paths: `src/foo.ts`, `scripts/bar.mjs`, `plugin/scripts/baz.mjs`, etc.
+  for (const m of text.matchAll(/`((?:src|scripts|plugin|console|kb|bin|tests|docs|config|packages)\/[A-Za-z0-9._/@-]+\.[A-Za-z0-9]+)`/g)) {
+    const resolved = path.posix.normalize(m[1]);
+    if (!resolved.startsWith('..')) refs.add(resolved);
+  }
   return [...refs];
+}
+
+function gitLastCommitMs(cwd, rel) {
+  try {
+    const out = execFileSync('git', ['log', '-1', '--format=%ct', '--', rel], {
+      cwd, encoding: 'utf8', timeout: 1500, stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    const sec = Number(out);
+    if (Number.isFinite(sec) && sec > 0) return sec * 1000;
+  } catch { /* non-git or untracked */ }
+  return null;
 }
 
 function gitCreatedStamp(cwd, rel) {
@@ -102,7 +118,7 @@ function gitCreatedStamp(cwd, rel) {
 /**
  * Audit all Markdown docs in `cwd` for timestamp hygiene, broken local links, and code-vs-doc drift.
  */
-export function auditMarkdownDocs(cwd = process.cwd(), { maxFiles = 120 } = {}) {
+export function auditMarkdownDocs(cwd = process.cwd(), { maxFiles = 300 } = {}) {
   const abs = path.resolve(cwd);
   const files = collectMarkdownFiles(abs, maxFiles);
   const pkgVer = projectVersion(abs);
@@ -111,6 +127,7 @@ export function auditMarkdownDocs(cwd = process.cwd(), { maxFiles = 120 } = {}) 
   let missingStamp = 0;
   let brokenLinkDocs = 0;
   let staleCodeDocs = 0;
+  let versionDriftDocs = 0;
 
   for (const f of files) {
     let text = '';
@@ -120,12 +137,15 @@ export function auditMarkdownDocs(cwd = process.cwd(), { maxFiles = 120 } = {}) 
     const crMatch = text.match(CREATED_RE);
     const hasUpdated = Boolean(upMatch);
     const hasCreated = Boolean(crMatch);
+    const recordedVersion = upMatch ? (upMatch[2] || null) : null;
+    const versionDrift = Boolean(recordedVersion && recordedVersion !== pkgVer);
     if (hasUpdated) stamped++;
     else missingStamp++;
+    if (versionDrift) versionDriftDocs++;
 
     const refs = extractReferencedLocalPaths(text, f.rel);
     const brokenLinks = [];
-    const docMtime = fs.statSync(f.full).mtimeMs;
+    const docTime = gitLastCommitMs(abs, f.rel) ?? fs.statSync(f.full).mtimeMs;
     const newerLinkedCode = [];
 
     for (const ref of refs) {
@@ -136,7 +156,10 @@ export function auditMarkdownDocs(cwd = process.cwd(), { maxFiles = 120 } = {}) 
       } else {
         try {
           const st = fs.statSync(target);
-          if (st.isFile() && st.mtimeMs > docMtime + 60_000) newerLinkedCode.push(ref);
+          if (st.isFile()) {
+            const codeTime = gitLastCommitMs(abs, ref) ?? st.mtimeMs;
+            if (codeTime > docTime + 60_000) newerLinkedCode.push(ref);
+          }
         } catch { /* ignore */ }
       }
     }
@@ -144,14 +167,15 @@ export function auditMarkdownDocs(cwd = process.cwd(), { maxFiles = 120 } = {}) 
     if (brokenLinks.length) brokenLinkDocs++;
     if (newerLinkedCode.length) staleCodeDocs++;
 
-    if (!hasUpdated || brokenLinks.length || newerLinkedCode.length) {
+    if (!hasUpdated || versionDrift || brokenLinks.length || newerLinkedCode.length) {
       findings.push({
         path: f.rel,
         hasFrontmatter,
         hasUpdated,
         hasCreated,
         recordedUpdated: upMatch ? upMatch[1] : null,
-        recordedVersion: upMatch ? (upMatch[2] || null) : null,
+        recordedVersion,
+        versionDrift,
         brokenLinks: brokenLinks.slice(0, 8),
         newerLinkedCode: newerLinkedCode.slice(0, 8),
       });
@@ -165,6 +189,7 @@ export function auditMarkdownDocs(cwd = process.cwd(), { maxFiles = 120 } = {}) 
     scanned: files.length,
     stamped,
     missingStamp,
+    versionDriftDocs,
     brokenLinkDocs,
     staleCodeDocs,
     findings,

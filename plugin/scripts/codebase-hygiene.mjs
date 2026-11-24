@@ -134,6 +134,9 @@ export function cleanHygiene({ cwd = process.cwd(), paths = null, apply = false 
 
   const delBin = path.join(os.homedir(), '.local', 'bin', 'del');
   const useDel = fs.existsSync(delBin);
+  const quarantineRoot = useDel
+    ? null
+    : path.join(root, '.ruvnet-hygiene-trash', new Date().toISOString().replace(/[:.]/g, '-'));
   const cleaned = [];
   const failed = [];
 
@@ -142,7 +145,9 @@ export function cleanHygiene({ cwd = process.cwd(), paths = null, apply = false 
       if (useDel) {
         execFileSync(delBin, [t.abs], { cwd: root, stdio: 'pipe', timeout: 10_000 });
       } else {
-        fs.rmSync(t.abs, { recursive: true, force: true });
+        const dest = path.join(quarantineRoot, t.rel);
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.renameSync(t.abs, dest);
       }
       cleaned.push(t.rel);
     } catch (e) {
@@ -153,7 +158,8 @@ export function cleanHygiene({ cwd = process.cwd(), paths = null, apply = false 
   return {
     ok: failed.length === 0,
     mode: 'apply',
-    method: useDel ? 'del-ledger' : 'fs-rm',
+    method: useDel ? 'del-ledger' : 'quarantine-trash',
+    quarantineDir: quarantineRoot ? path.relative(root, quarantineRoot).replace(/\\/g, '/') : null,
     cwd: root,
     cleanedCount: cleaned.length,
     cleaned,

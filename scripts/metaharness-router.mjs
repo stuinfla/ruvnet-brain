@@ -174,10 +174,11 @@ export async function route(prompt, candidates, profile, { qualityBar = 0.7, k =
     reason: 'Insufficient labels for policy-eligible models', labels: constrainedRows.length };
   const router = mod.Router.fromExamples(constrainedRows, prices, { k, qualityBar });
   const pick = router.route(await embed(prompt));
+  const resolved = resolveRealRouterPackage();
 
   return {
     routedBy: '@metaharness/router',   // rUv's code made this call. Not mine.
-    version: '0.3.2',
+    version: resolved?.version || '0.4.1',
     model: pick.id,
     predictedQuality: pick.predictedQuality,
     metBar: pick.metBar,

@@ -684,3 +684,87 @@ Cognitum ruOS is an agentic Linux operating system for AI workstations. Its docu
 
 ## ruos
 ruOS is an agentic Linux desktop: a desktop that agents can operate through computer-use, terminal and system tools. The public ruvnet/ruos repository documents the desktop control and extension surface: its MCP server provides screenshots, mouse/keyboard input, shell commands and named system actions; its skills cover the RuvNet agent stack. README.md and mcp/README.md describe browser, iPad PWA and macOS viewer access, with MCP control over SSH. A related, distinct repository, cognitum-one/ruOS (Brain store cognitum-ruos), contains the local AI-workstation distribution and packaging: health monitoring, GPU profiles, local model reasoning, memory backfill, backup and consent-gated sensors. Ask about cognitum-ruos for its curated workstation capability summary, or ruvnet/ruos for desktop computer-use. Public documentation is not proof that a hosted desktop is provisioned or that the OS is installed on your machine. Sources inspected 2026-09-19: ruvnet/ruos README.md and cognitum-one/ruOS README.md.
+
+## agentx
+Shared Dependencies: 1. Exported Variables : - comments : An array to store the comments for each webpage. 2. Data Schemas : - CommentSchema : A schema for the comments, including fields like url , comment , timestamp . 3. DOM Element IDs : - commentInput : The input field where users type their comments. - commentList : The area where the comments are displayed. - saveButton : The button to save the comment. - delet
+(Auto-derived from the store's own indexed README/primer passages.)
+
+## ai-code-generator-
+Automated Code Generation and Testing with OpenAI Codex and GitHub Integration This Rust-based application is a skeleton project that aims to leverage the OpenAI Codex API for generating code snippets based on user-provided function requirements. The application also integrates with GitHub for branch management and updates. The project is a work in progress and will be developed over time, with more features and impr
+(Auto-derived from the store's own indexed README/primer passages.)
+
+## cognitum-api
+Cognitum One — hosted platform API (api.cognitum.one) MIRROR with provenance: fetched verbatim from https://api.cognitum.one/openapi.json on 2026-07-18 (spec version 1.0.0). This is the LIVE hosted platform API — payments, device management, analytics, MCP tools, self-improvement (flywheel / MicroLoRA), webhooks — NOT the device-local Seed API (that is cognitum-support/docs/api.md) and NOT the simulator API (cognitum
+(Auto-derived from the store's own indexed README/primer passages.)
+
+## cognitum-learn
+Fuzz Harness — learn-acquire This directory contains a cargo-fuzz harness for the WebVTT parser in learn-acquire . Prerequisites - Rust nightly toolchain: rustup toolchain install nightly - cargo-fuzz: cargo install cargo-fuzz Running the fuzzer From the workspace root: Or with a time limit (e.g., 60 seconds): Seeding the corpus Copy the fixture VTT file as a seed before running to give the fuzzer a realistic startin
+(Auto-derived from the store's own indexed README/primer passages.)
+
+## cognitum-learn-site
+cognitum-learn-site The hosted GUI for [ cognitum-learn ](https://github.com/stuinfla/cognitum-learn) — the pure-Rust video knowledge-base CLI that pairs with a [Cognitum One Seed](https://cognitum.one). How it works The page talks to a local bridge (the learn ui Axum server) over http://127.0.0.1:7878 . Browsers exempt localhost from mixed-content blocking, so an HTTPS Vercel origin can talk to an HTTP localhost end
+(Auto-derived from the store's own indexed README/primer passages.)
+
+## cognitum-meta-llm-docs
+Cognitum MetaHarness-as-a-Service — public docs Public landing page and high-level documentation for Cognitum MetaHarness-as-a-Service (MaaS) — a multi-tenant, tiered, metered, budget-governed, dual-protocol (OpenAI + Anthropic) Completions API, plus autonomous Darwin-Loop agent pods with human approval gates, on Google Cloud. Live site: https://cognitum-one.github.io/meta-llm-docs/ Honest framing Cognitum MaaS is a 
+(Auto-derived from the store's own indexed README/primer passages.)
+
+## cognitum-meta-proxy-dist
+meta-proxy-dist Public distribution mirror for [ cognitum-one/meta-proxy ](https://github.com/cognitum-one/meta-proxy) release binaries. The proxy source is private ; this repo holds only the signed release artifacts so metaharness proxy install (ADR-117) can download + Ed25519-verify them without auth. Do not commit source here.
+(Auto-derived from the store's own indexed README/primer passages.)
+
+## cognitum-one-sensor-primer
+The Cognitum Knowledge Bases — what this is, and how to actually use it You just downloaded a .zip from the [Cognitum One Sensor Primer](https://cognitum-sensor-primer.vercel.app). Inside is a knowledge base of one of ruvnet's big open-source projects. This guide assumes you've never heard of an "RVF file," a "vector database," or "embeddings" before. That's completely fine. Read section 1, do the 3-step Quick Start,
+(Auto-derived from the store's own indexed README/primer passages.)
+
+## cognitum-platform-docs
+Agents Commands Commands for agents operations in Claude Flow. Available Commands - [agent-types](./agent-types.md) - [agent-capabilities](./agent-capabilities.md) - [agent-coordination](./agent-coordination.md) - [agent-spawning](./agent-spawning.md)
+(Auto-derived from the store's own indexed README/primer passages.)
+
+## cognitum-seed
+Cognitum QE Issue Templates These templates auto-file issues into Project 8 "Quality Engineering" (https://github.com/orgs/cognitum-one/projects/8) with the right kind/ label. Template kind/ label When to use it ------------------------ ----------------------- ---------------- Test Investigation kind/investigation "Something is weird, I don't yet know why" — exploratory root-cause work Flaky Test kind/flaky A test fa
+(Auto-derived from the store's own indexed README/primer passages.)
+
+## cognitum-spoton
+@spoton-pulse/harness — agent-harness skeleton Typed, testable scaffolding for the SpotOn Pulse agent harness specified in [ ../docs/HARNESS-SPEC.md ](../docs/HARNESS-SPEC.md) and [ ../docs/adr/ADR-0001..0003 ](../docs/adr/). This is the design made into code — it is not a working system . The SpotOn POS Export API and the Cognitum Seed device are stubbed/mocked; nothing here talks to a real API or a real sensor. Wha
+(Auto-derived from the store's own indexed README/primer passages.)
+
+## cognitum-trader
+Analysis Commands Commands for analysis operations in Claude Flow. Available Commands - [bottleneck-detect](./bottleneck-detect.md) - [token-usage](./token-usage.md) - [performance-report](./performance-report.md)
+(Auto-derived from the store's own indexed README/primer passages.)
+
+## cognitum-trader-jackishim
+Analysis Commands Commands for analysis operations in Claude Flow. Available Commands - [bottleneck-detect](./bottleneck-detect.md) - [token-usage](./token-usage.md) - [performance-report](./performance-report.md)
+(Auto-derived from the store's own indexed README/primer passages.)
+
+## cognitum-v0-appliance
+Cognitum v0 Appliance Emulator Cognitum v0 is a purpose-built hardware appliance that runs AI agents at the edge -- no cloud, no GPU, no subscription. Seven STM32N645 neural processors, each with a 600 GOPS NPU, sit on a single board connected through a Gigabit Ethernet switch. Total compute: 4,200 billion operations per second for $499 retail, from $98 in parts. The software stack is fully implemented and validated.
+(Auto-derived from the store's own indexed README/primer passages.)
+
+## concepts
+What are AgentDB's core concepts — the .rvf cognitive container, Reflexion episodic memory, causal graph, skill library, ReasoningBank, and the self-learning bandit? <!-- L2 synthesis · ACCEPTED · 7 verified source refs: plugins/agentdb-core/skills/agentdb-status/SKILL.md, plugins/agentdb-causal/skills/agentdb-causal-explain/SKILL.md, simulation/scenarios/README-basic/reflexion-learning.md, plugins/agentdb-graph/skil
+(Auto-derived from the store's own indexed README/primer passages.)
+
+## event-horizon
+Architecture decision records 1. [ADR 0001: Browser only Three.js runtime](0001-browser-only-three-runtime.md) 2. [ADR 0002: Bounded astronomy catalog service](0002-bounded-astronomy-catalog-service.md) 3. [ADR 0003: Evidence classes and deterministic fallback](0003-evidence-classes-and-deterministic-fallback.md) 4. [ADR 0004: Guided missions and local walkthrough state](0004-guided-missions-and-local-walkthrough-sta
+(Auto-derived from the store's own indexed README/primer passages.)
+
+## group-field-theory
+group-field-theory-harness Evidence governed research and invariant benchmark harness for emergent spacetime experiments. Generated with [ create-agent-harness ](https://github.com/ruvnet/agent-harness-generator) — vertical:research template. Run from this repository What it verifies The committed benchmark starts with relational graphs that contain no spatial coordinates and no universal clock. It derives graph dist
+(Auto-derived from the store's own indexed README/primer passages.)
+
+## image-agent
+PixelMuse - AI-Powered Creative Design Studio An application that generates advertisement images and logos using OpenAI's DALL-E model based on user descriptions and preferences. Features - Generate custom advertisement images and logos using AI - Advanced wizard interface with step-by-step guidance - Customize designs with detailed options for typography, colors, and visual elements - Choose between different styles
+(Auto-derived from the store's own indexed README/primer passages.)
+
+## metaharness
+Browser-runtime WASM smoke Static fixture that loads @metaharness/kernel 's WASM bundle in a real browser and asserts the three exports work ( kernelInfo , mcpValidate accept, mcpValidate reject). Why this exists The kernel claims to work in browser / Cloudflare Workers / Deno / Bun. We test Node via vitest; this fixture lets a human or Playwright runner test the browser path. Run After building the WASM bundle: The 
+(Auto-derived from the store's own indexed README/primer passages.)
+
+## ruv-gists
+SOURCE: GitHub gist by @ruvnet — "README.md" GIST STATUS: rUv's own notes / release announcement — may describe PROPOSED or UNRELEASED work. Treat as intent, not as confirmed shipped behavior: verify against repo source before asserting. updated: 2026-10-09 · https://gist.github.com/ruvnet/00fb40aeabb35a893f140597e2695c1d MetaHarness Arena v1 — real-model calibration evidence (interim) Model: Qwen/Qwen3.8-27B, revisi
+(Auto-derived from the store's own indexed README/primer passages.)
+
+## ruv-meetings
+SOURCE: rUv community call — "Ruv hackerspace" (2026-07-16), Read.ai transcript. STATUS: spoken, informal — rUv's live thinking and practice. Treat as INTENT and doctrine; verify shipped behavior against repo source before asserting a capability exists. segment starting 0:00 — [0:00] Conference Room (rUv) - Speaker 1: Well, I don't know exactly what the details of the Taco Tuesday are. Maybe, I don't know, Nick, do y
+(Auto-derived from the store's own indexed README/primer passages.)

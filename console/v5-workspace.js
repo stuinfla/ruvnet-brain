@@ -41,7 +41,8 @@
       return;
     }
     const recs = Array.isArray(data.recommendations) ? data.recommendations : [];
-    if (chip) chip.textContent = `${recs.length} match${recs.length === 1 ? '' : 'es'} · ${data.scannedFiles || 0} files`;
+    const scannedCount = data.fileCount ?? data.scannedFiles ?? 0;
+    if (chip) chip.textContent = `${recs.length} match${recs.length === 1 ? '' : 'es'} · ${scannedCount} files`;
     const wired = (data.alreadyIntegrated || []).length
       ? `<p class="fineprint"><b>Already wired in ${esc(data.project)}:</b> ${data.alreadyIntegrated.map(esc).join(', ')}</p>`
       : '';
@@ -64,10 +65,25 @@
     const bpHtml = bpSteps.length
       ? `<div class="v5-blueprint" style="margin-top:12px;padding:12px 14px;border:1px dashed var(--border,#cbd5e1);border-radius:10px;">
           <p style="margin:0 0 6px;"><b>Ordered ruPro Implementation Blueprint (${esc(bpSteps.length)} step${bpSteps.length === 1 ? '' : 's'}):</b></p>
-          <ol style="margin:0;padding-left:20px;">${bpSteps.map((s) => `<li style="margin:4px 0;"><b>${esc(s.capability)}</b> — <code>${esc(s.command)}</code></li>`).join('')}</ol>
+          <ol style="margin:0;padding-left:20px;">${bpSteps.map((s) => `
+            <li style="margin:6px 0;">
+              <b>[${esc(s.layer || 'core')}] ${esc(s.capability)}</b> — <code>${esc(s.command)}</code>
+              <button type="button" class="v5-copy-cmd" data-cmd="${esc(s.command)}" style="margin-left:6px;font-size:11px;padding:2px 6px;cursor:pointer;">Copy</button>
+              ${s.verify ? `<div class="fineprint">Verify: <code>${esc(s.verify)}</code></div>` : ''}
+            </li>`).join('')}</ol>
         </div>`
       : '';
     out.innerHTML = `${wired}${rows}${bpHtml}`;
+    out.querySelectorAll('.v5-copy-cmd').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const cmd = btn.getAttribute('data-cmd') || '';
+        try {
+          await navigator.clipboard.writeText(cmd);
+          btn.textContent = 'Copied';
+          setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+        } catch { btn.textContent = 'Copy failed'; }
+      });
+    });
   }
 
   function renderLifecycleAndHygiene(lifecycle, scan) {
@@ -114,9 +130,12 @@
     if (clEl && scan?.hygiene) {
       const h = scan.hygiene;
       const kb = ((h.summary?.reclaimableBytes || 0) / 1024).toFixed(1);
+      const preview = (h.safeAuto || []).slice(0, 8).map((item) => `<code>${esc(item.path)}</code>`).join(', ');
+      const extra = (h.safeAuto || []).length > 8 ? ` (+${h.safeAuto.length - 8} more)` : '';
       clEl.innerHTML = `
         <p><b>Dead-Code & Backup Hygiene:</b> <b>${esc(h.summary?.safeAutoCount || 0)}</b> safe-to-clean item(s)
           (${esc(kb)} KB), <b>${esc(h.summary?.reviewCount || 0)}</b> legacy file(s) flagged for review.</p>
+        ${preview ? `<p class="fineprint">Targets: ${preview}${extra}</p>` : ''}
       `;
     }
   }
@@ -124,6 +143,7 @@
   async function refreshV5() {
     const promptInput = document.getElementById('v5-intent-input');
     const prompt = promptInput ? promptInput.value.trim() : '';
+    const status = document.getElementById('v5-action-status');
     try {
       const [pro, lc, hy] = await Promise.all([
         apiGet(`/api/proactive${prompt ? `?prompt=${encodeURIComponent(prompt)}` : ''}`),
@@ -132,7 +152,9 @@
       ]);
       renderProactive(pro);
       renderLifecycleAndHygiene(lc, hy);
-    } catch { /* non-fatal */ }
+    } catch (e) {
+      if (status) status.textContent = `Workspace refresh error: ${e.message}`;
+    }
   }
 
   function wireControls() {
@@ -179,10 +201,23 @@
     const cleanBtn = document.getElementById('v5-clean-btn');
     if (cleanBtn) {
       cleanBtn.addEventListener('click', async () => {
-        setStatus('Cleaning safe backup/temp clutter via deletion ledger…');
+        setStatus('Previewing safe cleanup targets…');
         try {
-          const r = await apiPost('/api/hygiene/clean', { apply: true });
-          setStatus(`Cleaned ${r.cleanedCount || 0} safe item(s) via ${r.method || 'ledger'}.`);
+          const dry = await apiPost('/api/hygiene/clean', { apply: false });
+          const targets = Array.isArray(dry.wouldClean) ? dry.wouldClean : [];
+          if (!targets.length) {
+            setStatus('Nothing safe to clean — workspace is already tidy.');
+            return;
+          }
+          const sample = targets.slice(0, 10).join('\n  - ');
+          const more = targets.length > 10 ? `\n  ...and ${targets.length - 10} more` : '';
+          if (!window.confirm(`Clean ${targets.length} safe backup/temp item(s)?\n\n  - ${sample}${more}`)) {
+            setStatus('Cleanup cancelled.');
+            return;
+          }
+          setStatus('Cleaning confirmed targets…');
+          const r = await apiPost('/api/hygiene/clean', { apply: true, paths: targets });
+          setStatus(`Cleaned ${r.cleanedCount || 0} safe item(s) via ${r.method || 'quarantine'}.`);
           await refreshV5();
         } catch (e) { setStatus(`Cleanup failed: ${e.message}`); }
       });

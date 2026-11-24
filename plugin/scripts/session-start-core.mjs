@@ -142,6 +142,7 @@ export async function runSessionStart({
       || s.startsWith('[RuvNet Brain — TURN RECORDING]')
       || s.startsWith('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN]')
       || s.startsWith('[RuvNet Brain — PROJECT CONTINUITY RESTORED]')
+      || s.startsWith('[RuvNet Brain — Cross-Host Project Lifecycle')
       || s.startsWith('[RuvNet Brain — COME UP TO SPEED')
       || s.startsWith('[RuvNet Brain — MAINTAINER ONLY:')
       || s.startsWith(FAILURE_LINE_PREFIX);
