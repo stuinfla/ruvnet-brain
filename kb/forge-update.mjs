@@ -473,6 +473,7 @@ export async function applyVerifiedStagedRelease({
     // Same carry main() does: without it the exact-tree swap deleted the live node_modules, and the
     // recovered brain could no longer load its embedder (measured 2026-09-30 on the owner's copy).
     carryLiveNodeModules({ candidateDir, liveDir });
+    carryLiveLinkGraphs({ candidateDir, liveDir });
     // S1: ONE APPLY PATH — the same helper main()'s normal apply uses, not a second, duplicated
     // copy-loop. It also adds the collision refusal main() previously lacked.
     restorePrivateFilesIntoCandidate({ candidateDir, sourceDir: liveDir, overlay });
@@ -786,30 +787,33 @@ export function restorePrivateOverlayState({ kbDir, overlay }) {
  * Reflink clone where the filesystem supports it (APFS/btrfs), plain copy otherwise.
  */
 export function carryLiveNodeModules({ candidateDir, liveDir }) {
-  let carried = false;
   const liveModules = path.join(liveDir, 'node_modules');
-  if (fs.existsSync(liveModules) && !fs.existsSync(path.join(candidateDir, 'node_modules'))) {
-    fs.cpSync(assertNoFollowPath(liveDir, liveModules), path.join(candidateDir, 'node_modules'),
-      { recursive: true, verbatimSymlinks: true, mode: fs.constants.COPYFILE_FICLONE });
-    carried = true;
-  }
-  // Always preserve Recall Engine v2 link-graph PageRank priors (`links-*.json`) across updates,
-  // even when node_modules is already present or absent in liveDir.
+  if (!fs.existsSync(liveModules) || fs.existsSync(path.join(candidateDir, 'node_modules'))) return false;
+  fs.cpSync(assertNoFollowPath(liveDir, liveModules), path.join(candidateDir, 'node_modules'),
+    { recursive: true, verbatimSymlinks: true, mode: fs.constants.COPYFILE_FICLONE });
+  return true;
+}
+
+/**
+ * Always preserve Recall Engine v2 link-graph PageRank priors (`links-*.json`) across updates,
+ * even when node_modules is already present or absent in liveDir.
+ */
+export function carryLiveLinkGraphs({ candidateDir, liveDir }) {
+  let count = 0;
   try {
-    if (fs.existsSync(liveDir)) {
-      for (const name of fs.readdirSync(liveDir)) {
-        if (!/^links-[a-z0-9._-]+\.json$/i.test(name)) continue;
-        const dst = path.join(candidateDir, name);
-        if (fs.existsSync(dst)) continue;
-        const src = assertNoFollowPath(liveDir, path.join(liveDir, name));
-        if (fs.lstatSync(src).isFile()) {
-          fs.copyFileSync(src, dst);
-          carried = true;
-        }
+    if (!fs.existsSync(liveDir)) return 0;
+    for (const name of fs.readdirSync(liveDir)) {
+      if (!/^links-[a-z0-9._-]+\.json$/i.test(name)) continue;
+      const dst = path.join(candidateDir, name);
+      if (fs.existsSync(dst)) continue;
+      const src = assertNoFollowPath(liveDir, path.join(liveDir, name));
+      if (fs.lstatSync(src).isFile()) {
+        fs.copyFileSync(src, dst);
+        count++;
       }
     }
   } catch { /* non-fatal */ }
-  return carried;
+  return count;
 }
 
 export function restorePrivateFilesIntoCandidate({ candidateDir, sourceDir, overlay }) {
@@ -2034,6 +2038,7 @@ async function main() {
         }
         // node_modules: the same installer-owned class as the two files above (see carryLiveNodeModules).
         carryLiveNodeModules({ candidateDir, liveDir });
+    carryLiveLinkGraphs({ candidateDir, liveDir });
         restorePrivateFilesIntoCandidate({ candidateDir, sourceDir: liveDir, overlay: privateOverlay });
         // ATOMIC WITH INSTALLATION, not after it. The transport identity is written INTO the
         // candidate, so the storage transaction's single rename either promotes the bytes AND the

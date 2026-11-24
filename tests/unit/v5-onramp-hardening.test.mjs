@@ -5,7 +5,7 @@ import path from 'node:path';
 import { cleanHygiene } from '../../plugin/scripts/codebase-hygiene.mjs';
 import { auditMarkdownDocs } from '../../plugin/scripts/doc-sync-engine.mjs';
 import { recommendForProject } from '../../plugin/scripts/codebase-recommender.mjs';
-import { carryLiveNodeModules } from '../../kb/forge-update.mjs';
+import { carryLiveLinkGraphs } from '../../kb/forge-update.mjs';
 import { formatHandoffBrief } from '../../plugin/scripts/project-lifecycle.mjs';
 
 describe('v5.1 on-ramp hardening (regression gates for real audit findings)', () => {
@@ -46,15 +46,15 @@ describe('v5.1 on-ramp hardening (regression gates for real audit findings)', ()
     }
   });
 
-  it('forge-update carryLiveNodeModules preserves links-*.json even when node_modules is absent', () => {
+  it('forge-update carryLiveLinkGraphs preserves links-*.json even when node_modules is absent', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rb-upd-'));
     const liveDir = path.join(tmp, 'live');
     const candidateDir = path.join(tmp, 'cand');
     fs.mkdirSync(liveDir, { recursive: true });
     fs.mkdirSync(candidateDir, { recursive: true });
     fs.writeFileSync(path.join(liveDir, 'links-ruflo.json'), '{"nodes":1}');
-    const carried = carryLiveNodeModules({ candidateDir, liveDir });
-    expect(carried).toBe(true);
+    const carried = carryLiveLinkGraphs({ candidateDir, liveDir });
+    expect(carried).toBe(1);
     expect(fs.existsSync(path.join(candidateDir, 'links-ruflo.json'))).toBe(true);
   });
 
