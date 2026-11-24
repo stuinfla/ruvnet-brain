@@ -89,15 +89,25 @@ function extractReferencedLocalPaths(text, docRel) {
   return [...refs];
 }
 
-function gitLastCommitMs(cwd, rel) {
+function buildGitMtimeMap(cwd) {
+  const map = new Map();
   try {
-    const out = execFileSync('git', ['log', '-1', '--format=%ct', '--', rel], {
-      cwd, encoding: 'utf8', timeout: 1500, stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
-    const sec = Number(out);
-    if (Number.isFinite(sec) && sec > 0) return sec * 1000;
-  } catch { /* non-git or untracked */ }
-  return null;
+    const out = execFileSync('git', ['log', '-n', '200', '--name-only', '--format=COMMIT:%ct'], {
+      cwd, encoding: 'utf8', timeout: 2500, maxBuffer: 4 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    let curMs = null;
+    for (const rawLine of out.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line) continue;
+      if (line.startsWith('COMMIT:')) {
+        const sec = Number(line.slice(7));
+        curMs = Number.isFinite(sec) && sec > 0 ? sec * 1000 : null;
+      } else if (curMs && !map.has(line)) {
+        map.set(line, curMs);
+      }
+    }
+  } catch { /* non-git repo */ }
+  return map;
 }
 
 function gitCreatedStamp(cwd, rel) {
@@ -122,6 +132,7 @@ export function auditMarkdownDocs(cwd = process.cwd(), { maxFiles = 300 } = {}) 
   const abs = path.resolve(cwd);
   const files = collectMarkdownFiles(abs, maxFiles);
   const pkgVer = projectVersion(abs);
+  const gitTimes = buildGitMtimeMap(abs);
   const findings = [];
   let stamped = 0;
   let missingStamp = 0;
@@ -145,7 +156,7 @@ export function auditMarkdownDocs(cwd = process.cwd(), { maxFiles = 300 } = {}) 
 
     const refs = extractReferencedLocalPaths(text, f.rel);
     const brokenLinks = [];
-    const docTime = gitLastCommitMs(abs, f.rel) ?? fs.statSync(f.full).mtimeMs;
+    const docTime = gitTimes.get(f.rel) ?? fs.statSync(f.full).mtimeMs;
     const newerLinkedCode = [];
 
     for (const ref of refs) {
@@ -157,7 +168,7 @@ export function auditMarkdownDocs(cwd = process.cwd(), { maxFiles = 300 } = {}) 
         try {
           const st = fs.statSync(target);
           if (st.isFile()) {
-            const codeTime = gitLastCommitMs(abs, ref) ?? st.mtimeMs;
+            const codeTime = gitTimes.get(ref) ?? st.mtimeMs;
             if (codeTime > docTime + 60_000) newerLinkedCode.push(ref);
           }
         } catch { /* ignore */ }
