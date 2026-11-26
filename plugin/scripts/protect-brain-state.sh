@@ -35,18 +35,17 @@
 set -uo pipefail
 
 INPUT=""
-# BOUNDED READ (2026-07-27, ADR-055 F20): an unqualified `read` never returns on a stdin that is
-# opened and never closed — measured across the mesh, 18 of 37 registered commands sat until the
-# harness killed them. Real Claude Code writes and closes, so this costs no normal turn; that is
-# exactly why a hook that CAN hang forever survives unnoticed. -t bounds the wait, and the string
-# is truncated AFTER the loop because a hook payload is one line with no newline, so `read` hands
-# the whole thing back at once and a per-iteration cap never fires.
-_l=""   # set -u: a read that times out before any byte leaves _l unset ("unbound variable" on stderr)
-while IFS= read -r -t 2 _l; do
+# BOUNDED READ (2026-07-27, ADR-055 F20; #526): an unqualified `read` never returns on a stdin
+# that is opened and never closed, and `read` without `-n` drains an arbitrarily large single line
+# before the shell loop can break. `-t 2` bounds open pipes and `-n` bounds bytes/chars read per
+# iteration (up to 4 UTF-8 bytes per char) before slicing to the 64 KiB prefix.
+while [ ${#INPUT} -lt 65536 ]; do
+  _l=""   # set -u: a read that times out before any byte leaves _l unset ("unbound variable" on stderr)
+  _rc=0
+  IFS= read -r -t 2 -n $(((65536 - ${#INPUT}) * 4)) _l || _rc=$?
   INPUT+="$_l"
-  [ ${#INPUT} -ge 65536 ] && break
+  [ "$_rc" -ne 0 ] && break
 done
-[ -n "$_l" ] && INPUT+="$_l"
 INPUT="${INPUT:0:65536}"
 [ -n "$INPUT" ] || exit 0
 

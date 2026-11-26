@@ -19,11 +19,13 @@ DECISION=""   # Context only: normal host permissions remain in force; no defer 
 # payload into a multi-second regex scan inside a 5s budget.
 INPUT=""
 if [ -n "$BASH_VERSION" ]; then
-  while IFS= read -r -t 2 _l; do
+  while [ ${#INPUT} -lt 32768 ]; do
+    _l=""
+    _rc=0
+    IFS= read -r -t 2 -n $(((32768 - ${#INPUT}) * 4)) _l || _rc=$?
     INPUT="$INPUT$_l"
-    [ ${#INPUT} -ge 32768 ] && break
+    [ "$_rc" -ne 0 ] && break
   done
-  [ -n "$_l" ] && INPUT="$INPUT$_l"
   INPUT="${INPUT:0:32768}"
 else
   INPUT=$(head -c 32768 2>/dev/null)

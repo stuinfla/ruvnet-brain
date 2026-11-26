@@ -73,14 +73,16 @@ describe.skipIf(process.platform === 'win32')('hook-shim.mjs — restart-free ho
 
   it('the explicit blocking shim sends one bounded payload to its consuming hook body', () => {
     seedSpine('1.0.0', {
-      // ADR-067: the registered blocking hook on the write path is now decision-gate. The BOUND is
-      // the property under test and it is unchanged — declared as `stdinBytes: 65536` on the shim
-      // table entry — so the stub simply reports how many bytes actually arrived.
+      // ADR-067: the registered blocking hook on the write path is now decision-gate, whose
+      // declared `stdinBytes` on the shim table entry is 1048576 (1 MiB) so >64 KiB JSON arrives intact.
       'decision-gate.mjs': 'let n = 0;\nprocess.stdin.on("data", (c) => { n += c.length; });\nprocess.stdin.on("end", () => process.stdout.write(String(n)));\n',
     });
-    const result = runRegistered('decision-gate', 'p'.repeat(70_000));
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout, 'a 70KB payload must arrive truncated to the declared bound').toBe('65536');
+    const small = runRegistered('decision-gate', 'p'.repeat(112 * 1024));
+    expect(small.status, small.stderr).toBe(0);
+    expect(small.stdout, 'a 112KB payload must pass through untruncated').toBe(String(112 * 1024));
+    const over = runRegistered('decision-gate', 'p'.repeat(1_100_000));
+    expect(over.status, over.stderr).toBe(0);
+    expect(over.stdout, 'a >1MiB payload must arrive truncated to the declared 1048576 bound').toBe('1048576');
   });
 
   it('every preserved explicit payload consumer receives the exact closed-pipe payload', () => {

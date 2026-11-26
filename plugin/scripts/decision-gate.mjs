@@ -29,7 +29,7 @@ import { append as appendOutcome, actionKey, recordRefusal, reportBudget, report
 // Grok sends its own tool names (`write`) and a snake_case event; every policy below reads Claude's
 // shape. Normalised ONCE here, so the policies (four of them bash, matching tool_name textually) never
 // see a host-native spelling — the 4.4 measurement was a Grok write silently allowed. hook-input.mjs.
-import { normalizePayloadText } from './hook-input.mjs';
+import { normalizePayloadText, readStdinBounded } from './hook-input.mjs';
 import { isDirectInvocation } from './entrypoint.mjs';
 
 const SCRIPTS_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -95,18 +95,19 @@ export const MIN_HEADROOM_MS = 3000;
  *    `budget-exceeded` with the policies that did not vote; a stderr line saying the allow was a timeout,
  *    not a verdict, is printed only on a refusal or under RUVNET_STOP_NUDGES=full (decision-outcomes.mjs).
  *
- * 2. OVERSIZE: ONLY THE FIRST 64 KiB IS CHECKED. The host hands this gate the payload through
- *    hook-shim.mjs, which reads at most TRANSPORT_CAP_BYTES (its TABLE entry), and the bash policies cap
- *    their own read at the same number. A bigger Write arrives cut mid-JSON. The policies still run on
- *    that prefix and a refusal found there STANDS (measured 2026-10-01: an ungrounded rUv import at the
- *    top of a 100 KB file, and a 100 KB write to the protected settings file, are both refused). What
- *    the prefix cannot show — a rUv import after the first 64 KiB — is ALLOWED. Measured before 4.5 that
- *    allow left no trace at all; it is now recorded as `payload-oversize` (with the session, tool and path
- *    recovered from the prefix, so refusals of oversize writes are counted too). No stderr on that allow:
- *    a large file is ordinary work, and stderr is what a host renders as a hook error.
+ * 2. OVERSIZE: ONLY THE FIRST 1 MiB (1048576 BYTES) CROSSES THE DECISION TRANSPORT; BASH POLICIES
+ *    STILL CAP THEIR PREFIX READS AT 64 KiB / 32 KiB. The host hands this gate the payload through
+ *    hook-shim.mjs, which reads at most TRANSPORT_CAP_BYTES (1048576 in its TABLE entry). Complete
+ *    JSON payloads up to 1 MiB reach Node policies (such as adr-currency-gate.mjs and
+ *    substitution-wall.mjs) intact without truncation or EAGAIN, while the pure-bash policies cap
+ *    their own stdin prefix scan at 64 KiB (`protect-brain-state.sh`, `ground-before-write.sh`) or
+ *    32 KiB (`hijack-ruvnet.sh`). A payload larger than 1 MiB arrives cut mid-JSON: refusals found
+ *    in the prefix STILL STAND, and anything beyond the cap is allowed and recorded as
+ *    `payload-oversize` (with session, tool and path recovered from the prefix). No stderr on that
+ *    allow in default mode: a >1 MiB file is ordinary work, and stderr is rendered as a hook error.
  * tests/unit/write-gate-policy.test.mjs holds both, through the real registered command.
  */
-export const TRANSPORT_CAP_BYTES = 65536;
+export const TRANSPORT_CAP_BYTES = 1048576;
 
 /** Pure: is this the complete JSON event, or the transport cap's cut-off prefix of a bigger one? */
 export function classifyPayload(raw) {
@@ -292,102 +293,104 @@ function speechEventFor(event) { return event === 'bash' ? 'PreToolUse-bash' : '
 // ── Runtime ──────────────────────────────────────────────────────────────────────────────────────
 // isDirectInvocation never throws (entrypoint.mjs), so an importer cannot be crashed by this guard.
 if (isDirectInvocation(import.meta.url)) {
-  const started = Date.now();
-  const payload = normalizePayloadText(readPayload());
-  const shape = classifyPayload(payload);
-  const session = sessionOf(payload) || (shape.truncated ? shape.session : '');
-  const selected = policiesFor(EVENT);
-  // An unknown event is not an occasion to refuse anything. Same rule as unprompted-runtime's
-  // "never speak on a guess", pointed at the other decision. 'write' is the only registered route
-  // (H5 removed the dead 'bash' one — see the REGISTRY comment above), so it is the only exception.
-  if (!selected.length && EVENT !== 'write') process.exit(ALLOW);
-  const budgetMs = Number(process.env.RUVNET_DECISION_BUDGET_MS) || DEFAULT_BUDGET_MS;
-  const deadline = Math.min(started + budgetMs, Number(process.env.RUVNET_DECISION_DEADLINE) || Infinity);
-  // Resolved ONCE. On win32 resolveBash() can shell out to `where.exe`; four bash policies meant up
-  // to four of those per tool call, for an answer that cannot change mid-invocation.
-  BASH = resolveBash();
-  const trace = [];            // one row per policy — surfaced by RUVNET_DECISION_TRACE=1
-  const unconsulted = [];      // policies the budget cost us. NEVER silent; see reportBudget().
-  const toolInput = payloadInput(payload);
-  const consulted = [];
-  for (const p of selected) {
-    const why = skipReason(p, toolInput);
-    if (why) trace.push({ id: p.id, ms: 0, skipped: why });
-    else consulted.push(p);
-  }
-  // ── PARALLEL, and the reason is arithmetic ─────────────────────────────────────────────────────
-  // Sequentially the gate's wall time was SUM(policies); run together it is MAX(policies). Measured
-  // on a `git push` payload by the 2026-08-13 audit: 182 + 345 + 2145..3990 + 629 + 743 ≈ 4.0-5.9s
-  // sequential, against a 5s host timeout. Nothing about these policies wanted to be sequential —
-  // they share no state, write no files (only stderr), and `decide()` re-sorts the verdicts into
-  // REFUSAL_POLICIES precedence order regardless of which finished first. Every selected policy ran
-  // on every call before this change too: the gate never short-circuited on the first refusal,
-  // because naming EVERY wall is the whole point of ADR-067.
-  const results = await Promise.all(consulted.map((p) => runPolicy(p, payload, deadline, undefined, trace)));
-  const verdicts = results.filter((r) => typeof r.code === 'number');
-  for (const r of results) if (r.skipped === 'budget') unconsulted.push(r.id);
-  // A policy that exits SKIPPED (3) did not vote and said why (duplicate-gate under overload). Same
-  // two channels as a blown budget, below — never silence standing in for a verdict.
-  const selfSkipped = results.filter((r) => r.skipped === 'self');
-  const decision = decide(verdicts);
-  // Measurement follows the FINAL gate verdict; it must never delay a blocking producer.
-  const measureFinalDecision = (allowed, policies = decision.refusals) => {
-    const metricDeadline = Math.min(deadline, Date.now() + 25);
-  try {
-    const key = shape.truncated
-      ? actionKey(shape.tool, { file_path: shape.filePath })
-      : actionKey(payloadTool(payload), toolInput);
-    const ts = Date.now();
-    if (session && key) {
-      let observed = {}; try { observed = JSON.parse(payload); } catch { /* truncated payload: adapter/process scope */ }
-      const attribution = { host: observed.host || process.env.RUVNET_HOOK_HOST || 'claude',
-        project: observed.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd() };
-      sweepStale({ session, ts, deadlineAt: metricDeadline, nonBlocking: true }); // only proven observation age expires debt; foreign sessions are not abandoned
-      resolveOutcome({ session, key, allowed: allowed, ts, ...attribution, deadlineAt: metricDeadline, nonBlocking: true });
-      if (!allowed) recordRefusal({ session, key, policies: policies, ts, ...attribution, deadlineAt: metricDeadline, nonBlocking: true });
+  await (async () => {
+    const started = Date.now();
+    const payload = normalizePayloadText(await readPayload());
+    const shape = classifyPayload(payload);
+    const session = sessionOf(payload) || (shape.truncated ? shape.session : '');
+    const selected = policiesFor(EVENT);
+    // An unknown event is not an occasion to refuse anything. Same rule as unprompted-runtime's
+    // "never speak on a guess", pointed at the other decision. 'write' is the only registered route
+    // (H5 removed the dead 'bash' one — see the REGISTRY comment above), so it is the only exception.
+    if (!selected.length && EVENT !== 'write') process.exit(ALLOW);
+    const budgetMs = Number(process.env.RUVNET_DECISION_BUDGET_MS) || DEFAULT_BUDGET_MS;
+    const deadline = Math.min(started + budgetMs, Number(process.env.RUVNET_DECISION_DEADLINE) || Infinity);
+    // Resolved ONCE. On win32 resolveBash() can shell out to `where.exe`; four bash policies meant up
+    // to four of those per tool call, for an answer that cannot change mid-invocation.
+    BASH = resolveBash();
+    const trace = [];            // one row per policy — surfaced by RUVNET_DECISION_TRACE=1
+    const unconsulted = [];      // policies the budget cost us. NEVER silent; see reportBudget().
+    const toolInput = payloadInput(payload);
+    const consulted = [];
+    for (const p of selected) {
+      const why = skipReason(p, toolInput);
+      if (why) trace.push({ id: p.id, ms: 0, skipped: why });
+      else consulted.push(p);
     }
-  } catch { /* a ledger must never break a tool call */ }
-  };
-  reportSelfSkipped({ event: EVENT, session, selfSkipped });
-  if (decision.allow && shape.truncated) {
-    // OVERSIZE POLICY (header): allowed on a check of the first TRANSPORT_CAP_BYTES only. Recorded, never silent.
-    try { appendOutcome({ kind: 'payload-oversize', event: EVENT, session, bytesSeen: shape.bytes, capBytes: TRANSPORT_CAP_BYTES, tool: shape.tool, filePath: shape.filePath, ts: Date.now() }); } catch { /* a ledger must never break a tool call */ }
-  }
-  if (!decision.allow) {
-    measureFinalDecision(false);
-    reportBudget({ event: EVENT, session, unconsulted, trace, started, budgetMs, refused: true });
-    process.stderr.write(`${decision.reason}\n`);
-    process.exit(REFUSE);
-  }
-  // Nothing refused: run the speech chokepoint and forward its envelope verbatim. It owns its own
-  // per-channel policy; this gate does not inspect or re-decide anything it says.
-  //
-  // SEQUENTIAL ON PURPOSE, unlike the batch above. unprompted-runtime.mjs records an OFFERED row in
-  // the advocacy ledger when it delivers (its line ~372), so starting it in parallel and discarding
-  // its stdout after a refusal would book an offer the user never saw — inflating the denominator
-  // this project has a CI gate against fabricating. A saved ~280ms is not worth a fabricated number.
-  if (deadline - Date.now() <= 0) {
-    unconsulted.push(SPEECH.id);
-  } else {
-    const speech = await runPolicy(SPEECH, payload, deadline, speechEventFor(EVENT), trace);
-    if (speech.skipped === 'budget') unconsulted.push(SPEECH.id);
-    if (speech.code === REFUSE) {
-      measureFinalDecision(false, [...decision.refusals, SPEECH.id]);
+    // ── PARALLEL, and the reason is arithmetic ─────────────────────────────────────────────────────
+    // Sequentially the gate's wall time was SUM(policies); run together it is MAX(policies). Measured
+    // on a `git push` payload by the 2026-08-13 audit: 182 + 345 + 2145..3990 + 629 + 743 ≈ 4.0-5.9s
+    // sequential, against a 5s host timeout. Nothing about these policies wanted to be sequential —
+    // they share no state, write no files (only stderr), and `decide()` re-sorts the verdicts into
+    // REFUSAL_POLICIES precedence order regardless of which finished first. Every selected policy ran
+    // on every call before this change too: the gate never short-circuited on the first refusal,
+    // because naming EVERY wall is the whole point of ADR-067.
+    const results = await Promise.all(consulted.map((p) => runPolicy(p, payload, deadline, undefined, trace)));
+    const verdicts = results.filter((r) => typeof r.code === 'number');
+    for (const r of results) if (r.skipped === 'budget') unconsulted.push(r.id);
+    // A policy that exits SKIPPED (3) did not vote and said why (duplicate-gate under overload). Same
+    // two channels as a blown budget, below — never silence standing in for a verdict.
+    const selfSkipped = results.filter((r) => r.skipped === 'self');
+    const decision = decide(verdicts);
+    // Measurement follows the FINAL gate verdict; it must never delay a blocking producer.
+    const measureFinalDecision = (allowed, policies = decision.refusals) => {
+      const metricDeadline = Math.min(deadline, Date.now() + 25);
+    try {
+      const key = shape.truncated
+        ? actionKey(shape.tool, { file_path: shape.filePath })
+        : actionKey(payloadTool(payload), toolInput);
+      const ts = Date.now();
+      if (session && key) {
+        let observed = {}; try { observed = JSON.parse(payload); } catch { /* truncated payload: adapter/process scope */ }
+        const attribution = { host: observed.host || process.env.RUVNET_HOOK_HOST || 'claude',
+          project: observed.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd() };
+        sweepStale({ session, ts, deadlineAt: metricDeadline, nonBlocking: true }); // only proven observation age expires debt; foreign sessions are not abandoned
+        resolveOutcome({ session, key, allowed: allowed, ts, ...attribution, deadlineAt: metricDeadline, nonBlocking: true });
+        if (!allowed) recordRefusal({ session, key, policies: policies, ts, ...attribution, deadlineAt: metricDeadline, nonBlocking: true });
+      }
+    } catch { /* a ledger must never break a tool call */ }
+    };
+    reportSelfSkipped({ event: EVENT, session, selfSkipped });
+    if (decision.allow && shape.truncated) {
+      // OVERSIZE POLICY (header): allowed on a check of the first TRANSPORT_CAP_BYTES only. Recorded, never silent.
+      try { appendOutcome({ kind: 'payload-oversize', event: EVENT, session, bytesSeen: shape.bytes, capBytes: TRANSPORT_CAP_BYTES, tool: shape.tool, filePath: shape.filePath, ts: Date.now() }); } catch { /* a ledger must never break a tool call */ }
+    }
+    if (!decision.allow) {
+      measureFinalDecision(false);
       reportBudget({ event: EVENT, session, unconsulted, trace, started, budgetMs, refused: true });
-      process.stderr.write(`${(speech.stderr || '').trim()}\n`);
+      process.stderr.write(`${decision.reason}\n`);
       process.exit(REFUSE);
+    }
+    // Nothing refused: run the speech chokepoint and forward its envelope verbatim. It owns its own
+    // per-channel policy; this gate does not inspect or re-decide anything it says.
+    //
+    // SEQUENTIAL ON PURPOSE, unlike the batch above. unprompted-runtime.mjs records an OFFERED row in
+    // the advocacy ledger when it delivers (its line ~372), so starting it in parallel and discarding
+    // its stdout after a refusal would book an offer the user never saw — inflating the denominator
+    // this project has a CI gate against fabricating. A saved ~280ms is not worth a fabricated number.
+    if (deadline - Date.now() <= 0) {
+      unconsulted.push(SPEECH.id);
+    } else {
+      const speech = await runPolicy(SPEECH, payload, deadline, speechEventFor(EVENT), trace);
+      if (speech.skipped === 'budget') unconsulted.push(SPEECH.id);
+      if (speech.code === REFUSE) {
+        measureFinalDecision(false, [...decision.refusals, SPEECH.id]);
+        reportBudget({ event: EVENT, session, unconsulted, trace, started, budgetMs, refused: true });
+        process.stderr.write(`${(speech.stderr || '').trim()}\n`);
+        process.exit(REFUSE);
+      }
+      reportBudget({ event: EVENT, session, unconsulted, trace, started, budgetMs });
+      measureFinalDecision(true);
+      const context = policyContext(results, speech.stdout || '');
+      if (context) process.stdout.write(context);
+      process.exit(ALLOW);
     }
     reportBudget({ event: EVENT, session, unconsulted, trace, started, budgetMs });
     measureFinalDecision(true);
-    const context = policyContext(results, speech.stdout || '');
+    const context = policyContext([...results, ...unconsulted.filter((id) => !results.some((r) => r.id === id && r.skipped)).map((id) => ({ id, skipped: 'budget' }))]);
     if (context) process.stdout.write(context);
     process.exit(ALLOW);
-  }
-  reportBudget({ event: EVENT, session, unconsulted, trace, started, budgetMs });
-  measureFinalDecision(true);
-  const context = policyContext([...results, ...unconsulted.filter((id) => !results.some((r) => r.id === id && r.skipped)).map((id) => ({ id, skipped: 'budget' }))]);
-  if (context) process.stdout.write(context);
-  process.exit(ALLOW);
+  })();
 }
 /**
  * Run one policy as a CAPTURED child. Never lets its bytes touch the real streams.
@@ -447,7 +450,6 @@ function runPolicy(p, payload, deadline, extraArg, trace) {
     try { child.stdin.end(payload); } catch { /* handled by the stdin error listener above */ }
   });
 }
-function readPayload() {
-  if (process.stdin.isTTY) return '';
-  try { return fs.readFileSync(0, 'utf8'); } catch { return ''; }
+async function readPayload() {
+  return (await readStdinBounded({ maxBytes: TRANSPORT_CAP_BYTES })).toString('utf8');
 }

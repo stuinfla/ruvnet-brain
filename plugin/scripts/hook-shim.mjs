@@ -110,7 +110,7 @@ const TABLE = {
   // "constraints that collapse on each other". Same shape as 'unprompted-speech' one layer up: that
   // one is the sole writer of unprompted BYTES, this one is the sole author of a REFUSAL. The four
   // policies it consults are unchanged and still individually tested; the gate only composes them.
-  'decision-gate':    { file: 'decision-gate.mjs',   interpreter: 'node', mode: 'blocking', offBehavior: 'run', stdinBytes: 65536 },
+  'decision-gate':    { file: 'decision-gate.mjs',   interpreter: 'node', mode: 'blocking', offBehavior: 'run', stdinBytes: 1048576 },
   // H5 CORRECTION (2026-09-26): a first pass removed these two TABLE entries as "retired dead code",
   // since neither id is dispatched by plugin/hooks/hooks.json, plugin/hooks/codex-hooks.json, or this
   // repo's .claude/settings.json. That broke a REAL test:

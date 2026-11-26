@@ -38,12 +38,31 @@ describe.skipIf(!hasBash || process.platform === 'win32')('the write guard recog
     } finally { fs.rmSync(home, { recursive: true, force: true }); }
   });
 
-  it('the same write with 80 KiB of content (snake_case fields cut off by the bound) is still refused', () => {
+  it('a 160 KiB Grok write arrives untruncated (not skipped by ADR check) and is still refused', () => {
     const home = world();
     try {
+      const ledger = path.join(home, 'outcomes.jsonl');
       const payload = grokWrite(`// agentdb capture glue\n${'const filler = 1;\n'.repeat(80 * 1024 / 18)}`);
-      expect(Buffer.byteLength(payload)).toBeGreaterThan(65536 * 2);
-      expect(payload.indexOf('"tool_name"')).toBeGreaterThan(65536); // the cut removes it
+      expect(Buffer.byteLength(payload)).toBeGreaterThan(160 * 1024);
+      expect(Buffer.byteLength(payload)).toBeLessThan(1048576);
+      const r = spawnSync(process.execPath, [SHIM, 'decision-gate', 'write'], {
+        input: payload, encoding: 'utf8', timeout: 60_000,
+        env: { ...process.env, HOME: home, RUVNET_BRAIN_HOME: path.join(home, '.cache', 'ruvnet-brain'), RUVNET_DUPLICATE_GATE: 'off', RUVNET_DECISION_LEDGER: ledger },
+      });
+      expect(r.status, r.stderr).toBe(2);
+      expect(r.stderr).toMatch(/BLOCKED/);
+      const rows = fs.readFileSync(ledger, 'utf8').trim().split('\n').map(JSON.parse);
+      expect(rows.filter((x) => x.kind === 'payload-oversize')).toEqual([]);
+      expect(rows.filter((x) => x.kind === 'policy-skipped')).toEqual([]);
+    } finally { fs.rmSync(home, { recursive: true, force: true }); }
+  });
+
+  it('the same write > 1 MiB (snake_case fields cut off by the 1048576 bound) is still refused', () => {
+    const home = world();
+    try {
+      const payload = grokWrite(`// agentdb capture glue\n${'const filler = 1;\n'.repeat(1100 * 1024 / 18)}`);
+      expect(Buffer.byteLength(payload)).toBeGreaterThan(1048576);
+      expect(payload.indexOf('"tool_name"')).toBeGreaterThan(1048576); // the 1 MiB cut removes it
       const r = gate(home, payload);
       expect(r.status, r.stderr).toBe(2);
       expect(r.stderr).toMatch(/BLOCKED/);
