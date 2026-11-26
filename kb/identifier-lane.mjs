@@ -171,6 +171,9 @@ export function identifierScan(dir, identifiers, { perRepo = 8, maxRepos = 6 } =
       if (!hitTokens.length) continue;
       let record;
       try { record = JSON.parse(line); } catch { continue; }
+      // Benchmark telemetry dumps under evals/runs/ echo adversarial test queries verbatim and are
+      // never product source or documentation.
+      if (repo === 'ruvnet-brain' && /^evals\/runs\//i.test(String(record.path || ''))) continue;
       rows.push({ record, hitTokens });
       if (rows.length >= perRepo * 6) break;   // a bounded read of one store, not a full parse
     }

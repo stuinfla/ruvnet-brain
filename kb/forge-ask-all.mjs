@@ -18,7 +18,9 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
-import { searchKb } from './forge-ask.mjs';
+import { searchKb, __embedInternals } from './forge-ask.mjs';
+import { loadRvf } from './resolve-deps.mjs';
+import { hasEntryIndexes, queryEntryIndexes, recordRetrievalObservation } from './rsi-retrieval-loop.mjs';
 import { kbBuildIdentity } from './kb-build-identity.mjs';
 import { keywordCandidates, keywordLaneEnabled } from './keyword-lane.mjs';
 import { applyJudge, loadJudge } from './judge-rank.mjs';
@@ -97,7 +99,7 @@ async function* lfLines(input) {
 // NOTE: this is only effective once the transcript store's passages carry UNIQUE paths (else doc-collapse
 // in forge-ask.mjs crushes them back into a few windows — the ruv-meetings 317→4 collapse bug).
 const TRANSCRIPT_STORES = new Set(
-  (process.env.KB_TRANSCRIPT_STORES || 'ruv-meetings').split(',').map((s) => s.trim()).filter(Boolean),
+  (process.env.KB_TRANSCRIPT_STORES || 'ruv-meetings,agentics-friday-talks').split(',').map((s) => s.trim()).filter(Boolean),
 );
 const isTranscriptStore = (name) => TRANSCRIPT_STORES.has(String(name).replace(/\.big$/, ''));
 const _mbm = new Map(); // dir|name -> { passages, toks, stats } (built once per process)
@@ -1599,7 +1601,18 @@ async function sourceBackedCardLane({ dir, query, k, planned }) {
   // Compact previews can prove a tightly-scoped capability exists; they cannot inventory an API
   // or explain runtime mechanics. Inventories are accepted only when multiple real source/manifest
   // witnesses collectively cover every item in the card's matching explicit enumeration.
-  const queryMode = sourceCardQueryMode(query);
+  const rawQueryMode = sourceCardQueryMode(query);
+  // Plain-English capability/scenario goals ("I need...", "A read-through cache...", "Our support
+  // bot...") that the card router already matched with `confidence === 'described'` still deserve
+  // real source-backed witnesses from the matched repo rather than falling into negative-CE code
+  // chunks. Excludes named exact-artifact lookups, off-topic/candidate queries, and gist provenance.
+  const describedGoalFallback = Boolean(
+    !rawQueryMode
+    && planned?.confidence === 'described'
+    && !(planned.namedRepos?.length)
+    && !(planned.repos?.length === 1 && planned.repos[0] === 'ruv-gists'),
+  );
+  const queryMode = rawQueryMode || (describedGoalFallback ? 'overview' : null);
   const projectMemoryConfirmation = Boolean(
     queryMode === 'confirmation'
     && /\bpersist\w*\b[\s\S]{0,80}\bmemory\b|\bmemory\b[\s\S]{0,80}\bpersist\w*\b/i.test(query)
@@ -1627,6 +1640,7 @@ async function sourceBackedCardLane({ dir, query, k, planned }) {
       || (planned.namedRepos?.length || 0) > 1
       || (
         !requiresImplementationProof(query)
+        && !describedGoalFallback
         && !portableBinaryVectorFileQuestion(query)
         && !costQualityTradeoffQuestion(query)
         && !fixedModelHarnessEvolutionQuestion(query)
@@ -2459,7 +2473,7 @@ export function discoverRepos(dir) {
     if (f.startsWith('._')) continue;                  // volume metadata, not a store
     const m = f.match(/^(.+?)(\.big)?\.rvf$/);
     if (!m) continue;                                  // not an rvf store
-    if (/\.(idmap|embed)\b/.test(f)) continue;         // sidecar, not a store
+    if (/\.(idmap|embed|d2q)\b/.test(f)) continue;         // sidecar or auxiliary d2q index, not a store
     names.add(m[1]);
   }
   return [...names].sort();
@@ -2778,7 +2792,7 @@ export const FULL_CORPUS_MAX_PAIRS_DEFAULT = 408;
 export function capRerankPool(candidates, { limit }) {
   if (!(limit > 0) || candidates.length <= limit) return { kept: candidates, dropped: 0, capped: false };
   const keep = new Set();
-  const exempt = (c) => c._lane === 'rescue' || c._lane === 'bm25';
+  const exempt = (c) => c._lane === 'rescue' || c._lane === 'bm25' || c._lane === 'entry-d2q' || c._lane === 'rsi-learned';
   for (let i = 0; i < candidates.length; i++) if (exempt(candidates[i])) keep.add(i);
   // The floor: one passage per store, taken only if the whole floor fits in what is left.
   const floor = [];
@@ -2838,7 +2852,7 @@ export function cascadeRerankPool(candidates, { limit, s1 }) {
     return { kept: candidates, dropped: 0, capped: false };
   }
   const keep = new Set();
-  const exempt = (c) => c._lane === 'rescue' || c._lane === 'bm25';
+  const exempt = (c) => c._lane === 'rescue' || c._lane === 'bm25' || c._lane === 'entry-d2q' || c._lane === 'rsi-learned';
   for (let i = 0; i < candidates.length; i++) if (exempt(candidates[i])) keep.add(i);
   // (stage-1 score desc, original pool position asc) — stable, so two candidates that score
   // identically are broken the same way on every run. The pool cap changes what gets scored, so a
@@ -2885,6 +2899,7 @@ const isTopLevelGuidePath = (p) =>
 
 const STORE_NOISE_SUBTREES = {
   ruflo: /^ruflo\//,
+  'ruvnet-brain': /^evals\/runs\//,
 };
 
 export function selectResults({ query, ranked, k = 6, pruneIrrelevant = true, dir = null }) {
@@ -3886,6 +3901,57 @@ async function searchAllPrimary({
     }
   }));
   const pooledAll = perRepoHits.flat();
+  // ADR-099 Arm A + Retrieval RSI: query RuVector entry-index.d2q.rvf & rsi-learned.d2q.rvf
+  // to pull exact real indexed passages for plain-English questions into the cross-encoder pool.
+  try {
+    const rvfMod = loadRvf?.()?.mod;
+    const embedFn = __embedInternals?.embed;
+    if (rvfMod?.RvfDatabase && embedFn && hasEntryIndexes(dir) && (!deadline || deadline.remainingMs() > 6000)) {
+      const bgeCfg = { model: 'Xenova/bge-base-en-v1.5', dimensions: 768, pooling: 'cls', normalize: true, queryPrefix: 'Represent this sentence for searching relevant passages: ' };
+      const qVec = await embedFn(query, bgeCfg);
+      const entryHits = await queryEntryIndexes({
+        dir,
+        queryVec: qVec,
+        repos: list,
+        RvfDatabase: rvfMod.RvfDatabase,
+        k: 12,
+        maxDist: 0.44,
+      });
+      if (entryHits.length) {
+        const seenKeys = new Set(pooledAll.map((c) => `${String(c.repo || '').toLowerCase()}::${c.path || ''}`));
+        const metaCache = new Map();
+        for (const eh of entryHits) {
+          const key = `${eh.repo.toLowerCase()}::${eh.path}`;
+          if (seenKeys.has(key)) continue;
+          let meta = metaCache.get(eh.repo);
+          if (meta === undefined) {
+            try {
+              meta = JSON.parse(fs.readFileSync(path.join(dir, `${eh.repo}.meta.json`), 'utf8'));
+            } catch { meta = null; }
+            metaCache.set(eh.repo, meta);
+          }
+          if (!meta?.entries) continue;
+          const match = Object.values(meta.entries).find((e) => e?.path === eh.path);
+          if (!match?.preview) continue;
+          seenKeys.add(key);
+          pooledAll.push({
+            repo: eh.repo,
+            path: match.path,
+            title: match.title || match.path,
+            kind: match.kind || 'doc',
+            preview: match.preview,
+            text: match.preview,
+            fullText: match.preview,
+            chunks: 1,
+            bestDistance: eh.distance,
+            distance: eh.distance,
+            _lane: eh.source === 'rsi-learned' ? 'rsi-learned' : 'entry-d2q',
+            _srcRank: 0,
+          });
+        }
+      }
+    }
+  } catch { /* optional entry index never breaks primary search */ }
   const retrievalMs = performance.now() - startedAt - routeMs;
   // The pool's own order is the cap's tie-break, so it has to survive into any recorded trace —
   // otherwise a replay would break ties differently from production and quietly measure a
@@ -3957,6 +4023,17 @@ async function searchAllPrimary({
   // `prefiltered` is the cascade's own honesty clause: under a cascade the cross-encoder DID look
   // at every pooled pair, just at `cascadeTokens` tokens instead of 512. Reporting only `pooled`
   // would let a reader conclude 543 documents were never looked at, which is not what happened.
+  const topHit = results?.[0];
+  if (topHit) {
+    recordRetrievalObservation({
+      query,
+      repo: topHit.repo,
+      citedPath: topHit.path,
+      ceScore: topHit.ceScore,
+      grounded: evidence?.grade === 'strong' || (typeof topHit.ceScore === 'number' && topHit.ceScore >= 0),
+      lane: topHit._lane || ((!repos || !repos.length) && !_routeStage ? 'full-corpus' : 'scoped-search'),
+    });
+  }
   return {
     repos: list, perRepo, results,
     pooled: candidates.length, pooledAll: pooledAll.length, cappedOut,

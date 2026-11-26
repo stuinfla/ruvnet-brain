@@ -466,7 +466,7 @@ const RULES = [
           ? `Found stateful/retry workflows (${loopFiles.slice(0, 3).join(', ')}) without AgentDB — agentdb persists structured episodes, provenance, and reflexion patterns across runs, and agenticow provides O(1) copy-on-write memory branches for repair rounds.`
           : `agentdb gives your application and agents durable local structured + HNSW vector memory that survives restarts and learns from past outcomes.`,
         nextAction: 'ruflo memory store --key "init" --value "ready" --namespace app --path .swarm/memory.db',
-        undo: 'delete .swarm/memory.db — it is a single local file',
+        undo: 'archive or remove only the test entry via ruflo memory delete --key "init" --namespace app --path .swarm/memory.db',
       };
     },
   },
@@ -516,7 +516,7 @@ const RULES = [
         evidence: ev,
         whyItFits: `ruflo coordinates parallel specialist agents (extractor, researcher, writer, critic, verifier) under a hierarchical Raft-consensus topology with shared AgentDB memory so multi-stage builds do not drift.`,
         nextAction: 'ruflo swarm init --topology hierarchical',
-        undo: 'ruflo swarm shutdown',
+        undo: 'ruflo swarm stop',
       };
     },
   },
@@ -542,7 +542,7 @@ const RULES = [
         evidence: ev.length ? ev : [`RSI / self-improvement intent for ${scan.projectName}`],
         whyItFits: `Combine @claude-flow/neural (SONA <0.05ms micro-loop + EWC++ anti-forgetting), agenticow (O(1) copy-on-write memory branches for safe A/B experiments), agentdb (Reflexion episodic outcomes), and MetaHarness Flywheel/Darwin Mode (receipt-backed promotion gate) to give ${scan.projectName} safe, measurable recursive self-improvement.`,
         nextAction: 'ruflo hooks pretrain && npm i @claude-flow/neural agenticow @metaharness/router',
-        undo: 'git checkout -- package.json && ruflo swarm shutdown',
+        undo: 'npm uninstall @claude-flow/neural agenticow @metaharness/router && ruflo swarm stop',
       };
     },
   },
@@ -691,19 +691,61 @@ export function recommendForProject({ cwd = process.cwd(), prompt = '', limit = 
 }
 
 const RUPRO_LAYER_ORDER = [
-  { layer: 'storage', caps: ['ruvector-rvf', 'rulake', 'ruvector-gnn'], verify: 'node -e "import(\'@ruvector/rvf\').then(() => console.log(\'rvf ok\'))"' },
-  { layer: 'memory', caps: ['agentdb-memory', 'agenticow'], verify: 'ruflo memory search --query "project-state-current" --path .swarm/memory.db' },
-  { layer: 'security', caps: ['aidefence-aimds', 'ruvector-typesafe', 'typesafe'], verify: 'npm test' },
-  { layer: 'routing', caps: ['metaharness-router', 'ruvllm-edge'], verify: 'node -e "import(\'@metaharness/router\').then(() => console.log(\'router ok\'))"' },
-  { layer: 'orchestration', caps: ['ruflo-swarm'], verify: 'ruflo status' },
-  { layer: 'rsi', caps: ['rsi-loop'], verify: 'ruflo hooks stats' },
-  { layer: 'quality', caps: ['agentic-qe'], verify: 'npx vitest run' },
+  {
+    layer: 'storage',
+    caps: ['ruvector', 'ruvector-rvf', 'rulake', 'ruvector-gnn'],
+    plainEnglish: 'Replaces paid cloud vector servers with one fast, local .rvf binary file on your machine.',
+    verify: 'node -e "import(\'@ruvector/rvf\').then(() => console.log(\'rvf ok\'))"',
+  },
+  {
+    layer: 'memory',
+    caps: ['agentdb', 'agentdb-memory', 'agenticow'],
+    plainEnglish: 'Gives your AI persistent project memory so it stops forgetting decisions between sessions.',
+    verify: 'ruflo memory search --query "project-state-current" --path .swarm/memory.db',
+  },
+  {
+    layer: 'security',
+    caps: ['aidefence', 'aidefence-aimds', 'ruvector-typesafe', 'typesafe'],
+    plainEnglish: 'Screens user prompts and AI outputs against prompt injection, jailbreaks, and untyped JSON crashes.',
+    verify: 'npm test',
+  },
+  {
+    layer: 'routing',
+    caps: ['metaharness-router', 'ruvllm-edge'],
+    plainEnglish: 'Sends easy tasks to fast cheap models and escalates hard tasks automatically.',
+    verify: 'node -e "import(\'@metaharness/router\').then(() => console.log(\'router ok\'))"',
+  },
+  {
+    layer: 'orchestration',
+    caps: ['ruflo', 'ruflo-swarm'],
+    plainEnglish: 'Coordinates specialized coding agents in parallel so they share context instead of stepping on each other.',
+    verify: 'ruflo status',
+  },
+  {
+    layer: 'rsi',
+    caps: ['rsi-loop'],
+    plainEnglish: 'Lets your app learn from verified outcomes over time without forgetting what already works.',
+    verify: 'ruflo hooks stats',
+  },
+  {
+    layer: 'quality',
+    caps: ['agentic-qe'],
+    plainEnglish: 'Surfaces untested code areas and delegates test creation to the real agentic-qe fleet.',
+    verify: 'npx vitest run',
+  },
 ];
 
 function layerMetaFor(capability) {
   const idx = RUPRO_LAYER_ORDER.findIndex((entry) => entry.caps.includes(capability));
-  if (idx >= 0) return { order: idx, layer: RUPRO_LAYER_ORDER[idx].layer, verify: RUPRO_LAYER_ORDER[idx].verify };
-  return { order: 99, layer: 'extension', verify: 'npm test' };
+  if (idx >= 0) {
+    return {
+      order: idx,
+      layer: RUPRO_LAYER_ORDER[idx].layer,
+      plainEnglish: RUPRO_LAYER_ORDER[idx].plainEnglish,
+      verify: RUPRO_LAYER_ORDER[idx].verify,
+    };
+  }
+  return { order: 99, layer: 'extension', plainEnglish: 'Adds a specialized RuvNet capability matched to your codebase.', verify: 'npm test' };
 }
 
 /**
@@ -723,6 +765,7 @@ export function buildRuproBlueprint({ project, recommendations = [], alreadyInte
       layer: meta.layer,
       capability: r.capability,
       title: r.title,
+      plainEnglish: meta.plainEnglish,
       packages: r.packages,
       targets: (r.evidence || []).slice(0, 3),
       why: r.whyItFits,

@@ -85,6 +85,18 @@ describe('splitRows — the frozen holdout/anchor split', () => {
     const key = (r) => JSON.stringify(r.embedding);
     expect(new Set(a.anchor.map(key))).toEqual(new Set(b.anchor.map(key)));
   });
+
+  it('never leaks identical task embeddings across holdout and anchor when scores differ', () => {
+    const base = buildRows(12);
+    const duplicated = [
+      ...base,
+      ...base.map((row) => ({ embedding: [...row.embedding], scores: { cheapo: 0.4, fmax: 0.99 } })),
+    ];
+    const { holdout, anchor } = splitRows(duplicated);
+    const holdoutKeys = new Set(holdout.map((r) => JSON.stringify(r.embedding)));
+    const anchorKeys = new Set(anchor.map((r) => JSON.stringify(r.embedding)));
+    for (const k of holdoutKeys) expect(anchorKeys.has(k)).toBe(false);
+  });
 });
 
 // ─── lever schema filtering ────────────────────────────────────────────────────────────────────────

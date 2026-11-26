@@ -187,7 +187,10 @@ async function main() {
     // MCP host.  The old CLI default widened every routed miss to the entire corpus, which turned
     // a 120-question quality check into a multi-hour cross-encoder run and measured a path no user
     // actually takes.  Set EVAL_FULL_CORPUS=1 only for an explicit historical fan-out experiment.
-    const args = ['forge-ask-all.mjs', '--dir', KB, '--q', query, '--k', '3'];
+    const runner = process.env.EVAL_USE_INSTALLED_RUNNER === '1'
+      ? path.join(KB, 'forge-ask-all.mjs')
+      : path.join(ROOT, 'kb', 'forge-ask-all.mjs');
+    const args = [runner, '--dir', KB, '--q', query, '--k', '3'];
     if (process.env.EVAL_FULL_CORPUS !== '1') args.push('--bounded');
     execFile('node', args,
       { cwd: KB, timeout: 240000, env: process.env, maxBuffer: 64 * 1024 * 1024 },

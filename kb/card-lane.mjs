@@ -122,7 +122,7 @@ const STOPWORDS = new Set(`
   what which who whom whose when where why how
   this that these those it its i you he she they we my your his her their our
   need needs want wants use uses using used tool tools reach like ask asks question questions
-  have has had not no nor so such too very just about also
+  have has had not no nor so such too very just about also here there
   each other
 `.trim().split(/\s+/));
 
@@ -258,13 +258,15 @@ function rawTokens(text) {
  * overlap — it can turn a miss into a hit, never the reverse — so it can only improve recall, not
  * create a false positive on its own; the confidence thresholds below still gate every hit.
  */
+const KEEP_SHORT_TOKENS = new Set(['qe']);
+
 export function contentTokens(text) {
   const out = new Set();
   for (const t of rawTokens(text)) {
-    if (t.length >= 3 && !STOPWORDS.has(t)) out.add(t);
+    if ((t.length >= 3 || KEEP_SHORT_TOKENS.has(t)) && !STOPWORDS.has(t)) out.add(t);
     if (t.includes('-')) {
       for (const part of t.split('-')) {
-        if (part.length >= 3 && !STOPWORDS.has(part)) out.add(part);
+        if ((part.length >= 3 || KEEP_SHORT_TOKENS.has(part)) && !STOPWORDS.has(part)) out.add(part);
       }
     }
   }

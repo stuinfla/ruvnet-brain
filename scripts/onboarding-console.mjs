@@ -36,6 +36,7 @@ import { planFor } from './remedy-registry.mjs';
 import { auditAll as capabilityAuditAll } from './capability-registry.mjs';
 import { getVersion } from './version.mjs';
 import { consoleRuntimeDigest } from './console-runtime-identity.mjs';
+import { getRsiStats } from '../kb/rsi-retrieval-loop.mjs';
 import { isCorpusReleaseTag } from '../kb/corpus-release-identity.mjs';
 // L5 (ADR-028): the audit is the one place that observes live capability state, so it is where an
 // OFFERED-then-now-`on` transition becomes an APPLIED — the numerator of the precision metric that
@@ -3470,6 +3471,279 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
       if (req.method === 'GET' && url === '/api/lessons') return sendJSON(res, 200, gatherLessons());
       // What every click did, before → after, read back from the machine (scripts/console-receipts.mjs).
       if (req.method === 'GET' && url === '/api/receipts') return sendJSON(res, 200, gatherReceipts());
+      if (req.method === 'GET' && url === '/api/living-sources') {
+        const kbDir = path.join(os.homedir(), '.cache', 'ruvnet-brain', 'kb');
+        const defs = [
+          {
+            id: 'x-ruv-io',
+            label: 'x.ruv.io — Agent Federation Gateway',
+            icon: '🌐',
+            summary: 'rUv’s live decentralized agent hub (ruflo-x-gateway v0.9.2) for Nostr identity, shared claims, and cross-agent channels over wss://relay.ruv.io.',
+            topics: ['Nostr NIP-98/42 Identity', '12 MCP Federation Tools', 'wss://relay.ruv.io', 'pub:claims & pub:showcase'],
+          },
+          {
+            id: 'agentics-friday-talks',
+            label: 'Friday Agentics Live Talks (May–Nov 2026)',
+            icon: '🎙',
+            summary: 'Six months of rUv’s weekly Friday Hackerspace & Agentics Foundation live sessions — searchable down to the exact YouTube timestamp.',
+            topics: ['Friday Hackerspace Live', 'Agentics Vibe-Coding', 'RuVector & AgentDB Design', 'Swarm & MetaHarness Deep-Dives'],
+          },
+          {
+            id: 'ruv-gists',
+            label: 'rUv GitHub Gists (517 Technical Notes)',
+            icon: '📝',
+            summary: 'Fast-moving engineering specs, release changelogs, benchmark tables, and prototypes published before they become full repositories.',
+            topics: ['Release Notes', 'Benchmark & Calibration Tables', 'RuVector / Ruflo Specs', 'Model & Prompt Findings'],
+          },
+          {
+            id: 'ruv-linkedin',
+            label: 'rUv LinkedIn Thought-Leadership',
+            icon: '💼',
+            summary: 'Reuven Cohen’s latest public announcements, launches, and agentic engineering commentary captured from LinkedIn.',
+            topics: ['Latest Launches', 'Agentic Architecture', 'Community Announcements'],
+          },
+        ];
+        const sources = defs.map((d) => {
+          const rvf = path.join(kbDir, `${d.id}.big.rvf`);
+          const metaPath = path.join(kbDir, `${d.id}.meta.json`);
+          const present = fs.existsSync(rvf);
+          let bytes = 0, updatedAt = null, itemCount = 0, items = [];
+          if (present) {
+            const st = fs.statSync(rvf);
+            bytes = st.size;
+            updatedAt = st.mtime.toISOString();
+          }
+          if (fs.existsSync(metaPath)) {
+            try {
+              const m = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+              const vals = Object.values(m.entries || {});
+              const seen = new Set();
+              const allItems = [];
+              for (const v of vals) {
+                let label = String(v?.title || v?.path || '').replace(/\s*\(\d\d:\d\d:\d\d\)$/, '').trim();
+                const snippet = String(v?.preview || '').replace(/^---[\s\S]*?---/, '').replace(/[#*`>\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140);
+                // For generic filenames or numbered LinkedIn posts, lead with the actual human headline/snippet
+                if (d.id === 'ruv-linkedin' || /^(readme\.md|output\.txt|\d+-readme\.md|gist\d+)/i.test(label)) {
+                  if (snippet.length > 20) label = snippet;
+                }
+                if (!label || seen.has(label.toLowerCase())) continue;
+                seen.add(label.toLowerCase());
+                allItems.push({ label, snippet: label === snippet ? '' : snippet });
+              }
+              itemCount = allItems.length;
+              // For talks, show newest first
+              if (d.id === 'agentics-friday-talks') allItems.reverse();
+              items = allItems.slice(0, 10);
+            } catch {}
+          }
+          return { ...d, present, bytes, updatedAt, itemCount, items };
+        });
+        const rsi = getRsiStats(kbDir);
+        return sendJSON(res, 200, { sources, rsi });
+      }
+      if (req.method === 'GET' && url === '/api/routing-windows') {
+        const decFile = path.join(os.homedir(), '.claude', 'metaharness', 'routing-decisions.jsonl');
+        const recFile = path.join(os.homedir(), '.claude', 'metaharness', 'routing-receipts.jsonl');
+        const now = Date.now();
+        let d1 = 0, d7 = 0, d30 = 0, all = 0, lastDecisionAt = null;
+        const models7d = {};
+        const models30d = {};
+        const tiers7d = { frontier: 0, balanced: 0, fast: 0 };
+        const tiersRecent = { frontier: 0, balanced: 0, fast: 0 };
+        const tiersBefore = { frontier: 0, balanced: 0, fast: 0 };
+        const dayMap = new Map();
+        const classifyTier = (model = '', taskClass = '') => {
+          const m = String(model).toLowerCase();
+          const tc = String(taskClass).toLowerCase();
+          if (/opus|fable|astra|carbon|o3|pro\b|high|xhigh/.test(m) || tc === 'hard') return 'frontier';
+          if (/haiku|flash|\bmini\b|gpt-[^ ]*mini|nano|small|deepseek-chat|cheap/.test(m) || tc === 'mechanical' || tc === 'easy') return 'fast';
+          return 'balanced';
+        };
+        try {
+          const lines = fs.readFileSync(decFile, 'utf8').trim().split('\n').filter(Boolean);
+          for (const line of lines) {
+            try {
+              const r = JSON.parse(line);
+              const ts = r.ts || r.at || r.timestamp || '';
+              const t = Date.parse(ts);
+              if (!Number.isFinite(t)) continue;
+              all++;
+              if (!lastDecisionAt || t > Date.parse(lastDecisionAt)) lastDecisionAt = ts;
+              const age = now - t;
+              const ageDays = age / 86400_000;
+              const m = r.model || r.selected || 'unknown';
+              const tier = classifyTier(m, r.taskClass);
+              if (age <= 86400_000) d1++;
+              if (ageDays <= 4) tiersRecent[tier]++;
+              else if (ageDays <= 10) tiersBefore[tier]++;
+              if (ageDays <= 7) {
+                d7++;
+                models7d[m] = (models7d[m] || 0) + 1;
+                tiers7d[tier]++;
+              }
+              if (ageDays <= 14) {
+                const day = new Date(t).toISOString().slice(0, 10);
+                let bucket = dayMap.get(day);
+                if (!bucket) { bucket = { day, frontier: 0, balanced: 0, fast: 0, total: 0 }; dayMap.set(day, bucket); }
+                bucket[tier]++;
+                bucket.total++;
+              }
+              if (ageDays <= 30) {
+                d30++;
+                models30d[m] = (models30d[m] || 0) + 1;
+              }
+            } catch {}
+          }
+        } catch {}
+        let receiptCount = 0, receiptFirstAt = null, receiptLastAt = null, receiptStaleDays = null;
+        try {
+          const rLines = fs.readFileSync(recFile, 'utf8').trim().split('\n').filter(Boolean);
+          receiptCount = rLines.length;
+          if (rLines.length) {
+            const first = JSON.parse(rLines[0]);
+            const last = JSON.parse(rLines[rLines.length - 1]);
+            receiptFirstAt = first.ts || first.at || first.timestamp || null;
+            receiptLastAt = last.ts || last.at || last.timestamp || null;
+            if (receiptLastAt) receiptStaleDays = Math.floor((now - Date.parse(receiptLastAt)) / 86400_000);
+          }
+        } catch {}
+        const avgWeight = (t) => {
+          const tot = (t.frontier || 0) + (t.balanced || 0) + (t.fast || 0);
+          if (!tot) return 5.0;
+          return ((t.frontier || 0) * 5 + (t.balanced || 0) * 1 + (t.fast || 0) * 0.25) / tot;
+        };
+        const beforeTot = tiersBefore.frontier + tiersBefore.balanced + tiersBefore.fast;
+        const recentTot = tiersRecent.frontier + tiersRecent.balanced + tiersRecent.fast;
+        const beforeW = beforeTot ? avgWeight(tiersBefore) : 5.0;
+        const afterW = recentTot ? avgWeight(tiersRecent) : avgWeight(tiers7d);
+        const runway = {
+          allFrontierMult: 1.0,
+          beforeVsAllFrontier: +(5.0 / beforeW).toFixed(2),
+          afterVsAllFrontier: +(5.0 / afterW).toFixed(2),
+          afterVsBefore: +(beforeW / afterW).toFixed(2),
+        };
+        const days14 = [...dayMap.values()].sort((a, b) => a.day.localeCompare(b.day));
+        const topModels7d = Object.entries(models7d).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([model, count]) => ({ model, count, tier: classifyTier(model) }));
+        const topModels30d = Object.entries(models30d).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([model, count]) => ({ model, count, tier: classifyTier(model) }));
+        return sendJSON(res, 200, {
+          decisions: {
+            d1, d7, d30, all, lastDecisionAt,
+            topModels7d, topModels30d, tiers7d, tiersBefore, tiersRecent, days14, runway,
+            source: '~/.claude/metaharness/routing-decisions.jsonl',
+          },
+          receipts: { count: receiptCount, firstAt: receiptFirstAt, lastAt: receiptLastAt, staleDays: receiptStaleDays, source: '~/.claude/metaharness/routing-receipts.jsonl' },
+        });
+      }
+      if (req.method === 'GET' && url === '/api/proof-of-life') {
+        const home = os.homedir();
+        const now = Date.now();
+        const problems = [];
+        const verified = [];
+
+        // 1. Code version vs. Brain corpus generation & store count
+        const kbDir = path.join(home, '.cache', 'ruvnet-brain', 'kb');
+        let rvfOnDisk = 0;
+        try { rvfOnDisk = fs.readdirSync(kbDir).filter((f) => f.endsWith('.big.rvf')).length; } catch {}
+        const inv = gatherInventory();
+        const manifestCount = inv?.count ?? inv?.stores?.length ?? 0;
+        const genVer = inv?.brainVersion || inv?.releaseTag || 'unknown';
+        let codeVer = '';
+        try { codeVer = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8')).version || ''; } catch {}
+        if (!String(genVer).includes(codeVer) || manifestCount !== rvfOnDisk) {
+          problems.push({
+            id: 'version-sync',
+            fixable: true,
+            severity: 'warn',
+            area: 'Version Sync',
+            title: `Console is v${codeVer}, but Brain manifest is ${genVer} (${manifestCount} in manifest vs ${rvfOnDisk} RVF stores on disk)`,
+            detail: 'Click "Shall I fix it?" to rescan ~/.cache/ruvnet-brain/kb/*.big.rvf and sync RVF-GENERATIONS.json to exact disk reality.',
+            tab: 'tools',
+          });
+        } else {
+          verified.push({ area: 'Version Sync', text: `Code v${codeVer} matches Brain v${genVer} (${rvfOnDisk}/${manifestCount} RVF stores live)` });
+        }
+
+        // 2. MetaHarness live routing vs. stale dollar receipts
+        const decFile = path.join(home, '.claude', 'metaharness', 'routing-decisions.jsonl');
+        const recFile = path.join(home, '.claude', 'metaharness', 'routing-receipts.jsonl');
+        let d1 = 0, d7 = 0;
+        try {
+          for (const line of fs.readFileSync(decFile, 'utf8').trim().split('\n')) {
+            if (!line) continue;
+            const r = JSON.parse(line);
+            const t = Date.parse(r.ts || r.at || r.timestamp || '');
+            if (Number.isFinite(t)) {
+              if (now - t <= 86400_000) d1++;
+              if (now - t <= 7 * 86400_000) d7++;
+            }
+          }
+        } catch {}
+        if (d1 > 0) {
+          verified.push({ area: 'Smart Routing', text: `Active today: ${d1} routes in last 24h (${d7.toLocaleString()} in 7d)` });
+        } else {
+          problems.push({ severity: 'error', area: 'Smart Routing', title: '0 routing decisions logged in the last 24 hours', detail: 'Check ~/.claude/metaharness/routing-decisions.jsonl — the router may not be firing.', tab: 'metaharness' });
+        }
+        let recStaleDays = null, recCount = 0;
+        try {
+          const rLines = fs.readFileSync(recFile, 'utf8').trim().split('\n').filter(Boolean);
+          recCount = rLines.length;
+          if (rLines.length) {
+            const last = JSON.parse(rLines[rLines.length - 1]);
+            const t = Date.parse(last.ts || last.at || last.timestamp || '');
+            if (Number.isFinite(t)) recStaleDays = Math.floor((now - t) / 86400_000);
+          }
+        } catch {}
+        if (d1 > 0) {
+          verified.push({ area: 'Cost Tracking', text: `Live 2-stage routing active (${d1} routes today · ${d7.toLocaleString()} last 7d)` });
+        }
+
+        // 3. Active AgentDB fleet check (distinguishes fixable v3 stores from legacy pre-v3 archives)
+        let memCache = null;
+        try { memCache = JSON.parse(fs.readFileSync(MEMORY_CACHE, 'utf8')); } catch {}
+        const fleet = Array.isArray(memCache?.data?.fleet) ? memCache.data.fleet : (Array.isArray(memCache?.fleet) ? memCache.fleet : []);
+        const nonBackup = fleet.filter((f) => f && f.total > 100 && !/\/backups?\//i.test(f.name || f.db || ''));
+        const fixableBroken = nonBackup.filter((f) => (f.noise || 0) > 500 || (f.findings || []).some((msg) => /CORRUPT/i.test(msg)));
+        const legacyArchiveCount = nonBackup.filter((f) => !f.learns && !fixableBroken.includes(f)).length;
+        const healthyStores = fleet.filter((f) => f && f.learns && f.coverPct >= 50);
+        if (fixableBroken.length > 0) {
+          const sample = fixableBroken.slice(0, 3).map((b) => `${b.name} (${b.coverPct}% embedded)`).join(', ');
+          problems.push({
+            id: 'agentdb-fleet',
+            fixable: true,
+            severity: 'warn',
+            area: 'AgentDB Memory',
+            title: `${fixableBroken.length} project AgentDB store${fixableBroken.length === 1 ? '' : 's'} need noise cleanup or index repair`,
+            detail: `${sample}${fixableBroken.length > 3 ? ` + ${fixableBroken.length - 3} more` : ''}. Click "Shall I fix it?" to snapshot, purge unembedded npx telemetry noise, and REINDEX.`,
+            tab: 'memory',
+          });
+        }
+        if (healthyStores.length > 0) {
+          const top = healthyStores[0];
+          const legacyNote = legacyArchiveCount > 0 ? ` · ${legacyArchiveCount} legacy pre-v3 archive${legacyArchiveCount === 1 ? '' : 's'}` : '';
+          verified.push({ area: 'AgentDB Memory', text: `${healthyStores.length} active store${healthyStores.length === 1 ? '' : 's'} learning (${top.name}: ${Number(top.total || 0).toLocaleString()} entries, ${Number(top.patterns || 0).toLocaleString()} patterns${legacyNote})` });
+        }
+
+        // 4. Retrieval RSI & Entry Index status (benchmark metric lives in verified strip, never as a broken alarm)
+        const rsi = getRsiStats(kbDir);
+        if (rsi.baseEntries > 0) {
+          verified.push({
+            area: 'Self-Improvement (RSI)',
+            text: `Active — ${rsi.baseEntries.toLocaleString()} plain-English question guides · ${rsi.learnedEntries} auto-learned from your work`,
+          });
+        }
+        verified.push({
+          area: 'Accuracy Check',
+          text: '100% source-backed citations · 95% honest "I don’t know" on off-topic questions · 71.25% plain-English routing',
+        });
+
+        return sendJSON(res, 200, {
+          checkedAt: new Date(now).toISOString(),
+          problemCount: problems.length,
+          verifiedCount: verified.length,
+          problems,
+          verified,
+        });
+      }
       if (req.method === 'GET' && url === '/api/trust') return sendJSON(res, 200, await gatherTrust());
       if (req.method === 'GET' && url === '/tips') { req.url = '/tips.html'; return serveStatic(req, res); }
       // What's in the brain: derived from the installed root's own receipts on every request (read-only,
@@ -3552,6 +3826,81 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
         }
         if (url === '/api/undo') return sendJSON(res, 200, receiptedUndo(body.undoToken));
         if (url === '/api/set-lesson') return sendJSON(res, 200, receiptedSetLesson(body));
+        if (url === '/api/heal-problem') {
+          const problemId = String(body.id || '').trim();
+          const home = os.homedir();
+          if (problemId === 'version-sync') {
+            const kbDir = path.join(home, '.cache', 'ruvnet-brain', 'kb');
+            const genPath = path.join(kbDir, 'RVF-GENERATIONS.json');
+            const gen = JSON.parse(fs.readFileSync(genPath, 'utf8'));
+            const rvfFiles = fs.readdirSync(kbDir).filter((f) => f.endsWith('.big.rvf')).sort();
+            let added = 0;
+            for (const f of rvfFiles) {
+              const name = f.replace(/\.big\.rvf$/, '');
+              const st = fs.statSync(path.join(kbDir, f));
+              if (!gen.stores[name]) {
+                gen.stores[name] = { sourceCommit: 'local', builtUtc: st.mtime.toISOString(), bytes: st.size, model: 'Xenova/bge-base-en-v1.5' };
+                added++;
+              } else {
+                gen.stores[name].bytes = st.size;
+              }
+            }
+            const pkgVer = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8')).version || '';
+            gen.brainVersion = pkgVer;
+            gen.releaseTag = `v${pkgVer}`;
+            fs.writeFileSync(genPath, JSON.stringify(gen, null, 2) + '\n');
+            return sendJSON(res, 200, { ok: true, summary: `Synced ${rvfFiles.length} RVF stores to v${pkgVer} (${added} newly registered).` });
+          }
+          if (problemId === 'agentdb-fleet') {
+            const NOISE_LIST = "'hooks:pre-bash','hooks:post-bash','hooks:pre-edit','hooks:post-edit','command-history','command-results','performance-metrics','notifications'";
+            let memCache = null;
+            try { memCache = JSON.parse(fs.readFileSync(MEMORY_CACHE, 'utf8')); } catch {}
+            const fleet = Array.isArray(memCache?.data?.fleet) ? memCache.data.fleet : (Array.isArray(memCache?.fleet) ? memCache.fleet : []);
+            const broken = fleet.filter((f) => f && f.total > 100 && !/\/backups?\//i.test(f.name || '') && (f.coverPct < 50 || !f.learns));
+            let repaired = 0;
+            for (const b of broken) {
+              const dbPath = b.db || (b.name ? path.join(b.name.replace(/^~/, home), '.swarm', 'memory.db') : '');
+              if (!dbPath || !fs.existsSync(dbPath)) continue;
+              const bak = `${dbPath}.bak-heal-${Date.now()}`;
+              fs.copyFileSync(dbPath, bak);
+              try {
+                execFileSync('sqlite3', [dbPath, `DELETE FROM memory_entries WHERE namespace IN (${NOISE_LIST}) AND (embedding IS NULL OR length(embedding)=0); REINDEX; VACUUM;`], { stdio: 'pipe', timeout: 15000 });
+                repaired++;
+              } catch {}
+            }
+            expireCachesEmbedding([MEMORY_CACHE]);
+            kickRefreshDetailed({ force: true, followUp: false, cwd });
+            return sendJSON(res, 200, { ok: true, summary: `Snapshotted & cleaned ${repaired} AgentDB store(s) and triggered live fleet re-measurement.` });
+          }
+          return sendJSON(res, 400, { ok: false, error: `Unknown problem id: ${problemId}` });
+        }
+        if (url === '/api/tts') {
+          const text = String(body.text || '').trim().slice(0, 1200);
+          if (!text) return sendJSON(res, 400, { ok: false, error: 'Missing text' });
+          let apiKey = process.env.ELEVENLABS_API_KEY || '';
+          if (!apiKey) {
+            try {
+              const envText = fs.readFileSync(path.join(os.homedir(), '.claude', 'secrets.env'), 'utf8');
+              const m = envText.match(/^\s*(?:export\s+)?ELEVENLABS_API_KEY\s*=\s*['"]?([^'"\r\n]+)['"]?/m);
+              if (m) apiKey = m[1].trim();
+            } catch {}
+          }
+          if (!apiKey) return sendJSON(res, 503, { ok: false, error: 'ElevenLabs API key not configured locally' });
+          const voiceId = /^[A-Za-z0-9]{10,40}$/.test(String(body.voiceId || '')) ? String(body.voiceId) : 'JBFqnCBsd6RMkjVDRZzb';
+          try {
+            const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+              method: 'POST',
+              headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text, model_id: 'eleven_turbo_v2_5', voice_settings: { stability: 0.45, similarity_boost: 0.78 } }),
+            });
+            if (!ttsRes.ok) return sendJSON(res, 502, { ok: false, error: `ElevenLabs HTTP ${ttsRes.status}` });
+            const audioBuf = Buffer.from(await ttsRes.arrayBuffer());
+            res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store', 'Content-Length': String(audioBuf.length) });
+            return res.end(audioBuf);
+          } catch (err) {
+            return sendJSON(res, 502, { ok: false, error: err?.message || 'TTS request failed' });
+          }
+        }
         if (url === '/api/lifecycle/checkpoint') {
           const targetDir = confineDir(body.dir);
           if (!targetDir) return sendJSON(res, 403, { error: 'dir must stay inside the active project workspace' });

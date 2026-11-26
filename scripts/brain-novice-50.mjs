@@ -71,7 +71,7 @@ function percentile(values, fraction) {
 }
 
 export function grade(spec, text, elapsedMs, transportOk) {
-  const top = /^#1\s+repo=(\S+)(?:\s+ce=(-?[\d.]+))?/m.exec(text);
+  const top = /^#1\s+repo=(\S+)(?:[^\n]*?(?:ce=|relevance\s+)(-?[\d.]+))?/m.exec(text);
   const expectedRepoCited = [...String(text).matchAll(/^#\d+\s+repo=(\S+)/gm)]
     .some((match) => match[1].toLowerCase() === spec.repo.toLowerCase());
   const cited = /^#\d+\s+repo=[a-z0-9._-]+/im.test(text);
@@ -80,7 +80,7 @@ export function grade(spec, text, elapsedMs, transportOk) {
   // cannot make a row effective without a citation from the independently expected owner.
   const keywordSignal = spec.required.test(text);
   const unsupportedAbsence = /\b(?:does not exist|must be built|you need to build it)\b/i.test(text);
-  const evidenceQualified = /EVIDENCE:\s*THIN|NOT PROVEN|PROPOSED|curated-capability-card|THIS QUERY found nothing/i.test(text);
+  const evidenceQualified = /EVIDENCE:\s*(?:THIN|INSUFFICIENT_EVIDENCE)|NOT PROVEN|PROPOSED|curated-capability-card|THIS QUERY found nothing/i.test(text);
   const honest = !unsupportedAbsence || evidenceQualified;
   const latencyPoints = elapsedMs <= 4000 ? 10 : elapsedMs <= 8000 ? 5 : 0;
   const effective = transportOk && cited && expectedRepoCited && honest && !abstained && elapsedMs <= 4000;

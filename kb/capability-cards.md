@@ -452,7 +452,7 @@ Source-grounded knowledge layer for Claude Code and Codex. Uses per-repository R
 returns cited source paths through search_ruvnet, shares one Stable Spine runtime across hosts, and
 opens its local Console when the user says "Configure RuvNet Brain". Claude Code also supports
 /rvbc; Codex uses the native $ruvnet-brain:rvbc skill. It is installed once at user level and
-shared by every project. Run `npx ruvnet-brain --doctor` for a real health check, use `/whats-new`
+shared by every project. Run `npx ruvnet-brain --doctor` for a real install health check (checks whether your install is healthy), use `/whats-new`
 to see the version-4 feature summary, and use the Console's Brain switch when you want it
 temporarily disabled without uninstalling it.
 It is a local knowledge and retrieval layer, not a general chatbot: a question is routed to the
@@ -684,6 +684,15 @@ Cognitum ruOS is an agentic Linux operating system for AI workstations. Its docu
 
 ## ruos
 ruOS is an agentic Linux desktop: a desktop that agents can operate through computer-use, terminal and system tools. The public ruvnet/ruos repository documents the desktop control and extension surface: its MCP server provides screenshots, mouse/keyboard input, shell commands and named system actions; its skills cover the RuvNet agent stack. README.md and mcp/README.md describe browser, iPad PWA and macOS viewer access, with MCP control over SSH. A related, distinct repository, cognitum-one/ruOS (Brain store cognitum-ruos), contains the local AI-workstation distribution and packaging: health monitoring, GPU profiles, local model reasoning, memory backfill, backup and consent-gated sensors. Ask about cognitum-ruos for its curated workstation capability summary, or ruvnet/ruos for desktop computer-use. Public documentation is not proof that a hosted desktop is provisioned or that the OS is installed on your machine. Sources inspected 2026-09-19: ruvnet/ruos README.md and cognitum-one/ruOS README.md.
+
+## x-ruv-io
+RuvNet's live federated Ruflo X Gateway (`https://x.ruv.io`, `ruflo-x-gateway`) bridging MCP clients (`/mcp`, `/claude/mcp`, `/chatgpt/mcp`) with the federated Nostr swarm relay (`wss://relay.ruv.io`). Provides NIP-98 self-registration (`https://x.ruv.io/api/registration`), NIP-42 relay authentication (`~/.ruflo/nostr.key`), open-read swarm tools (`federation_identity`, `federation_sync`, `federation_onboarding`, `channel_list`, `channel_sync`, `claims_status`, `seraphina_guidance`), and public federation channels (`pub:announce`, `pub:claims`, `pub:help`, `pub:showcase`). Use it to connect agents across machines into the shared RuvNet federation without sending private keys to any server.
+
+## agentics-friday-talks
+Timestamped transcripts of the last 6 months (May–November 2026, 39 sessions, 2,485 passages) of rUv's Friday Agentics Foundation Hackerspace Live Events, Agentics Live Vibe coding streams, and Toronto Agentics Meetups (`@agentics-foundation`). Covers rUv's market outlook, agentic engineering philosophy, live demos of Ruflo, RuVector, RVF, AgentDB, MetaHarness, RuView, ruOS, and how rUv thinks about building autonomous AI systems. Every passage includes a direct timestamped YouTube link (`https://youtu.be/<id>?t=<sec>`).
+
+## ruv-linkedin
+Recent LinkedIn posts and announcements by Reuven Cohen (rUv, Founder & Chief AI Officer at Cognitum One, `linkedin.com/in/reuvencohen`), including `ruBot Daily` dispatches, product launches, architectural commentary, and real-time perspectives on agentic AI, Ruflo, RuVector, ruOS, and the open-source ecosystem.
 
 ## agentx
 Shared Dependencies: 1. Exported Variables : - comments : An array to store the comments for each webpage. 2. Data Schemas : - CommentSchema : A schema for the comments, including fields like url , comment , timestamp . 3. DOM Element IDs : - commentInput : The input field where users type their comments. - commentList : The area where the comments are displayed. - saveButton : The button to save the comment. - delet

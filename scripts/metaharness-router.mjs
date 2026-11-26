@@ -39,6 +39,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -177,6 +178,7 @@ export async function route(prompt, candidates, profile, { qualityBar = 0.7, k =
   const resolved = resolveRealRouterPackage();
 
   return {
+    decisionId: crypto.randomUUID(),
     routedBy: '@metaharness/router',   // rUv's code made this call. Not mine.
     version: resolved?.version || '0.4.1',
     model: pick.id,
@@ -189,10 +191,44 @@ export async function route(prompt, candidates, profile, { qualityBar = 0.7, k =
   };
 }
 
-/** Append a label from a real routed outcome — the fuel k-NN runs on. */
-export async function recordOutcome(prompt, scores, file = OUTCOMES) {
+/** Append a label from a real routed outcome — the fuel k-NN runs on.
+ *  Optional `meta` ({ decisionId, source, verifiedBy }) correlates outcomes to real routing decisions. */
+export async function recordOutcome(prompt, scores, file = OUTCOMES, meta = {}) {
+  if (!scores || typeof scores !== 'object' || Array.isArray(scores)) {
+    throw new Error('recordOutcome requires a plain scores object');
+  }
+  const entries = Object.entries(scores);
+  if (!entries.length || entries.some(([, v]) => typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 1)) {
+    throw new Error('recordOutcome requires at least one finite numeric score in [0, 1]');
+  }
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  const row = { ts: new Date().toISOString(), embedding: await embed(prompt), scores };
+  const row = {
+    ts: new Date().toISOString(),
+    ...(meta?.decisionId ? { decisionId: String(meta.decisionId) } : {}),
+    ...(meta?.source ? { source: String(meta.source) } : {}),
+    ...(meta?.verifiedBy ? { verifiedBy: String(meta.verifiedBy) } : {}),
+    embedding: await embed(prompt),
+    scores,
+  };
   fs.appendFileSync(file, JSON.stringify(row) + '\n');
   return row;
+}
+
+/** Summarize real decision-correlated vs legacy uncorrelated outcome rows without mutating data. */
+export function summarizeOutcomeCorrelation(file = OUTCOMES) {
+  let raw = '';
+  try { raw = fs.readFileSync(file, 'utf8'); } catch { return { total: 0, correlated: 0, legacy: 0 }; }
+  let total = 0;
+  let correlated = 0;
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      const o = JSON.parse(line);
+      if (Array.isArray(o.embedding) && o.embedding.length && o.scores && Object.keys(o.scores).length) {
+        total++;
+        if (typeof o.decisionId === 'string' && o.decisionId.trim()) correlated++;
+      }
+    } catch { /* ignore malformed lines */ }
+  }
+  return { total, correlated, legacy: total - correlated };
 }

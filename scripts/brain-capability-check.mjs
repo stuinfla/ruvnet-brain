@@ -39,10 +39,16 @@ function evaluate(results, qq) {
     if (qq.expectRepo && r.repo !== qq.expectRepo && !(r.repo === 'concepts' && (r.path || '').startsWith(qq.expectRepo + '/'))) continue;
     const txt = (r.fullText || r.text || '').toLowerCase();
     const hits = ev.filter((t) => txt.includes(t)).length;
-    const confident = (r.ceScore ?? -Infinity) >= TAU;
+    const confident = r.ceScore != null
+      ? r.ceScore >= TAU
+      : (r._lane === 'source-backed-card' && r.evidenceClass === 'implementation');
     const cand = { repo: r.repo, path: r.path, ce: r.ceScore, evHits: hits, evNeed: need, confident, evidenced: hits >= need };
-    if (!best || (cand.confident && cand.evidenced && !(best.confident && best.evidenced)) || (r.ceScore ?? -Infinity) > (best.ce ?? -Infinity)) {
-      if (!best || (r.ceScore ?? -Infinity) > (best.ce ?? -Infinity) || (cand.confident && cand.evidenced)) best = cand;
+    const candPasses = cand.confident && cand.evidenced;
+    const bestPasses = Boolean(best && best.confident && best.evidenced);
+    if (!best
+      || (candPasses && !bestPasses)
+      || (candPasses === bestPasses && (r.ceScore ?? -Infinity) > (best.ce ?? -Infinity))) {
+      best = cand;
     }
   }
   return best;
