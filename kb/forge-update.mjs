@@ -228,9 +228,9 @@ function settleRollback({ reclaimable, keepReason = null, intentionallyRemovedSt
   for (const [b, why] of kept) console.log(`\n  KEPT ${b}\n    ${why}`);
 }
 
-function die(msg, code = 1) {
+function die(msg, code = 1, terminalVerdict = 'failed') {
   console.error(`\n[forge-update] ERROR: ${msg}`);
-  try { writeUpdateOutcome({ terminalVerdict: 'failed', exitCode: code, reason: msg }); } catch { /* primary error wins */ }
+  try { writeUpdateOutcome({ terminalVerdict, exitCode: code, reason: msg }); } catch { /* primary error wins */ }
   // Cleanup must never mask the error that caused it.
   try { settleRollback({ reclaimable: false }); } catch { /* ignore */ }
   process.exit(code);
@@ -1715,6 +1715,61 @@ export function verifyLanded({ kbDir, kbName, before, beforeBundle = null, expec
   return { ok: true, kind: null, reason: null, landed, storeUnchanged, bundleChanged };
 }
 
+async function sweepDisposableInstallCopies({ kbDir, env = process.env } = {}) {
+  if (env.RUVNET_KEEP_BACKUP === '1') return [];
+  const parent = path.dirname(kbDir);
+  const base = path.basename(kbDir);
+  const candidates = [
+    path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugin', 'scripts'),
+  ];
+  try {
+    const active = JSON.parse(fs.readFileSync(path.join(parent, 'active.json'), 'utf8'));
+    if (typeof active?.codeRoot === 'string' && active.codeRoot) {
+      const rootDir = path.resolve(parent, active.codeRoot);
+      if (rootDir.startsWith(`${path.resolve(parent, 'versions')}${path.sep}`)) {
+        candidates.push(path.join(rootDir, 'scripts'));
+      }
+    }
+  } catch { /* no active spine record */ }
+  let kbCopyProof = null; let isKbTree = null; let rescueOperationalFiles = null;
+  for (const dir of candidates) {
+    const proofFile = path.join(dir, 'kb-copy-proof.mjs');
+    const ioFile = path.join(dir, 'footprint-io.mjs');
+    if (!fs.existsSync(proofFile) || !fs.existsSync(ioFile)) continue;
+    try {
+      ({ kbCopyProof, isKbTree } = await import(pathToFileURL(proofFile).href));
+      ({ rescueOperationalFiles } = await import(pathToFileURL(ioFile).href));
+      break;
+    } catch { kbCopyProof = null; }
+  }
+  if (!kbCopyProof || !isKbTree || !rescueOperationalFiles) return [];
+  const prefixes = [
+    `${base}.bak-`,
+    `${base}.pre-reset-backup-`,
+    `${base}.agent-harness-generator-backup-`,
+    `${base}-pre-gap-rebuild-backup-`,
+    `${base}.install-preserved-`,
+  ];
+  let entries = [];
+  try { entries = fs.readdirSync(parent).filter((n) => prefixes.some((p) => n.startsWith(p))).sort(); }
+  catch { return []; }
+  const keptSiblings = [];
+  const removed = [];
+  for (const name of entries) {
+    const copyDir = path.join(parent, name);
+    try {
+      const st = fs.lstatSync(copyDir);
+      if (st.isSymbolicLink() || !st.isDirectory() || !isKbTree(copyDir)) continue;
+      const proof = kbCopyProof({ copyDir, liveDir: kbDir, keptSiblings: [...keptSiblings] });
+      if (!proof.disposable) { keptSiblings.push(copyDir); continue; }
+      rescueOperationalFiles(copyDir, proof.rescue, parent);
+      fs.rmSync(copyDir, { recursive: true, force: true });
+      removed.push(copyDir);
+    } catch { /* fail-closed: leave copy for reclaimBackups to report */ }
+  }
+  return removed;
+}
+
 async function main() {
   if (APPLY) {
     try { updateLock = acquireUpdateLock(); }
@@ -1723,6 +1778,7 @@ async function main() {
     // Cleanup is part of every apply, including an already-current run. Otherwise a redundant
     // multi-GB rollback can survive forever simply because there is no newer release to trigger
     // the old behind-only preflight.
+    await sweepDisposableInstallCopies({ kbDir: KB_DIR });
     const preflightRollbacks = reclaimBackups({ kbDir: KB_DIR });
     legacyBackupRetention = preflightRollbacks;
     if (preflightRollbacks.removed.length) {
@@ -1984,23 +2040,37 @@ async function main() {
   const privateNames = Object.keys(privateOverlay?.sourceStores || {});
   let profileResult = null;
   const finalVerificationByStore = new Map();
+  let finalTreeValidationFailed = false;
   const validateFinalTree = ({ dir, phase }) => {
+    finalTreeValidationFailed = false;
     const coverageResult = activeProfile === 'complete'
       ? validateReleaseCoverageTree(dir, validateCoverageDirectory, installedRuntimeVersion)
       : validateProfiledReleaseTree(dir, activeProfile, privateOverlay);
-    if (!coverageResult.valid) return coverageResult;
+    if (!coverageResult.valid) {
+      finalTreeValidationFailed = true;
+      return coverageResult;
+    }
     const guard = path.join(dir, 'forge-guard.mjs');
-    if (!fs.existsSync(guard)) return { valid: false, failures: ['forge-guard.mjs is missing'] };
+    if (!fs.existsSync(guard)) {
+      finalTreeValidationFailed = true;
+      return { valid: false, failures: ['forge-guard.mjs is missing'] };
+    }
     try {
       for (const { local, resolved: storeResolution } of landingTargets) {
         execFileSync(process.execPath, [guard, '--dir', dir, '--name', local.kbName], { cwd: dir, stdio: 'pipe' });
         const verified = verifyLanded({ kbDir: dir, kbName: local.kbName, before: local, beforeBundle: source,
           expectedDigest: storeResolution.digest, archiveVerifier });
-        if (!verified.ok && verified.kind !== 'noop') return { valid: false, failures: [verified.reason] };
+        if (!verified.ok && verified.kind !== 'noop') {
+          finalTreeValidationFailed = true;
+          return { valid: false, failures: [verified.reason] };
+        }
         if (phase === 'live') finalVerificationByStore.set(local.kbName, verified);
       }
       return { valid: true, failures: [] };
-    } catch (error) { return { valid: false, failures: [`forge-guard failed: ${describeGuardFailure(error)}`] }; }
+    } catch (error) {
+      finalTreeValidationFailed = true;
+      return { valid: false, failures: [`forge-guard failed: ${describeGuardFailure(error)}`] };
+    }
   };
   let transaction;
   try {
@@ -2062,7 +2132,13 @@ async function main() {
     });
   } catch (error) {
     fs.rmSync(tmp, { recursive: true, force: true });
-    die(`storage transaction failed: ${error.message}`);
+    const msg = String(error?.message || '');
+    const terminalVerdict = /rollback failed and manual recovery is required/.test(msg)
+      ? 'recovery-required'
+      : (finalTreeValidationFailed || /^(?:candidate|live) validation failed:/.test(msg))
+        ? 'candidate-validation-failed'
+        : 'failed';
+    die(`storage transaction failed: ${error.message}`, 1, terminalVerdict);
   }
   fs.rmSync(tmp, { recursive: true, force: true });
   console.log(`  storage transaction: ${transaction.terminalVerdict}`);
@@ -2163,5 +2239,10 @@ if (invokedDirectly && STAGED_RELEASE_FILE) {
     const input = JSON.parse(fs.readFileSync(STAGED_RELEASE_FILE, 'utf8'));
     const result = await applyVerifiedStagedRelease(input);
     console.log(JSON.stringify({ schemaVersion: 1, kind: 'ruvnet-brain-staged-recovery', ...result }));
-  })().catch((e) => die(`staged recovery failed: ${e.message}`));
+  })().catch((e) => {
+    const msg = String(e?.message || '');
+    const verdict = /rollback failed and manual recovery is required/.test(msg) ? 'recovery-required'
+      : /^(?:candidate|live) validation failed:/.test(msg) ? 'candidate-validation-failed' : 'failed';
+    die(`staged recovery failed: ${msg}`, 1, verdict);
+  });
 } else if (invokedDirectly) main().catch((e) => die(`unexpected: ${e.message}`));

@@ -58,6 +58,13 @@ describe('classifyUpdaterExit: no reinstall for what a reinstall cannot fix', ()
       .toEqual({ verdict: 'recovery-required', fallback: false, exitCode: 1 }); // before: { verdict:'failed', fallback:true }
   });
 
+  it('candidate-validation-failed (e.g. forge-guard refusal) never falls back to a guardless reinstall (#528)', () => {
+    const result = { terminalVerdict: 'candidate-validation-failed', exitCode: 1,
+      reason: 'storage transaction failed: candidate validation failed: forge-guard failed: [FAIL] lf-lines' };
+    expect(install.classifyUpdaterExit(1, { result, requireResult: true }))
+      .toEqual({ verdict: 'candidate-validation-failed', fallback: false, exitCode: 1 });
+  });
+
   it('exit 5 (incompatible or remembered-rejected corpus) is not retried by reinstalling the same runtime', () => {
     const result = { terminalVerdict: 'failed', exitCode: 5, reason: 'corpus release corpus-x was already rejected by this brain' };
     expect(install.classifyUpdaterExit(5, { result, requireResult: true }))

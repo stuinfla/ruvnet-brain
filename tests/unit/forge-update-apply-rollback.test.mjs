@@ -617,6 +617,27 @@ describe('forge-update --apply (issues #106 + #108)', () => {
     expect(served.hits.zip).toBe(0);
     expect(JSON.parse(fs.readFileSync(path.join(kbDir, 'SOURCE.json'), 'utf8')).releaseTag).toBe('v4.0.7');
   });
+
+  it('emits terminalVerdict candidate-validation-failed when forge-guard refuses the candidate (#528)', async () => {
+    const current = sourceJson({
+      releaseTag: 'v4.0.7', brainVersion: '4.0.7', builtUtc: '2026-07-31T04:39:28.414Z', stores: [STORE_A],
+    });
+    layDown(kbDir, current);
+    const updatedStoreA = { ...STORE_A, sourceCommit: 'ddd444ddd444', sourceDescribe: 'v2.1.0', builtUtc: '2026-08-02T12:00:00.000Z' };
+    publish(sourceJson({
+      releaseTag: 'v4.0.8', brainVersion: '4.0.8', builtUtc: '2026-08-02T12:00:00.000Z', stores: [updatedStoreA],
+    }), 'v4.0.8', (stage) => {
+      fs.writeFileSync(path.join(stage, 'forge-guard.mjs'),
+        "console.log('  [FAIL] lf-lines: malformed line delimiter'); process.exit(1);\n");
+    });
+    const resultFile = path.join(root, 'guard-fail-result.json');
+    const { code, out } = await run('--apply', '--result-file', resultFile);
+    expect(code, out).toBe(1);
+    expect(out).toMatch(/candidate validation failed: forge-guard failed: .*\[FAIL\] lf-lines/);
+    expect(JSON.parse(fs.readFileSync(path.join(kbDir, 'SOURCE.json'), 'utf8')).releaseTag).toBe('v4.0.7');
+    const result = JSON.parse(fs.readFileSync(resultFile, 'utf8'));
+    expect(result.terminalVerdict).toBe('candidate-validation-failed');
+  });
 });
 
 // 4.7.21 (RC2.3, RC2.9): evidence housekeeping must never change the update's own verdict, and a time-limit

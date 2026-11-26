@@ -39,7 +39,7 @@ import {
 import { applyManagedCatalogUpdate } from '../scripts/model-router-catalog.mjs';
 import { cmpVersion } from '../scripts/stack-sync.mjs';
 import {
-  inspectInstalledBrain, classifySmokeEvidence, classifySmokeFailure, classifyWarmupFailure, coldModels, DOCTOR_SMOKE_QUERY, doctorSmokeArgs,
+  inspectInstalledBrain, classifySmokeEvidence, classifySmokeFailure, classifyWarmupFailure, coldModels, DOCTOR_SMOKE_QUERY, doctorSmokeArgs, doctorSmokeTarget,
   MODEL_WARMUP_SCRIPT, MODEL_WARMUP_TIMEOUT_MS,
 } from '../scripts/installed-brain-health.mjs';
 import { validateCoverageDirectory } from '../plugin/scripts/coverage-integrity.mjs';
@@ -3017,7 +3017,7 @@ async function smokeQuery(cacheDir) {
     'Asking the brain a real question',
     'this warms the local model and checks that retrieval returns usable, cited evidence',
   );
-  const Q = DOCTOR_SMOKE_QUERY;
+  const Q = doctorSmokeTarget(cacheDir).query;
   const modelCache = resolveRuntimeModelCache();
   // WARMING IS NOT ANSWERING. A cold cache means the first question also downloads and loads the
   // models, so a timeout could not tell "still fetching" from "broken". Fetch them first, as their
@@ -4004,6 +4004,9 @@ export function classifyUpdaterExit(status, { fallbackAllowed = true, result = n
   if (result?.terminalVerdict === 'recovery-required') {
     return { verdict: 'recovery-required', fallback: false, exitCode: status || 1 };
   }
+  if (result?.terminalVerdict === 'candidate-validation-failed') {
+    return { verdict: 'candidate-validation-failed', fallback: false, exitCode: status || 1 };
+  }
   if (status === 5) return { verdict: 'refused-incompatible', fallback: false, exitCode: 5 };
   // The updater was stopped by a signal (its own TTL, a logout, Ctrl-C) and settled itself as `interrupted`.
   // Nothing is broken, so a fresh reinstall would only re-download ~745 MB into the same interruption.
@@ -4842,7 +4845,8 @@ async function runUpdate() {
       updateResult: updaterResult,
     });
     settleRefresh(updateStatus, { phase: 'source-enumeration',
-      terminalVerdict: outcome.verdict === 'recovery-required' ? 'recovery-required' : 'failed' });
+      terminalVerdict: outcome.verdict === 'recovery-required' || outcome.verdict === 'candidate-validation-failed'
+        ? outcome.verdict : 'failed' });
     detachGuards();
     return;
   }
