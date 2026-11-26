@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script>if(location.pathname==='/ruvnet-brain'){location.replace('/ruvnet-brain/'+location.search+location.hash);}</script>
 
   <!-- Primary SEO -->
   <title>RuvNet Brain v5.2 for Claude Code, Codex &amp; Antigravity — the source-grounded rUv stack &amp; ruPro newcomer companion, by Isovision.ai</title>
@@ -615,10 +616,15 @@
         </style>
         <!-- v5.2 INTERACTIVE LIVE CONSOLE TOUR + ANIMATED RUVNET ARCHITECTURE + METAHARNESS RUNWAY -->
         <style>
-          .v52-showcase{margin:0 0 38px;display:grid;gap:26px}
+          .v52-showcase{margin:0 0 38px;display:grid;gap:26px;max-width:100%}
+          .v52-showcase > *,.v52-arch-wrap > *,.v52-mh-grid > *,.v52-arch-detail > *{min-width:0;max-width:100%}
+          .v52-svg-box{
+            border-radius:14px;padding:14px;background:#07090d;border:1px solid var(--line);overflow-x:auto;max-width:100%;
+          }
           .v52-panel{
             position:relative;padding:24px 26px;border-radius:18px;
             border:1px solid rgba(90,214,255,.24);
+            color:#f4f6fb;
             background:
               radial-gradient(120% 80% at 10% 0%,rgba(240,168,48,.07) 0%,transparent 52%),
               radial-gradient(100% 80% at 92% 0%,rgba(90,214,255,.07) 0%,transparent 52%),
@@ -627,17 +633,17 @@
             overflow:hidden;
           }
           .v52-head{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:18px}
-          .v52-kicker{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-2);margin:0 0 6px}
+          .v52-kicker{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono,ui-monospace,monospace);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-2,#5ad6ff);margin:0 0 6px}
           .v52-pulse{width:8px;height:8px;border-radius:50%;background:#5fd38a;box-shadow:0 0 0 0 rgba(95,211,138,.65);animation:v52pulse 2.2s infinite}
           @keyframes v52pulse{0%{box-shadow:0 0 0 0 rgba(95,211,138,.65)}70%{box-shadow:0 0 0 9px rgba(95,211,138,0)}100%{box-shadow:0 0 0 0 rgba(95,211,138,0)}}
-          .v52-panel h3{font-family:var(--display);font-size:clamp(1.45rem,1.2rem + 1vw,2rem);margin:0 0 6px;color:var(--ink);line-height:1.15}
-          .v52-sub{margin:0;font-size:var(--step--1);color:var(--ink-2);max-width:68ch;line-height:1.55}
+          .v52-panel h3{font-family:var(--display,Georgia,serif);font-size:clamp(1.45rem,1.2rem + 1vw,2rem);margin:0 0 6px;color:var(--ink,#f4f6fb);line-height:1.15}
+          .v52-sub{margin:0;font-size:var(--step--1,.95rem);color:var(--ink-2,#c2cddb);max-width:68ch;line-height:1.55}
           .v52-tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
           .v52-tab{
-            cursor:pointer;font-family:var(--sans);font-size:13px;font-weight:600;
-            padding:9px 15px;border-radius:999px;border:1px solid var(--line-strong);
-            background:rgba(255,255,255,.03);color:var(--ink-2);
-            transition:all .18s var(--ease);
+            cursor:pointer;font-family:var(--sans,system-ui,sans-serif);font-size:13px;font-weight:600;
+            padding:9px 15px;border-radius:999px;border:1px solid var(--line-strong,rgba(255,255,255,.2));
+            background:rgba(255,255,255,.04);color:var(--ink-2,#c2cddb);
+            transition:all .18s var(--ease,ease);
           }
           .v52-tab:hover{border-color:var(--accent-2);color:var(--ink);transform:translateY(-1px)}
           .v52-tab[aria-selected="true"]{
