@@ -120,6 +120,7 @@
     "kb/refresh-run.mjs",
     "kb/update-storage-transaction.mjs",
     "kb/model-requirements.mjs",
+    "kb/rsi-retrieval-loop.mjs",
     "keys/ruvnet-brain-signing.pub.pem"
   ],
   "engines": {
