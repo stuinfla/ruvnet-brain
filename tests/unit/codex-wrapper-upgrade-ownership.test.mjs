@@ -154,9 +154,11 @@ describe('a bridge written by an earlier shipped release whose generation is gon
     expect(historyDrift({ wrappers: committed.wrappers.slice(1) }, derived).missing).toHaveLength(1);
     const planted = { sha256: 'f'.repeat(64), bytes: 1, tags: ['v4.5.2'] };
     expect(historyDrift({ wrappers: [...committed.wrappers, planted] }, derived).extra).toEqual([planted]);
-    // The two bridges this file was written for: the 4.5.2 bytes on the owner's machine, and the 4.7.x source.
+    // The two bridges this file was written for: the 4.5.2 bytes on the owner's machine, and the latest tagged release.
     expect(committed.wrappers.some((row) => row.sha256.startsWith('d3ee284722aa') && row.tags.includes('v4.5.2'))).toBe(true);
-    expect(committed.wrappers.some((row) => row.sha256 === sha(SHIPPED))).toBe(true);
+    const latestTag = tags.at(-1);
+    const latestTaggedBytes = execFileSync('git', ['show', `${latestTag}:plugin/scripts/codex-hook-wrapper.mjs`], { cwd: ROOT });
+    expect(committed.wrappers.some((row) => row.sha256 === sha(latestTaggedBytes))).toBe(true);
   });
 
   it('UPGRADES the 4.5.2 bridge with NO retained generation on disk: known old bytes -> installed, kept beside it as .prior, its registrations retired', () => {

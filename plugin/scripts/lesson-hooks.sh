@@ -71,11 +71,13 @@ INPUT=""
 # exactly why a hook that CAN hang forever survives unnoticed. -t bounds the wait, and the string
 # is truncated AFTER the loop because a hook payload is one line with no newline, so `read` hands
 # the whole thing back at once and a per-iteration cap never fires.
-while IFS= read -r -t 2 _l; do
-  INPUT+="$_l"$'\n'
-  [ ${#INPUT} -ge 65536 ] && break
+while [ ${#INPUT} -lt 65536 ]; do
+  _l=""
+  _rc=0
+  IFS= read -r -t 2 -n $(((65536 - ${#INPUT}) * 4)) _l || _rc=$?
+  INPUT+="$_l"
+  [ "$_rc" -ne 0 ] && break
 done
-[ -n "$_l" ] && INPUT+="$_l"$'\n'
 INPUT="${INPUT:0:65536}"
 HOOK_INPUT_JS="$HERE/hook-input.mjs"
 

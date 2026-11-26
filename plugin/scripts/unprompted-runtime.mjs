@@ -223,7 +223,7 @@ function resolveProducers(event) {
 // so read only when fd 0 is a real pipe/file. A manual run with no redirect yields empty, not a hang.
 let payload = Buffer.alloc(0);
 if (!process.stdin.isTTY) {
-  try { payload = await readStdinBounded(); } catch { payload = Buffer.alloc(0); }
+  try { payload = await readStdinBounded({ maxBytes: 1048576 }); } catch { payload = Buffer.alloc(0); }
 }
 
 // AN UNPROMPTED UTTERANCE MUST BE OCCASIONED BY A REAL EVENT (fixed 2026-07-27).

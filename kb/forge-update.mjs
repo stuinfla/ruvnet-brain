@@ -2135,7 +2135,7 @@ async function main() {
     const msg = String(error?.message || '');
     const terminalVerdict = /rollback failed and manual recovery is required/.test(msg)
       ? 'recovery-required'
-      : (finalTreeValidationFailed || /^(?:candidate|live) validation failed:/.test(msg))
+      : (finalTreeValidationFailed || /^(?:candidate|live) (?:validation|public\/private convergence) failed:/.test(msg))
         ? 'candidate-validation-failed'
         : 'failed';
     die(`storage transaction failed: ${error.message}`, 1, terminalVerdict);
@@ -2242,7 +2242,7 @@ if (invokedDirectly && STAGED_RELEASE_FILE) {
   })().catch((e) => {
     const msg = String(e?.message || '');
     const verdict = /rollback failed and manual recovery is required/.test(msg) ? 'recovery-required'
-      : /^(?:candidate|live) validation failed:/.test(msg) ? 'candidate-validation-failed' : 'failed';
+      : /^(?:candidate|live) (?:validation|public\/private convergence) failed:/.test(msg) ? 'candidate-validation-failed' : 'failed';
     die(`staged recovery failed: ${msg}`, 1, verdict);
   });
 } else if (invokedDirectly) main().catch((e) => die(`unexpected: ${e.message}`));

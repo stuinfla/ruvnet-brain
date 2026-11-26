@@ -18,7 +18,7 @@ async function session(storePath, moduleUrl) {
   let mod;
   try { mod = await import(moduleUrl); } catch { mod = null; }
   if (!mod || typeof mod.listEntries !== 'function' || typeof mod.getEntry !== 'function' || typeof mod.resolveDbPath !== 'function') {
-    reply({ ready: false }); process.exit(0);
+    await reply({ ready: false }); process.exit(0);
   }
   const dbPath = mod.resolveDbPath(storePath);
   reply({ ready: true });

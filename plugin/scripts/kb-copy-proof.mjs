@@ -171,6 +171,25 @@ function matchesFilteredProfileCards({ copyDir, liveDir, copyFile, shipped, priv
   }).join('');
   return filtered === fs.readFileSync(copyFile, 'utf8');
 }
+function matchesOverlayPrivateStores({ copyFile, liveDir, listed, privateNames }) {
+  if (!listed || !privateNames?.size) return false;
+  let raw;
+  try { raw = fs.readFileSync(copyFile, 'utf8'); } catch { return false; }
+  const cur = readJson(copyFile);
+  if (!cur || !Array.isArray(cur.stores)) return false;
+  if (`${JSON.stringify(cur, null, 2)}\n` !== raw) return false;
+  const live = readJson(path.join(liveDir, 'PRIVATE-STORES.json'));
+  const liveSet = new Set((Array.isArray(live?.stores) ? live.stores : []).map((s) => String(s).toLowerCase()));
+  const stripped = {
+    ...cur,
+    stores: cur.stores.filter((s) => {
+      const k = String(s).toLowerCase();
+      return !(privateNames.has(k) && liveSet.has(k));
+    }),
+  };
+  const buf = Buffer.from(`${JSON.stringify(stripped, null, 2)}\n`, 'utf8');
+  return buf.length === listed.bytes && sha256Buffer(buf) === listed.sha256;
+}
 function matchesFilteredProfileGenerations({ copyDir, liveDir, copyFile, shipped }) {
   const listedGen = shipped.get('RVF-GENERATIONS.json');
   const listedPub = shipped.get('PUBLIC-RVF-GENERATIONS.json');
@@ -399,6 +418,7 @@ export function kbCopyProof({ copyDir, liveDir, keptSiblings = [] }) {
     const listed = shipped.get(relative);
     if (listed && listed.bytes === size && listed.sha256 === sha256File(copyFile)) continue;
     if (relative === 'SOURCE.json' && matchesStampedManifestSource({ copyFile, liveDir, listed, privateNames })) continue;
+    if (relative === 'PRIVATE-STORES.json' && matchesOverlayPrivateStores({ copyFile, liveDir, listed, privateNames })) continue;
     if (relative === 'repo-aliases.json' && matchesOverlayAliases({ copyFile, liveDir, listed, privateNames })) continue;
     if (relative === 'capability-cards.complete.md' && (isRegularMatch(copyFile, shipped.get('capability-cards.md'))
       || matchesOverlayCards({ copyFile, liveDir, listed: shipped.get('capability-cards.md'), privateNames }))) continue;

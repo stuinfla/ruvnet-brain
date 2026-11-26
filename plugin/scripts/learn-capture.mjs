@@ -319,8 +319,7 @@ export function detachLearning(mode, { env = process.env, brainHome, observation
     failError(error);
     return false;
   }
-  child.once('spawn', () => {
-    spawned = true;
+  const stampChildPid = () => {
     if (!slot || !Number.isInteger(child.pid)) return;
     try {
       withCaptureGate(bh, () => {
@@ -331,6 +330,11 @@ export function detachLearning(mode, { env = process.env, brainHome, observation
         } catch { /* slot released or replaced */ }
       });
     } catch { /* gate timeout; slot expires naturally */ }
+  };
+  stampChildPid();
+  child.once('spawn', () => {
+    spawned = true;
+    stampChildPid();
   });
   child.once('error', (error) => {
     if (!spawned) {
