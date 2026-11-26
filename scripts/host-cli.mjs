@@ -93,11 +93,19 @@ export function runHostCli(cmd, args, {
     result = spawn(cmd, args, spawnOpts);
     const missing = missingBinaryAttempt(result, cmd, { resolve });
     if (!missing) { SEEN.add(cmd); GONE.delete(cmd); }
-    // Never installed (not seen this run, no PATH entry at all): the caller's own "not found"
-    // handling applies at once, exactly as before.
-    if (!missing || (attempt === 0 && !SEEN.has(cmd) && !onPath(cmd))) {
+    // Never installed (not seen this run, no PATH entry at all): fail at once with missingBinary: true
+    // while keeping result.error.code === 'ENOENT' intact so callers distinguish missing vs errored runs.
+    if (!missing) {
       if (inherit && result?.stderr) echoStderr(String(result.stderr));
       return Object.assign(result ?? {}, { attempts: attempt + 1 });
+    }
+    if (attempt === 0 && !SEEN.has(cmd) && !onPath(cmd)) {
+      if (inherit && result?.stderr) echoStderr(String(result.stderr));
+      return Object.assign(result ?? {}, {
+        attempts: 1,
+        missingBinary: true,
+        message: `the \`${cmd}\` command is not installed (not on PATH); skipped \`${cmd} ${args.join(' ')}\``,
+      });
     }
   }
   const waited = Math.round(delays.reduce((sum, ms) => sum + ms, 0) / 1000);

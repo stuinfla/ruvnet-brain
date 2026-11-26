@@ -235,7 +235,7 @@ export function pluginUpdateDecision(plugin, target) {
 // Codex refreshes a remote plugin catalog (56 MB, 38-40 s cold, 2026-10-30) inside its plugin commands; a killed refresh
 // caches nothing, so a 30 s limit failed every later night the same way. Same bound as bin/install.mjs.
 export const CODEX_COMMAND_TIMEOUT_MS = 180_000;
-export async function synchronizePlugins(run, dryRun, notes, { home, prefix, scope, locate, unattended = false, artifactProvider = pinnedClaudeTarget }) {
+export async function synchronizePlugins(run, dryRun, notes, { home, prefix, scope, locate, unattended = false, artifactProvider = pinnedClaudeTarget, codexHome = path.join(home, '.codex') }) {
   const installed = path.join(home, '.claude/plugins/installed_plugins.json');
   const inventoryOptions = { unattended };
   const all = pluginScopes(installed, inventoryOptions), before = all.filter(p => scope === 'all' || PLUGIN_MARKETPLACES.has(p.id.split('@').at(-1)));
@@ -291,7 +291,14 @@ export async function synchronizePlugins(run, dryRun, notes, { home, prefix, sco
   for (const p of before.filter(p => !writable.includes(p))) if (JSON.stringify(p) !== JSON.stringify(after.find(a => scopeKey(a) === scopeKey(p)))) throw Error(`preserved plugin record changed: ${p.id}`);
   if (JSON.stringify(flags) !== JSON.stringify(pluginFlags(writable, home))) throw Error('plugin enablement changed');
   for (const p of after.filter(p => writable.some(b => scopeKey(b) === scopeKey(p)))) if (!exists(p.installPath)) throw Error(`plugin artifact missing: ${p.id}`);
-  const codex = locate('codex');
+  // Do not invoke `codex` on non-Codex hosts: `codex` CLI creates ~/.codex/tmp/ on startup.
+  const hasCodexHome = (() => {
+    try {
+      const entries = fs.readdirSync(codexHome).filter(name => !/^\._|^\.DS_Store$/.test(name));
+      return entries.some(name => name !== 'tmp' && name !== '.tmp');
+    } catch { return false; }
+  })();
+  const codex = hasCodexHome ? locate('codex') : null;
   if (codex) {
     const result = JSON.parse(run(codex, ['plugin', 'marketplace', 'list', '--json'], { timeout: CODEX_COMMAND_TIMEOUT_MS }));
     const git = (result.marketplaces || []).filter(m => m.marketplaceSource?.sourceType === 'git' && (scope === 'all' || PLUGIN_MARKETPLACES.has(m.name)));
@@ -619,7 +626,7 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
     } else receipt.notes.push('Brain corpus absent; fresh knowledge install excluded');
     persistReceipt();
     if (!knowledgeOnly) {
-      receipt.plugins = await stage('plugins', () => synchronizePlugins(run, mode === 'check', receipt.notes, { home, prefix, scope: config.scope, locate, unattended: !!env.RUVNET_NIGHTLY_IDENTITY }));
+      receipt.plugins = await stage('plugins', () => synchronizePlugins(run, mode === 'check', receipt.notes, { home, prefix, scope: config.scope, locate, unattended: !!env.RUVNET_NIGHTLY_IDENTITY, codexHome: env.CODEX_HOME || path.join(home, '.codex') }));
       receipt.maintenance = await stage('maintenance', () => maintenance(config, run, mode === 'check', { home, brainHome: paths.brainHome, locate, node: stableNode(process.execPath), progress: result => { receipt.maintenance = result; persistReceipt(); } }),
         error => { for (const item of receipt.maintenance?.stages || []) if (item.state === 'running') { item.state = 'failed'; item.error = error.message; } }) ?? receipt.maintenance;
       receipt.cleanup = await stage('cleanup', () => cleanupNpxDuplicates({ home, globalRoot: root, enabled: config.cleanup && mode === 'apply', run }));

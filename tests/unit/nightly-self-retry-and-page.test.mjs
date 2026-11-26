@@ -154,10 +154,23 @@ describe('a CURRENT corpus is not a converged machine', () => {
 describe('the coordinator gives Codex the catalog-refresh limit', () => {
   it('codex plugin commands get CODEX_COMMAND_TIMEOUT_MS, not 30 s (a cold catalog fetch measured 38-40 s)', async () => {
     const home = tmp(), seen = [];
+    fs.mkdirSync(path.join(home, '.codex'), { recursive: true });
+    fs.writeFileSync(path.join(home, '.codex', 'config.toml'), '');
     const run = (command, args, options = {}) => { seen.push([args.slice(0, 3).join(' '), options.timeout]); return args.includes('list') ? '{"marketplaces":[]}' : ''; };
     await synchronizePlugins(run, true, [], { home, prefix: home, scope: 'ruvnet', locate: (name) => (name === 'codex' ? '/fixture/codex' : null) });
     expect(CODEX_COMMAND_TIMEOUT_MS).toBeGreaterThanOrEqual(120_000);
     expect(seen).toEqual([['plugin marketplace list', CODEX_COMMAND_TIMEOUT_MS], ['plugin --help', CODEX_COMMAND_TIMEOUT_MS]]); // before: 30000
+  });
+
+  it('skips invoking codex when ~/.codex is absent, empty, or holds only tmp/ (#541)', async () => {
+    for (const shape of ['absent', 'empty', 'tmp-only']) {
+      const home = tmp(), seen = [];
+      if (shape === 'empty') fs.mkdirSync(path.join(home, '.codex'), { recursive: true });
+      if (shape === 'tmp-only') fs.mkdirSync(path.join(home, '.codex', 'tmp'), { recursive: true });
+      const run = (command, args) => { seen.push([command, ...args]); return '{}'; };
+      await synchronizePlugins(run, true, [], { home, prefix: home, scope: 'ruvnet', locate: (name) => (name === 'codex' ? '/fixture/codex' : null) });
+      expect(seen, shape).toEqual([]);
+    }
   });
 });
 

@@ -323,4 +323,34 @@ describe('doctor: the Nightly fix for a run that fired and failed', () => {
     expect(install.nightlyFix({ state: 'degraded' })).toBe('npx ruvnet-brain --enable-nightly'); // not loaded / drift
     expect(install.nightlyFix({ state: 'on', runHealth: { state: 'failed' } })).toBe('npx ruvnet-brain --update');
   });
+
+  it('doctor treats configured Codex without a codex CLI on PATH as unknown, not lifecycle unhealthy (#541)', () => {
+    const missingCli = {
+      state: 'probe-failed',
+      plugin: { available: false, installed: false, enabled: false, missingBinary: true, error: 'codex missing' },
+      hooks: [],
+      error: 'codex missing',
+    };
+    expect(install.codexCheckLine({ cx: { host: true, wired: true }, codexLifecycle: missingCli })).toEqual({
+      id: 'codex', label: 'Codex', state: 'unknown', detail: 'configured; no codex CLI on PATH (not probed)', fix: null,
+    });
+    expect(install.codexCheckLine({ cx: { host: true, wired: true }, codexLifecycle: { state: 'probe-failed', error: 'timeout', hooks: [] } }))
+      .toMatchObject({ id: 'codex', state: 'fail', detail: 'lifecycle hooks unhealthy' });
+    expect(install.codexCheckLine({ cx: { host: false } })).toBeNull();
+  });
+
+  it('machineFootprint does not invoke codex when ~/.codex is absent (#541)', async () => {
+    const home = temporary('no-codex-footprint-');
+    const fakeBin = temporary('fake-codex-bin-');
+    const marker = path.join(home, 'codex-invoked');
+    fs.writeFileSync(path.join(fakeBin, 'codex'), `#!/bin/sh\ntouch ${JSON.stringify(marker)}\necho '{}'\n`, { mode: 0o755 });
+    const { spawnSync } = await import('node:child_process');
+    const res = spawnSync(process.execPath, ['--input-type=module', '-e',
+      `process.env.RUVNET_BRAIN_IMPORT_ONLY = '1'; const m = await import(${JSON.stringify(pathToFileURL(INSTALLER).href)}); m.machineFootprint();`],
+    { encoding: 'utf8', env: { ...process.env, HOME: home, USERPROFILE: home, CODEX_HOME: path.join(home, '.codex'),
+      RUVNET_BRAIN_HOME: path.join(home, '.cache', 'ruvnet-brain'), PATH: `${fakeBin}${path.delimiter}${process.env.PATH}` } });
+    expect(res.status, res.stderr).toBe(0);
+    expect(fs.existsSync(marker)).toBe(false);
+    expect(fs.existsSync(path.join(home, '.codex'))).toBe(false);
+  });
 });

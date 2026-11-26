@@ -1602,6 +1602,22 @@ const codexServerDir = () => path.join(os.homedir(), '.claude', 'ruvnet-brain', 
 const codexHookWrapperPath = (codexDir = codexHomeDir()) =>
   path.join(path.dirname(codexDir), '.cache', 'ruvnet-brain', 'codex-hook.mjs');
 
+/**
+ * True when `codexDir` is a Codex host directory. Absent dirs and directories holding ONLY
+ * `tmp/` / `.tmp/` scratch (left by a previous `codex` invocation on non-Codex Macs, with no
+ * `config.toml`, `auth.json`, `plugins/`, `skills/`, or SQLite state) return false; an empty
+ * directory still returns true so existing clean-host wiring fixtures work as before.
+ */
+export function hasCodexHost(codexDir = codexHomeDir()) {
+  try {
+    const st = fs.statSync(codexDir);
+    if (!st.isDirectory()) return false;
+    const entries = fs.readdirSync(codexDir).filter((name) => !isVolumeMetadata(name));
+    if (entries.length > 0 && entries.every((name) => name === 'tmp' || name === '.tmp')) return false;
+    return true;
+  } catch { return false; }
+}
+
 // The exact bytes we own. Kept in one place so the writer and the doctor probe can never disagree.
 function codexManagedBlock(serverPath) {
   return [
@@ -1675,8 +1691,7 @@ export function codexStatus({
   codexDir = codexHomeDir(),
   brainHome = path.join(path.dirname(codexDir), '.cache', 'ruvnet-brain'),
 } = {}) {
-  let host = false;
-  try { host = fs.existsSync(codexDir); } catch { /* unreadable — treat as absent */ }
+  const host = hasCodexHost(codexDir);
   if (!host) return { host: false, wired: false, serverPath: null, serverExists: false };
   let text = '';
   try { text = fs.readFileSync(configPath, 'utf8'); } catch { /* no config yet */ }
@@ -1900,8 +1915,7 @@ export function wireCodexHost({
   hookWrapperPath = codexHookWrapperPath(codexDir),
   announce = true,
 } = {}) {
-  let host = false;
-  try { host = fs.existsSync(codexDir); } catch { /* unreadable — treat as absent */ }
+  const host = hasCodexHost(codexDir);
   // No Codex on this machine is not a warning. Say nothing and change nothing.
   if (!host) return { host: false, action: 'no-host' };
 
@@ -2211,7 +2225,7 @@ export function wireCodexPlugin({
   // true/false/null (unknown): does this Codex pin plugin contents in hook approval (0.164+)? Probed for a real host.
   contentTrust,
 } = {}) {
-  if (!fs.existsSync(codexDir)) return { host: false, action: 'no-host' };
+  if (!hasCodexHost(codexDir)) return { host: false, action: 'no-host' };
   const options = { codexBin, codexHome, cwd, repair: true };
   // Codex loads every configured marketplace before it can report plugin state. Repair only an
   // absent/malformed Brain-owned snapshot before that probe, or the probe can fail before its own
@@ -2560,6 +2574,15 @@ export function codexLifecycleGuidance(status) {
         action: `Run codex plugin marketplace upgrade ${CODEX_MARKETPLACE}, then npx ruvnet-brain.`,
       };
     default:
+      if (status?.state === 'probe-failed' && status?.plugin?.missingBinary === true) {
+        return {
+          healthy: false,
+          intentional: true,
+          summary: 'Codex is configured, but no codex CLI is on PATH — lifecycle hooks not probed.',
+          detail: status?.error || 'no codex CLI on PATH.',
+          action: null,
+        };
+      }
       return {
         healthy: false,
         intentional: false,
@@ -3618,17 +3641,8 @@ async function doctorRun({ json }) {
   // Without --hooks the verdict is the install-state check the old code already computed and threw
   // away, PLUS the persisted grounding verdict above. `allGreen` was RIGHT here all along; nothing
   // ever read it.
-  const codexLifecycleFailed = Boolean(
-    codexLifecycle
-    && !codexLifecycleGuidance(codexLifecycle).healthy
-    && !codexLifecycleGuidance(codexLifecycle).intentional,
-  );
-  // A staged release verifier can execute the packaged hooks under Codex's explicit automation
-  // trust bypass. That proves the real hook commands without pretending a fresh interactive user
-  // has already reviewed them; normal end-user doctor runs remain fail-closed on pending trust.
   const codexTrustBypassed = process.env.RUVNET_CODEX_HOOK_TRUST_MODE === 'bypass';
-  const codexWiringFailed = Boolean(cx.host && !cx.wired);
-  const codexReadinessFailed = Boolean(codexMcp?.blocking);
+  const codexLine = codexCheckLine({ cx, codexMcp, codexLifecycle, codexTrustBypassed });
   // ADR-0098 positive confirmation (read-only here; `--clean` enforces) PLUS every doctor check, as lines of
   // ONE block, judged by ONE function (doctorVerdict): ✗ anywhere fails; ! (currency: KB age, a host plugin
   // behind, npm newer) advises and never fails, so a correctly installed older build still verifies.
@@ -3637,7 +3651,6 @@ async function doctorRun({ json }) {
     state: failedNow ? (advisory ? 'warn' : 'fail') : 'ok', detail, fix: failedNow ? fix : null });
   const nightlyFailed = nightlyHealth.state === 'degraded'
     || (nightlyHealth.state === 'on' && !['ok', 'running'].includes(nightlyHealth.runHealth?.state));
-  const codexFailed = codexWiringFailed || codexReadinessFailed || (codexLifecycleFailed && !codexTrustBypassed);
   // #420 item 4: per-project Claude installs lag silently behind the user one; advisory, with each project's own command.
   const projectReference = claudePluginStatus().version || PACKAGE_VERSION;
   const projectLine = projectInstallsCheck(claudeProjectInstalls({ referenceVersion: projectReference }), projectReference);
@@ -3649,8 +3662,7 @@ async function doctorRun({ json }) {
     check('identity', 'Identity', !installedIdentity.healthy, installedIdentity.healthy ? 'search engine, validator and archive manifest agree'
       : installedIdentity.issues.join('; '), 'npx ruvnet-brain@latest --update'),
     groundingCheckLine({ smoke, persisted: persistedGrounding, coverageSha256: liveCoverageSha256(cacheDir) }),
-    ...(cx.host ? [check('codex', 'Codex', codexFailed, codexFailed ? (codexWiringFailed ? 'host detected but NOT wired'
-      : codexReadinessFailed ? 'MCP readiness blocked' : 'lifecycle hooks unhealthy') : 'wired', 'npx ruvnet-brain')] : []),
+    ...(codexLine ? [codexLine] : []),
     check('nightly', 'Nightly', nightlyFailed, `${nightlyHealth.state}${nightlyHealth.runHealth?.state ? `, last run ${nightlyHealth.runHealth.state}` : ''}`,
       nightlyFix(nightlyHealth)),
     // Scheduler ON but running yesterday's code: an advisory naming the exact fix, never a failing verdict.
@@ -5436,13 +5448,15 @@ export function machineFootprint() {
     add('Legacy Codex lifecycle hook wrapper', codexHookWrapperPath(),
       're-run npx ruvnet-brain to retire it, or use --uninstall');
     add('Codex MCP server files', codexServerDir(), 'npx ruvnet-brain --uninstall');
-    const codexPlugin = codexPluginStatus();
-    if (codexPlugin.installed) {
-      items.push({
-        label: 'Codex plugin',
-        path: codexHomeDir(),
-        undo: 'codex plugin remove ruvnet-brain@ruvnet-brain && codex plugin marketplace remove ruvnet-brain',
-      });
+    if (codex.host) {
+      const codexPlugin = codexPluginStatus();
+      if (codexPlugin.installed) {
+        items.push({
+          label: 'Codex plugin',
+          path: codexHomeDir(),
+          undo: 'codex plugin remove ruvnet-brain@ruvnet-brain && codex plugin marketplace remove ruvnet-brain',
+        });
+      }
     }
   } catch { /* Codex absent or unavailable — do not claim it */ }
   // GAP FIX: recordNotified() (scripts/upgrade-notice.mjs, invoked from main() and runDemo() below)
@@ -6360,6 +6374,36 @@ export function rufloCheckLine(health) {
   return health.healthy
     ? { id: 'ruflo', label: 'Ruflo', state: 'ok', detail: health.directMode ? 'direct mode (daemon stopped by design)' : 'operational', fix: null }
     : { id: 'ruflo', label: 'Ruflo', state: 'fail', detail: 'operational learning DEGRADED', fix: 'ruflo doctor --fix' };
+}
+
+/** THE Codex line of the doctor's one verdict: mirrors rufloCheckLine when no CLI is on PATH. */
+export function codexCheckLine({ cx, codexMcp = null, codexLifecycle = null, codexTrustBypassed = false } = {}) {
+  if (!cx?.host) return null;
+  const wiringFailed = !cx.wired;
+  const readinessFailed = Boolean(codexMcp?.blocking);
+  const missingCli = Boolean(codexLifecycle?.state === 'probe-failed' && codexLifecycle?.plugin?.missingBinary === true);
+  const guidance = codexLifecycle ? codexLifecycleGuidance(codexLifecycle) : null;
+  const lifecycleFailed = Boolean(guidance && !guidance.healthy && !guidance.intentional && !missingCli);
+  const failed = wiringFailed || readinessFailed || (lifecycleFailed && !codexTrustBypassed);
+  if (failed) {
+    return {
+      id: 'codex',
+      label: 'Codex',
+      state: 'fail',
+      detail: wiringFailed ? 'host detected but NOT wired' : readinessFailed ? 'MCP readiness blocked' : 'lifecycle hooks unhealthy',
+      fix: 'npx ruvnet-brain',
+    };
+  }
+  if (missingCli) {
+    return {
+      id: 'codex',
+      label: 'Codex',
+      state: 'unknown',
+      detail: 'configured; no codex CLI on PATH (not probed)',
+      fix: null,
+    };
+  }
+  return { id: 'codex', label: 'Codex', state: 'ok', detail: 'wired', fix: null };
 }
 
 // ── issue #39: the ruvector MCP server's own native VectorDb defaults ITS storage to

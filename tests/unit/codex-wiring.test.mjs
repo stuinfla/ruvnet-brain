@@ -38,7 +38,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const CODEX_DIR = path.join(ROOT, '.codex');
 
 let mergeCodexConfig, removeCodexManagedBlock, wireCodexHost, codexStatus, codexMcpGuidance, codexMarketplaceRows, classifyCodexLifecycle;
-let wireCodexPlugin, codexPluginStatus, codexLifecycleGuidance, codexSessionSafety;
+let wireCodexPlugin, codexPluginStatus, codexLifecycleGuidance, codexSessionSafety, codexCheckLine, hasCodexHost;
 beforeAll(async () => {
   // Same import-only contract the other installer tests use, so main() never runs on import.
   process.env.RUVNET_BRAIN_IMPORT_ONLY = '1';
@@ -54,6 +54,8 @@ beforeAll(async () => {
     codexPluginStatus,
     codexLifecycleGuidance,
     codexSessionSafety,
+    codexCheckLine,
+    hasCodexHost,
   } = await import('../../bin/install.mjs'));
 });
 
@@ -393,6 +395,18 @@ describe('codexStatus — the three doctor states, each derived from disk', () =
     expect(s).toMatchObject({ host: false, wired: false });
   });
 
+  it('treats a ~/.codex directory holding only tmp/ as no host without breaking empty fixtures (#541)', () => {
+    const home = tmpdir();
+    const codexDir = path.join(home, '.codex');
+    fs.mkdirSync(path.join(codexDir, 'tmp'), { recursive: true });
+    expect(hasCodexHost(codexDir)).toBe(false);
+    expect(codexStatus({ codexDir, configPath: path.join(codexDir, 'config.toml') })).toMatchObject({ host: false, wired: false });
+    expect(wireCodexHost({ codexDir, serverDir: path.join(home, 'srv'), announce: false })).toMatchObject({ host: false, action: 'no-host' });
+    expect(wireCodexPlugin({ codexDir, codexHome: codexDir, runJson: () => { throw new Error('must not invoke codex'); }, announce: false }))
+      .toMatchObject({ host: false, action: 'no-host' });
+    expect(fs.existsSync(path.join(codexDir, 'config.toml'))).toBe(false);
+  });
+
   it('host detected but NOT wired — no entry at all', () => {
     const home = tmpdir();
     const codexDir = path.join(home, '.codex');
@@ -563,7 +577,18 @@ describe('Codex plugin/lifecycle state — live CLI shapes become one actionable
     });
     expect(codexLifecycleGuidance({ state: 'probe-failed', error: 'timeout', hooks: [] })).toMatchObject({
       healthy: false,
+      intentional: false,
       detail: expect.stringContaining('timeout'),
+    });
+    expect(codexLifecycleGuidance({
+      state: 'probe-failed',
+      plugin: { available: false, installed: false, enabled: false, missingBinary: true, error: 'codex missing' },
+      error: 'codex missing',
+      hooks: [],
+    })).toMatchObject({
+      healthy: false,
+      intentional: true,
+      action: null,
     });
   });
 });

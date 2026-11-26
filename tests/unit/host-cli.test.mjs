@@ -58,6 +58,8 @@ describe.skipIf(!posix)('runHostCli — a host CLI that vanishes mid self-update
     expect(r.attempts).toBe(1);
     expect(sleeps).toEqual([]);
     expect(r.error?.code).toBe('ENOENT');
+    expect(r.missingBinary).toBe(true);
+    expect(r.message).toBe('the `fakeclaude` command is not installed (not on PATH); skipped `fakeclaude x`');
   });
 
   it('a PATH link that points at nothing counts as mid-update even if never seen', () => {
