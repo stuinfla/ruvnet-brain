@@ -12,7 +12,9 @@ import { resolveRuflo, rufloInvocationOrPlain } from './ruflo-bin.mjs';
 async function session(storePath, moduleUrl) {
   const write = process.stdout.write.bind(process.stdout);
   process.stdout.write = (chunk, ...rest) => process.stderr.write(chunk, ...rest); // module chatter must not corrupt the protocol
-  const reply = (row) => write(JSON.stringify(row) + '\n');
+  const reply = (row) => new Promise((resolve) => {
+    try { write(`${JSON.stringify(row)}\n`, () => resolve()); } catch { resolve(); }
+  });
   let mod;
   try { mod = await import(moduleUrl); } catch { mod = null; }
   if (!mod || typeof mod.listEntries !== 'function' || typeof mod.getEntry !== 'function' || typeof mod.resolveDbPath !== 'function') {
@@ -37,10 +39,27 @@ async function session(storePath, moduleUrl) {
     }
     return { state: 'fallback' };
   };
+  let inFlight = 0;
+  let stdinClosed = false;
+  const maybeExit = () => {
+    if (stdinClosed && inFlight === 0) process.exit(0);
+  };
   lfLineReader(process.stdin).on('line', (line) => {
     let request; try { request = JSON.parse(line); } catch { return; }
-    run(request).catch(() => ({ state: 'unavailable' })).then((out) => reply({ id: request.id, ...out }));
-  }).on('close', () => process.exit(0));
+    if (!request || typeof request !== 'object' || Array.isArray(request)) return;
+    inFlight += 1;
+    Promise.resolve()
+      .then(() => run(request))
+      .catch(() => ({ state: 'unavailable' }))
+      .then((out) => reply({ id: request.id, ...out }))
+      .finally(() => {
+        inFlight -= 1;
+        maybeExit();
+      });
+  }).on('close', () => {
+    stdinClosed = true;
+    maybeExit();
+  });
 }
 
 const call = (bin, args, deadline) => new Promise((resolve) => {

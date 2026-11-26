@@ -18,6 +18,13 @@ const WINDOW_FILE = 'hook-failures.window.json';
 const MAX_READ = 256 * 1024;
 export const REPEAT_WINDOW_MS = 10 * 60_000;
 const MAX_WINDOWS = 64;
+const CORRELATION_FIELDS = ['store', 'project', 'session', 'key'];
+const hashCorr = (value) => createHash('sha256').update(String(value)).digest('hex').slice(0, 16);
+const cleanCorr = (value) => {
+  if (value === undefined || value === null || value === '') return undefined;
+  const s = String(value);
+  return s.length <= 80 && !/[\\/\n\r\0]/.test(s) ? s : hashCorr(s);
+};
 
 /** Summarize failures recorded after the cursor; advance it. Returns '' when there is nothing new. */
 export function failureLine(brainHome, { advance = true, now = Date.now() } = {}) {
@@ -68,7 +75,8 @@ const windowFile = (brainHome) => path.join(brainHome, WINDOW_FILE);
  * Entries failing that are dropped, the rest kept; any other file shape is an empty window file.
  */
 const validWindow = (w, now) => w && typeof w === 'object' && !Array.isArray(w) && Number.isFinite(w.at) && w.at >= 0 && w.at <= now + REPEAT_WINDOW_MS
-  && Number.isInteger(w.count) && w.count >= 1 && typeof w.hook === 'string' && typeof w.error === 'string';
+  && Number.isInteger(w.count) && w.count >= 1 && typeof w.hook === 'string' && typeof w.error === 'string'
+  && CORRELATION_FIELDS.every((k) => w[k] === undefined || (typeof w[k] === 'string' && w[k].length <= 128));
 function loadWindows(brainHome, now) {
   try {
     const parsed = JSON.parse(fs.readFileSync(windowFile(brainHome), 'utf8'));
@@ -83,7 +91,10 @@ function saveWindows(brainHome, windows) { // rename, so a concurrent reader nev
 
 /** A closed window whose repeats were held back becomes ONE row carrying their count. */
 function closeWindow(brainHome, w, now) {
-  if (w.count > 1) appendRow(brainHome, { at: new Date(now).toISOString(), hook: w.hook, event: w.event, error: `${w.error} (repeated)`, count: w.count - 1, since: new Date(w.at).toISOString() });
+  if (w.count <= 1) return;
+  const row = { at: new Date(now).toISOString(), hook: w.hook, event: w.event, error: `${w.error} (repeated)`, count: w.count - 1, since: new Date(w.at).toISOString() };
+  for (const k of CORRELATION_FIELDS) if (typeof w[k] === 'string' && w[k]) row[k] = w[k];
+  appendRow(brainHome, row);
 }
 
 /** Close the expired windows; `all` closes the open ones too (SessionStart reports now). Returns the windows left open. */
@@ -117,10 +128,26 @@ export function recordHookFailure(fields, { brainHome = process.env.RUVNET_BRAIN
     fs.mkdirSync(brainHome, { recursive: true });
     const windows = flushRepeats(brainHome, now);
     const error = normalizeFailure(fields.error ?? fields.note ?? (fields.signal || `exit ${fields.status}`));
-    const sig = createHash('sha256').update(`${fields.hook}\0${fields.event || ''}\0${error}`).digest('hex').slice(0, 16);
+    const corrPersisted = {};
+    const corrHashParts = [];
+    let hasCorr = false;
+    for (const k of CORRELATION_FIELDS) {
+      const cleaned = cleanCorr(fields[k]);
+      if (cleaned !== undefined) {
+        hasCorr = true;
+        corrPersisted[k] = cleaned;
+        corrHashParts.push(hashCorr(fields[k]));
+      } else {
+        corrHashParts.push('');
+      }
+    }
+    const sigInput = hasCorr
+      ? `${fields.hook}\0${fields.event || ''}\0${error}\0${corrHashParts.join('\0')}`
+      : `${fields.hook}\0${fields.event || ''}\0${error}`;
+    const sig = createHash('sha256').update(sigInput).digest('hex').slice(0, 16);
     if (windows[sig]) { windows[sig].count += 1; saveWindows(brainHome, windows); return true; }
-    appendRow(brainHome, { at: new Date(now).toISOString(), ...fields });
-    windows[sig] = { at: now, count: 1, hook: fields.hook, event: fields.event || '', error };
+    appendRow(brainHome, { at: new Date(now).toISOString(), ...fields, ...corrPersisted });
+    windows[sig] = { at: now, count: 1, hook: fields.hook, event: fields.event || '', error, ...corrPersisted };
     const oldest = Object.keys(windows).sort((a, b) => windows[a].at - windows[b].at).slice(0, Math.max(0, Object.keys(windows).length - MAX_WINDOWS));
     for (const old of oldest) { closeWindow(brainHome, windows[old], now); delete windows[old]; } // bounded: the oldest close early
     try { saveWindows(brainHome, windows); } catch { /* the row is on disk; the next repeat starts a fresh window */ }

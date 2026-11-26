@@ -25,6 +25,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { restore as restoreFromRuflo } from './ruflo-memory-hooks.mjs';
 import { turnRecordingStatus } from './turn-outcome-capture.mjs';
@@ -40,7 +41,7 @@ import { CODEX_OVERNIGHT_PREFIX } from './codex-overnight-notice.mjs';
 import { FOOTPRINT_LINE_PREFIX } from './brain-confirmation.mjs';
 import { describeLifecycleHooks, readHookContracts } from './session-start-hook-description.mjs';
 import { createStageTracer } from './session-start-trace.mjs';
-import { sessionStartDeadlineAt, STAGE_BUDGETS_MS } from './session-start-budget.mjs';
+import { sessionStartDeadlineAt, sessionStartRestoreBudgetMs, STAGE_BUDGETS_MS } from './session-start-budget.mjs';
 import { loadSettings } from './user-settings.mjs';
 import { sessionStartProofRecorder } from './session-start-proof.mjs';
 import { ALIAS_NOTICE, probeCodexConsoleAlias, readSessionSource } from './codex-console-alias.mjs';
@@ -142,6 +143,8 @@ export async function runSessionStart({
       || s.startsWith('[RuvNet Brain — TURN RECORDING]')
       || s.startsWith('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN]')
       || s.startsWith('[RuvNet Brain — PROJECT CONTINUITY RESTORED]')
+      || s.startsWith('[RuvNet Brain — PROJECT CONTINUITY INCOMPLETE]')
+      || s.startsWith('[RuvNet Brain — PROJECT STATE')
       || s.startsWith('[RuvNet Brain — Cross-Host Project Lifecycle')
       || s.startsWith('[RuvNet Brain — COME UP TO SPEED')
       || s.startsWith('[RuvNet Brain — MAINTAINER ONLY:')
@@ -201,10 +204,17 @@ export async function runSessionStart({
   };
 
   const restoreStart = Date.now();
-  const restoreDeadlineAt = Math.min(hookDeadlineAt, restoreStart + STAGE_BUDGETS_MS.restore);
+  const restoreDeadlineAt = Math.min(hookDeadlineAt, restoreStart + sessionStartRestoreBudgetMs(env));
   const restoreController = new AbortController();
   let restoreTimer;
   let restoreFailed = false;
+  let restoreStatus = 'unknown';
+  let restoreRoute = null;
+  let restoreErrorCategory = null;
+  let restoreErrorDigest = null;
+  const hashRestoreError = (err) => crypto.createHash('sha256')
+    .update(`${String(err?.code || '')}\0${String(err?.name || '')}\0${String(err?.message || err || '')}`)
+    .digest('hex');
   try {
     const remaining = restoreDeadlineAt - Date.now();
     if (remaining <= 0) throw new Error('restore deadline exhausted');
@@ -218,16 +228,35 @@ export async function runSessionStart({
     if (Date.now() >= restoreDeadlineAt) throw new Error('restore deadline exceeded');
     const bad = ['unknown', 'partial', 'refused'];
     restoreFailed = bad.includes(continuity?.status) || bad.includes(continuity?.brief?.status);
+    restoreStatus = typeof continuity?.status === 'string'
+      ? continuity.status
+      : (typeof continuity?.brief?.status === 'string' ? continuity.brief.status : (restoreFailed ? 'unknown' : 'ok'));
+    restoreRoute = typeof continuity?.route === 'string' ? continuity.route : null;
+    restoreErrorCategory = typeof continuity?.errorCategory === 'string'
+      ? continuity.errorCategory
+      : (restoreStatus === 'refused' ? 'refused' : (restoreFailed ? restoreStatus : null));
+    restoreErrorDigest = typeof continuity?.errorDigest === 'string' ? continuity.errorDigest : null;
     if (continuity?.context) emit(continuity.context);
   } catch (error) {
     restoreController.abort();
     restoreFailed = true;
-    emit('[RuvNet Brain — PROJECT CONTINUITY UNKNOWN]');
-    emit(/deadline/i.test(error?.message || '')
+    restoreStatus = 'unknown';
+    const timedOut = /deadline|timeout|timed\s*out|abort|cancel/i.test(`${error?.code || ''} ${error?.name || ''} ${error?.message || ''}`);
+    restoreErrorCategory = timedOut ? 'timed-out' : 'failed';
+    restoreErrorDigest = hashRestoreError(error);
+    emit(`[RuvNet Brain — PROJECT CONTINUITY UNKNOWN] ${timedOut
       ? 'The SessionStart restore deadline expired. Durable work is retained; no project restoration is claimed.'
-      : 'The SessionStart restore boundary failed unexpectedly. Do not claim project state was restored; verify the canonical store before relying on remembered state.');
+      : 'The SessionStart restore boundary failed unexpectedly. Do not claim project state was restored; verify the canonical store before relying on remembered state.'}`);
   } finally { clearTimeout(restoreTimer); }
-  const restoreProof = { name: 'restore', ms: Date.now() - restoreStart, failed: restoreFailed };
+  const restoreProof = {
+    name: 'restore',
+    ms: Date.now() - restoreStart,
+    failed: restoreFailed,
+    status: restoreStatus,
+    route: restoreRoute,
+    errorCategory: restoreErrorCategory,
+    errorDigest: restoreErrorDigest,
+  };
   // Cross-host AgentDB project lifecycle handoff (RuvNet Brain v5.0 / ruPro continuity across Claude Code, Codex, Antigravity, Grok)
   try {
     const { readLifecycleState, formatHandoffBrief } = await import('./project-lifecycle.mjs');

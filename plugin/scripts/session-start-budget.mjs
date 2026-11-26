@@ -33,7 +33,7 @@ export function sessionStartTimeoutMs(hooksJsonPath = HOOKS_JSON_PATH) {
 // Per-stage budgets, ms. Every stage session-start-core.mjs (or continuity's restore) can run
 // appears here exactly once. Restore includes bounded durable replay; banner remains <= 200.
 export const STAGE_BUDGETS_MS = {
-  restore: 3500,          // measured turn replay (1.5–2s) + progression write/readback + bounded restore
+  restore: 10000,         // concurrent native owner reads + progression restore within 16s host cap
   misc: 250,              // settings/nightly/health/console-offer/auto-pref/star — small fs reads
   // The cache read itself is budgeted at 100ms internally (session-start-issue-alert.mjs's own
   // ISSUE_POINTER_BUDGET_MS, per correction #2's exact wording); this stage's total also carries
@@ -52,6 +52,14 @@ export const STAGE_BUDGETS_MS = {
 
 export function sumBudgetsMs(budgets = STAGE_BUDGETS_MS) {
   return Object.values(budgets).reduce((sum, ms) => sum + ms, 0);
+}
+
+/** Optional bounded restore budget override, capped by STAGE_BUDGETS_MS.restore. */
+export function sessionStartRestoreBudgetMs(env = process.env) {
+  const requested = Number(env?.RUVNET_SESSION_START_RESTORE_MS);
+  return Number.isFinite(requested) && requested > 0
+    ? Math.min(STAGE_BUDGETS_MS.restore, Math.floor(requested))
+    : STAGE_BUDGETS_MS.restore;
 }
 
 // Measured node process boot (interpreter start + module graph load) BEFORE any stage code runs —

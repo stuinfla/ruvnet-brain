@@ -15,6 +15,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { projectDirectory } from './project-identity.mjs';
@@ -56,6 +57,14 @@ export function effectiveBudgetMs(env = process.env, event = null) {
  */
 export const CHECKPOINT_NEED_MS = 2_600;
 
+const corrHash = (value) => crypto.createHash('sha256').update(String(value)).digest('hex').slice(0, 16);
+const correlationFields = ({ db, project, session, key } = {}) => ({
+  ...(db ? { store: corrHash(db) } : {}),
+  ...(project ? { project: corrHash(project) } : {}),
+  ...(session ? { session: corrHash(session) } : {}),
+  ...(key ? { key: String(key).slice(0, 80) } : {}),
+});
+
 async function checkpointNow({ projectDir, event, payload, env, deadlineAt, brainHome }) {
   // Same consent as turn capture: a persisted opt-out, or a project without a store, writes nothing.
   const consent = resolveTurnDb({ projectDir, brainHome, deadlineAt });
@@ -63,7 +72,12 @@ async function checkpointNow({ projectDir, event, payload, env, deadlineAt, brai
   const { checkpoint } = await import('./ruflo-memory-hooks.mjs');
   const saved = await checkpoint({ projectDir, event, payload, env, deadlineAt });
   if (saved.stored === false && saved.key || saved.stored && saved.verified !== true || /refused/.test(saved.skipped || '')) {
-    recordHookFailure({ hook: 'checkpoint', event, error: saved.skipped || 'exact checkpoint readback failed' }, { brainHome });
+    recordHookFailure({
+      hook: 'checkpoint',
+      event,
+      error: saved.skipped || 'exact checkpoint readback failed',
+      ...correlationFields({ db: saved.db || consent.db, project: saved.project || consent.projectRoot || projectDir, session: payload?.session_id, key: saved.key }),
+    }, { brainHome });
   }
   return saved;
 }
@@ -100,21 +114,40 @@ export async function runLifecycleBoundary(event, payload, { env = process.env, 
     });
   } catch { /* advisory, never block lifecycle hook */ }
   if (event === 'Stop') return { turn };
+  const brainHome = env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain');
   try { // the observation rows are distilled by rUv's `memory distill run`, detached and bounded (review M3)
     const { learningContext } = await import('./runtime-preferences.mjs');
-    if (learningContext().enabled) (await import('./learn-capture.mjs')).detachLearning('--distill', { env });
-  } catch (error) { recordHookFailure({ hook: 'learn-distill', event, error: `detach failed: ${error.code || 'spawn'}` }); }
+    if (learningContext().enabled) {
+      (await import('./learn-capture.mjs')).detachLearning('--distill', {
+        env,
+        brainHome,
+        correlation: correlationFields({ project: projectDir, session: payload?.session_id }),
+      });
+    }
+  } catch (error) {
+    recordHookFailure({
+      hook: 'learn-distill',
+      event,
+      error: `detach failed: ${error.code || 'spawn'}`,
+      ...correlationFields({ project: projectDir, session: payload?.session_id }),
+    }, { brainHome });
+  }
   if (String(env.RUVNET_TURN_CAPTURE || '').toLowerCase() === 'off') return { turn, checkpoint: { stored: false, skipped: 'RUVNET_TURN_CAPTURE=off' } };
-  const brainHome = env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain');
   if (deadlineAt - Date.now() < CHECKPOINT_NEED_MS) {
     // A persisted opt-out is answered here, so no detached child is started for a project that refused
     // capture (the child re-checks consent anyway; a deadline throw here just leaves that check to it).
+    let consent = null;
     try {
-      const consent = resolveTurnDb({ projectDir, brainHome, deadlineAt });
+      consent = resolveTurnDb({ projectDir, brainHome, deadlineAt });
       if (consent.skipped) return { turn, checkpoint: { stored: false, skipped: consent.skipped } };
     } catch { /* out of time: the detached child decides */ }
     try { return { turn, checkpoint: { stored: false, ...detachCheckpoint({ projectDir, event, payload, env, brainHome }) } }; } catch (error) {
-      recordHookFailure({ hook: 'checkpoint', event, error: `skipped: hook budget too small and detach failed (${error.code || 'spawn'})` }, { brainHome });
+      recordHookFailure({
+        hook: 'checkpoint',
+        event,
+        error: `skipped: hook budget too small and detach failed (${error.code || 'spawn'})`,
+        ...correlationFields({ db: consent?.db, project: consent?.projectRoot || projectDir, session: payload?.session_id }),
+      }, { brainHome });
       return { turn, checkpoint: { stored: false, skipped: 'hook budget too small; detach failed' } };
     }
   }
@@ -122,10 +155,17 @@ export async function runLifecycleBoundary(event, payload, { env = process.env, 
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]).endsWith('session-snapshot-hook.mjs')) {
+  let cliCorr = {};
+  const cliBrainHome = process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain');
   const loud = (event) => (error) => {
     // ADVISORY, ALWAYS: exit 0 — but LOUD (review M1): the shim records only nonzero exits, so a thrown
     // error is a ledger row here. A fixed-length reason, never payload text.
-    recordHookFailure({ hook: 'session-snapshot', event, error: `threw: ${redactText(String(error?.message || error)).slice(0, 120)}` });
+    recordHookFailure({
+      hook: 'session-snapshot',
+      event,
+      error: `threw: ${redactText(String(error?.message || error)).slice(0, 120)}`,
+      ...correlationFields(cliCorr),
+    }, { brainHome: cliBrainHome });
     process.stderr.write(`[session-snapshot] ${error?.message}\n`);
   };
   if (process.argv[2] === '--checkpoint-detached') {
@@ -133,6 +173,7 @@ if (process.argv[1] && path.resolve(process.argv[1]).endsWith('session-snapshot-
     let job = {}; try { job = JSON.parse(process.env.RUVNET_CHECKPOINT_JOB || '{}'); } catch { /* invalid job: nothing to do */ }
     const brainHome = process.env.RUVNET_BRAIN_HOME || path.join(os.homedir(), '.cache', 'ruvnet-brain');
     if (typeof job.projectDir === 'string' && path.isAbsolute(job.projectDir)) {
+      cliCorr = { project: job.projectDir, session: job.session_id };
       checkpointNow({ projectDir: job.projectDir, event, payload: { session_id: job.session_id }, env: process.env,
         deadlineAt: Date.now() + CAPTURE_BUDGET_MS, brainHome }).catch(loud(event));
     }
@@ -140,6 +181,10 @@ if (process.argv[1] && path.resolve(process.argv[1]).endsWith('session-snapshot-
     const event = process.argv[2] || 'SessionEnd';
     let payload = {};
     try { payload = JSON.parse(fs.readFileSync(0, 'utf8') || '{}'); } catch { /* malformed or absent input */ }
+    cliCorr = {
+      project: typeof payload?.cwd === 'string' && path.isAbsolute(payload.cwd) ? payload.cwd : process.cwd(),
+      session: payload?.session_id,
+    };
     runLifecycleBoundary(event, payload).catch(loud(event));
   }
 }

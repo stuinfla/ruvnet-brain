@@ -37,7 +37,7 @@ describe('SessionStart derived-sum latency budget contract', () => {
       expect(run.status, run.stderr).toBe(0);
       if (kind === 'registered-envelope') {
         const result = JSON.parse(run.stdout); expect(result.marker).toBe('restore-completed');
-        expect(result.deadlineAt).toBeLessThanOrEqual(started + 7500); expect(Date.now() - started).toBeLessThan(7500);
+        expect(result.deadlineAt).toBeLessThanOrEqual(started + 15500); expect(Date.now() - started).toBeLessThan(15500);
         expect(fs.readFileSync(protectedFile, 'utf8')).toBe('completed');
       } else {
         expect(run.stdout).not.toContain('restore-completed'); expect(run.stderr).toContain('PROJECT CONTINUITY UNKNOWN');
@@ -56,7 +56,7 @@ describe('SessionStart derived-sum latency budget contract', () => {
   }, 12000);
   it('uses each registered host envelope and never restarts an inherited deadline', () => {
     expect(sessionStartDeadlineAt({ host: 'claude', env: {}, startedAt: 1000 })).toBe(1000 + sessionStartTimeoutMs() - MEASURED_NODE_BOOT_MS);
-    expect(sessionStartDeadlineAt({ host: 'codex', env: {}, startedAt: 1000 })).toBe(1000 + 7500 - MEASURED_NODE_BOOT_MS);
+    expect(sessionStartDeadlineAt({ host: 'codex', env: {}, startedAt: 1000 })).toBe(1000 + 15500 - MEASURED_NODE_BOOT_MS);
     for (const host of ['claude', 'codex']) {
       expect(sessionStartDeadlineAt({ host, env: { RUVNET_SESSION_START_DEADLINE_AT: '1200' }, startedAt: 1000 })).toBe(1200);
     }
@@ -67,8 +67,8 @@ describe('SessionStart derived-sum latency budget contract', () => {
     expect(sum).toBeLessThan(timeoutMs - MEASURED_NODE_BOOT_MS);
   });
 
-  it('durable replay and restore share a 3500ms ceiling; banner stays below 200ms', () => {
-    expect(STAGE_BUDGETS_MS.restore).toBeLessThanOrEqual(3500);
+  it('durable replay and restore share a 10000ms ceiling; banner stays below 200ms', () => {
+    expect(STAGE_BUDGETS_MS.restore).toBeLessThanOrEqual(10000);
     expect(STAGE_BUDGETS_MS.banner).toBeLessThanOrEqual(200);
   });
 

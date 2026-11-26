@@ -194,7 +194,7 @@
       "mode": "advisory",
       "offBehavior": "partial",
       "matcher": "startup|resume|clear|compact|fork",
-      "timeout": 8
+      "timeout": 16
     },
     {
       "id": "unprompted-speech",
