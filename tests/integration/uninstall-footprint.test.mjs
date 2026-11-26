@@ -90,6 +90,22 @@ describe('--what-changed', () => {
   it('says so plainly when nothing is installed, rather than inventing a footprint', () => {
     const out = run(['--what-changed']);
     expect(out).toMatch(/Nothing from RuvNet Brain is currently installed/);
+    expect(fs.existsSync(path.join(home, '.codex'))).toBe(false);
+  });
+
+  it('--what-changed on a Claude-only install never creates ~/.codex or invokes codex (#541)', () => {
+    seedFullInstall();
+    const fakeBin = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-codex-'));
+    const marker = path.join(home, 'codex-ran');
+    try {
+      fs.writeFileSync(path.join(fakeBin, 'codex'), `#!/bin/sh\ntouch ${JSON.stringify(marker)}\necho '{}'\n`, { mode: 0o755 });
+      const out = run(['--what-changed'], { ...process.env, PATH: `${fakeBin}${path.delimiter}${process.env.PATH}` });
+      expect(out).toMatch(/Brain bundle/);
+      expect(fs.existsSync(marker)).toBe(false);
+      expect(fs.existsSync(path.join(home, '.codex'))).toBe(false);
+    } finally {
+      fs.rmSync(fakeBin, { recursive: true, force: true });
+    }
   });
 });
 
