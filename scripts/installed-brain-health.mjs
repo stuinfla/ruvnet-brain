@@ -11,9 +11,33 @@ const SEARCH_FILES = ['forge-mcp-all.mjs', 'forge-ask-all.mjs', 'forge-rerank.mj
 // Keep the doctor probe answerable and bounded. A health probe must exercise a real indexed
 // source/citation path; it must not turn an unclear broad question into an all-corpus rerank.
 export const DOCTOR_SMOKE_QUERY = 'What package name is declared in the RuvNet Brain KB package manifest?';
+export const RUVECTOR_SMOKE_QUERY = 'How does RuVector store vectors and run HNSW search?';
+export function doctorSmokeTarget(cacheDir) {
+  let repo = 'ruvnet-brain';
+  try {
+    if (cacheDir && fs.existsSync(cacheDir)) {
+      const stores = [...new Set(
+        fs.readdirSync(cacheDir)
+          .filter((name) => !name.startsWith('._') && /\.rvf$/i.test(name) && !/\.(?:idmap|embed)\.rvf$/i.test(name))
+          .map((name) => name.replace(/(?:\.big)?\.rvf$/i, ''))
+          .filter(Boolean),
+      )].sort();
+      if (stores.length && !stores.includes('ruvnet-brain')) {
+        repo = stores.includes('ruvector')
+          ? 'ruvector'
+          : (stores.find((name) => name !== 'concepts') || stores[0]);
+      }
+    }
+  } catch { /* fall back to default ruvnet-brain target */ }
+  const query = repo === 'ruvnet-brain' ? DOCTOR_SMOKE_QUERY
+    : repo === 'ruvector' ? RUVECTOR_SMOKE_QUERY
+      : `What package or module does ${repo} implement?`;
+  return { repo, query };
+}
 export function doctorSmokeArgs(cacheDir) {
-  return ['forge-ask-all.mjs', '--dir', cacheDir, '--q', DOCTOR_SMOKE_QUERY,
-    '--repos', 'ruvnet-brain', '--k', '3', '--pool', '8', '--bounded'];
+  const { repo, query } = doctorSmokeTarget(cacheDir);
+  return ['forge-ask-all.mjs', '--dir', cacheDir, '--q', query,
+    '--repos', repo, '--k', '3', '--pool', '8', '--bounded'];
 }
 
 // The models the doctor's question loads whose local copy is not complete. A partial download is

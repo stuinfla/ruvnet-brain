@@ -3575,7 +3575,7 @@ async function searchAllPrimary({
   let routing = null;
   if ((!repos || !repos.length) && !_routeStage) {
     let planned = planSourceRoute({ dir, query, discovered, identifierScanTokens, deadline });
-    if (planned.repos.length && planned.repos.length < discovered.length) {
+    if (planned.repos.length && (planned.repos.length < discovered.length || discovered.length === 1)) {
       const routeMs = performance.now() - startedAt;
       const requestedMember = String(query || '').match(/\b([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)\s*\(/);
       if (requestedMember && planned.repos.length) {
@@ -3681,10 +3681,13 @@ async function searchAllPrimary({
       };
       // Interactive retrieval is bounded. Offline evaluators and explicit library callers retain
       // the historical full-corpus fallback by leaving allowFullCorpus at its default.
-      if (!allowFullCorpus) {
+      // When only 1 store is installed, never fall through to search the same store a second time.
+      if (!allowFullCorpus || discovered.length === 1) {
         return {
           ...scoped,
-          routing: scopedRouting,
+          routing: discovered.length === 1 && scopedErrors.length === 0
+            ? { ...scopedRouting, accepted: true, fallback: 'single-store-scoped' }
+            : scopedRouting,
           diagnostics: traceRetrieval({ query, family: planned.family || null,
             routeMs: +routeMs.toFixed(2), scopedSearchMs: +scopedSearchMs.toFixed(2),
             candidateRepos: planned.repos.length, lane: 'bounded-source-search',
@@ -3693,7 +3696,14 @@ async function searchAllPrimary({
       }
       routing = scopedRouting;
     }
-    if (!allowFullCorpus) {
+    const cardRejectedExternal = planned.confidence === 'none'
+      && /outside the card catalogue/i.test(String(planned.reason || ''));
+    const repoDirectives = [...String(query || '').matchAll(/\brepo:([a-z0-9._-]+)/gi)]
+      .map((match) => match[1].toLowerCase());
+    const explicitAbsentRepo = repoDirectives.length > 0
+      && repoDirectives.every((name) => !discovered.some((repo) => String(repo).toLowerCase() === name));
+    const singleStoreFallback = discovered.length === 1 && !cardRejectedExternal && !explicitAbsentRepo;
+    if (!allowFullCorpus && !singleStoreFallback) {
       // No card route means the question is too ambiguous to pick a source boundary. Refuse quickly
       // instead of fanning out to every store.
       return {
@@ -3723,6 +3733,15 @@ async function searchAllPrimary({
           candidateRepos: [],
           fallback: 'ask-to-narrow',
         },
+      };
+    }
+    if (singleStoreFallback) {
+      routing = {
+        attempted: true,
+        accepted: true,
+        confidence: 'single-store',
+        reason: planned.reason || `single installed store (${discovered[0]}) searched directly`,
+        candidateRepos: discovered,
       };
     }
   }

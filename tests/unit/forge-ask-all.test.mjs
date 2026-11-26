@@ -3910,3 +3910,91 @@ describe('searchAll — cross-repo pool + rerank + name-boost', () => {
     );
   });
 });
+
+describe('RuVector Only single-store routing (#530)', () => {
+  beforeEach(() => {
+    vi.mocked(searchKb).mockReset();
+    vi.mocked(rerankPairs).mockReset();
+    vi.mocked(rerankPairs).mockImplementation(async (_q, cands) => cands.map((c) => ({ ...c, ceScore: 4 })));
+  });
+
+  it('uses the bounded route when only 1 store is installed and its card matches (#530)', async () => {
+    const d = mkdirWith(['ruvector.rvf']);
+    fs.writeFileSync(path.join(d, 'capability-cards.md'), '## ruvector\nLocal vector database with HNSW indexing and RVF format.\n');
+    vi.mocked(searchKb).mockResolvedValue([hit({ repo: 'ruvector', path: 'crates/rvf/README.md', fullText: 'RVF HNSW index on disk.' })]);
+
+    const out = await searchAll({
+      dir: d,
+      query: 'How does RuVector persist HNSW vectors on disk?',
+      allowFullCorpus: false,
+    });
+
+    expect(searchKb).toHaveBeenCalledTimes(1);
+    expect(searchKb.mock.calls[0][0].name).toBe('ruvector');
+    expect(out.repos).toEqual(['ruvector']);
+    expect(out.results.length).toBeGreaterThan(0);
+    expect(out.routing?.accepted).toBe(true);
+    expect(out.routing?.fallback).not.toBe('ask-to-narrow');
+  });
+
+  it('searches the sole installed store directly on bounded queries with no card/metadata match (#530)', async () => {
+    const d = mkdirWith(['ruvector.rvf']);
+    vi.mocked(searchKb).mockResolvedValue([hit({ repo: 'ruvector', path: 'src/index.rs', fullText: 'HNSW vector search internals.' })]);
+
+    const out = await searchAll({
+      dir: d,
+      query: 'How are vector search distance metrics evaluated internally?',
+      allowFullCorpus: false,
+    });
+
+    expect(searchKb).toHaveBeenCalledTimes(1);
+    expect(searchKb.mock.calls[0][0].name).toBe('ruvector');
+    expect(out.repos).toEqual(['ruvector']);
+    expect(out.results[0].repo).toBe('ruvector');
+    expect(out.routing).toMatchObject({ attempted: true, accepted: true, candidateRepos: ['ruvector'] });
+  });
+
+  it('still declines out-of-catalogue external vocabulary on a single-store install (#530)', async () => {
+    const d = mkdirWith(['ruvector.rvf']);
+    fs.writeFileSync(path.join(d, 'capability-cards.md'), '## ruvector\nLocal vector database with HNSW indexing and RVF format.\n');
+
+    const out = await searchAll({
+      dir: d,
+      query: 'How does PostgreSQL configure Kubernetes Ingress TLS certificates?',
+      allowFullCorpus: false,
+    });
+
+    expect(searchKb).not.toHaveBeenCalled();
+    expect(out.results).toEqual([]);
+    expect(out.routing).toMatchObject({ attempted: true, accepted: false });
+  });
+
+  it('still declines when single-store user asks explicitly for repo:other (#530)', async () => {
+    const d = mkdirWith(['ruvector.rvf']);
+    fs.writeFileSync(path.join(d, 'capability-cards.md'), '## ruvector\nLocal vector database with HNSW indexing.\n');
+
+    const out = await searchAll({
+      dir: d,
+      query: 'repo:agentdb How does persistent episode replay work?',
+      allowFullCorpus: false,
+    });
+
+    expect(searchKb).not.toHaveBeenCalled();
+    expect(out.results).toEqual([]);
+    expect(out.routing).toMatchObject({ attempted: true, accepted: false, fallback: 'ask-to-narrow' });
+  });
+
+  it('still asks to narrow when multiple stores are installed and routing is ambiguous (#530)', async () => {
+    const d = mkdirWith(['alpha.rvf', 'beta.rvf']);
+
+    const out = await searchAll({
+      dir: d,
+      query: 'How are vector search distance metrics evaluated internally?',
+      allowFullCorpus: false,
+    });
+
+    expect(searchKb).not.toHaveBeenCalled();
+    expect(out.results).toEqual([]);
+    expect(out.routing).toMatchObject({ attempted: true, accepted: false, fallback: 'ask-to-narrow' });
+  });
+});

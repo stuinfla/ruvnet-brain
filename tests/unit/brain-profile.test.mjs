@@ -12,6 +12,7 @@ import {
   readBrainProfile,
   restoreCompleteProfile,
 } from '../../kb/brain-profile.mjs';
+import { doctorSmokeArgs, RUVECTOR_SMOKE_QUERY } from '../../scripts/installed-brain-health.mjs';
 
 let root;
 let source;
@@ -290,5 +291,13 @@ describe('brain storage profiles', () => {
     expect(fs.readFileSync(path.join(installed, 'capability-cards.md'), 'utf8')).toContain('## ruflo');
     expect(Object.keys(JSON.parse(fs.readFileSync(path.join(installed, 'RVF-GENERATIONS.json'), 'utf8')).stores))
       .toEqual(['ruflo', 'ruvector']);
+  });
+
+  it('points doctorSmokeArgs to ruvector after applying the RuVector Only profile (#530)', () => {
+    applyBrainProfile(installed, PROFILE_RUVECTOR);
+    expect(doctorSmokeArgs(installed)).toEqual([
+      'forge-ask-all.mjs', '--dir', installed, '--q', RUVECTOR_SMOKE_QUERY,
+      '--repos', 'ruvector', '--k', '3', '--pool', '8', '--bounded',
+    ]);
   });
 });

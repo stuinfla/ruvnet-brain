@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { inspectInstalledBrain, classifySmokeEvidence, DOCTOR_SMOKE_QUERY, doctorSmokeArgs } from '../../scripts/installed-brain-health.mjs';
+import { inspectInstalledBrain, classifySmokeEvidence, DOCTOR_SMOKE_QUERY, RUVECTOR_SMOKE_QUERY, doctorSmokeArgs } from '../../scripts/installed-brain-health.mjs';
 import { writeInstalledRuntimeIdentity } from '../../kb/corpus-release-identity.mjs';
 import { createHash } from 'node:crypto';
 
@@ -31,6 +31,31 @@ describe('installed search engine health', () => {
       'forge-ask-all.mjs', '--dir', '/cache/kb', '--q', DOCTOR_SMOKE_QUERY,
       '--repos', 'ruvnet-brain', '--k', '3', '--pool', '8', '--bounded',
     ]);
+  });
+
+  it('targets ruvector on RuVector Only installs and keeps ruvnet-brain when complete (#530)', () => {
+    const completeDir = fixture();
+    fs.writeFileSync(path.join(completeDir, 'ruvnet-brain.big.rvf'), 'x');
+    fs.writeFileSync(path.join(completeDir, 'ruvector.big.rvf'), 'x');
+    expect(doctorSmokeArgs(completeDir)).toEqual([
+      'forge-ask-all.mjs', '--dir', completeDir, '--q', DOCTOR_SMOKE_QUERY,
+      '--repos', 'ruvnet-brain', '--k', '3', '--pool', '8', '--bounded',
+    ]);
+
+    const ruvectorOnly = fixture();
+    fs.writeFileSync(path.join(ruvectorOnly, 'ruvector.big.rvf'), 'x');
+    expect(RUVECTOR_SMOKE_QUERY).toMatch(/RuVector|RVF/i);
+    expect(doctorSmokeArgs(ruvectorOnly)).toEqual([
+      'forge-ask-all.mjs', '--dir', ruvectorOnly, '--q', RUVECTOR_SMOKE_QUERY,
+      '--repos', 'ruvector', '--k', '3', '--pool', '8', '--bounded',
+    ]);
+
+    const customOnly = fixture();
+    fs.writeFileSync(path.join(customOnly, 'concepts.big.rvf'), 'x');
+    fs.writeFileSync(path.join(customOnly, 'agentdb.big.rvf'), 'x');
+    const customArgs = doctorSmokeArgs(customOnly);
+    expect(customArgs[customArgs.indexOf('--repos') + 1]).toBe('agentdb');
+    expect(customArgs[customArgs.indexOf('--q') + 1]).toMatch(/agentdb/i);
   });
 
   it('rejects a current validator receipt around an old search engine', () => {
