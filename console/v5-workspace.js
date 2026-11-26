@@ -69,7 +69,9 @@
             <li style="margin:6px 0;">
               <b>[${esc(s.layer || 'core')}] ${esc(s.capability)}</b> — <code>${esc(s.command)}</code>
               <button type="button" class="v5-copy-cmd" data-cmd="${esc(s.command)}" style="margin-left:6px;font-size:11px;padding:2px 6px;cursor:pointer;">Copy</button>
+              ${s.plainEnglish ? `<div class="fineprint">${esc(s.plainEnglish)}</div>` : ''}
               ${s.verify ? `<div class="fineprint">Verify: <code>${esc(s.verify)}</code></div>` : ''}
+              ${s.undo ? `<div class="fineprint">Safe undo: <code>${esc(s.undo)}</code></div>` : ''}
             </li>`).join('')}</ol>
         </div>`
       : '';

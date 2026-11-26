@@ -44,6 +44,19 @@ describe('v5.1 on-ramp hardening (regression gates for real audit findings)', ()
     for (let i = 1; i < layers.length; i++) {
       expect(order.indexOf(layers[i])).toBeGreaterThanOrEqual(order.indexOf(layers[i - 1]));
     }
+    // Verify core capability IDs never drop into 'extension' and no undo text is destructive
+    const recSrc = fs.readFileSync(path.resolve('plugin/scripts/codebase-recommender.mjs'), 'utf8');
+    expect(recSrc).not.toContain('delete .swarm/memory.db');
+    expect(recSrc).not.toContain('git checkout -- package.json');
+    expect(recSrc).toContain("'ruvector'");
+    expect(recSrc).toContain("'agentdb'");
+    expect(recSrc).toContain("'aidefence'");
+    expect(recSrc).toContain("'ruflo'");
+  });
+
+  it('routing-flywheel requires verdict.pass before writing a candidate policy', () => {
+    const fwSrc = fs.readFileSync(path.resolve('scripts/routing-flywheel.mjs'), 'utf8');
+    expect(fwSrc).toContain('if (promoted.length && promotionGate && verdict.pass)');
   });
 
   it('forge-update carryLiveLinkGraphs preserves links-*.json even when node_modules is absent', () => {

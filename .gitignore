@@ -10,6 +10,9 @@ dist/
 clones/
 data/adrs-cache/
 data/memory/
+data/agentics-transcripts/
+data/x-ruv-io/
+data/ruv-linkedin/
 
 # Helix removed from the brain (it's a separate consumer app); kept locally, not committed
 kb/_excluded-helix/

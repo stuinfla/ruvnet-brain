@@ -115,13 +115,13 @@ export function clampLever(target, raw, baseValue) {
   return `fallback=${e.fallback} margin=${e.margin.toFixed(2)}`;
 }
 
-// ─── the FROZEN deterministic split: holdout vs anchor, by content hash. No row is ever moved by a
-// human or an optimizer; the anchor is defined by arithmetic, not by choice. ───────────────────────
+// ─── the FROZEN deterministic split: holdout vs anchor, grouped by task-vector identity so duplicate
+// embeddings with different score labels can never leak across the holdout/anchor boundary. ─────────
 export function splitRows(rows) {
   const holdout = [];
   const anchor = [];
   for (const row of rows) {
-    const h = createHash('sha256').update(canon({ embedding: row.embedding, scores: row.scores })).digest('hex');
+    const h = createHash('sha256').update(canon({ embedding: row.embedding })).digest('hex');
     (parseInt(h.slice(0, 8), 16) % 3 === 0 ? anchor : holdout).push(row);
   }
   return { holdout, anchor };
@@ -453,7 +453,7 @@ export async function runRoutingFlywheel(opts = {}) {
   const promotionGate = opts.gateReceipt ? opts.gateReceipt.promotion?.allowed === true : true;
 
   let candidatePath = null;
-  if (promoted.length && promotionGate) {
+  if (promoted.length && promotionGate && verdict.pass) {
     const provenance = {
       ts: runIso,
       mode,

@@ -1627,47 +1627,116 @@ async function undoBatchResult(result, btn) {
   }
 }
 
+function fmtElapsed(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
 async function applyAllVerified(recs) {
   const slot = $('#recs-batch');
-  slot.replaceChildren(el('p', { class: 'pending-note', role: 'status' }, `Applying ${recs.length} verified fixes…`));
-  try {
-    const response = await postJSON('/api/apply', { ids: recs.map((rec) => rec.id), preStateHash, titles: Object.fromEntries(recs.map((rec) => [rec.id, rec.title])) });
-    if (response.status === 403) {
-      slot.replaceChildren(el('div', { class: 'form-note n-err', role: 'alert' }, TOKEN_MSG));
-      return;
+  const total = recs.length;
+  const startedAt = Date.now();
+  const states = recs.map((r) => ({ rec: r, status: 'queued' }));
+  let currentIdx = 0;
+
+  const setCardState = (rec, state, index) => {
+    const card = document.getElementById(`rec-${rec.id}`);
+    const actions = card?.querySelector('.rec-actions');
+    if (!card || !actions) return;
+    card.classList.remove('is-running', 'is-queued');
+    if (state === 'running') {
+      card.classList.add('is-running');
+      actions.replaceChildren(el('span', { class: 'rec-state-pill running', role: 'status' },
+        el('span', { class: 'rnb-spinner', 'aria-hidden': 'true' }),
+        `Running now (${index + 1} of ${total})… no need to click Apply`));
+    } else if (state === 'queued') {
+      card.classList.add('is-queued');
+      actions.replaceChildren(el('span', { class: 'rec-state-pill queued' },
+        `Queued (${index + 1} of ${total}) — runs automatically next`));
     }
-    const results = Array.isArray(response.data?.results) ? response.data.results : [];
-    const ok = results.filter((result) => result.ok);
-    const skipped = results.filter((result) => !result.ok);
+  };
+
+  const renderProgress = () => {
+    const doneCount = states.filter((s) => s.status === 'done' || s.status === 'fail').length;
+    const pct = Math.min(100, Math.max(8, Math.round(((doneCount + 0.35) / Math.max(1, total)) * 100)));
+    const active = states[currentIdx]?.rec;
+    const stepNodes = states.map((s, idx) => {
+      const cls = s.status === 'running' ? 'batch-step is-active'
+        : s.status === 'done' ? 'batch-step is-done'
+        : s.status === 'fail' ? 'batch-step is-fail' : 'batch-step';
+      const icon = s.status === 'done' ? '✓' : s.status === 'fail' ? '!' : `${idx + 1}.`;
+      return el('li', { class: cls },
+        s.status === 'running' ? el('span', { class: 'rnb-spinner', 'aria-hidden': 'true' }) : el('span', {}, icon),
+        s.rec.title || s.rec.id);
+    });
+    slot.replaceChildren(el('div', { class: 'batch-progress', role: 'status', 'aria-live': 'polite' },
+      el('div', { class: 'batch-progress-head' },
+        el('p', { class: 'batch-progress-title' },
+          el('span', { class: 'rnb-spinner', 'aria-hidden': 'true' }),
+          active ? `Running fix ${currentIdx + 1} of ${total} — ${active.title || active.id}` : `Finishing ${total} fixes…`),
+        el('span', { class: 'batch-progress-meta' }, `${doneCount}/${total} done · ${fmtElapsed(Date.now() - startedAt)} elapsed`)),
+      el('div', { class: 'batch-bar' }, el('div', { class: 'batch-bar-fill', style: `width:${pct}%` })),
+      el('ul', { class: 'batch-steps' }, stepNodes)));
+  };
+
+  recs.forEach((rec, i) => setCardState(rec, i === 0 ? 'running' : 'queued', i));
+  states[0].status = 'running';
+  renderProgress();
+  const timer = setInterval(renderProgress, 1000);
+
+  const results = [];
+  try {
+    for (let i = 0; i < recs.length; i++) {
+      currentIdx = i;
+      const rec = recs[i];
+      states[i].status = 'running';
+      setCardState(rec, 'running', i);
+      renderProgress();
+      const response = await postJSON('/api/apply', { ids: [rec.id], preStateHash, titles: { [rec.id]: rec.title } });
+      if (response.status === 403) {
+        clearInterval(timer);
+        slot.replaceChildren(el('div', { class: 'form-note n-err', role: 'alert' }, TOKEN_MSG));
+        return;
+      }
+      const resList = Array.isArray(response.data?.results) ? response.data.results : [];
+      const result = resList.find((r) => r.id === rec.id) || resList[0] || { id: rec.id, ok: false, log: 'No result returned.' };
+      results.push(result);
+      states[i].status = result.ok ? 'done' : 'fail';
+      if (result.receipt) window.RNBReceipts?.attach(`rec:${result.id}`, result.receipt);
+      const card = document.getElementById(`rec-${rec.id}`);
+      const actions = card?.querySelector('.rec-actions');
+      if (card) card.classList.remove('is-running', 'is-queued');
+      if (actions) {
+        if (result.ok) {
+          card.classList.add('is-applied');
+          const undoButton = el('button', {
+            class: 'btn btn-undo',
+            type: 'button',
+            disabled: !result.undoToken,
+            onclick: (event) => void undoBatchResult(result, event.currentTarget),
+          }, 'Undo this change');
+          actions.replaceChildren(el('div', { class: 'applied' },
+            el('p', { class: 'applied-title' }, 'Applied — and reversible.'),
+            result.log ? el('pre', { class: 'log' }, String(result.log)) : null,
+            undoButton));
+        } else {
+          actions.replaceChildren(el('div', { class: 'world-moved', role: 'alert' },
+            el('p', {}, result.log || 'Skipped because the machine changed or the fix no longer applies.')));
+        }
+      }
+      renderProgress();
+    }
+    clearInterval(timer);
+    const ok = results.filter((r) => r.ok);
+    const skipped = results.filter((r) => !r.ok);
     slot.replaceChildren(el('div', { class: `form-note ${skipped.length ? 'n-err' : 'n-ok'}`, role: 'status' },
       el('div', { class: 'fn-body' },
-        el('b', {}, `${ok.length} applied; ${skipped.length} skipped or failed.`),
-        ' Every applied item has its own undo below.')));
-    for (const result of results) {
-      if (result.receipt) window.RNBReceipts?.attach(`rec:${result.id}`, result.receipt);
-      const card = document.getElementById(`rec-${result.id}`);
-      const actions = card?.querySelector('.rec-actions');
-      if (!actions) continue;
-      if (result.ok) {
-        card.classList.add('is-applied');
-        const undoButton = el('button', {
-          class: 'btn btn-undo',
-          type: 'button',
-          disabled: !result.undoToken,
-          onclick: (event) => void undoBatchResult(result, event.currentTarget),
-        }, 'Undo this change');
-        actions.replaceChildren(el('div', { class: 'applied' },
-          el('p', { class: 'applied-title' }, 'Applied by Fix all — and reversible.'),
-          result.log ? el('pre', { class: 'log' }, String(result.log)) : null,
-          undoButton));
-      } else {
-        actions.replaceChildren(el('div', { class: 'world-moved', role: 'alert' },
-          el('p', {}, result.log || 'Skipped because the machine changed or the fix no longer applies.')));
-      }
-    }
+        el('b', {}, `${ok.length} of ${total} applied${skipped.length ? `, ${skipped.length} skipped or failed` : ' — all done'} (${fmtElapsed(Date.now() - startedAt)}).`),
+        ' Every applied item has its own Undo button below.')));
     announce(`${ok.length} verified fixes applied; ${skipped.length} skipped or failed.`);
     recheckMachine();
   } catch (error) {
+    clearInterval(timer);
     slot.replaceChildren(el('div', { class: 'form-note n-err', role: 'alert' },
       `Fix all could not reach the console server: ${error.message || error}.`));
   }
@@ -1864,7 +1933,12 @@ function buildRecCard(rec) {
   }
 
   async function doApply() {
-    actions.replaceChildren(el('button', { class: 'btn btn-apply', type: 'button', disabled: true }, 'Applying…'));
+    const t0 = Date.now();
+    card.classList.add('is-running');
+    const label = el('span', {}, 'Applying fix… 0:00');
+    actions.replaceChildren(el('span', { class: 'rec-state-pill running', role: 'status' },
+      el('span', { class: 'rnb-spinner', 'aria-hidden': 'true' }), label));
+    const singleTimer = setInterval(() => { label.textContent = `Applying fix… ${fmtElapsed(Date.now() - t0)}`; }, 1000);
     status.textContent = '';
     status.dataset.tone = '';
     try {
@@ -1879,6 +1953,9 @@ function buildRecCard(rec) {
       else fail('The change didn’t complete. Nothing runs without its backup recorded first.', result.log);
     } catch (err) {
       fail(`Couldn’t reach the console server: ${err.message || err}`);
+    } finally {
+      clearInterval(singleTimer);
+      card.classList.remove('is-running');
     }
   }
 
@@ -1953,14 +2030,24 @@ function buildRecCard(rec) {
     }
   }
 
+  const summaryStrip = el('div', { class: 'rec-summary-strip' },
+    el('span', { class: 'rs-pill rs-rev' }, '✓ Reversible'),
+    rec.cost?.usd != null ? el('span', { class: 'rs-pill' }, `Cost: ${fmtUsd(rec.cost.usd)}`) : null,
+    rec.cost?.risk != null ? el('span', { class: `rs-pill risk-${rec.cost.risk}` }, `Risk: ${rec.cost.risk}`) : null,
+    rec.cost?.time != null ? el('span', { class: 'rs-pill' }, `Time: ${rec.cost.time}`) : null);
+
+  const detailsBox = el('details', { class: 'rec-details' },
+    el('summary', {}, `Details — evidence (${rec.evidence.length}), exact change & undo`),
+    el('div', { class: 'rec-details-body' }, impact, facts));
+
   card.append(
     el('div', { class: 'rec-top' },
       el('h3', {}, rec.title || rec.id),
       recScopePill(rec.scope),
       chip(rec.severity || 'INFO', SEV_TONE[rec.severity] || 'grey')),
     rec.rationale ? el('p', { class: 'rationale' }, rec.rationale) : null,
-    impact,
-    facts,
+    summaryStrip,
+    detailsBox,
     actions,
     status,
     receiptSlot,
@@ -3042,6 +3129,7 @@ function renderSuiteUpdate(state) {
         el('div', { 'data-receipt-slot': 'suite-update' }),
         el('p', { id: 'suite-update-nightly', class: 'fineprint' })));
     document.getElementById('card-settings')?.before(card);
+    window.RNBDeck?.refreshTab?.();
   }
   const select = document.getElementById('suite-update-channel');
   // Preserve an unsaved policy choice during receipt polling.
@@ -3051,8 +3139,17 @@ function renderSuiteUpdate(state) {
   }
   select.disabled = !!state.active;
   const button = document.getElementById('suite-update-run');
+  const enrolled = state.nightlyState === 'on' && !state.active && state.status !== 'failed';
   button.disabled = suiteUpdateBusy || !!state.active || !state.available || state.lockState !== 'idle';
-  button.textContent = state.active ? 'Updating…' : 'Keep all tools updated';
+  button.classList.toggle('btn-enrolled', enrolled);
+  button.classList.toggle('btn-apply', !enrolled);
+  button.textContent = state.active
+    ? 'Updating…'
+    : enrolled
+      ? '✓ Keeping all tools updated (nightly ON · click to re-check)'
+      : 'Keep all tools updated';
+  card.classList.toggle('rail-prove', enrolled);
+  card.classList.toggle('rail-act', !enrolled);
   document.getElementById('suite-update-result').textContent = state.available ? suiteUpdateSummary(state) : state.policyError || 'The coordinated updater is unavailable.';
   document.getElementById('suite-update-nightly').textContent = `Nightly updates: ${state.nightlyState === 'on' ? 'enabled' : state.nightlyState === 'off' ? 'not scheduled' : 'not verified'}. Saved scope: ${state.scope === 'all' ? 'all installed tools' : state.scope === 'ruvnet' ? 'Ruv tools' : 'not measured'}. Clicking this button includes existing npm, Homebrew, uv, Cargo and native tools. It does not install missing tools or change project dependencies.`;
   let activity = document.getElementById('suite-update-activity');
