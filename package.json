@@ -52,6 +52,7 @@
     "eval:gate": "node scripts/eval-brain.mjs --gate",
     "eval:record": "node scripts/eval-brain.mjs --record",
     "d2q:build": "node scripts/build-doc2query-entry-index.mjs",
+    "rsi:promote": "node scripts/rsi-nightly-promote.mjs",
     "eval:top100:build": "node scripts/top100-corpus.mjs",
     "eval:top100": "node scripts/top100-benchmark.mjs",
     "gists:index": "node scripts/ingest-gists.mjs --index-only",

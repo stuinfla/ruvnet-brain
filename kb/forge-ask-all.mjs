@@ -18,10 +18,16 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
-import * as _forgeAsk from './forge-ask.mjs';
-const { searchKb, __embedInternals } = _forgeAsk;
+import { searchKb } from './forge-ask.mjs';
 import { loadRvf } from './resolve-deps.mjs';
-import { hasEntryIndexes, queryEntryIndexes, recordRetrievalObservation } from './rsi-retrieval-loop.mjs';
+import {
+  applyCausalRecall,
+  applyMmrDiversity,
+  createRetrievalReceipt,
+  hasEntryIndexes,
+  queryEntryIndexes,
+  recordRetrievalObservation,
+} from './rsi-retrieval-loop.mjs';
 import { kbBuildIdentity } from './kb-build-identity.mjs';
 import { keywordCandidates, keywordLaneEnabled } from './keyword-lane.mjs';
 import { applyJudge, loadJudge } from './judge-rank.mjs';
@@ -3054,7 +3060,7 @@ export function selectResults({ query, ranked, k = 6, pruneIrrelevant = true, di
     }
   }
 
-  ranked.sort((a, b) => (b.ceScore ?? -Infinity) - (a.ceScore ?? -Infinity));
+  ranked.sort((a, b) => ((b._causalScore ?? b.ceScore) ?? -Infinity) - ((a._causalScore ?? a.ceScore) ?? -Infinity));
 
   // ── BARE ADR-NUMBER QUERIES ARE AMBIGUOUS (issue #33 Part B, Jan Lafko / @lafinak) ────────────
   // ADR numbering is PER-REPO, not global: "ADR-085" names a completely different decision
@@ -3906,8 +3912,9 @@ async function searchAllPrimary({
   // to pull exact real indexed passages for plain-English questions into the cross-encoder pool.
   try {
     const rvfMod = loadRvf?.()?.mod;
-    const embedFn = __embedInternals?.embed;
-    if (rvfMod?.RvfDatabase && embedFn && hasEntryIndexes(dir) && (!deadline || deadline.remainingMs() > 6000)) {
+    const forgeAskMod = hasEntryIndexes(dir) ? await import('./forge-ask.mjs') : null;
+    const embedFn = forgeAskMod?.__embedInternals?.embed;
+    if (rvfMod?.RvfDatabase && embedFn && (!deadline || deadline.remainingMs() > 6000)) {
       const bgeCfg = { model: 'Xenova/bge-base-en-v1.5', dimensions: 768, pooling: 'cls', normalize: true, queryPrefix: 'Represent this sentence for searching relevant passages: ' };
       const qVec = await embedFn(query, bgeCfg);
       const entryHits = await queryEntryIndexes({
@@ -4016,7 +4023,20 @@ async function searchAllPrimary({
   // THE LEARNED JUDGE (kb/judge-rank.mjs, ADR-099 arm C): off unless RUVNET_BRAIN_JUDGE=1 and a
   // trained kb/judge-weights.json is present; then it re-scores the pool with its threshold at 0.
   const judged = applyJudge(loadJudge(dir), query, ranked);
-  const { results, adrCollision, evidence, implementation } = selectResults({ query, ranked: judged, k, dir });
+  const causalAdjusted = applyCausalRecall(judged);
+  // Select with a slightly wider pool (k+4) so MMRDiversityRanker can promote diverse repos from
+  // rank k+1..k+4 while preserving #1 unconditionally (and never perturbing ADR-collision slots).
+  const { results: rawResults, adrCollision, evidence, implementation } = selectResults({
+    query,
+    ranked: causalAdjusted,
+    k: Math.max(k, k + 4),
+    dir,
+  });
+  const results = adrCollision
+    ? rawResults.slice(0, k)
+    : applyMmrDiversity(rawResults, { k, lambda: 0.78 });
+  const activeLane = (!repos || !repos.length) && !_routeStage ? 'full-corpus' : 'scoped-search';
+  const receipt = !_routeStage ? createRetrievalReceipt({ query, results, lane: activeLane }) : null;
 
   // `pooled` stays the number of pairs the cross-encoder read IN FULL — that is what the count
   // has always meant to a reader. `pooledAll`/`cappedOut` report what the cap withheld, because a
@@ -4025,18 +4045,21 @@ async function searchAllPrimary({
   // at every pooled pair, just at `cascadeTokens` tokens instead of 512. Reporting only `pooled`
   // would let a reader conclude 543 documents were never looked at, which is not what happened.
   const topHit = results?.[0];
-  if (topHit) {
+  if (topHit && !_routeStage) {
+    const rawCe = typeof topHit.ceRaw === 'number' ? topHit.ceRaw : topHit.ceScore;
+    const isGrounded = implementation?.verdict !== 'unproven'
+      && (evidence?.grade === 'strong' || (typeof rawCe === 'number' && rawCe >= 0));
     recordRetrievalObservation({
       query,
       repo: topHit.repo,
       citedPath: topHit.path,
-      ceScore: topHit.ceScore,
-      grounded: evidence?.grade === 'strong' || (typeof topHit.ceScore === 'number' && topHit.ceScore >= 0),
-      lane: topHit._lane || ((!repos || !repos.length) && !_routeStage ? 'full-corpus' : 'scoped-search'),
+      ceScore: rawCe,
+      grounded: isGrounded,
+      lane: topHit._lane || activeLane,
     });
   }
   return {
-    repos: list, perRepo, results,
+    repos: list, perRepo, results, receipt,
     pooled: candidates.length, pooledAll: pooledAll.length, cappedOut,
     prefiltered: s1 ? pooledAll.length : 0, prefilterTokens: s1 ? cascadeTokens : 0, prefilterMs,
     corpusAge, adrCollision, evidence, implementation, routing,
@@ -4044,7 +4067,7 @@ async function searchAllPrimary({
       routeMs: +routeMs.toFixed(2), retrievalMs: +retrievalMs.toFixed(2),
       rerankMs: +rerankMs.toFixed(2), candidateRepos: list.length,
       retrievedCandidates: pooledAll.length, scoredCandidates: candidates.length,
-      lane: (!repos || !repos.length) && !_routeStage ? 'full-corpus' : 'scoped-search' }),
+      lane: activeLane }),
   };
 }
 
