@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "ruvnet-brain-codex-hook-wrapper-history",
   "source": "plugin/scripts/codex-hook-wrapper.mjs",
-  "releaseTags": 86,
+  "releaseTags": 108,
   "wrappers": [
     {
       "sha256": "f4a3159e06e8d7783be4f14070ddc34d298ace6ab120d92456d987b4d451f0f7",
@@ -139,7 +139,29 @@
         "v4.7.7",
         "v4.7.8",
         "v4.7.9",
-        "v4.7.10"
+        "v4.7.10",
+        "v4.7.11",
+        "v4.7.12",
+        "v4.7.13",
+        "v4.7.14",
+        "v4.7.15",
+        "v4.7.16",
+        "v4.7.17",
+        "v4.7.18",
+        "v4.7.19",
+        "v4.7.20",
+        "v4.7.21",
+        "v4.7.22",
+        "v4.7.23",
+        "v4.7.24",
+        "v4.7.25",
+        "v4.7.26",
+        "v4.7.27",
+        "v4.7.28",
+        "v4.7.30",
+        "v4.7.31",
+        "v4.8.0",
+        "v5.0.0"
       ]
     }
   ]
