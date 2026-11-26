@@ -112,6 +112,7 @@
     "kb/download-retry.mjs",
     "kb/forge-guard-injection.mjs",
     "kb/corpus-release-identity.mjs",
+    "kb/rsi-retrieval-loop.mjs",
     "kb/capability-only.mjs",
     "kb/capability-summaries/",
     "kb/zip-extract.mjs",

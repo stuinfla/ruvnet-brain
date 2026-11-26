@@ -157,7 +157,13 @@ export async function recordLifecycleCheckpoint({
       const r = spawnSync(
         rufloBin,
         ['memory', 'store', '--key', key, '--value', value, '--namespace', LIFECYCLE_NAMESPACE, '--path', dbFile],
-        { cwd: path.resolve(cwd), encoding: 'utf8', timeout: 15_000, stdio: ['ignore', 'pipe', 'pipe'] },
+        {
+          cwd: path.resolve(cwd),
+          encoding: 'utf8',
+          timeout: 15_000,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env, RUFLO_DAEMON_AUTOSTART: '0', CLAUDE_FLOW_AUTO_UPDATE: 'false' },
+        },
       );
       rufloStored = r.status === 0;
       if (!rufloStored) rufloError = (r.stderr || r.stdout || `exit ${r.status}`).trim().slice(0, 200);
