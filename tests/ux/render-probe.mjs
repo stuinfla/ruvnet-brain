@@ -237,6 +237,8 @@ export async function runRenderProbe() {
     const initialStateResponseMs = Date.now() - initialStateStartedAt;
     await consolePage.waitForSelector('#field-provider', { state: 'attached' });
     const initialStateReadyMs = Date.now() - initialStateStartedAt;
+    const allViewsTab = consolePage.locator('button[data-tab="all"]');
+    if (await allViewsTab.count()) await allViewsTab.click();
     await consolePage.locator('#card-settings > summary').click();
     await consolePage.waitForSelector('#field-provider', { state: 'visible' });
     await consolePage.waitForSelector('#field-advocacy', { state: 'visible' });
@@ -363,10 +365,10 @@ export async function runRenderProbe() {
       const confirmationClickToResponseMs = Date.now() - applyClickStarted;
       const endpoint = await applyResponse.json();
       const responseReceivedAt = Date.now();
-      await consolePage.getByText(/applied; .* skipped or failed\./).waitFor();
+      await consolePage.getByText(/of \d+ applied.*|applied; .* skipped or failed\./).first().waitFor({ state: 'visible' });
       const responseToRenderMs = Date.now() - responseReceivedAt;
       const resultVerificationStartedAt = Date.now();
-      const applied = await consolePage.getByText('Applied by Fix all — and reversible.').count();
+      const applied = await consolePage.getByText(/Applied(?: by Fix all)? — and reversible\./).count();
       const undoButtons = await consolePage.getByRole('button', { name: 'Undo this change' }).count();
       const resultVerificationMs = Date.now() - resultVerificationStartedAt;
       const endpointTimings = endpoint?.timings;
