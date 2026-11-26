@@ -213,17 +213,38 @@ describe('footprint guarantee: real install, forced reinstall, three updates', (
 
     const totals = [];
     for (const [round, gen] of generations.entries()) {
+      // #536: on round 1, plant a preserved copy of the LIVE stamped generation (exact ARCHIVE-MANIFEST +
+      // corpusReleaseTag/corpusGeneration stamps + private overlay + >2 MiB update.log + stale rule-2 cache)
+      // BEFORE pointAtLocal rewrites liveDir/SOURCE.json; the update must rescue its tail and remove it.
+      let stampedPreserved = null;
+      if (round === 1) {
+        stampedPreserved = path.join(brainHome, `kb.install-preserved-prev-${round}`);
+        fs.cpSync(kbDir, stampedPreserved, { recursive: true, verbatimSymlinks: true });
+        fs.writeFileSync(path.join(stampedPreserved, 'update.log'),
+          Buffer.concat([Buffer.alloc(2 * MIB + 64, 0x41), Buffer.from(`NIGHTLY-TAIL-${round}\n`)]));
+        fs.writeFileSync(path.join(brainHome, '.footprint-proof-cache.json'), JSON.stringify({
+          schemaVersion: 2,
+          entries: { [stampedPreserved]: { rule: 2, copy: 'stale', live: 'stale', reason: 'stale rule-2 keep' } },
+        }));
+      }
       // A fixture generation names an unreachable manifest; point this install at the local GitHub.
       const source = readJson(path.join(kbDir, 'SOURCE.json'));
       fs.writeFileSync(path.join(kbDir, 'SOURCE.json'), JSON.stringify({ ...source, canonicalManifestUrl: `${origin}/repos/${REPO}/releases/latest` }, null, 2));
       plantCruft({ home, brainHome, kbDir, round: round + 1 });
-      expect(kbTrees(home).length).toBe(6); // live + 3 siblings + 2 quarantined
+      expect(kbTrees(home).length).toBe(round === 1 ? 7 : 6); // live + 3 siblings (+ stamped) + 2 quarantined
       served.gen = gen;
       const builtNow = Date.parse(gen.generation) + 3_600_000;
       const stepEnv = { ...env, RUVNET_BRAIN_TEST_NOW: new Date(Math.max(builtNow, Date.now())).toISOString() };
       const update = await run([installer, '--update', '--no-nightly-prompt'], stepEnv, home);
       expect(update.code, update.output.slice(-8000)).toBe(0);
       expect(update.output).not.toMatch(/footprint sweep could not run|positive confirmation could not run/);
+      if (stampedPreserved) {
+        const rescuedLog = path.join(brainHome, 'kb-copy-rescued', path.basename(stampedPreserved), 'update.log');
+        expect(fs.existsSync(rescuedLog), 'oversized update.log tail must be rescued').toBe(true);
+        const rescuedBytes = fs.readFileSync(rescuedLog);
+        expect(rescuedBytes.length).toBe(2 * MIB);
+        expect(rescuedBytes.toString('utf8').endsWith(`NIGHTLY-TAIL-${round}\n`)).toBe(true);
+      }
       // Optional transcript of what a user sees (for review): FOOTPRINT_E2E_TRANSCRIPT=<file>.
       if (process.env.FOOTPRINT_E2E_TRANSCRIPT) fs.appendFileSync(process.env.FOOTPRINT_E2E_TRANSCRIPT, `\n===== update ${round + 1} =====\n${update.output}`);
       expect(update.output).toMatch(/footprint: removed \d+ item\(s\) that must not exist/);
@@ -255,10 +276,11 @@ describe('footprint guarantee: real install, forced reinstall, three updates', (
       expect(confirmation.footprint.breakdown.receipts || 0).toBeLessThanOrEqual(LIFECYCLE_EVIDENCE_RETENTION_POLICY.maxEvidenceBytes);
       totals.push(confirmation.footprint);
     }
-    // Beyond those receipts, nothing grows across updates except the one new store each generation adds
-    // (a fixture store is a few KB): the planted 50+ MB of cruft never survives an update.
+    // Beyond receipts (and the single rescued 2 MiB update.log tail in round 1), nothing grows across updates
+    // except the one new store each generation adds: the planted 50+ MB of cruft never survives an update.
     const net = (t) => t.totalBytes - (t.breakdown.receipts || 0);
-    expect(net(totals[2]) - net(totals[0]), JSON.stringify(totals.map((t) => t.breakdown))).toBeLessThan(256 * 1024);
+    expect(net(totals[2]) - net(totals[1]), JSON.stringify(totals.map((t) => t.breakdown))).toBeLessThan(256 * 1024);
+    expect(net(totals[2]) - net(totals[0]) - (2 * MIB), JSON.stringify(totals.map((t) => t.breakdown))).toBeLessThan(256 * 1024);
 
     // BREAK IT: the same door with the sweep cut out of the installer must leave the cruft behind, and the
     // confirmation must go red — otherwise the assertions above were never measuring the sweep.

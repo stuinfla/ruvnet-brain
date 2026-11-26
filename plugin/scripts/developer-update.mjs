@@ -608,6 +608,15 @@ export async function runDeveloperUpdate({ mode = 'check', home = os.homedir(), 
       }
     }
     if (exists(path.join(paths.brainHome, 'kb/forge-update.mjs'))) {
+      if (mode === 'apply') {
+        const footprintModule = path.join(root, 'ruvnet-brain/plugin/scripts/brain-footprint.mjs');
+        if (exists(footprintModule)) {
+          try {
+            const { sweepFootprint } = await import(pathToFileURL(footprintModule).href);
+            sweepFootprint({ apply: true, quiet: true, home, env: { ...childEnv, RUVNET_BRAIN_KB: path.join(paths.brainHome, 'kb') } });
+          } catch { /* bin/install.mjs --update also runs enforceFootprint under the refresh lock */ }
+        }
+      }
       const knowledgeStage = () => stage('knowledge', () => knowledge(run, mode === 'check', receipt.runId, { brainHome: paths.brainHome, root, node: stableNode(process.execPath), sleep, convergeRuntime: !knowledgeOnly }),
         error => { receipt.knowledge = { state: 'failed', error: error.message }; });
       receipt.knowledge = await knowledgeStage() ?? receipt.knowledge;

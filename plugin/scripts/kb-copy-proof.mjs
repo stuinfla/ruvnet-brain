@@ -38,7 +38,165 @@ import { isVolumeMetadata } from './footprint-io.mjs';
 const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } };
 const lstat = (file) => { try { return fs.lstatSync(file); } catch { return null; } };
 const names = (dir) => { try { return fs.readdirSync(dir).sort(); } catch { return []; } };
-const sha256File = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+const sha256Buffer = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
+const sha256File = (file) => sha256Buffer(fs.readFileSync(file));
+const canonicalJson = (value) => {
+  if (Array.isArray(value)) return `[${value.map((entry) => canonicalJson(entry ?? null)).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).filter((key) => value[key] !== undefined).sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+};
+const readTailSlice = (file, size, keepBytes) => {
+  const len = Math.min(size, keepBytes);
+  const buf = Buffer.allocUnsafe(len);
+  const fd = fs.openSync(file, 'r');
+  try {
+    let offset = 0;
+    while (offset < len) {
+      const n = fs.readSync(fd, buf, offset, len - offset, size - len + offset);
+      if (n <= 0) break;
+      offset += n;
+    }
+    return offset === len ? buf : buf.subarray(0, offset);
+  } finally { fs.closeSync(fd); }
+};
+const isRegularMatch = (file, listed) => {
+  const st = lstat(file);
+  return Boolean(listed && st && st.isFile() && !st.isSymbolicLink() && st.size === listed.bytes && sha256File(file) === listed.sha256);
+};
+// Installer/updater-owned stamps & merged private-store overlay on SOURCE.json.
+function matchesStampedManifestSource({ copyFile, liveDir, listed, privateNames }) {
+  if (!listed) return false;
+  const parsed = readJson(copyFile);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
+  const stripped = { ...parsed };
+  const hasStamp = Object.hasOwn(stripped, 'corpusReleaseTag') || Object.hasOwn(stripped, 'corpusGeneration');
+  delete stripped.corpusReleaseTag;
+  delete stripped.corpusGeneration;
+  const matchesManifest = (candidate) => {
+    const canonical = Buffer.from(`${JSON.stringify(candidate, null, 2)}\n`, 'utf8');
+    return canonical.length === listed.bytes && sha256Buffer(canonical) === listed.sha256;
+  };
+  if (hasStamp && matchesManifest(stripped)) return true;
+  if (stripped.stores && typeof stripped.stores === 'object' && !Array.isArray(stripped.stores) && privateNames.size) {
+    const liveStores = readJson(path.join(liveDir, 'SOURCE.json'))?.stores;
+    const liveIsObj = liveStores && typeof liveStores === 'object' && !Array.isArray(liveStores);
+    const cleanedStores = {};
+    let removedPrivate = false;
+    for (const [name, entry] of Object.entries(stripped.stores)) {
+      const key = String(name).toLowerCase();
+      if ((privateNames.has(key) || entry?.updateManaged === false)
+        && liveIsObj && Object.hasOwn(liveStores, name)
+        && canonicalJson(entry) === canonicalJson(liveStores[name])) {
+        removedPrivate = true;
+      } else {
+        cleanedStores[name] = entry;
+      }
+    }
+    if (removedPrivate && matchesManifest({ ...stripped, stores: cleanedStores })) return true;
+  }
+  return false;
+}
+function matchesOverlayAliases({ copyFile, liveDir, listed, privateNames }) {
+  if (!listed || !privateNames.size) return false;
+  const parsed = readJson(copyFile);
+  const liveAliases = readJson(path.join(liveDir, 'repo-aliases.json'));
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
+  if (!liveAliases || typeof liveAliases !== 'object' || Array.isArray(liveAliases)) return false;
+  const cleaned = {};
+  let removed = false;
+  for (const [name, entry] of Object.entries(parsed)) {
+    if (privateNames.has(String(name).toLowerCase()) && Object.hasOwn(liveAliases, name)
+      && canonicalJson(entry) === canonicalJson(liveAliases[name])) {
+      removed = true;
+    } else {
+      cleaned[name] = entry;
+    }
+  }
+  if (!removed) return false;
+  const canonical = Buffer.from(`${JSON.stringify(cleaned, null, 2)}\n`, 'utf8');
+  return canonical.length === listed.bytes && sha256Buffer(canonical) === listed.sha256;
+}
+function matchesOverlayCards({ copyFile, liveDir, listed, privateNames }) {
+  if (!listed || !privateNames.size) return false;
+  const buf = fs.readFileSync(copyFile);
+  if (buf.length <= listed.bytes) return false;
+  if (sha256Buffer(buf.subarray(0, listed.bytes)) !== listed.sha256) return false;
+  const appended = buf.subarray(listed.bytes).toString('utf8').trim();
+  if (!appended) return true;
+  let liveCards = '';
+  try { liveCards = fs.readFileSync(path.join(liveDir, 'capability-cards.md'), 'utf8'); } catch { return false; }
+  const liveSections = new Map();
+  const liveMatches = [...liveCards.matchAll(/^## ([^\n]+)\n/gm)];
+  for (let i = 0; i < liveMatches.length; i++) {
+    const start = liveMatches[i].index;
+    const end = liveMatches[i + 1]?.index ?? liveCards.length;
+    liveSections.set(liveMatches[i][1].trim(), liveCards.slice(start, end).trimEnd());
+  }
+  const appendedParts = appended.split(/(?=^## )/m).map((part) => part.trim()).filter(Boolean);
+  if (!appendedParts.length) return false;
+  return appendedParts.every((part) => {
+    const name = part.match(/^## ([^\n]+)\n/m)?.[1]?.trim();
+    return Boolean(name && privateNames.has(name.toLowerCase()) && liveSections.get(name)?.trim() === part);
+  });
+}
+function matchesFilteredProfileCards({ copyDir, liveDir, copyFile, shipped, privateNames }) {
+  const listedCards = shipped.get('capability-cards.md');
+  const complete = path.join(copyDir, 'capability-cards.complete.md');
+  const completeMatches = isRegularMatch(complete, listedCards)
+    || matchesOverlayCards({ copyFile: complete, liveDir, listed: listedCards, privateNames });
+  if (!completeMatches) return false;
+  const managed = new Set();
+  const optedOut = new Set();
+  for (const store of storeList(readJson(path.join(copyDir, 'SOURCE.json')))) {
+    const key = String(store?.kbName || '').toLowerCase();
+    if (!key) continue;
+    if (store.updateManaged === false) optedOut.add(key);
+    else if (!privateNames.has(key)) managed.add(store.kbName);
+  }
+  const pubLedgerFile = path.join(copyDir, 'PUBLIC-RVF-GENERATIONS.json');
+  const pubSt = lstat(pubLedgerFile);
+  if (pubSt && pubSt.isFile() && !pubSt.isSymbolicLink()) {
+    for (const name of Object.keys(readJson(pubLedgerFile)?.stores || {})) {
+      const key = String(name).toLowerCase();
+      if (!privateNames.has(key) && !optedOut.has(key)) managed.add(name);
+    }
+  }
+  const fullText = fs.readFileSync(complete, 'utf8');
+  const filtered = fullText.split(/(?=^## )/m).filter((part) => {
+    const name = part.match(/^## ([^\n]+)\s*$/m)?.[1]?.trim();
+    return !managed.has(name) || name === 'ruvector';
+  }).join('');
+  return filtered === fs.readFileSync(copyFile, 'utf8');
+}
+function matchesFilteredProfileGenerations({ copyDir, liveDir, copyFile, shipped }) {
+  const listedGen = shipped.get('RVF-GENERATIONS.json');
+  const listedPub = shipped.get('PUBLIC-RVF-GENERATIONS.json');
+  const pubFile = path.join(copyDir, 'PUBLIC-RVF-GENERATIONS.json');
+  if (!listedGen || !isRegularMatch(pubFile, listedPub)) return false;
+  let raw;
+  try { raw = fs.readFileSync(copyFile, 'utf8'); } catch { return false; }
+  const cur = readJson(copyFile);
+  const pub = readJson(pubFile);
+  if (!cur || !pub || !cur.stores || typeof cur.stores !== 'object' || Array.isArray(cur.stores)) return false;
+  if (`${JSON.stringify(cur, null, 2)}\n` !== raw) return false;
+  if (cur.kind !== 'ruvnet-brain-runtime-generation-ledger') return false;
+  const { kind: _ck, stores: _cs, ...curTop } = cur;
+  const { kind: _pk, stores: _ps, ...pubTop } = pub;
+  if (canonicalJson(curTop) !== canonicalJson(pubTop)) return false;
+  const liveGen = readJson(path.join(liveDir, 'RVF-GENERATIONS.json'));
+  for (const [name, entry] of Object.entries(cur.stores)) {
+    if (Object.hasOwn(pub.stores || {}, name)) {
+      if (canonicalJson(entry) !== canonicalJson(pub.stores[name])) return false;
+    } else if (!liveGen?.stores || !Object.hasOwn(liveGen.stores, name)
+      || canonicalJson(entry) !== canonicalJson(liveGen.stores[name])) {
+      return false;
+    }
+  }
+  return true;
+}
 
 /** Every regular file and link under `root`, relative, without following links. macOS volume metadata
  * (AppleDouble `._*` shadows on an exFAT disk, .DS_Store, …) is the volume's, never a copy's unique data. */
@@ -73,7 +231,8 @@ const storeStem = (file) => path.basename(String(file)).toLowerCase()
 const OPERATIONAL_LOG = /^(?:update|forge-update|forge-guard-injection)\.log$/;
 export const RESCUE_CAP_BYTES = 2 * 1024 * 1024;
 export const RESCUE_TOTAL_CAP_BYTES = 16 * 1024 * 1024;
-const isOperational = (relative) => (!relative.includes(path.sep) && OPERATIONAL_LOG.test(relative))
+const isOperationalLog = (relative) => !relative.includes(path.sep) && OPERATIONAL_LOG.test(relative);
+const isOperational = (relative) => isOperationalLog(relative)
   || (relative.split(path.sep)[0] === '.claude-flow' && relative.includes(path.sep));
 // Files the installer/updater writes into a KB that no bundle ships (bin/install.mjs placeUpdater,
 // placeTrustedCoverageValidator, ensureVerifier; the updater's snapshot receipt). Re-created on every install.
@@ -236,14 +395,29 @@ export function kbCopyProof({ copyDir, liveDir, keptSiblings = [] }) {
       continue;
     }
     if (relative === 'ARCHIVE-MANIFEST.json' && shipped.size) continue; // the release manifest itself
+    const copyFile = path.join(copyDir, relative);
     const listed = shipped.get(relative);
-    if (listed && listed.bytes === size && listed.sha256 === sha256File(path.join(copyDir, relative))) continue;
-    if (sameBytes(path.join(copyDir, relative), inLive)) continue; // existence alone proves no ownership or redundancy
+    if (listed && listed.bytes === size && listed.sha256 === sha256File(copyFile)) continue;
+    if (relative === 'SOURCE.json' && matchesStampedManifestSource({ copyFile, liveDir, listed, privateNames })) continue;
+    if (relative === 'repo-aliases.json' && matchesOverlayAliases({ copyFile, liveDir, listed, privateNames })) continue;
+    if (relative === 'capability-cards.complete.md' && (isRegularMatch(copyFile, shipped.get('capability-cards.md'))
+      || matchesOverlayCards({ copyFile, liveDir, listed: shipped.get('capability-cards.md'), privateNames }))) continue;
+    if (relative === 'capability-cards.md' && (matchesFilteredProfileCards({ copyDir, liveDir, copyFile, shipped, privateNames })
+      || matchesOverlayCards({ copyFile, liveDir, listed: shipped.get('capability-cards.md'), privateNames }))) continue;
+    if (relative === 'RVF-GENERATIONS.json' && matchesFilteredProfileGenerations({ copyDir, liveDir, copyFile, shipped })) continue;
+    if (sameBytes(copyFile, inLive)) continue; // existence alone proves no ownership or redundancy
     if (publicNames.has(storeStem(relative))) continue; // a public store family a newer release replaced or retired
     if (inKeptSibling(relative)) continue; // #335: these exact bytes stay in a retained sibling copy or the archive
     if (isOperational(relative) && size <= RESCUE_CAP_BYTES && rescueBytes + size <= RESCUE_TOTAL_CAP_BYTES) {
-      rescue.push({ file: relative, bytes: size, sha256: sha256File(path.join(copyDir, relative)) });
+      rescue.push({ file: relative, bytes: size, sha256: sha256File(copyFile) });
       rescueBytes += size;
+      continue;
+    }
+    if (isOperationalLog(relative) && size > RESCUE_CAP_BYTES && rescueBytes < RESCUE_TOTAL_CAP_BYTES) {
+      const keepBytes = Math.min(RESCUE_CAP_BYTES, RESCUE_TOTAL_CAP_BYTES - rescueBytes);
+      const tail = readTailSlice(copyFile, size, keepBytes);
+      rescue.push({ file: relative, bytes: tail.length, sourceBytes: size, tail: true, sha256: sha256Buffer(tail) });
+      rescueBytes += tail.length;
       continue;
     }
     if (isOperational(relative)) { unique.push({ file: relative, why: 'an operational file past the rescue cap (2 MiB each, 16 MiB per copy)' }); continue; }

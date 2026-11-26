@@ -10,7 +10,7 @@ const roots = [];
 afterEach(() => { vi.restoreAllMocks(); for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true }); });
 const put = (root, name, value) => {
   const file = path.join(root, name); fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, typeof value === 'string' ? value : JSON.stringify(value));
+  fs.writeFileSync(file, typeof value === 'string' || Buffer.isBuffer(value) ? value : JSON.stringify(value));
 };
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'brain-unknown-proof-')); roots.push(root);
@@ -127,5 +127,122 @@ describe('unknown-content preservation during KB copy reclamation (#335)', () =>
     expect(result.errors).toEqual([]); expect(fs.existsSync(duplicate)).toBe(false);
     expect(fs.readFileSync(path.join(f.copyDir, 'user-notes.txt'), 'utf8')).toBe('older');
     expect(fs.readFileSync(path.join(f.liveDir, 'user-notes.txt'), 'utf8')).toBe('newer');
+  });
+
+  it('disposes an older copy whose SOURCE.json differs only by installer/updater corpus stamps, while keeping tampered SOURCE.json (#536)', () => {
+    const f = fixture();
+    const baseSource = { brainVersion: '5.1.1', releaseTag: 'v5.1.1', stores: { agentdb: { kbName: 'agentdb', updateManaged: true } } };
+    const canonical = `${JSON.stringify(baseSource, null, 2)}\n`;
+    put(f.copyDir, 'SOURCE.json', canonical);
+    witness(f.copyDir, 'SOURCE.json');
+    put(f.copyDir, 'ARCHIVE-MANIFEST.json', {
+      files: ['SOURCE.json', 'agentdb.big.rvf'].map((file) => {
+        const bytes = fs.readFileSync(path.join(f.copyDir, file));
+        return { path: file, bytes: bytes.length, sha256: crypto.createHash('sha256').update(bytes).digest('hex') };
+      }),
+    });
+    // Updater stamps corpusReleaseTag & corpusGeneration after extraction:
+    put(f.copyDir, 'SOURCE.json', `${JSON.stringify({
+      ...baseSource,
+      corpusReleaseTag: `corpus-sha256-${'a'.repeat(64)}`,
+      corpusGeneration: '2026-11-25T00:00:00.000Z',
+    }, null, 2)}\n`);
+    expect(kbCopyProof(f)).toMatchObject({ disposable: true, unique: [] });
+
+    // Adding any non-stamp user/custom field must STILL keep SOURCE.json in unique:
+    put(f.copyDir, 'SOURCE.json', `${JSON.stringify({
+      ...baseSource,
+      corpusReleaseTag: `corpus-sha256-${'a'.repeat(64)}`,
+      privateNote: 'do not drop me',
+    }, null, 2)}\n`);
+    expect(kbCopyProof(f).unique.map((u) => u.file)).toContain('SOURCE.json');
+
+    // Stamped SOURCE.json WITH an identical private-store overlay entry (matches liveDir) is also disposable,
+    // while differing private-store metadata stays retained:
+    const privateEntry = { kbName: 'notes', updateManaged: false, builtUtc: '2026-11-25T00:00:00.000Z' };
+    put(f.liveDir, 'PRIVATE-STORES.json', { privateStores: ['notes'] });
+    put(f.liveDir, 'notes.big.rvf', 'private-bytes');
+    put(f.liveDir, 'SOURCE.json', `${JSON.stringify({
+      brainVersion: '5.1.1',
+      stores: { notes: privateEntry },
+    }, null, 2)}\n`);
+    put(f.copyDir, 'PRIVATE-STORES.json', { privateStores: ['notes'] });
+    put(f.copyDir, 'notes.big.rvf', 'private-bytes');
+    put(f.copyDir, 'SOURCE.json', `${JSON.stringify({
+      ...baseSource,
+      stores: { ...baseSource.stores, notes: privateEntry },
+      corpusReleaseTag: `corpus-sha256-${'a'.repeat(64)}`,
+      corpusGeneration: '2026-11-25T00:00:00.000Z',
+    }, null, 2)}\n`);
+    expect(kbCopyProof(f)).toMatchObject({ disposable: true, unique: [] });
+
+    put(f.copyDir, 'SOURCE.json', `${JSON.stringify({
+      ...baseSource,
+      stores: { ...baseSource.stores, notes: { ...privateEntry, builtUtc: '2026-11-20T00:00:00.000Z' } },
+      corpusReleaseTag: `corpus-sha256-${'a'.repeat(64)}`,
+    }, null, 2)}\n`);
+    expect(kbCopyProof(f).unique.map((u) => u.file)).toContain('SOURCE.json');
+  });
+
+  it('disposes a RuVector Only copy whose capability-cards and RVF-GENERATIONS match its manifest after profiling (#536)', async () => {
+    const f = fixture();
+    const baseSource = {
+      brainVersion: '5.1.1',
+      releaseTag: 'v5.1.1',
+      stores: { ruvector: { kbName: 'ruvector', updateManaged: true }, agentdb: { kbName: 'agentdb', updateManaged: true } },
+    };
+    const publicLedger = {
+      schemaVersion: 2,
+      kind: 'ruvnet-brain-public-generation-ledger',
+      brainVersion: '5.1.1',
+      releaseTag: 'v5.1.1',
+      sourceSnapshot: 'b'.repeat(40),
+      stores: { ruvector: { file: 'ruvector.big.rvf' }, agentdb: { file: 'agentdb.big.rvf' } },
+    };
+    const cards = '# Capability Cards\n\n## ruvector\nVector search.\n\n## agentdb\nAgent memory.\n';
+    for (const dir of [f.liveDir, f.copyDir]) {
+      put(dir, 'SOURCE.json', `${JSON.stringify(baseSource, null, 2)}\n`);
+      put(dir, 'PRIVATE-STORES.json', `${JSON.stringify({ privateStores: [] }, null, 2)}\n`);
+      put(dir, 'ruvector.big.rvf', dir === f.liveDir ? 'live-rv' : 'old-rv');
+    }
+    put(f.copyDir, 'PUBLIC-RVF-GENERATIONS.json', `${JSON.stringify(publicLedger, null, 2)}\n`);
+    put(f.copyDir, 'RVF-GENERATIONS.json', `${JSON.stringify({ ...publicLedger, kind: 'ruvnet-brain-runtime-generation-ledger' }, null, 2)}\n`);
+    put(f.copyDir, 'capability-cards.md', cards);
+    put(f.copyDir, 'ARCHIVE-MANIFEST.json', {
+      files: ['SOURCE.json', 'PUBLIC-RVF-GENERATIONS.json', 'RVF-GENERATIONS.json', 'capability-cards.md', 'ruvector.big.rvf'].map((file) => {
+        const bytes = fs.readFileSync(path.join(f.copyDir, file));
+        return { path: file, bytes: bytes.length, sha256: crypto.createHash('sha256').update(bytes).digest('hex') };
+      }),
+    });
+    const { applyBrainProfile } = await import('../../kb/brain-profile.mjs');
+    applyBrainProfile(f.copyDir, 'ruvector');
+    expect(kbCopyProof(f)).toMatchObject({ disposable: true, unique: [] });
+
+    // User-added card section in copy's capability-cards.md must still keep the copy:
+    fs.appendFileSync(path.join(f.copyDir, 'capability-cards.md'), '\n## custom-private\nKeep me.\n');
+    expect(kbCopyProof(f).unique.map((u) => u.file)).toContain('capability-cards.md');
+  });
+
+  it('rescues the newest tail of an oversized update.log and invalidates stale rule-2 proof cache entries (#536)', () => {
+    const f = fixture();
+    const head = Buffer.alloc(2 * 1024 * 1024, 0x41);
+    const tail = Buffer.from('TAIL-LOG-ENTRY\n');
+    put(f.copyDir, 'update.log', Buffer.concat([head, tail]));
+    put(f.home, '.cache/ruvnet-brain/.footprint-proof-cache.json', {
+      schemaVersion: 2,
+      entries: {
+        [f.copyDir]: { rule: 2, copy: 'stale', live: 'stale', reason: 'cached under old rule', unique: [{ file: 'update.log', why: 'old rule' }] },
+      },
+    });
+    const proof = kbCopyProof(f);
+    expect(proof).toMatchObject({ disposable: true, unique: [] });
+    expect(proof.rescue).toEqual([expect.objectContaining({ file: 'update.log', bytes: 2 * 1024 * 1024, tail: true })]);
+
+    const swept = sweepFootprint({ apply: true, home: f.home, env: { HOME: f.home } });
+    expect(swept.errors).toEqual([]);
+    expect(fs.existsSync(f.copyDir)).toBe(false);
+    const rescued = fs.readFileSync(path.join(f.brainHome, 'kb-copy-rescued', path.basename(f.copyDir), 'update.log'));
+    expect(rescued.length).toBe(2 * 1024 * 1024);
+    expect(rescued.toString('utf8').endsWith('TAIL-LOG-ENTRY\n')).toBe(true);
   });
 });

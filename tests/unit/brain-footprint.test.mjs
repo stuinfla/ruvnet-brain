@@ -1167,10 +1167,19 @@ describe('operational files (logs, ruflo scratch) never pin a copy; they are res
     expect(fs.readFileSync(path.join(copy, file), 'utf8')).toBe(Object.values(extra)[0]);
     expect(fs.existsSync(path.join(m.brainHome, 'kb-copy-rescued'))).toBe(false);
   });
-  it('a log over the cap, a log that is a link, and a private store named like a log stay unique', () => {
+  it('an oversized operational log rescues its tail; oversized scratch, a log link, and a private store named like a log stay unique', () => {
     const m = machine(); live(m);
-    const big = litterCopy(m, 'kb.install-preserved-BIG', { 'update.log': Buffer.alloc(2 * 1024 * 1024 + 1, 65) });
-    expect(kbCopyProof({ copyDir: big, liveDir: m.kbDir }).unique.map((u) => u.file)).toEqual(['update.log']);
+    const tailText = 'NEWEST-NIGHTLY-TAIL\n';
+    const big = litterCopy(m, 'kb.install-preserved-BIG', {
+      'update.log': Buffer.concat([Buffer.alloc(2 * 1024 * 1024 + 64, 65), Buffer.from(tailText)]),
+    });
+    const bigProof = kbCopyProof({ copyDir: big, liveDir: m.kbDir });
+    expect(bigProof).toMatchObject({ disposable: true, unique: [] });
+    expect(bigProof.rescue.find((r) => r.file === 'update.log')).toMatchObject({ bytes: 2 * 1024 * 1024, tail: true });
+    const bigScratch = litterCopy(m, 'kb.install-preserved-BIGSCRATCH', {
+      [path.join('.claude-flow', 'huge.json')]: Buffer.alloc(2 * 1024 * 1024 + 1, 65),
+    });
+    expect(kbCopyProof({ copyDir: bigScratch, liveDir: m.kbDir }).unique.map((u) => u.file)).toEqual([path.join('.claude-flow', 'huge.json')]);
     const linked = litterCopy(m, 'kb.install-preserved-LINK');
     fs.rmSync(path.join(linked, 'update.log')); write(path.join(m.home, 'elsewhere.log'), 'x');
     fs.symlinkSync(path.join(m.home, 'elsewhere.log'), path.join(linked, 'update.log'));

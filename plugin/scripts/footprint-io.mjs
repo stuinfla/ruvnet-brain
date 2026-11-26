@@ -189,7 +189,8 @@ export function removeWithin(target, expectedParent, owned) {
  * copy. Retention of the rescued directories is brain-footprint.mjs's (FOOTPRINT_POLICY.rescuedCopiesKept).
  */
 export const RESCUE_DIR = 'kb-copy-rescued';
-const sha256Of = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+const sha256Buf = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
+const sha256Of = (file) => sha256Buf(fs.readFileSync(file));
 const regular = (file) => { const st = lstat(file); return Boolean(st && st.isFile() && !st.isSymbolicLink()); };
 export function rescueOperationalFiles(copyDir, rescue, brainHome, name = path.basename(copyDir)) {
   if (!rescue?.length) return null;
@@ -197,11 +198,34 @@ export function rescueOperationalFiles(copyDir, rescue, brainHome, name = path.b
   for (const dir of [brainHome, root, dest]) {
     if (lstat(dir)?.isSymbolicLink()) throw new Error(`refusing to rescue into ${dir}: it is a link`);
   }
-  for (const { file, sha256 } of rescue) {
+  for (const { file, bytes, sourceBytes, tail, sha256 } of rescue) {
     const from = path.join(copyDir, file); const to = path.join(dest, file);
-    if (!regular(from) || sha256Of(from) !== sha256) throw new Error(`${file} changed after the copy was proven; the copy is kept`);
+    if (!regular(from)) throw new Error(`${file} changed after the copy was proven; the copy is kept`);
+    let tailBuf = null;
+    if (tail) {
+      const st = lstat(from);
+      if (!st || (sourceBytes != null && st.size !== sourceBytes) || st.size < bytes) {
+        throw new Error(`${file} changed after the copy was proven; the copy is kept`);
+      }
+      tailBuf = Buffer.allocUnsafe(bytes);
+      const fd = fs.openSync(from, 'r');
+      try {
+        let offset = 0;
+        while (offset < bytes) {
+          const n = fs.readSync(fd, tailBuf, offset, bytes - offset, st.size - bytes + offset);
+          if (n <= 0) throw new Error(`short read on ${file}`);
+          offset += n;
+        }
+      } finally { fs.closeSync(fd); }
+      if (sha256Buf(tailBuf) !== sha256) throw new Error(`${file} changed after the copy was proven; the copy is kept`);
+    } else if (sha256Of(from) !== sha256) {
+      throw new Error(`${file} changed after the copy was proven; the copy is kept`);
+    }
     fs.mkdirSync(path.dirname(to), { recursive: true });
-    if (!lstat(to)) fs.copyFileSync(from, to, fs.constants.COPYFILE_EXCL);
+    if (!lstat(to)) {
+      if (tailBuf) fs.writeFileSync(to, tailBuf, { flag: 'wx' });
+      else fs.copyFileSync(from, to, fs.constants.COPYFILE_EXCL);
+    }
     if (!regular(to) || sha256Of(to) !== sha256) throw new Error(`could not rescue ${file} to ${to} (a different file is there); the copy is kept`);
   }
   // A reused rescue folder (an earlier sweep rescued, then could not release, this copy) holds the only copy of these
@@ -216,8 +240,9 @@ const PROOF_CACHE = '.footprint-proof-cache.json';
 // other forever); they are proven once more. A dropped cache entry can only cost a re-hash, never a byte.
 const PROOF_CACHE_SCHEMA = 2;
 // The proof rule a cached KEPT verdict was reached under. A verdict from an older rule (one that kept copies
-// the current rule releases, e.g. for a log file before rescue existed) is not reused; that copy is proven again.
-const PROOF_RULE = 2;
+// the current rule releases, e.g. stamped SOURCE.json, profiled RuVector artifacts, or >2 MiB log tail-rescue)
+// is not reused; that copy is proven again.
+const PROOF_RULE = 3;
 const IDENTITY_FILES = ['SOURCE.json', 'PRIVATE-STORES.json', 'COVERAGE.json', 'RVF-GENERATIONS.json'];
 const statKey = (file) => { try { const st = fs.lstatSync(file); return `${st.size}:${Math.floor(st.mtimeMs)}`; } catch { return '-'; } };
 const fingerprint = (dir) => [statKey(dir), ...IDENTITY_FILES.map((f) => statKey(path.join(dir, f)))].join('|');
