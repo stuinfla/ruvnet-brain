@@ -79,6 +79,7 @@ function timeoutFor(hookId, event = '', sessionBudgetMs = 0) {
   if (hookId === 'ground-ruvnet' || hookId === 'unprompted-speech' || hookId === 'continuation-gate') {
     return 8_500;
   }
+  if (hookId === 'session-snapshot' && event !== 'SessionEnd') return 8_500;
   // SessionEnd is hard-capped at 3s by the host (see DETACHED_HOOKS above) and the codex-hooks.json
   // launcher kills this wrapper at 2500ms. A 4000ms budget here was a number nobody would ever reach:
   // the body planned for 8s and was SIGKILLed mid-write. 2200ms leaves the launcher its margin, and the
@@ -115,7 +116,6 @@ function readHookInput(limit = 1024 * 1024) {
       clearTimeout(idle);
       clearTimeout(hardDeadline);
       clearInterval(poll);
-      process.stdin.off('data', onData);
       process.stdin.off('readable', onReadable);
       process.stdin.off('end', finish);
       process.stdin.off('close', finish);
@@ -132,9 +132,10 @@ function readHookInput(limit = 1024 * 1024) {
       clearTimeout(idle);
       idle = setTimeout(finish, 100);
     };
-    const onData = (chunk) => {
+    const acceptChunk = (chunk) => {
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       if (bytes < limit) {
-        const kept = chunk.subarray(0, limit - bytes);
+        const kept = buf.subarray(0, limit - bytes);
         chunks.push(kept);
         bytes += kept.length;
       }
@@ -147,14 +148,13 @@ function readHookInput(limit = 1024 * 1024) {
       }
     };
     // Windows inherited pipes can expose the first value through the readable interface without
-    // emitting a data event until the writer closes. Drain both interfaces; POSIX keeps the fast
-    // data path and Windows gets the same complete-value contract without waiting for EOF.
+    // emitting a data event until the writer closes. Use a single readable consumer so POSIX
+    // and Windows never double-drain the same stream buffer (#525).
     const onReadable = () => {
       let chunk;
-      while ((chunk = process.stdin.read()) !== null) onData(chunk);
+      while (!settled && (chunk = process.stdin.read()) !== null) acceptChunk(chunk);
     };
 
-    process.stdin.on('data', onData);
     process.stdin.on('readable', onReadable);
     process.stdin.once('end', finish);
     process.stdin.once('close', finish);
@@ -169,7 +169,7 @@ function readHookInput(limit = 1024 * 1024) {
     poll = setInterval(onReadable, 10);
     hardDeadline = setTimeout(finish, 250);
     armIdle();
-    process.stdin.resume();
+    onReadable();
   });
 }
 

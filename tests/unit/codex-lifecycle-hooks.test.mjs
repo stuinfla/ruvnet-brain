@@ -812,3 +812,207 @@ describe('Codex lifecycle adapter', () => {
     });
   });
 });
+
+describe('Codex hook wrapper stdin framing (#525) and budget routing (#513)', () => {
+  function installEchoAdapter(brain, version = 'v1') {
+    const scripts = path.join(brain, 'versions', version, 'scripts');
+    fs.mkdirSync(scripts, { recursive: true });
+    installSessionBudget(scripts);
+    fs.writeFileSync(path.join(scripts, 'codex-hook-adapter.mjs'), [
+      'import fs from "node:fs";',
+      'const raw = fs.readFileSync(0);',
+      'const text = raw.toString("utf8");',
+      'let valid = false; let parsed = null;',
+      'try { parsed = JSON.parse(text); valid = true; } catch {}',
+      'process.stdout.write(JSON.stringify({ bytes: raw.length, valid, padLen: parsed?.pad?.length ?? null, budget: process.env.RUVNET_CODEX_BUDGET_MS ?? null }));',
+    ].join('\n'));
+    fs.writeFileSync(path.join(brain, 'active.json'), JSON.stringify({ generation: version, version, codeRoot: `versions/${version}` }));
+  }
+
+  function spawnChunkedWrapper(home, brain, hookArgs, payloadBuf, { chunkSize = 4096, intervalMs = 25, closeEof = true } = {}) {
+    return new Promise((resolve) => {
+      const child = spawn(process.execPath, [WRAPPER, ...hookArgs], {
+        cwd: ROOT,
+        env: { ...process.env, HOME: home, RUVNET_BRAIN_HOME: brain },
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      let stdout = '';
+      let stderr = '';
+      child.stdin.on('error', () => {});
+      child.stdout.setEncoding('utf8').on('data', (d) => { stdout += d; });
+      child.stderr.setEncoding('utf8').on('data', (d) => { stderr += d; });
+      child.on('close', (status, signal) => resolve({ status, signal, stdout, stderr }));
+      let offset = 0;
+      const sendNext = () => {
+        if (child.stdin.destroyed || !child.stdin.writable) return;
+        if (offset >= payloadBuf.length) {
+          if (closeEof) child.stdin.end();
+          return;
+        }
+        const slice = payloadBuf.subarray(offset, offset + chunkSize);
+        offset += slice.length;
+        child.stdin.write(slice);
+        setTimeout(sendNext, intervalMs);
+      };
+      sendNext();
+    });
+  }
+
+  it.each([true, false])('reads a 12,012-byte JSON payload split across 4,096-byte chunks at 25ms intervals without duplicating bytes (closeEof=%s)', async (closeEof) => {
+    const { home, brain } = fixture();
+    try {
+      installEchoAdapter(brain);
+      const base = JSON.stringify({ cwd: ROOT, hook_event_name: 'PostToolUse', pad: '' });
+      const padLen = 12012 - Buffer.byteLength(base, 'utf8');
+      const payload = Buffer.from(JSON.stringify({ cwd: ROOT, hook_event_name: 'PostToolUse', pad: 'x'.repeat(padLen) }), 'utf8');
+      expect(payload.length).toBe(12012);
+      const res = await spawnChunkedWrapper(home, brain, ['grounding-stamp'], payload, { chunkSize: 4096, intervalMs: 25, closeEof });
+      expect(res.status, res.stderr).toBe(0);
+      expect(JSON.parse(res.stdout)).toMatchObject({ bytes: 12012, valid: true, padLen });
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  it('reassembles split multibyte UTF-8 (11,412 bytes in 4,097-byte chunks) intact without corruption', async () => {
+    const { home, brain } = fixture();
+    try {
+      installEchoAdapter(brain);
+      const prefix = JSON.stringify({ cwd: ROOT, hook_event_name: 'PostToolUse', pad: '' });
+      const unit = 'é漢😀'; // 2 + 3 + 4 = 9 bytes
+      const remain = 11412 - Buffer.byteLength(prefix, 'utf8');
+      const count = Math.floor(remain / Buffer.byteLength(unit, 'utf8'));
+      const exactPad = unit.repeat(count) + 'a'.repeat(remain - count * Buffer.byteLength(unit, 'utf8'));
+      const payload = Buffer.from(JSON.stringify({ cwd: ROOT, hook_event_name: 'PostToolUse', pad: exactPad }), 'utf8');
+      expect(payload.length).toBe(11412);
+      const res = await spawnChunkedWrapper(home, brain, ['grounding-stamp'], payload, { chunkSize: 4097, intervalMs: 25, closeEof: true });
+      expect(res.status, res.stderr).toBe(0);
+      expect(JSON.parse(res.stdout)).toMatchObject({ bytes: 11412, valid: true, padLen: exactPad.length });
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  it('handles empty EOF cleanly', async () => {
+    const { home, brain } = fixture();
+    try {
+      installEchoAdapter(brain);
+      const res = await spawnChunkedWrapper(home, brain, ['grounding-stamp'], Buffer.alloc(0), { closeEof: true });
+      expect(res.status, res.stderr).toBe(0);
+      expect(JSON.parse(res.stdout)).toMatchObject({ bytes: 0, valid: false });
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  }, 10_000);
+
+  it('resolves stalled incomplete JSON at the 250ms hardDeadline without hanging', async () => {
+    const { home, brain } = fixture();
+    try {
+      installEchoAdapter(brain);
+      const partial = Buffer.from('{"cwd":' + JSON.stringify(ROOT) + ',"pad":"' + 'z'.repeat(100), 'utf8');
+      const t0 = Date.now();
+      const res = await new Promise((resolve) => {
+        const child = spawn(process.execPath, [WRAPPER, 'grounding-stamp'], {
+          cwd: ROOT,
+          env: { ...process.env, HOME: home, RUVNET_BRAIN_HOME: brain },
+          stdio: ['pipe', 'pipe', 'pipe'],
+        });
+        let stdout = ''; let stderr = '';
+        child.stdout.setEncoding('utf8').on('data', (d) => { stdout += d; });
+        child.stderr.setEncoding('utf8').on('data', (d) => { stderr += d; });
+        child.on('close', (status) => resolve({ status, stdout, stderr, ms: Date.now() - t0 }));
+        child.stdin.write(partial.subarray(0, 40));
+        const iv = setInterval(() => {
+          if (!child.stdin.writableEnded) child.stdin.write('a');
+        }, 60);
+        child.once('close', () => clearInterval(iv));
+      });
+      expect(res.status, res.stderr).toBe(0);
+      expect(res.ms).toBeLessThan(1_500);
+      expect(JSON.parse(res.stdout).valid).toBe(false);
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  }, 10_000);
+
+  it('caps stdin at 1 MiB (1048576 bytes) for oversized payloads', async () => {
+    const { home, brain } = fixture();
+    try {
+      installEchoAdapter(brain);
+      const payload = Buffer.from(JSON.stringify({ cwd: ROOT, pad: 'p'.repeat(1_200_000) }), 'utf8');
+      const res = await spawnChunkedWrapper(home, brain, ['grounding-stamp'], payload, { chunkSize: 65536, intervalMs: 5, closeEof: true });
+      expect(res.status, res.stderr).toBe(0);
+      expect(JSON.parse(res.stdout)).toMatchObject({ bytes: 1048576, valid: false });
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  it('end-to-end: chunked >12 KB search_ruvnet payload through codex-hook-wrapper grounding-stamp renews grounding stamp', async () => {
+    const { home, brain } = fixture();
+    try {
+      fs.cpSync(path.join(ROOT, 'plugin'), path.join(brain, 'versions', 'v1'), { recursive: true });
+      fs.writeFileSync(path.join(brain, 'active.json'), JSON.stringify({ generation: 'v1', version: 'v1', codeRoot: 'versions/v1' }));
+
+      const answerText = `Searched 3 RuvNet repos (agentdb).\n#1  repo=agentdb\n${'x'.repeat(12_000)}`;
+      const payload = Buffer.from(JSON.stringify({
+        cwd: ROOT,
+        session_id: 'codex-chunk-stamp',
+        hook_event_name: 'PostToolUse',
+        tool_name: 'mcp__ruvnet_brain__search_ruvnet',
+        tool_input: { query: 'agentdb memory store' },
+        tool_response: { content: [{ type: 'text', text: answerText }] },
+      }), 'utf8');
+      expect(payload.length).toBeGreaterThan(12_000);
+      const res = await spawnChunkedWrapper(home, brain, ['grounding-stamp'], payload, { chunkSize: 4096, intervalMs: 25, closeEof: true });
+      expect(res.status, res.stderr).toBe(0);
+      const stamp = path.join(home, '.cache', 'ruvnet-brain', 'grounded', 'agentdb');
+      expect(fs.existsSync(stamp), 'chunked >12 KB search_ruvnet must mint agentdb stamp').toBe(true);
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it.each([
+    ['Stop', '8500'],
+    ['PreCompact', '8500'],
+    ['PostToolUse', '8500'],
+    ['SessionEnd', '2200'],
+  ])('ISSUE #513: timeoutFor gives session-snapshot on %s RUVNET_CODEX_BUDGET_MS=%s', (event, expectedBudget) => {
+    const { home, brain } = fixture();
+    try {
+      installEchoAdapter(brain);
+      const r = spawnSync(process.execPath, [WRAPPER, 'session-snapshot', event], {
+        cwd: ROOT,
+        env: { ...process.env, HOME: home, RUVNET_BRAIN_HOME: brain },
+        input: JSON.stringify({ cwd: ROOT, hook_event_name: event }),
+        encoding: 'utf8',
+        timeout: 4_000,
+      });
+      expect(r.status, r.stderr).toBe(0);
+      expect(JSON.parse(r.stdout).budget).toBe(expectedBudget);
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it('ISSUE #513: explicit RUVNET_CODEX_HOOK_TIMEOUT_MS override wins over session-snapshot budgets', () => {
+    const { home, brain } = fixture();
+    try {
+      installEchoAdapter(brain);
+      for (const event of ['Stop', 'SessionEnd']) {
+        const r = spawnSync(process.execPath, [WRAPPER, 'session-snapshot', event], {
+          cwd: ROOT,
+          env: { ...process.env, HOME: home, RUVNET_BRAIN_HOME: brain, RUVNET_CODEX_HOOK_TIMEOUT_MS: '1234' },
+          input: JSON.stringify({ cwd: ROOT, hook_event_name: event }),
+          encoding: 'utf8',
+          timeout: 4_000,
+        });
+        expect(r.status, r.stderr).toBe(0);
+        expect(JSON.parse(r.stdout).budget).toBe('1234');
+      }
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
