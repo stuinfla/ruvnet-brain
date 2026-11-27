@@ -11,7 +11,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const MOD_SOURCE = path.join(ROOT, 'config/model-router/claude-terminal-mod');
 export function terminalModDigest(pluginRoot) {
   const hash = crypto.createHash('sha256');
-  for (const relative of ['.claude-plugin/plugin.json', 'hooks/hooks.json', 'hooks/register.js', 'hooks/routing.js', 'hooks/policy.default.mjs', 'hooks/runtime.js']) {
+  for (const relative of ['.claude-plugin/plugin.json', '.codex-plugin/plugin.json', 'hooks/hooks.json', 'hooks/codex-hooks.json', 'hooks/register.js', 'hooks/routing.js', 'hooks/policy.default.mjs', 'hooks/runtime.js']) {
     hash.update(relative); hash.update('\0'); hash.update(fs.readFileSync(path.join(pluginRoot, relative))); hash.update('\0');
   }
   return hash.digest('hex');
@@ -21,7 +21,7 @@ export function prepareClaudeTerminalMod({ destination, nodePath = process.execP
   if (!destination || !path.isAbsolute(destination)) throw new Error('Absolute mod destination required');
   for (const file of [nodePath, helperPath, enginePath]) if (!path.isAbsolute(file) || !fs.existsSync(file)) throw new Error('Native mod dependency unavailable');
   fs.mkdirSync(destination, { recursive: true, mode: 0o700 });
-  for (const part of ['.claude-plugin/plugin.json', 'hooks/hooks.json', 'hooks/register.js', 'hooks/routing.js']) {
+  for (const part of ['.claude-plugin/plugin.json', '.codex-plugin/plugin.json', 'hooks/hooks.json', 'hooks/codex-hooks.json', 'hooks/register.js', 'hooks/routing.js']) {
     const dest = path.join(destination, part);
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.copyFileSync(path.join(MOD_SOURCE, part), dest);
