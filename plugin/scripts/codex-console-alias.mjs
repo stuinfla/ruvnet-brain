@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process';
 export const ALIAS_MARKER = '<!-- managed-by: ruvnet-brain; short-console-alias-v1 -->';
 export const ALIAS_NOTICE = 'RuvNet Brain is loaded. Configure it with $rvbc.';
 const aliasPath = (home) => path.join(home, '.agents', 'skills', 'rvbc', 'SKILL.md');
-const aliasBody = `---\nname: rvbc\ndescription: Open the RuvNet Brain configuration console when the user invokes $rvbc or says Configure RuvNet Brain.\n---\n\n${ALIAS_MARKER}\nOpen the installed RuvNet Brain Console. Resolve \`\${RUVNET_BRAIN_KB:-$HOME/.cache/ruvnet-brain/kb}/.console-runtime/scripts/onboarding-console.mjs\`; do not guess a developer checkout. Run \`node <resolved-script> --serve --open\` in the background. Preserve the user's configuration. Report startup failures honestly. Verify the rendered console and client accessibility before claiming it opened or presenting its URL.\n`;
+const aliasBody = `---\nname: rvbc\ndescription: Open the RuvNet Brain configuration console when the user invokes $rvbc or says "run the RuvNet Brain console" or "Configure RuvNet Brain".\n---\n\n${ALIAS_MARKER}\nOpen the installed RuvNet Brain Console. Resolve \`\${RUVNET_BRAIN_KB:-$HOME/.cache/ruvnet-brain/kb}/.console-runtime/scripts/onboarding-console.mjs\`; do not guess a developer checkout. Run \`node <resolved-script> --serve --open\` in the background. Preserve the user's configuration. Report startup failures honestly. Verify the rendered console and client accessibility before claiming it opened or presenting its URL.\n`;
 
 export function ownedCodexConsoleAlias(home = os.homedir()) {
   try {

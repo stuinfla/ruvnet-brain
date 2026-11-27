@@ -1,6 +1,6 @@
 ---
 name: brain-console
-description: Open the RuvNet Brain Console (RNBC) for "/rnbc", "/rnb", "/rvbc", "/rvcb", "/brain-console", or "/ruvnet-brain:configure". Use when the user asks to open, configure, inspect, or view the Brain Console. It opens the live local page in the background; the page is read-only until the user clicks a clearly explained, reversible action.
+description: Open the RuvNet Brain Console (RNBC) for "run the RuvNet Brain console", "open the RuvNet Brain console", "/rnbc", "/rnb", "/rvbc", "/rvcb", "/brain-console", or "/ruvnet-brain:configure". Use when the user asks to run, open, launch, configure, inspect, or view the Brain Console. It opens the live local page in the background; the page is read-only until the user clicks a clearly explained, reversible action.
 updated: 2026-10-01
 ---
 
