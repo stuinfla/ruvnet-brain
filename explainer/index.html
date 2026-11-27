@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <script>if(location.pathname==='/ruvnet-brain'){location.replace('/ruvnet-brain/'+location.search+location.hash);}</script>
+  <script>if(location.pathname==='/ruvnet-brain'){const b=document.createElement('base');b.href='/ruvnet-brain/';document.head.appendChild(b);}</script>
 
   <!-- Primary SEO -->
   <title>RuvNet Brain v5.2 — A Smarter Brain, One Visual /rvbc Console (80/80 Plain-English Routing), by Isovision.ai</title>
@@ -13,7 +13,7 @@
   <meta name="robots" content="index,follow" />
   <meta name="theme-color" content="#0a0c10" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-  <link rel="canonical" href="https://isovision.ai/ruvnet-brain/" />
+  <link rel="canonical" href="https://isovision.ai/ruvnet-brain" />
   <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
 
   <!-- Google Search Console verification: paste your token between the quotes
@@ -25,8 +25,8 @@
   <meta property="og:site_name" content="RuvNet Brain · by Isovision.ai" />
   <meta property="og:title" content="All-New RuvNet Brain v5.2 — A Smarter Brain. One Visual /rvbc Console." />
   <meta property="og:description" content="80/80 (100%) plain-English routing across 210 repos, 3,230 gists &amp; 39 talks — now with a 4-Layer Living Atlas, 15 Visual Guides, 3×–5× AI Runway &amp; interactive /rvbc Console for Claude Code, Codex &amp; Antigravity." />
-  <meta property="og:url" content="https://isovision.ai/ruvnet-brain/" />
-  <meta property="og:image" content="https://isovision.ai/ruvnet-brain/assets/img/og-v52.png" />
+  <meta property="og:url" content="https://isovision.ai/ruvnet-brain" />
+  <meta property="og:image" content="https://isovision.ai/ruvnet-brain/assets/img/og-v52.png?v=521" />
   <meta property="og:image:alt" content="All-New RuvNet Brain v5.2 — 80/80 (100%) plain-English routing, 4-Layer Living Atlas, and interactive /rvbc Visual Console" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
@@ -35,7 +35,7 @@
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="All-New RuvNet Brain v5.2 — A Smarter Brain. One Visual /rvbc Console." />
   <meta name="twitter:description" content="80/80 (100%) plain-English routing · 4-Layer Living Atlas · 15 Visual Guides · 3×–5× AI Runway · Free offline /rvbc Console for Claude Code, Codex &amp; Antigravity." />
-  <meta name="twitter:image" content="https://isovision.ai/ruvnet-brain/assets/img/og-v52.png" />
+  <meta name="twitter:image" content="https://isovision.ai/ruvnet-brain/assets/img/og-v52.png?v=521" />
 
   <!-- Structured data — WebSite entity (defines "RuvNet Brain" as a named thing to search engines) -->
   <script type="application/ld+json">
@@ -283,20 +283,19 @@
             <p class="eyebrow"><span class="nb">ruvnet brain v5.2.1</span> &middot; <span class="nb">Claude Code + Codex + Antigravity Memory</span></p>
             <h1>Your AI stops guessing.<br /><span class="grad">Builds like rUv.</span><br />Stretches quota <span class="grad">3&times;&ndash;5&times;</span>.</h1>
           </div>
-          <figure class="hero-art" style="border-radius:16px;overflow:hidden;border:1.5px solid rgba(34,230,255,0.38);background:#050a18;box-shadow:0 24px 64px rgba(0,0,0,0.65);">
-            <a href="#v52-console-tour" style="display:block;text-decoration:none;color:inherit;" aria-label="Jump to the interactive 7-page /rvbc Console Tour">
-              <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#09132a;border-bottom:1px solid rgba(130,180,255,0.18);font-family:var(--mono,monospace);font-size:11.5px;color:#93aed4;">
-                <span style="display:inline-flex;gap:6px;align-items:center;"><i style="width:9px;height:9px;border-radius:50%;background:#ff5f56;display:inline-block;"></i><i style="width:9px;height:9px;border-radius:50%;background:#ffbd2e;display:inline-block;"></i><i style="width:9px;height:9px;border-radius:50%;background:#27c93f;display:inline-block;"></i><span style="margin-left:8px;color:#dceaff;">/rvbc · 4-Layer Living RuvNet Brain Atlas</span></span>
-                <span style="color:#38f2a3;font-weight:700;">80/80 (100%) ROUTED &middot; 100% LOCAL</span>
-              </div>
-              <img src="assets/img/console-v52-atlas.png" width="1440" height="900" decoding="async"
-                   style="display:block;width:100%;height:auto;"
-                   alt="RuvNet Brain 4-Layer Living Atlas inside the /rvbc Console showing Ideas and Philosophies connected to expandable Repositories like RuVector and How-To sources like 3,230 Gists, x.ruv.io, 39 Friday Talks, and 559 ADRs." />
-              <figcaption style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 16px;background:linear-gradient(90deg,rgba(34,230,255,0.12),rgba(56,242,163,0.08));border-top:1px solid rgba(130,180,255,0.18);font-size:13.5px;color:#e6f2ff;">
-                <span><strong>Click to tour all 7 live pages of the <code>/rvbc</code> Console</strong> &mdash; Living Atlas, Ask &amp; Stories, MetaHarness 3&times;&ndash;5&times; Runway, 15 Visual Guides &amp; ruPro Companion.</span>
-                <span style="color:#ffbe3b;font-weight:700;white-space:nowrap;">Take the 7-Page Tour &darr;</span>
-              </figcaption>
-            </a>
+          <figure class="hero-art" style="border-radius:16px;overflow:hidden;border:1.5px solid rgba(34,230,255,0.38);background:#040814;box-shadow:0 24px 64px rgba(0,0,0,0.65);">
+            <video class="hero-video" controls playsinline preload="metadata"
+                   poster="assets/video/explainer-poster.jpg?v=521"
+                   width="1920" height="1080"
+                   style="display:block;width:100%;height:auto;background:#040814;">
+              <source src="assets/video/ruvnet-brain-explainer.mp4?v=521" type="video/mp4" />
+              <img src="assets/video/explainer-poster.jpg?v=521" width="1920" height="1080" decoding="async"
+                   alt="Watch the 1m 44s RuvNet Brain v5.2 walkthrough — 80/80 plain-English routing, 4-Layer Living Atlas, 3x-5x AI quota runway, and /rvbc visual cockpit." />
+            </video>
+            <figcaption style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 16px;background:linear-gradient(90deg,rgba(34,230,255,0.12),rgba(56,242,163,0.08));border-top:1px solid rgba(130,180,255,0.18);font-size:13.5px;color:#e6f2ff;">
+              <span>&#9654;&nbsp; <strong>Watch the 1m 44s Tour</strong> &mdash; what RuvNet Brain does, how the <code>/rvbc</code> visual cockpit works, and how to start in 30 seconds.</span>
+              <a href="#v52-console-tour" style="color:#ffbe3b;font-weight:700;text-decoration:none;white-space:nowrap;">Or tour all 7 console pages &darr;</a>
+            </figcaption>
           </figure>
           <div class="hero-copy hero-copy-after">
             <p class="lede">
