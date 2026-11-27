@@ -2799,7 +2799,7 @@ export const FULL_CORPUS_MAX_PAIRS_DEFAULT = 408;
 export function capRerankPool(candidates, { limit }) {
   if (!(limit > 0) || candidates.length <= limit) return { kept: candidates, dropped: 0, capped: false };
   const keep = new Set();
-  const exempt = (c) => c._lane === 'rescue' || c._lane === 'bm25' || c._lane === 'entry-d2q' || c._lane === 'rsi-learned';
+  const exempt = (c) => c._lane === 'rescue' || c._lane === 'bm25';
   for (let i = 0; i < candidates.length; i++) if (exempt(candidates[i])) keep.add(i);
   // The floor: one passage per store, taken only if the whole floor fits in what is left.
   const floor = [];
@@ -2859,7 +2859,7 @@ export function cascadeRerankPool(candidates, { limit, s1 }) {
     return { kept: candidates, dropped: 0, capped: false };
   }
   const keep = new Set();
-  const exempt = (c) => c._lane === 'rescue' || c._lane === 'bm25' || c._lane === 'entry-d2q' || c._lane === 'rsi-learned';
+  const exempt = (c) => c._lane === 'rescue' || c._lane === 'bm25';
   for (let i = 0; i < candidates.length; i++) if (exempt(candidates[i])) keep.add(i);
   // (stage-1 score desc, original pool position asc) — stable, so two candidates that score
   // identically are broken the same way on every run. The pool cap changes what gets scored, so a
@@ -3564,7 +3564,7 @@ export function planSourceRoute({ dir, query, discovered, identifierScanTokens =
 
 async function searchAllPrimary({
   dir, query, k = 6, pool = 64, repos, _routeStage = false,
-  allowFullCorpus = true, deadline = null,
+  _conceptsOwners = null, allowFullCorpus = true, deadline = null,
 }) {
   const startedAt = performance.now();
   // The reranker needs a bounded candidate pool larger than the requested output list.
@@ -3624,16 +3624,66 @@ async function searchAllPrimary({
         return sourceCard;
       }
       const scopedStartedAt = performance.now();
-      const scoped = await searchAllPrimary({
+      const hardRepoSelector = /\brepo:[a-z0-9._-]+\b/i.test(String(query || ''));
+      const includeConceptsFallback = discovered.includes('concepts')
+        && !planned.repos.includes('concepts')
+        && !hardRepoSelector
+        && !(planned.repos.length === 1 && planned.repos[0] === 'ruv-gists')
+        && planned.confidence === 'described';
+      const conceptsOwners = includeConceptsFallback
+        ? new Set(planned.repos
+          .flatMap((r) => [r, ...(repositoryNames(r, dir) || [])])
+          .map((s) => String(s).toLowerCase()))
+        : null;
+      const scopedRepos = includeConceptsFallback
+        ? [...planned.repos, 'concepts']
+        : planned.repos;
+      let scoped = await searchAllPrimary({
         dir,
         query,
         k,
-        pool,
-        repos: planned.repos,
+        pool: includeConceptsFallback ? Math.min(pool, 32) : pool,
+        repos: scopedRepos,
         _routeStage: true,
+        _conceptsOwners: conceptsOwners,
         allowFullCorpus,
         deadline,
       });
+      const exactNamedScope = (planned.namedRepos?.length || 0) > 0;
+      // When a single explicitly named repo has only negative-CE code chunks (e.g. a thin tooling
+      // repo lacking an overview doc), check that exact repo's own canonical CARD in `concepts`
+      // without ever widening to unrelated repos or primers.
+      if (exactNamedScope
+          && planned.repos.length === 1
+          && !hardRepoSelector
+          && discovered.includes('concepts')
+          && !planned.repos.includes('concepts')
+          && (scoped.results?.length || 0) > 0
+          && typeof scoped.results[0].ceScore === 'number'
+          && scoped.results[0].ceScore < 0) {
+        const namedOwners = new Set([planned.repos[0], ...(repositoryNames(planned.repos[0], dir) || [])]
+          .map((s) => String(s).toLowerCase()));
+        const cardRes = await searchAllPrimary({
+          dir,
+          query,
+          k,
+          pool: 24,
+          repos: ['concepts'],
+          _routeStage: true,
+          _conceptsOwners: namedOwners,
+          allowFullCorpus: false,
+          deadline,
+        });
+        if ((cardRes.results?.length || 0) > 0
+            && typeof cardRes.results[0].ceScore === 'number'
+            && cardRes.results[0].ceScore >= 0) {
+          scoped = {
+            ...cardRes,
+            repos: scoped.repos,
+            perRepo: { ...scoped.perRepo, ...cardRes.perRepo },
+          };
+        }
+      }
       const scopedSearchMs = performance.now() - scopedStartedAt;
       const scopedErrors = Object.values(scoped.perRepo)
         .filter((value) => typeof value === 'string' && value.startsWith('ERR:'));
@@ -3645,7 +3695,6 @@ async function searchAllPrimary({
       // cannot improve repository identity; it only turns an honest "documentation, not proven
       // implementation" result into a full-corpus timeout. Preserve the implementation warning,
       // but return the strong evidence from the named scope.
-      const exactNamedScope = (planned.namedRepos?.length || 0) > 0;
       // An explicit repository name is a hard search boundary, even when its evidence is thin.
       // Widening a thin named result to every unrelated store cannot improve repository identity;
       // it turns an honest abstention into an unbounded cross-encoder fanout. Return the scoped
@@ -3664,14 +3713,14 @@ async function searchAllPrimary({
             accepted: true,
             confidence: planned.confidence,
             reason: planned.reason,
-            candidateRepos: planned.repos,
+            candidateRepos: scopedRepos,
             primaryProductScope: planned.primaryProductScope === true,
             implementationRequired,
             implementationVerdict: scoped.implementation?.verdict || 'not-required',
           },
           diagnostics: traceRetrieval({ query, family: planned.family || null,
             routeMs: +routeMs.toFixed(2), scopedSearchMs: +scopedSearchMs.toFixed(2),
-            candidateRepos: planned.repos.length, lane: 'bounded-source-search',
+            candidateRepos: scopedRepos.length, lane: 'bounded-source-search',
             retrievedCandidates: scoped.pooledAll || 0, scoredCandidates: scoped.pooled || 0 }),
         };
       }
@@ -3797,7 +3846,14 @@ async function searchAllPrimary({
       });
       const depth = plausibleForName ? Math.max(repoPool, RESCUE_DEPTH) : repoPool;
       const hits = await searchKb({ dir, name, query, k: depth, n: depth });
-      let cands = hits;
+      let cands = (name === 'concepts' && _conceptsOwners)
+        ? hits.filter((h) => {
+            const p = String(h.path || '');
+            if (!p.includes('/CARD/')) return false;
+            const owner = p.split('/')[0].toLowerCase();
+            return _conceptsOwners.has(owner);
+          })
+        : hits;
       if (queriedNames.size && hits.length > repoPool) {
         const top = hits.slice(0, repoPool);
         const keptPaths = new Set(top.map((h) => h.path));
@@ -3914,7 +3970,7 @@ async function searchAllPrimary({
     const rvfMod = loadRvf?.()?.mod;
     const forgeAskMod = hasEntryIndexes(dir) ? await import('./forge-ask.mjs') : null;
     const embedFn = forgeAskMod?.__embedInternals?.embed;
-    if (rvfMod?.RvfDatabase && embedFn && (!deadline || deadline.remainingMs() > 6000)) {
+    if (rvfMod?.RvfDatabase && embedFn && (!deadline || deadline.remainingMs() > 10000)) {
       const bgeCfg = { model: 'Xenova/bge-base-en-v1.5', dimensions: 768, pooling: 'cls', normalize: true, queryPrefix: 'Represent this sentence for searching relevant passages: ' };
       const qVec = await embedFn(query, bgeCfg);
       const entryHits = await queryEntryIndexes({
@@ -3922,7 +3978,7 @@ async function searchAllPrimary({
         queryVec: qVec,
         repos: list,
         RvfDatabase: rvfMod.RvfDatabase,
-        k: 12,
+        k: 4,
         maxDist: 0.44,
       });
       if (entryHits.length) {
@@ -3966,15 +4022,18 @@ async function searchAllPrimary({
   // different policy than the one being shipped.
   for (let i = 0; i < pooledAll.length; i++) pooledAll[i]._poolIdx = i;
   // An explicit KB_CE_MAX_PAIRS is the operator's word and wins on every lane. Absent that, the
-  // full-corpus fallback takes the measured B=408 budget (see FULL_CORPUS_MAX_PAIRS_DEFAULT) and
-  // every other lane keeps CE_MAX_PAIRS_DEFAULT — which is 0, i.e. unchanged.
+  // full-corpus fallback takes the measured B=408 budget (see FULL_CORPUS_MAX_PAIRS_DEFAULT),
+  // multi-repo bounded `_routeStage` searches cap non-BM25 pairs at 48 (plus any exempt BM25
+  // transcript hits so BM25 never starves dense repo floors), and single-repo lanes keep
+  // CE_MAX_PAIRS_DEFAULT (0, i.e. uncapped).
+  const bm25Count = pooledAll.filter((c) => c._lane === 'bm25').length;
   const capLimit = process.env.KB_CE_MAX_PAIRS !== undefined
     ? Math.max(0, parseInt(process.env.KB_CE_MAX_PAIRS, 10) || 0)
     : fullCorpusLane
       ? (process.env.KB_FULL_CORPUS_MAX_PAIRS !== undefined
         ? Math.max(0, parseInt(process.env.KB_FULL_CORPUS_MAX_PAIRS, 10) || 0)
         : FULL_CORPUS_MAX_PAIRS_DEFAULT)
-      : CE_MAX_PAIRS_DEFAULT;
+      : (_routeStage && list.length >= 2 ? 48 + bm25Count : CE_MAX_PAIRS_DEFAULT);
   // THE CASCADE (ADR-058). Stage 1 reads every pooled pair at a truncated length and stage 2 gives
   // the survivors the full read. Both stages are the SAME model on the SAME logit scale, which is
   // what makes stage 1 a real approximation of stage 2 rather than a second opinion — the property
