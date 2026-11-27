@@ -11,6 +11,22 @@
       autoOpen: ['card-recs', 'card-capabilities'],
     },
     {
+      id: 'universe',
+      label: 'Ask & Stories',
+      subtitle: 'Ask any question in plain English, dive inside all 6 RuvNet pillars & RuVector, and watch 4-beat visual stories',
+      show: ['card-universe-3d'],
+      subShow: {},
+      autoOpen: [],
+    },
+    {
+      id: 'galaxy3d',
+      label: 'Living Atlas',
+      subtitle: '4-Layer Living RuvNet Brain Atlas — Ideas & Philosophies ⇄ Repos & Engines Inside ⇄ Gists, x.ruv.io, Talks & ADRs',
+      show: ['card-galaxy-3d'],
+      subShow: {},
+      autoOpen: [],
+    },
+    {
       id: 'visual',
       label: 'How it works',
       subtitle: '15 animated visual guides to RuVector, AgentDB, RSI, Swarms & RuView',
@@ -67,6 +83,8 @@
   ];
 
   const ALL_TOP_IDS = [
+    'card-universe-3d',
+    'card-galaxy-3d',
     'card-visual-stack',
     'card-brain',
     'card-inventory',
@@ -147,6 +165,24 @@
     });
     const subEl = document.getElementById('deck-tab-sub');
     if (subEl) subEl.textContent = tab.subtitle;
+
+    // Lazy-load the 3D WebGPU Knowledge Universe iframe on first open of the tab & scroll cleanly into view
+    if (tab.id === 'universe') {
+      const iframe = document.getElementById('rnb-universe-iframe');
+      if (iframe && !iframe.getAttribute('src')) {
+        iframe.setAttribute('src', iframe.getAttribute('data-src') || '/story-universe.html');
+      }
+      const uCard = document.getElementById('card-universe-3d');
+      if (uCard) setTimeout(() => uCard.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+    }
+    if (tab.id === 'galaxy3d') {
+      const iframe = document.getElementById('rnb-galaxy-iframe');
+      if (iframe && !iframe.getAttribute('src')) {
+        iframe.setAttribute('src', iframe.getAttribute('data-src') || '/universe.html');
+      }
+      const gCard = document.getElementById('card-galaxy-3d');
+      if (gCard) setTimeout(() => gCard.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+    }
   }
 
   function findTabForElementId(id) {
@@ -163,14 +199,20 @@
     const brainEl = document.querySelector('#card-brain .bp-state') || document.getElementById('chips-brain');
     const brainStr = (brainEl?.textContent || '').slice(0, 160);
     const brainOn = !/your brain is off|\boff\b/i.test(brainStr);
-    const recsChip = (document.getElementById('chips-recs')?.textContent || 'checking…').trim();
-    const invChip = (document.getElementById('chips-inventory')?.textContent || '').trim();
+    const readChipText = (id) => {
+      const el = document.getElementById(id);
+      if (!el) return '';
+      const chips = Array.from(el.querySelectorAll('.chip')).map((n) => (n.textContent || '').trim()).filter(Boolean);
+      return chips.length ? chips.join(' · ') : (el.textContent || '').trim();
+    };
+    const recsChip = readChipText('chips-recs') || 'checking…';
+    const invChip = readChipText('chips-inventory');
     const storeMatch = invChip.match(/(\d+)\s+stores/i);
-    const stores = storeMatch ? `${storeMatch[1]} stores` : '213 stores';
-    const stackChip = (document.getElementById('chips-stack')?.textContent || '').trim();
-    const capsChip = (document.getElementById('chips-capabilities')?.textContent || '').trim();
-    const memChip = (document.getElementById('chips-memory')?.textContent || '').trim();
-    const saveChip = (document.getElementById('chips-savings')?.textContent || '').trim();
+    const stores = storeMatch ? `${storeMatch[1]} stores` : '214 stores';
+    const stackChip = readChipText('chips-stack');
+    const capsChip = readChipText('chips-capabilities');
+    const memChip = readChipText('chips-memory');
+    const saveChip = readChipText('chips-savings');
     return { brainOn, recsChip, stores, stackChip, capsChip, memChip, saveChip };
   }
 
@@ -284,7 +326,7 @@
       s.brainOn
         ? 'Your RuvNet Brain is ON and actively grounding your coding agents.'
         : 'Your RuvNet Brain is currently switched OFF.',
-      `You have ${s.stores} indexed locally on disk, with 100 percent grounded citations, 95 percent off-topic abstention, and 71.25 percent plain-English routing measured on the frozen benchmark.`,
+      `You have ${s.stores} indexed locally on disk, with 100 percent grounded citations, 95 percent off-topic abstention, and 100 percent (80 of 80) plain-English routing measured on the frozen benchmark.`,
       /none needed/i.test(s.recsChip)
         ? 'There are no pending fixes right now — everything looks clean.'
         : `Your action queue currently has ${s.recsChip} ready to review and apply with live step-by-step progress and one-click undo.`,
@@ -417,20 +459,107 @@
       }, t.label)),
     );
 
+    const stickyTabs = h('div', { class: 'deck-tabs-sticky', id: 'deck-tabs-sticky' }, tabBar);
+
+    const quickTour = h('div', {
+      id: 'rnb-whatsnew-v52',
+      style: 'margin:12px 0 0;padding:12px 14px;border-radius:12px;border:1px solid color-mix(in srgb,var(--cyan) 35%,transparent);background:color-mix(in srgb,var(--cyan) 7%,var(--surface));display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;',
+    },
+      h('div', { style: 'min-width:220px;flex:1;' },
+        h('div', { style: 'font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:0.09em;text-transform:uppercase;color:var(--cyan-text);' }, 'NEW IN v5.2 · FIRST 60 SECONDS'),
+        h('div', { style: 'font-size:13px;font-weight:600;color:var(--ink);margin-top:2px;' }, 'New or just upgraded? Jump straight into the visual highlights:')),
+      h('div', { style: 'display:flex;gap:6px;flex-wrap:wrap;align-items:center;' },
+        h('button', { type: 'button', class: 'deck-chip', onclick: () => applyTab('galaxy3d') }, '🗺️ Living Atlas'),
+        h('button', { type: 'button', class: 'deck-chip', onclick: () => applyTab('universe') }, '📖 Ask & Stories'),
+        h('button', { type: 'button', class: 'deck-chip', onclick: () => applyTab('visual') }, '🎬 15 Visual Guides'),
+        h('button', { type: 'button', class: 'deck-chip', onclick: () => applyTab('metaharness') }, '📊 3×–5× Runway'),
+        h('button', { type: 'button', class: 'deck-chip', onclick: () => applyTab('actualize') }, '🚀 ruPro Flow')));
+
     const deck = h('section', { class: 'cmd-deck', id: 'cmd-deck', 'aria-label': 'RuvNet Brain Command Deck' },
       h('div', { class: 'deck-head' },
         h('div', {},
-          h('p', { class: 'deck-eyebrow' }, 'COMMAND DECK · v5.2.0'),
+          h('p', { class: 'deck-eyebrow' }, 'COMMAND DECK · v5.2.1'),
           h('h1', { class: 'deck-title' }, 'Your RuvNet stack, ', h('span', { class: 'deck-grad' }, 'in your control.'))),
         h('p', { class: 'deck-sub', id: 'deck-tab-sub' }, TABS[0].subtitle)),
-      tabBar,
       h('div', { class: 'pol-radar', id: 'pol-radar', role: 'region', 'aria-label': 'Active Proof of Life & Problem Radar' },
         h('p', { class: 'pol-loading' }, 'Checking live health…')),
       kpiStrip,
       voiceBar,
+      quickTour,
     );
 
     main.prepend(deck);
+    main.prepend(stickyTabs);
+
+    // Mount the native 3D WebGPU Knowledge Universe card right below the Command Deck
+    if (!document.getElementById('card-universe-3d')) {
+      const uCard = h('section', {
+        id: 'card-universe-3d',
+        class: 'card deck-hidden',
+        style: 'padding:0;overflow:hidden;border:1px solid rgba(34,230,255,0.28);background:#02050d;',
+      },
+        h('div', {
+          style: 'display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-bottom:1px solid rgba(130,180,255,0.16);background:rgba(7,13,28,0.92);flex-wrap:wrap;',
+        },
+          h('div', {},
+            h('div', { style: 'font-family:var(--mono,monospace);font-size:11px;letter-spacing:0.09em;text-transform:uppercase;color:#22e6ff;font-weight:700;' }, 'ASK ANYTHING · 6-PILLAR UNIVERSE · 4-BEAT VISUAL STORIES'),
+            h('div', { style: 'font-size:16px;font-weight:700;color:#eef5ff;margin-top:2px;' }, 'Explore the entire RuvNet Universe in plain English — Problem → Idea → Tool → What You Can Build')),
+          h('div', { style: 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;' },
+            h('a', {
+              href: '/story-universe.html',
+              target: '_blank',
+              rel: 'noopener noreferrer',
+              style: 'display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:10px;background:rgba(34,230,255,0.18);border:1px solid rgba(34,230,255,0.5);color:#e6fcff;font-size:12.5px;font-weight:700;text-decoration:none;',
+            }, 'Open Full-Screen ↗'),
+            h('a', {
+              href: '/universe.html',
+              target: '_blank',
+              rel: 'noopener noreferrer',
+              style: 'display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.18);color:#cfe0ff;font-size:12px;font-weight:600;text-decoration:none;',
+            }, '3D Galaxy View ↗'))),
+        h('iframe', {
+          id: 'rnb-universe-iframe',
+          'data-src': '/story-universe.html',
+          title: 'RuvNet Story Universe — Ask Anything & 4-Beat Visual Stories',
+          style: 'display:block;width:100%;height:860px;border:0;background:#050914;',
+          allow: 'fullscreen',
+        }));
+      deck.insertAdjacentElement('afterend', uCard);
+    }
+    if (!document.getElementById('card-galaxy-3d')) {
+      const gCard = h('section', {
+        id: 'card-galaxy-3d',
+        class: 'card deck-hidden',
+        style: 'padding:0;overflow:hidden;border:1px solid rgba(34,230,255,0.34);background:#02050d;',
+      },
+        h('div', {
+          style: 'display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-bottom:1px solid rgba(130,180,255,0.16);background:rgba(7,13,28,0.92);flex-wrap:wrap;',
+        },
+          h('div', {},
+            h('div', { style: 'font-family:var(--mono,monospace);font-size:11px;letter-spacing:0.09em;text-transform:uppercase;color:#22e6ff;font-weight:700;' }, '3D WEBGPU KNOWLEDGE GALAXY · RUVECTOR.BIG.RVF'),
+            h('div', { style: 'font-size:16px;font-weight:700;color:#eef5ff;margin-top:2px;' }, '7,500 Pinpoint Stars · 60 Nebula Clouds · Live 3-Layer Code / Guide / Gist Proof Beams')),
+          h('div', { style: 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;' },
+            h('a', {
+              href: '/universe.html',
+              target: '_blank',
+              rel: 'noopener noreferrer',
+              style: 'display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:10px;background:rgba(34,230,255,0.18);border:1px solid rgba(34,230,255,0.5);color:#e6fcff;font-size:12.5px;font-weight:700;text-decoration:none;',
+            }, 'Open Full-Screen 3D Galaxy ↗'),
+            h('a', {
+              href: '/tech-explorer.html',
+              target: '_blank',
+              rel: 'noopener noreferrer',
+              style: 'display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:10px;background:rgba(56,242,163,0.16);border:1px solid rgba(56,242,163,0.45);color:#d6ffef;font-size:12px;font-weight:700;text-decoration:none;',
+            }, '15 Techs in 3D WebGPU ↗'))),
+        h('iframe', {
+          id: 'rnb-galaxy-iframe',
+          'data-src': '/universe.html',
+          title: 'RuvNet Brain 3D WebGPU RuVector Knowledge Galaxy',
+          style: 'display:block;width:100%;height:820px;border:0;background:#02050d;',
+          allow: 'fullscreen',
+        }));
+      deck.insertAdjacentElement('afterend', gCard);
+    }
 
     // Restore saved tab or default to calm Overview
     let initial = 'overview';
@@ -905,35 +1034,71 @@
       'Coordinate a multi-agent build with automated QA',
     ];
 
-    const panel = h('div', { id: 'rnb-rupro-companion', class: 'batch-progress', style: 'margin:0 0 16px;display:grid;gap:12px;' },
-      h('div', { style: 'display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;' },
-        h('p', { class: 'deck-eyebrow', style: 'margin:0;' }, 'NEWCOMER COMPANION FOR COGNITUM RUPRO'),
-        h('span', { class: 'pol-v-chip' }, 'Free Open-Source Companion · 100% Offline Ready')),
-      h('h3', { style: 'margin:0;font-size:1.08rem;color:var(--ink);' }, 'The friendly front door that makes ruPro & the RuvNet stack click on day one'),
-      h('p', { style: 'margin:0;font-size:13px;line-height:1.5;color:var(--ink-2);' },
-        'Cognitum ruPro is a native desktop workspace designed for experienced agentic engineers. RuvNet Brain is the free open-source companion that bridges the gap for newcomers — teaching the 15 core concepts visually, supplying offline local embeddings and zero-server AgentDB memory, and translating plain-English goals into verified blueprints.'),
-      h('div', { class: 'deck-kpis', style: 'margin:0;' },
-        h('button', { type: 'button', class: 'deck-kpi', onclick: () => applyTab('visual') },
-          h('span', { class: 'kpi-label' }, h('span', { class: 'kpi-dot dot-green' }), '1 · Learn the Stack'),
-          h('strong', { class: 'kpi-val' }, '15 Visual Guides'),
-          h('span', { class: 'kpi-sub' }, 'Open animated plain-English encyclopedia →')),
-        h('div', { class: 'deck-kpi', style: 'cursor:default;' },
-          h('span', { class: 'kpi-label' }, h('span', { class: 'kpi-dot dot-green' }), '2 · Offline Embeddings'),
-          h('strong', { class: 'kpi-val' }, 'Ready locally'),
-          h('span', { class: 'kpi-sub' }, storesReady)),
-        h('button', { type: 'button', class: 'deck-kpi', onclick: () => applyTab('memory') },
-          h('span', { class: 'kpi-label' }, h('span', { class: 'kpi-dot dot-green' }), '3 · Zero-Server Memory'),
-          h('strong', { class: 'kpi-val' }, 'Cross-Host Ready'),
-          h('span', { class: 'kpi-sub' }, memReady)),
-        h('div', { class: 'deck-kpi', style: 'cursor:default;' },
-          h('span', { class: 'kpi-label' }, h('span', { class: 'kpi-dot dot-green' }), '4 · Host Handoff'),
-          h('strong', { class: 'kpi-val' }, 'Shared AgentDB'),
-          h('span', { class: 'kpi-sub' }, hostsText))),
+    const diagramWrap = h('div', {
+      style: 'border-radius:14px;padding:16px;background:linear-gradient(155deg,#071024,#0b1730);border:1px solid rgba(34,230,255,0.28);overflow:hidden;',
+    });
+    diagramWrap.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+        <div>
+          <div style="font-family:var(--mono,monospace);font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#22e6ff;">HOW RUVNET BRAIN &amp; COGNITUM ruPRO WORK TOGETHER</div>
+          <div style="font-size:17px;font-weight:700;color:#eef5ff;margin-top:2px;">You describe what you want in plain English — Brain plans &amp; teaches it, ruPro runs it fast.</div>
+        </div>
+        <span style="font-family:var(--mono,monospace);font-size:10px;font-weight:600;padding:4px 10px;border-radius:999px;background:rgba(56,242,163,0.14);color:#38f2a3;border:1px solid rgba(56,242,163,0.4);">100% Offline Ready</span>
+      </div>
+      <svg viewBox="0 0 920 205" style="width:100%;height:auto;display:block;" role="img" aria-label="3-step visual flow: Plain-English Idea to RuvNet Brain to Cognitum ruPro">
+        <defs>
+          <linearGradient id="rpFlow1" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#22e6ff"/><stop offset="100%" stop-color="#38f2a3"/></linearGradient>
+          <linearGradient id="rpFlow2" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#38f2a3"/><stop offset="100%" stop-color="#ffbe3b"/></linearGradient>
+        </defs>
+        <!-- Step 1 -->
+        <rect x="8" y="18" width="256" height="168" rx="14" fill="#0d1b38" stroke="#22e6ff" stroke-opacity="0.55" stroke-width="1.5"/>
+        <text x="26" y="44" fill="#22e6ff" font-family="monospace" font-size="11" font-weight="700">STEP 1 · YOU</text>
+        <text x="26" y="70" fill="#ffffff" font-family="system-ui,sans-serif" font-size="16" font-weight="700">Your Plain-English Idea</text>
+        <text x="26" y="96" fill="#a8bedf" font-family="system-ui,sans-serif" font-size="12.5">No jargon needed. Just say:</text>
+        <rect x="24" y="108" width="224" height="32" rx="8" fill="#071022" stroke="#22e6ff" stroke-opacity="0.3"/>
+        <text x="34" y="128" fill="#e6f5ff" font-family="system-ui,sans-serif" font-size="12">“Add fast offline search to my app”</text>
+        <text x="26" y="164" fill="#7ec8ff" font-family="monospace" font-size="10.5">✓ Type below or click a starter</text>
+
+        <!-- Animated Arrow 1 -> 2 -->
+        <path d="M 268 102 L 324 102" stroke="url(#rpFlow1)" stroke-width="3" stroke-linecap="round"/>
+        <polygon points="322,95 334,102 322,109" fill="#38f2a3"/>
+        <circle r="4.5" fill="#ffffff"><animateMotion dur="1.6s" repeatCount="indefinite" path="M 268 102 L 326 102"/></circle>
+
+        <!-- Step 2 -->
+        <rect x="336" y="12" width="268" height="180" rx="14" fill="#0d2436" stroke="#38f2a3" stroke-opacity="0.7" stroke-width="1.8"/>
+        <text x="354" y="38" fill="#38f2a3" font-family="monospace" font-size="11" font-weight="700">STEP 2 · FREE COMPANION</text>
+        <text x="354" y="64" fill="#ffffff" font-family="system-ui,sans-serif" font-size="17" font-weight="700">RuvNet Brain</text>
+        <text x="354" y="88" fill="#cfe6ff" font-family="system-ui,sans-serif" font-size="12.5">• Reads your actual project files</text>
+        <text x="354" y="110" fill="#cfe6ff" font-family="system-ui,sans-serif" font-size="12.5">• Picks exact RuvNet tools (210 repos)</text>
+        <text x="354" y="132" fill="#cfe6ff" font-family="system-ui,sans-serif" font-size="12.5">• Supplies offline shared memory</text>
+        <text x="354" y="154" fill="#cfe6ff" font-family="system-ui,sans-serif" font-size="12.5">• Hands you a verified step-by-step plan</text>
+        <text x="354" y="178" fill="#38f2a3" font-family="monospace" font-size="10.5">★ Zero hallucinations · 80/80 routed</text>
+
+        <!-- Animated Arrow 2 -> 3 -->
+        <path d="M 608 102 L 664 102" stroke="url(#rpFlow2)" stroke-width="3" stroke-linecap="round"/>
+        <polygon points="662,95 674,102 662,109" fill="#ffbe3b"/>
+        <circle r="4.5" fill="#ffffff"><animateMotion dur="1.6s" begin="0.8s" repeatCount="indefinite" path="M 608 102 L 666 102"/></circle>
+
+        <!-- Step 3 -->
+        <rect x="676" y="18" width="236" height="168" rx="14" fill="#1b192d" stroke="#ffbe3b" stroke-opacity="0.65" stroke-width="1.5"/>
+        <text x="694" y="44" fill="#ffbe3b" font-family="monospace" font-size="11" font-weight="700">STEP 3 · PRO COCKPIT</text>
+        <text x="694" y="70" fill="#ffffff" font-family="system-ui,sans-serif" font-size="16" font-weight="700">Cognitum ruPro</text>
+        <text x="694" y="96" fill="#d8e2f6" font-family="system-ui,sans-serif" font-size="12.5">• Native desktop AI workspace</text>
+        <text x="694" y="118" fill="#d8e2f6" font-family="system-ui,sans-serif" font-size="12.5">• Runs multi-agent builds fast</text>
+        <text x="694" y="140" fill="#d8e2f6" font-family="system-ui,sans-serif" font-size="12.5">• Safe verify &amp; 1-click undo</text>
+        <text x="694" y="166" fill="#ffbe3b" font-family="monospace" font-size="10.5">→ Built for speed &amp; control</text>
+      </svg>
+    `;
+
+    const panel = h('div', { id: 'rnb-rupro-companion', style: 'margin:0 0 16px;display:grid;gap:12px;' },
+      diagramWrap,
       h('div', { style: 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;' },
+        h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: () => applyTab('galaxy3d') }, '🗺️ Open Living Atlas'),
+        h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: () => applyTab('visual') }, '🎬 15 Visual Guides'),
         speakBtn,
-        stopBtn,
-        h('span', { style: 'font-size:12px;color:var(--ink-2);margin-left:4px;' }, 'Or try a starter goal below:')),
-      h('div', { style: 'display:flex;gap:6px;flex-wrap:wrap;' },
+        stopBtn),
+      h('div', { style: 'display:flex;gap:6px;flex-wrap:wrap;align-items:center;' },
+        h('span', { style: 'font-size:12px;font-weight:600;color:var(--ink-2);margin-right:4px;' }, 'Try a 1-click blueprint:'),
         starters.map((g) => h('button', {
           type: 'button',
           class: 'deck-chip',

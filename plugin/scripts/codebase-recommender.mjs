@@ -227,11 +227,28 @@ export function scanCodebase(cwd = process.cwd(), { budgetMs = DEFAULT_BUDGET_MS
     }
   }
 
+  const antipatterns = [];
+  const isTestFile = (rel) => /(^|\/)(tests?|__tests__|fixtures?)\//i.test(rel) || /\.(test|spec)\.[jt]sx?$|test_.*\.py$|_test\.rs$/i.test(rel);
+  const recordAntipattern = (kind, rel, text, rx, replacement) => {
+    if (antipatterns.length >= 24 || isTestFile(rel)) return;
+    // Strip single-line comments while preserving line numbers
+    const stripped = text.replace(/^[ \t]*(\/\/|#).*$/gm, '');
+    const m = rx.exec(stripped);
+    if (!m) return;
+    const line = stripped.slice(0, m.index).split('\n').length;
+    antipatterns.push({ kind, file: rel, line, location: `${rel}:${line}`, replacement });
+  };
+
   // Scan source files for code-level patterns
   for (const f of files) {
     if (Date.now() > deadlineMs) break;
     const text = safeReadText(f.fullPath);
     if (!text) continue;
+
+    // Anticipatory file:line anti-pattern pinpoints for proactive upgrades (JS/TS/Python/Rust)
+    recordAntipattern('hand-rolled-cosine', f.rel, text, /\b(cosineSimilarity|cosine_similarity|dotProduct|dot_product)\s*\(/i, '@ruvector/rvf HNSW (.query())');
+    recordAntipattern('hardcoded-model-id', f.rel, text, /['"`](?:[a-z0-9_-]+\/)?(gpt-4o|gpt-4-turbo|gpt-5|claude-3[.-]5-sonnet|claude-3-7-sonnet|claude-3-opus|claude-sonnet-4|claude-opus-4|gemini-1\.5-pro|gemini-2\.5-pro)[^'"`]*['"`]/i, '@metaharness/router (env-driven 2-stage routing)');
+    recordAntipattern('cloud-vector-lockin', f.rel, text, /\b(?:new\s+)?(Pinecone|PineconeClient|QdrantClient|ChromaClient|WeaviateClient|MilvusClient)\s*\(/, '@ruvector/rvf (local zero-server .rvf store)');
 
     // 1. Check if RuvNet tools are imported directly in code
     if (/@ruvector\/rvf|RvfDatabase|RvfStore|\.rvf\b/.test(text)) alreadyIntegrated.ruvector = true;
@@ -320,6 +337,7 @@ export function scanCodebase(cwd = process.cwd(), { budgetMs = DEFAULT_BUDGET_MS
     dependencyCount: deps.size,
     dependencies: [...deps],
     alreadyIntegrated,
+    antipatterns,
     signals: Object.fromEntries(Object.entries(signals).map(([k, v]) => [k, [...v]])),
     elapsedMs: Date.now() - startedAt,
   };
@@ -682,6 +700,7 @@ export function recommendForProject({ cwd = process.cwd(), prompt = '', limit = 
     sampledFiles: scan.sampledFiles,
     manifestSources: scan.manifestSources,
     alreadyIntegrated: Object.entries(scan.alreadyIntegrated).filter(([, v]) => v).map(([k]) => k),
+    antipatterns: scan.antipatterns || [],
     signals: Object.fromEntries(Object.entries(scan.signals).filter(([, v]) => v.length > 0)),
     recommendations: recommendations.slice(0, limit),
     packageMatches,

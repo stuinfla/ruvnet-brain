@@ -1103,11 +1103,20 @@ details.sub .sub-body > *:first-child { margin-top: 4px; }
   font-size: 13px; line-height: 1.5; color: var(--ink);
 }
 
+.deck-tabs-sticky {
+  position: sticky; top: 60px; z-index: 45;
+  padding: 8px 0 6px;
+  margin-bottom: 12px;
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid color-mix(in srgb, var(--hair-strong) 85%, transparent);
+}
 .deck-tabs {
   display: flex; flex-wrap: wrap; gap: 8px;
-  padding: 6px; margin-bottom: 14px; border-radius: 12px;
+  padding: 6px; margin-bottom: 0; border-radius: 12px;
   border: 1px solid var(--hair-strong);
-  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  box-shadow: 0 8px 24px -10px rgba(0, 0, 0, 0.65);
 }
 .deck-tab {
   cursor: pointer; font-family: var(--sans); font-size: 13px; font-weight: 600;

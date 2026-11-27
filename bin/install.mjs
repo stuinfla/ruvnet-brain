@@ -4908,6 +4908,11 @@ async function runUpdate() {
     settle: settleRefresh, converge: async () => await convergeHostsAfterUpdate(kbDir) });
   detachGuards();
   await printConfirmation({ footprint: finished.footprint?.after || null });
+  if (process.env.RUVNET_NIGHTLY !== '1') {
+    console.log(`\n  ${c.bold('Just upgraded? Open your visual cockpit to see everything new in v5.2:')}`);
+    console.log(`    ${c.cyan('→')} Type ${c.bold('/rvbc')} in Claude Code (or ${c.bold('$rvbc')} in Codex) for the ${c.bold('4-Layer Living Atlas')},`);
+    console.log(`      ${c.bold('Ask & Stories')}, ${c.bold('15 Visual Guides')}, ${c.bold('MetaHarness 3×–5× Runway')} & ${c.bold('ruPro Companion')}.\n`);
+  }
 }
 
 /**
@@ -6900,8 +6905,9 @@ function success({ cacheDir, isCustom, plugin, codexHost, codexPlugin, env, nigh
   // ── what to do now ──
   console.log(`\n  ${c.bold('What to do now:')}`);
   console.log(`    ${c.cyan('1.')} Open ${hostLabel} in ${c.bold('any')} project (your own, or a fresh repo — nothing to copy in).`);
-  console.log(`    ${c.cyan('2.')} Just ask, normally. Try:  ${c.bold('"Set up vector search here the way rUv would."')}`);
-  console.log(`    ${c.cyan('3.')} Watch what changes (below).`);
+  console.log(`    ${c.cyan('2.')} Open your visual cockpit first: type ${c.bold('/rvbc')} in Claude Code (or ${c.bold('$rvbc')} in Codex)`);
+  console.log(`       to explore the ${c.bold('4-Layer Living Atlas')}, ${c.bold('15 Visual Guides')}, ${c.bold('MetaHarness 3×–5× Runway')} & ${c.bold('ruPro Companion')}.`);
+  console.log(`    ${c.cyan('3.')} Or just ask normally:  ${c.bold('"Set up vector search here the way rUv would."')}`);
 
   // ── how you'll KNOW it's working ──
   console.log(`\n  ${c.bold('How you\'ll know it\'s working:')}`);

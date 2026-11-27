@@ -3780,6 +3780,84 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
         });
       }
       if (req.method === 'GET' && url === '/scope') { req.url = '/scope.html'; return serveStatic(req, res); }
+      if (req.method === 'GET' && url === '/universe') { req.url = '/universe.html'; return serveStatic(req, res); }
+      if (req.method === 'GET' && url === '/tech') { req.url = '/tech-explorer.html'; return serveStatic(req, res); }
+      if (req.method === 'GET' && url === '/story') { req.url = '/story-universe.html'; return serveStatic(req, res); }
+      if (req.method === 'GET' && url === '/api/ask-story') {
+        const q = (new URL(req.url, 'http://127.0.0.1').searchParams.get('q') || '').trim();
+        const kbDir = path.join(os.homedir(), '.cache', 'ruvnet-brain', 'kb');
+        let available = [];
+        try { available = fs.readdirSync(kbDir).filter((f) => f.endsWith('.big.rvf')).map((f) => f.replace(/\.big\.rvf$/, '')); } catch {}
+        let routedRepos = [];
+        let reason = '';
+        try {
+          const { routeReposFromCards } = await import('../kb/card-lane.mjs');
+          const r = routeReposFromCards(q, kbDir, available);
+          routedRepos = Array.isArray(r?.repos) ? r.repos : [];
+          reason = r?.reason || '';
+        } catch {}
+        // Plain-English newcomer intent assist so casual phrasing always maps cleanly to a flagship story
+        const ql = q.toLowerCase();
+        const casualMap = [
+          [/forget|amnesia|remember|across sessions|notebook|previous chat|repeat themselves/, 'agentdb'],
+          [/bill|cost|cheap|expensive|quota|traffic cop|model rout|opus|haiku|budget/, 'metaharness'],
+          [/offline|no cloud|no server|pinecone|million|embedding|vector search|single file|\.rvf/, 'ruvector'],
+          [/save game|risky|throw it away|roll ?back|branch|fork|undo memory|162 byte/, 'agenticow'],
+          [/speed[- ]?dial|repeat.*lookup|cache|instant.*same|thousands of times/, 'rulake'],
+          [/team|captain|multiple.*agent|swarm|parallel|overwrite|coordinate/, 'ruflo'],
+          [/test|bug|untested|flaky|ci takes|risky code|coverage/, 'agentic-qe'],
+          [/step[- ]?by[- ]?step|recipe|spec.*code|plan.*build|sparc/, 'sparc'],
+          [/bulletin|nostr|x\.ruv|community.*tip|share.*agent/, 'x-ruv-io'],
+          [/homework|self[- ]?improv|exam|flywheel|rsi|shadow/, 'rsi'],
+          [/skateboard|forgetting old|adapt.*fast|sona|ewc|lora/, 'sona-ewc'],
+          [/wifi|camera|wall|fall|breath|elderly|heart|ruview/, 'ruview'],
+          [/hacker|inject|jailbreak|leak.*key|password|bodyguard|security|aimds|aidefence/, 'aimds'],
+          [/quantum|secret.*messag|anonymous|onion|qudag/, 'qudag'],
+          [/no python|tiny.*device|sensor|256 ?mb|browser.*ml|wasm.*neural|fann/, 'ruv-fann'],
+        ];
+        let storyId = null;
+        for (const [rx, id] of casualMap) {
+          if (rx.test(ql)) { storyId = id; break; }
+        }
+        const repoToStory = {
+          'ruvector': 'ruvector', 'agenticow': 'agenticow', 'agentdb': 'agentdb', 'rulake': 'rulake',
+          'ruflo': 'ruflo-swarms', 'agentic-flow': 'ruflo-swarms', 'agentic-qe': 'agentic-qe',
+          'sparc': 'sparc', 'ruv-dev': 'sparc', 'x-ruv-io': 'x-ruv-io', 'ruvnet-brain': 'rsi',
+          'dream-machine': 'rsi', 'metaharness': 'metaharness', 'agent-harness-generator': 'metaharness',
+          'safla': 'sona-ewc', 'ruview': 'ruview', 'rvcsi': 'ruview', 'rufield': 'ruview',
+          'aidefence': 'aimds', 'qudag': 'qudag', 'ruv-fann': 'ruv-fann',
+        };
+        if (!storyId && routedRepos.length) {
+          for (const repo of routedRepos) {
+            if (repoToStory[repo]) { storyId = repoToStory[repo]; break; }
+          }
+        }
+        if (!storyId) storyId = 'ruvector';
+        const primaryRepo = routedRepos[0] || (storyId === 'ruflo-swarms' ? 'ruflo' : storyId === 'sona-ewc' ? 'ruvector' : storyId === 'aimds' ? 'aidefence' : storyId === 'rsi' ? 'ruvnet-brain' : storyId);
+        // Gather live on-disk citations from primaryRepo.meta.json
+        const citations = [];
+        try {
+          const metaPath = path.join(kbDir, `${primaryRepo}.meta.json`);
+          if (fs.existsSync(metaPath)) {
+            const m = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+            const entries = Object.values(m.entries || {});
+            const pick = (pred) => entries.find((e) => e?.path && e?.preview && pred(e));
+            const src = pick((e) => e.kind === 'source');
+            const doc = pick((e) => ['doc', 'tutorial', 'adr'].includes(e.kind));
+            if (src) citations.push({ kind: 'code', path: `${primaryRepo}/${src.path}`, title: src.title || path.basename(src.path), preview: String(src.preview).slice(0, 200) });
+            if (doc) citations.push({ kind: 'guide', path: `${primaryRepo}/${doc.path}`, title: doc.title || path.basename(doc.path), preview: String(doc.preview).slice(0, 200) });
+          }
+        } catch {}
+        return sendJSON(res, 200, {
+          query: q,
+          storyId,
+          primaryRepo,
+          routedRepos,
+          reason: reason || `Matched plain-English intent to ${storyId}`,
+          totalStoresOnDisk: available.length,
+          citations,
+        });
+      }
       if (req.method === 'POST') {
         const origin = req.headers.origin;
         if (origin && origin !== `http://${req.headers.host}`) return sendJSON(res, 403, { error: 'forbidden origin' });
@@ -4074,6 +4152,7 @@ if (process.argv[1] && path.resolve(process.argv[1]).endsWith('onboarding-consol
     process.exit(0);
   }
   else if (args.includes('--serve') || args.length === 0) {
+    console.log('\n  Starting RuvNet Brain Console — opening in your browser in a moment...');
     await launchConsole({
       port: Number(process.env.CONSOLE_PORT) || 7411,
       open: args.includes('--open'),

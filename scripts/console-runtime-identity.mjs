@@ -52,6 +52,9 @@ export const CONSOLE_RUNTIME_SURFACE = Object.freeze([
   // ERR_MODULE_NOT_FOUND on import, before a single line runs.
   'kb/corpus-release-identity.mjs',
   'kb/rsi-retrieval-loop.mjs',
+  'kb/card-lane.mjs',
+  'kb/implementation-evidence.mjs',
+  'kb/exact-member-proof.mjs',
   'bin/install.mjs',
   // The Console's Settings → Nightly switch runs the copied installer's --enable-nightly, which installs
   // THIS file (beside it, REPO_ROOT/bin) as the scheduler's immutable runner. Without it every installed

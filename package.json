@@ -121,6 +121,9 @@
     "kb/update-storage-transaction.mjs",
     "kb/model-requirements.mjs",
     "kb/rsi-retrieval-loop.mjs",
+    "kb/card-lane.mjs",
+    "kb/implementation-evidence.mjs",
+    "kb/exact-member-proof.mjs",
     "keys/ruvnet-brain-signing.pub.pem"
   ],
   "engines": {

@@ -221,13 +221,16 @@ if (BRAIN_OFF && entry.offBehavior === 'silence') process.exit(0);
 const NUDGES_FULL = String(process.env.RUVNET_STOP_NUDGES || '').toLowerCase() === 'full';
 const QUIET_BY_DEFAULT = new Set(['capacity-aware-parallel-work', 'grounding-turn-gate']);
 if (QUIET_BY_DEFAULT.has(hookId) && !NUDGES_FULL) process.exit(0);
-// Honor user's explicit settings.json advocacy >= 4 (Proactive / Maximum help) when RUVNET_STOP_NUDGES is unset in env.
+// Honor user's settings.json advocacy >= 2 (default is 3 = Balanced) when RUVNET_STOP_NUDGES is unset in env.
+// LEVEL_POLICY inside unprompted-runtime.mjs enforces exact L1/L2/L3/L4-5 gating; never silently drop L2/L3 here.
 let PROACTIVE_DIAL = false;
 if (hookId === 'unprompted-speech' && process.env.RUVNET_STOP_NUDGES === undefined) {
   try {
     const sf = process.env.RUVNET_SETTINGS_FILE || path.join(process.env.HOME || os.homedir(), '.config', 'ruvnet-brain', 'settings.json');
     const st = JSON.parse(fs.readFileSync(sf, 'utf8'));
-    if (Number(st?.settings?.advocacy) >= 4) PROACTIVE_DIAL = true;
+    const raw = st?.settings?.advocacy;
+    const lvl = raw === 'all' ? 5 : raw === 'important-only' ? 3 : raw === 'off' ? 1 : Number(raw ?? 3);
+    if (lvl >= 2) PROACTIVE_DIAL = true;
   } catch { /* default quiet */ }
 }
 const QUIET_SPEECH_CHANNELS = hookId === 'unprompted-speech' && !NUDGES_FULL && !PROACTIVE_DIAL ? 'lesson,alarm' : null;
