@@ -83,6 +83,7 @@
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 
 import fs from 'node:fs';
+import os from 'node:os';
 import { contextBlock, contextFrame, emitOwnedContext, selectContextFrame, recordContextBudget } from './hook-context-budget.mjs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -140,7 +141,9 @@ if (process.env.RUVNET_STOP_NUDGES === undefined) {
   try {
     const sf = process.env.RUVNET_SETTINGS_FILE || path.join(process.env.HOME || os.homedir(), '.config', 'ruvnet-brain', 'settings.json');
     const st = JSON.parse(fs.readFileSync(sf, 'utf8'));
-    if (Number(st?.settings?.advocacy) >= 4) PROACTIVE_DIAL = true;
+    const raw = st?.settings?.advocacy;
+    const lvl = raw === 'all' ? 5 : raw === 'important-only' ? 3 : raw === 'off' ? 1 : Number(raw ?? 3);
+    if (lvl >= 2) PROACTIVE_DIAL = true;
   } catch { /* default quiet */ }
 }
 const CHANNEL_LIST = process.env.RUVNET_UNPROMPTED_CHANNELS || (NUDGES_FULL || PROACTIVE_DIAL ? '' : QUIET_DEFAULT_CHANNELS);

@@ -381,10 +381,14 @@ function isProactiveCodebaseQuery(prompt) {
 function readSettingsAdvocacyLevel(env = process.env) {
   try {
     const home = env.RUVNET_HOME_OVERRIDE || HOME;
-    const f = env.RUVNET_USER_SETTINGS_FILE || path.join(home, '.config', 'ruvnet-brain', 'settings.json');
+    const f = env.RUVNET_SETTINGS_FILE || env.RUVNET_USER_SETTINGS_FILE || path.join(home, '.config', 'ruvnet-brain', 'settings.json');
     const j = JSON.parse(fs.readFileSync(f, 'utf8'));
-    return Number(j?.settings?.advocacy ?? j?.advocacy ?? 0);
-  } catch { return 0; }
+    const raw = j?.settings?.advocacy ?? j?.advocacy;
+    if (raw === 'all') return 5;
+    if (raw === 'important-only') return 3;
+    if (raw === 'off') return 1;
+    return Number(raw ?? 3);
+  } catch { return 3; }
 }
 
 function chooseLane(prompt, env, semantic, getOffers, file) {
@@ -409,11 +413,11 @@ function chooseLane(prompt, env, semantic, getOffers, file) {
       };
     }
   }
-  // Proactive Codebase-Aware Lane: fires when advocacy dial >= 4 (Proactive / Maximum help) or
+  // Proactive Codebase-Aware Lane: fires at default Balanced dial (>= 3) or
   // RUVNET_CODEBASE_RECOMMENDER=1, inspects the actual project dependencies & source files alongside
   // the user's prompt, and recommends the highest-fit RuvNet enhancement not already integrated.
   const codebaseOn = env.RUVNET_CODEBASE_RECOMMENDER === '1'
-    || (env.RUVNET_CODEBASE_RECOMMENDER !== '0' && !env.RUVNET_ADVOCACY_ROUTE_ROOTS && readSettingsAdvocacyLevel(env) >= 4);
+    || (env.RUVNET_CODEBASE_RECOMMENDER !== '0' && !env.RUVNET_ADVOCACY_ROUTE_ROOTS && readSettingsAdvocacyLevel(env) >= 3);
   if (codebaseOn && isProactiveCodebaseQuery(prompt)) {
     const cbCandidate = buildCodebaseAdvocacyCandidate({ prompt, cwd: env.RUVNET_CODEBASE_DIR || process.cwd() });
     if (cbCandidate) {
@@ -421,7 +425,7 @@ function chooseLane(prompt, env, semantic, getOffers, file) {
         capability: cbCandidate.capability,
         id: cbCandidate.findingId,
         intent: cbCandidate.intent,
-        extra: { evidenceFiles: cbCandidate.evidenceFiles || [] },
+        extra: { evidenceFiles: cbCandidate.evidenceFiles || cbCandidate.evidence || [] },
         stateHash: cbCandidate.observationHash,
         build: () => cbCandidate,
       };

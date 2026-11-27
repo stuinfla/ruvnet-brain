@@ -855,7 +855,10 @@
         if (res.ok) {
           const j = await res.json();
           if (j && j.answer) text = j.answer;
-          else if (j && j.story && j.story.solution) text = j.story.solution;
+          else if (j && j.primaryRepo) {
+            const cites = Array.isArray(j.citations) && j.citations.length ? ' Sources: ' + j.citations.slice(0, 2).map(c => c.path || c.title).filter(Boolean).join(', ') + '.' : '';
+            text = 'Live Brain routed to ' + j.primaryRepo + (j.reason ? ' — ' + j.reason + '.' : '.') + cites;
+          } else if (j && j.story && j.story.solution) text = j.story.solution;
         }
       } catch (_) {}
     }

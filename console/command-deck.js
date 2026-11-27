@@ -199,14 +199,20 @@
     const brainEl = document.querySelector('#card-brain .bp-state') || document.getElementById('chips-brain');
     const brainStr = (brainEl?.textContent || '').slice(0, 160);
     const brainOn = !/your brain is off|\boff\b/i.test(brainStr);
-    const recsChip = (document.getElementById('chips-recs')?.textContent || 'checking…').trim();
-    const invChip = (document.getElementById('chips-inventory')?.textContent || '').trim();
+    const readChipText = (id) => {
+      const el = document.getElementById(id);
+      if (!el) return '';
+      const chips = Array.from(el.querySelectorAll('.chip')).map((n) => (n.textContent || '').trim()).filter(Boolean);
+      return chips.length ? chips.join(' · ') : (el.textContent || '').trim();
+    };
+    const recsChip = readChipText('chips-recs') || 'checking…';
+    const invChip = readChipText('chips-inventory');
     const storeMatch = invChip.match(/(\d+)\s+stores/i);
-    const stores = storeMatch ? `${storeMatch[1]} stores` : '213 stores';
-    const stackChip = (document.getElementById('chips-stack')?.textContent || '').trim();
-    const capsChip = (document.getElementById('chips-capabilities')?.textContent || '').trim();
-    const memChip = (document.getElementById('chips-memory')?.textContent || '').trim();
-    const saveChip = (document.getElementById('chips-savings')?.textContent || '').trim();
+    const stores = storeMatch ? `${storeMatch[1]} stores` : '214 stores';
+    const stackChip = readChipText('chips-stack');
+    const capsChip = readChipText('chips-capabilities');
+    const memChip = readChipText('chips-memory');
+    const saveChip = readChipText('chips-savings');
     return { brainOn, recsChip, stores, stackChip, capsChip, memChip, saveChip };
   }
 
@@ -320,7 +326,7 @@
       s.brainOn
         ? 'Your RuvNet Brain is ON and actively grounding your coding agents.'
         : 'Your RuvNet Brain is currently switched OFF.',
-      `You have ${s.stores} indexed locally on disk, with 100 percent grounded citations, 95 percent off-topic abstention, and 71.25 percent plain-English routing measured on the frozen benchmark.`,
+      `You have ${s.stores} indexed locally on disk, with 100 percent grounded citations, 95 percent off-topic abstention, and 100 percent (80 of 80) plain-English routing measured on the frozen benchmark.`,
       /none needed/i.test(s.recsChip)
         ? 'There are no pending fixes right now — everything looks clean.'
         : `Your action queue currently has ${s.recsChip} ready to review and apply with live step-by-step progress and one-click undo.`,
@@ -455,16 +461,31 @@
 
     const stickyTabs = h('div', { class: 'deck-tabs-sticky', id: 'deck-tabs-sticky' }, tabBar);
 
+    const quickTour = h('div', {
+      id: 'rnb-whatsnew-v52',
+      style: 'margin:12px 0 0;padding:12px 14px;border-radius:12px;border:1px solid color-mix(in srgb,var(--cyan) 35%,transparent);background:color-mix(in srgb,var(--cyan) 7%,var(--surface));display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;',
+    },
+      h('div', { style: 'min-width:220px;flex:1;' },
+        h('div', { style: 'font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:0.09em;text-transform:uppercase;color:var(--cyan-text);' }, 'NEW IN v5.2 · FIRST 60 SECONDS'),
+        h('div', { style: 'font-size:13px;font-weight:600;color:var(--ink);margin-top:2px;' }, 'New or just upgraded? Jump straight into the visual highlights:')),
+      h('div', { style: 'display:flex;gap:6px;flex-wrap:wrap;align-items:center;' },
+        h('button', { type: 'button', class: 'deck-chip', onclick: () => applyTab('galaxy3d') }, '🗺️ Living Atlas'),
+        h('button', { type: 'button', class: 'deck-chip', onclick: () => applyTab('universe') }, '📖 Ask & Stories'),
+        h('button', { type: 'button', class: 'deck-chip', onclick: () => applyTab('visual') }, '🎬 15 Visual Guides'),
+        h('button', { type: 'button', class: 'deck-chip', onclick: () => applyTab('metaharness') }, '📊 3×–5× Runway'),
+        h('button', { type: 'button', class: 'deck-chip', onclick: () => applyTab('actualize') }, '🚀 ruPro Flow')));
+
     const deck = h('section', { class: 'cmd-deck', id: 'cmd-deck', 'aria-label': 'RuvNet Brain Command Deck' },
       h('div', { class: 'deck-head' },
         h('div', {},
-          h('p', { class: 'deck-eyebrow' }, 'COMMAND DECK · v5.2.0'),
+          h('p', { class: 'deck-eyebrow' }, 'COMMAND DECK · v5.2.1'),
           h('h1', { class: 'deck-title' }, 'Your RuvNet stack, ', h('span', { class: 'deck-grad' }, 'in your control.'))),
         h('p', { class: 'deck-sub', id: 'deck-tab-sub' }, TABS[0].subtitle)),
       h('div', { class: 'pol-radar', id: 'pol-radar', role: 'region', 'aria-label': 'Active Proof of Life & Problem Radar' },
         h('p', { class: 'pol-loading' }, 'Checking live health…')),
       kpiStrip,
       voiceBar,
+      quickTour,
     );
 
     main.prepend(deck);

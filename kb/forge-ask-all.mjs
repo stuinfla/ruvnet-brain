@@ -2799,7 +2799,7 @@ export const FULL_CORPUS_MAX_PAIRS_DEFAULT = 408;
 export function capRerankPool(candidates, { limit }) {
   if (!(limit > 0) || candidates.length <= limit) return { kept: candidates, dropped: 0, capped: false };
   const keep = new Set();
-  const exempt = (c) => c._lane === 'rescue' || c._lane === 'bm25';
+  const exempt = (c) => c._lane === 'rescue' || c._lane === 'bm25' || c._lane === 'entry-d2q' || c._lane === 'rsi-learned';
   for (let i = 0; i < candidates.length; i++) if (exempt(candidates[i])) keep.add(i);
   // The floor: one passage per store, taken only if the whole floor fits in what is left.
   const floor = [];
@@ -2859,7 +2859,7 @@ export function cascadeRerankPool(candidates, { limit, s1 }) {
     return { kept: candidates, dropped: 0, capped: false };
   }
   const keep = new Set();
-  const exempt = (c) => c._lane === 'rescue' || c._lane === 'bm25';
+  const exempt = (c) => c._lane === 'rescue' || c._lane === 'bm25' || c._lane === 'entry-d2q' || c._lane === 'rsi-learned';
   for (let i = 0; i < candidates.length; i++) if (exempt(candidates[i])) keep.add(i);
   // (stage-1 score desc, original pool position asc) — stable, so two candidates that score
   // identically are broken the same way on every run. The pool cap changes what gets scored, so a
