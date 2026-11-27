@@ -3,7 +3,7 @@
  * + Without it / With RuvNet comparisons + real ElevenLabs George voice with Pause/Resume/Stop. */
 (() => {
   const CATEGORIES = [
-    { id: 'all', label: 'All 15 concepts' },
+    { id: 'all', label: 'All 16 concepts' },
     { id: 'memory', label: 'Memory & Search' },
     { id: 'agents', label: 'Agents & Swarms' },
     { id: 'learning', label: 'Self-Learning & Routing' },
@@ -347,6 +347,26 @@
         <rect x="164" y="34" width="104" height="76" rx="12" class="vs-box vs-box-amber"/><text x="216" y="66" text-anchor="middle" class="vs-t-main">ruv-FANN</text><text x="216" y="84" text-anchor="middle" class="vs-t-sub">Rust · WASM</text>
         <path d="M268 72 L322 72" class="vs-flow" stroke="#5fd38a"/>
         <rect x="324" y="46" width="84" height="52" rx="10" class="vs-box vs-box-green"/><text x="366" y="70" text-anchor="middle" class="vs-t-main">Instant AI</text><text x="366" y="85" text-anchor="middle" class="vs-t-sub">on-device</text>
+      </svg>`,
+    },
+    {
+      id: 'grounding-gate', cat: 'edge',
+      kicker: '16 · ZERO-HALLUCINATION GROUNDING & WRITE GATE',
+      title: 'RuvNet Brain Grounding — 80/80 plain-English routing & 95% honest “no”',
+      status: 'Active · 80/80 verified', tone: 'green',
+      plain: 'Stops your AI from inventing fake RuvNet APIs or arguing from stale training data. Every RuvNet answer is grounded in 214 live local source stores (100% cited), and the write gate refuses ungrounded code before it can break your repo.',
+      beforeAfter: {
+        before: 'AI confidently hallucinates fake flags and outdated methods from old training data.',
+        after: 'Cites exact on-disk source code (80/80 routed) or honestly says “I don’t know” (95% abstain).',
+      },
+      actionLabel: 'Open Living Atlas →', actionTab: 'galaxy3d',
+      georgeText: 'RuvNet Brain Grounding and Write Gate stops your AI from inventing fake APIs. It routes plain-English questions with one hundred percent verified accuracy across two hundred and fourteen local stores, cites real source code, and refuses ungrounded writes before they break your project.',
+      svg: `<svg class="vs-svg" viewBox="0 0 420 144" role="img" aria-label="RuvNet Brain Grounding and Write Gate diagram">
+        <rect x="14" y="46" width="96" height="52" rx="10" class="vs-box"/><text x="62" y="70" text-anchor="middle" class="vs-t-main">AI Prompt</text><text x="62" y="85" text-anchor="middle" class="vs-t-sub">plain English</text>
+        <path d="M110 72 L156 72" class="vs-flow" stroke="#5ad6ff"/>
+        <rect x="158" y="30" width="122" height="84" rx="12" class="vs-box vs-box-green"/><text x="219" y="60" text-anchor="middle" class="vs-t-main">Grounding Gate</text><text x="219" y="78" text-anchor="middle" class="vs-t-sub">80/80 · 214 stores</text><text x="219" y="94" text-anchor="middle" class="vs-t-sub">95% honest “no”</text>
+        <path d="M280 72 L322 72" class="vs-flow" stroke="#5fd38a"/>
+        <rect x="324" y="46" width="84" height="52" rx="10" class="vs-box vs-box-cyan"/><text x="366" y="70" text-anchor="middle" class="vs-t-main">Cited Code</text><text x="366" y="85" text-anchor="middle" class="vs-t-sub">0 fakes ✓</text>
       </svg>`,
     },
   ];
