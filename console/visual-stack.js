@@ -370,6 +370,46 @@
     const main = document.getElementById('main');
     if (!main || document.getElementById('card-visual-stack')) return;
 
+    // On-demand 3D WebGPU Stage (mounted hidden until user clicks "3D WebGPU" on any of the 15 cards)
+    const stage3dIframe = el('iframe', {
+      id: 'vs-3d-iframe',
+      title: 'RuvNet 3D WebGPU Interactive Tech Explainer',
+      style: 'display:block;width:100%;height:700px;border:0;background:#02050d;',
+      allow: 'fullscreen',
+    });
+    const stage3dFullLink = el('a', {
+      href: '/tech-explorer.html',
+      target: '_blank',
+      rel: 'noopener noreferrer',
+      style: 'display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:9px;background:rgba(34,230,255,0.18);border:1px solid rgba(34,230,255,0.5);color:#e6fcff;font-size:12px;font-weight:700;text-decoration:none;',
+    }, 'Open Full-Screen 3D ↗');
+    const stage3dWrap = el('div', {
+      id: 'vs-3d-drawer',
+      hidden: true,
+      style: 'margin:0 0 18px;border-radius:16px;overflow:hidden;border:1px solid rgba(34,230,255,0.4);background:#02050d;box-shadow:0 18px 50px rgba(0,0,0,0.45);',
+    },
+      el('div', {
+        style: 'display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:rgba(7,13,28,0.95);border-bottom:1px solid rgba(130,180,255,0.18);flex-wrap:wrap;',
+      },
+        el('span', { style: 'font-family:var(--mono,monospace);font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#22e6ff;' }, 'ON-DEMAND 3D WEBGPU ARCHITECTURE EXPLAINER'),
+        el('div', { style: 'display:flex;gap:8px;align-items:center;' },
+          stage3dFullLink,
+          el('button', {
+            type: 'button',
+            class: 'btn btn-ghost btn-sm',
+            style: 'color:#e6fcff;border-color:rgba(255,255,255,0.22);',
+            onclick: () => { stage3dWrap.hidden = true; stage3dIframe.removeAttribute('src'); },
+          }, '× Close 3D'))),
+      stage3dIframe);
+
+    function open3DFor(conceptId) {
+      const url = `/tech-explorer.html?tech=${encodeURIComponent(conceptId)}`;
+      stage3dFullLink.setAttribute('href', url);
+      stage3dIframe.setAttribute('src', url);
+      stage3dWrap.hidden = false;
+      stage3dWrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
     let activeCat = 'all';
     const cardNodes = CONCEPTS.map((c) => {
       const fig = el('div', { class: 'vs-stage' });
@@ -411,6 +451,11 @@
           el('button', {
             type: 'button',
             class: 'btn btn-apply btn-sm',
+            onclick: () => open3DFor(c.id),
+          }, '✦ View in 3D WebGPU'),
+          el('button', {
+            type: 'button',
+            class: 'btn btn-ghost btn-sm',
             onclick: () => window.RNBDeck?.goTab?.(c.actionTab),
           }, c.actionLabel),
           speakBtn,
@@ -443,6 +488,7 @@
           el('h2', { id: 'vs-heading' }, 'How the RuvNet magic actually works'),
           el('p', { class: 'vs-sub' }, 'New to RuvNet? Explore all 15 foundational breakthroughs — from RuVector, AgenticOW, and AgentDB to Swarms, RSI, RuView WiFi sensing, AIMDS security, and QuDAG post-quantum networking. Filter by area or click Hear George explain on any card.')),
         el('div', { class: 'deck-tabs', style: 'border-top:none;padding-top:0;margin-bottom:14px;' }, filterBtns)),
+      stage3dWrap,
       el('div', { class: 'vs-grid' }, cardNodes));
 
     const deck = document.getElementById('cmd-deck');
