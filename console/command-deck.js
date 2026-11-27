@@ -11,6 +11,14 @@
       autoOpen: ['card-recs', 'card-capabilities'],
     },
     {
+      id: 'brainstory',
+      label: 'The Story (7-Step)',
+      subtitle: 'Visual-first 7-step interactive storyboard — how AI building goes from guesswork & chaos to effortless clarity with RuvNet Brain & Cognitum ruPro',
+      show: ['card-brain-story'],
+      subShow: {},
+      autoOpen: [],
+    },
+    {
       id: 'universe',
       label: 'Ask & Stories',
       subtitle: 'Ask any question in plain English, dive inside all 6 RuvNet pillars & RuVector, and watch 4-beat visual stories',
@@ -83,6 +91,7 @@
   ];
 
   const ALL_TOP_IDS = [
+    'card-brain-story',
     'card-universe-3d',
     'card-galaxy-3d',
     'card-visual-stack',
@@ -166,6 +175,15 @@
     const subEl = document.getElementById('deck-tab-sub');
     if (subEl) subEl.textContent = tab.subtitle;
 
+    // Lazy-load the 12-Step Interactive Storyboard iframe on first open
+    if (tab.id === 'brainstory') {
+      const iframe = document.getElementById('rnb-story-iframe');
+      if (iframe && !iframe.getAttribute('src')) {
+        iframe.setAttribute('src', iframe.getAttribute('data-src') || '/brain-story.html');
+      }
+      const sCard = document.getElementById('card-brain-story');
+      if (sCard) sCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
     // Lazy-load the 3D WebGPU Knowledge Universe iframe on first open of the tab & scroll cleanly into view
     if (tab.id === 'universe') {
       const iframe = document.getElementById('rnb-universe-iframe');
@@ -469,9 +487,10 @@
         h('div', { style: 'font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:0.09em;text-transform:uppercase;color:var(--cyan-text);' }, 'NEW IN v5.2 · FIRST 60 SECONDS'),
         h('div', { style: 'font-size:13px;font-weight:600;color:var(--ink);margin-top:2px;' }, 'New or just upgraded? Jump straight into the visual highlights:')),
       h('div', { style: 'display:flex;gap:6px;flex-wrap:wrap;align-items:center;' },
+        h('button', { type: 'button', class: 'deck-chip', onclick: () => applyTab('brainstory') }, '🎬 7-Step Story'),
         h('button', { type: 'button', class: 'deck-chip', onclick: () => applyTab('galaxy3d') }, '🗺️ Living Atlas'),
         h('button', { type: 'button', class: 'deck-chip', onclick: () => applyTab('universe') }, '📖 Ask & Stories'),
-        h('button', { type: 'button', class: 'deck-chip', onclick: () => applyTab('visual') }, '🎬 15 Visual Guides'),
+        h('button', { type: 'button', class: 'deck-chip', onclick: () => applyTab('visual') }, '⚡ 16 Visual Guides'),
         h('button', { type: 'button', class: 'deck-chip', onclick: () => applyTab('metaharness') }, '📊 3×–5× Runway'),
         h('button', { type: 'button', class: 'deck-chip', onclick: () => applyTab('actualize') }, '🚀 ruPro Flow')));
 
@@ -490,6 +509,34 @@
 
     main.prepend(deck);
     main.prepend(stickyTabs);
+
+    // Mount the 12-Step Progressive Storyboard card right below the Command Deck
+    if (!document.getElementById('card-brain-story')) {
+      const sCard = h('section', {
+        id: 'card-brain-story',
+        class: 'card deck-hidden',
+        style: 'padding:0;overflow:hidden;border:1px solid rgba(110,231,200,0.32);background:#080b12;',
+      },
+        h('div', {
+          style: 'display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 18px;border-bottom:1px solid rgba(130,180,255,0.16);background:rgba(10,16,32,0.94);flex-wrap:wrap;',
+        },
+          h('div', {},
+            h('div', { style: 'font-family:var(--mono,monospace);font-size:11px;letter-spacing:0.09em;text-transform:uppercase;color:#6ee7c8;font-weight:700;' }, '12-STEP INTERACTIVE STORYBOARD · BEFORE → WITH RUVNET BRAIN → COGNITUM ruPRO'),
+            h('div', { style: 'font-size:15.5px;font-weight:700;color:#eef5ff;margin-top:2px;' }, 'Step through how AI coding goes from hard & scattered to effortless (Spacebar or Next →)')),
+          h('a', {
+            href: '/brain-story.html',
+            target: '_blank',
+            rel: 'noopener noreferrer',
+            style: 'display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:10px;background:rgba(110,231,200,0.16);border:1px solid rgba(110,231,200,0.48);color:#e6fff8;font-size:12.5px;font-weight:700;text-decoration:none;',
+          }, 'Open Full-Screen ↗')),
+        h('iframe', {
+          id: 'rnb-story-iframe',
+          'data-src': '/brain-story.html',
+          title: 'RuvNet Brain → Cognitum ruPro 12-Step Interactive Storyboard',
+          style: 'display:block;width:100%;height:780px;border:0;background:#080b12;',
+        }));
+      deck.insertAdjacentElement('afterend', sCard);
+    }
 
     // Mount the native 3D WebGPU Knowledge Universe card right below the Command Deck
     if (!document.getElementById('card-universe-3d')) {
