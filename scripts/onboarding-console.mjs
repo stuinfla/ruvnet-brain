@@ -3955,14 +3955,7 @@ function startServer({ port = Number(process.env.CONSOLE_PORT) || 7411, open = f
         if (url === '/api/tts') {
           const text = String(body.text || '').trim().slice(0, 1200);
           if (!text) return sendJSON(res, 400, { ok: false, error: 'Missing text' });
-          let apiKey = process.env.ELEVENLABS_API_KEY || '';
-          if (!apiKey) {
-            try {
-              const envText = fs.readFileSync(path.join(os.homedir(), '.claude', 'secrets.env'), 'utf8');
-              const m = envText.match(/^\s*(?:export\s+)?ELEVENLABS_API_KEY\s*=\s*['"]?([^'"\r\n]+)['"]?/m);
-              if (m) apiKey = m[1].trim();
-            } catch {}
-          }
+          const apiKey = process.env.ELEVENLABS_API_KEY || '';
           if (!apiKey) return sendJSON(res, 503, { ok: false, error: 'ElevenLabs API key not configured locally' });
           const voiceId = /^[A-Za-z0-9]{10,40}$/.test(String(body.voiceId || '')) ? String(body.voiceId) : 'JBFqnCBsd6RMkjVDRZzb';
           try {

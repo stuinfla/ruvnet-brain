@@ -151,6 +151,67 @@ const FLAG_NO_VERIFY = argv.includes('--no-verify');
 const FLAG_NO_SELFCHECK = argv.includes('--no-selfcheck');
 const FLAG_DEMO = argv.includes('--demo'); // guided, real (non-fabricated) walkthrough of the brain in action
 const FLAG_FEEDBACK = argv.includes('--feedback'); // prefill a GitHub Discussion (version + health, nothing private) and open it
+const FLAG_TEMP = argv.includes('--temp') || argv.includes('--ephemeral'); // ephemeral session mode: zero host config mutation
+
+export function parseTempRunArgs(args = []) {
+  const isMcp = args.includes('--mcp') || args[0] === 'mcp' || (args.includes('--temp') && args.includes('mcp'));
+  if (isMcp) return { mode: 'mcp' };
+
+  const askFlagIdx = args.indexOf('--ask');
+  const askSubIdx = args[0] === 'ask' ? 0 : (args[0] === '--temp' && args[1] === 'ask' ? 1 : -1);
+  if (askFlagIdx >= 0 || askSubIdx >= 0) {
+    const startIdx = askFlagIdx >= 0 ? askFlagIdx + 1 : askSubIdx + 1;
+    const queryParts = [];
+    let k = null;
+    let repos = null;
+    let json = false;
+    for (let i = startIdx; i < args.length; i++) {
+      const a = args[i];
+      if (a === '--k' && args[i + 1]) { k = args[++i]; continue; }
+      if (a === '--repos' && args[i + 1]) { repos = args[++i]; continue; }
+      if (a === '--json') { json = true; continue; }
+      if (a === '--temp' || a === '--ephemeral') continue;
+      if (a.startsWith('-')) continue;
+      queryParts.push(a);
+    }
+    const query = queryParts.join(' ').trim();
+    if (!query) return { mode: 'ask', error: '--ask requires a question (e.g., npx ruvnet-brain --ask "how does RVF store vectors?")' };
+    return { mode: 'ask', query, k, repos, json };
+  }
+  return null;
+}
+
+async function runTempMcp() {
+  const serverPath = path.join(REPO_ROOT, 'plugin', 'mcp', 'server.mjs');
+  if (!fs.existsSync(serverPath)) {
+    console.error(`RuvNet Brain MCP server not found at ${serverPath}`);
+    return 1;
+  }
+  return await new Promise((resolve) => {
+    const child = spawn(process.execPath, [serverPath], { stdio: 'inherit', env: process.env });
+    const forward = (sig) => { try { child.kill(sig); } catch {} };
+    process.on('SIGINT', () => forward('SIGINT'));
+    process.on('SIGTERM', () => forward('SIGTERM'));
+    child.on('error', (err) => { console.error(`Failed to launch RuvNet Brain MCP server: ${err.message}`); resolve(1); });
+    child.on('exit', (code, signal) => resolve(signal ? 1 : (code ?? 0)));
+  });
+}
+
+function runTempAsk({ query, k, repos, json }) {
+  const kbDir = resolvedKbDir();
+  const askScript = path.join(kbDir, 'forge-ask-all.mjs');
+  if (!fs.existsSync(askScript)) {
+    console.error(`RuvNet Brain KB is not installed at ${kbDir}.`);
+    console.error('Run `npx ruvnet-brain` once to download the signed KB, or set RUVNET_BRAIN_KB=<path>.');
+    return 1;
+  }
+  const childArgs = ['forge-ask-all.mjs', '--dir', kbDir, '--q', query];
+  if (k) childArgs.push('--k', String(k));
+  if (repos) childArgs.push('--repos', String(repos));
+  if (json) childArgs.push('--json');
+  const r = spawnSync(process.execPath, childArgs, { cwd: kbDir, stdio: 'inherit', env: process.env });
+  return r.status ?? 1;
+}
 // ── freshness flags — invoke/schedule the SELF-UPDATER the bundle already ships (kb/forge-update.mjs) ──
 const FLAG_UPDATE = argv.includes('--update'); // one-shot: pull the latest Release bundle into the installed brain now
 const FLAG_HOST_SYNC_ONLY = argv.includes('--host-sync-only'); // internal: repair host shells even when KB updater is absent
@@ -713,7 +774,10 @@ export async function unzipInto(zipPath, cacheDir, sourceDir = null, { releaseTa
         'The live brain was not touched. Re-run the installer.');
     }
   }
-  const stagedCoverage = validateCoverageDirectory(stageDir, { expectedVersion: PACKAGE_VERSION });
+  const expectedBundleVersion = (releaseTag && /^v\d+\.\d+\.\d+$/.test(releaseTag) && versionSatisfies(PACKAGE_VERSION, releaseTag.slice(1)))
+    ? releaseTag.slice(1)
+    : PACKAGE_VERSION;
+  const stagedCoverage = validateCoverageDirectory(stageDir, { expectedVersion: expectedBundleVersion });
   if (!stagedCoverage.valid) {
     fs.rmSync(stageDir, { recursive: true, force: true });
     die(`staged ReleaseCoverage failed integrity — ${stagedCoverage.failures.join('; ')}`,
@@ -6959,6 +7023,8 @@ nothing; re-run later, or pick a release yourself with  --version <tag>.
 Usage:
   npx ruvnet-brain                         Install the brain + Claude Code plugin (recommended, npm)
   npx github:stuinfla/ruvnet-brain         Same, but from the bleeding-edge GitHub commit
+  npx ruvnet-brain --mcp                   Temp/ephemeral stdio MCP server for any session (zero host mutation)
+  npx ruvnet-brain --ask "<question>"      One-shot grounded query from any session (zero host mutation; supports --k, --repos, --json)
   npx ruvnet-brain --doctor   Health-check an existing install (green/red per part), ending with the
                               positive confirmation: latest software, ONE current signed KB in use,
                               footprint within budget, no cruft. --doctor --json prints only that, as JSON.
@@ -7046,6 +7112,12 @@ the installer reports that boot-level declarations changed.
   const invokedDirectly = isDirectInvocation(import.meta.url);
   if (!invokedDirectly) return;
   if (FLAG_HELP) return showHelp();
+  const tempRun = parseTempRunArgs(argv);
+  if (tempRun) {
+    if (tempRun.error) { console.error(tempRun.error); process.exitCode = 1; return; }
+    if (tempRun.mode === 'mcp') { process.exitCode = await runTempMcp(); return; }
+    if (tempRun.mode === 'ask') { process.exitCode = runTempAsk(tempRun); return; }
+  }
   if (NAMED_RELEASE?.error) {
     console.error(NAMED_RELEASE.error);
     console.error(NAMED_RELEASE.hint);
