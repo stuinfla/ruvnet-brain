@@ -1009,7 +1009,7 @@ describe('Codex hook wrapper stdin framing (#525) and budget routing (#513)', ()
           timeout: 4_000,
         });
         expect(r.status, r.stderr).toBe(0);
-        expect(JSON.parse(r.stdout).budget).toBe('1234');
+        expect(JSON.parse(r.stdout).budget).toBe('1234'); // sync-version-ignore: synthetic budget fixture value
       }
     } finally {
       fs.rmSync(home, { recursive: true, force: true });
